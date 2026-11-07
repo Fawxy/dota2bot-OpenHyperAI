@@ -312,12 +312,13 @@ ____exports.SETTINGS = {
     TowerRange = 844,
     CorePullFrom = 360,
     CorePullWorth = 80,
+    CorePullPerNeed = 0.05,
     PathFactor = 1.2
 }
---- Slice 4a (design s5.7, its rule list `judgement`): who takes the pull lever. Before CorePullFrom an able support pulls. Else
--- the offlane pos3 pulls when no enemy hero is missing near its walk to the camp (CoreCamp MissingOf) and the lane gold it
--- loses while away is at most CorePullWorth; failing that an able support still pulls. `why` the support's refusal (or
--- `no_sup`) when neither goes; `cwhy` why the core did not.
+--- The lane gold the pos3 may lose to pull: CorePullWorth, plus CorePullPerNeed a unit of need past the band.
+function ____exports.CorePullLimit(n45)
+    return ____exports.SETTINGS.CorePullWorth + ____exports.SETTINGS.CorePullPerNeed * math.max(0, (n45 or 0) - ____exports.SETTINGS.Band)
+end
 function ____exports.PullerOf(i)
     local supOk = i.sup ~= nil and i.sup.why == nil
     if supOk and i.now < ____exports.SETTINGS.CorePullFrom then
@@ -328,7 +329,7 @@ function ____exports.PullerOf(i)
     end
     local cwhy
     if i.core ~= nil then
-        cwhy = i.core.missing > 0 and "missing" or (i.core.loss == nil and "no_plan" or (i.core.loss > ____exports.SETTINGS.CorePullWorth and "loss" or nil))
+        cwhy = i.core.missing > 0 and "missing" or (i.core.loss == nil and "no_plan" or (i.core.loss > ____exports.CorePullLimit(i.n45) and "loss" or nil))
         if cwhy == nil then
             return {
                 who = tostring(i.core.pid),
@@ -395,7 +396,7 @@ function ____exports.Choose(need, band, levers)
     grow(0, {})
     for ____, set in ipairs(sets) do
         do
-            local __continue14
+            local __continue15
             repeat
                 local bad = false
                 do
@@ -414,7 +415,7 @@ function ____exports.Choose(need, band, levers)
                     end
                 end
                 if bad then
-                    __continue14 = true
+                    __continue15 = true
                     break
                 end
                 local left = need
@@ -431,7 +432,7 @@ function ____exports.Choose(need, band, levers)
                 end
                 local over = ____temp_5
                 if over then
-                    __continue14 = true
+                    __continue15 = true
                     break
                 end
                 local inside = math.abs(left) <= band
@@ -444,9 +445,9 @@ function ____exports.Choose(need, band, levers)
                     bestKey = key
                     best = {levers = set, left = left, short = not inside}
                 end
-                __continue14 = true
+                __continue15 = true
             until true
-            if not __continue14 then
+            if not __continue15 then
                 break
             end
         end
@@ -475,11 +476,11 @@ local function lanersOf(lane, cx, cy)
         local i = 1
         while i <= 5 do
             do
-                local __continue33
+                local __continue34
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:GetAssignedLane() ~= lane then
-                        __continue33 = true
+                        __continue34 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(u) or 0
@@ -494,9 +495,9 @@ local function lanersOf(lane, cx, cy)
                             cy
                         ) <= ____exports.SETTINGS.InLane
                     }
-                    __continue33 = true
+                    __continue34 = true
                 until true
-                if not __continue33 then
+                if not __continue34 then
                     break
                 end
             end
@@ -527,10 +528,10 @@ local function enemiesAway(m, now, cx, cy)
     local visible = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue40
+            local __continue41
             repeat
                 if e == nil or e == nil or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 visible[e:GetPlayerID()] = e
@@ -541,9 +542,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyLaneR then
                     m.enemies[e:GetPlayerID()] = now
                 end
-                __continue40 = true
+                __continue41 = true
             until true
-            if not __continue40 then
+            if not __continue41 then
                 break
             end
         end
@@ -551,17 +552,17 @@ local function enemiesAway(m, now, cx, cy)
     local any = false
     for k in pairs(m.enemies) do
         do
-            local __continue44
+            local __continue45
             repeat
                 local pid = tonumber(k)
                 if now - m.enemies[pid] > ____exports.SETTINGS.EnemyMemory then
                     __TS__Delete(m.enemies, pid)
-                    __continue44 = true
+                    __continue45 = true
                     break
                 end
                 any = true
                 if not IsHeroAlive(pid) then
-                    __continue44 = true
+                    __continue45 = true
                     break
                 end
                 local e = visible[pid]
@@ -572,9 +573,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyAway then
                     return false
                 end
-                __continue44 = true
+                __continue45 = true
             until true
-            if not __continue44 then
+            if not __continue45 then
                 break
             end
         end
@@ -732,7 +733,7 @@ local function decide(team, lane, now, m)
             }
         end
     end
-    local puller = ____exports.PullerOf({now = now, sup = supBot ~= nil and ({pid = supBot.pid, why = pc and pc.why}) or nil, core = coreCand})
+    local puller = ____exports.PullerOf({now = now, n45 = n45, sup = supBot ~= nil and ({pid = supBot.pid, why = pc and pc.why}) or nil, core = coreCand})
     local levers = {}
     local anyIn = coreIn ~= nil or supIn ~= nil
     levers[#levers + 1] = {
@@ -1029,17 +1030,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue103
+            local __continue104
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue103 = true
+                    __continue104 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue103 = true
+                __continue104 = true
             until true
-            if not __continue103 then
+            if not __continue104 then
                 break
             end
         end

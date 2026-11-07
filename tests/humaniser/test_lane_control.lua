@@ -135,6 +135,10 @@ do
 	check("no plan for the pos3, support refused: its refusal", a.by == nil and a.why == "stack" and a.cwhy == "no_plan")
 	check("no core candidate, no support: no_sup", p(400, nil, nil).why == "no_sup")
 	check("at the limit: the pos3", p(400, nil, { pid = 7, missing = 0, loss = 80 }).by == "core")
+	-- User 07/11/2026: the lane's need lifts the limit (0.05 gold a unit past the band 150).
+	check("limit: 80 inside the band", Ctl.CorePullLimit(100) == 80 and Ctl.CorePullLimit(nil) == 80)
+	check("limit: 170 at a need of 1,950", Ctl.CorePullLimit(1950) == 170)
+	check("a badly pushed lane: the pos3 pulls at a loss of 120", Ctl.PullerOf({ now = 400, n45 = 1950, core = { pid = 7, missing = 0, loss = 120 } }).by == "core")
 end
 
 finish()

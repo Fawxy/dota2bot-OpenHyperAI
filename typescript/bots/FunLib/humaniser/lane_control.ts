@@ -94,8 +94,11 @@ export const SETTINGS = {
     CorePullFrom: 360,
     /** The pos3 pulls only when the lane gold it would lose while away (CoreCamp LossBetween on the plain forecast, from the
      *  walk's start to its walk back) is at most this: two lane creeps at the core's full share. The pull's own worth is the
-     *  reset lane, which the lane advantage layer (s5.8) will price; `judgement` until then, read from `closs`. */
+     *  reset lane, which the lane advantage layer (s5.8) will price; `judgement` until then, read from `closs`. User 07/11/2026:
+     *  keep the rule order, but the lane's need lifts the limit: plus CorePullPerNeed gold a unit of n45 past the band (a
+     *  clash 2,000 past the target allows about 170). */
     CorePullWorth: 80,
+    CorePullPerNeed: 0.05,
     /** Walking paths run longer than the straight line (CoreCamp's and rune_job's PathFactor). */
     PathFactor: 1.2,
 };
@@ -103,6 +106,8 @@ export const SETTINGS = {
 /** One candidate puller: the support (with the calendar's refusal) or the offlane pos3 (with its site and gold reads). */
 export interface PullerInputs {
     now: number;
+    /** The need the levers are chosen on (the clash 45 s on past the target). */
+    n45?: number;
     sup?: { pid: number; why?: string };
     core?: { pid: number; missing: number; loss?: number };
 }
@@ -110,15 +115,20 @@ export interface PullerInputs {
 /**
  * Slice 4a (design s5.7, its rule list `judgement`): who takes the pull lever. Before CorePullFrom an able support pulls. Else
  * the offlane pos3 pulls when no enemy hero is missing near its walk to the camp (CoreCamp MissingOf) and the lane gold it
- * loses while away is at most CorePullWorth; failing that an able support still pulls. `why` the support's refusal (or
+ * loses while away is at most CorePullLimit (the lane's need lifts it); failing that an able support still pulls. `why` the support's refusal (or
  * `no_sup`) when neither goes; `cwhy` why the core did not.
  */
+/** The lane gold the pos3 may lose to pull: CorePullWorth, plus CorePullPerNeed a unit of need past the band. */
+export function CorePullLimit(n45: number | undefined): number {
+    return SETTINGS.CorePullWorth + SETTINGS.CorePullPerNeed * math.max(0, (n45 ?? 0) - SETTINGS.Band);
+}
+
 export function PullerOf(i: PullerInputs): { who: string; by?: string; why?: string; cwhy?: string } {
     const supOk = i.sup !== undefined && i.sup.why === undefined;
     if (supOk && i.now < SETTINGS.CorePullFrom) return { who: `${i.sup!.pid}`, by: "sup" };
     let cwhy: string | undefined;
     if (i.core !== undefined) {
-        cwhy = i.core.missing > 0 ? "missing" : i.core.loss === undefined ? "no_plan" : i.core.loss > SETTINGS.CorePullWorth ? "loss" : undefined;
+        cwhy = i.core.missing > 0 ? "missing" : i.core.loss === undefined ? "no_plan" : i.core.loss > CorePullLimit(i.n45) ? "loss" : undefined;
         if (cwhy === undefined) return { who: `${i.core.pid}`, by: "core" };
     }
     if (supOk) return { who: `${i.sup!.pid}`, by: "sup", cwhy };
@@ -406,7 +416,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
             coreCand = { pid: coreIn.pid, missing: CoreCamp.MissingOf(u, w.stand).n, loss: CoreCamp.LossBetween(clash, w.start, w.end + back) };
         }
     }
-    const puller = PullerOf({ now, sup: supBot !== undefined ? { pid: supBot.pid, why: pc?.why } : undefined, core: coreCand });
+    const puller = PullerOf({ now, n45, sup: supBot !== undefined ? { pid: supBot.pid, why: pc?.why } : undefined, core: coreCand });
     const levers: Lever[] = [];
     const anyIn = coreIn !== undefined || supIn !== undefined;
     levers.push({ name: "predeny", effect: -s.PreDenySize, danger: 1, who: coreIn !== undefined && supIn !== undefined ? "both" : coreIn !== undefined ? "core" : "sup", why: !anyIn ? "nobody" : !Ours.On("PreDeny") ? "off" : undefined });
