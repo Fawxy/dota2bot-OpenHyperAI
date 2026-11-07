@@ -1584,7 +1584,7 @@ local function finish(bot, p, r, label)
         {"lv", p.timer.reads},
         {
             "nsp",
-            p.plan.timing.neutralSpeed ~= nil and math.floor(p.plan.timing.neutralSpeed + 0.5) or nil
+            p.timer.timing.neutralSpeed ~= nil and math.floor(p.timer.timing.neutralSpeed + 0.5) or nil
         },
         {"hr", p.timer.hit ~= nil and "geo" or "plan"},
         {"hc", p.timer.n},

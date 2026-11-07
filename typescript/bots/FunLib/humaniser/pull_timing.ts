@@ -46,6 +46,11 @@ export interface PullTiming {
     /** Seconds the neutrals take from the hit to the meet point (the lead path at NeutralSpeed), and that speed. */
     walk?: number;
     neutralSpeed?: number;
+    /** What `Read` needs to read the speed again at the order: the lead path's length, the camp's type, seed speed and index. */
+    walkLen?: number;
+    type?: string;
+    seedSpeed?: number;
+    campIdx?: number;
 }
 
 /** A live reading of our wave against the plan: the shift from its body (applied) and from its front creep (logged). */
@@ -124,11 +129,12 @@ export function For(team: number, lane: Lane | undefined, origin: Vector | undef
     const t = LaneConfig.Settings().Timing;
     const ahead = LaneAhead(team, lane);
     const waveTravel = meetAlong / WorldFacts.Latest("lane_creep_speed", cfg.CreepSpeed) - ahead;
-    const walk = WalkLength(origin, leadPath) / neutralSpeed;
+    const walkLen = WalkLength(origin, leadPath);
+    const walk = walkLen / neutralSpeed;
     const waveAfter = walk + cfg.Lead;
     const seconds = (cfg.WaveSlots as number[]).map((slot) => normalise(slot + waveTravel - waveAfter, t.PullPeriod));
     seconds.sort((a, b) => a - b);
-    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team, walk, neutralSpeed };
+    return { seconds, source: "wave", waveAfter, waveTravel, meetAlong, lanePath: path, ahead, team, walk, neutralSpeed, walkLen, type, seedSpeed, campIdx };
 }
 
 /** WaveAhead for `team`'s `lane`: the safe lane's or the off lane's, 0 for mid. */
@@ -259,9 +265,16 @@ export function Timer(timing: PullTiming, slot: number, past: number): CreepTime
 export function Read(c: CreepTimer, now: number): number {
     const t = c.timing;
     const meet = t.meetAlong;
-    const walk = t.walk;
-    if ((c.readAt === undefined || now - c.readAt >= settings().LiveEvery) && meet !== undefined && walk !== undefined) {
+    if ((c.readAt === undefined || now - c.readAt >= settings().LiveEvery) && meet !== undefined && t.walk !== undefined) {
         c.readAt = now;
+        // The neutrals' speed is read again at every read up to the order (user 08/11/2026): a camp in view is re-fed each
+        // second, so the walk uses the pack standing there now, not the previous respawn's mix the plan was made on.
+        if (t.walkLen !== undefined && t.type !== undefined && t.seedSpeed !== undefined) {
+            const sp = WorldFacts.NeutralSpeedFor(t.type, t.seedSpeed, t.campIdx);
+            t.neutralSpeed = sp;
+            t.walk = t.walkLen / sp;
+        }
+        const walk = t.walk as number;
         const alongs = WaveAlongs(t, c.slot, now);
         c.n = alongs.length;
         if (alongs.length >= 2) {
