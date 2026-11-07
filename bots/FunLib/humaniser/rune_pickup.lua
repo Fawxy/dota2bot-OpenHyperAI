@@ -2,7 +2,8 @@
 local ____exports = {}
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-____exports.SETTINGS = {GiveUpAfter = 3, Near = 150, LeftAt = 400, SpawnEvery = 120}
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+____exports.SETTINGS = {GiveUpAfter = 3, Near = 150, LeftAt = 400, SpawnEvery = Runes.RUNE_RULES.power.every}
 local tries = {}
 local unpickableUntil = {}
 function ____exports.ResetCache()

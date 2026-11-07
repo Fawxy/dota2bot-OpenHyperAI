@@ -60,6 +60,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local LaneRead = require(GetScriptDirectory().."/FunLib/humaniser/lane_read")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 ____exports.SCHEMA = 2
 local BUILD = (function()
     local ok, info = pcall(
@@ -1048,14 +1049,14 @@ local BARRACKS = {
     Barracks.BotRanged
 }
 --- RUNE_RULES power.first (transitions/runes): power spots hold water runes before it.
-local POWER_FROM = 360
+local POWER_FROM = Runes.RUNE_RULES.power.first
 --- judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement.
 local RUNE_TAKER_R = 400
 --- A power spot's unpicked rune despawns on the next 2-minute spawn tick, which read as a pickup by the hero waiting there
 -- (rspchk2: every 6:00 "pickup" at t=360.067 was a 4:00 water rune left on the spot). judgement: under the 0.27 s of the
 -- fastest real pickup seen after a spawn (rspchk2 game 1).
 local RUNE_EXPIRE_FOR = 0.15
-local RUNE_RESPAWN = 120
+local RUNE_RESPAWN = Runes.RUNE_RULES.power.every
 --- judgement: ward cast range 500 plus movement since the cast.
 local WARD_OWNER_R = 800
 --- Rune status is stale across 0:00 (b23 gate logs: every spot "taken" at t = 0.2), so tracking starts after this.
