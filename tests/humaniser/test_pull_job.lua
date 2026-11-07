@@ -633,4 +633,43 @@ do
 	GetRuneSpawnLocation = nil
 end
 
+-- Slice lane-control 4a: the offlane pos3 pulls its hard camp only when the lane controller's decision names it (rule ctl);
+-- it never pulls on the support's own triggers, and with CorePull off it is no puller. This world's lane stands in for the
+-- offlane (LaneOfKind stubbed), the pulling unit is the pos3.
+do
+	local function corePull(o)
+		local w = world({ reading = OUT })
+		local Camps = w.H.Lane.Camps
+		local cust = package.loaded["bots/FunLib/custom_loader"]
+		local kind = Camps.LaneOfKind
+		Camps.LaneOfKind = function(team, k) if k == "off" then return Lane.Bot end return kind(team, k) end
+		w.sup.pos = 3
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = true, true, o.on ~= false
+		w.H.LaneControl.ResetCache()
+		local win = w.H.PullJob.Window(w.sup, T)
+		if o.decide then
+			w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R3", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 })
+		end
+		local applies = w.H.PullJob.Applies(w.sup)
+		local out = run(w, 75)
+		Camps.LaneOfKind = kind
+		w.H.LaneControl.ResetCache()
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = nil, nil, nil
+		return applies, lines(out, "choice")[1], lines(out, "job")[1]
+	end
+	local applies, choice, job = corePull({ decide = true })
+	check("core pull: named by the decision, the pos3 starts the pull", applies and choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "ctl"
+		and job ~= nil and field(job, "phase") == "start", choice)
+	applies, choice, job = corePull({})
+	check("core pull: no decision, no pull on the support's triggers", applies and choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "no_ctl" and job == nil, choice)
+	applies, choice, job = corePull({ decide = true, who = "9" })
+	check("core pull: the decision names another puller", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "ctl" and job == nil, choice)
+	applies = corePull({ decide = true, on = false })
+	check("core pull: CorePull off, the pos3 is no puller", not applies)
+	-- The pos3 off the offlane (this world's lane as the safe lane) is no puller.
+	local w = world({ reading = OUT })
+	w.sup.pos = 3
+	check("core pull: a safe-lane pos3 is no puller", not w.H.PullJob.Applies(w.sup))
+end
+
 finish()

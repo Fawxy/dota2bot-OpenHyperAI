@@ -238,6 +238,15 @@ function pullerOfLane(bot: Unit): boolean {
     return true;
 }
 
+/**
+ * Slice lane-control 4a (design s5.7; user 06/11/2026: the pos3 may pull the hard camp and no other camp): the offlane pos3
+ * under Ours.CorePull. The offlane's only pull camp is the hard camp (camps_data `off_large`). It pulls only when the lane
+ * controller's decision names it (rule `ctl`), never on the support's own triggers.
+ */
+function corePuller(bot: Unit): boolean {
+    return Ours.On("CorePull") && LaneConfig.PositionOf(bot) === 3 && bot.GetAssignedLane() === Camps.LaneOfKind(bot.GetTeam(), "off");
+}
+
 function campFor(bot: Unit): Camps.CampJobData | undefined {
     const lane = bot.GetAssignedLane();
     if (lane !== Lane.Top && lane !== Lane.Bot) return undefined;
@@ -245,7 +254,7 @@ function campFor(bot: Unit): Camps.CampJobData | undefined {
 }
 
 export function Applies(bot: Unit): boolean {
-    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
+    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && ((isSupport(bot) && pullerOfLane(bot)) || corePuller(bot)) && campFor(bot) !== undefined;
 }
 
 /**
@@ -266,10 +275,10 @@ export function Priority(bot: Unit): number | undefined {
 }
 
 /** The next pull's walk start, end (the hit second plus Take) and hit second (`key`), or undefined with no plan. */
-export function Window(bot: Unit, now: number): { start: number; end: number; key: number } | undefined {
+export function Window(bot: Unit, now: number): { start: number; end: number; key: number; stand: Vector } | undefined {
     const p = planFor(bot, now);
     if (p === undefined) return undefined;
-    return { start: p.slot - travel(bot, p) - SETTINGS.Early, end: p.slot + SETTINGS.Take, key: p.slot };
+    return { start: p.slot - travel(bot, p) - SETTINGS.Early, end: p.slot + SETTINGS.Take, key: p.slot, stand: p.stand };
 }
 
 function fitsAhead(bot: Unit, now: number): boolean {
@@ -1004,8 +1013,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
         const ctl = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
         const byCtl = ctl !== undefined && CtlWants(ctl, pid);
-        const byNew = ctl === undefined && Wanted(gone, tgt);
-        const byOld = ctl === undefined && hold && OldWanted(reading, tgt);
+        // A core (slice 4a) pulls only on the controller's word.
+        const own = ctl === undefined && isSupport(bot);
+        const byNew = own && Wanted(gone, tgt);
+        const byOld = own && hold && OldWanted(reading, tgt);
         const rule = byCtl ? "ctl" : byNew && byOld ? "both" : byNew ? "new" : byOld ? "old" : undefined;
         d = { slot: p.slot, want: rule !== undefined, reading, gone, hold, rule, ctl: ctl !== undefined };
         decided[pid] = d;
@@ -1018,7 +1029,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         choiceLine(bot, d!, p.slot, go, why, camp);
     };
     if (!d.want) {
-        done(false, d.ctl === true ? "ctl" : d.reading === undefined ? "no-read" : "lane");
+        done(false, d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);

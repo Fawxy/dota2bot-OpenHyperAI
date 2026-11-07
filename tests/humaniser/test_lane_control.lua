@@ -118,4 +118,23 @@ do
 	Ctl.ResetCache()
 end
 
+-- Slice 4a: who takes the pull lever (design s5.7's rule list). Before 6:00 an able support; from 6:00, or with the support
+-- away or unable, the offlane pos3 when no enemy is missing near its walk and the lane gold it loses is at most 80.
+do
+	local function p(now, sup, core) return Ctl.PullerOf({ now = now, sup = sup, core = core }) end
+	local S, C = { pid = 8 }, { pid = 7, missing = 0, loss = 30 }
+	check("before 6:00: the able support", p(300, S, C).who == "8" and p(300, S, C).by == "sup")
+	check("from 6:00: the pos3", p(360, S, C).who == "7" and p(360, S, C).by == "core")
+	check("support away before 6:00: the pos3", p(300, { pid = 8, why = "away" }, C).by == "core")
+	check("no support: the pos3", p(200, nil, C).by == "core")
+	local m = p(400, S, { pid = 7, missing = 1, loss = 0 })
+	check("an enemy missing near the walk: the support after all", m.by == "sup" and m.cwhy == "missing")
+	local l = p(400, nil, { pid = 7, missing = 0, loss = 120 })
+	check("too much lane gold lost, no support: no puller", l.by == nil and l.who == "" and l.why == "no_sup" and l.cwhy == "loss")
+	local a = p(400, { pid = 8, why = "stack" }, { pid = 7, missing = 0 })
+	check("no plan for the pos3, support refused: its refusal", a.by == nil and a.why == "stack" and a.cwhy == "no_plan")
+	check("no core candidate, no support: no_sup", p(400, nil, nil).why == "no_sup")
+	check("at the limit: the pos3", p(400, nil, { pid = 7, missing = 0, loss = 80 }).by == "core")
+end
+
 finish()

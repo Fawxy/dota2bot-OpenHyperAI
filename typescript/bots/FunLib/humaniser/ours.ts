@@ -104,6 +104,10 @@ export const DEFAULTS = {
      *  swing's mode and setup, lane aggro's feed and the support's pull read it, each keeping its own gates. Off: shadow
      *  (2a), each lever on its own trigger. */
     LaneControlDrive: true,
+    /** Slice lane-control 4a (design s5.7): the offlane pos3 may pull its hard camp when the controller names it (from 6:00
+     *  first, before it only with the pos4 away or unable), with no enemy hero missing near the walk and the lane gold lost
+     *  while away at most LaneControl CorePullWorth. Needs SupportPull and LaneControlDrive. Off: only supports pull. */
+    CorePull: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
