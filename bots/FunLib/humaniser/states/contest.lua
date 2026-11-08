@@ -208,7 +208,7 @@ function ____exports.PriceFor(bot, t)
 end
 local walks = {}
 local refused = {}
---- The last refusal logged per bot (creep and why), so ev=contest_skip is written once per creep and reason.
+--- The last refusal logged per bot (creep, why and where), so ev=contest_skip is written once per creep, reason and place.
 local skipped = {}
 function ____exports.Start(pid, creep, price, hp, now)
     walks[pid] = {creep = creep, price = price, hp = hp, t = now}
@@ -232,13 +232,13 @@ end
 function ____exports.Refused(pid, creep)
     return refused[pid] == creep
 end
---- Whether a refusal of `creep` for `why` is new (not logged yet).
-function ____exports.NoteSkip(pid, creep, why)
+--- Whether a refusal of `creep` for `why` at `at` (pick | walk) is new (not logged yet).
+function ____exports.NoteSkip(pid, creep, why, at)
     local s = skipped[pid]
-    if s ~= nil and s.creep == creep and s.why == why then
+    if s ~= nil and s.creep == creep and s.why == why and s.at == at then
         return false
     end
-    skipped[pid] = {creep = creep, why = why}
+    skipped[pid] = {creep = creep, why = why, at = at}
     return true
 end
 return ____exports

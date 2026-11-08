@@ -413,7 +413,7 @@ local function farFor(bot)
         end
         local price = Contest.PriceFor(bot, t)
         asked[#asked + 1] = {creep = t.creep, price = price}
-        if not price.ok and Contest.NoteSkip(pid, t.creep, price.why) then
+        if not price.ok and Contest.NoteSkip(pid, t.creep, price.why, "pick") then
             logSkip(bot, t, price, "pick")
         end
         return price.ok
@@ -461,7 +461,7 @@ local function contestPick(bot, chosen, current)
         local price = Contest.PriceFor(bot, current)
         if not price.ok then
             Contest.Refuse(pid, current.creep)
-            if Contest.NoteSkip(pid, current.creep, price.why) then
+            if Contest.NoteSkip(pid, current.creep, price.why, "walk") then
                 logSkip(bot, current, price, "walk")
             end
             return nil

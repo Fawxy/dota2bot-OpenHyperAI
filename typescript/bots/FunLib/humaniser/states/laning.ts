@@ -230,7 +230,7 @@ function farFor(bot: Unit): LanePick.Far | undefined {
         if (t.walk > Contest.CONTEST_WALK || Contest.Refused(pid, t.creep)) return false;
         const price = Contest.PriceFor(bot, t);
         asked.push({ creep: t.creep, price });
-        if (!price.ok && Contest.NoteSkip(pid, t.creep, price.why)) logSkip(bot, t, price, "pick");
+        if (!price.ok && Contest.NoteSkip(pid, t.creep, price.why, "pick")) logSkip(bot, t, price, "pick");
         return price.ok;
     };
 }
@@ -284,7 +284,7 @@ function contestPick(bot: Unit, chosen: Lib.Verbs.LaneTarget | undefined, curren
         const price = Contest.PriceFor(bot, current);
         if (!price.ok) {
             Contest.Refuse(pid, current.creep);
-            if (Contest.NoteSkip(pid, current.creep, price.why)) logSkip(bot, current, price, "walk");
+            if (Contest.NoteSkip(pid, current.creep, price.why, "walk")) logSkip(bot, current, price, "walk");
             return undefined;
         }
     }

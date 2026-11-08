@@ -173,8 +173,8 @@ interface Walk {
 }
 const walks: Record<number, Walk | undefined> = {};
 const refused: Record<number, Lib.TaskCreep | undefined> = {};
-/** The last refusal logged per bot (creep and why), so ev=contest_skip is written once per creep and reason. */
-const skipped: Record<number, { creep: Lib.TaskCreep; why: Why } | undefined> = {};
+/** The last refusal logged per bot (creep, why and where), so ev=contest_skip is written once per creep, reason and place. */
+const skipped: Record<number, { creep: Lib.TaskCreep; why: Why; at: string } | undefined> = {};
 
 export function Start(pid: number, creep: Lib.TaskCreep, price: Price, hp: number, now: number): void {
     walks[pid] = { creep, price, hp, t: now };
@@ -201,10 +201,10 @@ export function Refused(pid: number, creep: Lib.TaskCreep): boolean {
     return refused[pid] === creep;
 }
 
-/** Whether a refusal of `creep` for `why` is new (not logged yet). */
-export function NoteSkip(pid: number, creep: Lib.TaskCreep, why: Why): boolean {
+/** Whether a refusal of `creep` for `why` at `at` (pick | walk) is new (not logged yet). */
+export function NoteSkip(pid: number, creep: Lib.TaskCreep, why: Why, at: string): boolean {
     const s = skipped[pid];
-    if (s !== undefined && s.creep === creep && s.why === why) return false;
-    skipped[pid] = { creep, why };
+    if (s !== undefined && s.creep === creep && s.why === why && s.at === at) return false;
+    skipped[pid] = { creep, why, at };
     return true;
 }
