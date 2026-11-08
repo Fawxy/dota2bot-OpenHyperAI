@@ -91,7 +91,11 @@ function run() {
                     if (es && es.alive && distSeg(es, walk[0], walk[1]) <= NEAR) { present = true; break; }
                 }
                 const vis = pt => allies.some(a => { const as = at(a, row.t); return as && as.alive && Math.hypot(as.x - pt.x, as.y - pt.y) <= (night(row.t) ? VISION_NIGHT : VISION_DAY); });
-                info.push({ e, tss, seen, present, vis, visibleNow: tss <= 0.5 });
+                const prev = at(e, seen.u - 2);
+                const hpAt = db('SELECT hp FROM ev_snap WHERE game_id = ? AND pid = ? AND t <= ? ORDER BY t DESC LIMIT 1', g, e, seen.u)[0];
+                let dw = 0, dn = 0;
+                for (let u = seen.u; u > seen.u - 90; u -= 3) { const es = at(e, u); if (es && es.alive) { dn++; if (distSeg(es, walk[0], walk[1]) <= 1500) dw++; } }
+                info.push({ dwell: dn ? dw / dn : 0, g, e, hp: hpAt && hpAt.hp, vx: prev ? (seen.x - prev.x) / 2 : 0, vy: prev ? (seen.y - prev.y) / 2 : 0, tss, seen, present, vis, visibleNow: tss <= 0.5 });
             }
             for (const [name, rule] of Object.entries(RULES)) {
                 const o = out[name];
@@ -112,7 +116,7 @@ function run() {
                     }
                     return true;
                 });
-                if (name === 'live') for (const i of info) if (!i.visibleNow && i.tss > 3) (out.unseen = out.unseen || []).push({ counted: counted.includes(i), present: i.present });
+                if (name === 'live') for (const i of info) if (!i.visibleNow && i.tss > 3) (out.unseen = out.unseen || []).push({ g: i.g, t: row.t, team: row.team, pos: (i.e % 5) + 1, tss: i.tss, sx: i.seen.x, sy: i.seen.y, vx: i.vx, vy: i.vy, hp: i.hp, dwell: i.dwell, mx: walk[0].x, my: walk[0].y, cx: camp.x, cy: camp.y, counted: counted.includes(i), present: i.present });
                 const anyPresent = info.some(i => i.present && !i.visibleNow);
                 o.rows++;
                 if (name === 'live') o.agree[logged && counted.length ? 'both' : logged ? 'onlyLogged' : counted.length ? 'onlyRebuilt' : 'none'] = (o.agree[logged && counted.length ? 'both' : logged ? 'onlyLogged' : counted.length ? 'onlyRebuilt' : 'none'] || 0) + 1;
@@ -133,6 +137,7 @@ function run() {
 }
 
 const res = run();
+if (args.includes('--dump')) { require('fs').writeFileSync(args[args.indexOf('--dump') + 1], JSON.stringify(res.unseen)); process.exit(0); }
 if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
 else {
     console.log(`rows ${res.rows} (core pull candidate evaluations), truth = enemy within ${res.near} of the walk within ${res.window} s`);
