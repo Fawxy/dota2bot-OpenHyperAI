@@ -192,8 +192,9 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, spotPoint, noteSpot, controlRep, Customize, FOUNTAIN, lastSpot, SPOT_OFFSET
+local overrides, spotPoint, noteSpot, sentryAttack, controlRep, Customize, FOUNTAIN, lastSpot, SPOT_OFFSET
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
 local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -316,6 +317,40 @@ function noteSpot(bot, spot, at)
         }
     )
 end
+function sentryAttack(bot, spot)
+    local step = ____exports.SENTRY_STEP * bot:GetCurrentMovementSpeed()
+    if GetUnitToLocationDistance(bot, spot) > step then
+        return false
+    end
+    local reach = bot:GetAttackRange() + bot:GetBoundingRadius() + step
+    local best
+    local bestD = math.huge
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
+        do
+            local __continue43
+            repeat
+                if not h:IsAlive() then
+                    __continue43 = true
+                    break
+                end
+                local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
+                if d <= reach and d < bestD then
+                    best = h
+                    bestD = d
+                end
+                __continue43 = true
+            until true
+            if not __continue43 then
+                break
+            end
+        end
+    end
+    if best == nil then
+        return false
+    end
+    bot:Action_AttackUnit(best, true)
+    return true
+end
 function controlRep(d, n)
     return d.rep.control ~= nil and d.rep.control > 0 and n % d.rep.control == 0
 end
@@ -363,6 +398,14 @@ ____exports.TABLE = {
     ["lane-spot-duel"] = {
         note = "Radiant pos1 and Dire pos3 lane-only, everyone else benched",
         cast = {r = {1}, d = {3}},
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 30, from = 0}
+    },
+    ["lane-spot-sentry"] = {
+        note = "Radiant pos1 lane-only, Dire pos3 a sentry in its lane (a statue that attacks an enemy hero inside its zone), everyone else benched",
+        cast = SAFE_CORE,
+        sentry = {d = {3}},
         others = "bench",
         castLaneOnly = true,
         rep = {every = 30, from = 0}
@@ -527,6 +570,13 @@ function ____exports.RoleOf(bot)
         return "statue"
     end
     if listed(
+        d.sentry,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "sentry"
+    end
+    if listed(
         d.laneOnly,
         bot:GetTeam(),
         pos
@@ -535,10 +585,10 @@ function ____exports.RoleOf(bot)
     end
     return d.others
 end
---- Benched or a statue: the hero holds farm mode above every other mode, takes the drill's step and never casts.
+--- Benched, a statue or a sentry: the hero holds farm mode above every other mode, takes the drill's step and never casts.
 function ____exports.Held(bot)
     local r = ____exports.RoleOf(bot)
-    return r == "bench" or r == "statue"
+    return r == "bench" or r == "statue" or r == "sentry"
 end
 --- Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`.
 function ____exports.LaneOnly(bot)
@@ -568,6 +618,11 @@ local STATUE_SWAY = 40
 local statueSide = {}
 lastSpot = {}
 SPOT_OFFSET = 250
+--- A sentry answers an enemy hero within its attack range + both bounding radii + this many seconds of its own movement, and
+-- never leaves its spot by more than that movement: a laner stepping in to hit someone who walked into it. The same 0.5 s
+-- as the contest price's STEP_IN on purpose: this step grades the price's damage and time terms on its own zone; a sentry
+-- that chases further is a later step. `judgement`.
+____exports.SENTRY_STEP = 0.5
 --- A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
 -- first and gives this hero the statue's step only when the job neither runs nor starts).
 function ____exports.IdleStatue(bot)
@@ -611,7 +666,7 @@ function ____exports.Hold(bot)
         end
         return true
     end
-    if r ~= "statue" and not ____exports.IdleStatue(bot) then
+    if r ~= "statue" and r ~= "sentry" and not ____exports.IdleStatue(bot) then
         return false
     end
     local named = r == "statue" and ____exports.SpotOf(bot) or "lane"
@@ -637,6 +692,9 @@ function ____exports.Hold(bot)
         lane,
         STATUE_BEHIND
     )
+    if r == "sentry" and sentryAttack(bot, spot) then
+        return true
+    end
     local pid = bot:GetPlayerID()
     local side = statueSide[pid] or 1
     local target = Vector(spot.x + side * STATUE_SWAY * 0.5, spot.y, spot.z)

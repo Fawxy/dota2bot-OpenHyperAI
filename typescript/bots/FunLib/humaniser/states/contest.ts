@@ -29,7 +29,7 @@ export const WALK_SLACK = 1.5;
 export const HP_FLOOR = 0.5;
 /** Seconds of the enemy hero's movement added to its attack reach: it steps in on a walk-in (`judgement`; the spot's REACT_SECS is 1.5 for standing). */
 export const STEP_IN = 0.5;
-/** A ready nuke counts when the creep lies within its cast range plus this (`judgement`: a hero steps in to cast). */
+/** A ready nuke counts when the stand point lies within its cast range plus this (`judgement`: a hero steps in to cast). */
 export const NUKE_SLACK = 200;
 /** Enemy heroes further than this from the creep are not priced. */
 const QUERY = 1600;
@@ -40,9 +40,9 @@ export type Why = "ok" | "cost" | "hp" | "two" | "tower";
 
 /** One enemy hero as the price reads it. */
 export interface Threat {
-    /** Its distance to the creep. */
+    /** Its distance to the stand point (StandPoint). */
     d: number;
-    /** Attack range plus both bounding radii plus STEP_IN of its movement: within this of the creep it hits us there. */
+    /** Attack range plus both bounding radii plus STEP_IN of its movement: within this of the stand point it hits us there. */
     zone: number;
     /** Its attack damage per second on us, after our armour. */
     dps: number;
@@ -55,16 +55,16 @@ export interface Price {
     why: Why;
     /** Priced HP as a share of max HP. */
     cost: number;
-    /** Enemy heroes whose zone covers the creep. */
+    /** Enemy heroes whose zone covers the stand point. */
     heroes: number;
     /** Seconds the walk-in spends inside the deepest zone. */
     exposure: number;
 }
 
 /**
- * The walk-in's price, pure: each enemy whose zone covers the creep hits us for the seconds we stand inside it (walking the
+ * The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
  * zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
- * more such heroes, or the creep inside an enemy tower's ring, refuse it outright.
+ * more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
  */
 export function PriceOf(
     this: void,
@@ -152,14 +152,29 @@ function towerAt(bot: Unit, at: Vector): boolean {
     return false;
 }
 
+/**
+ * Where the bot stands to swing at a creep at `at`: on the line from the bot to the creep, its attack range plus both bounding
+ * radii short of the creep (the bot's own spot when it is already that close). A melee core swings from its own side of the
+ * creep, often outside a zone that covers the creep itself, so zones are read here and not at the creep.
+ */
+export function StandPoint(this: void, from: Vector, at: Vector, reach: number): Vector {
+    const d = dist(from, at);
+    if (d <= reach) return from;
+    const k = reach / d;
+    return Vector(at.x + (from.x - at.x) * k, at.y + (from.y - at.y) * k, at.z);
+}
+
 /** The price of a walk-in for lane target `t` now; `running` prices one already under way (cost cap COST_CAP x WALK_SLACK). */
 export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget, running = false): Price {
-    const at = (t.creep as unknown as Unit).GetLocation();
-    if (at === undefined) return { ok: false, why: "cost", cost: 1, heroes: 0, exposure: 0 };
+    const creep = t.creep as unknown as Unit;
+    const at = creep.GetLocation();
+    const from = bot.GetLocation();
+    if (at === undefined || from === undefined) return { ok: false, why: "cost", cost: 1, heroes: 0, exposure: 0 };
+    const stand = StandPoint(from, at, bot.GetAttackRange() + bot.GetBoundingRadius() + creep.GetBoundingRadius());
     const point = (bot as Unit & { GetAttackPoint?(): number }).GetAttackPoint?.();
     const swing = point !== undefined && point > 0 ? point : SWING_DEFAULT;
     return PriceOf(
-        ThreatsAt(bot, at),
+        ThreatsAt(bot, stand),
         t.walk,
         math.max(0, t.eta - t.walk),
         swing,

@@ -10,13 +10,13 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { GameState, Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, GameState, Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
-export type Role = "cast" | "bench" | "statue" | "laneonly" | "play";
+export type Role = "cast" | "bench" | "statue" | "sentry" | "laneonly" | "play";
 
 /** Positions (1-5) per team: `r` Radiant, `d` Dire. */
 export interface Sides {
@@ -35,6 +35,8 @@ export interface Entry {
      *  `lane` (behind its own creeps), `bench` (its fountain), `pull:<r|d>:<safe|off>` (beside the first pull camp of that
      *  team's lane, the side away from the camp's lane). A statue with a spot walks there and stands. */
     spots?: { r?: Record<number, string[]>; d?: Record<number, string[]> };
+    /** Heroes that stand as statues but attack an enemy hero inside their zone (Hold); checked after `statue`. */
+    sentry?: Sides;
     /** Heroes that play lane-only (as `castLaneOnly`); checked after `statue`. */
     laneOnly?: Sides;
     /** Lane-only heroes also run the wave hold (states/wave_hold, under its switches) and the hold's own draw; no other lane
@@ -80,6 +82,16 @@ export const TABLE: Record<string, Entry> = {
     },
     // Step 3: the enemy laner active, both lane-only.
     "lane-spot-duel": { note: "Radiant pos1 and Dire pos3 lane-only, everyone else benched", cast: { r: [1], d: [3] }, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
+    // The contest walk-in's price: the Dire pos3 stands as a statue but hits back, so `cc` (the priced HP-%) is graded
+    // against `dh` (the HP-% lost) on an opponent that acts.
+    "lane-spot-sentry": {
+        note: "Radiant pos1 lane-only, Dire pos3 a sentry in its lane (a statue that attacks an enemy hero inside its zone), everyone else benched",
+        cast: SAFE_CORE,
+        sentry: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 30, from: 0 },
+    },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // The old Overrides.Solo + StackEvery = 3 harness (slice 4, double-stack): the Radiant pos5 alone stacks every third
@@ -249,14 +261,15 @@ export function RoleOf(bot: Unit): Role {
     if (pos === undefined) return "play";
     if (listed(d.cast, bot.GetTeam(), pos)) return "cast";
     if (listed(d.statue, bot.GetTeam(), pos)) return "statue";
+    if (listed(d.sentry, bot.GetTeam(), pos)) return "sentry";
     if (listed(d.laneOnly, bot.GetTeam(), pos)) return "laneonly";
     return d.others;
 }
 
-/** Benched or a statue: the hero holds farm mode above every other mode, takes the drill's step and never casts. */
+/** Benched, a statue or a sentry: the hero holds farm mode above every other mode, takes the drill's step and never casts. */
 export function Held(bot: Unit): boolean {
     const r = RoleOf(bot);
-    return r === "bench" || r === "statue";
+    return r === "bench" || r === "statue" || r === "sentry";
 }
 
 /** Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`. */
@@ -291,6 +304,13 @@ const statueSide: Record<number, number> = {};
 const lastSpot: Record<number, string> = {};
 /** How far beside a pull camp's box a spot statue stands (outside the box, so it blocks no spawn). judgement. */
 const SPOT_OFFSET = 250;
+/**
+ * A sentry answers an enemy hero within its attack range + both bounding radii + this many seconds of its own movement, and
+ * never leaves its spot by more than that movement: a laner stepping in to hit someone who walked into it. The same 0.5 s
+ * as the contest price's STEP_IN on purpose: this step grades the price's damage and time terms on its own zone; a sentry
+ * that chases further is a later step. `judgement`.
+ */
+export const SENTRY_STEP = 0.5;
 
 /** A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
  *  first and gives this hero the statue's step only when the job neither runs nor starts). */
@@ -327,7 +347,7 @@ export function Hold(bot: Unit): boolean {
         if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
         return true;
     }
-    if (r !== "statue" && !IdleStatue(bot)) return false;
+    if (r !== "statue" && r !== "sentry" && !IdleStatue(bot)) return false;
     const named = r === "statue" ? SpotOf(bot) : "lane";
     if (named !== "lane") {
         const at = spotPoint(bot, named);
@@ -338,6 +358,7 @@ export function Hold(bot: Unit): boolean {
     if (r === "statue" && Active()?.spots !== undefined) noteSpot(bot, named, undefined);
     const lane = bot.GetAssignedLane() as Lane;
     const spot = GetLaneFrontLocation(bot.GetTeam(), lane, STATUE_BEHIND);
+    if (r === "sentry" && sentryAttack(bot, spot)) return true;
     const pid = bot.GetPlayerID();
     let side = statueSide[pid] ?? 1;
     let target = Vector(spot.x + side * STATUE_SWAY * 0.5, spot.y, spot.z);
@@ -386,6 +407,26 @@ function noteSpot(bot: Unit, spot: string, at: Vector | undefined): void {
     if (lastSpot[pid] === key) return;
     lastSpot[pid] = key;
     Telemetry.Event("drill", [["ph", "spot"], ["name", Name()], ["pid", pid], ["team", bot.GetTeam()], ["rep", RepAt(DotaTime())], ["spot", spot], ["x", at !== undefined ? math.floor(at.x) : undefined], ["y", at !== undefined ? math.floor(at.y) : undefined]]);
+}
+
+/** The sentry's answer: attack the nearest enemy hero inside its zone while it stands within its step of its spot. */
+function sentryAttack(bot: Unit, spot: ReturnType<typeof GetLaneFrontLocation>): boolean {
+    const step = SENTRY_STEP * bot.GetCurrentMovementSpeed();
+    if (GetUnitToLocationDistance(bot, spot) > step) return false;
+    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + step;
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
+        if (!h.IsAlive()) continue;
+        const d = GetUnitToUnitDistance(bot, h) - h.GetBoundingRadius();
+        if (d <= reach && d < bestD) {
+            best = h;
+            bestD = d;
+        }
+    }
+    if (best === undefined) return false;
+    bot.Action_AttackUnit(best, true);
+    return true;
 }
 
 /** The active drill's rep start times for a forced context (DotaTime seconds, up to 60:00), input-on reps only. */
