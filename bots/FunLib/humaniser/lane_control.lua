@@ -427,6 +427,7 @@ ____exports.SETTINGS = {
     PreDenySize = 300,
     FeedSize = 300,
     SetupSize = 300,
+    ShoveSize = 1650,
     InLane = 2000,
     DepartWithin = 60,
     YieldBase = 1600,
@@ -586,6 +587,21 @@ function ____exports.Choose(need, band, levers)
     end
     return best or ({levers = {}, left = need, short = true})
 end
+--- A fixed-size lever's effect at the horizon: `size` signed along the lane (negative towards our T1), capped at the room
+-- between the predicted clash `base` and the reach of the tower it moves towards, since a wave stops at a tower. Positions
+-- are the team's frame from our T1 (0) to theirs (`span`); no room left is 0.
+function ____exports.LeverEffect(size, base, span, reach)
+    if size >= 0 then
+        return math.max(
+            0,
+            math.min(size, span - reach - base)
+        )
+    end
+    return -math.max(
+        0,
+        math.min(-size, base - reach)
+    )
+end
 function ____exports.IntentOf(need, band, reset)
     if reset and need > -band then
         return "reset"
@@ -656,11 +672,11 @@ local function lanersOf(lane, cx, cy)
         local i = 1
         while i <= 5 do
             do
-                local __continue43
+                local __continue45
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:GetAssignedLane() ~= lane then
-                        __continue43 = true
+                        __continue45 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(u) or 0
@@ -675,9 +691,9 @@ local function lanersOf(lane, cx, cy)
                             cy
                         ) <= ____exports.SETTINGS.InLane
                     }
-                    __continue43 = true
+                    __continue45 = true
                 until true
-                if not __continue43 then
+                if not __continue45 then
                     break
                 end
             end
@@ -708,10 +724,10 @@ local function enemiesAway(m, now, cx, cy)
     local visible = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue50
+            local __continue52
             repeat
                 if e == nil or e == nil or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue50 = true
+                    __continue52 = true
                     break
                 end
                 visible[e:GetPlayerID()] = e
@@ -722,9 +738,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyLaneR then
                     m.enemies[e:GetPlayerID()] = now
                 end
-                __continue50 = true
+                __continue52 = true
             until true
-            if not __continue50 then
+            if not __continue52 then
                 break
             end
         end
@@ -732,17 +748,17 @@ local function enemiesAway(m, now, cx, cy)
     local any = false
     for k in pairs(m.enemies) do
         do
-            local __continue54
+            local __continue56
             repeat
                 local pid = tonumber(k)
                 if now - m.enemies[pid] > ____exports.SETTINGS.EnemyMemory then
                     __TS__Delete(m.enemies, pid)
-                    __continue54 = true
+                    __continue56 = true
                     break
                 end
                 any = true
                 if not IsHeroAlive(pid) then
-                    __continue54 = true
+                    __continue56 = true
                     break
                 end
                 local e = visible[pid]
@@ -753,9 +769,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyAway then
                     return false
                 end
-                __continue54 = true
+                __continue56 = true
             until true
-            if not __continue54 then
+            if not __continue56 then
                 break
             end
         end
@@ -919,16 +935,19 @@ local function decide(team, lane, now, m)
     local offered = {}
     local levers = {}
     local anyIn = coreIn ~= nil or supIn ~= nil
+    local function fx(size)
+        return ____exports.LeverEffect(size, base, span, reach)
+    end
     offered[#offered + 1] = {
         name = "predeny",
-        effect = -s.PreDenySize,
+        effect = fx(-s.PreDenySize),
         danger = 1,
         who = coreIn ~= nil and supIn ~= nil and "both" or (coreIn ~= nil and "core" or "sup"),
         why = not anyIn and "nobody" or (not Ours.On("PreDeny") and "off" or nil)
     }
     offered[#offered + 1] = {
         name = "feed",
-        effect = -s.FeedSize,
+        effect = fx(-s.FeedSize),
         danger = 2,
         who = coreIn ~= nil and "core" or "sup",
         why = not anyIn and "nobody" or nil
@@ -974,14 +993,14 @@ local function decide(team, lane, now, m)
     }
     offered[#offered + 1] = {
         name = "setup",
-        effect = s.SetupSize,
+        effect = fx(s.SetupSize),
         danger = 1,
         who = coreIn ~= nil and supIn ~= nil and "both" or (coreIn ~= nil and "core" or "sup"),
         why = mode == "shove" and "mode" or (not anyIn and "nobody" or (not Ours.On("PreDeny") and "off" or nil))
     }
     offered[#offered + 1] = {
         name = "shove",
-        effect = s.PreDenySize,
+        effect = fx(s.ShoveSize),
         danger = 2,
         who = coreIn ~= nil and "core" or "sup",
         why = mode ~= "shove" and "mode" or (not anyIn and "nobody" or nil)
@@ -1269,17 +1288,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue123
+            local __continue126
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue123 = true
+                    __continue126 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue123 = true
+                __continue126 = true
             until true
-            if not __continue123 then
+            if not __continue126 then
                 break
             end
         end
