@@ -97,12 +97,16 @@ export const SETTINGS = {
     /** Drag: the enemy hero contests within its attack range plus this of the creep. */
     DragContest: 150,
     DragBack: 300,
-    /** Drag: a contested last hit up to this far beyond DrawR is stepped toward (to DrawR less DragStepIn from the creep)
-     *  when the step's spot is out of every enemy hero's reach (HeroMargin); farther, no drag (`judgement`). */
+    /**
+     * Drag: the draw is ordered with the creep within DragDrawR (EC-053 gives 500, but on drills lhd2-lhd5, 60 drags, a creep
+     * 400 or more away at the order followed in 7 of 20 and was our last hit in 2; under 300, 25 of 32 followed and 22 were
+     * ours: fitted). Up to DragStepMax beyond it, the bot steps to DragDrawR less DragStepIn from the creep when the step is
+     * safe (noDeeper); farther, no drag (`judgement`). No order with the creep beyond DragOrderR (the step ran short).
+     */
+    DragDrawR: 300,
     DragStepMax: 300,
     DragStepIn: 50,
-    /** Drag: no order once the creep stands farther than this (EC-053's 500 less a margin for the creep's move). */
-    DragOrderR: 470,
+    DragOrderR: 350,
     /** Drag: a step or walk-back spot inside an enemy hero's reach may be at most this much nearer to it than the bot is (`judgement`). */
     DragCloser: 50,
     DragWalk: 1.2,
@@ -552,8 +556,8 @@ function dragCands(bot: Unit, heroes: Unit[]): DragCand[] {
  */
 export function DragPlan(d: number, ss: boolean, stepSafe: boolean): "safe" | "in" | "step" | "step_unsafe" | "far" {
     if (ss) return "safe";
-    if (d <= SETTINGS.DrawR) return "in";
-    if (d - SETTINGS.DrawR > SETTINGS.DragStepMax) return "far";
+    if (d <= SETTINGS.DragDrawR) return "in";
+    if (d - SETTINGS.DragDrawR > SETTINGS.DragStepMax) return "far";
     return stepSafe ? "step" : "step_unsafe";
 }
 
@@ -588,9 +592,9 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
     for (const c of cands) {
         let step: Vector | undefined;
         let stepSafe = false;
-        if (!c.ss && c.d > SETTINGS.DrawR && c.d - SETTINGS.DrawR <= SETTINGS.DragStepMax) {
+        if (!c.ss && c.d > SETTINGS.DragDrawR && c.d - SETTINGS.DragDrawR <= SETTINGS.DragStepMax) {
             const cl = c.creep.GetLocation();
-            const [sx, sy] = HitSpot(cl.x, cl.y, here.x, here.y, SETTINGS.DrawR - SETTINGS.DragStepIn + 25);
+            const [sx, sy] = HitSpot(cl.x, cl.y, here.x, here.y, SETTINGS.DragDrawR - SETTINGS.DragStepIn + 25);
             step = Vector(sx, sy, here.z);
             stepSafe = noDeeper(here, step, heroes);
         }
@@ -946,8 +950,9 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
         // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
         const heroes = enemyHeroes(bot, 1600);
-        const unsafe = a.kind === "drag" ? !noDeeper(a.from!, at, heroes) : !heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin));
-        if (unsafe) {
+        // The drag's step is judged once at its start (noDeeper): a statue or laner shifting with its creeps ended 8 of 27 steps
+        // on lhd5 by the per-frame check; HurtShare still ends it.
+        if (a.kind !== "drag" && (!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin)))) {
             finish(bot, a, "unsafe", now);
             return false;
         }

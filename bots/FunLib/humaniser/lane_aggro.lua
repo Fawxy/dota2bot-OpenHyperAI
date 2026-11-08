@@ -142,9 +142,10 @@ ____exports.SETTINGS = {
     DragDueMax = 3,
     DragContest = 150,
     DragBack = 300,
+    DragDrawR = 300,
     DragStepMax = 300,
     DragStepIn = 50,
-    DragOrderR = 470,
+    DragOrderR = 350,
     DragCloser = 50,
     DragWalk = 1.2,
     BusyWithin = 1.5,
@@ -632,10 +633,10 @@ function ____exports.DragPlan(d, ss, stepSafe)
     if ss then
         return "safe"
     end
-    if d <= ____exports.SETTINGS.DrawR then
+    if d <= ____exports.SETTINGS.DragDrawR then
         return "in"
     end
-    if d - ____exports.SETTINGS.DrawR > ____exports.SETTINGS.DragStepMax then
+    if d - ____exports.SETTINGS.DragDrawR > ____exports.SETTINGS.DragStepMax then
         return "far"
     end
     return stepSafe and "step" or "step_unsafe"
@@ -675,14 +676,14 @@ local function tryDrag(bot, heroes, cands, now)
             repeat
                 local step
                 local stepSafe = false
-                if not c.ss and c.d > ____exports.SETTINGS.DrawR and c.d - ____exports.SETTINGS.DrawR <= ____exports.SETTINGS.DragStepMax then
+                if not c.ss and c.d > ____exports.SETTINGS.DragDrawR and c.d - ____exports.SETTINGS.DragDrawR <= ____exports.SETTINGS.DragStepMax then
                     local cl = c.creep:GetLocation()
                     local sx, sy = unpack(____exports.HitSpot(
                         cl.x,
                         cl.y,
                         here.x,
                         here.y,
-                        ____exports.SETTINGS.DrawR - ____exports.SETTINGS.DragStepIn + 25
+                        ____exports.SETTINGS.DragDrawR - ____exports.SETTINGS.DragStepIn + 25
                     ))
                     step = Vector(sx, sy, here.z)
                     stepSafe = noDeeper(here, step, heroes)
@@ -1312,14 +1313,7 @@ local function act(bot, a, now)
     if a.phase == "approach" then
         local at = a.approach
         local heroes = enemyHeroes(bot, 1600)
-        local ____temp_10
-        if a.kind == "drag" then
-            ____temp_10 = not noDeeper(a.from, at, heroes)
-        else
-            ____temp_10 = not heroSafe(at, heroes, ____exports.SETTINGS.UnsafeMargin) or a.kind == "feed" and not heroSafe(a.back, heroes, ____exports.SETTINGS.UnsafeMargin)
-        end
-        local unsafe = ____temp_10
-        if unsafe then
+        if a.kind ~= "drag" and (not heroSafe(at, heroes, ____exports.SETTINGS.UnsafeMargin) or a.kind == "feed" and not heroSafe(a.back, heroes, ____exports.SETTINGS.UnsafeMargin)) then
             finish(bot, a, "unsafe", now)
             return false
         end
@@ -1537,8 +1531,8 @@ local function stepOpen(bot, now)
     end
     if a.kind == "feed" then
         Laning.SetFed(bot, a.creep)
-        local ____opt_11 = Laning.SpotInfo(bot)
-        if (____opt_11 and ____opt_11.anchor) == "fed" then
+        local ____opt_10 = Laning.SpotInfo(bot)
+        if (____opt_10 and ____opt_10.anchor) == "fed" then
             a.sty = 1
         end
     end
@@ -1547,14 +1541,14 @@ local function stepOpen(bot, now)
 end
 --- Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running.
 function ____exports.StepOpen(bot)
-    local ____stepOpen_result_13 = stepOpen(
+    local ____stepOpen_result_12 = stepOpen(
         bot,
         DotaTime()
     )
-    if ____stepOpen_result_13 == nil then
-        ____stepOpen_result_13 = false
+    if ____stepOpen_result_12 == nil then
+        ____stepOpen_result_12 = false
     end
-    return ____stepOpen_result_13
+    return ____stepOpen_result_12
 end
 --- One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
 -- True when it gave the bot's order this frame (the caller's other steps then stay off).
