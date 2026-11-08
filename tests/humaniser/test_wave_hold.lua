@@ -102,13 +102,18 @@ check("one creep is not a wave", W.Read({ 1500 }, {}, 900) == "none")
 check("expected damage within the budget: hold", W.Choose(60, 90, 5, 30) == "hold")
 check("over budget, the drag needs 6 s of 12: drag", W.Choose(200, 90, 6, 12) == "drag")
 check("over budget, the drag needs 11 s of 12 (inside the 2 s margin): concede", W.Choose(200, 90, 11, 12) == "concede")
--- Drill hold ldr31 1:15: a level-2 core alone in front of 4 creeps, our next wave 20 s off: about 30 dps for 18 s.
-local dps = W.WaveDps({ { dmg = 21, spa = 1 }, { dmg = 21, spa = 1 }, { dmg = 21, spa = 1 }, { dmg = 24, spa = 1 } }, W.ArmorMult(3))
-check("four lane creeps on armor 3: 87 x 0.85 a second", near(dps, 87 * (1 - 0.18 / 1.18)), dps)
+-- Four lane creeps on a core taking 85% after armor: the full rate is 87 x 0.85 a second; a hold takes AggroShare of it until
+-- the core has been hit for 1 s (banked holds lost 1.5-4.3 HP a second per creep, against about 18 at full rate).
+local full = W.WaveDps({ { dmg = 21, spa = 1 }, { dmg = 21, spa = 1 }, { dmg = 21, spa = 1 }, { dmg = 24, spa = 1 } }, 0.85)
+check("four lane creeps: 87 x 0.85 a second at full rate", near(full, 87 * 0.85), full)
+local dps = W.LossRate(full, 0, nil, 100)
+check("not hit yet: the fitted share of it", near(dps, full * W.SETTINGS.AggroShare), dps)
+check("hit 0.5 s ago: still fitted", near(W.LossRate(full, 10, 99.5, 100), full * W.SETTINGS.AggroShare))
+check("hit for 2 s and 32 HP lost: the seen 16 a second (the lone drill core's hurt holds)", near(W.LossRate(full, 32, 98, 100), 16))
 check("their front 1,500 out, hold point 910, our creeps 20 s off: about 18 s as their target", near(W.TankSecs(20, 1500, 910), 20 - 590 / 325), W.TankSecs(20, 1500, 910))
 check("our creeps there before their front: 0 s", W.TankSecs(1, 1500, 910) == 0)
-check("so that core concedes or drags; with our creeps 1 s behind their front (about 74 HP of a 93 budget) it holds", W.Choose(dps * W.TankSecs(20, 1500, 910), 0.15 * 620, 30, 12) == "concede" and W.Choose(dps * W.TankSecs(1.8 + 1, 1500, 910), 0.15 * 620, 30, 12) == "hold")
-check("negative armor takes more", W.ArmorMult(-2) > 1)
+check("our creeps 10 s off: about 8 s at the fitted rate (about 67) fits a 93 budget, so it holds; 20 s off it does not", W.Choose(dps * W.TankSecs(10, 1500, 910), 0.15 * 620, 30, 12) == "hold" and W.Choose(dps * W.TankSecs(20, 1500, 910), 0.15 * 620, 30, 12) == "concede", dps * W.TankSecs(10, 1500, 910))
+check("then seen losing 16 a second with 12 s to go and 30 lost: 222 over 93, no drag in time: concede", W.Choose(30 + 16 * 12, 0.15 * 620, 30, 12) == "concede")
 -- ptchk1 A 7:00 top: the schedule put our next wave 24 s off while the pulled creeps walked back 1,000 from the hold point.
 check("schedule 24 s, our pulled creeps walking back 1,000 out: about 3 s", near(W.Near(24, { 1000, 1400 }), 1000 / 325), W.Near(24, { 1000, 1400 }))
 check("a wave on schedule sooner than the creeps walking in: the schedule's time", near(W.Near(5, { 3000 }), 5))

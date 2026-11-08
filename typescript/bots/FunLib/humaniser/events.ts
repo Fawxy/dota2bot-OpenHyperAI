@@ -504,6 +504,12 @@ export const EVENTS = {
         tk: "num",
         cost: "num",
         bud: "num",
+        /** The core's HP loss rate in the cost (`rt`, HP a second) and its source (`rs`: `seen` once hit for 1 s, else `fit`,
+         *  the wave's full rate times AggroShare); `cr` on `concede`: `cost` (over budget, no drag in time) or `drag` (the
+         *  drag's draw did not start: lane_aggro's StartBack needs a visible enemy hero to order the attack on). */
+        rt: "num",
+        rs: "str",
+        cr: "str",
         /** The enemy hero whose reach made the threat, at the last read that saw one. */
         thr: "num",
         /** Branch changes during the attempt. */
