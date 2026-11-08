@@ -53,6 +53,8 @@ local function world(o)
 	H.Lane.Camps.ResetCache()
 	H.FarmPattern.ResetCache()
 	H.CoreCamp.ResetCache()
+	-- The gate's count is under test here; the threat read's vision cut has its own checks (test_threat).
+	require("bots/FunLib/humaniser/threat").SETTINGS.VisionCut = false
 	local core = MakeUnit({ pid = 1, team = 2, loc = o.at or FRONT, level = o.level or 6, mode = LANING })
 	core.lane, core.pos, core.maxhp, core.hp, core.gold = Lane.Bot, 1, 600, 600, 500
 	-- The clear model sees the hit this world deals: 100 a second.

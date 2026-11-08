@@ -23,6 +23,13 @@ export const SETTINGS = {
     EarlyWeight: 0.2,
     LateWeight: 0.5,
     EarlyUntil: 240,
+    /**
+     * Vision cut (drill thrdr1: a hero last seen by the walk counts forever once it leaves unseen, 8 of 12 holds false): an
+     * unseen hero counts only while some point of the walk within its run is out of our sight (IsLocationVisible), since
+     * an empty visible stretch says it is not there. Points every WalkStep along the walk, and the place. judgement.
+     */
+    VisionCut: true,
+    WalkStep: 300,
     /** The window `burst` sums the enemies' estimated damage over (s): the horizon, capped here. */
     BurstWindow: 3,
     /** Fallback tower reach (attack range plus radius) when the tower gives no read. */
@@ -59,6 +66,8 @@ export interface Read {
     missing: number;
     mpids: number[];
     mtss?: number;
+    /** Unseen heroes whose run touches the walk but whose reachable part of it is all in our sight (VisionCut). */
+    mcut: number;
     threat: number;
     band: Band;
 }
@@ -113,26 +122,60 @@ function inTowerReach(enemyTeam: number, place: Vector): boolean {
  * Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team). A hero the API has no sighting of is
  * not placed and not counted.
  */
-function missingOf(bot: Unit, from: Vector, place: Vector, now: number, visible: Record<number, boolean>): [number, number[], number | undefined] {
+function walkPoints(from: Vector, place: Vector): Vector[] {
+    const d = dist(from, place);
+    const n = math.max(1, math.ceil(d / SETTINGS.WalkStep));
+    const out: Vector[] = [];
+    for (let i = 0; i <= n; i++) out.push(Vector(from.x + ((place.x - from.x) * i) / n, from.y + ((place.y - from.y) * i) / n, place.z));
+    return out;
+}
+
+/** Some walk point within `r` of `at` is out of our sight. */
+function unseenWithin(points: Vector[], at: Vector, r: number): boolean {
+    for (const p of points) if (dist(p, at) <= r && !IsLocationVisible(p)) return true;
+    return false;
+}
+
+/**
+ * The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
+ * read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
+ * (VisionCut), adds EarlyWeight or LateWeight by game minute. Walks player ids with GetTeamForPlayer (GetTeamPlayers is
+ * empty for a bot-only team). A hero the API has no sighting of is not placed and not counted.
+ */
+function missingOf(
+    bot: Unit,
+    from: Vector,
+    place: Vector,
+    now: number,
+    visible: Record<number, boolean>,
+): LuaMultiReturn<[number, number[], number | undefined, number]> {
     const s = SETTINGS;
     const team = bot.GetTeam();
     const w = now < s.EarlyUntil ? s.EarlyWeight : s.LateWeight;
     let sum = 0;
+    let cut = 0;
     let mtss: number | undefined;
     const pids: number[] = [];
+    let points: Vector[] | undefined;
     for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
         const t = GetTeamForPlayer(pid);
         if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
         const info = GetHeroLastSeenInfo(pid)[0];
         if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
-        const run = math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax);
-        if (distToSegment(info.location, from, place) <= run + s.MissingMargin) {
-            sum += w;
-            pids.push(pid);
-            mtss = math.max(mtss ?? 0, info.time_since_seen);
+        const r = math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin;
+        if (distToSegment(info.location, from, place) > r) continue;
+        if (s.VisionCut) {
+            points = points ?? walkPoints(from, place);
+            if (!unseenWithin(points, info.location, r)) {
+                cut++;
+                continue;
+            }
         }
+        sum += w;
+        pids.push(pid);
+        mtss = math.max(mtss ?? 0, info.time_since_seen);
     }
-    return [sum, pids, mtss];
+    return $multi(sum, pids, mtss, cut);
 }
 
 export function BandOf(threat: number, lethal: boolean): Band {
@@ -168,7 +211,7 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
         if (!valid(a) || a === bot) continue;
         if (canReach(a, bot, place, place, horizon)) allies++;
     }
-    const [missing, mpids, mtss] = missingOf(bot, from, place, now, visible);
+    const [missing, mpids, mtss, mcut] = missingOf(bot, from, place, now, visible);
     const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
     const tower = inTowerReach(enemyTeam, place);
     const hp = math.max(1, bot.GetHealth());
@@ -176,7 +219,7 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
     const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * allies;
     const threat = math.max(0, math.min(1, raw));
     const lethal = burst >= 1 && reach.length > allies;
-    return { t: now, from, place, horizon, reach, burst, allies, tower, missing, mpids, mtss, threat, band: BandOf(threat, lethal) };
+    return { t: now, from, place, horizon, reach, burst, allies, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal) };
 }
 
 const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;
@@ -208,6 +251,7 @@ export function Log(bot: Unit, consumer: string, r: Read, decision: string): voi
         ["miss", r2(r.missing)],
         ["mpid", r.mpids.length > 0 ? r.mpids.join(",") : undefined],
         ["mtss", r.mtss !== undefined ? math.floor(r.mtss + 0.5) : undefined],
+        ["mcut", r.mcut > 0 ? r.mcut : undefined],
         ["hp", r2(bot.GetHealth() / math.max(1, bot.GetMaxHealth()))],
     ]);
 }

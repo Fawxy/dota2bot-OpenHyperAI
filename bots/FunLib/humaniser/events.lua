@@ -784,6 +784,7 @@ ____exports.EVENTS = {
         miss = "num",
         mpid = "str",
         mtss = "num",
+        mcut = "num",
         hp = "num"
     },
     tr_caution = {

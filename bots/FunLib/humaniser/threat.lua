@@ -15,6 +15,8 @@ ____exports.SETTINGS = {
     EarlyWeight = 0.2,
     LateWeight = 0.5,
     EarlyUntil = 240,
+    VisionCut = true,
+    WalkStep = 300,
     BurstWindow = 3,
     TowerReach = 868,
     WReach = 0.25,
@@ -100,45 +102,86 @@ end
 -- read speed, capped) plus MissingMargin; one whose run touches the walk adds EarlyWeight or LateWeight by game minute.
 -- Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team). A hero the API has no sighting of is
 -- not placed and not counted.
+local function walkPoints(from, place)
+    local d = dist(from, place)
+    local n = math.max(
+        1,
+        math.ceil(d / ____exports.SETTINGS.WalkStep)
+    )
+    local out = {}
+    do
+        local i = 0
+        while i <= n do
+            out[#out + 1] = Vector(from.x + (place.x - from.x) * i / n, from.y + (place.y - from.y) * i / n, place.z)
+            i = i + 1
+        end
+    end
+    return out
+end
+--- Some walk point within `r` of `at` is out of our sight.
+local function unseenWithin(points, at, r)
+    for ____, p in ipairs(points) do
+        if dist(p, at) <= r and not IsLocationVisible(p) then
+            return true
+        end
+    end
+    return false
+end
+--- The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
+-- read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
+-- (VisionCut), adds EarlyWeight or LateWeight by game minute. Walks player ids with GetTeamForPlayer (GetTeamPlayers is
+-- empty for a bot-only team). A hero the API has no sighting of is not placed and not counted.
 local function missingOf(bot, from, place, now, visible)
     local s = ____exports.SETTINGS
     local team = bot:GetTeam()
     local w = now < s.EarlyUntil and s.EarlyWeight or s.LateWeight
     local sum = 0
+    local cut = 0
     local mtss
     local pids = {}
+    local points
     do
         local pid = 0
         while pid <= MAX_PLAYER_ID do
             do
-                local __continue14
+                local __continue20
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue14 = true
+                        __continue20 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue14 = true
+                        __continue20 = true
                         break
                     end
-                    local run = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax)
-                    if distToSegment(info.location, from, place) <= run + s.MissingMargin then
-                        sum = sum + w
-                        pids[#pids + 1] = pid
-                        mtss = math.max(mtss or 0, info.time_since_seen)
+                    local r = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin
+                    if distToSegment(info.location, from, place) > r then
+                        __continue20 = true
+                        break
                     end
-                    __continue14 = true
+                    if s.VisionCut then
+                        points = points or walkPoints(from, place)
+                        if not unseenWithin(points, info.location, r) then
+                            cut = cut + 1
+                            __continue20 = true
+                            break
+                        end
+                    end
+                    sum = sum + w
+                    pids[#pids + 1] = pid
+                    mtss = math.max(mtss or 0, info.time_since_seen)
+                    __continue20 = true
                 until true
-                if not __continue14 then
+                if not __continue20 then
                     break
                 end
             end
             pid = pid + 1
         end
     end
-    return {sum, pids, mtss}
+    return sum, pids, mtss, cut
 end
 function ____exports.BandOf(threat, lethal)
     if lethal then
@@ -158,10 +201,10 @@ function ____exports.Read(bot, from, place, horizon)
     local window = math.min(horizon, s.BurstWindow)
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue21
+            local __continue29
             repeat
                 if not valid(e) or not e:CanBeSeen() then
-                    __continue21 = true
+                    __continue29 = true
                     break
                 end
                 local pid = e:GetPlayerID()
@@ -180,9 +223,9 @@ function ____exports.Read(bot, from, place, horizon)
                     reach[#reach + 1] = pid
                     dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, window, DamageType.All)
                 end
-                __continue21 = true
+                __continue29 = true
             until true
-            if not __continue21 then
+            if not __continue29 then
                 break
             end
         end
@@ -190,10 +233,10 @@ function ____exports.Read(bot, from, place, horizon)
     local allies = 0
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue26
+            local __continue34
             repeat
                 if not valid(a) or a == bot then
-                    __continue26 = true
+                    __continue34 = true
                     break
                 end
                 if canReach(
@@ -205,20 +248,20 @@ function ____exports.Read(bot, from, place, horizon)
                 ) then
                     allies = allies + 1
                 end
-                __continue26 = true
+                __continue34 = true
             until true
-            if not __continue26 then
+            if not __continue34 then
                 break
             end
         end
     end
-    local missing, mpids, mtss = unpack(missingOf(
+    local missing, mpids, mtss, mcut = missingOf(
         bot,
         from,
         place,
         now,
         visible
-    ))
+    )
     local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     local tower = inTowerReach(enemyTeam, place)
     local hp = math.max(
@@ -244,6 +287,7 @@ function ____exports.Read(bot, from, place, horizon)
         missing = missing,
         mpids = mpids,
         mtss = mtss,
+        mcut = mcut,
         threat = threat,
         band = ____exports.BandOf(threat, lethal)
     }
@@ -307,6 +351,7 @@ function ____exports.Log(bot, consumer, r, decision)
                 "mtss",
                 r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
             },
+            {"mcut", r.mcut > 0 and r.mcut or nil},
             {
                 "hp",
                 r2(bot:GetHealth() / math.max(

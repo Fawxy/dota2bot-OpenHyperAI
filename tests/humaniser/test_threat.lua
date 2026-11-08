@@ -15,6 +15,8 @@ local function world(o)
 	CURRENT_TEAM, OBSERVER = 2, 1
 	local Threat = require("bots/FunLib/humaniser/threat")
 	Threat.ResetCache()
+	-- Everything in fog unless a test says otherwise (the vision cut needs the walk out of sight to count a hero).
+	FOGGED = o.fogged or function() return true end
 	local bot = MakeUnit({ pid = 1, team = 2, loc = HERE, level = 3 })
 	bot.lane, bot.pos, bot.maxhp, bot.hp = Lane.Bot, 3, 600, 600
 	local e = MakeUnit({ pid = 10, team = 3, loc = Vector(6000, 6000) })
@@ -126,4 +128,19 @@ do
 	check("log: held, then go on the change, then go again after LogEvery", #l == 3 and field(l[1], "dec") == "missing" and field(l[2], "dec") == "go" and field(l[3], "dec") == "go", #l)
 	check("log: the held line carries the weight and pid", tonumber(field(l[1], "miss")) == 0.5 and field(l[1], "mpid") == "10", l[1])
 end
+-- The vision cut (drill thrdr1): a hero last seen by the walk is dropped once every point of the walk within its run is in
+-- our sight, and counts again while any such point is fogged; the cut is logged as mcut.
+do
+	local _, Threat, bot, e = world({ fogged = function() return false end })
+	hide(e, Vector(-500, -7000), 10)
+	local seen = Threat.Read(bot, HERE, CAMP, 4)
+	check("vision cut: the walk in sight, the hero is not counted", seen.missing == 0 and seen.mcut == 1, seen.missing)
+	FOGGED = function(v) return v.x > -1200 end -- only the camp end of the walk is fogged
+	local part = Threat.Read(bot, HERE, CAMP, 4)
+	check("vision cut: a fogged stretch within its run, counted", near(part.missing, 0.5) and part.mcut == 0, part.missing)
+	LAST_SEEN[e.pid] = { location = Vector(-3300, -4600), time_since_seen = 4 } -- run 1,920: reaches the walk's start, not its fogged end
+	FOGGED = function(v) return v.x > -1200 end
+	check("vision cut: the fogged stretch out of its run, cut", Threat.Read(bot, HERE, CAMP, 4).mcut == 1)
+end
+
 finish()
