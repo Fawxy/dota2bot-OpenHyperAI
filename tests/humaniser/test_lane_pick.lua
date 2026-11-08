@@ -178,7 +178,7 @@ do
 end
 
 
--- Slice contest-walkin: `far` lets a last hit beyond MAX_WALK be walked to when it answers true (a melee core's priced
+-- `far` lets a last hit beyond MAX_WALK be walked to when it answers true (a melee core's priced
 -- walk-in); it is never asked for a creep within MAX_WALK, a deny, or a creep that dies before the walk and a swing.
 do
 	local asked = 0

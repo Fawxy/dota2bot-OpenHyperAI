@@ -276,7 +276,7 @@ do
         on[1] ~= nil and on[1].reason == "interrupted" and on[1].msg:find("sw=0") ~= nil and on[1].at < 0.5 + 0.3)
     local off, _, label = released(false)
     T.check("released, no dropLost: undefined keeps the wait (still in the attempt, none ended)", off[1] == nil and label == "lasthit", label)
-    -- Slice contest-walkin: a dropLost function is asked with the waited-on target; it releases only the attempts it answers true for.
+    -- A dropLost function is asked with the waited-on target; it releases only the attempts it answers true for.
     local asked
     local fon, fa = released(function(cur) asked = cur.creep return true end)
     T.check("released, dropLost function true: ended sw=0", fon[1] ~= nil and fon[1].msg:find("sw=0") ~= nil)
@@ -285,7 +285,7 @@ do
     T.check("released, dropLost function false: keeps the wait", foff[1] == nil and flabel == "lasthit", flabel)
 end
 
--- Slice contest-walkin: `radius` reaches laneTargets. A due creep 1,000 from a melee bot (default radius 800) is not offered;
+-- `radius` reaches laneTargets. A due creep 1,000 from a melee bot (default radius 800) is not offered;
 -- with radius 1,200 the bot goes for it.
 local function far(radius)
     local sim = Sim.new()

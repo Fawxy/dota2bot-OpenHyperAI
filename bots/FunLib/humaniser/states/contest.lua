@@ -5,7 +5,7 @@ local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
---- Melee by attack range, as the lane-positioning reads (lposchk3 `away` misses: 437 melee against 47 ranged).
+--- Melee by attack range: melee cores lose far more creeps out of reach (`away`) than ranged ones, so only they walk in.
 ____exports.MELEE_RANGE = 200
 --- The longest walk into range a walk-in commits to, s (`judgement`: about 750 at 300 movement, the depth of an enemy's reach past the spot).
 ____exports.CONTEST_WALK = 2.5
@@ -13,8 +13,8 @@ ____exports.CONTEST_WALK = 2.5
 ____exports.RADIUS = 1000
 --- The priced HP may be at most this share of max HP per creep (`judgement`: about one enemy hit and a nuke at level 1-3).
 ____exports.COST_CAP = 0.1
---- A running walk-in is released on cost only above COST_CAP times this (`judgement`): drill cwd3 released 6 of 17 walk-ins
--- mid-walk on a price hovering at the cap, each one a walk thrown away. The HP floor, two heroes and the tower stay hard.
+--- A running walk-in is released on cost only above COST_CAP times this (`judgement`): a price hovering at the cap would
+-- otherwise throw walks away halfway. The HP floor, two heroes and the tower stay hard.
 ____exports.WALK_SLACK = 1.5
 --- HP share the core must keep after the priced cost (`judgement`; lane aggro's draws gate at 0.45).
 ____exports.HP_FLOOR = 0.5

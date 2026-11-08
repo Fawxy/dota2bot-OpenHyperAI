@@ -1,4 +1,4 @@
--- The contest walk-in (slice contest-walkin, Ours.CoreContest; states/contest) in games whose file matches :like, before
+-- The contest walk-in (Ours.CoreContest; states/contest) in games whose file matches :like, before
 -- :until (default 600). One row per bot with a walk-in (ev=lh cw=1) or a refusal (ev=contest_skip): `walkins`, `landed`
 -- (result ok), `retarget` (interrupted, msg sw=1: the pick went for a creep killable now), `released` (interrupted, sw=0:
 -- the price failed mid-walk), `leash` (interrupted with no sw: the leash or the body's stop), `taken` (taken_by_other),

@@ -1,4 +1,4 @@
--- Slice contest-walkin: the walk-in's HP price (states/contest PriceOf), pure.
+-- The contest walk-in's HP price (states/contest PriceOf), pure.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 FreshHumaniser({ Enable = false })
 local C = require("bots/FunLib/humaniser/states/contest")

@@ -1044,7 +1044,7 @@ export const EVENTS = {
         /** A deny: the pre-deny swings this bot spent on the creep before it (states/idle_swing); absent for none. */
         pre: "num",
         /**
-         * Slice contest-walkin (Ours.CoreContest): 1 when the attempt was a melee core's walk-in past MAX_WALK; `cc` its priced
+         * Ours.CoreContest: 1 when the attempt was a melee core's walk-in past MAX_WALK; `cc` its priced
          * HP (% of max) at the pick, `cn` the enemy heroes whose reach covered the creep, `dh` HP-% lost from the pick to the end.
          */
         cw: "bool",
@@ -1054,7 +1054,7 @@ export const EVENTS = {
         msg: "str",
     },
     /**
-     * Slice contest-walkin: a walk-in the price refused, once per creep and reason. at pick (not started) | walk (a running
+     * Ours.CoreContest: a walk-in the price refused, once per creep and reason. at pick (not started) | walk (a running
      * walk-in released); why cost | hp | two | tower (states/contest PriceOf); cc the priced HP (% of max), n the enemy heroes
      * covering the creep, ex seconds inside the deepest reach, walk dies the laneTargets facts, hf the core's HP share.
      */

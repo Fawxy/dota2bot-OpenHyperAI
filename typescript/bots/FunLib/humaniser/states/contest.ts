@@ -1,5 +1,5 @@
 /**
- * Ours.CoreContest (slice contest-walkin, user 09/11/2026): a melee core walks in from its lane spot for a last hit on a creep
+ * Ours.CoreContest: a melee core walks in from its lane spot for a last hit on a creep
  * dying inside an enemy hero's reach, then walks back. The spot keeps the core out of that reach between attempts (the risk
  * is paid every idle second there); the walk-in pays it only for the attempt, priced in HP before it starts and again on
  * every scan while it runs. Lane-positioning Decisions 04/11/2026: the contest is the last-hit pick's, not a limit of the spot.
@@ -12,7 +12,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 
-/** Melee by attack range, as the lane-positioning reads (lposchk3 `away` misses: 437 melee against 47 ranged). */
+/** Melee by attack range: melee cores lose far more creeps out of reach (`away`) than ranged ones, so only they walk in. */
 export const MELEE_RANGE = 200;
 /** The longest walk into range a walk-in commits to, s (`judgement`: about 750 at 300 movement, the depth of an enemy's reach past the spot). */
 export const CONTEST_WALK = 2.5;
@@ -21,8 +21,8 @@ export const RADIUS = 1000;
 /** The priced HP may be at most this share of max HP per creep (`judgement`: about one enemy hit and a nuke at level 1-3). */
 export const COST_CAP = 0.1;
 /**
- * A running walk-in is released on cost only above COST_CAP times this (`judgement`): drill cwd3 released 6 of 17 walk-ins
- * mid-walk on a price hovering at the cap, each one a walk thrown away. The HP floor, two heroes and the tower stay hard.
+ * A running walk-in is released on cost only above COST_CAP times this (`judgement`): a price hovering at the cap would
+ * otherwise throw walks away halfway. The HP floor, two heroes and the tower stay hard.
  */
 export const WALK_SLACK = 1.5;
 /** HP share the core must keep after the priced cost (`judgement`; lane aggro's draws gate at 0.45). */

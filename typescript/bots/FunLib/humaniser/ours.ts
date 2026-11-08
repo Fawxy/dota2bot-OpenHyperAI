@@ -78,7 +78,7 @@ export const DEFAULTS = {
      */
     LaneAggro: true,
     /**
-     * Slice contest-walkin: with CoreLastHit on, a melee pos1-3 walks in from its lane spot (up to 2.5 s) for a last hit on a
+     * With CoreLastHit on, a melee pos1-3 walks in from its lane spot (up to 2.5 s) for a last hit on a
      * creep dying inside one enemy hero's reach when the walk-in's HP price passes (states/contest), and walks back. Off: the
      * reach rule's 1 s walk for every laner.
      */
