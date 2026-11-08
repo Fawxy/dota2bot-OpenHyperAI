@@ -732,7 +732,7 @@ do
 	check("core pull: a safe-lane pos3 is no puller", not w.H.PullJob.Applies(w.sup))
 end
 
--- Slice lane-control 2c: their wave absent between reads (LaneControl.PullBreak) takes the pull out of the decision only while
+-- Their wave absent between reads (LaneControl.PullBreak) takes the pull out of the decision only while
 -- its slot is unsettled (PullJob.Settled). A pull the controller wanted that waits at a gate re-reads the decision and refuses
 -- `why=ew`; a pull that has started (handled at its start) is settled and the break leaves it alone with no break line.
 do

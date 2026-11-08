@@ -2028,7 +2028,7 @@ function ____exports.Finished(bot)
         div = share(e.pull)
     }) or nil
 end
---- Slice lane-control 2c: whether `pid`'s pull of the wave spawned at `wave` is past changing: its slot settled (`handled`: it
+--- Whether `pid`'s pull of the wave spawned at `wave` is past changing: its slot settled (`handled`: it
 -- ran, or was refused, late or cancelled) or its pull running. A pull decided but waiting at a gate is not settled: `Wants`
 -- re-reads the controller's word for it. LaneControl.PullBreak breaks only an unsettled pull.
 function ____exports.Settled(pid, wave)

@@ -1074,7 +1074,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         done(false, d.drill === true ? "drill" : d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
-    // Slice lane-control 2c: a pull the controller wanted but that waits at a gate re-reads its word each frame, so a decision
+    // A pull the controller wanted but that waits at a gate re-reads its word each frame, so a decision
     // that lost its pull meanwhile (LaneControl.PullBreak, their wave absent) stops it here (`why=ew`).
     if (d.rule === "ctl") {
         const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
@@ -1152,7 +1152,7 @@ export function Running(bot: Unit): boolean {
 }
 
 /**
- * Slice lane-control 2c: whether `pid`'s pull of the wave spawned at `wave` is past changing: its slot settled (`handled`: it
+ * Whether `pid`'s pull of the wave spawned at `wave` is past changing: its slot settled (`handled`: it
  * ran, or was refused, late or cancelled) or its pull running. A pull decided but waiting at a gate is not settled: `Wants`
  * re-reads the controller's word for it. LaneControl.PullBreak breaks only an unsettled pull.
  */

@@ -19,7 +19,7 @@
  * slot; design s5.1c has the table; `docs/proposals/lane-forecast/pulleffect.js`). The check falls about 31 s after a pull
  * slot (read at wave + 2, slots near wave + 16), so the +30 s row is its offline before value.
  *
- * Slice 2c (user 09/11/2026): the read records whether their last due wave arrived (`ew`: present, absent, unknown; the
+ * The missing wave (user 09/11/2026): the read records whether their last due wave arrived (`ew`: present, absent, unknown; the
  * enemy wave tracker `enemy_wave.ts` follows one wave at a time and the read takes its resolution). Absent is a fact the
  * lane keeps (`Suspect`) for a later investigate-lane or contest-pull job; the one response now is `MissingWave`: no pull
  * of ours this cycle (`pull:ew`), the other levers as the ruleset gives them; resolved between reads, a chosen pull that has
@@ -108,7 +108,7 @@ export const SETTINGS = {
     CorePullPerNeed: 0.05,
     /** Walking paths run longer than the straight line (CoreCamp's and rune_job's PathFactor). */
     PathFactor: 1.2,
-    /** Slice 2c (user 09/11/2026): a read that sees their due wave absent (pulled, blocked or cut) refuses our own pull for
+    /** User 09/11/2026: a read that sees their due wave absent (pulled, blocked or cut) refuses our own pull for
      *  this cycle (`pull:ew`); the other levers stay. The drill reads `ewp` to tell whether Choose refused it anyway. */
     SkipPullOnMissingWave: true,
     /** How long an absent read stays the lane's suspect fact (`Suspect`), for a later investigate-lane or contest-pull job. */
@@ -232,7 +232,7 @@ export function ChoiceFor(intent: Intent, n45: number, band: number, levers: Lev
 }
 
 /**
- * Slice 2c: the choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave a pull lever on
+ * The choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave a pull lever on
  * offer is refused `ew` (a pull refused already keeps its own reason: `no_sup`, `away`, `stack`, ... stay readable) and `ewp`
  * says whether ChoiceFor with the pull on offer would have taken it: 1 the skip changed the set, 0 the model refused it anyway
  * (the drill's redundancy read); unset when the pull was not on offer. Any other read leaves the levers alone, `ewp` unset.
@@ -276,12 +276,12 @@ export interface Decision {
     broke?: string;
     /** Slice 3: the stack minute this decision's pull takes from its support (`YieldsStack`). */
     yields?: number;
-    /** Slice 2c: the enemy wave tracker's resolution read at this decision (`u` with none resolved since the last read). */
+    /** The enemy wave tracker's resolution read at this decision (`u` with none resolved since the last read). */
     ew?: EnemyWave.Sight;
 }
 
 /**
- * Slice 2c: what the lane knows is up (user 09/11/2026). `their_wave_missing`: at second `t` our creeps saw the spot of
+ * What the lane knows is up (user 09/11/2026). `their_wave_missing`: at second `t` our creeps saw the spot of
  * their due wave empty (pulled, blocked or cut). Nothing reads it yet: it is the named input of a later investigate-lane or
  * contest-pull job. CANDIDATE(lane_suspect).
  */
@@ -471,7 +471,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         }
     }
     const puller = PullerOf({ now, n45, sup: supBot !== undefined ? { pid: supBot.pid, why: pc?.why } : undefined, core: coreCand });
-    // Slice 2c: the enemy wave the tracker resolved since the last read (`u` with none: nothing resolved yet, or no reading).
+    // The enemy wave the tracker resolved since the last read (`u` with none: nothing resolved yet, or no reading).
     const fact = EnemyWave.Take(EnemyWave.StateOf(team, lane));
     const ew: EnemyWave.Sight = fact?.ew ?? "u";
     const offered: Lever[] = [];
@@ -490,7 +490,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     offered.push({ name: "shove", effect: s.PreDenySize, danger: 2, who: coreIn !== undefined ? "core" : "sup", why: mode !== "shove" ? "mode" : !anyIn ? "nobody" : undefined });
     // The reset wave (R2) brings the clash back to the target before the support leaves; already inside the band, a
     // pre-deny alone (design s5.5 rule 1). `forward` takes the shove under `shove`, the idle swing's setup otherwise (slice 2b,
-    // user 06/11/2026: hit an enemy creep into our last-hit range while no enemy hero can deny it). Slice 2c: their wave
+    // user 06/11/2026: hit an enemy creep into our last-hit range while no enemy hero can deny it). Their wave
     // absent refuses our pull first.
     const mw = MissingWave(ew, intent, n45, s.Band, offered);
     for (const l of mw.levers) levers.push(l);
@@ -574,13 +574,13 @@ export function Remember(team: number, lane: Lane, d: Decision): void {
     for (const k in m.decisions) if (tonumber(k)! < d.wave - 120) delete m.decisions[tonumber(k)!];
 }
 
-/** Slice 2c: records what the lane's tracker found up (Tick's, and the tests'). */
+/** Records what the lane's tracker found up (Tick's, and the tests'). */
 export function NoteSuspect(team: number, lane: Lane, s: Suspicion): void {
     memoryOf(team, lane).suspect = s;
 }
 
 /**
- * Slice 2c: their wave resolved absent between reads. The live decision for `wave` (this cycle's; an older one's pull is past
+ * Their wave resolved absent between reads. The live decision for `wave` (this cycle's; an older one's pull is past
  * its slot) loses its pull when the puller's slot is not settled (`PullJob.Settled`: not handled, not running; a pull
  * decided but waiting at a gate re-reads the decision and refuses `ew`), with the core's `hold` that only a pull adds; the
  * mode, the intent and the ruleset's other levers stay. Logged `kind=break why=ew` as the R5 shove break is. A settled pull
@@ -622,7 +622,7 @@ function breakLog(team: number, lane: Lane, d: Decision, why: string): void {
 }
 
 
-/** Slice 2c: the lane's most recent suspicion within SuspectFor s of `now`, undefined when none or aged out. */
+/** The lane's most recent suspicion within SuspectFor s of `now`, undefined when none or aged out. */
 export function Suspect(team: number, lane: Lane, now: number = DotaTime()): Suspicion | undefined {
     const s = memory[`${team}:${lane}`]?.suspect;
     return s !== undefined && now - s.t <= SETTINGS.SuspectFor ? s : undefined;
@@ -715,7 +715,7 @@ export function Tick(bot: Unit): void {
     const m = memoryOf(team, lane);
     const cycle = LaneConfig.Settings().Timing.WaveCycle;
     const wave = math.floor(now / cycle) * cycle;
-    // Slice 2c: the enemy wave tracker steps once a second from the first spawn, so the first read at From has a resolution.
+    // The enemy wave tracker steps once a second from the first spawn, so the first read at From has a resolution.
     // Absent between reads: the lane's suspect fact, and this wave's chosen pull is broken if it has not left. In a read
     // second (this wave's decision not made yet) the resolution is left for the read below, which takes it as `ew`.
     if (now <= s.Until) {

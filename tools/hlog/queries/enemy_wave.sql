@@ -1,4 +1,4 @@
--- The missing wave (slice lane-control 2c, ev=lane_ctl `ew`, bot humaniser/enemy_wave.ts) in games whose file matches
+-- The missing wave (ev=lane_ctl `ew`, bot humaniser/enemy_wave.ts) in games whose file matches
 -- :like: one row per kind=wave read that took an `absent` resolution (`ew=a`: the enemy wave the tracker followed never
 -- showed at its spot while our lead creep stood there), joined to the enemy team's ev=pull_job lines on that lane whose slot
 -- falls in the missing wave's spawn cycle [S, S + 30), S the last wave spawn at or before t - ewd - 10 (the read lands at the

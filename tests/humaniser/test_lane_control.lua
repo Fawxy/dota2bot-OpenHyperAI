@@ -119,7 +119,7 @@ do
 	Ctl.ResetCache()
 end
 
--- Slice 2c: their due wave absent (the tracker's resolution) refuses our pull this cycle (pull:ew), the other levers stay;
+-- Their due wave absent (the tracker's resolution) refuses our pull this cycle (pull:ew), the other levers stay;
 -- ewp reads whether Choose would have taken the pull without the skip.
 do
 	local function rej(levers)
@@ -191,7 +191,7 @@ do
 	local _, gone = track(27, function(t) return t <= 17 and 2000 or 5000, 4 end)
 	check("tracker: our creeps gone from the spot: unknown", gone ~= nil and gone.ew == "u" and gone.due == 17)
 	-- No own creeps at all: never due, given up at 60 with no due second; the tracker catches up to the current wave (60),
-	-- not the one already 30 s old (review L1).
+	-- not the one already 30 s old.
 	local st3, nobody = track(60, function() return nil, 0 end)
 	check("tracker: never due, given up as unknown, caught up", nobody ~= nil and nobody.ew == "u" and nobody.due == nil and st3.track.ts == 60)
 	-- Absent between reads breaks this wave's live decision's pull while its slot is unsettled (kind=break why=ew, beside

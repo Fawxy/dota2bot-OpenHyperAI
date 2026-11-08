@@ -604,7 +604,7 @@ function ____exports.ChoiceFor(intent, n45, band, levers)
     end
     return {levers = {}, left = n45, short = false}
 end
---- Slice 2c: the choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave a pull lever on
+--- The choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave a pull lever on
 -- offer is refused `ew` (a pull refused already keeps its own reason: `no_sup`, `away`, `stack`, ... stay readable) and `ewp`
 -- says whether ChoiceFor with the pull on offer would have taken it: 1 the skip changed the set, 0 the model refused it anyway
 -- (the drill's redundancy read); unset when the pull was not on offer. Any other read leaves the levers alone, `ewp` unset.
@@ -1167,11 +1167,11 @@ local function check(team, lane, wave)
         }
     )
 end
---- Slice 2c: records what the lane's tracker found up (Tick's, and the tests').
+--- Records what the lane's tracker found up (Tick's, and the tests').
 function ____exports.NoteSuspect(team, lane, s)
     memoryOf(team, lane).suspect = s
 end
---- Slice 2c: their wave resolved absent between reads. The live decision for `wave` (this cycle's; an older one's pull is past
+--- Their wave resolved absent between reads. The live decision for `wave` (this cycle's; an older one's pull is past
 -- its slot) loses its pull when the puller's slot is not settled (`PullJob.Settled`: not handled, not running; a pull
 -- decided but waiting at a gate re-reads the decision and refuses `ew`), with the core's `hold` that only a pull adds; the
 -- mode, the intent and the ruleset's other levers stay. Logged `kind=break why=ew` as the R5 shove break is. A settled pull
@@ -1204,7 +1204,7 @@ local function pullSettled(pid, wave)
     local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
     return PullJob.Settled(pid, wave)
 end
---- Slice 2c: the lane's most recent suspicion within SuspectFor s of `now`, undefined when none or aged out.
+--- The lane's most recent suspicion within SuspectFor s of `now`, undefined when none or aged out.
 function ____exports.Suspect(team, lane, now)
     if now == nil then
         now = DotaTime()
