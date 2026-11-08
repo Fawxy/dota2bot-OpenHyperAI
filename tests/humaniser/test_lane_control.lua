@@ -51,6 +51,15 @@ do
 	check("no room: no pre-deny", names(Ctl.Choose(400, 150, { lv("predeny", Ctl.LeverEffect(-300, reach - 50, span, reach), 1) })) == "")
 end
 
+-- ForcedLever (the lever drills' harness): the lever only on the named side and lane.
+do
+	check("forced: Radiant bot feed", Ctl.ForcedLever("r:bot=feed", TEAM_RADIANT, LANE_BOT) == "feed")
+	check("forced: not Dire's side of the lane", Ctl.ForcedLever("r:bot=feed", TEAM_DIRE, LANE_BOT) == nil)
+	check("forced: not another lane", Ctl.ForcedLever("r:bot=setup", TEAM_RADIANT, LANE_TOP) == nil)
+	check("forced: none is a lever set of its own", Ctl.ForcedLever("r:bot=none", TEAM_RADIANT, LANE_BOT) == "none")
+	check("forced: unset or malformed forces nothing", Ctl.ForcedLever("", TEAM_RADIANT, LANE_BOT) == nil and Ctl.ForcedLever("r:bot", TEAM_RADIANT, LANE_BOT) == nil)
+end
+
 -- IntentOf.
 do
 	check("intent back", Ctl.IntentOf(200, 150, false) == "back")

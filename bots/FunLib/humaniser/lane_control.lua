@@ -359,6 +359,7 @@ local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Calendar = require(GetScriptDirectory().."/FunLib/humaniser/calendar")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local EnemyWave = require(GetScriptDirectory().."/FunLib/humaniser/enemy_wave")
@@ -424,7 +425,7 @@ ____exports.SETTINGS = {
     DivertShare = 0.4,
     Live = 31,
     BreakEvery = 1,
-    PreDenySize = 300,
+    PreDenySize = 0,
     FeedSize = 300,
     SetupSize = 300,
     ShoveSize = 1650,
@@ -602,6 +603,20 @@ function ____exports.LeverEffect(size, base, span, reach)
         math.min(-size, base - reach)
     )
 end
+--- The harness's forced lever for `team`'s side of `lane` (`Overrides.ForceLever` `<lanes>=<lever>`, lanes as ForceShove's
+-- tokens): `feed`, `setup`, `none`, or undefined where it names no such lane. Drills only: a lever drill's input arm forces
+-- the lever every wave, its control arm `none`.
+function ____exports.ForcedLever(spec, team, lane)
+    if type(spec) ~= "string" or spec == "" then
+        return nil
+    end
+    local lanes, lever = string.match(spec, "^([^=]+)=(%a+)$")
+    if lanes == nil or lever == nil then
+        return nil
+    end
+    local IdleSwing = require(GetScriptDirectory().."/FunLib/humaniser/states/idle_swing")
+    return IdleSwing.ForcedIn(lanes, team, lane) and lever or nil
+end
 function ____exports.IntentOf(need, band, reset)
     if reset and need > -band then
         return "reset"
@@ -672,11 +687,11 @@ local function lanersOf(lane, cx, cy)
         local i = 1
         while i <= 5 do
             do
-                local __continue45
+                local __continue48
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:GetAssignedLane() ~= lane then
-                        __continue45 = true
+                        __continue48 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(u) or 0
@@ -691,9 +706,9 @@ local function lanersOf(lane, cx, cy)
                             cy
                         ) <= ____exports.SETTINGS.InLane
                     }
-                    __continue45 = true
+                    __continue48 = true
                 until true
-                if not __continue45 then
+                if not __continue48 then
                     break
                 end
             end
@@ -724,10 +739,10 @@ local function enemiesAway(m, now, cx, cy)
     local visible = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue52
+            local __continue55
             repeat
                 if e == nil or e == nil or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue52 = true
+                    __continue55 = true
                     break
                 end
                 visible[e:GetPlayerID()] = e
@@ -738,9 +753,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyLaneR then
                     m.enemies[e:GetPlayerID()] = now
                 end
-                __continue52 = true
+                __continue55 = true
             until true
-            if not __continue52 then
+            if not __continue55 then
                 break
             end
         end
@@ -748,17 +763,17 @@ local function enemiesAway(m, now, cx, cy)
     local any = false
     for k in pairs(m.enemies) do
         do
-            local __continue56
+            local __continue59
             repeat
                 local pid = tonumber(k)
                 if now - m.enemies[pid] > ____exports.SETTINGS.EnemyMemory then
                     __TS__Delete(m.enemies, pid)
-                    __continue56 = true
+                    __continue59 = true
                     break
                 end
                 any = true
                 if not IsHeroAlive(pid) then
-                    __continue56 = true
+                    __continue59 = true
                     break
                 end
                 local e = visible[pid]
@@ -769,9 +784,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyAway then
                     return false
                 end
-                __continue56 = true
+                __continue59 = true
             until true
-            if not __continue56 then
+            if not __continue59 then
                 break
             end
         end
@@ -1017,12 +1032,21 @@ local function decide(team, lane, now, m)
     end
     local c = mw.choice
     local left = c.left
+    local forced = ____exports.ForcedLever(
+        Overrides.Get("ForceLever"),
+        team,
+        lane
+    )
+    local set = forced == nil and c.levers or (forced == "none" and ({}) or __TS__ArrayFilter(
+        offered,
+        function(____, l) return l.name == forced end
+    ))
     local chosen = __TS__ArrayMap(
-        c.levers,
+        set,
         function(____, l) return l.name end
     )
     local who = __TS__ArrayMap(
-        c.levers,
+        set,
         function(____, l) return l.who end
     )
     local after = tgt + left
@@ -1126,6 +1150,7 @@ local function decide(team, lane, now, m)
     __TS__SparseArrayPush(
         ____array_43,
         {"short", ____c_short_35},
+        {"frc", forced},
         {
             "rej",
             table.concat(rej, ";")
@@ -1288,17 +1313,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue126
+            local __continue130
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue126 = true
+                    __continue130 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue126 = true
+                __continue130 = true
             until true
-            if not __continue126 then
+            if not __continue130 then
                 break
             end
         end

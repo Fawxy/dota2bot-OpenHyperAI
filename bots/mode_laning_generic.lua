@@ -362,6 +362,8 @@ if bOwnsThink then
 		if J.Humaniser.Overrides.LaneOnly(bot) then
 			-- A drill's lane-only core with the wave hold (drill entry laneHold): the hold and its own draw first.
 			if States.LaneOnlyHoldStep(bot) then return end
+			-- A lever drill's lane-only core with lane aggro (drill entry laneAggro): the feed and the other draws.
+			if States.LaneOnlyAggroStep(bot) then return end
 			if not States.BodyLastHits(bot) then
 				if not States.BodySupportLastHits(bot) and LastHitThink() then return end
 				if not States.BodySupportHits(bot) and DenyThink() then return end

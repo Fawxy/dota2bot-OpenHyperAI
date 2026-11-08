@@ -845,6 +845,7 @@ ____exports.EVENTS = {
         who = "str",
         left = "num",
         short = "bool",
+        frc = "str",
         rej = "str",
         core = "num",
         sup = "num",
