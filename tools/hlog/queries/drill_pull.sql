@@ -13,7 +13,7 @@
 WITH
 gm AS MATERIALIZED (
     SELECT DISTINCT d.game_id FROM ev_drill d JOIN games g ON g.game_id = d.game_id
-    WHERE d.ph = 'role' AND d.name IN ('pull', 'core-pull') AND g.file LIKE coalesce(:like, '%')
+    WHERE d.ph = 'role' AND d.name IN ('pull', 'core-pull', 'pull-statue') AND g.file LIKE coalesce(:like, '%')
 ),
 tm AS MATERIALIZED (
     SELECT d.game_id, d.pid, max(d.team) AS team FROM ev_drill d JOIN gm USING (game_id) WHERE d.ph = 'role' GROUP BY 1, 2
