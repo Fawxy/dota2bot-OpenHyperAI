@@ -427,7 +427,7 @@ ____exports.SETTINGS = {
     BreakEvery = 1,
     PreDenySize = 0,
     FeedSize = 300,
-    SetupSize = 1100,
+    SetupSize = 750,
     ShoveSize = 1650,
     InLane = 2000,
     DepartWithin = 60,
@@ -1031,7 +1031,6 @@ local function decide(team, lane, now, m)
         levers[#levers + 1] = l
     end
     local c = mw.choice
-    local left = c.left
     local forced = ____exports.ForcedLever(
         Overrides.Get("ForceLever"),
         team,
@@ -1041,6 +1040,14 @@ local function decide(team, lane, now, m)
         offered,
         function(____, l) return l.name == forced end
     ))
+    local left = c.left
+    if forced ~= nil then
+        left = n45
+        for ____, l in ipairs(set) do
+            left = left + l.effect
+        end
+    end
+    local short = forced == nil and c.short
     local chosen = __TS__ArrayMap(
         set,
         function(____, l) return l.name end
@@ -1141,15 +1148,15 @@ local function decide(team, lane, now, m)
             round(after - tgt)
         }
     )
-    local ____c_short_35
-    if c.short then
-        ____c_short_35 = true
+    local ____short_35
+    if short then
+        ____short_35 = true
     else
-        ____c_short_35 = nil
+        ____short_35 = nil
     end
     __TS__SparseArrayPush(
         ____array_43,
-        {"short", ____c_short_35},
+        {"short", ____short_35},
         {"frc", forced},
         {
             "rej",
@@ -1313,17 +1320,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue130
+            local __continue133
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue130 = true
+                    __continue133 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue130 = true
+                __continue133 = true
             until true
-            if not __continue130 then
+            if not __continue133 then
                 break
             end
         end

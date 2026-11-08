@@ -65,13 +65,16 @@ export const SETTINGS = {
     /** Lever sizes: the clash's move at the horizon against the plain forecast on waves where the lever ran, net of a
      *  no-lever control, measured in drills only (never on check runs, whose enemy laners run this controller); values
      *  and sources in the slice's Facts table. Each is capped at the room before the tower it moves towards (LeverEffect). */
-    /** No measurable move of the clash. The idle swing pre-denies whatever the choice (mode `safe`), so 0 only keeps
-     *  `Choose` from counting it as a lever that moves the lane. */
+    /** Its drill found no move of the clash it could tell from noise (300 not rejected either). The idle swing pre-denies
+     *  whatever the choice (mode `safe`), so the size only decides whether `Choose` counts it as moving the lane; 0 keeps
+     *  it from standing in for a lever that does (`judgement`). */
     PreDenySize: 0,
     /** `judgement`: its drill neither confirms nor rejects 300. */
     FeedSize: 300,
-    /** The idle swing's `setup` (an enemy creep hit into our last-hit range), towards their T1. */
-    SetupSize: 1100,
+    /** The idle swing's `setup` (an enemy creep hit into our last-hit range), towards their T1. Its drill forces it every
+     *  wave, so the 45 s read holds about 1.5 decisions of swinging, while in play a setup rarely follows a setup: the
+     *  measured 1,128 is an upper bound, scaled by Live / Horizon (31 / 45) for one decision (`judgement`). */
+    SetupSize: 750,
     /** Uncontested, as R5 shoves (their laners away). Used for R4 too: a contested size is not measured (user 09/11/2026:
      *  every enemy laner a drill can field runs our own script). */
     ShoveSize: 1650,
@@ -529,13 +532,19 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const mw = MissingWave(ew, intent, n45, s.Band, offered);
     for (const l of mw.levers) levers.push(l);
     const c = mw.choice;
-    const left = c.left;
-    // The core's hold catches a pull that would leave the next clash under our tower (design s5.3: a pull and the hold go
-    // together).
+    // A forced set (lever drills) ignores the levers' own refusals and logs its own `left`, never `short`.
     const forced = ForcedLever(Overrides.Get("ForceLever"), team, lane);
     const set = forced === undefined ? c.levers : forced === "none" ? [] : offered.filter((l) => l.name === forced);
+    let left = c.left;
+    if (forced !== undefined) {
+        left = n45;
+        for (const l of set) left += l.effect;
+    }
+    const short = forced === undefined && c.short;
     const chosen = set.map((l) => l.name);
     const who = set.map((l) => l.who);
+    // The core's hold catches a pull that would leave the next clash under our tower (design s5.3: a pull and the hold go
+    // together).
     let after = tgt + left;
     // Not when the core is the puller: it cannot hold their wave from the camp.
     if (chosen.includes("pull") && after < reach && coreIn !== undefined && puller.by !== "core") {
@@ -570,7 +579,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         ["lever", chosen.length > 0 ? chosen.join("+") : "none"],
         ["who", who.join("+")],
         ["left", round(after - tgt)],
-        ["short", c.short ? true : undefined],
+        ["short", short ? true : undefined],
         ["frc", forced],
         ["rej", rej.join(";")],
         ["core", coreIn !== undefined ? coreIn.pid : undefined],
