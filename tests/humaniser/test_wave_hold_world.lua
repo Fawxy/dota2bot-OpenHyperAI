@@ -78,7 +78,8 @@ do
 	w.creep(2, 1800)
 	T = 28
 	w.W.Step(w.bot)
-	check("fresh wave walking out: no hold starts", w.count("wave_hold") == 0 and #w.lines == 0, table.concat(w.lines, "\n"))
+	check("fresh wave walking out: no hold starts", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	check("fresh wave walking out: one ours_far skip names our walking creep (no target)", #w.lines == 1 and w.lines[1]:find("why=ours_far", 1, true) ~= nil and w.lines[1]:find("obt=none", 1, true) ~= nil, table.concat(w.lines, "\n"))
 end
 
 -- obs0611 mark 5's shape (moved out of tower fire), the forecast start: 2 weak creeps of ours fighting 4 of theirs at 950-1,060. lane_push's run has their

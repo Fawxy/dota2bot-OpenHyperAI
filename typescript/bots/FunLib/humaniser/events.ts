@@ -499,6 +499,11 @@ export const EVENTS = {
         nl: "num",
         /** 1 when our creeps already walking (`nl`) turned a drag the spawn schedule allowed into a hold, at any read. */
         lv: "num",
+        /** At the last branch read: seconds the core stands as their wave's target before our creeps reach the hold point
+         *  (`tk`), the wave's expected damage on it over them (`cost`), the hold's budget (`bud`, TankShare of max HP). */
+        tk: "num",
+        cost: "num",
+        bud: "num",
         /** The enemy hero whose reach made the threat, at the last read that saw one. */
         thr: "num",
         /** Branch changes during the attempt. */
@@ -512,7 +517,8 @@ export const EVENTS = {
     /**
      * Slice core-in-lane: why the wave hold did not start for a core that owns it while their wave (2+ creeps) is at or inside
      * the lane target, at most every 5 s per bot and reason. `why`: `ours` (our wave there and no forecast start), `late` (their
-     * front inside our T1's range + 50), `rest`, `reach`, `hp`.
+     * front inside our T1's range + 50), `rest`, `reach`, `hp`; `ours_far` (their wave further out and walking in unopposed
+     * while a creep of ours keeps the start off).
      */
     wave_hold_skip: {
         pid: "num",
@@ -528,6 +534,10 @@ export const EVENTS = {
         rch: "num",
         /** Forecast seconds until their front is inside our T1's range (on `rest`, `reach`, `hp` after a forecast start). */
         fc: "num",
+        /** On `ours`/`ours_far`: the first creep of ours that keeps the start off, its distance from our T1 and its attack
+         *  target (`none`, `lane`, `hero`, `tower`, `other`: a neutral or anything else). */
+        ob: "num",
+        obt: "str",
     },
     /** Slice lane-aggro: why a laner that owns the move did not draw (the first gate that said no), on change, at most every 3 s. */
     aggro_skip: {

@@ -97,14 +97,20 @@ check("their wave still beyond the stretch (2,500 past our T1 on a side lane): n
 check("mid's target sits further out, so the same wave is in its stretch", type(W.Read({ 2700, 2800 }, {}, 1300)) == "table")
 check("one creep is not a wave", W.Read({ 1500 }, {}, 900) == "none")
 
--- The branch: a threat drags only when our next wave is not near and the drag ends before it arrives behind our T1.
-check("no threat: hold", W.Choose(false, 30, 5, 30) == "hold")
-check("threat, our next wave 8 s from the hold point: hold, the waves meet there", W.Choose(true, 8, 5, 20) == "hold")
-check("threat, our wave 20 s off, the drag needs 6 s of 12: drag", W.Choose(true, 20, 6, 12) == "drag")
-check("threat, the drag needs 11 s of 12 (inside the 2 s margin): hold", W.Choose(true, 20, 11, 12) == "hold")
+-- The branch (user 08/11/2026): hold while the wave's expected damage until our creeps arrive fits the budget; else drag when
+-- it ends before our next wave reaches the drag point; else concede.
+check("expected damage within the budget: hold", W.Choose(60, 90, 5, 30) == "hold")
+check("over budget, the drag needs 6 s of 12: drag", W.Choose(200, 90, 6, 12) == "drag")
+check("over budget, the drag needs 11 s of 12 (inside the 2 s margin): concede", W.Choose(200, 90, 11, 12) == "concede")
+-- Drill hold ldr31 1:15: a level-2 core alone in front of 4 creeps, our next wave 20 s off: about 30 dps for 18 s.
+local dps = W.WaveDps({ { dmg = 21, spa = 1 }, { dmg = 21, spa = 1 }, { dmg = 21, spa = 1 }, { dmg = 24, spa = 1 } }, W.ArmorMult(3))
+check("four lane creeps on armor 3: 87 x 0.85 a second", near(dps, 87 * (1 - 0.18 / 1.18)), dps)
+check("their front 1,500 out, hold point 910, our creeps 20 s off: about 18 s as their target", near(W.TankSecs(20, 1500, 910), 20 - 590 / 325), W.TankSecs(20, 1500, 910))
+check("our creeps there before their front: 0 s", W.TankSecs(1, 1500, 910) == 0)
+check("so that core concedes or drags; with our creeps 1 s behind their front (about 74 HP of a 93 budget) it holds", W.Choose(dps * W.TankSecs(20, 1500, 910), 0.15 * 620, 30, 12) == "concede" and W.Choose(dps * W.TankSecs(1.8 + 1, 1500, 910), 0.15 * 620, 30, 12) == "hold")
+check("negative armor takes more", W.ArmorMult(-2) > 1)
 -- ptchk1 A 7:00 top: the schedule put our next wave 24 s off while the pulled creeps walked back 1,000 from the hold point.
-check("threat, schedule 24 s, our pulled creeps walking back 1,000 out: hold", W.Choose(true, W.Near(24, { 1000, 1400 }), 6, 30) == "hold", W.Near(24, { 1000, 1400 }))
-check("threat, schedule 24 s, no creep of ours walking: drag", W.Choose(true, W.Near(24, {}), 6, 30) == "drag")
+check("schedule 24 s, our pulled creeps walking back 1,000 out: about 3 s", near(W.Near(24, { 1000, 1400 }), 1000 / 325), W.Near(24, { 1000, 1400 }))
 check("a wave on schedule sooner than the creeps walking in: the schedule's time", near(W.Near(5, { 3000 }), 5))
 check("their front 1,475 from our T1: (1,475 + 500) / 325 + 1 s for the draw", near(W.DragSecs(1475), 1975 / 325 + 1), W.DragSecs(1475))
 -- The user's rule (06/11/2026, hschk3 1:45): the drag takes their wave through our T1's fire only to meet our creeps behind it
@@ -114,10 +120,10 @@ check("their front 1,500 to the drag point 910 behind: (1,500 + 910) / 325 + 1",
 -- Luna's shape: our creeps back from the pull walk in at 300 from our T1 while their wave stands 1,500 out; our next wave far off.
 local luna = W.OursAtBehind({ 300, 340, -5000 }, 910, 1500)
 check("hschk3 1:45: our pulled creeps between the drag point and their front: they meet in tower fire now (0 s)", luna == 0, luna)
-check("hschk3 1:45: so the threatened core holds at the hold point, no drag", W.Choose(true, 20, W.DragSecs(1500, 910), luna) == "hold")
+check("hschk3 1:45: so no drag (their wave would meet ours in tower fire); over budget it concedes", W.Choose(200, 90, W.DragSecs(1500, 910), luna) == "concede")
 local far = W.OursAtBehind({ -5000, -5100, 2600 }, 910, 1500)
 check("only our next wave 5,000 behind our T1 (and a fight past their front): (5,000 - 910) / 325 s", near(far, 4090 / 325), far)
-check("then the drag goes, their wave meeting ours out of our T1's reach", W.Choose(true, 20, W.DragSecs(1500, 910), far) == "drag")
+check("then the drag goes, their wave meeting ours out of our T1's reach", W.Choose(200, 90, W.DragSecs(1500, 910), far) == "drag")
 
 -- lane_push's schedule: waves every 30 s from 0:00 at each team's spawn end, 325 a second along the path. Bot lane: Radiant
 -- spawns at -325, its T1 at 8,057 (25.8 s away); Dire spawns at 18,662, its T1 at 12,574 (18.7 s).

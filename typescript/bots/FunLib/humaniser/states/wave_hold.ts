@@ -3,9 +3,13 @@
  * 05/11/2026): when our wave on an in-lane core's lane is gone (pulled, drawn away by lane aggro's tower move, or anything
  * else) and theirs walks in, the core meets it at the lane's target point (lane_push TargetOf) instead of letting it die to
  * our T1. The trigger is the event, never the reason (logged as `why`).
- * - `hold`: the target point is lane_spot's named input `hold`; the body keeps last hitting from that spot.
- * - `drag`: an enemy hero threatens the core (lane_spot HeroReach) and our next wave is far enough that their creeps can be
- *   taken behind our T1 first: lane_aggro's draw `back` walks them there to meet it.
+ * The branch (user 08/11/2026, from drill `hold`: a lone core in front of their whole wave lost 40-90% HP in 20 s):
+ * - `hold`: the wave's expected damage on the core until our creeps reach the hold point is within TankShare of its max HP
+ *   (our creeps arrive soon, or the core can soak it); the target point is lane_spot's named input `hold`; the body keeps
+ *   last hitting from that spot.
+ * - `drag`: otherwise, when our next wave is far enough that their creeps can be taken behind our T1 first: lane_aggro's
+ *   draw `back` walks them there to meet it.
+ * - otherwise the attempt ends `concede`: their wave reaches our T1 and the core last hits under it.
  * - `retreat`: OHA's retreat took the core.
  * Two starts (logged as `trig`, decided 06/11/2026 from obs0611 marks 4 and 5): `gone`, our wave is gone from the lane outside
  * our T1's range; `forecast`, our wave is still fighting theirs at or inside the hold point and lane_push's run has their front
@@ -117,7 +121,15 @@ export const SETTINGS = {
     HoldDrawLead: 1,
     HoldNear: 300,
     HoldDrawOut: 150,
+    /** The hold's budget: the wave's expected damage on the core until our creeps reach the hold point, as a share of its max
+     *  HP (`judgement`, under HurtShare so a hold that goes as expected does not end `hurt`). */
+    TankShare: 0.15,
+    /** Fallback only: a lane creep's seconds per attack (base attack time 1.0, npc_units.txt), read live by GetSecondsPerAttack. */
+    CreepSpa: 1,
 };
+
+/** API reads not in the typings (the Valve bot API has them). */
+type Attacker = Unit & { GetSecondsPerAttack?(): number; GetArmor?(): number; IsTower?(): boolean };
 
 export type Branch = "hold" | "drag" | "retreat";
 
@@ -186,9 +198,27 @@ export function TowerIn(samples: LanePush.Sample[], t1: number, dir: number, ene
  * Pure: the branch (user 05/11/2026). `threat` an enemy hero's move on the core; `near` seconds until our next wave reaches the
  * hold point; `need` seconds the drag needs; `behind` seconds until our next wave reaches the drag's point.
  */
-export function Choose(threat: boolean, near: number, need: number, behind: number): Branch {
-    if (!threat || near <= SETTINGS.NearSecs) return "hold";
-    return need + SETTINGS.DragMargin <= behind ? "drag" : "hold";
+export function Choose(cost: number, budget: number, need: number, behind: number): Branch | "concede" {
+    if (cost <= budget) return "hold";
+    return need + SETTINGS.DragMargin <= behind ? "drag" : "concede";
+}
+
+/** Pure: seconds the core stands as their wave's target at the hold point `hd` before our creeps get there: our creeps' time
+ *  to the hold point `near` less their front's walk to it. */
+export function TankSecs(near: number, front: number, hd: number): number {
+    return math.max(0, near - math.max(0, front - hd) / creepSpeed());
+}
+
+/** Pure: the physical damage a unit with armor `a` takes per point dealt (Dota's armor formula, 1 - 0.06a / (1 + 0.06|a|)). */
+export function ArmorMult(a: number): number {
+    return 1 - (0.06 * a) / (1 + 0.06 * math.abs(a));
+}
+
+/** Pure: the wave's damage per second on one target, from each creep's attack damage and seconds per attack. */
+export function WaveDps(creeps: { dmg: number; spa: number }[], armorMult: number): number {
+    let s = 0;
+    for (const c of creeps) if (c.spa > 0) s += c.dmg / c.spa;
+    return s * armorMult;
 }
 
 /** Pure: seconds until our next wave reaches the hold point, from the spawn schedule's `schedule` and the straight-line
@@ -272,6 +302,10 @@ interface Attempt {
     nb?: number;
     nl?: number;
     lv?: number;
+    /** At the last branch read: tank seconds, expected damage, budget. */
+    tk?: number;
+    cost?: number;
+    bud?: number;
     thr?: number;
     hp0: number;
     hpMin: number;
@@ -422,6 +456,9 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["nb", a.nb !== undefined ? math.floor(a.nb * 10) / 10 : undefined],
         ["nl", a.nl !== undefined ? math.floor(a.nl * 10) / 10 : undefined],
         ["lv", a.lv],
+        ["tk", a.tk !== undefined ? math.floor(a.tk * 10) / 10 : undefined],
+        ["cost", a.cost !== undefined ? math.floor(a.cost) : undefined],
+        ["bud", a.bud !== undefined ? math.floor(a.bud) : undefined],
         ["thr", a.thr],
         ["sw", a.sw],
         ["hp", math.floor((a.hp0 / math.max(1, bot.GetMaxHealth())) * 100) / 100],
@@ -497,6 +534,22 @@ function skip(bot: Unit, v: LaneView, why: string, front: number, n: number, rea
         if (o < SETTINGS.TowerR) oin++;
         else on++;
     }
+    // ours: the first creep of ours that keeps the start off (Read's rule), its distance and what it attacks
+    let ob: number | undefined;
+    let obt: string | undefined;
+    if (why === "ours" || why === "ours_far") {
+        const w = Stretch(v.theirs, LanePush.TargetOf(bot.GetAssignedLane()));
+        for (let i = 0; i < v.mine.length; i++) {
+            const o = v.mine[i].own;
+            if (o < SETTINGS.TowerR && v.busy[i]) continue;
+            if (o >= -SETTINGS.OursBehind && o <= w.rear + SETTINGS.OursAhead) {
+                ob = o;
+                const t = v.mine[i].u.GetAttackTarget();
+                obt = t === undefined || t === null || t.IsNull() ? "none" : t.IsHero() ? "hero" : (t as Attacker).IsTower?.() === true ? "tower" : LanePush.IsLaneCreep(t.GetUnitName()) ? "lane" : "other";
+                break;
+            }
+        }
+    }
     Telemetry.Event("wave_hold_skip", [
         ["pid", bot.GetPlayerID()],
         ["lane", bot.GetAssignedLane()],
@@ -507,7 +560,18 @@ function skip(bot: Unit, v: LaneView, why: string, front: number, n: number, rea
         ["oin", oin],
         ["rch", math.floor(reach)],
         ["fc", fc !== undefined ? math.floor(fc * 10) / 10 : undefined],
+        ["ob", ob !== undefined ? math.floor(ob) : undefined],
+        ["obt", obt],
     ]);
+}
+
+/** Whether no creep of ours on the lane is fighting a lane creep or a hero (their wave is walking in unopposed). */
+function notOnWave(v: LaneView): boolean {
+    for (const m of v.mine) {
+        const t = m.u.GetAttackTarget();
+        if (t !== undefined && t !== null && !t.IsNull() && (t.IsHero() || LanePush.IsLaneCreep(t.GetUnitName()))) return false;
+    }
+    return true;
 }
 
 /** lane_push's run for the forecast start, at most every ForecastEvery per bot: seconds until their front is inside our T1's
@@ -544,8 +608,13 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
     let fc: number | undefined;
     if (typeof r === "string") {
         if (r !== "ours" && r !== "late") return undefined;
-        // Only a wave near the hold point is worth a line or a forecast: further out the lanes are just fighting.
-        if (w.front > math.max(tgt, reach + SETTINGS.LateMargin) + SETTINGS.ForecastAhead) return undefined;
+        // Only a wave near the hold point is worth a line or a forecast: further out the lanes are just fighting. A creep of
+        // ours that keeps the start off while no creep of ours is on their wave is logged (`ours_far`; drill hold: holds
+        // first read their front already late).
+        if (w.front > math.max(tgt, reach + SETTINGS.LateMargin) + SETTINGS.ForecastAhead) {
+            if (r === "ours" && notOnWave(v)) skip(bot, v, "ours_far", w.front, w.n, reach, now);
+            return undefined;
+        }
         if (r === "late") {
             skip(bot, v, "late", w.front, w.n, reach, now);
             return undefined;
@@ -641,21 +710,25 @@ export function Step(bot: Unit): void {
 
     const threat = threatOf(bot, a.hold);
     if (threat !== undefined) a.thr = threat.GetPlayerID();
+    const wave: { dmg: number; spa: number }[] = [];
+    for (const x of v.units) if (x.own >= -SETTINGS.OursBehind - a.bd && x.own <= a.tgt + SETTINGS.StartAhead) wave.push({ dmg: x.u.GetAttackDamage(), spa: (x.u as Attacker).GetSecondsPerAttack?.() ?? SETTINGS.CreepSpa });
+    const dps = WaveDps(wave, ArmorMult((bot as Attacker).GetArmor?.() ?? 0));
+    a.bud = SETTINGS.TankShare * bot.GetMaxHealth();
     const live = walkingTo(a.hold);
     a.nl = live.length > 0 ? Near(math.huge, live) : undefined;
     const sched = LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 + v.dir * a.tgt, now) - now;
     const near = Near(sched, live);
+    a.tk = TankSecs(near, front, a.hd);
+    a.cost = dps * a.tk;
     a.ds = DragSecs(math.max(0, front), a.bd);
     a.nb = math.min(LanePush.NextArrival(v.path, bot.GetTeam(), v.t1 - v.dir * a.bd, now) - now, OursAtBehind(v.ours, a.bd, front));
     // A drag under way is lane_aggro's until its walk ends, and once behind our T1 the core waits there for our wave: the
     // branch is not read again meanwhile.
     const dragging = a.br === "drag" && (LaneAggro.Acting(bot) || GetUnitToLocationDistance(bot, a.behind) <= SETTINGS.Arrived);
-    const br = dragging ? "drag" : Choose(threat !== undefined, near, a.ds, a.nb);
-    if (br === "hold" && !dragging && Choose(threat !== undefined, sched, a.ds, a.nb) === "drag") a.lv = 1;
-    if (br === "drag" && !dragging && !LaneAggro.StartBack(bot, a.behind)) {
-        if (a.br !== "hold") a.sw++;
-        a.br = "hold";
-    } else if (br !== a.br) {
+    const br = dragging ? "drag" : Choose(a.cost, a.bud, a.ds, a.nb);
+    if (br === "hold" && !dragging && Choose(dps * TankSecs(sched, front, a.hd), a.bud, a.ds, a.nb) !== "hold") a.lv = 1;
+    if (br === "concede" || (br === "drag" && !dragging && !LaneAggro.StartBack(bot, a.behind))) return finish(bot, a, "concede", now);
+    if (br !== a.br) {
         a.sw++;
         a.br = br;
     }
