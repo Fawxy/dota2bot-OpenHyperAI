@@ -64,15 +64,18 @@ export const SETTINGS = {
     BreakEvery: 1,
     /** Lever sizes: the clash's move at the horizon against the plain forecast on waves where the lever ran, net of the
      *  no-swing waves (hlog @lever_effect on the lever's drill; never on check runs, whose enemy laners are our own bots).
-     *  Each is capped at the room before the tower it moves towards (LeverEffect). FeedSize and SetupSize are `judgement`
-     *  (lane-only turns the feed off; no drill reached a `forward` wave for the setup). */
+     *  Each is capped at the room before the tower it moves towards (LeverEffect); each lever drill pairs its forced arm
+     *  with a no-lever arm on the same seed (hlog @lever_pair). */
     /** Drill `lane-spot` paired with its PreDeny-off arm (same seed, 17 waves, 45 pre-deny swings): +60 +- 250, no
      *  measurable move of the clash. The idle swing pre-denies whatever the choice (mode `safe`); a zero lever is never
      *  chosen, so the pre-deny no longer stands in for a lever that moves the lane. */
     PreDenySize: 0,
+    /** `judgement`, unresolved by its drill: `lever-feed` against `lever-feed-off` (Dire pos3 a statue, 17 waves, 12 feeds)
+     *  -10 +- 396, which neither confirms nor rejects 300. */
     FeedSize: 300,
-    /** The idle swing's `setup` (an enemy creep hit into our last-hit range), towards their T1. */
-    SetupSize: 300,
+    /** The idle swing's `setup` (an enemy creep hit into our last-hit range), towards their T1: drill `lever-setup` paired
+     *  with `lever-none` (same seed, 17 waves, 9.3 swings a wave against 3.2): +1,128 +- 260. */
+    SetupSize: 1100,
     /** Uncontested, as R5 shoves (their laners away): drills `shove` +1,673 against -3 on the control, `shove-statue`
      *  +1,590 against -57 (team-bots 424a6f79, 09/11/2026). Used for R4 too: a contested size is not measured (user
      *  09/11/2026: every enemy laner a drill can field runs our own script), and R4 is graded on its crash rate. */
