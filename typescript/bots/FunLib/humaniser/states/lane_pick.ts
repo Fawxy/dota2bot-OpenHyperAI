@@ -38,9 +38,17 @@ export function IsRanged(this: void, c: Lib.TaskCreep): boolean {
     return string.find(name, "ranged", 1, true)[0] !== undefined || string.find(name, "siege", 1, true)[0] !== undefined;
 }
 
-function reachable(t: Lib.Verbs.LaneTarget): boolean {
+/**
+ * `far`, when given, says whether a last hit beyond MAX_WALK may still be walked to (states/contest: a melee core's priced
+ * walk-in); it is asked only for such creeps, and the creep must still outlive the walk and a swing.
+ */
+export type Far = (this: void, t: Lib.Verbs.LaneTarget) => boolean;
+
+function reachable(t: Lib.Verbs.LaneTarget, far?: Far): boolean {
     if (t.walk <= 0) return true;
-    return t.walk <= MAX_WALK && t.walk + ARRIVE_SLACK < t.dies;
+    if (t.walk + ARRIVE_SLACK >= t.dies) return false;
+    if (t.walk <= MAX_WALK) return true;
+    return far !== undefined && t.kind === "lasthit" && far(t);
 }
 /** A creep with eta at or under this is killable now (about one body step, 0.167 s in game). `judgement`. */
 export const DUE_NOW = 0.2;
@@ -74,8 +82,9 @@ export function Choose(
     mine?: (this: void, t: Lib.Verbs.LaneTarget) => boolean,
     pre?: Lib.Verbs.LaneTarget,
     idle?: (this: void) => Lib.Verbs.LaneTarget | undefined,
+    far?: Far,
 ): Lib.Verbs.LaneTarget | undefined {
-    const chosen = choose(targets, current, mine, pre);
+    const chosen = choose(targets, current, mine, pre, far);
     if (chosen === undefined && current === undefined && idle !== undefined) return idle();
     return chosen;
 }
@@ -85,11 +94,12 @@ function choose(
     current: Lib.Verbs.LaneTarget | undefined,
     mine: ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined,
     pre: Lib.Verbs.LaneTarget | undefined,
+    far: Far | undefined,
 ): Lib.Verbs.LaneTarget | undefined {
     if (pre !== undefined) {
         let other = false;
         for (const t of targets) {
-            if (t.kind === "lasthit" && t.creep !== pre.creep && (mine === undefined || mine(t)) && reachable(t)) other = true;
+            if (t.kind === "lasthit" && t.creep !== pre.creep && (mine === undefined || mine(t)) && reachable(t, far)) other = true;
         }
         if (!other) return pre;
     }
@@ -99,7 +109,7 @@ function choose(
     for (const t of targets) {
         if (mine !== undefined && !mine(t)) continue;
         if (current !== undefined && t.creep === current.creep) cur = t;
-        if (!reachable(t)) continue;
+        if (!reachable(t, far)) continue;
         // A deny's key is pushed past any last hit's (eta is seconds, never near DENY_OFFSET), so denies win only alone.
         const key = t.eta - (t.ranged ? RANGED_BIAS : 0) + (t.kind === "lasthit" ? 0 : DENY_OFFSET);
         if (key < bestKey) {

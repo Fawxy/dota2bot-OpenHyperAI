@@ -276,6 +276,33 @@ do
         on[1] ~= nil and on[1].reason == "interrupted" and on[1].msg:find("sw=0") ~= nil and on[1].at < 0.5 + 0.3)
     local off, _, label = released(false)
     T.check("released, no dropLost: undefined keeps the wait (still in the attempt, none ended)", off[1] == nil and label == "lasthit", label)
+    -- Slice contest-walkin: a dropLost function is asked with the waited-on target; it releases only the attempts it answers true for.
+    local asked
+    local fon, fa = released(function(cur) asked = cur.creep return true end)
+    T.check("released, dropLost function true: ended sw=0", fon[1] ~= nil and fon[1].msg:find("sw=0") ~= nil)
+    T.eq("released, dropLost function: asked with the waited-on creep", asked, fa)
+    local foff, _, flabel = released(function() return false end)
+    T.check("released, dropLost function false: keeps the wait", foff[1] == nil and flabel == "lasthit", flabel)
+end
+
+-- Slice contest-walkin: `radius` reaches laneTargets. A due creep 1,000 from a melee bot (default radius 800) is not offered;
+-- with radius 1,200 the bot goes for it.
+local function far(radius)
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(9), skill = function() return 1 end, attackClock = function() return sim.t end })
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 48, attackPoint = 0.4, speed = 310, team = 2 }
+    local a = sim:addCreep{ x = 1000, y = 0, hp = 160, maxHp = 300, team = 3, passive = true, name = "npc_dota_creep_badguys_melee" }
+    sim:addCreep{ x = 1000, y = 200, team = 2, damage = 30, attackPoint = 0.467, autoAttack = true, secondsPerAttack = 1,
+        firstSwingAt = 0, attackTarget = a, passive = true }
+    local picked
+    local g = V.laneFarm(bot, function() return { x = 0, y = 0 } end, { radius = radius, within = 5, leash = 2000,
+        pick = function(targets) for _, t in ipairs(targets) do if t.creep == a then picked = true end end return soonest(targets) end })
+    for _ = 1, math.floor(0.5 / DT) do g:next() sim:step(DT) end
+    return picked
+end
+do
+    T.check("radius: default 800 does not offer a creep 1,000 away", not far(nil))
+    T.check("radius 1,200: offered", far(1200) == true)
 end
 
 -- A gap in the steps: the host stops stepping laneFarm for 25 s (the bot in another mode, a job for one) with an attempt open.

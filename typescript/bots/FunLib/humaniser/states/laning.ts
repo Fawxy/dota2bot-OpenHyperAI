@@ -20,6 +20,7 @@ import * as LaneClaims from "bots/FunLib/humaniser/states/lane_claims";
 import * as PreHit from "bots/FunLib/humaniser/states/pre_hit";
 import * as IdleSwing from "bots/FunLib/humaniser/states/idle_swing";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
+import * as Contest from "bots/FunLib/humaniser/states/contest";
 
 export const NAME = "laning";
 
@@ -216,15 +217,81 @@ function placeOf(pid: number, creep: Lib.TaskCreep): [number | undefined, number
 /** The idle swing the body last picked, per bot, so its phase label and attempt line name it (states/idle_swing). */
 const idlePicks: Record<number, Lib.Verbs.LaneTarget | undefined> = {};
 
+/** The price of each creep the pick last asked `far` about, per bot, so a chosen walk-in starts with the price it was chosen on. */
+const farPrices: Record<number, { creep: Lib.TaskCreep; price: Contest.Price }[] | undefined> = {};
+
+/** Ours.CoreContest: a melee core may walk past MAX_WALK to a last hit whose walk-in price passes (states/contest). */
+function farFor(bot: Unit): LanePick.Far | undefined {
+    if (!Contest.Applies(bot)) return undefined;
+    const pid = bot.GetPlayerID();
+    const asked: { creep: Lib.TaskCreep; price: Contest.Price }[] = [];
+    farPrices[pid] = asked;
+    return (t) => {
+        if (t.walk > Contest.CONTEST_WALK || Contest.Refused(pid, t.creep)) return false;
+        const price = Contest.PriceFor(bot, t);
+        asked.push({ creep: t.creep, price });
+        if (!price.ok && Contest.NoteSkip(pid, t.creep, price.why)) logSkip(bot, t, price, "pick");
+        return price.ok;
+    };
+}
+
+function logSkip(bot: Unit, t: Lib.Verbs.LaneTarget, price: Contest.Price, at: string): void {
+    Telemetry.Event("contest_skip", [
+        ["pid", bot.GetPlayerID()],
+        ["at", at],
+        ["why", price.why],
+        ["cc", math.floor(price.cost * 1000) / 10],
+        ["n", price.heroes],
+        ["ex", math.floor(price.exposure * 100) / 100],
+        ["walk", math.floor(t.walk * 100) / 100],
+        ["dies", t.dies === math.huge ? -1 : math.floor(t.dies * 100) / 100],
+        ["hf", math.floor((bot.GetHealth() / math.max(bot.GetMaxHealth(), 1)) * 100) / 100],
+    ]);
+}
+
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
-    const mine = claimsFor(bot);
+    const pid = bot.GetPlayerID();
+    const claims = claimsFor(bot);
+    const far = farFor(bot);
+    // A creep whose walk-in the price released is not picked again: from nearer, the plain reach rule would take it unpriced.
+    const mine: ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined =
+        far === undefined ? claims : (t) => !Contest.Refused(pid, t.creep) && (claims === undefined || claims(t));
     let idle: Lib.Verbs.LaneTarget | undefined;
-    const chosen = LanePick.Choose(targets, current, mine, pre, () => {
-        const verbs = Tasks.Verbs();
-        idle = verbs !== undefined ? IdleSwing.Find(bot, verbs, mine) : undefined;
-        return idle;
-    });
-    idlePicks[bot.GetPlayerID()] = idle !== undefined && chosen === idle ? idle : undefined;
+    const chosen = LanePick.Choose(
+        targets,
+        current,
+        mine,
+        pre,
+        () => {
+            const verbs = Tasks.Verbs();
+            idle = verbs !== undefined ? IdleSwing.Find(bot, verbs, mine) : undefined;
+            return idle;
+        },
+        far,
+    );
+    idlePicks[pid] = idle !== undefined && chosen === idle ? idle : undefined;
+    return chosen;
+}
+
+/**
+ * A walk-in starts when the pick chose a last hit beyond MAX_WALK; while it runs its price is read again every scan, and a
+ * price that no longer passes (a second hero came, HP fell) releases the attempt through laneFarm's dropLost.
+ */
+function contestPick(bot: Unit, chosen: Lib.Verbs.LaneTarget | undefined, current: Lib.Verbs.LaneTarget | undefined): Lib.Verbs.LaneTarget | undefined {
+    const pid = bot.GetPlayerID();
+    if (current !== undefined && Contest.Running(pid, current.creep) !== undefined && (chosen === undefined || chosen.creep === current.creep)) {
+        const price = Contest.PriceFor(bot, current);
+        if (!price.ok) {
+            Contest.Refuse(pid, current.creep);
+            if (Contest.NoteSkip(pid, current.creep, price.why)) logSkip(bot, current, price, "walk");
+            return undefined;
+        }
+    }
+    if (chosen !== undefined && chosen.kind === "lasthit" && chosen.walk > LanePick.MAX_WALK && Contest.Running(pid, chosen.creep) === undefined) {
+        for (const fp of farPrices[pid] ?? []) {
+            if (fp.creep === chosen.creep) Contest.Start(pid, chosen.creep, fp.price, bot.GetHealth(), DotaTime());
+        }
+    }
     return chosen;
 }
 
@@ -313,7 +380,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         pick: (targets, current) => {
             const verbs = Tasks.Verbs();
             const pre = verbs !== undefined ? PreHit.Find(bot, verbs) : undefined;
-            const chosen = choose(bot, targets, current, pre);
+            const chosen = contestPick(bot, choose(bot, targets, current, pre), current);
             noteYield(bot, targets, current, pre, chosen);
             if (chosen !== undefined) noteSeen(bot.GetPlayerID(), chosen.creep);
             // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
@@ -340,7 +407,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         retarget: true,
         // A support stops waiting on a creep the others will kill before its swing lands (sdp1: 15 of 90 lost denies), so
         // the body hands the frame back instead of holding on (D5): to its hold step on our spot, or to OHA's positioning and harass.
-        dropLost: OwnsSupportHits(bot),
+        dropLost: (cur) => OwnsSupportHits(bot) || Contest.Running(bot.GetPlayerID(), cur.creep) !== undefined,
+        radius: Contest.Applies(bot) ? Contest.RADIUS : undefined,
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             const idle = t.kind === "prehit" ? IdleSwing.Of(bot.GetPlayerID(), t.creep) : undefined;
@@ -398,6 +466,8 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             }
             const claim = OwnsSupportHits(bot) ? claimOf(bot.GetPlayerID(), t.creep) : undefined;
             const [cx, cy, ca] = placeOf(bot.GetPlayerID(), t.creep);
+            const walkIn = Contest.Finish(bot.GetPlayerID(), t.creep);
+            const maxHp = math.max(bot.GetMaxHealth(), 1);
             Telemetry.Event("lh", [
                 ["pid", bot.GetPlayerID()],
                 ["kind", t.kind],
@@ -418,6 +488,10 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                 ["ph", t.kind === "lasthit" && wasPreHit(bot.GetPlayerID(), t.creep) ? true : undefined],
                 ["pre", t.kind === "deny" ? IdleSwing.SpentOn(bot.GetPlayerID(), t.creep) : undefined],
                 ["yd", yieldOf(bot.GetPlayerID())],
+                ["cw", walkIn !== undefined ? true : undefined],
+                ["cc", walkIn !== undefined ? math.floor(walkIn.price.cost * 1000) / 10 : undefined],
+                ["cn", walkIn?.price.heroes],
+                ["dh", walkIn !== undefined ? math.floor(((walkIn.hp - bot.GetHealth()) / maxHp) * 1000) / 10 : undefined],
                 ["msg", res.message],
             ]);
         },

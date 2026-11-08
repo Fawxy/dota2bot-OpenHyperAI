@@ -1,17 +1,23 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local reachable, choose, DENY_OFFSET
-function reachable(t)
+function reachable(t, far)
     if t.walk <= 0 then
         return true
     end
-    return t.walk <= ____exports.MAX_WALK and t.walk + ____exports.ARRIVE_SLACK < t.dies
+    if t.walk + ____exports.ARRIVE_SLACK >= t.dies then
+        return false
+    end
+    if t.walk <= ____exports.MAX_WALK then
+        return true
+    end
+    return far ~= nil and t.kind == "lasthit" and far(t)
 end
-function choose(targets, current, mine, pre)
+function choose(targets, current, mine, pre, far)
     if pre ~= nil then
         local other = false
         for ____, t in ipairs(targets) do
-            if t.kind == "lasthit" and t.creep ~= pre.creep and (mine == nil or mine(t)) and reachable(t) then
+            if t.kind == "lasthit" and t.creep ~= pre.creep and (mine == nil or mine(t)) and reachable(t, far) then
                 other = true
             end
         end
@@ -24,17 +30,17 @@ function choose(targets, current, mine, pre)
     local cur
     for ____, t in ipairs(targets) do
         do
-            local __continue15
+            local __continue17
             repeat
                 if mine ~= nil and not mine(t) then
-                    __continue15 = true
+                    __continue17 = true
                     break
                 end
                 if current ~= nil and t.creep == current.creep then
                     cur = t
                 end
-                if not reachable(t) then
-                    __continue15 = true
+                if not reachable(t, far) then
+                    __continue17 = true
                     break
                 end
                 local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
@@ -42,9 +48,9 @@ function choose(targets, current, mine, pre)
                     bestKey = key
                     best = t
                 end
-                __continue15 = true
+                __continue17 = true
             until true
-            if not __continue15 then
+            if not __continue17 then
                 break
             end
         end
@@ -107,8 +113,14 @@ ____exports.SWITCH_GAP = 0.5
 -- `idle` finds the idle swing (states/idle_swing: a pre-deny or a shove; asked lazily, its search reads forecasts): taken only
 -- when nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit (lane controller design
 -- s5.6, user 06/11/2026).
-function ____exports.Choose(targets, current, mine, pre, idle)
-    local chosen = choose(targets, current, mine, pre)
+function ____exports.Choose(targets, current, mine, pre, idle, far)
+    local chosen = choose(
+        targets,
+        current,
+        mine,
+        pre,
+        far
+    )
     if chosen == nil and current == nil and idle ~= nil then
         return idle()
     end
@@ -121,10 +133,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue25
+            local __continue27
             repeat
                 if not reachable(t) then
-                    __continue25 = true
+                    __continue27 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -135,9 +147,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue25 = true
+                __continue27 = true
             until true
-            if not __continue25 then
+            if not __continue27 then
                 break
             end
         end
