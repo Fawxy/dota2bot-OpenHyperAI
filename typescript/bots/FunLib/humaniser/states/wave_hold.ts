@@ -127,11 +127,13 @@ export const SETTINGS = {
     TankShare: 0.15,
     /**
      * The share of the wave's full damage (every creep in the stretch on the core at its attack rate, after the core's armor)
-     * a holding core is taken to lose before it has been hit: fitted to banked holds before the cost rule (lctl9-lctl11, 133
-     * 5v5 holds of 2 s or more: 1.5-2.2 HP a second per creep of theirs, against about 18 at full rate; the lone drill core,
-     * ldr23-ldr31, 16 holds: 3.7-4.3). Our creeps, allies and the walk-in share the aggro. Once hit, the seen rate replaces it.
+     * a holding core is taken to lose before it has been hit: fitted to banked holds before the cost rule (lctl9-lctl11, 135
+     * 5v5 `hold` attempts of 2 s or more: 2.39 HP a second per creep of theirs over the seconds they could hit it, the
+     * attempt less their front's walk to the hold point, against about 18 at full rate; the lone drill core, ldr23-ldr31, 16
+     * holds: 3.7-4.3 over the whole attempt). Our creeps, allies and the walk-in share the aggro. Once hit, the seen rate
+     * replaces it.
      */
-    AggroShare: 0.11,
+    AggroShare: 0.13,
     /** Seconds of being hit before the seen HP loss rate replaces the fitted one. */
     SeenAfter: 1,
     /** Fallback only: a lane creep's seconds per attack (base attack time 1.0, npc_units.txt), read live by GetSecondsPerAttack. */
@@ -227,8 +229,9 @@ export function WaveDps(creeps: { dmg: number; spa: number }[], take: number): n
     return s * take;
 }
 
-/** Pure: the core's HP loss rate for the cost: the seen rate (`lost` since the first hit at `hitAt`) once hit for SeenAfter,
- *  else the wave's full rate times AggroShare. */
+/** Pure: the core's HP loss rate for the cost: the seen rate (`lost`, the HP lost since the read that saw the first hit at
+ *  `hitAt`, that hit itself not counted, so one volley does not read as a second's damage) once hit for SeenAfter, else the
+ *  wave's full rate times AggroShare. */
 export function LossRate(full: number, lost: number, hitAt: number | undefined, now: number): number {
     if (hitAt !== undefined && now - hitAt >= SETTINGS.SeenAfter) return math.max(0, lost) / (now - hitAt);
     return full * SETTINGS.AggroShare;
@@ -323,6 +326,8 @@ interface Attempt {
     rt?: number;
     rs?: string;
     hitAt?: number;
+    /** HP at the read that saw the first hit. */
+    hpHit?: number;
     /** Why a `concede` ended it: `cost` (over budget, no drag in time) or `drag` (the drag's draw did not start). */
     cr?: string;
     thr?: number;
@@ -737,8 +742,11 @@ export function Step(bot: Unit): void {
     const dps = WaveDps(wave, bot.GetActualIncomingDamage(100, DamageType.Physical) / 100);
     a.bud = SETTINGS.TankShare * bot.GetMaxHealth();
     const lost = math.max(0, a.hp0 - bot.GetHealth());
-    if (a.hitAt === undefined && lost > 0) a.hitAt = now;
-    a.rt = LossRate(dps, lost, a.hitAt, now);
+    if (a.hitAt === undefined && lost > 0) {
+        a.hitAt = now;
+        a.hpHit = bot.GetHealth();
+    }
+    a.rt = LossRate(dps, (a.hpHit ?? bot.GetHealth()) - bot.GetHealth(), a.hitAt, now);
     a.rs = a.hitAt !== undefined && now - a.hitAt >= SETTINGS.SeenAfter ? "seen" : "fit";
     const live = walkingTo(a.hold);
     a.nl = live.length > 0 ? Near(math.huge, live) : undefined;

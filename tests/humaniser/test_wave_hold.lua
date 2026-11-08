@@ -109,7 +109,10 @@ check("four lane creeps: 87 x 0.85 a second at full rate", near(full, 87 * 0.85)
 local dps = W.LossRate(full, 0, nil, 100)
 check("not hit yet: the fitted share of it", near(dps, full * W.SETTINGS.AggroShare), dps)
 check("hit 0.5 s ago: still fitted", near(W.LossRate(full, 10, 99.5, 100), full * W.SETTINGS.AggroShare))
-check("hit for 2 s and 32 HP lost: the seen 16 a second (the lone drill core's hurt holds)", near(W.LossRate(full, 32, 98, 100), 16))
+check("hit for 2 s and 32 HP lost since: the seen 16 a second (the lone drill core's hurt holds)", near(W.LossRate(full, 32, 98, 100), 16))
+-- Review 2026-11-08-wave-hold-cost-5ec9d45b N1: four creeps hitting once a second for 15 each; the first volley (60) lands at
+-- 100 and is not counted, so 1 s later the next volley reads 60 a second, not 120.
+check("one volley then 1 s more: the seen rate is the true 60, not twice it", near(W.LossRate(full, 60, 100, 101), 60))
 check("their front 1,500 out, hold point 910, our creeps 20 s off: about 18 s as their target", near(W.TankSecs(20, 1500, 910), 20 - 590 / 325), W.TankSecs(20, 1500, 910))
 check("our creeps there before their front: 0 s", W.TankSecs(1, 1500, 910) == 0)
 check("our creeps 10 s off: about 8 s at the fitted rate (about 67) fits a 93 budget, so it holds; 20 s off it does not", W.Choose(dps * W.TankSecs(10, 1500, 910), 0.15 * 620, 30, 12) == "hold" and W.Choose(dps * W.TankSecs(20, 1500, 910), 0.15 * 620, 30, 12) == "concede", dps * W.TankSecs(10, 1500, 910))

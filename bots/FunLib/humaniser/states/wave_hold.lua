@@ -91,7 +91,7 @@ ____exports.SETTINGS = {
     HoldNear = 300,
     HoldDrawOut = 150,
     TankShare = 0.15,
-    AggroShare = 0.11,
+    AggroShare = 0.13,
     SeenAfter = 1,
     CreepSpa = 1
 }
@@ -221,8 +221,9 @@ function ____exports.WaveDps(creeps, take)
     end
     return s * take
 end
---- Pure: the core's HP loss rate for the cost: the seen rate (`lost` since the first hit at `hitAt`) once hit for SeenAfter,
--- else the wave's full rate times AggroShare.
+--- Pure: the core's HP loss rate for the cost: the seen rate (`lost`, the HP lost since the read that saw the first hit at
+-- `hitAt`, that hit itself not counted, so one volley does not read as a second's damage) once hit for SeenAfter, else the
+-- wave's full rate times AggroShare.
 function ____exports.LossRate(full, lost, hitAt, now)
     if hitAt ~= nil and now - hitAt >= ____exports.SETTINGS.SeenAfter then
         return math.max(0, lost) / (now - hitAt)
@@ -1114,8 +1115,14 @@ function ____exports.Step(bot)
     )
     if a.hitAt == nil and lost > 0 then
         a.hitAt = now
+        a.hpHit = bot:GetHealth()
     end
-    a.rt = ____exports.LossRate(dps, lost, a.hitAt, now)
+    a.rt = ____exports.LossRate(
+        dps,
+        (a.hpHit or bot:GetHealth()) - bot:GetHealth(),
+        a.hitAt,
+        now
+    )
     a.rs = a.hitAt ~= nil and now - a.hitAt >= ____exports.SETTINGS.SeenAfter and "seen" or "fit"
     local live = walkingTo(a.hold)
     a.nl = #live > 0 and ____exports.Near(math.huge, live) or nil
