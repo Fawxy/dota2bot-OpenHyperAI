@@ -1,4 +1,4 @@
--- Pull drills (bot humaniser/drill.ts `pull`, `core-pull`; master slices/lane-controller.md "Drills"): one row per pull slot
+-- Pull drills (bot humaniser/drill.ts `pull`, `core-pull`, `pull-statue`; master slices/lane-controller.md "Drills"): one row per pull slot
 -- the drill decided, in games whose file matches :like. `input` on (ev=choice kind=pull rule=drill) or off (why=drill, the
 -- control); `go` and `why` the pull's start (a refused input-on rep names its own gate); `res` and `why_end` the pull job's
 -- result for that slot (NULL when it never started); `div` its diverted share. Joined to the lane controller's decision
