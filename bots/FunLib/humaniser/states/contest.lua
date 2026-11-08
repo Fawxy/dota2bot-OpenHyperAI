@@ -33,15 +33,15 @@ ____exports.WALK_SLACK = 1.5
 ____exports.HP_FLOOR = 0.5
 --- Seconds of the enemy hero's movement added to its attack reach: it steps in on a walk-in (`judgement`; the spot's REACT_SECS is 1.5 for standing).
 ____exports.STEP_IN = 0.5
---- A ready nuke counts when the creep lies within its cast range plus this (`judgement`: a hero steps in to cast).
+--- A ready nuke counts when the stand point lies within its cast range plus this (`judgement`: a hero steps in to cast).
 ____exports.NUKE_SLACK = 200
 --- Enemy heroes further than this from the creep are not priced.
 local QUERY = 1600
 --- Our swing's own time in the zone when the API gives no attack point, s.
 local SWING_DEFAULT = 0.5
---- The walk-in's price, pure: each enemy whose zone covers the creep hits us for the seconds we stand inside it (walking the
+--- The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
 -- zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
--- more such heroes, or the creep inside an enemy tower's ring, refuse it outright.
+-- more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
 function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower, cap)
     if cap == nil then
         cap = ____exports.COST_CAP
@@ -197,13 +197,26 @@ local function towerAt(bot, at)
     end
     return false
 end
+--- Where the bot stands to swing at a creep at `at`: on the line from the bot to the creep, its attack range plus both bounding
+-- radii short of the creep (the bot's own spot when it is already that close). A melee core swings from its own side of the
+-- creep, often outside a zone that covers the creep itself, so zones are read here and not at the creep.
+function ____exports.StandPoint(from, at, reach)
+    local d = dist(from, at)
+    if d <= reach then
+        return from
+    end
+    local k = reach / d
+    return Vector(at.x + (from.x - at.x) * k, at.y + (from.y - at.y) * k, at.z)
+end
 --- The price of a walk-in for lane target `t` now; `running` prices one already under way (cost cap COST_CAP x WALK_SLACK).
 function ____exports.PriceFor(bot, t, running)
     if running == nil then
         running = false
     end
-    local at = t.creep:GetLocation()
-    if at == nil then
+    local creep = t.creep
+    local at = creep:GetLocation()
+    local from = bot:GetLocation()
+    if at == nil or from == nil then
         return {
             ok = false,
             why = "cost",
@@ -212,13 +225,18 @@ function ____exports.PriceFor(bot, t, running)
             exposure = 0
         }
     end
+    local stand = ____exports.StandPoint(
+        from,
+        at,
+        bot:GetAttackRange() + bot:GetBoundingRadius() + creep:GetBoundingRadius()
+    )
     local ____this_5
     ____this_5 = bot
     local ____opt_4 = ____this_5.GetAttackPoint
     local point = ____opt_4 and ____opt_4(____this_5)
     local swing = point ~= nil and point > 0 and point or SWING_DEFAULT
     return ____exports.PriceOf(
-        ____exports.ThreatsAt(bot, at),
+        ____exports.ThreatsAt(bot, stand),
         t.walk,
         math.max(0, t.eta - t.walk),
         swing,

@@ -56,6 +56,19 @@ do
 	check("price: the floor still releases a running walk-in", C.PriceOf(t, 2, 0.3, 0.4, 300, 380, 640, false, cap).why == "hp")
 end
 
+-- Threats are read where the core swings from, its reach short of the creep on its own side: a melee enemy (zone 150 + 48
+-- + 150 = 348) 300 behind the creep covers the creep but not a core swinging from 198 on the near side (498 away).
+do
+	local function d(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
+	local creep, enemy = Vector(0, 0), Vector(300, 0)
+	local stand = C.StandPoint(Vector(-600, 0), creep, 198)
+	check("stand: its reach short of the creep, toward the core (" .. stand.x .. ")", math.abs(stand.x + 198) < 0.01 and stand.y == 0)
+	local melee = function(dist) return { d = dist, zone = 348, dps = 50 / 1.7, nuke = 0 } end
+	check("stand: the enemy covers the creep", price({ melee(d(enemy, creep)) }).heroes == 1)
+	check("stand: but not where the core swings, so it costs nothing", price({ melee(d(enemy, stand)) }).heroes == 0)
+	check("stand: a core already in reach swings from where it is", C.StandPoint(Vector(-100, 0), creep, 198).x == -100)
+end
+
 -- Two walk-ins held at once (a retarget from one to another picks the next before the first reports): each is found and
 -- finished on its own creep.
 do
