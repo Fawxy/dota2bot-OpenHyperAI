@@ -857,7 +857,10 @@ ____exports.EVENTS = {
         closs = "num",
         away = "bool",
         why = "str",
-        ms = "num"
+        ms = "num",
+        ew = "str",
+        ewp = "num",
+        ewd = "num"
     },
     idle_swing = {
         pid = "num",

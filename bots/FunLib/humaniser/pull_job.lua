@@ -1935,6 +1935,18 @@ function ____exports.Wants(bot, blocked, host)
         )
         return false
     end
+    if d.rule == "ctl" then
+        local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
+        local live = LaneControl.DecisionFor(
+            bot:GetTeam(),
+            bot:GetAssignedLane(),
+            ____exports.PulledSpawn(p.slot)
+        )
+        if live ~= nil and not ____exports.CtlWants(live, pid) then
+            done(false, "ew")
+            return false
+        end
+    end
     camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type)
     camp.php = bot:GetHealth()
     local site = siteThreat(p, camp)
@@ -2015,6 +2027,14 @@ function ____exports.Finished(bot)
         at = e.at,
         div = share(e.pull)
     }) or nil
+end
+--- Whether `pid`'s pull of the wave spawned at `wave` is past changing: its slot settled (`handled`: it
+-- ran, or was refused, late or cancelled) or its pull running. A pull decided but waiting at a gate is not settled: `Wants`
+-- re-reads the controller's word for it. LaneControl.PullBreak breaks only an unsettled pull.
+function ____exports.Settled(pid, wave)
+    local slot = wave + 1
+    local r = running[pid]
+    return ____exports.SameWave(handled[pid], slot) or r ~= nil and ____exports.SameWave(r.plan.slot, slot)
 end
 function ____exports.NoteHit(bot)
     local p = running[bot:GetPlayerID()]

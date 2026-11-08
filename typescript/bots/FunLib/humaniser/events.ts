@@ -1057,7 +1057,16 @@ export const EVENTS = {
      * pids; dep seconds to the support's next departure; away 1 when their laners are known dead or elsewhere (R5); why a
      * decision with no reading; ms the reading's cost. Slice 4a: pby who the pull lever went to (sup|core; absent with no
      * puller), cwhy why the offlane pos3 did not take it (missing|loss|no_plan), cmiss the enemy heroes missing near its walk
-     * to the hard camp (CoreCamp MissingOf), closs the lane gold it would lose while away (CoreCamp LossBetween).
+     * to the hard camp (CoreCamp MissingOf), closs the lane gold it would lose while away (CoreCamp LossBetween). The missing wave:
+     * ew the enemy wave tracker's resolution taken at this read (enemy_wave.ts: one enemy wave followed at a time, its
+     * scheduled spot walked to our lead creep, resolved ArriveWindow s after it came due): p present (the visible enemy lane
+     * creep count rose RiseMin over its count before the window), a absent (no rise, and our lead creep stood at the spot
+     * for half the window: pulled, blocked or cut), u unknown (nobody there to see, the wave never came due, or nothing
+     * resolved since the last read); ewd that wave's seconds from spawn to due (absent when it never came due). ewp only on
+     * an `a` read with SkipPullOnMissingWave whose pull was on offer (rej pull:ew): 1 when Choose with the pull on offer would
+     * have taken it (the skip changed the set), 0 when the model refused it anyway; a pull refused for its own reason keeps
+     * that reason and no ewp. kind=break why=ew: an absent resolution between reads took this wave's live decision's pull
+     * (and the core's hold beside it) before the pull job's slot settled; the job then refuses `why=ew`.
      */
     lane_ctl: {
         team: "num",
@@ -1093,6 +1102,9 @@ export const EVENTS = {
         away: "bool",
         why: "str",
         ms: "num",
+        ew: "str",
+        ewp: "num",
+        ewd: "num",
     },
     /**
      * An owned laner's idle swing (states/idle_swing): one attack when the picker had no last hit, deny or pre-hit to offer.

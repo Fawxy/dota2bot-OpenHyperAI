@@ -1074,6 +1074,16 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         done(false, d.drill === true ? "drill" : d.ctl === true ? "ctl" : !isSupport(bot) ? "no_ctl" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
+    // A pull the controller wanted but that waits at a gate re-reads its word each frame, so a decision
+    // that lost its pull meanwhile (LaneControl.PullBreak, their wave absent) stops it here (`why=ew`).
+    if (d.rule === "ctl") {
+        const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
+        const live = LaneControl.DecisionFor(bot.GetTeam(), bot.GetAssignedLane(), PulledSpawn(p.slot));
+        if (live !== undefined && !CtlWants(live, pid)) {
+            done(false, "ew");
+            return false;
+        }
+    }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
     camp.php = bot.GetHealth();
     const site = siteThreat(p, camp);
@@ -1139,6 +1149,17 @@ export function Finished(bot: Unit): { camp: number; at: number; div: number } |
 
 export function Running(bot: Unit): boolean {
     return running[bot.GetPlayerID()] !== undefined;
+}
+
+/**
+ * Whether `pid`'s pull of the wave spawned at `wave` is past changing: its slot settled (`handled`: it
+ * ran, or was refused, late or cancelled) or its pull running. A pull decided but waiting at a gate is not settled: `Wants`
+ * re-reads the controller's word for it. LaneControl.PullBreak breaks only an unsettled pull.
+ */
+export function Settled(pid: number, wave: number): boolean {
+    const slot = wave + 1;
+    const r = running[pid];
+    return SameWave(handled[pid], slot) || (r !== undefined && SameWave(r.plan.slot, slot));
 }
 
 export function End(bot: Unit, why: string): void {

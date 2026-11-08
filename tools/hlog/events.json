@@ -436,6 +436,12 @@
    "nb": "num",
    "nl": "num",
    "lv": "num",
+   "tk": "num",
+   "cost": "num",
+   "bud": "num",
+   "rt": "num",
+   "rs": "str",
+   "cr": "str",
    "thr": "num",
    "sw": "num",
    "hp": "num",
@@ -452,7 +458,9 @@
    "on": "num",
    "oin": "num",
    "rch": "num",
-   "fc": "num"
+   "fc": "num",
+   "ob": "num",
+   "obt": "str"
   },
   "aggro_skip": {
    "pid": "num",
@@ -966,7 +974,10 @@
    "closs": "num",
    "away": "bool",
    "why": "str",
-   "ms": "num"
+   "ms": "num",
+   "ew": "str",
+   "ewp": "num",
+   "ewd": "num"
   },
   "idle_swing": {
    "pid": "num",
@@ -1539,10 +1550,13 @@
    "br": "text",
    "res": "text",
    "why": "text",
-   "trig": "text"
+   "trig": "text",
+   "rs": "text",
+   "cr": "text"
   },
   "ev_wave_hold_skip": {
-   "why": "text"
+   "why": "text",
+   "obt": "text"
   },
   "ev_aggro_skip": {
    "role": "text",
@@ -1752,7 +1766,8 @@
    "fit": "text",
    "pby": "text",
    "cwhy": "text",
-   "why": "text"
+   "why": "text",
+   "ew": "text"
   },
   "ev_idle_swing": {
    "kind": "text",
