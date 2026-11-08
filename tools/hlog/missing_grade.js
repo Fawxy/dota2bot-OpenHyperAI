@@ -37,6 +37,8 @@ const RULES = {
     margin300: { speed: 330, cap: 4000, margin: 300, after: 3 },
     cap2000: { speed: 330, cap: 2000, margin: 600, after: 3 },
     cap2000m300: { speed: 330, cap: 2000, margin: 300, after: 3 },
+    earlyTight: { speed: 330, cap: 4000, margin: 600, after: 3, early: { until: 240, cap: 1000, margin: 300 } },
+    earlyNone: { speed: 330, cap: 4000, margin: 600, after: 3, early: { until: 240, cap: 0, margin: 0 } },
     visionCut: { speed: 330, cap: 4000, margin: 600, after: 3, cut: true },
     visionCut2000: { speed: 330, cap: 2000, margin: 600, after: 3, cut: true },
 };
@@ -97,7 +99,8 @@ function run() {
                 o.agree = o.agree || { both: 0, onlyLogged: 0, onlyRebuilt: 0 };
                 const counted = info.filter(i => {
                     if (i.visibleNow || i.tss <= rule.after) return false;
-                    const reach = Math.min(rule.speed * i.tss, rule.cap) + rule.margin;
+                    const e = rule.early && row.t < rule.early.until ? rule.early : rule;
+                    const reach = Math.min(rule.speed * i.tss, e.cap) + e.margin;
                     if (distSeg(i.seen, walk[0], walk[1]) > reach) return false;
                     if (rule.cut) {
                         let open = false;
