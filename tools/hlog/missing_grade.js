@@ -43,8 +43,7 @@ const RULES = {
     visionCut2000: { speed: 330, cap: 2000, margin: 600, after: 3, cut: true },
 };
 
-function run() {
-    const store = new Store();
+function run(store = new Store()) {
     const db = (sql, ...a) => store.query(sql, ...a);
     const gl = games.length ? games : db('SELECT DISTINCT game_id g FROM ev_lane_ctl WHERE cmiss IS NOT NULL').map(r => r.g);
     const out = {};
@@ -136,30 +135,36 @@ function run() {
     return { rows: nRows, window: WINDOW, near: NEAR, rules: out, heroes: out.heroes, unseen: out.unseen };
 }
 
-const res = run();
-if (args.includes('--dump')) { require('fs').writeFileSync(args[args.indexOf('--dump') + 1], JSON.stringify(res.unseen)); process.exit(0); }
-if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
-else {
-    console.log(`rows ${res.rows} (core pull candidate evaluations), truth = enemy within ${res.near} of the walk within ${res.window} s`);
-    console.log('rule           refused  precision(rows)  perHero  precision(heroes)  allowed  enemy-showed-up');
-    console.log('live rebuilt vs logged cmiss>0:', JSON.stringify(res.rules.live.agree));
-    const bucket = (title, key, edges) => {
-        console.log(title);
-        for (let i = 0; i < edges.length - 1; i++) {
-            const h = (res.heroes || []).filter(x => x[key] >= edges[i] && x[key] < edges[i + 1]);
-            if (h.length) console.log(`  ${edges[i]}-${edges[i + 1]}: ${h.length} counted, ${(h.filter(x => x.present).length / h.length).toFixed(2)} truly near`);
+function main() {
+    const res = run();
+    if (args.includes('--dump')) { require('fs').writeFileSync(args[args.indexOf('--dump') + 1], JSON.stringify(res.unseen)); process.exit(0); }
+    if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
+    else {
+        console.log(`rows ${res.rows} (core pull candidate evaluations), truth = enemy within ${res.near} of the walk within ${res.window} s`);
+        console.log('rule           refused  precision(rows)  perHero  precision(heroes)  allowed  enemy-showed-up');
+        console.log('live rebuilt vs logged cmiss>0:', JSON.stringify(res.rules.live.agree));
+        const bucket = (title, key, edges) => {
+            console.log(title);
+            for (let i = 0; i < edges.length - 1; i++) {
+                const h = (res.heroes || []).filter(x => x[key] >= edges[i] && x[key] < edges[i + 1]);
+                if (h.length) console.log(`  ${edges[i]}-${edges[i + 1]}: ${h.length} counted, ${(h.filter(x => x.present).length / h.length).toFixed(2)} truly near`);
+            }
+        };
+        for (const c of [true, false]) {
+            const u = (res.unseen || []).filter(x => x.counted === c);
+            console.log(`unseen heroes ${c ? 'counted' : 'not counted'} by the live rule: ${u.length}, ${(u.filter(x => x.present).length / Math.max(1, u.length)).toFixed(2)} truly near the walk`);
         }
-    };
-    for (const c of [true, false]) {
-        const u = (res.unseen || []).filter(x => x.counted === c);
-        console.log(`unseen heroes ${c ? 'counted' : 'not counted'} by the live rule: ${u.length}, ${(u.filter(x => x.present).length / Math.max(1, u.length)).toFixed(2)} truly near the walk`);
+        bucket('live-counted heroes by seconds unseen (precision that the hero really came near the walk):', 'tss', [3, 8, 15, 30, 60, 1e9]);
+        bucket('by enemy position (pid within team + 1):', 'pos', [1, 2, 3, 4, 5, 6]);
+        bucket('by game minute (even minutes):', 'min', [0, 2, 4, 6, 8, 10, 12, 99]);
+        bucket('by last-seen distance to the walk (units):', 'd', [0, 600, 1200, 2000, 3000, 1e9]);
+        for (const [k, o] of Object.entries(res.rules).filter(([k]) => k !== 'heroes' && k !== 'unseen')) {
+            const f = (a, b) => (b ? (a / b).toFixed(2) : '-');
+            console.log(`${k.padEnd(14)} ${String(o.refused).padStart(7)}  ${f(o.refusedTrue, o.refused).padStart(15)}  ${String(o.perHero).padStart(7)}  ${f(o.perHeroTrue, o.perHero).padStart(16)}  ${String(o.allowed).padStart(7)}  ${f(o.allowedShow, o.allowed).padStart(15)} (${o.allowedShow})`);
+        }
     }
-    bucket('live-counted heroes by seconds unseen (precision that the hero really came near the walk):', 'tss', [3, 8, 15, 30, 60, 1e9]);
-    bucket('by enemy position (pid within team + 1):', 'pos', [1, 2, 3, 4, 5, 6]);
-    bucket('by game minute (even minutes):', 'min', [0, 2, 4, 6, 8, 10, 12, 99]);
-    bucket('by last-seen distance to the walk (units):', 'd', [0, 600, 1200, 2000, 3000, 1e9]);
-    for (const [k, o] of Object.entries(res.rules).filter(([k]) => k !== 'heroes')) {
-        const f = (a, b) => (b ? (a / b).toFixed(2) : '-');
-        console.log(`${k.padEnd(14)} ${String(o.refused).padStart(7)}  ${f(o.refusedTrue, o.refused).padStart(15)}  ${String(o.perHero).padStart(7)}  ${f(o.perHeroTrue, o.perHero).padStart(16)}  ${String(o.allowed).padStart(7)}  ${f(o.allowedShow, o.allowed).padStart(15)} (${o.allowedShow})`);
-    }
+
 }
+
+if (require.main === module) main();
+module.exports = { run, RULES };
