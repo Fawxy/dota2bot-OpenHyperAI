@@ -309,6 +309,24 @@ ____exports.TABLE = {
         rep = {every = 30, from = 60, control = 2},
         forces = "pull"
     },
+    ["pull-statue"] = {
+        note = "Radiant pos5 pulls each minute's wave, a statue otherwise; Dire pos3 and pos4 statues in the lane; the :30 wave unpulled",
+        cast = {r = {5}},
+        statue = {d = {3, 4}},
+        others = "bench",
+        castIdle = "statue",
+        rep = {every = 30, from = 60, control = 2},
+        forces = "pull"
+    },
+    ["shove-statue"] = {
+        note = "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), Dire pos3 a statue in the lane, everyone else benched",
+        cast = SAFE_CORE,
+        statue = {d = {3}},
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceShove = "r:bot"}
+    },
     shove = {
         note = "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), everyone else benched",
         cast = SAFE_CORE,
