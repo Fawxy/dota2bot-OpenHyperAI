@@ -351,7 +351,22 @@ ____exports.EVENTS = {
         apt = "num",
         md = "num",
         lbl = "str",
-        gap = "num"
+        gap = "num",
+        cd = "num",
+        cf = "num",
+        by = "str",
+        ml = "num",
+        ss = "num"
+    },
+    drag_look = {
+        pid = "num",
+        role = "str",
+        why = "str",
+        d = "num",
+        hd = "num",
+        due = "num",
+        ss = "num",
+        ml = "num"
     },
     wave_hold = {
         pid = "num",

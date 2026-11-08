@@ -44,7 +44,7 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local counter, roleOf, TowerOrderR, newAttempt
+local counter, roleOf, TowerOrderR, heroTally, newAttempt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -76,6 +76,12 @@ function roleOf(bot)
 end
 function TowerOrderR()
     return LaneConfig.TowerReach() + ____exports.SETTINGS.TowerOrderMargin
+end
+function heroTally(pid)
+    if GetHeroLastHits == nil or GetHeroDenies == nil then
+        return nil
+    end
+    return GetHeroLastHits(pid) + GetHeroDenies(pid)
 end
 function newAttempt(bot, kind, phase, hero, creep, back, approach, now)
     return {
@@ -154,6 +160,9 @@ ____exports.SETTINGS = {
 local attempts = {}
 local orderedAt = {}
 local decidedAt = {}
+--- Creeps already logged as a drag candidate (`ev=drag_look`, once per creep), with when.
+local looked = {}
+local lookedPruned = -math.huge
 --- Our ranged creeps already fed (one feed per creep).
 local fed = {}
 --- Last draw per team and lane: one draw per lane at a time.
@@ -535,33 +544,97 @@ end
 local function start(bot, a)
     attempts[bot:GetPlayerID()] = a
 end
-local function tryDrag(bot, heroes, now)
-    local here = bot:GetLocation()
+local function contested(creep, heroes)
+    local con
+    for ____, h in ipairs(heroes) do
+        if GetUnitToUnitDistance(h, creep) <= h:GetAttackRange() + h:GetBoundingRadius() + ____exports.SETTINGS.DragContest then
+            con = h
+        end
+    end
+    return con
+end
+--- Pure: whether the bot can hit the creep from a spot out of every enemy hero's reach. The spot stands on the line from the
+-- creep toward the bot at the bot's reach (attack range plus both radii, less a 25 margin), or where the bot is when nearer.
+function ____exports.HitSpot(cx, cy, bx, by, reach)
+    local dx = bx - cx
+    local dy = by - cy
+    local len = math.sqrt(dx * dx + dy * dy)
+    if len < 1 then
+        return {bx, by}
+    end
+    local r = math.min(
+        len,
+        math.max(0, reach - 25)
+    )
+    return {cx + dx / len * r, cy + dy / len * r}
+end
+local function hitSpotSafe(bot, creep, heroes)
+    local c = creep:GetLocation()
+    local b = bot:GetLocation()
+    local x, y = unpack(____exports.HitSpot(
+        c.x,
+        c.y,
+        b.x,
+        b.y,
+        bot:GetAttackRange() + bot:GetBoundingRadius() + creep:GetBoundingRadius()
+    ))
+    return heroSafe(
+        Vector(x, y, b.z),
+        heroes,
+        ____exports.SETTINGS.UnsafeMargin
+    )
+end
+local function dragCands(bot, heroes)
+    local out = {}
     for ____, t in ipairs(laneTargets(bot, ____exports.SETTINGS.DragDueMax, false)) do
         do
-            local __continue81
+            local __continue88
             repeat
                 if t.kind ~= "lasthit" or t.due < ____exports.SETTINGS.DragDueMin or t.due > ____exports.SETTINGS.DragDueMax then
-                    __continue81 = true
+                    __continue88 = true
                     break
                 end
                 local creep = t.creep
-                if not valid(creep) or GetUnitToUnitDistance(bot, creep) > ____exports.SETTINGS.DrawR then
-                    __continue81 = true
+                if not valid(creep) then
+                    __continue88 = true
                     break
                 end
-                local contester
-                for ____, h in ipairs(heroes) do
-                    if GetUnitToUnitDistance(h, creep) <= h:GetAttackRange() + h:GetBoundingRadius() + ____exports.SETTINGS.DragContest then
-                        contester = h
-                    end
+                local con = contested(creep, heroes)
+                if con == nil then
+                    __continue88 = true
+                    break
                 end
-                if contester == nil then
-                    __continue81 = true
+                out[#out + 1] = {
+                    creep = creep,
+                    due = t.due,
+                    d = GetUnitToUnitDistance(bot, creep),
+                    con = con,
+                    ss = hitSpotSafe(bot, creep, heroes)
+                }
+                __continue88 = true
+            until true
+            if not __continue88 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- The first candidate that can be dragged; each candidate looked at gets its `why`.
+local function tryDrag(bot, heroes, cands, now)
+    local here = bot:GetLocation()
+    for ____, c in ipairs(cands) do
+        do
+            local __continue94
+            repeat
+                if c.d > ____exports.SETTINGS.DrawR then
+                    c.why = "far"
+                    __continue94 = true
                     break
                 end
                 local hero = orderTarget(bot)
                 if hero == nil then
+                    c.why = "no_target"
                     return nil
                 end
                 local back = along(
@@ -574,25 +647,94 @@ local function tryDrag(bot, heroes, now)
                     ____exports.SETTINGS.DragBack
                 )
                 if not heroSafe(back, heroes) then
+                    c.why = "unsafe"
                     return nil
                 end
-                return newAttempt(
+                c.why = "go"
+                local a = newAttempt(
                     bot,
                     "drag",
                     "walk",
                     hero,
-                    creep,
+                    c.creep,
                     back,
                     nil,
                     now
                 )
+                a.con = c.con
+                a.cpid = c.con:GetPlayerID()
+                a.clh0 = heroTally(a.cpid)
+                a.ml = bot:GetAttackRange() <= 200 and 1 or 0
+                a.ss = c.ss and 1 or 0
+                return a
             until true
-            if not __continue81 then
+            if not __continue94 then
                 break
             end
         end
     end
     return nil
+end
+--- One `ev=drag_look` line per creep the first time it is a drag candidate, with why it was not dragged then (a shared gate,
+-- `reach`, `far`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
+local function logLooks(bot, cands, pre, now)
+    if now - lookedPruned > 30 then
+        lookedPruned = now
+        local gone = {}
+        for u, at in pairs(looked) do
+            if now - at > 30 or u:IsNull() or not u:IsAlive() then
+                gone[#gone + 1] = u
+            end
+        end
+        for ____, u in ipairs(gone) do
+            looked[u] = nil
+        end
+    end
+    local ml = bot:GetAttackRange() <= 200 and 1 or 0
+    for ____, c in ipairs(cands) do
+        do
+            local __continue107
+            repeat
+                if looked[c.creep] ~= nil then
+                    __continue107 = true
+                    break
+                end
+                looked[c.creep] = now
+                Telemetry.Event(
+                    "drag_look",
+                    {
+                        {
+                            "pid",
+                            bot:GetPlayerID()
+                        },
+                        {
+                            "role",
+                            roleOf(bot) or "?"
+                        },
+                        {"why", pre or c.why or "other"},
+                        {
+                            "d",
+                            math.floor(c.d)
+                        },
+                        {
+                            "due",
+                            math.floor(c.due * 100) / 100
+                        },
+                        {
+                            "hd",
+                            math.floor(GetUnitToUnitDistance(c.con, c.creep))
+                        },
+                        {"ss", c.ss and 1 or 0},
+                        {"ml", ml}
+                    }
+                )
+                __continue107 = true
+            until true
+            if not __continue107 then
+                break
+            end
+        end
+    end
 end
 local function tryTower(bot, heroes, now)
     local team = bot:GetTeam()
@@ -861,7 +1003,12 @@ local function finish(bot, a, result, now, gap)
         {
             "dur",
             math.floor((now - a.startedAt) * 100) / 100
-        }
+        },
+        {"cd", a.cd},
+        {"cf", a.cf},
+        {"by", a.by},
+        {"ml", a.ml},
+        {"ss", a.ss}
     )
     ____Telemetry_Event_5(
         "aggro",
@@ -894,19 +1041,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue137
+            local __continue156
             repeat
                 if not valid(c) then
-                    __continue137 = true
+                    __continue156 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue137 = true
+                __continue156 = true
             until true
-            if not __continue137 then
+            if not __continue156 then
                 break
             end
         end
@@ -1023,12 +1170,16 @@ local function watch(bot, a, now)
         return finish(bot, a, out > 0 and "ok" or "stayed", now)
     else
         if dead then
-            return finish(
-                bot,
-                a,
-                counter(bot, "GetLastHits") > a.lh0 and "ok" or "lost",
-                now
-            )
+            local ours = counter(bot, "GetLastHits") > a.lh0
+            local ____temp_6
+            if a.cpid ~= nil then
+                ____temp_6 = heroTally(a.cpid)
+            else
+                ____temp_6 = nil
+            end
+            local c1 = ____temp_6
+            a.by = ours and "us" or (c1 ~= nil and a.clh0 ~= nil and (c1 > a.clh0 and "hero" or "none") or nil)
+            return finish(bot, a, ours and "ok" or "lost", now)
         end
         if now - (a.walkedAt or a.startedAt) > ____exports.SETTINGS.DragWatch then
             return finish(bot, a, "alive", now)
@@ -1108,6 +1259,11 @@ local function act(bot, a, now)
             } end
         )
         a.td = math.floor(GetUnitToUnitDistance(bot, a.hero))
+        if a.kind == "drag" and live(a.creep) then
+            a.cd = math.floor(GetUnitToUnitDistance(bot, a.creep))
+            a.c0 = a.creep:GetLocation()
+            a.cf = 0
+        end
         bot:Action_AttackUnit(a.hero, true)
         a.orderedAt = now
         orderedAt[pid] = now
@@ -1148,7 +1304,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue188
+                    local __continue208
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1156,16 +1312,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue188 = true
+                            __continue208 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue188 = true
+                        __continue208 = true
                     until true
-                    if not __continue188 then
+                    if not __continue208 then
                         break
                     end
                 end
@@ -1218,6 +1374,13 @@ local function act(bot, a, now)
         a.walkedAt = now
         a.phase = "watch"
         return false
+    end
+    if live(a.creep) and a.cf == 0 then
+        local at = a.creep:GetAttackTarget()
+        local l = seenAt(a.creep)
+        if at ~= nil and at ~= nil and not at:IsNull() and at == bot or l ~= nil and a.c0 ~= nil and d2(l, a.c0) >= ____exports.SETTINGS.MovedR then
+            a.cf = 1
+        end
     end
     if t < ____exports.SETTINGS.DragWalk and live(a.creep) then
         bot:Action_MoveToLocation(a.back)
@@ -1277,8 +1440,8 @@ local function stepOpen(bot, now)
     end
     if a.kind == "feed" then
         Laning.SetFed(bot, a.creep)
-        local ____opt_6 = Laning.SpotInfo(bot)
-        if (____opt_6 and ____opt_6.anchor) == "fed" then
+        local ____opt_7 = Laning.SpotInfo(bot)
+        if (____opt_7 and ____opt_7.anchor) == "fed" then
             a.sty = 1
         end
     end
@@ -1287,14 +1450,14 @@ local function stepOpen(bot, now)
 end
 --- Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running.
 function ____exports.StepOpen(bot)
-    local ____stepOpen_result_8 = stepOpen(
+    local ____stepOpen_result_9 = stepOpen(
         bot,
         DotaTime()
     )
-    if ____stepOpen_result_8 == nil then
-        ____stepOpen_result_8 = false
+    if ____stepOpen_result_9 == nil then
+        ____stepOpen_result_9 = false
     end
-    return ____stepOpen_result_8
+    return ____stepOpen_result_9
 end
 --- One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
 -- True when it gave the bot's order this frame (the caller's other steps then stay off).
@@ -1314,19 +1477,23 @@ function ____exports.Step(bot)
     end
     decidedAt[pid] = now
     local g = gate(bot, now)
+    local heroes = enemyHeroes(bot, 1600)
+    local cands = dragCands(bot, heroes)
     if g ~= nil then
+        logLooks(bot, cands, g, now)
         skip(bot, g, now)
         return false
     end
-    local heroes = enemyHeroes(bot, 1600)
     if not heroSafe(
         bot:GetLocation(),
         heroes
     ) then
+        logLooks(bot, cands, "reach", now)
         skip(bot, "reach", now)
         return false
     end
-    local next = tryDrag(bot, heroes, now)
+    local next = tryDrag(bot, heroes, cands, now)
+    logLooks(bot, cands, nil, now)
     local why = "drag"
     local ad
     if next == nil then

@@ -176,11 +176,29 @@ interface Attempt {
     src?: string;
     /** The first other mode seen holding the bot since the last step (Tick). */
     left?: number;
+    /** Drag: the dragged creep's distance to the bot at the order, 1 once it targeted the bot or moved MovedR from where it
+     *  stood at the order, and where it stood. */
+    cd?: number;
+    cf?: number;
+    c0?: Vector;
+    /** Drag: the contesting enemy hero and its last hits plus denies at the start (GetHeroLastHits/GetHeroDenies). */
+    con?: Unit;
+    cpid?: number;
+    clh0?: number;
+    /** Drag: whether the bot is melee (attack range 200 or less) and whether a spot within its reach of the creep was out of
+     *  every enemy hero's reach at the start (HitSpotSafe). */
+    ml?: number;
+    ss?: number;
+    /** Drag, at the creep's death: `us` (our last hit), `hero` (the contester's last hits or denies rose), `none`. */
+    by?: string;
 }
 
 const attempts: Record<number, Attempt | undefined> = {};
 const orderedAt: Record<number, number | undefined> = {};
 const decidedAt: Record<number, number | undefined> = {};
+/** Creeps already logged as a drag candidate (`ev=drag_look`, once per creep), with when. */
+const looked: LuaTable<Unit, number> = new LuaTable();
+let lookedPruned = -math.huge;
 /** Our ranged creeps already fed (one feed per creep). */
 const fed: LuaTable<Unit, boolean> = new LuaTable();
 /** Last draw per team and lane: one draw per lane at a time. */
@@ -460,24 +478,122 @@ function start(bot: Unit, a: Attempt): void {
 /** The attempt, or why not and (feed `approach_far`) the approach distance. */
 type Try = LuaMultiReturn<[Attempt | undefined, string, number?]>;
 
-function tryDrag(bot: Unit, heroes: Unit[], now: number): Attempt | undefined {
-    const here = bot.GetLocation();
+/** A last hit in the drag window that an enemy hero contests (within its attack range + DragContest of the creep). */
+interface DragCand {
+    creep: Unit;
+    due: number;
+    /** Bot to creep distance. */
+    d: number;
+    con: Unit;
+    /** HitSpotSafe at the look. */
+    ss: boolean;
+    /** Why this one was not dragged (`go` when it was). */
+    why?: string;
+}
+
+function contested(creep: Unit, heroes: Unit[]): Unit | undefined {
+    let con: Unit | undefined;
+    for (const h of heroes) {
+        if (GetUnitToUnitDistance(h, creep) <= h.GetAttackRange() + h.GetBoundingRadius() + SETTINGS.DragContest) con = h;
+    }
+    return con;
+}
+
+/**
+ * Pure: whether the bot can hit the creep from a spot out of every enemy hero's reach. The spot stands on the line from the
+ * creep toward the bot at the bot's reach (attack range plus both radii, less a 25 margin), or where the bot is when nearer.
+ */
+export function HitSpot(cx: number, cy: number, bx: number, by: number, reach: number): [number, number] {
+    const dx = bx - cx;
+    const dy = by - cy;
+    const len = math.sqrt(dx * dx + dy * dy);
+    if (len < 1) return [bx, by];
+    const r = math.min(len, math.max(0, reach - 25));
+    return [cx + (dx / len) * r, cy + (dy / len) * r];
+}
+
+function hitSpotSafe(bot: Unit, creep: Unit, heroes: Unit[]): boolean {
+    const c = creep.GetLocation();
+    const b = bot.GetLocation();
+    const [x, y] = HitSpot(c.x, c.y, b.x, b.y, bot.GetAttackRange() + bot.GetBoundingRadius() + creep.GetBoundingRadius());
+    return heroSafe(Vector(x, y, b.z), heroes, SETTINGS.UnsafeMargin);
+}
+
+function dragCands(bot: Unit, heroes: Unit[]): DragCand[] {
+    const out: DragCand[] = [];
     for (const t of laneTargets(bot, SETTINGS.DragDueMax, false)) {
         if (t.kind !== "lasthit" || t.due < SETTINGS.DragDueMin || t.due > SETTINGS.DragDueMax) continue;
         const creep = t.creep as unknown as Unit;
-        if (!valid(creep) || GetUnitToUnitDistance(bot, creep) > SETTINGS.DrawR) continue;
-        let contester: Unit | undefined;
-        for (const h of heroes) {
-            if (GetUnitToUnitDistance(h, creep) <= h.GetAttackRange() + h.GetBoundingRadius() + SETTINGS.DragContest) contester = h;
+        if (!valid(creep)) continue;
+        const con = contested(creep, heroes);
+        if (con === undefined) continue;
+        out.push({ creep, due: t.due, d: GetUnitToUnitDistance(bot, creep), con, ss: hitSpotSafe(bot, creep, heroes) });
+    }
+    return out;
+}
+
+/** The first candidate that can be dragged; each candidate looked at gets its `why`. */
+function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Attempt | undefined {
+    const here = bot.GetLocation();
+    for (const c of cands) {
+        if (c.d > SETTINGS.DrawR) {
+            c.why = "far";
+            continue;
         }
-        if (contester === undefined) continue;
         const hero = orderTarget(bot);
-        if (hero === undefined) return undefined;
+        if (hero === undefined) {
+            c.why = "no_target";
+            return undefined;
+        }
         const back = along(here, backDir(bot.GetTeam(), bot.GetAssignedLane(), here), SETTINGS.DragBack);
-        if (!heroSafe(back, heroes)) return undefined;
-        return newAttempt(bot, "drag", "walk", hero, creep, back, undefined, now);
+        if (!heroSafe(back, heroes)) {
+            c.why = "unsafe";
+            return undefined;
+        }
+        c.why = "go";
+        const a = newAttempt(bot, "drag", "walk", hero, c.creep, back, undefined, now);
+        a.con = c.con;
+        a.cpid = c.con.GetPlayerID();
+        a.clh0 = heroTally(a.cpid);
+        a.ml = bot.GetAttackRange() <= 200 ? 1 : 0;
+        a.ss = c.ss ? 1 : 0;
+        return a;
     }
     return undefined;
+}
+
+/** An enemy hero's last hits plus denies (its denies of its own creeps take ours from us too). */
+function heroTally(pid: number): number | undefined {
+    if (GetHeroLastHits === undefined || GetHeroDenies === undefined) return undefined;
+    return GetHeroLastHits(pid) + GetHeroDenies(pid);
+}
+
+/**
+ * One `ev=drag_look` line per creep the first time it is a drag candidate, with why it was not dragged then (a shared gate,
+ * `reach`, `far`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
+ */
+function logLooks(bot: Unit, cands: DragCand[], pre: string | undefined, now: number): void {
+    if (now - lookedPruned > 30) {
+        lookedPruned = now;
+        const gone: Unit[] = [];
+        for (const [u, at] of looked) if (now - at > 30 || u.IsNull() || !u.IsAlive()) gone.push(u);
+        for (const u of gone) looked.delete(u);
+    }
+    const ml = bot.GetAttackRange() <= 200 ? 1 : 0;
+    for (const c of cands) {
+        if (looked.has(c.creep)) continue;
+        looked.set(c.creep, now);
+        Telemetry.Event("drag_look", [
+            ["pid", bot.GetPlayerID()],
+            ["role", roleOf(bot) ?? "?"],
+            ["why", pre ?? c.why ?? "other"],
+            ["d", math.floor(c.d)],
+            ["due", math.floor(c.due * 100) / 100],
+            ["hd", math.floor(GetUnitToUnitDistance(c.con, c.creep))],
+            ["ss", c.ss ? 1 : 0],
+            ["ml", ml],
+        ]);
+    }
 }
 
 function tryTower(bot: Unit, heroes: Unit[], now: number): Try {
@@ -626,6 +742,11 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["gap", gap !== undefined ? math.floor(gap * 100) / 100 : undefined],
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
+        ["cd", a.cd],
+        ["cf", a.cf],
+        ["by", a.by],
+        ["ml", a.ml],
+        ["ss", a.ss],
     ]);
 }
 
@@ -709,7 +830,12 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         a.out = out;
         return finish(bot, a, out > 0 ? "ok" : "stayed", now);
     } else {
-        if (dead) return finish(bot, a, counter(bot, "GetLastHits") > a.lh0 ? "ok" : "lost", now);
+        if (dead) {
+            const ours = counter(bot, "GetLastHits") > a.lh0;
+            const c1 = a.cpid !== undefined ? heroTally(a.cpid) : undefined;
+            a.by = ours ? "us" : c1 !== undefined && a.clh0 !== undefined ? (c1 > a.clh0 ? "hero" : "none") : undefined;
+            return finish(bot, a, ours ? "ok" : "lost", now);
+        }
         if (now - (a.walkedAt ?? a.startedAt) > SETTINGS.DragWatch) return finish(bot, a, "alive", now);
     }
 }
@@ -771,6 +897,11 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         a.near = near.length;
         a.start = near.map((c) => ({ unit: c, x: c.GetLocation().x, y: c.GetLocation().y }));
         a.td = math.floor(GetUnitToUnitDistance(bot, a.hero));
+        if (a.kind === "drag" && live(a.creep)) {
+            a.cd = math.floor(GetUnitToUnitDistance(bot, a.creep));
+            a.c0 = a.creep.GetLocation();
+            a.cf = 0;
+        }
         bot.Action_AttackUnit(a.hero, true);
         a.orderedAt = now;
         orderedAt[pid] = now;
@@ -844,6 +975,11 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         return false;
     }
     // drag: walk the drawn creeps back, then the body takes the last hit as it comes due.
+    if (live(a.creep) && a.cf === 0) {
+        const at = a.creep.GetAttackTarget();
+        const l = seenAt(a.creep);
+        if ((at !== undefined && at !== null && !at.IsNull() && at === bot) || (l !== undefined && a.c0 !== undefined && d2(l, a.c0) >= SETTINGS.MovedR)) a.cf = 1;
+    }
     if (t < SETTINGS.DragWalk && live(a.creep)) {
         bot.Action_MoveToLocation(a.back);
         return true;
@@ -906,16 +1042,20 @@ export function Step(bot: Unit): boolean {
     if (last !== undefined && now - last < SETTINGS.Every) return false;
     decidedAt[pid] = now;
     const g = gate(bot, now);
+    const heroes = enemyHeroes(bot, 1600);
+    const cands = dragCands(bot, heroes);
     if (g !== undefined) {
+        logLooks(bot, cands, g, now);
         skip(bot, g, now);
         return false;
     }
-    const heroes = enemyHeroes(bot, 1600);
     if (!heroSafe(bot.GetLocation(), heroes)) {
+        logLooks(bot, cands, "reach", now);
         skip(bot, "reach", now);
         return false;
     }
-    let next = tryDrag(bot, heroes, now);
+    let next = tryDrag(bot, heroes, cands, now);
+    logLooks(bot, cands, undefined, now);
     let why = "drag";
     let ad: number | undefined;
     if (next === undefined) {
