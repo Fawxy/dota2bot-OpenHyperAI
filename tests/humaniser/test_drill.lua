@@ -225,4 +225,32 @@ do
 	check("shove: --set wins", H.Overrides.Get("ForceShove") == "all")
 end
 
+-- Slice threat: a statue with a spot list stands at the rep's spot, cycling (threat-missing: the Dire pos5 by the pos3's pull
+-- camp, benched, by Dire's offlane camp, its lane); before rep 1 and with no list, its lane. One ph=spot line per rep.
+do
+	local H = world("threat-missing")
+	local sup = hero(8, DIRE, 5, 1)
+	local core = hero(2, RAD, 3, 1)
+	check("threat-missing: pos3 lane-only cast, Dire pos5 statue", H.Drill.LaneOnly(core) and H.Drill.RoleOf(sup) == "statue")
+	local seen = {}
+	for _, t in ipairs({ 10, 40, 130, 220, 310, 400 }) do
+		T = t
+		seen[#seen + 1] = H.Drill.SpotOf(sup)
+	end
+	check("spots: lane before rep 1, then the list cycling", table.concat(seen, " ") == "lane pull:r:off bench pull:d:off lane pull:r:off", table.concat(seen, " "))
+	GAME_STATE = 8
+	T = 130
+	sup.loc = Vector(0, 0, 0)
+	local lines = capture(function() H.Drill.Hold(sup) H.Drill.Hold(sup) end)
+	local mv = ActionsOf(8, "MoveToLocation")
+	local to = mv[#mv] and mv[#mv].args[1]
+	check("bench spot: walks to its fountain", to ~= nil and to.x > 6000 and to.y > 6000, to and (to.x .. "," .. to.y))
+	check("bench spot: one spot line for the rep", #lines == 1 and field(lines[1], "spot") == "bench" and field(lines[1], "rep") == "2", lines[1])
+	T = 40
+	local n0 = #ActionsOf(8, "MoveToLocation")
+	local l2 = capture(function() H.Drill.Hold(sup) end)
+	check("pull spot with no camp known: the statue stands, the line has no point", #ActionsOf(8, "MoveToLocation") == n0 and #l2 == 1 and field(l2[1], "x") == nil, l2[1])
+	check("no spot list: a statue logs no spot line", #capture(function() world("lane-spot-statue") H.Drill.Hold(hero(7, DIRE, 3, 3)) end) == 0)
+end
+
 finish()

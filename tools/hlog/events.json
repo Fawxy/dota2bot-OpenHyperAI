@@ -615,7 +615,10 @@
    "rep": "num",
    "input": "str",
    "start": "num",
-   "forces": "str"
+   "forces": "str",
+   "spot": "str",
+   "x": "num",
+   "y": "num"
   },
   "job": {
    "pid": "num",
@@ -1660,7 +1663,8 @@
    "name": "text",
    "role": "text",
    "input": "text",
-   "forces": "text"
+   "forces": "text",
+   "spot": "text"
   },
   "ev_job": {
    "job": "text",

@@ -541,7 +541,10 @@ ____exports.EVENTS = {
         rep = "num",
         input = "str",
         start = "num",
-        forces = "str"
+        forces = "str",
+        spot = "str",
+        x = "num",
+        y = "num"
     },
     job = {
         pid = "num",

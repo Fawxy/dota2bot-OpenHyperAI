@@ -709,6 +709,10 @@ export const EVENTS = {
         input: "str",
         start: "num",
         forces: "str",
+        /** ph=spot: a statue's spot for the rep (`lane`, `bench`, `pull:<r|d>:<safe|off>`) and the point it holds. */
+        spot: "str",
+        x: "num",
+        y: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
