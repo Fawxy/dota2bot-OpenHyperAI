@@ -460,7 +460,8 @@ export const EVENTS = {
         br: "str",
         /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
          *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
-         *  the hold point's floor). */
+         *  the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start;
+         *  `cr`). */
         res: "str",
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
@@ -497,7 +498,7 @@ export const EVENTS = {
         /** At the last branch read: seconds until our nearest lane creep already on the map and not fighting reaches the hold
          *  point (absent when none is within NearSecs' walk). */
         nl: "num",
-        /** 1 when our creeps already walking (`nl`) turned a drag the spawn schedule allowed into a hold, at any read. */
+        /** 1 when our creeps already walking (`nl`) turned a drag or concede the spawn schedule alone would give into a hold, at any read. */
         lv: "num",
         /** At the last branch read: seconds the core stands as their wave's target before our creeps reach the hold point
          *  (`tk`), the wave's expected damage on it over them (`cost`), the hold's budget (`bud`, TankShare of max HP). */
