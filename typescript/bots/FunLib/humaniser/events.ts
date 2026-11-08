@@ -1089,6 +1089,8 @@ export const EVENTS = {
         who: "str",
         left: "num",
         short: "bool",
+        /** The harness's forced lever (Overrides.ForceLever: `feed`, `setup`, `none`); absent when none is forced. */
+        frc: "str",
         rej: "str",
         core: "num",
         sup: "num",

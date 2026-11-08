@@ -430,6 +430,14 @@ function ____exports.LaneOnlyHoldStep(bot)
     WaveHold.Step(bot)
     return LaneAggro.StepOpen(bot)
 end
+--- A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, stepped by mode_laning_generic's
+-- lane-only branch, as CoreAggroStep outside drills.
+function ____exports.LaneOnlyAggroStep(bot)
+    if not ____exports.IsEnabled() or not Drill.LaneAggro(bot) or not ____exports.BodyLastHits(bot) then
+        return false
+    end
+    return LaneAggro.Step(bot)
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)

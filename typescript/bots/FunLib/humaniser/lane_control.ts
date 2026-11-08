@@ -30,6 +30,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Calendar from "bots/FunLib/humaniser/calendar";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as EnemyWave from "bots/FunLib/humaniser/enemy_wave";
@@ -63,9 +64,12 @@ export const SETTINGS = {
     BreakEvery: 1,
     /** Lever sizes: the clash's move at the horizon against the plain forecast on waves where the lever ran, net of the
      *  no-swing waves (hlog @lever_effect on the lever's drill; never on check runs, whose enemy laners are our own bots).
-     *  Each is capped at the room before the tower it moves towards (LeverEffect). FeedSize is `judgement` (lane-only turns
-     *  the feed off; no drill yet). */
-    PreDenySize: 300,
+     *  Each is capped at the room before the tower it moves towards (LeverEffect). FeedSize and SetupSize are `judgement`
+     *  (lane-only turns the feed off; no drill reached a `forward` wave for the setup). */
+    /** Drill `lane-spot` paired with its PreDeny-off arm (same seed, 17 waves, 45 pre-deny swings): +60 +- 250, no
+     *  measurable move of the clash. The idle swing pre-denies whatever the choice (mode `safe`); a zero lever is never
+     *  chosen, so the pre-deny no longer stands in for a lever that moves the lane. */
+    PreDenySize: 0,
     FeedSize: 300,
     /** The idle swing's `setup` (an enemy creep hit into our last-hit range), towards their T1. */
     SetupSize: 300,
@@ -228,6 +232,20 @@ export function Choose(need: number, band: number, levers: Lever[]): Choice {
 export function LeverEffect(size: number, base: number, span: number, reach: number): number {
     if (size >= 0) return math.max(0, math.min(size, span - reach - base));
     return -math.max(0, math.min(-size, base - reach));
+}
+
+/**
+ * The harness's forced lever for `team`'s side of `lane` (`Overrides.ForceLever` `<lanes>=<lever>`, lanes as ForceShove's
+ * tokens): `feed`, `setup`, `none`, or undefined where it names no such lane. Drills only: a lever drill's input arm forces
+ * the lever every wave, its control arm `none`.
+ */
+export function ForcedLever(spec: unknown, team: number, lane: number): string | undefined {
+    if (typeof spec !== "string" || spec === "") return undefined;
+    const [lanes, lever] = string.match(spec, "^([^=]+)=(%a+)$");
+    if (lanes === undefined || lever === undefined) return undefined;
+    // Lazy: idle_swing requires this module.
+    const IdleSwing = require("bots/FunLib/humaniser/states/idle_swing") as typeof import("bots/FunLib/humaniser/states/idle_swing");
+    return IdleSwing.ForcedIn(lanes, team, lane) ? lever : undefined;
 }
 
 export function IntentOf(need: number, band: number, reset: boolean): Intent {
@@ -516,8 +534,10 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const left = c.left;
     // The core's hold catches a pull that would leave the next clash under our tower (design s5.3: a pull and the hold go
     // together).
-    const chosen = c.levers.map((l) => l.name);
-    const who = c.levers.map((l) => l.who);
+    const forced = ForcedLever(Overrides.Get("ForceLever"), team, lane);
+    const set = forced === undefined ? c.levers : forced === "none" ? [] : offered.filter((l) => l.name === forced);
+    const chosen = set.map((l) => l.name);
+    const who = set.map((l) => l.who);
     let after = tgt + left;
     // Not when the core is the puller: it cannot hold their wave from the camp.
     if (chosen.includes("pull") && after < reach && coreIn !== undefined && puller.by !== "core") {
@@ -553,6 +573,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         ["who", who.join("+")],
         ["left", round(after - tgt)],
         ["short", c.short ? true : undefined],
+        ["frc", forced],
         ["rej", rej.join(";")],
         ["core", coreIn !== undefined ? coreIn.pid : undefined],
         ["sup", supIn !== undefined ? supIn.pid : undefined],
