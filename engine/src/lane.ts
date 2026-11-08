@@ -10,6 +10,8 @@ export interface LaneFarmOpts {
     lastHits?: (this: void) => boolean;
     /** laneTargets' `within`. Default 1. */
     within?: number;
+    /** laneTargets' `radius` (how far from the bot creeps are offered). Default laneTargets' own: max(800, attack range + 400). */
+    radius?: number;
     /**
      * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
      * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
@@ -38,9 +40,10 @@ export interface LaneFarmOpts {
      * With `retarget`: also drop the attempt (`interrupted`, message `sw=0`) when its creep is no longer offered and `pick`
      * has nothing else, instead of waiting out its eta + 1.5 s, and when its creep is still offered but `pick(offers,
      * current)` answers undefined (the caller releases it). A creep drops out of the offers when the others' damage will kill
-     * it before a swing ordered now lands. Default false.
+     * it before a swing ordered now lands. Default false. A function is asked with the waited-on creep's target each time
+     * the rule would apply, so a caller can release some attempts and keep waiting on others.
      */
-    dropLost?: boolean;
+    dropLost?: boolean | ((this: void, current: LaneTarget) => boolean);
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;
@@ -89,7 +92,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
         // Not beyond the leash: an attempt there is dropped at once, and picking it again would spin.
         if (away() > leash) return false;
-        target = opts.pick(laneTargets(bot, { within: opts.within }));
+        target = opts.pick(laneTargets(bot, { within: opts.within, radius: opts.radius }));
         return target !== undefined;
     };
     const stop = (): boolean => (opts.interruptIf !== undefined && opts.interruptIf()) || (opts.deadline !== undefined && get()!.now() >= opts.deadline);
@@ -103,7 +106,8 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
         if (t - scannedAt < scanEvery) return false;
         scannedAt = t;
         if (opts.pick === undefined || (opts.lastHits !== undefined && !opts.lastHits())) return false;
-        const offered = laneTargets(bot, { within: opts.within });
+        const offered = laneTargets(bot, { within: opts.within, radius: opts.radius });
+        const drops = (): boolean => (typeof opts.dropLost === "function" ? opts.dropLost(current) : opts.dropLost === true);
         // Handle identity holds across scans in game (contract laneFarm, evidence: ER-008 re-run s5c).
         let still: LaneTarget | undefined;
         for (const o of offered) if (o.creep === current.creep) still = o;
@@ -111,7 +115,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
             const next = opts.pick(offered, still);
             // With dropLost, a pick that no longer answers the creep it waits on releases it (the caller's claim on it ended,
             // or it can no longer be reached): the attempt ends sw=0 before its swing.
-            if (next === undefined && opts.dropLost) {
+            if (next === undefined && drops()) {
                 dropped = true;
                 return true;
             }
@@ -120,7 +124,7 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
             return true;
         }
         target = opts.pick(offered);
-        if (target === undefined && opts.dropLost) dropped = true;
+        if (target === undefined && drops()) dropped = true;
         return target !== undefined || dropped;
     };
     let dropped = false;

@@ -822,7 +822,22 @@ ____exports.EVENTS = {
         ph = "bool",
         yd = "num",
         pre = "num",
+        cw = "bool",
+        cc = "num",
+        cn = "num",
+        dh = "num",
         msg = "str"
+    },
+    contest_skip = {
+        pid = "num",
+        at = "str",
+        why = "str",
+        cc = "num",
+        n = "num",
+        ex = "num",
+        walk = "num",
+        dies = "num",
+        hf = "num"
     },
     lane_ctl = {
         team = "num",

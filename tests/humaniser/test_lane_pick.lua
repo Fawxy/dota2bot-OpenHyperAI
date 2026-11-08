@@ -177,4 +177,25 @@ do
 	check("switch: without a current the pick is the plain ranking", Pick.Choose({ cur, now }) == now)
 end
 
+
+-- `far` lets a last hit beyond MAX_WALK be walked to when it answers true (a melee core's priced
+-- walk-in); it is never asked for a creep within MAX_WALK, a deny, or a creep that dies before the walk and a swing.
+do
+	local asked = 0
+	local yes = function() asked = asked + 1 return true end
+	local no = function() asked = asked + 1 return false end
+	local long = target("lasthit", 2.2, false, 2.0, 3.0)
+	check("far: a 2 s walk is out of reach without far", Pick.Choose({ long }) == nil)
+	check("far: taken when far answers true", Pick.Choose({ long }, nil, nil, nil, nil, yes) == long)
+	check("far: left when far answers false", Pick.Choose({ long }, nil, nil, nil, nil, no) == nil)
+	asked = 0
+	local doomed = target("lasthit", 2.2, false, 2.0, 2.3)
+	check("far: a creep dying before the walk and a swing is not taken", Pick.Choose({ doomed }, nil, nil, nil, nil, yes) == nil)
+	local near = target("lasthit", 0.8, false, 0.8, 3.0)
+	Pick.Choose({ near }, nil, nil, nil, nil, no)
+	local deny = target("deny", 2.2, false, 2.0, 3.0)
+	check("far: a deny beyond MAX_WALK stays out of reach", Pick.Choose({ deny }, nil, nil, nil, nil, yes) == nil)
+	check("far: not asked for a doomed creep, a near creep or a deny (" .. asked .. ")", asked == 0)
+end
+
 finish()
