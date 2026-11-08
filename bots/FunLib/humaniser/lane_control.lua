@@ -37,6 +37,16 @@ local function __TS__SparseArraySpread(sparseArray)
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
 
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
+
 local function __TS__ObjectAssign(target, ...)
     local sources = {...}
     for i = 1, #sources do
@@ -219,16 +229,6 @@ local function __TS__Delete(target, key)
     end
     target[key] = nil
     return true
-end
-
-local function __TS__ArrayFind(self, predicate, thisArg)
-    for i = 1, #self do
-        local elem = self[i]
-        if predicate(thisArg, elem, i - 1, self) then
-            return elem
-        end
-    end
-    return nil
 end
 
 local function __TS__ArrayIncludes(self, searchElement, fromIndex)
@@ -604,10 +604,10 @@ function ____exports.ChoiceFor(intent, n45, band, levers)
     end
     return {levers = {}, left = n45, short = false}
 end
---- Slice 2c: the choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave the pull lever is
--- refused `ew` (over any other refusal, so the line always shows `pull:ew`) and `ewp` says whether ChoiceFor with the pull as
--- it was would have taken it: 1 the skip changed the set, 0 the model refused it anyway (the drill's redundancy read). Any
--- other read leaves the levers alone and `ewp` unset.
+--- Slice 2c: the choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave a pull lever on
+-- offer is refused `ew` (a pull refused already keeps its own reason: `no_sup`, `away`, `stack`, ... stay readable) and `ewp`
+-- says whether ChoiceFor with the pull on offer would have taken it: 1 the skip changed the set, 0 the model refused it anyway
+-- (the drill's redundancy read); unset when the pull was not on offer. Any other read leaves the levers alone, `ewp` unset.
 function ____exports.MissingWave(ew, intent, n45, band, levers)
     if ew ~= "a" or not ____exports.SETTINGS.SkipPullOnMissingWave then
         return {
@@ -615,9 +615,19 @@ function ____exports.MissingWave(ew, intent, n45, band, levers)
             choice = ____exports.ChoiceFor(intent, n45, band, levers)
         }
     end
+    local pull = __TS__ArrayFind(
+        levers,
+        function(____, l) return l.name == "pull" end
+    )
+    if pull == nil or pull.why ~= nil then
+        return {
+            levers = levers,
+            choice = ____exports.ChoiceFor(intent, n45, band, levers)
+        }
+    end
     local used = __TS__ArrayMap(
         levers,
-        function(____, l) return l.name == "pull" and __TS__ObjectAssign({}, l, {why = "ew"}) or l end
+        function(____, l) return l == pull and __TS__ObjectAssign({}, l, {why = "ew"}) or l end
     )
     local would = ____exports.ChoiceFor(intent, n45, band, levers)
     return {
@@ -646,11 +656,11 @@ local function lanersOf(lane, cx, cy)
         local i = 1
         while i <= 5 do
             do
-                local __continue41
+                local __continue43
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:GetAssignedLane() ~= lane then
-                        __continue41 = true
+                        __continue43 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(u) or 0
@@ -665,9 +675,9 @@ local function lanersOf(lane, cx, cy)
                             cy
                         ) <= ____exports.SETTINGS.InLane
                     }
-                    __continue41 = true
+                    __continue43 = true
                 until true
-                if not __continue41 then
+                if not __continue43 then
                     break
                 end
             end
@@ -698,10 +708,10 @@ local function enemiesAway(m, now, cx, cy)
     local visible = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue48
+            local __continue50
             repeat
                 if e == nil or e == nil or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue48 = true
+                    __continue50 = true
                     break
                 end
                 visible[e:GetPlayerID()] = e
@@ -712,9 +722,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyLaneR then
                     m.enemies[e:GetPlayerID()] = now
                 end
-                __continue48 = true
+                __continue50 = true
             until true
-            if not __continue48 then
+            if not __continue50 then
                 break
             end
         end
@@ -722,17 +732,17 @@ local function enemiesAway(m, now, cx, cy)
     local any = false
     for k in pairs(m.enemies) do
         do
-            local __continue52
+            local __continue54
             repeat
                 local pid = tonumber(k)
                 if now - m.enemies[pid] > ____exports.SETTINGS.EnemyMemory then
                     __TS__Delete(m.enemies, pid)
-                    __continue52 = true
+                    __continue54 = true
                     break
                 end
                 any = true
                 if not IsHeroAlive(pid) then
-                    __continue52 = true
+                    __continue54 = true
                     break
                 end
                 local e = visible[pid]
@@ -743,9 +753,9 @@ local function enemiesAway(m, now, cx, cy)
                 ) <= ____exports.SETTINGS.EnemyAway then
                     return false
                 end
-                __continue52 = true
+                __continue54 = true
             until true
-            if not __continue52 then
+            if not __continue54 then
                 break
             end
         end
@@ -1161,13 +1171,14 @@ end
 function ____exports.NoteSuspect(team, lane, s)
     memoryOf(team, lane).suspect = s
 end
---- Slice 2c: their wave resolved absent between reads. A live decision whose pull has not left yet (the pull job checks
--- `Chosen` under rule `ctl` when it starts, DepartAfter s after the read) loses the pull, logged `kind=break why=ew` as the
--- R5 shove break is; the other levers stay. A pull already running is left alone, and nothing is logged. `running` says
--- whether the puller `pid`'s pull job is under way. Returns whether the pull was removed.
-function ____exports.PullBreak(team, lane, now, running)
+--- Slice 2c: their wave resolved absent between reads. The live decision for `wave` (this cycle's; an older one's pull is past
+-- its slot) loses its pull when the puller's slot is not settled (`PullJob.Settled`: not handled, not running; a pull
+-- decided but waiting at a gate re-reads the decision and refuses `ew`), with the core's `hold` that only a pull adds; the
+-- mode, the intent and the ruleset's other levers stay. Logged `kind=break why=ew` as the R5 shove break is. A settled pull
+-- is left alone and nothing is logged. Returns whether the pull was removed.
+function ____exports.PullBreak(team, lane, now, wave, settled)
     local d = ____exports.Current(team, lane, now)
-    if d == nil then
+    if d == nil or d.wave ~= wave then
         return false
     end
     local i = __TS__ArrayIndexOf(d.levers, "pull")
@@ -1175,36 +1186,23 @@ function ____exports.PullBreak(team, lane, now, running)
         return false
     end
     local pid = tonumber(d.who[i + 1])
-    if pid ~= nil and running(pid) then
+    if pid ~= nil and settled(pid, d.wave) then
         return false
     end
-    __TS__ArraySplice(d.levers, i, 1)
-    __TS__ArraySplice(d.who, i, 1)
+    for ____, name in ipairs({"pull", "hold"}) do
+        local k = __TS__ArrayIndexOf(d.levers, name)
+        if k >= 0 then
+            __TS__ArraySplice(d.levers, k, 1)
+            __TS__ArraySplice(d.who, k, 1)
+        end
+    end
     d.yields = nil
     breakLog(team, lane, d, "ew")
     return true
 end
---- The team member with player id `pid` (GetTeamMember, not GetTeamPlayers: practice mode).
-local function memberOf(pid)
-    do
-        local i = 1
-        while i <= 5 do
-            local u = GetTeamMember(i)
-            if u ~= nil and u ~= nil and not u:IsNull() and u:GetPlayerID() == pid then
-                return u
-            end
-            i = i + 1
-        end
-    end
-    return nil
-end
-local function pullRunning(pid)
-    local u = memberOf(pid)
-    if u == nil then
-        return false
-    end
+local function pullSettled(pid, wave)
     local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
-    return PullJob.Running(u)
+    return PullJob.Settled(pid, wave)
 end
 --- Slice 2c: the lane's most recent suspicion within SuspectFor s of `now`, undefined when none or aged out.
 function ____exports.Suspect(team, lane, now)
@@ -1271,17 +1269,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue122
+            local __continue123
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue122 = true
+                    __continue123 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue122 = true
+                __continue123 = true
             until true
-            if not __continue122 then
+            if not __continue123 then
                 break
             end
         end
@@ -1341,21 +1339,27 @@ function ____exports.Tick(bot)
     if lane ~= Lane.Top and lane ~= Lane.Mid and lane ~= Lane.Bot then
         return
     end
+    local m = memoryOf(team, lane)
+    local cycle = LaneConfig.Settings().Timing.WaveCycle
+    local wave = math.floor(now / cycle) * cycle
     if now <= s.Until then
         local res = EnemyWave.Tick(team, lane, now)
         if res ~= nil and res.ew == "a" then
             ____exports.NoteSuspect(team, lane, {kind = "their_wave_missing", t = now})
-            if ____exports.Drives() then
-                ____exports.PullBreak(team, lane, now, pullRunning)
+            if ____exports.Drives() and m.wave == wave then
+                ____exports.PullBreak(
+                    team,
+                    lane,
+                    now,
+                    wave,
+                    pullSettled
+                )
             end
         end
     end
     if now < s.From then
         return
     end
-    local m = memoryOf(team, lane)
-    local cycle = LaneConfig.Settings().Timing.WaveCycle
-    local wave = math.floor(now / cycle) * cycle
     while #m.chks > 0 and now >= m.chks[1] + s.ReadAt + s.Horizon do
         check(
             team,

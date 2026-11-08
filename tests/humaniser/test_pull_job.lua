@@ -732,6 +732,48 @@ do
 	check("core pull: a safe-lane pos3 is no puller", not w.H.PullJob.Applies(w.sup))
 end
 
+-- Slice lane-control 2c: their wave absent between reads (LaneControl.PullBreak) takes the pull out of the decision only while
+-- its slot is unsettled (PullJob.Settled). A pull the controller wanted that waits at a gate re-reads the decision and refuses
+-- `why=ew`; a pull that has started (handled at its start) is settled and the break leaves it alone with no break line.
+do
+	local cust = package.loaded["bots/FunLib/custom_loader"]
+	local function ctlWorld(o)
+		local w = world(o)
+		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = true, true
+		-- The pull's rank under the controller reads the support's calendar, whose rune trips need the spawn point.
+		GetRuneSpawnLocation = function() return Vector(w.sup.loc.x, w.sup.loc.y) end
+		w.H.LaneControl.ResetCache()
+		local win = w.H.PullJob.Window(w.sup, T)
+		local wave = w.H.PullJob.PulledSpawn(win.key)
+		w.H.LaneControl.Remember(2, Lane.Bot, { wave = wave, at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "5" }, cx = 0, cy = 0 })
+		return w, wave
+	end
+	local function done(w) w.H.LaneControl.ResetCache() cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil GetRuneSpawnLocation = nil end
+	-- Waiting at the partner gate (core low, an enemy beside it) when their wave resolves absent.
+	local w, wave = ctlWorld({ reading = OUT, coreHp = 30 })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
+	enemy.lane, enemy.pos = Lane.Bot, 3
+	-- Past the leave time (the unblocked pull below starts by 75) and before the late limit (partner-low's `late` falls near 80).
+	local out = run(w, 75)
+	check("ew break: waiting at a gate, nothing settled yet, no choice line", #lines(out, "choice") == 0 and not w.H.PullJob.Settled(5, wave))
+	local broke
+	out = capture(function() broke = w.H.LaneControl.PullBreak(2, Lane.Bot, T, wave, w.H.PullJob.Settled) end)
+	check("ew break: the waiting pull is broken, one break line", broke and #lines(out, "lane_ctl") == 1 and field(lines(out, "lane_ctl")[1], "why") == "ew", out[1])
+	out = run(w, 77)
+	local choice = lines(out, "choice")
+	check("ew break: the job re-reads the decision and refuses why=ew, the slot settled, no job", #choice == 1 and field(choice[1], "go") == "0"
+		and field(choice[1], "why") == "ew" and #lines(out, "job") == 0 and w.H.PullJob.Settled(5, wave), choice[1])
+	done(w)
+	-- The pull started before their wave resolved absent: settled, left alone, nothing logged.
+	w, wave = ctlWorld({ reading = OUT })
+	out = run(w, 75)
+	check("ew break: the pull started under rule ctl", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "rule") == "ctl", lines(out, "choice")[1])
+	out = capture(function() broke = w.H.LaneControl.PullBreak(2, Lane.Bot, T, wave, w.H.PullJob.Settled) end)
+	check("ew break: a started pull is settled: no break, no line, still wanted", not broke and #out == 0 and w.H.PullJob.Settled(5, wave)
+		and w.H.PullJob.CtlWants(w.H.LaneControl.DecisionFor(2, Lane.Bot, wave), 5))
+	done(w)
+end
+
 -- A slot drifts by a fraction of a second as the camp's timing is re-read (neutral-speed-at-order); the bookkeeping keys by the
 -- pulled wave, so a cancelled pull does not restart on its own slot (lctl10, ~/.dotactl/logs lctl10_A_on_1, pid 9 slot 376.424
 -- cancelled:one at t=375.3, then slot 376.359 started again and ended ok at t=400.3).

@@ -232,14 +232,16 @@ export function ChoiceFor(intent: Intent, n45: number, band: number, levers: Lev
 }
 
 /**
- * Slice 2c: the choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave the pull lever is
- * refused `ew` (over any other refusal, so the line always shows `pull:ew`) and `ewp` says whether ChoiceFor with the pull as
- * it was would have taken it: 1 the skip changed the set, 0 the model refused it anyway (the drill's redundancy read). Any
- * other read leaves the levers alone and `ewp` unset.
+ * Slice 2c: the choice with the tracker's resolution `ew` applied. On an `a` read with SkipPullOnMissingWave a pull lever on
+ * offer is refused `ew` (a pull refused already keeps its own reason: `no_sup`, `away`, `stack`, ... stay readable) and `ewp`
+ * says whether ChoiceFor with the pull on offer would have taken it: 1 the skip changed the set, 0 the model refused it anyway
+ * (the drill's redundancy read); unset when the pull was not on offer. Any other read leaves the levers alone, `ewp` unset.
  */
 export function MissingWave(ew: EnemyWave.Sight | undefined, intent: Intent, n45: number, band: number, levers: Lever[]): { levers: Lever[]; choice: Choice; ewp?: number } {
     if (ew !== "a" || !SETTINGS.SkipPullOnMissingWave) return { levers, choice: ChoiceFor(intent, n45, band, levers) };
-    const used = levers.map((l) => (l.name === "pull" ? { ...l, why: "ew" } : l));
+    const pull = levers.find((l) => l.name === "pull");
+    if (pull === undefined || pull.why !== undefined) return { levers, choice: ChoiceFor(intent, n45, band, levers) };
+    const used = levers.map((l) => (l === pull ? { ...l, why: "ew" } : l));
     const would = ChoiceFor(intent, n45, band, levers);
     return { levers: used, choice: ChoiceFor(intent, n45, band, used), ewp: would.levers.some((l) => l.name === "pull") ? 1 : 0 };
 }
@@ -578,23 +580,34 @@ export function NoteSuspect(team: number, lane: Lane, s: Suspicion): void {
 }
 
 /**
- * Slice 2c: their wave resolved absent between reads. A live decision whose pull has not left yet (the pull job checks
- * `Chosen` under rule `ctl` when it starts, DepartAfter s after the read) loses the pull, logged `kind=break why=ew` as the
- * R5 shove break is; the other levers stay. A pull already running is left alone, and nothing is logged. `running` says
- * whether the puller `pid`'s pull job is under way. Returns whether the pull was removed.
+ * Slice 2c: their wave resolved absent between reads. The live decision for `wave` (this cycle's; an older one's pull is past
+ * its slot) loses its pull when the puller's slot is not settled (`PullJob.Settled`: not handled, not running; a pull
+ * decided but waiting at a gate re-reads the decision and refuses `ew`), with the core's `hold` that only a pull adds; the
+ * mode, the intent and the ruleset's other levers stay. Logged `kind=break why=ew` as the R5 shove break is. A settled pull
+ * is left alone and nothing is logged. Returns whether the pull was removed.
  */
-export function PullBreak(team: number, lane: Lane, now: number, running: (pid: number) => boolean): boolean {
+export function PullBreak(team: number, lane: Lane, now: number, wave: number, settled: (pid: number, wave: number) => boolean): boolean {
     const d = Current(team, lane, now);
-    if (d === undefined) return false;
+    if (d === undefined || d.wave !== wave) return false;
     const i = d.levers.indexOf("pull");
     if (i < 0) return false;
     const pid = tonumber(d.who[i]);
-    if (pid !== undefined && running(pid)) return false;
-    d.levers.splice(i, 1);
-    d.who.splice(i, 1);
+    if (pid !== undefined && settled(pid, d.wave)) return false;
+    for (const name of ["pull", "hold"]) {
+        const k = d.levers.indexOf(name);
+        if (k >= 0) {
+            d.levers.splice(k, 1);
+            d.who.splice(k, 1);
+        }
+    }
     d.yields = undefined;
     breakLog(team, lane, d, "ew");
     return true;
+}
+
+function pullSettled(pid: number, wave: number): boolean {
+    const PullJob = require("bots/FunLib/humaniser/pull_job") as typeof import("bots/FunLib/humaniser/pull_job");
+    return PullJob.Settled(pid, wave);
 }
 
 function breakLog(team: number, lane: Lane, d: Decision, why: string): void {
@@ -608,21 +621,6 @@ function breakLog(team: number, lane: Lane, d: Decision, why: string): void {
     ]);
 }
 
-/** The team member with player id `pid` (GetTeamMember, not GetTeamPlayers: practice mode). */
-function memberOf(pid: number): Unit | undefined {
-    for (let i = 1; i <= 5; i++) {
-        const u = GetTeamMember(i);
-        if (u !== undefined && u !== null && !u.IsNull() && u.GetPlayerID() === pid) return u;
-    }
-    return undefined;
-}
-
-function pullRunning(pid: number): boolean {
-    const u = memberOf(pid);
-    if (u === undefined) return false;
-    const PullJob = require("bots/FunLib/humaniser/pull_job") as typeof import("bots/FunLib/humaniser/pull_job");
-    return PullJob.Running(u);
-}
 
 /** Slice 2c: the lane's most recent suspicion within SuspectFor s of `now`, undefined when none or aged out. */
 export function Suspect(team: number, lane: Lane, now: number = DotaTime()): Suspicion | undefined {
@@ -714,19 +712,20 @@ export function Tick(bot: Unit): void {
     if (team !== Team.Radiant && team !== Team.Dire) return;
     const lane = bot.GetAssignedLane();
     if (lane !== Lane.Top && lane !== Lane.Mid && lane !== Lane.Bot) return;
+    const m = memoryOf(team, lane);
+    const cycle = LaneConfig.Settings().Timing.WaveCycle;
+    const wave = math.floor(now / cycle) * cycle;
     // Slice 2c: the enemy wave tracker steps once a second from the first spawn, so the first read at From has a resolution.
-    // Absent between reads: the lane's suspect fact, and a chosen pull that has not left is broken.
+    // Absent between reads: the lane's suspect fact, and this wave's chosen pull is broken if it has not left. In a read
+    // second (this wave's decision not made yet) the resolution is left for the read below, which takes it as `ew`.
     if (now <= s.Until) {
         const res = EnemyWave.Tick(team, lane, now);
         if (res !== undefined && res.ew === "a") {
             NoteSuspect(team, lane, { kind: "their_wave_missing", t: now });
-            if (Drives()) PullBreak(team, lane, now, pullRunning);
+            if (Drives() && m.wave === wave) PullBreak(team, lane, now, wave, pullSettled);
         }
     }
     if (now < s.From) return;
-    const m = memoryOf(team, lane);
-    const cycle = LaneConfig.Settings().Timing.WaveCycle;
-    const wave = math.floor(now / cycle) * cycle;
     while (m.chks.length > 0 && now >= m.chks[0] + s.ReadAt + s.Horizon) check(team, lane, m.chks.shift()!);
     if (Drives()) breakCheck(team, lane, m, now);
     if (now > s.Until || now - wave < s.ReadAt || m.wave === wave) return;

@@ -16,7 +16,7 @@ WITH
 gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
 tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team FROM ev_bot WHERE team IS NOT NULL GROUP BY 1, 2),
 a AS MATERIALIZED (
-    SELECT d.game_id, d.team, d.lane, d.t, d.wave, d.ewd, d.ewp, coalesce(d.rej, '') LIKE '%pull:ew%' AS skip, d.lever,
+    SELECT d.game_id, d.team, d.lane, d.t, d.wave, d.ewd, d.ewp, coalesce(d.lever, '') NOT LIKE '%pull%' AS skip, d.lever,
         CASE d.team WHEN 2 THEN 3 WHEN 3 THEN 2 END AS enemy
     FROM ev_lane_ctl d JOIN gm ON gm.game_id = d.game_id
     WHERE d.kind = 'wave' AND d.ew = 'a'

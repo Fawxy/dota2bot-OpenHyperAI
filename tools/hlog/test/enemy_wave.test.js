@@ -31,10 +31,11 @@ const lines = [
     // Radiant bot at 5:02 reads their wave absent after Dire's pos5 pulled ok at slot 286 (in [270, 302)); the skip changed the set.
     pull(290, 9, 5, 3, 286, 'ok', 0.75),
     wave(302, 2, 3, { ew: 'a', ewp: 1, ewd: 19, lever: 'predeny+feed', rej: 'pull:ew;shove:mode' }),
-    // Dire top at 5:32 reads absent with no enemy pull in the window (a Radiant pull on another lane, and one too early).
+    // Dire top at 5:32 reads absent with no enemy pull in the window (a Radiant pull on another lane, and one too early); its
+    // pull was not on offer (no support), so no ewp and the real refusal stays.
     pull(320, 4, 5, 3, 316, 'ok', 0.5),
     pull(295, 4, 5, 1, 290, 'ok', 0.5),
-    wave(332, 3, 1, { ew: 'a', ewp: 0, rej: 'pull:ew;shove:mode' }),
+    wave(332, 3, 1, { ew: 'a', rej: 'pull:no_sup;shove:mode' }),
     // Present and unknown reads are not rows; a Dire ok pull at 346 is caught by no absent read.
     wave(362, 2, 3, { ew: 'p', lever: 'pull' }),
     wave(392, 2, 3, { ew: 'u', lever: 'pull' }),
@@ -48,7 +49,7 @@ test('enemy_wave: one row per absent read joined to the enemy pulls in its windo
     const out = run(lines);
     assert.deepStrictEqual(out.map(r => [r.team, r.lane, r.t, r.ewd, r.ewp, r.skip, r.epid, r.slot, r.res, r.div]), [
         [2, 3, 302, 19, 1, 1, 9, 286, 'ok', 0.75],
-        [3, 1, 332, null, 0, 1, null, null, null, null],
+        [3, 1, 332, null, null, 1, null, null, null, null],
     ]);
 });
 
@@ -59,6 +60,7 @@ test('enemy_wave: the summary counts the reads, the skip, the explained reads an
     assert.strictEqual(r.n, 2);
     assert.strictEqual(r.skipped, 2);
     assert.strictEqual(r.ewp1, 1);
+    assert.strictEqual(r.skipped, 2);
     assert.strictEqual(r.pulled, 1);
     assert.strictEqual(r.enemy_ok, 4);
     assert.strictEqual(r.caught, 1);

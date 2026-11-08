@@ -23,15 +23,18 @@ import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 export type Sight = "p" | "a" | "u";
 
-/** All `judgement` (user 09/11/2026), in path units and seconds. */
+/** Path units and seconds. RiseMin and the window are `fitted` (the offline score on 329 banked 5v5 games, the slice file's
+ *  (2c) Facts rows); Speed is derived live; DueNear and GiveUp are `judgement`. */
 export const SETTINGS = {
     /** The spot this near our lead creep (or past it) is due; the lead this near the spot counts as us watching it. */
     DueNear: 300,
     /** The visible enemy lane creep count rising this much over its count before the window is the wave arriving. */
     RiseMin: 2,
+    /** W = [D - WindowBefore, D + ArriveWindow]; the base count is the second before W. With under WindowBefore + 1 seconds
+     *  of history at D (a wave picked up late) the base is the count at D. */
     WindowBefore: 5,
     ArriveWindow: 10,
-    /** A wave not due this long after its spawn resolves `u`. */
+    /** A wave not due this long after its spawn resolves `u`; the tracker then catches up to the current wave. */
     GiveUp: 60,
     /** Fallback only: the lane creeps' speed is read live (WorldFacts.Latest). */
     Speed: 325,
@@ -79,9 +82,10 @@ function fresh(ts: number): Tracked {
     return { ts, seen: false, wSecs: 0, ownNear: 0, recent: [] };
 }
 
-function resolve(st: State, w: Tracked, ew: Sight, cycle: number): Resolved {
+/** Resolves the wave and follows the next one; after a GiveUp (60 s, two waves) the current wave, not one already 30 s old. */
+function resolve(st: State, w: Tracked, ew: Sight, cycle: number, t: number): Resolved {
     st.resolved = { ts: w.ts, ew, due: w.due };
-    st.track = fresh(w.ts + cycle);
+    st.track = fresh(math.max(w.ts + cycle, math.floor(t / cycle) * cycle));
     return st.resolved;
 }
 
@@ -114,7 +118,7 @@ export function Step(st: State, i: Inputs, cycle: number): Resolved | undefined 
         } else {
             w.recent.push([i.count, own]);
             if (w.recent.length > s.WindowBefore + 1) w.recent.shift();
-            return t >= w.ts + s.GiveUp ? resolve(st, w, "u", cycle) : undefined;
+            return t >= w.ts + s.GiveUp ? resolve(st, w, "u", cycle, t) : undefined;
         }
     }
     if (t <= w.due + s.ArriveWindow) {
@@ -122,7 +126,7 @@ export function Step(st: State, i: Inputs, cycle: number): Resolved | undefined 
         if (i.count - w.base! >= s.RiseMin) w.seen = true;
         if (own) w.ownNear++;
     }
-    if (t >= w.due + s.ArriveWindow) return resolve(st, w, w.seen ? "p" : w.ownNear * 2 >= w.wSecs ? "a" : "u", cycle);
+    if (t >= w.due + s.ArriveWindow) return resolve(st, w, w.seen ? "p" : w.ownNear * 2 >= w.wSecs ? "a" : "u", cycle, t);
     return undefined;
 }
 

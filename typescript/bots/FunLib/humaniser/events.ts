@@ -1063,9 +1063,10 @@ export const EVENTS = {
      * creep count rose RiseMin over its count before the window), a absent (no rise, and our lead creep stood at the spot
      * for half the window: pulled, blocked or cut), u unknown (nobody there to see, the wave never came due, or nothing
      * resolved since the last read); ewd that wave's seconds from spawn to due (absent when it never came due). ewp only on
-     * an `a` read with SkipPullOnMissingWave: 1 when Choose with the pull on offer would have taken it (the skip changed the
-     * set), 0 when the model refused it anyway. kind=break why=ew: an absent resolution between reads took the live
-     * decision's pull before the pull job left.
+     * an `a` read with SkipPullOnMissingWave whose pull was on offer (rej pull:ew): 1 when Choose with the pull on offer would
+     * have taken it (the skip changed the set), 0 when the model refused it anyway; a pull refused for its own reason keeps
+     * that reason and no ewp. kind=break why=ew: an absent resolution between reads took this wave's live decision's pull
+     * (and the core's hold beside it) before the pull job's slot settled; the job then refuses `why=ew`.
      */
     lane_ctl: {
         team: "num",

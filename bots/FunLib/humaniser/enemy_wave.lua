@@ -162,7 +162,8 @@ local Team = ____dota.Team
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
---- All `judgement` (user 09/11/2026), in path units and seconds.
+--- Path units and seconds. RiseMin and the window are `fitted` (the offline score on 329 banked 5v5 games, the slice file's
+-- (2c) Facts rows); Speed is derived live; DueNear and GiveUp are `judgement`.
 ____exports.SETTINGS = {
     DueNear = 300,
     RiseMin = 2,
@@ -180,9 +181,13 @@ local function fresh(ts)
         recent = {}
     }
 end
-local function resolve(st, w, ew, cycle)
+--- Resolves the wave and follows the next one; after a GiveUp (60 s, two waves) the current wave, not one already 30 s old.
+local function resolve(st, w, ew, cycle, t)
     st.resolved = {ts = w.ts, ew = ew, due = w.due}
-    st.track = fresh(w.ts + cycle)
+    st.track = fresh(math.max(
+        w.ts + cycle,
+        math.floor(t / cycle) * cycle
+    ))
     return st.resolved
 end
 --- One second of the rule for the wave `st` follows (idempotent within a second); `cycle` the wave cycle (30 s). Returns the
@@ -228,7 +233,13 @@ function ____exports.Step(st, i, cycle)
             if #w.recent > s.WindowBefore + 1 then
                 table.remove(w.recent, 1)
             end
-            return t >= w.ts + s.GiveUp and resolve(st, w, "u", cycle) or nil
+            return t >= w.ts + s.GiveUp and resolve(
+                st,
+                w,
+                "u",
+                cycle,
+                t
+            ) or nil
         end
     end
     if t <= w.due + s.ArriveWindow then
@@ -241,7 +252,13 @@ function ____exports.Step(st, i, cycle)
         end
     end
     if t >= w.due + s.ArriveWindow then
-        return resolve(st, w, w.seen and "p" or (w.ownNear * 2 >= w.wSecs and "a" or "u"), cycle)
+        return resolve(
+            st,
+            w,
+            w.seen and "p" or (w.ownNear * 2 >= w.wSecs and "a" or "u"),
+            cycle,
+            t
+        )
     end
     return nil
 end

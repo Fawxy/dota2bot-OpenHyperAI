@@ -136,11 +136,12 @@ do
 	-- 350 back: the pre-deny alone either way; the skip was redundant (ewp 0) but the refusal is still on the line.
 	local b = Ctl.MissingWave("a", "back", 350, 150, offer())
 	check("absent, small need: pre-deny, ewp 0", names(b.choice) == "predeny" and b.ewp == 0 and rej(b.levers) == "pull:ew;shove:mode")
-	-- A pull already unusable: ew takes the line over the other reason, ewp 0.
+	-- A pull already refused keeps its own reason (4a's @core_pull reads no_sup/away/stack) and ewp stays unset: the skip
+	-- did nothing and the model was not asked.
 	local unusable = offer()
 	unusable[3].why = "no_sup"
 	local u = Ctl.MissingWave("a", "back", 1000, 150, unusable)
-	check("absent, no puller: pull:ew on the line, ewp 0", rej(u.levers) == "pull:ew;shove:mode" and u.ewp == 0)
+	check("absent, no puller: the real refusal stays, no ewp", rej(u.levers) == "pull:no_sup;shove:mode" and u.ewp == nil and names(u.choice) == "predeny+feed")
 	-- Present or unknown: the pull is chosen as before and ewp is unset.
 	local p = Ctl.MissingWave("p", "back", 1000, 150, offer())
 	check("present: the pull as before", names(p.choice) == "pull" and p.ewp == nil and rej(p.levers) == "shove:mode")
@@ -189,30 +190,40 @@ do
 	-- above they were there 11 of 16: the spot reaches within 300 of them at 17 and stops at them (the clamp) from 20.
 	local _, gone = track(27, function(t) return t <= 17 and 2000 or 5000, 4 end)
 	check("tracker: our creeps gone from the spot: unknown", gone ~= nil and gone.ew == "u" and gone.due == 17)
-	-- No own creeps at all: never due, given up at 60 with no due second; the next wave is followed.
+	-- No own creeps at all: never due, given up at 60 with no due second; the tracker catches up to the current wave (60),
+	-- not the one already 30 s old (review L1).
 	local st3, nobody = track(60, function() return nil, 0 end)
-	check("tracker: never due, given up as unknown", nobody ~= nil and nobody.ew == "u" and nobody.due == nil and st3.track.ts == 30)
-	-- Absent between reads breaks the live decision's pull before the pull job leaves (kind=break why=ew, beside the shove
-	-- break: the mode, the intent and every other lever stay); a running pull is left alone and nothing is logged.
+	check("tracker: never due, given up as unknown, caught up", nobody ~= nil and nobody.ew == "u" and nobody.due == nil and st3.track.ts == 60)
+	-- Absent between reads breaks this wave's live decision's pull while its slot is unsettled (kind=break why=ew, beside
+	-- the shove break: the mode, the intent and the ruleset's levers stay; the core's hold goes with the pull). A settled
+	-- slot (the pull ran, was refused, cancelled or late, or is running) is left alone and nothing is logged.
 	Ctl.ResetCache()
 	Customize.Ours.LaneControl = true
 	Customize.Ours.LaneControlDrive = true
 	local Telemetry = require("bots/FunLib/humaniser/telemetry")
 	local lines = {}
 	Telemetry.SetSink(function(l) table.insert(lines, l) end)
-	Ctl.Remember(TEAM_DIRE, LANE_TOP, { wave = 300, at = 302, rule = "R1", mode = "safe", intent = "back", levers = { "predeny", "pull", "hold" }, who = { "both", "8", "7" }, cx = 0, cy = 0, yields = 3 })
+	local function decision() return { wave = 300, at = 302, rule = "R1", mode = "safe", intent = "back", levers = { "predeny", "pull", "hold" }, who = { "both", "8", "7" }, cx = 0, cy = 0, yields = 3 } end
+	Ctl.Remember(TEAM_DIRE, LANE_TOP, decision())
 	local PullJob = require("bots/FunLib/humaniser/pull_job")
-	check("pull break: a running pull is left alone, nothing logged", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 320, function() return true end)
+	local settled = function() return true end
+	local open = function() return false end
+	check("pull break: a settled slot (finished, refused or running) is left alone, nothing logged", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 320, 300, settled)
 		and PullJob.CtlWants(Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300), 8) and #lines == 0)
+	check("pull break: the previous wave's decision is not broken in a read second", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 332, 330, open) and #lines == 0)
 	local asked
-	check("pull break: a pull not yet left is taken from the decision", Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 320, function(pid) asked = pid return false end) and asked == 8)
+	check("pull break: an unsettled pull is taken from this wave's decision", Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 320, 300, function(pid, w) asked = { pid, w } return false end)
+		and asked[1] == 8 and asked[2] == 300)
 	local d = Ctl.DecisionFor(TEAM_DIRE, LANE_TOP, 300)
-	check("pull break: the job no longer wanted; predeny and hold stay, mode and intent unchanged, the stack minute given back",
-		not PullJob.CtlWants(d, 8) and table.concat(d.levers, "+") == "predeny+hold" and d.who[2] == "7" and d.mode == "safe" and d.intent == "back"
+	check("pull break: the job no longer wanted; predeny stays, the hold goes with the pull, mode and intent unchanged, the stack minute given back",
+		not PullJob.CtlWants(d, 8) and table.concat(d.levers, "+") == "predeny" and table.concat(d.who, "+") == "both" and d.mode == "safe" and d.intent == "back"
 		and d.yields == nil and d.broke == "ew" and not Ctl.YieldsStack(TEAM_DIRE, LANE_TOP, 8, 3))
 	check("pull break: one break line", #lines == 1 and lines[1]:find("ev=lane_ctl team=3 lane=1 kind=break wave=300 why=ew", 1, true) ~= nil, lines[1])
-	check("pull break: nothing to break twice", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 320, function() return false end) and #lines == 1)
-	check("pull break: no live decision", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 340, function() return false end))
+	check("pull break: nothing to break twice", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 320, 300, open) and #lines == 1)
+	check("pull break: no live decision", not Ctl.PullBreak(TEAM_DIRE, LANE_TOP, 340, 330, open))
+	-- PullJob.Settled: the slot's wave, by its handled record or a running pull; a wave the job never reached is unsettled.
+	PullJob.ResetCache()
+	check("settled: a wave the job never reached is unsettled", not PullJob.Settled(8, 300))
 	Telemetry.SetSink(nil)
 	-- The fact the lane keeps: set by an absent read, aged out after SuspectFor; another lane knows nothing.
 	Ctl.ResetCache()
