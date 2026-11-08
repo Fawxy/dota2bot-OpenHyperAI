@@ -18,6 +18,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Threat from "bots/FunLib/humaniser/threat";
 
 // All `judgement` (slice file).
 export const SETTINGS = {
@@ -143,7 +144,11 @@ function startGate(bot: Unit, camp: Camps.Spawner, center: Vector, blocked: (bot
     if (coreThere(bot, center)) return "core-there";
     const dmg = PullJob.CampDamage(bot, state, camp.type, SETTINGS.ClearSeconds);
     if (bot.GetHealth() - dmg < bot.GetMaxHealth() * SETTINGS.ClearReserve) return "camp-dmg";
-    if (CoreCamp.ThreatOnWay(bot, center)) return "threat";
+    if (Ours.On("Threat")) {
+        const r = Threat.Read(bot, bot.GetLocation(), center, CoreCamp.SETTINGS.GateHorizon);
+        Threat.Log(bot, "pull_farm", r, r.reach.length > 0 ? "threat" : "go");
+        if (r.reach.length > 0) return "threat";
+    } else if (CoreCamp.ThreatOnWay(bot, center)) return "threat";
     return blocked(bot) ?? PullJob.PartnerThreat(bot);
 }
 

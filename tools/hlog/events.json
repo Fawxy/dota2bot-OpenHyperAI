@@ -871,6 +871,25 @@
    "reason": "str",
    "mid": "num"
   },
+  "threat": {
+   "pid": "num",
+   "who": "str",
+   "dec": "str",
+   "x": "num",
+   "y": "num",
+   "hz": "num",
+   "threat": "num",
+   "band": "str",
+   "reach": "num",
+   "rpid": "str",
+   "burst": "num",
+   "ally": "num",
+   "tower": "bool",
+   "miss": "num",
+   "mpid": "str",
+   "mtss": "num",
+   "hp": "num"
+  },
   "tr_caution": {
    "pid": "num",
    "level": "num",
@@ -987,6 +1006,7 @@
    "pby": "str",
    "cwhy": "str",
    "cmiss": "num",
+   "cmw": "num",
    "closs": "num",
    "away": "bool",
    "why": "str",
@@ -1749,6 +1769,13 @@
   "ev_tr_rune_hold": {
    "state": "text",
    "reason": "text"
+  },
+  "ev_threat": {
+   "who": "text",
+   "dec": "text",
+   "band": "text",
+   "rpid": "text",
+   "mpid": "text"
   },
   "ev_tr_tp_react": {
    "mode": "text"

@@ -312,6 +312,7 @@ local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_sp
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
@@ -477,6 +478,8 @@ ____exports.SETTINGS = {
     PathFactor = 1.2,
     ThreatMargin = 600,
     MissingAfter = 3,
+    GateHorizon = 4,
+    MissingRefuse = 0.5,
     MissingSpeed = 330,
     MissingReachMax = 4000,
     MidRuneGuard = 40,
@@ -1196,6 +1199,23 @@ MAX_PLAYER_ID = 23
 function ____exports.MissingNear(bot, at)
     return ____exports.MissingOf(bot, at).n
 end
+--- The missing-hero gate for a walk from the core to `at` as [heroes that hold it, the belief's weight sum]: under Ours.Threat
+-- the threat read's belief (a weight per unseen hero, refusing at Threat MissingRefuse) logged as ev=threat for `consumer`;
+-- off, MissingOf's count and no weight.
+function ____exports.MissingGate(bot, at, consumer)
+    if not Ours.On("Threat") then
+        return ____exports.MissingOf(bot, at).n, nil
+    end
+    local r = Threat.Read(
+        bot,
+        bot:GetLocation(),
+        at,
+        ____exports.SETTINGS.GateHorizon
+    )
+    local held = r.missing >= ____exports.SETTINGS.MissingRefuse
+    Threat.Log(bot, consumer, r, held and "missing" or "go")
+    return held and #r.mpids or 0, math.floor(r.missing * 100 + 0.5) / 100
+end
 local function mateOnJob(bot)
     local s = LaneState.ForBot(bot)
     if s == nil then
@@ -1204,18 +1224,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue155
+            local __continue157
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue155 = true
+                    __continue157 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue155 = true
+                __continue157 = true
             until true
-            if not __continue155 then
+            if not __continue157 then
                 break
             end
         end
@@ -1225,19 +1245,19 @@ end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue160
+            local __continue162
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue160 = true
+                    __continue162 = true
                     break
                 end
                 local loc = locOf(c)
                 if loc ~= nil and dist(loc, at) <= radius then
                     return true
                 end
-                __continue160 = true
+                __continue162 = true
             until true
-            if not __continue160 then
+            if not __continue162 then
                 break
             end
         end
@@ -1306,6 +1326,25 @@ local function startGate(bot, plan, now)
         return nil
     end
     local center = Camps.BoxCenter(spawner)
+    if Ours.On("Threat") then
+        local r = Threat.Read(
+            bot,
+            bot:GetLocation(),
+            center,
+            ____exports.SETTINGS.GateHorizon
+        )
+        local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
+        Threat.Log(bot, "core_camp", r, why or "go")
+        if why ~= "missing" then
+            return why ~= nil and ({why = why}) or nil
+        end
+        return {
+            why = why,
+            nmiss = #r.mpids,
+            mtss = r.mtss,
+            mpid = table.concat(r.mpids, ",")
+        }
+    end
     if ____exports.ThreatOnWay(bot, center) then
         return {why = "threat"}
     end
@@ -1486,10 +1525,10 @@ local function guard(bot, t)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue191
+            local __continue195
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue191 = true
+                    __continue195 = true
                     break
                 end
                 local loc = locOf(e)
@@ -1499,9 +1538,9 @@ local function guard(bot, t)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue191 = true
+                __continue195 = true
             until true
-            if not __continue191 then
+            if not __continue195 then
                 break
             end
         end

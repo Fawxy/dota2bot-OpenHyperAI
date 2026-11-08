@@ -493,7 +493,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         }
     }
     // Slice 4a: the offlane pos3 as a puller of its hard camp (the offlane's only pull camp), under Ours.CorePull.
-    let coreCand: { pid: number; missing: number; loss?: number } | undefined;
+    let coreCand: { pid: number; missing: number; mw?: number; loss?: number } | undefined;
     if (coreIn !== undefined && coreIn.bot && coreIn.pos === 3 && rule !== "R6" && lane === Camps.LaneOfKind(team, "off") && Ours.On("CorePull") && samples !== undefined) {
         const PullJob = require("bots/FunLib/humaniser/pull_job") as typeof import("bots/FunLib/humaniser/pull_job");
         const CoreCamp = require("bots/FunLib/humaniser/core_camp") as typeof import("bots/FunLib/humaniser/core_camp");
@@ -503,7 +503,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
             const u = coreIn.unit;
             const back = (math.sqrt((w.stand.x - cx) ** 2 + (w.stand.y - cy) ** 2) * s.PathFactor) / math.max(1, u.GetCurrentMovementSpeed());
             const clash: import("bots/FunLib/humaniser/core_camp").Clash = { t: now, at: Vector(cx, cy, 0), t0: samples[0]?.t ?? now, samples, enemy: team === Team.Radiant ? Team.Dire : Team.Radiant, path, team };
-            coreCand = { pid: coreIn.pid, missing: CoreCamp.MissingOf(u, w.stand).n, loss: CoreCamp.LossBetween(clash, w.start, w.end + back) };
+            const [missing, mw] = CoreCamp.MissingGate(u, w.stand, "core_pull");
+            coreCand = { pid: coreIn.pid, missing, mw, loss: CoreCamp.LossBetween(clash, w.start, w.end + back) };
         }
     }
     const puller = PullerOf({ now, n45, sup: supBot !== undefined ? { pid: supBot.pid, why: pc?.why } : undefined, core: coreCand });
@@ -590,6 +591,7 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
         ["pby", puller.by],
         ["cwhy", puller.cwhy],
         ["cmiss", coreCand?.missing],
+        ["cmw", coreCand?.mw],
         ["closs", round(coreCand?.loss)],
         ["away", away ? true : undefined],
         ["ms", ms],

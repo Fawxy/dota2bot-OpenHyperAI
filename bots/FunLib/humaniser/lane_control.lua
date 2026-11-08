@@ -410,8 +410,8 @@ function ____exports.Current(team, lane, now)
     if not ____exports.Drives() then
         return nil
     end
-    local ____opt_55 = memory[(tostring(team) .. ":") .. tostring(lane)]
-    local d = ____opt_55 and ____opt_55.last
+    local ____opt_57 = memory[(tostring(team) .. ":") .. tostring(lane)]
+    local d = ____opt_57 and ____opt_57.last
     return d ~= nil and now - d.at <= ____exports.SETTINGS.Live and d or nil
 end
 --- All `judgement` unless marked.
@@ -937,9 +937,11 @@ local function decide(team, lane, now, m)
                 path = path,
                 team = team
             }
+            local missing, mw = CoreCamp.MissingGate(u, w.stand, "core_pull")
             coreCand = {
                 pid = coreIn.pid,
-                missing = CoreCamp.MissingOf(u, w.stand).n,
+                missing = missing,
+                mw = mw,
                 loss = CoreCamp.LossBetween(clash, w.start, w["end"] + back)
             }
         end
@@ -1093,8 +1095,8 @@ local function decide(team, lane, now, m)
         ew = ew
     }
     ____exports.Remember(team, lane, d)
-    local ____Telemetry_Event_44 = Telemetry.Event
-    local ____array_43 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_46 = Telemetry.Event
+    local ____array_45 = __TS__SparseArrayNew(
         {"team", team},
         {"lane", lane},
         {"kind", "wave"},
@@ -1155,7 +1157,7 @@ local function decide(team, lane, now, m)
         ____short_35 = nil
     end
     __TS__SparseArrayPush(
-        ____array_43,
+        ____array_45,
         {"short", ____short_35},
         {"frc", forced},
         {
@@ -1173,28 +1175,29 @@ local function decide(team, lane, now, m)
         {"pby", puller.by},
         {"cwhy", puller.cwhy},
         {"cmiss", coreCand and coreCand.missing},
+        {"cmw", coreCand and coreCand.mw},
         {
             "closs",
             round(coreCand and coreCand.loss)
         }
     )
-    local ____away_42
+    local ____away_44
     if away then
-        ____away_42 = true
+        ____away_44 = true
     else
-        ____away_42 = nil
+        ____away_44 = nil
     end
     __TS__SparseArrayPush(
-        ____array_43,
-        {"away", ____away_42},
+        ____array_45,
+        {"away", ____away_44},
         {"ms", ms},
         {"ew", ew},
         {"ewp", mw.ewp},
         {"ewd", fact ~= nil and fact.due ~= nil and fact.due - fact.ts or nil}
     )
-    ____Telemetry_Event_44(
+    ____Telemetry_Event_46(
         "lane_ctl",
-        {__TS__SparseArraySpread(____array_43)}
+        {__TS__SparseArraySpread(____array_45)}
     )
 end
 local function check(team, lane, wave)
@@ -1260,8 +1263,8 @@ function ____exports.Suspect(team, lane, now)
     if now == nil then
         now = DotaTime()
     end
-    local ____opt_51 = memory[(tostring(team) .. ":") .. tostring(lane)]
-    local s = ____opt_51 and ____opt_51.suspect
+    local ____opt_53 = memory[(tostring(team) .. ":") .. tostring(lane)]
+    local s = ____opt_53 and ____opt_53.suspect
     return s ~= nil and now - s.t <= ____exports.SETTINGS.SuspectFor and s or nil
 end
 --- Slice 3: the live decision's pull takes this support's stack minute `minute`.
@@ -1286,24 +1289,24 @@ function ____exports.DecisionFor(team, lane, wave)
     if not ____exports.Drives() then
         return nil
     end
-    local ____opt_53 = memory[(tostring(team) .. ":") .. tostring(lane)]
-    return ____opt_53 and ____opt_53.decisions[wave]
+    local ____opt_55 = memory[(tostring(team) .. ":") .. tostring(lane)]
+    return ____opt_55 and ____opt_55.decisions[wave]
 end
 --- The lane's mode for the idle swing: the live decision's, `safe` with none.
 function ____exports.ModeFor(team, lane)
-    local ____opt_57 = ____exports.Current(team, lane)
-    return ____opt_57 and ____opt_57.mode or "safe"
+    local ____opt_59 = ____exports.Current(team, lane)
+    return ____opt_59 and ____opt_59.mode or "safe"
 end
 --- Whether `lever` is in the lane's live decision; undefined with none (the owner's own trigger then decides).
 function ____exports.Chosen(team, lane, lever)
     local d = ____exports.Current(team, lane)
-    local ____temp_59
+    local ____temp_61
     if d == nil then
-        ____temp_59 = nil
+        ____temp_61 = nil
     else
-        ____temp_59 = __TS__ArrayIncludes(d.levers, lever)
+        ____temp_61 = __TS__ArrayIncludes(d.levers, lever)
     end
-    return ____temp_59
+    return ____temp_61
 end
 --- An enemy hero seen (visible, alive, not an illusion) within EnemyAway of the clash: the shove's break. Vision loss is no
 -- break (review 2026-11-06-lane-control-2b H1: every R5 shove in lctl2 broke 0-13 s in when `enemiesAway` read a hero out of
