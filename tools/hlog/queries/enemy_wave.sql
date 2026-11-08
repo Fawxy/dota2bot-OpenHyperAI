@@ -3,7 +3,7 @@
 -- showed at its spot while our lead creep stood there), joined to the enemy team's ev=pull_job lines on that lane whose slot
 -- falls in [t - 32, t) (the window their wave could have been pulled in; a read with several gives several rows, with none
 -- one row with NULLs): `t` and `wave` the read's, `ewd` the wave's seconds from spawn to due, `ewp` (1 when Choose with the
--- pull on offer would have taken it, 0 when the model refused it anyway), `skip` (the line's rej has pull:ew), `lever` the
+-- pull on offer would have taken it, 0 when the model refused it anyway), `skip` (no pull in the chosen set), `lever` the
 -- chosen set, `epid`/`epos` the enemy puller, `slot`, `res` and `div` its pull.
 -- With :sum = 1 one summary row instead: n absent reads, `skipped`, `ewp1` (reads where the skip changed the set),
 -- `pulled` (reads with an enemy `ok` pull in the window: the fact's precision is pulled / n), `enemy_ok` the enemy team's ok
