@@ -258,6 +258,9 @@ check("no safe spot, creep in draw range: draw now however soon the hit is due",
 check("no safe spot, far creep, the walk arrives with time to spare and is safe: step in", A.DragPlan(780, false, true, 1.8, 2.5) == "step")
 check("no safe spot, the walk arrives too close to the hit's due time: no drag", A.DragPlan(780, false, true, 1.8, 2.0) == "late")
 check("no safe spot, the walk fits but ends deeper than the hit spot: no drag", A.DragPlan(500, false, false, 1.0, 2.5) == "step_unsafe")
+check("walk back: the dragged creep's hit due later than the walk to it plus the lead: keep walking", not A.HandBack({1.5, 0.6}))
+check("walk back: the hit due within the walk to it plus the lead: hand the creep to the body", A.HandBack({0.9, 0.6}))
+check("walk back: the creep not offered as a last hit: keep walking", not A.HandBack(nil))
 
 -- The hit spot stands on the creep-to-bot line at our reach (less 25), or where the bot is when it is nearer than that.
 local p = A.HitSpot(0, 0, 1000, 0, 225)

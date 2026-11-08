@@ -467,6 +467,10 @@ export const EVENTS = {
          *  walk, against the predicted `apt`). */
         du: "num",
         wt: "num",
+        /** drag: the predicted walk in (s, distance / move speed); the seconds into the walk back when the hit came due within
+         *  the walk to it plus DragHandLead and the body took over (absent: the walk ran its full length). */
+        eta: "num",
+        hb: "num",
     },
     /** Slice lh-draw step 1a: a contested last hit in lane aggro's drag window (due DragDueMin-DragDueMax, an enemy hero
      *  within its attack range + DragContest of the creep), once per creep, the first time a lane aggro decision sees it. */

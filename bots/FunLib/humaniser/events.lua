@@ -360,7 +360,9 @@ ____exports.EVENTS = {
         ml = "num",
         ss = "num",
         du = "num",
-        wt = "num"
+        wt = "num",
+        eta = "num",
+        hb = "num"
     },
     drag_look = {
         pid = "num",

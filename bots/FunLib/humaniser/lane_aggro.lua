@@ -145,6 +145,7 @@ ____exports.SETTINGS = {
     DragDrawR = 300,
     DragStepIn = 50,
     DragLead = 0.3,
+    DragHandLead = 0.4,
     DragOrderR = 350,
     DragCloser = 50,
     DragWalk = 1.2,
@@ -698,8 +699,8 @@ local function tryDrag(bot, heroes, cands, now)
                     ))
                     step = Vector(sx, sy, here.z)
                     stepSafe = noDeeper(hit, step, heroes)
-                    eta = ____exports.ApproachTime(
-                        GetUnitToLocationDistance(bot, step),
+                    eta = GetUnitToLocationDistance(bot, step) / math.max(
+                        1,
                         bot:GetCurrentMovementSpeed()
                     )
                     c.eta = eta
@@ -757,7 +758,11 @@ local function tryDrag(bot, heroes, cands, now)
                 if plan == "step" then
                     local ad = GetUnitToLocationDistance(bot, step)
                     a.ad = math.floor(ad)
-                    a.approachTime = eta
+                    a.approachTime = ____exports.ApproachTime(
+                        ad,
+                        bot:GetCurrentMovementSpeed()
+                    )
+                    a.eta = math.floor(eta * 100) / 100
                 end
                 a.du = math.floor(c.due * 100) / 100
                 a.con = c.con
@@ -773,6 +778,19 @@ local function tryDrag(bot, heroes, cands, now)
         end
     end
     return nil
+end
+--- The dragged creep's last hit as laneTargets offers it now: [due, walk into attack range], or undefined when not offered.
+local function dragDue(bot, creep)
+    for ____, t in ipairs(laneTargets(bot, ____exports.SETTINGS.DragDueMax, false)) do
+        if t.kind == "lasthit" and t.creep == creep then
+            return {t.due, t.walk}
+        end
+    end
+    return nil
+end
+--- Pure: whether the walk back ends so the body can walk in for the hit (its due minus the walk in is DragHandLead or less).
+function ____exports.HandBack(dw)
+    return dw ~= nil and dw[1] - dw[2] <= ____exports.SETTINGS.DragHandLead
 end
 --- One `ev=drag_look` line per creep the first time it is a drag candidate, with why it was not dragged then (a shared gate,
 -- `late`, `step_unsafe`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
@@ -792,10 +810,10 @@ local function logLooks(bot, cands, pre, now)
     local ml = bot:GetAttackRange() <= 200 and 1 or 0
     for ____, c in ipairs(cands) do
         do
-            local __continue118
+            local __continue123
             repeat
                 if looked[c.creep] ~= nil then
-                    __continue118 = true
+                    __continue123 = true
                     break
                 end
                 looked[c.creep] = now
@@ -831,9 +849,9 @@ local function logLooks(bot, cands, pre, now)
                         }
                     }
                 )
-                __continue118 = true
+                __continue123 = true
             until true
-            if not __continue118 then
+            if not __continue123 then
                 break
             end
         end
@@ -1115,6 +1133,8 @@ local function finish(bot, a, result, now, gap)
         {"ml", a.ml},
         {"ss", a.ss},
         {"du", a.du},
+        {"eta", a.eta},
+        {"hb", a.hb},
         {
             "wt",
             a.kind == "drag" and a.ad ~= nil and a.orderedAt ~= nil and math.floor((a.orderedAt - a.startedAt) * 100) / 100 or nil
@@ -1151,19 +1171,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue167
+            local __continue172
             repeat
                 if not valid(c) then
-                    __continue167 = true
+                    __continue172 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue167 = true
+                __continue172 = true
             until true
-            if not __continue167 then
+            if not __continue172 then
                 break
             end
         end
@@ -1421,7 +1441,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue221
+                    local __continue226
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1429,16 +1449,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue221 = true
+                            __continue226 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue221 = true
+                        __continue226 = true
                     until true
-                    if not __continue221 then
+                    if not __continue226 then
                         break
                     end
                 end
@@ -1500,8 +1520,11 @@ local function act(bot, a, now)
         end
     end
     if t < ____exports.SETTINGS.DragWalk and live(a.creep) then
-        bot:Action_MoveToLocation(a.back)
-        return true
+        if not ____exports.HandBack(dragDue(bot, a.creep)) then
+            bot:Action_MoveToLocation(a.back)
+            return true
+        end
+        a.hb = math.floor(t * 100) / 100
     end
     a.walkedAt = now
     if live(a.creep) and valid(a.hero) then

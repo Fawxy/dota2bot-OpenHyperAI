@@ -107,8 +107,17 @@ export const SETTINGS = {
      */
     DragDrawR: 300,
     DragStepIn: 50,
-    /** Drag: seconds to spare between arriving and the last hit's due time, for the order and the creep's turn (`judgement`). */
+    /**
+     * Drag: seconds to spare between arriving and the last hit's due time, for the order and the creep's turn (`judgement`).
+     * The walk is distance / move speed with no ApproachSlack: lhd7, 11 steps, every walk ended 0.3-0.5 s inside the slacked time.
+     */
     DragLead: 0.3,
+    /**
+     * Drag: the walk back ends and the body takes the hit once the dragged creep's last hit is due within the walk into
+     * attack range plus this (`judgement`; lhd7: 5 drags walked the full DragWalk, the creep at 6-22% HP and the bot 400-450
+     * from where it died).
+     */
+    DragHandLead: 0.4,
     DragOrderR: 350,
     /** Drag: a step or walk-back spot inside an enemy hero's reach may be at most this much nearer to it than the bot is (`judgement`). */
     DragCloser: 50,
@@ -210,8 +219,11 @@ interface Attempt {
     ss?: number;
     /** Drag, at the creep's death: `us` (our last hit), `hero` (the contester's last hits or denies rose), `none`. */
     by?: string;
-    /** Drag: the last hit's due time (s) at the start. */
+    /** Drag: the last hit's due time (s) at the start, the predicted walk in (s), and the seconds into the walk back when the
+     *  hit came due and the body took over (undefined when the walk ran its full DragWalk). */
     du?: number;
+    eta?: number;
+    hb?: number;
 }
 
 const attempts: Record<number, Attempt | undefined> = {};
@@ -609,7 +621,7 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
             const [sx, sy] = HitSpot(cl.x, cl.y, here.x, here.y, SETTINGS.DragDrawR - SETTINGS.DragStepIn + 25);
             step = Vector(sx, sy, here.z);
             stepSafe = noDeeper(hit, step, heroes);
-            eta = ApproachTime(GetUnitToLocationDistance(bot, step), bot.GetCurrentMovementSpeed());
+            eta = GetUnitToLocationDistance(bot, step) / math.max(1, bot.GetCurrentMovementSpeed());
             c.eta = eta;
         }
         const plan = DragPlan(c.d, c.ss, stepSafe, eta, c.due);
@@ -633,7 +645,8 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
         if (plan === "step") {
             const ad = GetUnitToLocationDistance(bot, step!);
             a.ad = math.floor(ad);
-            a.approachTime = eta;
+            a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
+            a.eta = math.floor(eta * 100) / 100;
         }
         a.du = math.floor(c.due * 100) / 100;
         a.con = c.con;
@@ -644,6 +657,19 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
         return a;
     }
     return undefined;
+}
+
+/** The dragged creep's last hit as laneTargets offers it now: [due, walk into attack range], or undefined when not offered. */
+function dragDue(bot: Unit, creep: Unit): [number, number] | undefined {
+    for (const t of laneTargets(bot, SETTINGS.DragDueMax, false)) {
+        if (t.kind === "lasthit" && (t.creep as unknown as Unit) === creep) return [t.due, t.walk];
+    }
+    return undefined;
+}
+
+/** Pure: whether the walk back ends so the body can walk in for the hit (its due minus the walk in is DragHandLead or less). */
+export function HandBack(dw: [number, number] | undefined): boolean {
+    return dw !== undefined && dw[0] - dw[1] <= SETTINGS.DragHandLead;
 }
 
 /** An enemy hero's last hits plus denies (its denies of its own creeps take ours from us too); undefined out of sight. */
@@ -835,6 +861,8 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["ml", a.ml],
         ["ss", a.ss],
         ["du", a.du],
+        ["eta", a.eta],
+        ["hb", a.hb],
         ["wt", a.kind === "drag" && a.ad !== undefined && a.orderedAt !== undefined ? math.floor((a.orderedAt - a.startedAt) * 100) / 100 : undefined],
     ]);
 }
@@ -1078,8 +1106,11 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         if ((at !== undefined && at !== null && !at.IsNull() && at === bot) || (l !== undefined && a.c0 !== undefined && d2(l, a.c0) >= SETTINGS.MovedR)) a.cf = 1;
     }
     if (t < SETTINGS.DragWalk && live(a.creep)) {
-        bot.Action_MoveToLocation(a.back);
-        return true;
+        if (!HandBack(dragDue(bot, a.creep))) {
+            bot.Action_MoveToLocation(a.back);
+            return true;
+        }
+        a.hb = math.floor(t * 100) / 100;
     }
     a.walkedAt = now;
     if (live(a.creep) && valid(a.hero)) a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep));
