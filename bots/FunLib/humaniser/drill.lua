@@ -362,8 +362,9 @@ ____exports.TABLE = {
         overrides = {ForceLever = "r:bot=none"}
     },
     ["lever-feed"] = {
-        note = "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), everyone else benched",
+        note = "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), Dire pos3 a statue in the lane (the feed orders an attack on a visible enemy hero), everyone else benched",
         cast = SAFE_CORE,
+        statue = {d = {3}},
         others = "bench",
         castLaneOnly = true,
         laneAggro = true,
@@ -371,8 +372,9 @@ ____exports.TABLE = {
         overrides = {ForceLever = "r:bot=feed"}
     },
     ["lever-feed-off"] = {
-        note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), everyone else benched",
+        note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
         cast = SAFE_CORE,
+        statue = {d = {3}},
         others = "bench",
         castLaneOnly = true,
         laneAggro = true,
