@@ -1,4 +1,4 @@
--- Pull drills (bot humaniser/drill.ts `pull`, `core-pull`; master slices/lane-controller.md "Drills"): one row per pull slot
+-- Pull drills (bot humaniser/drill.ts `pull`, `core-pull`, `pull-statue`; master slices/lane-controller.md "Drills"): one row per pull slot
 -- the drill decided, in games whose file matches :like. `input` on (ev=choice kind=pull rule=drill) or off (why=drill, the
 -- control); `go` and `why` the pull's start (a refused input-on rep names its own gate); `res` and `why_end` the pull job's
 -- result for that slot (NULL when it never started); `div` its diverted share. Joined to the lane controller's decision
@@ -13,7 +13,7 @@
 WITH
 gm AS MATERIALIZED (
     SELECT DISTINCT d.game_id FROM ev_drill d JOIN games g ON g.game_id = d.game_id
-    WHERE d.ph = 'role' AND d.name IN ('pull', 'core-pull') AND g.file LIKE coalesce(:like, '%')
+    WHERE d.ph = 'role' AND d.name IN ('pull', 'core-pull', 'pull-statue') AND g.file LIKE coalesce(:like, '%')
 ),
 tm AS MATERIALIZED (
     SELECT d.game_id, d.pid, max(d.team) AS team FROM ev_drill d JOIN gm USING (game_id) WHERE d.ph = 'role' GROUP BY 1, 2

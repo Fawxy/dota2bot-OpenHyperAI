@@ -108,6 +108,27 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, control: 2 },
         forces: "pull",
     },
+    // The statue steps (lane controller "Drills" steps): the same drills with the Dire laners that face the cast standing in
+    // their lane as statues (never attack, cast or use items), so the lane has an enemy that is there but does not act.
+    // Radiant pos5 pulls in the Radiant safe lane, which Dire's offlane pos3 and pos4 hold.
+    "pull-statue": {
+        note: "Radiant pos5 pulls each minute's wave, a statue otherwise; Dire pos3 and pos4 statues in the lane; the :30 wave unpulled",
+        cast: { r: [5] },
+        statue: { d: [3, 4] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, control: 2 },
+        forces: "pull",
+    },
+    "shove-statue": {
+        note: "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), Dire pos3 a statue in the lane, everyone else benched",
+        cast: SAFE_CORE,
+        statue: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 30, from: 0 },
+        overrides: { ForceShove: "r:bot" },
+    },
     // The forced shove (slice 1's harness, slice 4b's crash target): the Radiant safe-lane core alone, lane-only, in mode
     // `shove`; each wave a rep.
     shove: {
