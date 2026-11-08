@@ -56,4 +56,16 @@ do
 	check("price: the floor still releases a running walk-in", C.PriceOf(t, 2, 0.3, 0.4, 300, 380, 640, false, cap).why == "hp")
 end
 
+-- Two walk-ins held at once (a retarget from one to another picks the next before the first reports): each is found and
+-- finished on its own creep.
+do
+	local a, b = {}, {}
+	local p = C.PriceOf({}, 1.5, 0, 0.4, 300, 640, 640, false)
+	C.Start(7, a, p, 600, 10)
+	C.Start(7, b, p, 590, 11)
+	check("walks: the first walk-in is still running after a second starts", C.Running(7, a) ~= nil)
+	check("walks: finishing the first returns its own HP at the pick", C.Finish(7, a).hp == 600)
+	check("walks: the second is untouched", C.Running(7, b) ~= nil and C.Running(7, a) == nil)
+end
+
 finish()

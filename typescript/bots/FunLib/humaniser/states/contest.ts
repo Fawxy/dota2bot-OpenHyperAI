@@ -178,25 +178,33 @@ interface Walk {
     hp: number;
     t: number;
 }
-const walks: Record<number, Walk | undefined> = {};
+/**
+ * Up to WALKS_KEPT walk-ins per bot: a retarget picks the next creep before the attempt it replaces reports, so one walk-in
+ * that switches to another holds both until the first one's attempt ends.
+ */
+const walks: Record<number, Walk[] | undefined> = {};
+const WALKS_KEPT = 2;
 const refused: Record<number, Lib.TaskCreep | undefined> = {};
 /** The last refusal logged per bot (creep, why and where), so ev=contest_skip is written once per creep, reason and place. */
 const skipped: Record<number, { creep: Lib.TaskCreep; why: Why; at: string } | undefined> = {};
 
 export function Start(pid: number, creep: Lib.TaskCreep, price: Price, hp: number, now: number): void {
-    walks[pid] = { creep, price, hp, t: now };
+    const list = (walks[pid] ?? []).filter((w) => w.creep !== creep);
+    list.push({ creep, price, hp, t: now });
+    if (list.length > WALKS_KEPT) list.shift();
+    walks[pid] = list;
 }
 
 /** The running walk-in on `creep`, if this bot is in one. */
 export function Running(pid: number, creep: Lib.TaskCreep): Walk | undefined {
-    const w = walks[pid];
-    return w !== undefined && w.creep === creep ? w : undefined;
+    for (const w of walks[pid] ?? []) if (w.creep === creep) return w;
+    return undefined;
 }
 
 /** Ends the walk-in on `creep` (its attempt reported), returning it. */
 export function Finish(pid: number, creep: Lib.TaskCreep): Walk | undefined {
     const w = Running(pid, creep);
-    if (w !== undefined) walks[pid] = undefined;
+    if (w !== undefined) walks[pid] = (walks[pid] ?? []).filter((x) => x.creep !== creep);
     return w;
 }
 

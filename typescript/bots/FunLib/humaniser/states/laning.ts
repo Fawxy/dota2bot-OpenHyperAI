@@ -228,7 +228,8 @@ function farFor(bot: Unit): LanePick.Far | undefined {
     farPrices[pid] = asked;
     return (t) => {
         if (t.walk > Contest.CONTEST_WALK || Contest.Refused(pid, t.creep)) return false;
-        const price = Contest.PriceFor(bot, t);
+        // A walk-in under way is priced as contestPick prices it (with the slack), so the pick does not drop or log it.
+        const price = Contest.PriceFor(bot, t, Contest.Running(pid, t.creep) !== undefined);
         asked.push({ creep: t.creep, price });
         if (!price.ok && Contest.NoteSkip(pid, t.creep, price.why, "pick")) logSkip(bot, t, price, "pick");
         return price.ok;

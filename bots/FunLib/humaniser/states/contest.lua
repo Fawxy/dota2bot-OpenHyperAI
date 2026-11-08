@@ -1,4 +1,17 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArrayFilter(self, callbackfn, thisArg)
+    local result = {}
+    local len = 0
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            len = len + 1
+            result[len] = self[i]
+        end
+    end
+    return result
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
@@ -216,23 +229,41 @@ function ____exports.PriceFor(bot, t, running)
         running and ____exports.COST_CAP * ____exports.WALK_SLACK or ____exports.COST_CAP
     )
 end
+--- Up to WALKS_KEPT walk-ins per bot: a retarget picks the next creep before the attempt it replaces reports, so one walk-in
+-- that switches to another holds both until the first one's attempt ends.
 local walks = {}
+local WALKS_KEPT = 2
 local refused = {}
 --- The last refusal logged per bot (creep, why and where), so ev=contest_skip is written once per creep, reason and place.
 local skipped = {}
 function ____exports.Start(pid, creep, price, hp, now)
-    walks[pid] = {creep = creep, price = price, hp = hp, t = now}
+    local list = __TS__ArrayFilter(
+        walks[pid] or ({}),
+        function(____, w) return w.creep ~= creep end
+    )
+    list[#list + 1] = {creep = creep, price = price, hp = hp, t = now}
+    if #list > WALKS_KEPT then
+        table.remove(list, 1)
+    end
+    walks[pid] = list
 end
 --- The running walk-in on `creep`, if this bot is in one.
 function ____exports.Running(pid, creep)
-    local w = walks[pid]
-    return w ~= nil and w.creep == creep and w or nil
+    for ____, w in ipairs(walks[pid] or ({})) do
+        if w.creep == creep then
+            return w
+        end
+    end
+    return nil
 end
 --- Ends the walk-in on `creep` (its attempt reported), returning it.
 function ____exports.Finish(pid, creep)
     local w = ____exports.Running(pid, creep)
     if w ~= nil then
-        walks[pid] = nil
+        walks[pid] = __TS__ArrayFilter(
+            walks[pid] or ({}),
+            function(____, x) return x.creep ~= creep end
+        )
     end
     return w
 end

@@ -411,7 +411,11 @@ local function farFor(bot)
         if t.walk > Contest.CONTEST_WALK or Contest.Refused(pid, t.creep) then
             return false
         end
-        local price = Contest.PriceFor(bot, t)
+        local price = Contest.PriceFor(
+            bot,
+            t,
+            Contest.Running(pid, t.creep) ~= nil
+        )
         asked[#asked + 1] = {creep = t.creep, price = price}
         if not price.ok and Contest.NoteSkip(pid, t.creep, price.why, "pick") then
             logSkip(bot, t, price, "pick")
