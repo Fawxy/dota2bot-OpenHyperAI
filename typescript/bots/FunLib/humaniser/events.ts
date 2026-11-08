@@ -450,7 +450,8 @@ export const EVENTS = {
         md: "num",
         lbl: "str",
         gap: "num",
-        /** drag: the dragged creep's distance to the bot at the order; 1 once it targeted the bot or moved MovedR since (it
+        /** drag: result `far` when the creep stood beyond DragOrderR at the order (no order given); `ad` the step in, if any;
+         *  the dragged creep's distance to the bot at the order; 1 once it targeted the bot or moved MovedR since (it
          *  followed), else 0; at its death `by` `us`, `hero` (the contesting enemy hero's last hits plus denies rose: it, or
          *  another creep at the same moment), `none`; `ml` 1 for a melee bot (range 200 or less); `ss` 1 when a spot within
          *  the bot's reach of the creep was out of every enemy hero's reach at the start (no drag needed). */
@@ -465,8 +466,9 @@ export const EVENTS = {
     drag_look: {
         pid: "num",
         role: "str",
-        /** `go` (dragged), a shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`), `reach` (the bot in an enemy
-         *  hero's reach), `far` (beyond DrawR), `no_target`, `unsafe` (the walk-back point in reach), `other` (an earlier
+        /** `go` (dragged from where the bot stands), `step` (dragged after a short step in), `safe` (a spot within our reach
+         *  of the creep is out of every enemy hero's reach: no drag, the body takes it), `step_unsafe`, `far` (beyond the step), a shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`), `reach` (the bot in an enemy
+         *  hero's reach), `no_target`, `unsafe` (the walk-back point in reach), `other` (an earlier
          *  candidate went or ended the look). */
         why: "str",
         /** Bot to creep, contester to creep, the last hit's due time (s). */

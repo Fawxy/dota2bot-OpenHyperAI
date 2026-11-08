@@ -97,6 +97,12 @@ export const SETTINGS = {
     /** Drag: the enemy hero contests within its attack range plus this of the creep. */
     DragContest: 150,
     DragBack: 300,
+    /** Drag: a contested last hit up to this far beyond DrawR is stepped toward (to DrawR less DragStepIn from the creep)
+     *  when the step's spot is out of every enemy hero's reach (HeroMargin); farther, no drag (`judgement`). */
+    DragStepMax: 300,
+    DragStepIn: 50,
+    /** Drag: no order once the creep stands farther than this (EC-053's 500 less a margin for the creep's move). */
+    DragOrderR: 470,
     DragWalk: 1.2,
     /** A lane hit due this soon (any kind) keeps the body's frame: no feed. */
     BusyWithin: 1.5,
@@ -532,12 +538,45 @@ function dragCands(bot: Unit, heroes: Unit[]): DragCand[] {
     return out;
 }
 
+/**
+ * Pure: what a contested last hit gets (slice lh-draw 1b, user 09/11/2026: a hero that can hit the creep from a safe spot
+ * just takes it). `safe`: a spot within our reach of the creep is out of every enemy hero's reach, no drag; `in`: within
+ * draw range, draw now; `step`: a short step that is itself safe brings it into range; `step_unsafe`: that step is not safe;
+ * `far`: beyond the step.
+ */
+export function DragPlan(d: number, ss: boolean, stepSafe: boolean): "safe" | "in" | "step" | "step_unsafe" | "far" {
+    if (ss) return "safe";
+    if (d <= SETTINGS.DrawR) return "in";
+    if (d - SETTINGS.DrawR > SETTINGS.DragStepMax) return "far";
+    return stepSafe ? "step" : "step_unsafe";
+}
+
+/** Unit vector from `from` away from the enemy hero `con`, bent toward our side of the lane (the two directions' mean). */
+function dragDir(team: number, lane: Lane, from: Vector, con: Unit): Vector {
+    const b = backDir(team, lane, from);
+    const c = con.GetLocation();
+    const len = math.max(1, d2(from, c));
+    const x = b.x + (from.x - c.x) / len;
+    const y = b.y + (from.y - c.y) / len;
+    const n = math.sqrt(x * x + y * y);
+    return n < 0.01 ? b : Vector(x / n, y / n, 0);
+}
+
 /** The first candidate that can be dragged; each candidate looked at gets its `why`. */
 function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Attempt | undefined {
     const here = bot.GetLocation();
     for (const c of cands) {
-        if (c.d > SETTINGS.DrawR) {
-            c.why = "far";
+        let step: Vector | undefined;
+        let stepSafe = false;
+        if (!c.ss && c.d > SETTINGS.DrawR && c.d - SETTINGS.DrawR <= SETTINGS.DragStepMax) {
+            const cl = c.creep.GetLocation();
+            const [sx, sy] = HitSpot(cl.x, cl.y, here.x, here.y, SETTINGS.DrawR - SETTINGS.DragStepIn + 25);
+            step = Vector(sx, sy, here.z);
+            stepSafe = heroSafe(step, heroes);
+        }
+        const plan = DragPlan(c.d, c.ss, stepSafe);
+        if (plan !== "in" && plan !== "step") {
+            c.why = plan;
             continue;
         }
         const hero = orderTarget(bot);
@@ -545,13 +584,19 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
             c.why = "no_target";
             return undefined;
         }
-        const back = along(here, backDir(bot.GetTeam(), bot.GetAssignedLane(), here), SETTINGS.DragBack);
+        const from = plan === "step" ? step! : here;
+        const back = along(from, dragDir(bot.GetTeam(), bot.GetAssignedLane(), from, c.con), SETTINGS.DragBack);
         if (!heroSafe(back, heroes)) {
             c.why = "unsafe";
             return undefined;
         }
-        c.why = "go";
-        const a = newAttempt(bot, "drag", "walk", hero, c.creep, back, undefined, now);
+        c.why = plan === "step" ? "step" : "go";
+        const a = newAttempt(bot, "drag", plan === "step" ? "approach" : "walk", hero, c.creep, back, plan === "step" ? step : undefined, now);
+        if (plan === "step") {
+            const ad = GetUnitToLocationDistance(bot, step!);
+            a.ad = math.floor(ad);
+            a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
+        }
         a.con = c.con;
         a.cpid = c.con.GetPlayerID();
         a.clh0 = heroTally(a.cpid);
@@ -899,6 +944,11 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         a.td = math.floor(GetUnitToUnitDistance(bot, a.hero));
         if (a.kind === "drag" && live(a.creep)) {
             a.cd = math.floor(GetUnitToUnitDistance(bot, a.creep));
+            // The draw takes creeps within 500 of us at the order only (EC-053): a creep out of it would not follow.
+            if (a.cd > SETTINGS.DragOrderR) {
+                finish(bot, a, "far", now);
+                return false;
+            }
             a.c0 = a.creep.GetLocation();
             a.cf = 0;
         }
