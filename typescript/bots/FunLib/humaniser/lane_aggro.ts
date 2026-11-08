@@ -103,6 +103,8 @@ export const SETTINGS = {
     DragStepIn: 50,
     /** Drag: no order once the creep stands farther than this (EC-053's 500 less a margin for the creep's move). */
     DragOrderR: 470,
+    /** Drag: a step or walk-back spot inside an enemy hero's reach may be at most this much nearer to it than the bot is (`judgement`). */
+    DragCloser: 50,
     DragWalk: 1.2,
     /** A lane hit due this soon (any kind) keeps the body's frame: no feed. */
     BusyWithin: 1.5,
@@ -551,6 +553,20 @@ export function DragPlan(d: number, ss: boolean, stepSafe: boolean): "safe" | "i
     return stepSafe ? "step" : "step_unsafe";
 }
 
+/**
+ * The drag's safety (slice lh-draw 1b, lhd3: a melee hero against a ranged one stands in its reach all lane, so heroSafe
+ * refused every drag): a spot is fine when it is out of each enemy hero's attack reach or no nearer to that hero than `here`
+ * less DragCloser. The drag walks away from the enemy hero, so it lowers the exposure the hero already accepts.
+ */
+function noDeeper(here: Vector, to: Vector, heroes: Unit[]): boolean {
+    for (const h of heroes) {
+        const reach = h.GetAttackRange() + h.GetBoundingRadius() * 2;
+        const dTo = GetUnitToLocationDistance(h, to);
+        if (dTo <= reach && dTo < GetUnitToLocationDistance(h, here) - SETTINGS.DragCloser) return false;
+    }
+    return true;
+}
+
 /** Unit vector from `from` away from the enemy hero `con`, bent toward our side of the lane (the two directions' mean). */
 function dragDir(team: number, lane: Lane, from: Vector, con: Unit): Vector {
     const b = backDir(team, lane, from);
@@ -572,7 +588,7 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
             const cl = c.creep.GetLocation();
             const [sx, sy] = HitSpot(cl.x, cl.y, here.x, here.y, SETTINGS.DrawR - SETTINGS.DragStepIn + 25);
             step = Vector(sx, sy, here.z);
-            stepSafe = heroSafe(step, heroes);
+            stepSafe = noDeeper(here, step, heroes);
         }
         const plan = DragPlan(c.d, c.ss, stepSafe);
         if (plan !== "in" && plan !== "step") {
@@ -586,7 +602,7 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
         }
         const from = plan === "step" ? step! : here;
         const back = along(from, dragDir(bot.GetTeam(), bot.GetAssignedLane(), from, c.con), SETTINGS.DragBack);
-        if (!heroSafe(back, heroes)) {
+        if (!noDeeper(here, back, heroes)) {
             c.why = "unsafe";
             return undefined;
         }
@@ -1099,13 +1115,13 @@ export function Step(bot: Unit): boolean {
         skip(bot, g, now);
         return false;
     }
-    if (!heroSafe(bot.GetLocation(), heroes)) {
-        logLooks(bot, cands, "reach", now);
+    // The drag has its own safety (noDeeper): a bot in an enemy hero's reach may still drag away from it.
+    let next = tryDrag(bot, heroes, cands, now);
+    logLooks(bot, cands, undefined, now);
+    if (next === undefined && !heroSafe(bot.GetLocation(), heroes)) {
         skip(bot, "reach", now);
         return false;
     }
-    let next = tryDrag(bot, heroes, cands, now);
-    logLooks(bot, cands, undefined, now);
     let why = "drag";
     let ad: number | undefined;
     if (next === undefined) {

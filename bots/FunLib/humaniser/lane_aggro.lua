@@ -145,6 +145,7 @@ ____exports.SETTINGS = {
     DragStepMax = 300,
     DragStepIn = 50,
     DragOrderR = 470,
+    DragCloser = 50,
     DragWalk = 1.2,
     BusyWithin = 1.5,
     StaleActing = 0.5,
@@ -639,6 +640,19 @@ function ____exports.DragPlan(d, ss, stepSafe)
     end
     return stepSafe and "step" or "step_unsafe"
 end
+--- The drag's safety (slice lh-draw 1b, lhd3: a melee hero against a ranged one stands in its reach all lane, so heroSafe
+-- refused every drag): a spot is fine when it is out of each enemy hero's attack reach or no nearer to that hero than `here`
+-- less DragCloser. The drag walks away from the enemy hero, so it lowers the exposure the hero already accepts.
+local function noDeeper(here, to, heroes)
+    for ____, h in ipairs(heroes) do
+        local reach = h:GetAttackRange() + h:GetBoundingRadius() * 2
+        local dTo = GetUnitToLocationDistance(h, to)
+        if dTo <= reach and dTo < GetUnitToLocationDistance(h, here) - ____exports.SETTINGS.DragCloser then
+            return false
+        end
+    end
+    return true
+end
 --- Unit vector from `from` away from the enemy hero `con`, bent toward our side of the lane (the two directions' mean).
 local function dragDir(team, lane, from, con)
     local b = backDir(team, lane, from)
@@ -657,7 +671,7 @@ local function tryDrag(bot, heroes, cands, now)
     local here = bot:GetLocation()
     for ____, c in ipairs(cands) do
         do
-            local __continue99
+            local __continue103
             repeat
                 local step
                 local stepSafe = false
@@ -671,12 +685,12 @@ local function tryDrag(bot, heroes, cands, now)
                         ____exports.SETTINGS.DrawR - ____exports.SETTINGS.DragStepIn + 25
                     ))
                     step = Vector(sx, sy, here.z)
-                    stepSafe = heroSafe(step, heroes)
+                    stepSafe = noDeeper(here, step, heroes)
                 end
                 local plan = ____exports.DragPlan(c.d, c.ss, stepSafe)
                 if plan ~= "in" and plan ~= "step" then
                     c.why = plan
-                    __continue99 = true
+                    __continue103 = true
                     break
                 end
                 local hero = orderTarget(bot)
@@ -695,7 +709,7 @@ local function tryDrag(bot, heroes, cands, now)
                     ),
                     ____exports.SETTINGS.DragBack
                 )
-                if not heroSafe(back, heroes) then
+                if not noDeeper(here, back, heroes) then
                     c.why = "unsafe"
                     return nil
                 end
@@ -732,7 +746,7 @@ local function tryDrag(bot, heroes, cands, now)
                 a.ss = c.ss and 1 or 0
                 return a
             until true
-            if not __continue99 then
+            if not __continue103 then
                 break
             end
         end
@@ -757,10 +771,10 @@ local function logLooks(bot, cands, pre, now)
     local ml = bot:GetAttackRange() <= 200 and 1 or 0
     for ____, c in ipairs(cands) do
         do
-            local __continue114
+            local __continue118
             repeat
                 if looked[c.creep] ~= nil then
-                    __continue114 = true
+                    __continue118 = true
                     break
                 end
                 looked[c.creep] = now
@@ -792,9 +806,9 @@ local function logLooks(bot, cands, pre, now)
                         {"ml", ml}
                     }
                 )
-                __continue114 = true
+                __continue118 = true
             until true
-            if not __continue114 then
+            if not __continue118 then
                 break
             end
         end
@@ -1105,19 +1119,19 @@ local function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue163
+            local __continue167
             repeat
                 if not valid(c) then
-                    __continue163 = true
+                    __continue167 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue163 = true
+                __continue167 = true
             until true
-            if not __continue163 then
+            if not __continue167 then
                 break
             end
         end
@@ -1372,7 +1386,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue216
+                    local __continue220
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1380,16 +1394,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue216 = true
+                            __continue220 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue216 = true
+                        __continue220 = true
                     until true
-                    if not __continue216 then
+                    if not __continue220 then
                         break
                     end
                 end
@@ -1552,16 +1566,15 @@ function ____exports.Step(bot)
         skip(bot, g, now)
         return false
     end
-    if not heroSafe(
+    local next = tryDrag(bot, heroes, cands, now)
+    logLooks(bot, cands, nil, now)
+    if next == nil and not heroSafe(
         bot:GetLocation(),
         heroes
     ) then
-        logLooks(bot, cands, "reach", now)
         skip(bot, "reach", now)
         return false
     end
-    local next = tryDrag(bot, heroes, cands, now)
-    logLooks(bot, cands, nil, now)
     local why = "drag"
     local ad
     if next == nil then

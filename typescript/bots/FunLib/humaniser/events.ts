@@ -467,8 +467,9 @@ export const EVENTS = {
         pid: "num",
         role: "str",
         /** `go` (dragged from where the bot stands), `step` (dragged after a short step in), `safe` (a spot within our reach
-         *  of the creep is out of every enemy hero's reach: no drag, the body takes it), `step_unsafe`, `far` (beyond the step), a shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`), `reach` (the bot in an enemy
-         *  hero's reach), `no_target`, `unsafe` (the walk-back point in reach), `other` (an earlier
+         *  of the creep is out of every enemy hero's reach: no drag, the body takes it), `step_unsafe` (the step goes deeper into an enemy hero's reach), `far` (beyond the step), a shared gate
+         *  (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`), `no_target`, `unsafe` (the walk back goes deeper into an enemy
+         *  hero's reach), `other` (an earlier
          *  candidate went or ended the look). */
         why: "str",
         /** Bot to creep, contester to creep, the last hit's due time (s). */
