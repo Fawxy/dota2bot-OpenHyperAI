@@ -1,5 +1,6 @@
 -- A lever drill's input arm against its control arm, wave by wave (master slices/lane-controller.md "Drills", the lever
--- drills): the game whose file matches :on and the one matching :off (same drill seed, so the same waves), on :team's side of
+-- drills): the game whose file matches :on and the one matching :off (same drill seed, so the same waves; the latest match
+-- is taken, so each pattern must match one log: end it with the label and `.log`), on :team's side of
 -- :lane (defaults Radiant bot). One row per wave both games decided and checked: `on_eff`/`off_eff` own45 - m45 (the clash at
 -- the check against the plain forecast, in the team's frame), `diff` on_eff - off_eff (the lever's effect on that wave),
 -- `on_sw`/`off_sw` the team's ok idle swings in the 45 s (all kinds). With :sum = 1 one row: `n` waves, `mean` and `se` of
