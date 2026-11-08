@@ -315,6 +315,18 @@ function maxHp(kind: string, t0: number): number {
     return KINDS[kind].hp + (kind === "siege" ? 0 : 12 * math.floor(t0 / UPGRADE_EVERY));
 }
 
+/** `team`'s lead lane creep: the path distance of its creep furthest towards the enemy; undefined with none. */
+export function LeadOf(own: StartCreep[], team: number): number | undefined {
+    let lead: number | undefined;
+    for (const c of own) if (lead === undefined || dirOf(team) * (c.s - lead) > 0) lead = c.s;
+    return lead;
+}
+
+/** Where `team`'s waves spawn on the path, and the sign of their travel along it. */
+export function SpawnOf(lane: LanePath, team: number): LuaMultiReturn<[number, number]> {
+    return $multi(team === R ? lane.spawnR : lane.spawnD, dirOf(team));
+}
+
 /**
  * The start state from team `v`'s view at second `t0`: own and visible enemy creeps (HP clipped to the kind's maximum), plus
  * each enemy wave spawned in the last 90 s that nothing would see, placed by the schedule at full HP (push.js `initView`).
@@ -323,13 +335,10 @@ export function ViewStart(lane: LanePath, v: number, t0: number, own: StartCreep
     const e = v === R ? D : R;
     const de = dirOf(e);
     const init: StartCreep[] = [];
-    let lead: number | undefined;
-    for (const c of own) {
-        init.push({ team: v, kind: c.kind, s: c.s, hp: math.min(c.hp, maxHp(c.kind, t0)), maxhp: maxHp(c.kind, t0) });
-        if (lead === undefined || dirOf(v) * (c.s - lead) > 0) lead = c.s;
-    }
+    const lead = LeadOf(own, v);
+    for (const c of own) init.push({ team: v, kind: c.kind, s: c.s, hp: math.min(c.hp, maxHp(c.kind, t0)), maxhp: maxHp(c.kind, t0) });
     for (const c of enemy) init.push({ team: e, kind: c.kind, s: c.s, hp: math.min(c.hp, maxHp(c.kind, t0)), maxhp: maxHp(c.kind, t0) });
-    const spawnE = e === R ? lane.spawnR : lane.spawnD;
+    const [spawnE] = SpawnOf(lane, e);
     for (let ts = math.floor(t0 / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY; ts >= t0 - 3 * GameRules.WAVE_EVERY && ts >= 0; ts -= GameRules.WAVE_EVERY) {
         const pos = spawnE + de * speed() * (t0 - ts);
         let seen = false;
@@ -521,13 +530,22 @@ function t1Hp(team: number, lane: Lane): number | false {
     return t === undefined || t === null || !t.IsAlive() ? false : t.GetHealth();
 }
 
-/** `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from. */
-function viewNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined, number, StartCreep[], Record<number, number | false | undefined>]> {
+/** The lane creeps `team`'s view of `lane` starts from at the whole second now: the path, the second, its own creeps and
+ *  the visible enemy creeps on the path (the enemy wave tracker reads the same). */
+export function CreepsNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined, number, StartCreep[], StartCreep[]]> {
     const path = LANE_PATHS[lane];
     const t0 = math.floor(DotaTime());
+    if (path === undefined) return $multi(undefined, t0, [], []);
+    const enemy = team === R ? D : R;
+    return $multi(path, t0, creepsOn(path, GetUnitList(UnitType.AlliedCreeps), team, false), creepsOn(path, GetUnitList(UnitType.EnemyCreeps), enemy, true));
+}
+
+/** `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from. */
+function viewNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined, number, StartCreep[], Record<number, number | false | undefined>]> {
+    const [path, t0, own, enemyCreeps] = CreepsNow(team, lane);
     if (path === undefined) return $multi(undefined, t0, [], {});
     const enemy = team === R ? D : R;
-    const init = ViewStart(path, team, t0, creepsOn(path, GetUnitList(UnitType.AlliedCreeps), team, false), creepsOn(path, GetUnitList(UnitType.EnemyCreeps), enemy, true));
+    const init = ViewStart(path, team, t0, own, enemyCreeps);
     return $multi(path, t0, init, { [team]: t1Hp(team, lane), [enemy]: t1Hp(enemy, lane) });
 }
 

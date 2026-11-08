@@ -167,11 +167,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue136
+            local __continue140
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue136 = true
+                    __continue140 = true
                     break
                 end
                 if select(
@@ -180,9 +180,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue136 = true
+                __continue140 = true
             until true
-            if not __continue136 then
+            if not __continue140 then
                 break
             end
         end
@@ -590,13 +590,27 @@ end
 local function maxHp(kind, t0)
     return ____exports.KINDS[kind].hp + (kind == "siege" and 0 or 12 * math.floor(t0 / UPGRADE_EVERY))
 end
+--- `team`'s lead lane creep: the path distance of its creep furthest towards the enemy; undefined with none.
+function ____exports.LeadOf(own, team)
+    local lead
+    for ____, c in ipairs(own) do
+        if lead == nil or dirOf(team) * (c.s - lead) > 0 then
+            lead = c.s
+        end
+    end
+    return lead
+end
+--- Where `team`'s waves spawn on the path, and the sign of their travel along it.
+function ____exports.SpawnOf(lane, team)
+    return team == R and lane.spawnR or lane.spawnD, dirOf(team)
+end
 --- The start state from team `v`'s view at second `t0`: own and visible enemy creeps (HP clipped to the kind's maximum), plus
 -- each enemy wave spawned in the last 90 s that nothing would see, placed by the schedule at full HP (push.js `initView`).
 function ____exports.ViewStart(lane, v, t0, own, enemy)
     local e = v == R and D or R
     local de = dirOf(e)
     local init = {}
-    local lead
+    local lead = ____exports.LeadOf(own, v)
     for ____, c in ipairs(own) do
         init[#init + 1] = {
             team = v,
@@ -608,9 +622,6 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
             ),
             maxhp = maxHp(c.kind, t0)
         }
-        if lead == nil or dirOf(v) * (c.s - lead) > 0 then
-            lead = c.s
-        end
     end
     for ____, c in ipairs(enemy) do
         init[#init + 1] = {
@@ -624,12 +635,12 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
             maxhp = maxHp(c.kind, t0)
         }
     end
-    local spawnE = e == R and lane.spawnR or lane.spawnD
+    local spawnE = ____exports.SpawnOf(lane, e)
     do
         local ts = math.floor(t0 / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY
         while ts >= t0 - 3 * GameRules.WAVE_EVERY and ts >= 0 do
             do
-                local __continue93
+                local __continue97
                 repeat
                     local pos = spawnE + de * speed() * (t0 - ts)
                     local seen = false
@@ -639,11 +650,11 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                         end
                     end
                     if seen then
-                        __continue93 = true
+                        __continue97 = true
                         break
                     end
                     if lead ~= nil and de * (pos - lead) >= -____exports.SETTINGS.OurVision then
-                        __continue93 = true
+                        __continue97 = true
                         break
                     end
                     for ____, u in ipairs(____exports.WaveAt(e, ts, spawnE)) do
@@ -655,9 +666,9 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                             maxhp = u.maxhp
                         }
                     end
-                    __continue93 = true
+                    __continue97 = true
                 until true
-                if not __continue93 then
+                if not __continue97 then
                     break
                 end
             end
@@ -728,11 +739,11 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
     local found = not spawned
     for ____, c in ipairs(init) do
         do
-            local __continue110
+            local __continue114
             repeat
                 if c.team == team and inWave(c) then
                     found = true
-                    __continue110 = true
+                    __continue114 = true
                     break
                 end
                 left[#left + 1] = c
@@ -741,9 +752,9 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
                 elseif not inWave(c) then
                     ep = ep + c.hp
                 end
-                __continue110 = true
+                __continue114 = true
             until true
-            if not __continue110 then
+            if not __continue114 then
                 break
             end
         end
@@ -820,21 +831,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue130
+            local __continue134
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue130 = true
+                    __continue134 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue130 = true
+                    __continue134 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue130 = true
+                    __continue134 = true
                     break
                 end
                 out[#out + 1] = {
@@ -843,9 +854,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue130 = true
+                __continue134 = true
             until true
-            if not __continue130 then
+            if not __continue134 then
                 break
             end
         end
@@ -863,10 +874,30 @@ local function t1Hp(team, lane)
     end
     return ____temp_15
 end
---- `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from.
-local function viewNow(team, lane)
+--- The lane creeps `team`'s view of `lane` starts from at the whole second now: the path, the second, its own creeps and
+-- the visible enemy creeps on the path (the enemy wave tracker reads the same).
+function ____exports.CreepsNow(team, lane)
     local path = LANE_PATHS[lane]
     local t0 = math.floor(DotaTime())
+    if path == nil then
+        return nil, t0, {}, {}
+    end
+    local enemy = team == R and D or R
+    return path, t0, creepsOn(
+        path,
+        GetUnitList(UnitType.AlliedCreeps),
+        team,
+        false
+    ), creepsOn(
+        path,
+        GetUnitList(UnitType.EnemyCreeps),
+        enemy,
+        true
+    )
+end
+--- `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from.
+local function viewNow(team, lane)
+    local path, t0, own, enemyCreeps = ____exports.CreepsNow(team, lane)
     if path == nil then
         return nil, t0, {}, {}
     end
@@ -875,18 +906,8 @@ local function viewNow(team, lane)
         path,
         team,
         t0,
-        creepsOn(
-            path,
-            GetUnitList(UnitType.AlliedCreeps),
-            team,
-            false
-        ),
-        creepsOn(
-            path,
-            GetUnitList(UnitType.EnemyCreeps),
-            enemy,
-            true
-        )
+        own,
+        enemyCreeps
     )
     return path, t0, init, {
         [team] = t1Hp(team, lane),
