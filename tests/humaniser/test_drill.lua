@@ -60,6 +60,23 @@ do
 	check("unknown drill: plays", H.Drill.RoleOf(b) == "play")
 end
 
+-- hold: the Radiant pos5 is the cast (the pull), the Radiant pos1 lane-only with the wave hold, everyone else benched.
+do
+	local H = world("hold")
+	local core = hero(0, RAD, 1, 3)
+	local sup = hero(4, RAD, 5, 3)
+	local mid = hero(2, RAD, 2, 2)
+	local off = hero(7, DIRE, 3, 3)
+	check("hold: pos5 cast, forced pull", H.Drill.RoleOf(sup) == "cast" and H.Drill.ForcedJob(sup) == "pull" and not H.Drill.LaneOnly(sup) and not H.Drill.LaneHold(sup))
+	check("hold: pos1 lane-only with the hold", H.Drill.RoleOf(core) == "laneonly" and H.Drill.LaneOnly(core) and H.Drill.LaneHold(core) and not H.Drill.Held(core))
+	check("hold: no forced job for the lane-only core", H.Drill.ForcedJob(core) == nil)
+	check("hold: others benched, no hold", H.Drill.RoleOf(mid) == "bench" and H.Drill.RoleOf(off) == "bench" and not H.Drill.LaneHold(off))
+end
+do
+	local H = world("lane-spot-statue")
+	check("lane-spot-statue: no hold for the lane-only cast", not H.Drill.LaneHold(hero(0, RAD, 1, 3)))
+end
+
 -- lane-spot-statue: the Radiant pos1 is the cast (lane-only), the Dire pos3 a statue, everyone else benched.
 do
 	local H = world("lane-spot-statue")

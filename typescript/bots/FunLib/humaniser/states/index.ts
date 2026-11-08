@@ -26,6 +26,7 @@ import * as Farm from "bots/FunLib/humaniser/states/farm";
 import * as Gank from "bots/FunLib/humaniser/states/gank";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
+import * as Drill from "bots/FunLib/humaniser/drill";
 import * as WaveHold from "bots/FunLib/humaniser/states/wave_hold";
 
 export interface StatesSettings {
@@ -319,6 +320,16 @@ export function CoreAggroStep(bot: Unit): boolean {
     // Ours.CoreHold: the wave hold sets the spot's `hold` input or starts lane aggro's `back` draw, which the step below acts.
     WaveHold.Step(bot);
     return LaneAggro.Step(bot);
+}
+
+/**
+ * A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started, stepped by
+ * mode_laning_generic's lane-only branch; no other lane aggro draw starts (StepOpen steps only an open one).
+ */
+export function LaneOnlyHoldStep(bot: Unit): boolean {
+    if (!IsEnabled() || !Drill.LaneHold(bot) || !BodyLastHits(bot)) return false;
+    WaveHold.Step(bot);
+    return LaneAggro.StepOpen(bot);
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */

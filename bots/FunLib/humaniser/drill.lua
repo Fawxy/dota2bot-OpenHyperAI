@@ -327,6 +327,16 @@ ____exports.TABLE = {
         rep = {every = 30, from = 0},
         overrides = {ForceShove = "r:bot"}
     },
+    hold = {
+        note = "Radiant pos5 pulls each minute's wave, a statue otherwise; Radiant pos1 lane-only with the wave hold; the :30 wave unpulled; everyone else benched",
+        cast = {r = {5}},
+        laneOnly = {r = {1}},
+        laneHold = true,
+        others = "bench",
+        castIdle = "statue",
+        rep = {every = 30, from = 60, control = 2},
+        forces = "pull"
+    },
     shove = {
         note = "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), everyone else benched",
         cast = SAFE_CORE,
@@ -373,6 +383,13 @@ function ____exports.RoleOf(bot)
     ) then
         return "statue"
     end
+    if listed(
+        d.laneOnly,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "laneonly"
+    end
     return d.others
 end
 --- Benched or a statue: the hero holds farm mode above every other mode, takes the drill's step and never casts.
@@ -386,11 +403,16 @@ function ____exports.LaneOnly(bot)
     local d = ____exports.Active()
     return d ~= nil and (r == "cast" and d.castLaneOnly == true or r == "laneonly")
 end
+--- A lane-only hero of an entry with `laneHold`: the wave hold may act for it.
+function ____exports.LaneHold(bot)
+    local ____opt_4 = ____exports.Active()
+    return (____opt_4 and ____opt_4.laneHold) == true and ____exports.LaneOnly(bot)
+end
 --- An Overrides key the active drill implies, or undefined.
 function ____exports.Implied(key)
-    local ____opt_6 = ____exports.Active()
-    local ____opt_4 = ____opt_6 and ____opt_6.overrides
-    return ____opt_4 and ____opt_4[key]
+    local ____opt_8 = ____exports.Active()
+    local ____opt_6 = ____opt_8 and ____opt_8.overrides
+    return ____opt_6 and ____opt_6[key]
 end
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local STATUE_BEHIND = -300
@@ -399,19 +421,19 @@ local statueSide = {}
 --- A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
 -- first and gives this hero the statue's step only when the job neither runs nor starts).
 function ____exports.IdleStatue(bot)
-    local ____opt_8 = ____exports.Active()
-    return (____opt_8 and ____opt_8.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
+    local ____opt_10 = ____exports.Active()
+    return (____opt_10 and ____opt_10.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
 end
 --- The one chooser job a cast may run (the forced context, for an entry with `castIdle`), or undefined: every job.
 function ____exports.ForcedJob(bot)
     local d = ____exports.Active()
-    local ____temp_10
+    local ____temp_12
     if d ~= nil and d.castIdle ~= nil and ____exports.RoleOf(bot) == "cast" then
-        ____temp_10 = d.forces
+        ____temp_12 = d.forces
     else
-        ____temp_10 = nil
+        ____temp_12 = nil
     end
-    return ____temp_10
+    return ____temp_12
 end
 --- For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a
 -- control rep) or is before the first rep (`none`); undefined when the drill does not force `context`. A pull reads it at
@@ -494,8 +516,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_11 = overrides()
-            local v = ____opt_11 and ____opt_11[k]
+            local ____opt_13 = overrides()
+            local v = ____opt_13 and ____opt_13[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -503,8 +525,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_13 = overrides()
-        local asked = ____opt_13 and ____opt_13.Drill
+        local ____opt_15 = overrides()
+        local asked = ____opt_15 and ____opt_15.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
