@@ -152,14 +152,30 @@ function towerAt(bot: Unit, at: Vector): boolean {
     return false;
 }
 
+/**
+ * Where the bot stands to swing at a creep at `at`: on the line from the bot to the creep, its attack range plus both bounding
+ * radii short of the creep (the bot's own spot when it is already that close). Drill cwsen1 (09/11/2026): measured from the
+ * creep, the price charged 12 walk-ins with an enemy sentry that attacked during 7 of them, because a melee core swings
+ * from its own side of the creep, often outside a zone that covers the creep.
+ */
+export function StandPoint(this: void, from: Vector, at: Vector, reach: number): Vector {
+    const d = dist(from, at);
+    if (d <= reach) return from;
+    const k = reach / d;
+    return Vector(at.x + (from.x - at.x) * k, at.y + (from.y - at.y) * k, at.z);
+}
+
 /** The price of a walk-in for lane target `t` now; `running` prices one already under way (cost cap COST_CAP x WALK_SLACK). */
 export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget, running = false): Price {
-    const at = (t.creep as unknown as Unit).GetLocation();
-    if (at === undefined) return { ok: false, why: "cost", cost: 1, heroes: 0, exposure: 0 };
+    const creep = t.creep as unknown as Unit;
+    const at = creep.GetLocation();
+    const from = bot.GetLocation();
+    if (at === undefined || from === undefined) return { ok: false, why: "cost", cost: 1, heroes: 0, exposure: 0 };
+    const stand = StandPoint(from, at, bot.GetAttackRange() + bot.GetBoundingRadius() + creep.GetBoundingRadius());
     const point = (bot as Unit & { GetAttackPoint?(): number }).GetAttackPoint?.();
     const swing = point !== undefined && point > 0 ? point : SWING_DEFAULT;
     return PriceOf(
-        ThreatsAt(bot, at),
+        ThreatsAt(bot, stand),
         t.walk,
         math.max(0, t.eta - t.walk),
         swing,
