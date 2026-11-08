@@ -46,4 +46,14 @@ do
 	check("price: depth capped at the walk's length (" .. p.exposure .. ")", math.abs(p.exposure - (1.0 + 0.3 + 0.4)) < 0.01)
 end
 
+-- A running walk-in is priced against COST_CAP x WALK_SLACK: the 12% walk-in refused at a pick is kept once under way, the
+-- HP floor still applies.
+do
+	local t = { ranged(546) }
+	local cap = C.COST_CAP * C.WALK_SLACK
+	check("price: refused at the pick", not C.PriceOf(t, 2, 0.3, 0.4, 300, 640, 640, false).ok)
+	check("price: kept while running", C.PriceOf(t, 2, 0.3, 0.4, 300, 640, 640, false, cap).ok)
+	check("price: the floor still releases a running walk-in", C.PriceOf(t, 2, 0.3, 0.4, 300, 380, 640, false, cap).why == "hp")
+end
+
 finish()

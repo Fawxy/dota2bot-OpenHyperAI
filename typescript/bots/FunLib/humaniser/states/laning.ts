@@ -281,7 +281,7 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
 function contestPick(bot: Unit, chosen: Lib.Verbs.LaneTarget | undefined, current: Lib.Verbs.LaneTarget | undefined): Lib.Verbs.LaneTarget | undefined {
     const pid = bot.GetPlayerID();
     if (current !== undefined && Contest.Running(pid, current.creep) !== undefined && (chosen === undefined || chosen.creep === current.creep)) {
-        const price = Contest.PriceFor(bot, current);
+        const price = Contest.PriceFor(bot, current, true);
         if (!price.ok) {
             Contest.Refuse(pid, current.creep);
             if (Contest.NoteSkip(pid, current.creep, price.why, "walk")) logSkip(bot, current, price, "walk");

@@ -20,6 +20,11 @@ export const CONTEST_WALK = 2.5;
 export const RADIUS = 1000;
 /** The priced HP may be at most this share of max HP per creep (`judgement`: about one enemy hit and a nuke at level 1-3). */
 export const COST_CAP = 0.1;
+/**
+ * A running walk-in is released on cost only above COST_CAP times this (`judgement`): drill cwd3 released 6 of 17 walk-ins
+ * mid-walk on a price hovering at the cap, each one a walk thrown away. The HP floor, two heroes and the tower stay hard.
+ */
+export const WALK_SLACK = 1.5;
 /** HP share the core must keep after the priced cost (`judgement`; lane aggro's draws gate at 0.45). */
 export const HP_FLOOR = 0.5;
 /** Seconds of the enemy hero's movement added to its attack reach: it steps in on a walk-in (`judgement`; the spot's REACT_SECS is 1.5 for standing). */
@@ -71,6 +76,7 @@ export function PriceOf(
     hp: number,
     maxHp: number,
     tower: boolean,
+    cap: number = COST_CAP,
 ): Price {
     let damage = 0;
     let heroes = 0;
@@ -88,7 +94,7 @@ export function PriceOf(
     let why: Why = "ok";
     if (tower) why = "tower";
     else if (heroes >= 2) why = "two";
-    else if (cost > COST_CAP) why = "cost";
+    else if (cost > cap) why = "cost";
     else if (maxHp <= 0 || (hp - damage) / maxHp < HP_FLOOR) why = "hp";
     return { ok: why === "ok", why, cost, heroes, exposure };
 }
@@ -146,8 +152,8 @@ function towerAt(bot: Unit, at: Vector): boolean {
     return false;
 }
 
-/** The price of a walk-in for lane target `t` now. */
-export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget): Price {
+/** The price of a walk-in for lane target `t` now; `running` prices one already under way (cost cap COST_CAP x WALK_SLACK). */
+export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget, running = false): Price {
     const at = (t.creep as unknown as Unit).GetLocation();
     if (at === undefined) return { ok: false, why: "cost", cost: 1, heroes: 0, exposure: 0 };
     const point = (bot as Unit & { GetAttackPoint?(): number }).GetAttackPoint?.();
@@ -161,6 +167,7 @@ export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget): Price {
         bot.GetHealth(),
         bot.GetMaxHealth(),
         towerAt(bot, at),
+        running ? COST_CAP * WALK_SLACK : COST_CAP,
     );
 }
 

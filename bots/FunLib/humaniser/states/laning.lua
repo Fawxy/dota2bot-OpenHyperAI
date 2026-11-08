@@ -458,7 +458,7 @@ end
 local function contestPick(bot, chosen, current)
     local pid = bot:GetPlayerID()
     if current ~= nil and Contest.Running(pid, current.creep) ~= nil and (chosen == nil or chosen.creep == current.creep) then
-        local price = Contest.PriceFor(bot, current)
+        local price = Contest.PriceFor(bot, current, true)
         if not price.ok then
             Contest.Refuse(pid, current.creep)
             if Contest.NoteSkip(pid, current.creep, price.why, "walk") then

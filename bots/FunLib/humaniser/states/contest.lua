@@ -13,6 +13,9 @@ ____exports.CONTEST_WALK = 2.5
 ____exports.RADIUS = 1000
 --- The priced HP may be at most this share of max HP per creep (`judgement`: about one enemy hit and a nuke at level 1-3).
 ____exports.COST_CAP = 0.1
+--- A running walk-in is released on cost only above COST_CAP times this (`judgement`): drill cwd3 released 6 of 17 walk-ins
+-- mid-walk on a price hovering at the cap, each one a walk thrown away. The HP floor, two heroes and the tower stay hard.
+____exports.WALK_SLACK = 1.5
 --- HP share the core must keep after the priced cost (`judgement`; lane aggro's draws gate at 0.45).
 ____exports.HP_FLOOR = 0.5
 --- Seconds of the enemy hero's movement added to its attack reach: it steps in on a walk-in (`judgement`; the spot's REACT_SECS is 1.5 for standing).
@@ -26,7 +29,10 @@ local SWING_DEFAULT = 0.5
 --- The walk-in's price, pure: each enemy whose zone covers the creep hits us for the seconds we stand inside it (walking the
 -- zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
 -- more such heroes, or the creep inside an enemy tower's ring, refuse it outright.
-function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower)
+function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower, cap)
+    if cap == nil then
+        cap = ____exports.COST_CAP
+    end
     local damage = 0
     local heroes = 0
     local exposure = 0
@@ -57,7 +63,7 @@ function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower
         why = "tower"
     elseif heroes >= 2 then
         why = "two"
-    elseif cost > ____exports.COST_CAP then
+    elseif cost > cap then
         why = "cost"
     elseif maxHp <= 0 or (hp - damage) / maxHp < ____exports.HP_FLOOR then
         why = "hp"
@@ -178,8 +184,11 @@ local function towerAt(bot, at)
     end
     return false
 end
---- The price of a walk-in for lane target `t` now.
-function ____exports.PriceFor(bot, t)
+--- The price of a walk-in for lane target `t` now; `running` prices one already under way (cost cap COST_CAP x WALK_SLACK).
+function ____exports.PriceFor(bot, t, running)
+    if running == nil then
+        running = false
+    end
     local at = t.creep:GetLocation()
     if at == nil then
         return {
@@ -203,7 +212,8 @@ function ____exports.PriceFor(bot, t)
         bot:GetCurrentMovementSpeed(),
         bot:GetHealth(),
         bot:GetMaxHealth(),
-        towerAt(bot, at)
+        towerAt(bot, at),
+        running and ____exports.COST_CAP * ____exports.WALK_SLACK or ____exports.COST_CAP
     )
 end
 local walks = {}
