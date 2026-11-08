@@ -36,6 +36,9 @@ export interface Entry {
     /** Lane-only heroes also run the wave hold (states/wave_hold, under its switches) and the hold's own draw; no other lane
      *  aggro draw starts. Its control arm is the same drill with `Ours.CoreHold` off. */
     laneHold?: boolean;
+    /** Lane-only cores also run lane aggro's draws (the feed under the lane controller's word, drag, tower), as a
+     *  lane-only core otherwise does not. */
+    laneAggro?: boolean;
     /** Everyone not in `cast` or `statue`. */
     others: "bench" | "statue" | "laneonly" | "play";
     /** The cast plays lane-only (hold its spot, last-hit, deny; no techniques, harass, trades, spells or items). */
@@ -158,6 +161,44 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 0 },
         overrides: { ForceShove: "r:bot" },
     },
+    // Lever-size drills: each input arm forces one lever on the Radiant safe lane every wave; its control arm is the same
+    // game with no lever, read in pairs wave by wave (same seed, hlog @lever_pair).
+    "lever-setup": {
+        note: "Radiant pos1 lane-only, the setup forced every wave (ForceLever r:bot=setup), everyone else benched",
+        cast: SAFE_CORE,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 30, from: 0 },
+        overrides: { ForceLever: "r:bot=setup" },
+    },
+    "lever-none": {
+        note: "Radiant pos1 lane-only, no lever every wave (ForceLever r:bot=none; lever-setup's control), everyone else benched",
+        cast: SAFE_CORE,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 30, from: 0 },
+        overrides: { ForceLever: "r:bot=none" },
+    },
+    "lever-feed": {
+        note: "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), Dire pos3 a statue in the lane (the feed orders an attack on a visible enemy hero), everyone else benched",
+        cast: SAFE_CORE,
+        statue: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        laneAggro: true,
+        rep: { every: 30, from: 0 },
+        overrides: { ForceLever: "r:bot=feed" },
+    },
+    "lever-feed-off": {
+        note: "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
+        cast: SAFE_CORE,
+        statue: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        laneAggro: true,
+        rep: { every: 30, from: 0 },
+        overrides: { ForceLever: "r:bot=none" },
+    },
 };
 
 function overrides(): Record<string, unknown> | undefined {
@@ -210,6 +251,11 @@ export function LaneOnly(bot: Unit): boolean {
 /** A lane-only hero of an entry with `laneHold`: the wave hold may act for it. */
 export function LaneHold(bot: Unit): boolean {
     return Active()?.laneHold === true && LaneOnly(bot);
+}
+
+/** A lane-only hero of an entry with `laneAggro`: lane aggro's draws may act for it. */
+export function LaneAggro(bot: Unit): boolean {
+    return Active()?.laneAggro === true && LaneOnly(bot);
 }
 
 /** An Overrides key the active drill implies, or undefined. */

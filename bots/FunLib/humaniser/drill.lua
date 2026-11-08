@@ -344,6 +344,42 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 30, from = 0},
         overrides = {ForceShove = "r:bot"}
+    },
+    ["lever-setup"] = {
+        note = "Radiant pos1 lane-only, the setup forced every wave (ForceLever r:bot=setup), everyone else benched",
+        cast = SAFE_CORE,
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceLever = "r:bot=setup"}
+    },
+    ["lever-none"] = {
+        note = "Radiant pos1 lane-only, no lever every wave (ForceLever r:bot=none; lever-setup's control), everyone else benched",
+        cast = SAFE_CORE,
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceLever = "r:bot=none"}
+    },
+    ["lever-feed"] = {
+        note = "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), Dire pos3 a statue in the lane (the feed orders an attack on a visible enemy hero), everyone else benched",
+        cast = SAFE_CORE,
+        statue = {d = {3}},
+        others = "bench",
+        castLaneOnly = true,
+        laneAggro = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceLever = "r:bot=feed"}
+    },
+    ["lever-feed-off"] = {
+        note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
+        cast = SAFE_CORE,
+        statue = {d = {3}},
+        others = "bench",
+        castLaneOnly = true,
+        laneAggro = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceLever = "r:bot=none"}
     }
 }
 local function listed(s, team, pos)
@@ -408,11 +444,16 @@ function ____exports.LaneHold(bot)
     local ____opt_4 = ____exports.Active()
     return (____opt_4 and ____opt_4.laneHold) == true and ____exports.LaneOnly(bot)
 end
+--- A lane-only hero of an entry with `laneAggro`: lane aggro's draws may act for it.
+function ____exports.LaneAggro(bot)
+    local ____opt_6 = ____exports.Active()
+    return (____opt_6 and ____opt_6.laneAggro) == true and ____exports.LaneOnly(bot)
+end
 --- An Overrides key the active drill implies, or undefined.
 function ____exports.Implied(key)
-    local ____opt_8 = ____exports.Active()
-    local ____opt_6 = ____opt_8 and ____opt_8.overrides
-    return ____opt_6 and ____opt_6[key]
+    local ____opt_10 = ____exports.Active()
+    local ____opt_8 = ____opt_10 and ____opt_10.overrides
+    return ____opt_8 and ____opt_8[key]
 end
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local STATUE_BEHIND = -300
@@ -421,19 +462,19 @@ local statueSide = {}
 --- A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
 -- first and gives this hero the statue's step only when the job neither runs nor starts).
 function ____exports.IdleStatue(bot)
-    local ____opt_10 = ____exports.Active()
-    return (____opt_10 and ____opt_10.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
+    local ____opt_12 = ____exports.Active()
+    return (____opt_12 and ____opt_12.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
 end
 --- The one chooser job a cast may run (the forced context, for an entry with `castIdle`), or undefined: every job.
 function ____exports.ForcedJob(bot)
     local d = ____exports.Active()
-    local ____temp_12
+    local ____temp_14
     if d ~= nil and d.castIdle ~= nil and ____exports.RoleOf(bot) == "cast" then
-        ____temp_12 = d.forces
+        ____temp_14 = d.forces
     else
-        ____temp_12 = nil
+        ____temp_14 = nil
     end
-    return ____temp_12
+    return ____temp_14
 end
 --- For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a
 -- control rep) or is before the first rep (`none`); undefined when the drill does not force `context`. A pull reads it at
@@ -516,8 +557,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_13 = overrides()
-            local v = ____opt_13 and ____opt_13[k]
+            local ____opt_15 = overrides()
+            local v = ____opt_15 and ____opt_15[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -525,8 +566,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_15 = overrides()
-        local asked = ____opt_15 and ____opt_15.Drill
+        local ____opt_17 = overrides()
+        local asked = ____opt_17 and ____opt_17.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})

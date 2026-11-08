@@ -218,7 +218,7 @@ if (Telemetry.GuardsEnabled()) {
     // An error leaves the farm mode to OHA (no job desire, no owned Think).
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
-    Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Hold: no, LaneOnly: no, LaneHold: no, IdleStatue: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
+    Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Hold: no, LaneOnly: no, LaneHold: no, LaneAggro: no, IdleStatue: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
     Telemetry.GuardModule("Chooser", Chooser, { Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {

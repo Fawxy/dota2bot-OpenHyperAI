@@ -77,6 +77,18 @@ do
 	check("lane-spot-statue: no hold for the lane-only cast", not H.Drill.LaneHold(hero(0, RAD, 1, 3)))
 end
 
+-- Lever drills: the feed pair runs lane aggro for the lane-only cast (else lane-only skips the feed), the setup pair does
+-- not; each pair differs only in the forced lever.
+do
+	local core = hero(0, RAD, 1, 3)
+	local F, O, S = world("lever-feed"), world("lever-feed-off"), world("lever-setup")
+	check("lever-feed: the lane-only cast runs lane aggro", F.Drill.LaneOnly(core) and F.Drill.LaneAggro(core))
+	check("lever-feed: the Dire pos3 a statue in both arms (the feed orders an attack on a visible enemy hero)",
+		F.Drill.RoleOf(hero(7, DIRE, 3, 3)) == "statue" and O.Drill.RoleOf(hero(7, DIRE, 3, 3)) == "statue" and not F.Drill.LaneAggro(hero(7, DIRE, 3, 3)))
+	check("lever-setup: no lane aggro", S.Drill.LaneOnly(core) and not S.Drill.LaneAggro(core))
+	check("lever-feed pair: the feed forced, its control none", F.Drill.Implied("ForceLever") == "r:bot=feed" and O.Drill.Implied("ForceLever") == "r:bot=none" and O.Drill.LaneAggro(core))
+end
+
 -- lane-spot-statue: the Radiant pos1 is the cast (lane-only), the Dire pos3 a statue, everyone else benched.
 do
 	local H = world("lane-spot-statue")

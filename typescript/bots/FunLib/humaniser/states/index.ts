@@ -332,6 +332,13 @@ export function LaneOnlyHoldStep(bot: Unit): boolean {
     return LaneAggro.StepOpen(bot);
 }
 
+/** A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, stepped by mode_laning_generic's
+ *  lane-only branch, as CoreAggroStep outside drills. */
+export function LaneOnlyAggroStep(bot: Unit): boolean {
+    if (!IsEnabled() || !Drill.LaneAggro(bot) || !BodyLastHits(bot)) return false;
+    return LaneAggro.Step(bot);
+}
+
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */
 export function SetLaneSpot(bot: Unit, fn: (this: void) => Vector | undefined): void {
     Laning.SetSpot(bot, fn);

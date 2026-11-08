@@ -129,6 +129,7 @@ function LaningLoad(opts)
 			-- lane hits (its denies), opts.bodyLastHits its claimed last hits too (Ours.SupportLastHit).
 			CoreAggroStep = function() return false end,
 			LaneOnlyHoldStep = function() return false end,
+			LaneOnlyAggroStep = function() return false end,
 			SupportStep = function() if opts.supportStep then bot.supportStepped = true return true end return false end,
 			BodySupportHits = function() return opts.bodyDenies == true end,
 			BodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,

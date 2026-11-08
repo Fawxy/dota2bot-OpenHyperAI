@@ -36,6 +36,30 @@ do
 	check("no lever: short, need left", Ctl.Choose(500, 150, {}).short and Ctl.Choose(500, 150, {}).left == 500)
 end
 
+-- LeverEffect: a measured lever bigger than the room before a tower is capped there, so Choose still takes it instead of
+-- refusing it as an overshoot. Frame: our T1 at 0, theirs at span 6,000, reach 844 (the shove target 5,156).
+do
+	local span, reach = 6000, 844
+	-- A shove with 800 of room left: the 1,650 shove is capped at 800 and lands on the target.
+	local base = span - reach - 800
+	local shove = lv("shove", Ctl.LeverEffect(Ctl.SETTINGS.ShoveSize, base, span, reach), 2)
+	local c = Ctl.Choose(-800, 150, { shove, lv("setup", 0, 1, "mode") })
+	check("shove bigger than the room: chosen, capped onto the target", names(c) == "shove" and c.left == 0 and not c.short)
+	check("uncapped, the same shove would overshoot and be refused", names(Ctl.Choose(-800, 150, { lv("shove", Ctl.SETTINGS.ShoveSize, 2) })) == "")
+	-- Back levers stop at our T1's reach; a clash already inside it has no room, and a zero lever is never chosen.
+	check("pre-deny capped at our tower", Ctl.LeverEffect(-300, reach + 100, span, reach) == -100)
+	check("no room: no pre-deny", names(Ctl.Choose(400, 150, { lv("predeny", Ctl.LeverEffect(-300, reach - 50, span, reach), 1) })) == "")
+end
+
+-- ForcedLever (the lever drills' harness): the lever only on the named side and lane.
+do
+	check("forced: Radiant bot feed", Ctl.ForcedLever("r:bot=feed", TEAM_RADIANT, LANE_BOT) == "feed")
+	check("forced: not Dire's side of the lane", Ctl.ForcedLever("r:bot=feed", TEAM_DIRE, LANE_BOT) == nil)
+	check("forced: not another lane", Ctl.ForcedLever("r:bot=setup", TEAM_RADIANT, LANE_TOP) == nil)
+	check("forced: none is a lever set of its own", Ctl.ForcedLever("r:bot=none", TEAM_RADIANT, LANE_BOT) == "none")
+	check("forced: unset or malformed forces nothing", Ctl.ForcedLever("", TEAM_RADIANT, LANE_BOT) == nil and Ctl.ForcedLever("r:bot", TEAM_RADIANT, LANE_BOT) == nil)
+end
+
 -- IntentOf.
 do
 	check("intent back", Ctl.IntentOf(200, 150, false) == "back")
