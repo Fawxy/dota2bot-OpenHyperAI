@@ -355,6 +355,8 @@ ____exports.EVENTS = {
         cd = "num",
         cf = "num",
         by = "str",
+        chp = "num",
+        ld = "num",
         ml = "num",
         ss = "num"
     },

@@ -69,8 +69,6 @@ declare global {
     function GetAncient(team: Team): Unit;
     function GetHeroKills(playerId: number): number;
     function GetHeroDeaths(playerId: number): number;
-    function GetHeroLastHits(playerId: number): number;
-    function GetHeroDenies(playerId: number): number;
     function GetNeutralSpawners(): any;
     function GetLaneFrontLocation(team: Team, lane: Lane, deltaFromFront: number): Vector;
     function GetLaneFrontAmount(team: Team, lane: Lane, ignoreTowers: boolean): number;

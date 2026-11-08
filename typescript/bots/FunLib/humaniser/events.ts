@@ -453,11 +453,14 @@ export const EVENTS = {
         /** drag: result `far` when the creep stood beyond DragOrderR at the order (no order given); `ad` the step in, if any;
          *  the dragged creep's distance to the bot at the order; 1 once it targeted the bot or moved MovedR since (it
          *  followed), else 0; at its death `by` `us`, `hero` (the contesting enemy hero's last hits plus denies rose: it, or
-         *  another creep at the same moment), `none`; `ml` 1 for a melee bot (range 200 or less); `ss` 1 when a spot within
+         *  another creep at the same moment; unset when it was out of sight), `none`; `ml` 1 for a melee bot (range 200 or less); `ss` 1 when a spot within
          *  the bot's reach of the creep was out of every enemy hero's reach at the start (no drag needed). */
         cd: "num",
         cf: "num",
         by: "str",
+        /** drag: the creep's HP fraction at the hand-back, and its last seen distance to the bot before it died or the watch ended. */
+        chp: "num",
+        ld: "num",
         ml: "num",
         ss: "num",
     },

@@ -189,10 +189,14 @@ interface Attempt {
     cd?: number;
     cf?: number;
     c0?: Vector;
-    /** Drag: the contesting enemy hero and its last hits plus denies at the start (GetHeroLastHits/GetHeroDenies). */
+    /** Drag: the contesting enemy hero and its last hits plus denies at the start (its own GetLastHits/GetDenies; GetHeroLastHits read nil in lhd4). */
     con?: Unit;
-    cpid?: number;
     clh0?: number;
+    /** Drag: where the bot stood at the start (the step's safety is judged against it), the creep's HP fraction at the
+     *  hand-back and its last seen distance to the bot. */
+    from?: Vector;
+    chp?: number;
+    ld?: number;
     /** Drag: whether the bot is melee (attack range 200 or less) and whether a spot within its reach of the creep was out of
      *  every enemy hero's reach at the start (HitSpotSafe). */
     ml?: number;
@@ -614,8 +618,8 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
             a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
         }
         a.con = c.con;
-        a.cpid = c.con.GetPlayerID();
-        a.clh0 = heroTally(a.cpid);
+        a.clh0 = heroTally(c.con);
+        a.from = here;
         a.ml = bot.GetAttackRange() <= 200 ? 1 : 0;
         a.ss = c.ss ? 1 : 0;
         return a;
@@ -623,10 +627,10 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
     return undefined;
 }
 
-/** An enemy hero's last hits plus denies (its denies of its own creeps take ours from us too). */
-function heroTally(pid: number): number | undefined {
-    if (GetHeroLastHits === undefined || GetHeroDenies === undefined) return undefined;
-    return GetHeroLastHits(pid) + GetHeroDenies(pid);
+/** An enemy hero's last hits plus denies (its denies of its own creeps take ours from us too); undefined out of sight. */
+function heroTally(h: Unit): number | undefined {
+    if (h.IsNull() || !h.CanBeSeen()) return undefined;
+    return counter(h, "GetLastHits") + counter(h, "GetDenies");
 }
 
 /**
@@ -806,6 +810,8 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["cd", a.cd],
         ["cf", a.cf],
         ["by", a.by],
+        ["chp", a.chp],
+        ["ld", a.ld],
         ["ml", a.ml],
         ["ss", a.ss],
     ]);
@@ -891,9 +897,10 @@ function watch(bot: Unit, a: Attempt, now: number): void {
         a.out = out;
         return finish(bot, a, out > 0 ? "ok" : "stayed", now);
     } else {
+        if (!dead && seenAt(a.creep) !== undefined) a.ld = math.floor(GetUnitToUnitDistance(bot, a.creep));
         if (dead) {
             const ours = counter(bot, "GetLastHits") > a.lh0;
-            const c1 = a.cpid !== undefined ? heroTally(a.cpid) : undefined;
+            const c1 = a.con !== undefined ? heroTally(a.con) : undefined;
             a.by = ours ? "us" : c1 !== undefined && a.clh0 !== undefined ? (c1 > a.clh0 ? "hero" : "none") : undefined;
             return finish(bot, a, ours ? "ok" : "lost", now);
         }
@@ -939,7 +946,8 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
         // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
         const heroes = enemyHeroes(bot, 1600);
-        if (!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin))) {
+        const unsafe = a.kind === "drag" ? !noDeeper(a.from!, at, heroes) : !heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin));
+        if (unsafe) {
             finish(bot, a, "unsafe", now);
             return false;
         }
@@ -1052,6 +1060,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     a.walkedAt = now;
     if (live(a.creep) && valid(a.hero)) a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep));
+    if (live(a.creep)) a.chp = math.floor(frac(a.creep) * 100) / 100;
     a.phase = "watch";
     return false;
 }

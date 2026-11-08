@@ -77,11 +77,11 @@ end
 function TowerOrderR()
     return LaneConfig.TowerReach() + ____exports.SETTINGS.TowerOrderMargin
 end
-function heroTally(pid)
-    if GetHeroLastHits == nil or GetHeroDenies == nil then
+function heroTally(h)
+    if h:IsNull() or not h:CanBeSeen() then
         return nil
     end
-    return GetHeroLastHits(pid) + GetHeroDenies(pid)
+    return counter(h, "GetLastHits") + counter(h, "GetDenies")
 end
 function newAttempt(bot, kind, phase, hero, creep, back, approach, now)
     return {
@@ -740,8 +740,8 @@ local function tryDrag(bot, heroes, cands, now)
                     )
                 end
                 a.con = c.con
-                a.cpid = c.con:GetPlayerID()
-                a.clh0 = heroTally(a.cpid)
+                a.clh0 = heroTally(c.con)
+                a.from = here
                 a.ml = bot:GetAttackRange() <= 200 and 1 or 0
                 a.ss = c.ss and 1 or 0
                 return a
@@ -1085,6 +1085,8 @@ local function finish(bot, a, result, now, gap)
         {"cd", a.cd},
         {"cf", a.cf},
         {"by", a.by},
+        {"chp", a.chp},
+        {"ld", a.ld},
         {"ml", a.ml},
         {"ss", a.ss}
     )
@@ -1247,11 +1249,14 @@ local function watch(bot, a, now)
         a.out = out
         return finish(bot, a, out > 0 and "ok" or "stayed", now)
     else
+        if not dead and seenAt(a.creep) ~= nil then
+            a.ld = math.floor(GetUnitToUnitDistance(bot, a.creep))
+        end
         if dead then
             local ours = counter(bot, "GetLastHits") > a.lh0
             local ____temp_9
-            if a.cpid ~= nil then
-                ____temp_9 = heroTally(a.cpid)
+            if a.con ~= nil then
+                ____temp_9 = heroTally(a.con)
             else
                 ____temp_9 = nil
             end
@@ -1307,7 +1312,14 @@ local function act(bot, a, now)
     if a.phase == "approach" then
         local at = a.approach
         local heroes = enemyHeroes(bot, 1600)
-        if not heroSafe(at, heroes, ____exports.SETTINGS.UnsafeMargin) or a.kind == "feed" and not heroSafe(a.back, heroes, ____exports.SETTINGS.UnsafeMargin) then
+        local ____temp_10
+        if a.kind == "drag" then
+            ____temp_10 = not noDeeper(a.from, at, heroes)
+        else
+            ____temp_10 = not heroSafe(at, heroes, ____exports.SETTINGS.UnsafeMargin) or a.kind == "feed" and not heroSafe(a.back, heroes, ____exports.SETTINGS.UnsafeMargin)
+        end
+        local unsafe = ____temp_10
+        if unsafe then
             finish(bot, a, "unsafe", now)
             return false
         end
@@ -1386,7 +1398,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue220
+                    local __continue221
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1394,16 +1406,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue220 = true
+                            __continue221 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue220 = true
+                        __continue221 = true
                     until true
-                    if not __continue220 then
+                    if not __continue221 then
                         break
                     end
                 end
@@ -1472,6 +1484,9 @@ local function act(bot, a, now)
     if live(a.creep) and valid(a.hero) then
         a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep))
     end
+    if live(a.creep) then
+        a.chp = math.floor(frac(a.creep) * 100) / 100
+    end
     a.phase = "watch"
     return false
 end
@@ -1522,8 +1537,8 @@ local function stepOpen(bot, now)
     end
     if a.kind == "feed" then
         Laning.SetFed(bot, a.creep)
-        local ____opt_10 = Laning.SpotInfo(bot)
-        if (____opt_10 and ____opt_10.anchor) == "fed" then
+        local ____opt_11 = Laning.SpotInfo(bot)
+        if (____opt_11 and ____opt_11.anchor) == "fed" then
             a.sty = 1
         end
     end
@@ -1532,14 +1547,14 @@ local function stepOpen(bot, now)
 end
 --- Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running.
 function ____exports.StepOpen(bot)
-    local ____stepOpen_result_12 = stepOpen(
+    local ____stepOpen_result_13 = stepOpen(
         bot,
         DotaTime()
     )
-    if ____stepOpen_result_12 == nil then
-        ____stepOpen_result_12 = false
+    if ____stepOpen_result_13 == nil then
+        ____stepOpen_result_13 = false
     end
-    return ____stepOpen_result_12
+    return ____stepOpen_result_13
 end
 --- One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
 -- True when it gave the bot's order this frame (the caller's other steps then stay off).
