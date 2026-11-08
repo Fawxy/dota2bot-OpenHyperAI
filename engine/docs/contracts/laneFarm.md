@@ -1,13 +1,13 @@
 # Contract: `laneFarm` (posture verb)
 
 ```
-name / version / owner:  laneFarm / 6 (slice 5, 30/10/2026: first contract; adds `retarget`. Slice l1-support-deny, 02/11/2026: adds `dropLost`. Slice support-lane-hits, 03/11/2026: with `dropLost`, pick answering undefined for a creep still offered releases it. Slice lane-last-hits, 03/11/2026: `pick(targets, current)` asked while an attempt waits. Slice pre-hit, 04/11/2026: `pick` asked on every scan, also with nothing offered; a `prehit` pick is one attackAndConfirm; a pick of the same creep with another kind replaces the wait; v6, 05/11/2026: a `prehit`'s attack order is cancelled after the attempt) / engine (main loop)
+name / version / owner:  laneFarm / 7 (slice 5, 30/10/2026: first contract; adds `retarget`. Slice l1-support-deny, 02/11/2026: adds `dropLost`. Slice support-lane-hits, 03/11/2026: with `dropLost`, pick answering undefined for a creep still offered releases it. Slice lane-last-hits, 03/11/2026: `pick(targets, current)` asked while an attempt waits. Slice pre-hit, 04/11/2026: `pick` asked on every scan, also with nothing offered; a `prehit` pick is one attackAndConfirm; a pick of the same creep with another kind replaces the wait; v6, 05/11/2026: a `prehit`'s attack order is cancelled after the attempt; v7, slice contest-walkin 09/11/2026: `radius` passed to laneTargets, `dropLost` may be a function of the waited-on target) / engine (main loop)
 layer:          atomic action (a composite of holdAt, lastHit, deny and attackAndConfirm)
 intent:         A laner holds a spot and breaks off for the lane creeps its caller picks, swinging with lastHit/deny.
 applicability:  A bot handle; `spot()` read every frame (undefined: no spot to hold). Without `pick` it only holds (the
                 engine makes no choice of its own); with `lastHits()` false it only holds.
 inputs:         spot (function); opts.hold (holdAt options); opts.lastHits (default always); opts.within (laneTargets',
-                default 1); opts.pick(targets, current?) (caller's choice from laneTargets' offers; with `retarget`, while
+                default 1); opts.radius (laneTargets', default its own max(800, attack range + 400)); opts.pick(targets, current?) (caller's choice from laneTargets' offers; with `retarget`, while
                 an attempt waits for its creep and the creep is still offered, `current` is that creep's fresh offer and
                 the answer decides the wait: `current`'s creep keeps it, another creep ends it for that one, undefined
                 keeps it, or with `dropLost` releases it). `pick` is asked on every scan, also with `targets` empty, so it
@@ -17,7 +17,7 @@ inputs:         spot (function); opts.hold (holdAt options); opts.lastHits (defa
                 one attack it was given for, and a last-hit wait in range gives no order of its own: prhchk5 showed a
                 second, unplanned hit one attack cycle after every pre-hit), then the verb scans again. A pick of the waited-on creep with another kind
                 (a `prehit` on it) ends the wait for that one, as another creep does; opts.leash (900), near (600), far (1200),
-                scanEvery (0.1 s), contestRadius (1000), retarget (default false), dropLost (default false; acts only with retarget): all taste. opts.label, onAttempt,
+                scanEvery (0.1 s), contestRadius (1000), retarget (default false), dropLost (default false; acts only with retarget; a boolean, or a function asked with the waited-on creep's target whenever the release rule would apply): all taste. opts.label, onAttempt,
                 deadline, interruptIf.
 effect check:   per attempt, lastHit/deny's own (the bot's last-hit or deny counter rises); a `prehit`'s is the bot's last
                 attack time rising (the attack fired), not the creep attacking the bot.
@@ -37,13 +37,14 @@ interruption:   interruptIf and deadline end the verb; an attempt is dropped bey
                 the verb goes back to holding.
 skill:          none of its own (lastHit/deny draw the Skill error).
 telemetry:      none (the caller logs ev=lh per attempt from onAttempt).
-fixtures:       engine test_lane (skill 1 farm, lastHits off, no pick, skill scaling, leash, retarget on/off, dropLost on/off, a released creep with and without dropLost, dead,
+fixtures:       engine test_lane (skill 1 farm, lastHits off, no pick, skill scaling, leash, retarget on/off, dropLost on/off, a released creep with and without dropLost, a dropLost function answering true and false, radius reaching a creep beyond laneTargets' default, dead,
                 interrupted, switch/keep two-waves: a switching pick takes both creeps, a keeping pick loses one); bot
                 test_states_laning_body, test_lane_pick (the switch rule).
 evidence:       handle identity across laneTargets calls: in-game, ER-008 re-run s5c game 1 (30/10/2026), 15 of 233
                 Radiant core attempts switched, mean wait 0.95 s before the switch (a failed identity would switch every
                 attempt at its first 0.1 s scan).
-consumers:      bot states/laning (the laning body; retarget on; dropLost on for a support, slice l1-support-deny).
+consumers:      bot states/laning (the laning body; retarget on; dropLost on for a support, slice l1-support-deny, and for a melee core's
+                running walk-in, slice contest-walkin; radius 1000 for a melee core under Ours.CoreContest).
                 Its pick is lane_pick.Choose: a waited-on creep is left only for one killable now (eta <= 0.2 s) while
                 the current is at least 0.5 s from due, a last hit always replaces a deny wait, a deny never replaces a
                 last-hit wait (slice lane-last-hits); a support's waited-on creep its claims no longer give it (its core
