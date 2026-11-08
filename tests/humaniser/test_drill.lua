@@ -89,6 +89,31 @@ do
 	check("lever-feed pair: the feed forced, its control none", F.Drill.Implied("ForceLever") == "r:bot=feed" and O.Drill.Implied("ForceLever") == "r:bot=none" and O.Drill.LaneAggro(core))
 end
 
+-- lane-spot-sentry: the Dire pos3 is held like a statue (never casts) but attacks an enemy hero that walks into its zone
+-- (attack range 150 + both radii 24 + 0.5 s at 300 = 348 centre to centre), and only while it stands within that 0.5 s step
+-- of its spot.
+do
+	local H = world("lane-spot-sentry")
+	local core = hero(0, RAD, 1, 3)
+	local off = hero(7, DIRE, 3, 3)
+	check("sentry: held, never casts", H.Drill.RoleOf(off) == "sentry" and H.Drill.Held(off) and H.Chooser.HoldsCasts(off))
+	check("sentry: the cast plays lane-only", H.Drill.RoleOf(core) == "cast" and H.Drill.LaneOnly(core))
+	off.range = 150
+	local spot = GetLaneFrontLocation(DIRE, 3, -300)
+	off.loc = Vector(spot.x, spot.y)
+	core.loc = Vector(spot.x + 360, spot.y)
+	H.Drill.Hold(off)
+	check("sentry: an enemy outside its zone is left alone, it sways as a statue", #ActionsOf(7, "AttackUnit") == 0 and #ActionsOf(7, "MoveToLocation") > 0)
+	core.loc = Vector(spot.x + 340, spot.y)
+	H.Drill.Hold(off)
+	local at = ActionsOf(7, "AttackUnit")
+	check("sentry: an enemy inside its zone is attacked", #at == 1 and at[1].args[1] == core)
+	off.loc = Vector(spot.x + 200, spot.y)
+	core.loc = Vector(spot.x + 300, spot.y)
+	H.Drill.Hold(off)
+	check("sentry: past its step from the spot it walks back instead", #ActionsOf(7, "AttackUnit") == 1)
+end
+
 -- lane-spot-statue: the Radiant pos1 is the cast (lane-only), the Dire pos3 a statue, everyone else benched.
 do
 	local H = world("lane-spot-statue")
