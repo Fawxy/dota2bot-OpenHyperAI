@@ -143,8 +143,8 @@ ____exports.SETTINGS = {
     DragContest = 150,
     DragBack = 300,
     DragDrawR = 300,
-    DragStepMax = 300,
     DragStepIn = 50,
+    DragLead = 0.3,
     DragOrderR = 350,
     DragCloser = 50,
     DragWalk = 1.2,
@@ -627,23 +627,24 @@ local function dragCands(bot, heroes)
 end
 --- Pure: what a contested last hit gets (slice lh-draw 1b, user 09/11/2026: a hero that can hit the creep from a safe spot
 -- just takes it). `safe`: a spot within our reach of the creep is out of every enemy hero's reach, no drag; `in`: within
--- draw range, draw now; `step`: a short step that is itself safe brings it into range; `step_unsafe`: that step is not safe;
--- `far`: beyond the step.
-function ____exports.DragPlan(d, ss, stepSafe)
+-- draw range, draw now; `late`: the step into range (`eta` s) would not arrive DragLead before the hit is due (the body
+-- takes it); `step`: the step is safe; `step_unsafe`: it is not.
+function ____exports.DragPlan(d, ss, stepSafe, eta, due)
     if ss then
         return "safe"
     end
     if d <= ____exports.SETTINGS.DragDrawR then
         return "in"
     end
-    if d - ____exports.SETTINGS.DragDrawR > ____exports.SETTINGS.DragStepMax then
-        return "far"
+    if eta + ____exports.SETTINGS.DragLead > due then
+        return "late"
     end
     return stepSafe and "step" or "step_unsafe"
 end
 --- The drag's safety (slice lh-draw 1b, lhd3: a melee hero against a ranged one stands in its reach all lane, so heroSafe
 -- refused every drag): a spot is fine when it is out of each enemy hero's attack reach or no nearer to that hero than `here`
--- less DragCloser. The drag walks away from the enemy hero, so it lowers the exposure the hero already accepts.
+-- less DragCloser. `here` is the spot the body would hit the creep from (HitSpot): the drag goes no deeper than the last
+-- hit it replaces (lhd6: judged from the bot's lane_spot stand, 1,050 off a Lich, every step in failed).
 local function noDeeper(here, to, heroes)
     for ____, h in ipairs(heroes) do
         local reach = h:GetAttackRange() + h:GetBoundingRadius() * 2
@@ -670,14 +671,24 @@ end
 --- The first candidate that can be dragged; each candidate looked at gets its `why`.
 local function tryDrag(bot, heroes, cands, now)
     local here = bot:GetLocation()
+    local reach = bot:GetAttackRange() + bot:GetBoundingRadius()
     for ____, c in ipairs(cands) do
         do
             local __continue103
             repeat
+                local cl = c.creep:GetLocation()
+                local hx, hy = unpack(____exports.HitSpot(
+                    cl.x,
+                    cl.y,
+                    here.x,
+                    here.y,
+                    reach + c.creep:GetBoundingRadius()
+                ))
+                local hit = Vector(hx, hy, here.z)
                 local step
                 local stepSafe = false
-                if not c.ss and c.d > ____exports.SETTINGS.DragDrawR and c.d - ____exports.SETTINGS.DragDrawR <= ____exports.SETTINGS.DragStepMax then
-                    local cl = c.creep:GetLocation()
+                local eta = 0
+                if not c.ss and c.d > ____exports.SETTINGS.DragDrawR then
                     local sx, sy = unpack(____exports.HitSpot(
                         cl.x,
                         cl.y,
@@ -686,9 +697,20 @@ local function tryDrag(bot, heroes, cands, now)
                         ____exports.SETTINGS.DragDrawR - ____exports.SETTINGS.DragStepIn + 25
                     ))
                     step = Vector(sx, sy, here.z)
-                    stepSafe = noDeeper(here, step, heroes)
+                    stepSafe = noDeeper(hit, step, heroes)
+                    eta = ____exports.ApproachTime(
+                        GetUnitToLocationDistance(bot, step),
+                        bot:GetCurrentMovementSpeed()
+                    )
+                    c.eta = eta
                 end
-                local plan = ____exports.DragPlan(c.d, c.ss, stepSafe)
+                local plan = ____exports.DragPlan(
+                    c.d,
+                    c.ss,
+                    stepSafe,
+                    eta,
+                    c.due
+                )
                 if plan ~= "in" and plan ~= "step" then
                     c.why = plan
                     __continue103 = true
@@ -710,7 +732,7 @@ local function tryDrag(bot, heroes, cands, now)
                     ),
                     ____exports.SETTINGS.DragBack
                 )
-                if not noDeeper(here, back, heroes) then
+                if not noDeeper(hit, back, heroes) then
                     c.why = "unsafe"
                     return nil
                 end
@@ -735,11 +757,9 @@ local function tryDrag(bot, heroes, cands, now)
                 if plan == "step" then
                     local ad = GetUnitToLocationDistance(bot, step)
                     a.ad = math.floor(ad)
-                    a.approachTime = ____exports.ApproachTime(
-                        ad,
-                        bot:GetCurrentMovementSpeed()
-                    )
+                    a.approachTime = eta
                 end
+                a.du = math.floor(c.due * 100) / 100
                 a.con = c.con
                 a.clh0 = heroTally(c.con)
                 a.from = here
@@ -755,7 +775,7 @@ local function tryDrag(bot, heroes, cands, now)
     return nil
 end
 --- One `ev=drag_look` line per creep the first time it is a drag candidate, with why it was not dragged then (a shared gate,
--- `reach`, `far`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
+-- `late`, `step_unsafe`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
 local function logLooks(bot, cands, pre, now)
     if now - lookedPruned > 30 then
         lookedPruned = now
@@ -804,7 +824,11 @@ local function logLooks(bot, cands, pre, now)
                             math.floor(GetUnitToUnitDistance(c.con, c.creep))
                         },
                         {"ss", c.ss and 1 or 0},
-                        {"ml", ml}
+                        {"ml", ml},
+                        {
+                            "eta",
+                            c.eta ~= nil and math.floor(c.eta * 100) / 100 or nil
+                        }
                     }
                 )
                 __continue118 = true
@@ -1089,7 +1113,12 @@ local function finish(bot, a, result, now, gap)
         {"chp", a.chp},
         {"ld", a.ld},
         {"ml", a.ml},
-        {"ss", a.ss}
+        {"ss", a.ss},
+        {"du", a.du},
+        {
+            "wt",
+            a.kind == "drag" and a.ad ~= nil and a.orderedAt ~= nil and math.floor((a.orderedAt - a.startedAt) * 100) / 100 or nil
+        }
     )
     ____Telemetry_Event_8(
         "aggro",

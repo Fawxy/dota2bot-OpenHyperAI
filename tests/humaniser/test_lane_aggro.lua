@@ -253,11 +253,11 @@ end
 
 -- Slice lh-draw 1b: a contested last hit is dragged only when no spot within our reach of the creep is safe; a creep a little
 -- beyond the draw range is stepped toward only when the step is safe.
-check("a safe spot to hit from: no drag even with the creep in draw range", A.DragPlan(200, true, true) == "safe")
-check("no safe spot, creep in draw range: draw now", A.DragPlan(250, false, false) == "in")
-check("no safe spot, creep 200 beyond draw range, the step is safe: step in", A.DragPlan(500, false, true) == "step")
-check("no safe spot, the step itself is in the enemy's reach: no drag", A.DragPlan(500, false, false) == "step_unsafe")
-check("beyond draw range plus the step: no drag", A.DragPlan(650, false, true) == "far")
+check("a safe spot to hit from: no drag even with the creep in draw range", A.DragPlan(200, true, true, 0, 2) == "safe")
+check("no safe spot, creep in draw range: draw now however soon the hit is due", A.DragPlan(250, false, false, 0, 0.9) == "in")
+check("no safe spot, far creep, the walk arrives with time to spare and is safe: step in", A.DragPlan(780, false, true, 1.8, 2.5) == "step")
+check("no safe spot, the walk arrives too close to the hit's due time: no drag", A.DragPlan(780, false, true, 1.8, 2.0) == "late")
+check("no safe spot, the walk fits but ends deeper than the hit spot: no drag", A.DragPlan(500, false, false, 1.0, 2.5) == "step_unsafe")
 
 -- The hit spot stands on the creep-to-bot line at our reach (less 25), or where the bot is when it is nearer than that.
 local p = A.HitSpot(0, 0, 1000, 0, 225)

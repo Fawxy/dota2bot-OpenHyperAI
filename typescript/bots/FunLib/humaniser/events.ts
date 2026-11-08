@@ -463,6 +463,10 @@ export const EVENTS = {
         ld: "num",
         ml: "num",
         ss: "num",
+        /** drag: the last hit's due time (s) at the start; with a step in, the seconds from the start to the order (the
+         *  walk, against the predicted `apt`). */
+        du: "num",
+        wt: "num",
     },
     /** Slice lh-draw step 1a: a contested last hit in lane aggro's drag window (due DragDueMin-DragDueMax, an enemy hero
      *  within its attack range + DragContest of the creep), once per creep, the first time a lane aggro decision sees it. */
@@ -470,7 +474,7 @@ export const EVENTS = {
         pid: "num",
         role: "str",
         /** `go` (dragged from where the bot stands), `step` (dragged after a short step in), `safe` (a spot within our reach
-         *  of the creep is out of every enemy hero's reach: no drag, the body takes it), `step_unsafe` (the step goes deeper into an enemy hero's reach), `far` (beyond the step), a shared gate
+         *  of the creep is out of every enemy hero's reach: no drag, the body takes it), `step_unsafe` (the step ends deeper into an enemy hero's reach than the spot the body would hit from), `late` (the step would not arrive DragLead before the hit is due), a shared gate
          *  (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`), `no_target`, `unsafe` (the walk back goes deeper into an enemy
          *  hero's reach), `other` (an earlier
          *  candidate went or ended the look). */
@@ -483,6 +487,8 @@ export const EVENTS = {
         ss: "num",
         /** 1 for a melee bot (attack range 200 or less). */
         ml: "num",
+        /** The predicted walk into draw range (s, ApproachTime), when the creep stood beyond DragDrawR. */
+        eta: "num",
     },
     /** Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave while ours is gone, at its end. */
     wave_hold: {

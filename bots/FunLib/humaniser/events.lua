@@ -358,7 +358,9 @@ ____exports.EVENTS = {
         chp = "num",
         ld = "num",
         ml = "num",
-        ss = "num"
+        ss = "num",
+        du = "num",
+        wt = "num"
     },
     drag_look = {
         pid = "num",
@@ -368,7 +370,8 @@ ____exports.EVENTS = {
         hd = "num",
         due = "num",
         ss = "num",
-        ml = "num"
+        ml = "num",
+        eta = "num"
     },
     wave_hold = {
         pid = "num",
