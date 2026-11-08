@@ -400,6 +400,7 @@ if Telemetry.GuardsEnabled() then
             Held = no,
             Hold = no,
             LaneOnly = no,
+            LaneHold = no,
             IdleStatue = no,
             ForcedJob = none,
             ForcedAt = none,

@@ -377,6 +377,12 @@ ____exports.EVENTS = {
         nb = "num",
         nl = "num",
         lv = "num",
+        tk = "num",
+        cost = "num",
+        bud = "num",
+        rt = "num",
+        rs = "str",
+        cr = "str",
         thr = "num",
         sw = "num",
         hp = "num",
@@ -393,7 +399,9 @@ ____exports.EVENTS = {
         on = "num",
         oin = "num",
         rch = "num",
-        fc = "num"
+        fc = "num",
+        ob = "num",
+        obt = "str"
     },
     aggro_skip = {pid = "num", role = "str", why = "str", ad = "num"},
     lane_tech = {pid = "num", tech = "str", reason = "str", lh = "bool"},

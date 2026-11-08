@@ -31,6 +31,11 @@ export interface Entry {
     cast: Sides;
     /** Heroes that stand as statues; checked after `cast`. */
     statue?: Sides;
+    /** Heroes that play lane-only (as `castLaneOnly`); checked after `statue`. */
+    laneOnly?: Sides;
+    /** Lane-only heroes also run the wave hold (states/wave_hold, under its switches) and the hold's own draw; no other lane
+     *  aggro draw starts. Its control arm is the same drill with `Ours.CoreHold` off. */
+    laneHold?: boolean;
     /** Everyone not in `cast` or `statue`. */
     others: "bench" | "statue" | "laneonly" | "play";
     /** The cast plays lane-only (hold its spot, last-hit, deny; no techniques, harass, trades, spells or items). */
@@ -131,6 +136,20 @@ export const TABLE: Record<string, Entry> = {
     },
     // The forced shove (slice 1's harness, slice 4b's crash target): the Radiant safe-lane core alone, lane-only, in mode
     // `shove`; each wave a rep.
+    // The wave hold (slice core-in-lane), user 08/11/2026: does the core keep their wave out of our T1's fire once ours is gone?
+    // The pull drill's pos5 takes each minute's wave away from the Radiant safe lane, so theirs walks in on the Radiant pos1,
+    // lane-only with the hold; the :30 wave unpulled is the control in the game, and the same drill with Ours.CoreHold off
+    // (`--set Ours.CoreHold=false`) is the arm where their creeps go under our tower.
+    hold: {
+        note: "Radiant pos5 pulls each minute's wave, a statue otherwise; Radiant pos1 lane-only with the wave hold; the :30 wave unpulled; everyone else benched",
+        cast: { r: [5] },
+        laneOnly: { r: [1] },
+        laneHold: true,
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, control: 2 },
+        forces: "pull",
+    },
     shove: {
         note: "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), everyone else benched",
         cast: SAFE_CORE,
@@ -171,6 +190,7 @@ export function RoleOf(bot: Unit): Role {
     if (pos === undefined) return "play";
     if (listed(d.cast, bot.GetTeam(), pos)) return "cast";
     if (listed(d.statue, bot.GetTeam(), pos)) return "statue";
+    if (listed(d.laneOnly, bot.GetTeam(), pos)) return "laneonly";
     return d.others;
 }
 
@@ -185,6 +205,11 @@ export function LaneOnly(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
     return d !== undefined && ((r === "cast" && d.castLaneOnly === true) || r === "laneonly");
+}
+
+/** A lane-only hero of an entry with `laneHold`: the wave hold may act for it. */
+export function LaneHold(bot: Unit): boolean {
+    return Active()?.laneHold === true && LaneOnly(bot);
 }
 
 /** An Overrides key the active drill implies, or undefined. */

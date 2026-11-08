@@ -58,6 +58,7 @@ local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local WaveHold = require(GetScriptDirectory().."/FunLib/humaniser/states/wave_hold")
 function ____exports.Settings()
     return Config.Get().States
@@ -419,6 +420,15 @@ function ____exports.CoreAggroStep(bot)
     end
     WaveHold.Step(bot)
     return LaneAggro.Step(bot)
+end
+--- A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started, stepped by
+-- mode_laning_generic's lane-only branch; no other lane aggro draw starts (StepOpen steps only an open one).
+function ____exports.LaneOnlyHoldStep(bot)
+    if not ____exports.IsEnabled() or not Drill.LaneHold(bot) or not ____exports.BodyLastHits(bot) then
+        return false
+    end
+    WaveHold.Step(bot)
+    return LaneAggro.StepOpen(bot)
 end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
