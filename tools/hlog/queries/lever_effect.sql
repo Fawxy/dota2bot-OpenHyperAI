@@ -1,4 +1,4 @@
--- The lane controller's lever sizes measured (master slices/lane-controller.md, Open items "Order now" step 2), in games whose
+-- The lane controller's lever sizes (master slices/lane-controller.md, Facts "lever sizes"), in games whose
 -- file matches :like: one row per bucket of team-lane waves. A wave is the controller's decision (ev=lane_ctl kind=wave) with its
 -- check 45 s on (kind=chk); `effect` = own45 - m45, what the lane did against the plain forecast in the team's frame (positive is
 -- towards their tower). The bucket is what the laners did in that lane between the read and the check: `ours` the idle swing

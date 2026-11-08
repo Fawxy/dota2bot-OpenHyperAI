@@ -299,7 +299,7 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- ForceShove: lanes whose owned laners shove (idle swing on enemy creeps outside their tower) instead of pre-denying, as
 -- comma-separated `bot`, `r:bot`, `d:top`, `all` (r Radiant, d Dire, no prefix both); "" off (slice idle-swing, harness only).
 -- ForceLever: `<lanes>=<lever>` (lanes as ForceShove, lever `feed`, `setup` or `none`): the lane controller's lever set in those
--- lanes is that lever alone (or empty) every wave, whatever the need; "" off (slice lever-size, drills only).
+-- lanes is that lever alone (or empty) every wave, whatever the need; "" off (drills only).
 Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", CampForce = false, ForceShove = "", ForceLever = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns

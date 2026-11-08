@@ -161,8 +161,8 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 0 },
         overrides: { ForceShove: "r:bot" },
     },
-    // Lever-size drills (lane controller, master slices/lane-controller.md "Drills"): each input arm forces one lever on the
-    // Radiant safe lane every wave; its control arm is the same game with no lever, read in pairs wave by wave (same seed).
+    // Lever-size drills: each input arm forces one lever on the Radiant safe lane every wave; its control arm is the same
+    // game with no lever, read in pairs wave by wave (same seed, hlog @lever_pair).
     "lever-setup": {
         note: "Radiant pos1 lane-only, the setup forced every wave (ForceLever r:bot=setup), everyone else benched",
         cast: SAFE_CORE,
