@@ -33,15 +33,15 @@ ____exports.WALK_SLACK = 1.5
 ____exports.HP_FLOOR = 0.5
 --- Seconds of the enemy hero's movement added to its attack reach: it steps in on a walk-in (`judgement`; the spot's REACT_SECS is 1.5 for standing).
 ____exports.STEP_IN = 0.5
---- A ready nuke counts when the creep lies within its cast range plus this (`judgement`: a hero steps in to cast).
+--- A ready nuke counts when the stand point lies within its cast range plus this (`judgement`: a hero steps in to cast).
 ____exports.NUKE_SLACK = 200
 --- Enemy heroes further than this from the creep are not priced.
 local QUERY = 1600
 --- Our swing's own time in the zone when the API gives no attack point, s.
 local SWING_DEFAULT = 0.5
---- The walk-in's price, pure: each enemy whose zone covers the creep hits us for the seconds we stand inside it (walking the
+--- The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
 -- zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
--- more such heroes, or the creep inside an enemy tower's ring, refuse it outright.
+-- more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
 function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower, cap)
     if cap == nil then
         cap = ____exports.COST_CAP

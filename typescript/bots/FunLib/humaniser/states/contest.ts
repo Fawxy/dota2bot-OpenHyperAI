@@ -29,7 +29,7 @@ export const WALK_SLACK = 1.5;
 export const HP_FLOOR = 0.5;
 /** Seconds of the enemy hero's movement added to its attack reach: it steps in on a walk-in (`judgement`; the spot's REACT_SECS is 1.5 for standing). */
 export const STEP_IN = 0.5;
-/** A ready nuke counts when the creep lies within its cast range plus this (`judgement`: a hero steps in to cast). */
+/** A ready nuke counts when the stand point lies within its cast range plus this (`judgement`: a hero steps in to cast). */
 export const NUKE_SLACK = 200;
 /** Enemy heroes further than this from the creep are not priced. */
 const QUERY = 1600;
@@ -40,9 +40,9 @@ export type Why = "ok" | "cost" | "hp" | "two" | "tower";
 
 /** One enemy hero as the price reads it. */
 export interface Threat {
-    /** Its distance to the creep. */
+    /** Its distance to the stand point (StandPoint). */
     d: number;
-    /** Attack range plus both bounding radii plus STEP_IN of its movement: within this of the creep it hits us there. */
+    /** Attack range plus both bounding radii plus STEP_IN of its movement: within this of the stand point it hits us there. */
     zone: number;
     /** Its attack damage per second on us, after our armour. */
     dps: number;
@@ -55,16 +55,16 @@ export interface Price {
     why: Why;
     /** Priced HP as a share of max HP. */
     cost: number;
-    /** Enemy heroes whose zone covers the creep. */
+    /** Enemy heroes whose zone covers the stand point. */
     heroes: number;
     /** Seconds the walk-in spends inside the deepest zone. */
     exposure: number;
 }
 
 /**
- * The walk-in's price, pure: each enemy whose zone covers the creep hits us for the seconds we stand inside it (walking the
+ * The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
  * zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
- * more such heroes, or the creep inside an enemy tower's ring, refuse it outright.
+ * more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
  */
 export function PriceOf(
     this: void,

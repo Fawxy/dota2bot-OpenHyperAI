@@ -111,7 +111,8 @@ do
 	off.loc = Vector(spot.x + 200, spot.y)
 	core.loc = Vector(spot.x + 300, spot.y)
 	H.Drill.Hold(off)
-	check("sentry: past its step from the spot it walks back instead", #ActionsOf(7, "AttackUnit") == 1)
+	local back = ActionsOf(7, "MoveToLocation")
+	check("sentry: past its step from the spot it walks back instead", #ActionsOf(7, "AttackUnit") == 1 and math.abs(back[#back].args[1].x - spot.x) <= 20)
 end
 
 -- lane-spot-statue: the Radiant pos1 is the cast (lane-only), the Dire pos3 a statue, everyone else benched.
