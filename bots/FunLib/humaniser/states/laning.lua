@@ -453,7 +453,8 @@ local function choose(bot, targets, current, pre)
     return chosen
 end
 --- A walk-in starts when the pick chose a last hit beyond MAX_WALK; while it runs its price is read again every scan, and a
--- price that no longer passes (a second hero came, HP fell) releases the attempt through laneFarm's dropLost.
+-- price that no longer passes (a second hero came, HP fell) refuses the creep, which releases the attempt through laneFarm's
+-- dropLost. Any other undefined pick keeps the wait, as for every core attempt.
 local function contestPick(bot, chosen, current)
     local pid = bot:GetPlayerID()
     if current ~= nil and Contest.Running(pid, current.creep) ~= nil and (chosen == nil or chosen.creep == current.creep) then
@@ -663,10 +664,10 @@ local body = __TS__Generator(function(bot, ctx)
             far = FAR,
             leash = LEASH,
             retarget = true,
-            dropLost = function(cur) return ____exports.OwnsSupportHits(bot) or Contest.Running(
+            dropLost = function(cur) return ____exports.OwnsSupportHits(bot) or Contest.Refused(
                 bot:GetPlayerID(),
                 cur.creep
-            ) ~= nil end,
+            ) end,
             radius = Contest.Applies(bot) and Contest.RADIUS or nil,
             onAttempt = function(t, res, contested)
                 local ol, od, ow = LanePick.AttemptOffers(bot:GetPlayerID())

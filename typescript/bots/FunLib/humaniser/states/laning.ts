@@ -275,7 +275,8 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
 
 /**
  * A walk-in starts when the pick chose a last hit beyond MAX_WALK; while it runs its price is read again every scan, and a
- * price that no longer passes (a second hero came, HP fell) releases the attempt through laneFarm's dropLost.
+ * price that no longer passes (a second hero came, HP fell) refuses the creep, which releases the attempt through laneFarm's
+ * dropLost. Any other undefined pick keeps the wait, as for every core attempt.
  */
 function contestPick(bot: Unit, chosen: Lib.Verbs.LaneTarget | undefined, current: Lib.Verbs.LaneTarget | undefined): Lib.Verbs.LaneTarget | undefined {
     const pid = bot.GetPlayerID();
@@ -407,7 +408,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         retarget: true,
         // A support stops waiting on a creep the others will kill before its swing lands (sdp1: 15 of 90 lost denies), so
         // the body hands the frame back instead of holding on (D5): to its hold step on our spot, or to OHA's positioning and harass.
-        dropLost: (cur) => OwnsSupportHits(bot) || Contest.Running(bot.GetPlayerID(), cur.creep) !== undefined,
+        // A walk-in is released only when its price fails (contestPick refuses the creep), not when its creep drops out of the
+        // offers for a scan as its attackers change: drill cwd1 dropped 13 of 28 walk-ins 0.1-0.9 s in that way, none on price.
+        dropLost: (cur) => OwnsSupportHits(bot) || Contest.Refused(bot.GetPlayerID(), cur.creep),
         radius: Contest.Applies(bot) ? Contest.RADIUS : undefined,
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
