@@ -198,9 +198,8 @@ local function towerAt(bot, at)
     return false
 end
 --- Where the bot stands to swing at a creep at `at`: on the line from the bot to the creep, its attack range plus both bounding
--- radii short of the creep (the bot's own spot when it is already that close). Drill cwsen1 (09/11/2026): measured from the
--- creep, the price charged 12 walk-ins with an enemy sentry that attacked during 7 of them, because a melee core swings
--- from its own side of the creep, often outside a zone that covers the creep.
+-- radii short of the creep (the bot's own spot when it is already that close). A melee core swings from its own side of the
+-- creep, often outside a zone that covers the creep itself, so zones are read here and not at the creep.
 function ____exports.StandPoint(from, at, reach)
     local d = dist(from, at)
     if d <= reach then

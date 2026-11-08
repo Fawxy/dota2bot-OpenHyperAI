@@ -78,8 +78,8 @@ export const TABLE: Record<string, Entry> = {
     },
     // Step 3: the enemy laner active, both lane-only.
     "lane-spot-duel": { note: "Radiant pos1 and Dire pos3 lane-only, everyone else benched", cast: { r: [1], d: [3] }, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
-    // Contest walk-in's price (slice lane-last-hits): the Dire pos3 stands as a statue but hits back, so `cc` (the priced
-    // HP-%) is graded against `dh` (the HP-% lost) on an opponent that acts.
+    // The contest walk-in's price: the Dire pos3 stands as a statue but hits back, so `cc` (the priced HP-%) is graded
+    // against `dh` (the HP-% lost) on an opponent that acts.
     "lane-spot-sentry": {
         note: "Radiant pos1 lane-only, Dire pos3 a sentry in its lane (a statue that attacks an enemy hero inside its zone), everyone else benched",
         cast: SAFE_CORE,
