@@ -9,6 +9,8 @@ export interface LaneFarmOpts {
     lastHits?: (this: void) => boolean;
     /** laneTargets' `within`. Default 1. */
     within?: number;
+    /** laneTargets' `radius` (how far from the bot creeps are offered). Default laneTargets' own: max(800, attack range + 400). */
+    radius?: number;
     /**
      * Which of the creeps laneTargets offers to go for (or none). The engine makes no choice of its own: without
      * `pick` the verb only holds the spot. With `retarget`, `current` is the creep an attempt is waiting for when
@@ -37,9 +39,10 @@ export interface LaneFarmOpts {
      * With `retarget`: also drop the attempt (`interrupted`, message `sw=0`) when its creep is no longer offered and `pick`
      * has nothing else, instead of waiting out its eta + 1.5 s, and when its creep is still offered but `pick(offers,
      * current)` answers undefined (the caller releases it). A creep drops out of the offers when the others' damage will kill
-     * it before a swing ordered now lands. Default false.
+     * it before a swing ordered now lands. Default false. A function is asked with the waited-on creep's target each time
+     * the rule would apply, so a caller can release some attempts and keep waiting on others.
      */
-    dropLost?: boolean;
+    dropLost?: boolean | ((this: void, current: LaneTarget) => boolean);
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;

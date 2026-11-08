@@ -78,6 +78,12 @@ export const DEFAULTS = {
      */
     LaneAggro: true,
     /**
+     * With CoreLastHit on, a melee pos1-3 walks in from its lane spot (up to 2.5 s) for a last hit on a
+     * creep dying inside one enemy hero's reach when the walk-in's HP price passes (states/contest), and walks back. Off: the
+     * reach rule's 1 s walk for every laner.
+     */
+    CoreContest: true,
+    /**
      * Slice core-in-lane: with CoreLastHit and LaneSpot on, an in-lane core whose wave is gone holds their incoming wave at the
      * lane's target point (states/wave_hold, lane_spot input `hold`), or under an enemy hero's threat with time to spare drags
      * it behind our T1 to our next wave (lane_aggro `back`, needs LaneAggro). Off: the spot ignores their walking wave.

@@ -1086,7 +1086,31 @@ export const EVENTS = {
         yd: "num",
         /** A deny: the pre-deny swings this bot spent on the creep before it (states/idle_swing); absent for none. */
         pre: "num",
+        /**
+         * Ours.CoreContest: 1 when the attempt was a melee core's walk-in past MAX_WALK; `cc` its priced
+         * HP (% of max) at the pick, `cn` the enemy heroes whose reach covered the creep, `dh` HP-% lost from the pick to the end.
+         */
+        cw: "bool",
+        cc: "num",
+        cn: "num",
+        dh: "num",
         msg: "str",
+    },
+    /**
+     * Ours.CoreContest: a walk-in the price refused, once per creep and reason. at pick (not started) | walk (a running
+     * walk-in released); why cost | hp | two | tower (states/contest PriceOf); cc the priced HP (% of max), n the enemy heroes
+     * covering the creep, ex seconds inside the deepest reach, walk dies the laneTargets facts, hf the core's HP share.
+     */
+    contest_skip: {
+        pid: "num",
+        at: "str",
+        why: "str",
+        cc: "num",
+        n: "num",
+        ex: "num",
+        walk: "num",
+        dies: "num",
+        hf: "num",
     },
     /**
      * Slice lane-control 2a (shadow; design 2026-11-06-lane-controller s5.9): kind=wave once per wave per team and lane at

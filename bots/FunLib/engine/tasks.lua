@@ -2782,7 +2782,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         if away() > leash then
             return false
         end
-        target = opts.pick(laneTargets(bot, {within = opts.within}))
+        target = opts.pick(laneTargets(bot, {within = opts.within, radius = opts.radius}))
         return target ~= nil
     end
     local function stop()
@@ -2800,7 +2800,16 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         if opts.pick == nil or opts.lastHits ~= nil and not opts.lastHits() then
             return false
         end
-        local offered = laneTargets(bot, {within = opts.within})
+        local offered = laneTargets(bot, {within = opts.within, radius = opts.radius})
+        local function drops()
+            local ____temp_5
+            if type(opts.dropLost) == "function" then
+                ____temp_5 = opts.dropLost(current)
+            else
+                ____temp_5 = opts.dropLost == true
+            end
+            return ____temp_5
+        end
         local still
         for ____, o in ipairs(offered) do
             if o.creep == current.creep then
@@ -2809,7 +2818,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
         end
         if still ~= nil then
             local next = opts.pick(offered, still)
-            if next == nil and opts.dropLost then
+            if next == nil and drops() then
                 dropped = true
                 return true
             end
@@ -2820,7 +2829,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
             return true
         end
         target = opts.pick(offered)
-        if target == nil and opts.dropLost then
+        if target == nil and drops() then
             dropped = true
         end
         return target ~= nil or dropped
@@ -2830,7 +2839,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
     local passAt
     while true do
         do
-            local __continue26
+            local __continue27
             repeat
                 local t0 = get().now()
                 if passAt == t0 then
@@ -2852,13 +2861,13 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                                         return true
                                     end
                                     local d = spot() ~= nil and away() or nil
-                                    local ____atSpot_5
+                                    local ____atSpot_6
                                     if atSpot then
-                                        ____atSpot_5 = (d or 0) > far
+                                        ____atSpot_6 = (d or 0) > far
                                     else
-                                        ____atSpot_5 = (d or math.huge) <= near
+                                        ____atSpot_6 = (d or math.huge) <= near
                                     end
-                                    if ____atSpot_5 then
+                                    if ____atSpot_6 then
                                         return true
                                     end
                                     return pick()
@@ -2875,7 +2884,7 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                     if target == nil then
                         local d = spot() ~= nil and away() or nil
                         atSpot = d ~= nil and d <= (atSpot and far or near)
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                 end
@@ -2884,42 +2893,42 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 dropped = false
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
-                local ____t_creep_8 = t.creep
-                local ____temp_9 = t.eta + 1.5
-                local ____opts_deadline_10 = opts.deadline
-                local ____opt_6 = opts.hold
+                local ____t_creep_9 = t.creep
+                local ____temp_10 = t.eta + 1.5
+                local ____opts_deadline_11 = opts.deadline
+                local ____opt_7 = opts.hold
                 local o = {
-                    target = ____t_creep_8,
-                    maxWait = ____temp_9,
-                    deadline = ____opts_deadline_10,
-                    hold = ____opt_6 and ____opt_6.hold,
+                    target = ____t_creep_9,
+                    maxWait = ____temp_10,
+                    deadline = ____opts_deadline_11,
+                    hold = ____opt_7 and ____opt_7.hold,
                     interruptIf = function() return stop() or away() > leash or retarget(t) end
                 }
-                local ____temp_17
+                local ____temp_18
                 if t.kind == "prehit" then
-                    local ____attackAndConfirm_16 = attackAndConfirm
-                    local ____bot_14 = bot
-                    local function ____temp_15()
+                    local ____attackAndConfirm_17 = attackAndConfirm
+                    local ____bot_15 = bot
+                    local function ____temp_16()
                         return t.creep:IsAlive() and t.creep or nil
                     end
-                    local ____temp_13 = t.walk + ownHitTime(bot, t.creep) + PREHIT_SLACK
-                    local ____opt_11 = opts.hold
-                    ____temp_17 = __TS__DelegatedYield(____attackAndConfirm_16(
-                        ____bot_14,
-                        ____temp_15,
+                    local ____temp_14 = t.walk + ownHitTime(bot, t.creep) + PREHIT_SLACK
+                    local ____opt_12 = opts.hold
+                    ____temp_18 = __TS__DelegatedYield(____attackAndConfirm_17(
+                        ____bot_15,
+                        ____temp_16,
                         {
                             findFor = 0,
-                            confirmFor = ____temp_13,
+                            confirmFor = ____temp_14,
                             aggroConfirms = false,
-                            hold = ____opt_11 and ____opt_11.hold,
+                            hold = ____opt_12 and ____opt_12.hold,
                             deadline = opts.deadline,
                             interruptIf = function() return stop() or away() > leash end
                         }
                     ))
                 else
-                    ____temp_17 = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
+                    ____temp_18 = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
                 end
-                local res = ____temp_17
+                local res = ____temp_18
                 if t.kind == "prehit" then
                     bot:Action_MoveToLocation(bot:GetLocation())
                 end
@@ -2932,9 +2941,9 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 if res.reason == "dead" then
                     return res
                 end
-                __continue26 = true
+                __continue27 = true
             until true
-            if not __continue26 then
+            if not __continue27 then
                 break
             end
         end
