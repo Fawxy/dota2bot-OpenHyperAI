@@ -128,7 +128,7 @@ do
 	check("log: held, then go on the change, then go again after LogEvery", #l == 3 and field(l[1], "dec") == "missing" and field(l[2], "dec") == "go" and field(l[3], "dec") == "go", #l)
 	check("log: the held line carries the weight and pid", tonumber(field(l[1], "miss")) == 0.5 and field(l[1], "mpid") == "10", l[1])
 end
--- The vision cut (drill thrdr1): a hero last seen by the walk is dropped once every point of the walk within its run is in
+-- The vision cut: a hero last seen by the walk is dropped once every point of the walk within its run is in
 -- our sight, and counts again while any such point is fogged; the cut is logged as mcut.
 do
 	local _, Threat, bot, e = world({ fogged = function() return false end })
