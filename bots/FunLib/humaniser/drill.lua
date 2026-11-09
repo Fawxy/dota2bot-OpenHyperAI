@@ -474,7 +474,7 @@ ____exports.TABLE = {
         forces = "retreat"
     },
     ["retreat-chase"] = {
-        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, benched on even reps (control); everyone else benched",
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast = SAFE_CORE,
         chaser = {d = {3}},
         others = "bench",
@@ -482,7 +482,7 @@ ____exports.TABLE = {
         rep = {every = 60, from = 60, control = 2}
     },
     ["retreat-chase2"] = {
-        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase it within 1,500 of their lane spots on odd reps, benched on even reps (control); everyone else benched",
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase it within 1,500 of their lane spots on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast = SAFE_CORE,
         chaser = {d = {3, 4}},
         others = "bench",
