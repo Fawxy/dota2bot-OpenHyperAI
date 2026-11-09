@@ -37,7 +37,8 @@ local function capture(fn)
 end
 local function lines(all, ev)
 	local r = {}
-	for _, l in ipairs(all) do if l:find("ev=" .. ev .. " ", 1, true) then r[#r + 1] = l end end
+	-- ph=read lines (band changes) are counted apart: the checks below read starts and ends.
+	for _, l in ipairs(all) do if l:find("ev=" .. ev .. " ", 1, true) and not l:find(" ph=read ", 1, true) then r[#r + 1] = l end end
 	return r
 end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
@@ -59,7 +60,10 @@ do
 		T = T + react(bot) * 0.6
 		check("leave: the episode's desire once it has lasted", H.Retreat.Desire(bot) == 0.95, H.Retreat.Desire(bot))
 	end)
+	local reads = {}
+	for _, l in ipairs(out) do if l:find("ev=retreat ph=read ", 1, true) then reads[#reads + 1] = l end end
 	local s = lines(out, "retreat")[1]
+	check("leave: one ph=read line per band change, not per think", #reads == 1 and field(reads[1], "band") == "pressured", #reads)
 	check("leave: ev=retreat start why=threat with the budget and purpose", field(s, "why") == "threat" and tonumber(field(s, "budget")) == 0.5 and field(s, "purp") == "free", s)
 	check("leave: the hero counts as retreating for its allies' read", H.Retreat.Running(bot))
 end

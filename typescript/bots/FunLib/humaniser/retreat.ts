@@ -43,8 +43,8 @@ export const SETTINGS = {
     Arrive: 200,
     /** The stand point behind our tower: this far from it toward our fountain. judgement. */
     TowerStandBack: 350,
-    /** The out-of-tower-reach anchor: this far past the targeting tower's reach. judgement. */
-    TowerClear: 150,
+    /** The out-of-tower-reach anchor: this far past the targeting tower's reach plus Arrive. judgement. */
+    TowerClear: 50,
     /** An ally hero is an anchor within this distance. judgement. */
     AllyAnchorMax: 3000,
     /** An episode not on the heal floor ends `cut` after this long (s). judgement. */
@@ -106,6 +106,7 @@ interface HeroState {
     orderTo?: Vector;
     plainAt?: number;
     drill?: DrillRep;
+    band?: string;
 }
 
 const states: Record<number, HeroState> = {};
@@ -289,7 +290,8 @@ function anchorsOf(bot: Unit, why: Why): Anchor[] {
     if (why === "heal") return out;
     const tw = TowerOnUs(bot);
     if (tw !== undefined) {
-        const reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + SETTINGS.TowerClear;
+        // Past Arrive as well: arriving within Arrive of the edge point must already be out of the reach (rtchase3 chained there).
+        const reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + SETTINGS.Arrive + SETTINGS.TowerClear;
         const away = dist(tw.GetLocation(), here) < 1 ? f : here;
         const p = towards(tw.GetLocation(), away, reach);
         if (IsLocationPassable(p)) out.push({ kind: "tower_edge", at: p, cost: 0, len: dist(here, p) });
@@ -504,6 +506,14 @@ export function Desire(bot: Unit): number | undefined {
         return 0;
     }
     const [purp, budget] = purposeOf(bot);
+    if (r.band !== st.band) {
+        st.band = r.band;
+        Telemetry.Event("retreat", [
+            ["ph", "read"], ["pid", bot.GetPlayerID()], ["band", r.band], ["thr", r2(r.threat)], ["reach", r.reach.length],
+            ["burst", r2(r.burst)], ["tower", r.tower], ["esc", r.escape], ["budget", budget], ["hp", r2(hpShare(bot))],
+            ["crp", bot.WasRecentlyDamagedByCreep(1)],
+        ]);
+    }
     const why = leaveWhy(bot, st, r, budget, now);
     if (why === undefined) return 0;
     start(bot, st, why, r, budget, purp);

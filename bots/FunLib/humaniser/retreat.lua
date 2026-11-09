@@ -246,7 +246,7 @@ ____exports.SETTINGS = {
     DrillDesire = 1,
     Arrive = 200,
     TowerStandBack = 350,
-    TowerClear = 150,
+    TowerClear = 50,
     AllyAnchorMax = 3000,
     MaxSecs = 40,
     PlainFountainHP = 0.5,
@@ -546,7 +546,7 @@ local function anchorsOf(bot, why)
     end
     local tw = ____exports.TowerOnUs(bot)
     if tw ~= nil then
-        local reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + ____exports.SETTINGS.TowerClear
+        local reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + ____exports.SETTINGS.Arrive + ____exports.SETTINGS.TowerClear
         local away = dist(
             tw:GetLocation(),
             here
@@ -950,6 +950,40 @@ function ____exports.Desire(bot)
         return 0
     end
     local purp, budget = unpack(purposeOf(bot))
+    if r.band ~= st.band then
+        st.band = r.band
+        Telemetry.Event(
+            "retreat",
+            {
+                {"ph", "read"},
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"band", r.band},
+                {
+                    "thr",
+                    r2(r.threat)
+                },
+                {"reach", #r.reach},
+                {
+                    "burst",
+                    r2(r.burst)
+                },
+                {"tower", r.tower},
+                {"esc", r.escape},
+                {"budget", budget},
+                {
+                    "hp",
+                    r2(hpShare(bot))
+                },
+                {
+                    "crp",
+                    bot:WasRecentlyDamagedByCreep(1)
+                }
+            }
+        )
+    end
     local why = leaveWhy(
         bot,
         st,

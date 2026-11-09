@@ -194,6 +194,7 @@ function UnitMeta:GetHealthRegen() return self.regen or 0 end
 -- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
 function UnitMeta:WasRecentlyDamagedByAnyHero(t) return self.heroHitAt ~= nil and T - self.heroHitAt <= t end
 function UnitMeta:WasRecentlyDamagedByTower(t) return self.towerHitAt ~= nil and T - self.towerHitAt <= t end
+function UnitMeta:WasRecentlyDamagedByCreep(t) return self.creepHitAt ~= nil and T - self.creepHitAt <= t end
 function UnitMeta:GetNearbyTowers(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
 	local out = {}

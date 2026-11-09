@@ -814,6 +814,7 @@ ____exports.EVENTS = {
         twr = "bool",
         wave = "bool",
         dmgh = "num",
+        crp = "bool",
         x = "num",
         y = "num"
     },

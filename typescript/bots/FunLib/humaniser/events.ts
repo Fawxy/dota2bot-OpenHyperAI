@@ -998,7 +998,8 @@ export const EVENTS = {
      *  reach, burst, tower), the budget and its purpose, the anchor kind, its route cost and the next-best anchor's (alt), and
      *  for a forced drill rep the start spot. End: res (safe, anchor, died, cut), secs, HP lost (hpl, share of max), whether the
      *  walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the
-     *  cast started under the low-HP bar (healed instead). */
+     *  cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band
+     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. */
     retreat: {
         ph: "str",
         pid: "num",
@@ -1026,6 +1027,7 @@ export const EVENTS = {
         twr: "bool",
         wave: "bool",
         dmgh: "num",
+        crp: "bool",
         x: "num",
         y: "num",
     },
