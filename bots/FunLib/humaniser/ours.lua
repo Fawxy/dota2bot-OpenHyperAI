@@ -85,7 +85,8 @@ ____exports.DEFAULTS = {
     LaneControl = true,
     LaneControlDrive = true,
     CorePull = true,
-    Threat = true
+    Threat = true,
+    Retreat = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

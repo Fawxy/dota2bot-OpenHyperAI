@@ -10,13 +10,13 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { BotMode, GameState, Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, GameState, Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
-export type Role = "cast" | "bench" | "statue" | "sentry" | "laneonly" | "play";
+export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "play";
 
 /** Positions (1-5) per team: `r` Radiant, `d` Dire. */
 export interface Sides {
@@ -37,6 +37,13 @@ export interface Entry {
     spots?: { r?: Record<number, string[]>; d?: Record<number, string[]> };
     /** Heroes that stand as statues but attack an enemy hero inside their zone (Hold); checked after `statue`. */
     sentry?: Sides;
+    /** Heroes that stand behind their own creeps and chase and hit an enemy hero within CHASE_RANGE of that spot, walking
+     *  back past it; benched (in the fountain) on control reps. Checked after `sentry`. */
+    chaser?: Sides;
+    /** The cast's start spot per rep, cycling as `spots` (rep n takes entry (n - 1) mod length): `tower` (inside the enemy
+     *  T1's reach of the cast's lane), `front` (our lane front of the cast's lane), `pull:<r|d>:<safe|off>`. The forced
+     *  context walks the cast there (`CastSpot`) before it acts. */
+    castSpots?: string[];
     /** Heroes that play lane-only (as `castLaneOnly`); checked after `statue`. */
     laneOnly?: Sides;
     /** Lane-only heroes also run the wave hold (states/wave_hold, under its switches) and the hold's own draw; no other lane
@@ -91,6 +98,29 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castLaneOnly: true,
         rep: { every: 30, from: 0 },
+    },
+    // Slice retreat (master slices/retreat.md "Drill"): the forced retreat from fixed points. Each rep the Radiant pos1 walks
+    // to the rep's start spot and our retreat starts there (why=forced) and runs to its anchor; the Dire offlane pair stand in
+    // their lane as statues, so the route's tower, wave and hero costs are all there but nothing acts. 45 s reps: up to 15 s
+    // to walk to the spot, the rest for the walk to the anchor.
+    "retreat-walk": {
+        note: "Radiant pos1 walks to a start spot each rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
+        cast: SAFE_CORE,
+        statue: { d: [3, 4] },
+        others: "bench",
+        castSpots: ["tower", "front", "pull:r:safe"],
+        rep: { every: 45, from: 30 },
+        forces: "retreat",
+    },
+    // The chase drill (prediction): the Radiant pos1 lane-only with our retreat live; the Dire pos3 chases and hits it whenever
+    // it comes within CHASE_RANGE of the chaser's lane spot on odd reps, and is benched on even reps (the control).
+    "retreat-chase": {
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, benched on even reps (control); everyone else benched",
+        cast: SAFE_CORE,
+        chaser: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 60, from: 60, control: 2 },
     },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
@@ -273,14 +303,15 @@ export function RoleOf(bot: Unit): Role {
     if (listed(d.cast, bot.GetTeam(), pos)) return "cast";
     if (listed(d.statue, bot.GetTeam(), pos)) return "statue";
     if (listed(d.sentry, bot.GetTeam(), pos)) return "sentry";
+    if (listed(d.chaser, bot.GetTeam(), pos)) return "chaser";
     if (listed(d.laneOnly, bot.GetTeam(), pos)) return "laneonly";
     return d.others;
 }
 
-/** Benched, a statue or a sentry: the hero holds farm mode above every other mode, takes the drill's step and never casts. */
+/** Benched, a statue, a sentry or a chaser: the hero holds farm mode above every other mode, takes the drill's step and never casts. */
 export function Held(bot: Unit): boolean {
     const r = RoleOf(bot);
-    return r === "bench" || r === "statue" || r === "sentry";
+    return r === "bench" || r === "statue" || r === "sentry" || r === "chaser";
 }
 
 /** Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`. */
@@ -322,6 +353,10 @@ const SPOT_OFFSET = 250;
  * that chases further is a later step. `judgement`.
  */
 export const SENTRY_STEP = 0.5;
+/** A chaser follows an enemy hero up to this far from its lane spot (slice retreat's chase drill). `judgement`. */
+export const CHASE_RANGE = 1500;
+/** The `tower` cast spot stands this far from the enemy T1 toward our own T1 of the lane: inside its reach (868). `judgement`. */
+const TOWER_SPOT = 500;
 
 /** A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
  *  first and gives this hero the statue's step only when the job neither runs nor starts). */
@@ -352,7 +387,9 @@ export function ForcedAt(context: string, t: number): "on" | "off" | "none" | un
  */
 export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
-    if (r === "bench") {
+    const d = Active();
+    if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0) return chase(bot);
+    if (r === "bench" || r === "chaser") {
         const [x, y, z] = FOUNTAIN[bot.GetTeam()];
         const f = Vector(x, y, z);
         if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
@@ -418,6 +455,50 @@ function noteSpot(bot: Unit, spot: string, at: Vector | undefined): void {
     if (lastSpot[pid] === key) return;
     lastSpot[pid] = key;
     Telemetry.Event("drill", [["ph", "spot"], ["name", Name()], ["pid", pid], ["team", bot.GetTeam()], ["rep", RepAt(DotaTime())], ["spot", spot], ["x", at !== undefined ? math.floor(at.x) : undefined], ["y", at !== undefined ? math.floor(at.y) : undefined]]);
+}
+
+/** The chaser's step: attack the nearest enemy hero within CHASE_RANGE of its lane spot, else walk back to the spot. */
+function chase(bot: Unit): boolean {
+    const spot = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND);
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
+        if (!h.IsAlive() || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
+        const dd = GetUnitToUnitDistance(bot, h);
+        if (dd < bestD) {
+            best = h;
+            bestD = dd;
+        }
+    }
+    if (best !== undefined) bot.Action_AttackUnit(best, true);
+    else if (GetUnitToLocationDistance(bot, spot) > 50) bot.Action_MoveToLocation(spot);
+    return true;
+}
+
+/** The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none. */
+export function CastSpot(rep: number): string | undefined {
+    const list = Active()?.castSpots;
+    if (list === undefined || list.length === 0 || rep <= 0) return undefined;
+    return list[(rep - 1) % list.length];
+}
+
+/** The point a cast spot names for `bot`, or undefined. */
+export function CastSpotPoint(bot: Unit, spot: string): Vector | undefined {
+    const team = bot.GetTeam();
+    const lane = bot.GetAssignedLane() as Lane;
+    if (spot === "front") return GetLaneFrontLocation(team, lane, 0);
+    if (spot === "tower") {
+        const ids: Record<number, Tower> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
+        const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
+        const theirs = GetTower(enemy, ids[lane]);
+        const ours = GetTower(team, ids[lane]);
+        if (theirs === null || theirs === undefined) return undefined;
+        const a = theirs.GetLocation();
+        const b = ours !== null && ours !== undefined ? ours.GetLocation() : GetLaneFrontLocation(team, lane, 0);
+        const len = math.max(1, math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2));
+        return Vector(a.x + ((b.x - a.x) * TOWER_SPOT) / len, a.y + ((b.y - a.y) * TOWER_SPOT) / len, a.z);
+    }
+    return spotPoint(bot, spot);
 }
 
 /** The sentry's answer: attack the nearest enemy hero inside its zone while it stands within its step of its spot. */

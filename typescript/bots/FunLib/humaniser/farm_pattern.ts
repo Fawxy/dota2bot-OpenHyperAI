@@ -30,6 +30,7 @@ import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 export const DEFAULTS = {
     Enable: true,
@@ -627,7 +628,7 @@ function postClaims(bot: Unit, trip: Trip): void {
     if (trip.phase === "return") return;
     const s = Settings();
     const cap = s.Desire - s.FocusMargin;
-    if (!retreatThreat(bot)) Intent.Claim(bot, { source: "farm:hold", tier: "CAMP_JOB", mode: BotMode.Retreat, cap });
+    if (!retreatThreat(bot) && !RetreatState.Owns(bot)) Intent.Claim(bot, { source: "farm:hold", tier: "CAMP_JOB", mode: BotMode.Retreat, cap });
     else Intent.Release(bot, "farm:hold", BotMode.Retreat);
     for (const mode of FOCUS_MODES) Intent.Claim(bot, { source: "farm:focus", tier: "CAMP_JOB", mode, cap });
 }

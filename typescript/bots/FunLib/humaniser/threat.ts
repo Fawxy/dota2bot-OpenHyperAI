@@ -7,6 +7,7 @@
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 export const SETTINGS = {
     /** An unseen enemy counts in the belief only after this many seconds unseen (the old MissingAfter, kept so the graded rows hold). */
@@ -43,6 +44,12 @@ export const SETTINGS = {
     /** Band edges on `threat`; `lethal` is not a weight (see Read). */
     Watch: 0.25,
     Pressured: 0.5,
+    /**
+     * `escape` (slice retreat): items that count as a leave when ready (blink, force staff, a TP scroll), and the margin (units)
+     * beyond a chaser's attack range plus both hulls that a faster bot needs to step out of reach first. judgement.
+     */
+    EscapeItems: ["item_blink", "item_force_staff", "item_tpscroll"],
+    EscapeMargin: 100,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };
@@ -58,8 +65,11 @@ export interface Read {
     reach: number[];
     /** Their estimated damage on `bot` over min(horizon, BurstWindow), as a share of its current HP. */
     burst: number;
-    /** Our other heroes who can reach `place` within `horizon`. */
+    /** Our other heroes who can reach `place` within `horizon`; an ally in our retreat counts no help (slice retreat). */
     allies: number;
+    /** `bot` can leave the reach of every hero in `reach` first: an escape item ready, or faster than each of them and
+     *  outside each one's attack range (slice retreat; `lethal` needs it). */
+    escape: boolean;
     /** `place` inside a live enemy tower's reach. */
     tower: boolean;
     /** Sum of the belief weights of unseen enemies whose possible run touches the walk, their pids and the longest unseen (s). */
@@ -178,6 +188,27 @@ function missingOf(
     return $multi(sum, pids, mtss, cut);
 }
 
+function itemReady(bot: Unit, name: string): boolean {
+    const slot = bot.FindItemSlot(name);
+    // Slots 0-5 are the inventory; the backpack's items cannot be cast.
+    if (slot < 0 || slot > 5) return false;
+    const item = bot.GetItemInSlot(slot);
+    return item !== null && item !== undefined && item.IsFullyCastable();
+}
+
+/** Can `bot` leave the reach of `chasers` first (design 5.1): an escape item ready, or faster than each and out of its attack range. */
+function escapeOf(bot: Unit, chasers: Unit[]): boolean {
+    if (chasers.length === 0) return true;
+    for (const name of SETTINGS.EscapeItems) if (itemReady(bot, name)) return true;
+    const ours = bot.GetCurrentMovementSpeed();
+    for (const e of chasers) {
+        if (e.GetCurrentMovementSpeed() >= ours) return false;
+        const gap = GetUnitToUnitDistance(bot, e) - e.GetAttackRange() - e.GetBoundingRadius() - bot.GetBoundingRadius();
+        if (gap < SETTINGS.EscapeMargin) return false;
+    }
+    return true;
+}
+
 export function BandOf(threat: number, lethal: boolean): Band {
     if (lethal) return "lethal";
     return threat >= SETTINGS.Pressured ? "pressured" : threat >= SETTINGS.Watch ? "watch" : "none";
@@ -185,14 +216,14 @@ export function BandOf(threat: number, lethal: boolean): Band {
 
 /**
  * The read for `bot` walking from `from` to `place` with `horizon` seconds ahead. `lethal` fires when the heroes in reach
- * can deal the bot's HP within the burst window and they outnumber our heroes in reach (the `escape` input is not built yet:
- * slice file Open items).
+ * can deal the bot's HP within the burst window, they outnumber our heroes in reach and the bot has no `escape`.
  */
 export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): Read {
     const s = SETTINGS;
     const now = DotaTime();
     const visible: Record<number, boolean> = {};
     const reach: number[] = [];
+    const chasers: Unit[] = [];
     let dmg = 0;
     const window = math.min(horizon, s.BurstWindow);
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
@@ -203,12 +234,13 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
         if (sp !== undefined && sp > 0) speeds[pid] = sp;
         if (canReach(e, bot, from, place, horizon)) {
             reach.push(pid);
+            chasers.push(e);
             dmg += e.GetEstimatedDamageToTarget(true, bot, window, DamageType.All);
         }
     }
     let allies = 0;
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
-        if (!valid(a) || a === bot) continue;
+        if (!valid(a) || a === bot || RetreatState.Running(a)) continue;
         if (canReach(a, bot, place, place, horizon)) allies++;
     }
     const [missing, mpids, mtss, mcut] = missingOf(bot, from, place, now, visible);
@@ -218,8 +250,9 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
     const burst = dmg / hp;
     const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * allies;
     const threat = math.max(0, math.min(1, raw));
-    const lethal = burst >= 1 && reach.length > allies;
-    return { t: now, from, place, horizon, reach, burst, allies, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal) };
+    const escape = escapeOf(bot, chasers);
+    const lethal = burst >= 1 && reach.length > allies && !escape;
+    return { t: now, from, place, horizon, reach, burst, allies, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal) };
 }
 
 const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;
@@ -247,6 +280,7 @@ export function Log(bot: Unit, consumer: string, r: Read, decision: string): voi
         ["rpid", r.reach.length > 0 ? r.reach.join(",") : undefined],
         ["burst", r2(r.burst)],
         ["ally", r.allies],
+        ["esc", r.reach.length > 0 ? r.escape : undefined],
         ["tower", r.tower],
         ["miss", r2(r.missing)],
         ["mpid", r.mpids.length > 0 ? r.mpids.join(",") : undefined],

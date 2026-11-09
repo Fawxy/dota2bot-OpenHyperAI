@@ -36,7 +36,9 @@ export const HOST_MODE = BotMode.Farm;
  * a name cannot be nil. Attack: only the 9 heroes OHA overrides have a wrapped attack mode.
  */
 export const EXCEPTIONS: Record<string, string> = {
-    retreat: "our own retreat",
+    // With Ours.Retreat on, our retreat owns a laning hero's retreat and ends a running job itself (slice retreat); the entry
+    // stays for heroes it does not own.
+    retreat: "our own retreat after laning",
     assemble: "our own human interface",
     assemble_with_humans: "our own human interface",
     attack: "our own fights, or a Valve fix",
@@ -138,6 +140,11 @@ function ranked(bot: Unit): Job[] {
 function runningJob(bot: Unit): Job | undefined {
     for (const j of JOBS) if (j.Running(bot)) return j;
     return undefined;
+}
+
+/** The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose). */
+export function RunningJobName(bot: Unit): string | undefined {
+    return runningJob(bot)?.name;
 }
 
 /** Any of our jobs runs for this hero. */

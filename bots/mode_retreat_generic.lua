@@ -118,6 +118,11 @@ end
 -- === existing functions, now reusing context ===
 
 function GetDesire()
+    -- Slice retreat (Ours.Retreat): our desire for a laning hero it owns; nil lets OHA's run.
+    local ours = J.Humaniser.Retreat.Desire(bot)
+    if ours ~= nil then
+        return J.Humaniser.Intent.Resolve(bot, BOT_MODE_RETREAT, J.Humaniser.Orders.CapRetreatDesire(bot, ours))
+    end
     -- local cacheKey = 'GetRetreatDesire'..tostring(bot:GetPlayerID())
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.35 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
@@ -785,5 +790,7 @@ end
 
 -- H.1 probe (slice 1): errors escaping these entry points print ev=lua_error where=oha.<file>.<fn>, then re-raise.
 do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'retreat', GetDesire) end
-do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire = E('mode_retreat.GetDesire', GetDesire) end
+-- Slice retreat: with Ours.Retreat on, our Think walks every hero in retreat mode (ours for an owned hero, the plain walk for the rest).
+if J.Humaniser.Retreat.On() then Think = function() J.Humaniser.Retreat.Think(bot) end end
+do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire = E('mode_retreat.GetDesire', GetDesire); if Think then Think = E('mode_retreat.Think', Think) end end
 return X

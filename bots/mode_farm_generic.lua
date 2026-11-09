@@ -96,6 +96,7 @@ function GetDesireHelper()
 	then
 		if runTime ~= 0
 			and DotaTime() < runTime + shouldRunTime
+			and not J.Humaniser.Retreat.Owns(bot)
 		then
 			return BOT_MODE_DESIRE_ABSOLUTE * 1.1;
 		else
@@ -104,7 +105,8 @@ function GetDesireHelper()
 		end
 		
 		-- Our core's lane context decides when to back off in its lane (Ours.CoreTrade); none of ShouldRun's runs apply there.
-		shouldRunTime = J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) and 0 or X.ShouldRun(bot);
+		-- Our retreat owns a laning hero's runs (Ours.Retreat).
+		shouldRunTime = (J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) or J.Humaniser.Retreat.Owns(bot)) and 0 or X.ShouldRun(bot);
 		if shouldRunTime ~= 0
 		then
 			if runTime == 0 then 

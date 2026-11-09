@@ -192,11 +192,13 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, spotPoint, noteSpot, sentryAttack, controlRep, Customize, FOUNTAIN, lastSpot, SPOT_OFFSET
+local overrides, spotPoint, noteSpot, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
+local Lane = ____dota.Lane
 local Team = ____dota.Team
+local Tower = ____dota.Tower
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function overrides()
@@ -317,6 +319,41 @@ function noteSpot(bot, spot, at)
         }
     )
 end
+function chase(bot)
+    local spot = GetLaneFrontLocation(
+        bot:GetTeam(),
+        bot:GetAssignedLane(),
+        STATUE_BEHIND
+    )
+    local best
+    local bestD = math.huge
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
+        do
+            local __continue44
+            repeat
+                if not h:IsAlive() or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
+                    __continue44 = true
+                    break
+                end
+                local dd = GetUnitToUnitDistance(bot, h)
+                if dd < bestD then
+                    best = h
+                    bestD = dd
+                end
+                __continue44 = true
+            until true
+            if not __continue44 then
+                break
+            end
+        end
+    end
+    if best ~= nil then
+        bot:Action_AttackUnit(best, true)
+    elseif GetUnitToLocationDistance(bot, spot) > 50 then
+        bot:Action_MoveToLocation(spot)
+    end
+    return true
+end
 function sentryAttack(bot, spot)
     local step = ____exports.SENTRY_STEP * bot:GetCurrentMovementSpeed()
     if GetUnitToLocationDistance(bot, spot) > step then
@@ -327,10 +364,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue43
+            local __continue58
             repeat
                 if not h:IsAlive() then
-                    __continue43 = true
+                    __continue58 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -338,9 +375,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue43 = true
+                __continue58 = true
             until true
-            if not __continue43 then
+            if not __continue58 then
                 break
             end
         end
@@ -409,6 +446,23 @@ ____exports.TABLE = {
         others = "bench",
         castLaneOnly = true,
         rep = {every = 30, from = 0}
+    },
+    ["retreat-walk"] = {
+        note = "Radiant pos1 walks to a start spot each rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
+        cast = SAFE_CORE,
+        statue = {d = {3, 4}},
+        others = "bench",
+        castSpots = {"tower", "front", "pull:r:safe"},
+        rep = {every = 45, from = 30},
+        forces = "retreat"
+    },
+    ["retreat-chase"] = {
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, benched on even reps (control); everyone else benched",
+        cast = SAFE_CORE,
+        chaser = {d = {3}},
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 60, from = 60, control = 2}
     },
     ["lane-only"] = {
         note = "every hero lane-only (the last-hit harness)",
@@ -586,6 +640,13 @@ function ____exports.RoleOf(bot)
         return "sentry"
     end
     if listed(
+        d.chaser,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "chaser"
+    end
+    if listed(
         d.laneOnly,
         bot:GetTeam(),
         pos
@@ -594,10 +655,10 @@ function ____exports.RoleOf(bot)
     end
     return d.others
 end
---- Benched, a statue or a sentry: the hero holds farm mode above every other mode, takes the drill's step and never casts.
+--- Benched, a statue, a sentry or a chaser: the hero holds farm mode above every other mode, takes the drill's step and never casts.
 function ____exports.Held(bot)
     local r = ____exports.RoleOf(bot)
-    return r == "bench" or r == "statue" or r == "sentry"
+    return r == "bench" or r == "statue" or r == "sentry" or r == "chaser"
 end
 --- Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`.
 function ____exports.LaneOnly(bot)
@@ -622,7 +683,7 @@ function ____exports.Implied(key)
     return ____opt_8 and ____opt_8[key]
 end
 FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
-local STATUE_BEHIND = -300
+STATUE_BEHIND = -300
 local STATUE_SWAY = 40
 local statueSide = {}
 lastSpot = {}
@@ -632,6 +693,10 @@ SPOT_OFFSET = 250
 -- as the contest price's STEP_IN on purpose: this step grades the price's damage and time terms on its own zone; a sentry
 -- that chases further is a later step. `judgement`.
 ____exports.SENTRY_STEP = 0.5
+--- A chaser follows an enemy hero up to this far from its lane spot (slice retreat's chase drill). `judgement`.
+____exports.CHASE_RANGE = 1500
+--- The `tower` cast spot stands this far from the enemy T1 toward our own T1 of the lane: inside its reach (868). `judgement`.
+local TOWER_SPOT = 500
 --- A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
 -- first and gives this hero the statue's step only when the job neither runs nor starts).
 function ____exports.IdleStatue(bot)
@@ -667,7 +732,14 @@ end
 -- spot behind its own creeps and sways there. False when the hero is not held.
 function ____exports.Hold(bot)
     local r = ____exports.RoleOf(bot)
-    if r == "bench" then
+    local d = ____exports.Active()
+    if r == "chaser" and d ~= nil and not controlRep(
+        d,
+        ____exports.RepAt(DotaTime())
+    ) and ____exports.RepAt(DotaTime()) > 0 then
+        return chase(bot)
+    end
+    if r == "bench" or r == "chaser" then
         local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
         local f = Vector(x, y, z)
         if GetUnitToLocationDistance(bot, f) > 300 then
@@ -715,6 +787,40 @@ function ____exports.Hold(bot)
     bot:Action_MoveToLocation(target)
     return true
 end
+--- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
+function ____exports.CastSpot(rep)
+    local ____opt_31 = ____exports.Active()
+    local list = ____opt_31 and ____opt_31.castSpots
+    if list == nil or #list == 0 or rep <= 0 then
+        return nil
+    end
+    return list[(rep - 1) % #list + 1]
+end
+--- The point a cast spot names for `bot`, or undefined.
+function ____exports.CastSpotPoint(bot, spot)
+    local team = bot:GetTeam()
+    local lane = bot:GetAssignedLane()
+    if spot == "front" then
+        return GetLaneFrontLocation(team, lane, 0)
+    end
+    if spot == "tower" then
+        local ids = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
+        local enemy = team == Team.Radiant and Team.Dire or Team.Radiant
+        local theirs = GetTower(enemy, ids[lane])
+        local ours = GetTower(team, ids[lane])
+        if theirs == nil or theirs == nil then
+            return nil
+        end
+        local a = theirs:GetLocation()
+        local b = ours ~= nil and ours ~= nil and ours:GetLocation() or GetLaneFrontLocation(team, lane, 0)
+        local len = math.max(
+            1,
+            math.sqrt((b.x - a.x) ^ 2 + (b.y - a.y) ^ 2)
+        )
+        return Vector(a.x + (b.x - a.x) * TOWER_SPOT / len, a.y + (b.y - a.y) * TOWER_SPOT / len, a.z)
+    end
+    return spotPoint(bot, spot)
+end
 --- The active drill's rep start times for a forced context (DotaTime seconds, up to 60:00), input-on reps only.
 function ____exports.RepTimes(context)
     local d = ____exports.Active()
@@ -750,8 +856,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_31 = overrides()
-            local v = ____opt_31 and ____opt_31[k]
+            local ____opt_33 = overrides()
+            local v = ____opt_33 and ____opt_33[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -759,8 +865,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_33 = overrides()
-        local asked = ____opt_33 and ____opt_33.Drill
+        local ____opt_35 = overrides()
+        local asked = ____opt_35 and ____opt_35.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})

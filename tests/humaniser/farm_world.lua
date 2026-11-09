@@ -23,6 +23,8 @@ function FarmWorld(o)
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = C.Ours or {}
 	if o.coreCamp ~= true then C.Ours.CoreCampTrip = false end
+	-- farm:hold on retreat is Ours.Retreat's OFF arm.
+	if o.retreat ~= true then C.Ours.Retreat = false end
 	T = o.t
 	CURRENT_TEAM = 2
 	OBSERVER = 1

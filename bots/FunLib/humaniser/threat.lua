@@ -1,4 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
@@ -7,6 +33,7 @@ local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 ____exports.SETTINGS = {
     MissingAfter = 3,
     MissingSpeed = 330,
@@ -26,6 +53,8 @@ ____exports.SETTINGS = {
     WAlly = 0.15,
     Watch = 0.25,
     Pressured = 0.5,
+    EscapeItems = {"item_blink", "item_force_staff", "item_tpscroll"},
+    EscapeMargin = 100,
     LogEvery = 5
 }
 local TOWER_IDS = {
@@ -183,6 +212,36 @@ local function missingOf(bot, from, place, now, visible)
     end
     return sum, pids, mtss, cut
 end
+local function itemReady(bot, name)
+    local slot = bot:FindItemSlot(name)
+    if slot < 0 or slot > 5 then
+        return false
+    end
+    local item = bot:GetItemInSlot(slot)
+    return item ~= nil and item ~= nil and item:IsFullyCastable()
+end
+--- Can `bot` leave the reach of `chasers` first (design 5.1): an escape item ready, or faster than each and out of its attack range.
+local function escapeOf(bot, chasers)
+    if #chasers == 0 then
+        return true
+    end
+    for ____, name in ipairs(____exports.SETTINGS.EscapeItems) do
+        if itemReady(bot, name) then
+            return true
+        end
+    end
+    local ours = bot:GetCurrentMovementSpeed()
+    for ____, e in ipairs(chasers) do
+        if e:GetCurrentMovementSpeed() >= ours then
+            return false
+        end
+        local gap = GetUnitToUnitDistance(bot, e) - e:GetAttackRange() - e:GetBoundingRadius() - bot:GetBoundingRadius()
+        if gap < ____exports.SETTINGS.EscapeMargin then
+            return false
+        end
+    end
+    return true
+end
 function ____exports.BandOf(threat, lethal)
     if lethal then
         return "lethal"
@@ -190,21 +249,21 @@ function ____exports.BandOf(threat, lethal)
     return threat >= ____exports.SETTINGS.Pressured and "pressured" or (threat >= ____exports.SETTINGS.Watch and "watch" or "none")
 end
 --- The read for `bot` walking from `from` to `place` with `horizon` seconds ahead. `lethal` fires when the heroes in reach
--- can deal the bot's HP within the burst window and they outnumber our heroes in reach (the `escape` input is not built yet:
--- slice file Open items).
+-- can deal the bot's HP within the burst window, they outnumber our heroes in reach and the bot has no `escape`.
 function ____exports.Read(bot, from, place, horizon)
     local s = ____exports.SETTINGS
     local now = DotaTime()
     local visible = {}
     local reach = {}
+    local chasers = {}
     local dmg = 0
     local window = math.min(horizon, s.BurstWindow)
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue29
+            local __continue40
             repeat
                 if not valid(e) or not e:CanBeSeen() then
-                    __continue29 = true
+                    __continue40 = true
                     break
                 end
                 local pid = e:GetPlayerID()
@@ -221,11 +280,12 @@ function ____exports.Read(bot, from, place, horizon)
                     horizon
                 ) then
                     reach[#reach + 1] = pid
+                    chasers[#chasers + 1] = e
                     dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, window, DamageType.All)
                 end
-                __continue29 = true
+                __continue40 = true
             until true
-            if not __continue29 then
+            if not __continue40 then
                 break
             end
         end
@@ -233,10 +293,10 @@ function ____exports.Read(bot, from, place, horizon)
     local allies = 0
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue34
+            local __continue45
             repeat
-                if not valid(a) or a == bot then
-                    __continue34 = true
+                if not valid(a) or a == bot or RetreatState.Running(a) then
+                    __continue45 = true
                     break
                 end
                 if canReach(
@@ -248,9 +308,9 @@ function ____exports.Read(bot, from, place, horizon)
                 ) then
                     allies = allies + 1
                 end
-                __continue34 = true
+                __continue45 = true
             until true
-            if not __continue34 then
+            if not __continue45 then
                 break
             end
         end
@@ -274,7 +334,8 @@ function ____exports.Read(bot, from, place, horizon)
         0,
         math.min(1, raw)
     )
-    local lethal = burst >= 1 and #reach > allies
+    local escape = escapeOf(bot, chasers)
+    local lethal = burst >= 1 and #reach > allies and not escape
     return {
         t = now,
         from = from,
@@ -283,6 +344,7 @@ function ____exports.Read(bot, from, place, horizon)
         reach = reach,
         burst = burst,
         allies = allies,
+        escape = escape,
         tower = tower,
         missing = missing,
         mpids = mpids,
@@ -305,61 +367,73 @@ function ____exports.Log(bot, consumer, r, decision)
         return
     end
     logged[key] = {t = r.t, decision = decision}
-    Telemetry.Event(
-        "threat",
+    local ____Telemetry_Event_2 = Telemetry.Event
+    local ____array_1 = __TS__SparseArrayNew(
+        {"pid", pid},
+        {"who", consumer},
+        {"dec", decision},
         {
-            {"pid", pid},
-            {"who", consumer},
-            {"dec", decision},
-            {
-                "x",
-                math.floor(r.place.x)
-            },
-            {
-                "y",
-                math.floor(r.place.y)
-            },
-            {
-                "hz",
-                r2(r.horizon)
-            },
-            {
-                "threat",
-                r2(r.threat)
-            },
-            {"band", r.band},
-            {"reach", #r.reach},
-            {
-                "rpid",
-                #r.reach > 0 and table.concat(r.reach, ",") or nil
-            },
-            {
-                "burst",
-                r2(r.burst)
-            },
-            {"ally", r.allies},
-            {"tower", r.tower},
-            {
-                "miss",
-                r2(r.missing)
-            },
-            {
-                "mpid",
-                #r.mpids > 0 and table.concat(r.mpids, ",") or nil
-            },
-            {
-                "mtss",
-                r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
-            },
-            {"mcut", r.mcut > 0 and r.mcut or nil},
-            {
-                "hp",
-                r2(bot:GetHealth() / math.max(
-                    1,
-                    bot:GetMaxHealth()
-                ))
-            }
+            "x",
+            math.floor(r.place.x)
+        },
+        {
+            "y",
+            math.floor(r.place.y)
+        },
+        {
+            "hz",
+            r2(r.horizon)
+        },
+        {
+            "threat",
+            r2(r.threat)
+        },
+        {"band", r.band},
+        {"reach", #r.reach},
+        {
+            "rpid",
+            #r.reach > 0 and table.concat(r.reach, ",") or nil
+        },
+        {
+            "burst",
+            r2(r.burst)
+        },
+        {"ally", r.allies}
+    )
+    local ____temp_0
+    if #r.reach > 0 then
+        ____temp_0 = r.escape
+    else
+        ____temp_0 = nil
+    end
+    __TS__SparseArrayPush(
+        ____array_1,
+        {"esc", ____temp_0},
+        {"tower", r.tower},
+        {
+            "miss",
+            r2(r.missing)
+        },
+        {
+            "mpid",
+            #r.mpids > 0 and table.concat(r.mpids, ",") or nil
+        },
+        {
+            "mtss",
+            r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
+        },
+        {"mcut", r.mcut > 0 and r.mcut or nil},
+        {
+            "hp",
+            r2(bot:GetHealth() / math.max(
+                1,
+                bot:GetMaxHealth()
+            ))
         }
+    )
+    ____Telemetry_Event_2(
+        "threat",
+        {__TS__SparseArraySpread(____array_1)}
     )
 end
 return ____exports

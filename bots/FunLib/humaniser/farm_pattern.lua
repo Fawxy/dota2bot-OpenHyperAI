@@ -190,6 +190,7 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
         return defaults
@@ -1186,7 +1187,7 @@ local function postClaims(bot, trip)
     end
     local s = ____exports.Settings()
     local cap = s.Desire - s.FocusMargin
-    if not retreatThreat(bot) then
+    if not retreatThreat(bot) and not RetreatState.Owns(bot) then
         Intent.Claim(bot, {source = "farm:hold", tier = "CAMP_JOB", mode = BotMode.Retreat, cap = cap})
     else
         Intent.Release(bot, "farm:hold", BotMode.Retreat)

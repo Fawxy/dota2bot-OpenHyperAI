@@ -49,6 +49,8 @@ import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 export { CoreTrade };
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 export { LaneControl };
+import * as Retreat from "bots/FunLib/humaniser/retreat";
+export { Retreat };
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -155,6 +157,7 @@ function tick(this: void, bot: Unit): void {
     }
     logStart(bot);
     Drill.Tick(bot);
+    Retreat.Tick(bot);
     Pings.Tick(bot);
     Commands.Tick(bot);
     Lane.Tick(bot);
@@ -219,7 +222,7 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
     Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Hold: no, LaneOnly: no, LaneHold: no, LaneAggro: no, IdleStatue: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
-    Telemetry.GuardModule("Chooser", Chooser, { Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
+    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,
@@ -231,6 +234,8 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("Commands", Commands, { ShouldUseOrderedSmoke: no });
     // A controller error drops that wave's ev=lane_ctl line; no bot action reads it.
     Telemetry.GuardModule("LaneControl", LaneControl, { Tick: none });
+    // An error hands the hero to OHA's retreat desire for that call (undefined) and a Think that issues nothing.
+    Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
     Telemetry.GuardModule("Perception", Perception, {
         FilterNearbyEnemies: arg2,
         FilterUnitList: arg1,

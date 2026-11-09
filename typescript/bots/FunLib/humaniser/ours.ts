@@ -118,6 +118,11 @@ export const DEFAULTS = {
      *  gates of the core camp trip, the offlane pos3's pull and the support's pull farm read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: CoreCamp MissingOf and ThreatOnWay. */
     Threat: true,
+    /** Slice retreat (design s5.4, master slices/retreat.md): a laning bot hero's retreat is ours (retreat.ts: leave on the
+     *  threat read against a budget, the anchor by route cost, the exit band); OHA's retreat desire, farm's ShouldRun and the
+     *  areas' retreat nudges are off for it, and every other hero in retreat mode takes the plain walk. Off: OHA's retreat
+     *  and Valve's walk. */
+    Retreat: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

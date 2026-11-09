@@ -40,6 +40,7 @@ local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
 local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
+local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -75,6 +76,7 @@ ____exports.Tasks = Tasks
 ____exports.States = States
 ____exports.CoreTrade = CoreTrade
 ____exports.LaneControl = LaneControl
+____exports.Retreat = Retreat
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -258,6 +260,7 @@ local function tick(bot)
     end
     logStart(bot)
     Drill.Tick(bot)
+    Retreat.Tick(bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
@@ -414,6 +417,7 @@ if Telemetry.GuardsEnabled() then
         }
     )
     Telemetry.GuardModule("Chooser", Chooser, {
+        RunningJobName = none,
         Decide = none,
         FarmDesire = zero,
         FarmThink = no,
@@ -441,6 +445,17 @@ if Telemetry.GuardsEnabled() then
     })
     Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
     Telemetry.GuardModule("LaneControl", LaneControl, {Tick = none})
+    Telemetry.GuardModule("Retreat", Retreat, {
+        Desire = none,
+        Think = none,
+        Tick = none,
+        Running = no,
+        Owns = no,
+        On = no,
+        Fountain = none,
+        TowerOnUs = none,
+        ResetCache = none
+    })
     Telemetry.GuardModule(
         "Perception",
         Perception,

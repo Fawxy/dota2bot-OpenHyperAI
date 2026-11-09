@@ -54,7 +54,7 @@ ____exports.HOST_MODE = BotMode.Farm
 --- OHA's modes that may still take the hero during a job: mode name (the file's, without `mode_` and `_generic`) to what
 -- removes the entry. Designed to end up empty. Names, not BOT_MODE numbers: BotMode has no assemble-with-humans entry, and
 -- a name cannot be nil. Attack: only the 9 heroes OHA overrides have a wrapped attack mode.
-____exports.EXCEPTIONS = {retreat = "our own retreat", assemble = "our own human interface", assemble_with_humans = "our own human interface", attack = "our own fights, or a Valve fix"}
+____exports.EXCEPTIONS = {retreat = "our own retreat after laning", assemble = "our own human interface", assemble_with_humans = "our own human interface", attack = "our own fights, or a Valve fix"}
 local STACK = {
     name = "stack",
     Priority = function(bot) return StackJob.Applies(bot) and ____exports.SETTINGS.JobDesire or nil end,
@@ -168,6 +168,11 @@ local function runningJob(bot)
     end
     return nil
 end
+--- The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose).
+function ____exports.RunningJobName(bot)
+    local ____opt_1 = runningJob(bot)
+    return ____opt_1 and ____opt_1.name
+end
 --- Any of our jobs runs for this hero.
 function ____exports.Running(bot)
     return runningJob(bot) ~= nil
@@ -240,13 +245,13 @@ function ____exports.Decide(bot, mode)
         return nil
     end
     if RuneJob.HostOf(bot) == BotMode.Rune then
-        local ____temp_1
+        local ____temp_3
         if mode == "rune" or ____exports.EXCEPTIONS[mode] ~= nil then
-            ____temp_1 = nil
+            ____temp_3 = nil
         else
-            ____temp_1 = 0
+            ____temp_3 = 0
         end
-        return ____temp_1
+        return ____temp_3
     end
     if mode == ____exports.HOST then
         return hostDesire(bot)
@@ -273,13 +278,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_2
+        local ____table_Step_result_4
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_2 = nil
+            ____table_Step_result_4 = nil
         else
-            ____table_Step_result_2 = inner()
+            ____table_Step_result_4 = inner()
         end
-        return ____table_Step_result_2
+        return ____table_Step_result_4
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -301,9 +306,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_3 = runningJob(bot)
-    if ____opt_3 ~= nil then
-        ____opt_3.End(bot, why)
+    local ____opt_5 = runningJob(bot)
+    if ____opt_5 ~= nil then
+        ____opt_5.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

@@ -3,7 +3,7 @@
  */
 
 import { Unit, Vector, AvoidanceZone, DroppedItem } from "./interfaces";
-import { Lane, Team, UnitType } from ".";
+import { Lane, Shop, Team, UnitType } from ".";
 
 declare global {
     function print(...args: any[]): void;
@@ -32,6 +32,8 @@ declare global {
     function GameTime(): number;
 
     function IsLocationPassable(loc: Vector): boolean;
+    /** Valve: the location of a shop (SHOP_HOME is the team's fountain shop). */
+    function GetShopLocation(team: Team, shop: Shop): Vector;
     function IsLocationVisible(loc: Vector): boolean;
 
     function IsPlayerBot(playerId: number): boolean;

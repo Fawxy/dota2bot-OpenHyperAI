@@ -26,6 +26,7 @@ import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 export { LaneFightConfig as Config, AbilityClasses, CooldownMemory, CastWatch, FightRead, KillCheck };
 
@@ -510,7 +511,7 @@ function claim(bot: Unit, phase: Phase): boolean {
     const cap = focusCap(bot);
     for (const mode of FOCUS_MODES) Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode, cap });
     // Under an enemy tower's fire retreat is never held: Valve's retreat reads the tower threat and must be able to win.
-    if (hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP && !LaneState.EnemyTowerTargeting(bot))
+    if (hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP && !LaneState.EnemyTowerTargeting(bot) && !RetreatState.Owns(bot))
         Intent.Claim(bot, { source: FOCUS_SOURCE, tier: "FIGHT", mode: BotMode.Retreat, cap });
     else Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat);
     return posted;
