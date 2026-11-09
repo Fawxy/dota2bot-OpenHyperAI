@@ -633,7 +633,10 @@ function latestLeave(t)
 end
 function tooLate(bot, t, secs, now)
     local ret = now + secs * ____exports.Pace(bot) + (t.plan.ret - t.plan.leaveBy)
-    return ret > t.clash.t + ____exports.SETTINGS.MaxLate or t.plan.gold - ____exports.LossBetween(t.clash, now, ret) < ____exports.SETTINGS.MinNet
+    if ret > t.clash.t + ____exports.SETTINGS.MaxLate then
+        return true
+    end
+    return not Overrides.CampForce() and t.plan.gold - ____exports.LossBetween(t.clash, now, ret) < ____exports.SETTINGS.MinNet
 end
 function admits(bot, t, spawner, now)
     local met = liveNeutrals(
@@ -675,6 +678,10 @@ function admits(bot, t, spawner, now)
                 {
                     "clre",
                     r1(secs)
+                },
+                {
+                    "lb",
+                    r1(latestLeave(t))
                 },
                 {
                     "hp",

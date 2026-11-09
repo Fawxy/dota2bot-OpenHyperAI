@@ -1069,7 +1069,9 @@ function latestLeave(t: Trip): number {
 
 function tooLate(bot: Unit, t: Trip, secs: number, now: number): boolean {
     const ret = now + secs * Pace(bot) + (t.plan.ret - t.plan.leaveBy);
-    return ret > t.clash.t + SETTINGS.MaxLate || t.plan.gold - LossBetween(t.clash, now, ret) < SETTINGS.MinNet;
+    if (ret > t.clash.t + SETTINGS.MaxLate) return true;
+    // A forced trip (CampForce) starts with the pay rule off, so its pay half is no verdict a drill can grade on outcomes.
+    return !Overrides.CampForce() && t.plan.gold - LossBetween(t.clash, now, ret) < SETTINGS.MinNet;
 }
 
 /**
@@ -1090,7 +1092,7 @@ function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolea
     const hpFail = hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP;
     const timeFail = tooLate(bot, t, secs, now);
     if (Overrides.AdmitLog()) {
-        log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
+        log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["lb", r1(latestLeave(t))], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
         return true;
     }
     if (hpFail) return false;

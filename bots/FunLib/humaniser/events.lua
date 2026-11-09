@@ -1141,7 +1141,8 @@ ____exports.EVENTS = {
         h_plan = "num",
         h_skip = "num",
         h_trip = "num",
-        v = "str"
+        v = "str",
+        lb = "num"
     },
     rune_job = {
         pid = "num",

@@ -1477,6 +1477,7 @@ export const EVENTS = {
         h_skip: "num",
         h_trip: "num",
         v: "str",
+        lb: "num",
     },
     rune_job: {
         pid: "num",
