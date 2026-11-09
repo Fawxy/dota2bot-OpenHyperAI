@@ -525,9 +525,15 @@ interface Linger {
     tgo: number;
     t0?: number;
     tpid: number;
-    dmin: number;
+    /** Closest distance since the stand-off (undefined before it), furthest since the trigger, the last seen distance. */
+    dmin?: number;
     dmax: number;
+    dlast?: number;
     clamp: number;
+    /** Seconds the target was out of sight, the last tick's time, the last stand-off point. */
+    uns: number;
+    tlast: number;
+    pt?: Vector;
 }
 const lingering: Record<number, Linger> = {};
 /** The rep each chaser last lingered in (once per rep). */
@@ -546,9 +552,10 @@ function endLinger(bot: Unit, res: string, dnow?: number): void {
         ["rep", st.rep],
         ["res", res],
         ["secs", math.floor((DotaTime() - (st.t0 ?? st.tgo)) * 10 + 0.5) / 10],
-        ["dmin", math.floor(st.dmin)],
+        ["dmin", st.dmin !== undefined ? math.floor(st.dmin) : undefined],
         ["dmax", math.floor(st.dmax)],
-        ["dend", dnow !== undefined ? math.floor(dnow) : undefined],
+        ["dend", dnow !== undefined ? math.floor(dnow) : st.dlast !== undefined ? math.floor(st.dlast) : undefined],
+        ["uns", math.floor(st.uns * 10 + 0.5) / 10],
         ["clamp", st.clamp],
     ]);
 }
@@ -579,12 +586,14 @@ function nearbyHero(bot: Unit, pid: number): Unit | undefined {
 function startLinger(bot: Unit, target: Unit): boolean {
     const pid = bot.GetPlayerID();
     const rep = RepAt(DotaTime());
+    // A cast out of sight reads wrong (thp 666 in rtlng1b): it starts nothing.
+    if (target.GetLocation() === undefined) return false;
     const share = target.GetHealth() / math.max(1, target.GetMaxHealth());
-    if (lingered[pid] === rep || share > LINGER_HP) return false;
+    if (lingered[pid] === rep || share > LINGER_HP || share < 0) return false;
     const d = GetUnitToUnitDistance(bot, target);
     // The once-per-rep flag and the state are set before the line is logged.
     lingered[pid] = rep;
-    lingering[pid] = { rep, tgo: DotaTime(), tpid: target.GetPlayerID(), dmin: d, dmax: d, clamp: 0 };
+    lingering[pid] = { rep, tgo: DotaTime(), tpid: target.GetPlayerID(), dmax: d, dlast: d, clamp: 0, uns: 0, tlast: DotaTime() };
     const d0 = Active();
     Telemetry.Event("drill", [
         ["ph", "linger_go"],
@@ -603,39 +612,55 @@ function startLinger(bot: Unit, target: Unit): boolean {
  * retreat-linger: one tick of a started stand-off; true when the chaser's order is given. It runs past the rep's end (the next
  * control rep's wait begins after it). Phases: backing off to the stand-off (ends `no_standoff` after LINGER_SECS), then the
  * window of LINGER_SECS from the first tick at LINGER_DIST - 100 or more from the target; it ends `contact` (the target within
- * the chaser's attack range + 100: the caller attacks in a chase rep), `timeout`, `died` or `lost` (the target left 1,600).
+ * the chaser's attack range + 100: the caller attacks in a chase rep), `timeout` or `died`; a target out of sight does not end it.
  */
 function lingerTick(bot: Unit, spot: Vector): boolean {
     const pid = bot.GetPlayerID();
     const st = lingering[pid];
     if (st === undefined) return false;
-    const target = nearbyHero(bot, st.tpid);
-    if (target === undefined) {
-        endLinger(bot, IsHeroAlive(st.tpid) ? "lost" : "died");
-        return false;
-    }
     const now = DotaTime();
-    const dd = GetUnitToUnitDistance(bot, target);
-    st.dmin = math.min(st.dmin, dd);
-    st.dmax = math.max(st.dmax, dd);
-    if (st.t0 === undefined) {
-        if (dd >= LINGER_DIST - LINGER_STANDOFF_SLACK) {
-            st.t0 = now;
-            Telemetry.Event("drill", [["ph", "linger"], ["name", Name()], ["pid", pid], ["tpid", st.tpid], ["rep", st.rep], ["thp", math.floor((target.GetHealth() / math.max(1, target.GetMaxHealth())) * 100 + 0.5) / 100], ["d", math.floor(dd)]]);
-        } else if (now - st.tgo >= LINGER_SECS) {
-            endLinger(bot, "no_standoff", dd);
+    const dt = now - st.tlast;
+    st.tlast = now;
+    const target = nearbyHero(bot, st.tpid);
+    const seen = target !== undefined && target.GetLocation() !== undefined;
+    if (!seen) {
+        // Out of sight (night, fog) is part of the shape: hold the last stand-off point and keep the clock running.
+        if (!IsHeroAlive(st.tpid)) {
+            endLinger(bot, "died");
             return false;
         }
-    } else if (dd <= bot.GetAttackRange() + 100) {
-        endLinger(bot, "contact", dd);
-        return false;
-    } else if (now - st.t0 >= LINGER_SECS) {
-        endLinger(bot, "timeout", dd);
+        st.uns += dt;
+    } else {
+        const dd = GetUnitToUnitDistance(bot, target);
+        st.dlast = dd;
+        st.dmax = math.max(st.dmax, dd);
+        if (st.t0 === undefined && dd >= LINGER_DIST - LINGER_STANDOFF_SLACK) {
+            st.t0 = now;
+            const share = target.GetHealth() / math.max(1, target.GetMaxHealth());
+            Telemetry.Event("drill", [["ph", "linger"], ["name", Name()], ["pid", pid], ["tpid", st.tpid], ["rep", st.rep], ["thp", share >= 0 && share <= 1 ? math.floor(share * 100 + 0.5) / 100 : undefined], ["d", math.floor(dd)]]);
+        }
+        if (st.t0 !== undefined) {
+            st.dmin = st.dmin !== undefined ? math.min(st.dmin, dd) : dd;
+            if (dd <= bot.GetAttackRange() + 100) {
+                endLinger(bot, "contact", dd);
+                return false;
+            }
+        }
+    }
+    if (st.t0 === undefined && now - st.tgo >= LINGER_SECS) {
+        endLinger(bot, "no_standoff", st.dlast);
         return false;
     }
-    const [p, clamp] = lingerPoint(bot, target, spot);
-    if (clamp === 1) st.clamp = 1;
-    if (GetUnitToLocationDistance(bot, p) > 50) bot.Action_MoveToLocation(p);
+    if (st.t0 !== undefined && now - st.t0 >= LINGER_SECS) {
+        endLinger(bot, "timeout", st.dlast);
+        return false;
+    }
+    if (seen) {
+        const [p, clamp] = lingerPoint(bot, target, spot);
+        if (clamp === 1) st.clamp = 1;
+        st.pt = p;
+    }
+    if (st.pt !== undefined && GetUnitToLocationDistance(bot, st.pt) > 50) bot.Action_MoveToLocation(st.pt);
     return true;
 }
 
@@ -645,7 +670,7 @@ function chase(bot: Unit): boolean {
     let best: Unit | undefined;
     let bestD = math.huge;
     for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
-        if (!h.IsAlive() || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
+        if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
         const dd = GetUnitToUnitDistance(bot, h);
         if (dd < bestD) {
             best = h;

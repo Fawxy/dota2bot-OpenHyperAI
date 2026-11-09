@@ -553,6 +553,7 @@ ____exports.EVENTS = {
         clamp = "num",
         dmax = "num",
         dend = "num",
+        uns = "num",
         rend = "num"
     },
     job = {

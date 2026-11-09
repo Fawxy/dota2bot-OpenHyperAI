@@ -349,6 +349,27 @@ do
 	local l4 = capture(function() h2.Drill.Hold(k2) end)
 	check("linger: a chaser that never stands off ends no_standoff after 20 s", #l4 == 1 and field(l4[1], "res") == "no_standoff", l4[1])
 
+	check("linger: a window that never stood off logs no dmin (it is measured from the stand-off)", field(l4[1], "dmin") == nil, l4[1])
+
+	-- Out of sight (night, fog): the window keeps running and holds the last stand-off point; it does not end `lost` and no
+	-- location is read off the unseen hero (rtlng1b: lua_error in Drill.Hold on the nil location, three times).
+	local hu, cu, ku = setup(nil, Vector(-600, -5000, 0))
+	T = 105
+	capture(function() hu.Drill.Hold(ku) end)
+	cu.GetLocation = function() return nil end
+	ku.loc = Vector(-300, -5000, 0)
+	T = 110
+	local lu = capture(function() hu.Drill.Hold(ku) end)
+	local mu = lastMove(9)
+	check("linger: unseen, the window goes on and the chaser holds the last stand-off point", #lu == 0 and #ActionsOf(9, "AttackUnit") == 0 and mu ~= nil and math.abs(mu.x - (-600)) < 2, mu and mu.x)
+	T = 129
+	local lt = capture(function() hu.Drill.Hold(ku) end)
+	check("linger: unseen to the end: `timeout` with the unseen seconds", #lt == 1 and field(lt[1], "res") == "timeout" and tonumber(field(lt[1], "uns")) == 24, lt[1])
+	local hv, cv, kv = setup()
+	cv.GetLocation = function() return nil end
+	cv.hp = 666
+	check("linger: a cast out of sight starts no window (thp 666 was a bad read)", #capture(function() hv.Drill.Hold(kv) end) == 0)
+
 	local h3, c3, k3 = setup(nil, Vector(-700, -5000, 0))
 	c3.hp = 80
 	h3.Drill.Hold(k3)

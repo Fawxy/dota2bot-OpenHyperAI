@@ -1,7 +1,8 @@
 -- retreat-linger windows (slice retreat, master docs/team/specs/2026-11-10-retreat-read-bars.md): one row per
 -- `ev=drill ph=linger_go` (the HP trigger) in games whose file matches :like, joined to its `ph=linger` (t0: the chaser first
 -- stands at the stand-off, the window's clock; null when it never did) and `ph=linger_end` by (game, chaser pid, rep).
---   rep, tgo, t0, thp, dgo, res, secs_to_contact (from t0), dmin, dmax, dend, clamp   the window as the chaser logged it
+--   rep, tgo, t0, thp, dgo, res, secs_to_contact (from t0), dmin (since the stand-off), dmax, dend (last seen), uns (seconds the
+--   cast was out of sight), clamp   the window as the chaser logged it
 --   ctl       seconds of the window past the chase rep's end (`rend`): the control rep's chaser is out, not waiting behind its T1, so
 --             grade a control rep only after its window ends
 --   hpl       HP-% lost in the cast's snap seconds flagged `hit` inside the window (the slice's truth: only one enemy hero is
@@ -15,7 +16,7 @@
 --   rpush     frames whose read verdict at the preferred point (`rp`) breaks while the old limits' (`op`) is none: pushed by the read only
 --   opush     the reverse: pushed by the old limits only
 -- Params: like (file pattern; null = all). The cast is the line's `tpid`.
--- ensure: ev_drill(ph, name, pid, rep, tpid, thp, d, res, secs, dmin, dmax, dend, clamp, rend)
+-- ensure: ev_drill(ph, name, pid, rep, tpid, thp, d, res, secs, dmin, dmax, dend, uns, clamp, rend)
 -- ensure: ev_lane_pos(pid, why, rb, rm, mp, op, rp)
 -- ensure: ev_retreat(ph, pid, kind, ep)
 WITH
@@ -37,11 +38,12 @@ w2 AS MATERIALIZED (
         (SELECT e.dmin FROM ev_drill e WHERE e.game_id = win.game_id AND e.pid = win.pid AND e.ph = 'linger_end' AND e.t = win.te LIMIT 1) AS dmin,
         (SELECT e.dmax FROM ev_drill e WHERE e.game_id = win.game_id AND e.pid = win.pid AND e.ph = 'linger_end' AND e.t = win.te LIMIT 1) AS dmax,
         (SELECT e.dend FROM ev_drill e WHERE e.game_id = win.game_id AND e.pid = win.pid AND e.ph = 'linger_end' AND e.t = win.te LIMIT 1) AS dend,
+        (SELECT e.uns FROM ev_drill e WHERE e.game_id = win.game_id AND e.pid = win.pid AND e.ph = 'linger_end' AND e.t = win.te LIMIT 1) AS uns,
         (SELECT e.clamp FROM ev_drill e WHERE e.game_id = win.game_id AND e.pid = win.pid AND e.ph = 'linger_end' AND e.t = win.te LIMIT 1) AS clamp
     FROM win
 )
 SELECT gm.file, w.rep, round(w.tg, 1) AS tgo, round(w.t0, 1) AS t0, w.thp, w.dgo, w.res,
-    CASE WHEN w.res = 'contact' THEN w.secs END AS secs_to_contact, w.dmin, w.dmax, w.dend, w.clamp,
+    CASE WHEN w.res = 'contact' THEN w.secs END AS secs_to_contact, w.dmin, w.dmax, w.dend, w.uns, w.clamp,
     round(max(0, w.t1 - w.rend), 1) AS ctl,
     (SELECT coalesce(sum(a.hp - b.hp), 0) FROM ev_snap a JOIN ev_snap b ON b.game_id = a.game_id AND b.pid = a.pid
         AND b.t = (SELECT min(c.t) FROM ev_snap c WHERE c.game_id = a.game_id AND c.pid = a.pid AND c.t > a.t)

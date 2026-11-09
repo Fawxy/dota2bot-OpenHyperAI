@@ -362,7 +362,7 @@ function endLinger(bot, res, dnow)
             },
             {
                 "dmin",
-                math.floor(st.dmin)
+                st.dmin ~= nil and math.floor(st.dmin) or nil
             },
             {
                 "dmax",
@@ -370,7 +370,11 @@ function endLinger(bot, res, dnow)
             },
             {
                 "dend",
-                dnow ~= nil and math.floor(dnow) or nil
+                dnow ~= nil and math.floor(dnow) or (st.dlast ~= nil and math.floor(st.dlast) or nil)
+            },
+            {
+                "uns",
+                math.floor(st.uns * 10 + 0.5) / 10
             },
             {"clamp", st.clamp}
         }
@@ -414,11 +418,14 @@ end
 function startLinger(bot, target)
     local pid = bot:GetPlayerID()
     local rep = ____exports.RepAt(DotaTime())
+    if target:GetLocation() == nil then
+        return false
+    end
     local share = target:GetHealth() / math.max(
         1,
         target:GetMaxHealth()
     )
-    if lingered[pid] == rep or share > LINGER_HP then
+    if lingered[pid] == rep or share > LINGER_HP or share < 0 then
         return false
     end
     local d = GetUnitToUnitDistance(bot, target)
@@ -427,9 +434,11 @@ function startLinger(bot, target)
         rep = rep,
         tgo = DotaTime(),
         tpid = target:GetPlayerID(),
-        dmin = d,
         dmax = d,
-        clamp = 0
+        dlast = d,
+        clamp = 0,
+        uns = 0,
+        tlast = DotaTime()
     }
     local d0 = ____exports.Active()
     Telemetry.Event(
@@ -465,21 +474,27 @@ function lingerTick(bot, spot)
     if st == nil then
         return false
     end
-    local target = nearbyHero(bot, st.tpid)
-    if target == nil then
-        endLinger(
-            bot,
-            IsHeroAlive(st.tpid) and "lost" or "died"
-        )
-        return false
-    end
     local now = DotaTime()
-    local dd = GetUnitToUnitDistance(bot, target)
-    st.dmin = math.min(st.dmin, dd)
-    st.dmax = math.max(st.dmax, dd)
-    if st.t0 == nil then
-        if dd >= LINGER_DIST - LINGER_STANDOFF_SLACK then
+    local dt = now - st.tlast
+    st.tlast = now
+    local target = nearbyHero(bot, st.tpid)
+    local seen = target ~= nil and target:GetLocation() ~= nil
+    if not seen then
+        if not IsHeroAlive(st.tpid) then
+            endLinger(bot, "died")
+            return false
+        end
+        st.uns = st.uns + dt
+    else
+        local dd = GetUnitToUnitDistance(bot, target)
+        st.dlast = dd
+        st.dmax = math.max(st.dmax, dd)
+        if st.t0 == nil and dd >= LINGER_DIST - LINGER_STANDOFF_SLACK then
             st.t0 = now
+            local share = target:GetHealth() / math.max(
+                1,
+                target:GetMaxHealth()
+            )
             Telemetry.Event(
                 "drill",
                 {
@@ -493,10 +508,7 @@ function lingerTick(bot, spot)
                     {"rep", st.rep},
                     {
                         "thp",
-                        math.floor(target:GetHealth() / math.max(
-                            1,
-                            target:GetMaxHealth()
-                        ) * 100 + 0.5) / 100
+                        share >= 0 and share <= 1 and math.floor(share * 100 + 0.5) / 100 or nil
                     },
                     {
                         "d",
@@ -504,23 +516,32 @@ function lingerTick(bot, spot)
                     }
                 }
             )
-        elseif now - st.tgo >= LINGER_SECS then
-            endLinger(bot, "no_standoff", dd)
-            return false
         end
-    elseif dd <= bot:GetAttackRange() + 100 then
-        endLinger(bot, "contact", dd)
-        return false
-    elseif now - st.t0 >= LINGER_SECS then
-        endLinger(bot, "timeout", dd)
+        if st.t0 ~= nil then
+            st.dmin = st.dmin ~= nil and math.min(st.dmin, dd) or dd
+            if dd <= bot:GetAttackRange() + 100 then
+                endLinger(bot, "contact", dd)
+                return false
+            end
+        end
+    end
+    if st.t0 == nil and now - st.tgo >= LINGER_SECS then
+        endLinger(bot, "no_standoff", st.dlast)
         return false
     end
-    local p, clamp = unpack(lingerPoint(bot, target, spot))
-    if clamp == 1 then
-        st.clamp = 1
+    if st.t0 ~= nil and now - st.t0 >= LINGER_SECS then
+        endLinger(bot, "timeout", st.dlast)
+        return false
     end
-    if GetUnitToLocationDistance(bot, p) > 50 then
-        bot:Action_MoveToLocation(p)
+    if seen then
+        local p, clamp = unpack(lingerPoint(bot, target, spot))
+        if clamp == 1 then
+            st.clamp = 1
+        end
+        st.pt = p
+    end
+    if st.pt ~= nil and GetUnitToLocationDistance(bot, st.pt) > 50 then
+        bot:Action_MoveToLocation(st.pt)
     end
     return true
 end
@@ -534,10 +555,10 @@ function chase(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue71
+            local __continue75
             repeat
-                if not h:IsAlive() or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue71 = true
+                if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
+                    __continue75 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -545,9 +566,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue71 = true
+                __continue75 = true
             until true
-            if not __continue71 then
+            if not __continue75 then
                 break
             end
         end
@@ -582,10 +603,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue89
+            local __continue93
             repeat
                 if not h:IsAlive() then
-                    __continue89 = true
+                    __continue93 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -593,9 +614,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue89 = true
+                __continue93 = true
             until true
-            if not __continue89 then
+            if not __continue93 then
                 break
             end
         end

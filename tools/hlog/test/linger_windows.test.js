@@ -28,7 +28,7 @@ test('linger windows: hit-flag HP loss, farm, read-only and old-limit-only pushe
     const out = run([
         line(98, 'drill ph=linger_go name=retreat-linger pid=9 tpid=0 rep=1 thp=0.4 d=300 rend=105'),
         line(100, 'drill ph=linger name=retreat-linger pid=9 tpid=0 rep=1 thp=0.4 d=1100'),
-        line(112, 'drill ph=linger_end name=retreat-linger pid=9 tpid=0 rep=1 res=contact secs=12 dmin=240 dmax=1150 dend=240 clamp=0'),
+        line(112, 'drill ph=linger_end name=retreat-linger pid=9 tpid=0 rep=1 res=contact secs=12 dmin=240 dmax=1150 dend=240 uns=2.5 clamp=0'),
         // The cast's HP falls 40 -> 36 -> 30 across the window; only the second second was hit (the first drop is not counted).
         snap(100, 0, { hp: 40, lh: 5 }), snap(101, 0, { hp: 36, lh: 5 }), snap(102, 0, { hp: 30, hit: 1, lh: 5 }), snap(110, 0, { hp: 30, lh: 6, dn: 1 }),
         // Outside the window: not counted.
@@ -57,7 +57,7 @@ test('linger windows: hit-flag HP loss, farm, read-only and old-limit-only pushe
     assert.strictEqual(a.xp, 1);
     assert.strictEqual(a.rpush, 1);
     assert.strictEqual(a.opush, 1);
-    assert.deepStrictEqual([a.tgo, a.dmax, a.dend, a.ctl], [98, 1150, 240, 7]);
+    assert.deepStrictEqual([a.tgo, a.dmax, a.dend, a.uns, a.ctl], [98, 1150, 240, 2.5, 7]);
     // No stand-off reached: no t0; the window is graded from the trigger and runs 20 s.
     assert.strictEqual(b.t0, null);
     assert.strictEqual(b.res, null);
