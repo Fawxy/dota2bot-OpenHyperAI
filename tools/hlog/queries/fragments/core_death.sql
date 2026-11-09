@@ -1,5 +1,5 @@
 -- Fragment (`-- include: core_death`): every death of a lineup core (pos 1-3, or :pos_lo to :pos_hi) before :until (default 600) and what it was doing,
--- as @core_deaths reads them (its header has the rules). The including query defines `gm(game_id, file)` first. CTEs: s0-s2, s, d, last,
+-- as @core_deaths reads them (its header has the rules). The including query defines `gm(game_id, file)` first. CTEs: s0-s4, s, d, last,
 -- x, tw (enemy tower positions), c, and cd(game_id, pid, t, team, pos, hp, mode, activity, in_range, x, y, trade, cut, tower, cause).
 -- Ends with a comma.
 -- ensure: ev_trade(pid, kind, result, why, dur, hpd, thpd)
@@ -23,17 +23,27 @@ s1 AS (
     WINDOW w AS (PARTITION BY s0.game_id, s0.pid ORDER BY s0.seq)
 ),
 s2 AS (
-    SELECT s1.*, min(s1.jump_from) OVER (PARTITION BY s1.game_id, s1.pid ORDER BY s1.t RANGE BETWEEN 8 PRECEDING AND CURRENT ROW) AS jt,
-        max(CASE WHEN s1.hp > 0 THEN s1.t END) OVER (PARTITION BY s1.game_id, s1.pid ORDER BY s1.t) AS last_ok
+    SELECT s1.*, max(CASE WHEN s1.hp > 0 THEN s1.t END) OVER (PARTITION BY s1.game_id, s1.pid ORDER BY s1.t) AS last_ok
     FROM s1
 ),
-s AS (
-    SELECT s2.*, lag(s2.jt) OVER w AS prev_jt, lag(s2.last_ok) OVER w AS prev_ok FROM s2
+-- jump_ok: the last snap with hp above 0 before the jump (the snap before it can itself read hp 0).
+s3 AS (
+    SELECT s2.*, CASE WHEN s2.jump_from IS NOT NULL THEN lag(s2.last_ok) OVER w END AS jump_ok FROM s2
     WINDOW w AS (PARTITION BY s2.game_id, s2.pid ORDER BY s2.seq)
 ),
+s4 AS (
+    SELECT s3.*, min(s3.jump_ok) OVER (PARTITION BY s3.game_id, s3.pid ORDER BY s3.t RANGE BETWEEN 8 PRECEDING AND CURRENT ROW) AS jt FROM s3
+),
+s AS (
+    SELECT s4.*, lag(s4.jt) OVER w AS prev_jt, lag(s4.last_ok) OVER w AS prev_ok FROM s4
+    WINDOW w AS (PARTITION BY s4.game_id, s4.pid ORDER BY s4.seq)
+),
 d AS (
-    SELECT game_id, pid, CASE WHEN prev_ok >= c - 15 THEN min(prev_ok, c) ELSE c END AS t
-    FROM (SELECT s.*, CASE WHEN prev_nearf AND prev_jt IS NOT NULL THEN prev_jt ELSE prev_t END AS c FROM s) s WHERE prev IS NOT NULL AND deaths > prev AND prev_t < coalesce(:until, 600)
+    SELECT game_id, pid, t FROM (
+        SELECT game_id, pid, CASE WHEN prev_ok >= c - 15 THEN min(prev_ok, c) ELSE c END AS t
+        FROM (SELECT s.*, CASE WHEN prev_nearf AND prev_jt IS NOT NULL THEN prev_jt ELSE prev_t END AS c FROM s) s
+        WHERE prev IS NOT NULL AND deaths > prev
+    ) WHERE t < coalesce(:until, 600)
 ),
 last AS (
     SELECT d.game_id, d.pid, d.t,
