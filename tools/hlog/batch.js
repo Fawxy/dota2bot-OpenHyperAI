@@ -23,6 +23,7 @@
 //   and push; the stamp is then `<parent sha>+dirty` (two arms built from different trees carry different stamps). A game's game.log is saved to ~/.dotactl/logs/<time>-<label>.log
 //   so hlog ingests it; a failed job is retried once like a local run. "record": true asks the host to keep the SourceTV
 //   replay and saves it beside the log as <time>-<label>.dem (also in the host's job directory, which keeps the newest jobs). `ours` is checked by lineup_check (ev=bot ours).
+//   `"drill": "<name>"` runs a drill the host's recipes.json knows (the job carries only the name; its steps are the host's).
 //
 // Manifest: ~/.dotactl/batches/<name>.manifest, one `status=ok|fail label=... seed= arm= lineup= log=...` line per game.
 // Resumable: a label already `status=ok` is skipped. `--build` goes to the first game this run starts. A failed game is retried
@@ -91,6 +92,7 @@ function remoteJob(spec, game) {
     const arm = spec.arms[game.arm];
     const job = { branch: arm.branch, sha: arm.sha, until: clock(spec.until), seed: game.seed, timescale: spec.timescale || 8, label: game.label };
     if (spec.record === true) job.record = true;
+    if (spec.drill) job.drill = spec.drill;
     return job;
 }
 

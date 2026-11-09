@@ -280,6 +280,8 @@ test('remote batch: runRemote saves the log, surfaces the reason, stops on a cur
     const rspec = { ...spec, record: true };
     assert.strictEqual(remoteJob(rspec, game).record, true);
     assert.strictEqual(remoteJob(spec, game).record, undefined, 'no record field unless the spec asks');
+    assert.strictEqual(remoteJob({ ...spec, drill: 'regen-probe' }, game).drill, 'regen-probe', 'a drill name goes out in the job');
+    assert.strictEqual(remoteJob(spec, game).drill, undefined, 'no drill field unless the spec names one');
     const rec = await runRemote({ host: 'h', token: 't' }, rspec, game, opts({ fetchFn: host([
         (url, o) => (assert.strictEqual(JSON.parse(o.body).record, true), res(201, { id: 'j5', state: 'queued' })), () => res(200, { state: 'done' }),
         () => res(200, { text: 'LOG' }), url => (assert.match(url, /\/jobs\/j5\/files\/replay\.dem$/), res(200, { text: 'DEM' }))]) }));
