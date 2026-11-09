@@ -380,16 +380,34 @@ do
 	check("threat on the trip: the aborted clear is measured on the end line", ended ~= nil and tonumber(field(ended, "clrm")) ~= nil and field(ended, "nl") == "1", ended)
 end
 
--- A camp that will not die in time (tougher than the model read, once the fight has begun): left at its leave time, walked
--- back, the pace grows.
+-- A camp that will not die in time (tougher than the model read, once the fight has begun): the clear is allowed up to the
+-- plan's own latest return (the clash + MaxLate), past its estimate, then left unfinished and walked back; the pace grows.
 do
 	local H, core, camp = world({ camps = { { "small", SMALL } }, clash = 30 })
-	local out = run(H, core, 340, function()
+	local out = run(H, core, 345, function()
 		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 	end)
-	local ended = lines(out, "core_camp", "end")[1]
+	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
+	local clashT = tonumber(field(start, "clash"))
 	check("late: the camp left unfinished and the core walked back", ended ~= nil and field(ended, "why") == "back" and camp[1].hp > 0, ended)
+	check("late: the core stayed past its planned return but was back by the clash + MaxLate", ended ~= nil and tonumber(field(ended, "back")) > tonumber(field(ended, "ret")) + 5 and tonumber(field(ended, "back")) <= clashT + 15 + 8, ended)
 	check("late: the pace grew", H.CoreCamp.Pace(core) > 1 + 1e-3, H.CoreCamp.Pace(core))
+end
+
+-- The check at the camp re-runs the plan's return and pay rules with the live clear, not the plan's leave time (cngdr6: a
+-- live clear of 29-35 s against a table clear's leave time refused camps the core cleared and walked back from in time).
+-- A large camp planned unseen, its live clear longer than the table's but back by the clash + 15: admitted. The same camp with
+-- a clash that leaves no room: refused on time.
+do
+	for _, case in ipairs({ { clash = 60, v = "ok" }, { clash = 25, v = "time" } }) do
+		local H, core, camp = world({ t = 295, camps = { { "large", LARGE, 5000, 2 } }, clash = case.clash, admitlog = true, force = true })
+		local home = camp[1].loc
+		camp[1].loc = Vector(99999, 99999)
+		FOGGED = function(v) return dist(v, LARGE) < 800 end
+		local out = run(H, core, 340, function() if T > 295.5 and FOGGED ~= nil then camp[1].loc, FOGGED = home, nil end end)
+		local admit = lines(out, "core_camp", "admit")[1]
+		check("admit time: clash " .. case.clash .. " is " .. case.v, admit ~= nil and field(admit, "v") == case.v, admit)
+	end
 end
 
 -- The offlaner also takes the enemy's small and large camps by its lane (the hard camp its pos4 pulls): with its own team's

@@ -296,7 +296,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, distToSegment, hpOf, spaOf, readNeutral, liveNeutrals, currentMinute, campNeutralCount, markEmptied, laneTower, tripSpawners, log, admits, measured, pace, hpRate, lastSeen, MAX_PLAYER_ID, r1, r2
+local dist, distToSegment, hpOf, spaOf, readNeutral, liveNeutrals, meetingAt, currentMinute, campNeutralCount, markEmptied, laneTower, tripSpawners, log, latestLeave, tooLate, admits, measured, pace, hpRate, lastSeen, MAX_PLAYER_ID, r1, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -435,6 +435,55 @@ function liveNeutrals(team, idx, center, now)
         lastSeen[team][idx] = {min = min, ns = live}
     end
     return live
+end
+--- Whether lane position `s` lies within the enemy T1's reach (Radiant runs along increasing `s`).
+function ____exports.UnderEnemyTower(path, team, s)
+    for ____, tw in ipairs(path.towers) do
+        do
+            local __continue55
+            repeat
+                if tw.team == team then
+                    __continue55 = true
+                    break
+                end
+                local ____temp_11
+                if team == Team.Radiant then
+                    ____temp_11 = s >= tw.s - ____exports.SETTINGS.TowerReach
+                else
+                    ____temp_11 = s <= tw.s + ____exports.SETTINGS.TowerReach
+                end
+                return ____temp_11
+            until true
+            if not __continue55 then
+                break
+            end
+        end
+    end
+    return false
+end
+function meetingAt(smp)
+    local r = smp.front[Team.Radiant]
+    local d = smp.front[Team.Dire]
+    return r ~= nil and d ~= nil and d - r <= ____exports.SETTINGS.ClashGap and (r + d) / 2 or nil
+end
+--- The lane gold the core would have taken from the enemy creeps the run kills between `from` and `to` (to the last sample
+-- when `to` lies beyond it): LaneShare of each, TowerShare of those killed while the fronts meet in the enemy T1's reach.
+function ____exports.LossBetween(c, from, to)
+    local gold = 0
+    local prev
+    for ____, smp in ipairs(c.samples) do
+        if smp.t > to then
+            break
+        end
+        local dead = smp.dead[c.enemy] or 0
+        if prev ~= nil and smp.t > from and dead > prev then
+            local m = meetingAt(smp)
+            local share = m ~= nil and ____exports.UnderEnemyTower(c.path, c.team, m) and ____exports.SETTINGS.TowerShare or ____exports.SETTINGS.LaneShare
+            gold = gold + (dead - prev) * ____exports.SETTINGS.CreepGold * share
+        end
+        prev = dead
+    end
+    return gold
 end
 function currentMinute(t)
     return math.floor(t / 60)
@@ -579,6 +628,13 @@ function log(bot, phase, c, fields)
         }
     )
 end
+function latestLeave(t)
+    return t.clash.t + ____exports.SETTINGS.MaxLate - (t.plan.ret - t.plan.leaveBy)
+end
+function tooLate(bot, t, secs, now)
+    local ret = now + secs * ____exports.Pace(bot) + (t.plan.ret - t.plan.leaveBy)
+    return ret > t.clash.t + ____exports.SETTINGS.MaxLate or t.plan.gold - ____exports.LossBetween(t.clash, now, ret) < ____exports.SETTINGS.MinNet
+end
 function admits(bot, t, spawner, now)
     local met = liveNeutrals(
         bot:GetTeam(),
@@ -593,7 +649,7 @@ function admits(bot, t, spawner, now)
     t.clre = secs
     t.hpe = hp
     local hpFail = hpOf(bot) - hp * ____exports.HPRate(bot) < ____exports.SETTINGS.ArriveHP
-    local timeFail = now + secs * ____exports.Pace(bot) > t.plan.leaveBy
+    local timeFail = tooLate(bot, t, secs, now)
     if Overrides.AdmitLog() then
         log(
             bot,
@@ -869,37 +925,6 @@ local function neutralsField(ns)
     end
     return table.concat(parts, ",")
 end
---- Whether lane position `s` lies within the enemy T1's reach (Radiant runs along increasing `s`).
-function ____exports.UnderEnemyTower(path, team, s)
-    for ____, tw in ipairs(path.towers) do
-        do
-            local __continue55
-            repeat
-                if tw.team == team then
-                    __continue55 = true
-                    break
-                end
-                local ____temp_11
-                if team == Team.Radiant then
-                    ____temp_11 = s >= tw.s - ____exports.SETTINGS.TowerReach
-                else
-                    ____temp_11 = s <= tw.s + ____exports.SETTINGS.TowerReach
-                end
-                return ____temp_11
-            until true
-            if not __continue55 then
-                break
-            end
-        end
-    end
-    return false
-end
---- Where the fronts meet in a sample (their midpoint on the lane), or undefined when they are not within ClashGap.
-local function meetingAt(smp)
-    local r = smp.front[Team.Radiant]
-    local d = smp.front[Team.Dire]
-    return r ~= nil and d ~= nil and d - r <= ____exports.SETTINGS.ClashGap and (r + d) / 2 or nil
-end
 --- The next lane gold: the first second the fronts meet outside the enemy T1's reach. A wave crashing into their tower is
 -- not it, so a pushed lane's gap runs to the next wave's meeting.
 function ____exports.ClashOf(samples, path, team)
@@ -920,25 +945,6 @@ function ____exports.ClashOf(samples, path, team)
         end
     end
     return nil
-end
---- The lane gold the core would have taken from the enemy creeps the run kills between `from` and `to` (to the last sample
--- when `to` lies beyond it): LaneShare of each, TowerShare of those killed while the fronts meet in the enemy T1's reach.
-function ____exports.LossBetween(c, from, to)
-    local gold = 0
-    local prev
-    for ____, smp in ipairs(c.samples) do
-        if smp.t > to then
-            break
-        end
-        local dead = smp.dead[c.enemy] or 0
-        if prev ~= nil and smp.t > from and dead > prev then
-            local m = meetingAt(smp)
-            local share = m ~= nil and ____exports.UnderEnemyTower(c.path, c.team, m) and ____exports.SETTINGS.TowerShare or ____exports.SETTINGS.LaneShare
-            gold = gold + (dead - prev) * ____exports.SETTINGS.CreepGold * share
-        end
-        prev = dead
-    end
-    return gold
 end
 local function seenStacks(center)
     return math.max(
@@ -1701,7 +1707,10 @@ local body = __TS__Generator(function(bot, t, ctx)
             {
                 at = Camps.BoxCenter(spawner),
                 radius = ____exports.SETTINGS.CampRadius,
-                deadline = t.plan.leaveBy,
+                deadline = Overrides.CampForce() and t.plan.leaveBy or math.max(
+                    t.plan.leaveBy,
+                    latestLeave(t)
+                ),
                 onEngage = function(at)
                     t.engagedAt = at
                     t.hpAtEngage = hpOf(bot)

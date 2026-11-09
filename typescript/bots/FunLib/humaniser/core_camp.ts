@@ -1013,7 +1013,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         t.center = Camps.BoxCenter(spawner);
         const r = yield* V.clearCamp(
             bot as unknown as Lib.TaskUnit,
-            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: t.plan.leaveBy, onEngage: (at) => {
+            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: Overrides.CampForce() ? t.plan.leaveBy : math.max(t.plan.leaveBy, latestLeave(t)), onEngage: (at) => {
                 t.engagedAt = at;
                 t.hpAtEngage = hpOf(bot);
                 const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), at);
@@ -1058,6 +1058,21 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
 }
 
 /**
+ * The plan's own return and pay rules re-run with the live clear: back no later than the clash + MaxLate, and the lane gold
+ * lost by then still under the camp's gold by MinNet. The plan sets its leave time from its own clear estimate (a table's for
+ * a camp never seen) with no slack, so judging the live clear against that refused camps the core then cleared and walked
+ * back from in time (cngdr6: 3 of 3 `time` verdicts, cngchk13: 3 of 12 refusals).
+ */
+function latestLeave(t: Trip): number {
+    return t.clash.t + SETTINGS.MaxLate - (t.plan.ret - t.plan.leaveBy);
+}
+
+function tooLate(bot: Unit, t: Trip, secs: number, now: number): boolean {
+    const ret = now + secs * Pace(bot) + (t.plan.ret - t.plan.leaveBy);
+    return ret > t.clash.t + SETTINGS.MaxLate || t.plan.gold - LossBetween(t.clash, now, ret) < SETTINGS.MinNet;
+}
+
+/**
  * The trip's price checked on the neutrals the core finds (asked at first sight and at engage, before an attack lands; at engage the attack is already ordered): the
  * model's clear of the live camp, with the learned pace and HP rate, must leave ArriveHP and end by the plan's leave
  * time. The plan's price can be the type tables', which cannot see what spawned (drill cngdr2: a small camp of a
@@ -1073,7 +1088,7 @@ function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolea
     t.clre = secs;
     t.hpe = hp;
     const hpFail = hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP;
-    const timeFail = now + secs * Pace(bot) > t.plan.leaveBy;
+    const timeFail = tooLate(bot, t, secs, now);
     if (Overrides.AdmitLog()) {
         log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
         return true;
