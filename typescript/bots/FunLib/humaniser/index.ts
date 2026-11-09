@@ -21,6 +21,7 @@ import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as RegenObs from "bots/FunLib/humaniser/regen_obs";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Etiquette from "bots/FunLib/humaniser/etiquette";
@@ -141,7 +142,10 @@ function drawOverlay(bot: Unit): void {
 function tick(this: void, bot: Unit): void {
     if (!Config.IsEnabled()) {
         // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
-        if (Telemetry.IsEnabled() && bot.IsHero() && !bot.IsIllusion()) Telemetry.Tick(bot);
+        if (Telemetry.IsEnabled() && bot.IsHero() && !bot.IsIllusion()) {
+            Telemetry.Tick(bot);
+            pcall(RegenObs.Tick, bot);
+        }
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
@@ -168,6 +172,8 @@ function tick(this: void, bot: Unit): void {
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
     Telemetry.Tick(bot, telemetryContext);
+    // The observer only reads: an error in it must not skip the States and Tasks ticks below.
+    pcall(RegenObs.Tick, bot);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
     // tasks: task runner spike
