@@ -235,11 +235,19 @@ do
 	extra.unseen = true
 	local half = CC.Plan(core, FRONT, 300, c)
 	check("half seen: priced as its untouched make-up", half ~= nil and half.src == "seen" and half.n0 == 2, half and half.src)
+	-- cngdr4 t=253: a later minute's half read does not replace the make-up; only a camp seen emptied respawns smaller.
+	local later = CC.Plan(core, FRONT, 370, CC.ClashOf(samples(370, 410), PATH, 2))
+	check("half seen: a later minute keeps the make-up", later ~= nil and later.src == "seen" and later.n0 == 2, later and later.src)
 	extra.unseen = nil
 	extra.hp = 0
 	camp[1].hp = 1200
 	local smaller = CC.Plan(core, FRONT, 300, c)
 	check("half seen: a damaged survivor is priced live", smaller ~= nil and smaller.src == "live" and smaller.n0 == 1, smaller and smaller.src)
+	camp[1].hp = 0
+	check("half seen: the camp seen empty is closed", CC.Plan(core, FRONT, 380, CC.ClashOf(samples(380, 420), PATH, 2)) == nil)
+	camp[1].hp = camp[1].maxhp
+	local respawn = CC.Plan(core, FRONT, 430, CC.ClashOf(samples(430, 470), PATH, 2))
+	check("half seen: a camp seen emptied respawns smaller, priced live", respawn ~= nil and respawn.src == "live" and respawn.n0 == 1, respawn and respawn.src)
 end
 
 -- Price: the lane creeps the forecast kills before the return are the trip's cost; a camp that does not pay for them is no trip.

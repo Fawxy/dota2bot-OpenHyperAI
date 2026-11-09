@@ -198,7 +198,7 @@ const nextPlanAt: Record<number, number> = {};
 const pace: Record<number, number> = {};
 const hpRate: Record<number, number> = {};
 /** Each camp's neutrals as last seen untouched, by team then camp, with the minute (a respawn is assumed the same). */
-const lastSeen: Record<number, Record<number, { min: number; ns: Neutral[] }>> = {};
+const lastSeen: Record<number, Record<number, { min: number; ns: Neutral[]; emptied?: number }>> = {};
 /** Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next). */
 const cleared: Record<number, Record<number, number>> = {};
 /** Skip lines written, by pid: one per wave window and reason. */
@@ -368,8 +368,8 @@ export function ClearOf(bot: Unit, camp: Neutral[]): LuaMultiReturn<[number, num
 
 /**
  * The camp's live neutrals (the API returns none in fog). Kept as its make-up only when untouched (every one at full HP),
- * and never replaced by fewer within the same minute: a read of a half-cleared or half-seen camp priced its respawn at one
- * neutral (cngchk8 game 1049 camp 1, t=543: 4.4 s planned, 2 of 3 left).
+ * and never replaced by fewer until the camp was seen emptied: a read of a half-cleared or half-seen camp priced its respawn
+ * at one neutral (cngchk8 game 1049 camp 1, t=543: 4.4 s planned, 2 of 3 left).
  */
 function liveNeutrals(team: number, idx: number, center: Vector, now: number): Neutral[] {
     const live: Neutral[] = [];
@@ -385,7 +385,10 @@ function liveNeutrals(team: number, idx: number, center: Vector, now: number): N
     }
     const min = currentMinute(now);
     const old = lastSeen[team]?.[idx];
-    if (live.length > 0 && untouched && (old === undefined || old.min !== min || live.length >= old.ns.length)) {
+    // A camp respawns only into an empty box, so its make-up shrinks only after it was emptied: a new minute's read of fewer
+    // is part of the camp in fog (cngdr4 t=253: one wildkin read at 4:13 replaced the whole camp seen at 3:28).
+    const respawned = old?.emptied !== undefined && old.emptied >= old.min && min > old.emptied;
+    if (live.length > 0 && untouched && (old === undefined || live.length >= old.ns.length || respawned)) {
         lastSeen[team] = lastSeen[team] ?? {};
         lastSeen[team][idx] = { min, ns: live };
     }
@@ -503,6 +506,12 @@ function seenStacks(center: Vector): number {
 function markCleared(team: number, idx: number, now: number): void {
     cleared[team] = cleared[team] ?? {};
     cleared[team][idx] = currentMinute(now);
+    markEmptied(team, idx, now);
+}
+
+function markEmptied(team: number, idx: number, now: number): void {
+    const old = lastSeen[team]?.[idx];
+    if (old !== undefined) old.emptied = currentMinute(now);
 }
 
 /** Lane mates whose pull is planned: our lane's pull camps are theirs. */
@@ -552,7 +561,10 @@ function closedWhy(bot: Unit, spawner: Camps.Spawner, center: Vector, now: numbe
     const team = bot.GetTeam();
     if (cleared[team]?.[spawner.idx] === currentMinute(now)) return "cleared";
     // The API returns no neutrals in fog: a camp is known empty only where we see.
-    if (IsLocationVisible(center) && campNeutralCount(center) === 0) return "empty";
+    if (IsLocationVisible(center) && campNeutralCount(center) === 0) {
+        markEmptied(team, spawner.idx, now);
+        return "empty";
+    }
     // A pulled camp is open to a core only while the support clears it (PullFarm), which then gives it up.
     if (pullCamps[spawner.idx] === true || (pulledInto(center) && CampClaims.On("pullfarm", spawner.idx) === undefined)) return "pulled";
     if (allyInBox(bot, spawner.idx)) return "ally";
