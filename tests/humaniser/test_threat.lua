@@ -143,4 +143,28 @@ do
 	check("vision cut: the fogged stretch out of its run, cut", Threat.Read(bot, HERE, CAMP, 4).mcut == 1)
 end
 
+-- opts.engagedWindow (slice retreat, lane spot): a reaching hero that damaged us within a second is counted over the window,
+-- not over min(horizon, BurstWindow); a call without opts, and a hero not engaged, read as before (the other consumers).
+do
+	local H, Threat, bot, e = world()
+	e.loc, e.range = Vector(-1000, -7500), 150
+	e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 30 * dur end
+	bot.hp = 300
+	local base = Threat.Read(bot, HERE, CAMP, 4)
+	check("engaged: no opts, the burst is over the 3 s window", near(base.burst, 0.3) and #base.eng == 0, base.burst)
+	bot.hitBy = { [e] = T - 0.5 }
+	local same = Threat.Read(bot, HERE, CAMP, 4)
+	check("engaged: no opts, an engaged hero reads the same as before", near(same.burst, base.burst) and same.threat == base.threat and #same.eng == 0)
+	local on = Threat.Read(bot, HERE, CAMP, 4, { engagedWindow = 6 })
+	check("engaged: with the window the burst is over 6 s and the hero is listed", near(on.burst, 0.6) and on.eng[1] == e.pid, on.burst)
+	bot.hitBy = nil
+	local off = Threat.Read(bot, HERE, CAMP, 4, { engagedWindow = 6 })
+	check("engaged: a hero not hitting us keeps the 3 s window", near(off.burst, 0.3) and #off.eng == 0, off.burst)
+	bot.hitBy = { [e] = T - 2 }
+	check("engaged: a hit 2 s ago is not engaged (EngagedRecent 1 s)", near(Threat.Read(bot, HERE, CAMP, 4, { engagedWindow = 6 }).burst, 0.3))
+	bot.hitBy = nil
+	e.target = bot
+	check("engaged: the attack target is logged beside it", Threat.Read(bot, HERE, CAMP, 4, { engagedWindow = 6 }).att[1] == e.pid)
+end
+
 finish()

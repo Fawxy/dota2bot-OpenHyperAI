@@ -86,6 +86,12 @@ const READ_HORIZON = 3;
 const READ_BURST = 0.35;
 const READ_MISSING = 0.5;
 /**
+ * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
+ * Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
+ * rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
+ */
+const LANE_ENGAGED_WINDOW = 6;
+/**
  * No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
  * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
  */
@@ -149,6 +155,9 @@ export interface SpotInfo {
      *  `burst`, `missing` or `none`), so a log can tell which limit pushed the spot. */
     op?: string;
     rp?: string;
+    /** Heroes the read counted as engaged at the chosen spot, and 1 when some reaching hero's `GetAttackTarget()` is the bot. */
+    re?: number;
+    rat?: number;
 }
 
 /** Our towers' cover this frame: what each limit becomes under it. */
@@ -481,7 +490,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         if (r === undefined) {
             let toward = false;
             for (const h of heroes) if (d2(p, h.GetLocation()) < d2(here, h.GetLocation())) toward = true;
-            r = Threat.Read(bot, toward ? here : p, p, READ_HORIZON);
+            r = Threat.Read(bot, toward ? here : p, p, READ_HORIZON, { engagedWindow: LANE_ENGAGED_WINDOW });
             reads[key] = r;
             readN++;
         }
@@ -510,6 +519,8 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
                 const rpr = readAt(pref);
                 info.rp = rpr.burst >= READ_BURST ? "burst" : rpr.missing >= READ_MISSING ? "missing" : "none";
             }
+            info.re = r.eng.length;
+            info.rat = r.att.length > 0 ? 1 : 0;
             info.rn = readN;
         }
         return info;

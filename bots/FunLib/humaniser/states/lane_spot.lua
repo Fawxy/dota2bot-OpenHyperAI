@@ -76,6 +76,10 @@ local REACT_SECS = 1.5
 local READ_HORIZON = 3
 local READ_BURST = 0.35
 local READ_MISSING = 0.5
+--- Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
+-- Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
+-- rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
+local LANE_ENGAGED_WINDOW = 6
 --- No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
 -- about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
 local MIN_REACH = 800
@@ -613,7 +617,13 @@ function ____exports.Compute(bot, role, fed, hold)
                     toward = true
                 end
             end
-            r = Threat.Read(bot, toward and here or p, p, READ_HORIZON)
+            r = Threat.Read(
+                bot,
+                toward and here or p,
+                p,
+                READ_HORIZON,
+                {engagedWindow = LANE_ENGAGED_WINDOW}
+            )
             reads[key] = r
             readN = readN + 1
         end
@@ -698,6 +708,8 @@ function ____exports.Compute(bot, role, fed, hold)
                 local rpr = readAt(pref)
                 info.rp = rpr.burst >= READ_BURST and "burst" or (rpr.missing >= READ_MISSING and "missing" or "none")
             end
+            info.re = #r.eng
+            info.rat = #r.att > 0 and 1 or 0
             info.rn = readN
         end
         return info

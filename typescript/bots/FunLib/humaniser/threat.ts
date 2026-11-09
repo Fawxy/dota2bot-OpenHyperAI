@@ -50,6 +50,12 @@ export const SETTINGS = {
      */
     EscapeItems: ["item_blink", "item_force_staff", "item_tpscroll"],
     EscapeMargin: 100,
+    /**
+     * An enemy hero is engaged when it damaged us within this many seconds (`WasRecentlyDamagedByHero`): a read that passes
+     * `opts.engagedWindow` counts its damage over that window instead of BurstWindow, since a hero hitting us now keeps hitting
+     * for as long as we stand there. judgement.
+     */
+    EngagedRecent: 1,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };
@@ -80,6 +86,10 @@ export interface Read {
     mcut: number;
     threat: number;
     band: Band;
+    /** With `opts.engagedWindow`: the reaching heroes that damaged us within EngagedRecent (`eng`) and whose attack target is us
+     *  (`att`, logged to see whether the API answers for an enemy hero); both empty without the option. */
+    eng: number[];
+    att: number[];
 }
 
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
@@ -214,16 +224,23 @@ export function BandOf(threat: number, lethal: boolean): Band {
     return threat >= SETTINGS.Pressured ? "pressured" : threat >= SETTINGS.Watch ? "watch" : "none";
 }
 
+/** `engagedWindow`: seconds a reaching hero that is hitting us now is counted over (instead of the burst window). */
+export interface ReadOpts {
+    engagedWindow?: number;
+}
+
 /**
  * The read for `bot` walking from `from` to `place` with `horizon` seconds ahead. `lethal` fires when the heroes in reach
  * can deal the bot's HP within the burst window, they outnumber our heroes in reach and the bot has no `escape`.
  */
-export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): Read {
+export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, opts?: ReadOpts): Read {
     const s = SETTINGS;
     const now = DotaTime();
     const visible: Record<number, boolean> = {};
     const reach: number[] = [];
     const chasers: Unit[] = [];
+    const eng: number[] = [];
+    const att: number[] = [];
     let dmg = 0;
     const window = math.min(horizon, s.BurstWindow);
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
@@ -235,7 +252,15 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
         if (canReach(e, bot, from, place, horizon)) {
             reach.push(pid);
             chasers.push(e);
-            dmg += e.GetEstimatedDamageToTarget(true, bot, window, DamageType.All);
+            let w = window;
+            if (opts?.engagedWindow !== undefined) {
+                if (e.GetAttackTarget() === bot) att.push(pid);
+                if (bot.WasRecentlyDamagedByHero(e, s.EngagedRecent)) {
+                    eng.push(pid);
+                    w = opts.engagedWindow;
+                }
+            }
+            dmg += e.GetEstimatedDamageToTarget(true, bot, w, DamageType.All);
         }
     }
     let allies = 0;
@@ -252,7 +277,7 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
     const threat = math.max(0, math.min(1, raw));
     const escape = escapeOf(bot, chasers);
     const lethal = burst >= 1 && reach.length > allies && !escape;
-    return { t: now, from, place, horizon, reach, burst, allies, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal) };
+    return { t: now, from, place, horizon, reach, burst, allies, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att };
 }
 
 const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;

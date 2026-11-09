@@ -55,6 +55,7 @@ ____exports.SETTINGS = {
     Pressured = 0.5,
     EscapeItems = {"item_blink", "item_force_staff", "item_tpscroll"},
     EscapeMargin = 100,
+    EngagedRecent = 1,
     LogEvery = 5
 }
 local TOWER_IDS = {
@@ -250,12 +251,14 @@ function ____exports.BandOf(threat, lethal)
 end
 --- The read for `bot` walking from `from` to `place` with `horizon` seconds ahead. `lethal` fires when the heroes in reach
 -- can deal the bot's HP within the burst window, they outnumber our heroes in reach and the bot has no `escape`.
-function ____exports.Read(bot, from, place, horizon)
+function ____exports.Read(bot, from, place, horizon, opts)
     local s = ____exports.SETTINGS
     local now = DotaTime()
     local visible = {}
     local reach = {}
     local chasers = {}
+    local eng = {}
+    local att = {}
     local dmg = 0
     local window = math.min(horizon, s.BurstWindow)
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
@@ -281,7 +284,17 @@ function ____exports.Read(bot, from, place, horizon)
                 ) then
                     reach[#reach + 1] = pid
                     chasers[#chasers + 1] = e
-                    dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, window, DamageType.All)
+                    local w = window
+                    if (opts and opts.engagedWindow) ~= nil then
+                        if e:GetAttackTarget() == bot then
+                            att[#att + 1] = pid
+                        end
+                        if bot:WasRecentlyDamagedByHero(e, s.EngagedRecent) then
+                            eng[#eng + 1] = pid
+                            w = opts.engagedWindow
+                        end
+                    end
+                    dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, w, DamageType.All)
                 end
                 __continue40 = true
             until true
@@ -293,10 +306,10 @@ function ____exports.Read(bot, from, place, horizon)
     local allies = 0
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue45
+            local __continue48
             repeat
                 if not valid(a) or a == bot or RetreatState.Running(a) then
-                    __continue45 = true
+                    __continue48 = true
                     break
                 end
                 if canReach(
@@ -308,9 +321,9 @@ function ____exports.Read(bot, from, place, horizon)
                 ) then
                     allies = allies + 1
                 end
-                __continue45 = true
+                __continue48 = true
             until true
-            if not __continue45 then
+            if not __continue48 then
                 break
             end
         end
@@ -351,7 +364,9 @@ function ____exports.Read(bot, from, place, horizon)
         mtss = mtss,
         mcut = mcut,
         threat = threat,
-        band = ____exports.BandOf(threat, lethal)
+        band = ____exports.BandOf(threat, lethal),
+        eng = eng,
+        att = att
     }
 end
 local function r2(x)
@@ -367,8 +382,8 @@ function ____exports.Log(bot, consumer, r, decision)
         return
     end
     logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_2 = Telemetry.Event
-    local ____array_1 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_4 = Telemetry.Event
+    local ____array_3 = __TS__SparseArrayNew(
         {"pid", pid},
         {"who", consumer},
         {"dec", decision},
@@ -400,15 +415,15 @@ function ____exports.Log(bot, consumer, r, decision)
         },
         {"ally", r.allies}
     )
-    local ____temp_0
+    local ____temp_2
     if #r.reach > 0 then
-        ____temp_0 = r.escape
+        ____temp_2 = r.escape
     else
-        ____temp_0 = nil
+        ____temp_2 = nil
     end
     __TS__SparseArrayPush(
-        ____array_1,
-        {"esc", ____temp_0},
+        ____array_3,
+        {"esc", ____temp_2},
         {"tower", r.tower},
         {
             "miss",
@@ -431,9 +446,9 @@ function ____exports.Log(bot, consumer, r, decision)
             ))
         }
     )
-    ____Telemetry_Event_2(
+    ____Telemetry_Event_4(
         "threat",
-        {__TS__SparseArraySpread(____array_1)}
+        {__TS__SparseArraySpread(____array_3)}
     )
 end
 return ____exports

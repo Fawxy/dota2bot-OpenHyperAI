@@ -190,6 +190,8 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["mp", info?.mp],
         ["op", info?.op],
         ["rp", info?.rp],
+        ["re", info?.re],
+        ["rat", info?.rat],
     ]);
 }
 

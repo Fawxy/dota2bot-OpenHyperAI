@@ -1508,7 +1508,9 @@
    "rm": "num",
    "mp": "str",
    "op": "str",
-   "rp": "str"
+   "rp": "str",
+   "re": "num",
+   "rat": "num"
   }
  },
  "kinds": {

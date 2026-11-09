@@ -219,8 +219,8 @@ local function lanePos(bot, l)
     local info = Laning.SpotInfo(bot)
     local nok, nuke = pcall(LaneSpot.NearestNuke, bot)
     local ne, nk, nr = unpack(nok and nuke ~= nil and nuke or ({nil, nil, nil}))
-    local ____Telemetry_Event_33 = Telemetry.Event
-    local ____array_32 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_37 = Telemetry.Event
+    local ____array_36 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "d",
@@ -236,7 +236,7 @@ local function lanePos(bot, l)
         ____cur_running_5 = nil
     end
     __TS__SparseArrayPush(
-        ____array_32,
+        ____array_36,
         {"label", ____cur_running_5},
         {
             "mode",
@@ -295,11 +295,13 @@ local function lanePos(bot, l)
         },
         {"mp", info and info.mp},
         {"op", info and info.op},
-        {"rp", info and info.rp}
+        {"rp", info and info.rp},
+        {"re", info and info.re},
+        {"rat", info and info.rat}
     )
-    ____Telemetry_Event_33(
+    ____Telemetry_Event_37(
         "lane_pos",
-        {__TS__SparseArraySpread(____array_32)}
+        {__TS__SparseArraySpread(____array_36)}
     )
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
@@ -337,8 +339,8 @@ function ____exports.Owns(bot, state)
 end
 --- Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body.
 local function stepFarm(bot, names)
-    local ____opt_34 = lib()
-    local cur = ____opt_34 and ____opt_34.States.Current(bot)
+    local ____opt_38 = lib()
+    local cur = ____opt_38 and ____opt_38.States.Current(bot)
     return cur ~= nil and names[cur.name] == true and ____exports.Step(bot, BotMode.Farm)
 end
 local FARM_STATES = {[Farm.NAME] = true}
@@ -370,8 +372,8 @@ function ____exports.BodyLastHits(bot)
     if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
         return false
     end
-    local ____opt_36 = Tasks.Loaded()
-    local cur = ____opt_36 and ____opt_36.States.Current(bot)
+    local ____opt_40 = Tasks.Loaded()
+    local cur = ____opt_40 and ____opt_40.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
 --- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
@@ -381,13 +383,13 @@ function ____exports.BodyBusy(bot)
     if not ____exports.BodyLastHits(bot) then
         return false
     end
-    local ____opt_38 = Tasks.Current(bot)
-    local label = ____opt_38 and ____opt_38.label
+    local ____opt_42 = Tasks.Current(bot)
+    local label = ____opt_42 and ____opt_42.label
     return label == "lasthit" or label == "deny"
 end
 local function laningRunning(bot)
-    local ____opt_40 = Tasks.Loaded()
-    local cur = ____opt_40 and ____opt_40.States.Current(bot)
+    local ____opt_44 = Tasks.Loaded()
+    local cur = ____opt_44 and ____opt_44.States.Current(bot)
     return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
 end
 --- True while the laning body runs for this support and owns its lane hits (Ours.SupportDeny): the Lua Think skips DenyThink.
@@ -418,8 +420,8 @@ function ____exports.SupportStep(bot)
         {
             bodyRunning = function() return laningRunning(bot) end,
             bodyLabel = function()
-                local ____opt_42 = Tasks.Current(bot)
-                return ____opt_42 and ____opt_42.label
+                local ____opt_46 = Tasks.Current(bot)
+                return ____opt_46 and ____opt_46.label
             end,
             stepBody = function() return ____exports.Step(bot, BotMode.Laning) end
         }
@@ -463,8 +465,8 @@ function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_44 = Tasks.Loaded()
-    local cur = ____opt_44 and ____opt_44.States.Current(bot)
+    local ____opt_48 = Tasks.Loaded()
+    local cur = ____opt_48 and ____opt_48.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

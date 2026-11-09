@@ -45,6 +45,7 @@ function Unit:GetDenies() return self.denies or 0 end
 function Unit:GetCurrentMovementSpeed() return 300 end
 function Unit:GetBoundingRadius() return 24 end
 function Unit:WasRecentlyDamagedByAnyHero() return false end
+function Unit:WasRecentlyDamagedByHero(e, t) return self.hitBy ~= nil and self.hitBy[e] ~= nil and T - self.hitBy[e] <= t end
 function Unit:WasRecentlyDamagedByCreep() return false end
 function Unit:WasRecentlyDamagedByTower() return false end
 function Unit:Action_AttackUnit(u) self.attacks = self.attacks or {} table.insert(self.attacks, u) end
@@ -260,6 +261,28 @@ do
 	local sOld, iOld = run({ hp = 30, threat = false })
 	check("old limits: reach 800 plus the 240 margin leave that spot where it is", sOld ~= nil and iOld.why == "pref" and sOld.x == -100, sOld and sOld.x)
 	foes[1] = nil
+
+	-- A hero already hitting us is counted over LANE_ENGAGED_WINDOW (6 s), not the 3 s burst window (rtlng1c2: a lone chaser kept
+	-- hitting her to 45% in 10 of 10 reps because 3 s of him read safe every second). 4 damage a second: 12 over 3 s, 24 over 6 s.
+	local function engaged(o)
+		local e3
+		local s3, b3 = spotFor(SDK, o, function(b)
+			b.loc = Vector(-3000, 0)
+			e3 = MakeUnit({ pid = 7, team = 3, loc = Vector(900, 0) })
+			e3.GetEstimatedDamageToTarget = function(_, _, _, dur) return 4 * dur end
+			foes[1] = e3
+			if o.engaged then b.hitBy = { [e3] = T - 0.5 } end
+		end)
+		local i3 = require("bots/FunLib/humaniser/states/laning").SpotInfo(b3)
+		foes[1] = nil
+		return s3, i3
+	end
+	local sEng, iEng = engaged({ hp = 60, threat = true, engaged = true })
+	check("engaged: a hero hitting us at 60% HP is counted over 6 s (24 of 60) and the spot is refused", sEng ~= nil and iEng.why == "hero" and iEng.re ~= nil, iEng and (tostring(iEng.why) .. " " .. tostring(iEng.rb)))
+	local sNot, iNot = engaged({ hp = 60, threat = true })
+	check("not engaged: the same hero over the 3 s window (12 of 60) keeps the preferred point", sNot ~= nil and iNot.why == "pref", iNot and tostring(iNot.why))
+	local sFullE, iFullE = engaged({ hp = 100, threat = true, engaged = true })
+	check("engaged at full HP: 24 of 100 stays under READ_BURST (a lone harasser is not pushed back)", sFullE ~= nil and iFullE.why == "pref", iFullE and (tostring(iFullE.why) .. " " .. tostring(iFullE.rb)))
 
 	-- The rtwatch1 shape (7:33, 37% HP, the chaser about 1,100 away): ev=lane_pos logs the read's `missing` and unseen pids at the
 	-- chosen spot, and each rule's verdict at the preferred point, so a log can say which limit pushed the spot. Pins today's bars.

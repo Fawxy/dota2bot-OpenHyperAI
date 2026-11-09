@@ -1387,7 +1387,9 @@ ____exports.EVENTS = {
         rm = "num",
         mp = "str",
         op = "str",
-        rp = "str"
+        rp = "str",
+        re = "num",
+        rat = "num"
     }
 }
 return ____exports

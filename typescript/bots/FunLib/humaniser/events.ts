@@ -1804,6 +1804,9 @@ export const EVENTS = {
         mp: "str",
         op: "str",
         rp: "str",
+        /** Heroes the read counted as engaged (hitting us within a second) at the chosen spot, and 1 when a reaching hero's attack target is us. */
+        re: "num",
+        rat: "num",
     },
 } as const;
 
