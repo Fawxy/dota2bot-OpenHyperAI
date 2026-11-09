@@ -1,5 +1,6 @@
--- Every death of a lineup core (pos 1-3) before :until (default 600), with a cause (slice core-in-lane, L.3c). The hero has no snaps
--- while dead, so a death is the last snap before one whose deaths count rose (t is that last alive snap); the cause reads the core's snaps and ev=trade in the 10 s before it, first match wins:
+-- Every death of a lineup core (pos 1-3) before :until (default 600), with a cause (slice core-in-lane, L.3c). The deaths count rises only
+-- at the first snap after the respawn, and a killed hero logs snaps before it that are not its last living moment (hp 0 where it fell,
+-- or at its fountain): a death is the last snap with hp above 0 before that run (t is that snap; fragment core_death has the rules); the cause reads the core's snaps and ev=trade in the 10 s before it, first match wins:
 --   trade     a trade of ours was running or ended within 10 s (ev=trade taken)
 --   cut       laning held the 0.9 last-hit desire after a retreat in those 10 s (the cut the slice stops)
 --   retreat   it was retreating at the last snap
