@@ -180,6 +180,24 @@ do
 	for _, l in ipairs(windows()) do if field(l, "pid") == "9" then wb = l end end
 	check("a tango eaten inside the window is named", wb ~= nil and field(wb, "used") == "tango", wb)
 
+	-- A tango eaten 0.4 s into the window is a use inside it, not a buff that was already running.
+	local e = MakeUnit({ pid = 12, hp = 200, maxhp = 500 })
+	e.slots = { item_tango = 0 }
+	e.items = { [0] = item("item_tango", 3, 7, 16) }
+	e.trees = { 100 }
+	T = 100
+	R.Tick(e)
+	step(R, e, 0.4)
+	e.modifiers = { modifier_tango_heal = 1 }
+	e.left = 16
+	R.Tick(e)
+	step(R, e, 1)
+	e.target = { }
+	R.Tick(e)
+	local we
+	for _, l in ipairs(windows()) do if field(l, "pid") == "12" then we = l end end
+	check("a tango eaten early in the window is a use, not already running", we ~= nil and field(we, "under") == "0" and field(we, "used") == "tango", we)
+
 	local c = MakeUnit({ pid = 10, hp = 480, maxhp = 500 })
 	c.slots = { item_tango = 0 }
 	c.items = { [0] = item("item_tango", 3, 7, 16) }

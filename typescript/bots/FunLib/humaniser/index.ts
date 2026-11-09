@@ -144,7 +144,7 @@ function tick(this: void, bot: Unit): void {
         // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
         if (Telemetry.IsEnabled() && bot.IsHero() && !bot.IsIllusion()) {
             Telemetry.Tick(bot);
-            RegenObs.Tick(bot);
+            pcall(RegenObs.Tick, bot);
         }
         return;
     }
@@ -172,7 +172,8 @@ function tick(this: void, bot: Unit): void {
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
     Telemetry.Tick(bot, telemetryContext);
-    RegenObs.Tick(bot);
+    // The observer only reads: an error in it must not skip the States and Tasks ticks below.
+    pcall(RegenObs.Tick, bot);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
     // tasks: task runner spike

@@ -19,6 +19,8 @@ test('regen_cover: a window counts for an item only when the item could have bee
         '[HEV] t=130 ev=regen_win pid=1 mode=1 len=4 miss0=200 missmax=250 tg=2 sv=0 tge=112 sve=0 tree=500 under=0 used=-',
         // tree too far: not counted for the tango
         '[HEV] t=160 ev=regen_win pid=1 mode=1 len=4 miss0=300 missmax=300 tg=2 sv=0 tge=112 sve=0 tree=900 under=0 used=-',
+        // a retreat window: not the laning caller's place, not counted
+        '[HEV] t=170 ev=regen_win pid=1 mode=4 len=4 miss0=300 missmax=300 tg=2 sv=0 tge=112 sve=0 tree=100 under=0 used=-',
         // buff already running: not counted
         '[HEV] t=190 ev=regen_win pid=1 mode=1 len=4 miss0=300 missmax=300 tg=2 sv=1 tge=112 sve=390 tree=100 under=1 used=-',
         // salve in hand, 400 missing against 390: counted for the salve, not used

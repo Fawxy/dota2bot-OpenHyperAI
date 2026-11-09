@@ -240,7 +240,7 @@ local function tick(bot)
     if not Config.IsEnabled() then
         if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
             Telemetry.Tick(bot)
-            RegenObs.Tick(bot)
+            pcall(RegenObs.Tick, bot)
         end
         return
     end
@@ -271,7 +271,7 @@ local function tick(bot)
     Intent.Tick(bot)
     LaneControl.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
-    RegenObs.Tick(bot)
+    pcall(RegenObs.Tick, bot)
     States.Tick(bot)
     Tasks.Tick(bot)
     HDebug.SharedStateProbe(bot)

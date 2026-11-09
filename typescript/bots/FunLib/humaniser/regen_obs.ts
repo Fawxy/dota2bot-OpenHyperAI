@@ -101,7 +101,6 @@ function snapWindow(bot: Unit, w: Win): void {
     w.sv = salve?.GetCurrentCharges() ?? 0;
     w.sve = effectOf(salve);
     w.tree = w.tg > 0 ? nearestTree(bot) : -1;
-    w.under = bot.HasModifier("modifier_tango_heal") || bot.HasModifier("modifier_flask_healing");
 }
 
 function closeWindow(bot: Unit, w: Win, now: number): void {
@@ -135,7 +134,7 @@ function trackWindow(bot: Unit, pid: number, now: number): void {
     }
     const miss = bot.GetMaxHealth() - bot.GetHealth();
     if (w === undefined) {
-        w = { t0: now, snapped: false, mode: bot.GetActiveMode(), miss0: miss, missMax: miss, tg: 0, sv: 0, tge: 0, sve: 0, tree: -1, under: false, used: [] };
+        w = { t0: now, snapped: false, mode: bot.GetActiveMode(), miss0: miss, missMax: miss, tg: 0, sv: 0, tge: 0, sve: 0, tree: -1, under: bot.HasModifier("modifier_tango_heal") || bot.HasModifier("modifier_flask_healing"), used: [] };
         wins[pid] = w;
     }
     if (miss > w.missMax) w.missMax = miss;

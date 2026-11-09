@@ -71,7 +71,6 @@ local function snapWindow(bot, w)
     w.sv = salve and salve:GetCurrentCharges() or 0
     w.sve = effectOf(salve)
     w.tree = w.tg > 0 and nearestTree(bot) or -1
-    w.under = bot:HasModifier("modifier_tango_heal") or bot:HasModifier("modifier_flask_healing")
 end
 local function closeWindow(bot, w, now)
     local len = now - w.t0
@@ -132,7 +131,7 @@ local function trackWindow(bot, pid, now)
             tge = 0,
             sve = 0,
             tree = -1,
-            under = false,
+            under = bot:HasModifier("modifier_tango_heal") or bot:HasModifier("modifier_flask_healing"),
             used = {}
         }
         wins[pid] = w
