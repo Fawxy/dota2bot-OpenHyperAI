@@ -1019,14 +1019,10 @@ local function schedule(bot, now)
     end
     if Ours.On("Threat") then
         local spawner = Camps.SpawnerByIdx(plan.campIdx)
+        local center = spawner ~= nil and Camps.BoxCenter(spawner) or nil
         local ____temp_6
-        if spawner ~= nil then
-            ____temp_6 = Threat.Gate(
-                bot,
-                bot:GetLocation(),
-                Camps.BoxCenter(spawner),
-                "farm_trip"
-            ).why
+        if center ~= nil then
+            ____temp_6 = Threat.Gate(bot, center, center, "farm_trip").why
         else
             ____temp_6 = nil
         end

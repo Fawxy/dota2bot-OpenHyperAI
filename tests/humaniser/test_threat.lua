@@ -166,6 +166,24 @@ do
 	hide(e, Vector(deep.x, deep.y + 2500), 10) -- its run (3,300 + 600) still covers the place
 	local far = Threat.Read(bot, deep, deep, 4)
 	check("prior: last seen 2,500 from a deep place: half", near(far.missing, 0.25), far.missing)
+	-- The middle bucket: a place 45% of the way from our bot T1 to theirs (depth 0.55) weighs a quarter.
+	local o, t = TOWERS_W[2][dota.Tower.Bot1].loc, TOWERS_W[3][dota.Tower.Bot1].loc
+	local mid = Vector(o.x + 0.45 * (t.x - o.x), o.y + 0.45 * (t.y - o.y))
+	hide(e, mid, 10)
+	local m = Threat.Read(bot, mid, mid, 4)
+	check("prior: the middle bucket weighs a quarter", near(m.missing, 0.125) and m.depth >= 0.5 and m.depth < 0.65, m.missing .. " depth " .. m.depth)
+end
+
+-- R6 on the read (lane_control CoreThreat): two enemies 1,600 from the core are beyond the old 1,200 count but inside the
+-- 4 s reach, so the switch on reads danger and the OFF arm does not; a support in lane clears it either way.
+for _, case in ipairs({ { off = false, danger = true }, { off = true, danger = false } }) do
+	local _, _, bot, e = world({ off = case.off })
+	local Ctl = require("bots/FunLib/humaniser/lane_control")
+	e.loc, e.range = Vector(HERE.x + 1600, HERE.y), 600
+	local e2 = MakeUnit({ pid = 11, team = 3, loc = Vector(HERE.x - 1600, HERE.y) })
+	e2.range = 600
+	check("R6 off=" .. tostring(case.off) .. ": two heroes at 1,600", Ctl.CoreThreat(bot, false) == case.danger)
+	check("R6 off=" .. tostring(case.off) .. ": a support in lane clears it", Ctl.CoreThreat(bot, true) == false)
 end
 
 -- The shared gate: nothing in reach or counted is open; a counted hero after 4:00 holds "missing"; a visible hero in reach
@@ -177,11 +195,12 @@ do
 		w0 = Threat.Gate(bot, HERE, CAMP, "t").why
 		hide(e, Vector(-500, -7000), 10)
 		w1 = Threat.Gate(bot, HERE, CAMP, "t").why
-		e.hiddenFrom = nil
-		e.loc, e.range = Vector(-1000, -7500), 150
+		-- A second, visible hero in reach while the first stays unseen and counted: threat wins the decision.
+		local v = MakeUnit({ pid = 11, team = 3, loc = Vector(-1000, -7500) })
+		v.range = 150
 		w2 = Threat.Gate(bot, HERE, CAMP, "t").why
 	end)
-	check("gate: open, then missing, then threat", w0 == nil and w1 == "missing" and w2 == "threat", tostring(w0) .. " " .. tostring(w1) .. " " .. tostring(w2))
+	check("gate: open, then missing, then threat over a counted hero", w0 == nil and w1 == "missing" and w2 == "threat", tostring(w0) .. " " .. tostring(w1) .. " " .. tostring(w2))
 	local l = threatLines(out)
 	check("gate: each decision logged with dep", #l == 3 and field(l[1], "dec") == "go" and field(l[2], "dec") == "missing" and field(l[3], "dec") == "threat" and field(l[3], "dep") ~= nil, #l)
 end

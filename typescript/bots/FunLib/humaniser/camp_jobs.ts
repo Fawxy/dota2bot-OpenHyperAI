@@ -340,22 +340,23 @@ function hpOk(bot: Unit): boolean {
 }
 
 /**
- * Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat the camp
- * `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat) in place of
- * the caution probe's missing count; a caller with no camp yet gets the other checks only.
+ * Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat a start that
+ * names its camp `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat),
+ * logged for `who`, in place of the caution probe's missing count; a start with no camp (the take, which contests a visible
+ * enemy there) keeps the probe's count until design slice 3 gives it `Opportunity`.
  */
-export function StartBlocked(bot: Unit, at?: Vector): string | undefined {
+export function StartBlocked(bot: Unit, at?: Vector, who = "sup_job"): string | undefined {
     const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP < settings().Thresholds.JobStartHP) return "low-hp";
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
     if (LaneHooks.IsFightCommitting(bot)) return "lanefight";
-    if (!Ours.On("Threat") && LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
+    if ((!Ours.On("Threat") || at === undefined) && LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
     // The rotation was decided first (20-25 s before the spawn); a job now would make it late or cancel it.
     if (LaneHooks.RotationDecided(bot)) return "rotation";
     if (inFight(bot)) return "fight";
-    if (Ours.On("Threat") && at !== undefined) return Threat.Gate(bot, at, at, "sup_job").why;
+    if (Ours.On("Threat") && at !== undefined) return Threat.Gate(bot, at, at, who).why;
     return undefined;
 }
 
@@ -1167,13 +1168,13 @@ function schedule(bot: Unit): boolean {
     ]);
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
-    const first = Camps.SpawnerByIdx(camps[0].campIdx);
-    const blocked = StartBlocked(bot, first !== undefined ? Camps.BoxCenter(first) : undefined);
+    const camp = pullCampFor(kind, camps);
+    const spawnerOf = Camps.SpawnerByIdx(camp.campIdx);
+    const blocked = StartBlocked(bot, spawnerOf !== undefined ? Camps.BoxCenter(spawnerOf) : undefined);
     if (blocked !== undefined) {
-        notePlan(bot, s, now, [["gate", blocked], ["camp", camps[0].campIdx]]);
+        notePlan(bot, s, now, [["gate", blocked], ["camp", camp.campIdx]]);
         return false;
     }
-    const camp = pullCampFor(kind, camps);
     const asDouble = kind === "full_pull" && doubleOpen;
     // A double that fits but whose (hard camp) window opens later than the full pull's: wait for it.
     if (kind === "full_pull" && double !== undefined && !double.open && double.why === undefined) return false;

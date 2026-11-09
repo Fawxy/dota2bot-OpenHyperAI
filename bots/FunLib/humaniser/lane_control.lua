@@ -375,6 +375,27 @@ function memoryOf(team, lane)
     end
     return m
 end
+--- R6's test for one core (exported for its E0 checks): low, or enough enemy heroes on it with no support in lane.
+function ____exports.CoreThreat(u, supportIn)
+    if u:GetHealth() / math.max(
+        1,
+        u:GetMaxHealth()
+    ) < ____exports.SETTINGS.CoreLowHp then
+        return true
+    end
+    if supportIn then
+        return false
+    end
+    if Ours.On("Threat") then
+        local at = u:GetLocation()
+        local r = Threat.Read(u, at, at, Threat.SETTINGS.GateHorizon)
+        local held = #r.reach >= ____exports.SETTINGS.CoreThreat
+        Threat.Log(u, "lane_ctl", r, held and "threat" or "go")
+        return held
+    end
+    local near = u:GetNearbyHeroes(____exports.SETTINGS.CoreThreatR, true, 0) or ({})
+    return #near >= ____exports.SETTINGS.CoreThreat
+end
 --- Stores a wave's decision for the levers' owners (decide's, and the tests'); the last few waves are kept.
 function ____exports.Remember(team, lane, d)
     local m = memoryOf(team, lane)
@@ -795,25 +816,7 @@ local function enemiesAway(m, now, cx, cy)
     return any
 end
 local function coreThreat(core, supportIn)
-    local u = core.unit
-    if u:GetHealth() / math.max(
-        1,
-        u:GetMaxHealth()
-    ) < ____exports.SETTINGS.CoreLowHp then
-        return true
-    end
-    if supportIn then
-        return false
-    end
-    if Ours.On("Threat") then
-        local at = u:GetLocation()
-        local r = Threat.Read(u, at, at, Threat.SETTINGS.GateHorizon)
-        local held = #r.reach >= ____exports.SETTINGS.CoreThreat
-        Threat.Log(u, "lane_ctl", r, held and "threat" or "go")
-        return held
-    end
-    local near = u:GetNearbyHeroes(____exports.SETTINGS.CoreThreatR, true, 0) or ({})
-    return #near >= ____exports.SETTINGS.CoreThreat
+    return ____exports.CoreThreat(core.unit, supportIn)
 end
 local function ownAt(samples, path, team, t)
     if samples == nil or path == nil then
@@ -1331,17 +1334,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue134
+            local __continue135
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue134 = true
+                    __continue135 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue134 = true
+                __continue135 = true
             until true
-            if not __continue134 then
+            if not __continue135 then
                 break
             end
         end

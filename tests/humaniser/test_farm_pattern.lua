@@ -331,7 +331,17 @@ do
 	check("gate: an enemy missing 40 s does not block a trip", H.FarmPattern.StartGate(core, T) ~= "enemy-missing")
 	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
 	H.Lane.Hooks.SetMissingProbe(function() return 1 end)
-	check("gate, threat on: the probe no longer blocks a trip (the chosen camp is read instead)", H.FarmPattern.StartGate(core, T) ~= "enemy-missing")
+	check("gate, threat on: the probe no longer blocks a trip (the chosen camp is read instead)", H.FarmPattern.StartGate(core, T) == nil, H.FarmPattern.StartGate(core, T))
+end
+-- Slice threat 3: with the switch on the trip's camp is read with the shared gate once chosen: a visible enemy who can reach
+-- the camp holds the trip; the same enemy far from it does not.
+for _, case in ipairs({ { at = Vector(SMALL.x + 500, SMALL.y), trip = false }, { at = Vector(SMALL.x + 4000, SMALL.y + 3000), trip = true } }) do
+	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
+	local e = MakeUnit({ pid = 11, team = 3, loc = case.at })
+	e.range = 600
+	H.FarmPattern.Desire(core)
+	check("trip gate, enemy " .. (case.trip and "far: the trip starts" or "by the camp: held"), (H.FarmPattern.Current(core) ~= nil) == case.trip)
 end
 do
 	local H, core = world({ travel = 10, t = 465, pos = 2, camps = { { "small", SMALL } } })

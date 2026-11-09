@@ -501,6 +501,7 @@ local UnitType = ____dota.UnitType
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -509,7 +510,6 @@ local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_sp
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 function locOf(u)
     local at = u:GetLocation()
     local ____temp_0

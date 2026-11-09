@@ -415,7 +415,11 @@ function enemiesAway(m: LaneMemory, now: number, cx: number, cy: number): boolea
 }
 
 function coreThreat(core: Laner, supportIn: boolean): boolean {
-    const u = core.unit;
+    return CoreThreat(core.unit, supportIn);
+}
+
+/** R6's test for one core (exported for its E0 checks): low, or enough enemy heroes on it with no support in lane. */
+export function CoreThreat(u: Unit, supportIn: boolean): boolean {
     if (u.GetHealth() / math.max(1, u.GetMaxHealth()) < SETTINGS.CoreLowHp) return true;
     if (supportIn) return false;
     if (Ours.On("Threat")) {

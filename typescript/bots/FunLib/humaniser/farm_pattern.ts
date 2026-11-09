@@ -531,7 +531,9 @@ function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, T
         return $multi(diag.open === 0 ? "no-camp" : "no-fit", [["lane", lane], ["lvl", bot.GetLevel()], ["window", fmt(deadline - now)], ["best", fmt(diag.bestTotal)], ["open", diag.open], ["pace", string.format("%.2f", PaceFactor(bot))]]);
     if (Ours.On("Threat")) {
         const spawner = Camps.SpawnerByIdx(plan.campIdx);
-        const why = spawner !== undefined ? Threat.Gate(bot, bot.GetLocation(), Camps.BoxCenter(spawner), "farm_trip").why : undefined;
+        // The camp alone, as the support's start reads it: the core stands in lane, whose enemies a walk read would count.
+        const center = spawner !== undefined ? Camps.BoxCenter(spawner) : undefined;
+        const why = center !== undefined ? Threat.Gate(bot, center, center, "farm_trip").why : undefined;
         if (why !== undefined) return $multi(why, [["lane", lane], ["camp", plan.campIdx]]);
     }
     const trip: Trip = { team, lane, campIdx: plan.campIdx, type: plan.type, phase: "go", waveAt, deadline, leaveBy: plan.leaveBy, startedAt: now, camps: 0 };

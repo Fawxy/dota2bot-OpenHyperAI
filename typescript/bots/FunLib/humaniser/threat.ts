@@ -29,9 +29,12 @@ export const SETTINGS = {
      * the place's depth, its distance to the nearest live enemy tower over the sum of that and the distance to our nearest
      * (0 at our tower, 1 at theirs). A counted hero arrived at a deep place (the offlane hard camp, depth under 0.5) 0.21 of
      * the time, at a mid place (our stack camps, 0.5-0.65) 0.03 and on our side (the safe lane's pull camps, over 0.65)
-     * 0.01. Steps as [upper depth edge, factor]; the sizes are judgement fitted to those rates.
+     * 0.01. Steps as [upper depth edge, factor]; the sizes are fitted to those rates (three camp classes). The depth reads the
+     * lanes' T1s while one of each team's stands (the offline fit's tower set), else every standing tower.
      */
     DepthFactor: [[0.5, 1], [0.65, 0.25], [1.01, 0.1]] as [number, number][],
+    /** The depth with no standing tower on one side to read (judgement: the middle bucket's edge). */
+    DepthDefault: 0.5,
     /** And by the hero's last-seen distance to the place (deep camp: arrived 0.32 within 1,200, 0.19 to 2,000, 0.10 to 3,000). */
     DistFactor: [[2000, 1], [3000, 0.5], [math.huge, 0.25]] as [number, number][],
     /** The horizon (s) the gates read with; 4 s puts a 300-speed melee's reach (run plus attack range and hulls) at about the
@@ -126,9 +129,11 @@ function canReach(u: Unit, bot: Unit, from: Vector, place: Vector, horizon: numb
     return distToSegment(at, from, place) <= run;
 }
 
-function nearestTower(team: number, place: Vector): number | undefined {
+const T1_IDS = [Tower.Top1, Tower.Mid1, Tower.Bot1];
+
+function nearestOf(team: number, ids: Tower[], place: Vector): number | undefined {
     let best: number | undefined;
-    for (const id of TOWER_IDS) {
+    for (const id of ids) {
         const tw = GetTower(team, id);
         if (!valid(tw)) continue;
         const d = dist(tw.GetLocation(), place);
@@ -137,11 +142,16 @@ function nearestTower(team: number, place: Vector): number | undefined {
     return best;
 }
 
-/** The place's depth: its distance to the nearest live enemy tower over the sum with the distance to our nearest; 0.5 with no read. */
+/** The team's nearest standing T1 (the tower set the depth factors were fitted on), else its nearest standing tower. */
+function nearestTower(team: number, place: Vector): number | undefined {
+    return nearestOf(team, T1_IDS, place) ?? nearestOf(team, TOWER_IDS, place);
+}
+
+/** The place's depth: its distance to the nearest enemy tower over the sum with the distance to our nearest; DepthDefault with no read. */
 function placeDepth(team: number, enemyTeam: number, place: Vector): number {
     const own = nearestTower(team, place);
     const en = nearestTower(enemyTeam, place);
-    if (own === undefined || en === undefined || own + en <= 0) return 0.5;
+    if (own === undefined || en === undefined || own + en <= 0) return SETTINGS.DepthDefault;
     return en / (own + en);
 }
 
@@ -269,7 +279,7 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
 }
 
 /**
- * The gate rule the starts share (the core camp trip, the support's pull, stack and take, the farm trip, the pull farm): held
+ * The gate rule the starts share (the core camp trip, the pos3's pull, the support's pull and stack, the farm trip, the pull farm): held
  * by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
  * ("missing"); the read and its decision are logged as ev=threat for `consumer`.
  */

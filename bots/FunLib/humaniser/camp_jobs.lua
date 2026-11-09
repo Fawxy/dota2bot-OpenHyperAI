@@ -744,10 +744,14 @@ local function hpOk(bot)
     local maxHP = bot:GetMaxHealth()
     return maxHP > 0 and bot:GetHealth() / maxHP >= settings().Thresholds.JobMinHP
 end
---- Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat the camp
--- `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat) in place of
--- the caution probe's missing count; a caller with no camp yet gets the other checks only.
-function ____exports.StartBlocked(bot, at)
+--- Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat a start that
+-- names its camp `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat),
+-- logged for `who`, in place of the caution probe's missing count; a start with no camp (the take, which contests a visible
+-- enemy there) keeps the probe's count until design slice 3 gives it `Opportunity`.
+function ____exports.StartBlocked(bot, at, who)
+    if who == nil then
+        who = "sup_job"
+    end
     local maxHP = bot:GetMaxHealth()
     if maxHP <= 0 or bot:GetHealth() / maxHP < settings().Thresholds.JobStartHP then
         return "low-hp"
@@ -759,7 +763,7 @@ function ____exports.StartBlocked(bot, at)
     if LaneHooks.IsFightCommitting(bot) then
         return "lanefight"
     end
-    if not Ours.On("Threat") and LaneHooks.EnemiesMissing(
+    if (not Ours.On("Threat") or at == nil) and LaneHooks.EnemiesMissing(
         bot,
         settings().Thresholds.JobMissingFresh
     ) > 0 then
@@ -772,7 +776,7 @@ function ____exports.StartBlocked(bot, at)
         return "fight"
     end
     if Ours.On("Threat") and at ~= nil then
-        return Threat.Gate(bot, at, at, "sup_job").why
+        return Threat.Gate(bot, at, at, who).why
     end
     return nil
 end
@@ -1907,16 +1911,16 @@ local function schedule(bot)
     if kind == nil then
         return false
     end
-    local first = Camps.SpawnerByIdx(camps[1].campIdx)
+    local camp = pullCampFor(kind, camps)
+    local spawnerOf = Camps.SpawnerByIdx(camp.campIdx)
     local blocked = ____exports.StartBlocked(
         bot,
-        first ~= nil and Camps.BoxCenter(first) or nil
+        spawnerOf ~= nil and Camps.BoxCenter(spawnerOf) or nil
     )
     if blocked ~= nil then
-        notePlan(bot, s, now, {{"gate", blocked}, {"camp", camps[1].campIdx}})
+        notePlan(bot, s, now, {{"gate", blocked}, {"camp", camp.campIdx}})
         return false
     end
-    local camp = pullCampFor(kind, camps)
     local asDouble = kind == "full_pull" and doubleOpen
     if kind == "full_pull" and double ~= nil and not double.open and double.why == nil then
         return false

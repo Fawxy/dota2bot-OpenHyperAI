@@ -1374,7 +1374,7 @@ do
 	local e = unit({ pid = 11, team = 3, pos = 4, loc = Vector(center.x + 600, center.y) })
 	e.range = 600
 	check("threat on: a visible enemy by the camp holds the start", H.Lane.CampJobs.StartBlocked(support, center) == "threat", H.Lane.CampJobs.StartBlocked(support, center))
-	check("threat on: no camp given, the enemy is not read", H.Lane.CampJobs.StartBlocked(support) == nil)
+	check("threat on: no camp given (the take), the caution probe still gates", H.Lane.CampJobs.StartBlocked(support) == "enemy-missing")
 end
 
 finish()
