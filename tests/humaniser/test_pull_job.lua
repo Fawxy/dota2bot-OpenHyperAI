@@ -458,6 +458,34 @@ for _, case in ipairs({
 	end
 end
 
+-- The `missing` path through Wants: three heroes last seen by the camp and unseen now (the camp in fog) weigh 0.6 before
+-- 4:00 on a flat prior (the prior itself is graded in test_threat; at this camp's depth it would give 0.1 each), so the
+-- start holds on `missing` with a `who=pull_job dec=missing` read.
+do
+	local w = world({ reading = OUT })
+	local Threat = require("bots/FunLib/humaniser/threat")
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
+	local depth, dist = Threat.SETTINGS.DepthFactor, Threat.SETTINGS.DistFactor
+	Threat.SETTINGS.DepthFactor = { { 1.01, 1 } }
+	Threat.SETTINGS.DistFactor = { { math.huge, 1 } }
+	Threat.ResetCache()
+	for i, pid in ipairs({ 10, 11, 12 }) do
+		local e = MakeUnit({ pid = pid, team = 3, loc = Vector(-1600, -6600) })
+		e.lane, e.pos = Lane.Bot, i
+		e.hiddenFrom = { [OBSERVER] = true }
+		LAST_SEEN[pid] = { location = Vector(-1600 + 100 * i, -6600), time_since_seen = 10 }
+	end
+	local out = run(w, 80)
+	Threat.SETTINGS.DepthFactor, Threat.SETTINGS.DistFactor = depth, dist
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = nil
+	for _, pid in ipairs({ 10, 11, 12 }) do LAST_SEEN[pid] = nil end
+	local choice, reads = lines(out, "choice"), lines(out, "threat")
+	check("threat on, three heroes unseen by the camp: go=0 why=missing, no job", #choice == 1 and field(choice[1], "go") == "0"
+		and field(choice[1], "why") == "missing" and #lines(out, "job") == 0, choice[1])
+	check("threat on, unseen heroes: the gate read dec=missing, miss 0.6", #reads >= 1 and field(reads[1], "who") == "pull_job"
+		and field(reads[1], "dec") == "missing" and math.abs(tonumber(field(reads[1], "miss") or 0) - 0.6) < 0.01, reads[1])
+end
+
 -- Both supports in the bot lane: the pos5 pulls, the pos4 does not apply.
 do
 	local w = world({ reading = OUT })
