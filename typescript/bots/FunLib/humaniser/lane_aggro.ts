@@ -63,9 +63,11 @@ export const SETTINGS = {
     TowerWatch: 1.5,
     /** ev=aggro_skip: a bot's skip reason is logged when it changes, at most this often. */
     SkipEvery: 3,
-    /** Feed: enemy melee creeps on our wave within this of our ranged creep, and at least FeedMinCreeps of them. */
+    /** Feed: enemy melee creeps on our wave within this of our ranged creep, and at least FeedMinCreeps of them (slice lh-draw
+     *  step 3, user 09/11/2026: one is enough to kill a ranged creep for our deny; was 2). The same count within DrawR of the
+     *  bot at the order, or no order (`short`). */
     FightR: 700,
-    FeedMinCreeps: 2,
+    FeedMinCreeps: 1,
     /**
      * Feed: the approach point stands this far back (toward our tower) from the enemy creeps' centre, at most ApproachMax walk
      * away (user 06/11/2026: lane_spot keeps an offlaner 560-940 from it, obs0611 mark 1). The walk gets its own time
@@ -254,7 +256,17 @@ export function Stale(phase: PhaseName, gap: number, left: boolean = true): bool
 /** Every frame (States.Tick, from ItemUsageThink, whichever mode runs): notes another mode holding the bot during an attempt. */
 export function Tick(bot: Unit): void {
     const a = attempts[bot.GetPlayerID()];
-    if (a === undefined || a.left !== undefined) return;
+    if (a === undefined) return;
+    // The watch only reads the creep's fate from our counters, so it is read here whichever mode holds the bot (banked logs:
+    // 697 of 999 stale feeds ended in the watch, the move done, a retreat or attack holding the bot 3 s or more).
+    if (a.phase === "watch") {
+        const now = DotaTime();
+        a.steppedAt = now;
+        a.left = undefined;
+        watch(bot, a, now);
+        return;
+    }
+    if (a.left !== undefined) return;
     const mode = bot.GetActiveMode();
     if (mode !== BotMode.Laning) a.left = mode;
 }
@@ -490,10 +502,14 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     const team = bot.GetTeam();
     const lane = bot.GetAssignedLane();
     let ranged: Unit | undefined;
+    let none = "none";
     for (const c of bot.GetNearbyLaneCreeps(1200, false)) {
-        if (valid(c) && isLaneCreep(c) && isRanged(c) && fed.get(c) !== true && frac(c) >= SETTINGS.FeedCreepHp) ranged = c;
+        if (!valid(c) || !isLaneCreep(c) || !isRanged(c)) continue;
+        if (fed.get(c) === true) none = "fed";
+        else if (frac(c) < SETTINGS.FeedCreepHp) none = none === "fed" ? none : "low";
+        else ranged = c;
     }
-    if (ranged === undefined) return $multi(undefined, "no_ranged");
+    if (ranged === undefined) return $multi(undefined, "no_ranged_" + none);
     const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
     const veto = CtlVeto(LaneControl.Current(team, lane), LaneControl.ForcedLever(Overrides.Get("ForceLever"), team, lane));
     if (veto !== undefined) return $multi(undefined, veto);
@@ -728,6 +744,12 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         a.phase = "walk";
     }
     if (a.orderedAt === undefined) {
+        // A feed whose approach timed out short of their creeps orders from where the bot stands: not without a creep to draw.
+        if (a.kind === "feed" && enemyCreepsNear(bot, bot.GetLocation(), SETTINGS.DrawR).length < SETTINGS.FeedMinCreeps) {
+            fed.set(a.creep, true);
+            finish(bot, a, "short", now);
+            return false;
+        }
         const near = enemyCreepsNear(bot, bot.GetLocation(), 500);
         a.near = near.length;
         a.start = near.map((c) => ({ unit: c, x: c.GetLocation().x, y: c.GetLocation().y }));

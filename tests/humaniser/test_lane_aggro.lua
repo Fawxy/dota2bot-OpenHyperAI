@@ -228,6 +228,51 @@ do
 	check("retreat held the bot: the move ends stale, naming the retreat", has("result=stale.* md=" .. dota.BotMode.Retreat .. " "))
 end
 
+-- Slice lh-draw step 3: the feed's watch is read whichever mode holds the bot (banked logs: 697 of 999 stale feeds ended in
+-- the watch, the move done); a feed whose approach ends with no enemy creep in draw range gives no order.
+local function toWatch(Ag, bot)
+	Ag.Step(bot)
+	bot.loc = ActionsOf(1, "MoveToLocation")[1].args[1]
+	T = T + 0.25
+	Ag.Step(bot)
+	CREEPS[3][1].target = bot
+	T = T + 0.5
+	Ag.Step(bot)
+	T = T + 1.5
+	Ag.Step(bot)
+end
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	bot.GetDenies = function(self) return self.dn or 0 end
+	toWatch(Ag, bot)
+	check("watch scene: the drop was ordered on our ranged creep", #ActionsOf(1, "AttackUnit") == 2 and Ag.Pending(bot) and not Ag.Acting(bot))
+	local ranged = ActionsOf(1, "AttackUnit")[2].args[1]
+	bot.mode = dota.BotMode.Retreat
+	for _ = 1, 20 do T = T + 0.25 H.States.Tick(bot) end
+	bot.mode = dota.BotMode.Laning
+	Ag.Step(bot)
+	check("a retreat held the bot 5 s through the watch: back in lane it still watches, not stale", Ag.Pending(bot) and not has("result=stale"))
+	bot.mode = dota.BotMode.Retreat
+	T = T + 0.25
+	ranged.hp = 0
+	bot.dn = 1
+	H.States.Tick(bot)
+	check("the fed creep dies to our deny during the retreat: denied", has("kind=feed result=denied") and not Ag.Pending(bot))
+end
+do
+	local Ag, bot, _, _, has = feedScene(1400)
+	Ag.Step(bot)
+	bot.loc = ActionsOf(1, "MoveToLocation")[1].args[1]
+	for _, c in ipairs(CREEPS[3]) do c.loc = Vector(c.loc.x + 3000, c.loc.y) end
+	T = T + 0.25
+	Ag.Step(bot)
+	check("approach ends with no enemy creep in draw range: `short`, no draw order", has("kind=feed result=short") and #ActionsOf(1, "AttackUnit") == 0)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("short: that ranged creep is not fed again", not Ag.Pending(bot) and has("why=feed:no_ranged_fed"))
+end
+
 -- A walk started safe is not dropped when an enemy hero edges a few units closer: the end needs its attack to reach the point.
 do
 	local Ag, bot, h1 = feedScene(1400)
