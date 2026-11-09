@@ -782,6 +782,8 @@ do
 	check("double: double=1, camp A good_2", field(l, "double") == "1" and tonumber(field(l, "fcamp")) == idxOf("good_2"), l)
 	-- Nothing walks the hero to camp A after the job: from B's walk-off A is out of StackSight, so its outcome is unseen.
 	check("double: B stacked, A unseen from B's walk-off", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fseen") == "0", l)
+	-- The core camp's price and the camp cap read `Stacking.StackCount`: a landed hit counts, seen or not.
+	check("double: both camps on the stack record, the unseen A assumed", field(l, "scount") == "1" and field(l, "fscount") == "1" and H.Lane.Stacking.StackCount(idxOf("good_2")) == 1 and H.Lane.Stacking.StackCount(idxOf("good_1")) == 1, l)
 	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
 	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
 	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))

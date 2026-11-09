@@ -987,13 +987,29 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
     }
 }
 
+function firstRes(f: FirstCamp): string {
+    return f.aggro === undefined ? "failed" : (f.fresh ?? 0) > 0 ? "stacked" : f.chk === undefined ? "unseen" : "not_stacked";
+}
+
+/**
+ * A landed hit puts the stack on `Stacking`'s record: read (`stacked`) or assumed (`unseen`: the API lists no neutral in
+ * fog, so a stack out of sight is known only from the landed hit). `not_stacked` and `failed` leave an earlier record.
+ */
+function recordOutcome(campIdx: number, minute: number, res: string): void {
+    if (res === "stacked" || res === "unseen") Stacking.NoteStackOutcome(campIdx, minute, undefined, true);
+}
+
 function report(bot: Unit, a: Attempt): void {
     const sp = Camps.SpawnerByIdx(a.campIdx);
     // After a landed hit the box decides the result (`unseen`: never in sight after :00); before it, the attempt failed.
     const landed = a.aggro !== undefined;
     const res = !landed ? "failed" : (a.fresh ?? 0) > 0 ? "stacked" : a.chk === undefined ? "unseen" : "not_stacked";
+    // Before the line, so `scount` is what the core camp's price and the camp cap read from now on.
+    recordOutcome(a.campIdx, a.minute, res);
+    if (a.first !== undefined) recordOutcome(a.first.campIdx, a.minute, firstRes(a.first));
     log(bot, a.minute, [
         ["res", res],
+        ["scount", Stacking.StackCount(a.campIdx)],
         ["why", a.why ?? "?"],
         ["camp", a.campIdx],
         ["type", a.type],
@@ -1048,7 +1064,8 @@ function doubleFields(a: Attempt): Telemetry.Fields<"stack"> {
     const landed = f.aggro !== undefined;
     return [
         ["double", a.double],
-        ["fres", !landed ? "failed" : (f.fresh ?? 0) > 0 ? "stacked" : f.chk === undefined ? "unseen" : "not_stacked"],
+        ["fres", firstRes(f)],
+        ["fscount", Stacking.StackCount(f.campIdx)],
         ["fcamp", f.campIdx],
         ["ftype", f.type],
         ["faggro", landed ? math.floor(f.aggro! * 10) / 10 : "?"],

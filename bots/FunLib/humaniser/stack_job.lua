@@ -748,7 +748,7 @@ local function __TS__ArraySplice(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, log, report, doubleFields, winField, winOff, targetDist, sample59, override, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, settling, LANE_NEAR, SEEN_SCAN, probe
+local setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, log, firstRes, recordOutcome, report, doubleFields, winField, winOff, targetDist, sample59, override, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, settling, LANE_NEAR, SEEN_SCAN, probe
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
@@ -1039,15 +1039,35 @@ function log(bot, minute, fields)
         }
     )
 end
+function firstRes(f)
+    return f.aggro == nil and "failed" or ((f.fresh or 0) > 0 and "stacked" or (f.chk == nil and "unseen" or "not_stacked"))
+end
+function recordOutcome(campIdx, minute, res)
+    if res == "stacked" or res == "unseen" then
+        Stacking.NoteStackOutcome(campIdx, minute, nil, true)
+    end
+end
 function report(bot, a)
     local sp = Camps.SpawnerByIdx(a.campIdx)
     local landed = a.aggro ~= nil
     local res = not landed and "failed" or ((a.fresh or 0) > 0 and "stacked" or (a.chk == nil and "unseen" or "not_stacked"))
+    recordOutcome(a.campIdx, a.minute, res)
+    if a.first ~= nil then
+        recordOutcome(
+            a.first.campIdx,
+            a.minute,
+            firstRes(a.first)
+        )
+    end
     log(
         bot,
         a.minute,
         {
             {"res", res},
+            {
+                "scount",
+                Stacking.StackCount(a.campIdx)
+            },
             {"why", a.why or "?"},
             {"camp", a.campIdx},
             {"type", a.type},
@@ -1129,7 +1149,14 @@ function doubleFields(a)
     local landed = f.aggro ~= nil
     return {
         {"double", a.double},
-        {"fres", not landed and "failed" or ((f.fresh or 0) > 0 and "stacked" or (f.chk == nil and "unseen" or "not_stacked"))},
+        {
+            "fres",
+            firstRes(f)
+        },
+        {
+            "fscount",
+            Stacking.StackCount(f.campIdx)
+        },
         {"fcamp", f.campIdx},
         {"ftype", f.type},
         {
@@ -2202,10 +2229,10 @@ function ____exports.Wants(bot, blocked, host)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue228
+            local __continue232
             repeat
                 if handled[pid][minute] or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom or now >= (minute + 1) * GameRules.NEUTRAL_EVERY then
-                    __continue228 = true
+                    __continue232 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2370,7 +2397,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, a, "start", "trigger")
                 return true
             until true
-            if not __continue228 then
+            if not __continue232 then
                 break
             end
         end
@@ -2390,11 +2417,11 @@ function ____exports.CalendarEntries(bot, now)
     local a = running[pid]
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue252
+            local __continue256
             repeat
                 local ____end = minute * 60 + 60 + jobEnd()
                 if now >= ____end then
-                    __continue252 = true
+                    __continue256 = true
                     break
                 end
                 if a ~= nil and a.minute == minute then
@@ -2407,12 +2434,12 @@ function ____exports.CalendarEntries(bot, now)
                         fixed = false,
                         running = true
                     }
-                    __continue252 = true
+                    __continue256 = true
                     break
                 end
                 local ____opt_38 = handled[pid]
                 if (____opt_38 and ____opt_38[minute]) == true or now >= minute * 60 + 60 then
-                    __continue252 = true
+                    __continue256 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -2440,7 +2467,7 @@ function ____exports.CalendarEntries(bot, now)
                     }) or ({nil, nil}))
                 end
                 if data == nil or stand == nil then
-                    __continue252 = true
+                    __continue256 = true
                     break
                 end
                 local walk = travel(bot, stand)
@@ -2475,9 +2502,9 @@ function ____exports.CalendarEntries(bot, now)
                     back = ____end + walk,
                     fixed = false
                 }
-                __continue252 = true
+                __continue256 = true
             until true
-            if not __continue252 then
+            if not __continue256 then
                 break
             end
         end
