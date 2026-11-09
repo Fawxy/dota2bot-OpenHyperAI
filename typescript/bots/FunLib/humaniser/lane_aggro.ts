@@ -100,18 +100,10 @@ export const SETTINGS = {
     /**
      * Drag: the draw is ordered with the creep within DragDrawR (EC-053 gives 500, but on drills lhd2-lhd5, 60 drags, a creep
      * 400 or more away at the order followed in 7 of 20 and was our last hit in 2; under 300, 25 of 32 followed and 22 were
-     * ours: fitted). Farther, the bot steps to DragDrawR less DragStepIn from the creep when the walk (ApproachTime) plus
-     * DragLead fits before the last hit is due and the step is safe (noDeeper); no distance cap: lane_spot holds a melee core
-     * outside a ranged hero's reach plus 1.5 s of its movement (lhd6: 770 from the creep), and the body walks that ground for
-     * every hit anyway. No order with the creep beyond DragOrderR (the step ran short).
+     * ours: fitted). Farther, no drag: walking in for a contested last hit is the contest walk-in's (Ours.CoreContest; lhd9a/b,
+     * the drag's own timed step in added nothing over it). No order with the creep beyond DragOrderR.
      */
     DragDrawR: 300,
-    DragStepIn: 50,
-    /**
-     * Drag: seconds to spare between arriving and the last hit's due time, for the order and the creep's turn (`judgement`).
-     * The walk is distance / move speed with no ApproachSlack: lhd7, 11 steps, every walk ended 0.3-0.5 s inside the slacked time.
-     */
-    DragLead: 0.3,
     /**
      * Drag: the walk back ends and the body takes the hit once the dragged creep's last hit is due within the walk into
      * attack range plus this (`judgement`; lhd7: 5 drags walked the full DragWalk, the creep at 6-22% HP and the bot 400-450
@@ -219,10 +211,9 @@ interface Attempt {
     ss?: number;
     /** Drag, at the creep's death: `us` (our last hit), `hero` (the contester's last hits or denies rose), `none`. */
     by?: string;
-    /** Drag: the last hit's due time (s) at the start, the predicted walk in (s), and the seconds into the walk back when the
-     *  hit came due and the body took over (undefined when the walk ran its full DragWalk). */
+    /** Drag: the last hit's due time (s) at the start, and the seconds into the walk back when the hit came due and the body
+     *  took over (undefined when the walk ran its full DragWalk). */
     du?: number;
-    eta?: number;
     hb?: number;
 }
 
@@ -522,8 +513,6 @@ interface DragCand {
     ss: boolean;
     /** Why this one was not dragged (`go` when it was). */
     why?: string;
-    /** Predicted seconds to walk into draw range (ApproachTime), when a step was needed. */
-    eta?: number;
 }
 
 function contested(creep: Unit, heroes: Unit[]): Unit | undefined {
@@ -570,14 +559,11 @@ function dragCands(bot: Unit, heroes: Unit[]): DragCand[] {
 /**
  * Pure: what a contested last hit gets (slice lh-draw 1b, user 09/11/2026: a hero that can hit the creep from a safe spot
  * just takes it). `safe`: a spot within our reach of the creep is out of every enemy hero's reach, no drag; `in`: within
- * draw range, draw now; `late`: the step into range (`eta` s) would not arrive DragLead before the hit is due (the body
- * takes it); `step`: the step is safe; `step_unsafe`: it is not.
+ * draw range, draw now; `far`: beyond it (the contest walk-in walks in for it, Ours.CoreContest).
  */
-export function DragPlan(d: number, ss: boolean, stepSafe: boolean, eta: number, due: number): "safe" | "in" | "step" | "step_unsafe" | "late" {
+export function DragPlan(d: number, ss: boolean): "safe" | "in" | "far" {
     if (ss) return "safe";
-    if (d <= SETTINGS.DragDrawR) return "in";
-    if (eta + SETTINGS.DragLead > due) return "late";
-    return stepSafe ? "step" : "step_unsafe";
+    return d <= SETTINGS.DragDrawR ? "in" : "far";
 }
 
 /**
@@ -611,21 +597,8 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
     const here = bot.GetLocation();
     const reach = bot.GetAttackRange() + bot.GetBoundingRadius();
     for (const c of cands) {
-        const cl = c.creep.GetLocation();
-        const [hx, hy] = HitSpot(cl.x, cl.y, here.x, here.y, reach + c.creep.GetBoundingRadius());
-        const hit = Vector(hx, hy, here.z);
-        let step: Vector | undefined;
-        let stepSafe = false;
-        let eta = 0;
-        if (!c.ss && c.d > SETTINGS.DragDrawR) {
-            const [sx, sy] = HitSpot(cl.x, cl.y, here.x, here.y, SETTINGS.DragDrawR - SETTINGS.DragStepIn + 25);
-            step = Vector(sx, sy, here.z);
-            stepSafe = noDeeper(hit, step, heroes);
-            eta = GetUnitToLocationDistance(bot, step) / math.max(1, bot.GetCurrentMovementSpeed());
-            c.eta = eta;
-        }
-        const plan = DragPlan(c.d, c.ss, stepSafe, eta, c.due);
-        if (plan !== "in" && plan !== "step") {
+        const plan = DragPlan(c.d, c.ss);
+        if (plan !== "in") {
             c.why = plan;
             continue;
         }
@@ -634,20 +607,15 @@ function tryDrag(bot: Unit, heroes: Unit[], cands: DragCand[], now: number): Att
             c.why = "no_target";
             return undefined;
         }
-        const from = plan === "step" ? step! : here;
-        const back = along(from, dragDir(bot.GetTeam(), bot.GetAssignedLane(), from, c.con), SETTINGS.DragBack);
-        if (!noDeeper(hit, back, heroes)) {
+        const cl = c.creep.GetLocation();
+        const [hx, hy] = HitSpot(cl.x, cl.y, here.x, here.y, reach + c.creep.GetBoundingRadius());
+        const back = along(here, dragDir(bot.GetTeam(), bot.GetAssignedLane(), here, c.con), SETTINGS.DragBack);
+        if (!noDeeper(Vector(hx, hy, here.z), back, heroes)) {
             c.why = "unsafe";
             return undefined;
         }
-        c.why = plan === "step" ? "step" : "go";
-        const a = newAttempt(bot, "drag", plan === "step" ? "approach" : "walk", hero, c.creep, back, plan === "step" ? step : undefined, now);
-        if (plan === "step") {
-            const ad = GetUnitToLocationDistance(bot, step!);
-            a.ad = math.floor(ad);
-            a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
-            a.eta = math.floor(eta * 100) / 100;
-        }
+        c.why = "go";
+        const a = newAttempt(bot, "drag", "walk", hero, c.creep, back, undefined, now);
         a.du = math.floor(c.due * 100) / 100;
         a.con = c.con;
         a.clh0 = heroTally(c.con);
@@ -680,7 +648,7 @@ function heroTally(h: Unit): number | undefined {
 
 /**
  * One `ev=drag_look` line per creep the first time it is a drag candidate, with why it was not dragged then (a shared gate,
- * `late`, `step_unsafe`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
+ * `far`, `no_target`, `unsafe`, `other`: an earlier candidate went or stopped the look) or `go`.
  */
 function logLooks(bot: Unit, cands: DragCand[], pre: string | undefined, now: number): void {
     if (now - lookedPruned > 30) {
@@ -702,7 +670,6 @@ function logLooks(bot: Unit, cands: DragCand[], pre: string | undefined, now: nu
             ["hd", math.floor(GetUnitToUnitDistance(c.con, c.creep))],
             ["ss", c.ss ? 1 : 0],
             ["ml", ml],
-            ["eta", c.eta !== undefined ? math.floor(c.eta * 100) / 100 : undefined],
         ]);
     }
 }
@@ -861,9 +828,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["ml", a.ml],
         ["ss", a.ss],
         ["du", a.du],
-        ["eta", a.eta],
         ["hb", a.hb],
-        ["wt", a.kind === "drag" && a.ad !== undefined && a.orderedAt !== undefined ? math.floor((a.orderedAt - a.startedAt) * 100) / 100 : undefined],
     ]);
 }
 
@@ -996,9 +961,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
         // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
         const heroes = enemyHeroes(bot, 1600);
-        // The drag's step is judged once at its start (noDeeper): a statue or laner shifting with its creeps ended 8 of 27 steps
-        // on lhd5 by the per-frame check; HurtShare still ends it.
-        if (a.kind !== "drag" && (!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin)))) {
+        if ((!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin)))) {
             finish(bot, a, "unsafe", now);
             return false;
         }

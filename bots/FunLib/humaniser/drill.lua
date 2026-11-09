@@ -414,6 +414,16 @@ ____exports.TABLE = {
         rep = {every = 30, from = 0},
         overrides = {ForceLever = "r:top=none"}
     },
+    ["drag-sentry"] = {
+        note = "Radiant pos3 lane-only with lane aggro, the feed refused (ForceLever r:top=none), Dire pos5 a sentry in its lane (top), everyone else benched",
+        cast = {r = {3}},
+        sentry = {d = {5}},
+        others = "bench",
+        castLaneOnly = true,
+        laneAggro = true,
+        rep = {every = 30, from = 0},
+        overrides = {ForceLever = "r:top=none"}
+    },
     ["drag-ranged"] = {
         note = "Radiant pos2 lane-only with lane aggro, the feed refused (ForceLever r:mid=none), Dire pos2 a statue in mid, everyone else benched",
         cast = {r = {2}},

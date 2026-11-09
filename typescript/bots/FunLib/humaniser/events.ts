@@ -463,13 +463,9 @@ export const EVENTS = {
         ld: "num",
         ml: "num",
         ss: "num",
-        /** drag: the last hit's due time (s) at the start; with a step in, the seconds from the start to the order (the
-         *  walk, against the predicted `apt`). */
+        /** drag: the last hit's due time (s) at the start; the seconds into the walk back when the hit came due within the
+         *  walk to it plus DragHandLead and the body took over (absent: the walk ran its full length). */
         du: "num",
-        wt: "num",
-        /** drag: the predicted walk in (s, distance / move speed); the seconds into the walk back when the hit came due within
-         *  the walk to it plus DragHandLead and the body took over (absent: the walk ran its full length). */
-        eta: "num",
         hb: "num",
     },
     /** Slice lh-draw step 1a: a contested last hit in lane aggro's drag window (due DragDueMin-DragDueMax, an enemy hero
@@ -477,11 +473,10 @@ export const EVENTS = {
     drag_look: {
         pid: "num",
         role: "str",
-        /** `go` (dragged from where the bot stands), `step` (dragged after a short step in), `safe` (a spot within our reach
-         *  of the creep is out of every enemy hero's reach: no drag, the body takes it), `step_unsafe` (the step ends deeper into an enemy hero's reach than the spot the body would hit from), `late` (the step would not arrive DragLead before the hit is due), a shared gate
-         *  (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`), `no_target`, `unsafe` (the walk back goes deeper into an enemy
-         *  hero's reach), `other` (an earlier
-         *  candidate went or ended the look). */
+        /** `go` (dragged from where the bot stands), `safe` (a spot within our reach of the creep is out of every enemy
+         *  hero's reach: no drag, the body takes it), `far` (beyond DragDrawR: the contest walk-in's), a shared gate (`cooldown`,
+         *  `lane`, `hp`, `trading`, `tower`, `pull`), `no_target`, `unsafe` (the walk back ends deeper into an enemy hero's reach
+         *  than the spot the body would hit from), `other` (an earlier candidate went or ended the look). */
         why: "str",
         /** Bot to creep, contester to creep, the last hit's due time (s). */
         d: "num",
@@ -491,8 +486,6 @@ export const EVENTS = {
         ss: "num",
         /** 1 for a melee bot (attack range 200 or less). */
         ml: "num",
-        /** The predicted walk into draw range (s, ApproachTime), when the creep stood beyond DragDrawR. */
-        eta: "num",
     },
     /** Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave while ours is gone, at its end. */
     wave_hold: {

@@ -360,8 +360,6 @@ ____exports.EVENTS = {
         ml = "num",
         ss = "num",
         du = "num",
-        wt = "num",
-        eta = "num",
         hb = "num"
     },
     drag_look = {
@@ -372,8 +370,7 @@ ____exports.EVENTS = {
         hd = "num",
         due = "num",
         ss = "num",
-        ml = "num",
-        eta = "num"
+        ml = "num"
     },
     wave_hold = {
         pid = "num",

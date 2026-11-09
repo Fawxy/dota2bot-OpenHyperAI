@@ -253,11 +253,9 @@ end
 
 -- Slice lh-draw 1b: a contested last hit is dragged only when no spot within our reach of the creep is safe; a creep a little
 -- beyond the draw range is stepped toward only when the step is safe.
-check("a safe spot to hit from: no drag even with the creep in draw range", A.DragPlan(200, true, true, 0, 2) == "safe")
-check("no safe spot, creep in draw range: draw now however soon the hit is due", A.DragPlan(250, false, false, 0, 0.9) == "in")
-check("no safe spot, far creep, the walk arrives with time to spare and is safe: step in", A.DragPlan(780, false, true, 1.8, 2.5) == "step")
-check("no safe spot, the walk arrives too close to the hit's due time: no drag", A.DragPlan(780, false, true, 1.8, 2.0) == "late")
-check("no safe spot, the walk fits but ends deeper than the hit spot: no drag", A.DragPlan(500, false, false, 1.0, 2.5) == "step_unsafe")
+check("a safe spot to hit from: no drag even with the creep in draw range", A.DragPlan(200, true) == "safe")
+check("no safe spot, creep in draw range: draw now", A.DragPlan(250, false) == "in")
+check("no safe spot, creep beyond draw range: no drag (the contest walk-in walks in)", A.DragPlan(450, false) == "far")
 check("walk back: the dragged creep's hit due later than the walk to it plus the lead: keep walking", not A.HandBack({1.5, 0.6}))
 check("walk back: the hit due within the walk to it plus the lead: hand the creep to the body", A.HandBack({0.9, 0.6}))
 check("walk back: the creep not offered as a last hit: keep walking", not A.HandBack(nil))
