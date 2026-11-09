@@ -20,6 +20,13 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
     Horizon: 2,
+    /**
+     * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`), the same value and reason as the lane
+     * spot's LANE_ENGAGED_WINDOW: he keeps hitting while we stay. The exit read is the same call, so an episode does not end `safe`
+     * while he still hits us. At 2.6% of max HP a second one engaged melee hero reads 0.25 + 0.078 / HP: over the free budget 0.5
+     * from about 31% HP, and 0.33 at full HP (a lone harasser at full HP starts nothing). judgement.
+     */
+    EngagedWindow: 6,
     /** Base budget by purpose. judgement. */
     BudgetFree: 0.5,
     BudgetBusy: 0.6,
@@ -209,7 +216,7 @@ function purposeOf(bot: Unit): [string, number] {
 function readOf(bot: Unit, st: HeroState, now: number): Threat.Read {
     if (st.read !== undefined && st.readAt !== undefined && now - st.readAt < SETTINGS.ReadEvery) return st.read;
     const here = bot.GetLocation();
-    st.read = Threat.Read(bot, here, here, SETTINGS.Horizon);
+    st.read = Threat.Read(bot, here, here, SETTINGS.Horizon, { engagedWindow: SETTINGS.EngagedWindow });
     st.readAt = now;
     return st.read;
 }
@@ -393,6 +400,7 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: numbe
         ["band", r.band],
         ["reach", r.reach.length],
         ["burst", r2(r.burst)],
+        ["eng", r.eng.length],
         ["tower", r.tower],
         ["esc", r.reach.length > 0 ? r.escape : undefined],
         ["budget", r2(budget)],
@@ -543,7 +551,7 @@ export function Desire(bot: Unit): number | undefined {
         st.band = r.band;
         Telemetry.Event("retreat", [
             ["ph", "read"], ["pid", bot.GetPlayerID()], ["band", r.band], ["thr", r2(r.threat)], ["reach", r.reach.length],
-            ["burst", r2(r.burst)], ["tower", r.tower], ["esc", r.escape], ["budget", budget], ["hp", r2(hpShare(bot))],
+            ["burst", r2(r.burst)], ["eng", r.eng.length], ["tower", r.tower], ["esc", r.escape], ["budget", budget], ["hp", r2(hpShare(bot))],
             ["crp", bot.WasRecentlyDamagedByCreep(1)],
         ]);
     }

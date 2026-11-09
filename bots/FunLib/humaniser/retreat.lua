@@ -233,6 +233,7 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 ____exports.SETTINGS = {
     Horizon = 2,
+    EngagedWindow = 6,
     BudgetFree = 0.5,
     BudgetBusy = 0.6,
     BudgetCommitted = 0.75,
@@ -405,7 +406,13 @@ local function readOf(bot, st, now)
         return st.read
     end
     local here = bot:GetLocation()
-    st.read = Threat.Read(bot, here, here, ____exports.SETTINGS.Horizon)
+    st.read = Threat.Read(
+        bot,
+        here,
+        here,
+        ____exports.SETTINGS.Horizon,
+        {engagedWindow = ____exports.SETTINGS.EngagedWindow}
+    )
     st.readAt = now
     return st.read
 end
@@ -701,6 +708,7 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
             "burst",
             r2(r.burst)
         },
+        {"eng", #r.eng},
         {"tower", r.tower}
     )
     local ____temp_3
@@ -992,6 +1000,7 @@ function ____exports.Desire(bot)
                     "burst",
                     r2(r.burst)
                 },
+                {"eng", #r.eng},
                 {"tower", r.tower},
                 {"esc", r.escape},
                 {"budget", budget},

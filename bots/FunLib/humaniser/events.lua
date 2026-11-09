@@ -809,6 +809,7 @@ ____exports.EVENTS = {
         band = "str",
         reach = "num",
         burst = "num",
+        eng = "num",
         tower = "bool",
         esc = "bool",
         budget = "num",

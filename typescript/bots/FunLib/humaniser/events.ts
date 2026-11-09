@@ -1027,6 +1027,8 @@ export const EVENTS = {
         band: "str",
         reach: "num",
         burst: "num",
+        /** The reaching heroes counted as engaged (hitting us within a second) by the read. */
+        eng: "num",
         tower: "bool",
         esc: "bool",
         budget: "num",

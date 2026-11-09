@@ -95,6 +95,43 @@ do
 	end)
 end
 
+-- An engaged hero (it hit us within a second) is counted over EngagedWindow (6 s), so one melee hero that keeps hitting at about
+-- 2.6% of our max HP a second reads 0.25 + 0.5 x 0.156 / HP: over the free budget from about 31% HP, 0.33 at full HP.
+-- rtlng2: the lane spot alone could not out-walk him; leaving a hero that is hitting us is the retreat's job.
+do
+	local function engagedWorld(hp, engaged)
+		local H, bot = world({ hp = hp })
+		local e = enemy(10, Vector(300, -5000), 0)
+		e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 15.6 * dur end
+		local function hit() if engaged then bot.hitBy = { [e] = T - 0.2 } end end
+		hit()
+		return H, bot, e, hit
+	end
+	local function leaves(hp, engaged)
+		local H, bot, e, hit = engagedWorld(hp, engaged)
+		local out = capture(function()
+			H.Retreat.Desire(bot)
+			T = T + react(bot) + 1
+			hit()
+			H.Retreat.Desire(bot)
+		end)
+		return H.Retreat.Running(bot), lines(out, "retreat")[1]
+	end
+	local on, s = leaves(150, true)
+	check("engaged: a melee hero hitting us at 25% HP starts a retreat why=threat, logged with eng", on and field(s, "why") == "threat" and field(s, "eng") == "1", s)
+	check("engaged: the same hero not hitting us at 25% HP starts none (2 s window)", not leaves(150, false))
+	check("engaged: at full HP the hitting hero starts none (a lone harasser is not run from)", not leaves(600, true))
+	local H, bot, e, hit = engagedWorld(150, true)
+	local out = capture(function()
+		H.Retreat.Desire(bot)
+		T = T + react(bot) + 1
+		hit()
+		H.Retreat.Desire(bot)
+		for _ = 1, 5 do T = T + 1 hit() H.Retreat.Desire(bot) end
+	end)
+	check("engaged: the episode does not end safe while he still hits us", H.Retreat.Running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
+end
+
 -- Lethal leaves at once; an escape item ready (or a faster bot out of their range) is not lethal.
 do
 	local H, bot = world({ hp = 200 })
