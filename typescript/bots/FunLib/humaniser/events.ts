@@ -1781,6 +1781,7 @@ export const EVENTS = {
         /** Ours.LaneSpotThreat: the threat read at the chosen spot (burst, threat) and the old hero limits' verdict there. */
         rb: "num",
         rt: "num",
+        rn: "num",
         ob: "str",
     },
 } as const;

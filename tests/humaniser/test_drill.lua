@@ -280,3 +280,22 @@ do
 end
 
 finish()
+
+-- retreat-chase: a chaser waits behind its own T1 on control reps (user 10/11/2026), not in its fountain, and chases on odd reps.
+do
+	local H = world("retreat-chase")
+	local dota = require("bots/ts_libs/dota/index")
+	local core = hero(0, RAD, 1, 3)
+	local chaser = hero(9, DIRE, 3, 3)
+	chaser.loc = Vector(0, 0, 0)
+	local t1 = TOWERS_W[DIRE][dota.Tower.Bot1]
+	T = 120.5 -- rep 2 (control)
+	check("chase wait: the chaser is held", H.Drill.RoleOf(chaser) == "chaser" and H.Drill.Held(chaser))
+	H.Drill.Hold(chaser)
+	local mv = ActionsOf(9, "MoveToLocation")
+	local to = mv[#mv] and mv[#mv].args[1]
+	local fx, fy = 6928, 6372
+	local d1 = to and math.sqrt((to.x - t1.loc.x) ^ 2 + (to.y - t1.loc.y) ^ 2)
+	local dF = to and math.sqrt((to.x - fx) ^ 2 + (to.y - fy) ^ 2)
+	check("chase wait: on a control rep it walks to 350 behind its own T1, not to the fountain", to ~= nil and math.abs(d1 - 350) < 5 and dF > 1000, to and (to.x .. "," .. to.y))
+end

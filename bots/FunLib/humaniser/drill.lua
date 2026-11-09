@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, spotPoint, noteSpot, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET
+local overrides, spotPoint, noteSpot, behindOwnT1, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -319,6 +319,23 @@ function noteSpot(bot, spot, at)
         }
     )
 end
+function behindOwnT1(bot)
+    local ids = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
+    local tw = GetTower(
+        bot:GetTeam(),
+        ids[bot:GetAssignedLane()]
+    )
+    if tw == nil or tw == nil or not tw:IsAlive() then
+        return nil
+    end
+    local a = tw:GetLocation()
+    local fx, fy = unpack(FOUNTAIN[bot:GetTeam()])
+    local len = math.max(
+        1,
+        math.sqrt((fx - a.x) ^ 2 + (fy - a.y) ^ 2)
+    )
+    return Vector(a.x + (fx - a.x) * CHASER_WAIT_BEHIND / len, a.y + (fy - a.y) * CHASER_WAIT_BEHIND / len, a.z)
+end
 function chase(bot)
     local spot = GetLaneFrontLocation(
         bot:GetTeam(),
@@ -329,10 +346,10 @@ function chase(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue44
+            local __continue49
             repeat
                 if not h:IsAlive() or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue44 = true
+                    __continue49 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -340,9 +357,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue44 = true
+                __continue49 = true
             until true
-            if not __continue44 then
+            if not __continue49 then
                 break
             end
         end
@@ -364,10 +381,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue58
+            local __continue63
             repeat
                 if not h:IsAlive() then
-                    __continue58 = true
+                    __continue63 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -375,9 +392,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue58 = true
+                __continue63 = true
             until true
-            if not __continue58 then
+            if not __continue63 then
                 break
             end
         end
@@ -747,6 +764,15 @@ function ____exports.Hold(bot)
     ) and ____exports.RepAt(DotaTime()) > 0 then
         return chase(bot)
     end
+    if r == "chaser" then
+        local at = behindOwnT1(bot)
+        if at ~= nil then
+            if GetUnitToLocationDistance(bot, at) > 100 then
+                bot:Action_MoveToLocation(at)
+            end
+            return true
+        end
+    end
     if r == "bench" or r == "chaser" then
         local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
         local f = Vector(x, y, z)
@@ -795,6 +821,7 @@ function ____exports.Hold(bot)
     bot:Action_MoveToLocation(target)
     return true
 end
+CHASER_WAIT_BEHIND = 350
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
     local ____opt_31 = ____exports.Active()

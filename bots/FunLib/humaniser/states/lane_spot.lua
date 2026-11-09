@@ -64,14 +64,18 @@ local HP_MARGIN = 300
 -- lposchk2 with 1 s (reach about 920 against a 570-range hero): idle cores 800-1,000 from a ranged enemy still lost 0.39 a
 -- second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
 local REACT_SECS = 1.5
---- With Ours.LaneSpotThreat the hero limit is the threat read (slice retreat, user 10/11/2026): the spot is acceptable where the
--- walk from the bot to it and the standing there for READ_HORIZON seconds read under both bars below, so the walk past a
--- hero counts and low HP counts once (through `burst`, which divides by current HP) instead of by a second margin. The
--- horizon is the core camp's GateHorizon (4 s); the burst bar is the read's Watch edge (a hero that takes a quarter of our
--- HP in the window), the threat bar its Pressured edge (judgement; graded on rtwatch1 and the drill, slice file "Open items").
--- rtwatch1 7:33: the old limits (reach 800 plus HP margin) put the spot beyond a chaser 850-920 away, then a `wave` spot
--- 1,400 forward past him, because they test the point, not the walk.
-local READ_HORIZON = 4
+--- With Ours.LaneSpotThreat the enemy-hero limit is the threat read of standing at the point for READ_HORIZON seconds (slice
+-- retreat, user 10/11/2026), and of the walk to it when that walk goes towards an enemy hero: a spot is acceptable where the read
+-- is under READ_BURST (the heroes in reach take that share of our current HP in the window; low HP counts once, through the
+-- read's own division by HP) and its missing belief under READ_MISSING. Walking away from every hero reads the place alone, so
+-- the candidates behind us are told apart (review 10/11/2026 H2: a walk read from the bot's own position gave every candidate the
+-- same reach and burst). Under our own tower the old hero limits and the tower's cover stand (H3). rtwatch1 7:33: the old limits
+-- put the spot beyond a chaser 850-920 away, then a `wave` spot 1,400 forward past him, because they test the point, not the
+-- walk. All `judgement`, graded in the drill: the horizon is about the walk back to the furthest candidate (1,000 at 300 a
+-- second); the burst bar sits above a lone melee harasser at full HP (0.15-0.25 in rtspot1) and under two heroes in reach.
+local READ_HORIZON = 3
+local READ_BURST = 0.35
+local READ_MISSING = 0.5
 --- No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
 -- about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
 local MIN_REACH = 800
@@ -575,37 +579,81 @@ function ____exports.Compute(bot, role, fed, hold)
     local cl = clash and clash.own
     local fo = clash and clash.far
     local byRead = On("LaneSpotThreat")
-    local hs = byRead and ({}) or heroes
-    local rs = byRead and ({}) or reach
     local here = bot:GetLocation()
+    local function underOwn(p)
+        if cover == nil then
+            return false
+        end
+        for ____, t in ipairs(cover.towers) do
+            if d2(p, t.at) <= t.range then
+                return true
+            end
+        end
+        return false
+    end
+    local function readOn(p)
+        return byRead and not underOwn(p)
+    end
     local reads = {}
+    local readN = 0
     local function readAt(p)
-        local key = (tostring(math.floor(p.x)) .. ",") .. tostring(math.floor(p.y))
+        local key = (tostring(math.floor(p.x / 25)) .. ",") .. tostring(math.floor(p.y / 25))
         local r = reads[key]
         if r == nil then
-            r = Threat.Read(bot, here, p, READ_HORIZON)
+            local toward = false
+            for ____, h in ipairs(heroes) do
+                if d2(
+                    p,
+                    h:GetLocation()
+                ) < d2(
+                    here,
+                    h:GetLocation()
+                ) then
+                    toward = true
+                end
+            end
+            r = Threat.Read(bot, toward and here or p, p, READ_HORIZON)
             reads[key] = r
+            readN = readN + 1
         end
         return r
     end
     local function readBreaks(p)
-        if not byRead then
+        if not readOn(p) then
             return false
         end
         local r = readAt(p)
-        return r.burst >= Threat.SETTINGS.Watch or r.threat >= Threat.SETTINGS.Pressured
+        return r.burst >= READ_BURST or r.missing >= READ_MISSING
+    end
+    local function limits(p, cov)
+        local ____readOn_result_6
+        if readOn(p) then
+            ____readOn_result_6 = ____exports.Breaks(
+                p,
+                creeps,
+                towers,
+                margin,
+                {},
+                {},
+                cov,
+                busy
+            )
+        else
+            ____readOn_result_6 = ____exports.Breaks(
+                p,
+                creeps,
+                towers,
+                margin,
+                heroes,
+                reach,
+                cov,
+                busy
+            )
+        end
+        return ____readOn_result_6
     end
     local function covered(p)
-        return cover ~= nil and ____exports.Breaks(
-            p,
-            creeps,
-            towers,
-            margin,
-            hs,
-            rs,
-            nil,
-            busy
-        ) ~= nil and 1 or 0
+        return cover ~= nil and limits(p, nil) ~= nil and 1 or 0
     end
     local function done(spot, pushed, why, cov)
         local info = {
@@ -622,6 +670,7 @@ function ____exports.Compute(bot, role, fed, hold)
             local r = readAt(spot)
             info.rb = r.burst
             info.rt = r.threat
+            info.rn = readN
             info.ob = ____exports.Breaks(
                 spot,
                 creeps,
@@ -636,16 +685,7 @@ function ____exports.Compute(bot, role, fed, hold)
         return info
     end
     local pref = Vector(px, py, front.z)
-    local first = ____exports.Breaks(
-        pref,
-        creeps,
-        towers,
-        margin,
-        hs,
-        rs,
-        cover,
-        busy
-    )
+    local first = limits(pref, cover)
     if first == nil and readBreaks(pref) then
         first = "hero"
     end
@@ -670,11 +710,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue109
+                    local __continue119
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue109 = true
+                            __continue119 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -682,23 +722,14 @@ function ____exports.Compute(bot, role, fed, hold)
                             keep = p
                             keepPushed = k
                         end
-                        if ____exports.Breaks(
-                            p,
-                            creeps,
-                            towers,
-                            margin,
-                            hs,
-                            rs,
-                            cover,
-                            busy
-                        ) == nil and not readBreaks(p) then
+                        if limits(p, cover) == nil and not readBreaks(Vector(bx, by, front.z)) then
                             best = p
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue109 = true
+                        __continue119 = true
                     until true
-                    if not __continue109 then
+                    if not __continue119 then
                         break
                     end
                 end

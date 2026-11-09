@@ -35,12 +35,12 @@ export const SETTINGS = {
     /**
      * One route cost point per this many seconds of walk at our current speed, so a long walk home does not beat a short one on
      * fewer exposed points alone (drill rtwalk1: the fountain, 13,168 away at cost 2, beat our T1's walk at cost 4). Walk time
-     * not length, so a slowed hero prices its walk (was 2,000 units a point, about 6.7 s at 300). judgement.
+     * not length, so a slowed hero prices its walk (about 1,650 units a point at 330 a second, a little stronger than the 2,000 it replaced). judgement.
      */
-    SecsPerCost: 7,
+    SecsPerCost: 5,
     /**
      * Items that heal HP when used on ourselves (tango, salve, faerie fire; slots 0-5, the backpack cannot be cast). Holding one
-     * takes RegenCredit off a tower anchor's cost: the tower is cover while it runs and its aura regenerates allies (a primary
+     * takes RegenCredit off our tower anchor (not the enemy tower's edge)'s cost: the tower is cover while it runs and its aura regenerates allies (a primary
      * source, user 10/11/2026; the amount is not read here). Reading only: the use is the Regen slice's. judgement.
      */
     RegenItems: ["item_tango", "item_tango_single", "item_flask", "item_faerie_fire"],
@@ -356,7 +356,7 @@ function chooseAnchor(bot: Unit, why: Why): [Anchor, number | undefined, number,
         a.exp = routeCost(bot, here, a.at, units);
         a.secs = a.len / speed;
         minExp = math.min(minExp, a.exp);
-        const credit = regen && (a.kind === "tower" || a.kind === "tower_edge") ? SETTINGS.RegenCredit : 0;
+        const credit = regen && a.kind === "tower" ? SETTINGS.RegenCredit : 0;
         a.cost = math.floor((a.exp + a.secs / SETTINGS.SecsPerCost - credit) * 10 + 0.5) / 10;
     }
     list.sort((a, b) => (a.cost !== b.cost ? a.cost - b.cost : a.len - b.len));

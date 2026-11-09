@@ -125,6 +125,20 @@ do
 	check("tower: why=tower, anchor the reach's edge", field(s, "why") == "tower" and field(s, "anchor") == "tower_edge", s)
 end
 
+-- The regen credit is for our tower's stand point, not the enemy tower's edge: a tango held leaves a tower_edge cost as it was.
+do
+	local function edgeCost(items)
+		local H, bot = world({ loc = Vector(2300, -5000) })
+		bot.items = items
+		TOWERS_W[3][dota.Tower.Bot1].target = bot
+		local out = capture(function() H.Retreat.Desire(bot) end)
+		return tonumber(field(lines(out, "retreat")[1], "cost")), field(lines(out, "retreat")[1], "anchor")
+	end
+	local plain, a1 = edgeCost(nil)
+	local held, a2 = edgeCost({ [3] = { name = "item_tango" } })
+	check("regen credit: a held tango does not cheapen the enemy tower's edge", a1 == "tower_edge" and a2 == "tower_edge" and plain == held, tostring(plain) .. " " .. tostring(held))
+end
+
 -- The tower's damage flag lasts 0.5 s past the hit: a hero already out of the reach (an episode just ended at its edge) does
 -- not start another on the flag alone; inside the reach it does (drills rtwalk2, rtchase2: episodes chained every 0.3 s).
 do

@@ -115,7 +115,7 @@ export const TABLE: Record<string, Entry> = {
     // The chase drill (prediction): the Radiant pos1 lane-only with our retreat live; the Dire pos3 chases and hits it whenever
     // it comes within CHASE_RANGE of the chaser's lane spot on odd reps, and is benched on even reps (the control).
     "retreat-chase": {
-        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, benched on even reps (control); everyone else benched",
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast: SAFE_CORE,
         chaser: { d: [3] },
         others: "bench",
@@ -125,7 +125,7 @@ export const TABLE: Record<string, Entry> = {
     // Two chasers (slice retreat step 3): the same drill with the Dire pos3 and pos4 both chasing, so the leave rule's `lethal`
     // (more heroes in reach than ours, no escape) and the lane spot's read of two heroes get forced reps.
     "retreat-chase2": {
-        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase it within 1,500 of their lane spots on odd reps, benched on even reps (control); everyone else benched",
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase it within 1,500 of their lane spots on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast: SAFE_CORE,
         chaser: { d: [3, 4] },
         others: "bench",
@@ -399,6 +399,14 @@ export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
     if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0) return chase(bot);
+    if (r === "chaser") {
+        // Waiting between chase reps: behind its own T1 (user 10/11/2026), so the next rep starts without the fountain walk.
+        const at = behindOwnT1(bot);
+        if (at !== undefined) {
+            if (GetUnitToLocationDistance(bot, at) > 100) bot.Action_MoveToLocation(at);
+            return true;
+        }
+    }
     if (r === "bench" || r === "chaser") {
         const [x, y, z] = FOUNTAIN[bot.GetTeam()];
         const f = Vector(x, y, z);
@@ -465,6 +473,20 @@ function noteSpot(bot: Unit, spot: string, at: Vector | undefined): void {
     if (lastSpot[pid] === key) return;
     lastSpot[pid] = key;
     Telemetry.Event("drill", [["ph", "spot"], ["name", Name()], ["pid", pid], ["team", bot.GetTeam()], ["rep", RepAt(DotaTime())], ["spot", spot], ["x", at !== undefined ? math.floor(at.x) : undefined], ["y", at !== undefined ? math.floor(at.y) : undefined]]);
+}
+
+/** How far behind its own T1, towards its fountain, a waiting chaser stands. `judgement`. */
+const CHASER_WAIT_BEHIND = 350;
+
+/** The point behind our own T1 of the hero's lane, towards our fountain; undefined without the tower. */
+function behindOwnT1(bot: Unit): Vector | undefined {
+    const ids: Record<number, Tower> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
+    const tw = GetTower(bot.GetTeam(), ids[bot.GetAssignedLane() as Lane]);
+    if (tw === null || tw === undefined || !tw.IsAlive()) return undefined;
+    const a = tw.GetLocation();
+    const [fx, fy] = FOUNTAIN[bot.GetTeam()];
+    const len = math.max(1, math.sqrt((fx - a.x) ** 2 + (fy - a.y) ** 2));
+    return Vector(a.x + ((fx - a.x) * CHASER_WAIT_BEHIND) / len, a.y + ((fy - a.y) * CHASER_WAIT_BEHIND) / len, a.z);
 }
 
 /** The chaser's step: attack the nearest enemy hero within CHASE_RANGE of its lane spot, else walk back to the spot. */

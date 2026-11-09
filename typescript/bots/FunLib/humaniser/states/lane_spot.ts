@@ -72,15 +72,19 @@ const HP_MARGIN = 300;
  */
 const REACT_SECS = 1.5;
 /**
- * With Ours.LaneSpotThreat the hero limit is the threat read (slice retreat, user 10/11/2026): the spot is acceptable where the
- * walk from the bot to it and the standing there for READ_HORIZON seconds read under both bars below, so the walk past a
- * hero counts and low HP counts once (through `burst`, which divides by current HP) instead of by a second margin. The
- * horizon is the core camp's GateHorizon (4 s); the burst bar is the read's Watch edge (a hero that takes a quarter of our
- * HP in the window), the threat bar its Pressured edge (judgement; graded on rtwatch1 and the drill, slice file "Open items").
- * rtwatch1 7:33: the old limits (reach 800 plus HP margin) put the spot beyond a chaser 850-920 away, then a `wave` spot
- * 1,400 forward past him, because they test the point, not the walk.
+ * With Ours.LaneSpotThreat the enemy-hero limit is the threat read of standing at the point for READ_HORIZON seconds (slice
+ * retreat, user 10/11/2026), and of the walk to it when that walk goes towards an enemy hero: a spot is acceptable where the read
+ * is under READ_BURST (the heroes in reach take that share of our current HP in the window; low HP counts once, through the
+ * read's own division by HP) and its missing belief under READ_MISSING. Walking away from every hero reads the place alone, so
+ * the candidates behind us are told apart (review 10/11/2026 H2: a walk read from the bot's own position gave every candidate the
+ * same reach and burst). Under our own tower the old hero limits and the tower's cover stand (H3). rtwatch1 7:33: the old limits
+ * put the spot beyond a chaser 850-920 away, then a `wave` spot 1,400 forward past him, because they test the point, not the
+ * walk. All `judgement`, graded in the drill: the horizon is about the walk back to the furthest candidate (1,000 at 300 a
+ * second); the burst bar sits above a lone melee harasser at full HP (0.15-0.25 in rtspot1) and under two heroes in reach.
  */
-const READ_HORIZON = 4;
+const READ_HORIZON = 3;
+const READ_BURST = 0.35;
+const READ_MISSING = 0.5;
 /**
  * No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
  * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
@@ -135,6 +139,8 @@ export interface SpotInfo {
      *  (`hero`, `hp`, ... or `none`), so both rules are graded on one truth (ev=lane_pos `rb`, `rt`, `ob`). */
     rb?: number;
     rt?: number;
+    /** Reads made this Compute (frame cost). */
+    rn?: number;
     ob?: string;
 }
 
@@ -450,39 +456,51 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
     const cl = clash?.own;
     const fo = clash?.far;
-    // Ours.LaneSpotThreat: the hero limit is the read of the walk from here to the point (see READ_HORIZON), so Breaks sees no heroes.
+    // Ours.LaneSpotThreat: the enemy-hero limit is the read (see READ_HORIZON); under our own tower the old limits and the cover stand.
     const byRead = On("LaneSpotThreat");
-    const hs = byRead ? [] : heroes;
-    const rs = byRead ? [] : reach;
     const here = bot.GetLocation();
+    const underOwn = (p: Vector): boolean => {
+        if (cover === undefined) return false;
+        for (const t of cover.towers) if (d2(p, t.at) <= t.range) return true;
+        return false;
+    };
+    const readOn = (p: Vector): boolean => byRead && !underOwn(p);
     const reads: Record<string, Threat.Read> = {};
+    let readN = 0;
+    // One read per position (a row of candidates reads at its lane-axis point): walks towards a hero from here, else the place alone.
     const readAt = (p: Vector): Threat.Read => {
-        const key = `${math.floor(p.x)},${math.floor(p.y)}`;
+        const key = `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
         let r = reads[key];
         if (r === undefined) {
-            r = Threat.Read(bot, here, p, READ_HORIZON);
+            let toward = false;
+            for (const h of heroes) if (d2(p, h.GetLocation()) < d2(here, h.GetLocation())) toward = true;
+            r = Threat.Read(bot, toward ? here : p, p, READ_HORIZON);
             reads[key] = r;
+            readN++;
         }
         return r;
     };
     const readBreaks = (p: Vector): boolean => {
-        if (!byRead) return false;
+        if (!readOn(p)) return false;
         const r = readAt(p);
-        return r.burst >= Threat.SETTINGS.Watch || r.threat >= Threat.SETTINGS.Pressured;
+        return r.burst >= READ_BURST || r.missing >= READ_MISSING;
     };
-    const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, hs, rs, undefined, busy) !== undefined ? 1 : 0);
+    const limits = (p: Vector, cov: Cover | undefined): Why | undefined =>
+        readOn(p) ? Breaks(p, creeps, towers, margin, [], [], cov, busy) : Breaks(p, creeps, towers, margin, heroes, reach, cov, busy);
+    const covered = (p: Vector): number => (cover !== undefined && limits(p, undefined) !== undefined ? 1 : 0);
     const done = (spot: Vector, pushed: number, why: Why, cov: number): SpotInfo => {
         const info: SpotInfo = { spot, pushed, anchor, why, margin, covered: cov, clash: cl, far: fo };
         if (byRead) {
             const r = readAt(spot);
             info.rb = r.burst;
             info.rt = r.threat;
+            info.rn = readN;
             info.ob = Breaks(spot, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
         }
         return info;
     };
     const pref = Vector(px, py, front.z);
-    let first = Breaks(pref, creeps, towers, margin, hs, rs, cover, busy);
+    let first = limits(pref, cover);
     if (first === undefined && readBreaks(pref)) first = "hero";
     if (first === undefined) return done(pref, 0, "pref", covered(pref));
 
@@ -505,7 +523,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
                 keep = p;
                 keepPushed = k;
             }
-            if (Breaks(p, creeps, towers, margin, hs, rs, cover, busy) === undefined && !readBreaks(p)) {
+            if (limits(p, cover) === undefined && !readBreaks(Vector(bx, by, front.z))) {
                 best = p;
                 bestCost = cost;
                 bestPushed = k;

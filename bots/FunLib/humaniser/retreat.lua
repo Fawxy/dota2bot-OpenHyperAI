@@ -241,7 +241,7 @@ ____exports.SETTINGS = {
     HealFloor = 0.3,
     HealUntil = 0.8,
     RouteStep = 300,
-    SecsPerCost = 7,
+    SecsPerCost = 5,
     RegenItems = {"item_tango", "item_tango_single", "item_flask", "item_faerie_fire"},
     RegenCredit = 1,
     EpisodeDesire = 0.95,
@@ -640,7 +640,7 @@ local function chooseAnchor(bot, why)
         a.exp = routeCost(bot, here, a.at, units)
         a.secs = a.len / speed
         minExp = math.min(minExp, a.exp)
-        local credit = regen and (a.kind == "tower" or a.kind == "tower_edge") and ____exports.SETTINGS.RegenCredit or 0
+        local credit = regen and a.kind == "tower" and ____exports.SETTINGS.RegenCredit or 0
         a.cost = math.floor((a.exp + a.secs / ____exports.SETTINGS.SecsPerCost - credit) * 10 + 0.5) / 10
     end
     __TS__ArraySort(

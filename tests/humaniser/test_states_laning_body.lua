@@ -232,7 +232,7 @@ end
 
 -- Ours.LaneSpotThreat (slice retreat): the hero limit is the threat read of the walk from the bot to the point over 4 s, not
 -- the reach of the point. rtwatch1 7:33: a spot 1,000 from a chaser passed the 800 reach while the walk to it ran past him.
--- Bot far back at (-3000, 0), the preferred point (-100, 0), a melee enemy at (900, 0) dealing 20 over the 3 s window.
+-- Bot far back at (-3000, 0), the preferred point (-100, 0), a melee enemy at (900, 0) dealing 20 over the 3 s window (3 s reach about 1,100 with hulls).
 do
 	local UT = require("bots/ts_libs/dota/index").UnitType
 	local foes = {}
@@ -255,7 +255,7 @@ do
 	local sFull, iFull = run({ hp = 100, threat = true })
 	check("read: a lone hero in reach at full HP keeps the preferred point", sFull ~= nil and iFull.why == "pref", iFull and iFull.why)
 	local sLow, iLow, e = run({ hp = 30, threat = true })
-	check("read: at 30% HP the same hero pushes the spot out of his 4 s reach", sLow ~= nil and iLow.why == "hero" and iLow.pushed >= 8 and sLow.x < -400, sLow and (sLow.x .. " " .. iLow.pushed .. " " .. tostring(iLow.why)))
+	check("read: at 30% HP the same hero pushes the spot out of his 4 s reach", sLow ~= nil and iLow.why == "hero" and iLow.pushed >= 2 and sLow.x < -150, sLow and (sLow.x .. " " .. iLow.pushed .. " " .. tostring(iLow.why)))
 	check("read: the old rule's verdict is logged beside it", iLow.ob == "none" and iLow.rb ~= nil, iLow and tostring(iLow.ob))
 	local sOld, iOld = run({ hp = 30, threat = false })
 	check("old limits: reach 800 plus the 240 margin leave that spot where it is", sOld ~= nil and iOld.why == "pref" and sOld.x == -100, sOld and sOld.x)
@@ -409,6 +409,38 @@ do
 	check("tanking enemy: inside 1,048 (the open-lane reach)", s ~= nil and dist(s, e.loc) < 1048 and info.covered == 1, s and dist(s, e.loc))
 	local n = spotFor(SDK, nil, setup(false))
 	check("same enemy, tower on something else: 1,048", n ~= nil and dist(n, e.loc) >= 1048, n and dist(n, e.loc))
+end
+
+-- Ours.LaneSpotThreat keeps our tower's cover: a melee enemy 400 from the preferred point that the read alone would refuse
+-- (burst 1.0 at full HP) does not move a spot our tower covers; with no tower the read refuses it and the spot backs off.
+do
+	local function run(tower)
+		local e
+		local s, bot = spotFor(SDK, { threat = true }, function()
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 100
+			GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then return { e } end return {} end
+			TOWERS = tower and { ownTower(-300, 0) } or {}
+		end)
+		return s, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot), e
+	end
+	local sCov, iCov = run(true)
+	check("read on, our tower covering the point: the preferred point holds (H3)", sCov ~= nil and sCov.x == -100 and iCov.covered == 1, sCov and sCov.x)
+	local sOpen, iOpen, e = run(false)
+	check("read on, no tower: the read refuses it and the spot backs off", sOpen ~= nil and sOpen.x < -150 and iOpen.why == "hero", sOpen and sOpen.x)
+	GetUnitList = function() return {} end
+end
+
+-- Inside a hero's reach the candidates behind us are still told apart (review H2): the place read falls with the distance, so the
+-- spot stops where the hero's 3 s reach (1,098) ends, not at the 1,000-back fallback.
+do
+	local e
+	local s, bot = spotFor(SDK, { hp = 100, threat = true }, function()
+		e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 40
+		GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then return { e } end return {} end
+	end)
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("in reach: the spot is the nearest candidate outside his reach, not the fallback", s ~= nil and info.why == "hero" and dist(s, e.loc) >= 1098 and dist(s, e.loc) < 1098 + 51, s and dist(s, e.loc))
+	GetUnitList = function() return {} end
 end
 
 -- Ours.LaneSpot: a core under CoreLastHit stands on our spot although States.Laning.Spot is 'oha'; off, OHA's spot.
