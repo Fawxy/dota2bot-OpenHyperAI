@@ -1774,6 +1774,10 @@ export const EVENTS = {
          *  distance from our T1 along the lane and our front's; absent when the spot anchored on our front as usual. */
         cl: "num",
         fo: "num",
+        /** Ours.LaneSpotThreat: the threat read at the chosen spot (burst, threat) and the old hero limits' verdict there. */
+        rb: "num",
+        rt: "num",
+        ob: "str",
     },
 } as const;
 

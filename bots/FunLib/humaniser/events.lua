@@ -1365,7 +1365,10 @@ ____exports.EVENTS = {
         nk = "num",
         nr = "num",
         cl = "num",
-        fo = "num"
+        fo = "num",
+        rb = "num",
+        rt = "num",
+        ob = "str"
     }
 }
 return ____exports

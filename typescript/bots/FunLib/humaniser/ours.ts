@@ -65,6 +65,9 @@ export const DEFAULTS = {
      *  creeps attacking something else there keep a small ring, enemy heroes our tower would punish a short reach. Supports,
      *  and off: the open-lane limits. */
     LaneSpotTower: true,
+    /** Slice retreat: with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 4 s (states/lane_spot
+     *  READ_HORIZON) instead of the hero reach and the HP margin on it; off: the old hero limits. */
+    LaneSpotThreat: true,
     /**
      * Slice lane-fight: with CoreLastHit and CoreTrade on, an in-lane pos1-3's fights are ours (states/core_trade): it commits on
      * a target at 40% HP or less with even numbers or more, OHA's team roam keeps only its non-fight branches for it and

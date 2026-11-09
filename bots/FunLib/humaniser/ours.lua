@@ -75,6 +75,7 @@ ____exports.DEFAULTS = {
     LaneSpot = true,
     SupportHarass = true,
     LaneSpotTower = true,
+    LaneSpotThreat = true,
     CoreLaneFight = true,
     LaneAggro = true,
     CoreContest = true,

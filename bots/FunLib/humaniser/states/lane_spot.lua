@@ -5,6 +5,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local On = ____ours.On
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 function sub(a, b)
     return {a.x - b.x, a.y - b.y}
@@ -63,6 +64,14 @@ local HP_MARGIN = 300
 -- lposchk2 with 1 s (reach about 920 against a 570-range hero): idle cores 800-1,000 from a ranged enemy still lost 0.39 a
 -- second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
 local REACT_SECS = 1.5
+--- With Ours.LaneSpotThreat the hero limit is the threat read (slice retreat, user 10/11/2026): the spot is acceptable where the
+-- walk from the bot to it and the standing there for READ_HORIZON seconds read under both bars below, so the walk past a
+-- hero counts and low HP counts once (through `burst`, which divides by current HP) instead of by a second margin. The
+-- horizon is the core camp's GateHorizon (4 s); the burst bar is the read's Watch edge (a hero that takes a quarter of our
+-- HP in the window), the threat bar its Pressured edge (judgement; graded on rtwatch1 and the drill, slice file "Open items").
+-- rtwatch1 7:33: the old limits (reach 800 plus HP margin) put the spot beyond a chaser 850-920 away, then a `wave` spot
+-- 1,400 forward past him, because they test the point, not the walk.
+local READ_HORIZON = 4
 --- No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
 -- about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
 local MIN_REACH = 800
@@ -565,17 +574,66 @@ function ____exports.Compute(bot, role, fed, hold)
     local cover = ____temp_1
     local cl = clash and clash.own
     local fo = clash and clash.far
+    local byRead = On("LaneSpotThreat")
+    local hs = byRead and ({}) or heroes
+    local rs = byRead and ({}) or reach
+    local here = bot:GetLocation()
+    local reads = {}
+    local function readAt(p)
+        local key = (tostring(math.floor(p.x)) .. ",") .. tostring(math.floor(p.y))
+        local r = reads[key]
+        if r == nil then
+            r = Threat.Read(bot, here, p, READ_HORIZON)
+            reads[key] = r
+        end
+        return r
+    end
+    local function readBreaks(p)
+        if not byRead then
+            return false
+        end
+        local r = readAt(p)
+        return r.burst >= Threat.SETTINGS.Watch or r.threat >= Threat.SETTINGS.Pressured
+    end
     local function covered(p)
         return cover ~= nil and ____exports.Breaks(
             p,
             creeps,
             towers,
             margin,
-            heroes,
-            reach,
+            hs,
+            rs,
             nil,
             busy
         ) ~= nil and 1 or 0
+    end
+    local function done(spot, pushed, why, cov)
+        local info = {
+            spot = spot,
+            pushed = pushed,
+            anchor = anchor,
+            why = why,
+            margin = margin,
+            covered = cov,
+            clash = cl,
+            far = fo
+        }
+        if byRead then
+            local r = readAt(spot)
+            info.rb = r.burst
+            info.rt = r.threat
+            info.ob = ____exports.Breaks(
+                spot,
+                creeps,
+                towers,
+                margin,
+                heroes,
+                reach,
+                cover,
+                busy
+            ) or "none"
+        end
+        return info
     end
     local pref = Vector(px, py, front.z)
     local first = ____exports.Breaks(
@@ -583,22 +641,21 @@ function ____exports.Compute(bot, role, fed, hold)
         creeps,
         towers,
         margin,
-        heroes,
-        reach,
+        hs,
+        rs,
         cover,
         busy
     )
+    if first == nil and readBreaks(pref) then
+        first = "hero"
+    end
     if first == nil then
-        return {
-            spot = pref,
-            pushed = 0,
-            anchor = anchor,
-            why = "pref",
-            margin = margin,
-            covered = covered(pref),
-            clash = cl,
-            far = fo
-        }
+        return done(
+            pref,
+            0,
+            "pref",
+            covered(pref)
+        )
     end
     local best
     local bestCost = math.huge
@@ -613,11 +670,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue102
+                    local __continue109
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue102 = true
+                            __continue109 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -630,18 +687,18 @@ function ____exports.Compute(bot, role, fed, hold)
                             creeps,
                             towers,
                             margin,
-                            heroes,
-                            reach,
+                            hs,
+                            rs,
                             cover,
                             busy
-                        ) == nil then
+                        ) == nil and not readBreaks(p) then
                             best = p
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue102 = true
+                        __continue109 = true
                     until true
-                    if not __continue102 then
+                    if not __continue109 then
                         break
                     end
                 end
@@ -654,37 +711,20 @@ function ____exports.Compute(bot, role, fed, hold)
     end
     if best == nil then
         if keep ~= nil then
-            return {
-                spot = keep,
-                pushed = keepPushed,
-                anchor = anchor,
-                why = "xp",
-                margin = margin,
-                covered = 0,
-                clash = cl,
-                far = fo
-            }
+            return done(keep, keepPushed, "xp", 0)
         end
-        return {
-            spot = Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z),
-            pushed = steps,
-            anchor = anchor,
-            why = "xp",
-            margin = margin,
-            covered = 0,
-            clash = cl,
-            far = fo
-        }
+        return done(
+            Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z),
+            steps,
+            "xp",
+            0
+        )
     end
-    return {
-        spot = best,
-        pushed = bestPushed,
-        anchor = anchor,
-        why = first,
-        margin = margin,
-        covered = covered(best),
-        clash = cl,
-        far = fo
-    }
+    return done(
+        best,
+        bestPushed,
+        first,
+        covered(best)
+    )
 end
 return ____exports

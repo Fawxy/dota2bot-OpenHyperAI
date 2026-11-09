@@ -67,7 +67,7 @@ local function Fresh(states, o)
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
 		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot, SupportHarass = o.supportHarass,
-		LaneSpotTower = o.laneSpotTower }
+		LaneSpotTower = o.laneSpotTower, LaneSpotThreat = o.threat == true }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
@@ -228,6 +228,38 @@ do
 	local far, botf = spotFor(SDK, nil, function() MakeUnit({ pid = 7, team = 3, loc = Vector(700, 0) }) end)
 	check("melee enemy 800 away: the preferred point (side-shifted) holds", far ~= nil and far.x == -100
 		and require("bots/FunLib/humaniser/states/laning").SpotInfo(botf).why == "pref", far and (far.x .. "," .. far.y))
+end
+
+-- Ours.LaneSpotThreat (slice retreat): the hero limit is the threat read of the walk from the bot to the point over 4 s, not
+-- the reach of the point. rtwatch1 7:33: a spot 1,000 from a chaser passed the 800 reach while the walk to it ran past him.
+-- Bot far back at (-3000, 0), the preferred point (-100, 0), a melee enemy at (900, 0) dealing 20 over the 3 s window.
+do
+	local UT = require("bots/ts_libs/dota/index").UnitType
+	local foes = {}
+	function GetUnitList(t) if t == UT.EnemyHeroes then return foes end return {} end
+	if IsHeroAlive == nil then function IsHeroAlive() return true end end
+	if GetHeroLastSeenInfo == nil then function GetHeroLastSeenInfo() return {} end end
+	if IsLocationVisible == nil then function IsLocationVisible() return true end end
+	local Unit2 = getmetatable(MakeUnit({ pid = 98 }))
+	if Unit2.FindItemSlot == nil then function Unit2:FindItemSlot() return -1 end end
+	local function run(o)
+		local e
+		local s, bot = spotFor(SDK, o, function(b)
+			b.loc = Vector(-3000, 0)
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(900, 0) })
+			e.estDamage = 20
+			foes[1] = e
+		end)
+		return s, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot), e
+	end
+	local sFull, iFull = run({ hp = 100, threat = true })
+	check("read: a lone hero in reach at full HP keeps the preferred point", sFull ~= nil and iFull.why == "pref", iFull and iFull.why)
+	local sLow, iLow, e = run({ hp = 30, threat = true })
+	check("read: at 30% HP the same hero pushes the spot out of his 4 s reach", sLow ~= nil and iLow.why == "hero" and iLow.pushed >= 8 and sLow.x < -400, sLow and (sLow.x .. " " .. iLow.pushed .. " " .. tostring(iLow.why)))
+	check("read: the old rule's verdict is logged beside it", iLow.ob == "none" and iLow.rb ~= nil, iLow and tostring(iLow.ob))
+	local sOld, iOld = run({ hp = 30, threat = false })
+	check("old limits: reach 800 plus the 240 margin leave that spot where it is", sOld ~= nil and iOld.why == "pref" and sOld.x == -100, sOld and sOld.x)
+	foes[1] = nil
 end
 
 -- No candidate within the XP limit clears the hero reach (an enemy ranged hero just behind the preferred point): the fallback is
