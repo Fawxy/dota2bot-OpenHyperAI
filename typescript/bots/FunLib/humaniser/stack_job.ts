@@ -1,6 +1,7 @@
 /**
  * Stack execution (slice 4, switch Ours.StackExecute, KR S.2a): on a placeholder trigger (minutes 3, 5 and 7) the
- * pos5 stacks its nearest own-side camp with the `stack` job verb, then watches the box for the outcome. With the switch
+ * pos5 stacks its nearest own-side camp with the `stack` job verb and ends at the walk-off; the outcome is read while a box
+ * is in sight from where the hero goes next (`readOutcome`). With the switch
  * off the pos5 never stacks. The chooser (`hum/chooser.ts`) starts, hosts and ends it (Wants, Step, End).
  * One `ev=stack` line per trigger minute: the attempt's result, or `res=skip` with the reason no job started.
  * When to stack, and who, is S.2b: it replaces TRIGGER_MINUTES and keeps the job and its result line.
@@ -48,16 +49,16 @@ export const SETTINGS = {
      *  more easily towards the lane). Away from the lane, every evil_1 hit by lich and omniknight came from 80-185 inside the
      *  camp, unseen from the stand point (s4solo4, s4solo4a: 0 of 15). */
     ExitTowardLane: true,
-    /** The watch for the outcome ends this long after the next minute's :00 spawn check. */
-    WatchUntil: 5,
-    /** A job may not start more than this many seconds before its latest end (:00 + WatchUntil), else the minute is skipped
-     *  as `far` and the watch is cut here. No limit since 02/11/2026 (user: "too many factors to have this as a blanket
-     *  rule"; S.2a's 25 s away is a reading now): when a support leaves lane is the stage 2 "Support stacking choice" row's.
-     *  The job's run stays bounded by the verbs' own timeouts and the watch's :00 + WatchUntil. Was 25 (KR S.2's away). */
+    /** The job ends at the walk-off (user 09/11/2026: the watch that walked back to the camp to read the outcome cost 4-7 s
+     *  off lane a stack and fed nothing in play). The outcome is read only while a box happens to be in sight from wherever
+     *  the hero went next, until this long after :00; the `ev=stack` line waits for it. Ground truth is the replay
+     *  (`tools/hlog/stacktruth.js`, games with `--record`). */
+    ReadUntil: 5,
+    /** A job may not start more than this many seconds before its end (:00 + the walk-off's StackExitUntil), else the
+     *  minute is skipped as `far`. No limit since 02/11/2026 (user: "too many factors to have this as a blanket rule";
+     *  S.2a's 25 s away is a reading now): when a support leaves lane is the stage 2 "Support stacking choice" row's. Was 25
+     *  (KR S.2's away). */
     AwayMax: math.huge,
-    /** Seconds after :00 a stacked camp is usually seen and the watch ends (s4: :02-:04). The far rule plans with it, not
-     *  the worst case (:00 + WatchUntil, which skipped a 23 s job at 3:39 in s4r2); the watch is cut at AwayMax instead. */
-    FarEnd: 3,
     /** Seconds kept spare on the walk from A to B's hit (the order goes out the hit's lead early); judgement. */
     DoubleSlack: 0.5,
     /** The pos5's safe-lane double waits until its team's pos1 can clear camp A (the hard camp) once it holds one more stack
@@ -71,12 +72,8 @@ export const SETTINGS = {
     /** A double's start slack instead of Lead (9): the walk to camp A from the safe-lane T1 is ~8 s for good_2, and with
      *  Lead the job would run ~27.5 s, over AwayMax (E1, 31/10/2026). A double that still cannot fit runs single. */
     DoubleLead: 5,
-    /** A double's watch end after :00: camp A's origin is ~1,100-1,600 from B's stand, so A was read in time only after
-     *  a quick B stack, and was unread in most of dsolo4b-5c (31/10/2026). 12, not 8: the shrine pairs walk on away from
-     *  A, which was unread in 18 of 23 (shsolo4b/4c) though the user saw it stack in the replay. AwayMax still cuts it. */
-    DoubleWatchUntil: 12,
-    /** Seconds B's box is read without a fresh neutral before the watch walks to A (a stacked B is usually seen by :02-:04). */
-    BReadFor: 2,
+    /** ReadUntil for a double: the hero may pass camp A on its way back. */
+    DoubleReadUntil: 12,
     /** A double's waits keep this far from the camp's nearest visible neutral (the verb's `waitClear`): Dota's hero
      *  acquisition range is about 800 (judgement, to be confirmed by `fauto`); warlock and lich lost 25-40% HP at the
      *  shrine pair's camp A from their arrival at :48-:49, 3 s before the hit (dsolo4b, dsolo4c; user replay review). */
@@ -91,7 +88,7 @@ export const SETTINGS = {
 
 // Stack diagnostics (scenario and drill games only, never a verdict). The solo harness (one pos5 alone, an attempt every
 // minute, the neutrals killed at :05 so each attempt meets a fresh camp) is drill `stack` (humaniser/drill.ts; it was
-// Overrides.Solo + StackEvery). Overrides.StackFar = true lifts the AwayMax skip and watch cut (slice double-stack, user
+// Overrides.Solo + StackEvery). Overrides.StackFar = true lifts the AwayMax skip (slice double-stack, user
 // 31/10/2026: test execution apart from getting there; the pos4 lanes 12-17 s from its pairs; drill `stack` implies it).
 // Overrides.ShrineLane = true runs the shrine pairs' lane route (SHRINE_LANE), Overrides.TriNW = true the Dire triangle
 // pair's north-west walk-off instead of TRI_SE, Overrides.TriLate = <s> its ancient hit later. Overrides.Sweep = true
@@ -108,6 +105,11 @@ export function Benched(bot: Unit): boolean {
 /** A held hero's step (fountain or statue spot). False when the hero is not held. */
 export function Bench(bot: Unit): boolean {
     return Drill.Hold(bot);
+}
+
+/** Seconds after :00 the job ends: the verb's walk-off runs to :00 + StackExitUntil. */
+function jobEnd(): number {
+    return LaneConfig.Settings().Timing.StackExitUntil;
 }
 
 /** AwayMax, or no limit with Overrides.StackFar (scenario games only). */
@@ -178,12 +180,18 @@ export interface Attempt {
      *  12:0x: `after` rose by one with four neutrals inside the bare box at :59.5). */
     seen?: Set<Unit>;
     fresh?: number;
+    /** The second of the minute the box was first in sight at or after :00 + StackOutcomeAt; undefined: never read. */
+    chk?: number;
+    /** Set as the job ends: its result reason, seconds away and whether the hero died, for the line written after the read. */
+    why?: string;
+    away?: number;
+    death?: number;
     n2?: string;
     n59?: string;
     /** Each pulled neutral from the hit to :59.5 (user replay review of shsolo4b, 31/10/2026: the easy camp's priest gave up
      *  the chase early and walked back, and the hard camp blocked itself in its box; the log showed neither). */
     trk?: Map<Unit, NTrack>;
-    /** The most lane creeps (either team) within LANE_NEAR of the camp's origin from the hit to the end of the watch: the
+    /** The most lane creeps (either team) within LANE_NEAR of the camp's origin from the hit to the job's end: the
      *  walk-off dragged a wave into the camp, a partial pull (user watching s4solo7ab: evil_1's north-west route pulled the
      *  top lane twice; nothing in the log showed it). */
     lane?: number;
@@ -219,7 +227,7 @@ export interface FirstCamp {
     fresh?: number;
     /** A's neutrals at its hit: B's hit is picked and confirmed on other neutrals only. */
     units?: Unit[];
-    /** A's neutrals 2 s after its hit and at :59.5 (as `n2`/`n59`), and 1 when A's box was in sight during the watch: in
+    /** A's neutrals 2 s after its hit and at :59.5 (as `n2`/`n59`), and 1 when A's box was in sight after the job: in
      *  ds2, 3 doubles stacked B but read A's spawn as 0 and the log could not say where A's neutrals were. */
     n2?: string;
     n59?: string;
@@ -579,6 +587,7 @@ export function ResetCache(): void {
     for (const k in handled) delete handled[k];
     for (const k in gateWhy) delete gateWhy[k];
     for (const k in running) delete running[k];
+    for (const k in settling) delete settling[k];
     for (const k in exits) delete exits[k];
 }
 
@@ -731,25 +740,28 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
         ctx.label(l);
         phase(bot, a, l);
     };
-    const r = yield* Tasks.Jobs()!.stack(bot as unknown as Lib.TaskUnit, plan, { label, urgent: ctx.urgent });
-    if (!r.success) return r;
-    // Watch: walk towards the camp until its origin is in sight (night vision is 800, the exit point ~900 past the box),
-    // count the box, and end once it holds more than at the hit or at :00 + WatchUntil. A double reads B, then walks to A
-    // once B stacked or was read for BReadFor, and reads each box whenever it is in sight; A is `unseen` when it never was.
-    ctx.label("watch");
-    const spawnCheck = a.minute * 60 + 60;
-    const outcomeAt = spawnCheck + LaneConfig.Settings().Timing.StackOutcomeAt;
+    return yield* Tasks.Jobs()!.stack(bot as unknown as Lib.TaskUnit, plan, { label, urgent: ctx.urgent });
+}
+
+/** Attempts whose job has ended and whose outcome is still being read (`readOutcome`), by player. */
+const settling: Record<number, Attempt | undefined> = {};
+
+/**
+ * Every frame from Wants, after the job ended: counts each box while it is in sight from where the hero is, never moving
+ * it, and writes the line once every landed camp shows a spawn, the hero dies, or at :00 + ReadUntil. A double's camp A
+ * is read the same way.
+ */
+function readOutcome(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    const a = settling[pid];
+    if (a === undefined) return;
+    const now = DotaTime();
     const f = a.first !== undefined && a.first.aggro !== undefined ? a.first : undefined;
-    const until = f !== undefined ? SETTINGS.DoubleWatchUntil : SETTINGS.WatchUntil;
-    let stopped = false;
-    let campIdx = a.campIdx;
-    let bReadAt: number | undefined;
-    while (DotaTime() < math.min(spawnCheck + until, a.startedAt + awayMax() - 0.5)) {
-        if (!bot.IsAlive()) return { success: false, reason: "dead" };
+    if (bot.IsAlive()) {
         if (f !== undefined && f.seen === undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) f.seen = 1;
-        if (DotaTime() >= outcomeAt) {
+        if (now >= a.minute * 60 + 60 + LaneConfig.Settings().Timing.StackOutcomeAt) {
             if (CampJobs.Exec.BoxInSight(bot, a.campIdx)) {
-                bReadAt = bReadAt ?? DotaTime();
+                a.chk = a.chk ?? sec(a);
                 a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
                 a.fresh = math.max(a.fresh ?? 0, freshInBox(bot, a, a.campIdx));
             }
@@ -757,22 +769,13 @@ function* body(bot: Unit, plan: JobVerbs.StackPlan, a: Attempt, ctx: Lib.Ctx): L
                 f.chk = f.chk ?? sec(a);
                 f.fresh = math.max(f.fresh ?? 0, freshInBox(bot, a, f.campIdx));
             }
-            if (f === undefined ? (a.fresh ?? 0) > 0 : (a.fresh ?? 0) > 0 && (f.fresh ?? 0) > 0) break;
-            if (f !== undefined && campIdx === a.campIdx && bReadAt !== undefined
-                && ((a.fresh ?? 0) > 0 || DotaTime() >= bReadAt + SETTINGS.BReadFor)) {
-                campIdx = f.campIdx;
-                stopped = false;
-            }
         }
-        if (CampJobs.Exec.BoxInSight(bot, campIdx)) {
-            if (!stopped) bot.Action_MoveToLocation(bot.GetLocation());
-            stopped = true;
-        } else {
-            bot.Action_MoveToLocation(Camps.SpawnerByIdx(campIdx)!.location);
-        }
-        yield;
     }
-    return { success: true, reason: "ok" };
+    const read = (a.fresh ?? 0) > 0 && (f === undefined || (f.fresh ?? 0) > 0);
+    const until = a.minute * 60 + 60 + (f !== undefined ? SETTINGS.DoubleReadUntil : SETTINGS.ReadUntil);
+    if (!read && bot.IsAlive() && now < until) return;
+    settling[pid] = undefined;
+    report(bot, a);
 }
 
 function sec(a: Attempt): number {
@@ -968,16 +971,30 @@ function jobLine(bot: Unit, a: Attempt, phase: string, why: string): void {
 }
 
 function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
-    running[bot.GetPlayerID()] = undefined;
-    jobLine(bot, a, "end", result.success ? "ok" : `${result.reason}${result.message !== undefined ? ":" + result.message : ""}`);
+    const pid = bot.GetPlayerID();
+    running[pid] = undefined;
+    a.why = result.success ? "ok" : `${result.reason}${result.message !== undefined ? ":" + result.message : ""}`;
+    a.away = math.floor((DotaTime() - a.startedAt) * 10) / 10;
+    a.death = result.reason === "dead" || !bot.IsAlive() ? 1 : 0;
+    jobLine(bot, a, "end", a.why);
     look(bot, a);
+    // A landed hit's outcome is read after the job, from wherever the hero goes (readOutcome); a failed one has none.
+    if (a.aggro !== undefined && a.death === 0) {
+        settling[pid] = a;
+        readOutcome(bot);
+    } else {
+        report(bot, a);
+    }
+}
+
+function report(bot: Unit, a: Attempt): void {
     const sp = Camps.SpawnerByIdx(a.campIdx);
-    // After a landed hit the box decides the result; before it, the attempt failed.
+    // After a landed hit the box decides the result (`unseen`: never in sight after :00); before it, the attempt failed.
     const landed = a.aggro !== undefined;
-    const res = !landed ? "failed" : (a.fresh ?? 0) > 0 ? "stacked" : "not_stacked";
+    const res = !landed ? "failed" : (a.fresh ?? 0) > 0 ? "stacked" : a.chk === undefined ? "unseen" : "not_stacked";
     log(bot, a.minute, [
         ["res", res],
-        ["why", result.success ? "ok" : `${result.reason}${result.message !== undefined ? ":" + result.message : ""}`],
+        ["why", a.why ?? "?"],
         ["camp", a.campIdx],
         ["type", a.type],
         ["start", math.floor(a.startedAt * 10) / 10],
@@ -985,8 +1002,9 @@ function finish(bot: Unit, a: Attempt, result: Lib.Result): void {
         ["before", a.before ?? "?"],
         ["after", a.after ?? "?"],
         ["fresh", a.fresh ?? "?"],
-        ["away", math.floor((DotaTime() - a.startedAt) * 10) / 10],
-        ["death", result.reason === "dead" || !bot.IsAlive() ? 1 : 0],
+        ["chk", a.chk ?? "?"],
+        ["away", a.away ?? 0],
+        ["death", a.death ?? 0],
         ["cx", sp !== undefined ? math.floor(sp.location.x) : "?"],
         ["cy", sp !== undefined ? math.floor(sp.location.y) : "?"],
         ["dist", a.dist ?? "?"],
@@ -1157,6 +1175,7 @@ function visionProbe(bot: Unit): boolean {
 export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
     if (!Applies(bot)) return false;
     logCamps();
+    readOutcome(bot);
     if (override("VisionProbe") === true) return DotaTime() >= 60 && (probe[bot.GetPlayerID()] === undefined || probe[bot.GetPlayerID()].points[probe[bot.GetPlayerID()].i] !== undefined);
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
@@ -1207,7 +1226,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             const fWalk = travel(bot, fd!.stand);
             // Started at its latest slack (MinSlack) the double must still end within AwayMax, else this minute runs single.
             // Held by the gate past its own latest start, it runs single while the single can still start.
-            dwhy = minute * 60 + 60 + SETTINGS.FarEnd - (fAt - fWalk - SETTINGS.MinSlack) > awayMax() ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
+            dwhy = minute * 60 + 60 + jobEnd() - (fAt - fWalk - SETTINGS.MinSlack) > awayMax() ? "far" : now > fAt - fWalk - SETTINGS.MinSlack ? "late" : undefined;
             double = dwhy === undefined;
             // The line's camp is B; a minute that runs single keeps the nearest camp (slice 4's stack).
             if (double) [aggroAt, walk, lead, data, stand] = [fAt, fWalk, SETTINGS.DoubleLead, fd!.b, Stand(Camps.SpawnerByIdx(fd!.b.campIdx)!, fd!.b)];
@@ -1219,11 +1238,15 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             prewalk[pid] = stand;
             return true;
         }
-        if (minute * 60 + 60 + SETTINGS.FarEnd - now > awayMax()) return skip("far");
+        if (minute * 60 + 60 + jobEnd() - now > awayMax()) return skip("far");
         const why = blocked(bot);
         if (why !== undefined) {
             gateWhy[pid] = why;
             return false;
+        }
+        if (settling[pid] !== undefined) {
+            report(bot, settling[pid]!);
+            settling[pid] = undefined;
         }
         const a: Attempt = { minute, campIdx: data.campIdx, type: data.type, startedAt: now, host };
         if (fd !== undefined) a.double = double ? 1 : 0;
@@ -1248,7 +1271,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
 /**
  * This bot's stack minutes still ahead or running at `now`, for its calendar (slice lane-control 3): claimed from LookFrom,
  * leaving at the single stack's hit second less the walk to its stand point and Lead (Wants' own leave; a double leaves
- * earlier, so this is the latest leave), back at :00 + FarEnd plus the same walk. Tentative: the lane may take the minute
+ * earlier, so this is the latest leave), back at the walk-off's end (:00 + StackExitUntil) plus the same walk. Tentative: the lane may take the minute
  * (`skip why=lane`).
  */
 export function CalendarEntries(bot: Unit, now: number): { kind: "stack"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] {
@@ -1257,7 +1280,7 @@ export function CalendarEntries(bot: Unit, now: number): { kind: "stack"; key: n
     const out: { kind: "stack"; key: number; claim: number; leave: number; back: number; fixed: boolean; running?: boolean }[] = [];
     const a = running[pid];
     for (const minute of Minutes()) {
-        const end = minute * 60 + 60 + SETTINGS.FarEnd;
+        const end = minute * 60 + 60 + jobEnd();
         if (now >= end) continue;
         if (a !== undefined && a.minute === minute) {
             out.push({ kind: "stack", key: minute, claim: minute * 60 + SETTINGS.LookFrom, leave: a.startedAt, back: end, fixed: false, running: true });

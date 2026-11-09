@@ -128,7 +128,7 @@ function main() {
     // The replay is of the log's last game (a restarted start leaves an earlier one in the log).
     // Filtered here, not in SQL: the view has a `double`/`fres` column only when some stored log wrote those fields.
     const rows = store.query(`SELECT * FROM stack_attempts WHERE file = ?1 AND game = (SELECT max(game) FROM stack_attempts
-      WHERE file = ?1) ORDER BY min`, path.resolve(log)).filter((r) => ['stacked', 'not_stacked'].includes(r.res) ||
+      WHERE file = ?1) ORDER BY min`, path.resolve(log)).filter((r) => ['stacked', 'not_stacked', 'unseen'].includes(r.res) ||
       (r.double === 1 && ['stacked', 'not_stacked', 'unseen'].includes(r.fres)));
     if (rows.length === 0) { console.error(`no landed attempts in the store for ${log}`); continue; }
     const boxes = boxesOf(fs.readFileSync(log, 'utf8')) ?? JSON.parse(fs.readFileSync(BOXES, 'utf8'));
@@ -137,7 +137,8 @@ function main() {
     const m = campMap(boxes, t.sp);
     for (const r of rows) {
       const o = { file: path.basename(log), min: r.min, double: r.double ?? null };
-      const landed = r.res === 'stacked' || r.res === 'not_stacked';
+      // `unseen` (bot 09/11/2026 on): the hit landed but no box read followed the job, which ends at the walk-off.
+      const landed = ['stacked', 'not_stacked', 'unseen'].includes(r.res);
       const b = landed && m[r.camp] ? grade(m[r.camp], r.min, t) : { true: null };
       Object.assign(o, { camp: r.camp, before: r.before, nin: m[r.camp] ? nin(m[r.camp], r.min, t) : null, log: r.res, true: b.true, block: b.block ?? '', woff: r.woff ?? null });
       if (r.double === 1 && r.fcamp != null) {
