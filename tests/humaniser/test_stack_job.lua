@@ -407,6 +407,23 @@ do
 		and tonumber(field(line, "chk") or "") ~= nil and tonumber(field(line, "chk")) >= 60 + H.Lane.Config.Settings().Timing.StackOutcomeAt, line)
 end
 
+-- The hero dies while its outcome is still read (box out of sight): the line is written at once as unseen, not at the
+-- read window's end.
+do
+	local diedAt
+	local H, bot = world({ t = 3 * 60 + 15, fogged = function() return true end })
+	local camp = SPAWNERS[idxOf("good_1")].location
+	neutrals(camp, 3)
+	local lines = stackLines(capture(function()
+		while T < 4 * 60 + 8 do
+			if diedAt == nil and T >= 4 * 60 + 2 and not H.StackJob.Running(bot) then bot.alive = false diedAt = T end
+			frame(H, bot)
+		end
+	end))
+	local t = tonumber((lines[1] or ""):match("t=(%S+)"))
+	check("died while reading: unseen, written within a frame of the death", field(lines[1], "res") == "unseen" and t ~= nil and diedAt ~= nil and t <= diedAt + 0.2, lines[1])
+end
+
 -- Camp unseen from the stand point (evil_1 in probe games 2-3: near=0 at 428 from the origin): the job steps in to
 -- StandApproach from the origin StandApproachLead s before the hit, as camp_jobs does, and still stacks.
 do

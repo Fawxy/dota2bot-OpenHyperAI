@@ -25,7 +25,8 @@ const games = args.flatMap((a, i) => (args[i - 1] === '--game' ? [Number(a)] : [
 // start (ev_pull_job, pos 4-5, at `left`), walk = the support's position to its camp's centre (ev_camp), `logged` always 0
 // (no missing gate in that build), plus the pull's outcome (hit by a hero, died). --rows stack: each stack attempt (ev_stack,
 // not skips) at its `start`, walk to the camp's centre; hit = the job's own end line (`ev=job phase=end job=stack hit`, hero
-// damage during the job, matched within 3 s of the stack line), died = death. `outcome` also counts `after`: the hero's
+// damage during the job: the end line between the attempt's start and its stack line, which since bot 7f58c082 follows
+// the job's end by up to :00 + DoubleReadUntil), died = death. `outcome` also counts `after`: the hero's
 // snapshots stop within 15 s of the row's line (a death just after the job, which `died`/`death` miss). The tool's vision is
 // our heroes only and its walk has 11 points, so its holds are an upper bound on the build's.
 const CLI = { rows: (() => { const i = args.indexOf('--rows'); return i < 0 ? 'core' : args[i + 1]; })(), minGame: opt('--min-game', 0), site: args.includes('--site') };
@@ -83,7 +84,7 @@ function run(store = new Store(), o = {}) {
         };
         const rows = ROWS === 'support-pull'
             ? db('SELECT left t, t tend, pid core, camp, 0 cmiss, hit, died FROM ev_pull_job WHERE game_id = ? AND pos >= 4 AND left IS NOT NULL', g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
-            : ROWS === 'stack' ? db("SELECT s.start t, s.t tend, s.pid core, s.camp, 0 cmiss, (SELECT MAX(j.hit) FROM ev_job j WHERE j.game_id = s.game_id AND j.pid = s.pid AND j.job = 'stack' AND j.phase = 'end' AND ABS(j.t - s.t) <= 3) hit, s.death died FROM ev_stack s WHERE s.game_id = ? AND s.res != 'skip' AND s.start IS NOT NULL", g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
+            : ROWS === 'stack' ? db("SELECT s.start t, s.t tend, s.pid core, s.camp, 0 cmiss, (SELECT MAX(j.hit) FROM ev_job j WHERE j.game_id = s.game_id AND j.pid = s.pid AND j.job = 'stack' AND j.phase = 'end' AND j.t BETWEEN s.start AND s.t + 0.5) hit, s.death died FROM ev_stack s WHERE s.game_id = ? AND s.res != 'skip' AND s.start IS NOT NULL", g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
             : db('SELECT t, team, core, cmiss, cwhy FROM ev_lane_ctl WHERE game_id = ? AND cmiss IS NOT NULL AND core IS NOT NULL', g);
         for (const row of rows) {
             const me = at(row.core, row.t);
