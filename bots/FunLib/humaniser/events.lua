@@ -565,6 +565,7 @@ ____exports.EVENTS = {
         before = "mixed",
         after = "mixed",
         fresh = "mixed",
+        chk = "mixed",
         away = "num",
         death = "num",
         cx = "mixed",

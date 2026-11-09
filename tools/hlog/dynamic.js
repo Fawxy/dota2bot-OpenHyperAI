@@ -133,7 +133,7 @@ const STACK_KEYS = ['t', 'pid', 'min', 'res', 'why', 'camp', 'type', 'aggro', 'b
 /**
  * Stack attempts (slice 4, KR S.2a): every ev=stack line of one stored game before `until` (`@stack_rows` over the
  * stack_attempts view, which holds the `cause` and `left59` rules), one per trigger minute, `res` stacked | not_stacked |
- * failed (a job started) or skip (none started). `death` is a boolean; a NULL field ('?' or absent in the log) is left out.
+ * unseen (landed, no box read after the job) | failed (a job started) or skip (none started). `death` is a boolean; a NULL field ('?' or absent in the log) is left out.
  * Empty when the log has none (the OFF arm, older builds).
  */
 function stackAttempts(store, file, gameNo = 1, until = Infinity) {
