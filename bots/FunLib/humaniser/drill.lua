@@ -536,7 +536,7 @@ ____exports.TABLE = {
         statue = {d = {3}},
         spots = {d = {[3] = {"pull:r:safe", "bench"}}},
         others = "bench",
-        rep = {every = 60, from = 30}
+        rep = {every = 120, from = 30}
     },
     ["lever-feed-off"] = {
         note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
