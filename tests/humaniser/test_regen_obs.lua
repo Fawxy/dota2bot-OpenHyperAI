@@ -11,6 +11,20 @@ function Unit:GetPlayerID() return self.pid end
 function Unit:GetMana() return self.mp or 100 end
 function Unit:GetMaxMana() return 100 end
 
+function Unit:GetAttackTarget() return self.target end
+function Unit:GetItemInSlot(i) return self.items and self.items[i] or nil end
+function Unit:FindItemSlot(name) return self.slots and self.slots[name] or -1 end
+function Unit:GetNearbyTrees() return self.trees or {} end
+function Unit:GetCurrentMovementSpeed() return 300 end
+function GetTreeLocation(tree) return tree end
+function IsLocationVisible() return true end
+function IsLocationPassable() return true end
+function GetUnitToLocationDistance(_, tree) return tree end
+local function item(name, charges, regen, dur)
+	return { GetName = function() return name end, GetCurrentCharges = function() return charges end,
+		GetSpecialValueFloat = function(_, k) return k == "health_regen" and regen or dur end }
+end
+
 local lines
 local function fresh()
 	ResetWorld()
@@ -122,6 +136,63 @@ do
 	b.alive = false
 	R.Tick(b)
 	check("death is why=dead", field(obs()[2], "why") == "dead", obs()[2])
+end
+
+-- A window: the hero idle for 3 s with 300 HP missing, a tango (112 in full) in hand and a tree 250 away is logged with the item, the
+-- tree and what the hero did; a window with a tango eaten inside names it; one with too little HP missing or no item is not logged.
+do
+	local R = fresh()
+	local function windows()
+		local r = {}
+		for _, l in ipairs(lines) do if l:find(" ev=regen_win ", 1, true) then table.insert(r, l) end end
+		return r
+	end
+	local function idle(u, secs, hp)
+		T = 100
+		u.hp = hp or u.hp
+		R.Tick(u)
+		for _ = 1, secs do step(R, u, 1) end
+	end
+	local a = MakeUnit({ pid = 8, hp = 200, maxhp = 500 })
+	a.slots = { item_tango = 0 }
+	a.items = { [0] = item("item_tango", 3, 7, 16) }
+	a.trees = { 250, 900 }
+	idle(a, 3)
+	a.target = { }
+	R.Tick(a)
+	local w = windows()
+	check("idle window with HP missing and a tango is logged", #w == 1, #w)
+	check("window names the tango and the nearest tree", field(w[1], "tg") == "3" and field(w[1], "tree") == "250", w[1])
+	check("window reads the effect from the item", field(w[1], "tge") == "112", w[1])
+	check("no use inside is -", field(w[1], "used") == "-")
+
+	local b = MakeUnit({ pid = 9, hp = 200, maxhp = 500 })
+	b.slots = { item_tango = 0 }
+	b.items = { [0] = item("item_tango", 3, 7, 16) }
+	b.trees = { 100 }
+	idle(b, 2)
+	b.modifiers = { modifier_tango_heal = 1 }
+	b.left = 16
+	step(R, b, 1)
+	b.target = { }
+	R.Tick(b)
+	local wb
+	for _, l in ipairs(windows()) do if field(l, "pid") == "9" then wb = l end end
+	check("a tango eaten inside the window is named", wb ~= nil and field(wb, "used") == "tango", wb)
+
+	local c = MakeUnit({ pid = 10, hp = 480, maxhp = 500 })
+	c.slots = { item_tango = 0 }
+	c.items = { [0] = item("item_tango", 3, 7, 16) }
+	idle(c, 3)
+	c.target = { }
+	R.Tick(c)
+	local d = MakeUnit({ pid = 11, hp = 200, maxhp = 500 })
+	idle(d, 3)
+	d.target = { }
+	R.Tick(d)
+	local others = 0
+	for _, l in ipairs(windows()) do if field(l, "pid") == "10" or field(l, "pid") == "11" then others = others + 1 end end
+	check("too little HP missing, or no item in hand, is not a window", others == 0, others)
 end
 
 finish()

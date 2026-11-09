@@ -811,6 +811,25 @@ export const EVENTS = {
         src: "str",
         drop: "num",
     },
+    // Regen slice: a window in which a regen item could have been used (the hero alive, not attacking, not hit by a hero in the 2 s
+    // before, for at least 1 s) with an item in hand and HP missing at least that item's full effect. miss0 and missmax the HP missing at
+    // the window's start and at most; tg tangos in hand (charges, singles count 1) and sv salves; tge and sve what one use gives in full,
+    // read from the item; tree the distance to the nearest visible, passable tree within 1,200 at the start (-1 none, or no tango);
+    // under a tango or salve already running; used the items whose buff started inside the window (- for none).
+    regen_win: {
+        pid: "num",
+        mode: "num",
+        len: "num",
+        miss0: "num",
+        missmax: "num",
+        tg: "num",
+        sv: "num",
+        tge: "num",
+        sve: "num",
+        tree: "num",
+        under: "bool",
+        used: "str",
+    },
     lane_job_supply: {
         pid: "num",
         item: "str",
