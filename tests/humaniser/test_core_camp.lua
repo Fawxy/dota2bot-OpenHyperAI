@@ -442,15 +442,31 @@ do
 end
 
 -- With no level gate, the HP price keeps a low-level core off a large camp it has never seen: the table's 0.35 at level 6
--- grows 1/0.88 a level below it, so at level 1 (0.66) a full-HP core would not keep 40%, at level 3 (0.51) it would.
+-- grows 1/0.8 a level below it, so at level 3 (0.68; drill cngdr1 lost 0.62 there with a neutral left) a full-HP core would
+-- not keep 40%, at level 4 (0.55) it would.
 do
 	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
 	camp[1].loc = Vector(99999, 99999)
-	core.level = 1
-	check("table: a level 1 core cannot clear an unseen large camp", H.CoreCamp.CanClear(core, 1, 0) == false)
 	core.level = 3
-	check("table: a level 3 core can, from full HP", H.CoreCamp.CanClear(core, 1, 0) == true)
+	check("table: a level 3 core cannot clear an unseen large camp", H.CoreCamp.CanClear(core, 1, 0) == false)
+	core.level = 4
+	check("table: a level 4 core can, from full HP", H.CoreCamp.CanClear(core, 1, 0) == true)
 	check("table: not with one stack on it", H.CoreCamp.CanClear(core, 1, 1) == false)
+end
+
+-- The clear is learned against the neutrals met at engage, not the plan's price (drill cngdr1 t=244: a camp priced full
+-- held one neutral, and its quick clear taught pace 0.9 and HP rate 0.75 though every trip cost more than priced). Two
+-- neutrals at the plan, one dead before the core arrives: the pace moves on the measured clear over the one met.
+do
+	local H, core, camp = world({ camps = { { "small", SMALL, 300, 5 } } })
+	local extra = MakeNeutral({ x = SMALL.x, y = SMALL.y, hp = 300, maxhp = 300 })
+	extra.dmg = 5
+	local out = run(H, core, 330, function() if T > 301 then extra.hp = 0 end end)
+	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
+	local clr, clrm, clre = tonumber(field(start, "clr")), tonumber(field(ended, "clrm")), tonumber(field(ended, "clre"))
+	check("learn: the plan priced two neutrals, the engage one", clr ~= nil and clre ~= nil and clre < clr * 0.7, start, ended)
+	local want = 1 + 0.3 * (clrm / clre - 1)
+	check("learn: the pace moves on the measured clear over the engage price", clrm ~= nil and math.abs(H.CoreCamp.Pace(core) - want) < 0.02, H.CoreCamp.Pace(core), want)
 end
 
 -- The no-camp gate names why (smoke ~/.dotactl/logs/2026-11-05T19-50-59-core-missing_fn1.log, t=180-600: the pos3s pid 1

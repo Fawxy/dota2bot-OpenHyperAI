@@ -443,14 +443,14 @@ function ____exports.MissingOf(bot, at)
 end
 function measured(bot, t, now, center)
     t.nl = campNeutralCount(center)
-    local ____t_31 = t
-    local ____temp_30
+    local ____t_34 = t
+    local ____temp_33
     if t.engagedAt ~= nil then
-        ____temp_30 = r1(now - t.engagedAt)
+        ____temp_33 = r1(now - t.engagedAt)
     else
-        ____temp_30 = nil
+        ____temp_33 = nil
     end
-    ____t_31.clrm = ____temp_30
+    ____t_34.clrm = ____temp_33
     t.hpm = t.hpAtEngage ~= nil and r2(t.hpAtEngage - hpOf(bot)) or nil
 end
 ____exports.SETTINGS = {
@@ -496,8 +496,8 @@ ____exports.SETTINGS = {
     ClearHP = {small = 0.12, medium = 0.2, large = 0.35, ancient = 0.6},
     NeutralsPerStack = 3,
     HPRefLevel = 6,
-    HPLevelStep = 0.88,
-    HPLevelScale = {0.6, 2},
+    HPLevelStep = 0.8,
+    HPLevelScale = {0.6, 3.2},
     ArriveHP = 0.4,
     SwitchSec = 0.6,
     DefaultSPA = 1.7
@@ -1591,11 +1591,15 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         t.engagedAt = nil
         t.hpAtEngage = nil
+        local ____t_27 = t
+        local ____t_26 = t
         local ____t_25 = t
         local ____t_24 = t
-        t.nl = nil
-        ____t_24.hpm = nil
-        ____t_25.clrm = nil
+        t.hpe = nil
+        ____t_24.clre = nil
+        ____t_25.nl = nil
+        ____t_26.hpm = nil
+        ____t_27.clrm = nil
         t.center = Camps.BoxCenter(spawner)
         local r = __TS__DelegatedYield(V.clearCamp(
             bot,
@@ -1606,6 +1610,17 @@ local body = __TS__Generator(function(bot, t, ctx)
                 onEngage = function(at)
                     t.engagedAt = at
                     t.hpAtEngage = hpOf(bot)
+                    local met = liveNeutrals(
+                        bot:GetTeam(),
+                        spawner.idx,
+                        Camps.BoxCenter(spawner),
+                        at
+                    )
+                    if #met > 0 then
+                        local ____temp_28 = {____exports.ClearOf(bot, met)}
+                        t.clre = ____temp_28[1]
+                        t.hpe = ____temp_28[2]
+                    end
                 end
             },
             hooks
@@ -1634,13 +1649,13 @@ local body = __TS__Generator(function(bot, t, ctx)
                 Camps.BoxCenter(spawner)
             )
         end
-        if r.message == "cleared" and t.engagedAt ~= nil then
-            learn(bot, now - t.engagedAt, t.plan.prior)
+        if r.message == "cleared" and t.engagedAt ~= nil and t.clre ~= nil and t.hpe ~= nil then
+            learn(bot, now - t.engagedAt, t.clre)
             if t.hpAtEngage ~= nil then
                 learnHP(
                     bot,
                     t.hpAtEngage - hpOf(bot),
-                    t.plan.hpPrior
+                    t.hpe
                 )
             end
         end
@@ -1660,25 +1675,33 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         local hold = startGate(bot, next, now)
         if hold ~= nil then
-            local ____log_29 = log
-            local ____bot_27 = bot
-            local ____t_clash_28 = t.clash
-            local ____array_26 = __TS__SparseArrayNew(
+            local ____log_32 = log
+            local ____bot_30 = bot
+            local ____t_clash_31 = t.clash
+            local ____array_29 = __TS__SparseArrayNew(
                 {"after", r.message or "ok"},
                 {"clrm", t.clrm},
                 {"hpm", t.hpm},
+                {
+                    "clre",
+                    r1(t.clre)
+                },
+                {
+                    "hpe",
+                    t.hpe ~= nil and r2(t.hpe) or nil
+                },
                 {"nl", t.nl},
                 unpack(heldFields(hold))
             )
             __TS__SparseArrayPush(
-                ____array_26,
+                ____array_29,
                 unpack(planFields(next))
             )
-            ____log_29(
-                ____bot_27,
+            ____log_32(
+                ____bot_30,
                 "nexthold",
-                ____t_clash_28,
-                {__TS__SparseArraySpread(____array_26)}
+                ____t_clash_31,
+                {__TS__SparseArraySpread(____array_29)}
             )
             break
         end
@@ -1697,6 +1720,14 @@ local body = __TS__Generator(function(bot, t, ctx)
                 {"after", r.message or "ok"},
                 {"clrm", t.clrm},
                 {"hpm", t.hpm},
+                {
+                    "clre",
+                    r1(t.clre)
+                },
+                {
+                    "hpe",
+                    t.hpe ~= nil and r2(t.hpe) or nil
+                },
                 {"nl", t.nl},
                 unpack(planFields(next))
             }
@@ -1765,6 +1796,14 @@ local function finish(bot, t, r, label)
             },
             {"clrm", t.clrm},
             {"hpm", t.hpm},
+            {
+                "clre",
+                r1(t.clre)
+            },
+            {
+                "hpe",
+                t.hpe ~= nil and r2(t.hpe) or nil
+            },
             {"nl", t.nl}
         }
     )

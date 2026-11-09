@@ -1408,7 +1408,9 @@ export const EVENTS = {
     // start gate (why: the gate; after: how the last camp ended), the core walks back. nocamp (one per core, minute and why,
     // while the no-camp gate holds): lvl, ncand (camps in the trip list), noff (enemy camps among them), camp/type/cd (the
     // nearest trip camp and its distance to the lane front), why (what dropped it: far, cleared, empty, pulled, ally,
-    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list).
+    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list). clre/hpe (end, next,
+    // nexthold): the model's clear seconds and HP fraction for the neutrals the core met at engage, before the learned factors
+    // (what pace and HP rate learn against; absent when none was seen at engage).
     core_camp: {
         pid: "num",
         pos: "num",
@@ -1426,6 +1428,8 @@ export const EVENTS = {
         hpt: "num",
         clrm: "num",
         hpm: "num",
+        clre: "num",
+        hpe: "num",
         n0: "num",
         nu: "str",
         nl: "num",

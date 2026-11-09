@@ -109,11 +109,12 @@ export const SETTINGS = {
     /** Live neutrals in the box that read as one more stack: a camp spawns 2-4. */
     NeutralsPerStack: 3,
     HPRefLevel: 6,
-    HPLevelStep: 0.88,
     /** No level gate (user 06/11/2026): this price is what keeps a low-level core out of a camp it cannot clear, so it runs
-     *  past LevelScale's 1.6 below the reference level (level 1 is 0.88^-5, 1.89). 0.88 a level: a hero's max HP and attack
-     *  each grow about 6-8% a level early, so HP lost (time taken over HP held) falls about 12%. `judgement`. */
-    HPLevelScale: [0.6, 2] as [number, number],
+     *  past LevelScale's 1.6 below the reference level (level 1 is 0.8^-5, 3.05). `fitted`: drill cngdr1 (09/11/2026) a level
+     *  3 pos1 lost 0.62 on a never-seen large camp with one neutral left (0.88 a level priced it 0.51); banked table-priced
+     *  large trips, levels 6-7 0.38 mean lost (26 trips), 8+ 0.14 (15). No live read exists for a camp in fog. */
+    HPLevelStep: 0.8,
+    HPLevelScale: [0.6, 3.2] as [number, number],
     ArriveHP: 0.4,
     /** The clear model (live or last-seen neutrals; the tables above only for a camp never seen): seconds between kills
      *  (retarget and walk), and the seconds per attack assumed when the API gives none (`judgement`). */
@@ -170,6 +171,12 @@ interface Trip {
     host: number;
     engagedAt?: number;
     hpAtEngage?: number;
+    /** The model's price of the neutrals met at engage (clear seconds, HP fraction, before the learned factors): what the
+     *  clear is learned against. The plan's price can be for a camp that is no longer there (cngdr1 t=244: a table-priced
+     *  full camp held one neutral left from the last trip; its 1.1 s, 0 HP clear taught HP rate 0.75 and pace 0.9 though
+     *  every trip of the game cost more HP than priced). */
+    clre?: number;
+    hpe?: number;
     /** The last clear's measured seconds from engage and HP lost (to the camp's end: cleared or left). */
     clrm?: number;
     hpm?: number;
@@ -967,13 +974,15 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         if (spawner === undefined) break;
         t.engagedAt = undefined;
         t.hpAtEngage = undefined;
-        t.clrm = t.hpm = t.nl = undefined;
+        t.clrm = t.hpm = t.nl = t.clre = t.hpe = undefined;
         t.center = Camps.BoxCenter(spawner);
         const r = yield* V.clearCamp(
             bot as unknown as Lib.TaskUnit,
             { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: t.plan.leaveBy, onEngage: (at) => {
                 t.engagedAt = at;
                 t.hpAtEngage = hpOf(bot);
+                const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), at);
+                if (met.length > 0) [t.clre, t.hpe] = ClearOf(bot, met);
             } },
             hooks
         );
@@ -988,9 +997,9 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
             break;
         }
         if (t.engagedAt !== undefined) measured(bot, t, now, Camps.BoxCenter(spawner));
-        if (r.message === "cleared" && t.engagedAt !== undefined) {
-            learn(bot, now - t.engagedAt, t.plan.prior);
-            if (t.hpAtEngage !== undefined) learnHP(bot, t.hpAtEngage - hpOf(bot), t.plan.hpPrior);
+        if (r.message === "cleared" && t.engagedAt !== undefined && t.clre !== undefined && t.hpe !== undefined) {
+            learn(bot, now - t.engagedAt, t.clre);
+            if (t.hpAtEngage !== undefined) learnHP(bot, t.hpAtEngage - hpOf(bot), t.hpe);
         }
         markCleared(bot.GetTeam(), t.plan.camp, now);
         const next = Plan(bot, bot.GetLocation(), now, t.clash);
@@ -998,13 +1007,13 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         // A chained camp passes the same start gates as the first (review L3 of 2fec253): held, the core walks back.
         const hold = startGate(bot, next, now);
         if (hold !== undefined) {
-            log(bot, "nexthold", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...heldFields(hold), ...planFields(next)]);
+            log(bot, "nexthold", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["clre", r1(t.clre)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["nl", t.nl], ...heldFields(hold), ...planFields(next)]);
             break;
         }
         t.plan = next;
         CampClaims.Set("core", bot.GetPlayerID(), next.camp);
         t.camps++;
-        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...planFields(next)]);
+        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["clre", r1(t.clre)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["nl", t.nl], ...planFields(next)]);
     }
     return yield* walkBack(bot, t, ctx);
 }
@@ -1038,6 +1047,8 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["hpr", r2(HPRate(bot))],
         ["clrm", t.clrm],
         ["hpm", t.hpm],
+        ["clre", r1(t.clre)],
+        ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined],
         ["nl", t.nl],
     ]);
 }
