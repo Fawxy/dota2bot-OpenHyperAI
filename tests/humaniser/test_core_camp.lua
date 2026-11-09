@@ -140,7 +140,7 @@ do
 end
 
 -- Price from the model: the hard camp when its clear fits the gap and leaves the core HP; the hero's damage decides, not
--- its level (beyond the type's level gate).
+-- its level (no level gate, user 06/11/2026).
 do
 	local H, core, camp = world({ camps = { { "small", SMALL }, { "large", LARGE, 2400, 8 } } })
 	local CC = H.CoreCamp
@@ -152,9 +152,9 @@ do
 	local tight = CC.ClashOf(samples(300, 318), PATH, 2)
 	local q = CC.Plan(core, FRONT, 300, tight)
 	check("plan: with 18 s only the small camp is back by the clash + 15", q ~= nil and q.type == "small", q and q.type)
-	core.level = 5
+	core.level = 2
 	local r = CC.Plan(core, FRONT, 300, c)
-	check("plan: below level 6 the large camp is not offered", r ~= nil and r.type == "small", r and r.type)
+	check("plan: at level 2 the live large camp is still taken when its clear fits (no level gate)", r ~= nil and r.type == "large" and r.lvl == 2, r and r.type)
 	core.level, core.hp = 6, 480
 	local h = CC.Plan(core, FRONT, 300, c)
 	check("plan: at 80% HP the core takes it (8 a second for 24.6 s is 0.33 of its HP)", h ~= nil and h.type == "large" and math.abs(h.hpc - 8 * 24.6 / 600) < 1e-6, h and h.hpc)
@@ -441,24 +441,40 @@ do
 	check("missing M1: nmiss=2, mtss the longest unseen rounded, mpid both pids", skip ~= nil and field(skip, "nmiss") == "2" and field(skip, "mtss") == "32" and field(skip, "mpid") == "10,11", skip)
 end
 
+-- With no level gate, the HP price keeps a low-level core off a large camp it has never seen: the table's 0.35 at level 6
+-- grows 1/0.88 a level below it, so at level 1 (0.66) a full-HP core would not keep 40%, at level 3 (0.51) it would.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	camp[1].loc = Vector(99999, 99999)
+	core.level = 1
+	check("table: a level 1 core cannot clear an unseen large camp", H.CoreCamp.CanClear(core, 1, 0) == false)
+	core.level = 3
+	check("table: a level 3 core can, from full HP", H.CoreCamp.CanClear(core, 1, 0) == true)
+	check("table: not with one stack on it", H.CoreCamp.CanClear(core, 1, 1) == false)
+end
+
 -- The no-camp gate names why (smoke ~/.dotactl/logs/2026-11-05T19-50-59-core-missing_fn1.log, t=180-600: the pos3s pid 1
 -- and 8 read h_camp on the gates line and never planned a camp; their nearest trip camp was the enemy off-lane large camp,
--- 1,400-2,300 from the front, held by CampMinLevel large 6 at levels 2-5). One phase=nocamp line per minute and reason.
-do
+-- 1,400-2,300 from the front, held by the level gate at levels 2-5, removed 06/11/2026). One phase=nocamp line per minute
+-- and reason.
+local function offlaneWorld(pos)
 	local H, core = world({ camps = { { "large", LARGE, 2400, 8 } }, level = 5 })
 	SPAWNERS[1].team = 3
 	H.Lane.Camps.ResetCache()
-	local saved = TOWERS_W[2][dota.Tower.Bot1]
 	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 91, team = 2, loc = Vector(0, -5000) })
-	core.pos = 3
+	core.pos = pos
+	return H, core
+end
+do
+	local saved = TOWERS_W[2][dota.Tower.Bot1]
+	local H, core = offlaneWorld(3)
 	local out = run(H, core, 303)
-	local nc = lines(out, "core_camp", "nocamp")
-	check("nocamp: one line for the minute, the offlane large camp in the list held by level", #nc == 1 and field(nc[1], "why") == "level" and field(nc[1], "camp") == "1" and field(nc[1], "noff") == "1" and field(nc[1], "ncand") == "1" and field(nc[1], "lvl") == "5" and field(nc[1], "cd") == "2121", nc[1])
-	check("nocamp: no start", #lines(out, "core_camp", "start") == 0)
-	core.pos = 1
-	out = run(H, core, 306)
-	nc = lines(out, "core_camp", "nocamp")
-	check("nocamp: for a pos1 the enemy camp is not in the list (nwhy=list), none of its own", #nc == 1 and field(nc[1], "why") == "none" and field(nc[1], "ncand") == "0" and field(nc[1], "near") == "1" and field(nc[1], "nwhy") == "list", nc[1])
+	local st = lines(out, "core_camp", "start")[1]
+	check("offlane: a level 5 pos3 starts on the enemy large camp by its lane", st ~= nil and field(st, "camp") == "1" and field(st, "lvl") == "5", st)
+	check("offlane: no nocamp line", #lines(out, "core_camp", "nocamp") == 0)
+	H, core = offlaneWorld(1)
+	local nc = lines(run(H, core, 303), "core_camp", "nocamp")
+	check("nocamp: for a pos1 the enemy camp is not in the list (nwhy=list), none of its own", #nc == 1 and field(nc[1], "why") == "none" and field(nc[1], "ncand") == "0" and field(nc[1], "near") == "1" and field(nc[1], "nwhy") == "list" and field(nc[1], "lvl") == "5", nc[1])
 	TOWERS_W[2][dota.Tower.Bot1] = saved
 end
 

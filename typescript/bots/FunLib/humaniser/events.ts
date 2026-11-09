@@ -1407,7 +1407,7 @@ export const EVENTS = {
     // their time_since_seen (s, rounded), mpid their player ids (comma list). nexthold: a chained camp after a clear held by a
     // start gate (why: the gate; after: how the last camp ended), the core walks back. nocamp (one per core, minute and why,
     // while the no-camp gate holds): lvl, ncand (camps in the trip list), noff (enemy camps among them), camp/type/cd (the
-    // nearest trip camp and its distance to the lane front), why (what dropped it: level, far, cleared, empty, pulled, ally,
+    // nearest trip camp and its distance to the lane front), why (what dropped it: far, cleared, empty, pulled, ally,
     // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list).
     core_camp: {
         pid: "num",

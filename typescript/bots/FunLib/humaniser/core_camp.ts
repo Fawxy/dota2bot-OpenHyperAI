@@ -53,7 +53,6 @@ export const SETTINGS = {
     LaneShare: 0.5,
     CampGold: { small: 80, medium: 120, large: 160, ancient: 250 } as Record<string, number>,
     MinNet: 30,
-    CampMinLevel: { small: 3, medium: 4, large: 6, ancient: 12 } as Record<string, number>,
     MaxCampDist: 3800,
     /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's large camp within OffCampDist of its outermost
      *  lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1; no other enemy
@@ -101,7 +100,7 @@ export const SETTINGS = {
     Learn: 0.3,
     LearnClamp: [0.4, 2.5],
     LateGrowth: 1.15,
-    /** The clear's HP cost as a fraction of max HP at HPRefLevel, times HPLevelStep per level above it (within LevelScale),
+    /** The clear's HP cost as a fraction of max HP at HPRefLevel, times HPLevelStep per level above it (within HPLevelScale),
      *  plus StackedClearMul per stack, times the bot's learned HP rate (Learn, LearnClamp; LateGrowth on an HP abort). A camp
      *  is taken only when the core keeps ArriveHP after it. cnghar2/cngchk5 (05/11/2026): HP lost from start to end of a trip,
      *  median (80th percentile), small 0.08 (0.17) at levels 3-5, medium 0.16 (0.35) at 3-5, large 0.42 (0.64) at 6-7, the
@@ -111,6 +110,10 @@ export const SETTINGS = {
     NeutralsPerStack: 3,
     HPRefLevel: 6,
     HPLevelStep: 0.88,
+    /** No level gate (user 06/11/2026): this price is what keeps a low-level core out of a camp it cannot clear, so it runs
+     *  past LevelScale's 1.6 below the reference level (level 1 is 0.88^-5, 1.89). 0.88 a level: a hero's max HP and attack
+     *  each grow about 6-8% a level early, so HP lost (time taken over HP held) falls about 12%. `judgement`. */
+    HPLevelScale: [0.6, 2] as [number, number],
     ArriveHP: 0.4,
     /** The clear model (live or last-seen neutrals; the tables above only for a camp never seen): seconds between kills
      *  (retarget and walk), and the seconds per attack assumed when the API gives none (`judgement`). */
@@ -139,6 +142,8 @@ export interface CampPlan {
     /** The clear's HP cost (fraction of max HP) and its estimate before the learned rate. */
     hpc: number;
     hpPrior: number;
+    /** The core's level at the plan (the HP price below level 6 is graded on it). */
+    lvl: number;
     gold: number;
     loss: number;
     net: number;
@@ -281,7 +286,7 @@ function growLate(bot: Unit): void {
 
 export function PriorClearHP(type: Camps.CampType, level: number, stacks: number): number {
     const s = SETTINGS;
-    const scale = clamp(s.HPLevelStep ** (level - s.HPRefLevel), s.LevelScale);
+    const scale = clamp(s.HPLevelStep ** (level - s.HPRefLevel), s.HPLevelScale);
     return (s.ClearHP[type] ?? s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks);
 }
 
@@ -543,8 +548,9 @@ function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number
 }
 
 /**
- * The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
- * allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
+ * The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open,
+ * within MaxCampDist of the clash point, leaving the core ArriveHP after the clear, back by the clash + MaxLate, with the
+ * highest net of at least MinNet. No level gate (user 06/11/2026): the clear's priced HP and time decide.
  */
 export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan | undefined {
     const s = SETTINGS;
@@ -554,7 +560,6 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
     if (matePulling(bot)) for (const p of Camps.PullCampsFor(bot.GetTeam(), bot.GetAssignedLane())) pullCamps[p.campIdx] = true;
     let best: CampPlan | undefined;
     for (const spawner of tripSpawners(bot)) {
-        if (level < (s.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, c.at) > s.MaxCampDist || !campOpen(bot, spawner, center, now, pullCamps)) continue;
         const stacks = math.max(Stacking.StackCount(spawner.idx), seenStacks(center));
@@ -572,7 +577,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const loss = LossBetween(c, now, ret);
         const net = gold - loss;
         if ((force || net >= s.MinNet) && (best === undefined || net > best.net))
-            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, gold, loss, net };
+            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, lvl: level, gold, loss, net };
     }
     return best;
 }
@@ -602,21 +607,19 @@ function tripSpawners(bot: Unit): Camps.Spawner[] {
     return out;
 }
 
-/** Whether `core` could clear camp `idx` holding `stacks` stacks: the level CampMinLevel allows for its type, and from full
- *  HP it keeps ArriveHP after the clear (the same model and learned HP rate as Plan). The stack job's pos5 double gate. */
+/** Whether `core` could clear camp `idx` holding `stacks` stacks: from full HP it keeps ArriveHP after the clear (the same
+ *  model and learned HP rate as Plan). The stack job's pos5 double gate. */
 export function CanClear(core: Unit, idx: number, stacks: number): boolean {
     const spawner = Camps.SpawnerByIdx(idx);
-    if (spawner === undefined || core.GetLevel() < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) return false;
+    if (spawner === undefined) return false;
     const [, hpPrior] = estimate(core, spawner, Camps.BoxCenter(spawner), stacks, DotaTime());
     return 1 - hpPrior * HPRate(core) >= SETTINGS.ArriveHP;
 }
 StackJob.SetCarryClear(CanClear);
 
-/** Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then. */
+/** Any open camp within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then. */
 function anyCamp(bot: Unit, front: Vector, now: number): boolean {
-    const level = bot.GetLevel();
     for (const spawner of tripSpawners(bot)) {
-        if (level < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, front) <= SETTINGS.MaxCampDist && campOpen(bot, spawner, center, now, {})) return true;
     }
@@ -625,8 +628,8 @@ function anyCamp(bot: Unit, front: Vector, now: number): boolean {
 
 /**
  * Why no camp fitted (the `no-camp` gate), for the throttled `phase=nocamp` line: the trip list's size and how many of it
- * are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`level`, `far`
- * past MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
+ * are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`far` past
+ * MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
  * that never planned a camp in core-missing_fn1 (05/11/2026, pid 1 and 8) read only as h_camp on the gates line.
  */
 function noCampFields(bot: Unit, front: Vector, now: number): LuaMultiReturn<[string, Telemetry.Fields<"core_camp">]> {
@@ -648,8 +651,7 @@ function noCampFields(bot: Unit, front: Vector, now: number): LuaMultiReturn<[st
     }
     let why = "none";
     if (best !== undefined) {
-        if (level < (SETTINGS.CampMinLevel[best.type] ?? 1)) why = "level";
-        else if (bestD > SETTINGS.MaxCampDist) why = "far";
+        if (bestD > SETTINGS.MaxCampDist) why = "far";
         else why = closedWhy(bot, best, Camps.BoxCenter(best), now, {}) ?? "open";
     }
     const [near, nd] = Camps.NearestSpawner(front);
@@ -837,6 +839,7 @@ function planFields(p: CampPlan): Telemetry.Fields<"core_camp"> {
         ["n0", p.n0],
         ["nu", p.nu],
         ["hpc", r2(p.hpc)],
+        ["lvl", p.lvl],
         ["gold", math.floor(p.gold)],
         ["loss", math.floor(p.loss)],
         ["net", math.floor(p.net)],

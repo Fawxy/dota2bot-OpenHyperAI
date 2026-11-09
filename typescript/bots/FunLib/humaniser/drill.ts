@@ -230,6 +230,16 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 30 },
     },
+    // Core next gold without the level gate: the Radiant pos1 and pos3 alone, a trip whenever an open camp's priced HP and
+    // time fit (CampForce: the decision's wave, gap and net gates off, the HP, threat and missing gates on), so the clear's
+    // HP price at levels 2-5 is graded on each trip (hpc against hpm, by lvl and src) before any game.
+    "core-camp": {
+        note: "Radiant pos1 and pos3 play, a camp trip whenever a camp's priced HP and time fit (CampForce), everyone else benched",
+        cast: { r: [1, 3] },
+        others: "bench",
+        rep: { every: 30, from: 0 },
+        overrides: { CampForce: true },
+    },
     "lever-feed-off": {
         note: "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
         cast: SAFE_CORE,

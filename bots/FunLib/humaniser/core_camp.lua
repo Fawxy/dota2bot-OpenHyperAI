@@ -411,16 +411,16 @@ function ____exports.MissingOf(bot, at)
         local pid = 0
         while pid <= MAX_PLAYER_ID do
             do
-                local __continue149
+                local __continue146
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue149 = true
+                        __continue146 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue149 = true
+                        __continue146 = true
                         break
                     end
                     local run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax)
@@ -430,9 +430,9 @@ function ____exports.MissingOf(bot, at)
                         ____out_pids_19[#____out_pids_19 + 1] = pid
                         out.mtss = math.max(out.mtss or 0, info.time_since_seen)
                     end
-                    __continue149 = true
+                    __continue146 = true
                 until true
-                if not __continue149 then
+                if not __continue146 then
                     break
                 end
             end
@@ -471,7 +471,6 @@ ____exports.SETTINGS = {
     LaneShare = 0.5,
     CampGold = {small = 80, medium = 120, large = 160, ancient = 250},
     MinNet = 30,
-    CampMinLevel = {small = 3, medium = 4, large = 6, ancient = 12},
     MaxCampDist = 3800,
     OffCampDist = 4300,
     OffCampTypes = {large = true},
@@ -498,6 +497,7 @@ ____exports.SETTINGS = {
     NeutralsPerStack = 3,
     HPRefLevel = 6,
     HPLevelStep = 0.88,
+    HPLevelScale = {0.6, 2},
     ArriveHP = 0.4,
     SwitchSec = 0.6,
     DefaultSPA = 1.7
@@ -604,7 +604,7 @@ local function growLate(bot)
 end
 function ____exports.PriorClearHP(____type, level, stacks)
     local s = ____exports.SETTINGS
-    local scale = clamp(s.HPLevelStep ^ (level - s.HPRefLevel), s.LevelScale)
+    local scale = clamp(s.HPLevelStep ^ (level - s.HPRefLevel), s.HPLevelScale)
     return (s.ClearHP[____type] or s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks)
 end
 function ____exports.HPRate(bot)
@@ -937,8 +937,9 @@ local function campOpen(bot, spawner, center, now, pullCamps)
         pullCamps
     ) == nil
 end
---- The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
--- allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
+--- The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open,
+-- within MaxCampDist of the clash point, leaving the core ArriveHP after the clear, back by the clash + MaxLate, with the
+-- highest net of at least MinNet. No level gate (user 06/11/2026): the clear's priced HP and time decide.
 function ____exports.Plan(bot, from, now, c)
     local s = ____exports.SETTINGS
     local speed = speedOf(bot) / s.PathFactor
@@ -957,10 +958,6 @@ function ____exports.Plan(bot, from, now, c)
         do
             local __continue104
             repeat
-                if level < (s.CampMinLevel[spawner.type] or 1) then
-                    __continue104 = true
-                    break
-                end
                 local center = Camps.BoxCenter(spawner)
                 if dist(center, c.at) > s.MaxCampDist or not campOpen(
                     bot,
@@ -1016,6 +1013,7 @@ function ____exports.Plan(bot, from, now, c)
                         hpt = hpt,
                         hpc = hpc,
                         hpPrior = hpPrior,
+                        lvl = level,
                         gold = gold,
                         loss = loss,
                         net = net
@@ -1030,11 +1028,11 @@ function ____exports.Plan(bot, from, now, c)
     end
     return best
 end
---- Whether `core` could clear camp `idx` holding `stacks` stacks: the level CampMinLevel allows for its type, and from full
--- HP it keeps ArriveHP after the clear (the same model and learned HP rate as Plan). The stack job's pos5 double gate.
+--- Whether `core` could clear camp `idx` holding `stacks` stacks: from full HP it keeps ArriveHP after the clear (the same
+-- model and learned HP rate as Plan). The stack job's pos5 double gate.
 function ____exports.CanClear(core, idx, stacks)
     local spawner = Camps.SpawnerByIdx(idx)
-    if spawner == nil or core:GetLevel() < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
+    if spawner == nil then
         return false
     end
     local ____, hpPrior = estimate(
@@ -1047,39 +1045,25 @@ function ____exports.CanClear(core, idx, stacks)
     return 1 - hpPrior * ____exports.HPRate(core) >= ____exports.SETTINGS.ArriveHP
 end
 StackJob.SetCarryClear(____exports.CanClear)
---- Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then.
+--- Any open camp within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then.
 local function anyCamp(bot, front, now)
-    local level = bot:GetLevel()
     for ____, spawner in ipairs(tripSpawners(bot)) do
-        do
-            local __continue124
-            repeat
-                if level < (____exports.SETTINGS.CampMinLevel[spawner.type] or 1) then
-                    __continue124 = true
-                    break
-                end
-                local center = Camps.BoxCenter(spawner)
-                if dist(center, front) <= ____exports.SETTINGS.MaxCampDist and campOpen(
-                    bot,
-                    spawner,
-                    center,
-                    now,
-                    {}
-                ) then
-                    return true
-                end
-                __continue124 = true
-            until true
-            if not __continue124 then
-                break
-            end
+        local center = Camps.BoxCenter(spawner)
+        if dist(center, front) <= ____exports.SETTINGS.MaxCampDist and campOpen(
+            bot,
+            spawner,
+            center,
+            now,
+            {}
+        ) then
+            return true
         end
     end
     return false
 end
 --- Why no camp fitted (the `no-camp` gate), for the throttled `phase=nocamp` line: the trip list's size and how many of it
--- are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`level`, `far`
--- past MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
+-- are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`far` past
+-- MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
 -- that never planned a camp in core-missing_fn1 (05/11/2026, pid 1 and 8) read only as h_camp on the gates line.
 local function noCampFields(bot, front, now)
     local level = bot:GetLevel()
@@ -1105,9 +1089,7 @@ local function noCampFields(bot, front, now)
     end
     local why = "none"
     if best ~= nil then
-        if level < (____exports.SETTINGS.CampMinLevel[best.type] or 1) then
-            why = "level"
-        elseif bestD > ____exports.SETTINGS.MaxCampDist then
+        if bestD > ____exports.SETTINGS.MaxCampDist then
             why = "far"
         else
             why = closedWhy(
@@ -1172,19 +1154,19 @@ function ____exports.ThreatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue140
+            local __continue137
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue140 = true
+                    __continue137 = true
                     break
                 end
                 local loc = locOf(e)
                 if loc ~= nil and distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue140 = true
+                __continue137 = true
             until true
-            if not __continue140 then
+            if not __continue137 then
                 break
             end
         end
@@ -1224,18 +1206,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue157
+            local __continue154
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue157 = true
+                    __continue154 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue157 = true
+                __continue154 = true
             until true
-            if not __continue157 then
+            if not __continue154 then
                 break
             end
         end
@@ -1245,19 +1227,19 @@ end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue162
+            local __continue159
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue162 = true
+                    __continue159 = true
                     break
                 end
                 local loc = locOf(c)
                 if loc ~= nil and dist(loc, at) <= radius then
                     return true
                 end
-                __continue162 = true
+                __continue159 = true
             until true
-            if not __continue162 then
+            if not __continue159 then
                 break
             end
         end
@@ -1385,6 +1367,7 @@ local function planFields(p)
             "hpc",
             r2(p.hpc)
         },
+        {"lvl", p.lvl},
         {
             "gold",
             math.floor(p.gold)
@@ -1525,10 +1508,10 @@ local function guard(bot, t)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue195
+            local __continue192
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue195 = true
+                    __continue192 = true
                     break
                 end
                 local loc = locOf(e)
@@ -1538,9 +1521,9 @@ local function guard(bot, t)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue195 = true
+                __continue192 = true
             until true
-            if not __continue195 then
+            if not __continue192 then
                 break
             end
         end
