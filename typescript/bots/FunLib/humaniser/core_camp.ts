@@ -100,6 +100,9 @@ export const SETTINGS = {
     Learn: 0.3,
     LearnClamp: [0.4, 2.5],
     LateGrowth: 1.15,
+    /** The HP rate learns only from a clear the model priced at this or more: measured over priced on a near-zero price is
+     *  noise (drill cngdr2: three clears priced 0.04 that cost 0 took pos1's rate from 0.94 to 0.5). `judgement`. */
+    LearnMinHP: 0.1,
     /** The clear's HP cost as a fraction of max HP at HPRefLevel, times HPLevelStep per level above it (within HPLevelScale),
      *  plus StackedClearMul per stack, times the bot's learned HP rate (Learn, LearnClamp; LateGrowth on an HP abort). A camp
      *  is taken only when the core keeps ArriveHP after it. cnghar2/cngchk5 (05/11/2026): HP lost from start to end of a trip,
@@ -983,12 +986,16 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
                 t.hpAtEngage = hpOf(bot);
                 const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), at);
                 if (met.length > 0) [t.clre, t.hpe] = ClearOf(bot, met);
-            } },
+            }, admit: (at) => admits(bot, t, spawner, at) },
             hooks
         );
         const now = DotaTime();
         // No `continue` in this loop: TSTL lowers it to a flag set after the final `break`, which Lua 5.1 rejects.
         if (!r.success) {
+            if (r.reason === "cancelled" && r.message === "price") {
+                log(bot, "refuse", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["clre", r1(t.clre)], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r2(Pace(bot))], ["lvl", bot.GetLevel()]]);
+                break;
+            }
             if (r.reason !== "timeout") return r;
             if (t.engagedAt !== undefined) {
                 measured(bot, t, now, Camps.BoxCenter(spawner));
@@ -999,7 +1006,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         if (t.engagedAt !== undefined) measured(bot, t, now, Camps.BoxCenter(spawner));
         if (r.message === "cleared" && t.engagedAt !== undefined && t.clre !== undefined && t.hpe !== undefined) {
             learn(bot, now - t.engagedAt, t.clre);
-            if (t.hpAtEngage !== undefined) learnHP(bot, t.hpAtEngage - hpOf(bot), t.hpe);
+            if (t.hpAtEngage !== undefined && t.hpe >= SETTINGS.LearnMinHP) learnHP(bot, t.hpAtEngage - hpOf(bot), t.hpe);
         }
         markCleared(bot.GetTeam(), t.plan.camp, now);
         const next = Plan(bot, bot.GetLocation(), now, t.clash);
@@ -1016,6 +1023,23 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["clre", r1(t.clre)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["nl", t.nl], ...planFields(next)]);
     }
     return yield* walkBack(bot, t, ctx);
+}
+
+/**
+ * The trip's price checked on the neutrals the core finds (asked at first sight and at engage, before any attack): the
+ * model's clear of the live camp, with the learned pace and HP rate, must leave ArriveHP and end by the plan's leave
+ * time. The plan's price can be the type tables', which cannot see what spawned (drill cngdr2: a small camp of a
+ * taskmaster and two troll berserkers priced 0.23 by the table, 0.89 live; a level 4 large 0.44 against 0.96). A refusal
+ * leaves the camp's make-up as `seen`, so the next plan prices it from that. Under CampForce only the HP half holds.
+ */
+function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolean {
+    const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), now);
+    if (met.length === 0) return true;
+    const [secs, hp] = ClearOf(bot, met);
+    t.clre = secs;
+    t.hpe = hp;
+    if (hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP) return false;
+    return Overrides.CampForce() || now + secs * Pace(bot) <= t.plan.leaveBy;
 }
 
 function measured(bot: Unit, t: Trip, now: number, center: Vector): void {

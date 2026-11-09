@@ -278,7 +278,7 @@ end
 
 -- A trip end to end: started by the chooser, the camp cleared on the verb, the walk back, `back` logged; FarmPattern idle.
 do
-	local H, core, camp = world({ camps = { { "small", SMALL, 300, 5 } } })
+	local H, core, camp = world({ camps = { { "small", SMALL, 300, 20 } } })
 	local fp = 0
 	local out = run(H, core, 330, function() if H.FarmPattern.Desire(core) > 0 then fp = fp + 1 end end)
 	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
@@ -286,7 +286,7 @@ do
 	check("trip: the neutral killed", camp[1].hp == 0)
 	check("trip: ended back at the front, in time", ended ~= nil and field(ended, "why") == "back" and tonumber(field(ended, "back")) <= tonumber(field(ended, "ret")) + 5, ended)
 	check("trip: pace learned from the measured clear", math.abs(H.CoreCamp.Pace(core) - 1) > 1e-3, H.CoreCamp.Pace(core))
-	check("trip: a clear that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
+	check("trip: a clear priced 0.12 that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
 	check("trip: the end line logs the HP, the rate and the measured clear", ended ~= nil and field(ended, "hp") == "1" and field(ended, "hpr") ~= nil and tonumber(field(ended, "clrm")) > 0, ended)
 end
 
@@ -324,12 +324,13 @@ do
 	check("gates: a clash 8 s away counts every second as gap, nothing as a fitted camp", g[1] ~= nil and tonumber(field(g[1], "h_gap")) >= 5 and field(g[1], "h_skip") == nil, g[1])
 end
 
--- An enemy hero walks up during the clear: the trip ends `threat` after the core's reaction time, not at once.
+-- An enemy hero walks up during the clear (the camp made tough once the fight began, so the clear outlasts it): the trip
+-- ends `threat` after the core's reaction time, not at once.
 do
 	local H, core, camp, enemy = world({ camps = { { "small", SMALL } } })
 	local cameAt
 	local out = run(H, core, 325, function()
-		if H.CoreCamp.Running(core) and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
+		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 		if cameAt == nil and H.CoreCamp.Running(core) and dist(core.loc, SMALL) < 700 then
 			enemy.loc = Vector(core.loc.x + 300, core.loc.y)
 			cameAt = T
@@ -344,11 +345,12 @@ do
 	check("threat on the trip: the aborted clear is measured on the end line", ended ~= nil and tonumber(field(ended, "clrm")) ~= nil and field(ended, "nl") == "1", ended)
 end
 
--- A camp that will not die in time (tougher than the model read): left at its leave time, walked back, the pace grows.
+-- A camp that will not die in time (tougher than the model read, once the fight has begun): left at its leave time, walked
+-- back, the pace grows.
 do
 	local H, core, camp = world({ camps = { { "small", SMALL } }, clash = 30 })
 	local out = run(H, core, 340, function()
-		if H.CoreCamp.Running(core) and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
+		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 	end)
 	local ended = lines(out, "core_camp", "end")[1]
 	check("late: the camp left unfinished and the core walked back", ended ~= nil and field(ended, "why") == "back" and camp[1].hp > 0, ended)
@@ -452,6 +454,36 @@ do
 	core.level = 4
 	check("table: a level 4 core can, from full HP", H.CoreCamp.CanClear(core, 1, 0) == true)
 	check("table: not with one stack on it", H.CoreCamp.CanClear(core, 1, 1) == false)
+end
+
+-- A clear priced under LearnMinHP teaches the HP rate nothing (drill cngdr2: 0 lost on 0.04 three times took it to 0.5).
+do
+	local H, core = world({ camps = { { "small", SMALL, 300, 5 } } })
+	local ended = lines(run(H, core, 330), "core_camp", "end")[1]
+	check("learn: a clear priced 0.03 leaves the HP rate", ended ~= nil and tonumber(field(ended, "hpe")) < 0.1 and H.CoreCamp.HPRate(core) == 1, ended)
+end
+
+-- The price checked on the camp found (drill cngdr2: the table priced a small camp 0.23 that held a taskmaster and two
+-- troll berserkers, 0.89 live; a level 4 large 0.44 against 0.96). Unseen at the plan, so priced from the tables; the
+-- camp seen on the walk would cost 1.6 of the core's HP: refused before any attack, the core walks back, and the next plan
+-- prices the camp as seen.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 40 } } })
+	local home = camp[1].loc
+	camp[1].loc = Vector(99999, 99999)
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local attacks = 0
+	local out = run(H, core, 330, function()
+		if T > 300.5 and FOGGED ~= nil then camp[1].loc, FOGGED = home, nil end
+		for _, a in ipairs(ACTIONS) do if a.pid == core.pid and a.kind == "AttackUnit" then attacks = attacks + 1 end end
+	end)
+	local start, ref, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "refuse")[1], lines(out, "core_camp", "end")[1]
+	check("refuse: the trip started on the table price", start ~= nil and field(start, "src") == "table" and field(start, "camp") == "1", start)
+	check("refuse: the live camp priced past the HP budget, refused", ref ~= nil and tonumber(field(ref, "hpe")) > 1, ref)
+	check("refuse: no attack order on the camp", attacks == 0, attacks)
+	check("refuse: the core walked back", ended ~= nil and field(ended, "why") == "back", ended)
+	local c = H.CoreCamp.ClashOf(samples(330, 380), PATH, 2)
+	check("refuse: the next plan prices the camp as seen and leaves it", H.CoreCamp.Plan(core, FRONT, 330, c) == nil)
 end
 
 -- The clear is learned against the neutrals met at engage, not the plan's price (drill cngdr1 t=244: a camp priced full

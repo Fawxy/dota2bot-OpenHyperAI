@@ -287,7 +287,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, distToSegment, hpOf, currentMinute, campNeutralCount, laneTower, tripSpawners, measured, MAX_PLAYER_ID, r1, r2
+local dist, distToSegment, hpOf, spaOf, readNeutral, liveNeutrals, currentMinute, campNeutralCount, laneTower, tripSpawners, admits, measured, pace, hpRate, lastSeen, MAX_PLAYER_ID, r1, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -330,6 +330,99 @@ end
 function hpOf(bot)
     local m = bot:GetMaxHealth()
     return m > 0 and bot:GetHealth() / m or 0
+end
+function ____exports.Pace(bot)
+    return pace[bot:GetPlayerID()] or 1
+end
+function ____exports.HPRate(bot)
+    return hpRate[bot:GetPlayerID()] or 1
+end
+function spaOf(u)
+    local ____this_2
+    ____this_2 = u
+    local ____opt_1 = ____this_2.GetSecondsPerAttack
+    local spa = ____opt_1 and ____opt_1(____this_2)
+    return spa ~= nil and spa > 0 and spa or ____exports.SETTINGS.DefaultSPA
+end
+function readNeutral(u, hp)
+    return {
+        hp = hp,
+        take = u:GetActualIncomingDamage(100, DamageType.Physical) / 100,
+        dmg = u:GetAttackDamage(),
+        spa = spaOf(u),
+        name = u:GetUnitName()
+    }
+end
+--- Seconds for `bot` to clear `camp` by right-clicks and the fraction of its max HP lost doing it. The neutrals die one at a
+-- time in the order that loses the least HP (most damage a second per second of kill time first); each hits until it dies;
+-- SwitchSec between kills; the core's regen offsets the loss. Spells and cleave are not in it: the learned pace and HP rate
+-- carry them.
+function ____exports.ClearOf(bot, camp)
+    local hit = bot:GetAttackDamage() / spaOf(bot)
+    local foes = {}
+    for ____, n in ipairs(camp) do
+        foes[#foes + 1] = {
+            kill = n.hp / math.max(hit * n.take, 1) + ____exports.SETTINGS.SwitchSec,
+            dps = bot:GetActualIncomingDamage(n.dmg, DamageType.Physical) / math.max(n.spa, 0.1)
+        }
+    end
+    __TS__ArraySort(
+        foes,
+        function(____, a, b) return b.dps / b.kill - a.dps / a.kill end
+    )
+    local t = 0
+    local taken = 0
+    for ____, f in ipairs(foes) do
+        t = t + f.kill
+        taken = taken + f.dps * t
+    end
+    local hp = math.max(
+        0,
+        taken - bot:GetHealthRegen() * t
+    ) / math.max(
+        bot:GetMaxHealth(),
+        1
+    )
+    return t, hp
+end
+function liveNeutrals(team, idx, center, now)
+    local live = {}
+    local untouched = true
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
+        do
+            local __continue38
+            repeat
+                if u == nil or u == nil or not u:IsAlive() then
+                    __continue38 = true
+                    break
+                end
+                local at = u:GetLocation()
+                if at == nil or at == nil or dist(at, center) > ____exports.SETTINGS.CampRadius then
+                    __continue38 = true
+                    break
+                end
+                live[#live + 1] = readNeutral(
+                    u,
+                    u:GetHealth()
+                )
+                if u:GetHealth() < u:GetMaxHealth() then
+                    untouched = false
+                end
+                __continue38 = true
+            until true
+            if not __continue38 then
+                break
+            end
+        end
+    end
+    local min = currentMinute(now)
+    local ____opt_3 = lastSeen[team]
+    local old = ____opt_3 and ____opt_3[idx]
+    if #live > 0 and untouched and (old == nil or old.min ~= min or #live >= #old.ns) then
+        lastSeen[team] = lastSeen[team] or ({})
+        lastSeen[team][idx] = {min = min, ns = live}
+    end
+    return live
 end
 function currentMinute(t)
     return math.floor(t / 60)
@@ -441,6 +534,24 @@ function ____exports.MissingOf(bot, at)
     end
     return out
 end
+function admits(bot, t, spawner, now)
+    local met = liveNeutrals(
+        bot:GetTeam(),
+        spawner.idx,
+        Camps.BoxCenter(spawner),
+        now
+    )
+    if #met == 0 then
+        return true
+    end
+    local secs, hp = ____exports.ClearOf(bot, met)
+    t.clre = secs
+    t.hpe = hp
+    if hpOf(bot) - hp * ____exports.HPRate(bot) < ____exports.SETTINGS.ArriveHP then
+        return false
+    end
+    return Overrides.CampForce() or now + secs * ____exports.Pace(bot) <= t.plan.leaveBy
+end
 function measured(bot, t, now, center)
     t.nl = campNeutralCount(center)
     local ____t_34 = t
@@ -493,6 +604,7 @@ ____exports.SETTINGS = {
     Learn = 0.3,
     LearnClamp = {0.4, 2.5},
     LateGrowth = 1.15,
+    LearnMinHP = 0.1,
     ClearHP = {small = 0.12, medium = 0.2, large = 0.35, ancient = 0.6},
     NeutralsPerStack = 3,
     HPRefLevel = 6,
@@ -504,10 +616,9 @@ ____exports.SETTINGS = {
 }
 local running = {}
 local nextPlanAt = {}
-local pace = {}
-local hpRate = {}
---- Each camp's neutrals as last seen untouched, by team then camp, with the minute (a respawn is assumed the same).
-local lastSeen = {}
+pace = {}
+hpRate = {}
+lastSeen = {}
 --- Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next).
 local cleared = {}
 --- Skip lines written, by pid: one per wave window and reason.
@@ -587,9 +698,6 @@ function ____exports.PriorClearTime(____type, level, stacks)
         s.LevelScale
     ) * (1 + s.StackedClearMul * stacks)
 end
-function ____exports.Pace(bot)
-    return pace[bot:GetPlayerID()] or 1
-end
 local function learn(bot, measured, prior)
     if prior <= 0 then
         return
@@ -607,9 +715,6 @@ function ____exports.PriorClearHP(____type, level, stacks)
     local scale = clamp(s.HPLevelStep ^ (level - s.HPRefLevel), s.HPLevelScale)
     return (s.ClearHP[____type] or s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks)
 end
-function ____exports.HPRate(bot)
-    return hpRate[bot:GetPlayerID()] or 1
-end
 local function learnHP(bot, measured, prior)
     if prior <= 0 then
         return
@@ -624,96 +729,6 @@ end
 local function growHP(bot)
     local pid = bot:GetPlayerID()
     hpRate[pid] = clamp((hpRate[pid] or 1) * ____exports.SETTINGS.LateGrowth, ____exports.SETTINGS.LearnClamp)
-end
-local function spaOf(u)
-    local ____this_2
-    ____this_2 = u
-    local ____opt_1 = ____this_2.GetSecondsPerAttack
-    local spa = ____opt_1 and ____opt_1(____this_2)
-    return spa ~= nil and spa > 0 and spa or ____exports.SETTINGS.DefaultSPA
-end
-local function readNeutral(u, hp)
-    return {
-        hp = hp,
-        take = u:GetActualIncomingDamage(100, DamageType.Physical) / 100,
-        dmg = u:GetAttackDamage(),
-        spa = spaOf(u),
-        name = u:GetUnitName()
-    }
-end
---- Seconds for `bot` to clear `camp` by right-clicks and the fraction of its max HP lost doing it. The neutrals die one at a
--- time in the order that loses the least HP (most damage a second per second of kill time first); each hits until it dies;
--- SwitchSec between kills; the core's regen offsets the loss. Spells and cleave are not in it: the learned pace and HP rate
--- carry them.
-function ____exports.ClearOf(bot, camp)
-    local hit = bot:GetAttackDamage() / spaOf(bot)
-    local foes = {}
-    for ____, n in ipairs(camp) do
-        foes[#foes + 1] = {
-            kill = n.hp / math.max(hit * n.take, 1) + ____exports.SETTINGS.SwitchSec,
-            dps = bot:GetActualIncomingDamage(n.dmg, DamageType.Physical) / math.max(n.spa, 0.1)
-        }
-    end
-    __TS__ArraySort(
-        foes,
-        function(____, a, b) return b.dps / b.kill - a.dps / a.kill end
-    )
-    local t = 0
-    local taken = 0
-    for ____, f in ipairs(foes) do
-        t = t + f.kill
-        taken = taken + f.dps * t
-    end
-    local hp = math.max(
-        0,
-        taken - bot:GetHealthRegen() * t
-    ) / math.max(
-        bot:GetMaxHealth(),
-        1
-    )
-    return t, hp
-end
---- The camp's live neutrals (the API returns none in fog). Kept as its make-up only when untouched (every one at full HP),
--- and never replaced by fewer within the same minute: a read of a half-cleared or half-seen camp priced its respawn at one
--- neutral (cngchk8 game 1049 camp 1, t=543: 4.4 s planned, 2 of 3 left).
-local function liveNeutrals(team, idx, center, now)
-    local live = {}
-    local untouched = true
-    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
-        do
-            local __continue38
-            repeat
-                if u == nil or u == nil or not u:IsAlive() then
-                    __continue38 = true
-                    break
-                end
-                local at = u:GetLocation()
-                if at == nil or at == nil or dist(at, center) > ____exports.SETTINGS.CampRadius then
-                    __continue38 = true
-                    break
-                end
-                live[#live + 1] = readNeutral(
-                    u,
-                    u:GetHealth()
-                )
-                if u:GetHealth() < u:GetMaxHealth() then
-                    untouched = false
-                end
-                __continue38 = true
-            until true
-            if not __continue38 then
-                break
-            end
-        end
-    end
-    local min = currentMinute(now)
-    local ____opt_3 = lastSeen[team]
-    local old = ____opt_3 and ____opt_3[idx]
-    if #live > 0 and untouched and (old == nil or old.min ~= min or #live >= #old.ns) then
-        lastSeen[team] = lastSeen[team] or ({})
-        lastSeen[team][idx] = {min = min, ns = live}
-    end
-    return live
 end
 --- Clear seconds and HP fraction before the learned factors, and their source; `stacks` scales only the unseen ones.
 local function estimate(bot, spawner, center, stacks, now)
@@ -1621,12 +1636,58 @@ local body = __TS__Generator(function(bot, t, ctx)
                         t.clre = ____temp_28[1]
                         t.hpe = ____temp_28[2]
                     end
-                end
+                end,
+                admit = function(at) return admits(bot, t, spawner, at) end
             },
             hooks
         ))
         local now = DotaTime()
         if not r.success then
+            if r.reason == "cancelled" and r.message == "price" then
+                log(
+                    bot,
+                    "refuse",
+                    t.clash,
+                    {
+                        {"camp", t.plan.camp},
+                        {"type", t.plan.type},
+                        {"src", t.plan.src},
+                        {
+                            "hpc",
+                            r2(t.plan.hpc)
+                        },
+                        {
+                            "clr",
+                            r1(t.plan.clr)
+                        },
+                        {
+                            "hpe",
+                            t.hpe ~= nil and r2(t.hpe) or nil
+                        },
+                        {
+                            "clre",
+                            r1(t.clre)
+                        },
+                        {
+                            "hp",
+                            r2(hpOf(bot))
+                        },
+                        {
+                            "hpr",
+                            r2(____exports.HPRate(bot))
+                        },
+                        {
+                            "pace",
+                            r2(____exports.Pace(bot))
+                        },
+                        {
+                            "lvl",
+                            bot:GetLevel()
+                        }
+                    }
+                )
+                break
+            end
             if r.reason ~= "timeout" then
                 return r
             end
@@ -1651,7 +1712,7 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         if r.message == "cleared" and t.engagedAt ~= nil and t.clre ~= nil and t.hpe ~= nil then
             learn(bot, now - t.engagedAt, t.clre)
-            if t.hpAtEngage ~= nil then
+            if t.hpAtEngage ~= nil and t.hpe >= ____exports.SETTINGS.LearnMinHP then
                 learnHP(
                     bot,
                     t.hpAtEngage - hpOf(bot),

@@ -1400,7 +1400,9 @@ export const EVENTS = {
         st: "num",
         dt: "num",
     },
-    // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), skip (a camp fitted and a
+    // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), refuse (the camp found
+    // priced past the trip's budget at sight or engage, CoreCamp admits: its plan price hpc/clr, the live price hpe/clre, hp,
+    // hpr, pace, lvl; the core walks back), skip (a camp fitted and a
     // gate held it: one line per wave window `win` and why), end. clash: the forecast's next clash second; ret: the planned
     // return; clr: clear estimate; gold, loss (forecast lane gold lost by the return), net; end: back (arrival), g0/g1 net worth;
     // nmiss (skip or nexthold why=missing): enemy heroes unseen that could be at the camp or on the walk, mtss the longest of
