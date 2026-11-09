@@ -353,11 +353,10 @@ local function logFountain()
         )
     end
 end
---- An enemy tower attacking `bot` now, or one hit it in the last half second.
+--- An enemy tower whose reach holds `bot` and that is attacking it now or hit it in the last half second.
 function ____exports.TowerOnUs(bot)
     local enemy = enemyOf(bot:GetTeam())
-    local near
-    local nearD = math.huge
+    local br = bot:GetBoundingRadius()
     for ____, id in ipairs(TOWER_IDS) do
         do
             local __continue18
@@ -367,13 +366,12 @@ function ____exports.TowerOnUs(bot)
                     __continue18 = true
                     break
                 end
-                if tw:GetAttackTarget() == bot then
-                    return tw
+                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
+                    __continue18 = true
+                    break
                 end
-                local d = GetUnitToUnitDistance(bot, tw)
-                if d < nearD then
-                    near = tw
-                    nearD = d
+                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
+                    return tw
                 end
                 __continue18 = true
             until true
@@ -382,10 +380,7 @@ function ____exports.TowerOnUs(bot)
             end
         end
     end
-    if near == nil or nearD > WorldFacts.TowerReach(near, Threat.SETTINGS.TowerReach) + bot:GetBoundingRadius() then
-        return nil
-    end
-    return bot:WasRecentlyDamagedByTower(0.5) and near or nil
+    return nil
 end
 --- Busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free.
 local function purposeOf(bot)
@@ -587,10 +582,10 @@ local function anchorsOf(bot, why)
     local allyD = ____exports.SETTINGS.AllyAnchorMax
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue62
+            local __continue61
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or RetreatState.Running(a) then
-                    __continue62 = true
+                    __continue61 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, a)
@@ -598,9 +593,9 @@ local function anchorsOf(bot, why)
                     ally = a
                     allyD = d
                 end
-                __continue62 = true
+                __continue61 = true
             until true
-            if not __continue62 then
+            if not __continue61 then
                 break
             end
         end

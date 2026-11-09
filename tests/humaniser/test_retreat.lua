@@ -131,6 +131,8 @@ do
 	local H, bot = world({ loc = Vector(2800 - 844 - 150, -5000) })
 	bot.towerHitAt = T
 	capture(function() check("tower flag: out of the reach, no new episode", H.Retreat.Desire(bot) == 0) end)
+	TOWERS_W[3][dota.Tower.Bot1].target = bot
+	capture(function() check("tower target: still targeted out of the reach, no new episode", H.Retreat.Desire(bot) == 0) end)
 	local H2, bot2 = world({ loc = Vector(2800 - 600, -5000) })
 	bot2.towerHitAt = T
 	capture(function() check("tower flag: inside the reach, leaves at once", H2.Retreat.Desire(bot2) == 0.95) end)

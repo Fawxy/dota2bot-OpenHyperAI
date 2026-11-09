@@ -167,24 +167,19 @@ function logFountain(): void {
     }
 }
 
-/** An enemy tower attacking `bot` now, or one hit it in the last half second. */
+/** An enemy tower whose reach holds `bot` and that is attacking it now or hit it in the last half second. */
 export function TowerOnUs(bot: Unit): Unit | undefined {
     const enemy = enemyOf(bot.GetTeam());
-    let near: Unit | undefined;
-    let nearD = math.huge;
+    const br = bot.GetBoundingRadius();
     for (const id of TOWER_IDS) {
         const tw = GetTower(enemy, id);
         if (!valid(tw)) continue;
-        if (tw.GetAttackTarget() === bot) return tw;
-        const d = GetUnitToUnitDistance(bot, tw);
-        if (d < nearD) {
-            near = tw;
-            nearD = d;
-        }
+        // Both signals outlast the reach: a tower keeps us as its target and the damage flag lasts 0.5 s after we step out,
+        // which restarted an episode that had just ended at the reach's edge (drills rtchase3, rtchase4).
+        if (GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br) continue;
+        if (tw.GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(0.5)) return tw;
     }
-    // The damage flag outlasts the hit by 0.5 s: past the reach's edge it would restart an episode that has just ended there.
-    if (near === undefined || nearD > WorldFacts.TowerReach(near, Threat.SETTINGS.TowerReach) + bot.GetBoundingRadius()) return undefined;
-    return bot.WasRecentlyDamagedByTower(0.5) ? near : undefined;
+    return undefined;
 }
 
 /** Busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free. */
