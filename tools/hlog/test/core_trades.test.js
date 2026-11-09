@@ -72,6 +72,14 @@ test('core deaths: the death is the last living snap, before the frozen run of h
     assert.deepStrictEqual(run('core_deaths', lines).map(r => [r.pid, r.t, r.mode]), [[1, 177, 'retreat'], [2, 521, 'retreat']]);
 });
 
+test('core deaths: a hero that reads hp 0 where it fell and then appears at the Radiant fountain dies at its last snap with hp', () => {
+    const lines = [line(0, 'bot pid=1 hero=h1 team=2 pos=1')];
+    const at = (t, x, y, hp, mode, deaths) => lines.push(line(t, `snap pid=1 x=${x} y=${y} alive=1 hp=${hp} mode=${mode} d=0.4 deaths=${deaths}`));
+    at(405, 0, 0, 12, 'retreat', 0); at(406, 100, 0, 3, 'retreat', 0); at(407, 120, 0, 0, 'team_roam', 0);
+    at(408, -6700, -6700, 0, 'team_roam', 0); at(409, -6650, -6600, 6, 'team_roam', 0); at(430, -6600, -6300, 100, 'team_roam', 1);
+    assert.deepStrictEqual(run('core_deaths', lines).map(r => [r.t, r.mode]), [[406, 'retreat']]);
+});
+
 test('core deaths: a hero that teleports home alive is not moved back', () => {
     const lines = [line(0, 'bot pid=1 hero=h1 team=3 pos=1')];
     const at = (t, x, y, hp, mode, deaths) => lines.push(line(t, `snap pid=1 x=${x} y=${y} alive=1 hp=${hp} mode=${mode} d=0.4 deaths=${deaths}`));
