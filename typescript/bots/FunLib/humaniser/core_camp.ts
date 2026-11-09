@@ -93,13 +93,13 @@ export const SETTINGS = {
     StackedClearMul: 0.8,
     Learn: 0.3,
     LearnClamp: [0.4, 2.5],
-    /** The pace and HP rate a core starts at: measured over the model's engage price (`clre`, `hpe`) on the finished clears of
-     *  the check runs cngchk12 and cngchk13 (10/11/2026), median clear time 0.70 (16 clears) and median HP lost 0.55 (11 clears
-     *  with `hpe` of 0.1 or more; the spells and bounces the right-click model leaves out are in the heroes, not the camps).
-     *  A refusal teaches neither factor, so a start of 1 priced every early camp about twice too high. `fitted`; the drill
-     *  cngdr3-5 fit (0.57, 0.36) is Luna's and Pudge's and is not used. */
-    PaceStart: 0.7,
-    HPRateStart: 0.55,
+    /** The pace and HP rate a core starts at. 1: the median measured over the model's engage price on the clears that finished
+     *  (pace 0.70 on 18, HP lost 0.40-0.55 on 9-11, cngchk12-13) is the median of the easy ones: the clears cut by OHA's retreat at
+     *  38-50% HP or at a deadline, and the camps refused at sight, have no finished clear to measure, and a start fitted on
+     *  survivors under-priced them (cngdr6-8 under the 0.55 start: 12 clears ended on a retreat with neutrals left in 8 games, 2
+     *  in 3 before). `judgement`; the learned factors still move on every finished clear. */
+    PaceStart: 1,
+    HPRateStart: 1,
     LateGrowth: 1.15,
     /** The HP rate learns only from a clear the model priced at this or more: measured over priced on a near-zero price is
      *  noise (drill cngdr2: three clears priced 0.04 that cost 0 took pos1's rate from 0.94 to 0.5). `judgement`. */

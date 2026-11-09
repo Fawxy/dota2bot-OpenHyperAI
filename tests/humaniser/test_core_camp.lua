@@ -34,7 +34,6 @@ end
 -- A straight lane along y = -5000 from x = -7,000.
 local PATH = { pts = { { -7000, -5000 }, { 7000, -5000 } }, s = { 0, 14000 }, spawnR = 0, spawnD = 14000, towers = {} }
 
-REAL_START = nil
 local function world(o)
 	package.loaded["bots/FunLib/engine/tasks"] = nil
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true } })
@@ -54,10 +53,9 @@ local function world(o)
 	H.Lane.Camps.ResetCache()
 	H.FarmPattern.ResetCache()
 	H.CoreCamp.ResetCache()
-	-- The model's mechanics are checked from neutral factors (1); `start = "real"` keeps the fitted starting factors.
+	-- The model's mechanics are checked from neutral starting factors (1, the shipped value).
 	local S = H.CoreCamp.SETTINGS
-	REAL_START = REAL_START or { S.PaceStart, S.HPRateStart }
-	if o.start == "real" then S.PaceStart, S.HPRateStart = REAL_START[1], REAL_START[2] else S.PaceStart, S.HPRateStart = 1, 1 end
+	S.PaceStart, S.HPRateStart = 1, 1
 	-- The gate's count is under test here; the threat read's vision cut has its own checks (test_threat).
 	local Threat = require("bots/FunLib/humaniser/threat")
 	Threat.SETTINGS.VisionCut = false
@@ -583,13 +581,14 @@ end
 -- factor learned against the neutral model would price them on a model they are not (cngchk13: the live read was 1.2-4.4
 -- times the table on 15 large camps). A core starts at the check runs' medians.
 do
-	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } }, start = "real" })
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
 	local CC = H.CoreCamp
+	CC.SETTINGS.PaceStart, CC.SETTINGS.HPRateStart = 0.7, 0.55
 	local c = CC.ClashOf(samples(300, 340), PATH, 2)
 	local live = CC.Plan(core, FRONT, 300, c)
 	local raw = CC.ClearOf(core, { { hp = 2400, take = 1, dmg = 8, spa = 1 } })
 	local _, rawHP = CC.ClearOf(core, { { hp = 2400, take = 1, dmg = 8, spa = 1 } })
-	check("start: a live price starts at the fitted pace and HP rate", live ~= nil and live.src == "live" and math.abs(live.clr - raw * CC.SETTINGS.PaceStart) < 0.01 and math.abs(live.hpc - rawHP * CC.SETTINGS.HPRateStart) < 0.01, live and live.hpc)
+	check("start: a live price is scaled by the core's starting pace and HP rate", live ~= nil and live.src == "live" and math.abs(live.clr - raw * CC.SETTINGS.PaceStart) < 0.01 and math.abs(live.hpc - rawHP * CC.SETTINGS.HPRateStart) < 0.01, live and live.hpc)
 	CC.ResetCache()
 	camp[1].unseen = true
 	FOGGED = function(v) return dist(v, LARGE) < 800 end
