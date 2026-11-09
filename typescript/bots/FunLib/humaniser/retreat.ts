@@ -141,8 +141,10 @@ function enemyOf(team: number): number {
     return team === Team.Radiant ? Team.Dire : Team.Radiant;
 }
 
+// A live handle whose GetLocation() came back nil reached dist() in drill rtchase2 (three lua_errors); the cause is unknown,
+// so such a unit is skipped rather than read.
 function valid(u: Unit | undefined | null): u is Unit {
-    return u !== null && u !== undefined && u.IsAlive();
+    return u !== null && u !== undefined && !u.IsNull() && u.IsAlive() && u.GetLocation() !== undefined;
 }
 
 const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;
@@ -179,6 +181,8 @@ export function TowerOnUs(bot: Unit): Unit | undefined {
             nearD = d;
         }
     }
+    // The damage flag outlasts the hit by 0.5 s: past the reach's edge it would restart an episode that has just ended there.
+    if (near === undefined || nearD > WorldFacts.TowerReach(near, Threat.SETTINGS.TowerReach) + bot.GetBoundingRadius()) return undefined;
     return bot.WasRecentlyDamagedByTower(0.5) ? near : undefined;
 }
 

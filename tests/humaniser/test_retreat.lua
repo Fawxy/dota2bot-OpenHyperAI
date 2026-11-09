@@ -121,6 +121,31 @@ do
 	check("tower: why=tower, anchor the reach's edge", field(s, "why") == "tower" and field(s, "anchor") == "tower_edge", s)
 end
 
+-- The tower's damage flag lasts 0.5 s past the hit: a hero already out of the reach (an episode just ended at its edge) does
+-- not start another on the flag alone; inside the reach it does (drills rtwalk2, rtchase2: episodes chained every 0.3 s).
+do
+	local H, bot = world({ loc = Vector(2800 - 844 - 150, -5000) })
+	bot.towerHitAt = T
+	capture(function() check("tower flag: out of the reach, no new episode", H.Retreat.Desire(bot) == 0) end)
+	local H2, bot2 = world({ loc = Vector(2800 - 600, -5000) })
+	bot2.towerHitAt = T
+	capture(function() check("tower flag: inside the reach, leaves at once", H2.Retreat.Desire(bot2) == 0.95) end)
+end
+
+-- A drill's held hero (here the chase drill's Dire pos3 chaser) is the drill's, not ours: lethal reads start no episode.
+do
+	local H, bot = world({ hp = 200 })
+	bot.team, bot.pos = 3, 3
+	package.loaded["bots/FunLib/custom_loader"].Overrides = { Drill = "retreat-chase" }
+	H.Drill.ResetCache()
+	MakeUnit({ pid = 0, team = 2, loc = Vector(300, -5000) }).estDamage = 250
+	local held = H.Drill.Held(bot)
+	check("held: the chaser is held", held, H.Drill.RoleOf(bot))
+	check("held: our retreat does not own it", held and H.Retreat.Desire(bot) == nil and not H.Retreat.Owns(bot))
+	package.loaded["bots/FunLib/custom_loader"].Overrides = nil
+	H.Drill.ResetCache()
+end
+
 -- The heal floor: under 0.3 HP with nobody in reach the hero goes home, and stays in the episode until 0.8 at the fountain.
 do
 	local H, bot = world({ hp = 150 })

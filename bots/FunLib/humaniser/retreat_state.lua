@@ -167,12 +167,14 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local running = {}
---- With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops.
+--- With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. A
+-- drill's held hero (bench, statue, sentry, chaser) is the drill's: our retreat outbid its hold (drills rtwalk2, rtchase2).
 function ____exports.Owns(bot)
-    return Ours.On("Retreat") and Phase.LaningTransitions(bot)
+    return Ours.On("Retreat") and Phase.LaningTransitions(bot) and not Drill.Held(bot)
 end
 --- An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does).
 function ____exports.Running(bot)

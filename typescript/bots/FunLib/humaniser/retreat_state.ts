@@ -3,14 +3,18 @@
  * so the threat read and the areas whose retreat nudges the slice turns off can ask without importing the retreat itself.
  */
 import { Unit } from "bots/ts_libs/dota";
+import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
 const running: Record<number, boolean> = {};
 
-/** With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. */
+/**
+ * With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. A
+ * drill's held hero (bench, statue, sentry, chaser) is the drill's: our retreat outbid its hold (drills rtwalk2, rtchase2).
+ */
 export function Owns(bot: Unit): boolean {
-    return Ours.On("Retreat") && Phase.LaningTransitions(bot);
+    return Ours.On("Retreat") && Phase.LaningTransitions(bot) && !Drill.Held(bot);
 }
 
 /** An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does). */

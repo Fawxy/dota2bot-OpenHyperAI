@@ -303,7 +303,7 @@ local function enemyOf(team)
     return team == Team.Radiant and Team.Dire or Team.Radiant
 end
 local function valid(u)
-    return u ~= nil and u ~= nil and u:IsAlive()
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
@@ -382,13 +382,10 @@ function ____exports.TowerOnUs(bot)
             end
         end
     end
-    local ____bot_WasRecentlyDamagedByTower_result_0
-    if bot:WasRecentlyDamagedByTower(0.5) then
-        ____bot_WasRecentlyDamagedByTower_result_0 = near
-    else
-        ____bot_WasRecentlyDamagedByTower_result_0 = nil
+    if near == nil or nearD > WorldFacts.TowerReach(near, Threat.SETTINGS.TowerReach) + bot:GetBoundingRadius() then
+        return nil
     end
-    return ____bot_WasRecentlyDamagedByTower_result_0
+    return bot:WasRecentlyDamagedByTower(0.5) and near or nil
 end
 --- Busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free.
 local function purposeOf(bot)
@@ -590,10 +587,10 @@ local function anchorsOf(bot, why)
     local allyD = ____exports.SETTINGS.AllyAnchorMax
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue61
+            local __continue62
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or RetreatState.Running(a) then
-                    __continue61 = true
+                    __continue62 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, a)
@@ -601,9 +598,9 @@ local function anchorsOf(bot, why)
                     ally = a
                     allyD = d
                 end
-                __continue61 = true
+                __continue62 = true
             until true
-            if not __continue61 then
+            if not __continue62 then
                 break
             end
         end
@@ -631,9 +628,9 @@ local function chooseAnchor(bot, why)
         list,
         function(____, a, b) return a.cost ~= b.cost and a.cost - b.cost or a.len - b.len end
     )
-    local ____list__1_3 = list[1]
-    local ____opt_1 = list[2]
-    return {____list__1_3, ____opt_1 and ____opt_1.cost}
+    local ____list__1_2 = list[1]
+    local ____opt_0 = list[2]
+    return {____list__1_2, ____opt_0 and ____opt_0.cost}
 end
 local function anchorPoint(a)
     return a.ally ~= nil and valid(a.ally) and a.ally:GetLocation() or a.at
@@ -661,8 +658,8 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
     Lane_.CampJobAbort(bot, "retreat")
     FarmPattern.Abort(bot, "retreat")
     local here = bot:GetLocation()
-    local ____Telemetry_Event_6 = Telemetry.Event
-    local ____array_5 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_5 = Telemetry.Event
+    local ____array_4 = __TS__SparseArrayNew(
         {"ph", "start"},
         {
             "pid",
@@ -687,15 +684,15 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
         },
         {"tower", r.tower}
     )
-    local ____temp_4
+    local ____temp_3
     if #r.reach > 0 then
-        ____temp_4 = r.escape
+        ____temp_3 = r.escape
     else
-        ____temp_4 = nil
+        ____temp_3 = nil
     end
     __TS__SparseArrayPush(
-        ____array_5,
-        {"esc", ____temp_4},
+        ____array_4,
+        {"esc", ____temp_3},
         {
             "budget",
             r2(budget)
@@ -719,9 +716,9 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
             math.floor(here.y)
         }
     )
-    ____Telemetry_Event_6(
+    ____Telemetry_Event_5(
         "retreat",
-        {__TS__SparseArraySpread(____array_5)}
+        {__TS__SparseArraySpread(____array_4)}
     )
 end
 local function ____end(bot, st, res)
