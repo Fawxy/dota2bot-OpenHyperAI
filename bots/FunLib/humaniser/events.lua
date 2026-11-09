@@ -623,6 +623,18 @@ ____exports.EVENTS = {
         fwin = "str",
         fwoff = "mixed"
     },
+    regen_obs = {
+        pid = "num",
+        item = "str",
+        state = "str",
+        why = "str",
+        hp = "num",
+        mp = "num",
+        miss = "num",
+        dur = "num",
+        left = "num",
+        src = "str"
+    },
     lane_job_supply = {
         pid = "num",
         item = "str",

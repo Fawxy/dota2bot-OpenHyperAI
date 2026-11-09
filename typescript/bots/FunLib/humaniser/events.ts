@@ -793,6 +793,22 @@ export const EVENTS = {
         fwin: "str",
         fwoff: "mixed",
     },
+    // Regen slice, step 0: a timed regen buff (tango, salve, clarity) seen on a hero, in every arm whoever cast it.
+    // state start|refresh|end; dur the full duration read live at the start, left what remained at the event; why on an end: full
+    // (ran out), early (ended with time left) or dead; miss the HP (tango, salve) or mana (clarity) missing at the start; src the
+    // damage sources in the 2 s before an end (hero, creep, tower; - for none).
+    regen_obs: {
+        pid: "num",
+        item: "str",
+        state: "str",
+        why: "str",
+        hp: "num",
+        mp: "num",
+        miss: "num",
+        dur: "num",
+        left: "num",
+        src: "str",
+    },
     lane_job_supply: {
         pid: "num",
         item: "str",
