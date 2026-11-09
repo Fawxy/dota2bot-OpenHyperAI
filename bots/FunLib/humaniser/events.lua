@@ -774,6 +774,7 @@ ____exports.EVENTS = {
         x = "num",
         y = "num",
         hz = "num",
+        dep = "num",
         threat = "num",
         band = "str",
         reach = "num",

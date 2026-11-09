@@ -23,6 +23,8 @@ function FarmWorld(o)
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = C.Ours or {}
 	if o.coreCamp ~= true then C.Ours.CoreCampTrip = false end
+	-- `ours: {Threat: false}` in a fixture's world: a switch set the way the fixture's finding needs it.
+	if type(o.ours) == "table" then for k, v in pairs(o.ours) do C.Ours[k] = v end end
 	T = o.t
 	CURRENT_TEAM = 2
 	OBSERVER = 1

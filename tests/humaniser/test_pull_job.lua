@@ -430,21 +430,60 @@ do
 end
 
 -- An enemy hero beside the camp (the user's ptm1_A 4:21: a pull walked into the enemy offlaner): skipped, with its distance;
--- the same hero 1,500 away lets the pull start.
-for _, case in ipairs({ { "enemy at the camp", Vector(-1600, -6600), "0" }, { "enemy 1,500 from the site", Vector(-1600, -8100), "1" } }) do
+-- the same hero far away lets the pull start. Under Ours.Threat (slice threat) the start reads the camp on the shared gate
+-- (`threat`, `ev=threat who=pull_job`); off, the pull's own enemy-site rule (within 1,200 of the site).
+for _, case in ipairs({
+	{ "threat on, enemy at the camp", Vector(-1600, -6600), "0", true, "threat" },
+	{ "threat on, enemy 2,500 from the camp", Vector(-1600, -9100), "1", true },
+	{ "threat off, enemy at the camp", Vector(-1600, -6600), "0", false, "enemy-site" },
+	{ "threat off, enemy 1,500 from the site", Vector(-1600, -8100), "1", false },
+}) do
 	local w = world({ reading = OUT })
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = case[4]
 	local enemy = MakeUnit({ pid = 10, team = 3, loc = case[2] })
 	enemy.lane, enemy.pos = Lane.Bot, 3
 	local out = run(w, 80)
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = nil
 	local choice = lines(out, "choice")
 	local se = tonumber(field(choice[1], "se") or "")
 	if case[3] == "0" then
-		check(case[1] .. ": go=0 why=enemy-site, se within 1,200, no job", #choice == 1 and field(choice[1], "go") == "0"
-			and field(choice[1], "why") == "enemy-site" and se ~= nil and se <= 1200 and #lines(out, "job") == 0, choice[1])
+		local reads = lines(out, "threat")
+		check(case[1] .. ": go=0 why=" .. case[5] .. ", se logged, no job", #choice == 1 and field(choice[1], "go") == "0"
+			and field(choice[1], "why") == case[5] and se ~= nil and se <= 1200 and #lines(out, "job") == 0, choice[1])
+		check(case[1] .. ": the gate read logged by pull_job only under the switch",
+			(case[4] and #reads >= 1 and field(reads[1], "who") == "pull_job" and field(reads[1], "dec") == "threat") or (not case[4] and #reads == 0), reads[1])
 	else
 		check(case[1] .. ": pull started, se logged over 1,200", #lines(out, "job") >= 1 and field(choice[1], "go") == "1"
 			and se ~= nil and se > 1200, choice[1])
 	end
+end
+
+-- The `missing` path through Wants: three heroes last seen by the camp and unseen now (the camp in fog) weigh 0.6 before
+-- 4:00 on a flat prior (the prior itself is graded in test_threat; at this camp's depth it would give 0.1 each), so the
+-- start holds on `missing` with a `who=pull_job dec=missing` read.
+do
+	local w = world({ reading = OUT })
+	local Threat = require("bots/FunLib/humaniser/threat")
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
+	local depth, dist = Threat.SETTINGS.DepthFactor, Threat.SETTINGS.DistFactor
+	Threat.SETTINGS.DepthFactor = { { 1.01, 1 } }
+	Threat.SETTINGS.DistFactor = { { math.huge, 1 } }
+	Threat.ResetCache()
+	for i, pid in ipairs({ 10, 11, 12 }) do
+		local e = MakeUnit({ pid = pid, team = 3, loc = Vector(-1600, -6600) })
+		e.lane, e.pos = Lane.Bot, i
+		e.hiddenFrom = { [OBSERVER] = true }
+		LAST_SEEN[pid] = { location = Vector(-1600 + 100 * i, -6600), time_since_seen = 10 }
+	end
+	local out = run(w, 80)
+	Threat.SETTINGS.DepthFactor, Threat.SETTINGS.DistFactor = depth, dist
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = nil
+	for _, pid in ipairs({ 10, 11, 12 }) do LAST_SEEN[pid] = nil end
+	local choice, reads = lines(out, "choice"), lines(out, "threat")
+	check("threat on, three heroes unseen by the camp: go=0 why=missing, no job", #choice == 1 and field(choice[1], "go") == "0"
+		and field(choice[1], "why") == "missing" and #lines(out, "job") == 0, choice[1])
+	check("threat on, unseen heroes: the gate read dec=missing, miss 0.6", #reads >= 1 and field(reads[1], "who") == "pull_job"
+		and field(reads[1], "dec") == "missing" and math.abs(tonumber(field(reads[1], "miss") or 0) - 0.6) < 0.01, reads[1])
 end
 
 -- Both supports in the bot lane: the pos5 pulls, the pos4 does not apply.

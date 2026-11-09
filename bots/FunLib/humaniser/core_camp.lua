@@ -443,14 +443,14 @@ function ____exports.MissingOf(bot, at)
 end
 function measured(bot, t, now, center)
     t.nl = campNeutralCount(center)
-    local ____t_31 = t
-    local ____temp_30
+    local ____t_32 = t
+    local ____temp_31
     if t.engagedAt ~= nil then
-        ____temp_30 = r1(now - t.engagedAt)
+        ____temp_31 = r1(now - t.engagedAt)
     else
-        ____temp_30 = nil
+        ____temp_31 = nil
     end
-    ____t_31.clrm = ____temp_30
+    ____t_32.clrm = ____temp_31
     t.hpm = t.hpAtEngage ~= nil and r2(t.hpAtEngage - hpOf(bot)) or nil
 end
 ____exports.SETTINGS = {
@@ -478,8 +478,6 @@ ____exports.SETTINGS = {
     PathFactor = 1.2,
     ThreatMargin = 600,
     MissingAfter = 3,
-    GateHorizon = 4,
-    MissingRefuse = 0.5,
     MissingSpeed = 330,
     MissingReachMax = 4000,
     MidRuneGuard = 40,
@@ -1200,8 +1198,8 @@ function ____exports.MissingNear(bot, at)
     return ____exports.MissingOf(bot, at).n
 end
 --- The missing-hero gate for a walk from the core to `at` as [heroes that hold it, the belief's weight sum]: under Ours.Threat
--- the threat read's belief (a weight per unseen hero, refusing at Threat MissingRefuse) logged as ev=threat for `consumer`;
--- off, MissingOf's count and no weight.
+-- the threat read's belief (a weight per unseen hero, refusing at Threat.SETTINGS MissingRefuse) logged as ev=threat for
+-- `consumer`; off, MissingOf's count and no weight.
 function ____exports.MissingGate(bot, at, consumer)
     if not Ours.On("Threat") then
         return ____exports.MissingOf(bot, at).n, nil
@@ -1210,9 +1208,9 @@ function ____exports.MissingGate(bot, at, consumer)
         bot,
         bot:GetLocation(),
         at,
-        ____exports.SETTINGS.GateHorizon
+        Threat.SETTINGS.GateHorizon
     )
-    local held = r.missing >= ____exports.SETTINGS.MissingRefuse
+    local held = r.missing >= Threat.SETTINGS.MissingRefuse
     Threat.Log(bot, consumer, r, held and "missing" or "go")
     return held and #r.mpids or 0, math.floor(r.missing * 100 + 0.5) / 100
 end
@@ -1327,14 +1325,14 @@ local function startGate(bot, plan, now)
     end
     local center = Camps.BoxCenter(spawner)
     if Ours.On("Threat") then
-        local r = Threat.Read(
+        local ____Threat_Gate_result_20 = Threat.Gate(
             bot,
             bot:GetLocation(),
             center,
-            ____exports.SETTINGS.GateHorizon
+            "core_camp"
         )
-        local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
-        Threat.Log(bot, "core_camp", r, why or "go")
+        local why = ____Threat_Gate_result_20.why
+        local r = ____Threat_Gate_result_20.r
         if why ~= "missing" then
             return why ~= nil and ({why = why}) or nil
         end
@@ -1434,19 +1432,19 @@ local function noteSkip(bot, h, c, plan)
         return
     end
     skipped[pid][key] = true
-    local ____log_23 = log
-    local ____bot_21 = bot
-    local ____c_22 = c
-    local ____array_20 = __TS__SparseArrayNew(unpack(heldFields(h)))
+    local ____log_24 = log
+    local ____bot_22 = bot
+    local ____c_23 = c
+    local ____array_21 = __TS__SparseArrayNew(unpack(heldFields(h)))
     __TS__SparseArrayPush(
-        ____array_20,
+        ____array_21,
         unpack(planFields(plan))
     )
-    ____log_23(
-        ____bot_21,
+    ____log_24(
+        ____bot_22,
         "skip",
-        ____c_22,
-        {__TS__SparseArraySpread(____array_20)}
+        ____c_23,
+        {__TS__SparseArraySpread(____array_21)}
     )
 end
 local GATE_FIELD = {
@@ -1608,11 +1606,11 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         t.engagedAt = nil
         t.hpAtEngage = nil
+        local ____t_26 = t
         local ____t_25 = t
-        local ____t_24 = t
         t.nl = nil
-        ____t_24.hpm = nil
-        ____t_25.clrm = nil
+        ____t_25.hpm = nil
+        ____t_26.clrm = nil
         t.center = Camps.BoxCenter(spawner)
         local r = __TS__DelegatedYield(V.clearCamp(
             bot,
@@ -1677,10 +1675,10 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         local hold = startGate(bot, next, now)
         if hold ~= nil then
-            local ____log_29 = log
-            local ____bot_27 = bot
-            local ____t_clash_28 = t.clash
-            local ____array_26 = __TS__SparseArrayNew(
+            local ____log_30 = log
+            local ____bot_28 = bot
+            local ____t_clash_29 = t.clash
+            local ____array_27 = __TS__SparseArrayNew(
                 {"after", r.message or "ok"},
                 {"clrm", t.clrm},
                 {"hpm", t.hpm},
@@ -1688,14 +1686,14 @@ local body = __TS__Generator(function(bot, t, ctx)
                 unpack(heldFields(hold))
             )
             __TS__SparseArrayPush(
-                ____array_26,
+                ____array_27,
                 unpack(planFields(next))
             )
-            ____log_29(
-                ____bot_27,
+            ____log_30(
+                ____bot_28,
                 "nexthold",
-                ____t_clash_28,
-                {__TS__SparseArraySpread(____array_26)}
+                ____t_clash_29,
+                {__TS__SparseArraySpread(____array_27)}
             )
             break
         end

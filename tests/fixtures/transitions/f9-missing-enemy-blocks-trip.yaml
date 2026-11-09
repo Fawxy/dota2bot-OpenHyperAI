@@ -10,6 +10,9 @@ world:
   pos: 1
   camps: [{type: small}]
   transitions: {Enable: true}
+  # The caution probe's rule is Ours.Threat's OFF arm since slice threat 3 (under the switch the trip's camp is read with the
+  # threat gate: test_farm_pattern, test_threat).
+  ours: {Threat: false}
   # The enemy offlaner went out of sight 10 s ago: a fresh missing enemy.
   enemies: [{pid: 11, unseen: 10}]
 expect:
