@@ -235,15 +235,16 @@ export const TABLE: Record<string, Entry> = {
     // says so); the Dire pos3 stands on the lane side of the pos5's pull camp on odd reps, in the lane's sight (the gate holds
     // on `reach`; the fog side, thrdr3c 09/11/2026, is unseen from the lane and a hero last seen 1,300 away in lane weighs
     // 0.02 at a camp this far on our side, so two pulls ran beside it) and is benched on even ones (control: the pull runs).
-    // 120 s reps: the statue walks about 40 s from its fountain to the camp and the controller wants a pull every 60 to 90 s,
-    // so 60 s reps (thrdr3) left it on site for no pull start at all.
+    // The pull is forced every wave (the controller's word is not asked: thrdr3 to thrdr3d, 09/11/2026, it wanted a pull on
+    // 1 of 5 statue windows); 120 s reps because the statue walks about 40 s from its fountain to the camp.
     "threat-support": {
-        note: "Radiant pos5 plays its lane; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
+        note: "Radiant pos5 plays its lane and pulls every wave; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
         cast: { r: [5] },
         statue: { d: [3] },
         spots: { d: { 3: ["pull:r:safe:seen", "bench"] } },
         others: "bench",
         rep: { every: 120, from: 30 },
+        forces: "pull",
     },
     "lever-feed-off": {
         note: "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
@@ -423,8 +424,10 @@ function spotPoint(bot: Unit, spot: string): Vector | undefined {
     if (s === undefined) return undefined;
     const c = Camps.BoxCenter(s);
     const lane = GetLaneFrontLocation(team, Camps.LaneOfKind(team, kind), 0);
-    // Outside the box so the statue blocks no spawn: the side away from the lane, or the lane side for `:seen`.
-    return Camps.StandPoint(s, seen === ":seen" ? lane : Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z), SPOT_OFFSET);
+    // SPOT_OFFSET past the box edge so the statue blocks no spawn (Camps.StandPoint caps at StandReach from the spawner
+    // origin and landed inside the box, thrdr3d 09/11/2026: the 1:00 and 2:00 spawns blocked): the side away from the lane,
+    // or the lane side for `:seen`.
+    return Camps.BoxEdgePoint(s, seen === ":seen" ? lane : Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z), SPOT_OFFSET);
 }
 
 function noteSpot(bot: Unit, spot: string, at: Vector | undefined): void {

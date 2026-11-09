@@ -275,7 +275,7 @@ function spotPoint(bot, spot)
         Camps.LaneOfKind(team, kind),
         0
     )
-    return Camps.StandPoint(
+    return Camps.BoxEdgePoint(
         s,
         seen == ":seen" and lane or Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z),
         SPOT_OFFSET
@@ -531,12 +531,13 @@ ____exports.TABLE = {
         rep = {every = 90, from = 30}
     },
     ["threat-support"] = {
-        note = "Radiant pos5 plays its lane; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
+        note = "Radiant pos5 plays its lane and pulls every wave; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
         cast = {r = {5}},
         statue = {d = {3}},
         spots = {d = {[3] = {"pull:r:safe:seen", "bench"}}},
         others = "bench",
-        rep = {every = 120, from = 30}
+        rep = {every = 120, from = 30},
+        forces = "pull"
     },
     ["lever-feed-off"] = {
         note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
