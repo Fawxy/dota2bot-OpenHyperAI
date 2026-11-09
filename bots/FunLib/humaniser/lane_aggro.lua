@@ -408,7 +408,7 @@ function ____exports.Tick(bot)
     if a == nil then
         return
     end
-    if a.phase == "watch" then
+    if a.phase == "watch" and a.kind == "feed" and bot:IsAlive() then
         local now = DotaTime()
         a.steppedAt = now
         a.left = nil

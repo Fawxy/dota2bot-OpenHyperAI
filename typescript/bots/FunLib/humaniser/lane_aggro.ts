@@ -259,7 +259,9 @@ export function Tick(bot: Unit): void {
     if (a === undefined) return;
     // The watch only reads the creep's fate from our counters, so it is read here whichever mode holds the bot (banked logs:
     // 697 of 999 stale feeds ended in the watch, the move done, a retreat or attack holding the bot 3 s or more).
-    if (a.phase === "watch") {
+    // Feeds only (the tower watch reads its tower unguarded, review 2026-11-09-lh-draw M2) and only alive (a death in another
+    // mode is not the feed's, M3).
+    if (a.phase === "watch" && a.kind === "feed" && bot.IsAlive()) {
         const now = DotaTime();
         a.steppedAt = now;
         a.left = undefined;
