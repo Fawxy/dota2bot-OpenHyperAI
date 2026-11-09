@@ -647,7 +647,7 @@ export interface ClearPlan {
     /** Called once, the first frame a neutral is within attack range + 100 (hosts time the clear from here). */
     onEngage?: (this: void, t: number) => void;
     /** Host: whether to fight the camp now seen, asked the first frame its neutrals are seen and again at engage, both
-     *  before any attack order; false ends the verb `cancelled` "price" (slice core-next-gold: the trip's price checked on
+     *  before the verb orders its own attack (the walk-in may already have one out); false ends the verb `cancelled` "price" (slice core-next-gold: the trip's price checked on
      *  the neutrals it finds). */
     admit?: (this: void, t: number, camp: TaskAttacker[]) => boolean;
     /** Host: take `n`'s kill with the engine's `lastHit` (wait in range for the hit that kills it) instead of ordering the

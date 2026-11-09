@@ -1045,7 +1045,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
 }
 
 /**
- * The trip's price checked on the neutrals the core finds (asked at first sight and at engage, before any attack): the
+ * The trip's price checked on the neutrals the core finds (asked at first sight and at engage, before an attack lands; at engage the attack is already ordered): the
  * model's clear of the live camp, with the learned pace and HP rate, must leave ArriveHP and end by the plan's leave
  * time. The plan's price can be the type tables', which cannot see what spawned (drill cngdr2: a small camp of a
  * taskmaster and two troll berserkers priced 0.23 by the table, 0.89 live; a level 4 large 0.44 against 0.96). A refusal
