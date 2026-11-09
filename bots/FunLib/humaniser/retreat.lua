@@ -241,6 +241,7 @@ ____exports.SETTINGS = {
     HealFloor = 0.3,
     HealUntil = 0.8,
     RouteStep = 300,
+    LenPerCost = 2000,
     EpisodeDesire = 0.95,
     DrillDesire = 1,
     Arrive = 200,
@@ -496,21 +497,22 @@ local function routeCost(bot, from, to, units)
     end
     return cost
 end
---- Our standing towers that are not ahead of the hero (no nearer our fountain than it by less than TowerStandBack).
+--- Our standing towers that are not ahead of the hero: no nearer the enemy fountain than it, less TowerStandBack. Not our own
+-- fountain's distance: in the safe lane our T1 is farther from our fountain than our pull camp (drill rtwalk1).
 local function ownTowersBehind(bot)
     local team = bot:GetTeam()
-    local f = ____exports.Fountain(team)
+    local ef = ____exports.Fountain(enemyOf(team))
     local mine = dist(
         bot:GetLocation(),
-        f
+        ef
     )
     local out = {}
     for ____, id in ipairs(TOWER_IDS) do
         local tw = GetTower(team, id)
         if valid(tw) and dist(
             tw:GetLocation(),
-            f
-        ) < mine + ____exports.SETTINGS.TowerStandBack then
+            ef
+        ) > mine - ____exports.SETTINGS.TowerStandBack then
             out[#out + 1] = tw
         end
     end
@@ -617,13 +619,13 @@ local function anchorsOf(bot, why)
     end
     return out
 end
---- The least-cost anchor (ties to the shorter walk) and the next-best one's cost.
+--- The least-cost anchor (exposed route points plus the walk's length, LenPerCost; ties to the shorter) and the next-best's cost.
 local function chooseAnchor(bot, why)
     local units = enemyUnits(bot)
     local here = bot:GetLocation()
     local list = anchorsOf(bot, why)
     for ____, a in ipairs(list) do
-        a.cost = routeCost(bot, here, a.at, units)
+        a.cost = math.floor((routeCost(bot, here, a.at, units) + a.len / ____exports.SETTINGS.LenPerCost) * 10 + 0.5) / 10
     end
     __TS__ArraySort(
         list,
@@ -1020,14 +1022,11 @@ function ____exports.Think(bot)
     if d ~= nil and Drill.ForcedAt("retreat", now) ~= nil and st.ep == nil then
         if (d.phase == "walk" or d.phase == "skip") and d.at ~= nil then
             moveTo(bot, st, d.at, now)
-        elseif st.orderTo == nil or dist(
-            st.orderTo,
-            bot:GetLocation()
-        ) > 50 then
+        else
             moveTo(
                 bot,
                 st,
-                bot:GetLocation(),
+                plainTarget(bot)[2],
                 now
             )
         end

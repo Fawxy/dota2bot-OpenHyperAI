@@ -448,12 +448,12 @@ ____exports.TABLE = {
         rep = {every = 30, from = 0}
     },
     ["retreat-walk"] = {
-        note = "Radiant pos1 walks to a start spot each rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
+        note = "Radiant pos1 walks to a start spot each 60 s rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
         cast = SAFE_CORE,
         statue = {d = {3, 4}},
         others = "bench",
         castSpots = {"tower", "front", "pull:r:safe"},
-        rep = {every = 45, from = 30},
+        rep = {every = 60, from = 30},
         forces = "retreat"
     },
     ["retreat-chase"] = {

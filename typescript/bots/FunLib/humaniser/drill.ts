@@ -101,15 +101,15 @@ export const TABLE: Record<string, Entry> = {
     },
     // Slice retreat (master slices/retreat.md "Drill"): the forced retreat from fixed points. Each rep the Radiant pos1 walks
     // to the rep's start spot and our retreat starts there (why=forced) and runs to its anchor; the Dire offlane pair stand in
-    // their lane as statues, so the route's tower, wave and hero costs are all there but nothing acts. 45 s reps: up to 15 s
-    // to walk to the spot, the rest for the walk to the anchor.
+    // their lane as statues, so the route's tower, wave and hero costs are all there but nothing acts. 60 s reps (rtwalk1: 45 s
+    // cut the walk from the far spots before the anchor); the recipe runs to 8:00 for two reps per spot.
     "retreat-walk": {
-        note: "Radiant pos1 walks to a start spot each rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
+        note: "Radiant pos1 walks to a start spot each 60 s rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
         cast: SAFE_CORE,
         statue: { d: [3, 4] },
         others: "bench",
         castSpots: ["tower", "front", "pull:r:safe"],
-        rep: { every: 45, from: 30 },
+        rep: { every: 60, from: 30 },
         forces: "retreat",
     },
     // The chase drill (prediction): the Radiant pos1 lane-only with our retreat live; the Dire pos3 chases and hits it whenever

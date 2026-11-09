@@ -32,6 +32,9 @@ export const SETTINGS = {
     HealUntil: 0.8,
     /** Route points every RouteStep along each anchor's straight walk. judgement. */
     RouteStep: 300,
+    /** One route cost point per this many units of walk, so a long walk home does not beat a short one on fewer exposed
+     *  points alone (drill rtwalk1: the fountain, 13,168 away at cost 2, beat our T1's walk at cost 4). judgement. */
+    LenPerCost: 2000,
     /** The desire while an episode runs: above laning's 0.9, below OHA's 1.1 latch. judgement. */
     EpisodeDesire: 0.95,
     /** A forced drill rep holds the retreat mode above every mode the cast could otherwise take. */
@@ -247,15 +250,18 @@ function routeCost(bot: Unit, from: Vector, to: Vector, units: [Unit[], Unit[], 
     return cost;
 }
 
-/** Our standing towers that are not ahead of the hero (no nearer our fountain than it by less than TowerStandBack). */
+/**
+ * Our standing towers that are not ahead of the hero: no nearer the enemy fountain than it, less TowerStandBack. Not our own
+ * fountain's distance: in the safe lane our T1 is farther from our fountain than our pull camp (drill rtwalk1).
+ */
 function ownTowersBehind(bot: Unit): Unit[] {
     const team = bot.GetTeam();
-    const f = Fountain(team);
-    const mine = dist(bot.GetLocation(), f);
+    const ef = Fountain(enemyOf(team));
+    const mine = dist(bot.GetLocation(), ef);
     const out: Unit[] = [];
     for (const id of TOWER_IDS) {
         const tw = GetTower(team, id);
-        if (valid(tw) && dist(tw.GetLocation(), f) < mine + SETTINGS.TowerStandBack) out.push(tw);
+        if (valid(tw) && dist(tw.GetLocation(), ef) > mine - SETTINGS.TowerStandBack) out.push(tw);
     }
     return out;
 }
@@ -311,12 +317,12 @@ function anchorsOf(bot: Unit, why: Why): Anchor[] {
     return out;
 }
 
-/** The least-cost anchor (ties to the shorter walk) and the next-best one's cost. */
+/** The least-cost anchor (exposed route points plus the walk's length, LenPerCost; ties to the shorter) and the next-best's cost. */
 function chooseAnchor(bot: Unit, why: Why): [Anchor, number | undefined] {
     const units = enemyUnits(bot);
     const here = bot.GetLocation();
     const list = anchorsOf(bot, why);
-    for (const a of list) a.cost = routeCost(bot, here, a.at, units);
+    for (const a of list) a.cost = math.floor((routeCost(bot, here, a.at, units) + a.len / SETTINGS.LenPerCost) * 10 + 0.5) / 10;
     list.sort((a, b) => (a.cost !== b.cost ? a.cost - b.cost : a.len - b.len));
     return [list[0], list[1]?.cost];
 }
@@ -536,7 +542,9 @@ export function Think(bot: Unit): void {
     const d = st.drill;
     if (d !== undefined && Drill.ForcedAt("retreat", now) !== undefined && st.ep === undefined) {
         if ((d.phase === "walk" || d.phase === "skip") && d.at !== undefined) moveTo(bot, st, d.at, now);
-        else if (st.orderTo === undefined || dist(st.orderTo, bot.GetLocation()) > 50) moveTo(bot, st, bot.GetLocation(), now);
+        // Between its episode and the next rep the cast takes the plain walk, out of the enemy's reach (rtwalk1: left at the
+        // tower's edge it started rep 2 at 0.36 HP).
+        else moveTo(bot, st, plainTarget(bot)[1], now);
         return;
     }
     if (st.ep !== undefined) {
