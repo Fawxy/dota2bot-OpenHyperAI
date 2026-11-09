@@ -68,6 +68,24 @@ do
 	check("left is what the break cost", field(o[2], "left") == "9", field(o[2], "left"))
 end
 
+-- An end with no flagged source still shows whether HP fell just before it: the clarity that ended early at full HP in the smoke
+-- game (no damage) against one that lost 20 HP in the same second (a source the flags do not name).
+do
+	local R = fresh()
+	local quiet = MakeUnit({ pid = 6, hp = 90, maxhp = 100 })
+	local hit = MakeUnit({ pid = 7, hp = 90, maxhp = 100 })
+	T = 100
+	for _, u in ipairs({ quiet, hit }) do u.modifiers = { modifier_clarity_potion = 1 } u.left = 25 R.Tick(u) end
+	step(R, quiet, 1) step(R, hit, 0)
+	hit.hp = 70
+	step(R, hit, 0.5) quiet.modifiers = {} hit.modifiers = {}
+	R.Tick(quiet) R.Tick(hit)
+	local drops = {}
+	for _, l in ipairs(obs()) do if field(l, "state") == "end" then drops[field(l, "pid")] = field(l, "drop") end end
+	check("quiet early end has no HP drop", drops["6"] == "0", drops["6"])
+	check("hit early end shows the HP lost", drops["7"] == "20", drops["7"])
+end
+
 -- Clarity restores mana: the missing amount is mana. A tango recast while active is a refresh, not a second start.
 do
 	local R = fresh()

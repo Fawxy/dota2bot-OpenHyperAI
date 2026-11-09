@@ -633,7 +633,8 @@ ____exports.EVENTS = {
         miss = "num",
         dur = "num",
         left = "num",
-        src = "str"
+        src = "str",
+        drop = "num"
     },
     lane_job_supply = {
         pid = "num",

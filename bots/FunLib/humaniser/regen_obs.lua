@@ -6,6 +6,7 @@ local EARLY_TOLERANCE = 0.5
 local REFRESH_RISE = 0.5
 local SOURCE_WINDOW = 2
 local active = {}
+local recent = {}
 local function sources(bot)
     local parts = {}
     if bot:WasRecentlyDamagedByAnyHero(SOURCE_WINDOW) then
@@ -19,7 +20,16 @@ local function sources(bot)
     end
     return #parts > 0 and table.concat(parts, ",") or "-"
 end
-local function emit(bot, t, state, why, dur, left, miss, src)
+local function dropInWindow(pid, now, hp)
+    local top = hp
+    for ____, r in ipairs(recent[pid] or ({})) do
+        if now - r.t <= SOURCE_WINDOW and r.hp > top then
+            top = r.hp
+        end
+    end
+    return top - hp
+end
+local function emit(bot, t, state, why, dur, left, miss, src, drop)
     local maxHP = bot:GetMaxHealth()
     local maxMP = bot:GetMaxMana()
     Telemetry.Event(
@@ -43,7 +53,8 @@ local function emit(bot, t, state, why, dur, left, miss, src)
             {"miss", miss},
             {"dur", dur},
             {"left", left},
-            {"src", src}
+            {"src", src},
+            {"drop", drop}
         }
     )
 end
@@ -58,6 +69,23 @@ function ____exports.Tick(bot)
     end
     local mine = active[pid]
     local now = DotaTime()
+    local ____recent_3, ____pid_4 = recent, pid
+    if ____recent_3[____pid_4] == nil then
+        ____recent_3[____pid_4] = {}
+    end
+    local hist = recent[pid]
+    local drop = dropInWindow(
+        pid,
+        now,
+        bot:GetHealth()
+    )
+    hist[#hist + 1] = {
+        t = now,
+        hp = bot:GetHealth()
+    }
+    while #hist > 0 and now - hist[1].t > SOURCE_WINDOW do
+        table.remove(hist, 1)
+    end
     for ____, t in ipairs(TRACKED) do
         local idx = bot:HasModifier(t.modifier) and bot:GetModifierByName(t.modifier) or -1
         local was = mine[t.modifier]
@@ -74,7 +102,8 @@ function ____exports.Tick(bot)
                     left,
                     left,
                     miss,
-                    "-"
+                    "-",
+                    0
                 )
             else
                 if left > was.left + REFRESH_RISE then
@@ -86,7 +115,8 @@ function ____exports.Tick(bot)
                         was.dur,
                         left,
                         0,
-                        "-"
+                        "-",
+                        0
                     )
                     was.startAt = now
                     was.dur = left
@@ -105,7 +135,8 @@ function ____exports.Tick(bot)
                 was.dur,
                 math.max(0, was.dur - elapsed),
                 0,
-                why == "early" and sources(bot) or "-"
+                why == "early" and sources(bot) or "-",
+                drop
             )
         end
     end
