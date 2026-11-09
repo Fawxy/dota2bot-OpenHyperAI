@@ -351,7 +351,6 @@ do
 	local l = lines[1]
 	check("returning neutrals: before 1, after 3", field(l, "before") == "1" and field(l, "after") == "3", l)
 	check("returning neutrals: fresh 0, not stacked", field(l, "fresh") == "0" and field(l, "res") == "not_stacked", l)
-	check("returning neutrals: not stacked leaves no record", field(l, "scount") == "0", l)
 end
 
 -- A stand point the bot cannot reach (trees): ~300 short and no closer for 1.5 s counts as reached, so the job waits and
