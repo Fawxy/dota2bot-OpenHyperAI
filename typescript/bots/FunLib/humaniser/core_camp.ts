@@ -327,6 +327,8 @@ export interface Neutral {
     dmg: number;
     spa: number;
     name?: string;
+    /** At full HP when read (a live read only). */
+    full?: boolean;
 }
 
 function spaOf(u: Unit): number {
@@ -376,8 +378,10 @@ function liveNeutrals(team: number, idx: number, center: Vector, now: number): N
         if (u === null || u === undefined || !u.IsAlive()) continue;
         const at = u.GetLocation();
         if (at === null || at === undefined || dist(at, center) > SETTINGS.CampRadius) continue;
-        live.push(readNeutral(u, u.GetHealth()));
-        if (u.GetHealth() < u.GetMaxHealth()) untouched = false;
+        const n = readNeutral(u, u.GetHealth());
+        n.full = u.GetHealth() >= u.GetMaxHealth();
+        live.push(n);
+        if (!n.full) untouched = false;
     }
     const min = currentMinute(now);
     const old = lastSeen[team]?.[idx];
@@ -391,11 +395,14 @@ function liveNeutrals(team: number, idx: number, center: Vector, now: number): N
 /** Clear seconds and HP fraction before the learned factors, and their source; `stacks` scales only the unseen ones. */
 function estimate(bot: Unit, spawner: Camps.Spawner, center: Vector, stacks: number, now: number): LuaMultiReturn<[number, number, string, Neutral[] | undefined]> {
     const live = liveNeutrals(bot.GetTeam(), spawner.idx, center, now);
-    if (live.length > 0) {
+    const seen = lastSeen[bot.GetTeam()]?.[spawner.idx]?.ns;
+    // Fewer neutrals than its untouched make-up, all at full HP, is a half-seen camp, not a smaller one: cngdr3 t=236 priced
+    // camp 2 at one satyr (0.06) with two in fog, 0.92 at sight.
+    const partial = seen !== undefined && live.length < seen.length && live.every((n) => n.full === true);
+    if (live.length > 0 && !partial) {
         const [secs, hp] = ClearOf(bot, live);
         return $multi(secs, hp, "live", live);
     }
-    const seen = lastSeen[bot.GetTeam()]?.[spawner.idx]?.ns;
     if (seen !== undefined) {
         const [secs, hp] = ClearOf(bot, seen);
         const k = 1 + SETTINGS.StackedClearMul * stacks;

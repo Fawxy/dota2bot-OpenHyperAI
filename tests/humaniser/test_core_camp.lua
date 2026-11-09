@@ -224,6 +224,24 @@ do
 	FOGGED = nil
 end
 
+-- Half seen: fewer neutrals than the untouched make-up, all at full HP, is part of the camp in fog, not a smaller camp
+-- (cngdr3 t=236: camp 2 priced at one satyr, 0.06, with two in fog; 0.92 at sight). One damaged survivor is a smaller camp.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local extra = MakeNeutral({ x = LARGE.x + 50, y = LARGE.y, hp = 600, maxhp = 600 })
+	CC.Plan(core, FRONT, 300, c)
+	extra.unseen = true
+	local half = CC.Plan(core, FRONT, 300, c)
+	check("half seen: priced as its untouched make-up", half ~= nil and half.src == "seen" and half.n0 == 2, half and half.src)
+	extra.unseen = nil
+	extra.hp = 0
+	camp[1].hp = 1200
+	local smaller = CC.Plan(core, FRONT, 300, c)
+	check("half seen: a damaged survivor is priced live", smaller ~= nil and smaller.src == "live" and smaller.n0 == 1, smaller and smaller.src)
+end
+
 -- Price: the lane creeps the forecast kills before the return are the trip's cost; a camp that does not pay for them is no trip.
 do
 	local H, core = world({ camps = { { "small", SMALL } } })
