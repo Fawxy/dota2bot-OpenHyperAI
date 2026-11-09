@@ -351,6 +351,7 @@ do
 	local l = lines[1]
 	check("returning neutrals: before 1, after 3", field(l, "before") == "1" and field(l, "after") == "3", l)
 	check("returning neutrals: fresh 0, not stacked", field(l, "fresh") == "0" and field(l, "res") == "not_stacked", l)
+	check("returning neutrals: not stacked leaves no record", field(l, "scount") == "0", l)
 end
 
 -- A stand point the bot cannot reach (trees): ~300 short and no closer for 1.5 s counts as reached, so the job waits and
@@ -782,6 +783,8 @@ do
 	check("double: double=1, camp A good_2", field(l, "double") == "1" and tonumber(field(l, "fcamp")) == idxOf("good_2"), l)
 	-- Nothing walks the hero to camp A after the job: from B's walk-off A is out of StackSight, so its outcome is unseen.
 	check("double: B stacked, A unseen from B's walk-off", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fseen") == "0", l)
+	-- The core camp's price and the camp cap read `Stacking.StackCount`: a landed hit counts, seen or not.
+	check("double: both camps on the stack record, the unseen A assumed", field(l, "scount") == "1" and field(l, "fscount") == "1" and H.Lane.Stacking.StackCount(idxOf("good_2")) == 1 and H.Lane.Stacking.StackCount(idxOf("good_1")) == 1, l)
 	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
 	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
 	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))

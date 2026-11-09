@@ -769,6 +769,8 @@ export const EVENTS = {
         double: "num",
         dwhy: "str",
         fres: "str",
+        scount: "num",
+        fscount: "num",
         fcamp: "num",
         ftype: "str",
         faggro: "mixed",
