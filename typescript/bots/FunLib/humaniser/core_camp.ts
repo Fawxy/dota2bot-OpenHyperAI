@@ -133,6 +133,8 @@ export interface CampPlan {
     /** Planned return to the clash point, latest leave from the camp, clear estimate, gold, the lane loss at the return, net. */
     ret: number;
     leaveBy: number;
+    /** The planning time: the lane loss is priced from it, by Plan and by the check at the camp alike. */
+    t0: number;
     clr: number;
     /** The clear estimate before the pace factor, which the measured clear is learned against. */
     prior: number;
@@ -621,7 +623,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const loss = LossBetween(c, now, ret);
         const net = gold - loss;
         if ((force || net >= s.MinNet) && (best === undefined || net > best.net))
-            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, lvl: level, gold, loss, net };
+            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, t0: now, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, lvl: level, gold, loss, net };
     }
     return best;
 }
@@ -1013,7 +1015,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         t.center = Camps.BoxCenter(spawner);
         const r = yield* V.clearCamp(
             bot as unknown as Lib.TaskUnit,
-            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: Overrides.CampForce() ? t.plan.leaveBy : math.max(t.plan.leaveBy, latestLeave(t)), onEngage: (at) => {
+            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: Overrides.CampForce() ? t.plan.leaveBy : LatestLeave(t.plan, t.clash), onEngage: (at) => {
                 t.engagedAt = at;
                 t.hpAtEngage = hpOf(bot);
                 const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), at);
@@ -1058,20 +1060,30 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
 }
 
 /**
- * The plan's own return and pay rules re-run with the live clear: back no later than the clash + MaxLate, and the lane gold
- * lost by then still under the camp's gold by MinNet. The plan sets its leave time from its own clear estimate (a table's for
- * a camp never seen) with no slack, so judging the live clear against that refused camps the core then cleared and walked
- * back from in time (cngdr6: 3 of 3 `time` verdicts, cngchk13: 3 of 12 refusals).
+ * The latest second the core may leave the camp: back at the clash by MaxLate (Plan's return rule) and the camp still paying
+ * for the lane gold lost by then, priced from the planning time like Plan's `net` (MinNet). Never before the plan's own leave
+ * time: a trip planned without those rules (CampForce) keeps it. The plan sets that leave time from its own clear estimate
+ * (a table's for a camp never seen) with no slack, so a clear judged against it alone was refused or cut though the core would
+ * be back in time and the camp still paid (cngdr6: 3 of 3 `time` verdicts; cngchk13: 3 of 12 refusals).
  */
-function latestLeave(t: Trip): number {
-    return t.clash.t + SETTINGS.MaxLate - (t.plan.ret - t.plan.leaveBy);
+export function LatestLeave(p: CampPlan, c: Clash): number {
+    const back = p.ret - p.leaveBy;
+    const hi = c.t + SETTINGS.MaxLate - back;
+    const pays = (leave: number): boolean => p.gold - LossBetween(c, p.t0, leave + back) >= SETTINGS.MinNet;
+    if (hi <= p.leaveBy || !pays(p.leaveBy)) return p.leaveBy;
+    if (pays(hi)) return hi;
+    let lo = p.leaveBy;
+    let up = hi;
+    for (let i = 0; i < 8; i++) {
+        const mid = (lo + up) / 2;
+        if (pays(mid)) lo = mid;
+        else up = mid;
+    }
+    return lo;
 }
 
 function tooLate(bot: Unit, t: Trip, secs: number, now: number): boolean {
-    const ret = now + secs * Pace(bot) + (t.plan.ret - t.plan.leaveBy);
-    if (ret > t.clash.t + SETTINGS.MaxLate) return true;
-    // A forced trip (CampForce) starts with the pay rule off, so its pay half is no verdict a drill can grade on outcomes.
-    return !Overrides.CampForce() && t.plan.gold - LossBetween(t.clash, now, ret) < SETTINGS.MinNet;
+    return now + secs * Pace(bot) > LatestLeave(t.plan, t.clash);
 }
 
 /**
@@ -1092,7 +1104,7 @@ function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolea
     const hpFail = hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP;
     const timeFail = tooLate(bot, t, secs, now);
     if (Overrides.AdmitLog()) {
-        log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["lb", r1(latestLeave(t))], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
+        log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["lb", r1(LatestLeave(t.plan, t.clash))], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
         return true;
     }
     if (hpFail) return false;

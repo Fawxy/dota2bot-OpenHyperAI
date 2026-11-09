@@ -394,6 +394,29 @@ do
 	check("late: the pace grew", H.CoreCamp.Pace(core) > 1 + 1e-3, H.CoreCamp.Pace(core))
 end
 
+-- The latest leave from a camp: back at the clash + MaxLate, and the camp still paying for the lane gold lost by then (priced
+-- from the planning time, like the plan's net). Bounded by the pay rule too (review 1761dd3e H3: the return rule alone let a
+-- slow clear outlast what the camp pays).
+do
+	local H, core = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local p = CC.Plan(core, FRONT, 300, c)
+	local back = p.ret - p.leaveBy
+	check("latest leave: with no lane loss the return rule bounds it, back at the clash + 15", math.abs(CC.LatestLeave(p, c) - (340 + 15 - back)) < 1e-6, CC.LatestLeave(p, c), 340 + 15 - back)
+	local c2 = CC.ClashOf(samples(300, 340, 300, 6), PATH, 2)
+	local q = CC.Plan(core, FRONT, 300, c2)
+	local ll = q ~= nil and CC.LatestLeave(q, c2) or 0
+	local qback = q ~= nil and q.ret - q.leaveBy or 0
+	check("latest leave: a camp that stops paying before the return rule's time is left at the pay bound", q ~= nil and ll < 340 + 15 - qback - 1 and ll >= q.leaveBy, ll, q and q.leaveBy)
+	check("latest leave: it still pays at that second and not 1.5 s later", q ~= nil and q.gold - CC.LossBetween(c2, q.t0, ll + qback) >= 30 and q.gold - CC.LossBetween(c2, q.t0, ll + 1.5 + qback) < 30, q and q.gold - CC.LossBetween(c2, q.t0, ll + qback))
+	-- A forced trip (CampForce) is planned past the return rule: its leave time stands, nothing is stretched.
+	local Hf, coreF = world({ camps = { { "large", LARGE, 2400, 8 } }, force = true })
+	local cf = Hf.CoreCamp.ClashOf(samples(300, 305), PATH, 2)
+	local f = Hf.CoreCamp.Plan(coreF, FRONT, 300, cf)
+	check("latest leave: a trip planned past the return rule keeps its own leave time", f ~= nil and Hf.CoreCamp.LatestLeave(f, cf) == f.leaveBy, f and f.leaveBy)
+end
+
 -- The check at the camp re-runs the plan's return and pay rules with the live clear, not the plan's leave time (cngdr6: a
 -- live clear of 29-35 s against a table clear's leave time refused camps the core cleared and walked back from in time).
 -- A large camp planned unseen, its live clear longer than the table's but back by the clash + 15: admitted. The same camp with

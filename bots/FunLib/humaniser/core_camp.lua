@@ -296,7 +296,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, distToSegment, hpOf, spaOf, readNeutral, liveNeutrals, meetingAt, currentMinute, campNeutralCount, markEmptied, laneTower, tripSpawners, log, latestLeave, tooLate, admits, measured, pace, hpRate, lastSeen, MAX_PLAYER_ID, r1, r2
+local dist, distToSegment, hpOf, spaOf, readNeutral, liveNeutrals, meetingAt, currentMinute, campNeutralCount, markEmptied, laneTower, tripSpawners, log, tooLate, admits, measured, pace, hpRate, lastSeen, MAX_PLAYER_ID, r1, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -628,15 +628,41 @@ function log(bot, phase, c, fields)
         }
     )
 end
-function latestLeave(t)
-    return t.clash.t + ____exports.SETTINGS.MaxLate - (t.plan.ret - t.plan.leaveBy)
+--- The latest second the core may leave the camp: back at the clash by MaxLate (Plan's return rule) and the camp still paying
+-- for the lane gold lost by then, priced from the planning time like Plan's `net` (MinNet). Never before the plan's own leave
+-- time: a trip planned without those rules (CampForce) keeps it. The plan sets that leave time from its own clear estimate
+-- (a table's for a camp never seen) with no slack, so a clear judged against it alone was refused or cut though the core would
+-- be back in time and the camp still paid (cngdr6: 3 of 3 `time` verdicts; cngchk13: 3 of 12 refusals).
+function ____exports.LatestLeave(p, c)
+    local back = p.ret - p.leaveBy
+    local hi = c.t + ____exports.SETTINGS.MaxLate - back
+    local function pays(leave)
+        return p.gold - ____exports.LossBetween(c, p.t0, leave + back) >= ____exports.SETTINGS.MinNet
+    end
+    if hi <= p.leaveBy or not pays(p.leaveBy) then
+        return p.leaveBy
+    end
+    if pays(hi) then
+        return hi
+    end
+    local lo = p.leaveBy
+    local up = hi
+    do
+        local i = 0
+        while i < 8 do
+            local mid = (lo + up) / 2
+            if pays(mid) then
+                lo = mid
+            else
+                up = mid
+            end
+            i = i + 1
+        end
+    end
+    return lo
 end
 function tooLate(bot, t, secs, now)
-    local ret = now + secs * ____exports.Pace(bot) + (t.plan.ret - t.plan.leaveBy)
-    if ret > t.clash.t + ____exports.SETTINGS.MaxLate then
-        return true
-    end
-    return not Overrides.CampForce() and t.plan.gold - ____exports.LossBetween(t.clash, now, ret) < ____exports.SETTINGS.MinNet
+    return now + secs * ____exports.Pace(bot) > ____exports.LatestLeave(t.plan, t.clash)
 end
 function admits(bot, t, spawner, now)
     local met = liveNeutrals(
@@ -681,7 +707,7 @@ function admits(bot, t, spawner, now)
                 },
                 {
                     "lb",
-                    r1(latestLeave(t))
+                    r1(____exports.LatestLeave(t.plan, t.clash))
                 },
                 {
                     "hp",
@@ -1138,6 +1164,7 @@ function ____exports.Plan(bot, from, now, c)
                         type = spawner.type,
                         ret = ret,
                         leaveBy = ret - back,
+                        t0 = now,
                         clr = clr,
                         prior = prior,
                         src = src,
@@ -1714,10 +1741,7 @@ local body = __TS__Generator(function(bot, t, ctx)
             {
                 at = Camps.BoxCenter(spawner),
                 radius = ____exports.SETTINGS.CampRadius,
-                deadline = Overrides.CampForce() and t.plan.leaveBy or math.max(
-                    t.plan.leaveBy,
-                    latestLeave(t)
-                ),
+                deadline = Overrides.CampForce() and t.plan.leaveBy or ____exports.LatestLeave(t.plan, t.clash),
                 onEngage = function(at)
                     t.engagedAt = at
                     t.hpAtEngage = hpOf(bot)
