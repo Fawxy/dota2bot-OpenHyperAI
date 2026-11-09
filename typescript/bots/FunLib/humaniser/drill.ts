@@ -14,6 +14,7 @@ import { BotMode, GameState, Lane, Team, Tower, Unit, Vector } from "bots/ts_lib
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
 export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "play";
@@ -40,6 +41,8 @@ export interface Entry {
     /** Heroes that stand behind their own creeps and chase and hit an enemy hero within CHASE_RANGE of that spot, walking
      *  back past it; benched (in the fountain) on control reps. Checked after `sentry`. */
     chaser?: Sides;
+    /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
+    linger?: boolean;
     /** The cast's start spot per rep, cycling as `spots` (rep n takes entry (n - 1) mod length): `tower` (inside the enemy
      *  T1's reach of the cast's lane), `front` (our lane front of the cast's lane), `pull:<r|d>:<safe|off>`. The forced
      *  context walks the cast there (`CastSpot`) before it acts. */
@@ -118,6 +121,17 @@ export const TABLE: Record<string, Entry> = {
         note: "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast: SAFE_CORE,
         chaser: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 60, from: 60, control: 2 },
+    },
+    // The rtwatch1 shape (slice retreat, plan 2026-11-10-retreat-read-bars): the chase drill, but once per rep the chaser stands
+    // off about 1,100 from the cast when she is low, so the lane spot's read bars are graded on a place the old limits pass.
+    "retreat-linger": {
+        note: "retreat-chase, and once per chase rep the Dire pos3 chaser stands 1,100 off the cast when she is at or under 45% HP, for up to 20 s or until she steps into its attack range; everyone else benched",
+        cast: SAFE_CORE,
+        chaser: { d: [3] },
+        linger: true,
         others: "bench",
         castLaneOnly: true,
         rep: { every: 60, from: 60, control: 2 },
@@ -398,7 +412,12 @@ export function ForcedAt(context: string, t: number): "on" | "off" | "none" | un
 export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
-    if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0) return chase(bot);
+    if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0) {
+        const st = lingering[bot.GetPlayerID()];
+        if (st !== undefined && st.rep !== RepAt(DotaTime())) endLinger(bot, "rep_end");
+        return chase(bot);
+    }
+    if (r === "chaser") endLinger(bot, "rep_end");
     if (r === "chaser") {
         // Waiting between chase reps: behind its own T1 (user 10/11/2026), so the next rep starts without the fountain walk.
         const at = behindOwnT1(bot);
@@ -489,6 +508,103 @@ function behindOwnT1(bot: Unit): Vector | undefined {
     return Vector(a.x + ((fx - a.x) * CHASER_WAIT_BEHIND) / len, a.y + ((fy - a.y) * CHASER_WAIT_BEHIND) / len, a.z);
 }
 
+/** retreat-linger: the target's HP share at or under which the chaser stands off (rtwatch1's episode ended at 37%, the walk back began at 38%). `judgement`. */
+const LINGER_HP = 0.45;
+/** retreat-linger: the longest stand-off (rtwatch1's contact came 15 s after the episode ended). `judgement`. */
+const LINGER_SECS = 20;
+/** retreat-linger: the distance held from the target (rtwatch1: Sand King about 1,100 away, just outside a 2 s reach). `judgement`. */
+const LINGER_DIST = 1100;
+/** The tower's reach fallback and the margin kept outside it, as retreat.ts reads the reach. `judgement` for the margin. */
+const TOWER_REACH_FALLBACK = 868;
+const LINGER_TOWER_MARGIN = 100;
+
+interface Linger {
+    rep: number;
+    t0: number;
+    tpid: number;
+    dmin: number;
+    clamp: number;
+}
+const lingering: Record<number, Linger> = {};
+/** The rep each chaser last lingered in (once per rep). */
+const lingered: Record<number, number> = {};
+
+function endLinger(bot: Unit, res: string): void {
+    const pid = bot.GetPlayerID();
+    const st = lingering[pid];
+    if (st === undefined) return;
+    delete lingering[pid];
+    Telemetry.Event("drill", [
+        ["ph", "linger_end"],
+        ["name", Name()],
+        ["pid", pid],
+        ["tpid", st.tpid],
+        ["rep", st.rep],
+        ["res", res],
+        ["secs", math.floor((DotaTime() - st.t0) * 10 + 0.5) / 10],
+        ["dmin", math.floor(st.dmin)],
+        ["clamp", st.clamp],
+    ]);
+}
+
+/** The point LINGER_DIST from `target` on the line towards `spot`, pulled out of our (Radiant's) T1 reach + a margin. */
+function lingerPoint(bot: Unit, target: Unit, spot: Vector): [Vector, number] {
+    const a = target.GetLocation();
+    const len = math.max(1, math.sqrt((spot.x - a.x) ** 2 + (spot.y - a.y) ** 2));
+    let p = Vector(a.x + ((spot.x - a.x) * LINGER_DIST) / len, a.y + ((spot.y - a.y) * LINGER_DIST) / len, spot.z);
+    const ids: Record<number, Tower> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
+    const tw = GetTower(target.GetTeam(), ids[bot.GetAssignedLane() as Lane]);
+    if (tw === null || tw === undefined || !tw.IsAlive()) return [p, 0];
+    const tl = tw.GetLocation();
+    const reach = WorldFacts.TowerReach(tw, TOWER_REACH_FALLBACK) + LINGER_TOWER_MARGIN;
+    const td = math.max(1, math.sqrt((p.x - tl.x) ** 2 + (p.y - tl.y) ** 2));
+    if (td >= reach) return [p, 0];
+    p = Vector(tl.x + ((p.x - tl.x) * reach) / td, tl.y + ((p.y - tl.y) * reach) / td, p.z);
+    return [p, 1];
+}
+
+/**
+ * retreat-linger: true when the chaser stood off this tick (its order is given). Starts once per rep when the target's HP share
+ * is at or under LINGER_HP; ends on contact (the target within the chaser's attack range + 100: the caller then attacks),
+ * timeout, the target's death, or the rep's end.
+ */
+function lingerStep(bot: Unit, target: Unit, spot: Vector): boolean {
+    const pid = bot.GetPlayerID();
+    const rep = RepAt(DotaTime());
+    let st = lingering[pid];
+    const now = DotaTime();
+    if (st === undefined) {
+        if (lingered[pid] === rep || target.GetHealth() / math.max(1, target.GetMaxHealth()) > LINGER_HP) return false;
+        // Set the once-per-rep flag and the state before the line is logged.
+        lingered[pid] = rep;
+        st = { rep, t0: now, tpid: target.GetPlayerID(), dmin: GetUnitToUnitDistance(bot, target), clamp: 0 };
+        lingering[pid] = st;
+        Telemetry.Event("drill", [
+            ["ph", "linger"],
+            ["name", Name()],
+            ["pid", pid],
+            ["tpid", st.tpid],
+            ["rep", rep],
+            ["thp", math.floor((target.GetHealth() / math.max(1, target.GetMaxHealth())) * 100 + 0.5) / 100],
+            ["d", math.floor(st.dmin)],
+        ]);
+    }
+    const dd = GetUnitToUnitDistance(bot, target);
+    st.dmin = math.min(st.dmin, dd);
+    if (dd <= bot.GetAttackRange() + 100) {
+        endLinger(bot, "contact");
+        return false;
+    }
+    if (now - st.t0 >= LINGER_SECS) {
+        endLinger(bot, "timeout");
+        return false;
+    }
+    const [p, clamp] = lingerPoint(bot, target, spot);
+    if (clamp === 1) st.clamp = 1;
+    if (GetUnitToLocationDistance(bot, p) > 50) bot.Action_MoveToLocation(p);
+    return true;
+}
+
 /** The chaser's step: attack the nearest enemy hero within CHASE_RANGE of its lane spot, else walk back to the spot. */
 function chase(bot: Unit): boolean {
     const spot = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND);
@@ -502,9 +618,16 @@ function chase(bot: Unit): boolean {
             bestD = dd;
         }
     }
+    const st = lingering[bot.GetPlayerID()];
+    if (st !== undefined && (best === undefined || best.GetPlayerID() !== st.tpid)) endLinger(bot, best === undefined && !targetAlive(st.tpid) ? "died" : "rep_end");
+    if (best !== undefined && Active()?.linger === true && lingerStep(bot, best, spot)) return true;
     if (best !== undefined) bot.Action_AttackUnit(best, true);
     else if (GetUnitToLocationDistance(bot, spot) > 50) bot.Action_MoveToLocation(spot);
     return true;
+}
+
+function targetAlive(pid: number): boolean {
+    return IsHeroAlive(pid);
 }
 
 /** The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none. */
@@ -639,5 +762,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(lastRole)) delete lastRole[k as unknown as number];
     for (const k of Object.keys(statueSide)) delete statueSide[k as unknown as number];
     for (const k of Object.keys(lastSpot)) delete lastSpot[k as unknown as number];
+    for (const k of Object.keys(lingering)) delete lingering[k as unknown as number];
+    for (const k of Object.keys(lingered)) delete lingered[k as unknown as number];
     removedLogged = false;
 }

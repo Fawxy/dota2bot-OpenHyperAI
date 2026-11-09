@@ -279,6 +279,57 @@ do
 	check("no spot list: a statue logs no spot line", #capture(function() world("lane-spot-statue") H.Drill.Hold(hero(7, DIRE, 3, 3)) end) == 0)
 end
 
+-- retreat-linger (slice retreat, plan 2026-11-10-retreat-read-bars): on a chase rep the chaser hits as retreat-chase until the cast
+-- is at or under 45% HP, then once per rep stands 1,100 off her (outside our T1's reach + 100) until she steps into its attack
+-- range + 100 (contact), 20 s pass, or the rep ends; then it attacks as before.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local function setup(towerAt)
+		local H = world("retreat-linger")
+		local core = hero(0, RAD, 1, 3)
+		core.loc = Vector(-1700, -5000, 0)
+		core.hp = 40
+		local chaser = hero(9, DIRE, 3, 3)
+		chaser.loc = Vector(-700, -5000, 0)
+		chaser.range = 150
+		if towerAt then TOWERS_W[RAD][dota.Tower.Bot1].loc = towerAt end
+		T = 65 -- rep 1 (a chase rep)
+		return H, core, chaser
+	end
+	local function lastMove(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
+
+	local H, core, chaser = setup()
+	local lines = capture(function() H.Drill.Hold(chaser) end)
+	local to = lastMove(9)
+	check("linger: at 40% the chaser walks to the point 1,100 from the cast instead of attacking",
+		#ActionsOf(9, "AttackUnit") == 0 and to ~= nil and math.abs(to.x - (-600)) < 2 and math.abs(to.y + 5000) < 2, to and (to.x .. "," .. to.y))
+	check("linger: one start line with the cast's HP share and the distance", #lines == 1 and field(lines[1], "ph") == "linger" and tonumber(field(lines[1], "thp")) == 0.4 and field(lines[1], "tpid") == "0" and field(lines[1], "d") == "1000", lines[1])
+
+	-- Contact: the cast steps within 150 + 100; the chaser attacks and does not linger again this rep.
+	T = 70
+	core.loc = Vector(-900, -5000, 0)
+	local l3 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: on contact the chaser attacks and the window ends `contact`", #ActionsOf(9, "AttackUnit") == 1 and #l3 == 1 and field(l3[1], "ph") == "linger_end" and field(l3[1], "res") == "contact" and tonumber(field(l3[1], "secs")) == 5, l3[1])
+	core.loc = Vector(-1700, -5000, 0)
+	T = 72
+	local n = #ActionsOf(9, "AttackUnit")
+	H.Drill.Hold(chaser)
+	check("linger: once per rep: the chaser keeps attacking after contact", #ActionsOf(9, "AttackUnit") == n + 1)
+
+	local h2, c2, k2 = setup()
+	c2.hp = 80
+	h2.Drill.Hold(k2)
+	check("linger: above 45% HP it attacks as retreat-chase does", #ActionsOf(9, "AttackUnit") == 1 and lastMove(9) == nil)
+
+	local hb, cb, kb = setup(Vector(-500, -5300, 0))
+	hb.Drill.Hold(kb)
+	local tb = lastMove(9)
+	local tw = TOWERS_W[RAD][dota.Tower.Bot1].loc
+	local dTw = tb and math.sqrt((tb.x - tw.x) ^ 2 + (tb.y - tw.y) ^ 2)
+	check("linger: a point inside our T1's reach is pulled out to its reach + 100 (844 + 100)", tb ~= nil and math.abs(dTw - 944) < 2, dTw)
+
+end
+
 finish()
 
 -- retreat-chase: a chaser waits behind its own T1 on control reps (user 10/11/2026), not in its fountain, and chases on odd reps.

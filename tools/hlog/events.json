@@ -617,7 +617,14 @@
    "forces": "str",
    "spot": "str",
    "x": "num",
-   "y": "num"
+   "y": "num",
+   "tpid": "num",
+   "thp": "num",
+   "d": "num",
+   "res": "str",
+   "secs": "num",
+   "dmin": "num",
+   "clamp": "num"
   },
   "job": {
    "pid": "num",
@@ -912,6 +919,9 @@
    "anchor": "str",
    "cost": "num",
    "alt": "num",
+   "exp": "num",
+   "minexp": "num",
+   "regen": "bool",
    "dist": "num",
    "spot": "str",
    "rep": "num",
@@ -1486,7 +1496,15 @@
    "nk": "num",
    "nr": "num",
    "cl": "num",
-   "fo": "num"
+   "fo": "num",
+   "rb": "num",
+   "rt": "num",
+   "rn": "num",
+   "ob": "str",
+   "rm": "num",
+   "mp": "str",
+   "op": "str",
+   "rp": "str"
   }
  },
  "kinds": {
@@ -1696,7 +1714,8 @@
    "role": "text",
    "input": "text",
    "forces": "text",
-   "spot": "text"
+   "spot": "text",
+   "res": "text"
   },
   "ev_job": {
    "job": "text",
@@ -1979,7 +1998,11 @@
   "ev_lane_pos": {
    "label": "text",
    "spot": "text",
-   "why": "text"
+   "why": "text",
+   "ob": "text",
+   "mp": "text",
+   "op": "text",
+   "rp": "text"
   }
  }
 }

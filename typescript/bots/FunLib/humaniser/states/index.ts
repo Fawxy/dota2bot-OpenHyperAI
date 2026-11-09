@@ -186,6 +186,10 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["rt", info?.rt !== undefined ? math.floor(info.rt * 100 + 0.5) / 100 : undefined],
         ["rn", info?.rn],
         ["ob", info?.ob],
+        ["rm", info?.rm !== undefined ? math.floor(info.rm * 100 + 0.5) / 100 : undefined],
+        ["mp", info?.mp],
+        ["op", info?.op],
+        ["rp", info?.rp],
     ]);
 }
 

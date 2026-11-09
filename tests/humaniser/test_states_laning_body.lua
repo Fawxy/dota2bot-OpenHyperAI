@@ -260,6 +260,20 @@ do
 	local sOld, iOld = run({ hp = 30, threat = false })
 	check("old limits: reach 800 plus the 240 margin leave that spot where it is", sOld ~= nil and iOld.why == "pref" and sOld.x == -100, sOld and sOld.x)
 	foes[1] = nil
+
+	-- The rtwatch1 shape (7:33, 37% HP, the chaser about 1,100 away): ev=lane_pos logs the read's `missing` and unseen pids at the
+	-- chosen spot, and each rule's verdict at the preferred point, so a log can say which limit pushed the spot. Pins today's bars.
+	local e2
+	local s2, b2 = spotFor(SDK, { hp = 37, threat = true }, function()
+		e2 = MakeUnit({ pid = 7, team = 3, loc = Vector(800, 0) })
+		e2.estDamage = 20
+		foes[1] = e2
+	end)
+	local i2 = require("bots/FunLib/humaniser/states/laning").SpotInfo(b2)
+	check("rtwatch1 shape: the read's missing, unseen pids and both rules' verdicts at the preferred point are logged",
+		i2.rm ~= nil and i2.op ~= nil and i2.rp ~= nil and i2.mp == nil, string.format("rm=%s mp=%s op=%s rp=%s", tostring(i2.rm), tostring(i2.mp), tostring(i2.op), tostring(i2.rp)))
+	check("rtwatch1 shape: today's bars (burst 0.35, missing 0.5) at 37% HP, 1,100 off", i2.why == "hero" and i2.op == "hp" and i2.rp == "burst" and i2.rb < 0.35, string.format("why=%s op=%s rp=%s rb=%s x=%s", tostring(i2.why), tostring(i2.op), tostring(i2.rp), tostring(i2.rb), tostring(s2 and s2.x)))
+	foes[1] = nil
 end
 
 -- No candidate within the XP limit clears the hero reach (an enemy ranged hero just behind the preferred point): the fallback is

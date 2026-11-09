@@ -142,6 +142,13 @@ export interface SpotInfo {
     /** Reads made this Compute (frame cost). */
     rn?: number;
     ob?: string;
+    /** The read's `missing` and the heroes it counts as unseen (comma-joined pids) at the chosen spot. */
+    rm?: number;
+    mp?: string;
+    /** At the preferred point: what the old hero limits say (`op`: `hero`, `hp`, ... or `none`) and what the read says (`rp`:
+     *  `burst`, `missing` or `none`), so a log can tell which limit pushed the spot. */
+    op?: string;
+    rp?: string;
 }
 
 /** Our towers' cover this frame: what each limit becomes under it. */
@@ -494,8 +501,16 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
             const r = readAt(spot);
             info.rb = r.burst;
             info.rt = r.threat;
-            info.rn = readN;
             info.ob = Breaks(spot, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
+            info.rm = r.missing;
+            info.mp = r.mpids.length > 0 ? r.mpids.join(",") : undefined;
+            info.op = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
+            info.rp = "none";
+            if (readOn(pref)) {
+                const rpr = readAt(pref);
+                info.rp = rpr.burst >= READ_BURST ? "burst" : rpr.missing >= READ_MISSING ? "missing" : "none";
+            }
+            info.rn = readN;
         }
         return info;
     };

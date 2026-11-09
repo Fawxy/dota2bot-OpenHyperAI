@@ -543,7 +543,14 @@ ____exports.EVENTS = {
         forces = "str",
         spot = "str",
         x = "num",
-        y = "num"
+        y = "num",
+        tpid = "num",
+        thp = "num",
+        d = "num",
+        res = "str",
+        secs = "num",
+        dmin = "num",
+        clamp = "num"
     },
     job = {
         pid = "num",
@@ -1372,7 +1379,11 @@ ____exports.EVENTS = {
         rb = "num",
         rt = "num",
         rn = "num",
-        ob = "str"
+        ob = "str",
+        rm = "num",
+        mp = "str",
+        op = "str",
+        rp = "str"
     }
 }
 return ____exports

@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, spotPoint, noteSpot, behindOwnT1, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND
+local overrides, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, lingerStep, chase, targetAlive, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -201,6 +201,7 @@ local Team = ____dota.Team
 local Tower = ____dota.Tower
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 function overrides()
     return Customize.Overrides
 end
@@ -336,6 +337,129 @@ function behindOwnT1(bot)
     )
     return Vector(a.x + (fx - a.x) * CHASER_WAIT_BEHIND / len, a.y + (fy - a.y) * CHASER_WAIT_BEHIND / len, a.z)
 end
+function endLinger(bot, res)
+    local pid = bot:GetPlayerID()
+    local st = lingering[pid]
+    if st == nil then
+        return
+    end
+    __TS__Delete(lingering, pid)
+    Telemetry.Event(
+        "drill",
+        {
+            {"ph", "linger_end"},
+            {
+                "name",
+                ____exports.Name()
+            },
+            {"pid", pid},
+            {"tpid", st.tpid},
+            {"rep", st.rep},
+            {"res", res},
+            {
+                "secs",
+                math.floor((DotaTime() - st.t0) * 10 + 0.5) / 10
+            },
+            {
+                "dmin",
+                math.floor(st.dmin)
+            },
+            {"clamp", st.clamp}
+        }
+    )
+end
+function lingerPoint(bot, target, spot)
+    local a = target:GetLocation()
+    local len = math.max(
+        1,
+        math.sqrt((spot.x - a.x) ^ 2 + (spot.y - a.y) ^ 2)
+    )
+    local p = Vector(a.x + (spot.x - a.x) * LINGER_DIST / len, a.y + (spot.y - a.y) * LINGER_DIST / len, spot.z)
+    local ids = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
+    local tw = GetTower(
+        target:GetTeam(),
+        ids[bot:GetAssignedLane()]
+    )
+    if tw == nil or tw == nil or not tw:IsAlive() then
+        return {p, 0}
+    end
+    local tl = tw:GetLocation()
+    local reach = WorldFacts.TowerReach(tw, TOWER_REACH_FALLBACK) + LINGER_TOWER_MARGIN
+    local td = math.max(
+        1,
+        math.sqrt((p.x - tl.x) ^ 2 + (p.y - tl.y) ^ 2)
+    )
+    if td >= reach then
+        return {p, 0}
+    end
+    p = Vector(tl.x + (p.x - tl.x) * reach / td, tl.y + (p.y - tl.y) * reach / td, p.z)
+    return {p, 1}
+end
+function lingerStep(bot, target, spot)
+    local pid = bot:GetPlayerID()
+    local rep = ____exports.RepAt(DotaTime())
+    local st = lingering[pid]
+    local now = DotaTime()
+    if st == nil then
+        if lingered[pid] == rep or target:GetHealth() / math.max(
+            1,
+            target:GetMaxHealth()
+        ) > LINGER_HP then
+            return false
+        end
+        lingered[pid] = rep
+        st = {
+            rep = rep,
+            t0 = now,
+            tpid = target:GetPlayerID(),
+            dmin = GetUnitToUnitDistance(bot, target),
+            clamp = 0
+        }
+        lingering[pid] = st
+        Telemetry.Event(
+            "drill",
+            {
+                {"ph", "linger"},
+                {
+                    "name",
+                    ____exports.Name()
+                },
+                {"pid", pid},
+                {"tpid", st.tpid},
+                {"rep", rep},
+                {
+                    "thp",
+                    math.floor(target:GetHealth() / math.max(
+                        1,
+                        target:GetMaxHealth()
+                    ) * 100 + 0.5) / 100
+                },
+                {
+                    "d",
+                    math.floor(st.dmin)
+                }
+            }
+        )
+    end
+    local dd = GetUnitToUnitDistance(bot, target)
+    st.dmin = math.min(st.dmin, dd)
+    if dd <= bot:GetAttackRange() + 100 then
+        endLinger(bot, "contact")
+        return false
+    end
+    if now - st.t0 >= LINGER_SECS then
+        endLinger(bot, "timeout")
+        return false
+    end
+    local p, clamp = unpack(lingerPoint(bot, target, spot))
+    if clamp == 1 then
+        st.clamp = 1
+    end
+    if GetUnitToLocationDistance(bot, p) > 50 then
+        bot:Action_MoveToLocation(p)
+    end
+    return true
+end
 function chase(bot)
     local spot = GetLaneFrontLocation(
         bot:GetTeam(),
@@ -346,10 +470,10 @@ function chase(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue49
+            local __continue63
             repeat
                 if not h:IsAlive() or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue49 = true
+                    __continue63 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -357,12 +481,27 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue49 = true
+                __continue63 = true
             until true
-            if not __continue49 then
+            if not __continue63 then
                 break
             end
         end
+    end
+    local st = lingering[bot:GetPlayerID()]
+    if st ~= nil and (best == nil or best:GetPlayerID() ~= st.tpid) then
+        endLinger(
+            bot,
+            best == nil and not targetAlive(st.tpid) and "died" or "rep_end"
+        )
+    end
+    local ____temp_33 = best ~= nil
+    if ____temp_33 then
+        local ____opt_31 = ____exports.Active()
+        ____temp_33 = (____opt_31 and ____opt_31.linger) == true
+    end
+    if ____temp_33 and lingerStep(bot, best, spot) then
+        return true
     end
     if best ~= nil then
         bot:Action_AttackUnit(best, true)
@@ -370,6 +509,9 @@ function chase(bot)
         bot:Action_MoveToLocation(spot)
     end
     return true
+end
+function targetAlive(pid)
+    return IsHeroAlive(pid)
 end
 function sentryAttack(bot, spot)
     local step = ____exports.SENTRY_STEP * bot:GetCurrentMovementSpeed()
@@ -381,10 +523,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue63
+            local __continue80
             repeat
                 if not h:IsAlive() then
-                    __continue63 = true
+                    __continue80 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -392,9 +534,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue63 = true
+                __continue80 = true
             until true
-            if not __continue63 then
+            if not __continue80 then
                 break
             end
         end
@@ -477,6 +619,15 @@ ____exports.TABLE = {
         note = "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast = SAFE_CORE,
         chaser = {d = {3}},
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 60, from = 60, control = 2}
+    },
+    ["retreat-linger"] = {
+        note = "retreat-chase, and once per chase rep the Dire pos3 chaser stands 1,100 off the cast when she is at or under 45% HP, for up to 20 s or until she steps into its attack range; everyone else benched",
+        cast = SAFE_CORE,
+        chaser = {d = {3}},
+        linger = true,
         others = "bench",
         castLaneOnly = true,
         rep = {every = 60, from = 60, control = 2}
@@ -762,7 +913,14 @@ function ____exports.Hold(bot)
         d,
         ____exports.RepAt(DotaTime())
     ) and ____exports.RepAt(DotaTime()) > 0 then
+        local st = lingering[bot:GetPlayerID()]
+        if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
+            endLinger(bot, "rep_end")
+        end
         return chase(bot)
+    end
+    if r == "chaser" then
+        endLinger(bot, "rep_end")
     end
     if r == "chaser" then
         local at = behindOwnT1(bot)
@@ -822,10 +980,17 @@ function ____exports.Hold(bot)
     return true
 end
 CHASER_WAIT_BEHIND = 350
+LINGER_HP = 0.45
+LINGER_SECS = 20
+LINGER_DIST = 1100
+TOWER_REACH_FALLBACK = 868
+LINGER_TOWER_MARGIN = 100
+lingering = {}
+lingered = {}
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
-    local ____opt_31 = ____exports.Active()
-    local list = ____opt_31 and ____opt_31.castSpots
+    local ____opt_34 = ____exports.Active()
+    local list = ____opt_34 and ____opt_34.castSpots
     if list == nil or #list == 0 or rep <= 0 then
         return nil
     end
@@ -891,8 +1056,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_33 = overrides()
-            local v = ____opt_33 and ____opt_33[k]
+            local ____opt_36 = overrides()
+            local v = ____opt_36 and ____opt_36[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -900,8 +1065,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_35 = overrides()
-        local asked = ____opt_35 and ____opt_35.Drill
+        local ____opt_38 = overrides()
+        local asked = ____opt_38 and ____opt_38.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -969,6 +1134,12 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(lastSpot)) do
         __TS__Delete(lastSpot, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(lingering)) do
+        __TS__Delete(lingering, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(lingered)) do
+        __TS__Delete(lingered, k)
     end
     removedLogged = false
 end

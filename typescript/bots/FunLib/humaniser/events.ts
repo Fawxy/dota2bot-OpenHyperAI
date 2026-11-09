@@ -711,6 +711,16 @@ export const EVENTS = {
         spot: "str",
         x: "num",
         y: "num",
+        /** retreat-linger, ph=linger|linger_end: the chaser's `pid` stands off the target `tpid` (the cast, HP share `thp`) at
+         *  distance `d`; the end has `res` (contact|timeout|died|rep_end), `secs`, the closest distance `dmin` and `clamp` (1 when
+         *  the tower pull-back moved the point). */
+        tpid: "num",
+        thp: "num",
+        d: "num",
+        res: "str",
+        secs: "num",
+        dmin: "num",
+        clamp: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
@@ -1783,6 +1793,11 @@ export const EVENTS = {
         rt: "num",
         rn: "num",
         ob: "str",
+        /** The read's `missing` and unseen pids (comma-joined) at the chosen spot; the old limits' (`op`) and the read's (`rp`) verdicts at the preferred point. */
+        rm: "num",
+        mp: "str",
+        op: "str",
+        rp: "str",
     },
 } as const;
 

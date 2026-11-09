@@ -457,6 +457,7 @@ end
 -- lane_aggro's fed creep (see FedAnchor), `hold` wave_hold's hold point. Undefined only when the lane has no direction (front
 -- and its back point coincide).
 function ____exports.Compute(bot, role, fed, hold)
+    local pref
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
     local front = GetLaneFrontLocation(team, lane, 0)
@@ -670,7 +671,6 @@ function ____exports.Compute(bot, role, fed, hold)
             local r = readAt(spot)
             info.rb = r.burst
             info.rt = r.threat
-            info.rn = readN
             info.ob = ____exports.Breaks(
                 spot,
                 creeps,
@@ -681,10 +681,28 @@ function ____exports.Compute(bot, role, fed, hold)
                 cover,
                 busy
             ) or "none"
+            info.rm = r.missing
+            info.mp = #r.mpids > 0 and table.concat(r.mpids, ",") or nil
+            info.op = ____exports.Breaks(
+                pref,
+                creeps,
+                towers,
+                margin,
+                heroes,
+                reach,
+                cover,
+                busy
+            ) or "none"
+            info.rp = "none"
+            if readOn(pref) then
+                local rpr = readAt(pref)
+                info.rp = rpr.burst >= READ_BURST and "burst" or (rpr.missing >= READ_MISSING and "missing" or "none")
+            end
+            info.rn = readN
         end
         return info
     end
-    local pref = Vector(px, py, front.z)
+    pref = Vector(px, py, front.z)
     local first = limits(pref, cover)
     if first == nil and readBreaks(pref) then
         first = "hero"
@@ -710,11 +728,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue119
+                    local __continue120
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue119 = true
+                            __continue120 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -727,9 +745,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue119 = true
+                        __continue120 = true
                     until true
-                    if not __continue119 then
+                    if not __continue120 then
                         break
                     end
                 end
