@@ -185,6 +185,32 @@ do
 	check("route: the walk clear of the wave wins", field(s, "anchor") == "ally" and tonumber(field(s, "alt")) > tonumber(field(s, "cost")), s)
 end
 
+-- Route price (user 10/11/2026): the walk costs its seconds (SecsPerCost), and a healing item held takes RegenCredit off a tower
+-- anchor, so the same walk that ends at an ally anchor with empty pockets ends at our tower with a tango held; the choice
+-- logs the exposed points, the least on any anchor and whether regen was held.
+do
+	local function pick(items)
+		local H, bot = world({ loc = Vector(-1500, -5000), hp = 150 })
+		bot.items = items
+		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-2000, -5000) })
+		ally.maxhp, ally.hp = 600, 600
+		enemy(10, Vector(-900, -5000), 400)
+		local out = capture(function()
+			H.Retreat.Desire(bot)
+			T = T + 1
+			H.Retreat.Desire(bot)
+		end)
+		return lines(out, "retreat")[1]
+	end
+	local none = pick(nil)
+	check("regen: empty pockets, the nearer ally anchor wins", field(none, "anchor") == "ally" and field(none, "regen") == "0", none)
+	local held = pick({ [3] = { name = "item_tango" } })
+	check("regen: a tango held, the tower anchor wins and the log says so", field(held, "anchor") == "tower" and field(held, "regen") == "1", held)
+	check("regen: the exposure and the least exposure are logged", field(held, "exp") ~= nil and field(held, "minexp") ~= nil, held)
+	local backpack = pick({ [7] = { name = "item_tango" } })
+	check("regen: a tango in the backpack counts for nothing", field(backpack, "anchor") == "ally" and field(backpack, "regen") == "0", backpack)
+end
+
 -- The exit band: the episode ends `safe` only once threat stays under budget - 0.15 for 1.5 s; a spike in the dwell restarts it.
 do
 	local H, bot = world()

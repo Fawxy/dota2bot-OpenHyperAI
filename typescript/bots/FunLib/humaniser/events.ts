@@ -1018,6 +1018,10 @@ export const EVENTS = {
         anchor: "str",
         cost: "num",
         alt: "num",
+        /** The chosen anchor's exposed route points, the least on any anchor (a route around exists when it is lower), and 1 when a healing item is held. */
+        exp: "num",
+        minexp: "num",
+        regen: "bool",
         dist: "num",
         spot: "str",
         rep: "num",

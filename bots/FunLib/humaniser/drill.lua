@@ -464,6 +464,14 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 60, from = 60, control = 2}
     },
+    ["retreat-chase2"] = {
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase it within 1,500 of their lane spots on odd reps, benched on even reps (control); everyone else benched",
+        cast = SAFE_CORE,
+        chaser = {d = {3, 4}},
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 60, from = 60, control = 2}
+    },
     ["lane-only"] = {
         note = "every hero lane-only (the last-hit harness)",
         cast = ALL,

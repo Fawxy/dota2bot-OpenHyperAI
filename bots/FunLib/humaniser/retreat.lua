@@ -241,7 +241,9 @@ ____exports.SETTINGS = {
     HealFloor = 0.3,
     HealUntil = 0.8,
     RouteStep = 300,
-    LenPerCost = 2000,
+    SecsPerCost = 7,
+    RegenItems = {"item_tango", "item_tango_single", "item_flask", "item_faerie_fire"},
+    RegenCredit = 1,
     EpisodeDesire = 0.95,
     DrillDesire = 1,
     Arrive = 200,
@@ -611,13 +613,35 @@ local function anchorsOf(bot, why)
     end
     return out
 end
---- The least-cost anchor (exposed route points plus the walk's length, LenPerCost; ties to the shorter) and the next-best's cost.
+--- Whether a healing item is held in the inventory (slots 0-5).
+local function regenHeld(bot)
+    for ____, name in ipairs(____exports.SETTINGS.RegenItems) do
+        local slot = bot:FindItemSlot(name)
+        if slot >= 0 and slot <= 5 then
+            return true
+        end
+    end
+    return false
+end
+--- The least-cost anchor (exposed route points plus the walk's seconds per SecsPerCost, less RegenCredit on a tower anchor while
+-- a healing item is held; ties to the shorter), the next-best's cost, the least exposure on any anchor (the route around) and
+-- whether regen is held.
 local function chooseAnchor(bot, why)
     local units = enemyUnits(bot)
     local here = bot:GetLocation()
     local list = anchorsOf(bot, why)
+    local regen = regenHeld(bot)
+    local speed = math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+    local minExp = math.huge
     for ____, a in ipairs(list) do
-        a.cost = math.floor((routeCost(bot, here, a.at, units) + a.len / ____exports.SETTINGS.LenPerCost) * 10 + 0.5) / 10
+        a.exp = routeCost(bot, here, a.at, units)
+        a.secs = a.len / speed
+        minExp = math.min(minExp, a.exp)
+        local credit = regen and (a.kind == "tower" or a.kind == "tower_edge") and ____exports.SETTINGS.RegenCredit or 0
+        a.cost = math.floor((a.exp + a.secs / ____exports.SETTINGS.SecsPerCost - credit) * 10 + 0.5) / 10
     end
     __TS__ArraySort(
         list,
@@ -625,14 +649,14 @@ local function chooseAnchor(bot, why)
     )
     local ____list__1_2 = list[1]
     local ____opt_0 = list[2]
-    return {____list__1_2, ____opt_0 and ____opt_0.cost}
+    return {____list__1_2, ____opt_0 and ____opt_0.cost, minExp, regen}
 end
 local function anchorPoint(a)
     return a.ally ~= nil and valid(a.ally) and a.ally:GetLocation() or a.at
 end
 local function start(bot, st, why, r, budget, purp, spot, rep)
     local now = DotaTime()
-    local anchor, alt = unpack(chooseAnchor(bot, why))
+    local anchor, alt, minExp, regen = unpack(chooseAnchor(bot, why))
     episodes = episodes + 1
     local hp = hpShare(bot)
     st.ep = {
@@ -696,6 +720,9 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
         {"anchor", anchor.kind},
         {"cost", anchor.cost},
         {"alt", alt},
+        {"exp", anchor.exp},
+        {"minexp", minExp},
+        {"regen", regen},
         {
             "dist",
             math.floor(anchor.len)

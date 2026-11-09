@@ -122,6 +122,16 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 60, from: 60, control: 2 },
     },
+    // Two chasers (slice retreat step 3): the same drill with the Dire pos3 and pos4 both chasing, so the leave rule's `lethal`
+    // (more heroes in reach than ours, no escape) and the lane spot's read of two heroes get forced reps.
+    "retreat-chase2": {
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase it within 1,500 of their lane spots on odd reps, benched on even reps (control); everyone else benched",
+        cast: SAFE_CORE,
+        chaser: { d: [3, 4] },
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 60, from: 60, control: 2 },
+    },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // The old Overrides.Solo + StackEvery = 3 harness (slice 4, double-stack): the Radiant pos5 alone stacks every third

@@ -32,9 +32,19 @@ export const SETTINGS = {
     HealUntil: 0.8,
     /** Route points every RouteStep along each anchor's straight walk. judgement. */
     RouteStep: 300,
-    /** One route cost point per this many units of walk, so a long walk home does not beat a short one on fewer exposed
-     *  points alone (drill rtwalk1: the fountain, 13,168 away at cost 2, beat our T1's walk at cost 4). judgement. */
-    LenPerCost: 2000,
+    /**
+     * One route cost point per this many seconds of walk at our current speed, so a long walk home does not beat a short one on
+     * fewer exposed points alone (drill rtwalk1: the fountain, 13,168 away at cost 2, beat our T1's walk at cost 4). Walk time
+     * not length, so a slowed hero prices its walk (was 2,000 units a point, about 6.7 s at 300). judgement.
+     */
+    SecsPerCost: 7,
+    /**
+     * Items that heal HP when used on ourselves (tango, salve, faerie fire; slots 0-5, the backpack cannot be cast). Holding one
+     * takes RegenCredit off a tower anchor's cost: the tower is cover while it runs and its aura regenerates allies (a primary
+     * source, user 10/11/2026; the amount is not read here). Reading only: the use is the Regen slice's. judgement.
+     */
+    RegenItems: ["item_tango", "item_tango_single", "item_flask", "item_faerie_fire"],
+    RegenCredit: 1,
     /** The desire while an episode runs; the chooser's gate holds every other mode but the human's orders at 0 meanwhile. judgement. */
     EpisodeDesire: 0.95,
     /** A forced drill rep holds the retreat mode above every mode the cast could otherwise take. */
@@ -74,6 +84,9 @@ interface Anchor {
     ally?: Unit;
     cost: number;
     len: number;
+    /** Exposed route points (tower, wave and heroes along the walk) and the walk's seconds, as priced. */
+    exp?: number;
+    secs?: number;
 }
 
 interface Episode {
@@ -318,14 +331,36 @@ function anchorsOf(bot: Unit, why: Why): Anchor[] {
     return out;
 }
 
-/** The least-cost anchor (exposed route points plus the walk's length, LenPerCost; ties to the shorter) and the next-best's cost. */
-function chooseAnchor(bot: Unit, why: Why): [Anchor, number | undefined] {
+/** Whether a healing item is held in the inventory (slots 0-5). */
+function regenHeld(bot: Unit): boolean {
+    for (const name of SETTINGS.RegenItems) {
+        const slot = bot.FindItemSlot(name);
+        if (slot >= 0 && slot <= 5) return true;
+    }
+    return false;
+}
+
+/**
+ * The least-cost anchor (exposed route points plus the walk's seconds per SecsPerCost, less RegenCredit on a tower anchor while
+ * a healing item is held; ties to the shorter), the next-best's cost, the least exposure on any anchor (the route around) and
+ * whether regen is held.
+ */
+function chooseAnchor(bot: Unit, why: Why): [Anchor, number | undefined, number, boolean] {
     const units = enemyUnits(bot);
     const here = bot.GetLocation();
     const list = anchorsOf(bot, why);
-    for (const a of list) a.cost = math.floor((routeCost(bot, here, a.at, units) + a.len / SETTINGS.LenPerCost) * 10 + 0.5) / 10;
+    const regen = regenHeld(bot);
+    const speed = math.max(100, bot.GetCurrentMovementSpeed());
+    let minExp = math.huge;
+    for (const a of list) {
+        a.exp = routeCost(bot, here, a.at, units);
+        a.secs = a.len / speed;
+        minExp = math.min(minExp, a.exp);
+        const credit = regen && (a.kind === "tower" || a.kind === "tower_edge") ? SETTINGS.RegenCredit : 0;
+        a.cost = math.floor((a.exp + a.secs / SETTINGS.SecsPerCost - credit) * 10 + 0.5) / 10;
+    }
     list.sort((a, b) => (a.cost !== b.cost ? a.cost - b.cost : a.len - b.len));
-    return [list[0], list[1]?.cost];
+    return [list[0], list[1]?.cost, minExp, regen];
 }
 
 function anchorPoint(a: Anchor): Vector {
@@ -336,7 +371,7 @@ function anchorPoint(a: Anchor): Vector {
 
 function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: number, purp: string, spot?: string, rep?: number): void {
     const now = DotaTime();
-    const [anchor, alt] = chooseAnchor(bot, why);
+    const [anchor, alt, minExp, regen] = chooseAnchor(bot, why);
     episodes++;
     const hp = hpShare(bot);
     st.ep = { id: episodes, start: now, why, budget, anchor, hp0: hp, lastHp: bot.GetHealth(), dmgh: 0, twr: false, wave: false };
@@ -365,6 +400,9 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: numbe
         ["anchor", anchor.kind],
         ["cost", anchor.cost],
         ["alt", alt],
+        ["exp", anchor.exp],
+        ["minexp", minExp],
+        ["regen", regen],
         ["dist", math.floor(anchor.len)],
         ["spot", spot],
         ["rep", rep],
