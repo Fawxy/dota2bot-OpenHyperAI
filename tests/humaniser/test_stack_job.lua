@@ -249,7 +249,8 @@ local function stackRun(o)
 		while T < 4 * 60 do step() end
 		if not o.noSpawn and not o.noBSpawn then neutrals(camp, 3) end
 		if o.double and not o.noSpawn then MakeNeutral({ x = first.x + 40, y = first.y }) end
-		while T < 4 * 60 + (o.tail or 8) do step() end
+		-- A double's line waits for camp A's read until :00 + DoubleReadUntil (12).
+		while T < 4 * 60 + (o.tail or (o.double and 13 or 8)) do step() end
 	end)
 	return stackLines(lines), H, bot
 end
@@ -377,12 +378,50 @@ do
 	check("far camp: no far skip", #lines >= 1 and not far, lines[1])
 end
 
--- Nothing new in the box after :00: not stacked. Box never in sight: not stacked, after=?.
+-- Nothing new in the box after :00: not stacked. Box never in sight: unseen, after=?, chk=?.
 do
 	local lines = stackRun({ noSpawn = true })
 	check("no spawn: not stacked", field(lines[1], "res") == "not_stacked" and field(lines[1], "after") == "3", lines[1])
 	lines = stackRun({ fogged = function() return true end })
-	check("fogged: not stacked, after unknown", field(lines[1], "res") == "not_stacked" and field(lines[1], "after") == "?", lines[1])
+	check("fogged: unseen, after and chk unknown", field(lines[1], "res") == "unseen" and field(lines[1], "after") == "?" and field(lines[1], "chk") == "?", lines[1])
+end
+
+-- The job ends at the walk-off (user 09/11/2026), not after a walk back to read the box; the outcome line follows the read.
+do
+	local H, bot = world({ t = 3 * 60 + 15 })
+	local camp = SPAWNERS[idxOf("good_1")].location
+	neutrals(camp, 3)
+	local printed = capture(function()
+		while T < 4 * 60 do frame(H, bot) end
+		neutrals(camp, 3)
+		while T < 4 * 60 + 8 do frame(H, bot) end
+	end)
+	local endT, line
+	for _, l in ipairs(printed) do
+		if endT == nil and l:find("ev=job ", 1, true) and field(l, "phase") == "end" then endT = tonumber(l:match("t=(%S+)")) end
+		if l:find("ev=stack ", 1, true) then line = l end
+	end
+	local exitUntil = H.Lane.Config.Settings().Timing.StackExitUntil
+	check("job ends by :00 + StackExitUntil", endT ~= nil and endT <= 4 * 60 + exitUntil + 0.3, tostring(endT))
+	check("outcome read after the job: stacked, chk at or after StackOutcomeAt", field(line, "res") == "stacked"
+		and tonumber(field(line, "chk") or "") ~= nil and tonumber(field(line, "chk")) >= 60 + H.Lane.Config.Settings().Timing.StackOutcomeAt, line)
+end
+
+-- The hero dies while its outcome is still read (box out of sight): the line is written at once as unseen, not at the
+-- read window's end.
+do
+	local diedAt
+	local H, bot = world({ t = 3 * 60 + 15, fogged = function() return true end })
+	local camp = SPAWNERS[idxOf("good_1")].location
+	neutrals(camp, 3)
+	local lines = stackLines(capture(function()
+		while T < 4 * 60 + 8 do
+			if diedAt == nil and T >= 4 * 60 + 2 and not H.StackJob.Running(bot) then bot.alive = false diedAt = T end
+			frame(H, bot)
+		end
+	end))
+	local t = tonumber((lines[1] or ""):match("t=(%S+)"))
+	check("died while reading: unseen, written within a frame of the death", field(lines[1], "res") == "unseen" and t ~= nil and diedAt ~= nil and t <= diedAt + 0.2, lines[1])
 end
 
 -- Camp unseen from the stand point (evil_1 in probe games 2-3: near=0 at 428 from the origin): the job steps in to
@@ -741,7 +780,8 @@ do
 	local l = lines[1]
 	check("double: one line for the minute", #lines == 1, #lines)
 	check("double: double=1, camp A good_2", field(l, "double") == "1" and tonumber(field(l, "fcamp")) == idxOf("good_2"), l)
-	check("double: both camps stacked", field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+	-- Nothing walks the hero to camp A after the job: from B's walk-off A is out of StackSight, so its outcome is unseen.
+	check("double: B stacked, A unseen from B's walk-off", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fseen") == "0", l)
 	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
 	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
 	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
@@ -753,10 +793,10 @@ do
 	check("double: A arrived before its hit", tonumber(field(l, "farr")) ~= nil and tonumber(field(l, "farr")) <= fag, l)
 	check("double: away at most 25 s", tonumber(field(l, "away")) ~= nil and tonumber(field(l, "away")) <= 25, l)
 	check("double: A sampled at :59.5", tonumber(field(l, "fbox59")) ~= nil, l)
-	-- ds2: A's spawn read 0 with no record of its neutrals; now A's neutrals at +2 s and :59.5, and A's box seen in the watch.
+	-- ds2: A's spawn read 0 with no record of its neutrals; now A's neutrals at +2 s and :59.5.
 	local _, a2 = (field(l, "fn2") or ""):gsub("kobold:%d+:", "")
 	local _, a59 = (field(l, "fn59") or ""):gsub("kobold:%d+:", "")
-	check("double: fn2 and fn59 list A's two neutrals, fseen=1", a2 == 2 and a59 == 2 and field(l, "fseen") == "1", l)
+	check("double: fn2 and fn59 list A's two neutrals", a2 == 2 and a59 == 2, l)
 end
 
 -- Stacks already in the box block each other (EC-066): a double hits a camp PileEarlier (0.5) s earlier per stack past the
@@ -772,23 +812,25 @@ do
 	check("pile: a single stack's hit is unchanged", field(single1, "early") == nil and math.abs(tonumber(field(single0, "aggro")) - tonumber(field(single1, "aggro"))) < 0.2, single1)
 end
 
--- dsolo4b-5c (31/10/2026): A was read only after B stacked, so a B that did not stack left A unread and logged as
--- not_stacked. Now B is read for BReadFor, then the watch walks to A and reads it.
--- Under AwayMax that walk does not fit (A is ~1,100 from B's stand), so this runs with Overrides.StackFar as the solo games do.
+-- A hero that passes camp A after the job (on its way back, or sent by its next mode) reads A too, whether or not B
+-- stacked (dsolo4b-5c, 31/10/2026: A was read only after B stacked).
 do
-	local lines = stackRun({ double = true, noBSpawn = true, tail = 15, onFrame = function()
-		local C = package.loaded["bots/FunLib/custom_loader"]
-		C.Overrides = C.Overrides or {}
-		C.Overrides.StackFar = true
-	end })
-	package.loaded["bots/FunLib/custom_loader"].Overrides.StackFar = false
-	local l = lines[1]
-	check("B not stacked: the watch still reads A (StackFar)", field(l, "res") == "not_stacked" and field(l, "fres") == "stacked" and tonumber(field(l, "fchk")) ~= nil, l)
+	local function passA(H, bot)
+		if T >= 4 * 60 + 3 and not H.StackJob.Running(bot) then
+			local a = SPAWNERS[idxOf("good_2")].location
+			bot.loc = Vector(a.x + 400, a.y)
+		end
+	end
+	local l = stackRun({ double = true, onFrame = passA })[1]
+	check("passing A: both stacked, fchk and fseen set", field(l, "res") == "stacked" and field(l, "fres") == "stacked" and tonumber(field(l, "fchk")) ~= nil and field(l, "fseen") == "1", l)
+	l = stackRun({ double = true, noBSpawn = true, onFrame = passA })[1]
+	check("B not stacked, passing A: A still read", field(l, "res") == "not_stacked" and field(l, "fres") == "stacked", l)
 end
 -- A's box never in sight after :00: fres=unseen, not not_stacked.
 do
-	-- tail: with no away limit (02/11/2026) the watch is not cut short and walks on to A, so its line comes later.
-	local lines = stackRun({ double = true, tail = 15, fogged = function(v)
+	local lines = stackRun({ double = true, onFrame = function(H, bot)
+		if T >= 4 * 60 + 3 and not H.StackJob.Running(bot) then local a = SPAWNERS[idxOf("good_2")].location bot.loc = Vector(a.x + 400, a.y) end
+	end, fogged = function(v)
 		local g2 = SPAWNERS[idxOf("good_2")].location
 		return T >= 4 * 60 and math.abs(v.x - g2.x) < 1 and math.abs(v.y - g2.y) < 1
 	end })
@@ -810,7 +852,7 @@ do
 	end })
 	local l = lines[1]
 	check("wait clear: at least ~825 from A's neutrals until :51", minD >= 820, minD)
-	check("wait clear: both stacked, A hit in 50.5-52.5, fauto=?", field(l, "fres") == "stacked" and field(l, "res") == "stacked" and tonumber(field(l, "faggro")) >= 50.5 and tonumber(field(l, "faggro")) <= 52.5 and field(l, "fauto") == "?", l)
+	check("wait clear: B stacked, A hit in 50.5-52.5, fauto=?", field(l, "res") == "stacked" and tonumber(field(l, "faggro")) >= 50.5 and tonumber(field(l, "faggro")) <= 52.5 and field(l, "fauto") == "?", l)
 	check("wait clear: fhit0 and fhpa logged", tonumber(field(l, "fhit0")) ~= nil and tonumber(field(l, "fhpa")) ~= nil, l)
 end
 
@@ -818,7 +860,7 @@ end
 do
 	local lines = stackRun({ double = true, at = Vector(4700, -3000) })
 	local l = lines[1]
-	check("near good_2: double on good_1 after good_2, both stacked", field(l, "double") == "1" and tonumber(field(l, "camp")) == idxOf("good_1") and tonumber(field(l, "fcamp")) == idxOf("good_2") and field(l, "res") == "stacked" and field(l, "fres") == "stacked", l)
+	check("near good_2: double on good_1 after good_2, B stacked", field(l, "double") == "1" and tonumber(field(l, "camp")) == idxOf("good_1") and tonumber(field(l, "fcamp")) == idxOf("good_2") and field(l, "res") == "stacked", l)
 end
 -- And single with the double off: slice 4 stacks the nearest camp, good_2.
 do

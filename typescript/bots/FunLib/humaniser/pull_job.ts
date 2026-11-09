@@ -17,6 +17,7 @@ import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Threat from "bots/FunLib/humaniser/threat";
 
 // All `judgement` (slice file, Decisions), except where a source is named.
 export const SETTINGS = {
@@ -1086,7 +1087,10 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
     camp.php = bot.GetHealth();
-    const site = siteThreat(p, camp);
+    // Slice threat: the start reads the camp alone on the shared gate (`threat`: a visible hero in reach of the camp;
+    // `missing`: the belief's weight sum at least MissingRefuse); `se` stays logged. Off: the pull's own enemy-site rule.
+    const own = siteThreat(p, camp);
+    const site = Ours.On("Threat") ? Threat.Gate(bot, Camps.BoxCenter(p.spawner), Camps.BoxCenter(p.spawner), "pull_job").why : own;
     const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");

@@ -24,6 +24,8 @@ import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
+import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Threat from "bots/FunLib/humaniser/threat";
 
 export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -337,18 +339,24 @@ function hpOk(bot: Unit): boolean {
     return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
 }
 
-/** Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. */
-export function StartBlocked(bot: Unit): string | undefined {
+/**
+ * Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat a start that
+ * names its camp `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat),
+ * logged for `who`, in place of the caution probe's missing count; a start with no camp (the take, which contests a visible
+ * enemy there) keeps the probe's count until design slice 3 gives it `Opportunity`.
+ */
+export function StartBlocked(bot: Unit, at?: Vector, who = "sup_job"): string | undefined {
     const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP < settings().Thresholds.JobStartHP) return "low-hp";
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
     if (LaneHooks.IsFightCommitting(bot)) return "lanefight";
-    if (LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
+    if ((!Ours.On("Threat") || at === undefined) && LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
     // The rotation was decided first (20-25 s before the spawn); a job now would make it late or cancel it.
     if (LaneHooks.RotationDecided(bot)) return "rotation";
     if (inFight(bot)) return "fight";
+    if (Ours.On("Threat") && at !== undefined) return Threat.Gate(bot, at, at, who).why;
     return undefined;
 }
 
@@ -1160,12 +1168,13 @@ function schedule(bot: Unit): boolean {
     ]);
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
-    const blocked = StartBlocked(bot);
+    const camp = pullCampFor(kind, camps);
+    const spawnerOf = Camps.SpawnerByIdx(camp.campIdx);
+    const blocked = StartBlocked(bot, spawnerOf !== undefined ? Camps.BoxCenter(spawnerOf) : undefined);
     if (blocked !== undefined) {
-        notePlan(bot, s, now, [["gate", blocked], ["camp", camps[0].campIdx]]);
+        notePlan(bot, s, now, [["gate", blocked], ["camp", camp.campIdx]]);
         return false;
     }
-    const camp = pullCampFor(kind, camps);
     const asDouble = kind === "full_pull" && doubleOpen;
     // A double that fits but whose (hard camp) window opens later than the full pull's: wait for it.
     if (kind === "full_pull" && double !== undefined && !double.open && double.why === undefined) return false;
@@ -1214,7 +1223,7 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate);
     if (sec < from || sec > aggroSec) return false;
     if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [aggroSec], t.PullPeriod)) return false;
-    if (StartBlocked(bot) !== undefined) return false;
+    if (StartBlocked(bot, Camps.BoxCenter(spawner)) !== undefined) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
 }
 

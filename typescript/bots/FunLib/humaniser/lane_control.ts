@@ -35,6 +35,7 @@ import * as Calendar from "bots/FunLib/humaniser/calendar";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as EnemyWave from "bots/FunLib/humaniser/enemy_wave";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 declare function RealTime(this: void): number;
@@ -96,7 +97,8 @@ export const SETTINGS = {
     /** ...and not sooner than this: a support leaving before this wave's pull slot (about 16 s after the spawn, 14 after
      *  the read) has no time to reset it (review 2026-11-06-lane-control-3115b32 M2: lctl1 read at 5:32, departure 5:35). */
     DepartAfter: 15,
-    /** R6: the core below this HP share, or this many enemy heroes within CoreThreatR of it with no support in lane. */
+    /** R6: the core below this HP share, or this many enemy heroes able to reach it with no support in lane: under Ours.Threat
+     *  the threat read's `reach` at the core's spot (Threat.SETTINGS GateHorizon), else within CoreThreatR of it. */
     CoreLowHp: 0.4,
     CoreThreat: 2,
     CoreThreatR: 1200,
@@ -413,9 +415,20 @@ function enemiesAway(m: LaneMemory, now: number, cx: number, cy: number): boolea
 }
 
 function coreThreat(core: Laner, supportIn: boolean): boolean {
-    const u = core.unit;
+    return CoreThreat(core.unit, supportIn);
+}
+
+/** R6's test for one core (exported for its E0 checks): low, or enough enemy heroes on it with no support in lane. */
+export function CoreThreat(u: Unit, supportIn: boolean): boolean {
     if (u.GetHealth() / math.max(1, u.GetMaxHealth()) < SETTINGS.CoreLowHp) return true;
     if (supportIn) return false;
+    if (Ours.On("Threat")) {
+        const at = u.GetLocation();
+        const r = Threat.Read(u, at, at, Threat.SETTINGS.GateHorizon);
+        const held = r.reach.length >= SETTINGS.CoreThreat;
+        Threat.Log(u, "lane_ctl", r, held ? "threat" : "go");
+        return held;
+    }
     const near = u.GetNearbyHeroes(SETTINGS.CoreThreatR, true, 0) ?? [];
     return near.length >= SETTINGS.CoreThreat;
 }

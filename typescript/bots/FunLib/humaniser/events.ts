@@ -733,6 +733,7 @@ export const EVENTS = {
         before: "mixed",
         after: "mixed",
         fresh: "mixed",
+        chk: "mixed",
         away: "num",
         death: "num",
         cx: "mixed",
@@ -971,7 +972,8 @@ export const EVENTS = {
     },
     /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat,
      *  band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the
-     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share. */
+     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share;
+     *  dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief. */
     threat: {
         pid: "num",
         who: "str",
@@ -979,6 +981,7 @@ export const EVENTS = {
         x: "num",
         y: "num",
         hz: "num",
+        dep: "num",
         threat: "num",
         band: "str",
         reach: "num",
@@ -1663,7 +1666,8 @@ export const EVENTS = {
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
-    // hero to the stand or meet point, within PullJob SiteEnemy).
+    // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (Threat.Gate at the camp, `ev=threat who=pull_job`;
+    // Ours.Threat on).
     choice: {
         pid: "num",
         kind: "str",

@@ -573,14 +573,14 @@ function admits(bot, t, spawner, now)
 end
 function measured(bot, t, now, center)
     t.nl = campNeutralCount(center)
-    local ____t_38 = t
-    local ____temp_37
+    local ____t_39 = t
+    local ____temp_38
     if t.engagedAt ~= nil then
-        ____temp_37 = r1(now - t.engagedAt)
+        ____temp_38 = r1(now - t.engagedAt)
     else
-        ____temp_37 = nil
+        ____temp_38 = nil
     end
-    ____t_38.clrm = ____temp_37
+    ____t_39.clrm = ____temp_38
     t.hpm = t.hpAtEngage ~= nil and r2(t.hpAtEngage - hpOf(bot)) or nil
 end
 ____exports.SETTINGS = {
@@ -607,8 +607,6 @@ ____exports.SETTINGS = {
     PathFactor = 1.2,
     ThreatMargin = 600,
     MissingAfter = 3,
-    GateHorizon = 4,
-    MissingRefuse = 0.5,
     MissingSpeed = 330,
     MissingReachMax = 4000,
     MidRuneGuard = 40,
@@ -1222,8 +1220,8 @@ function ____exports.MissingNear(bot, at)
     return ____exports.MissingOf(bot, at).n
 end
 --- The missing-hero gate for a walk from the core to `at` as [heroes that hold it, the belief's weight sum]: under Ours.Threat
--- the threat read's belief (a weight per unseen hero, refusing at Threat MissingRefuse) logged as ev=threat for `consumer`;
--- off, MissingOf's count and no weight.
+-- the threat read's belief (a weight per unseen hero, refusing at Threat.SETTINGS MissingRefuse) logged as ev=threat for
+-- `consumer`; off, MissingOf's count and no weight.
 function ____exports.MissingGate(bot, at, consumer)
     if not Ours.On("Threat") then
         return ____exports.MissingOf(bot, at).n, nil
@@ -1232,9 +1230,9 @@ function ____exports.MissingGate(bot, at, consumer)
         bot,
         bot:GetLocation(),
         at,
-        ____exports.SETTINGS.GateHorizon
+        Threat.SETTINGS.GateHorizon
     )
-    local held = r.missing >= ____exports.SETTINGS.MissingRefuse
+    local held = r.missing >= Threat.SETTINGS.MissingRefuse
     Threat.Log(bot, consumer, r, held and "missing" or "go")
     return held and #r.mpids or 0, math.floor(r.missing * 100 + 0.5) / 100
 end
@@ -1349,14 +1347,14 @@ local function startGate(bot, plan, now)
     end
     local center = Camps.BoxCenter(spawner)
     if Ours.On("Threat") then
-        local r = Threat.Read(
+        local ____Threat_Gate_result_24 = Threat.Gate(
             bot,
             bot:GetLocation(),
             center,
-            ____exports.SETTINGS.GateHorizon
+            "core_camp"
         )
-        local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
-        Threat.Log(bot, "core_camp", r, why or "go")
+        local why = ____Threat_Gate_result_24.why
+        local r = ____Threat_Gate_result_24.r
         if why ~= "missing" then
             return why ~= nil and ({why = why}) or nil
         end
@@ -1457,19 +1455,19 @@ local function noteSkip(bot, h, c, plan)
         return
     end
     skipped[pid][key] = true
-    local ____log_27 = log
-    local ____bot_25 = bot
-    local ____c_26 = c
-    local ____array_24 = __TS__SparseArrayNew(unpack(heldFields(h)))
+    local ____log_28 = log
+    local ____bot_26 = bot
+    local ____c_27 = c
+    local ____array_25 = __TS__SparseArrayNew(unpack(heldFields(h)))
     __TS__SparseArrayPush(
-        ____array_24,
+        ____array_25,
         unpack(planFields(plan))
     )
-    ____log_27(
-        ____bot_25,
+    ____log_28(
+        ____bot_26,
         "skip",
-        ____c_26,
-        {__TS__SparseArraySpread(____array_24)}
+        ____c_27,
+        {__TS__SparseArraySpread(____array_25)}
     )
 end
 local GATE_FIELD = {
@@ -1631,15 +1629,15 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         t.engagedAt = nil
         t.hpAtEngage = nil
+        local ____t_32 = t
         local ____t_31 = t
         local ____t_30 = t
         local ____t_29 = t
-        local ____t_28 = t
         t.hpe = nil
-        ____t_28.clre = nil
-        ____t_29.nl = nil
-        ____t_30.hpm = nil
-        ____t_31.clrm = nil
+        ____t_29.clre = nil
+        ____t_30.nl = nil
+        ____t_31.hpm = nil
+        ____t_32.clrm = nil
         t.center = Camps.BoxCenter(spawner)
         local r = __TS__DelegatedYield(V.clearCamp(
             bot,
@@ -1657,9 +1655,9 @@ local body = __TS__Generator(function(bot, t, ctx)
                         at
                     )
                     if #met > 0 then
-                        local ____temp_32 = {____exports.ClearOf(bot, met)}
-                        t.clre = ____temp_32[1]
-                        t.hpe = ____temp_32[2]
+                        local ____temp_33 = {____exports.ClearOf(bot, met)}
+                        t.clre = ____temp_33[1]
+                        t.hpe = ____temp_33[2]
                     end
                 end,
                 admit = function(at) return admits(bot, t, spawner, at) end
@@ -1761,10 +1759,10 @@ local body = __TS__Generator(function(bot, t, ctx)
         end
         local hold = startGate(bot, next, now)
         if hold ~= nil then
-            local ____log_36 = log
-            local ____bot_34 = bot
-            local ____t_clash_35 = t.clash
-            local ____array_33 = __TS__SparseArrayNew(
+            local ____log_37 = log
+            local ____bot_35 = bot
+            local ____t_clash_36 = t.clash
+            local ____array_34 = __TS__SparseArrayNew(
                 {"after", r.message or "ok"},
                 {"clrm", t.clrm},
                 {"hpm", t.hpm},
@@ -1780,14 +1778,14 @@ local body = __TS__Generator(function(bot, t, ctx)
                 unpack(heldFields(hold))
             )
             __TS__SparseArrayPush(
-                ____array_33,
+                ____array_34,
                 unpack(planFields(next))
             )
-            ____log_36(
-                ____bot_34,
+            ____log_37(
+                ____bot_35,
                 "nexthold",
-                ____t_clash_35,
-                {__TS__SparseArraySpread(____array_33)}
+                ____t_clash_36,
+                {__TS__SparseArraySpread(____array_34)}
             )
             break
         end

@@ -245,6 +245,8 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local TransitionSettings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 function settings()
     return LaneConfig.Settings()
 end
@@ -279,17 +281,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue270
+            local __continue271
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue270 = true
+                    __continue271 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue270 = true
+                    __continue271 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -300,9 +302,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue270 = true
+                __continue271 = true
             until true
-            if not __continue270 then
+            if not __continue271 then
                 break
             end
         end
@@ -742,8 +744,14 @@ local function hpOk(bot)
     local maxHP = bot:GetMaxHealth()
     return maxHP > 0 and bot:GetHealth() / maxHP >= settings().Thresholds.JobMinHP
 end
---- Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it.
-function ____exports.StartBlocked(bot)
+--- Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat a start that
+-- names its camp `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat),
+-- logged for `who`, in place of the caution probe's missing count; a start with no camp (the take, which contests a visible
+-- enemy there) keeps the probe's count until design slice 3 gives it `Opportunity`.
+function ____exports.StartBlocked(bot, at, who)
+    if who == nil then
+        who = "sup_job"
+    end
     local maxHP = bot:GetMaxHealth()
     if maxHP <= 0 or bot:GetHealth() / maxHP < settings().Thresholds.JobStartHP then
         return "low-hp"
@@ -755,7 +763,7 @@ function ____exports.StartBlocked(bot)
     if LaneHooks.IsFightCommitting(bot) then
         return "lanefight"
     end
-    if LaneHooks.EnemiesMissing(
+    if (not Ours.On("Threat") or at == nil) and LaneHooks.EnemiesMissing(
         bot,
         settings().Thresholds.JobMissingFresh
     ) > 0 then
@@ -766,6 +774,9 @@ function ____exports.StartBlocked(bot)
     end
     if inFight(bot) then
         return "fight"
+    end
+    if Ours.On("Threat") and at ~= nil then
+        return Threat.Gate(bot, at, at, who).why
     end
     return nil
 end
@@ -1900,12 +1911,16 @@ local function schedule(bot)
     if kind == nil then
         return false
     end
-    local blocked = ____exports.StartBlocked(bot)
+    local camp = pullCampFor(kind, camps)
+    local spawnerOf = Camps.SpawnerByIdx(camp.campIdx)
+    local blocked = ____exports.StartBlocked(
+        bot,
+        spawnerOf ~= nil and Camps.BoxCenter(spawnerOf) or nil
+    )
     if blocked ~= nil then
-        notePlan(bot, s, now, {{"gate", blocked}, {"camp", camps[1].campIdx}})
+        notePlan(bot, s, now, {{"gate", blocked}, {"camp", camp.campIdx}})
         return false
     end
-    local camp = pullCampFor(kind, camps)
     local asDouble = kind == "full_pull" and doubleOpen
     if kind == "full_pull" and double ~= nil and not double.open and double.why == nil then
         return false
@@ -1984,7 +1999,10 @@ local function scheduleStack(bot, now)
     if skipped[bot:GetPlayerID()] == ____exports.NextAggroTime(now, {aggroSec}, t.PullPeriod) then
         return false
     end
-    if ____exports.StartBlocked(bot) ~= nil then
+    if ____exports.StartBlocked(
+        bot,
+        Camps.BoxCenter(spawner)
+    ) ~= nil then
         return false
     end
     return ____exports.Start(bot, {kind = "stack", campIdx = data.campIdx, minute = minute})
@@ -2171,10 +2189,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue298
+            local __continue299
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue298 = true
+                    __continue299 = true
                     break
                 end
                 if dist2D(
@@ -2183,9 +2201,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue298 = true
+                __continue299 = true
             until true
-            if not __continue298 then
+            if not __continue299 then
                 break
             end
         end
@@ -2224,10 +2242,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue307
+            local __continue308
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue307 = true
+                    __continue308 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2237,9 +2255,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue307 = true
+                __continue308 = true
             until true
-            if not __continue307 then
+            if not __continue308 then
                 break
             end
         end
@@ -2280,19 +2298,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue322
+            local __continue323
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue322 = true
+                    __continue323 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue322 = true
+                __continue323 = true
             until true
-            if not __continue322 then
+            if not __continue323 then
                 break
             end
         end

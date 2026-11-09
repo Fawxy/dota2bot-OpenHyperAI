@@ -1,7 +1,7 @@
 -- Driver: a laning core's jungle trip between waves (FarmPattern), in the farm_world.lua world: Radiant bot lane,
 -- core pid 1 at the front, support pid 5, the next enemy wave `travel` s from the front.
 -- world: t, pos (the core's), travel, skill, camps [{type = small|large, at = small|small2|large}], transitions (config
---        block; caution's missing-enemy probe needs it on), enemies [{pid, unseen (s), at = [x, y]}] (bot-lane enemies).
+--        block; caution's missing-enemy probe needs it on), ours {switch = bool} (Ours switches the finding needs, e.g. Threat false for the probe's OFF arm), enemies [{pid, unseen (s), at = [x, y]}] (bot-lane enemies).
 -- Observation: noTrip(<reason>) when FarmPattern.StartGate blocks, else trip(camp#idx) when FarmPattern.Desire starts
 -- one (or noTrip(none) when it does not).
 dofile(HARNESS_DIR .. "/farm_world.lua")
@@ -13,7 +13,7 @@ return function(fx, skill)
 	local w = fx.world
 	local camps = {}
 	for _, c in ipairs(w.camps or {}) do table.insert(camps, { c.type, AT[c.at or c.type] }) end
-	local H, core = FarmWorld({ t = w.t, pos = w.pos, travel = w.travel or 10, skill = skill or 0.9, camps = camps,
+	local H, core = FarmWorld({ t = w.t, pos = w.pos, travel = w.travel or 10, skill = skill or 0.9, camps = camps, ours = w.ours,
 		transitions = w.transitions })
 	for _, e in ipairs(w.enemies or {}) do
 		local loc = e.at and Vector(e.at[1], e.at[2]) or FARM_FRONT

@@ -366,6 +366,7 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 function campFor(bot)
     local lane = bot:GetAssignedLane()
     if lane ~= Lane.Top and lane ~= Lane.Bot then
@@ -1949,7 +1950,19 @@ function ____exports.Wants(bot, blocked, host)
     end
     camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type)
     camp.php = bot:GetHealth()
-    local site = siteThreat(p, camp)
+    local own = siteThreat(p, camp)
+    local ____Ours_On_result_34
+    if Ours.On("Threat") then
+        ____Ours_On_result_34 = Threat.Gate(
+            bot,
+            Camps.BoxCenter(p.spawner),
+            Camps.BoxCenter(p.spawner),
+            "pull_job"
+        ).why
+    else
+        ____Ours_On_result_34 = own
+    end
+    local site = ____Ours_On_result_34
     local why = ____exports.CampGate(camp, now, hitAt) or blocked(bot) or campDmgGate(bot, camp.dmg) or site or ____exports.PartnerThreat(bot) or (acting(bot) and "acting" or nil)
     if now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate then
         done(false, gateWhy[pid] or why or "late")

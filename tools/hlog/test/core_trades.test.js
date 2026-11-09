@@ -59,6 +59,35 @@ test('core deaths: each death of a core before until gets the first matching cau
     assert.deepStrictEqual(out.map(r => [r.t, r.cause]), [[145, 'trade'], [244, 'cut'], [345, 'tower'], [445, 'lane'], [545, 'farm']]);
 });
 
+test('core deaths: the death is the last living snap, before the frozen run of hp 0 snaps or of snaps at the fountain', () => {
+    const lines = [line(0, 'bot pid=1 hero=h1 team=3 pos=1'), line(0, 'bot pid=2 hero=h2 team=3 pos=2')];
+    const at = (pid, t, x, y, hp, mode, deaths) => lines.push(line(t, `snap pid=${pid} x=${x} y=${y} alive=1 hp=${hp} mode=${mode} d=0.4 deaths=${deaths}`));
+    // pid 1 falls at 177 and its snaps read hp 0 where it fell until the count rises at the respawn.
+    at(1, 176, -5700, 4100, 11, 'retreat', 0); at(1, 177, -5430, 4130, 6, 'retreat', 0);
+    at(1, 178, -5465, 4100, 0, 'team_roam', 0); at(1, 179, -5700, 3900, 0, 'team_roam', 0); at(1, 200, 6836, 6554, 100, 'team_roam', 1);
+    // pid 2 falls at 521, then its snaps read the Dire fountain with hp rising from 0 and mode laning.
+    at(2, 520, -4904, 5677, 21, 'retreat', 0); at(2, 521, -4904, 5677, 22, 'retreat', 0);
+    at(2, 522, 6928, 6372, 0, 'laning', 0); at(2, 523, 6679, 6329, 6, 'laning', 0); at(2, 525, 6068, 6251, 17, 'laning', 0);
+    at(2, 546, 6836, 6554, 100, 'laning', 1);
+    assert.deepStrictEqual(run('core_deaths', lines).map(r => [r.pid, r.t, r.mode]), [[1, 177, 'retreat'], [2, 521, 'retreat']]);
+});
+
+test('core deaths: a hero that reads hp 0 where it fell and then appears at the Radiant fountain dies at its last snap with hp', () => {
+    const lines = [line(0, 'bot pid=1 hero=h1 team=2 pos=1')];
+    const at = (t, x, y, hp, mode, deaths) => lines.push(line(t, `snap pid=1 x=${x} y=${y} alive=1 hp=${hp} mode=${mode} d=0.4 deaths=${deaths}`));
+    at(405, 0, 0, 12, 'retreat', 0); at(406, 100, 0, 3, 'retreat', 0); at(407, 120, 0, 0, 'team_roam', 0);
+    at(408, -6700, -6700, 0, 'team_roam', 0); at(409, -6650, -6600, 6, 'team_roam', 0); at(430, -6600, -6300, 100, 'team_roam', 1);
+    assert.deepStrictEqual(run('core_deaths', lines).map(r => [r.t, r.mode]), [[406, 'retreat']]);
+});
+
+test('core deaths: a hero that teleports home alive is not moved back', () => {
+    const lines = [line(0, 'bot pid=1 hero=h1 team=3 pos=1')];
+    const at = (t, x, y, hp, mode, deaths) => lines.push(line(t, `snap pid=1 x=${x} y=${y} alive=1 hp=${hp} mode=${mode} d=0.4 deaths=${deaths}`));
+    at(100, 0, 0, 50, 'retreat', 0); at(101, 6900, 6370, 51, 'retreat', 0); at(102, 6950, 6400, 53, 'retreat', 0);
+    at(200, 0, 0, 40, 'laning', 0); at(201, 0, 0, 30, 'laning', 0); at(230, 6900, 6370, 100, 'laning', 1);
+    assert.deepStrictEqual(run('core_deaths', lines).map(r => [r.t, r.cause]), [[201, 'lane']]);
+});
+
 test('core deaths: the tower table equals dynamic.js TOWERS', () => {
     const values = fs.readFileSync(path.join(__dirname, "..", "queries", "fragments", "core_death.sql"), "utf8").match(/tw \(team, x, y\) AS \(VALUES([\s\S]*?\))\),/)[1];
     const rows = [...values.matchAll(/\((\d), (-?\d+), (-?\d+)\)/g)].map(m => m.slice(1).map(Number));
