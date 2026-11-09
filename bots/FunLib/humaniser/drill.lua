@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, lingerStep, chase, targetAlive, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
+local overrides, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -337,7 +337,7 @@ function behindOwnT1(bot)
     )
     return Vector(a.x + (fx - a.x) * CHASER_WAIT_BEHIND / len, a.y + (fy - a.y) * CHASER_WAIT_BEHIND / len, a.z)
 end
-function endLinger(bot, res)
+function endLinger(bot, res, dnow)
     local pid = bot:GetPlayerID()
     local st = lingering[pid]
     if st == nil then
@@ -358,11 +358,19 @@ function endLinger(bot, res)
             {"res", res},
             {
                 "secs",
-                math.floor((DotaTime() - st.t0) * 10 + 0.5) / 10
+                math.floor((DotaTime() - (st.t0 or st.tgo)) * 10 + 0.5) / 10
             },
             {
                 "dmin",
                 math.floor(st.dmin)
+            },
+            {
+                "dmax",
+                math.floor(st.dmax)
+            },
+            {
+                "dend",
+                dnow ~= nil and math.floor(dnow) or nil
             },
             {"clamp", st.clamp}
         }
@@ -395,60 +403,116 @@ function lingerPoint(bot, target, spot)
     p = Vector(tl.x + (p.x - tl.x) * reach / td, tl.y + (p.y - tl.y) * reach / td, p.z)
     return {p, 1}
 end
-function lingerStep(bot, target, spot)
+function nearbyHero(bot, pid)
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
+        if h:IsAlive() and h:GetPlayerID() == pid then
+            return h
+        end
+    end
+    return nil
+end
+function startLinger(bot, target)
     local pid = bot:GetPlayerID()
     local rep = ____exports.RepAt(DotaTime())
-    local st = lingering[pid]
-    local now = DotaTime()
-    if st == nil then
-        if lingered[pid] == rep or target:GetHealth() / math.max(
-            1,
-            target:GetMaxHealth()
-        ) > LINGER_HP then
-            return false
-        end
-        lingered[pid] = rep
-        st = {
-            rep = rep,
-            t0 = now,
-            tpid = target:GetPlayerID(),
-            dmin = GetUnitToUnitDistance(bot, target),
-            clamp = 0
-        }
-        lingering[pid] = st
-        Telemetry.Event(
-            "drill",
-            {
-                {"ph", "linger"},
-                {
-                    "name",
-                    ____exports.Name()
-                },
-                {"pid", pid},
-                {"tpid", st.tpid},
-                {"rep", rep},
-                {
-                    "thp",
-                    math.floor(target:GetHealth() / math.max(
-                        1,
-                        target:GetMaxHealth()
-                    ) * 100 + 0.5) / 100
-                },
-                {
-                    "d",
-                    math.floor(st.dmin)
-                }
-            }
-        )
-    end
-    local dd = GetUnitToUnitDistance(bot, target)
-    st.dmin = math.min(st.dmin, dd)
-    if dd <= bot:GetAttackRange() + 100 then
-        endLinger(bot, "contact")
+    local share = target:GetHealth() / math.max(
+        1,
+        target:GetMaxHealth()
+    )
+    if lingered[pid] == rep or share > LINGER_HP then
         return false
     end
-    if now - st.t0 >= LINGER_SECS then
-        endLinger(bot, "timeout")
+    local d = GetUnitToUnitDistance(bot, target)
+    lingered[pid] = rep
+    lingering[pid] = {
+        rep = rep,
+        tgo = DotaTime(),
+        tpid = target:GetPlayerID(),
+        dmin = d,
+        dmax = d,
+        clamp = 0
+    }
+    local d0 = ____exports.Active()
+    Telemetry.Event(
+        "drill",
+        {
+            {"ph", "linger_go"},
+            {
+                "name",
+                ____exports.Name()
+            },
+            {"pid", pid},
+            {
+                "tpid",
+                target:GetPlayerID()
+            },
+            {"rep", rep},
+            {
+                "thp",
+                math.floor(share * 100 + 0.5) / 100
+            },
+            {
+                "d",
+                math.floor(d)
+            },
+            {"rend", d0 ~= nil and d0.rep.from + rep * d0.rep.every or nil}
+        }
+    )
+    return true
+end
+function lingerTick(bot, spot)
+    local pid = bot:GetPlayerID()
+    local st = lingering[pid]
+    if st == nil then
+        return false
+    end
+    local target = nearbyHero(bot, st.tpid)
+    if target == nil then
+        endLinger(
+            bot,
+            IsHeroAlive(st.tpid) and "lost" or "died"
+        )
+        return false
+    end
+    local now = DotaTime()
+    local dd = GetUnitToUnitDistance(bot, target)
+    st.dmin = math.min(st.dmin, dd)
+    st.dmax = math.max(st.dmax, dd)
+    if st.t0 == nil then
+        if dd >= LINGER_DIST - LINGER_STANDOFF_SLACK then
+            st.t0 = now
+            Telemetry.Event(
+                "drill",
+                {
+                    {"ph", "linger"},
+                    {
+                        "name",
+                        ____exports.Name()
+                    },
+                    {"pid", pid},
+                    {"tpid", st.tpid},
+                    {"rep", st.rep},
+                    {
+                        "thp",
+                        math.floor(target:GetHealth() / math.max(
+                            1,
+                            target:GetMaxHealth()
+                        ) * 100 + 0.5) / 100
+                    },
+                    {
+                        "d",
+                        math.floor(dd)
+                    }
+                }
+            )
+        elseif now - st.tgo >= LINGER_SECS then
+            endLinger(bot, "no_standoff", dd)
+            return false
+        end
+    elseif dd <= bot:GetAttackRange() + 100 then
+        endLinger(bot, "contact", dd)
+        return false
+    elseif now - st.t0 >= LINGER_SECS then
+        endLinger(bot, "timeout", dd)
         return false
     end
     local p, clamp = unpack(lingerPoint(bot, target, spot))
@@ -470,10 +534,10 @@ function chase(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue63
+            local __continue71
             repeat
                 if not h:IsAlive() or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue63 = true
+                    __continue71 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -481,27 +545,25 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue63 = true
+                __continue71 = true
             until true
-            if not __continue63 then
+            if not __continue71 then
                 break
             end
         end
     end
     local st = lingering[bot:GetPlayerID()]
-    if st ~= nil and (best == nil or best:GetPlayerID() ~= st.tpid) then
-        endLinger(
-            bot,
-            best == nil and not targetAlive(st.tpid) and "died" or "rep_end"
-        )
+    if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
+        endLinger(bot, "rep_end")
     end
-    local ____temp_33 = best ~= nil
-    if ____temp_33 then
-        local ____opt_31 = ____exports.Active()
-        ____temp_33 = (____opt_31 and ____opt_31.linger) == true
-    end
-    if ____temp_33 and lingerStep(bot, best, spot) then
-        return true
+    local ____opt_31 = ____exports.Active()
+    if (____opt_31 and ____opt_31.linger) == true then
+        if best ~= nil and lingering[bot:GetPlayerID()] == nil then
+            startLinger(bot, best)
+        end
+        if lingerTick(bot, spot) then
+            return true
+        end
     end
     if best ~= nil then
         bot:Action_AttackUnit(best, true)
@@ -509,9 +571,6 @@ function chase(bot)
         bot:Action_MoveToLocation(spot)
     end
     return true
-end
-function targetAlive(pid)
-    return IsHeroAlive(pid)
 end
 function sentryAttack(bot, spot)
     local step = ____exports.SENTRY_STEP * bot:GetCurrentMovementSpeed()
@@ -523,10 +582,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue80
+            local __continue89
             repeat
                 if not h:IsAlive() then
-                    __continue80 = true
+                    __continue89 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -534,9 +593,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue80 = true
+                __continue89 = true
             until true
-            if not __continue80 then
+            if not __continue89 then
                 break
             end
         end
@@ -913,14 +972,17 @@ function ____exports.Hold(bot)
         d,
         ____exports.RepAt(DotaTime())
     ) and ____exports.RepAt(DotaTime()) > 0 then
-        local st = lingering[bot:GetPlayerID()]
-        if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
-            endLinger(bot, "rep_end")
-        end
         return chase(bot)
     end
-    if r == "chaser" then
-        endLinger(bot, "rep_end")
+    if r == "chaser" and lingering[bot:GetPlayerID()] ~= nil and lingerTick(
+        bot,
+        GetLaneFrontLocation(
+            bot:GetTeam(),
+            bot:GetAssignedLane(),
+            STATUE_BEHIND
+        )
+    ) then
+        return true
     end
     if r == "chaser" then
         local at = behindOwnT1(bot)
@@ -983,14 +1045,15 @@ CHASER_WAIT_BEHIND = 350
 LINGER_HP = 0.45
 LINGER_SECS = 20
 LINGER_DIST = 1100
+LINGER_STANDOFF_SLACK = 100
 TOWER_REACH_FALLBACK = 868
 LINGER_TOWER_MARGIN = 100
 lingering = {}
 lingered = {}
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
-    local ____opt_34 = ____exports.Active()
-    local list = ____opt_34 and ____opt_34.castSpots
+    local ____opt_33 = ____exports.Active()
+    local list = ____opt_33 and ____opt_33.castSpots
     if list == nil or #list == 0 or rep <= 0 then
         return nil
     end
@@ -1056,8 +1119,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_36 = overrides()
-            local v = ____opt_36 and ____opt_36[k]
+            local ____opt_35 = overrides()
+            local v = ____opt_35 and ____opt_35[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -1065,8 +1128,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_38 = overrides()
-        local asked = ____opt_38 and ____opt_38.Drill
+        local ____opt_37 = overrides()
+        local asked = ____opt_37 and ____opt_37.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})

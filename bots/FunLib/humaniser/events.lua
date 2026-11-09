@@ -550,7 +550,10 @@ ____exports.EVENTS = {
         res = "str",
         secs = "num",
         dmin = "num",
-        clamp = "num"
+        clamp = "num",
+        dmax = "num",
+        dend = "num",
+        rend = "num"
     },
     job = {
         pid = "num",

@@ -711,9 +711,10 @@ export const EVENTS = {
         spot: "str",
         x: "num",
         y: "num",
-        /** retreat-linger, ph=linger|linger_end: the chaser's `pid` stands off the target `tpid` (the cast, HP share `thp`) at
-         *  distance `d`; the end has `res` (contact|timeout|died|rep_end), `secs`, the closest distance `dmin` and `clamp` (1 when
-         *  the tower pull-back moved the point). */
+        /** retreat-linger: ph=linger_go (the HP trigger: the chaser `pid` backs off the target `tpid`, the cast, at HP share `thp`,
+         *  distance `d`, the rep's end time `rend`), ph=linger (it first stands at the stand-off: the window's clock) and ph=linger_end
+         *  (`res` contact|timeout|died|lost|no_standoff|rep_end, `secs` from the window's start, the closest and furthest distance
+         *  `dmin`/`dmax`, the distance at the end `dend`, `clamp` 1 when the tower pull-back moved the point). */
         tpid: "num",
         thp: "num",
         d: "num",
@@ -721,6 +722,9 @@ export const EVENTS = {
         secs: "num",
         dmin: "num",
         clamp: "num",
+        dmax: "num",
+        dend: "num",
+        rend: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {

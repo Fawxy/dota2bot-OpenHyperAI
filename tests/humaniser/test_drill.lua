@@ -280,17 +280,18 @@ do
 end
 
 -- retreat-linger (slice retreat, plan 2026-11-10-retreat-read-bars): on a chase rep the chaser hits as retreat-chase until the cast
--- is at or under 45% HP, then once per rep stands 1,100 off her (outside our T1's reach + 100) until she steps into its attack
--- range + 100 (contact), 20 s pass, or the rep ends; then it attacks as before.
+-- is at or under 45% HP (ph=linger_go), backs off to 1,100 from her (outside our T1's reach + 100), and the window's clock starts
+-- when it first stands at 1,000 or more (ph=linger). The window ends on contact (her within its attack range + 100), after 20 s,
+-- or `no_standoff` when it never got out; it runs on past the rep's end. Once per rep.
 do
 	local dota = require("bots/ts_libs/dota/index")
-	local function setup(towerAt)
+	local function setup(towerAt, chaserAt)
 		local H = world("retreat-linger")
 		local core = hero(0, RAD, 1, 3)
 		core.loc = Vector(-1700, -5000, 0)
 		core.hp = 40
 		local chaser = hero(9, DIRE, 3, 3)
-		chaser.loc = Vector(-700, -5000, 0)
+		chaser.loc = chaserAt or Vector(-1300, -5000, 0) -- 400 from her, still on her
 		chaser.range = 150
 		if towerAt then TOWERS_W[RAD][dota.Tower.Bot1].loc = towerAt end
 		T = 65 -- rep 1 (a chase rep)
@@ -299,26 +300,58 @@ do
 	local function lastMove(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
 
 	local H, core, chaser = setup()
+	T = 105 -- late in rep 1, as the logged games trigger
 	local lines = capture(function() H.Drill.Hold(chaser) end)
 	local to = lastMove(9)
-	check("linger: at 40% the chaser walks to the point 1,100 from the cast instead of attacking",
+	check("linger: at 40% the chaser backs off to the point 1,100 from the cast instead of attacking",
 		#ActionsOf(9, "AttackUnit") == 0 and to ~= nil and math.abs(to.x - (-600)) < 2 and math.abs(to.y + 5000) < 2, to and (to.x .. "," .. to.y))
-	check("linger: one start line with the cast's HP share and the distance", #lines == 1 and field(lines[1], "ph") == "linger" and tonumber(field(lines[1], "thp")) == 0.4 and field(lines[1], "tpid") == "0" and field(lines[1], "d") == "1000", lines[1])
+	check("linger: the trigger logs linger_go (HP share, distance, the rep's end) and no window start yet", #lines == 1 and field(lines[1], "ph") == "linger_go" and tonumber(field(lines[1], "thp")) == 0.4 and field(lines[1], "d") == "400" and field(lines[1], "rend") == "120", lines[1])
 
-	-- Contact: the cast steps within 150 + 100; the chaser attacks and does not linger again this rep.
-	T = 70
-	core.loc = Vector(-900, -5000, 0)
-	local l3 = capture(function() H.Drill.Hold(chaser) end)
-	check("linger: on contact the chaser attacks and the window ends `contact`", #ActionsOf(9, "AttackUnit") == 1 and #l3 == 1 and field(l3[1], "ph") == "linger_end" and field(l3[1], "res") == "contact" and tonumber(field(l3[1], "secs")) == 5, l3[1])
+	-- Contact counts only once it has stood off: at 700 from her the clock has not started, so stepping in is no contact.
+	chaser.loc = Vector(-1000, -5000, 0)
+	T = 107
+	local l1 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: the clock does not start before the stand-off", #l1 == 0)
+	chaser.loc = Vector(-600, -5000, 0)
+	T = 108
+	local l2 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: the window starts when it first stands 1,000 or more off", #l2 == 1 and field(l2[1], "ph") == "linger" and field(l2[1], "d") == "1100", l2[1])
+	-- The rep ends at 120: the window runs on into the control rep (no wait behind the T1).
+	T = 121
+	local n = #ActionsOf(9, "MoveToLocation")
 	core.loc = Vector(-1700, -5000, 0)
-	T = 72
-	local n = #ActionsOf(9, "AttackUnit")
-	H.Drill.Hold(chaser)
-	check("linger: once per rep: the chaser keeps attacking after contact", #ActionsOf(9, "AttackUnit") == n + 1)
+	chaser.loc = Vector(-300, -5000, 0)
+	capture(function() H.Drill.Hold(chaser) end)
+	check("linger: past the rep's end the window still holds the chaser out", #ActionsOf(9, "MoveToLocation") == n + 1 and #ActionsOf(9, "AttackUnit") == 0)
+	T = 125
+	core.loc = Vector(-800, -5000, 0)
+	chaser.loc = Vector(-600, -5000, 0)
+	local l3 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: contact after the stand-off ends the window `contact`; in a control rep the chaser then waits, it does not attack", #ActionsOf(9, "AttackUnit") == 0 and #l3 == 1 and field(l3[1], "ph") == "linger_end" and field(l3[1], "res") == "contact" and tonumber(field(l3[1], "secs")) == 17 and field(l3[1], "dmax") == "1400" and field(l3[1], "dend") == "200", l3[1])
 
+	-- In a chase rep contact makes the chaser attack, and it does not stand off again that rep.
+	local hc, cc, kc = setup(nil, Vector(-600, -5000, 0))
+	capture(function() hc.Drill.Hold(kc) end)
+	T = 66
+	cc.loc = Vector(-800, -5000, 0)
+	local l5 = capture(function() hc.Drill.Hold(kc) end)
+	check("linger: contact in a chase rep: the window ends and the chaser attacks", #ActionsOf(9, "AttackUnit") == 1 and #l5 == 1 and field(l5[1], "res") == "contact", l5[1])
+	cc.loc = Vector(-1700, -5000, 0)
+	kc.loc = Vector(-600, -5000, 0)
+	T = 68
+	hc.Drill.Hold(kc)
+	check("linger: once per rep: the chaser keeps attacking after contact", #ActionsOf(9, "AttackUnit") == 2)
+
+	-- Never gets out: no_standoff after 20 s.
 	local h2, c2, k2 = setup()
-	c2.hp = 80
-	h2.Drill.Hold(k2)
+	capture(function() h2.Drill.Hold(k2) end)
+	T = 86
+	local l4 = capture(function() h2.Drill.Hold(k2) end)
+	check("linger: a chaser that never stands off ends no_standoff after 20 s", #l4 == 1 and field(l4[1], "res") == "no_standoff", l4[1])
+
+	local h3, c3, k3 = setup(nil, Vector(-700, -5000, 0))
+	c3.hp = 80
+	h3.Drill.Hold(k3)
 	check("linger: above 45% HP it attacks as retreat-chase does", #ActionsOf(9, "AttackUnit") == 1 and lastMove(9) == nil)
 
 	local hb, cb, kb = setup(Vector(-500, -5300, 0))
@@ -327,7 +360,6 @@ do
 	local tw = TOWERS_W[RAD][dota.Tower.Bot1].loc
 	local dTw = tb and math.sqrt((tb.x - tw.x) ^ 2 + (tb.y - tw.y) ^ 2)
 	check("linger: a point inside our T1's reach is pulled out to its reach + 100 (844 + 100)", tb ~= nil and math.abs(dTw - 944) < 2, dTw)
-
 end
 
 finish()
