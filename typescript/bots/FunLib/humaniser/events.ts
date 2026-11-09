@@ -399,12 +399,10 @@ export const EVENTS = {
         pid: "num",
         /** `core`, or `support` (its lane core away). */
         role: "str",
-        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower), `drag` (a dying creep
-         *  away from an enemy hero) or `back` (wave_hold's drag: their wave behind our T1 to our next wave). */
+        /** `feed` (enemy wave onto our ranged creep), `tower` (their creeps drawn out of their tower) or `back` (wave_hold's drag: their wave behind our T1 to our next wave). */
         kind: "str",
-        /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); drag: `ok` (our last hit),
-         *  `lost`, `alive`; tower: `ok` (a drawn creep out of the tower's reach), `stayed`; back: `ok` (a drawn creep within
-         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `cancelled` (before the order: no visible enemy hero to order on, the dragged creep died, or the feed's ranged creep or the tower move's creep died during the approach), `unsafe` (feed, tower: an enemy hero came into reach of the approach point, or the feed's walk-back point, during the approach), `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
+        /** feed: `denied` (our deny), `lost` (it died otherwise), `alive` (not dead in FeedWatch); tower: `ok` (a drawn creep out of the tower's reach), `stayed`; back: `ok` (a drawn creep within
+         *  BackOut of the point behind our T1 at the walk's end), `stayed`; all: `no_draw` (no creep took us within DrawCheck), `hurt`, `died`, `short` (feed: no enemy creep within DrawR at the order after the approach, no order), `cancelled` (before the order: no visible enemy hero to order on, or the feed's ranged creep or the tower move's creep died during the approach), `unsafe` (feed, tower: an enemy hero came into reach of the approach point, or the feed's walk-back point, during the approach), `stale` (not stepped for StaleActing/StaleWatch: the caller lost the frame). */
         result: "str",
         tgt: "num",
         /** Enemy lane creeps within 500 at the order; most targeting the bot during the walk; most on the fed creep after it. */
@@ -421,8 +419,6 @@ export const EVENTS = {
         /** Lane push reading at a feed: clash between the T1s (0 ours) and its state. */
         q: "num",
         st: "str",
-        /** drag: enemy hero to creep distance at the hand-back. */
-        hd: "num",
         /** feed: seconds from the order to the drop order. */
         drop: "num",
         dur: "num",
@@ -550,8 +546,10 @@ export const EVENTS = {
     aggro_skip: {
         pid: "num",
         role: "str",
-        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), `drag`, or `tower:<why>` / `feed:<why>`
-         *  (`feed:inside_hold`: the walk back would draw their creeps inside the wave hold point). */
+        /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), or `tower:<why>` / `feed:<why>`
+         *  (`feed:inside_hold`: the walk back would draw their creeps inside the wave hold point; `feed:ctl_shove`: the lane
+         *  controller's live decision is a shove; `feed:ctl_forced`: a drill forces another lever; `feed:no_ranged_fed`, `_low`,
+         *  `_none`: our ranged creeps within 1200 are all fed already, the best is under FeedCreepHp, or there is none). */
         why: "str",
         /** feed:approach_far: the bot's distance to the approach point. */
         ad: "num",

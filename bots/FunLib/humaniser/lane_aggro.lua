@@ -10,6 +10,26 @@ local function __TS__StringIncludes(self, searchString, position)
     return index ~= nil
 end
 
+local function __TS__ArrayIncludes(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    local k = fromIndex
+    if fromIndex < 0 then
+        k = len + fromIndex
+    end
+    if k < 0 then
+        k = 0
+    end
+    for i = k + 1, len do
+        if self[i] == searchElement then
+            return true
+        end
+    end
+    return false
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -44,7 +64,7 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local counter, roleOf, TowerOrderR, newAttempt
+local valid, live, frac, d2, counter, roleOf, TowerOrderR, newAttempt, finish, seenAt, drawnOn, watch, attempts, towerEnd
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Lane = ____dota.Lane
@@ -52,6 +72,7 @@ local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -61,6 +82,23 @@ local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+function valid(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen()
+end
+function live(u)
+    return not u:IsNull() and u:IsAlive()
+end
+function frac(u)
+    return u:GetHealth() / math.max(
+        1,
+        u:GetMaxHealth()
+    )
+end
+function d2(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
 function counter(bot, name)
     local f = bot[name]
     return f ~= nil and f(bot) or 0
@@ -101,6 +139,167 @@ function newAttempt(bot, kind, phase, hero, creep, back, approach, now)
         role = roleOf(bot) or "?"
     }
 end
+function finish(bot, a, result, now, gap)
+    attempts[bot:GetPlayerID()] = nil
+    if a.kind == "feed" then
+        Laning.SetFed(bot, nil)
+    end
+    if a.kind == "tower" then
+        towerEnd[bot:GetPlayerID()] = now
+    end
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
+        {
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"role", a.role},
+        {"kind", a.kind},
+        {"result", result},
+        {"tgt", a.tpid},
+        {"near", a.near},
+        {"drawn", a.drawn},
+        {"mv", a.mv},
+        {
+            "rhp",
+            a.kind == "feed" and live(a.creep) and math.floor(frac(a.creep) * 100) / 100 or nil
+        },
+        {"onr", a.onr},
+        {"dhp", a.hp0 - a.hpMin},
+        {
+            "hp",
+            math.floor(a.hp0 / math.max(
+                1,
+                bot:GetMaxHealth()
+            ) * 100) / 100
+        },
+        {"q", a.q},
+        {"st", a.st},
+        {"own", a.own},
+        {"fc", a.fc},
+        {"td", a.td},
+        {"out", a.out},
+        {"sty", a.kind == "feed" and a.sty or nil},
+        {"nd", a.nd},
+        {"src", a.src},
+        {"ad", a.ad},
+        {
+            "apt",
+            a.ad ~= nil and math.floor(a.approachTime * 100) / 100 or nil
+        },
+        {
+            "md",
+            result == "stale" and (a.left or bot:GetActiveMode()) or nil
+        }
+    )
+    local ____temp_4
+    if result == "stale" then
+        local ____opt_2 = Tasks.Current(bot)
+        ____temp_4 = ____opt_2 and ____opt_2.label or "-"
+    else
+        ____temp_4 = nil
+    end
+    __TS__SparseArrayPush(
+        ____array_5,
+        {"lbl", ____temp_4},
+        {
+            "gap",
+            gap ~= nil and math.floor(gap * 100) / 100 or nil
+        },
+        {
+            "drop",
+            a.droppedAt ~= nil and math.floor((a.droppedAt - (a.orderedAt or a.startedAt)) * 100) / 100 or nil
+        },
+        {
+            "dur",
+            math.floor((now - a.startedAt) * 100) / 100
+        }
+    )
+    ____Telemetry_Event_6(
+        "aggro",
+        {__TS__SparseArraySpread(____array_5)}
+    )
+end
+function seenAt(u)
+    if u:IsNull() or not u:IsAlive() then
+        return nil
+    end
+    return u:GetLocation() or nil
+end
+function drawnOn(bot, target)
+    local out = {}
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
+        do
+            local __continue132
+            repeat
+                if not valid(c) then
+                    __continue132 = true
+                    break
+                end
+                local t = c:GetAttackTarget()
+                if t ~= nil and t ~= nil and not t:IsNull() and t == target then
+                    out[#out + 1] = c
+                end
+                __continue132 = true
+            until true
+            if not __continue132 then
+                break
+            end
+        end
+    end
+    return out
+end
+function watch(bot, a, now)
+    if not bot:IsAlive() then
+        return finish(bot, a, "died", now)
+    end
+    local dead = not live(a.creep)
+    if a.kind == "feed" then
+        if not dead then
+            a.onr = math.max(
+                a.onr,
+                #drawnOn(bot, a.creep)
+            )
+        end
+        if dead then
+            return finish(
+                bot,
+                a,
+                counter(bot, "GetDenies") > a.dn0 and "denied" or "lost",
+                now
+            )
+        end
+        if now - (a.droppedAt or a.startedAt) > ____exports.SETTINGS.FeedWatch then
+            return finish(bot, a, "alive", now)
+        end
+    elseif a.kind == "back" then
+        local out = 0
+        for ____, s0 in ipairs(a.start or ({})) do
+            local u = s0.unit
+            local l = seenAt(u)
+            if l ~= nil and d2(l, a.back) <= ____exports.SETTINGS.BackOut then
+                out = out + 1
+            end
+        end
+        a.out = out
+        return finish(bot, a, out > 0 and "ok" or "stayed", now)
+    else
+        if now - (a.walkedAt or a.startedAt) < ____exports.SETTINGS.TowerWatch then
+            return
+        end
+        local out = 0
+        local tl = a.tower:GetLocation()
+        for ____, s0 in ipairs(a.start or ({})) do
+            local u = s0.unit
+            local l = seenAt(u)
+            if l ~= nil and d2(l, tl) >= TowerOrderR() then
+                out = out + 1
+            end
+        end
+        a.out = out
+        return finish(bot, a, out > 0 and "ok" or "stayed", now)
+    end
+end
 ____exports.SETTINGS = {
     Cooldown = 3.1,
     DrawR = 450,
@@ -110,7 +309,6 @@ ____exports.SETTINGS = {
     TowerR = 1000,
     TowerOrderMargin = 56,
     FeedCreepHp = 0.25,
-    FeedMargin = 150,
     OwnTowerR = 800,
     TowerSeek = 1000,
     TowerPast = 250,
@@ -121,7 +319,7 @@ ____exports.SETTINGS = {
     TowerWatch = 1.5,
     SkipEvery = 3,
     FightR = 700,
-    FeedMinCreeps = 2,
+    FeedMinCreeps = 1,
     ApproachBack = 380,
     ApproachMax = 900,
     ApproachSlack = 0.4,
@@ -132,11 +330,6 @@ ____exports.SETTINGS = {
     DropBy = 1.8,
     DrawCheck = 1,
     MovedR = 120,
-    DragDueMin = 0.8,
-    DragDueMax = 3,
-    DragContest = 150,
-    DragBack = 300,
-    DragWalk = 1.2,
     BusyWithin = 1.5,
     StaleActing = 0.5,
     StaleWatch = 3,
@@ -145,13 +338,12 @@ ____exports.SETTINGS = {
     HurtShare = 0.12,
     FeedWatch = 30,
     FeedHeroClear = 300,
-    DragWatch = 3.5,
     BackArrive = 150,
     BackWalk = 10,
     BackOut = 900,
     CoreNear = 1600
 }
-local attempts = {}
+attempts = {}
 local orderedAt = {}
 local decidedAt = {}
 --- Our ranged creeps already fed (one feed per creep).
@@ -160,31 +352,12 @@ local fed = {}
 local laneDraw = {}
 local pushCache = {}
 local lastSkip = {}
---- When each bot's last tower move ended (wave_hold logs it as why our wave is gone).
-local towerEnd = {}
+towerEnd = {}
 function ____exports.TowerMovedAt(pid)
     return towerEnd[pid]
 end
 local function laneKey(team, lane)
     return (tostring(team) .. ":") .. tostring(lane)
-end
-local function valid(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen()
-end
---- A creep handle turns null once the unit is removed; IsAlive on it throws (lagchk5 t=484).
-local function live(u)
-    return not u:IsNull() and u:IsAlive()
-end
-local function frac(u)
-    return u:GetHealth() / math.max(
-        1,
-        u:GetMaxHealth()
-    )
-end
-local function d2(a, b)
-    local dx = a.x - b.x
-    local dy = a.y - b.y
-    return math.sqrt(dx * dx + dy * dy)
 end
 local function along(from, dir, len)
     return Vector(from.x + dir.x * len, from.y + dir.y * len, from.z)
@@ -232,7 +405,17 @@ end
 --- Every frame (States.Tick, from ItemUsageThink, whichever mode runs): notes another mode holding the bot during an attempt.
 function ____exports.Tick(bot)
     local a = attempts[bot:GetPlayerID()]
-    if a == nil or a.left ~= nil then
+    if a == nil then
+        return
+    end
+    if a.phase == "watch" and a.kind == "feed" and bot:IsAlive() then
+        local now = DotaTime()
+        a.steppedAt = now
+        a.left = nil
+        watch(bot, a, now)
+        return
+    end
+    if a.left ~= nil then
         return
     end
     local mode = bot:GetActiveMode()
@@ -240,13 +423,24 @@ function ____exports.Tick(bot)
         a.left = mode
     end
 end
---- Pure: whether the clash sits, or is forecast to sit, beyond the target point (`own` the clash's distance from our T1 now,
--- `move` its forecast move toward their T1). A clash coming in from beyond it still wants the feed: it is not ours yet.
-function ____exports.FeedWanted(r, target)
-    if r == nil then
-        return false
+--- Pure: why the lane controller refuses the feed this wave, or undefined (slice lh-draw step 2, user 09/11/2026: the deny
+-- feed runs on every wave, not only on the controller's `back` waves; its drill measured no lane move, -10 +- 396). A live
+-- decision refuses it on a `shove` wave (the feed would pull back the wave the shove pushes); a drill's forced lever other
+-- than `feed` refuses it (a lever drill's control arm). Our pull out on the lane is the shared gate's (`pull`).
+function ____exports.CtlVeto(d, forced)
+    if forced ~= nil then
+        local ____temp_0
+        if forced == "feed" then
+            ____temp_0 = nil
+        else
+            ____temp_0 = "ctl_forced"
+        end
+        return ____temp_0
     end
-    return math.max(r.own, r.own + r.move) > target + ____exports.SETTINGS.FeedMargin
+    if d ~= nil and (d.mode == "shove" or __TS__ArrayIncludes(d.levers, "shove")) then
+        return "ctl_shove"
+    end
+    return nil
 end
 --- Pure: the tower move's order point, on the line from their tower `(tx, ty)` through their creeps' centre `(cx, cy)`:
 -- TowerPast beyond the creeps, never inside TowerOrderR() of the tower.
@@ -292,13 +486,13 @@ local function pushRead(team, lane)
         return c.r
     end
     local ok, r = pcall(LanePush.Read, team, lane)
-    local ____ok_0
+    local ____ok_1
     if ok then
-        ____ok_0 = r
+        ____ok_1 = r
     else
-        ____ok_0 = nil
+        ____ok_1 = nil
     end
-    local v = ____ok_0
+    local v = ____ok_1
     pushCache[key] = {t = now, r = v}
     return v
 end
@@ -308,24 +502,24 @@ local function coreAway(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue30
+                local __continue33
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h == bot or h:IsNull() then
-                        __continue30 = true
+                        __continue33 = true
                         break
                     end
                     local pos = LaneConfig.PositionOf(h)
                     if pos == nil or pos > 3 or h:GetAssignedLane() ~= lane then
-                        __continue30 = true
+                        __continue33 = true
                         break
                     end
                     if h:IsAlive() and GetUnitToUnitDistance(h, bot) <= ____exports.SETTINGS.CoreNear then
                         return false
                     end
-                    __continue30 = true
+                    __continue33 = true
                 until true
-                if not __continue30 then
+                if not __continue33 then
                     break
                 end
             end
@@ -387,11 +581,11 @@ local function towerNear(at, team, r)
     local bestD = r
     for ____, id in ipairs(TOWERS) do
         do
-            local __continue51
+            local __continue54
             repeat
                 local t = GetTower(team, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue51 = true
+                    __continue54 = true
                     break
                 end
                 local d = d2(
@@ -402,9 +596,9 @@ local function towerNear(at, team, r)
                     best = t
                     bestD = d
                 end
-                __continue51 = true
+                __continue54 = true
             until true
-            if not __continue51 then
+            if not __continue54 then
                 break
             end
         end
@@ -427,10 +621,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue58
+            local __continue61
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue58 = true
+                    __continue61 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -438,9 +632,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue58 = true
+                __continue61 = true
             until true
-            if not __continue58 then
+            if not __continue61 then
                 break
             end
         end
@@ -453,19 +647,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue63
+                local __continue66
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue63 = true
+                        __continue66 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue63 = true
+                    __continue66 = true
                 until true
-                if not __continue63 then
+                if not __continue66 then
                     break
                 end
             end
@@ -534,65 +728,6 @@ local function gate(bot, now)
 end
 local function start(bot, a)
     attempts[bot:GetPlayerID()] = a
-end
-local function tryDrag(bot, heroes, now)
-    local here = bot:GetLocation()
-    for ____, t in ipairs(laneTargets(bot, ____exports.SETTINGS.DragDueMax, false)) do
-        do
-            local __continue81
-            repeat
-                if t.kind ~= "lasthit" or t.due < ____exports.SETTINGS.DragDueMin or t.due > ____exports.SETTINGS.DragDueMax then
-                    __continue81 = true
-                    break
-                end
-                local creep = t.creep
-                if not valid(creep) or GetUnitToUnitDistance(bot, creep) > ____exports.SETTINGS.DrawR then
-                    __continue81 = true
-                    break
-                end
-                local contester
-                for ____, h in ipairs(heroes) do
-                    if GetUnitToUnitDistance(h, creep) <= h:GetAttackRange() + h:GetBoundingRadius() + ____exports.SETTINGS.DragContest then
-                        contester = h
-                    end
-                end
-                if contester == nil then
-                    __continue81 = true
-                    break
-                end
-                local hero = orderTarget(bot)
-                if hero == nil then
-                    return nil
-                end
-                local back = along(
-                    here,
-                    backDir(
-                        bot:GetTeam(),
-                        bot:GetAssignedLane(),
-                        here
-                    ),
-                    ____exports.SETTINGS.DragBack
-                )
-                if not heroSafe(back, heroes) then
-                    return nil
-                end
-                return newAttempt(
-                    bot,
-                    "drag",
-                    "walk",
-                    hero,
-                    creep,
-                    back,
-                    nil,
-                    now
-                )
-            until true
-            if not __continue81 then
-                break
-            end
-        end
-    end
-    return nil
 end
 local function tryTower(bot, heroes, now)
     local team = bot:GetTeam()
@@ -678,25 +813,43 @@ local function tryFeed(bot, heroes, now)
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
     local ranged
+    local none = "none"
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, false)) do
-        if valid(c) and isLaneCreep(c) and isRanged(c) and fed[c] ~= true and frac(c) >= ____exports.SETTINGS.FeedCreepHp then
-            ranged = c
+        do
+            local __continue98
+            repeat
+                if not valid(c) or not isLaneCreep(c) or not isRanged(c) then
+                    __continue98 = true
+                    break
+                end
+                if fed[c] == true then
+                    none = "fed"
+                elseif frac(c) < ____exports.SETTINGS.FeedCreepHp then
+                    none = none == "fed" and none or "low"
+                else
+                    ranged = c
+                end
+                __continue98 = true
+            until true
+            if not __continue98 then
+                break
+            end
         end
     end
     if ranged == nil then
-        return nil, "no_ranged"
+        return nil, "no_ranged_" .. none
     end
     local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
-    local chosen = LaneControl.Chosen(team, lane, "feed")
-    if chosen == false then
-        return nil, "ctl"
-    end
-    local r = pushRead(team, lane)
-    if chosen == nil and not ____exports.FeedWanted(
-        r,
-        LanePush.TargetOf(lane)
-    ) then
-        return nil, r == nil and "no_read" or "at_target"
+    local veto = ____exports.CtlVeto(
+        LaneControl.Current(team, lane),
+        LaneControl.ForcedLever(
+            Overrides.Get("ForceLever"),
+            team,
+            lane
+        )
+    )
+    if veto ~= nil then
+        return nil, veto
     end
     if nearOwnTower(
         ranged:GetLocation(),
@@ -780,101 +933,14 @@ local function tryFeed(bot, heroes, now)
         ad,
         bot:GetCurrentMovementSpeed()
     )
-    a.q = math.floor(r.q * 100) / 100
-    a.st = r.state
-    a.own = math.floor(r.own)
-    a.fc = math.floor(r.own + r.move)
+    local r = pushRead(team, lane)
+    if r ~= nil then
+        a.q = math.floor(r.q * 100) / 100
+        a.st = r.state
+        a.own = math.floor(r.own)
+        a.fc = math.floor(r.own + r.move)
+    end
     return a, "go"
-end
-local function finish(bot, a, result, now, gap)
-    attempts[bot:GetPlayerID()] = nil
-    if a.kind == "feed" then
-        Laning.SetFed(bot, nil)
-    end
-    if a.kind == "tower" then
-        towerEnd[bot:GetPlayerID()] = now
-    end
-    local ____Telemetry_Event_5 = Telemetry.Event
-    local ____array_4 = __TS__SparseArrayNew(
-        {
-            "pid",
-            bot:GetPlayerID()
-        },
-        {"role", a.role},
-        {"kind", a.kind},
-        {"result", result},
-        {"tgt", a.tpid},
-        {"near", a.near},
-        {"drawn", a.drawn},
-        {"mv", a.mv},
-        {
-            "rhp",
-            a.kind == "feed" and live(a.creep) and math.floor(frac(a.creep) * 100) / 100 or nil
-        },
-        {"onr", a.onr},
-        {"dhp", a.hp0 - a.hpMin},
-        {
-            "hp",
-            math.floor(a.hp0 / math.max(
-                1,
-                bot:GetMaxHealth()
-            ) * 100) / 100
-        },
-        {"q", a.q},
-        {"st", a.st},
-        {"hd", a.hd},
-        {"own", a.own},
-        {"fc", a.fc},
-        {"td", a.td},
-        {"out", a.out},
-        {"sty", a.kind == "feed" and a.sty or nil},
-        {"nd", a.nd},
-        {"src", a.src},
-        {"ad", a.ad},
-        {
-            "apt",
-            a.ad ~= nil and math.floor(a.approachTime * 100) / 100 or nil
-        },
-        {
-            "md",
-            result == "stale" and (a.left or bot:GetActiveMode()) or nil
-        }
-    )
-    local ____temp_3
-    if result == "stale" then
-        local ____opt_1 = Tasks.Current(bot)
-        ____temp_3 = ____opt_1 and ____opt_1.label or "-"
-    else
-        ____temp_3 = nil
-    end
-    __TS__SparseArrayPush(
-        ____array_4,
-        {"lbl", ____temp_3},
-        {
-            "gap",
-            gap ~= nil and math.floor(gap * 100) / 100 or nil
-        },
-        {
-            "drop",
-            a.droppedAt ~= nil and math.floor((a.droppedAt - (a.orderedAt or a.startedAt)) * 100) / 100 or nil
-        },
-        {
-            "dur",
-            math.floor((now - a.startedAt) * 100) / 100
-        }
-    )
-    ____Telemetry_Event_5(
-        "aggro",
-        {__TS__SparseArraySpread(____array_4)}
-    )
-end
---- Where a creep seen at the order stands now: undefined once removed, dead or with no location (it left our vision; the
--- handle stays valid but reads none: chold3_A_on_1 t=217.6, `lua_error` in States.SupportStep).
-local function seenAt(u)
-    if u:IsNull() or not u:IsAlive() then
-        return nil
-    end
-    return u:GetLocation() or nil
 end
 --- Enemy creeps near at the order that have since moved MovedR or more (drawn off their fight).
 function ____exports.MovedOf(start)
@@ -889,29 +955,6 @@ function ____exports.MovedOf(start)
         end
     end
     return n
-end
-local function drawnOn(bot, target)
-    local out = {}
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
-        do
-            local __continue137
-            repeat
-                if not valid(c) then
-                    __continue137 = true
-                    break
-                end
-                local t = c:GetAttackTarget()
-                if t ~= nil and t ~= nil and not t:IsNull() and t == target then
-                    out[#out + 1] = c
-                end
-                __continue137 = true
-            until true
-            if not __continue137 then
-                break
-            end
-        end
-    end
-    return out
 end
 --- wave_hold's drag: draw their creeps near the bot and walk them to `to` (behind our T1). False when a move already runs or a
 -- shared gate (the draw clock, another hero's draw on the lane, HP, a trade) says no; the pull gate does not apply.
@@ -971,70 +1014,6 @@ function ____exports.StartBack(bot, to, src)
     start(bot, a)
     return true
 end
---- The result once the move has handed the frame back: the creep's fate, read from our last-hit and deny counters.
-local function watch(bot, a, now)
-    if not bot:IsAlive() then
-        return finish(bot, a, "died", now)
-    end
-    local dead = not live(a.creep)
-    if a.kind == "feed" then
-        if not dead then
-            a.onr = math.max(
-                a.onr,
-                #drawnOn(bot, a.creep)
-            )
-        end
-        if dead then
-            return finish(
-                bot,
-                a,
-                counter(bot, "GetDenies") > a.dn0 and "denied" or "lost",
-                now
-            )
-        end
-        if now - (a.droppedAt or a.startedAt) > ____exports.SETTINGS.FeedWatch then
-            return finish(bot, a, "alive", now)
-        end
-    elseif a.kind == "back" then
-        local out = 0
-        for ____, s0 in ipairs(a.start or ({})) do
-            local u = s0.unit
-            local l = seenAt(u)
-            if l ~= nil and d2(l, a.back) <= ____exports.SETTINGS.BackOut then
-                out = out + 1
-            end
-        end
-        a.out = out
-        return finish(bot, a, out > 0 and "ok" or "stayed", now)
-    elseif a.kind == "tower" then
-        if now - (a.walkedAt or a.startedAt) < ____exports.SETTINGS.TowerWatch then
-            return
-        end
-        local out = 0
-        local tl = a.tower:GetLocation()
-        for ____, s0 in ipairs(a.start or ({})) do
-            local u = s0.unit
-            local l = seenAt(u)
-            if l ~= nil and d2(l, tl) >= TowerOrderR() then
-                out = out + 1
-            end
-        end
-        a.out = out
-        return finish(bot, a, out > 0 and "ok" or "stayed", now)
-    else
-        if dead then
-            return finish(
-                bot,
-                a,
-                counter(bot, "GetLastHits") > a.lh0 and "ok" or "lost",
-                now
-            )
-        end
-        if now - (a.walkedAt or a.startedAt) > ____exports.SETTINGS.DragWatch then
-            return finish(bot, a, "alive", now)
-        end
-    end
-end
 --- Keeps the order's hero, or re-picks it (orderTarget's rule) once it has left vision: any visible enemy hero draws the creeps
 -- (EC-053), so losing the first one need not end the move (obs0611: 11% of feeds ended `cancelled` that way). False when none is seen.
 local function retarget(bot, a)
@@ -1064,10 +1043,6 @@ local function act(bot, a, now)
         finish(bot, a, "cancelled", now)
         return false
     end
-    if a.orderedAt == nil and a.kind == "drag" and not live(a.creep) then
-        finish(bot, a, "cancelled", now)
-        return false
-    end
     if (a.hp0 - bot:GetHealth()) / math.max(
         1,
         bot:GetMaxHealth()
@@ -1093,6 +1068,15 @@ local function act(bot, a, now)
         a.phase = "walk"
     end
     if a.orderedAt == nil then
+        if a.kind == "feed" and #enemyCreepsNear(
+            bot,
+            bot:GetLocation(),
+            ____exports.SETTINGS.DrawR
+        ) < ____exports.SETTINGS.FeedMinCreeps then
+            fed[a.creep] = true
+            finish(bot, a, "short", now)
+            return false
+        end
         local near = enemyCreepsNear(
             bot,
             bot:GetLocation(),
@@ -1148,7 +1132,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue188
+                    local __continue180
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1156,16 +1140,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue188 = true
+                            __continue180 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue188 = true
+                        __continue180 = true
                     until true
-                    if not __continue188 then
+                    if not __continue180 then
                         break
                     end
                 end
@@ -1210,23 +1194,11 @@ local function act(bot, a, now)
         a.phase = "watch"
         return false
     end
-    if a.kind == "tower" then
-        if t < ____exports.SETTINGS.TowerWalk then
-            bot:Action_MoveToLocation(a.back)
-            return true
-        end
-        a.walkedAt = now
-        a.phase = "watch"
-        return false
-    end
-    if t < ____exports.SETTINGS.DragWalk and live(a.creep) then
+    if t < ____exports.SETTINGS.TowerWalk then
         bot:Action_MoveToLocation(a.back)
         return true
     end
     a.walkedAt = now
-    if live(a.creep) and valid(a.hero) then
-        a.hd = math.floor(GetUnitToUnitDistance(a.hero, a.creep))
-    end
     a.phase = "watch"
     return false
 end
@@ -1277,8 +1249,8 @@ local function stepOpen(bot, now)
     end
     if a.kind == "feed" then
         Laning.SetFed(bot, a.creep)
-        local ____opt_6 = Laning.SpotInfo(bot)
-        if (____opt_6 and ____opt_6.anchor) == "fed" then
+        local ____opt_7 = Laning.SpotInfo(bot)
+        if (____opt_7 and ____opt_7.anchor) == "fed" then
             a.sty = 1
         end
     end
@@ -1287,14 +1259,14 @@ local function stepOpen(bot, now)
 end
 --- Steps only an open attempt, never deciding a new draw: a core's draw while its laning body is not running.
 function ____exports.StepOpen(bot)
-    local ____stepOpen_result_8 = stepOpen(
+    local ____stepOpen_result_9 = stepOpen(
         bot,
         DotaTime()
     )
-    if ____stepOpen_result_8 == nil then
-        ____stepOpen_result_8 = false
+    if ____stepOpen_result_9 == nil then
+        ____stepOpen_result_9 = false
     end
-    return ____stepOpen_result_8
+    return ____stepOpen_result_9
 end
 --- One frame of the module for this bot: reads a running move's result, steps a running move, or decides whether to start one.
 -- True when it gave the bot's order this frame (the caller's other steps then stay off).
@@ -1326,19 +1298,15 @@ function ____exports.Step(bot)
         skip(bot, "reach", now)
         return false
     end
-    local next = tryDrag(bot, heroes, now)
-    local why = "drag"
     local ad
-    if next == nil then
-        local tw, twWhy = tryTower(bot, heroes, now)
-        next = tw
-        why = "tower:" .. twWhy
-        if next == nil and twWhy == "none" then
-            local fd, fdWhy, fdAd = tryFeed(bot, heroes, now)
-            next = fd
-            ad = fdAd
-            why = "feed:" .. fdWhy
-        end
+    local tw, twWhy = tryTower(bot, heroes, now)
+    local next = tw
+    local why = "tower:" .. twWhy
+    if next == nil and twWhy == "none" then
+        local fd, fdWhy, fdAd = tryFeed(bot, heroes, now)
+        next = fd
+        ad = fdAd
+        why = "feed:" .. fdWhy
     end
     if next == nil then
         skip(bot, why, now, ad)

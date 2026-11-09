@@ -337,7 +337,6 @@ ____exports.EVENTS = {
         hp = "num",
         q = "num",
         st = "str",
-        hd = "num",
         drop = "num",
         dur = "num",
         own = "num",

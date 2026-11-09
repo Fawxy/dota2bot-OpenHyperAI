@@ -15,14 +15,14 @@ check("the partner drew 1 s ago: the lane is held", A.LaneHeld(10, 2, { pid = 1,
 check("our own draw does not hold us (the cooldown does)", not A.LaneHeld(10, 1, { pid = 1, at = 9 }))
 check("the partner's draw has run out: the lane is free", not A.LaneHeld(10, 2, { pid = 1, at = 6 }))
 
--- The feed tilts the clash toward the lane's target point (900 from our T1 on a side lane): it fires when the clash sits or is
--- heading beyond it, including a clash coming back in from beyond it, and not once the clash is ours.
-check("clash in the middle (2000 out), holding: feed", A.FeedWanted({ own = 2000, move = 0 }, 900))
-check("clash at the target but our bigger wave will push it out: feed", A.FeedWanted({ own = 900, move = 400 }, 900))
-check("clash coming back in from beyond the target: still feed", A.FeedWanted({ own = 1600, move = -300 }, 900))
-check("clash at the target and holding: no feed", not A.FeedWanted({ own = 950, move = 50 }, 900))
-check("clash inside the target, coming in: no feed", not A.FeedWanted({ own = 600, move = -200 }, 900))
-check("no reading: no feed", not A.FeedWanted(nil, 900))
+-- Slice lh-draw step 2: the feed runs on every wave; the controller refuses it only on a shove wave, a drill only by forcing
+-- another lever.
+check("a back wave: no veto", A.CtlVeto({ mode = "safe", levers = { "feed" } }, nil) == nil)
+check("a hold wave choosing no lever: no veto (the feed is no longer the controller's to give)", A.CtlVeto({ mode = "safe", levers = {} }, nil) == nil)
+check("a shove wave: refused", A.CtlVeto({ mode = "shove", levers = { "shove" } }, nil) == "ctl_shove")
+check("shove mode on a hold wave: refused (the feed would pull back what the shove pushed)", A.CtlVeto({ mode = "shove", levers = {} }, nil) == "ctl_shove")
+check("a drill forcing none: refused", A.CtlVeto({ mode = "safe", levers = {} }, "none") == "ctl_forced")
+check("a drill forcing the feed: fires even under shove", A.CtlVeto({ mode = "shove", levers = {} }, "feed") == nil)
 
 -- The tower move orders just past their creeps, never from inside the tower's reach.
 local x, y = A.TowerPoint(0, 0, 500, 0)
@@ -226,6 +226,51 @@ do
 	H.States.Tick(bot)
 	Ag.Step(bot)
 	check("retreat held the bot: the move ends stale, naming the retreat", has("result=stale.* md=" .. dota.BotMode.Retreat .. " "))
+end
+
+-- Slice lh-draw step 3: the feed's watch is read whichever mode holds the bot (banked logs: 697 of 999 stale feeds ended in
+-- the watch, the move done); a feed whose approach ends with no enemy creep in draw range gives no order.
+local function toWatch(Ag, bot)
+	Ag.Step(bot)
+	bot.loc = ActionsOf(1, "MoveToLocation")[1].args[1]
+	T = T + 0.25
+	Ag.Step(bot)
+	CREEPS[3][1].target = bot
+	T = T + 0.5
+	Ag.Step(bot)
+	T = T + 1.5
+	Ag.Step(bot)
+end
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Ag, bot, _, _, has, H = feedScene(1400)
+	bot.GetDenies = function(self) return self.dn or 0 end
+	toWatch(Ag, bot)
+	check("watch scene: the drop was ordered on our ranged creep", #ActionsOf(1, "AttackUnit") == 2 and Ag.Pending(bot) and not Ag.Acting(bot))
+	local ranged = ActionsOf(1, "AttackUnit")[2].args[1]
+	bot.mode = dota.BotMode.Retreat
+	for _ = 1, 20 do T = T + 0.25 H.States.Tick(bot) end
+	bot.mode = dota.BotMode.Laning
+	Ag.Step(bot)
+	check("a retreat held the bot 5 s through the watch: back in lane it still watches, not stale", Ag.Pending(bot) and not has("result=stale"))
+	bot.mode = dota.BotMode.Retreat
+	T = T + 0.25
+	ranged.hp = 0
+	bot.dn = 1
+	H.States.Tick(bot)
+	check("the fed creep dies to our deny during the retreat: denied", has("kind=feed result=denied") and not Ag.Pending(bot))
+end
+do
+	local Ag, bot, _, _, has = feedScene(1400)
+	Ag.Step(bot)
+	bot.loc = ActionsOf(1, "MoveToLocation")[1].args[1]
+	for _, c in ipairs(CREEPS[3]) do c.loc = Vector(c.loc.x + 3000, c.loc.y) end
+	T = T + 0.25
+	Ag.Step(bot)
+	check("approach ends with no enemy creep in draw range: `short`, no draw order", has("kind=feed result=short") and #ActionsOf(1, "AttackUnit") == 0)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("short: that ranged creep is not fed again", not Ag.Pending(bot) and has("why=feed:no_ranged_fed"))
 end
 
 -- A walk started safe is not dropped when an enemy hero edges a few units closer: the end needs its attack to reach the point.
