@@ -39,7 +39,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = { CoreCampTrip = o.off ~= true }
-	C.Overrides = { CampForce = o.force == true }
+	C.Overrides = { CampForce = o.force == true, AdmitLog = o.admitlog == true }
 	T = o.t or 300
 	CURRENT_TEAM = 2
 	OBSERVER = 1
@@ -53,6 +53,9 @@ local function world(o)
 	H.Lane.Camps.ResetCache()
 	H.FarmPattern.ResetCache()
 	H.CoreCamp.ResetCache()
+	-- The model's mechanics are checked from neutral starting factors (1, the shipped value).
+	local S = H.CoreCamp.SETTINGS
+	S.PaceStart, S.HPRateStart = 1, 1
 	-- The gate's count is under test here; the threat read's vision cut has its own checks (test_threat).
 	local Threat = require("bots/FunLib/humaniser/threat")
 	Threat.SETTINGS.VisionCut = false
@@ -144,7 +147,7 @@ do
 end
 
 -- Price from the model: the hard camp when its clear fits the gap and leaves the core HP; the hero's damage decides, not
--- its level (beyond the type's level gate).
+-- its level (no level gate, user 06/11/2026).
 do
 	local H, core, camp = world({ camps = { { "small", SMALL }, { "large", LARGE, 2400, 8 } } })
 	local CC = H.CoreCamp
@@ -156,9 +159,9 @@ do
 	local tight = CC.ClashOf(samples(300, 318), PATH, 2)
 	local q = CC.Plan(core, FRONT, 300, tight)
 	check("plan: with 18 s only the small camp is back by the clash + 15", q ~= nil and q.type == "small", q and q.type)
-	core.level = 5
+	core.level = 2
 	local r = CC.Plan(core, FRONT, 300, c)
-	check("plan: below level 6 the large camp is not offered", r ~= nil and r.type == "small", r and r.type)
+	check("plan: at level 2 the live large camp is still taken when its clear fits (no level gate)", r ~= nil and r.type == "large" and r.lvl == 2, r and r.type)
 	core.level, core.hp = 6, 480
 	local h = CC.Plan(core, FRONT, 300, c)
 	check("plan: at 80% HP the core takes it (8 a second for 24.6 s is 0.33 of its HP)", h ~= nil and h.type == "large" and math.abs(h.hpc - 8 * 24.6 / 600) < 1e-6, h and h.hpc)
@@ -228,6 +231,32 @@ do
 	FOGGED = nil
 end
 
+-- Half seen: fewer neutrals than the untouched make-up, all at full HP, is part of the camp in fog, not a smaller camp
+-- (cngdr3 t=236: camp 2 priced at one satyr, 0.06, with two in fog; 0.92 at sight). One damaged survivor is a smaller camp.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local extra = MakeNeutral({ x = LARGE.x + 50, y = LARGE.y, hp = 600, maxhp = 600 })
+	CC.Plan(core, FRONT, 300, c)
+	extra.unseen = true
+	local half = CC.Plan(core, FRONT, 300, c)
+	check("half seen: priced as its untouched make-up", half ~= nil and half.src == "seen" and half.n0 == 2, half and half.src)
+	-- cngdr4 t=253: a later minute's half read does not replace the make-up; only a camp seen emptied respawns smaller.
+	local later = CC.Plan(core, FRONT, 370, CC.ClashOf(samples(370, 410), PATH, 2))
+	check("half seen: a later minute keeps the make-up", later ~= nil and later.src == "seen" and later.n0 == 2, later and later.src)
+	extra.unseen = nil
+	extra.hp = 0
+	camp[1].hp = 1200
+	local smaller = CC.Plan(core, FRONT, 300, c)
+	check("half seen: a damaged survivor is priced live", smaller ~= nil and smaller.src == "live" and smaller.n0 == 1, smaller and smaller.src)
+	camp[1].hp = 0
+	check("half seen: the camp seen empty is closed", CC.Plan(core, FRONT, 380, CC.ClashOf(samples(380, 420), PATH, 2)) == nil)
+	camp[1].hp = camp[1].maxhp
+	local respawn = CC.Plan(core, FRONT, 430, CC.ClashOf(samples(430, 470), PATH, 2))
+	check("half seen: a camp seen emptied respawns smaller, priced live", respawn ~= nil and respawn.src == "live" and respawn.n0 == 1, respawn and respawn.src)
+end
+
 -- Price: the lane creeps the forecast kills before the return are the trip's cost; a camp that does not pay for them is no trip.
 do
 	local H, core = world({ camps = { { "small", SMALL } } })
@@ -282,7 +311,7 @@ end
 
 -- A trip end to end: started by the chooser, the camp cleared on the verb, the walk back, `back` logged; FarmPattern idle.
 do
-	local H, core, camp = world({ camps = { { "small", SMALL, 300, 5 } } })
+	local H, core, camp = world({ camps = { { "small", SMALL, 300, 20 } } })
 	local fp = 0
 	local out = run(H, core, 330, function() if H.FarmPattern.Desire(core) > 0 then fp = fp + 1 end end)
 	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
@@ -290,7 +319,7 @@ do
 	check("trip: the neutral killed", camp[1].hp == 0)
 	check("trip: ended back at the front, in time", ended ~= nil and field(ended, "why") == "back" and tonumber(field(ended, "back")) <= tonumber(field(ended, "ret")) + 5, ended)
 	check("trip: pace learned from the measured clear", math.abs(H.CoreCamp.Pace(core) - 1) > 1e-3, H.CoreCamp.Pace(core))
-	check("trip: a clear that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
+	check("trip: a clear priced 0.12 that cost no HP lowers the HP rate", H.CoreCamp.HPRate(core) < 1 - 1e-3, H.CoreCamp.HPRate(core))
 	check("trip: the end line logs the HP, the rate and the measured clear", ended ~= nil and field(ended, "hp") == "1" and field(ended, "hpr") ~= nil and tonumber(field(ended, "clrm")) > 0, ended)
 end
 
@@ -328,12 +357,13 @@ do
 	check("gates: a clash 8 s away counts every second as gap, nothing as a fitted camp", g[1] ~= nil and tonumber(field(g[1], "h_gap")) >= 5 and field(g[1], "h_skip") == nil, g[1])
 end
 
--- An enemy hero walks up during the clear: the trip ends `threat` after the core's reaction time, not at once.
+-- An enemy hero walks up during the clear (the camp made tough once the fight began, so the clear outlasts it): the trip
+-- ends `threat` after the core's reaction time, not at once.
 do
 	local H, core, camp, enemy = world({ camps = { { "small", SMALL } } })
 	local cameAt
 	local out = run(H, core, 325, function()
-		if H.CoreCamp.Running(core) and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
+		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 		if cameAt == nil and H.CoreCamp.Running(core) and dist(core.loc, SMALL) < 700 then
 			enemy.loc = Vector(core.loc.x + 300, core.loc.y)
 			cameAt = T
@@ -348,15 +378,57 @@ do
 	check("threat on the trip: the aborted clear is measured on the end line", ended ~= nil and tonumber(field(ended, "clrm")) ~= nil and field(ended, "nl") == "1", ended)
 end
 
--- A camp that will not die in time (tougher than the model read): left at its leave time, walked back, the pace grows.
+-- A camp that will not die in time (tougher than the model read, once the fight has begun): the clear is allowed up to the
+-- plan's own latest return (the clash + MaxLate), past its estimate, then left unfinished and walked back; the pace grows.
 do
 	local H, core, camp = world({ camps = { { "small", SMALL } }, clash = 30 })
-	local out = run(H, core, 340, function()
-		if H.CoreCamp.Running(core) and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
+	local out = run(H, core, 345, function()
+		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 	end)
-	local ended = lines(out, "core_camp", "end")[1]
+	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
+	local clashT = tonumber(field(start, "clash"))
 	check("late: the camp left unfinished and the core walked back", ended ~= nil and field(ended, "why") == "back" and camp[1].hp > 0, ended)
+	check("late: the core stayed past its planned return but was back by the clash + MaxLate", ended ~= nil and tonumber(field(ended, "back")) > tonumber(field(ended, "ret")) + 5 and tonumber(field(ended, "back")) <= clashT + 15 + 8, ended)
 	check("late: the pace grew", H.CoreCamp.Pace(core) > 1 + 1e-3, H.CoreCamp.Pace(core))
+end
+
+-- The latest leave from a camp: back at the clash + MaxLate, and the camp still paying for the lane gold lost by then (priced
+-- from the planning time, like the plan's net). Bounded by the pay rule too (review 1761dd3e H3: the return rule alone let a
+-- slow clear outlast what the camp pays).
+do
+	local H, core = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local p = CC.Plan(core, FRONT, 300, c)
+	local back = p.ret - p.leaveBy
+	check("latest leave: with no lane loss the return rule bounds it, back at the clash + 15", math.abs(CC.LatestLeave(p, c) - (340 + 15 - back)) < 1e-6, CC.LatestLeave(p, c), 340 + 15 - back)
+	local c2 = CC.ClashOf(samples(300, 340, 300, 6), PATH, 2)
+	local q = CC.Plan(core, FRONT, 300, c2)
+	local ll = q ~= nil and CC.LatestLeave(q, c2) or 0
+	local qback = q ~= nil and q.ret - q.leaveBy or 0
+	check("latest leave: a camp that stops paying before the return rule's time is left at the pay bound", q ~= nil and ll < 340 + 15 - qback - 1 and ll >= q.leaveBy, ll, q and q.leaveBy)
+	check("latest leave: it still pays at that second and not 1.5 s later", q ~= nil and q.gold - CC.LossBetween(c2, q.t0, ll + qback) >= 30 and q.gold - CC.LossBetween(c2, q.t0, ll + 1.5 + qback) < 30, q and q.gold - CC.LossBetween(c2, q.t0, ll + qback))
+	-- A forced trip (CampForce) is planned past the return rule: its leave time stands, nothing is stretched.
+	local Hf, coreF = world({ camps = { { "large", LARGE, 2400, 8 } }, force = true })
+	local cf = Hf.CoreCamp.ClashOf(samples(300, 305), PATH, 2)
+	local f = Hf.CoreCamp.Plan(coreF, FRONT, 300, cf)
+	check("latest leave: a trip planned past the return rule keeps its own leave time", f ~= nil and Hf.CoreCamp.LatestLeave(f, cf) == f.leaveBy, f and f.leaveBy)
+end
+
+-- The check at the camp re-runs the plan's return and pay rules with the live clear, not the plan's leave time (cngdr6: a
+-- live clear of 29-35 s against a table clear's leave time refused camps the core cleared and walked back from in time).
+-- A large camp planned unseen, its live clear longer than the table's but back by the clash + 15: admitted. The same camp with
+-- a clash that leaves no room: refused on time.
+do
+	for _, case in ipairs({ { clash = 60, v = "ok" }, { clash = 25, v = "time" } }) do
+		local H, core, camp = world({ t = 295, camps = { { "large", LARGE, 5000, 2 } }, clash = case.clash, admitlog = true, force = true })
+		local home = camp[1].loc
+		camp[1].loc = Vector(99999, 99999)
+		FOGGED = function(v) return dist(v, LARGE) < 800 end
+		local out = run(H, core, 340, function() if T > 295.5 and FOGGED ~= nil then camp[1].loc, FOGGED = home, nil end end)
+		local admit = lines(out, "core_camp", "admit")[1]
+		check("admit time: clash " .. case.clash .. " is " .. case.v, admit ~= nil and field(admit, "v") == case.v, admit)
+	end
 end
 
 -- The offlaner also takes the enemy's small and large camps by its lane (the hard camp its pos4 pulls): with its own team's
@@ -445,24 +517,123 @@ do
 	check("missing M1: nmiss=2, mtss the longest unseen rounded, mpid both pids", skip ~= nil and field(skip, "nmiss") == "2" and field(skip, "mtss") == "32" and field(skip, "mpid") == "10,11", skip)
 end
 
+-- With no level gate, the HP price keeps a low-level core off a large camp it has never seen: the table's 0.35 at level 6
+-- grows 1/0.8 a level below it, so at level 3 (0.68; drill cngdr1 lost 0.62 there with a neutral left) a full-HP core would
+-- not keep 40%, at level 4 (0.55) it would.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	camp[1].loc = Vector(99999, 99999)
+	core.level = 3
+	check("table: a level 3 core cannot clear an unseen large camp", H.CoreCamp.CanClear(core, 1, 0) == false)
+	core.level = 4
+	check("table: a level 4 core can, from full HP", H.CoreCamp.CanClear(core, 1, 0) == true)
+	check("table: not with one stack on it", H.CoreCamp.CanClear(core, 1, 1) == false)
+end
+
+-- A clear priced under LearnMinHP teaches the HP rate nothing (drill cngdr2: 0 lost on 0.04 three times took it to 0.5).
+do
+	local H, core = world({ camps = { { "small", SMALL, 300, 5 } } })
+	local ended = lines(run(H, core, 330), "core_camp", "end")[1]
+	check("learn: a clear priced 0.03 leaves the HP rate", ended ~= nil and tonumber(field(ended, "hpe")) < 0.1 and H.CoreCamp.HPRate(core) == 1, ended)
+end
+
+-- The price checked on the camp found (drill cngdr2: the table priced a small camp 0.23 that held a taskmaster and two
+-- troll berserkers, 0.89 live; a level 4 large 0.44 against 0.96). Unseen at the plan, so priced from the tables; the
+-- camp seen on the walk would cost 1.6 of the core's HP: refused before any attack, the core walks back, and the next plan
+-- prices the camp as seen.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 40 } } })
+	local home = camp[1].loc
+	camp[1].loc = Vector(99999, 99999)
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local attacks = 0
+	local out = run(H, core, 330, function()
+		if T > 300.5 and FOGGED ~= nil then camp[1].loc, FOGGED = home, nil end
+		for _, a in ipairs(ACTIONS) do if a.pid == core.pid and a.kind == "AttackUnit" then attacks = attacks + 1 end end
+	end)
+	local start, ref, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "refuse")[1], lines(out, "core_camp", "end")[1]
+	check("refuse: the trip started on the table price", start ~= nil and field(start, "src") == "table" and field(start, "camp") == "1", start)
+	check("refuse: the live camp priced past the HP budget, refused", ref ~= nil and tonumber(field(ref, "hpe")) > 1, ref)
+	check("refuse: no attack order on the camp", attacks == 0, attacks)
+	check("refuse: the core walked back", ended ~= nil and field(ended, "why") == "back", ended)
+	local c = H.CoreCamp.ClashOf(samples(330, 380), PATH, 2)
+	check("refuse: the next plan prices the camp as seen and leaves it", H.CoreCamp.Plan(core, FRONT, 330, c) == nil)
+end
+
+-- The same camp refused above, with AdmitLog (drills only): the check at the camp logs its verdict and refuses nobody, so
+-- the clear runs and what the refusal would have cost is observed.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 40 } }, admitlog = true })
+	local home = camp[1].loc
+	camp[1].loc = Vector(99999, 99999)
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local attacks = 0
+	local out = run(H, core, 330, function()
+		if T > 300.5 and FOGGED ~= nil then camp[1].loc, FOGGED = home, nil end
+		for _, a in ipairs(ACTIONS) do if a.pid == core.pid and a.kind == "AttackUnit" then attacks = attacks + 1 end end
+	end)
+	local admit = lines(out, "core_camp", "admit")[1]
+	check("admit log: the camp the rule would refuse on HP is named, with its price", admit ~= nil and field(admit, "v") == "hp" and tonumber(field(admit, "hpe")) > 1, admit)
+	check("admit log: nobody is refused and the core attacks", #lines(out, "core_camp", "refuse") == 0 and attacks > 0, attacks)
+end
+
+-- The learned pace and HP rate scale the live and last-seen prices only: the type tables are fitted to the HP lost, and a
+-- factor learned against the neutral model would price them on a model they are not (cngchk13: the live read was 1.2-4.4
+-- times the table on 15 large camps). A core starts at the check runs' medians.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } } })
+	local CC = H.CoreCamp
+	CC.SETTINGS.PaceStart, CC.SETTINGS.HPRateStart = 0.7, 0.55
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local live = CC.Plan(core, FRONT, 300, c)
+	local raw = CC.ClearOf(core, { { hp = 2400, take = 1, dmg = 8, spa = 1 } })
+	local _, rawHP = CC.ClearOf(core, { { hp = 2400, take = 1, dmg = 8, spa = 1 } })
+	check("start: a live price is scaled by the core's starting pace and HP rate", live ~= nil and live.src == "live" and math.abs(live.clr - raw * CC.SETTINGS.PaceStart) < 0.01 and math.abs(live.hpc - rawHP * CC.SETTINGS.HPRateStart) < 0.01, live and live.hpc)
+	CC.ResetCache()
+	camp[1].unseen = true
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local tbl = CC.Plan(core, FRONT, 300, c)
+	FOGGED = nil
+	check("start: a table price is not scaled by the factors", tbl ~= nil and tbl.src == "table" and math.abs(tbl.hpc - tbl.hpt) < 1e-9 and math.abs(tbl.clr - tbl.clrt) < 1e-9, tbl and tbl.hpc)
+end
+
+-- The clear is learned against the neutrals met at engage, not the plan's price (drill cngdr1 t=244: a camp priced full
+-- held one neutral, and its quick clear taught pace 0.9 and HP rate 0.75 though every trip cost more than priced). Two
+-- neutrals at the plan, one dead before the core arrives: the pace moves on the measured clear over the one met.
+do
+	local H, core, camp = world({ camps = { { "small", SMALL, 300, 5 } } })
+	local extra = MakeNeutral({ x = SMALL.x, y = SMALL.y, hp = 300, maxhp = 300 })
+	extra.dmg = 5
+	local out = run(H, core, 330, function() if T > 301 then extra.hp = 0 end end)
+	local start, ended = lines(out, "core_camp", "start")[1], lines(out, "core_camp", "end")[1]
+	local clr, clrm, clre = tonumber(field(start, "clr")), tonumber(field(ended, "clrm")), tonumber(field(ended, "clre"))
+	check("learn: the plan priced two neutrals, the engage one", clr ~= nil and clre ~= nil and clre < clr * 0.7, start, ended)
+	local want = 1 + 0.3 * (clrm / clre - 1)
+	check("learn: the pace moves on the measured clear over the engage price", clrm ~= nil and math.abs(H.CoreCamp.Pace(core) - want) < 0.02, H.CoreCamp.Pace(core), want)
+end
+
 -- The no-camp gate names why (smoke ~/.dotactl/logs/2026-11-05T19-50-59-core-missing_fn1.log, t=180-600: the pos3s pid 1
 -- and 8 read h_camp on the gates line and never planned a camp; their nearest trip camp was the enemy off-lane large camp,
--- 1,400-2,300 from the front, held by CampMinLevel large 6 at levels 2-5). One phase=nocamp line per minute and reason.
-do
+-- 1,400-2,300 from the front, held by the level gate at levels 2-5, removed 06/11/2026). One phase=nocamp line per minute
+-- and reason.
+local function offlaneWorld(pos)
 	local H, core = world({ camps = { { "large", LARGE, 2400, 8 } }, level = 5 })
 	SPAWNERS[1].team = 3
 	H.Lane.Camps.ResetCache()
-	local saved = TOWERS_W[2][dota.Tower.Bot1]
 	TOWERS_W[2][dota.Tower.Bot1] = MakeUnit({ pid = 91, team = 2, loc = Vector(0, -5000) })
-	core.pos = 3
+	core.pos = pos
+	return H, core
+end
+do
+	local saved = TOWERS_W[2][dota.Tower.Bot1]
+	local H, core = offlaneWorld(3)
 	local out = run(H, core, 303)
-	local nc = lines(out, "core_camp", "nocamp")
-	check("nocamp: one line for the minute, the offlane large camp in the list held by level", #nc == 1 and field(nc[1], "why") == "level" and field(nc[1], "camp") == "1" and field(nc[1], "noff") == "1" and field(nc[1], "ncand") == "1" and field(nc[1], "lvl") == "5" and field(nc[1], "cd") == "2121", nc[1])
-	check("nocamp: no start", #lines(out, "core_camp", "start") == 0)
-	core.pos = 1
-	out = run(H, core, 306)
-	nc = lines(out, "core_camp", "nocamp")
-	check("nocamp: for a pos1 the enemy camp is not in the list (nwhy=list), none of its own", #nc == 1 and field(nc[1], "why") == "none" and field(nc[1], "ncand") == "0" and field(nc[1], "near") == "1" and field(nc[1], "nwhy") == "list", nc[1])
+	local st = lines(out, "core_camp", "start")[1]
+	check("offlane: a level 5 pos3 starts on the enemy large camp by its lane", st ~= nil and field(st, "camp") == "1" and field(st, "lvl") == "5", st)
+	check("offlane: no nocamp line", #lines(out, "core_camp", "nocamp") == 0)
+	H, core = offlaneWorld(1)
+	local nc = lines(run(H, core, 303), "core_camp", "nocamp")
+	check("nocamp: for a pos1 the enemy camp is not in the list (nwhy=list), none of its own", #nc == 1 and field(nc[1], "why") == "none" and field(nc[1], "ncand") == "0" and field(nc[1], "near") == "1" and field(nc[1], "nwhy") == "list" and field(nc[1], "lvl") == "5", nc[1])
 	TOWERS_W[2][dota.Tower.Bot1] = saved
 end
 

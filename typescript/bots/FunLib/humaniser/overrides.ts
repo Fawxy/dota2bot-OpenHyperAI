@@ -36,3 +36,12 @@ export function LaneOnly(bot: Unit): boolean {
 export function CampForce(): boolean {
     return Get("CampForce") === true;
 }
+
+/**
+ * Overrides.AdmitLog (slice core-next-gold, drills only): the camp trip's price check at the camp (`admits`) judges both its
+ * halves by the real rule, logs its verdict as `phase=admit` and refuses nobody, so what a refusal would have saved or cost
+ * is observed (refusal precision). Baked into the arm's `Customize/general.lua` for a remote drill.
+ */
+export function AdmitLog(): boolean {
+    return Get("AdmitLog") === true;
+}

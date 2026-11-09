@@ -755,12 +755,15 @@ end
 
 -- The pos5's double waits for a carry who can clear camp A (user mark review 06/11/2026, log 2026-11-05T18-13-16-bug-hunt_
 -- observe_team-bots_e3fcbd4 t=222.5 pid 2 and t=223.4 pid 7, marks 6, 7, 10: Venge and WD stacked the safe
--- lane's hard camp at 3:5x before their carry could farm it). A level 1 pos1 cannot (CoreCamp's CampMinLevel large 6): the
--- minute stacks good_1 alone with dwhy=carry; with the clear test saying yes, the double runs.
+-- lane's hard camp at 3:5x before their carry could farm it). With the clear test (CoreCamp.CanClear, its HP price checked
+-- in test_core_camp) saying no, the minute stacks good_1 alone with dwhy=carry; saying yes, the double runs.
 do
-	local lines = stackRun({ double = true, setup = function() local c = MakeUnit({ pid = 1, team = 2, level = 1 }) c.pos = 1 end })
+	local lines = stackRun({ double = true, setup = function(H)
+		local c = MakeUnit({ pid = 1, team = 2, level = 1 }) c.pos = 1
+		H.StackJob.SetCarryClear(function() return false end)
+	end })
 	local l = lines[1]
-	check("carry gate: level 1 carry, single on good_1, double=0 dwhy=carry", l ~= nil and tonumber(field(l, "camp")) == idxOf("good_1") and field(l, "double") == "0" and field(l, "dwhy") == "carry" and field(l, "fcamp") == nil, l)
+	check("carry gate: a carry who cannot clear it, single on good_1, double=0 dwhy=carry", l ~= nil and tonumber(field(l, "camp")) == idxOf("good_1") and field(l, "double") == "0" and field(l, "dwhy") == "carry" and field(l, "fcamp") == nil, l)
 	check("carry gate: the single stacks", field(l, "res") == "stacked", l)
 	local seen = {}
 	lines = stackRun({ double = true, setup = function(H)

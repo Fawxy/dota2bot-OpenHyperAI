@@ -1403,15 +1403,19 @@ export const EVENTS = {
         st: "num",
         dt: "num",
     },
-    // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), skip (a camp fitted and a
+    // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), refuse (the camp found
+    // priced past the trip's budget at sight or engage, CoreCamp admits: its plan price hpc/clr, the live price hpe/clre, hp,
+    // hpr, pace, lvl; the core walks back), skip (a camp fitted and a
     // gate held it: one line per wave window `win` and why), end. clash: the forecast's next clash second; ret: the planned
     // return; clr: clear estimate; gold, loss (forecast lane gold lost by the return), net; end: back (arrival), g0/g1 net worth;
     // nmiss (skip or nexthold why=missing): enemy heroes unseen that could be at the camp or on the walk, mtss the longest of
     // their time_since_seen (s, rounded), mpid their player ids (comma list). nexthold: a chained camp after a clear held by a
     // start gate (why: the gate; after: how the last camp ended), the core walks back. nocamp (one per core, minute and why,
     // while the no-camp gate holds): lvl, ncand (camps in the trip list), noff (enemy camps among them), camp/type/cd (the
-    // nearest trip camp and its distance to the lane front), why (what dropped it: level, far, cleared, empty, pulled, ally,
-    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list).
+    // nearest trip camp and its distance to the lane front), why (what dropped it: far, cleared, empty, pulled, ally,
+    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list). clre/hpe (end, next,
+    // nexthold): the model's clear seconds and HP fraction for the neutrals the core met at engage, before the learned factors
+    // (what pace and HP rate learn against; absent when none was seen at engage).
     core_camp: {
         pid: "num",
         pos: "num",
@@ -1429,6 +1433,8 @@ export const EVENTS = {
         hpt: "num",
         clrm: "num",
         hpm: "num",
+        clre: "num",
+        hpe: "num",
         n0: "num",
         nu: "str",
         nl: "num",
@@ -1470,6 +1476,8 @@ export const EVENTS = {
         h_plan: "num",
         h_skip: "num",
         h_trip: "num",
+        v: "str",
+        lb: "num",
     },
     rune_job: {
         pid: "num",

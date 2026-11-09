@@ -530,6 +530,13 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 90, from = 30}
     },
+    ["core-camp"] = {
+        note = "Radiant pos1 and pos3 play, a camp trip whenever a camp's priced HP and time fit (CampForce), everyone else benched",
+        cast = {r = {1, 3}},
+        others = "bench",
+        rep = {every = 30, from = 0},
+        overrides = {CampForce = true}
+    },
     ["threat-support"] = {
         note = "Radiant pos5 plays its lane and pulls every wave; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
         cast = {r = {5}},

@@ -231,6 +231,16 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 30 },
     },
+    // Core next gold without the level gate: the Radiant pos1 and pos3 alone, a trip whenever an open camp's priced HP and
+    // time fit (CampForce: the decision's wave, gap and net gates off, the HP, threat and missing gates on), so the clear's
+    // HP price at levels 2-5 is graded on each trip (hpc against hpm, by lvl and src) before any game.
+    "core-camp": {
+        note: "Radiant pos1 and pos3 play, a camp trip whenever a camp's priced HP and time fit (CampForce), everyone else benched",
+        cast: { r: [1, 3] },
+        others: "bench",
+        rep: { every: 30, from: 0 },
+        overrides: { CampForce: true },
+    },
     // Slice threat: the support's pull start on the read (PullJob.Wants). The pos5 plays its lane (pulls when the controller
     // says so); the Dire pos3 stands on the lane side of the pos5's pull camp on odd reps, in the lane's sight (the gate holds
     // on `reach`; the fog side, thrdr3c 09/11/2026, is unseen from the lane and a hero last seen 1,300 away in lane weighs
