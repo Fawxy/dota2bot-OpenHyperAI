@@ -30,6 +30,13 @@ test('batch planSummary: an ON+OFF spec shows its doubled game count and both ar
     assert.strictEqual(planSummary(onOnly, plan(onOnly)), `${SPEC.lineups.length} games: ${SPEC.lineups.length} reps x 1 arm (on)`);
 });
 
+test('batch runArgs: a spec drill becomes --drill', () => {
+    const g = plan({ ...SPEC, drill: 'regen-probe' })[0];
+    const a = runArgs({ ...SPEC, drill: 'regen-probe' }, g, false);
+    assert.strictEqual(a[a.indexOf('--drill') + 1], 'regen-probe');
+    assert.ok(!runArgs(SPEC, g, false).includes('--drill'));
+});
+
 test('batch runArgs: --build only when asked, one --set per key', () => {
     const [on, off] = plan(SPEC);
     const a = runArgs(SPEC, on, true);
