@@ -20,6 +20,7 @@ local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -239,19 +240,31 @@ local function hostDesire(bot)
     end
     return nil
 end
+--- While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+-- up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1).
+local EPISODE_MODES = {retreat = true, assemble = true, assemble_with_humans = true}
 --- A number replaces OHA's desire for `mode`; undefined lets OHA's code run.
 function ____exports.Decide(bot, mode)
+    if RetreatState.Running(bot) then
+        local ____EPISODE_MODES_mode_3
+        if EPISODE_MODES[mode] then
+            ____EPISODE_MODES_mode_3 = nil
+        else
+            ____EPISODE_MODES_mode_3 = 0
+        end
+        return ____EPISODE_MODES_mode_3
+    end
     if not Ours.On("JobChooser") then
         return nil
     end
     if RuneJob.HostOf(bot) == BotMode.Rune then
-        local ____temp_3
+        local ____temp_4
         if mode == "rune" or ____exports.EXCEPTIONS[mode] ~= nil then
-            ____temp_3 = nil
+            ____temp_4 = nil
         else
-            ____temp_3 = 0
+            ____temp_4 = 0
         end
-        return ____temp_3
+        return ____temp_4
     end
     if mode == ____exports.HOST then
         return hostDesire(bot)
@@ -278,13 +291,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_4
+        local ____table_Step_result_5
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_4 = nil
+            ____table_Step_result_5 = nil
         else
-            ____table_Step_result_4 = inner()
+            ____table_Step_result_5 = inner()
         end
-        return ____table_Step_result_4
+        return ____table_Step_result_5
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -306,9 +319,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_5 = runningJob(bot)
-    if ____opt_5 ~= nil then
-        ____opt_5.End(bot, why)
+    local ____opt_6 = runningJob(bot)
+    if ____opt_6 ~= nil then
+        ____opt_6.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its
