@@ -24,6 +24,7 @@ import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Threat from "bots/FunLib/humaniser/threat";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 // All judgement (slice file "The decision"); the clear-time model and its learning are FarmPattern's values.
@@ -75,6 +76,12 @@ export const SETTINGS = {
      *  hold them all while any enemy farms in fog; one last seen near the walk holds however old the sighting. MissingSpeed
      *  is a laning-stage hero with boots (its speed is not readable in fog). All `judgement`. */
     MissingAfter: 3,
+    /** Ours.Threat: the horizon (s) the gates read the threat with; 4 s puts a visible hero's reach (run plus attack range and
+     *  hulls) at about the old HeroReach plus ThreatMargin for a 300-speed melee (1,400). judgement. */
+    GateHorizon: 4,
+    /** Ours.Threat: the belief's weight sum that holds a trip or a pull: one hero after 4:00 (0.5), three before (0.2 each);
+     *  picked on the 425 graded rows (slice file threat.md): refusals 312 to 264, precision 0.53 to 0.58. */
+    MissingRefuse: 0.5,
     MissingSpeed: 330,
     MissingReachMax: 4000,
     MidRuneGuard: 40,
@@ -728,6 +735,19 @@ export function MissingOf(bot: Unit, at: Vector): Missing {
     return out;
 }
 
+/**
+ * The missing-hero gate for a walk from the core to `at` as [heroes that hold it, the belief's weight sum]: under Ours.Threat
+ * the threat read's belief (a weight per unseen hero, refusing at Threat MissingRefuse) logged as ev=threat for `consumer`;
+ * off, MissingOf's count and no weight.
+ */
+export function MissingGate(bot: Unit, at: Vector, consumer: string): LuaMultiReturn<[number, number | undefined]> {
+    if (!Ours.On("Threat")) return $multi(MissingOf(bot, at).n, undefined);
+    const r = Threat.Read(bot, bot.GetLocation(), at, SETTINGS.GateHorizon);
+    const held = r.missing >= SETTINGS.MissingRefuse;
+    Threat.Log(bot, consumer, r, held ? "missing" : "go");
+    return $multi(held ? r.mpids.length : 0, math.floor(r.missing * 100 + 0.5) / 100);
+}
+
 function mateOnJob(bot: Unit): boolean {
     const s = LaneState.ForBot(bot);
     if (s === undefined) return false;
@@ -788,6 +808,13 @@ function startGate(bot: Unit, plan: CampPlan, now: number): Held | undefined {
     const spawner = Camps.SpawnerByIdx(plan.camp);
     if (spawner === undefined) return undefined;
     const center = Camps.BoxCenter(spawner);
+    if (Ours.On("Threat")) {
+        const r = Threat.Read(bot, bot.GetLocation(), center, SETTINGS.GateHorizon);
+        const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
+        Threat.Log(bot, "core_camp", r, why ?? "go");
+        if (why !== "missing") return why !== undefined ? { why } : undefined;
+        return { why, nmiss: r.mpids.length, mtss: r.mtss, mpid: r.mpids.join(",") };
+    }
     if (ThreatOnWay(bot, center)) return { why: "threat" };
     const m = MissingOf(bot, center);
     return m.n > 0 ? { why: "missing", nmiss: m.n, mtss: m.mtss, mpid: m.pids.join(",") } : undefined;

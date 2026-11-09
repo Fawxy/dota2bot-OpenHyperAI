@@ -114,6 +114,10 @@ export const DEFAULTS = {
      *  first, before it only with the pos4 away or unable), with no enemy hero missing near the walk and the lane gold lost
      *  while away at most LaneControl CorePullWorth. Needs SupportPull and LaneControlDrive. Off: only supports pull. */
     CorePull: true,
+    /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
+     *  gates of the core camp trip, the offlane pos3's pull and the support's pull farm read Threat.Read (the missing belief, a
+     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: CoreCamp MissingOf and ThreatOnWay. */
+    Threat: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

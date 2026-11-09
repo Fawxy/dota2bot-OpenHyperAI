@@ -709,6 +709,10 @@ export const EVENTS = {
         input: "str",
         start: "num",
         forces: "str",
+        /** ph=spot: a statue's spot for the rep (`lane`, `bench`, `pull:<r|d>:<safe|off>`) and the point it holds. */
+        spot: "str",
+        x: "num",
+        y: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
@@ -967,6 +971,29 @@ export const EVENTS = {
         reason: "str",
         mid: "num",
     },
+    /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat,
+     *  band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the
+     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share. */
+    threat: {
+        pid: "num",
+        who: "str",
+        dec: "str",
+        x: "num",
+        y: "num",
+        hz: "num",
+        threat: "num",
+        band: "str",
+        reach: "num",
+        rpid: "str",
+        burst: "num",
+        ally: "num",
+        tower: "bool",
+        miss: "num",
+        mpid: "str",
+        mtss: "num",
+        mcut: "num",
+        hp: "num",
+    },
     tr_caution: {
         pid: "num",
         level: "num",
@@ -1081,7 +1108,8 @@ export const EVENTS = {
      * pids; dep seconds to the support's next departure; away 1 when their laners are known dead or elsewhere (R5); why a
      * decision with no reading; ms the reading's cost. Slice 4a: pby who the pull lever went to (sup|core; absent with no
      * puller), cwhy why the offlane pos3 did not take it (missing|loss|no_plan), cmiss the enemy heroes missing near its walk
-     * to the hard camp (CoreCamp MissingOf), closs the lane gold it would lose while away (CoreCamp LossBetween). The missing wave:
+     * to the hard camp (CoreCamp MissingOf; under Ours.Threat the belief's counted heroes when their weight refuses, else 0), cmw
+     * the belief's weight sum (Ours.Threat only), closs the lane gold it would lose while away (CoreCamp LossBetween). The missing wave:
      * ew the enemy wave tracker's resolution taken at this read (enemy_wave.ts: one enemy wave followed at a time, its
      * scheduled spot walked to our lead creep, resolved ArriveWindow s after it came due): p present (the visible enemy lane
      * creep count rose RiseMin over its count before the window), a absent (no rise, and our lead creep stood at the spot
@@ -1124,6 +1152,7 @@ export const EVENTS = {
         pby: "str",
         cwhy: "str",
         cmiss: "num",
+        cmw: "num",
         closs: "num",
         away: "bool",
         why: "str",

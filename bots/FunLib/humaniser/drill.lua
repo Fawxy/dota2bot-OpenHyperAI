@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, sentryAttack, controlRep, Customize
+local overrides, spotPoint, noteSpot, sentryAttack, controlRep, Customize, FOUNTAIN, lastSpot, SPOT_OFFSET
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -219,6 +219,104 @@ function ____exports.Active()
     end
     return ____temp_2
 end
+--- A statue's spot for the current rep (`lane` before the first rep or without a spot list).
+function ____exports.SpotOf(bot)
+    local d = ____exports.Active()
+    local pos = LaneConfig.PositionOf(bot)
+    local ____temp_29
+    if pos ~= nil then
+        local ____temp_28
+        if bot:GetTeam() == Team.Radiant then
+            local ____opt_20 = d and d.spots
+            ____temp_28 = ____opt_20 and ____opt_20.r
+        else
+            local ____opt_24 = d and d.spots
+            ____temp_28 = ____opt_24 and ____opt_24.d
+        end
+        ____temp_29 = ____temp_28 and ____temp_28[pos]
+    else
+        ____temp_29 = nil
+    end
+    local list = ____temp_29
+    local rep = ____exports.RepAt(DotaTime())
+    if list == nil or #list == 0 or rep == 0 then
+        return "lane"
+    end
+    return list[(rep - 1) % #list + 1]
+end
+function spotPoint(bot, spot)
+    if spot == "bench" then
+        local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
+        return Vector(x, y, z)
+    end
+    local side, kind = string.match(spot, "^pull:([rd]):(%a+)$")
+    if side == nil or kind ~= "safe" and kind ~= "off" then
+        return nil
+    end
+    local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+    local team = side == "r" and Team.Radiant or Team.Dire
+    local camp = Camps.PullCampsFor(
+        team,
+        Camps.LaneOfKind(team, kind)
+    )[1]
+    local ____temp_30
+    if camp ~= nil then
+        ____temp_30 = Camps.SpawnerByIdx(camp.campIdx)
+    else
+        ____temp_30 = nil
+    end
+    local s = ____temp_30
+    if s == nil then
+        return nil
+    end
+    local c = Camps.BoxCenter(s)
+    local lane = GetLaneFrontLocation(
+        team,
+        Camps.LaneOfKind(team, kind),
+        0
+    )
+    return Camps.StandPoint(
+        s,
+        Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z),
+        SPOT_OFFSET
+    )
+end
+function noteSpot(bot, spot, at)
+    local pid = bot:GetPlayerID()
+    local key = (tostring(____exports.RepAt(DotaTime())) .. ":") .. spot
+    if lastSpot[pid] == key then
+        return
+    end
+    lastSpot[pid] = key
+    Telemetry.Event(
+        "drill",
+        {
+            {"ph", "spot"},
+            {
+                "name",
+                ____exports.Name()
+            },
+            {"pid", pid},
+            {
+                "team",
+                bot:GetTeam()
+            },
+            {
+                "rep",
+                ____exports.RepAt(DotaTime())
+            },
+            {"spot", spot},
+            {
+                "x",
+                at ~= nil and math.floor(at.x) or nil
+            },
+            {
+                "y",
+                at ~= nil and math.floor(at.y) or nil
+            }
+        }
+    )
+end
 function sentryAttack(bot, spot)
     local step = ____exports.SENTRY_STEP * bot:GetCurrentMovementSpeed()
     if GetUnitToLocationDistance(bot, spot) > step then
@@ -229,10 +327,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue32
+            local __continue43
             repeat
                 if not h:IsAlive() then
-                    __continue32 = true
+                    __continue43 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -240,9 +338,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue32 = true
+                __continue43 = true
             until true
-            if not __continue32 then
+            if not __continue43 then
                 break
             end
         end
@@ -414,6 +512,15 @@ ____exports.TABLE = {
         rep = {every = 30, from = 0},
         overrides = {ForceLever = "r:bot=feed"}
     },
+    ["threat-missing"] = {
+        note = "Radiant pos3 lane-only in its lane; Dire pos5 a statue at a spot per rep (by the pos3's pull camp, bench, Dire offlane camp, its lane); everyone else benched",
+        cast = {r = {3}},
+        statue = {d = {5}},
+        spots = {d = {[5] = {"pull:r:off", "bench", "pull:d:off", "lane"}}},
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 90, from = 30}
+    },
     ["lever-feed-off"] = {
         note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
         cast = SAFE_CORE,
@@ -505,10 +612,12 @@ function ____exports.Implied(key)
     local ____opt_8 = ____opt_10 and ____opt_10.overrides
     return ____opt_8 and ____opt_8[key]
 end
-local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
+FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 local STATUE_BEHIND = -300
 local STATUE_SWAY = 40
 local statueSide = {}
+lastSpot = {}
+SPOT_OFFSET = 250
 --- A sentry answers an enemy hero within its attack range + both bounding radii + this many seconds of its own movement, and
 -- never leaves its spot by more than that movement: a laner stepping in to hit someone who walked into it. The same 0.5 s
 -- as the contest price's STEP_IN on purpose: this step grades the price's damage and time terms on its own zone; a sentry
@@ -559,6 +668,23 @@ function ____exports.Hold(bot)
     end
     if r ~= "statue" and r ~= "sentry" and not ____exports.IdleStatue(bot) then
         return false
+    end
+    local named = r == "statue" and ____exports.SpotOf(bot) or "lane"
+    if named ~= "lane" then
+        local at = spotPoint(bot, named)
+        noteSpot(bot, named, at)
+        if at ~= nil and GetUnitToLocationDistance(bot, at) > 50 then
+            bot:Action_MoveToLocation(at)
+        end
+        return true
+    end
+    local ____temp_17 = r == "statue"
+    if ____temp_17 then
+        local ____opt_15 = ____exports.Active()
+        ____temp_17 = (____opt_15 and ____opt_15.spots) ~= nil
+    end
+    if ____temp_17 then
+        noteSpot(bot, named, nil)
     end
     local lane = bot:GetAssignedLane()
     local spot = GetLaneFrontLocation(
@@ -615,8 +741,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_15 = overrides()
-            local v = ____opt_15 and ____opt_15[k]
+            local ____opt_31 = overrides()
+            local v = ____opt_31 and ____opt_31[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -624,8 +750,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_17 = overrides()
-        local asked = ____opt_17 and ____opt_17.Drill
+        local ____opt_33 = overrides()
+        local asked = ____opt_33 and ____opt_33.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -690,6 +816,9 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(statueSide)) do
         __TS__Delete(statueSide, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(lastSpot)) do
+        __TS__Delete(lastSpot, k)
     end
     removedLogged = false
 end

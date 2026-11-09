@@ -10,7 +10,7 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { BotMode, GameState, Lane, Team, Unit } from "bots/ts_libs/dota";
+import { BotMode, GameState, Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -31,6 +31,10 @@ export interface Entry {
     cast: Sides;
     /** Heroes that stand as statues; checked after `cast`. */
     statue?: Sides;
+    /** Per statue (team, position): its spot per rep, cycling (rep n takes entry (n - 1) mod length; before rep 1 its lane):
+     *  `lane` (behind its own creeps), `bench` (its fountain), `pull:<r|d>:<safe|off>` (beside the first pull camp of that
+     *  team's lane, the side away from the camp's lane). A statue with a spot walks there and stands. */
+    spots?: { r?: Record<number, string[]>; d?: Record<number, string[]> };
     /** Heroes that stand as statues but attack an enemy hero inside their zone (Hold); checked after `statue`. */
     sentry?: Sides;
     /** Heroes that play lane-only (as `castLaneOnly`); checked after `statue`. */
@@ -201,6 +205,20 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 0 },
         overrides: { ForceLever: "r:bot=feed" },
     },
+    // Slice threat (design s7 slice 1): the missing belief's prediction drill. The Radiant offlane pos3 holds its lane (the
+    // lane controller reads its hard-camp pull gate each wave); the Dire pos5 is a statue that stands each rep at one known
+    // spot: beside the camp the pos3 pulls (on its walk), benched (the control), beside Dire's offlane pull camp across the
+    // map, in its own lane in sight. Reps of 90 s give the walk across the map time before the next wave's read; to 10:00 so
+    // reads fall both sides of the belief's 4:00 weight change.
+    "threat-missing": {
+        note: "Radiant pos3 lane-only in its lane; Dire pos5 a statue at a spot per rep (by the pos3's pull camp, bench, Dire offlane camp, its lane); everyone else benched",
+        cast: { r: [3] },
+        statue: { d: [5] },
+        spots: { d: { 5: ["pull:r:off", "bench", "pull:d:off", "lane"] } },
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 90, from: 30 },
+    },
     "lever-feed-off": {
         note: "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
         cast: SAFE_CORE,
@@ -283,6 +301,9 @@ const STATUE_BEHIND = -300;
 // enemies in range and auto-attacks, which a statue must never do.
 const STATUE_SWAY = 40;
 const statueSide: Record<number, number> = {};
+const lastSpot: Record<number, string> = {};
+/** How far beside a pull camp's box a spot statue stands (outside the box, so it blocks no spawn). judgement. */
+const SPOT_OFFSET = 250;
 /**
  * A sentry answers an enemy hero within its attack range + both bounding radii + this many seconds of its own movement, and
  * never leaves its spot by more than that movement: a laner stepping in to hit someone who walked into it. The same 0.5 s
@@ -327,6 +348,14 @@ export function Hold(bot: Unit): boolean {
         return true;
     }
     if (r !== "statue" && r !== "sentry" && !IdleStatue(bot)) return false;
+    const named = r === "statue" ? SpotOf(bot) : "lane";
+    if (named !== "lane") {
+        const at = spotPoint(bot, named);
+        noteSpot(bot, named, at);
+        if (at !== undefined && GetUnitToLocationDistance(bot, at) > 50) bot.Action_MoveToLocation(at);
+        return true;
+    }
+    if (r === "statue" && Active()?.spots !== undefined) noteSpot(bot, named, undefined);
     const lane = bot.GetAssignedLane() as Lane;
     const spot = GetLaneFrontLocation(bot.GetTeam(), lane, STATUE_BEHIND);
     if (r === "sentry" && sentryAttack(bot, spot)) return true;
@@ -340,6 +369,44 @@ export function Hold(bot: Unit): boolean {
     }
     bot.Action_MoveToLocation(target);
     return true;
+}
+
+/** A statue's spot for the current rep (`lane` before the first rep or without a spot list). */
+export function SpotOf(bot: Unit): string {
+    const d = Active();
+    const pos = LaneConfig.PositionOf(bot);
+    const list = pos !== undefined ? (bot.GetTeam() === Team.Radiant ? d?.spots?.r : d?.spots?.d)?.[pos] : undefined;
+    const rep = RepAt(DotaTime());
+    if (list === undefined || list.length === 0 || rep === 0) return "lane";
+    return list[(rep - 1) % list.length];
+}
+
+/** The point a spot names; the fountain for `bench`, undefined for an unknown spot (the statue then stands where it is). */
+function spotPoint(bot: Unit, spot: string): Vector | undefined {
+    if (spot === "bench") {
+        const [x, y, z] = FOUNTAIN[bot.GetTeam()];
+        return Vector(x, y, z);
+    }
+    const [side, kind] = string.match(spot, "^pull:([rd]):(%a+)$");
+    if (side === undefined || (kind !== "safe" && kind !== "off")) return undefined;
+    // Lazy: camps reaches modules that read the drill.
+    const Camps = require("bots/FunLib/humaniser/camps") as typeof import("bots/FunLib/humaniser/camps");
+    const team = side === "r" ? Team.Radiant : Team.Dire;
+    const camp = Camps.PullCampsFor(team, Camps.LaneOfKind(team, kind))[0];
+    const s = camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
+    if (s === undefined) return undefined;
+    const c = Camps.BoxCenter(s);
+    const lane = GetLaneFrontLocation(team, Camps.LaneOfKind(team, kind), 0);
+    // The side away from the lane, outside the box so the statue blocks no spawn.
+    return Camps.StandPoint(s, Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z), SPOT_OFFSET);
+}
+
+function noteSpot(bot: Unit, spot: string, at: Vector | undefined): void {
+    const pid = bot.GetPlayerID();
+    const key = `${RepAt(DotaTime())}:${spot}`;
+    if (lastSpot[pid] === key) return;
+    lastSpot[pid] = key;
+    Telemetry.Event("drill", [["ph", "spot"], ["name", Name()], ["pid", pid], ["team", bot.GetTeam()], ["rep", RepAt(DotaTime())], ["spot", spot], ["x", at !== undefined ? math.floor(at.x) : undefined], ["y", at !== undefined ? math.floor(at.y) : undefined]]);
 }
 
 /** The sentry's answer: attack the nearest enemy hero inside its zone while it stands within its step of its spot. */
@@ -447,5 +514,6 @@ export function ResetCache(): void {
     for (const k of Object.keys(lastRep)) delete lastRep[k as unknown as number];
     for (const k of Object.keys(lastRole)) delete lastRole[k as unknown as number];
     for (const k of Object.keys(statueSide)) delete statueSide[k as unknown as number];
+    for (const k of Object.keys(lastSpot)) delete lastSpot[k as unknown as number];
     removedLogged = false;
 }

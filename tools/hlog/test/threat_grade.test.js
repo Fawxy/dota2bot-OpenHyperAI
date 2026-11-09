@@ -1,0 +1,75 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { Store } = require('../store');
+const { hits } = require('../threat_grade');
+const { run } = require('../missing_grade');
+
+function store(lines) {
+    const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-tg-')), 'a.log');
+    const at = l => Number(l.match(/t=(\S+)/)[1]);
+    fs.writeFileSync(f, [...lines].sort((a, b) => at(a) - at(b)).join('\n') + '\n');
+    const s = new Store(':memory:');
+    s.ingest(f);
+    s.refreshViews();
+    return s;
+}
+const snap = (t, pid, x, y, hp = 100) => `[HEV] t=${t.toFixed(1)} ev=snap pid=${pid} x=${x} y=${y} alive=1 hp=${hp} mp=50 lvl=1 lh=0 dn=0 mode=laning d=0.3 act=2 gold=600`;
+
+// Every hero of both teams parked far away, except the ones the test places.
+function world(place, seconds) {
+    const out = [];
+    for (let t = 0; t <= seconds; t++) for (let pid = 0; pid < 10; pid++) {
+        const p = place(t, pid);
+        out.push(snap(t, pid, p.x, p.y, p.hp));
+    }
+    return out;
+}
+
+test('hits: an attacker 700 away two seconds before is in reach; one that blinked in from 3000 is a miss', () => {
+    const s = store(world((t, pid) => {
+        const far = { x: -7000 + pid * 100, y: 7000 };
+        if (pid === 0) return { x: 0, y: 0, hp: t >= 10 ? 70 : 100 };
+        if (pid === 5) return { x: t >= 9.5 ? 300 : 700, y: 0 };
+        return far;
+    }, 12));
+    // The first hit at t=10 comes from pid 5, who was at 700 at t=8.
+    const r = hits(s, [1]);
+    assert.equal(r.hits, 1);
+    assert.equal(r.heroHits, 1);
+    assert.equal(r.attackers, 1);
+    assert.equal(r.inReach, 1);
+    assert.equal(r.misses.length, 0);
+    s.db.close();
+});
+
+test('hits: a blink from beyond speed x 2 s plus range is listed as a miss', () => {
+    const s = store(world((t, pid) => {
+        if (pid === 0) return { x: 0, y: 0, hp: t >= 10 ? 70 : 100 };
+        if (pid === 5) return { x: t >= 9 ? 300 : 3000, y: 0 };
+        return { x: -7000 + pid * 100, y: 7000 };
+    }, 12));
+    const r = hits(s, [1]);
+    assert.equal(r.inReach, 0);
+    assert.equal(r.misses.length, 1);
+    s.db.close();
+});
+
+test('missing_grade: two heroes unseen since t=15 are both counted by the live rule, only the one that walks to the camp is true', () => {
+    const lines = world((t, pid) => {
+        if (pid === 2) return { x: -6000, y: 3000 };
+        if (pid === 7) return t < 15 ? { x: -5000, y: 3500 } : { x: -4300, y: 3900 };
+        if (pid === 8) return t < 15 ? { x: -5000, y: 3500 } : { x: -1000, y: -3000 };
+        return { x: -7000 + pid * 100, y: 7000 };
+    }, 50);
+    lines.push('[HEV] t=30.0 ev=lane_ctl team=2 lane=1 kind=wave wave=30 core=2 cmiss=2 closs=10 cwhy=missing');
+    const s = store(lines);
+    const o = run(s).rules.live;
+    assert.equal(o.refused, 1);
+    assert.equal(o.perHero, 2);
+    assert.equal(o.perHeroTrue, 1);
+    s.db.close();
+});
