@@ -35,7 +35,7 @@ export const SETTINGS = {
     /** One route cost point per this many units of walk, so a long walk home does not beat a short one on fewer exposed
      *  points alone (drill rtwalk1: the fountain, 13,168 away at cost 2, beat our T1's walk at cost 4). judgement. */
     LenPerCost: 2000,
-    /** The desire while an episode runs: above laning's 0.9, below OHA's 1.1 latch. judgement. */
+    /** The desire while an episode runs; the chooser's gate holds every other mode but the human's orders at 0 meanwhile. judgement. */
     EpisodeDesire: 0.95,
     /** A forced drill rep holds the retreat mode above every mode the cast could otherwise take. */
     DrillDesire: 1.0,

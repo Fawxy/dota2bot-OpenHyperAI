@@ -93,3 +93,21 @@ do
 end
 
 finish()
+
+-- Slice retreat: while our episode runs, no OHA mode but the human's orders can take the hero, with the job chooser off too
+-- (rtwatch1 7:50-7:58: roam's tango branch at 1.00 outbid the episode's 0.95 five times in 8 s).
+for _, ours in ipairs({ {}, { JobChooser = false } }) do
+	local H, bot = world(ours)
+	require("bots/FunLib/humaniser/retreat_state").SetRunning(bot, true)
+	for _, m in ipairs({ "roam", "laning", "team_roam", "attack", "farm", "rune", "ward" }) do
+		local v, called = gated(H, bot, m)
+		check("episode running, " .. m .. ": exactly 0, OHA's code not run", v == 0 and not called, tostring(v))
+	end
+	for _, m in ipairs({ "retreat", "assemble", "assemble_with_humans" }) do
+		local v, called = gated(H, bot, m)
+		check("episode running, " .. m .. ": its own desire runs", v == 0.5 and called, tostring(v))
+	end
+	require("bots/FunLib/humaniser/retreat_state").SetRunning(bot, false)
+	local v = gated(H, bot, "roam")
+	check("episode over: roam's own desire runs again", v == 0.5, tostring(v))
+end

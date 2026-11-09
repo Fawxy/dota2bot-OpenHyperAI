@@ -13,6 +13,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Drill from "bots/FunLib/humaniser/drill";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -190,8 +191,13 @@ function hostDesire(bot: Unit): number | undefined {
     return undefined;
 }
 
+/** While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+ *  up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1). */
+const EPISODE_MODES: Record<string, true> = { retreat: true, assemble: true, assemble_with_humans: true };
+
 /** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. */
 export function Decide(bot: Unit, mode: string): number | undefined {
+    if (RetreatState.Running(bot)) return EPISODE_MODES[mode] ? undefined : 0;
     if (!Ours.On("JobChooser")) return undefined;
     // The mid's 6:00 trip runs in the rune mode, not the host: gating that mode to 0 handed the mid to the attack mode
     // 9 of 10 trips (rspchk1), and the host must hold 0 so OHA's farm desire cannot take it either.
