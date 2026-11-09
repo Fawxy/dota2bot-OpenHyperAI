@@ -304,7 +304,7 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- comma-separated `bot`, `r:bot`, `d:top`, `all` (r Radiant, d Dire, no prefix both); "" off (slice idle-swing, harness only).
 -- ForceLever: `<lanes>=<lever>` (lanes as ForceShove, lever `feed`, `setup` or `none`): the lane controller's lever set in those
 -- lanes is that lever alone (or empty) every wave, whatever the need; "" off (drills only).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", CampForce = false, ForceShove = "", ForceLever = "" }
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "retreat-linger", CampForce = false, ForceShove = "", ForceLever = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
