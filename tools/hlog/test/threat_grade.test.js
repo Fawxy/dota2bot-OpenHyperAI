@@ -114,8 +114,9 @@ test('missing_grade stack: the hit comes from the job end line, and a death with
         return { x: -7000 + pid * 100, y: 7000 };
     }, 300).filter(l => !(/ pid=4 /.test(l) && Number(l.match(/t=(\S+)/)[1]) > 268 && Number(l.match(/t=(\S+)/)[1]) < 290));
     lines.push(`[HEV] t=-5.0 ev=camp type=small idx=1 team=2 x=${camp.x} y=${camp.y} x0=0 y0=0 x1=0 y1=0`);
-    lines.push('[HEV] t=262.0 ev=stack res=stacked why=ok pid=4 camp=1 start=258 hpa=100 hpe=100 death=0');
-    lines.push('[HEV] t=263.0 ev=job job=stack phase=end why=ok pid=4 host=17 hit=1');
+    // The job's end line comes first; the stack line follows it once the box is read (4 s here, up to 12 s on a double).
+    lines.push('[HEV] t=259.0 ev=job job=stack phase=end why=ok pid=4 host=17 hit=1');
+    lines.push('[HEV] t=263.0 ev=stack res=stacked why=ok pid=4 camp=1 start=258 hpa=100 hpe=100 death=0');
     const r = run(store(lines), { rows: 'stack' });
     assert.deepEqual(r.outcome.held, { n: 1, hit: 1, died: 0, after: 1, show: 0 });
 });
