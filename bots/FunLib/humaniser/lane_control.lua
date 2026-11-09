@@ -364,6 +364,7 @@ local Calendar = require(GetScriptDirectory().."/FunLib/humaniser/calendar")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local EnemyWave = require(GetScriptDirectory().."/FunLib/humaniser/enemy_wave")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 function memoryOf(team, lane)
     local key = (tostring(team) .. ":") .. tostring(lane)
@@ -803,6 +804,13 @@ local function coreThreat(core, supportIn)
     end
     if supportIn then
         return false
+    end
+    if Ours.On("Threat") then
+        local at = u:GetLocation()
+        local r = Threat.Read(u, at, at, Threat.SETTINGS.GateHorizon)
+        local held = #r.reach >= ____exports.SETTINGS.CoreThreat
+        Threat.Log(u, "lane_ctl", r, held and "threat" or "go")
+        return held
     end
     local near = u:GetNearbyHeroes(____exports.SETTINGS.CoreThreatR, true, 0) or ({})
     return #near >= ____exports.SETTINGS.CoreThreat
@@ -1323,17 +1331,17 @@ local function seenEnemies()
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue133
+            local __continue134
             repeat
                 if e == nil or e == nil or e:IsNull() or not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue133 = true
+                    __continue134 = true
                     break
                 end
                 local at = e:GetLocation()
                 out[#out + 1] = {x = at.x, y = at.y}
-                __continue133 = true
+                __continue134 = true
             until true
-            if not __continue133 then
+            if not __continue134 then
                 break
             end
         end

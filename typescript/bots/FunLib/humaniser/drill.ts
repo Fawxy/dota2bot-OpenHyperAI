@@ -230,6 +230,17 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 30 },
     },
+    // Slice threat: the support's job gate on the read. The pos5 plays its lane (pulls when the controller says so); the Dire
+    // pos3 stands by the pos5's pull camp on odd reps (the gate should hold on `reach`) and is benched on even ones (control:
+    // the pull runs); the camp is on our side, so the belief's weight on the statue once it walks off unseen stays small.
+    "threat-support": {
+        note: "Radiant pos5 plays its lane; Dire pos3 a statue by the pos5's pull camp on odd reps, benched on even; everyone else benched",
+        cast: { r: [5] },
+        statue: { d: [3] },
+        spots: { d: { 3: ["pull:r:safe", "bench"] } },
+        others: "bench",
+        rep: { every: 60, from: 30 },
+    },
     "lever-feed-off": {
         note: "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
         cast: SAFE_CORE,

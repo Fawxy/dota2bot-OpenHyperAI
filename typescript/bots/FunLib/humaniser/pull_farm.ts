@@ -145,9 +145,8 @@ function startGate(bot: Unit, camp: Camps.Spawner, center: Vector, blocked: (bot
     const dmg = PullJob.CampDamage(bot, state, camp.type, SETTINGS.ClearSeconds);
     if (bot.GetHealth() - dmg < bot.GetMaxHealth() * SETTINGS.ClearReserve) return "camp-dmg";
     if (Ours.On("Threat")) {
-        const r = Threat.Read(bot, bot.GetLocation(), center, CoreCamp.SETTINGS.GateHorizon);
-        Threat.Log(bot, "pull_farm", r, r.reach.length > 0 ? "threat" : "go");
-        if (r.reach.length > 0) return "threat";
+        const why = Threat.Gate(bot, bot.GetLocation(), center, "pull_farm").why;
+        if (why !== undefined) return why;
     } else if (CoreCamp.ThreatOnWay(bot, center)) return "threat";
     return blocked(bot) ?? PullJob.PartnerThreat(bot);
 }

@@ -720,15 +720,14 @@ local function startGate(bot, camp, center, blocked)
         return "camp-dmg"
     end
     if Ours.On("Threat") then
-        local r = Threat.Read(
+        local why = Threat.Gate(
             bot,
             bot:GetLocation(),
             center,
-            CoreCamp.SETTINGS.GateHorizon
-        )
-        Threat.Log(bot, "pull_farm", r, #r.reach > 0 and "threat" or "go")
-        if #r.reach > 0 then
-            return "threat"
+            "pull_farm"
+        ).why
+        if why ~= nil then
+            return why
         end
     elseif CoreCamp.ThreatOnWay(bot, center) then
         return "threat"

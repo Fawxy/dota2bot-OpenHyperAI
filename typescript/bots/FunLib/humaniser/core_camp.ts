@@ -76,12 +76,6 @@ export const SETTINGS = {
      *  hold them all while any enemy farms in fog; one last seen near the walk holds however old the sighting. MissingSpeed
      *  is a laning-stage hero with boots (its speed is not readable in fog). All `judgement`. */
     MissingAfter: 3,
-    /** Ours.Threat: the horizon (s) the gates read the threat with; 4 s puts a visible hero's reach (run plus attack range and
-     *  hulls) at about the old HeroReach plus ThreatMargin for a 300-speed melee (1,400). judgement. */
-    GateHorizon: 4,
-    /** Ours.Threat: the belief's weight sum that holds a trip or a pull: one hero after 4:00 (0.5), three before (0.2 each);
-     *  picked on the 425 graded rows (slice file threat.md): refusals 312 to 264, precision 0.53 to 0.58. */
-    MissingRefuse: 0.5,
     MissingSpeed: 330,
     MissingReachMax: 4000,
     MidRuneGuard: 40,
@@ -737,13 +731,13 @@ export function MissingOf(bot: Unit, at: Vector): Missing {
 
 /**
  * The missing-hero gate for a walk from the core to `at` as [heroes that hold it, the belief's weight sum]: under Ours.Threat
- * the threat read's belief (a weight per unseen hero, refusing at Threat MissingRefuse) logged as ev=threat for `consumer`;
- * off, MissingOf's count and no weight.
+ * the threat read's belief (a weight per unseen hero, refusing at Threat.SETTINGS MissingRefuse) logged as ev=threat for
+ * `consumer`; off, MissingOf's count and no weight.
  */
 export function MissingGate(bot: Unit, at: Vector, consumer: string): LuaMultiReturn<[number, number | undefined]> {
     if (!Ours.On("Threat")) return $multi(MissingOf(bot, at).n, undefined);
-    const r = Threat.Read(bot, bot.GetLocation(), at, SETTINGS.GateHorizon);
-    const held = r.missing >= SETTINGS.MissingRefuse;
+    const r = Threat.Read(bot, bot.GetLocation(), at, Threat.SETTINGS.GateHorizon);
+    const held = r.missing >= Threat.SETTINGS.MissingRefuse;
     Threat.Log(bot, consumer, r, held ? "missing" : "go");
     return $multi(held ? r.mpids.length : 0, math.floor(r.missing * 100 + 0.5) / 100);
 }
@@ -809,9 +803,7 @@ function startGate(bot: Unit, plan: CampPlan, now: number): Held | undefined {
     if (spawner === undefined) return undefined;
     const center = Camps.BoxCenter(spawner);
     if (Ours.On("Threat")) {
-        const r = Threat.Read(bot, bot.GetLocation(), center, SETTINGS.GateHorizon);
-        const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
-        Threat.Log(bot, "core_camp", r, why ?? "go");
+        const { why, r } = Threat.Gate(bot, bot.GetLocation(), center, "core_camp");
         if (why !== "missing") return why !== undefined ? { why } : undefined;
         return { why, nmiss: r.mpids.length, mtss: r.mtss, mpid: r.mpids.join(",") };
     }

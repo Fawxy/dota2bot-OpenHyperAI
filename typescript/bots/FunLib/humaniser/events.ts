@@ -971,7 +971,8 @@ export const EVENTS = {
     },
     /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat,
      *  band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the
-     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share. */
+     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share;
+     *  dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief. */
     threat: {
         pid: "num",
         who: "str",
@@ -979,6 +980,7 @@ export const EVENTS = {
         x: "num",
         y: "num",
         hz: "num",
+        dep: "num",
         threat: "num",
         band: "str",
         reach: "num",

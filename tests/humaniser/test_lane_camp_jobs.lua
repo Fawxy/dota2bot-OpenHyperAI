@@ -1059,8 +1059,9 @@ end
 
 -- Start gate (console.9055994510: 4 of 8 retreat-ended jobs started at 51-59%, one with retreat already at 0.86).
 do
-	local function startAt(hp, retreatRaw, fight)
+	local function startAt(hp, retreatRaw, fight, threatOff)
 		local H, _, support = jobWorld(1, { away = 900, telemetry = { Enable = true } })
+		package.loaded["bots/FunLib/custom_loader"].Ours.Threat = threatOff ~= true
 		local lines = {}
 		H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 		support.hp = hp
@@ -1091,8 +1092,12 @@ do
 	check("hit by an enemy hero 500 away: no pull, logged as fight", d == 0 and gate == "fight", tostring(d) .. " " .. tostring(gate))
 	d, gate = startAt(90, nil, { dist = 500, attacking = true })
 	check("attacking an enemy hero 500 away: no pull", d == 0 and gate == "fight", tostring(d) .. " " .. tostring(gate))
-	d = startAt(90, nil, { dist = 500 })
-	check("an enemy laner 500 away, no trade: the pull starts", near(d, 0.7), d)
+	-- Slice threat: a visible laner who can reach the camp holds the start on the read ("threat", not a fight); the OFF arm
+	-- lets it start (an enemy merely in range is the usual lane).
+	d, gate = startAt(90, nil, { dist = 500 })
+	check("an enemy laner 500 away, no trade: held by the threat gate", d == 0 and gate == "threat", tostring(d) .. " " .. tostring(gate))
+	d = startAt(90, nil, { dist = 500 }, true)
+	check("an enemy laner 500 away, threat off: the pull starts", near(d, 0.7), d)
 	d = startAt(90, nil, { dist = 1000, hit = true })
 	check("hit, but the hero is 1,000 away: the pull starts", near(d, 0.7), d)
 end
@@ -1341,9 +1346,11 @@ do
 	check("and its errand caps", near(H.Intent.Resolve(support, dota.BotMode.Ward, 0.81), 0.81))
 end
 
--- Priority fixes (Task 6): no pull or stack while a lane enemy went missing recently, or once a rune rotation is decided.
+-- Priority fixes (Task 6): no pull or stack while a lane enemy went missing recently, or once a rune rotation is decided
+-- (the caution probe: Ours.Threat's OFF arm).
 do
 	local H, core, support = jobWorld(1)
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = false
 	check("precondition: nothing blocks a start", H.Lane.CampJobs.StartBlocked(support) == nil, H.Lane.CampJobs.StartBlocked(support))
 	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 10 and 1 or 0 end)
 	check("a lane enemy missing 10 s blocks the start", H.Lane.CampJobs.StartBlocked(support) == "enemy-missing")
@@ -1351,8 +1358,23 @@ do
 	check("one missing 40 s does not", H.Lane.CampJobs.StartBlocked(support) == nil, H.Lane.CampJobs.StartBlocked(support))
 	H.Lane.Hooks.SetRotationDecidedProbe(function(u) return u == support end)
 	check("a decided rune rotation blocks the start", H.Lane.CampJobs.StartBlocked(support) == "rotation")
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
 	frame(H, support, 70)
 	check("and no pull runs", not H.Lane.CampJobs.Active(support))
+end
+
+-- Under Ours.Threat the start reads the camp with the shared threat gate (slice threat): a visible enemy who can reach it
+-- holds "threat", the caution probe's missing count no longer blocks, and a caller with no camp yet is not read.
+do
+	local H, core, support = jobWorld(1)
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
+	local center = H.Lane.Camps.BoxCenter(H.Lane.Camps.SpawnerByIdx(1))
+	H.Lane.Hooks.SetMissingProbe(function() return 1 end)
+	check("threat on: the probe's missing count does not block", H.Lane.CampJobs.StartBlocked(support, center) == nil, H.Lane.CampJobs.StartBlocked(support, center))
+	local e = unit({ pid = 11, team = 3, pos = 4, loc = Vector(center.x + 600, center.y) })
+	e.range = 600
+	check("threat on: a visible enemy by the camp holds the start", H.Lane.CampJobs.StartBlocked(support, center) == "threat", H.Lane.CampJobs.StartBlocked(support, center))
+	check("threat on: no camp given, the enemy is not read", H.Lane.CampJobs.StartBlocked(support) == nil)
 end
 
 finish()

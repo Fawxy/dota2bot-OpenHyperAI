@@ -1,7 +1,7 @@
 // Grades the offlane core's "missing hero" rule (CoreCamp.MissingOf, used by the lane controller's pull candidate) against where
 // the enemy heroes really were. Offline, banked logs only (docs/proposals/2026-11-09-fights-and-retreat.md 5.2).
 //
-//   node tools/hlog/missing_grade.js [--game N ...] [--window 15] [--near 800] [--rows core|support-pull|stack] [--site] [--min-game N] [--json]
+//   node tools/hlog/missing_grade.js [--game N ...] [--window 15] [--near 800] [--rows core|support-pull|stack|refused] [--site] [--min-game N] [--json]
 //
 // Per ev=lane_ctl row that evaluated the core pull candidate (cmiss present): the walk is the core's position at t to the offlane
 // hard camp (the stand is not logged; the camp's centre stands in for it). Truth: an enemy hero within --near of the walk
@@ -25,7 +25,9 @@ const games = args.flatMap((a, i) => (args[i - 1] === '--game' ? [Number(a)] : [
 // start (ev_pull_job, pos 4-5, at `left`), walk = the support's position to its camp's centre (ev_camp), `logged` always 0
 // (no missing gate in that build), plus the pull's outcome (hit by a hero, died). --rows stack: each stack attempt (ev_stack,
 // not skips) at its `start`, walk to the camp's centre; hit = the job's own end line (`ev=job phase=end job=stack hit`, hero
-// damage during the job, matched within 3 s of the stack line), died = death. `outcome` also counts `after`: the hero's
+// damage during the job, matched within 3 s of the stack line), died = death. --rows refused: each support start the caution
+// probe refused (ev_lane_plan gate=enemy-missing, the OFF arm's missing rule), walk = the support to its camp, all `logged`
+// refused: with --site it grades that rule's refusals the way the belief's holds are graded. `outcome` also counts `after`: the hero's
 // snapshots stop within 15 s of the row's line (a death just after the job, which `died`/`death` miss). The tool's vision is
 // our heroes only and its walk has 11 points, so its holds are an upper bound on the build's.
 const CLI = { rows: (() => { const i = args.indexOf('--rows'); return i < 0 ? 'core' : args[i + 1]; })(), minGame: opt('--min-game', 0), site: args.includes('--site') };
@@ -50,9 +52,31 @@ const RULES = {
     visionCut: { speed: 330, cap: 4000, margin: 600, after: 3, cut: true },
     visionCut2000: { speed: 330, cap: 2000, margin: 600, after: 3, cut: true },
     // Threat's belief as built (slice threat 1): the vision cut, and a hold when the weight sum (0.2 a hero before 4:00, 0.5
-    // after) reaches 0.5; the rows below count a refusal on any counted hero, so `outcome` applies the weight.
-    liveBelief: { speed: 330, cap: 4000, margin: 600, after: 3, cut: true },
+    // after) reaches 0.5 (`belief`: the refused column counts holds on the weighted sum, `outcome` splits the rows by it).
+    liveBelief: { speed: 330, cap: 4000, margin: 600, after: 3, cut: true, belief: true },
+    // Slice threat 3: the same with the place prior (threat.ts DepthFactor by the camp's depth between the teams' T1s, DistFactor
+    // by the hero's last-seen distance to the camp).
+    liveBeliefPrior: { speed: 330, cap: 4000, margin: 600, after: 3, cut: true, belief: true, prior: true },
 };
+const DEPTH_FACTOR = [[0.5, 1], [0.65, 0.25], [1.01, 0.1]], DIST_FACTOR = [[2000, 1], [3000, 0.5], [Infinity, 0.25]];
+const step = (steps, v) => (steps.find(([edge]) => v < edge) || steps[steps.length - 1])[1];
+// Each team's T1s from the lane paths (lane_push_data.ts), for the camp's depth offline (live: the nearest standing towers).
+const T1S = (() => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '../../typescript/bots/FunLib/humaniser/lane_push_data.ts'), 'utf8');
+    const out = { 2: [], 3: [] };
+    for (const m of src.matchAll(/pts: (\[\[.*?\]\]),\s*s: (\[.*?\]),[\s\S]*?towers: \[\{team:2,s:(\d+)\},\{team:3,s:(\d+)\}\]/g)) {
+        const pts = JSON.parse(m[1]), sArr = JSON.parse(m[2]);
+        const at = d => { for (let i = 1; i < sArr.length; i++) if (d <= sArr[i]) { const u = (d - sArr[i - 1]) / (sArr[i] - sArr[i - 1]); return { x: pts[i - 1][0] + u * (pts[i][0] - pts[i - 1][0]), y: pts[i - 1][1] + u * (pts[i][1] - pts[i - 1][1]) }; } const l = pts[pts.length - 1]; return { x: l[0], y: l[1] }; };
+        out[2].push(at(+m[3])); out[3].push(at(+m[4]));
+    }
+    return out;
+})();
+const depthOf = (team, p) => {
+    const near = list => Math.min(...list.map(t => Math.hypot(t.x - p.x, t.y - p.y)));
+    const own = near(T1S[team]), en = near(T1S[team === 2 ? 3 : 2]);
+    return own + en > 0 ? en / (own + en) : 0.5;
+};
+const beliefSum = (rule, row, counted, camp) => counted.reduce((acc, i) => acc + (row.t < 240 ? 0.2 : 0.5) * (rule.prior ? step(DEPTH_FACTOR, depthOf(row.team, camp)) * step(DIST_FACTOR, Math.hypot(i.seen.x - camp.x, i.seen.y - camp.y)) : 1), 0);
 
 function run(store = new Store(), o = {}) {
     const ROWS = o.rows ?? CLI.rows, MIN_GAME = o.minGame ?? CLI.minGame, SITE = o.site ?? CLI.site;
@@ -60,10 +84,12 @@ function run(store = new Store(), o = {}) {
     const gl = games.length ? games : ROWS === 'support-pull'
         ? db('SELECT DISTINCT game_id g FROM ev_pull_job WHERE pos >= 4 AND left IS NOT NULL AND game_id >= ?', MIN_GAME).map(r => r.g)
         : ROWS === 'stack' ? db("SELECT DISTINCT game_id g FROM ev_stack WHERE res != 'skip' AND start IS NOT NULL AND game_id >= ?", MIN_GAME).map(r => r.g)
+        : ROWS === 'refused' ? db("SELECT DISTINCT game_id g FROM ev_lane_plan WHERE gate = 'enemy-missing' AND camp IS NOT NULL AND game_id >= ?", MIN_GAME).map(r => r.g)
         : db('SELECT DISTINCT game_id g FROM ev_lane_ctl WHERE cmiss IS NOT NULL AND game_id >= ?', MIN_GAME).map(r => r.g);
     const centres = {};
     if (ROWS !== 'core') for (const c of db('SELECT idx, AVG(x) x, AVG(y) y FROM ev_camp GROUP BY idx')) centres[c.idx] = { x: c.x, y: c.y };
-    const outcome = { held: { n: 0, hit: 0, died: 0, after: 0, show: 0 }, allowed: { n: 0, hit: 0, died: 0, after: 0, show: 0 } };
+    const outcome = {};
+    for (const [name, rule] of Object.entries(RULES)) if (rule.belief) outcome[name] = { held: { n: 0, hit: 0, died: 0, after: 0, show: 0 }, allowed: { n: 0, hit: 0, died: 0, after: 0, show: 0 } };
     let lastGame;
     const out = {};
     for (const r of Object.keys(RULES)) out[r] = { rows: 0, refused: 0, refusedTrue: 0, perHero: 0, perHeroTrue: 0, allowed: 0, allowedShow: 0 };
@@ -83,6 +109,7 @@ function run(store = new Store(), o = {}) {
         };
         const rows = ROWS === 'support-pull'
             ? db('SELECT left t, t tend, pid core, camp, 0 cmiss, hit, died FROM ev_pull_job WHERE game_id = ? AND pos >= 4 AND left IS NOT NULL', g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
+            : ROWS === 'refused' ? db("SELECT t, t tend, pid core, camp, 1 cmiss, 0 hit, 0 died FROM ev_lane_plan WHERE game_id = ? AND gate = 'enemy-missing' AND camp IS NOT NULL", g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
             : ROWS === 'stack' ? db("SELECT s.start t, s.t tend, s.pid core, s.camp, 0 cmiss, (SELECT MAX(j.hit) FROM ev_job j WHERE j.game_id = s.game_id AND j.pid = s.pid AND j.job = 'stack' AND j.phase = 'end' AND ABS(j.t - s.t) <= 3) hit, s.death died FROM ev_stack s WHERE s.game_id = ? AND s.res != 'skip' AND s.start IS NOT NULL", g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
             : db('SELECT t, team, core, cmiss, cwhy FROM ev_lane_ctl WHERE game_id = ? AND cmiss IS NOT NULL AND core IS NOT NULL', g);
         for (const row of rows) {
@@ -141,16 +168,18 @@ function run(store = new Store(), o = {}) {
                 if (name === 'live') for (const i of info) if (!i.visibleNow && i.tss > 3) (out.unseen = out.unseen || []).push({ g: i.g, t: row.t, team: row.team, pos: (i.e % 5) + 1, tss: i.tss, sx: i.seen.x, sy: i.seen.y, vx: i.vx, vy: i.vy, hp: i.hp, dwell: i.dwell, mx: walk[0].x, my: walk[0].y, cx: camp.x, cy: camp.y, counted: counted.includes(i), present: i.present });
                 const anyPresent = info.some(i => i.present && !i.visibleNow);
                 o.rows++;
-                if (name === 'liveBelief' && ROWS !== 'core') {
-                    const k = counted.length * (row.t < 240 ? 0.2 : 0.5) >= 0.5 ? 'held' : 'allowed';
-                    outcome[k].n++; if (row.hit > 0) outcome[k].hit++; if (row.died > 0) outcome[k].died++;
+                const holds = rule.belief ? beliefSum(rule, row, counted, camp) >= 0.5 : counted.length > 0;
+                if (rule.belief && ROWS !== 'core') {
+                    const k = holds ? 'held' : 'allowed';
+                    const oc = outcome[name];
+                    oc[k].n++; if (row.hit > 0) oc[k].hit++; if (row.died > 0) oc[k].died++;
                     // Dead heroes are not snapshotted: a gap over 6 s starting in [tend - 2, tend + 15] is a death.
                     const mine = snaps[row.core] || [];
-                    if (mine.some((x, i) => x.t >= row.tend - 2 && x.t <= row.tend + 15 && (mine[i + 1] === undefined ? false : mine[i + 1].t - x.t > 6))) outcome[k].after++;
-                    lastGame = Math.max(lastGame ?? 0, g); if (info.some(i => i.present && !i.visibleNow)) outcome[k].show++;
+                    if (mine.some((x, i) => x.t >= row.tend - 2 && x.t <= row.tend + 15 && (mine[i + 1] === undefined ? false : mine[i + 1].t - x.t > 6))) oc[k].after++;
+                    lastGame = Math.max(lastGame ?? 0, g); if (info.some(i => i.present && !i.visibleNow)) oc[k].show++;
                 }
                 if (name === 'live') o.agree[logged && counted.length ? 'both' : logged ? 'onlyLogged' : counted.length ? 'onlyRebuilt' : 'none'] = (o.agree[logged && counted.length ? 'both' : logged ? 'onlyLogged' : counted.length ? 'onlyRebuilt' : 'none'] || 0) + 1;
-                if (counted.length > 0) {
+                if (holds) {
                     o.refused++;
                     if (counted.some(i => i.present)) o.refusedTrue++;
                     if (name === 'live') for (const i of counted) (out.heroes = out.heroes || []).push({ pos: (i.e % 5) + 1, min: Math.floor(row.t / 120) * 2, tss: i.tss, d: distSeg(i.seen, walk[0], walk[1]), present: i.present });
@@ -177,7 +206,7 @@ function main() {
     if (args.includes('--dump')) { require('fs').writeFileSync(args[args.indexOf('--dump') + 1], JSON.stringify(res.unseen)); process.exit(0); }
     if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
     else {
-        if (CLI.rows !== 'core') console.log(CLI.rows + ' rows by the built belief (weight >= 0.5), games to ' + res.lastGame + ': ' + JSON.stringify(res.outcome));
+        if (CLI.rows !== 'core') for (const [name, oc] of Object.entries(res.outcome)) console.log(`${CLI.rows} rows by ${name} (weight sum >= 0.5), games to ${res.lastGame}: ${JSON.stringify(oc)}`);
         console.log(`rows ${res.rows} (${CLI.rows} rows), truth = enemy within ${res.near} of the walk within ${res.window} s`);
         console.log('rule           refused  precision(rows)  perHero  precision(heroes)  allowed  enemy-showed-up');
         console.log('live rebuilt vs logged cmiss>0:', JSON.stringify(res.rules.live.agree));

@@ -24,6 +24,8 @@ import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
+import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Threat from "bots/FunLib/humaniser/threat";
 
 export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -337,18 +339,23 @@ function hpOk(bot: Unit): boolean {
     return maxHP > 0 && bot.GetHealth() / maxHP >= settings().Thresholds.JobMinHP;
 }
 
-/** Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. */
-export function StartBlocked(bot: Unit): string | undefined {
+/**
+ * Why a pull, stack or take should not start now, else undefined. Forced (debug) jobs skip it. Under Ours.Threat the camp
+ * `at` is read with the shared threat gate (a visible hero in reach, or the belief's weight sum: slice threat) in place of
+ * the caution probe's missing count; a caller with no camp yet gets the other checks only.
+ */
+export function StartBlocked(bot: Unit, at?: Vector): string | undefined {
     const maxHP = bot.GetMaxHealth();
     if (maxHP <= 0 || bot.GetHealth() / maxHP < settings().Thresholds.JobStartHP) return "low-hp";
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
     if (LaneHooks.IsFightCommitting(bot)) return "lanefight";
-    if (LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
+    if (!Ours.On("Threat") && LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
     // The rotation was decided first (20-25 s before the spawn); a job now would make it late or cancel it.
     if (LaneHooks.RotationDecided(bot)) return "rotation";
     if (inFight(bot)) return "fight";
+    if (Ours.On("Threat") && at !== undefined) return Threat.Gate(bot, at, at, "sup_job").why;
     return undefined;
 }
 
@@ -1160,7 +1167,8 @@ function schedule(bot: Unit): boolean {
     ]);
     const kind = PULL_TECHS[choice.tech];
     if (kind === undefined) return false;
-    const blocked = StartBlocked(bot);
+    const first = Camps.SpawnerByIdx(camps[0].campIdx);
+    const blocked = StartBlocked(bot, first !== undefined ? Camps.BoxCenter(first) : undefined);
     if (blocked !== undefined) {
         notePlan(bot, s, now, [["gate", blocked], ["camp", camps[0].campIdx]]);
         return false;
@@ -1214,7 +1222,7 @@ function scheduleStack(bot: Unit, now: number): boolean {
     const from = math.min(t.StackMoveFrom, aggroSec - travel - t.JobStartLate);
     if (sec < from || sec > aggroSec) return false;
     if (skipped[bot.GetPlayerID()] === NextAggroTime(now, [aggroSec], t.PullPeriod)) return false;
-    if (StartBlocked(bot) !== undefined) return false;
+    if (StartBlocked(bot, Camps.BoxCenter(spawner)) !== undefined) return false;
     return Start(bot, { kind: "stack", campIdx: data.campIdx, minute });
 }
 

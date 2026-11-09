@@ -656,6 +656,8 @@ function takeBlock(bot: Unit, s: LaneState.LaneSnapshot, sig: Signal, enemies: L
     if (LaneRoles.CampJobOwner(s) === bot.GetPlayerID()) return "owner";
     if (LaneConfig.SkillOf(bot) <= cfg.Gates.TakePull) return "skill";
     if (LanePlanner.Committed(bot) !== undefined || CampJobs.Active(bot)) return "committed";
+    // The take contests a visible enemy at the camp, so the threat gate's reach hold does not apply: the start's other checks
+    // only, with the path and tower checks below (slice fights 3's Opportunity is its read).
     const blocked = CampJobs.StartBlocked(bot);
     if (blocked !== undefined) return blocked;
     if (LanePlan.View(bot, s).handsOff) return "handsoff";

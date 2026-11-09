@@ -1,8 +1,9 @@
 /**
  * The threat read (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2, slice threat): what could hurt `bot` on
  * the walk from `from` to `place` within `horizon` seconds, as named inputs and one number. The read never decides: each
- * consumer applies its own rule to the inputs (slice 1's gates read `reach` and `missing`); `threat` and `band` are logged
- * for the budget slices to come. One table of weights, all `judgement` unless a row in docs/team/slices/threat.md says otherwise.
+ * consumer applies its own rule to the inputs (the gates share one, `Gate`: a visible hero in reach, else the belief's weight
+ * sum); `threat` and `band` are logged for the budget slices to come. One table of weights, all `judgement` unless a row in
+ * docs/team/slices/threat.md says otherwise.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -23,6 +24,22 @@ export const SETTINGS = {
     EarlyWeight: 0.2,
     LateWeight: 0.5,
     EarlyUntil: 240,
+    /**
+     * Place prior (graded at the camp alone on the banked logs, slice file "Place prior"): a counted hero's weight is scaled by
+     * the place's depth, its distance to the nearest live enemy tower over the sum of that and the distance to our nearest
+     * (0 at our tower, 1 at theirs). A counted hero arrived at a deep place (the offlane hard camp, depth under 0.5) 0.21 of
+     * the time, at a mid place (our stack camps, 0.5-0.65) 0.03 and on our side (the safe lane's pull camps, over 0.65)
+     * 0.01. Steps as [upper depth edge, factor]; the sizes are judgement fitted to those rates.
+     */
+    DepthFactor: [[0.5, 1], [0.65, 0.25], [1.01, 0.1]] as [number, number][],
+    /** And by the hero's last-seen distance to the place (deep camp: arrived 0.32 within 1,200, 0.19 to 2,000, 0.10 to 3,000). */
+    DistFactor: [[2000, 1], [3000, 0.5], [math.huge, 0.25]] as [number, number][],
+    /** The horizon (s) the gates read with; 4 s puts a 300-speed melee's reach (run plus attack range and hulls) at about the
+     *  old HeroReach plus ThreatMargin (1,400). judgement. */
+    GateHorizon: 4,
+    /** The weight sum that holds a gate: one hero after 4:00 at a deep place (0.5), three before; picked on the 425 graded rows
+     *  (slice file threat.md): refusals 312 to 264, precision 0.53 to 0.58. */
+    MissingRefuse: 0.5,
     /**
      * Vision cut (drill thrdr1: a hero last seen by the walk counts forever once it leaves unseen, 8 of 12 holds false): an
      * unseen hero counts only while some point of the walk within its run is out of our sight (IsLocationVisible), since
@@ -54,6 +71,8 @@ export interface Read {
     from: Vector;
     place: Vector;
     horizon: number;
+    /** The place's depth between the teams' live towers: 0 at ours, 1 at theirs (DepthFactor). */
+    depth: number;
     /** Visible enemy heroes who can be in attack range of the walk within `horizon`. */
     reach: number[];
     /** Their estimated damage on `bot` over min(horizon, BurstWindow), as a share of its current HP. */
@@ -107,6 +126,30 @@ function canReach(u: Unit, bot: Unit, from: Vector, place: Vector, horizon: numb
     return distToSegment(at, from, place) <= run;
 }
 
+function nearestTower(team: number, place: Vector): number | undefined {
+    let best: number | undefined;
+    for (const id of TOWER_IDS) {
+        const tw = GetTower(team, id);
+        if (!valid(tw)) continue;
+        const d = dist(tw.GetLocation(), place);
+        if (best === undefined || d < best) best = d;
+    }
+    return best;
+}
+
+/** The place's depth: its distance to the nearest live enemy tower over the sum with the distance to our nearest; 0.5 with no read. */
+function placeDepth(team: number, enemyTeam: number, place: Vector): number {
+    const own = nearestTower(team, place);
+    const en = nearestTower(enemyTeam, place);
+    if (own === undefined || en === undefined || own + en <= 0) return 0.5;
+    return en / (own + en);
+}
+
+function stepFactor(steps: [number, number][], v: number): number {
+    for (const [edge, f] of steps) if (v < edge) return f;
+    return steps[steps.length - 1][1];
+}
+
 function inTowerReach(enemyTeam: number, place: Vector): boolean {
     for (const id of TOWER_IDS) {
         const tw = GetTower(enemyTeam, id);
@@ -139,19 +182,21 @@ function unseenWithin(points: Vector[], at: Vector, r: number): boolean {
 /**
  * The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
  * read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
- * (VisionCut), adds EarlyWeight or LateWeight by game minute. Walks player ids with GetTeamForPlayer (GetTeamPlayers is
- * empty for a bot-only team). A hero the API has no sighting of is not placed and not counted.
+ * (VisionCut), adds EarlyWeight or LateWeight by game minute, scaled by the place prior (DepthFactor for the place's depth,
+ * DistFactor for its last-seen distance to the place). Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for
+ * a bot-only team). A hero the API has no sighting of is not placed and not counted.
  */
 function missingOf(
     bot: Unit,
     from: Vector,
     place: Vector,
+    depth: number,
     now: number,
     visible: Record<number, boolean>,
 ): LuaMultiReturn<[number, number[], number | undefined, number]> {
     const s = SETTINGS;
     const team = bot.GetTeam();
-    const w = now < s.EarlyUntil ? s.EarlyWeight : s.LateWeight;
+    const base = (now < s.EarlyUntil ? s.EarlyWeight : s.LateWeight) * stepFactor(s.DepthFactor, depth);
     let sum = 0;
     let cut = 0;
     let mtss: number | undefined;
@@ -171,7 +216,7 @@ function missingOf(
                 continue;
             }
         }
-        sum += w;
+        sum += base * stepFactor(s.DistFactor, dist(info.location, place));
         pids.push(pid);
         mtss = math.max(mtss ?? 0, info.time_since_seen);
     }
@@ -211,15 +256,28 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number): R
         if (!valid(a) || a === bot) continue;
         if (canReach(a, bot, place, place, horizon)) allies++;
     }
-    const [missing, mpids, mtss, mcut] = missingOf(bot, from, place, now, visible);
     const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+    const depth = placeDepth(bot.GetTeam(), enemyTeam, place);
+    const [missing, mpids, mtss, mcut] = missingOf(bot, from, place, depth, now, visible);
     const tower = inTowerReach(enemyTeam, place);
     const hp = math.max(1, bot.GetHealth());
     const burst = dmg / hp;
     const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * allies;
     const threat = math.max(0, math.min(1, raw));
     const lethal = burst >= 1 && reach.length > allies;
-    return { t: now, from, place, horizon, reach, burst, allies, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal) };
+    return { t: now, from, place, horizon, depth, reach, burst, allies, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal) };
+}
+
+/**
+ * The gate rule the starts share (the core camp trip, the support's pull, stack and take, the farm trip, the pull farm): held
+ * by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
+ * ("missing"); the read and its decision are logged as ev=threat for `consumer`.
+ */
+export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): { why?: "threat" | "missing"; r: Read } {
+    const r = Read(bot, from, place, SETTINGS.GateHorizon);
+    const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
+    Log(bot, consumer, r, why ?? "go");
+    return { why, r };
 }
 
 const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;
@@ -241,6 +299,7 @@ export function Log(bot: Unit, consumer: string, r: Read, decision: string): voi
         ["x", math.floor(r.place.x)],
         ["y", math.floor(r.place.y)],
         ["hz", r2(r.horizon)],
+        ["dep", r2(r.depth)],
         ["threat", r2(r.threat)],
         ["band", r.band],
         ["reach", r.reach.length],

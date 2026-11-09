@@ -324,10 +324,14 @@ do
 end
 do
 	local H, core = world({ travel = 10, t = 445, camps = { { "small", SMALL } } })
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = false
 	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 10 and 1 or 0 end)
 	check("gate: no trip while a lane enemy went missing 10 s ago", H.FarmPattern.StartGate(core, T) == "enemy-missing")
 	H.Lane.Hooks.SetMissingProbe(function(_, maxAge) return (maxAge or math.huge) >= 40 and 1 or 0 end)
 	check("gate: an enemy missing 40 s does not block a trip", H.FarmPattern.StartGate(core, T) ~= "enemy-missing")
+	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
+	H.Lane.Hooks.SetMissingProbe(function() return 1 end)
+	check("gate, threat on: the probe no longer blocks a trip (the chosen camp is read instead)", H.FarmPattern.StartGate(core, T) ~= "enemy-missing")
 end
 do
 	local H, core = world({ travel = 10, t = 465, pos = 2, camps = { { "small", SMALL } } })

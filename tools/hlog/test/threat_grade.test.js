@@ -87,8 +87,29 @@ test('missing_grade support-pull: a hero unseen after 4:00 by the walk holds the
     const s = store(lines);
     const r = run(s, { rows: 'support-pull' });
     assert.equal(r.rows, 1);
-    assert.deepEqual(r.outcome.held, { n: 1, hit: 1, died: 0, after: 0, show: 1 });
-    assert.equal(r.outcome.allowed.n, 0);
+    assert.deepEqual(r.outcome.liveBelief.held, { n: 1, hit: 1, died: 0, after: 0, show: 1 });
+    assert.equal(r.outcome.liveBelief.allowed.n, 0);
+    // The place prior: this camp sits on Radiant's side (2,070 from its bot T1, 4,460 from Dire's: depth 0.68, factor 0.1),
+    // so the same hero weighs 0.05 and the prior rule lets the pull go.
+    assert.equal(r.outcome.liveBeliefPrior.held.n, 0);
+    assert.equal(r.outcome.liveBeliefPrior.allowed.n, 1);
+    assert.equal(r.rules.liveBeliefPrior.refused, 0);
+    s.db.close();
+});
+
+test('missing_grade refused: a caution-probe refusal (lane_plan gate=enemy-missing) is a logged refusal, true when an unseen enemy comes to the camp', () => {
+    const camp = { x: 3000, y: -5000 };
+    const lines = world((t, pid) => {
+        if (pid === 4) return { x: 1500, y: -6000 };
+        if (pid === 7) return t < 250 ? { x: 1500, y: -4500 } : t < 262 ? { x: 2600, y: -3200 } : camp;
+        return { x: -7000 + pid * 100, y: 7000 };
+    }, 280);
+    lines.push(`[HEV] t=-5.0 ev=camp type=small idx=1 team=2 x=${camp.x} y=${camp.y} x0=0 y0=0 x1=0 y1=0`);
+    lines.push('[HEV] t=258.0 ev=lane_plan pid=4 owner=5 gate=enemy-missing camp=1');
+    const s = store(lines);
+    const r = run(s, { rows: 'refused', site: true });
+    assert.equal(r.rows, 1);
+    assert.deepEqual([r.rules.logged.refused, r.rules.logged.refusedTrue, r.rules.logged.allowed], [1, 1, 0]);
     s.db.close();
 });
 
@@ -102,8 +123,8 @@ test('missing_grade support-pull: one unseen hero before 4:00 weighs 0.2 and the
     lines.push(`[HEV] t=-5.0 ev=camp type=small idx=1 team=2 x=${camp.x} y=${camp.y} x0=0 y0=0 x1=0 y1=0`);
     lines.push('[HEV] t=175.0 ev=pull_job pid=4 pos=5 lane=3 camp=1 slot=170 res=ok left=160 hit=0 died=0');
     const r = run(store(lines), { rows: 'support-pull' });
-    assert.equal(r.outcome.held.n, 0);
-    assert.equal(r.outcome.allowed.n, 1);
+    assert.equal(r.outcome.liveBelief.held.n, 0);
+    assert.equal(r.outcome.liveBelief.allowed.n, 1);
 });
 
 test('missing_grade stack: the hit comes from the job end line, and a death within 15 s of the line counts as after', () => {
@@ -117,5 +138,5 @@ test('missing_grade stack: the hit comes from the job end line, and a death with
     lines.push('[HEV] t=262.0 ev=stack res=stacked why=ok pid=4 camp=1 start=258 hpa=100 hpe=100 death=0');
     lines.push('[HEV] t=263.0 ev=job job=stack phase=end why=ok pid=4 host=17 hit=1');
     const r = run(store(lines), { rows: 'stack' });
-    assert.deepEqual(r.outcome.held, { n: 1, hit: 1, died: 0, after: 1, show: 0 });
+    assert.deepEqual(r.outcome.liveBelief.held, { n: 1, hit: 1, died: 0, after: 1, show: 0 });
 });
