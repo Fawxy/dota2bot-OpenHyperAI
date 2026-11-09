@@ -73,3 +73,49 @@ test('missing_grade: two heroes unseen since t=15 are both counted by the live r
     assert.equal(o.perHeroTrue, 1);
     s.db.close();
 });
+
+test('missing_grade support-pull: a hero unseen after 4:00 by the walk holds the pull at weight 0.5; the hold is true when it walks to the camp', () => {
+    const camp = { x: 3000, y: -5000 };
+    const lines = world((t, pid) => {
+        if (pid === 4) return { x: 1500, y: -6000 };
+        // Seen by pid 4 until 250, then unseen 1500 from the walk; walks onto the camp by 265.
+        if (pid === 7) return t < 250 ? { x: 1500, y: -4500 } : t < 262 ? { x: 2600, y: -3200 } : camp;
+        return { x: -7000 + pid * 100, y: 7000 };
+    }, 280);
+    lines.push(`[HEV] t=-5.0 ev=camp type=small idx=1 team=2 x=${camp.x} y=${camp.y} x0=0 y0=0 x1=0 y1=0`);
+    lines.push('[HEV] t=275.0 ev=pull_job pid=4 pos=5 lane=3 camp=1 slot=270 res=ok left=258 hit=1 died=0');
+    const s = store(lines);
+    const r = run(s, { rows: 'support-pull' });
+    assert.equal(r.rows, 1);
+    assert.deepEqual(r.outcome.held, { n: 1, hit: 1, died: 0, after: 0, show: 1 });
+    assert.equal(r.outcome.allowed.n, 0);
+    s.db.close();
+});
+
+test('missing_grade support-pull: one unseen hero before 4:00 weighs 0.2 and the pull is allowed', () => {
+    const camp = { x: 3000, y: -5000 };
+    const lines = world((t, pid) => {
+        if (pid === 4) return { x: 1500, y: -6000 };
+        if (pid === 7) return t < 150 ? { x: 1500, y: -4500 } : { x: 2600, y: -3200 };
+        return { x: -7000 + pid * 100, y: 7000 };
+    }, 180);
+    lines.push(`[HEV] t=-5.0 ev=camp type=small idx=1 team=2 x=${camp.x} y=${camp.y} x0=0 y0=0 x1=0 y1=0`);
+    lines.push('[HEV] t=175.0 ev=pull_job pid=4 pos=5 lane=3 camp=1 slot=170 res=ok left=160 hit=0 died=0');
+    const r = run(store(lines), { rows: 'support-pull' });
+    assert.equal(r.outcome.held.n, 0);
+    assert.equal(r.outcome.allowed.n, 1);
+});
+
+test('missing_grade stack: the hit comes from the job end line, and a death within 15 s of the line counts as after', () => {
+    const camp = { x: 3000, y: -5000 };
+    const lines = world((t, pid) => {
+        if (pid === 4) return { x: 1500, y: -6000 };
+        if (pid === 7) return t < 250 ? { x: 1500, y: -4500 } : { x: 2600, y: -3200 };
+        return { x: -7000 + pid * 100, y: 7000 };
+    }, 300).filter(l => !(/ pid=4 /.test(l) && Number(l.match(/t=(\S+)/)[1]) > 268 && Number(l.match(/t=(\S+)/)[1]) < 290));
+    lines.push(`[HEV] t=-5.0 ev=camp type=small idx=1 team=2 x=${camp.x} y=${camp.y} x0=0 y0=0 x1=0 y1=0`);
+    lines.push('[HEV] t=262.0 ev=stack res=stacked why=ok pid=4 camp=1 start=258 hpa=100 hpe=100 death=0');
+    lines.push('[HEV] t=263.0 ev=job job=stack phase=end why=ok pid=4 host=17 hit=1');
+    const r = run(store(lines), { rows: 'stack' });
+    assert.deepEqual(r.outcome.held, { n: 1, hit: 1, died: 0, after: 1, show: 0 });
+});
