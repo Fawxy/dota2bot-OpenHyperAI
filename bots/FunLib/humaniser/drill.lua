@@ -249,8 +249,8 @@ function spotPoint(bot, spot)
         local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
         return Vector(x, y, z)
     end
-    local side, kind = string.match(spot, "^pull:([rd]):(%a+)$")
-    if side == nil or kind ~= "safe" and kind ~= "off" then
+    local side, kind, seen = string.match(spot, "^pull:([rd]):(%a+)(:?%a*)$")
+    if side == nil or kind ~= "safe" and kind ~= "off" or seen ~= "" and seen ~= ":seen" then
         return nil
     end
     local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -277,7 +277,7 @@ function spotPoint(bot, spot)
     )
     return Camps.StandPoint(
         s,
-        Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z),
+        seen == ":seen" and lane or Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z),
         SPOT_OFFSET
     )
 end
@@ -531,10 +531,10 @@ ____exports.TABLE = {
         rep = {every = 90, from = 30}
     },
     ["threat-support"] = {
-        note = "Radiant pos5 plays its lane; Dire pos3 a statue by the pos5's pull camp on odd reps, benched on even; everyone else benched",
+        note = "Radiant pos5 plays its lane; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
         cast = {r = {5}},
         statue = {d = {3}},
-        spots = {d = {[3] = {"pull:r:safe", "bench"}}},
+        spots = {d = {[3] = {"pull:r:safe:seen", "bench"}}},
         others = "bench",
         rep = {every = 120, from = 30}
     },

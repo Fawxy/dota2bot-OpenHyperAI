@@ -33,7 +33,8 @@ export interface Entry {
     statue?: Sides;
     /** Per statue (team, position): its spot per rep, cycling (rep n takes entry (n - 1) mod length; before rep 1 its lane):
      *  `lane` (behind its own creeps), `bench` (its fountain), `pull:<r|d>:<safe|off>` (beside the first pull camp of that
-     *  team's lane, the side away from the camp's lane). A statue with a spot walks there and stands. */
+     *  team's lane, the side away from the camp's lane, so in fog from the lane; `:seen` appended: the lane side, in the
+     *  lane's sight, for a gate that reads a visible hero). A statue with a spot walks there and stands. */
     spots?: { r?: Record<number, string[]>; d?: Record<number, string[]> };
     /** Heroes that stand as statues but attack an enemy hero inside their zone (Hold); checked after `statue`. */
     sentry?: Sides;
@@ -230,16 +231,17 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 30 },
     },
-    // Slice threat: the support's job gate on the read. The pos5 plays its lane (pulls when the controller says so); the Dire
-    // pos3 stands by the pos5's pull camp on odd reps (the gate should hold on `reach`) and is benched on even ones (control:
-    // the pull runs); the camp is on our side, so the belief's weight on the statue once it walks off unseen stays small.
+    // Slice threat: the support's pull start on the read (PullJob.Wants). The pos5 plays its lane (pulls when the controller
+    // says so); the Dire pos3 stands on the lane side of the pos5's pull camp on odd reps, in the lane's sight (the gate holds
+    // on `reach`; the fog side, thrdr3c 09/11/2026, is unseen from the lane and a hero last seen 1,300 away in lane weighs
+    // 0.02 at a camp this far on our side, so two pulls ran beside it) and is benched on even ones (control: the pull runs).
     // 120 s reps: the statue walks about 40 s from its fountain to the camp and the controller wants a pull every 60 to 90 s,
-    // so 60 s reps (thrdr3, 09/11/2026) left it on site for no pull start at all.
+    // so 60 s reps (thrdr3) left it on site for no pull start at all.
     "threat-support": {
-        note: "Radiant pos5 plays its lane; Dire pos3 a statue by the pos5's pull camp on odd reps, benched on even; everyone else benched",
+        note: "Radiant pos5 plays its lane; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
         cast: { r: [5] },
         statue: { d: [3] },
-        spots: { d: { 3: ["pull:r:safe", "bench"] } },
+        spots: { d: { 3: ["pull:r:safe:seen", "bench"] } },
         others: "bench",
         rep: { every: 120, from: 30 },
     },
@@ -411,8 +413,8 @@ function spotPoint(bot: Unit, spot: string): Vector | undefined {
         const [x, y, z] = FOUNTAIN[bot.GetTeam()];
         return Vector(x, y, z);
     }
-    const [side, kind] = string.match(spot, "^pull:([rd]):(%a+)$");
-    if (side === undefined || (kind !== "safe" && kind !== "off")) return undefined;
+    const [side, kind, seen] = string.match(spot, "^pull:([rd]):(%a+)(:?%a*)$");
+    if (side === undefined || (kind !== "safe" && kind !== "off") || (seen !== "" && seen !== ":seen")) return undefined;
     // Lazy: camps reaches modules that read the drill.
     const Camps = require("bots/FunLib/humaniser/camps") as typeof import("bots/FunLib/humaniser/camps");
     const team = side === "r" ? Team.Radiant : Team.Dire;
@@ -421,8 +423,8 @@ function spotPoint(bot: Unit, spot: string): Vector | undefined {
     if (s === undefined) return undefined;
     const c = Camps.BoxCenter(s);
     const lane = GetLaneFrontLocation(team, Camps.LaneOfKind(team, kind), 0);
-    // The side away from the lane, outside the box so the statue blocks no spawn.
-    return Camps.StandPoint(s, Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z), SPOT_OFFSET);
+    // Outside the box so the statue blocks no spawn: the side away from the lane, or the lane side for `:seen`.
+    return Camps.StandPoint(s, seen === ":seen" ? lane : Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z), SPOT_OFFSET);
 }
 
 function noteSpot(bot: Unit, spot: string, at: Vector | undefined): void {
