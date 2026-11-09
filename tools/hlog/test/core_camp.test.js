@@ -82,3 +82,34 @@ test('gates: per-minute tallies summed by position, a camp fitting counted from 
     ]);
 });
 
+
+const snap = (t, pid, hp) => line(t, `snap pid=${pid} x=0 y=0 alive=1 hp=${hp} mp=100 lvl=5 lh=0 dn=0 kills=0 deaths=0 ln=bot s=0 ld=0 mode=laning d=0 act=1 gold=0 ol=0 od=0 ar=550 hit=0`);
+const kill = (t, pid) => line(t, `neutral_death pid=${pid} team=2 by=${pid}`);
+const endHpe = (t, pid, hpe, hpr, clrm) => line(t, `core_camp pid=${pid} pos=1 lane=3 phase=end clash=0 win=0 res=ok why=back camp=1 camps=1 ret=0 g0=0 g1=0 secs=30 hpe=${hpe} hpr=${hpr} clre=10 clrm=${clrm} hpm=0.05`);
+
+test('price truth: the HP lost to damage between snapshots, not the net change; signed against the live and the table price', () => {
+    const out = run('core_camp_price.sql', [
+        line(100, 'core_camp pid=1 pos=1 lane=3 phase=start clash=130 win=4 camp=1 type=small src=table ret=120 clr=9 hpt=0.30 gold=80 loss=0 net=80'),
+        // 100 -> 80 -> 85 (regen) -> 70: 35 points of damage, 15 net.
+        snap(104, 1, 100), snap(106, 1, 80), snap(108, 1, 85), snap(110, 1, 70), snap(112, 1, 72),
+        kill(109, 1), kill(110.5, 1),
+        endHpe(120, 1, 0.80, 0.5, 6),
+    ], { like: '%' });
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0].dmg, 0.35);
+    assert.strictEqual(out[0].pred, 0.4);
+    assert.strictEqual(out[0].err, 0.05);
+    assert.strictEqual(out[0].terr, -0.05);
+});
+
+test('refusal precision: a would-refuse camp cleared anyway, with the damage it cost and whether it breached ArriveHP', () => {
+    const admit = (t, pid, v, hp) => line(t, `core_camp pid=${pid} pos=1 lane=3 phase=admit camp=2 type=large src=table lvl=4 hpc=0.55 clr=20 hpe=1.2 clre=30 hp=${hp} hpr=0.55 pace=0.7 v=${v}`);
+    const out = run('core_camp_admit.sql', [
+        admit(200, 1, 'hp', 1), snap(201, 1, 100), snap(210, 1, 40), snap(220, 1, 20), kill(222, 1), endHpe(240, 1, 1.2, 0.55, 22),
+        admit(300, 2, 'ok', 1), snap(301, 2, 100), snap(310, 2, 90), kill(312, 2), endHpe(330, 2, 0.2, 0.55, 12),
+    ], { like: '%' });
+    const a = out.find((r) => r.pid === 1);
+    const b = out.find((r) => r.pid === 2);
+    assert.deepStrictEqual([a.v, a.dmg, a.breach], ['hp', 0.8, 1]);
+    assert.deepStrictEqual([b.v, b.dmg, b.breach], ['ok', 0.1, 0]);
+});

@@ -34,12 +34,13 @@ end
 -- A straight lane along y = -5000 from x = -7,000.
 local PATH = { pts = { { -7000, -5000 }, { 7000, -5000 } }, s = { 0, 14000 }, spawnR = 0, spawnD = 14000, towers = {} }
 
+REAL_START = nil
 local function world(o)
 	package.loaded["bots/FunLib/engine/tasks"] = nil
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = { CoreCampTrip = o.off ~= true }
-	C.Overrides = { CampForce = o.force == true }
+	C.Overrides = { CampForce = o.force == true, AdmitLog = o.admitlog == true }
 	T = o.t or 300
 	CURRENT_TEAM = 2
 	OBSERVER = 1
@@ -53,6 +54,10 @@ local function world(o)
 	H.Lane.Camps.ResetCache()
 	H.FarmPattern.ResetCache()
 	H.CoreCamp.ResetCache()
+	-- The model's mechanics are checked from neutral factors (1); `start = "real"` keeps the fitted starting factors.
+	local S = H.CoreCamp.SETTINGS
+	REAL_START = REAL_START or { S.PaceStart, S.HPRateStart }
+	if o.start == "real" then S.PaceStart, S.HPRateStart = REAL_START[1], REAL_START[2] else S.PaceStart, S.HPRateStart = 1, 1 end
 	-- The gate's count is under test here; the threat read's vision cut has its own checks (test_threat).
 	local Threat = require("bots/FunLib/humaniser/threat")
 	Threat.SETTINGS.VisionCut = false
@@ -514,6 +519,42 @@ do
 	check("refuse: the core walked back", ended ~= nil and field(ended, "why") == "back", ended)
 	local c = H.CoreCamp.ClashOf(samples(330, 380), PATH, 2)
 	check("refuse: the next plan prices the camp as seen and leaves it", H.CoreCamp.Plan(core, FRONT, 330, c) == nil)
+end
+
+-- The same camp refused above, with AdmitLog (drills only): the check at the camp logs its verdict and refuses nobody, so
+-- the clear runs and what the refusal would have cost is observed.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 40 } }, admitlog = true })
+	local home = camp[1].loc
+	camp[1].loc = Vector(99999, 99999)
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local attacks = 0
+	local out = run(H, core, 330, function()
+		if T > 300.5 and FOGGED ~= nil then camp[1].loc, FOGGED = home, nil end
+		for _, a in ipairs(ACTIONS) do if a.pid == core.pid and a.kind == "AttackUnit" then attacks = attacks + 1 end end
+	end)
+	local admit = lines(out, "core_camp", "admit")[1]
+	check("admit log: the camp the rule would refuse on HP is named, with its price", admit ~= nil and field(admit, "v") == "hp" and tonumber(field(admit, "hpe")) > 1, admit)
+	check("admit log: nobody is refused and the core attacks", #lines(out, "core_camp", "refuse") == 0 and attacks > 0, attacks)
+end
+
+-- The learned pace and HP rate scale the live and last-seen prices only: the type tables are fitted to the HP lost, and a
+-- factor learned against the neutral model would price them on a model they are not (cngchk13: the live read was 1.2-4.4
+-- times the table on 15 large camps). A core starts at the check runs' medians.
+do
+	local H, core, camp = world({ camps = { { "large", LARGE, 2400, 8 } }, start = "real" })
+	local CC = H.CoreCamp
+	local c = CC.ClashOf(samples(300, 340), PATH, 2)
+	local live = CC.Plan(core, FRONT, 300, c)
+	local raw = CC.ClearOf(core, { { hp = 2400, take = 1, dmg = 8, spa = 1 } })
+	local _, rawHP = CC.ClearOf(core, { { hp = 2400, take = 1, dmg = 8, spa = 1 } })
+	check("start: a live price starts at the fitted pace and HP rate", live ~= nil and live.src == "live" and math.abs(live.clr - raw * CC.SETTINGS.PaceStart) < 0.01 and math.abs(live.hpc - rawHP * CC.SETTINGS.HPRateStart) < 0.01, live and live.hpc)
+	CC.ResetCache()
+	camp[1].unseen = true
+	FOGGED = function(v) return dist(v, LARGE) < 800 end
+	local tbl = CC.Plan(core, FRONT, 300, c)
+	FOGGED = nil
+	check("start: a table price is not scaled by the factors", tbl ~= nil and tbl.src == "table" and math.abs(tbl.hpc - tbl.hpt) < 1e-9 and math.abs(tbl.clr - tbl.clrt) < 1e-9, tbl and tbl.hpc)
 end
 
 -- The clear is learned against the neutrals met at engage, not the plan's price (drill cngdr1 t=244: a camp priced full

@@ -1140,7 +1140,8 @@ ____exports.EVENTS = {
         h_gap = "num",
         h_plan = "num",
         h_skip = "num",
-        h_trip = "num"
+        h_trip = "num",
+        v = "str"
     },
     rune_job = {
         pid = "num",

@@ -1219,6 +1219,8 @@
    "hpt": "num",
    "clrm": "num",
    "hpm": "num",
+   "clre": "num",
+   "hpe": "num",
    "n0": "num",
    "nu": "str",
    "nl": "num",
@@ -1259,7 +1261,8 @@
    "h_gap": "num",
    "h_plan": "num",
    "h_skip": "num",
-   "h_trip": "num"
+   "h_trip": "num",
+   "v": "str"
   },
   "rune_job": {
    "pid": "num",
@@ -1895,7 +1898,8 @@
    "nwhy": "text",
    "after": "text",
    "res": "text",
-   "label": "text"
+   "label": "text",
+   "v": "text"
   },
   "ev_rune_job": {
    "kind": "text",

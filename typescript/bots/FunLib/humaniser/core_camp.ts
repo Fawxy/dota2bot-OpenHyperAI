@@ -93,6 +93,13 @@ export const SETTINGS = {
     StackedClearMul: 0.8,
     Learn: 0.3,
     LearnClamp: [0.4, 2.5],
+    /** The pace and HP rate a core starts at: measured over the model's engage price (`clre`, `hpe`) on the finished clears of
+     *  the check runs cngchk12 and cngchk13 (10/11/2026), median clear time 0.70 (16 clears) and median HP lost 0.55 (11 clears
+     *  with `hpe` of 0.1 or more; the spells and bounces the right-click model leaves out are in the heroes, not the camps).
+     *  A refusal teaches neither factor, so a start of 1 priced every early camp about twice too high. `fitted`; the drill
+     *  cngdr3-5 fit (0.57, 0.36) is Luna's and Pudge's and is not used. */
+    PaceStart: 0.7,
+    HPRateStart: 0.55,
     LateGrowth: 1.15,
     /** The HP rate learns only from a clear the model priced at this or more: measured over priced on a near-zero price is
      *  noise (drill cngdr2: three clears priced 0.04 that cost 0 took pos1's rate from 0.94 to 0.5). `judgement`. */
@@ -273,19 +280,19 @@ export function PriorClearTime(type: Camps.CampType, level: number, stacks: numb
 }
 
 export function Pace(bot: Unit): number {
-    return pace[bot.GetPlayerID()] ?? 1;
+    return pace[bot.GetPlayerID()] ?? SETTINGS.PaceStart;
 }
 
 function learn(bot: Unit, measured: number, prior: number): void {
     if (prior <= 0) return;
     const pid = bot.GetPlayerID();
-    const old = pace[pid] ?? 1;
+    const old = pace[pid] ?? SETTINGS.PaceStart;
     pace[pid] = clamp(old + SETTINGS.Learn * (measured / prior - old), SETTINGS.LearnClamp);
 }
 
 function growLate(bot: Unit): void {
     const pid = bot.GetPlayerID();
-    pace[pid] = clamp((pace[pid] ?? 1) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
+    pace[pid] = clamp((pace[pid] ?? SETTINGS.PaceStart) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
 }
 
 export function PriorClearHP(type: Camps.CampType, level: number, stacks: number): number {
@@ -294,20 +301,34 @@ export function PriorClearHP(type: Camps.CampType, level: number, stacks: number
     return (s.ClearHP[type] ?? s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks);
 }
 
+/**
+ * The learned pace and HP rate are learned against the clear model's price (the live or last-seen neutrals), so they scale
+ * that price only. The type tables are fitted to the HP lost and the seconds of whole trips and are not scaled by a factor
+ * learned on another model (a plan priced from the table and re-priced live at the camp used two models; cngchk13: the live
+ * read was 1.2-4.4 times the table on 15 large camps).
+ */
+function paceFor(bot: Unit, src: string): number {
+    return src === "table" ? 1 : Pace(bot);
+}
+
+function hpRateFor(bot: Unit, src: string): number {
+    return src === "table" ? 1 : HPRate(bot);
+}
+
 export function HPRate(bot: Unit): number {
-    return hpRate[bot.GetPlayerID()] ?? 1;
+    return hpRate[bot.GetPlayerID()] ?? SETTINGS.HPRateStart;
 }
 
 function learnHP(bot: Unit, measured: number, prior: number): void {
     if (prior <= 0) return;
     const pid = bot.GetPlayerID();
-    const old = hpRate[pid] ?? 1;
+    const old = hpRate[pid] ?? SETTINGS.HPRateStart;
     hpRate[pid] = clamp(old + SETTINGS.Learn * (math.max(measured, 0) / prior - old), SETTINGS.LearnClamp);
 }
 
 function growHP(bot: Unit): void {
     const pid = bot.GetPlayerID();
-    hpRate[pid] = clamp((hpRate[pid] ?? 1) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
+    hpRate[pid] = clamp((hpRate[pid] ?? SETTINGS.HPRateStart) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
 }
 
 // ------------------------------------------------------------------------------------------------ the clear model
@@ -589,8 +610,8 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const [prior, hpPrior, src, priced] = estimate(bot, spawner, center, stacks, now);
         const clrt = PriorClearTime(spawner.type, level, stacks);
         const hpt = PriorClearHP(spawner.type, level, stacks);
-        const clr = prior * Pace(bot);
-        const hpc = hpPrior * HPRate(bot);
+        const clr = prior * paceFor(bot, src);
+        const hpc = hpPrior * hpRateFor(bot, src);
         if (hpOf(bot) - hpc < s.ArriveHP) continue;
         const back = dist(center, c.at) / speed;
         const ret = now + dist(from, center) / speed + clr + back;
@@ -635,8 +656,8 @@ function tripSpawners(bot: Unit): Camps.Spawner[] {
 export function CanClear(core: Unit, idx: number, stacks: number): boolean {
     const spawner = Camps.SpawnerByIdx(idx);
     if (spawner === undefined) return false;
-    const [, hpPrior] = estimate(core, spawner, Camps.BoxCenter(spawner), stacks, DotaTime());
-    return 1 - hpPrior * HPRate(core) >= SETTINGS.ArriveHP;
+    const [, hpPrior, src] = estimate(core, spawner, Camps.BoxCenter(spawner), stacks, DotaTime());
+    return 1 - hpPrior * hpRateFor(core, src) >= SETTINGS.ArriveHP;
 }
 StackJob.SetCarryClear(CanClear);
 
@@ -1041,7 +1062,9 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
  * model's clear of the live camp, with the learned pace and HP rate, must leave ArriveHP and end by the plan's leave
  * time. The plan's price can be the type tables', which cannot see what spawned (drill cngdr2: a small camp of a
  * taskmaster and two troll berserkers priced 0.23 by the table, 0.89 live; a level 4 large 0.44 against 0.96). A refusal
- * leaves the camp's make-up as `seen`, so the next plan prices it from that. Under CampForce only the HP half holds.
+ * leaves the camp's make-up as `seen`, so the next plan prices it from that. Under CampForce only the HP half holds. Under
+ * AdmitLog (drills only) both halves are judged by the real rule, `phase=admit` logs the verdict (`v`: hp, time or ok) and
+ * nobody is refused, so the outcome of every camp the rule would have refused is observed.
  */
 function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolean {
     const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), now);
@@ -1049,8 +1072,14 @@ function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolea
     const [secs, hp] = ClearOf(bot, met);
     t.clre = secs;
     t.hpe = hp;
-    if (hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP) return false;
-    return Overrides.CampForce() || now + secs * Pace(bot) <= t.plan.leaveBy;
+    const hpFail = hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP;
+    const timeFail = now + secs * Pace(bot) > t.plan.leaveBy;
+    if (Overrides.AdmitLog()) {
+        log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
+        return true;
+    }
+    if (hpFail) return false;
+    return Overrides.CampForce() || !timeFail;
 }
 
 function measured(bot: Unit, t: Trip, now: number, center: Vector): void {
