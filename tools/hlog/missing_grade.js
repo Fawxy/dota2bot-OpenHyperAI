@@ -130,6 +130,12 @@ function run(store = new Store()) {
                     if (anyPresent) o.allowedShow++;
                 }
             }
+            // The rule the build really ran: its logged refusals (cmiss > 0), true when any unseen enemy came near (the row
+            // does not name the counted heroes), so it grades a build whose rule the rebuild does not model (Threat's belief).
+            const lg = out.logged = out.logged || { rows: 0, refused: 0, refusedTrue: 0, perHero: 0, perHeroTrue: 0, allowed: 0, allowedShow: 0 };
+            const shown = info.some(i => i.present && !i.visibleNow);
+            lg.rows++;
+            if (row.cmiss > 0) { lg.refused++; if (shown) lg.refusedTrue++; } else { lg.allowed++; if (shown) lg.allowedShow++; }
         }
     }
     return { rows: nRows, window: WINDOW, near: NEAR, rules: out, heroes: out.heroes, unseen: out.unseen };
