@@ -15,14 +15,14 @@ check("the partner drew 1 s ago: the lane is held", A.LaneHeld(10, 2, { pid = 1,
 check("our own draw does not hold us (the cooldown does)", not A.LaneHeld(10, 1, { pid = 1, at = 9 }))
 check("the partner's draw has run out: the lane is free", not A.LaneHeld(10, 2, { pid = 1, at = 6 }))
 
--- The feed tilts the clash toward the lane's target point (900 from our T1 on a side lane): it fires when the clash sits or is
--- heading beyond it, including a clash coming back in from beyond it, and not once the clash is ours.
-check("clash in the middle (2000 out), holding: feed", A.FeedWanted({ own = 2000, move = 0 }, 900))
-check("clash at the target but our bigger wave will push it out: feed", A.FeedWanted({ own = 900, move = 400 }, 900))
-check("clash coming back in from beyond the target: still feed", A.FeedWanted({ own = 1600, move = -300 }, 900))
-check("clash at the target and holding: no feed", not A.FeedWanted({ own = 950, move = 50 }, 900))
-check("clash inside the target, coming in: no feed", not A.FeedWanted({ own = 600, move = -200 }, 900))
-check("no reading: no feed", not A.FeedWanted(nil, 900))
+-- Slice lh-draw step 2: the feed runs on every wave; the controller refuses it only on a shove wave, a drill only by forcing
+-- another lever.
+check("a back wave: no veto", A.CtlVeto({ mode = "safe", levers = { "feed" } }, nil) == nil)
+check("a hold wave choosing no lever: no veto (the feed is no longer the controller's to give)", A.CtlVeto({ mode = "safe", levers = {} }, nil) == nil)
+check("a shove wave: refused", A.CtlVeto({ mode = "shove", levers = { "shove" } }, nil) == "ctl_shove")
+check("shove mode on a hold wave: refused (the feed would pull back what the shove pushed)", A.CtlVeto({ mode = "shove", levers = {} }, nil) == "ctl_shove")
+check("a drill forcing none: refused", A.CtlVeto({ mode = "safe", levers = {} }, "none") == "ctl_forced")
+check("a drill forcing the feed: fires even under shove", A.CtlVeto({ mode = "shove", levers = {} }, "feed") == nil)
 
 -- The tower move orders just past their creeps, never from inside the tower's reach.
 local x, y = A.TowerPoint(0, 0, 500, 0)

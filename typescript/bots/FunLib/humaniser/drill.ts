@@ -191,6 +191,17 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 0 },
         overrides: { ForceLever: "r:bot=none" },
     },
+    // Slice lh-draw step 2: the deny feed on every wave the lane controller does not shove, against an enemy that hits back
+    // (deaths or HP lost on feeds would bring the danger checks in). No forced lever: the controller decides live.
+    "feed-every": {
+        note: "Radiant pos1 lane-only with lane aggro, the lane controller live, Dire pos3 a sentry in the lane, everyone else benched",
+        cast: SAFE_CORE,
+        sentry: { d: [3] },
+        others: "bench",
+        castLaneOnly: true,
+        laneAggro: true,
+        rep: { every: 30, from: 0 },
+    },
     "lever-feed": {
         note: "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), Dire pos3 a statue in the lane (the feed orders an attack on a visible enemy hero), everyone else benched",
         cast: SAFE_CORE,

@@ -547,7 +547,8 @@ export const EVENTS = {
         pid: "num",
         role: "str",
         /** A shared gate (`cooldown`, `lane`, `hp`, `trading`, `tower`, `pull`, `reach`), or `tower:<why>` / `feed:<why>`
-         *  (`feed:inside_hold`: the walk back would draw their creeps inside the wave hold point). */
+         *  (`feed:inside_hold`: the walk back would draw their creeps inside the wave hold point; `feed:ctl_shove`: the lane
+         *  controller's live decision is a shove; `feed:ctl_forced`: a drill forces another lever). */
         why: "str",
         /** feed:approach_far: the bot's distance to the approach point. */
         ad: "num",

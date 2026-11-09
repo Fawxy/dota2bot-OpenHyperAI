@@ -18,6 +18,7 @@
 import { BotMode, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import type * as Lib from "bots/FunLib/engine/tasks";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -49,8 +50,6 @@ export const SETTINGS = {
     TowerOrderMargin: 56,
     /** Feed: our ranged creep at this HP fraction or more (below it the body's deny already wants it). */
     FeedCreepHp: 0.25,
-    /** Feed when the clash sits, or is forecast, more than this beyond the target point. */
-    FeedMargin: 150,
     /** No feed with our ranged creep this close to one of our towers (their wave would die to it). */
     OwnTowerR: 800,
     /** Tower: our wave within this of their tower, their creeps within TowerSeek of it; the order point sits TowerPast beyond
@@ -261,12 +260,15 @@ export function Tick(bot: Unit): void {
 }
 
 /**
- * Pure: whether the clash sits, or is forecast to sit, beyond the target point (`own` the clash's distance from our T1 now,
- * `move` its forecast move toward their T1). A clash coming in from beyond it still wants the feed: it is not ours yet.
+ * Pure: why the lane controller refuses the feed this wave, or undefined (slice lh-draw step 2, user 09/11/2026: the deny
+ * feed runs on every wave, not only on the controller's `back` waves; its drill measured no lane move, -10 +- 396). A live
+ * decision refuses it on a `shove` wave (the feed would pull back the wave the shove pushes); a drill's forced lever other
+ * than `feed` refuses it (a lever drill's control arm). Our pull out on the lane is the shared gate's (`pull`).
  */
-export function FeedWanted(r: { own: number; move: number } | undefined, target: number): boolean {
-    if (r === undefined) return false;
-    return math.max(r.own, r.own + r.move) > target + SETTINGS.FeedMargin;
+export function CtlVeto(d: { mode: string; levers: string[] } | undefined, forced: string | undefined): string | undefined {
+    if (forced !== undefined) return forced === "feed" ? undefined : "ctl_forced";
+    if (d !== undefined && (d.mode === "shove" || d.levers.includes("shove"))) return "ctl_shove";
+    return undefined;
 }
 
 /**
@@ -492,13 +494,9 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
         if (valid(c) && isLaneCreep(c) && isRanged(c) && fed.get(c) !== true && frac(c) >= SETTINGS.FeedCreepHp) ranged = c;
     }
     if (ranged === undefined) return $multi(undefined, "no_ranged");
-    // Slice lane-control 2b: the lane controller's wave decision says whether this wave wants the feed (a named input; the
-    // feed keeps its own gates below); with no live decision, the feed's own reading decides.
     const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
-    const chosen = LaneControl.Chosen(team, lane, "feed");
-    if (chosen === false) return $multi(undefined, "ctl");
-    const r = pushRead(team, lane);
-    if (chosen === undefined && !FeedWanted(r, LanePush.TargetOf(lane))) return $multi(undefined, r === undefined ? "no_read" : "at_target");
+    const veto = CtlVeto(LaneControl.Current(team, lane), LaneControl.ForcedLever(Overrides.Get("ForceLever"), team, lane));
+    if (veto !== undefined) return $multi(undefined, veto);
     if (nearOwnTower(ranged.GetLocation(), team)) return $multi(undefined, "own_tower");
     const fighting = enemyCreepsNear(bot, ranged.GetLocation(), SETTINGS.FightR);
     if (fighting.length < SETTINGS.FeedMinCreeps) return $multi(undefined, "few_creeps");
@@ -528,10 +526,13 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     const a = newAttempt(bot, "feed", "approach", hero, ranged, back, approach, now);
     a.ad = math.floor(ad);
     a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
-    a.q = math.floor(r!.q * 100) / 100;
-    a.st = r!.state;
-    a.own = math.floor(r!.own);
-    a.fc = math.floor(r!.own + r!.move);
+    const r = pushRead(team, lane);
+    if (r !== undefined) {
+        a.q = math.floor(r.q * 100) / 100;
+        a.st = r.state;
+        a.own = math.floor(r.own);
+        a.fc = math.floor(r.own + r.move);
+    }
     return $multi(a, "go");
 }
 
