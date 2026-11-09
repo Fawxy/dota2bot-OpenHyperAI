@@ -24,7 +24,10 @@ const games = args.flatMap((a, i) => (args[i - 1] === '--game' ? [Number(a)] : [
 // --rows core (default): the offlane core's pull candidate (ev_lane_ctl cmiss). --rows support-pull: each support lane pull
 // start (ev_pull_job, pos 4-5, at `left`), walk = the support's position to its camp's centre (ev_camp), `logged` always 0
 // (no missing gate in that build), plus the pull's outcome (hit by a hero, died). --rows stack: each stack attempt (ev_stack,
-// not skips) at its `start`, walk to the camp's centre; hit = HP at the end over 15 points below the start, died = death.
+// not skips) at its `start`, walk to the camp's centre; hit = the job's own end line (`ev=job phase=end job=stack hit`, hero
+// damage during the job, matched within 3 s of the stack line), died = death. `outcome` also counts `after`: the hero's
+// snapshots stop within 15 s of the row's line (a death just after the job, which `died`/`death` miss). The tool's vision is
+// our heroes only and its walk has 11 points, so its holds are an upper bound on the build's.
 const CLI = { rows: (() => { const i = args.indexOf('--rows'); return i < 0 ? 'core' : args[i + 1]; })(), minGame: opt('--min-game', 0), site: args.includes('--site') };
 const WINDOW = opt('--window', 15);
 const NEAR = opt('--near', 800);
@@ -60,7 +63,8 @@ function run(store = new Store(), o = {}) {
         : db('SELECT DISTINCT game_id g FROM ev_lane_ctl WHERE cmiss IS NOT NULL AND game_id >= ?', MIN_GAME).map(r => r.g);
     const centres = {};
     if (ROWS !== 'core') for (const c of db('SELECT idx, AVG(x) x, AVG(y) y FROM ev_camp GROUP BY idx')) centres[c.idx] = { x: c.x, y: c.y };
-    const outcome = { held: { n: 0, hit: 0, died: 0, show: 0 }, allowed: { n: 0, hit: 0, died: 0, show: 0 } };
+    const outcome = { held: { n: 0, hit: 0, died: 0, after: 0, show: 0 }, allowed: { n: 0, hit: 0, died: 0, after: 0, show: 0 } };
+    let lastGame;
     const out = {};
     for (const r of Object.keys(RULES)) out[r] = { rows: 0, refused: 0, refusedTrue: 0, perHero: 0, perHeroTrue: 0, allowed: 0, allowedShow: 0 };
     let nRows = 0;
@@ -78,8 +82,8 @@ function run(store = new Store(), o = {}) {
             return a[lo].t <= t && t - a[lo].t < 3 ? a[lo] : undefined;
         };
         const rows = ROWS === 'support-pull'
-            ? db('SELECT left t, pid core, camp, 0 cmiss, hit, died FROM ev_pull_job WHERE game_id = ? AND pos >= 4 AND left IS NOT NULL', g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
-            : ROWS === 'stack' ? db("SELECT start t, pid core, camp, 0 cmiss, (hpa - hpe > 15) hit, death died FROM ev_stack WHERE game_id = ? AND res != 'skip' AND start IS NOT NULL", g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
+            ? db('SELECT left t, t tend, pid core, camp, 0 cmiss, hit, died FROM ev_pull_job WHERE game_id = ? AND pos >= 4 AND left IS NOT NULL', g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
+            : ROWS === 'stack' ? db("SELECT s.start t, s.t tend, s.pid core, s.camp, 0 cmiss, (SELECT MAX(j.hit) FROM ev_job j WHERE j.game_id = s.game_id AND j.pid = s.pid AND j.job = 'stack' AND j.phase = 'end' AND ABS(j.t - s.t) <= 3) hit, s.death died FROM ev_stack s WHERE s.game_id = ? AND s.res != 'skip' AND s.start IS NOT NULL", g).map(r => ({ ...r, team: r.core < 5 ? 2 : 3 }))
             : db('SELECT t, team, core, cmiss, cwhy FROM ev_lane_ctl WHERE game_id = ? AND cmiss IS NOT NULL AND core IS NOT NULL', g);
         for (const row of rows) {
             const me = at(row.core, row.t);
@@ -139,7 +143,11 @@ function run(store = new Store(), o = {}) {
                 o.rows++;
                 if (name === 'liveBelief' && ROWS !== 'core') {
                     const k = counted.length * (row.t < 240 ? 0.2 : 0.5) >= 0.5 ? 'held' : 'allowed';
-                    outcome[k].n++; if (row.hit > 0) outcome[k].hit++; if (row.died > 0) outcome[k].died++; if (info.some(i => i.present && !i.visibleNow)) outcome[k].show++;
+                    outcome[k].n++; if (row.hit > 0) outcome[k].hit++; if (row.died > 0) outcome[k].died++;
+                    // Dead heroes are not snapshotted: a gap over 6 s starting in [tend - 2, tend + 15] is a death.
+                    const mine = snaps[row.core] || [];
+                    if (mine.some((x, i) => x.t >= row.tend - 2 && x.t <= row.tend + 15 && (mine[i + 1] === undefined ? false : mine[i + 1].t - x.t > 6))) outcome[k].after++;
+                    lastGame = Math.max(lastGame ?? 0, g); if (info.some(i => i.present && !i.visibleNow)) outcome[k].show++;
                 }
                 if (name === 'live') o.agree[logged && counted.length ? 'both' : logged ? 'onlyLogged' : counted.length ? 'onlyRebuilt' : 'none'] = (o.agree[logged && counted.length ? 'both' : logged ? 'onlyLogged' : counted.length ? 'onlyRebuilt' : 'none'] || 0) + 1;
                 if (counted.length > 0) {
@@ -161,7 +169,7 @@ function run(store = new Store(), o = {}) {
             if (row.cmiss > 0) { lg.refused++; if (shown) lg.refusedTrue++; } else { lg.allowed++; if (shown) lg.allowedShow++; }
         }
     }
-    return { rows: nRows, window: WINDOW, near: NEAR, rules: out, heroes: out.heroes, unseen: out.unseen, outcome };
+    return { rows: nRows, window: WINDOW, near: NEAR, rules: out, heroes: out.heroes, unseen: out.unseen, outcome, lastGame };
 }
 
 function main() {
@@ -169,7 +177,7 @@ function main() {
     if (args.includes('--dump')) { require('fs').writeFileSync(args[args.indexOf('--dump') + 1], JSON.stringify(res.unseen)); process.exit(0); }
     if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
     else {
-        if (CLI.rows !== 'core') console.log(CLI.rows + ' rows by the built belief (weight >= 0.5): ' + JSON.stringify(res.outcome));
+        if (CLI.rows !== 'core') console.log(CLI.rows + ' rows by the built belief (weight >= 0.5), games to ' + res.lastGame + ': ' + JSON.stringify(res.outcome));
         console.log(`rows ${res.rows} (${CLI.rows} rows), truth = enemy within ${res.near} of the walk within ${res.window} s`);
         console.log('rule           refused  precision(rows)  perHero  precision(heroes)  allowed  enemy-showed-up');
         console.log('live rebuilt vs logged cmiss>0:', JSON.stringify(res.rules.live.agree));
