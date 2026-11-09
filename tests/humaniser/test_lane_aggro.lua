@@ -251,19 +251,4 @@ do
 	check("unsafe mid-walk: the move ends `unsafe` with no draw order", has("result=unsafe") and not Ag.Pending(bot) and #ActionsOf(1, "AttackUnit") == 0)
 end
 
--- Slice lh-draw 1b: a contested last hit is dragged only when no spot within our reach of the creep is safe; a creep a little
--- beyond the draw range is stepped toward only when the step is safe.
-check("a safe spot to hit from: no drag even with the creep in draw range", A.DragPlan(200, true) == "safe")
-check("no safe spot, creep in draw range: draw now", A.DragPlan(250, false) == "in")
-check("no safe spot, creep beyond draw range: no drag (the contest walk-in walks in)", A.DragPlan(450, false) == "far")
-check("walk back: the dragged creep's hit due later than the walk to it plus the lead: keep walking", not A.HandBack({1.5, 0.6}))
-check("walk back: the hit due within the walk to it plus the lead: hand the creep to the body", A.HandBack({0.9, 0.6}))
-check("walk back: the creep not offered as a last hit: keep walking", not A.HandBack(nil))
-
--- The hit spot stands on the creep-to-bot line at our reach (less 25), or where the bot is when it is nearer than that.
-local p = A.HitSpot(0, 0, 1000, 0, 225)
-check("a bot 1000 out with reach 225: the spot is 200 from the creep toward the bot", p[1] == 200 and p[2] == 0)
-p = A.HitSpot(0, 0, 0, 100, 225)
-check("a bot already inside its reach: the spot is where it stands", p[1] == 0 and p[2] == 100)
-
 finish()

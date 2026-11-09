@@ -38,7 +38,7 @@ export interface Entry {
     /** Lane-only heroes also run the wave hold (states/wave_hold, under its switches) and the hold's own draw; no other lane
      *  aggro draw starts. Its control arm is the same drill with `Ours.CoreHold` off. */
     laneHold?: boolean;
-    /** Lane-only cores also run lane aggro's draws (the feed under the lane controller's word, drag, tower), as a
+    /** Lane-only cores also run lane aggro's draws (the feed under the lane controller's word, tower), as a
      *  lane-only core otherwise does not. */
     laneAggro?: boolean;
     /** Everyone not in `cast` or `statue`. */
@@ -190,40 +190,6 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 30, from: 0 },
         overrides: { ForceLever: "r:bot=none" },
-    },
-    // Slice lh-draw: the last-hit drag against a ranged enemy hero standing by its creeps (a melee statue leaves a safe spot to
-    // hit from almost always: lhd2, 80 of 84 looks). Lineup A (seed 30): Pudge (melee) top against Lich, Sniper (ranged) mid
-    // against Zeus. The feed refused (ForceLever none), so the drag is the draw under test.
-    "drag-melee": {
-        note: "Radiant pos3 lane-only with lane aggro, the feed refused (ForceLever r:top=none), Dire pos5 a statue in its lane (top), everyone else benched",
-        cast: { r: [3] },
-        statue: { d: [5] },
-        others: "bench",
-        castLaneOnly: true,
-        laneAggro: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:top=none" },
-    },
-    // The drag against an enemy that hits back (the contest walk-in's price is then real): Pudge top against a Lich sentry.
-    "drag-sentry": {
-        note: "Radiant pos3 lane-only with lane aggro, the feed refused (ForceLever r:top=none), Dire pos5 a sentry in its lane (top), everyone else benched",
-        cast: { r: [3] },
-        sentry: { d: [5] },
-        others: "bench",
-        castLaneOnly: true,
-        laneAggro: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:top=none" },
-    },
-    "drag-ranged": {
-        note: "Radiant pos2 lane-only with lane aggro, the feed refused (ForceLever r:mid=none), Dire pos2 a statue in mid, everyone else benched",
-        cast: { r: [2] },
-        statue: { d: [2] },
-        others: "bench",
-        castLaneOnly: true,
-        laneAggro: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:mid=none" },
     },
     "lever-feed": {
         note: "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), Dire pos3 a statue in the lane (the feed orders an attack on a visible enemy hero), everyone else benched",
