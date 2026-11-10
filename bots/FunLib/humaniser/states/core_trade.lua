@@ -352,19 +352,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue104
+            local __continue105
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue104 = true
+                    __continue105 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue104 = true
+                __continue105 = true
             until true
-            if not __continue104 then
+            if not __continue105 then
                 break
             end
         end
@@ -657,6 +657,11 @@ function ____exports.Desire(bot)
     end
     return open(bot, d.kind, target, now)
 end
+--- A trade, kill or fight episode is open for this hero (Desire returns its desire in attack mode); reads only.
+function ____exports.Running(bot)
+    local ep = episodes[bot:GetPlayerID()]
+    return ep ~= nil and ep.ended ~= true
+end
 --- Whether this frame's GetDesire took our arm; mode_attack_generic's Think runs ours when true, OHA's port otherwise.
 function ____exports.OwnsFrame(bot)
     return ownsFrame[bot:GetPlayerID()] == true
@@ -675,19 +680,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue94
+            local __continue95
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue94 = true
+                __continue95 = true
             until true
-            if not __continue94 then
+            if not __continue95 then
                 break
             end
         end

@@ -456,6 +456,12 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     return undefined;
 }
 
+/** A trade, kill or fight episode is open for this hero (Desire returns its desire in attack mode); reads only. */
+export function Running(bot: Unit): boolean {
+    const ep = episodes[bot.GetPlayerID()];
+    return ep !== undefined && ep.ended !== true;
+}
+
 /** Whether this frame's GetDesire took our arm; mode_attack_generic's Think runs ours when true, OHA's port otherwise. */
 export function OwnsFrame(bot: Unit): boolean {
     return ownsFrame[bot.GetPlayerID()] === true;
