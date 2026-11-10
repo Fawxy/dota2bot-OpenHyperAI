@@ -284,6 +284,22 @@ do
 	local sFullE, iFullE = engaged({ hp = 100, threat = true, engaged = true })
 	check("engaged at full HP: 24 of 100 stays under READ_BURST (a lone harasser is not pushed back)", sFullE ~= nil and iFullE.why == "pref", iFullE and (tostring(iFullE.why) .. " " .. tostring(iFullE.rb)))
 
+	-- rtch9: two heroes in reach at full HP with `burst` under READ_BURST read `pressured` (0.25 x 2 + 0.5 x 0.2 = 0.6), the
+	-- band a free laner leaves from, so the spot is refused; under READ_BURST alone it was kept and retreat restarted.
+	local sTwo, bTwo = spotFor(SDK, { hp = 100, threat = true }, function(b)
+		b.loc = Vector(-3000, 0)
+		for k, y in ipairs({ 0, 150 }) do
+			local f = MakeUnit({ pid = 6 + k, team = 3, loc = Vector(900, y) })
+			f.estDamage = 10
+			foes[k] = f
+		end
+	end)
+	local iTwo = require("bots/FunLib/humaniser/states/laning").SpotInfo(bTwo)
+	foes[1], foes[2] = nil, nil
+	check("two in reach at full HP: burst under the bar but the read is pressured, the spot is refused",
+		sTwo ~= nil and iTwo.why == "hero" and iTwo.rp == "threat",
+		iTwo and string.format("why=%s rp=%s rb=%s rt=%s", tostring(iTwo.why), tostring(iTwo.rp), tostring(iTwo.rb), tostring(iTwo.rt)))
+
 	-- The rtwatch1 shape (7:33, 37% HP, the chaser about 1,100 away): ev=lane_pos logs the read's `missing` and unseen pids at the
 	-- chosen spot, and each rule's verdict at the preferred point, so a log can say which limit pushed the spot. Pins today's bars.
 	local e2

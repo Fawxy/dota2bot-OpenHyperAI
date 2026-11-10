@@ -76,6 +76,13 @@ local REACT_SECS = 1.5
 local READ_HORIZON = 3
 local READ_BURST = 0.35
 local READ_MISSING = 0.5
+--- A place whose read is `pressured` (Threat.SETTINGS.Pressured) is refused too: retreat's free leave budget is that band, so a
+-- spot under it is one a free laner would leave from. rtch9 (66fa2eb3): two chasers in reach read 0.6-0.7 at full HP with `burst`
+-- 0.2-0.33 under READ_BURST; each episode ended out of their reach and the spot walked her back in, 22 episodes in 5 chase reps.
+-- A lone harasser at full HP reads 0.25 + 0.5 x burst, under the band while burst is under READ_BURST (user 10/11/2026).
+local function pressured(r)
+    return r.threat >= Threat.SETTINGS.Pressured
+end
 --- Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
 -- Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
 -- rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
@@ -126,15 +133,15 @@ function ____exports.ReadyNukes(enemy)
         local i = 0
         while i < 6 do
             do
-                local __continue8
+                local __continue9
                 repeat
                     local a = enemy:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:IsPassive() or a:GetLevel() < 1 then
-                        __continue8 = true
+                        __continue9 = true
                         break
                     end
                     if a:GetAbilityDamage() <= 0 or a:GetCooldownTimeRemaining() > 0 or a:GetManaCost() > mana then
-                        __continue8 = true
+                        __continue9 = true
                         break
                     end
                     n = n + 1
@@ -142,9 +149,9 @@ function ____exports.ReadyNukes(enemy)
                         range,
                         a:GetCastRange()
                     )
-                    __continue8 = true
+                    __continue9 = true
                 until true
-                if not __continue8 then
+                if not __continue9 then
                     break
                 end
             end
@@ -159,10 +166,10 @@ function ____exports.NearestNuke(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
         do
-            local __continue12
+            local __continue13
             repeat
                 if not alive(h) then
-                    __continue12 = true
+                    __continue13 = true
                     break
                 end
                 local dist = GetUnitToUnitDistance(bot, h)
@@ -170,9 +177,9 @@ function ____exports.NearestNuke(bot)
                     bestD = dist
                     best = h
                 end
-                __continue12 = true
+                __continue13 = true
             until true
-            if not __continue12 then
+            if not __continue13 then
                 break
             end
         end
@@ -226,11 +233,11 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover, bus
         local i = 0
         while i < #heroes do
             do
-                local __continue26
+                local __continue27
                 repeat
                     local h = heroes[i + 1]
                     if not alive(h) then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     local r = reach[i + 1]
@@ -247,9 +254,9 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover, bus
                     if dist < r + margin then
                         hp = true
                     end
-                    __continue26 = true
+                    __continue27 = true
                 until true
-                if not __continue26 then
+                if not __continue27 then
                     break
                 end
             end
@@ -260,11 +267,11 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover, bus
         local i = 0
         while i < #creeps do
             do
-                local __continue31
+                local __continue32
                 repeat
                     local c = creeps[i + 1]
                     if not alive(c) then
-                        __continue31 = true
+                        __continue32 = true
                         break
                     end
                     local ring = (cover ~= nil and cover.held[i + 1] or busy ~= nil and busy[i + 1]) and HELD_RING or (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING)
@@ -278,9 +285,9 @@ function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover, bus
                     if dist < ring + margin then
                         hp = true
                     end
-                    __continue31 = true
+                    __continue32 = true
                 until true
-                if not __continue31 then
+                if not __continue32 then
                     break
                 end
             end
@@ -301,10 +308,10 @@ local function coverFor(bot, creeps, heroes)
     local targets = {}
     for ____, t in ipairs(bot:GetNearbyTowers(1600, false)) do
         do
-            local __continue38
+            local __continue39
             repeat
                 if not alive(t) then
-                    __continue38 = true
+                    __continue39 = true
                     break
                 end
                 towers[#towers + 1] = {
@@ -315,9 +322,9 @@ local function coverFor(bot, creeps, heroes)
                 if target ~= nil and target ~= nil then
                     targets[#targets + 1] = target
                 end
-                __continue38 = true
+                __continue39 = true
             until true
-            if not __continue38 then
+            if not __continue39 then
                 break
             end
         end
@@ -398,24 +405,24 @@ local function ownDistances(path, t1, dir, list)
     local out = {}
     for ____, c in ipairs(list) do
         do
-            local __continue68
+            local __continue69
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue68 = true
+                    __continue69 = true
                     break
                 end
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue68 = true
+                    __continue69 = true
                     break
                 end
                 local s, d = LanePush.Project(path, l.x, l.y)
                 if d <= PATH_R then
                     out[#out + 1] = dir * (s - t1)
                 end
-                __continue68 = true
+                __continue69 = true
             until true
-            if not __continue68 then
+            if not __continue69 then
                 break
             end
         end
@@ -634,7 +641,7 @@ function ____exports.Compute(bot, role, fed, hold)
             return false
         end
         local r = readAt(p)
-        return r.burst >= READ_BURST or r.missing >= READ_MISSING
+        return r.burst >= READ_BURST or r.missing >= READ_MISSING or pressured(r)
     end
     local function limits(p, cov)
         local ____readOn_result_6
@@ -706,7 +713,7 @@ function ____exports.Compute(bot, role, fed, hold)
             info.rp = "none"
             if readOn(pref) then
                 local rpr = readAt(pref)
-                info.rp = rpr.burst >= READ_BURST and "burst" or (rpr.missing >= READ_MISSING and "missing" or "none")
+                info.rp = rpr.burst >= READ_BURST and "burst" or (rpr.missing >= READ_MISSING and "missing" or (pressured(rpr) and "threat" or "none"))
             end
             info.re = #r.eng
             info.rat = #r.att > 0 and 1 or 0
@@ -740,11 +747,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue120
+                    local __continue121
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue120 = true
+                            __continue121 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -757,9 +764,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue120 = true
+                        __continue121 = true
                     until true
-                    if not __continue120 then
+                    if not __continue121 then
                         break
                     end
                 end

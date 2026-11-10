@@ -86,6 +86,13 @@ const READ_HORIZON = 3;
 const READ_BURST = 0.35;
 const READ_MISSING = 0.5;
 /**
+ * A place whose read is `pressured` (Threat.SETTINGS.Pressured) is refused too: retreat's free leave budget is that band, so a
+ * spot under it is one a free laner would leave from. rtch9 (66fa2eb3): two chasers in reach read 0.6-0.7 at full HP with `burst`
+ * 0.2-0.33 under READ_BURST; each episode ended out of their reach and the spot walked her back in, 22 episodes in 5 chase reps.
+ * A lone harasser at full HP reads 0.25 + 0.5 x burst, under the band while burst is under READ_BURST (user 10/11/2026).
+ */
+const pressured = (r: Threat.Read): boolean => r.threat >= Threat.SETTINGS.Pressured;
+/**
  * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
  * Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
  * rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
@@ -152,7 +159,7 @@ export interface SpotInfo {
     rm?: number;
     mp?: string;
     /** At the preferred point: what the old hero limits say (`op`: `hero`, `hp`, ... or `none`) and what the read says (`rp`:
-     *  `burst`, `missing` or `none`), so a log can tell which limit pushed the spot. */
+     *  `burst`, `missing`, `threat` (the read is `pressured`) or `none`), so a log can tell which limit pushed the spot. */
     op?: string;
     rp?: string;
     /** Heroes the read counted as engaged at the chosen spot, and 1 when some reaching hero's `GetAttackTarget()` is the bot. */
@@ -499,7 +506,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     const readBreaks = (p: Vector): boolean => {
         if (!readOn(p)) return false;
         const r = readAt(p);
-        return r.burst >= READ_BURST || r.missing >= READ_MISSING;
+        return r.burst >= READ_BURST || r.missing >= READ_MISSING || pressured(r);
     };
     const limits = (p: Vector, cov: Cover | undefined): Why | undefined =>
         readOn(p) ? Breaks(p, creeps, towers, margin, [], [], cov, busy) : Breaks(p, creeps, towers, margin, heroes, reach, cov, busy);
@@ -517,7 +524,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
             info.rp = "none";
             if (readOn(pref)) {
                 const rpr = readAt(pref);
-                info.rp = rpr.burst >= READ_BURST ? "burst" : rpr.missing >= READ_MISSING ? "missing" : "none";
+                info.rp = rpr.burst >= READ_BURST ? "burst" : rpr.missing >= READ_MISSING ? "missing" : pressured(rpr) ? "threat" : "none";
             }
             info.re = r.eng.length;
             info.rat = r.att.length > 0 ? 1 : 0;
