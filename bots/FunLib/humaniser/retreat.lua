@@ -856,6 +856,9 @@ local function step(bot, st, r, now)
         ep.underSince = nil
         return nil
     end
+    if #r.reach == 0 then
+        return "gone"
+    end
     ep.underSince = ep.underSince or now
     return now - ep.underSince >= s.ExitDwell and "safe" or nil
 end

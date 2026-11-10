@@ -31,7 +31,10 @@ export const SETTINGS = {
     BudgetFree: 0.5,
     BudgetBusy: 0.6,
     BudgetCommitted: 0.75,
-    /** Leave the episode when threat stays under budget - ExitBand for ExitDwell s (explicit hysteresis). judgement. */
+    /**
+     * Leave the episode when threat stays under budget - ExitBand for ExitDwell s (explicit hysteresis) while a hero is still in
+     * reach; with nobody in reach, at once under the band. judgement.
+     */
     ExitBand: 0.15,
     ExitDwell: 1.5,
     /** Heal floor: HP share under HealFloor with no enemy in reach sends the hero to the fountain until HealUntil. judgement. */
@@ -473,6 +476,10 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
         ep.underSince = undefined;
         return undefined;
     }
+    // D2: nobody can reach us, so the danger has gone and the episode stops here, wherever the walk is. The dwell is for a read
+    // that dips under the band while a hero is still in reach (h2hretreat1: the dwell after the last chaser left reach was most
+    // of D2's high-HP retreat seconds).
+    if (r.reach.length === 0) return "gone";
     ep.underSince = ep.underSince ?? now;
     return now - ep.underSince >= s.ExitDwell ? "safe" : undefined;
 }
