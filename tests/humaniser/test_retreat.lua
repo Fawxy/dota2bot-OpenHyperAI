@@ -262,7 +262,8 @@ do
 	check("regen: a tango in the backpack counts for nothing", field(backpack, "anchor") == "ally" and field(backpack, "regen") == "0", backpack)
 end
 
--- The exit band: the episode ends `safe` only once threat stays under budget - 0.15 for 1.5 s; a spike in the dwell restarts it.
+-- The exit band: with a hero still in reach, the episode ends `safe` only once threat stays under budget - 0.15 for 1.5 s; a
+-- spike in the dwell restarts it. One harmless hero in reach reads 0.25, under the free band 0.35.
 do
 	local H, bot = world()
 	local e1 = enemy(10, Vector(300, -5000), 100)
@@ -271,13 +272,13 @@ do
 		H.Retreat.Desire(bot)
 		T = T + 2
 		H.Retreat.Desire(bot)
-		e1.alive, e2.alive = false, false
+		e1.estDamage, e2.alive = 0, false
 		T = T + 1
-		check("exit: under the band, still in the dwell", H.Retreat.Desire(bot) == 0.95)
-		e1.alive, e2.alive = true, true
+		check("exit: under the band with one in reach, still in the dwell", H.Retreat.Desire(bot) == 0.95)
+		e1.estDamage, e2.alive = 100, true
 		T = T + 0.2
 		H.Retreat.Desire(bot)
-		e1.alive, e2.alive = false, false
+		e1.estDamage, e2.alive = 0, false
 		T = T + 0.2
 		H.Retreat.Desire(bot)
 		T = T + 1.2
@@ -287,6 +288,23 @@ do
 	end)
 	local l = lines(out, "retreat")
 	check("exit: res=safe", field(l[#l], "res") == "safe", l[#l])
+end
+
+-- D2: once no enemy hero can reach us the episode ends on that read (res=gone), with no dwell and short of its anchor.
+do
+	local H, bot = world()
+	local e1 = enemy(10, Vector(300, -5000), 100)
+	local e2 = enemy(11, Vector(300, -4900), 100)
+	local out = capture(function()
+		H.Retreat.Desire(bot)
+		T = T + 2
+		check("gone: in the episode while both are in reach", H.Retreat.Desire(bot) == 0.95)
+		e1.loc, e2.loc = Vector(3000, -5000), Vector(3000, -4900)
+		T = T + 0.2
+		check("gone: ends on the first read with nobody in reach", H.Retreat.Desire(bot) == 0)
+	end)
+	local l = lines(out, "retreat")
+	check("gone: res=gone, not at its anchor", field(l[#l], "res") == "gone" and field(l[#l], "anchor") ~= "fountain", l[#l])
 end
 
 -- An ally in our retreat counts no help: the lane partner's leave drops it from the other's ally count.
