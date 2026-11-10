@@ -646,6 +646,10 @@ export interface ClearPlan {
     pick?: (this: void, neutrals: TaskAttacker[]) => TaskAttacker | undefined;
     /** Called once, the first frame a neutral is within attack range + 100 (hosts time the clear from here). */
     onEngage?: (this: void, t: number) => void;
+    /** Host: whether to fight the camp now seen, asked the first frame its neutrals are seen and again at engage, both
+     *  before the verb orders its own attack (the walk-in may already have one out); false ends the verb `cancelled` "price" (slice core-next-gold: the trip's price checked on
+     *  the neutrals it finds). */
+    admit?: (this: void, t: number, camp: TaskAttacker[]) => boolean;
     /** Host: take `n`'s kill with the engine's `lastHit` (wait in range for the hit that kills it) instead of ordering the
      *  attack now; asked each time the verb would order an attack. A `lastHit` that ends `etiquette` or `unsupported` leaves
      *  `n` to plain attacks. Slice support-pull-farm (user 06/11/2026: the hero that finishes a camp gets its madstone). */
@@ -700,6 +704,7 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
     const arrive = p.arrive ?? CLEAR_ARRIVE;
     let fought = false;
     let engaged = false;
+    let sighted = false;
     let target: TaskAttacker | undefined;
     let orderedAt = -math.huge;
     let nextOrderAt = -math.huge;
@@ -751,6 +756,10 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
             continue;
         }
         emptySince = undefined;
+        if (!sighted) {
+            sighted = true;
+            if (p.admit?.(t, camp) === false) return fail("cancelled", "price");
+        }
         fought = true;
         if (t < nextOrderAt) {
             hold(bot, "camp_react");
@@ -762,6 +771,7 @@ export function* clearCamp(bot: TaskUnit, p: ClearPlan, h: JobHooks = {}): TaskB
         target = next;
         targetAt = next.GetLocation();
         if (!engaged && dist(bot.GetLocation(), next.GetLocation()) <= bot.GetAttackRange() + ENGAGE_SLACK) {
+            if (p.admit?.(t, camp) === false) return fail("cancelled", "price");
             engaged = true;
             h.label?.("farm");
             p.onEngage?.(t);

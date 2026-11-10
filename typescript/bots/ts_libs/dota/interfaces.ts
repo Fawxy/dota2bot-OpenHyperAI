@@ -114,6 +114,9 @@ export interface Unit {
     /** Returns a modifier index usable with GetModifierStackCount, or -1 when absent. */
     GetModifierByName(sName: string): number;
 
+    /** Seconds left on the modifier at the index GetModifierByName returned. */
+    GetModifierRemainingDuration(nModifier: number): number;
+
     GetDifficulty(): number;
 
     IsChanneling(): boolean;

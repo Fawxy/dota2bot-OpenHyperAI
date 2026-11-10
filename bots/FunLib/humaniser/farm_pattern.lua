@@ -188,6 +188,8 @@ local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
@@ -866,7 +868,7 @@ function ____exports.StartGate(bot, now)
     if LaneConfig.IsActive() and CampJobs.Covering(bot) then
         return "covering"
     end
-    if LaneHooks.EnemiesMissing(
+    if not Ours.On("Threat") and LaneHooks.EnemiesMissing(
         bot,
         LaneConfig.Settings().Thresholds.JobMissingFresh
     ) > 0 then
@@ -1015,6 +1017,20 @@ local function schedule(bot, now)
                 )
             }
         }
+    end
+    if Ours.On("Threat") then
+        local spawner = Camps.SpawnerByIdx(plan.campIdx)
+        local center = spawner ~= nil and Camps.BoxCenter(spawner) or nil
+        local ____temp_6
+        if center ~= nil then
+            ____temp_6 = Threat.Gate(bot, center, center, "farm_trip").why
+        else
+            ____temp_6 = nil
+        end
+        local why = ____temp_6
+        if why ~= nil then
+            return why, {{"lane", lane}, {"camp", plan.campIdx}}
+        end
     end
     local trip = {
         team = team,

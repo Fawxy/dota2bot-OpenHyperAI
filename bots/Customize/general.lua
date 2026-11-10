@@ -299,12 +299,15 @@ Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = tru
 -- lane or lane-only, the reps and the forced context; dotactl --drill <name> sets it; drills replaced the old Solo,
 -- StackEvery and LaneOnly knobs). StackFar: no 25 s away skip (slice double-stack: execution apart from getting there;
 -- scenario and drill games only; drill stack implies it). CampForce: an owned core's
--- camp trip starts whenever an open camp is in reach, without the decision's gates (slice core-next-gold, harness games only).
+-- camp trip starts whenever an open camp is in reach, without the decision's gates (slice core-next-gold, harness games only;
+-- "" off, so drill core-camp can imply it: an explicit false here would win over the drill).
+-- AdmitLog: the trip's price check at the camp logs its verdict (`phase=admit`) and refuses nobody (drills only; baked into a
+-- remote drill arm).
 -- ForceShove: lanes whose owned laners shove (idle swing on enemy creeps outside their tower) instead of pre-denying, as
 -- comma-separated `bot`, `r:bot`, `d:top`, `all` (r Radiant, d Dire, no prefix both); "" off (slice idle-swing, harness only).
 -- ForceLever: `<lanes>=<lever>` (lanes as ForceShove, lever `feed`, `setup` or `none`): the lane controller's lever set in those
 -- lanes is that lever alone (or empty) every wave, whatever the need; "" off (drills only).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", CampForce = false, ForceShove = "", ForceLever = "" }
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", CampForce = "", AdmitLog = "", ForceShove = "", ForceLever = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

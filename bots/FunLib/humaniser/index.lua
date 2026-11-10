@@ -20,6 +20,7 @@ local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_s
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local RegenObs = require(GetScriptDirectory().."/FunLib/humaniser/regen_obs")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
@@ -241,6 +242,7 @@ local function tick(bot)
     if not Config.IsEnabled() then
         if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
             Telemetry.Tick(bot)
+            pcall(RegenObs.Tick, bot)
         end
         return
     end
@@ -272,6 +274,7 @@ local function tick(bot)
     Intent.Tick(bot)
     LaneControl.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
+    pcall(RegenObs.Tick, bot)
     States.Tick(bot)
     Tasks.Tick(bot)
     HDebug.SharedStateProbe(bot)

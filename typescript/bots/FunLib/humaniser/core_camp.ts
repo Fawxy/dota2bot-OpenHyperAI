@@ -53,7 +53,6 @@ export const SETTINGS = {
     LaneShare: 0.5,
     CampGold: { small: 80, medium: 120, large: 160, ancient: 250 } as Record<string, number>,
     MinNet: 30,
-    CampMinLevel: { small: 3, medium: 4, large: 6, ancient: 12 } as Record<string, number>,
     MaxCampDist: 3800,
     /** The offlaner (pos3 in the top or bottom lane) also takes the enemy's large camp within OffCampDist of its outermost
      *  lane tower: the hard camp its pos4 pulls (camps_data off_large, about 2,200-2,550 from the off-lane T1; no other enemy
@@ -76,12 +75,6 @@ export const SETTINGS = {
      *  hold them all while any enemy farms in fog; one last seen near the walk holds however old the sighting. MissingSpeed
      *  is a laning-stage hero with boots (its speed is not readable in fog). All `judgement`. */
     MissingAfter: 3,
-    /** Ours.Threat: the horizon (s) the gates read the threat with; 4 s puts a visible hero's reach (run plus attack range and
-     *  hulls) at about the old HeroReach plus ThreatMargin for a 300-speed melee (1,400). judgement. */
-    GateHorizon: 4,
-    /** Ours.Threat: the belief's weight sum that holds a trip or a pull: one hero after 4:00 (0.5), three before (0.2 each);
-     *  picked on the 425 graded rows (slice file threat.md): refusals 312 to 264, precision 0.53 to 0.58. */
-    MissingRefuse: 0.5,
     MissingSpeed: 330,
     MissingReachMax: 4000,
     MidRuneGuard: 40,
@@ -100,8 +93,18 @@ export const SETTINGS = {
     StackedClearMul: 0.8,
     Learn: 0.3,
     LearnClamp: [0.4, 2.5],
+    /** The pace and HP rate a core starts at. 1: the median measured over the model's engage price on the clears that finished
+     *  (pace 0.70 on 18, HP lost 0.40-0.55 on 9-11, cngchk12-13) is the median of the easy ones: the clears cut by OHA's retreat at
+     *  38-50% HP or at a deadline, and the camps refused at sight, have no finished clear to measure, and a start fitted on
+     *  survivors under-priced them (cngdr6-8 under the 0.55 start: 12 clears ended on a retreat with neutrals left in 8 games, 2
+     *  in 3 before). `judgement`; the learned factors still move on every finished clear. */
+    PaceStart: 1,
+    HPRateStart: 1,
     LateGrowth: 1.15,
-    /** The clear's HP cost as a fraction of max HP at HPRefLevel, times HPLevelStep per level above it (within LevelScale),
+    /** The HP rate learns only from a clear the model priced at this or more: measured over priced on a near-zero price is
+     *  noise (drill cngdr2: three clears priced 0.04 that cost 0 took pos1's rate from 0.94 to 0.5). `judgement`. */
+    LearnMinHP: 0.1,
+    /** The clear's HP cost as a fraction of max HP at HPRefLevel, times HPLevelStep per level above it (within HPLevelScale),
      *  plus StackedClearMul per stack, times the bot's learned HP rate (Learn, LearnClamp; LateGrowth on an HP abort). A camp
      *  is taken only when the core keeps ArriveHP after it. cnghar2/cngchk5 (05/11/2026): HP lost from start to end of a trip,
      *  median (80th percentile), small 0.08 (0.17) at levels 3-5, medium 0.16 (0.35) at 3-5, large 0.42 (0.64) at 6-7, the
@@ -110,7 +113,12 @@ export const SETTINGS = {
     /** Live neutrals in the box that read as one more stack: a camp spawns 2-4. */
     NeutralsPerStack: 3,
     HPRefLevel: 6,
-    HPLevelStep: 0.88,
+    /** No level gate (user 06/11/2026): this price is what keeps a low-level core out of a camp it cannot clear, so it runs
+     *  past LevelScale's 1.6 below the reference level (level 1 is 0.8^-5, 3.05). `fitted`: drill cngdr1 (09/11/2026) a level
+     *  3 pos1 lost 0.62 on a never-seen large camp with one neutral left (0.88 a level priced it 0.51); banked table-priced
+     *  large trips, levels 6-7 0.38 mean lost (26 trips), 8+ 0.14 (15). No live read exists for a camp in fog. */
+    HPLevelStep: 0.8,
+    HPLevelScale: [0.6, 3.2] as [number, number],
     ArriveHP: 0.4,
     /** The clear model (live or last-seen neutrals; the tables above only for a camp never seen): seconds between kills
      *  (retarget and walk), and the seconds per attack assumed when the API gives none (`judgement`). */
@@ -125,6 +133,8 @@ export interface CampPlan {
     /** Planned return to the clash point, latest leave from the camp, clear estimate, gold, the lane loss at the return, net. */
     ret: number;
     leaveBy: number;
+    /** The planning time: the lane loss is priced from it, by Plan and by the check at the camp alike. */
+    t0: number;
     clr: number;
     /** The clear estimate before the pace factor, which the measured clear is learned against. */
     prior: number;
@@ -139,6 +149,8 @@ export interface CampPlan {
     /** The clear's HP cost (fraction of max HP) and its estimate before the learned rate. */
     hpc: number;
     hpPrior: number;
+    /** The core's level at the plan (the HP price below level 6 is graded on it). */
+    lvl: number;
     gold: number;
     loss: number;
     net: number;
@@ -165,6 +177,12 @@ interface Trip {
     host: number;
     engagedAt?: number;
     hpAtEngage?: number;
+    /** The model's price of the neutrals met at engage (clear seconds, HP fraction, before the learned factors): what the
+     *  clear is learned against. The plan's price can be for a camp that is no longer there (cngdr1 t=244: a table-priced
+     *  full camp held one neutral left from the last trip; its 1.1 s, 0 HP clear taught HP rate 0.75 and pace 0.9 though
+     *  every trip of the game cost more HP than priced). */
+    clre?: number;
+    hpe?: number;
     /** The last clear's measured seconds from engage and HP lost (to the camp's end: cleared or left). */
     clrm?: number;
     hpm?: number;
@@ -183,7 +201,7 @@ const nextPlanAt: Record<number, number> = {};
 const pace: Record<number, number> = {};
 const hpRate: Record<number, number> = {};
 /** Each camp's neutrals as last seen untouched, by team then camp, with the minute (a respawn is assumed the same). */
-const lastSeen: Record<number, Record<number, { min: number; ns: Neutral[] }>> = {};
+const lastSeen: Record<number, Record<number, { min: number; ns: Neutral[]; emptied?: number }>> = {};
 /** Camps cleared or seen empty, by team then camp, as the minute (they respawn on the next). */
 const cleared: Record<number, Record<number, number>> = {};
 /** Skip lines written, by pid: one per wave window and reason. */
@@ -264,41 +282,55 @@ export function PriorClearTime(type: Camps.CampType, level: number, stacks: numb
 }
 
 export function Pace(bot: Unit): number {
-    return pace[bot.GetPlayerID()] ?? 1;
+    return pace[bot.GetPlayerID()] ?? SETTINGS.PaceStart;
 }
 
 function learn(bot: Unit, measured: number, prior: number): void {
     if (prior <= 0) return;
     const pid = bot.GetPlayerID();
-    const old = pace[pid] ?? 1;
+    const old = pace[pid] ?? SETTINGS.PaceStart;
     pace[pid] = clamp(old + SETTINGS.Learn * (measured / prior - old), SETTINGS.LearnClamp);
 }
 
 function growLate(bot: Unit): void {
     const pid = bot.GetPlayerID();
-    pace[pid] = clamp((pace[pid] ?? 1) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
+    pace[pid] = clamp((pace[pid] ?? SETTINGS.PaceStart) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
 }
 
 export function PriorClearHP(type: Camps.CampType, level: number, stacks: number): number {
     const s = SETTINGS;
-    const scale = clamp(s.HPLevelStep ** (level - s.HPRefLevel), s.LevelScale);
+    const scale = clamp(s.HPLevelStep ** (level - s.HPRefLevel), s.HPLevelScale);
     return (s.ClearHP[type] ?? s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks);
 }
 
+/**
+ * The learned pace and HP rate are learned against the clear model's price (the live or last-seen neutrals), so they scale
+ * that price only. The type tables are fitted to the HP lost and the seconds of whole trips and are not scaled by a factor
+ * learned on another model (a plan priced from the table and re-priced live at the camp used two models; cngchk13: the live
+ * read was 1.2-4.4 times the table on 15 large camps).
+ */
+function paceFor(bot: Unit, src: string): number {
+    return src === "table" ? 1 : Pace(bot);
+}
+
+function hpRateFor(bot: Unit, src: string): number {
+    return src === "table" ? 1 : HPRate(bot);
+}
+
 export function HPRate(bot: Unit): number {
-    return hpRate[bot.GetPlayerID()] ?? 1;
+    return hpRate[bot.GetPlayerID()] ?? SETTINGS.HPRateStart;
 }
 
 function learnHP(bot: Unit, measured: number, prior: number): void {
     if (prior <= 0) return;
     const pid = bot.GetPlayerID();
-    const old = hpRate[pid] ?? 1;
+    const old = hpRate[pid] ?? SETTINGS.HPRateStart;
     hpRate[pid] = clamp(old + SETTINGS.Learn * (math.max(measured, 0) / prior - old), SETTINGS.LearnClamp);
 }
 
 function growHP(bot: Unit): void {
     const pid = bot.GetPlayerID();
-    hpRate[pid] = clamp((hpRate[pid] ?? 1) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
+    hpRate[pid] = clamp((hpRate[pid] ?? SETTINGS.HPRateStart) * SETTINGS.LateGrowth, SETTINGS.LearnClamp);
 }
 
 // ------------------------------------------------------------------------------------------------ the clear model
@@ -312,6 +344,8 @@ export interface Neutral {
     dmg: number;
     spa: number;
     name?: string;
+    /** At full HP when read (a live read only). */
+    full?: boolean;
 }
 
 function spaOf(u: Unit): number {
@@ -351,8 +385,8 @@ export function ClearOf(bot: Unit, camp: Neutral[]): LuaMultiReturn<[number, num
 
 /**
  * The camp's live neutrals (the API returns none in fog). Kept as its make-up only when untouched (every one at full HP),
- * and never replaced by fewer within the same minute: a read of a half-cleared or half-seen camp priced its respawn at one
- * neutral (cngchk8 game 1049 camp 1, t=543: 4.4 s planned, 2 of 3 left).
+ * and never replaced by fewer until the camp was seen emptied: a read of a half-cleared or half-seen camp priced its respawn
+ * at one neutral (cngchk8 game 1049 camp 1, t=543: 4.4 s planned, 2 of 3 left).
  */
 function liveNeutrals(team: number, idx: number, center: Vector, now: number): Neutral[] {
     const live: Neutral[] = [];
@@ -361,12 +395,17 @@ function liveNeutrals(team: number, idx: number, center: Vector, now: number): N
         if (u === null || u === undefined || !u.IsAlive()) continue;
         const at = u.GetLocation();
         if (at === null || at === undefined || dist(at, center) > SETTINGS.CampRadius) continue;
-        live.push(readNeutral(u, u.GetHealth()));
-        if (u.GetHealth() < u.GetMaxHealth()) untouched = false;
+        const n = readNeutral(u, u.GetHealth());
+        n.full = u.GetHealth() >= u.GetMaxHealth();
+        live.push(n);
+        if (!n.full) untouched = false;
     }
     const min = currentMinute(now);
     const old = lastSeen[team]?.[idx];
-    if (live.length > 0 && untouched && (old === undefined || old.min !== min || live.length >= old.ns.length)) {
+    // A camp respawns only into an empty box, so its make-up shrinks only after it was emptied: a new minute's read of fewer
+    // is part of the camp in fog (cngdr4 t=253: one wildkin read at 4:13 replaced the whole camp seen at 3:28).
+    const respawned = old?.emptied !== undefined && old.emptied >= old.min && min > old.emptied;
+    if (live.length > 0 && untouched && (old === undefined || live.length >= old.ns.length || respawned)) {
         lastSeen[team] = lastSeen[team] ?? {};
         lastSeen[team][idx] = { min, ns: live };
     }
@@ -376,11 +415,14 @@ function liveNeutrals(team: number, idx: number, center: Vector, now: number): N
 /** Clear seconds and HP fraction before the learned factors, and their source; `stacks` scales only the unseen ones. */
 function estimate(bot: Unit, spawner: Camps.Spawner, center: Vector, stacks: number, now: number): LuaMultiReturn<[number, number, string, Neutral[] | undefined]> {
     const live = liveNeutrals(bot.GetTeam(), spawner.idx, center, now);
-    if (live.length > 0) {
+    const seen = lastSeen[bot.GetTeam()]?.[spawner.idx]?.ns;
+    // Fewer neutrals than its untouched make-up, all at full HP, is a half-seen camp, not a smaller one: cngdr3 t=236 priced
+    // camp 2 at one satyr (0.06) with two in fog, 0.92 at sight.
+    const partial = seen !== undefined && live.length < seen.length && live.every((n) => n.full === true);
+    if (live.length > 0 && !partial) {
         const [secs, hp] = ClearOf(bot, live);
         return $multi(secs, hp, "live", live);
     }
-    const seen = lastSeen[bot.GetTeam()]?.[spawner.idx]?.ns;
     if (seen !== undefined) {
         const [secs, hp] = ClearOf(bot, seen);
         const k = 1 + SETTINGS.StackedClearMul * stacks;
@@ -481,6 +523,12 @@ function seenStacks(center: Vector): number {
 function markCleared(team: number, idx: number, now: number): void {
     cleared[team] = cleared[team] ?? {};
     cleared[team][idx] = currentMinute(now);
+    markEmptied(team, idx, now);
+}
+
+function markEmptied(team: number, idx: number, now: number): void {
+    const old = lastSeen[team]?.[idx];
+    if (old !== undefined) old.emptied = currentMinute(now);
 }
 
 /** Lane mates whose pull is planned: our lane's pull camps are theirs. */
@@ -530,7 +578,10 @@ function closedWhy(bot: Unit, spawner: Camps.Spawner, center: Vector, now: numbe
     const team = bot.GetTeam();
     if (cleared[team]?.[spawner.idx] === currentMinute(now)) return "cleared";
     // The API returns no neutrals in fog: a camp is known empty only where we see.
-    if (IsLocationVisible(center) && campNeutralCount(center) === 0) return "empty";
+    if (IsLocationVisible(center) && campNeutralCount(center) === 0) {
+        markEmptied(team, spawner.idx, now);
+        return "empty";
+    }
     // A pulled camp is open to a core only while the support clears it (PullFarm), which then gives it up.
     if (pullCamps[spawner.idx] === true || (pulledInto(center) && CampClaims.On("pullfarm", spawner.idx) === undefined)) return "pulled";
     if (allyInBox(bot, spawner.idx)) return "ally";
@@ -543,8 +594,9 @@ function campOpen(bot: Unit, spawner: Camps.Spawner, center: Vector, now: number
 }
 
 /**
- * The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open, of a type its level
- * allows, within MaxCampDist of the clash point, back by the clash + MaxLate, with the highest net of at least MinNet.
+ * The best camp of the core's own jungle (the offlaner's also the enemy's large camp by its lane) from `from` against the forecast `c`, or undefined: open,
+ * within MaxCampDist of the clash point, leaving the core ArriveHP after the clear, back by the clash + MaxLate, with the
+ * highest net of at least MinNet. No level gate (user 06/11/2026): the clear's priced HP and time decide.
  */
 export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan | undefined {
     const s = SETTINGS;
@@ -554,15 +606,14 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
     if (matePulling(bot)) for (const p of Camps.PullCampsFor(bot.GetTeam(), bot.GetAssignedLane())) pullCamps[p.campIdx] = true;
     let best: CampPlan | undefined;
     for (const spawner of tripSpawners(bot)) {
-        if (level < (s.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, c.at) > s.MaxCampDist || !campOpen(bot, spawner, center, now, pullCamps)) continue;
         const stacks = math.max(Stacking.StackCount(spawner.idx), seenStacks(center));
         const [prior, hpPrior, src, priced] = estimate(bot, spawner, center, stacks, now);
         const clrt = PriorClearTime(spawner.type, level, stacks);
         const hpt = PriorClearHP(spawner.type, level, stacks);
-        const clr = prior * Pace(bot);
-        const hpc = hpPrior * HPRate(bot);
+        const clr = prior * paceFor(bot, src);
+        const hpc = hpPrior * hpRateFor(bot, src);
         if (hpOf(bot) - hpc < s.ArriveHP) continue;
         const back = dist(center, c.at) / speed;
         const ret = now + dist(from, center) / speed + clr + back;
@@ -572,7 +623,7 @@ export function Plan(bot: Unit, from: Vector, now: number, c: Clash): CampPlan |
         const loss = LossBetween(c, now, ret);
         const net = gold - loss;
         if ((force || net >= s.MinNet) && (best === undefined || net > best.net))
-            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, gold, loss, net };
+            best = { camp: spawner.idx, type: spawner.type, ret, leaveBy: ret - back, t0: now, clr, prior, src, nu: neutralsField(priced), n0: priced?.length, clrt, hpt, hpc, hpPrior, lvl: level, gold, loss, net };
     }
     return best;
 }
@@ -602,21 +653,19 @@ function tripSpawners(bot: Unit): Camps.Spawner[] {
     return out;
 }
 
-/** Whether `core` could clear camp `idx` holding `stacks` stacks: the level CampMinLevel allows for its type, and from full
- *  HP it keeps ArriveHP after the clear (the same model and learned HP rate as Plan). The stack job's pos5 double gate. */
+/** Whether `core` could clear camp `idx` holding `stacks` stacks: from full HP it keeps ArriveHP after the clear (the same
+ *  model and learned HP rate as Plan). The stack job's pos5 double gate. */
 export function CanClear(core: Unit, idx: number, stacks: number): boolean {
     const spawner = Camps.SpawnerByIdx(idx);
-    if (spawner === undefined || core.GetLevel() < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) return false;
-    const [, hpPrior] = estimate(core, spawner, Camps.BoxCenter(spawner), stacks, DotaTime());
-    return 1 - hpPrior * HPRate(core) >= SETTINGS.ArriveHP;
+    if (spawner === undefined) return false;
+    const [, hpPrior, src] = estimate(core, spawner, Camps.BoxCenter(spawner), stacks, DotaTime());
+    return 1 - hpPrior * hpRateFor(core, src) >= SETTINGS.ArriveHP;
 }
 StackJob.SetCarryClear(CanClear);
 
-/** Any open camp of a type the core's level allows within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then. */
+/** Any open camp within MaxCampDist of `front`: the forecast (about 11 ms for 60 s) runs only then. */
 function anyCamp(bot: Unit, front: Vector, now: number): boolean {
-    const level = bot.GetLevel();
     for (const spawner of tripSpawners(bot)) {
-        if (level < (SETTINGS.CampMinLevel[spawner.type] ?? 1)) continue;
         const center = Camps.BoxCenter(spawner);
         if (dist(center, front) <= SETTINGS.MaxCampDist && campOpen(bot, spawner, center, now, {})) return true;
     }
@@ -625,8 +674,8 @@ function anyCamp(bot: Unit, front: Vector, now: number): boolean {
 
 /**
  * Why no camp fitted (the `no-camp` gate), for the throttled `phase=nocamp` line: the trip list's size and how many of it
- * are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`level`, `far`
- * past MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
+ * are enemy camps (the offlaner's), the nearest trip camp to the front and the first check that dropped it (`far` past
+ * MaxCampDist, or closedWhy's), and the nearest camp of any team when it is not in the list (`nwhy=list`). The pos3s
  * that never planned a camp in core-missing_fn1 (05/11/2026, pid 1 and 8) read only as h_camp on the gates line.
  */
 function noCampFields(bot: Unit, front: Vector, now: number): LuaMultiReturn<[string, Telemetry.Fields<"core_camp">]> {
@@ -648,8 +697,7 @@ function noCampFields(bot: Unit, front: Vector, now: number): LuaMultiReturn<[st
     }
     let why = "none";
     if (best !== undefined) {
-        if (level < (SETTINGS.CampMinLevel[best.type] ?? 1)) why = "level";
-        else if (bestD > SETTINGS.MaxCampDist) why = "far";
+        if (bestD > SETTINGS.MaxCampDist) why = "far";
         else why = closedWhy(bot, best, Camps.BoxCenter(best), now, {}) ?? "open";
     }
     const [near, nd] = Camps.NearestSpawner(front);
@@ -737,13 +785,13 @@ export function MissingOf(bot: Unit, at: Vector): Missing {
 
 /**
  * The missing-hero gate for a walk from the core to `at` as [heroes that hold it, the belief's weight sum]: under Ours.Threat
- * the threat read's belief (a weight per unseen hero, refusing at Threat MissingRefuse) logged as ev=threat for `consumer`;
- * off, MissingOf's count and no weight.
+ * the threat read's belief (a weight per unseen hero, refusing at Threat.SETTINGS MissingRefuse) logged as ev=threat for
+ * `consumer`; off, MissingOf's count and no weight.
  */
 export function MissingGate(bot: Unit, at: Vector, consumer: string): LuaMultiReturn<[number, number | undefined]> {
     if (!Ours.On("Threat")) return $multi(MissingOf(bot, at).n, undefined);
-    const r = Threat.Read(bot, bot.GetLocation(), at, SETTINGS.GateHorizon);
-    const held = r.missing >= SETTINGS.MissingRefuse;
+    const r = Threat.Read(bot, bot.GetLocation(), at, Threat.SETTINGS.GateHorizon);
+    const held = r.missing >= Threat.SETTINGS.MissingRefuse;
     Threat.Log(bot, consumer, r, held ? "missing" : "go");
     return $multi(held ? r.mpids.length : 0, math.floor(r.missing * 100 + 0.5) / 100);
 }
@@ -809,9 +857,7 @@ function startGate(bot: Unit, plan: CampPlan, now: number): Held | undefined {
     if (spawner === undefined) return undefined;
     const center = Camps.BoxCenter(spawner);
     if (Ours.On("Threat")) {
-        const r = Threat.Read(bot, bot.GetLocation(), center, SETTINGS.GateHorizon);
-        const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
-        Threat.Log(bot, "core_camp", r, why ?? "go");
+        const { why, r } = Threat.Gate(bot, bot.GetLocation(), center, "core_camp");
         if (why !== "missing") return why !== undefined ? { why } : undefined;
         return { why, nmiss: r.mpids.length, mtss: r.mtss, mpid: r.mpids.join(",") };
     }
@@ -837,6 +883,7 @@ function planFields(p: CampPlan): Telemetry.Fields<"core_camp"> {
         ["n0", p.n0],
         ["nu", p.nu],
         ["hpc", r2(p.hpc)],
+        ["lvl", p.lvl],
         ["gold", math.floor(p.gold)],
         ["loss", math.floor(p.loss)],
         ["net", math.floor(p.net)],
@@ -964,19 +1011,25 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         if (spawner === undefined) break;
         t.engagedAt = undefined;
         t.hpAtEngage = undefined;
-        t.clrm = t.hpm = t.nl = undefined;
+        t.clrm = t.hpm = t.nl = t.clre = t.hpe = undefined;
         t.center = Camps.BoxCenter(spawner);
         const r = yield* V.clearCamp(
             bot as unknown as Lib.TaskUnit,
-            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: t.plan.leaveBy, onEngage: (at) => {
+            { at: Camps.BoxCenter(spawner), radius: SETTINGS.CampRadius, deadline: Overrides.CampForce() ? t.plan.leaveBy : LatestLeave(t.plan, t.clash), onEngage: (at) => {
                 t.engagedAt = at;
                 t.hpAtEngage = hpOf(bot);
-            } },
+                const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), at);
+                if (met.length > 0) [t.clre, t.hpe] = ClearOf(bot, met);
+            }, admit: (at) => admits(bot, t, spawner, at) },
             hooks
         );
         const now = DotaTime();
         // No `continue` in this loop: TSTL lowers it to a flag set after the final `break`, which Lua 5.1 rejects.
         if (!r.success) {
+            if (r.reason === "cancelled" && r.message === "price") {
+                log(bot, "refuse", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["clre", r1(t.clre)], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r2(Pace(bot))], ["lvl", bot.GetLevel()]]);
+                break;
+            }
             if (r.reason !== "timeout") return r;
             if (t.engagedAt !== undefined) {
                 measured(bot, t, now, Camps.BoxCenter(spawner));
@@ -985,9 +1038,9 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
             break;
         }
         if (t.engagedAt !== undefined) measured(bot, t, now, Camps.BoxCenter(spawner));
-        if (r.message === "cleared" && t.engagedAt !== undefined) {
-            learn(bot, now - t.engagedAt, t.plan.prior);
-            if (t.hpAtEngage !== undefined) learnHP(bot, t.hpAtEngage - hpOf(bot), t.plan.hpPrior);
+        if (r.message === "cleared" && t.engagedAt !== undefined && t.clre !== undefined && t.hpe !== undefined) {
+            learn(bot, now - t.engagedAt, t.clre);
+            if (t.hpAtEngage !== undefined && t.hpe >= SETTINGS.LearnMinHP) learnHP(bot, t.hpAtEngage - hpOf(bot), t.hpe);
         }
         markCleared(bot.GetTeam(), t.plan.camp, now);
         const next = Plan(bot, bot.GetLocation(), now, t.clash);
@@ -995,15 +1048,67 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         // A chained camp passes the same start gates as the first (review L3 of 2fec253): held, the core walks back.
         const hold = startGate(bot, next, now);
         if (hold !== undefined) {
-            log(bot, "nexthold", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...heldFields(hold), ...planFields(next)]);
+            log(bot, "nexthold", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["clre", r1(t.clre)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["nl", t.nl], ...heldFields(hold), ...planFields(next)]);
             break;
         }
         t.plan = next;
         CampClaims.Set("core", bot.GetPlayerID(), next.camp);
         t.camps++;
-        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["nl", t.nl], ...planFields(next)]);
+        log(bot, "next", t.clash, [["after", r.message ?? "ok"], ["clrm", t.clrm], ["hpm", t.hpm], ["clre", r1(t.clre)], ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined], ["nl", t.nl], ...planFields(next)]);
     }
     return yield* walkBack(bot, t, ctx);
+}
+
+/**
+ * The latest second the core may leave the camp: back at the clash by MaxLate (Plan's return rule) and the camp still paying
+ * for the lane gold lost by then, priced from the planning time like Plan's `net` (MinNet). Never before the plan's own leave
+ * time: a trip planned without those rules (CampForce) keeps it. The plan sets that leave time from its own clear estimate
+ * (a table's for a camp never seen) with no slack, so a clear judged against it alone was refused or cut though the core would
+ * be back in time and the camp still paid (cngdr6: 3 of 3 `time` verdicts; cngchk13: 3 of 12 refusals).
+ */
+export function LatestLeave(p: CampPlan, c: Clash): number {
+    const back = p.ret - p.leaveBy;
+    const hi = c.t + SETTINGS.MaxLate - back;
+    const pays = (leave: number): boolean => p.gold - LossBetween(c, p.t0, leave + back) >= SETTINGS.MinNet;
+    if (hi <= p.leaveBy || !pays(p.leaveBy)) return p.leaveBy;
+    if (pays(hi)) return hi;
+    let lo = p.leaveBy;
+    let up = hi;
+    for (let i = 0; i < 8; i++) {
+        const mid = (lo + up) / 2;
+        if (pays(mid)) lo = mid;
+        else up = mid;
+    }
+    return lo;
+}
+
+function tooLate(bot: Unit, t: Trip, secs: number, now: number): boolean {
+    return now + secs * Pace(bot) > LatestLeave(t.plan, t.clash);
+}
+
+/**
+ * The trip's price checked on the neutrals the core finds (asked at first sight and at engage, before an attack lands; at engage the attack is already ordered): the
+ * model's clear of the live camp, with the learned pace and HP rate, must leave ArriveHP and end by the plan's leave
+ * time. The plan's price can be the type tables', which cannot see what spawned (drill cngdr2: a small camp of a
+ * taskmaster and two troll berserkers priced 0.23 by the table, 0.89 live; a level 4 large 0.44 against 0.96). A refusal
+ * leaves the camp's make-up as `seen`, so the next plan prices it from that. Under CampForce only the HP half holds. Under
+ * AdmitLog (drills only) both halves are judged by the real rule, `phase=admit` logs the verdict (`v`: hp, time or ok) and
+ * nobody is refused, so the outcome of every camp the rule would have refused is observed.
+ */
+function admits(bot: Unit, t: Trip, spawner: Camps.Spawner, now: number): boolean {
+    const met = liveNeutrals(bot.GetTeam(), spawner.idx, Camps.BoxCenter(spawner), now);
+    if (met.length === 0) return true;
+    const [secs, hp] = ClearOf(bot, met);
+    t.clre = secs;
+    t.hpe = hp;
+    const hpFail = hpOf(bot) - hp * HPRate(bot) < SETTINGS.ArriveHP;
+    const timeFail = tooLate(bot, t, secs, now);
+    if (Overrides.AdmitLog()) {
+        log(bot, "admit", t.clash, [["camp", t.plan.camp], ["type", t.plan.type], ["src", t.plan.src], ["lvl", t.plan.lvl], ["hpc", r2(t.plan.hpc)], ["clr", r1(t.plan.clr)], ["hpe", r2(hp)], ["clre", r1(secs)], ["lb", r1(LatestLeave(t.plan, t.clash))], ["hp", r2(hpOf(bot))], ["hpr", r2(HPRate(bot))], ["pace", r1(Pace(bot))], ["v", hpFail ? "hp" : timeFail ? "time" : "ok"]]);
+        return true;
+    }
+    if (hpFail) return false;
+    return Overrides.CampForce() || !timeFail;
 }
 
 function measured(bot: Unit, t: Trip, now: number, center: Vector): void {
@@ -1035,6 +1140,8 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["hpr", r2(HPRate(bot))],
         ["clrm", t.clrm],
         ["hpm", t.hpm],
+        ["clre", r1(t.clre)],
+        ["hpe", t.hpe !== undefined ? r2(t.hpe) : undefined],
         ["nl", t.nl],
     ]);
 }

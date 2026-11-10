@@ -89,6 +89,18 @@ do
 	check("lever-feed pair: the feed forced, its control none", F.Drill.Implied("ForceLever") == "r:bot=feed" and O.Drill.Implied("ForceLever") == "r:bot=none" and O.Drill.LaneAggro(core))
 end
 
+-- core-camp: the shipped CampForce default ("") lets the drill force trips; an explicit false (a --set) still wins. The
+-- default was false, which hid the drill's CampForce.
+do
+	local H, Customize = world("core-camp")
+	local Ov = require("bots/FunLib/humaniser/overrides")
+	Customize.Overrides.CampForce = ""
+	check("core-camp: the shipped default lets the drill force the trip", Ov.CampForce() == true)
+	check("core-camp: pos1 and pos3 play, the rest benched", H.Drill.RoleOf(hero(0, RAD, 1, 3)) == "cast" and H.Drill.RoleOf(hero(2, RAD, 3, 1)) == "cast" and H.Drill.RoleOf(hero(3, RAD, 4, 1)) == "bench")
+	Customize.Overrides.CampForce = false
+	check("core-camp: an explicit false wins over the drill", Ov.CampForce() == false)
+end
+
 -- lane-spot-sentry: the Dire pos3 is held like a statue (never casts) but attacks an enemy hero that walks into its zone
 -- (attack range 150 + both radii 24 + 0.5 s at 300 = 348 centre to centre), and only while it stands within that 0.5 s step
 -- of its spot.

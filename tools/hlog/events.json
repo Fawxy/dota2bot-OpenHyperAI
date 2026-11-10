@@ -650,6 +650,7 @@
    "before": "mixed",
    "after": "mixed",
    "fresh": "mixed",
+   "chk": "mixed",
    "away": "num",
    "death": "num",
    "cx": "mixed",
@@ -684,6 +685,8 @@
    "double": "num",
    "dwhy": "str",
    "fres": "str",
+   "scount": "num",
+   "fscount": "num",
    "fcamp": "num",
    "ftype": "str",
    "faggro": "mixed",
@@ -706,6 +709,33 @@
    "woff": "mixed",
    "fwin": "str",
    "fwoff": "mixed"
+  },
+  "regen_obs": {
+   "pid": "num",
+   "item": "str",
+   "state": "str",
+   "why": "str",
+   "hp": "num",
+   "mp": "num",
+   "miss": "num",
+   "dur": "num",
+   "left": "num",
+   "src": "str",
+   "drop": "num"
+  },
+  "regen_win": {
+   "pid": "num",
+   "mode": "num",
+   "len": "num",
+   "miss0": "num",
+   "missmax": "num",
+   "tg": "num",
+   "sv": "num",
+   "tge": "num",
+   "sve": "num",
+   "tree": "num",
+   "under": "bool",
+   "used": "str"
   },
   "lane_job_supply": {
    "pid": "num",
@@ -891,6 +921,7 @@
    "x": "num",
    "y": "num",
    "hz": "num",
+   "dep": "num",
    "threat": "num",
    "band": "str",
    "reach": "num",
@@ -1264,6 +1295,8 @@
    "hpt": "num",
    "clrm": "num",
    "hpm": "num",
+   "clre": "num",
+   "hpe": "num",
    "n0": "num",
    "nu": "str",
    "nl": "num",
@@ -1304,7 +1337,9 @@
    "h_gap": "num",
    "h_plan": "num",
    "h_skip": "num",
-   "h_trip": "num"
+   "h_trip": "num",
+   "v": "str",
+   "lb": "num"
   },
   "rune_job": {
    "pid": "num",
@@ -1746,6 +1781,15 @@
    "win": "text",
    "fwin": "text"
   },
+  "ev_regen_obs": {
+   "item": "text",
+   "state": "text",
+   "why": "text",
+   "src": "text"
+  },
+  "ev_regen_win": {
+   "used": "text"
+  },
   "ev_lane_job_supply": {
    "item": "text",
    "state": "text",
@@ -1961,7 +2005,8 @@
    "nwhy": "text",
    "after": "text",
    "res": "text",
-   "label": "text"
+   "label": "text",
+   "v": "text"
   },
   "ev_rune_job": {
    "kind": "text",

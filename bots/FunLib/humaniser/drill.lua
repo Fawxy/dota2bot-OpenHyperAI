@@ -252,8 +252,8 @@ function spotPoint(bot, spot)
         local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
         return Vector(x, y, z)
     end
-    local side, kind = string.match(spot, "^pull:([rd]):(%a+)$")
-    if side == nil or kind ~= "safe" and kind ~= "off" then
+    local side, kind, seen = string.match(spot, "^pull:([rd]):(%a+)(:?%a*)$")
+    if side == nil or kind ~= "safe" and kind ~= "off" or seen ~= "" and seen ~= ":seen" then
         return nil
     end
     local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
@@ -278,9 +278,9 @@ function spotPoint(bot, spot)
         Camps.LaneOfKind(team, kind),
         0
     )
-    return Camps.StandPoint(
+    return Camps.BoxEdgePoint(
         s,
-        Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z),
+        seen == ":seen" and lane or Vector(2 * c.x - lane.x, 2 * c.y - lane.y, c.z),
         SPOT_OFFSET
     )
 end
@@ -839,6 +839,22 @@ ____exports.TABLE = {
         others = "bench",
         castLaneOnly = true,
         rep = {every = 90, from = 30}
+    },
+    ["core-camp"] = {
+        note = "Radiant pos1 and pos3 play, a camp trip whenever a camp's priced HP and time fit (CampForce), everyone else benched",
+        cast = {r = {1, 3}},
+        others = "bench",
+        rep = {every = 30, from = 0},
+        overrides = {CampForce = true}
+    },
+    ["threat-support"] = {
+        note = "Radiant pos5 plays its lane and pulls every wave; Dire pos3 a statue on the lane side of the pos5's pull camp on odd reps, benched on even; everyone else benched",
+        cast = {r = {5}},
+        statue = {d = {3}},
+        spots = {d = {[3] = {"pull:r:safe:seen", "bench"}}},
+        others = "bench",
+        rep = {every = 120, from = 30},
+        forces = "pull"
     },
     ["lever-feed-off"] = {
         note = "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",

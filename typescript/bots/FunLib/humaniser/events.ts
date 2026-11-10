@@ -749,6 +749,7 @@ export const EVENTS = {
         before: "mixed",
         after: "mixed",
         fresh: "mixed",
+        chk: "mixed",
         away: "num",
         death: "num",
         cx: "mixed",
@@ -784,6 +785,8 @@ export const EVENTS = {
         double: "num",
         dwhy: "str",
         fres: "str",
+        scount: "num",
+        fscount: "num",
         fcamp: "num",
         ftype: "str",
         faggro: "mixed",
@@ -807,6 +810,43 @@ export const EVENTS = {
         woff: "mixed",
         fwin: "str",
         fwoff: "mixed",
+    },
+    // Regen slice, step 0: a timed regen buff (tango, salve, clarity) seen on a hero, in every arm whoever cast it.
+    // state start|refresh|end; dur the full duration read live at the start, left what remained at the event; why on an end: full
+    // (ran out), early (ended with time left) or dead; miss the HP (tango, salve) or mana (clarity) missing at the start; src the
+    // damage sources in the 2 s before an end (hero, creep, tower; - for none); drop the most HP
+    // the hero lost over those 2 s (0 on a start; a buff that ends early with src - and drop 0 was not ended by damage).
+    regen_obs: {
+        pid: "num",
+        item: "str",
+        state: "str",
+        why: "str",
+        hp: "num",
+        mp: "num",
+        miss: "num",
+        dur: "num",
+        left: "num",
+        src: "str",
+        drop: "num",
+    },
+    // Regen slice: a window in which a regen item could have been used (the hero alive, not attacking, not hit by a hero in the 2 s
+    // before, for at least 1 s) with an item in hand and HP missing at least that item's full effect. miss0 and missmax the HP missing at
+    // the window's start and at most; tg tangos in hand (charges, singles count 1) and sv salves; tge and sve what one use gives in full,
+    // read from the item; tree the distance to the nearest visible, passable tree within 1,200 at the start (-1 none, or no tango);
+    // under a tango or salve already running; used the items whose buff started inside the window (- for none).
+    regen_win: {
+        pid: "num",
+        mode: "num",
+        len: "num",
+        miss0: "num",
+        missmax: "num",
+        tg: "num",
+        sv: "num",
+        tge: "num",
+        sve: "num",
+        tree: "num",
+        under: "bool",
+        used: "str",
     },
     lane_job_supply: {
         pid: "num",
@@ -987,7 +1027,8 @@ export const EVENTS = {
     },
     /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat,
      *  band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the
-     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share. */
+     *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share;
+     *  dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief. */
     threat: {
         pid: "num",
         who: "str",
@@ -995,6 +1036,7 @@ export const EVENTS = {
         x: "num",
         y: "num",
         hz: "num",
+        dep: "num",
         threat: "num",
         band: "str",
         reach: "num",
@@ -1461,15 +1503,19 @@ export const EVENTS = {
         st: "num",
         dt: "num",
     },
-    // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), skip (a camp fitted and a
+    // Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next (a chained camp), refuse (the camp found
+    // priced past the trip's budget at sight or engage, CoreCamp admits: its plan price hpc/clr, the live price hpe/clre, hp,
+    // hpr, pace, lvl; the core walks back), skip (a camp fitted and a
     // gate held it: one line per wave window `win` and why), end. clash: the forecast's next clash second; ret: the planned
     // return; clr: clear estimate; gold, loss (forecast lane gold lost by the return), net; end: back (arrival), g0/g1 net worth;
     // nmiss (skip or nexthold why=missing): enemy heroes unseen that could be at the camp or on the walk, mtss the longest of
     // their time_since_seen (s, rounded), mpid their player ids (comma list). nexthold: a chained camp after a clear held by a
     // start gate (why: the gate; after: how the last camp ended), the core walks back. nocamp (one per core, minute and why,
     // while the no-camp gate holds): lvl, ncand (camps in the trip list), noff (enemy camps among them), camp/type/cd (the
-    // nearest trip camp and its distance to the lane front), why (what dropped it: level, far, cleared, empty, pulled, ally,
-    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list).
+    // nearest trip camp and its distance to the lane front), why (what dropped it: far, cleared, empty, pulled, ally,
+    // trip, reserved), near/nd/nwhy=list (the nearest camp of any team, when it is not in the trip list). clre/hpe (end, next,
+    // nexthold): the model's clear seconds and HP fraction for the neutrals the core met at engage, before the learned factors
+    // (what pace and HP rate learn against; absent when none was seen at engage).
     core_camp: {
         pid: "num",
         pos: "num",
@@ -1487,6 +1533,8 @@ export const EVENTS = {
         hpt: "num",
         clrm: "num",
         hpm: "num",
+        clre: "num",
+        hpe: "num",
         n0: "num",
         nu: "str",
         nl: "num",
@@ -1528,6 +1576,8 @@ export const EVENTS = {
         h_plan: "num",
         h_skip: "num",
         h_trip: "num",
+        v: "str",
+        lb: "num",
     },
     rune_job: {
         pid: "num",
@@ -1718,7 +1768,8 @@ export const EVENTS = {
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
-    // hero to the stand or meet point, within PullJob SiteEnemy).
+    // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (Threat.Gate at the camp, `ev=threat who=pull_job`;
+    // Ours.Threat on).
     choice: {
         pid: "num",
         kind: "str",

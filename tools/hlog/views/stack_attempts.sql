@@ -2,6 +2,7 @@
 -- slice retire-stacks moved dynamic.js stackCause and leftInBox here; read through queries/stack_rows.sql by stackAttempts).
 -- cause: a failed attempt's why (NULL when why is ? or absent); a not_stacked attempt with a :59.5 sample (box59 not NULL):
 -- bot-in-box (bot59 = 1), camp-in-box (box59 > 0), unseen (box not seen at :59.5, vis59 <> 1, and after is NULL), else no-spawn;
+-- an unseen attempt (res=unseen: a landed hit with no box read after the job, bot 09/11/2026 on): unseen;
 -- NULL otherwise. A non-numeric box59 or vis59 (say n/a) compares as text.
 -- left59: the camp neutrals still in the bare box at :59.5, from n59 ("name:dist:in|out:a|-") as name:a|- for each "in" entry,
 -- '-' when none, NULL without n59 or when it is '?'.
@@ -19,6 +20,7 @@ SELECT s.*, g.file, g.game,
         FROM sp WHERE tok LIKE '%:in:%'), '-') END AS left59,
     CASE
         WHEN s.res = 'failed' THEN CAST(s.why AS TEXT)
+        WHEN s.res = 'unseen' THEN 'unseen'
         WHEN s.res = 'not_stacked' AND s.box59 IS NOT NULL THEN
             CASE
                 WHEN s.bot59 = 1 THEN 'bot-in-box'

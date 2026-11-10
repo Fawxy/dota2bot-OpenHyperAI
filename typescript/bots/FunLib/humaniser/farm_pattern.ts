@@ -28,6 +28,8 @@ import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
+import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Threat from "bots/FunLib/humaniser/threat";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
@@ -299,7 +301,8 @@ export function StartGate(bot: Unit, now: number): string | undefined {
     if (LaneConfig.IsActive() && CampJobs.Active(bot)) return "camp-job";
     // Its support is on a camp: the core is the lane's only hero, so it stays with the wave.
     if (LaneConfig.IsActive() && CampJobs.Covering(bot)) return "covering";
-    if (LaneHooks.EnemiesMissing(bot, LaneConfig.Settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
+    // Under Ours.Threat the trip's camp is read with the threat gate once chosen (schedule); the caution probe is the OFF arm.
+    if (!Ours.On("Threat") && LaneHooks.EnemiesMissing(bot, LaneConfig.Settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
     if (pos === 2 && Runes.NextSpawn("power", now) - now < s.MidRuneGuard) return "rune";
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= s.Desire) return "retreat";
@@ -527,6 +530,13 @@ function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, T
     const plan = PlanCamp(bot, bot.GetLocation(), front, now, deadline, diag);
     if (plan === undefined)
         return $multi(diag.open === 0 ? "no-camp" : "no-fit", [["lane", lane], ["lvl", bot.GetLevel()], ["window", fmt(deadline - now)], ["best", fmt(diag.bestTotal)], ["open", diag.open], ["pace", string.format("%.2f", PaceFactor(bot))]]);
+    if (Ours.On("Threat")) {
+        const spawner = Camps.SpawnerByIdx(plan.campIdx);
+        // The camp alone, as the support's start reads it: the core stands in lane, whose enemies a walk read would count.
+        const center = spawner !== undefined ? Camps.BoxCenter(spawner) : undefined;
+        const why = center !== undefined ? Threat.Gate(bot, center, center, "farm_trip").why : undefined;
+        if (why !== undefined) return $multi(why, [["lane", lane], ["camp", plan.campIdx]]);
+    }
     const trip: Trip = { team, lane, campIdx: plan.campIdx, type: plan.type, phase: "go", waveAt, deadline, leaveBy: plan.leaveBy, startedAt: now, camps: 0 };
     if (!adopt(bot, trip, plan)) return $multi("stack-start", [["camp", plan.campIdx]]);
     if (executor !== undefined && executor.Owns(bot)) trip.sdk = true;

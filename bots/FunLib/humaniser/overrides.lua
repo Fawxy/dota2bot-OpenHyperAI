@@ -35,4 +35,10 @@ end
 function ____exports.CampForce()
     return ____exports.Get("CampForce") == true
 end
+--- Overrides.AdmitLog (slice core-next-gold, drills only): the camp trip's price check at the camp (`admits`) judges both its
+-- halves by the real rule, logs its verdict as `phase=admit` and refuses nobody, so what a refusal would have saved or cost
+-- is observed (refusal precision). Baked into the arm's `Customize/general.lua` for a remote drill.
+function ____exports.AdmitLog()
+    return ____exports.Get("AdmitLog") == true
+end
 return ____exports

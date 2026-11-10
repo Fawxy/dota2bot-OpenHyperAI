@@ -26,6 +26,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local logged, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Team = ____dota.Team
@@ -34,6 +35,89 @@ local UnitType = ____dota.UnitType
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+--- ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
+-- consumer (gates run every think; the design's "once per decision" would flood).
+function ____exports.Log(bot, consumer, r, decision)
+    local pid = bot:GetPlayerID()
+    local key = (tostring(pid) .. ":") .. consumer
+    local last = logged[key]
+    if last ~= nil and last.decision == decision and r.t - last.t < ____exports.SETTINGS.LogEvery then
+        return
+    end
+    logged[key] = {t = r.t, decision = decision}
+    local ____Telemetry_Event_4 = Telemetry.Event
+    local ____array_3 = __TS__SparseArrayNew(
+        {"pid", pid},
+        {"who", consumer},
+        {"dec", decision},
+        {
+            "x",
+            math.floor(r.place.x)
+        },
+        {
+            "y",
+            math.floor(r.place.y)
+        },
+        {
+            "hz",
+            r2(r.horizon)
+        },
+        {
+            "dep",
+            r2(r.depth)
+        },
+        {
+            "threat",
+            r2(r.threat)
+        },
+        {"band", r.band},
+        {"reach", #r.reach},
+        {
+            "rpid",
+            #r.reach > 0 and table.concat(r.reach, ",") or nil
+        },
+        {
+            "burst",
+            r2(r.burst)
+        },
+        {"ally", r.allies}
+    )
+    local ____temp_2
+    if #r.reach > 0 then
+        ____temp_2 = r.escape
+    else
+        ____temp_2 = nil
+    end
+    __TS__SparseArrayPush(
+        ____array_3,
+        {"esc", ____temp_2},
+        {"tower", r.tower},
+        {
+            "miss",
+            r2(r.missing)
+        },
+        {
+            "mpid",
+            #r.mpids > 0 and table.concat(r.mpids, ",") or nil
+        },
+        {
+            "mtss",
+            r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
+        },
+        {"mcut", r.mcut > 0 and r.mcut or nil},
+        {
+            "hp",
+            r2(bot:GetHealth() / math.max(
+                1,
+                bot:GetMaxHealth()
+            ))
+        }
+    )
+    ____Telemetry_Event_4(
+        "threat",
+        {__TS__SparseArraySpread(____array_3)}
+    )
+end
 ____exports.SETTINGS = {
     MissingAfter = 3,
     MissingSpeed = 330,
@@ -42,6 +126,11 @@ ____exports.SETTINGS = {
     EarlyWeight = 0.2,
     LateWeight = 0.5,
     EarlyUntil = 240,
+    DepthFactor = {{0.5, 1}, {0.65, 0.25}, {1.01, 0.1}},
+    DepthDefault = 0.5,
+    DistFactor = {{2000, 1}, {3000, 0.5}, {math.huge, 0.25}},
+    GateHorizon = 4,
+    MissingRefuse = 0.5,
     VisionCut = true,
     WalkStep = 300,
     BurstWindow = 3,
@@ -73,7 +162,7 @@ local TOWER_IDS = {
 }
 local MAX_PLAYER_ID = 23
 local speeds = {}
-local logged = {}
+logged = {}
 function ____exports.ResetCache()
     speeds = {}
     logged = {}
@@ -103,14 +192,65 @@ local function canReach(u, bot, from, place, horizon)
     local run = u:GetCurrentMovementSpeed() * horizon + u:GetAttackRange() + u:GetBoundingRadius() + bot:GetBoundingRadius()
     return distToSegment(at, from, place) <= run
 end
-local function inTowerReach(enemyTeam, place)
-    for ____, id in ipairs(TOWER_IDS) do
+local T1_IDS = {Tower.Top1, Tower.Mid1, Tower.Bot1}
+local function nearestOf(team, ids, place)
+    local best
+    for ____, id in ipairs(ids) do
         do
             local __continue9
             repeat
-                local tw = GetTower(enemyTeam, id)
+                local tw = GetTower(team, id)
                 if not valid(tw) then
                     __continue9 = true
+                    break
+                end
+                local d = dist(
+                    tw:GetLocation(),
+                    place
+                )
+                if best == nil or d < best then
+                    best = d
+                end
+                __continue9 = true
+            until true
+            if not __continue9 then
+                break
+            end
+        end
+    end
+    return best
+end
+--- The team's nearest standing T1 (the tower set the depth factors were fitted on), else its nearest standing tower.
+local function nearestTower(team, place)
+    return nearestOf(team, T1_IDS, place) or nearestOf(team, TOWER_IDS, place)
+end
+--- The place's depth: its distance to the nearest enemy tower over the sum with the distance to our nearest; DepthDefault with no read.
+local function placeDepth(team, enemyTeam, place)
+    local own = nearestTower(team, place)
+    local en = nearestTower(enemyTeam, place)
+    if own == nil or en == nil or own + en <= 0 then
+        return ____exports.SETTINGS.DepthDefault
+    end
+    return en / (own + en)
+end
+local function stepFactor(steps, v)
+    for ____, ____value in ipairs(steps) do
+        local edge = ____value[1]
+        local f = ____value[2]
+        if v < edge then
+            return f
+        end
+    end
+    return steps[#steps][2]
+end
+local function inTowerReach(enemyTeam, place)
+    for ____, id in ipairs(TOWER_IDS) do
+        do
+            local __continue21
+            repeat
+                local tw = GetTower(enemyTeam, id)
+                if not valid(tw) then
+                    __continue21 = true
                     break
                 end
                 if dist(
@@ -119,9 +259,9 @@ local function inTowerReach(enemyTeam, place)
                 ) <= WorldFacts.TowerReach(tw, ____exports.SETTINGS.TowerReach) then
                     return true
                 end
-                __continue9 = true
+                __continue21 = true
             until true
-            if not __continue9 then
+            if not __continue21 then
                 break
             end
         end
@@ -159,12 +299,13 @@ local function unseenWithin(points, at, r)
 end
 --- The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
 -- read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
--- (VisionCut), adds EarlyWeight or LateWeight by game minute. Walks player ids with GetTeamForPlayer (GetTeamPlayers is
--- empty for a bot-only team). A hero the API has no sighting of is not placed and not counted.
-local function missingOf(bot, from, place, now, visible)
+-- (VisionCut), adds EarlyWeight or LateWeight by game minute, scaled by the place prior (DepthFactor for the place's depth,
+-- DistFactor for its last-seen distance to the place). Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for
+-- a bot-only team). A hero the API has no sighting of is not placed and not counted.
+local function missingOf(bot, from, place, depth, now, visible)
     local s = ____exports.SETTINGS
     local team = bot:GetTeam()
-    local w = now < s.EarlyUntil and s.EarlyWeight or s.LateWeight
+    local base = (now < s.EarlyUntil and s.EarlyWeight or s.LateWeight) * stepFactor(s.DepthFactor, depth)
     local sum = 0
     local cut = 0
     local mtss
@@ -174,37 +315,40 @@ local function missingOf(bot, from, place, now, visible)
         local pid = 0
         while pid <= MAX_PLAYER_ID do
             do
-                local __continue20
+                local __continue32
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue20 = true
+                        __continue32 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue20 = true
+                        __continue32 = true
                         break
                     end
                     local r = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin
                     if distToSegment(info.location, from, place) > r then
-                        __continue20 = true
+                        __continue32 = true
                         break
                     end
                     if s.VisionCut then
                         points = points or walkPoints(from, place)
                         if not unseenWithin(points, info.location, r) then
                             cut = cut + 1
-                            __continue20 = true
+                            __continue32 = true
                             break
                         end
                     end
-                    sum = sum + w
+                    sum = sum + base * stepFactor(
+                        s.DistFactor,
+                        dist(info.location, place)
+                    )
                     pids[#pids + 1] = pid
                     mtss = math.max(mtss or 0, info.time_since_seen)
-                    __continue20 = true
+                    __continue32 = true
                 until true
-                if not __continue20 then
+                if not __continue32 then
                     break
                 end
             end
@@ -263,10 +407,10 @@ function ____exports.Read(bot, from, place, horizon, opts)
     local window = math.min(horizon, s.BurstWindow)
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue40
+            local __continue52
             repeat
                 if not valid(e) or not e:CanBeSeen() then
-                    __continue40 = true
+                    __continue52 = true
                     break
                 end
                 local pid = e:GetPlayerID()
@@ -296,9 +440,9 @@ function ____exports.Read(bot, from, place, horizon, opts)
                     end
                     dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, w, DamageType.All)
                 end
-                __continue40 = true
+                __continue52 = true
             until true
-            if not __continue40 then
+            if not __continue52 then
                 break
             end
         end
@@ -306,10 +450,10 @@ function ____exports.Read(bot, from, place, horizon, opts)
     local allies = 0
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue48
+            local __continue60
             repeat
                 if not valid(a) or a == bot or RetreatState.Running(a) then
-                    __continue48 = true
+                    __continue60 = true
                     break
                 end
                 if canReach(
@@ -321,21 +465,27 @@ function ____exports.Read(bot, from, place, horizon, opts)
                 ) then
                     allies = allies + 1
                 end
-                __continue48 = true
+                __continue60 = true
             until true
-            if not __continue48 then
+            if not __continue60 then
                 break
             end
         end
     end
+    local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
+    local depth = placeDepth(
+        bot:GetTeam(),
+        enemyTeam,
+        place
+    )
     local missing, mpids, mtss, mcut = missingOf(
         bot,
         from,
         place,
+        depth,
         now,
         visible
     )
-    local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     local tower = inTowerReach(enemyTeam, place)
     local hp = math.max(
         1,
@@ -354,6 +504,7 @@ function ____exports.Read(bot, from, place, horizon, opts)
         from = from,
         place = place,
         horizon = horizon,
+        depth = depth,
         reach = reach,
         burst = burst,
         allies = allies,
@@ -369,86 +520,14 @@ function ____exports.Read(bot, from, place, horizon, opts)
         att = att
     }
 end
-local function r2(x)
-    return math.floor(x * 100 + 0.5) / 100
+--- The gate rule the starts share (the core camp trip, the pos3's pull, the support's pull and stack, the farm trip, the pull farm): held
+-- by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
+-- ("missing"); the read and its decision are logged as ev=threat for `consumer`.
+function ____exports.Gate(bot, from, place, consumer)
+    local r = ____exports.Read(bot, from, place, ____exports.SETTINGS.GateHorizon)
+    local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
+    ____exports.Log(bot, consumer, r, why or "go")
+    return {why = why, r = r}
 end
---- ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
--- consumer (gates run every think; the design's "once per decision" would flood).
-function ____exports.Log(bot, consumer, r, decision)
-    local pid = bot:GetPlayerID()
-    local key = (tostring(pid) .. ":") .. consumer
-    local last = logged[key]
-    if last ~= nil and last.decision == decision and r.t - last.t < ____exports.SETTINGS.LogEvery then
-        return
-    end
-    logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_4 = Telemetry.Event
-    local ____array_3 = __TS__SparseArrayNew(
-        {"pid", pid},
-        {"who", consumer},
-        {"dec", decision},
-        {
-            "x",
-            math.floor(r.place.x)
-        },
-        {
-            "y",
-            math.floor(r.place.y)
-        },
-        {
-            "hz",
-            r2(r.horizon)
-        },
-        {
-            "threat",
-            r2(r.threat)
-        },
-        {"band", r.band},
-        {"reach", #r.reach},
-        {
-            "rpid",
-            #r.reach > 0 and table.concat(r.reach, ",") or nil
-        },
-        {
-            "burst",
-            r2(r.burst)
-        },
-        {"ally", r.allies}
-    )
-    local ____temp_2
-    if #r.reach > 0 then
-        ____temp_2 = r.escape
-    else
-        ____temp_2 = nil
-    end
-    __TS__SparseArrayPush(
-        ____array_3,
-        {"esc", ____temp_2},
-        {"tower", r.tower},
-        {
-            "miss",
-            r2(r.missing)
-        },
-        {
-            "mpid",
-            #r.mpids > 0 and table.concat(r.mpids, ",") or nil
-        },
-        {
-            "mtss",
-            r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
-        },
-        {"mcut", r.mcut > 0 and r.mcut or nil},
-        {
-            "hp",
-            r2(bot:GetHealth() / math.max(
-                1,
-                bot:GetMaxHealth()
-            ))
-        }
-    )
-    ____Telemetry_Event_4(
-        "threat",
-        {__TS__SparseArraySpread(____array_3)}
-    )
-end
+r2 = function(x) return math.floor(x * 100 + 0.5) / 100 end
 return ____exports
