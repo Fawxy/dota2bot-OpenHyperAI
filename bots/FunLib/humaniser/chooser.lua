@@ -21,6 +21,7 @@ local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -277,6 +278,13 @@ end
 --- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
 function ____exports.Gate(bot, mode, inner)
     return function()
+        Arbiter.Shadow(
+            bot,
+            function()
+                local ____opt_5 = runningJob(bot)
+                return ____opt_5 and ____opt_5.name
+            end
+        )
         local v = ____exports.Decide(bot, mode)
         return v ~= nil and v or inner()
     end
@@ -291,13 +299,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_5
+        local ____table_Step_result_7
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_5 = nil
+            ____table_Step_result_7 = nil
         else
-            ____table_Step_result_5 = inner()
+            ____table_Step_result_7 = inner()
         end
-        return ____table_Step_result_5
+        return ____table_Step_result_7
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -319,9 +327,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_6 = runningJob(bot)
-    if ____opt_6 ~= nil then
-        ____opt_6.End(bot, why)
+    local ____opt_8 = runningJob(bot)
+    if ____opt_8 ~= nil then
+        ____opt_8.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

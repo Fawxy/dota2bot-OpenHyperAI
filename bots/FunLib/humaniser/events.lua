@@ -106,6 +106,16 @@ ____exports.EVENTS = {
         dwell = "num",
         by = "str"
     },
+    arb = {
+        pid = "num",
+        pick = "str",
+        grp = "mixed",
+        host = "str",
+        act = "str",
+        agree = "num",
+        prev = "str",
+        dwell = "num"
+    },
     mark = {
         n = "num",
         by = "num",

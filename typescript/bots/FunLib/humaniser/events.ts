@@ -105,6 +105,17 @@ export const EVENTS = {
         dwell: "num",
         by: "str",
     },
+    /** Slice arbiter-shadow: the arbiter's pick for an owned hero beside the mode Valve holds it in, on a change of either. `grp` the doctrine group 1-6, or `base` (the lane) or `oha`; `agree` 1 when `act` is the pick's host or the pick is `oha`; `dwell` seconds the previous pick and mode pair lasted. */
+    arb: {
+        pid: "num",
+        pick: "str",
+        grp: "mixed",
+        host: "str",
+        act: "str",
+        agree: "num",
+        prev: "str",
+        dwell: "num",
+    },
     mark: {
         n: "num",
         by: "num",
