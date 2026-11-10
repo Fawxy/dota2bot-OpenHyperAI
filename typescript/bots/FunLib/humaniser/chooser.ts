@@ -14,6 +14,7 @@ import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
+import * as Arbiter from "bots/FunLib/humaniser/arbiter";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -210,6 +211,7 @@ export function Decide(bot: Unit, mode: string): number | undefined {
 /** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. */
 export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
+        Arbiter.Shadow(bot, () => runningJob(bot)?.name);
         const v = Decide(bot, mode);
         return v !== undefined ? v : inner();
     };

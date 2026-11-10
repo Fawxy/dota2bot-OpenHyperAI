@@ -398,7 +398,7 @@ do
 	end)
 	local endT, line
 	for _, l in ipairs(printed) do
-		if endT == nil and l:find("ev=job ", 1, true) and field(l, "phase") == "end" then endT = tonumber(l:match("t=(%S+)")) end
+		if endT == nil and l:find(" ev=job ", 1, true) and field(l, "phase") == "end" then endT = tonumber(l:match("t=(%S+)")) end
 		if l:find("ev=stack ", 1, true) then line = l end
 	end
 	local exitUntil = H.Lane.Config.Settings().Timing.StackExitUntil
@@ -1104,7 +1104,7 @@ do
 	Customize.Overrides = nil
 
 	-- ev=job: one start and one end per attempt in both arms, with the stack line's why.
-	local function jobLines(ls) local r = {} for _, l in ipairs(ls) do if l:find("ev=job ", 1, true) then table.insert(r, l) end end return r end
+	local function jobLines(ls) local r = {} for _, l in ipairs(ls) do if l:find(" ev=job ", 1, true) then table.insert(r, l) end end return r end
 	for _, on in ipairs({ true, false }) do
 		local arm = on and "on" or "off"
 		local H1, b1 = world({ t = 3 * 60 + 15, ours = { StackExecute = true, JobChooser = on } })
