@@ -574,6 +574,12 @@ function isLive(job: Job | undefined): job is Job {
     return job !== undefined && job.phase !== "done" && job.phase !== "return";
 }
 
+/** The kind of this hero's live camp job, if one runs; reads only. */
+export function LiveKind(bot: Unit): JobKind | undefined {
+    const job = jobs[bot.GetPlayerID()];
+    return isLive(job) ? job.kind : undefined;
+}
+
 /** Cheap: a config read, then a table lookup; false before any engine call when the lane system is off. */
 export function PreContestResting(bot: Unit, lane: number): boolean {
     const r = preContestRest[bot.GetPlayerID()];

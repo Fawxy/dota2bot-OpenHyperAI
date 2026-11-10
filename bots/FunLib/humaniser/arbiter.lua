@@ -6,10 +6,19 @@ local function __TS__StringStartsWith(self, searchString, position)
     end
     return string.sub(self, position + 1, #searchString + position) == searchString
 end
+
+local function __TS__StringEndsWith(self, searchString, endPosition)
+    if endPosition == nil or endPosition > #self then
+        endPosition = #self
+    end
+    return string.sub(self, endPosition - #searchString + 1, endPosition) == searchString
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -20,6 +29,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local MidRunes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/mid_runes")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 --- Doctrine groups: 1 stay alive, 2 pair, 3 farm, 4 wave, 5 pressure, 6 jobs; lower wins. The lane is the base, below every
 -- interrupt candidate, and `oha` below it; both log their rank as text in `grp`.
@@ -107,9 +117,9 @@ local function lastHitNow(bot)
     local age = string.match(d, "sc=([%d%.]+)")
     return age ~= nil and tonumber(age) <= 1
 end
---- Left out for want of a read that changes nothing: `trade` (core_trade keeps its episode in a private table; Desire opens and
--- closes it). The controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the
--- in-lane levers are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
+--- The job is the chooser's running job, else a live camp job of the older camp-job path (`jobName` is then its kind). The
+-- controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the in-lane levers
+-- are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
 function ____exports.Candidates(bot, jobName, lever)
     if lever == nil then
         lever = ____exports.LeverOf(bot)
@@ -125,13 +135,27 @@ function ____exports.Candidates(bot, jobName, lever)
         applies = RetreatState.Running(bot)
     }
     out[#out + 1] = {
+        name = "trade",
+        group = 5,
+        host = "attack",
+        applies = CoreTrade.Running(bot)
+    }
+    out[#out + 1] = {
         name = "lane_fight",
         group = 5,
         host = "team_roam",
         applies = LaneFight.CurrentPhase(bot) ~= "idle"
     }
+    local job = jobName or CampJobs.LiveKind(bot)
     local jobHost = RuneJob.HostOf(bot) == BotMode.Rune and "rune" or "farm"
-    out[#out + 1] = {name = "job", group = lever == "pull" and jobName == "pull" and 4 or 6, host = jobHost, applies = jobName ~= nil}
+    local pulls = job == "pull" or job ~= nil and __TS__StringEndsWith(job, "_pull")
+    out[#out + 1] = {name = "job", group = lever == "pull" and pulls and 4 or 6, host = jobHost, applies = job ~= nil}
+    out[#out + 1] = {
+        name = "mid_rune",
+        group = 6,
+        host = "rune",
+        applies = MidRunes.Claiming(bot)
+    }
     out[#out + 1] = {
         name = "lane",
         group = lastHitNow(bot) and 3 or ____exports.BASE_GROUP,
@@ -151,6 +175,7 @@ local function compute(bot, jobName)
     local l = last[pid]
     local lever = ____exports.LeverOf(bot)
     local cands = ____exports.Candidates(bot, jobName, lever)
+    local job = jobName or CampJobs.LiveKind(bot)
     local picked = ____exports.Pick(cands, l and l.pick) or cands[#cands]
     local act = HDebug.ModeName(bot:GetActiveMode())
     if l ~= nil and l.pick == picked.name and l.act == act then
@@ -163,7 +188,7 @@ local function compute(bot, jobName)
         {"host", picked.host},
         {"act", act},
         {"agree", (picked.name == ____exports.OHA or picked.host == act) and 1 or 0},
-        {"job", jobName},
+        {"job", job},
         {"lever", lever},
         {"prev", l and l.pick},
         {"dwell", l ~= nil and now - l.since or nil}

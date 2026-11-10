@@ -8,7 +8,7 @@ const { Store } = require('../store');
 
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 
-test('arb disagree: seconds under the pick in force where its host is not the held mode, by pick, mode and desire branch', () => {
+test('arb disagree: seconds under the pick in force where its host is not the held mode, by role, pick, mode and desire source; a mode the shadow had not seen is left out', () => {
     const snap = (t, mode, by) => line(t, `snap pid=1 x=0 y=0 alive=1 mode=${mode} d=0.5 deaths=0 by="${by}"`);
     const arb = (t, pick, host, act, agree) => line(t, `arb pid=1 pick=${pick} grp=1 host=${host} act=${act} agree=${agree}`);
     const lines = [
@@ -22,6 +22,8 @@ test('arb disagree: seconds under the pick in force where its host is not the he
         snap(102, 'farm', 'farm 1.10 by raw'),
         arb(103, 'retreat', 'retreat', 'retreat', 1),
         snap(103, 'retreat', 'retreat 0.95 by raw'),
+        // A mode held for a frame between two shadow reads: no ev=arb line has seen it, so it is not paired with the old pick.
+        snap(103.5, 'defend_top', 'defend_top 0.10 by raw'),
         arb(104, 'oha', undefined, 'farm', 1),
         snap(104, 'farm', 'farm 0.60 by raw'),
         // A built-in mode has no mode file, so the snap's `by` names another mode: kept, with no desire or source.
@@ -39,8 +41,9 @@ test('arb disagree: seconds under the pick in force where its host is not the he
     s.ingest(f);
     s.refreshViews();
     const sql = fs.readFileSync(path.join(__dirname, '..', 'queries', 'arb_disagree.sql'), 'utf8');
-    const rows = q => s.query(sql, q).map(r => [r.pick, r.act, r.desire, r.src, r.secs, r.games]);
-    assert.deepStrictEqual(rows({}), [['retreat', 'farm', 1.1, 'raw', 3, 1], ['lane', 'evasive', null, null, 2, 1]]);
+    const rows = q => s.query(sql, q).map(r => [r.role, r.pick, r.act, r.src, r.secs, r.lo, r.hi]);
+    assert.deepStrictEqual(rows({}), [['core', 'retreat', 'farm', 'raw', 3, 1.1, 1.1], ['core', 'lane', 'evasive', null, 2, null, null]]);
+    assert.deepStrictEqual(rows({ min_secs: 3 }).length, 1);
     assert.deepStrictEqual(rows({ pos_lo: 4, pos_hi: 5 }), []);
     s.db.close();
 });

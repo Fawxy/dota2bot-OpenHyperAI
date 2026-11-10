@@ -4,6 +4,8 @@
  * behaviour: Candidates reads state only (no cache is refreshed), and Shadow's result is not used by the gate.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
+import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -14,6 +16,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as MidRunes from "bots/FunLib/humaniser/transitions/mid_runes";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 
 /**
@@ -79,17 +82,21 @@ function lastHitNow(bot: Unit): boolean {
 }
 
 /**
- * Left out for want of a read that changes nothing: `trade` (core_trade keeps its episode in a private table; Desire opens and
- * closes it). The controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the
- * in-lane levers are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
+ * The job is the chooser's running job, else a live camp job of the older camp-job path (`jobName` is then its kind). The
+ * controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the in-lane levers
+ * are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
  */
 export function Candidates(bot: Unit, jobName: string | undefined, lever: string | undefined = LeverOf(bot)): Candidate[] {
     if (!owned(bot)) return [{ name: OHA, group: OHA_GROUP, applies: true }];
     const out: Candidate[] = [];
     out.push({ name: "retreat", group: 1, host: "retreat", applies: RetreatState.Running(bot) });
+    out.push({ name: "trade", group: 5, host: "attack", applies: CoreTrade.Running(bot) });
     out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: LaneFight.CurrentPhase(bot) !== "idle" });
+    const job = jobName ?? CampJobs.LiveKind(bot);
     const jobHost = RuneJob.HostOf(bot) === BotMode.Rune ? "rune" : "farm";
-    out.push({ name: "job", group: lever === "pull" && jobName === "pull" ? 4 : 6, host: jobHost, applies: jobName !== undefined });
+    const pulls = job === "pull" || (job !== undefined && job.endsWith("_pull"));
+    out.push({ name: "job", group: lever === "pull" && pulls ? 4 : 6, host: jobHost, applies: job !== undefined });
+    out.push({ name: "mid_rune", group: 6, host: "rune", applies: MidRunes.Claiming(bot) });
     // The base: it wins when no interrupt applies, and is group 3 only while a last hit is under way (D11).
     out.push({ name: "lane", group: lastHitNow(bot) ? 3 : BASE_GROUP, host: "laning", applies: true });
     out.push({ name: OHA, group: OHA_GROUP, applies: true });
@@ -114,6 +121,7 @@ function compute(bot: Unit, jobName: string | undefined): void {
     const l = last[pid];
     const lever = LeverOf(bot);
     const cands = Candidates(bot, jobName, lever);
+    const job = jobName ?? CampJobs.LiveKind(bot);
     const picked = Pick(cands, l?.pick) ?? cands[cands.length - 1];
     const act = HDebug.ModeName(bot.GetActiveMode());
     if (l !== undefined && l.pick === picked.name && l.act === act) return;
@@ -124,7 +132,7 @@ function compute(bot: Unit, jobName: string | undefined): void {
         ["host", picked.host],
         ["act", act],
         ["agree", picked.name === OHA || picked.host === act ? 1 : 0],
-        ["job", jobName],
+        ["job", job],
         ["lever", lever],
         ["prev", l?.pick],
         ["dwell", l !== undefined ? now - l.since : undefined],
