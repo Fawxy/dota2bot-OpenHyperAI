@@ -787,10 +787,9 @@ ____exports.TABLE = {
         rep = {every = 60, from = 60, control = 2}
     },
     ["retreat-even"] = {
-        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it; Radiant pos5 a statue beside it on odd reps (2v2), benched on even reps (1v2); every 4th rep no chase",
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
         cast = SAFE_CORE,
-        statue = {r = {5}},
-        spots = {r = {[5] = {"lane", "bench"}}},
+        sentry = {r = {5}},
         chaser = {d = {3, 4}},
         chaseCast = true,
         others = "bench",

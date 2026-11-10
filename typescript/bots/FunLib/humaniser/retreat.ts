@@ -29,10 +29,13 @@ export const SETTINGS = {
     EngagedWindow: 6,
     /**
      * RetreatOdds: a fight the heroes in reach do not outnumber is held (no `threat` leave) only while their burst, as the read
-     * counts it (an engaged hero over EngagedWindow), is under this share of our current HP; at or over it we are in danger
-     * of dying and D24 no longer applies. judgement.
+     * counts it (an engaged hero over EngagedWindow), is under this share of our current HP: D1's "their burst can kill me".
+     * 0.5 left nearly every forced 2v2 (drill retreat-even 3-4: two engaged heroes pass half our HP over 6 s). judgement.
      */
-    EvenBurst: 0.5,
+    EvenBurst: 1,
+    /** RetreatOdds: and only at this HP share or more, the D24 view's "not in danger" bar: under it the hero, which does not
+     *  hit back yet, would only absorb the damage (a melee hero hitting us at 25% HP still sends us home). judgement. */
+    EvenHp: 0.5,
     /** Base budget by purpose. judgement. */
     BudgetFree: 0.5,
     BudgetBusy: 0.6,
@@ -504,9 +507,10 @@ function leaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now:
         return undefined;
     }
     // D1 leaves when more enemy heroes than we have can reach us (the hero itself counts on our side). A fight they do not
-    // outnumber is D24's while we are not in danger of dying: held only while their burst stays under EvenBurst of our HP.
+    // outnumber is D24's while we are not in danger of dying: their burst under EvenBurst of our HP, our HP at EvenHp or more.
     // The read's allies are the heroes not in retreat who can reach us within its horizon.
-    if (Ours.On("RetreatOdds") && r.reach.length <= r.allies + 1 && r.burst < SETTINGS.EvenBurst) {
+    const even = r.reach.length <= r.allies + 1 && r.burst < SETTINGS.EvenBurst && hpShare(bot) >= SETTINGS.EvenHp;
+    if (Ours.On("RetreatOdds") && even) {
         st.overSince = undefined;
         if (st.stayLogged !== true) {
             st.stayLogged = true;

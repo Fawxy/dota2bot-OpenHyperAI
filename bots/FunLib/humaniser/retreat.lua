@@ -234,7 +234,8 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 ____exports.SETTINGS = {
     Horizon = 2,
     EngagedWindow = 6,
-    EvenBurst = 0.5,
+    EvenBurst = 1,
+    EvenHp = 0.5,
     BudgetFree = 0.5,
     BudgetBusy = 0.6,
     BudgetCommitted = 0.75,
@@ -880,7 +881,8 @@ local function leaveWhy(bot, st, r, budget, now)
         st.stayLogged = nil
         return nil
     end
-    if Ours.On("RetreatOdds") and #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst then
+    local even = #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst and hpShare(bot) >= ____exports.SETTINGS.EvenHp
+    if Ours.On("RetreatOdds") and even then
         st.overSince = nil
         if st.stayLogged ~= true then
             st.stayLogged = true
