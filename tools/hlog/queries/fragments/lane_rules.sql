@@ -25,7 +25,8 @@
 --    it when, at any second from that last together second to the departure, the core is at 40% HP or less, or 2 or more
 --    enemies are within 1,200 of it while it is at 70% HP or less or hit by a hero (the 1v2 with a kill threat; two enemy
 --    laners near is every 2v2 lane second, so alone it is no need), or an enemy within 1,500 of it is 2 levels above it or
---    has 6 while it has not. Cause: self (the support was in retreat mode: staying alive is the higher group), needed, free.
+--    has 6 while it has not. Cause: self (the support was in retreat mode: staying alive is the higher group; at any HP, so a
+--    needless high-HP retreat away from the core is D2's count, not D7's), needed, free.
 --    viol: needed.
 -- D9: a trip is a run of seconds (gaps of 3 s or less, 3 s or more long) more than 1,200 from every lane path (`ld`),
 --    outside 2,500 of the fountain, from 0:30, that starts from lane (the snapshot before, 3 s or less earlier, within 1,200
@@ -195,7 +196,7 @@ lr_t1 AS (SELECT r.*, sum(r.nw) OVER (PARTITION BY r.game_id, r.pid ORDER BY r.s
 lr_d9e AS (
     SELECT game_id, pid, team, pos, side, ep, min(sec) AS t, max(sec) AS t1, max(sec) - min(sec) + 1 AS secs,
         sum(en_r >= 2 AND al12 = 0) AS exposed, max(CASE WHEN en_r >= 2 AND al12 = 0 THEN en_r END) AS en, min(hp) AS hp,
-        (SELECT r.mode || ' ' || coalesce(r.pld <= 1200 AND r.sec - r.psec <= 3, 0) FROM lr_t1 r
+        (SELECT coalesce(r.mode, '') || ' ' || coalesce(r.pld <= 1200 AND r.sec - r.psec <= 3, 0) FROM lr_t1 r
             WHERE r.game_id = x.game_id AND r.pid = x.pid AND r.ep = x.ep ORDER BY r.sec LIMIT 1) AS start
     FROM lr_t1 x GROUP BY game_id, pid, ep
 ),
