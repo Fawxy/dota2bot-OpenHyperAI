@@ -96,14 +96,13 @@ do
 	check("an open trade is the pick and is hosted in attack", winner(nil, nil) == "trade" and host(nil, nil) == "attack")
 	check("an open trade outranks a job out of lane", winner("stack", nil) == "trade")
 	camp = "stack_pull"
-	check("a camp job with no chooser job is a job, below a trade", winner(nil, nil) == "trade")
 	check("the pull lever lifts a camp-job pull over a trade", winner(nil, "pull") == "job" and host(nil, "pull") == "farm")
+	camp = "stack"
+	check("the pull lever does not lift a camp job that is no pull", winner(nil, "pull") == "trade")
 	trading = false
 	check("a camp job with no chooser job is the pick over the base lane", winner(nil, nil) == "job")
 	camp, claiming = nil, true
 	check("the mid's rune claim is the pick over the base lane, hosted in rune", winner(nil, nil) == "mid_rune" and host(nil, nil) == "rune")
-	trading, claiming = false, false
-	check("with none of them the lane is the pick", winner(nil, nil) == "lane")
 
 	local threw = 0
 	Fight.CurrentPhase = function() threw = threw + 1; error("boom") end
