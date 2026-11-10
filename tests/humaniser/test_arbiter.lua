@@ -57,12 +57,12 @@ do
 	end
 	local ok, err = pcall(function()
 		frame(0)
-		frame(0.1)
+		frame(0.3)
 		RetreatState.SetRunning(bot, true)
-		frame(0.1)
-		frame(0.1)
+		frame(0.3)
+		frame(0.3)
 		bot.mode = BotMode.Retreat
-		frame(0.1)
+		frame(0.3)
 	end)
 	print = old
 	if not ok then error(err, 0) end
@@ -75,6 +75,7 @@ do
 
 	local Fight = require("bots/FunLib/humaniser/lane_fight")
 	Fight.CurrentPhase = function() error("boom") end
+	T = T + 1
 	check("an error inside the shadow does not reach the caller", pcall(Arb.Shadow, bot, function() return nil end))
 end
 finish()

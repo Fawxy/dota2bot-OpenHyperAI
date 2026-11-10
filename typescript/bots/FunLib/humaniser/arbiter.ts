@@ -113,12 +113,15 @@ interface Last {
 
 const last: Record<number, Last | undefined> = {};
 
-function compute(bot: Unit, jobName: string | undefined): void {
+/** judgement: seconds between computes per hero; the gate calls Shadow from all 20 mode files every frame. */
+const PERIOD = 0.25;
+
+function compute(bot: Unit, jobName: () => string | undefined): void {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const l = last[pid];
-    if (l !== undefined && l.at === now) return;
-    const cands = Candidates(bot, jobName);
+    if (l !== undefined && now - l.at < PERIOD) return;
+    const cands = Candidates(bot, jobName());
     const picked = Pick(cands, l?.pick) ?? cands[cands.length - 1];
     const act = HDebug.ModeName(bot.GetActiveMode());
     if (l !== undefined && l.pick === picked.name && l.act === act) {
@@ -139,10 +142,10 @@ function compute(bot: Unit, jobName: string | undefined): void {
 }
 
 /**
- * Called from every mode's gate each frame; computes at most once per hero per game second tick and logs on a change of pick
+ * Called from every mode's gate each frame; computes at most once per hero per PERIOD and logs on a change of pick
  * or active mode. Returns nothing, and an error inside it is swallowed so it cannot reach GetDesire.
  */
 export function Shadow(bot: Unit, jobName: () => string | undefined): void {
     if (!Telemetry.IsEnabled() || !Ours.On("ArbiterShadow")) return;
-    pcall(() => compute(bot, jobName()));
+    pcall(() => compute(bot, jobName));
 }

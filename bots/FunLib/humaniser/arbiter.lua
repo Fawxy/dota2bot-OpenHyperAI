@@ -159,14 +159,19 @@ function ____exports.Candidates(bot, jobName)
     return out
 end
 local last = {}
+--- judgement: seconds between computes per hero; the gate calls Shadow from all 20 mode files every frame.
+local PERIOD = 0.25
 local function compute(bot, jobName)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local l = last[pid]
-    if l ~= nil and l.at == now then
+    if l ~= nil and now - l.at < PERIOD then
         return
     end
-    local cands = ____exports.Candidates(bot, jobName)
+    local cands = ____exports.Candidates(
+        bot,
+        jobName()
+    )
     local picked = ____exports.Pick(cands, l and l.pick) or cands[#cands]
     local act = HDebug.ModeName(bot:GetActiveMode())
     if l ~= nil and l.pick == picked.name and l.act == act then
@@ -185,15 +190,12 @@ local function compute(bot, jobName)
     })
     last[pid] = {at = now, pick = picked.name, act = act, since = now}
 end
---- Called from every mode's gate each frame; computes at most once per hero per game second tick and logs on a change of pick
+--- Called from every mode's gate each frame; computes at most once per hero per PERIOD and logs on a change of pick
 -- or active mode. Returns nothing, and an error inside it is swallowed so it cannot reach GetDesire.
 function ____exports.Shadow(bot, jobName)
     if not Telemetry.IsEnabled() or not Ours.On("ArbiterShadow") then
         return
     end
-    pcall(function() return compute(
-        bot,
-        jobName()
-    ) end)
+    pcall(function() return compute(bot, jobName) end)
 end
 return ____exports
