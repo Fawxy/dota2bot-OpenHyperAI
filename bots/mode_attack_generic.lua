@@ -45,4 +45,5 @@ end
 -- Valve's C++ attack mode runs where neither branch above defined GetDesire.
 if GetDesire ~= nil then
 	do local C = require(GetScriptDirectory()..'/FunLib/humaniser/index').Chooser; GetDesire = C.Gate(GetBot(), 'attack', GetDesire) end
+	do local E = require(GetScriptDirectory()..'/FunLib/humaniser/telemetry').Entry; GetDesire, Think = E('mode_attack.GetDesire', GetDesire), E('mode_attack.Think', Think) end
 end

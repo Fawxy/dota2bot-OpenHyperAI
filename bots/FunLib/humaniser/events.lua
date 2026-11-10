@@ -211,6 +211,35 @@ ____exports.EVENTS = {
         mode = "str",
         competing = "str"
     },
+    perf_probe = {
+        vm = "str",
+        os_clock = "num",
+        real_time = "num",
+        res_us = "num",
+        spins = "num",
+        spin_cpu_ms = "num",
+        spin_real_ms = "num",
+        src = "str"
+    },
+    perf = {
+        pid = "mixed",
+        vm = "str",
+        dt = "num",
+        cpu_ms = "num",
+        real_ms = "num",
+        entry_ms = "num",
+        ours_ms = "num",
+        log_ms = "num",
+        log_n = "num"
+    },
+    perf_top = {
+        vm = "str",
+        kind = "str",
+        where = "str",
+        n = "num",
+        ms = "num",
+        max_ms = "num"
+    },
     oha_idle = {pid = "num", mode = "num", held = "num"},
     camp = {
         idx = "num",
