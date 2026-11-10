@@ -27,6 +27,12 @@ export const SETTINGS = {
      * from about 31% HP, and 0.33 at full HP (a lone harasser at full HP starts nothing). judgement.
      */
     EngagedWindow: 6,
+    /**
+     * RetreatOdds: a fight the heroes in reach do not outnumber is held (no `threat` leave) only while their burst, as the read
+     * counts it (an engaged hero over EngagedWindow), is under this share of our current HP; at or over it we are in danger
+     * of dying and D24 no longer applies. judgement.
+     */
+    EvenBurst: 0.5,
     /** Base budget by purpose. judgement. */
     BudgetFree: 0.5,
     BudgetBusy: 0.6,
@@ -123,6 +129,8 @@ interface DrillRep {
 interface HeroState {
     ep?: Episode;
     overSince?: number;
+    /** An over-budget read held only by the numbers (RetreatOdds) has been logged as ph=stay since the read last fell under. */
+    stayLogged?: boolean;
     read?: Threat.Read;
     readAt?: number;
     orderAt?: number;
@@ -402,6 +410,7 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: numbe
         ["thr", r2(r.threat)],
         ["band", r.band],
         ["reach", r.reach.length],
+        ["al", r.allies],
         ["burst", r2(r.burst)],
         ["eng", r.eng.length],
         ["tower", r.tower],
@@ -491,6 +500,21 @@ function leaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now:
     if (hpShare(bot) < SETTINGS.HealFloor && r.reach.length === 0) return "heal";
     if (r.threat <= budget) {
         st.overSince = undefined;
+        st.stayLogged = undefined;
+        return undefined;
+    }
+    // D1 leaves when more enemy heroes than we have can reach us (the hero itself counts on our side). A fight they do not
+    // outnumber is D24's while we are not in danger of dying: held only while their burst stays under EvenBurst of our HP.
+    // The read's allies are the heroes not in retreat who can reach us within its horizon.
+    if (Ours.On("RetreatOdds") && r.reach.length <= r.allies + 1 && r.burst < SETTINGS.EvenBurst) {
+        st.overSince = undefined;
+        if (st.stayLogged !== true) {
+            st.stayLogged = true;
+            Telemetry.Event("retreat", [
+                ["ph", "stay"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
+                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
+            ]);
+        }
         return undefined;
     }
     st.overSince = st.overSince ?? now;

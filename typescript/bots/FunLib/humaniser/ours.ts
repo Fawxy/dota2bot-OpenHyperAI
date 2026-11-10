@@ -126,6 +126,10 @@ export const DEFAULTS = {
      *  areas' retreat nudges are off for it, and every other hero in retreat mode takes the plain walk. Off: OHA's retreat
      *  and Valve's walk. */
     Retreat: true,
+    /** Slice even-fight (D24, D1): with Retreat on, the over-budget `threat` leave applies only when the heroes in reach
+     *  outnumber us (the hero and the allies the read counts); an even fight is left only on `lethal`, a tower or the heal
+     *  floor. Off: the budget alone decides, whatever the numbers. */
+    RetreatOdds: true,
     /** Slice arbiter-shadow (design docs/proposals/2026-11-11-arbiter.md): per owned hero, the arbiter's pick as ev=arb beside
      *  Valve's active mode (arbiter.ts). Logging only, no desire changes. Off: no line. */
     ArbiterShadow: true,

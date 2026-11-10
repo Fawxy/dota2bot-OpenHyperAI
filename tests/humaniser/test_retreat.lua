@@ -319,6 +319,35 @@ do
 	check("ally: no help while it retreats", Threat.Read(bot, HERE, HERE, 2).allies == 0)
 end
 
+-- Slice even-fight (D24, D1): two heroes in reach with the lane partner beside us read 0.67 - 0.15 = 0.52, over the free
+-- budget, yet they do not outnumber us; RetreatOdds keeps the hero in lane and logs the hold once. Off, the same read leaves.
+do
+	local function evenFight(est, odds)
+		local H, bot = world()
+		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = odds
+		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
+		ally.maxhp, ally.hp = 600, 600
+		enemy(10, Vector(300, -5000), est)
+		enemy(11, Vector(300, -4900), est)
+		local out = capture(function()
+			for _ = 1, 4 do
+				H.Retreat.Desire(bot)
+				T = T + react(bot)
+			end
+		end)
+		local stays = {}
+		for _, l in ipairs(out) do if l:find("ev=retreat ph=stay ", 1, true) then stays[#stays + 1] = l end end
+		return H.Retreat.Running(bot), lines(out, "retreat"), stays
+	end
+	local on, _, stays = evenFight(100, true)
+	check("odds: an even 2v2 over budget starts no episode", not on)
+	check("odds: the hold is logged once per over-budget spell, with the allies counted", #stays == 1 and field(stays[1], "al") == "1" and field(stays[1], "reach") == "2", #stays)
+	local offOn, offLines = evenFight(100, false)
+	check("odds off: the same read leaves why=threat (the path replaced)", offOn and field(offLines[1], "why") == "threat", offLines[1])
+	local lethalOn, lethalLines = evenFight(300, true)
+	check("odds: an even 2v2 whose burst kills us still leaves why=lethal", lethalOn and field(lethalLines[1], "why") == "lethal", lethalLines[1])
+end
+
 -- A death ends the episode with res=died.
 do
 	local H, bot = world({ hp = 200 })

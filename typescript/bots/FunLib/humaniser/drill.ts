@@ -42,6 +42,8 @@ export interface Entry {
     /** Heroes that stand behind their own creeps and chase and hit an enemy hero within CHASE_RANGE of that spot, walking
      *  back past it; benched (in the fountain) on control reps. Checked after `sentry`. */
     chaser?: Sides;
+    /** Chasers hit only the cast, never a statue beside it (an ally statue in reach must not draw the chase). */
+    chaseCast?: boolean;
     /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
     linger?: boolean;
     /** The cast's start spot per rep, cycling as `spots` (rep n takes entry (n - 1) mod length): `tower` (inside the enemy
@@ -146,6 +148,19 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castLaneOnly: true,
         rep: { every: 60, from: 60, control: 2 },
+    },
+    // Slice even-fight (D24, D1): the same two chasers on the Radiant pos1, with its pos5 a statue at its lane spot on odd reps
+    // (an even 2v2: stay unless lethal) and benched on even reps (a 1v2: leave); every fourth rep is the control (no chase).
+    "retreat-even": {
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it; Radiant pos5 a statue beside it on odd reps (2v2), benched on even reps (1v2); every 4th rep no chase",
+        cast: SAFE_CORE,
+        statue: { r: [5] },
+        spots: { r: { 5: ["lane", "bench"] } },
+        chaser: { d: [3, 4] },
+        chaseCast: true,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 60, from: 60, control: 4 },
     },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
@@ -697,8 +712,10 @@ function chase(bot: Unit): boolean {
     const spot = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND);
     let best: Unit | undefined;
     let bestD = math.huge;
+    const castOnly = Active()?.chaseCast === true;
     for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
         if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
+        if (castOnly && RoleOf(h) !== "cast") continue;
         const dd = GetUnitToUnitDistance(bot, h);
         if (dd < bestD) {
             best = h;

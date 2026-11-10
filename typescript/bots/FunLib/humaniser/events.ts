@@ -1070,7 +1070,8 @@ export const EVENTS = {
      *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: the band's dwell; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
      *  walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the
      *  cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band
-     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. */
+     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay
+     *  (RetreatOdds): once per over-budget spell, the read held only because the heroes in reach do not outnumber us. */
     retreat: {
         ph: "str",
         pid: "num",
@@ -1081,6 +1082,8 @@ export const EVENTS = {
         thr: "num",
         band: "str",
         reach: "num",
+        /** Allies the read counts (not in retreat, able to reach us within its horizon). */
+        al: "num",
         burst: "num",
         /** The reaching heroes counted as engaged (hitting us within a second) by the read. */
         eng: "num",

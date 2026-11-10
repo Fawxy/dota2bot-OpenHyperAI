@@ -109,6 +109,22 @@ test('D2: a retreat at high HP with no enemy near is a violation; a 1 s flicker 
     assert.deepStrictEqual(out, [[1, 200, 4, 'ours_retreat']]);
 });
 
+test('D24: leaving an even fight at high HP violates; leaving when outnumbered, at low HP or with nobody in reach does not', () => {
+    const lines = bots([[1, 2, 1], [2, 2, 5], [6, 3, 3], [7, 3, 4]]);
+    for (let t = 190; t <= 520; t++) {
+        // 200-203: the partner beside us, two enemies in reach (2v2), 90% HP. 300: the partner 3,000 away (1v2).
+        // 400: 2v2 at 40% HP. 500: nobody within 1,500 (D2's case, not this one).
+        const at = [200, 300, 400, 500].find(s => t >= s && t <= s + 3);
+        const mode = at !== undefined ? 'retreat' : 'laning';
+        const hp = at === 400 ? 40 : 90;
+        const far = at === 500 ? 4000 : 400;
+        lines.push(snap(t, 1, PX, PY, { mode, hp }), snap(t, 2, at === 300 ? PX - 3000 : PX - 200, PY));
+        lines.push(snap(t, 6, PX + far, PY), snap(t, 7, PX + far, PY + 100));
+    }
+    const out = run('rule_cases', lines, { rule: 'D24', all: 1 }).map(r => [r.pid, r.t, r.en, r.al, r.cause]);
+    assert.deepStrictEqual(out, [[1, 200, 2, 1, 'ours_retreat']]);
+});
+
 test('D3: a retreat that walks on after the threat ends, or into an enemy tower, violates; a short one does not', () => {
     const lines = bots([[1, 2, 1], [6, 3, 1]]);
     // 400-415: chased to 402, then 13 s more at 90% HP with nobody near: no_stop.

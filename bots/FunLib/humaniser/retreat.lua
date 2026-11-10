@@ -234,6 +234,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 ____exports.SETTINGS = {
     Horizon = 2,
     EngagedWindow = 6,
+    EvenBurst = 0.5,
     BudgetFree = 0.5,
     BudgetBusy = 0.6,
     BudgetCommitted = 0.75,
@@ -704,6 +705,7 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
         },
         {"band", r.band},
         {"reach", #r.reach},
+        {"al", r.allies},
         {
             "burst",
             r2(r.burst)
@@ -875,6 +877,44 @@ local function leaveWhy(bot, st, r, budget, now)
     end
     if r.threat <= budget then
         st.overSince = nil
+        st.stayLogged = nil
+        return nil
+    end
+    if Ours.On("RetreatOdds") and #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst then
+        st.overSince = nil
+        if st.stayLogged ~= true then
+            st.stayLogged = true
+            Telemetry.Event(
+                "retreat",
+                {
+                    {"ph", "stay"},
+                    {
+                        "pid",
+                        bot:GetPlayerID()
+                    },
+                    {
+                        "thr",
+                        r2(r.threat)
+                    },
+                    {"band", r.band},
+                    {"reach", #r.reach},
+                    {"al", r.allies},
+                    {
+                        "burst",
+                        r2(r.burst)
+                    },
+                    {"eng", #r.eng},
+                    {
+                        "budget",
+                        r2(budget)
+                    },
+                    {
+                        "hp",
+                        r2(hpShare(bot))
+                    }
+                }
+            )
+        end
         return nil
     end
     st.overSince = st.overSince or now

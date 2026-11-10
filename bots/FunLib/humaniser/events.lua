@@ -851,6 +851,7 @@ ____exports.EVENTS = {
         thr = "num",
         band = "str",
         reach = "num",
+        al = "num",
         burst = "num",
         eng = "num",
         tower = "bool",
