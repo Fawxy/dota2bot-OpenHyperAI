@@ -156,6 +156,16 @@ export function LaningTransitions(bot: Unit): boolean {
     return value;
 }
 
+/**
+ * The value LaningTransitions last stored for this hero, without reading or storing anything; undefined when none was
+ * stored in the last two seconds. For a caller that must not move the cache's clock (the shadow arbiter).
+ */
+export function LaningTransitionsSeen(bot: Unit): boolean | undefined {
+    const r = laningReads[bot.GetPlayerID()];
+    const now = DotaTime();
+    return r !== undefined && now >= r.at && now - r.at <= 2 ? r.value : undefined;
+}
+
 export interface LostInput {
     deathsInWindow: number;
     levelGap: number;

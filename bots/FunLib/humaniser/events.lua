@@ -113,6 +113,8 @@ ____exports.EVENTS = {
         host = "str",
         act = "str",
         agree = "num",
+        job = "str",
+        lever = "str",
         prev = "str",
         dwell = "num"
     },

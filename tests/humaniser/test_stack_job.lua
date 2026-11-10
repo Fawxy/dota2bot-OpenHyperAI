@@ -398,7 +398,7 @@ do
 	end)
 	local endT, line
 	for _, l in ipairs(printed) do
-		if endT == nil and l:find("ev=job ", 1, true) and field(l, "phase") == "end" then endT = tonumber(l:match("t=(%S+)")) end
+		if endT == nil and l:find(" ev=job ", 1, true) and field(l, "phase") == "end" then endT = tonumber(l:match("t=(%S+)")) end
 		if l:find("ev=stack ", 1, true) then line = l end
 	end
 	local exitUntil = H.Lane.Config.Settings().Timing.StackExitUntil

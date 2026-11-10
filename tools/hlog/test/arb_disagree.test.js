@@ -24,6 +24,12 @@ test('arb disagree: seconds under the pick in force where its host is not the he
         snap(103, 'retreat', 'retreat 0.95 by raw'),
         arb(104, 'oha', undefined, 'farm', 1),
         snap(104, 'farm', 'farm 0.60 by raw'),
+        // A built-in mode has no mode file, so the snap's `by` names another mode: kept, with no desire or source.
+        arb(110, 'lane', 'laning', 'evasive', 0),
+        snap(110, 'evasive', 'retreat 0.40 by raw'),
+        snap(111, 'evasive', ''),
+        // The mode came back to the pick's host before the next arb line: the snap's mode decides, not the line's agree.
+        snap(112, 'laning', 'laning 0.90 by raw'),
         arb(700, 'lane', 'laning', 'farm', 0),
         snap(700, 'farm', 'farm 1.10 by raw'),
     ];
@@ -34,7 +40,7 @@ test('arb disagree: seconds under the pick in force where its host is not the he
     s.refreshViews();
     const sql = fs.readFileSync(path.join(__dirname, '..', 'queries', 'arb_disagree.sql'), 'utf8');
     const rows = q => s.query(sql, q).map(r => [r.pick, r.act, r.desire, r.src, r.secs, r.games]);
-    assert.deepStrictEqual(rows({}), [['retreat', 'farm', 1.1, 'raw', 3, 1]]);
+    assert.deepStrictEqual(rows({}), [['retreat', 'farm', 1.1, 'raw', 3, 1], ['lane', 'evasive', null, null, 2, 1]]);
     assert.deepStrictEqual(rows({ pos_lo: 4, pos_hi: 5 }), []);
     s.db.close();
 });

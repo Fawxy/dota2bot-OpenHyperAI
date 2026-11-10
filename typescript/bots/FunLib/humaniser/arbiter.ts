@@ -1,7 +1,7 @@
 /**
  * Shadow arbiter (slice arbiter-shadow, design docs/proposals/2026-11-11-arbiter.md s2-s4): per owned hero, one pick among
  * candidates by doctrine group, logged as ev=arb beside the mode Valve holds the hero in. It changes no desire and no
- * behaviour: Candidates reads state only, and Shadow's result is not used by the gate.
+ * behaviour: Candidates reads state only (no cache is refreshed), and Shadow's result is not used by the gate.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Drill from "bots/FunLib/humaniser/drill";
@@ -30,13 +30,9 @@ export interface Candidate {
     /** The Valve mode (debug.ts ModeName) that would carry it out; none for `oha`. */
     host?: string;
     applies: boolean;
-    running: boolean;
 }
 
-/**
- * The highest-priority group that applies wins. A running pick is interrupted only by a strictly higher-priority group, and a
- * tie inside the winning group keeps the previous pick, else the first in list order.
- */
+/** The lowest group number that applies wins; a tie inside it keeps the previous pick, else the first in list order. */
 export function Pick(candidates: Candidate[], previous?: string): Candidate | undefined {
     let best: Candidate | undefined;
     let prev: Candidate | undefined;
@@ -57,7 +53,8 @@ function leverNames(who: string, pid: number, pos: number | undefined): boolean 
     return who === (pos >= 4 ? "sup" : "core");
 }
 
-function leverOf(bot: Unit): string | undefined {
+/** The live lever of the lane controller that names this hero, if any. */
+export function LeverOf(bot: Unit): string | undefined {
     const d = LaneControl.Current(bot.GetTeam(), bot.GetAssignedLane());
     if (d === undefined) return undefined;
     const pid = bot.GetPlayerID();
@@ -68,9 +65,9 @@ function leverOf(bot: Unit): string | undefined {
     return undefined;
 }
 
-/** A hero of ours the arbiter reasons about: a bot in its laning phase that no drill holds. */
+/** A hero of ours the arbiter reasons about: a bot in its laning phase (as last read by its own callers) that no drill holds. */
 function owned(bot: Unit): boolean {
-    return Phase.LaningTransitions(bot) && !Drill.Held(bot);
+    return Phase.LaningTransitionsSeen(bot) === true && !Drill.Held(bot);
 }
 
 /** The lane picker's body is in a last-hit attempt right now: its stored phase label, fresh within a second of its last scan. */
@@ -83,51 +80,43 @@ function lastHitNow(bot: Unit): boolean {
 
 /**
  * Left out for want of a read that changes nothing: `trade` (core_trade keeps its episode in a private table; Desire opens and
- * closes it).
- * Reads only: RetreatState.Running, LaneFight.CurrentPhase, LaneControl.Current, RuneJob.HostOf, LanePick.Describe and the caller's job name.
+ * closes it). The controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the
+ * in-lane levers are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
  */
-export function Candidates(bot: Unit, jobName: string | undefined): Candidate[] {
-    if (!owned(bot)) return [{ name: OHA, group: OHA_GROUP, applies: true, running: false }];
+export function Candidates(bot: Unit, jobName: string | undefined, lever: string | undefined = LeverOf(bot)): Candidate[] {
+    if (!owned(bot)) return [{ name: OHA, group: OHA_GROUP, applies: true }];
     const out: Candidate[] = [];
-    const retreating = RetreatState.Running(bot);
-    out.push({ name: "retreat", group: 1, host: "retreat", applies: retreating, running: retreating });
-    const fight = LaneFight.CurrentPhase(bot);
-    out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: fight !== "idle", running: fight === "trade" || fight === "commit" });
-    const lever = leverOf(bot);
-    const pulls = lever === "pull" && jobName !== undefined;
-    out.push({ name: "lever", group: 4, host: pulls ? "farm" : "laning", applies: lever !== undefined, running: false });
+    out.push({ name: "retreat", group: 1, host: "retreat", applies: RetreatState.Running(bot) });
+    out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: LaneFight.CurrentPhase(bot) !== "idle" });
     const jobHost = RuneJob.HostOf(bot) === BotMode.Rune ? "rune" : "farm";
-    out.push({ name: "job", group: 6, host: jobHost, applies: jobName !== undefined, running: jobName !== undefined });
+    out.push({ name: "job", group: lever === "pull" && jobName === "pull" ? 4 : 6, host: jobHost, applies: jobName !== undefined });
     // The base: it wins when no interrupt applies, and is group 3 only while a last hit is under way (D11).
-    out.push({ name: "lane", group: lastHitNow(bot) ? 3 : BASE_GROUP, host: "laning", applies: true, running: false });
-    out.push({ name: OHA, group: OHA_GROUP, applies: true, running: false });
+    out.push({ name: "lane", group: lastHitNow(bot) ? 3 : BASE_GROUP, host: "laning", applies: true });
+    out.push({ name: OHA, group: OHA_GROUP, applies: true });
     return out;
 }
 
 interface Last {
-    at: number;
     pick: string;
     act: string;
     since: number;
 }
 
 const last: Record<number, Last | undefined> = {};
+const nextAt: Record<number, number | undefined> = {};
 
 /** judgement: seconds between computes per hero; the gate calls Shadow from all 20 mode files every frame. */
 const PERIOD = 0.25;
 
-function compute(bot: Unit, jobName: () => string | undefined): void {
+function compute(bot: Unit, jobName: string | undefined): void {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const l = last[pid];
-    if (l !== undefined && now - l.at < PERIOD) return;
-    const cands = Candidates(bot, jobName());
+    const lever = LeverOf(bot);
+    const cands = Candidates(bot, jobName, lever);
     const picked = Pick(cands, l?.pick) ?? cands[cands.length - 1];
     const act = HDebug.ModeName(bot.GetActiveMode());
-    if (l !== undefined && l.pick === picked.name && l.act === act) {
-        l.at = now;
-        return;
-    }
+    if (l !== undefined && l.pick === picked.name && l.act === act) return;
     Telemetry.Event("arb", [
         ["pid", pid],
         ["pick", picked.name],
@@ -135,17 +124,24 @@ function compute(bot: Unit, jobName: () => string | undefined): void {
         ["host", picked.host],
         ["act", act],
         ["agree", picked.name === OHA || picked.host === act ? 1 : 0],
+        ["job", jobName],
+        ["lever", lever],
         ["prev", l?.pick],
         ["dwell", l !== undefined ? now - l.since : undefined],
     ]);
-    last[pid] = { at: now, pick: picked.name, act, since: now };
+    last[pid] = { pick: picked.name, act, since: now };
 }
 
 /**
- * Called from every mode's gate each frame; computes at most once per hero per PERIOD and logs on a change of pick
- * or active mode. Returns nothing, and an error inside it is swallowed so it cannot reach GetDesire.
+ * Called from every mode's gate each frame; computes at most once per hero per PERIOD (also after an error) and logs on a
+ * change of pick or active mode. Returns nothing, and an error inside it is swallowed so it cannot reach GetDesire.
  */
 export function Shadow(bot: Unit, jobName: () => string | undefined): void {
     if (!Telemetry.IsEnabled() || !Ours.On("ArbiterShadow")) return;
-    pcall(() => compute(bot, jobName));
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const due = nextAt[pid];
+    if (due !== undefined && now < due && now >= due - PERIOD) return;
+    nextAt[pid] = now + PERIOD;
+    pcall(() => compute(bot, jobName()));
 }

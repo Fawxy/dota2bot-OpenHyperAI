@@ -26,8 +26,7 @@ local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase
 ____exports.OHA = "oha"
 ____exports.BASE_GROUP = 7
 local OHA_GROUP = 8
---- The highest-priority group that applies wins. A running pick is interrupted only by a strictly higher-priority group, and a
--- tie inside the winning group keeps the previous pick, else the first in list order.
+--- The lowest group number that applies wins; a tie inside it keeps the previous pick, else the first in list order.
 function ____exports.Pick(candidates, previous)
     local best
     local prev
@@ -70,7 +69,8 @@ local function leverNames(who, pid, pos)
     end
     return who == (pos >= 4 and "sup" or "core")
 end
-local function leverOf(bot)
+--- The live lever of the lane controller that names this hero, if any.
+function ____exports.LeverOf(bot)
     local d = LaneControl.Current(
         bot:GetTeam(),
         bot:GetAssignedLane()
@@ -91,9 +91,9 @@ local function leverOf(bot)
     end
     return nil
 end
---- A hero of ours the arbiter reasons about: a bot in its laning phase that no drill holds.
+--- A hero of ours the arbiter reasons about: a bot in its laning phase (as last read by its own callers) that no drill holds.
 local function owned(bot)
-    return Phase.LaningTransitions(bot) and not Drill.Held(bot)
+    return Phase.LaningTransitionsSeen(bot) == true and not Drill.Held(bot)
 end
 --- The lane picker's body is in a last-hit attempt right now: its stored phase label, fresh within a second of its last scan.
 local function lastHitNow(bot)
@@ -108,74 +108,52 @@ local function lastHitNow(bot)
     return age ~= nil and tonumber(age) <= 1
 end
 --- Left out for want of a read that changes nothing: `trade` (core_trade keeps its episode in a private table; Desire opens and
--- closes it).
--- Reads only: RetreatState.Running, LaneFight.CurrentPhase, LaneControl.Current, RuneJob.HostOf, LanePick.Describe and the caller's job name.
-function ____exports.Candidates(bot, jobName)
+-- closes it). The controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the
+-- in-lane levers are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
+function ____exports.Candidates(bot, jobName, lever)
+    if lever == nil then
+        lever = ____exports.LeverOf(bot)
+    end
     if not owned(bot) then
-        return {{name = ____exports.OHA, group = OHA_GROUP, applies = true, running = false}}
+        return {{name = ____exports.OHA, group = OHA_GROUP, applies = true}}
     end
     local out = {}
-    local retreating = RetreatState.Running(bot)
     out[#out + 1] = {
         name = "retreat",
         group = 1,
         host = "retreat",
-        applies = retreating,
-        running = retreating
+        applies = RetreatState.Running(bot)
     }
-    local fight = LaneFight.CurrentPhase(bot)
     out[#out + 1] = {
         name = "lane_fight",
         group = 5,
         host = "team_roam",
-        applies = fight ~= "idle",
-        running = fight == "trade" or fight == "commit"
-    }
-    local lever = leverOf(bot)
-    local pulls = lever == "pull" and jobName ~= nil
-    out[#out + 1] = {
-        name = "lever",
-        group = 4,
-        host = pulls and "farm" or "laning",
-        applies = lever ~= nil,
-        running = false
+        applies = LaneFight.CurrentPhase(bot) ~= "idle"
     }
     local jobHost = RuneJob.HostOf(bot) == BotMode.Rune and "rune" or "farm"
-    out[#out + 1] = {
-        name = "job",
-        group = 6,
-        host = jobHost,
-        applies = jobName ~= nil,
-        running = jobName ~= nil
-    }
+    out[#out + 1] = {name = "job", group = lever == "pull" and jobName == "pull" and 4 or 6, host = jobHost, applies = jobName ~= nil}
     out[#out + 1] = {
         name = "lane",
         group = lastHitNow(bot) and 3 or ____exports.BASE_GROUP,
         host = "laning",
-        applies = true,
-        running = false
+        applies = true
     }
-    out[#out + 1] = {name = ____exports.OHA, group = OHA_GROUP, applies = true, running = false}
+    out[#out + 1] = {name = ____exports.OHA, group = OHA_GROUP, applies = true}
     return out
 end
 local last = {}
+local nextAt = {}
 --- judgement: seconds between computes per hero; the gate calls Shadow from all 20 mode files every frame.
 local PERIOD = 0.25
 local function compute(bot, jobName)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local l = last[pid]
-    if l ~= nil and now - l.at < PERIOD then
-        return
-    end
-    local cands = ____exports.Candidates(
-        bot,
-        jobName()
-    )
+    local lever = ____exports.LeverOf(bot)
+    local cands = ____exports.Candidates(bot, jobName, lever)
     local picked = ____exports.Pick(cands, l and l.pick) or cands[#cands]
     local act = HDebug.ModeName(bot:GetActiveMode())
     if l ~= nil and l.pick == picked.name and l.act == act then
-        l.at = now
         return
     end
     Telemetry.Event("arb", {
@@ -185,17 +163,29 @@ local function compute(bot, jobName)
         {"host", picked.host},
         {"act", act},
         {"agree", (picked.name == ____exports.OHA or picked.host == act) and 1 or 0},
+        {"job", jobName},
+        {"lever", lever},
         {"prev", l and l.pick},
         {"dwell", l ~= nil and now - l.since or nil}
     })
-    last[pid] = {at = now, pick = picked.name, act = act, since = now}
+    last[pid] = {pick = picked.name, act = act, since = now}
 end
---- Called from every mode's gate each frame; computes at most once per hero per PERIOD and logs on a change of pick
--- or active mode. Returns nothing, and an error inside it is swallowed so it cannot reach GetDesire.
+--- Called from every mode's gate each frame; computes at most once per hero per PERIOD (also after an error) and logs on a
+-- change of pick or active mode. Returns nothing, and an error inside it is swallowed so it cannot reach GetDesire.
 function ____exports.Shadow(bot, jobName)
     if not Telemetry.IsEnabled() or not Ours.On("ArbiterShadow") then
         return
     end
-    pcall(function() return compute(bot, jobName) end)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local due = nextAt[pid]
+    if due ~= nil and now < due and now >= due - PERIOD then
+        return
+    end
+    nextAt[pid] = now + PERIOD
+    pcall(function() return compute(
+        bot,
+        jobName()
+    ) end)
 end
 return ____exports
