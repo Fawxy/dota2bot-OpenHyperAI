@@ -22,6 +22,7 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 export const SOURCE = "transitions:caution";
 
@@ -300,7 +301,8 @@ export function Tick(bot: Unit): void {
     // An incoming enemy teleport (Teleports' forced level) is a threat in itself: back off before it lands.
     const f = forced[bot.GetPlayerID()];
     const tpForced = f !== undefined && Settings.IsOn("Teleports") && DotaTime() < f.levelUntil;
-    if (!tpForced && !Threatened(bot)) {
+    // Our retreat prices danger itself (slice retreat): no caution scale on its desire.
+    if ((!tpForced && !Threatened(bot)) || RetreatState.Owns(bot)) {
         Intent.ReleaseSource(bot, SOURCE);
         return;
     }

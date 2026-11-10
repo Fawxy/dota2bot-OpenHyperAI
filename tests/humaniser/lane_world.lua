@@ -129,6 +129,7 @@ end
 function GetNeutralSpawners() return SPAWNERS end
 -- IMPASSABLE(v) true marks a blocked location (e.g. beyond a map edge); nil means everything is passable.
 function IsLocationPassable(v) return IMPASSABLE == nil or not IMPASSABLE(v) end
+function GetShopLocation(team) return team == 2 and Vector(-7000, -6500) or Vector(7000, 6500) end
 -- Rune API (task 12, 3b: Transitions.Tick reads the power spots). Tests that need runes override these.
 RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = RUNE_STATUS_UNKNOWN or 0, RUNE_STATUS_AVAILABLE or 1, RUNE_STATUS_MISSING or 2
 function GetRuneSpawnLocation(r) return Vector(-9000 + 1000 * (r or 0), 9000) end
@@ -192,7 +193,10 @@ function UnitMeta:GetSecondsPerAttack() return self.spa or 1.7 end
 function UnitMeta:GetHealthRegen() return self.regen or 0 end
 -- heroHitAt / towerHitAt: the game time an enemy hero or tower last damaged the unit.
 function UnitMeta:WasRecentlyDamagedByAnyHero(t) return self.heroHitAt ~= nil and T - self.heroHitAt <= t end
+-- hitBy[e]: the game time hero e last damaged the unit.
+function UnitMeta:WasRecentlyDamagedByHero(e, t) return self.hitBy ~= nil and self.hitBy[e] ~= nil and T - self.hitBy[e] <= t end
 function UnitMeta:WasRecentlyDamagedByTower(t) return self.towerHitAt ~= nil and T - self.towerHitAt <= t end
+function UnitMeta:WasRecentlyDamagedByCreep(t) return self.creepHitAt ~= nil and T - self.creepHitAt <= t end
 function UnitMeta:GetNearbyTowers(r, enemy)
 	local team = enemy and (self.team == 2 and 3 or 2) or self.team
 	local out = {}
@@ -294,6 +298,8 @@ function LaneFresh(laneCfg, extra)
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullFarm = extra.pullFarm == true
 	-- lane_tech's aggro pull is Ours.LaneAggro's OFF arm, so this world tests it unless a test asks for ours.
 	package.loaded["bots/FunLib/custom_loader"].Ours.LaneAggro = extra.laneAggro == true
+	-- The areas' retreat nudges (caution's scale, job and farm holds, the commit cap) are Ours.Retreat's OFF arm.
+	package.loaded["bots/FunLib/custom_loader"].Ours.Retreat = extra.retreat == true
 	H.Lane.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,

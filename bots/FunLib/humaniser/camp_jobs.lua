@@ -245,6 +245,7 @@ local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing"
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local TransitionSettings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 function settings()
@@ -1142,7 +1143,7 @@ function ____exports.CoverTick(bot)
             {"kind", kind}
         })
     end
-    if TransitionSettings.IsOn("Caution") then
+    if TransitionSettings.IsOn("Caution") or RetreatState.Owns(bot) then
         Intent.Release(bot, "lane:cover", BotMode.Retreat)
     else
         Intent.Claim(

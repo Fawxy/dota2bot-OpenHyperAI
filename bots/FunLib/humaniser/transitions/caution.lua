@@ -178,6 +178,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Settings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function dist2D(a, b)
     local dx = a.x - b.x
     local dy = a.y - b.y
@@ -512,7 +513,7 @@ function ____exports.Tick(bot)
     end
     local f = forced[bot:GetPlayerID()]
     local tpForced = f ~= nil and Settings.IsOn("Teleports") and DotaTime() < f.levelUntil
-    if not tpForced and not ____exports.Threatened(bot) then
+    if not tpForced and not ____exports.Threatened(bot) or RetreatState.Owns(bot) then
         Intent.ReleaseSource(bot, ____exports.SOURCE)
         return
     end

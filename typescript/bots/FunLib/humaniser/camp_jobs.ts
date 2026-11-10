@@ -24,6 +24,7 @@ import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Threat from "bots/FunLib/humaniser/threat";
 
@@ -651,7 +652,7 @@ export function CoverTick(bot: Unit): void {
             ["kind", kind],
         ]);
     }
-    if (TransitionSettings.IsOn("Caution")) Intent.Release(bot, "lane:cover", BotMode.Retreat);
+    if (TransitionSettings.IsOn("Caution") || RetreatState.Owns(bot)) Intent.Release(bot, "lane:cover", BotMode.Retreat);
     else Intent.Claim(bot, { source: "lane:cover", tier: "LANE_PLAN", mode: BotMode.Retreat, scale: settings().Thresholds.CoverRetreatScale });
 }
 

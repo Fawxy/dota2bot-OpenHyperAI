@@ -31,6 +31,7 @@ local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function stateFor(bot)
     local pid = bot:GetPlayerID()
     local s = fights[pid]
@@ -439,7 +440,7 @@ function claim(bot, phase)
     for ____, mode in ipairs(FOCUS_MODES) do
         Intent.Claim(bot, {source = FOCUS_SOURCE, tier = "FIGHT", mode = mode, cap = cap})
     end
-    if hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP and not LaneState.EnemyTowerTargeting(bot) then
+    if hpFraction(bot) >= LaneFightConfig.Settings().CommitHoldHP and not LaneState.EnemyTowerTargeting(bot) and not RetreatState.Owns(bot) then
         Intent.Claim(bot, {source = FOCUS_SOURCE, tier = "FIGHT", mode = BotMode.Retreat, cap = cap})
     else
         Intent.Release(bot, FOCUS_SOURCE, BotMode.Retreat)

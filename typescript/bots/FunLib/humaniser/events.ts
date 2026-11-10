@@ -711,6 +711,22 @@ export const EVENTS = {
         spot: "str",
         x: "num",
         y: "num",
+        /** retreat-linger: ph=linger_go (the HP trigger: the chaser `pid` backs off the target `tpid`, the cast, at HP share `thp`,
+         *  distance `d`, the rep's end time `rend`), ph=linger (it first stands at the stand-off: the window's clock) and ph=linger_end
+         *  (`res` contact|timeout|died|no_standoff|rep_end, `secs` from the window's start, `dmin` the closest distance since
+         *  the stand-off, `dmax` the furthest, `dend` the last seen distance, `uns` seconds the cast was out of sight, `clamp` 1 when the
+         *  tower pull-back moved the point). */
+        tpid: "num",
+        thp: "num",
+        d: "num",
+        res: "str",
+        secs: "num",
+        dmin: "num",
+        clamp: "num",
+        dmax: "num",
+        dend: "num",
+        uns: "num",
+        rend: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
@@ -1027,12 +1043,57 @@ export const EVENTS = {
         rpid: "str",
         burst: "num",
         ally: "num",
+        esc: "bool",
         tower: "bool",
         miss: "num",
         mpid: "str",
         mtss: "num",
         mcut: "num",
         hp: "num",
+    },
+    /** Slice retreat (retreat.ts): one start and one end per episode of our retreat, and one start per plain walk (kind
+     *  plain: heroes our retreat does not own). Start: why (threat, lethal, tower, heal, forced), the read at entry (thr, band,
+     *  reach, burst, tower), the budget and its purpose, the anchor kind, its route cost and the next-best anchor's (alt), and
+     *  for a forced drill rep the start spot. End: res (safe, anchor, died, cut), secs, HP lost (hpl, share of max), whether the
+     *  walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the
+     *  cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band
+     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. */
+    retreat: {
+        ph: "str",
+        pid: "num",
+        kind: "str",
+        ep: "num",
+        why: "str",
+        hp: "num",
+        thr: "num",
+        band: "str",
+        reach: "num",
+        burst: "num",
+        /** The reaching heroes counted as engaged (hitting us within a second) by the read. */
+        eng: "num",
+        tower: "bool",
+        esc: "bool",
+        budget: "num",
+        purp: "str",
+        anchor: "str",
+        cost: "num",
+        alt: "num",
+        /** The chosen anchor's exposed route points, the least on any anchor (a route around exists when it is lower), and 1 when a healing item is held. */
+        exp: "num",
+        minexp: "num",
+        regen: "bool",
+        dist: "num",
+        spot: "str",
+        rep: "num",
+        res: "str",
+        secs: "num",
+        hpl: "num",
+        twr: "bool",
+        wave: "bool",
+        dmgh: "num",
+        crp: "bool",
+        x: "num",
+        y: "num",
     },
     tr_caution: {
         pid: "num",
@@ -1786,6 +1847,19 @@ export const EVENTS = {
          *  distance from our T1 along the lane and our front's; absent when the spot anchored on our front as usual. */
         cl: "num",
         fo: "num",
+        /** Ours.LaneSpotThreat: the threat read at the chosen spot (burst, threat) and the old hero limits' verdict there. */
+        rb: "num",
+        rt: "num",
+        rn: "num",
+        ob: "str",
+        /** The read's `missing` and unseen pids (comma-joined) at the chosen spot; the old limits' (`op`) and the read's (`rp`) verdicts at the preferred point. */
+        rm: "num",
+        mp: "str",
+        op: "str",
+        rp: "str",
+        /** Heroes the read counted as engaged (hitting us within a second) at the chosen spot, and 1 when a reaching hero's attack target is us. */
+        re: "num",
+        rat: "num",
     },
 } as const;
 

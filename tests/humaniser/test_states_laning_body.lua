@@ -45,6 +45,7 @@ function Unit:GetDenies() return self.denies or 0 end
 function Unit:GetCurrentMovementSpeed() return 300 end
 function Unit:GetBoundingRadius() return 24 end
 function Unit:WasRecentlyDamagedByAnyHero() return false end
+function Unit:WasRecentlyDamagedByHero(e, t) return self.hitBy ~= nil and self.hitBy[e] ~= nil and T - self.hitBy[e] <= t end
 function Unit:WasRecentlyDamagedByCreep() return false end
 function Unit:WasRecentlyDamagedByTower() return false end
 function Unit:Action_AttackUnit(u) self.attacks = self.attacks or {} table.insert(self.attacks, u) end
@@ -67,7 +68,7 @@ local function Fresh(states, o)
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
 		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot, SupportHarass = o.supportHarass,
-		LaneSpotTower = o.laneSpotTower }
+		LaneSpotTower = o.laneSpotTower, LaneSpotThreat = o.threat == true }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
@@ -230,6 +231,90 @@ do
 		and require("bots/FunLib/humaniser/states/laning").SpotInfo(botf).why == "pref", far and (far.x .. "," .. far.y))
 end
 
+-- Ours.LaneSpotThreat (slice retreat): the hero limit is the threat read of the walk from the bot to the point over 4 s, not
+-- the reach of the point. rtwatch1 7:33: a spot 1,000 from a chaser passed the 800 reach while the walk to it ran past him.
+-- Bot far back at (-3000, 0), the preferred point (-100, 0), a melee enemy at (900, 0) dealing 20 over the 3 s window (3 s reach about 1,100 with hulls).
+do
+	local UT = require("bots/ts_libs/dota/index").UnitType
+	local foes = {}
+	function GetUnitList(t) if t == UT.EnemyHeroes then return foes end return {} end
+	if IsHeroAlive == nil then function IsHeroAlive() return true end end
+	if GetHeroLastSeenInfo == nil then function GetHeroLastSeenInfo() return {} end end
+	if IsLocationVisible == nil then function IsLocationVisible() return true end end
+	local Unit2 = getmetatable(MakeUnit({ pid = 98 }))
+	if Unit2.FindItemSlot == nil then function Unit2:FindItemSlot() return -1 end end
+	local function run(o)
+		local e
+		local s, bot = spotFor(SDK, o, function(b)
+			b.loc = Vector(-3000, 0)
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(900, 0) })
+			e.estDamage = 20
+			foes[1] = e
+		end)
+		return s, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot), e
+	end
+	local sFull, iFull = run({ hp = 100, threat = true })
+	check("read: a lone hero in reach at full HP keeps the preferred point", sFull ~= nil and iFull.why == "pref", iFull and iFull.why)
+	local sLow, iLow, e = run({ hp = 30, threat = true })
+	check("read: at 30% HP the same hero pushes the spot out of his 4 s reach", sLow ~= nil and iLow.why == "hero" and iLow.pushed >= 2 and sLow.x < -150, sLow and (sLow.x .. " " .. iLow.pushed .. " " .. tostring(iLow.why)))
+	check("read: the old rule's verdict is logged beside it", iLow.ob == "none" and iLow.rb ~= nil, iLow and tostring(iLow.ob))
+	local sOld, iOld = run({ hp = 30, threat = false })
+	check("old limits: reach 800 plus the 240 margin leave that spot where it is", sOld ~= nil and iOld.why == "pref" and sOld.x == -100, sOld and sOld.x)
+	foes[1] = nil
+
+	-- A hero already hitting us is counted over LANE_ENGAGED_WINDOW (6 s), not the 3 s burst window (rtlng1c2: a lone chaser kept
+	-- hitting her to 45% in 10 of 10 reps because 3 s of him read safe every second). 4 damage a second: 12 over 3 s, 24 over 6 s.
+	local function engaged(o)
+		local e3
+		local s3, b3 = spotFor(SDK, o, function(b)
+			b.loc = Vector(-3000, 0)
+			e3 = MakeUnit({ pid = 7, team = 3, loc = Vector(900, 0) })
+			e3.GetEstimatedDamageToTarget = function(_, _, _, dur) return 4 * dur end
+			foes[1] = e3
+			if o.engaged then b.hitBy = { [e3] = T - 0.5 } end
+		end)
+		local i3 = require("bots/FunLib/humaniser/states/laning").SpotInfo(b3)
+		foes[1] = nil
+		return s3, i3
+	end
+	local sEng, iEng = engaged({ hp = 60, threat = true, engaged = true })
+	check("engaged: a hero hitting us at 60% HP is counted over 6 s (24 of 60) and the spot is refused", sEng ~= nil and iEng.why == "hero" and iEng.re ~= nil, iEng and (tostring(iEng.why) .. " " .. tostring(iEng.rb)))
+	local sNot, iNot = engaged({ hp = 60, threat = true })
+	check("not engaged: the same hero over the 3 s window (12 of 60) keeps the preferred point", sNot ~= nil and iNot.why == "pref", iNot and tostring(iNot.why))
+	local sFullE, iFullE = engaged({ hp = 100, threat = true, engaged = true })
+	check("engaged at full HP: 24 of 100 stays under READ_BURST (a lone harasser is not pushed back)", sFullE ~= nil and iFullE.why == "pref", iFullE and (tostring(iFullE.why) .. " " .. tostring(iFullE.rb)))
+
+	-- rtch9: two heroes in reach at full HP with `burst` under READ_BURST read `pressured` (0.25 x 2 + 0.5 x 0.2 = 0.6), the
+	-- band a free laner leaves from, so the spot is refused; under READ_BURST alone it was kept and retreat restarted.
+	local sTwo, bTwo = spotFor(SDK, { hp = 100, threat = true }, function(b)
+		b.loc = Vector(-3000, 0)
+		for k, y in ipairs({ 0, 150 }) do
+			local f = MakeUnit({ pid = 6 + k, team = 3, loc = Vector(900, y) })
+			f.estDamage = 10
+			foes[k] = f
+		end
+	end)
+	local iTwo = require("bots/FunLib/humaniser/states/laning").SpotInfo(bTwo)
+	foes[1], foes[2] = nil, nil
+	check("two in reach at full HP: burst under the bar but the read is pressured, the spot is refused",
+		sTwo ~= nil and iTwo.why == "hero" and iTwo.rp == "threat",
+		iTwo and string.format("why=%s rp=%s rb=%s rt=%s", tostring(iTwo.why), tostring(iTwo.rp), tostring(iTwo.rb), tostring(iTwo.rt)))
+
+	-- The rtwatch1 shape (7:33, 37% HP, the chaser about 1,100 away): ev=lane_pos logs the read's `missing` and unseen pids at the
+	-- chosen spot, and each rule's verdict at the preferred point, so a log can say which limit pushed the spot. Pins today's bars.
+	local e2
+	local s2, b2 = spotFor(SDK, { hp = 37, threat = true }, function()
+		e2 = MakeUnit({ pid = 7, team = 3, loc = Vector(800, 0) })
+		e2.estDamage = 20
+		foes[1] = e2
+	end)
+	local i2 = require("bots/FunLib/humaniser/states/laning").SpotInfo(b2)
+	check("rtwatch1 shape: the read's missing, unseen pids and both rules' verdicts at the preferred point are logged",
+		i2.rm ~= nil and i2.op ~= nil and i2.rp ~= nil and i2.mp == nil, string.format("rm=%s mp=%s op=%s rp=%s", tostring(i2.rm), tostring(i2.mp), tostring(i2.op), tostring(i2.rp)))
+	check("rtwatch1 shape: today's bars (burst 0.35, missing 0.5) at 37% HP, 1,100 off", i2.why == "hero" and i2.op == "hp" and i2.rp == "burst" and i2.rb < 0.35, string.format("why=%s op=%s rp=%s rb=%s x=%s", tostring(i2.why), tostring(i2.op), tostring(i2.rp), tostring(i2.rb), tostring(s2 and s2.x)))
+	foes[1] = nil
+end
+
 -- No candidate within the XP limit clears the hero reach (an enemy ranged hero just behind the preferred point): the fallback is
 -- the furthest back that still keeps an enemy tower's ring, not the XP limit inside it (lposchk2: 13 idle seconds in tower range
 -- from the old fallback).
@@ -377,6 +462,38 @@ do
 	check("tanking enemy: inside 1,048 (the open-lane reach)", s ~= nil and dist(s, e.loc) < 1048 and info.covered == 1, s and dist(s, e.loc))
 	local n = spotFor(SDK, nil, setup(false))
 	check("same enemy, tower on something else: 1,048", n ~= nil and dist(n, e.loc) >= 1048, n and dist(n, e.loc))
+end
+
+-- Ours.LaneSpotThreat keeps our tower's cover: a melee enemy 400 from the preferred point that the read alone would refuse
+-- (burst 1.0 at full HP) does not move a spot our tower covers; with no tower the read refuses it and the spot backs off.
+do
+	local function run(tower)
+		local e
+		local s, bot = spotFor(SDK, { threat = true }, function()
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 100
+			GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then return { e } end return {} end
+			TOWERS = tower and { ownTower(-300, 0) } or {}
+		end)
+		return s, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot), e
+	end
+	local sCov, iCov = run(true)
+	check("read on, our tower covering the point: the preferred point holds (H3)", sCov ~= nil and sCov.x == -100 and iCov.covered == 1, sCov and sCov.x)
+	local sOpen, iOpen, e = run(false)
+	check("read on, no tower: the read refuses it and the spot backs off", sOpen ~= nil and sOpen.x < -150 and iOpen.why == "hero", sOpen and sOpen.x)
+	GetUnitList = function() return {} end
+end
+
+-- Inside a hero's reach the candidates behind us are still told apart (review H2): the place read falls with the distance, so the
+-- spot stops where the hero's 3 s reach (1,098) ends, not at the 1,000-back fallback.
+do
+	local e
+	local s, bot = spotFor(SDK, { hp = 100, threat = true }, function()
+		e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 40
+		GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then return { e } end return {} end
+	end)
+	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
+	check("in reach: the spot is the nearest candidate outside his reach, not the fallback", s ~= nil and info.why == "hero" and dist(s, e.loc) >= 1098 and dist(s, e.loc) < 1098 + 51, s and dist(s, e.loc))
+	GetUnitList = function() return {} end
 end
 
 -- Ours.LaneSpot: a core under CoreLastHit stands on our spot although States.Laning.Spot is 'oha'; off, OHA's spot.

@@ -617,7 +617,18 @@
    "forces": "str",
    "spot": "str",
    "x": "num",
-   "y": "num"
+   "y": "num",
+   "tpid": "num",
+   "thp": "num",
+   "d": "num",
+   "res": "str",
+   "secs": "num",
+   "dmin": "num",
+   "clamp": "num",
+   "dmax": "num",
+   "dend": "num",
+   "uns": "num",
+   "rend": "num"
   },
   "job": {
    "pid": "num",
@@ -674,6 +685,8 @@
    "double": "num",
    "dwhy": "str",
    "fres": "str",
+   "scount": "num",
+   "fscount": "num",
    "fcamp": "num",
    "ftype": "str",
    "faggro": "mixed",
@@ -915,12 +928,48 @@
    "rpid": "str",
    "burst": "num",
    "ally": "num",
+   "esc": "bool",
    "tower": "bool",
    "miss": "num",
    "mpid": "str",
    "mtss": "num",
    "mcut": "num",
    "hp": "num"
+  },
+  "retreat": {
+   "ph": "str",
+   "pid": "num",
+   "kind": "str",
+   "ep": "num",
+   "why": "str",
+   "hp": "num",
+   "thr": "num",
+   "band": "str",
+   "reach": "num",
+   "burst": "num",
+   "eng": "num",
+   "tower": "bool",
+   "esc": "bool",
+   "budget": "num",
+   "purp": "str",
+   "anchor": "str",
+   "cost": "num",
+   "alt": "num",
+   "exp": "num",
+   "minexp": "num",
+   "regen": "bool",
+   "dist": "num",
+   "spot": "str",
+   "rep": "num",
+   "res": "str",
+   "secs": "num",
+   "hpl": "num",
+   "twr": "bool",
+   "wave": "bool",
+   "dmgh": "num",
+   "crp": "bool",
+   "x": "num",
+   "y": "num"
   },
   "tr_caution": {
    "pid": "num",
@@ -1487,7 +1536,17 @@
    "nk": "num",
    "nr": "num",
    "cl": "num",
-   "fo": "num"
+   "fo": "num",
+   "rb": "num",
+   "rt": "num",
+   "rn": "num",
+   "ob": "str",
+   "rm": "num",
+   "mp": "str",
+   "op": "str",
+   "rp": "str",
+   "re": "num",
+   "rat": "num"
   }
  },
  "kinds": {
@@ -1697,7 +1756,8 @@
    "role": "text",
    "input": "text",
    "forces": "text",
-   "spot": "text"
+   "spot": "text",
+   "res": "text"
   },
   "ev_job": {
    "job": "text",
@@ -1822,6 +1882,16 @@
    "band": "text",
    "rpid": "text",
    "mpid": "text"
+  },
+  "ev_retreat": {
+   "ph": "text",
+   "kind": "text",
+   "why": "text",
+   "band": "text",
+   "purp": "text",
+   "anchor": "text",
+   "spot": "text",
+   "res": "text"
   },
   "ev_tr_tp_react": {
    "mode": "text"
@@ -1980,7 +2050,11 @@
   "ev_lane_pos": {
    "label": "text",
    "spot": "text",
-   "why": "text"
+   "why": "text",
+   "ob": "text",
+   "mp": "text",
+   "op": "text",
+   "rp": "text"
   }
  }
 }

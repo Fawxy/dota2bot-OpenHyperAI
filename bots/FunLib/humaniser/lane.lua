@@ -22,6 +22,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local teamMembers = ____commands.teamMembers
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function nearestVisibleEnemy(bot, s)
     local best
     local bestDist = LaneConfig.Settings().Radii.LaneCreep
@@ -217,7 +218,7 @@ function ____exports.CampJobRawDesire(bot, desire)
     for ____, mode in ipairs(JOB_FOCUS_MODES) do
         Intent.Claim(bot, {source = "lane:job_focus", tier = "CAMP_JOB", mode = mode, cap = cap})
     end
-    if CampJobs.HoldsRetreat(bot) then
+    if CampJobs.HoldsRetreat(bot) and not RetreatState.Owns(bot) then
         Intent.Claim(bot, {source = "lane:job_hold", tier = "CAMP_JOB", mode = BotMode.Retreat, cap = cap})
     else
         Intent.Release(bot, "lane:job_hold", BotMode.Retreat)

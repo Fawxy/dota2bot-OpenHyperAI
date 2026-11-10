@@ -29,7 +29,7 @@ end
 -- Radiant bottom lane: a bot carry and a bot pos 5 at the front; a human mid unless `noHuman`.
 local function world(opts)
 	opts = opts or {}
-	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 1, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
+	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 1, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry, retreat = opts.retreat })
 	T = 300
 	CURRENT_TEAM = 2
 	local w = { H = H, C = H.Transitions.Caution, said = {} }
@@ -236,6 +236,18 @@ do
 	w.core.heroHitAt = 301.1
 	w.C.Tick(w.core)
 	check("caution releases its claims at level 0", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
+end
+
+do
+	-- Slice retreat: with Ours.Retreat on our retreat prices the danger itself, so the same hit posts no caution scale on it.
+	local w = world({ retreat = true })
+	enemy(10, { unseen = 7 })
+	w.C.Tick(w.core)
+	T = 300.6
+	w.core.heroHitAt = 300.1
+	w.C.Tick(w.core)
+	check("retreat on (precondition): caution level 1", near(w.C.Level(w.core), 1), w.C.Level(w.core))
+	check("retreat on: no caution scale on retreat", near(w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5), 0.5), w.H.Intent.Resolve(w.core, BotMode.Retreat, 0.5))
 end
 
 -- Kill switch: the same cautious scenario with the feature off, and with the sub-flag off.

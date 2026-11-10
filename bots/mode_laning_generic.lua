@@ -111,7 +111,8 @@ function GetDesire()
 
 	-- A lane-only drill hero (humaniser/drill.ts): the bot stays in lane through the laning phase and does nothing but hold,
 	-- last-hit and deny (Think below). Above every other mode, as a drill's bench in mode_farm_generic.
-	if bOwnsThink and J.Humaniser.Overrides.LaneOnly(bot) and J.IsInLaningPhase() then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
+	-- Our retreat (slice retreat) takes a lane-only hero while its episode runs: the chase drill's cast retreats live.
+	if bOwnsThink and J.Humaniser.Overrides.LaneOnly(bot) and J.IsInLaningPhase() and not J.Humaniser.Retreat.Running(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
 
 	-- if DotaTime() > 20 and DotaTime() - skipLaningState.lastCheckTime < skipLaningState.checkGap then
 	-- 	if skipLaningState.count > 6 then

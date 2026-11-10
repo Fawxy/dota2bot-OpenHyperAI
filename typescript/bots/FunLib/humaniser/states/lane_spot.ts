@@ -35,6 +35,7 @@
  */
 import { Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { On } from "bots/FunLib/humaniser/ours";
+import * as Threat from "bots/FunLib/humaniser/threat";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 
@@ -70,6 +71,34 @@ const HP_MARGIN = 300;
  * second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
  */
 const REACT_SECS = 1.5;
+/**
+ * With Ours.LaneSpotThreat the enemy-hero limit is the threat read of standing at the point for READ_HORIZON seconds (slice
+ * retreat, user 10/11/2026), and of the walk to it when that walk goes towards an enemy hero: a spot is acceptable where the read
+ * is under READ_BURST (the heroes in reach take that share of our current HP in the window; low HP counts once, through the
+ * read's own division by HP) and its missing belief under READ_MISSING. Walking away from every hero reads the place alone, so
+ * the candidates behind us are told apart (review 10/11/2026 H2: a walk read from the bot's own position gave every candidate the
+ * same reach and burst). Under our own tower the old hero limits and the tower's cover stand (H3). rtwatch1 7:33: the old limits
+ * put the spot beyond a chaser 850-920 away, then a `wave` spot 1,400 forward past him, because they test the point, not the
+ * walk. All `judgement`, graded in the drill: the horizon is about the walk back to the furthest candidate (1,000 at 300 a
+ * second); the burst bar sits above a lone melee harasser at full HP (0.15-0.25 in rtspot1) and under two heroes in reach.
+ */
+const READ_HORIZON = 3;
+const READ_BURST = 0.35;
+const READ_MISSING = 0.5;
+/**
+ * A place whose read is `pressured` (Threat.SETTINGS.Pressured) is refused too: retreat's free leave budget is that band, so a
+ * spot under it is one a free laner would leave from. rtch9 (66fa2eb3): two chasers in reach read 0.6-0.7 at full HP with `burst`
+ * 0.2-0.33 under READ_BURST; each episode ended out of their reach and the spot walked her back in, 22 episodes in 5 chase reps.
+ * A lone harasser at full HP reads 0.25 + 0.5 x burst (+ 0.3 x missing), under the band while burst is under READ_BURST and no
+ * unseen hero is counted (user 10/11/2026). With no ally in reach, two enemy laners in reach read 0.5 at any HP: refused.
+ */
+const pressured = (r: Threat.Read): boolean => r.threat >= Threat.SETTINGS.Pressured;
+/**
+ * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
+ * Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
+ * rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
+ */
+const LANE_ENGAGED_WINDOW = 6;
 /**
  * No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
  * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
@@ -120,6 +149,23 @@ export interface SpotInfo {
     /** With the rearmost clash as the anchor: its distance from our T1 along the lane, and our front's (ev=lane_pos `cl`, `fo`). */
     clash?: number;
     far?: number;
+    /** With Ours.LaneSpotThreat: the read at the chosen spot (burst, threat) and what the old hero limits would say there
+     *  (`hero`, `hp`, ... or `none`), so both rules are graded on one truth (ev=lane_pos `rb`, `rt`, `ob`). */
+    rb?: number;
+    rt?: number;
+    /** Reads made this Compute (frame cost). */
+    rn?: number;
+    ob?: string;
+    /** The read's `missing` and the heroes it counts as unseen (comma-joined pids) at the chosen spot. */
+    rm?: number;
+    mp?: string;
+    /** At the preferred point: what the old hero limits say (`op`: `hero`, `hp`, ... or `none`) and what the read says (`rp`:
+     *  `burst`, `missing`, `threat` (the read is `pressured`) or `none`), so a log can tell which limit pushed the spot. */
+    op?: string;
+    rp?: string;
+    /** Heroes the read counted as engaged at the chosen spot, and 1 when some reaching hero's `GetAttackTarget()` is the bot. */
+    re?: number;
+    rat?: number;
 }
 
 /** Our towers' cover this frame: what each limit becomes under it. */
@@ -434,10 +480,63 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
     const cl = clash?.own;
     const fo = clash?.far;
-    const covered = (p: Vector): number => (cover !== undefined && Breaks(p, creeps, towers, margin, heroes, reach, undefined, busy) !== undefined ? 1 : 0);
+    // Ours.LaneSpotThreat: the enemy-hero limit is the read (see READ_HORIZON); under our own tower the old limits and the cover stand.
+    const byRead = On("LaneSpotThreat");
+    const here = bot.GetLocation();
+    const underOwn = (p: Vector): boolean => {
+        if (cover === undefined) return false;
+        for (const t of cover.towers) if (d2(p, t.at) <= t.range) return true;
+        return false;
+    };
+    const readOn = (p: Vector): boolean => byRead && !underOwn(p);
+    const reads: Record<string, Threat.Read> = {};
+    let readN = 0;
+    // One read per position (a row of candidates reads at its lane-axis point): walks towards a hero from here, else the place alone.
+    const readAt = (p: Vector): Threat.Read => {
+        const key = `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
+        let r = reads[key];
+        if (r === undefined) {
+            let toward = false;
+            for (const h of heroes) if (d2(p, h.GetLocation()) < d2(here, h.GetLocation())) toward = true;
+            r = Threat.Read(bot, toward ? here : p, p, READ_HORIZON, { engagedWindow: LANE_ENGAGED_WINDOW });
+            reads[key] = r;
+            readN++;
+        }
+        return r;
+    };
+    const readBreaks = (p: Vector): boolean => {
+        if (!readOn(p)) return false;
+        const r = readAt(p);
+        return r.burst >= READ_BURST || r.missing >= READ_MISSING || pressured(r);
+    };
+    const limits = (p: Vector, cov: Cover | undefined): Why | undefined =>
+        readOn(p) ? Breaks(p, creeps, towers, margin, [], [], cov, busy) : Breaks(p, creeps, towers, margin, heroes, reach, cov, busy);
+    const covered = (p: Vector): number => (cover !== undefined && limits(p, undefined) !== undefined ? 1 : 0);
+    const done = (spot: Vector, pushed: number, why: Why, cov: number): SpotInfo => {
+        const info: SpotInfo = { spot, pushed, anchor, why, margin, covered: cov, clash: cl, far: fo };
+        if (byRead) {
+            const r = readAt(spot);
+            info.rb = r.burst;
+            info.rt = r.threat;
+            info.ob = Breaks(spot, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
+            info.rm = r.missing;
+            info.mp = r.mpids.length > 0 ? r.mpids.join(",") : undefined;
+            info.op = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
+            info.rp = "none";
+            if (readOn(pref)) {
+                const rpr = readAt(pref);
+                info.rp = rpr.burst >= READ_BURST ? "burst" : rpr.missing >= READ_MISSING ? "missing" : pressured(rpr) ? "threat" : "none";
+            }
+            info.re = r.eng.length;
+            info.rat = r.att.length > 0 ? 1 : 0;
+            info.rn = readN;
+        }
+        return info;
+    };
     const pref = Vector(px, py, front.z);
-    const first = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy);
-    if (first === undefined) return { spot: pref, pushed: 0, anchor, why: "pref", margin, covered: covered(pref), clash: cl, far: fo };
+    let first = limits(pref, cover);
+    if (first === undefined && readBreaks(pref)) first = "hero";
+    if (first === undefined) return done(pref, 0, "pref", covered(pref));
 
     // Nearest candidate to the preferred point that keeps every limit: back along the lane in PUSH_STEP rows, a few sideways.
     let best: Vector | undefined;
@@ -458,7 +557,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
                 keep = p;
                 keepPushed = k;
             }
-            if (Breaks(p, creeps, towers, margin, heroes, reach, cover, busy) === undefined) {
+            if (limits(p, cover) === undefined && !readBreaks(Vector(bx, by, front.z))) {
                 best = p;
                 bestCost = cost;
                 bestPushed = k;
@@ -467,8 +566,8 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         if (best !== undefined && PUSH_STEP * (k + 1) >= bestCost) break;
     }
     if (best === undefined) {
-        if (keep !== undefined) return { spot: keep, pushed: keepPushed, anchor, why: "xp", margin, covered: 0, clash: cl, far: fo };
-        return { spot: Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), pushed: steps, anchor, why: "xp", margin, covered: 0, clash: cl, far: fo };
+        if (keep !== undefined) return done(keep, keepPushed, "xp", 0);
+        return done(Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), steps, "xp", 0);
     }
-    return { spot: best, pushed: bestPushed, anchor, why: first, margin, covered: covered(best), clash: cl, far: fo };
+    return done(best, bestPushed, first, covered(best));
 }

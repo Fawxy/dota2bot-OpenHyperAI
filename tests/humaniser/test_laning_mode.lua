@@ -203,6 +203,9 @@ do
 	check("lane-only: a body step that acts ends the frame", bot.bodySteps == 1 and #bot.actions == 0, #bot.actions)
 	load({ pos = 3, owned = true, enemyCreeps = { c } })
 	check("not lane-only: laning keeps upstream's desire with nothing killable", GetDesire() < 1, GetDesire())
+	-- The chase drill's cast retreats live: our retreat's 0.95 must be able to beat laning while its episode runs.
+	load({ pos = 3, owned = true, laneOnly = true, retreatRunning = true, enemyCreeps = { c } })
+	check("lane-only: steps aside under our retreat's episode", GetDesire() < 0.95, GetDesire())
 end
 
 finish()

@@ -119,6 +119,7 @@ function LaningLoad(opts)
 		Intent = { Resolve = function(_, _, d) return d end },
 		-- Slice lane-last-hits: opts.laneOnly makes the bot lane-only, as a drill does (humaniser/drill.ts); the bot is required.
 		Overrides = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end },
+		Retreat = { Running = function() return opts.retreatRunning == true end },
 		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
 		CoreTrade = { LastHitYields = function() return opts.retreating == true end },
 		States = {

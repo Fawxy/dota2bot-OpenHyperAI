@@ -291,4 +291,127 @@ do
 	check("no spot list: a statue logs no spot line", #capture(function() world("lane-spot-statue") H.Drill.Hold(hero(7, DIRE, 3, 3)) end) == 0)
 end
 
+-- retreat-linger (slice retreat, plan 2026-11-10-retreat-read-bars): on a chase rep the chaser hits as retreat-chase until the cast
+-- is at or under 45% HP (ph=linger_go), backs off to 1,100 from her (outside our T1's reach + 100), and the window's clock starts
+-- when it first stands at 1,000 or more (ph=linger). The window ends on contact (her within its attack range + 100), after 20 s,
+-- or `no_standoff` when it never got out; it runs on past the rep's end. Once per rep.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local function setup(towerAt, chaserAt)
+		local H = world("retreat-linger")
+		local core = hero(0, RAD, 1, 3)
+		core.loc = Vector(-1700, -5000, 0)
+		core.hp = 40
+		local chaser = hero(9, DIRE, 3, 3)
+		chaser.loc = chaserAt or Vector(-1300, -5000, 0) -- 400 from her, still on her
+		chaser.range = 150
+		if towerAt then TOWERS_W[RAD][dota.Tower.Bot1].loc = towerAt end
+		T = 65 -- rep 1 (a chase rep)
+		return H, core, chaser
+	end
+	local function lastMove(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
+
+	local H, core, chaser = setup()
+	T = 105 -- late in rep 1, as the logged games trigger
+	local lines = capture(function() H.Drill.Hold(chaser) end)
+	local to = lastMove(9)
+	check("linger: at 40% the chaser backs off to the point 1,100 from the cast instead of attacking",
+		#ActionsOf(9, "AttackUnit") == 0 and to ~= nil and math.abs(to.x - (-600)) < 2 and math.abs(to.y + 5000) < 2, to and (to.x .. "," .. to.y))
+	check("linger: the trigger logs linger_go (HP share, distance, the rep's end) and no window start yet", #lines == 1 and field(lines[1], "ph") == "linger_go" and tonumber(field(lines[1], "thp")) == 0.4 and field(lines[1], "d") == "400" and field(lines[1], "rend") == "120", lines[1])
+
+	-- Contact counts only once it has stood off: at 700 from her the clock has not started, so stepping in is no contact.
+	chaser.loc = Vector(-1000, -5000, 0)
+	T = 107
+	local l1 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: the clock does not start before the stand-off", #l1 == 0)
+	chaser.loc = Vector(-600, -5000, 0)
+	T = 108
+	local l2 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: the window starts when it first stands 1,000 or more off", #l2 == 1 and field(l2[1], "ph") == "linger" and field(l2[1], "d") == "1100", l2[1])
+	-- The rep ends at 120: the window runs on into the control rep (no wait behind the T1).
+	T = 121
+	local n = #ActionsOf(9, "MoveToLocation")
+	core.loc = Vector(-1700, -5000, 0)
+	chaser.loc = Vector(-300, -5000, 0)
+	capture(function() H.Drill.Hold(chaser) end)
+	check("linger: past the rep's end the window still holds the chaser out", #ActionsOf(9, "MoveToLocation") == n + 1 and #ActionsOf(9, "AttackUnit") == 0)
+	T = 125
+	core.loc = Vector(-800, -5000, 0)
+	chaser.loc = Vector(-600, -5000, 0)
+	local l3 = capture(function() H.Drill.Hold(chaser) end)
+	check("linger: contact after the stand-off ends the window `contact`; in a control rep the chaser then waits, it does not attack", #ActionsOf(9, "AttackUnit") == 0 and #l3 == 1 and field(l3[1], "ph") == "linger_end" and field(l3[1], "res") == "contact" and tonumber(field(l3[1], "secs")) == 17 and field(l3[1], "dmax") == "1400" and field(l3[1], "dend") == "200", l3[1])
+
+	-- In a chase rep contact makes the chaser attack, and it does not stand off again that rep.
+	local hc, cc, kc = setup(nil, Vector(-600, -5000, 0))
+	capture(function() hc.Drill.Hold(kc) end)
+	T = 66
+	cc.loc = Vector(-800, -5000, 0)
+	local l5 = capture(function() hc.Drill.Hold(kc) end)
+	check("linger: contact in a chase rep: the window ends and the chaser attacks", #ActionsOf(9, "AttackUnit") == 1 and #l5 == 1 and field(l5[1], "res") == "contact", l5[1])
+	cc.loc = Vector(-1700, -5000, 0)
+	kc.loc = Vector(-600, -5000, 0)
+	T = 68
+	hc.Drill.Hold(kc)
+	check("linger: once per rep: the chaser keeps attacking after contact", #ActionsOf(9, "AttackUnit") == 2)
+
+	-- Never gets out: no_standoff after 20 s.
+	local h2, c2, k2 = setup()
+	capture(function() h2.Drill.Hold(k2) end)
+	T = 86
+	local l4 = capture(function() h2.Drill.Hold(k2) end)
+	check("linger: a chaser that never stands off ends no_standoff after 20 s", #l4 == 1 and field(l4[1], "res") == "no_standoff", l4[1])
+
+	check("linger: a window that never stood off logs no dmin (it is measured from the stand-off)", field(l4[1], "dmin") == nil, l4[1])
+
+	-- Out of sight (night, fog): the window keeps running and holds the last stand-off point; it does not end `lost` and no
+	-- location is read off the unseen hero (rtlng1b: lua_error in Drill.Hold on the nil location, three times).
+	local hu, cu, ku = setup(nil, Vector(-600, -5000, 0))
+	T = 105
+	capture(function() hu.Drill.Hold(ku) end)
+	cu.GetLocation = function() return nil end
+	ku.loc = Vector(-300, -5000, 0)
+	T = 110
+	local lu = capture(function() hu.Drill.Hold(ku) end)
+	local mu = lastMove(9)
+	check("linger: unseen, the window goes on and the chaser holds the last stand-off point", #lu == 0 and #ActionsOf(9, "AttackUnit") == 0 and mu ~= nil and math.abs(mu.x - (-600)) < 2, mu and mu.x)
+	T = 129
+	local lt = capture(function() hu.Drill.Hold(ku) end)
+	check("linger: unseen to the end: `timeout` with the unseen seconds", #lt == 1 and field(lt[1], "res") == "timeout" and tonumber(field(lt[1], "uns")) == 24, lt[1])
+	local hv, cv, kv = setup()
+	cv.GetLocation = function() return nil end
+	cv.hp = 666
+	check("linger: a cast out of sight starts no window (thp 666 was a bad read)", #capture(function() hv.Drill.Hold(kv) end) == 0)
+
+	local h3, c3, k3 = setup(nil, Vector(-700, -5000, 0))
+	c3.hp = 80
+	h3.Drill.Hold(k3)
+	check("linger: above 45% HP it attacks as retreat-chase does", #ActionsOf(9, "AttackUnit") == 1 and lastMove(9) == nil)
+
+	local hb, cb, kb = setup(Vector(-500, -5300, 0))
+	hb.Drill.Hold(kb)
+	local tb = lastMove(9)
+	local tw = TOWERS_W[RAD][dota.Tower.Bot1].loc
+	local dTw = tb and math.sqrt((tb.x - tw.x) ^ 2 + (tb.y - tw.y) ^ 2)
+	check("linger: a point inside our T1's reach is pulled out to its reach + 100 (844 + 100)", tb ~= nil and math.abs(dTw - 944) < 2, dTw)
+end
+
 finish()
+
+-- retreat-chase: a chaser waits behind its own T1 on control reps (user 10/11/2026), not in its fountain, and chases on odd reps.
+do
+	local H = world("retreat-chase")
+	local dota = require("bots/ts_libs/dota/index")
+	local core = hero(0, RAD, 1, 3)
+	local chaser = hero(9, DIRE, 3, 3)
+	chaser.loc = Vector(0, 0, 0)
+	local t1 = TOWERS_W[DIRE][dota.Tower.Bot1]
+	T = 120.5 -- rep 2 (control)
+	check("chase wait: the chaser is held", H.Drill.RoleOf(chaser) == "chaser" and H.Drill.Held(chaser))
+	H.Drill.Hold(chaser)
+	local mv = ActionsOf(9, "MoveToLocation")
+	local to = mv[#mv] and mv[#mv].args[1]
+	local fx, fy = 6928, 6372
+	local d1 = to and math.sqrt((to.x - t1.loc.x) ^ 2 + (to.y - t1.loc.y) ^ 2)
+	local dF = to and math.sqrt((to.x - fx) ^ 2 + (to.y - fy) ^ 2)
+	check("chase wait: on a control rep it walks to 350 behind its own T1, not to the fountain", to ~= nil and math.abs(d1 - 350) < 5 and dF > 1000, to and (to.x .. "," .. to.y))
+end

@@ -21,6 +21,7 @@ import * as LaneDebug from "bots/FunLib/humaniser/lane_debug";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import { teamMembers } from "bots/FunLib/humaniser/commands";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 export { LaneConfig as Config, LaneHooks as Hooks, Camps, LaneState, LaneRoles, LanePlan, LanePlanner, LaneMid, LaneTech, CampJobs, PullTiming, Stacking, Harass, Counter };
 
@@ -152,7 +153,7 @@ export function CampJobRawDesire(bot: Unit, desire: number): number {
     for (const mode of JOB_FOCUS_MODES) Intent.Claim(bot, { source: "lane:job_focus", tier: "CAMP_JOB", mode, cap });
     // Retreat's laning-phase creep-damage branch counts the chasing neutrals, so it beat the job at healthy HP once
     // the camp was hit. Held while only neutrals threaten; survival and order claims sit on higher tiers.
-    if (CampJobs.HoldsRetreat(bot)) Intent.Claim(bot, { source: "lane:job_hold", tier: "CAMP_JOB", mode: BotMode.Retreat, cap });
+    if (CampJobs.HoldsRetreat(bot) && !RetreatState.Owns(bot)) Intent.Claim(bot, { source: "lane:job_hold", tier: "CAMP_JOB", mode: BotMode.Retreat, cap });
     else Intent.Release(bot, "lane:job_hold", BotMode.Retreat);
     return 0;
 }

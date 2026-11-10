@@ -156,6 +156,7 @@ export interface Unit {
 
     GetLastAttackTime(): number;
     WasRecentlyDamagedByAnyHero(delta: number): boolean;
+    WasRecentlyDamagedByHero(hero: Unit, delta: number): boolean;
     WasRecentlyDamagedByTower(delta: number): boolean;
     WasRecentlyDamagedByCreep(delta: number): boolean;
     GetMaxHealth(): number;

@@ -13,6 +13,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Drill from "bots/FunLib/humaniser/drill";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -36,7 +37,9 @@ export const HOST_MODE = BotMode.Farm;
  * a name cannot be nil. Attack: only the 9 heroes OHA overrides have a wrapped attack mode.
  */
 export const EXCEPTIONS: Record<string, string> = {
-    retreat: "our own retreat",
+    // With Ours.Retreat on, our retreat owns a laning hero's retreat and ends a running job itself (slice retreat); the entry
+    // stays for heroes it does not own.
+    retreat: "our own retreat after laning",
     assemble: "our own human interface",
     assemble_with_humans: "our own human interface",
     attack: "our own fights, or a Valve fix",
@@ -140,6 +143,11 @@ function runningJob(bot: Unit): Job | undefined {
     return undefined;
 }
 
+/** The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose). */
+export function RunningJobName(bot: Unit): string | undefined {
+    return runningJob(bot)?.name;
+}
+
 /** Any of our jobs runs for this hero. */
 export function Running(bot: Unit): boolean {
     return runningJob(bot) !== undefined;
@@ -183,8 +191,13 @@ function hostDesire(bot: Unit): number | undefined {
     return undefined;
 }
 
+/** While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+ *  up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1). */
+const EPISODE_MODES: Record<string, true> = { retreat: true, assemble: true, assemble_with_humans: true };
+
 /** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. */
 export function Decide(bot: Unit, mode: string): number | undefined {
+    if (RetreatState.Running(bot)) return EPISODE_MODES[mode] ? undefined : 0;
     if (!Ours.On("JobChooser")) return undefined;
     // The mid's 6:00 trip runs in the rune mode, not the host: gating that mode to 0 handed the mid to the attack mode
     // 9 of 10 trips (rspchk1), and the host must hold 0 so OHA's farm desire cannot take it either.
