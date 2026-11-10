@@ -142,5 +142,18 @@ do
 	check("job hosted in rune: laning gets exactly 0", v == 0 and not called, tostring(v))
 	v, called = gated(H, bot, "attack")
 	check("job hosted in rune: the exception attack runs", v == 0.5 and called, tostring(v))
+	require("bots/FunLib/humaniser/retreat_state").SetRunning(bot, true)
+	v, called = gated(H, bot, "rune")
+	check("episode during a job hosted in rune: the rune mode gets exactly 0", v == 0 and not called, tostring(v))
+	require("bots/FunLib/humaniser/retreat_state").SetRunning(bot, false)
+end
+do
+	local H, bot = world({ JobChooser = false })
+	H.RuneJob.Running = function() return true end
+	H.RuneJob.HostOf = function() return require("bots/ts_libs/dota/index").BotMode.Rune end
+	for _, m in ipairs({ "farm", "laning", "rune" }) do
+		local v, called = gated(H, bot, m)
+		check("switch off, trip hosted in rune, " .. m .. ": OHA's code runs", v == 0.5 and called, tostring(v))
+	end
 end
 finish()

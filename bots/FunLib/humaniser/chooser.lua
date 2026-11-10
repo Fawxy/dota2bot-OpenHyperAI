@@ -240,7 +240,7 @@ local function hostDesire(bot)
     end
     return nil
 end
---- While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+--- While our retreat's episode runs, only the retreat mode (the hold's host) and the human's order modes, listed here, may hold the hero: OHA's modes post
 -- up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1).
 local EPISODE_MODES = {assemble = true, assemble_with_humans = true}
 --- OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs.

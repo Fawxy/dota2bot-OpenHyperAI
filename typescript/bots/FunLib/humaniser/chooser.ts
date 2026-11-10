@@ -191,7 +191,7 @@ function hostDesire(bot: Unit): number | undefined {
     return undefined;
 }
 
-/** While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+/** While our retreat's episode runs, only the retreat mode (the hold's host) and the human's order modes, listed here, may hold the hero: OHA's modes post
  *  up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1). */
 const EPISODE_MODES: Record<string, true> = { assemble: true, assemble_with_humans: true };
 
