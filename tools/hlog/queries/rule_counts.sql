@@ -3,7 +3,7 @@
 -- cases with causes). Params: like, until (default 720).
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: lane_rules
-sides AS (SELECT DISTINCT game_id, team, side FROM lr_who),
+sides AS (SELECT game_id, team, max(side) AS side FROM lr_who GROUP BY game_id, team),
 dth AS (
     SELECT w.game_id, w.team, count(*) AS deaths FROM lr_death d JOIN lr_who w ON w.game_id = d.game_id AND w.pid = d.pid
     WHERE d.dsec <= coalesce(:until, 720) GROUP BY w.game_id, w.team
