@@ -518,6 +518,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["d", bot.GetActiveModeDesire()]);
     fields.push(["act", (bot as unknown as StatsUnit).GetCurrentActionType()]);
     fields.push(["gold", bot.GetGold()]);
+    fields.push(["nw", bot.GetNetWorth()]);
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     for (const f of guardedOptionFields(bot)) fields.push(f);
     if (ctx !== undefined) {

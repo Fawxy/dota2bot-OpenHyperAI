@@ -665,6 +665,7 @@ do
 	function W.bot:GetLastHits() return 0 end
 	function W.bot:GetDenies() return 0 end
 	function W.bot:GetGold() return 600 end
+	function W.bot:GetNetWorth() return 1200 end
 	check("setup: the overlay world trades", W.LF.CurrentPhase(W.bot) == "trade", W.LF.CurrentPhase(W.bot))
 	local drawn = {}
 	local realDraw = DebugDrawText

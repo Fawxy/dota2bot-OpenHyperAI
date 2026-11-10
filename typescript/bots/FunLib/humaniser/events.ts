@@ -30,6 +30,8 @@ export const BOT = {
     d: "num",
     act: "num",
     gold: "num",
+    /** Net worth (`GetNetWorth`: gold plus items), for the head-to-head farm readout without replays (`@h2h_farm`). */
+    nw: "num",
     /** Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers. */
     lf: "str",
     /** What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered. */
