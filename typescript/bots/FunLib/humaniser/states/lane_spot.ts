@@ -89,7 +89,8 @@ const READ_MISSING = 0.5;
  * A place whose read is `pressured` (Threat.SETTINGS.Pressured) is refused too: retreat's free leave budget is that band, so a
  * spot under it is one a free laner would leave from. rtch9 (66fa2eb3): two chasers in reach read 0.6-0.7 at full HP with `burst`
  * 0.2-0.33 under READ_BURST; each episode ended out of their reach and the spot walked her back in, 22 episodes in 5 chase reps.
- * A lone harasser at full HP reads 0.25 + 0.5 x burst, under the band while burst is under READ_BURST (user 10/11/2026).
+ * A lone harasser at full HP reads 0.25 + 0.5 x burst (+ 0.3 x missing), under the band while burst is under READ_BURST and no
+ * unseen hero is counted (user 10/11/2026). With no ally in reach, two enemy laners in reach read 0.5 at any HP: refused.
  */
 const pressured = (r: Threat.Read): boolean => r.threat >= Threat.SETTINGS.Pressured;
 /**

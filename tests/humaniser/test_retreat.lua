@@ -314,13 +314,31 @@ do
 	check("death: res=died", field(l[2], "res") == "died" and not H.Retreat.Running(bot), l[2])
 end
 
+-- MaxSecs is the backstop: an episode whose danger never clears is cut after 40 s, so the gate cannot hold other modes forever.
+do
+	local H, bot = world({ hp = 200 })
+	enemy(10, Vector(300, -5000), 250)
+	local out = capture(function()
+		H.Retreat.Desire(bot)
+		T = T + 30
+		H.Retreat.Desire(bot)
+		T = T + 11
+		H.Retreat.Desire(bot)
+	end)
+	local l = lines(out, "retreat")
+	local ends = {}
+	for _, x in ipairs(l) do if field(x, "ph") == "end" then ends[#ends + 1] = x end end
+	check("max secs: still running at 30 s, cut after 40", #ends >= 1 and field(ends[1], "res") == "cut" and tonumber(field(ends[1], "secs")) > 40, ends[1])
+end
+
 -- The OFF arm leaves OHA's desire (the nudges' own arms: test_transitions_caution "retreat on").
 do
 	local H2, bot2 = world({ off = true })
 	check("off: Desire leaves OHA's (nil)", H2.Retreat.Desire(bot2) == nil and not H2.Retreat.Owns(bot2))
 end
 
--- The plain walk for a hero we do not own: our tower behind it above half HP, the fountain below.
+-- The plain walk for a hero we do not own goes to the fountain at any HP, as Valve's walk does: OHA's retreat for mana near
+-- base holds until mana refills, which a tower stand point never gives (review of 1eacd10e).
 do
 	local H, bot = world({ off = true })
 	package.loaded["bots/FunLib/custom_loader"].Ours.Retreat = true
@@ -328,12 +346,7 @@ do
 	H.Retreat.ResetCache()
 	capture(function() H.Retreat.Think(bot) end)
 	local m = ACTIONS[#ACTIONS] and ACTIONS[#ACTIONS].args[1]
-	check("plain: walks to our T1's stand point", m ~= nil and m.x < -2800 and m.x > -3300, m and m.x)
-	bot.hp = 200
-	H.Retreat.ResetCache()
-	capture(function() H.Retreat.Think(bot) end)
-	m = ACTIONS[#ACTIONS] and ACTIONS[#ACTIONS].args[1]
-	check("plain: the fountain below half HP", m ~= nil and m.x < -6000, m and m.x)
+	check("plain: an unowned hero at full HP walks to the fountain, not our T1", m ~= nil and m.x < -6000, m and m.x)
 end
 
 finish()

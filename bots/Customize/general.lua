@@ -264,7 +264,7 @@ Customize.Humaniser = {
 -- LaneSpotTower (slice tower-spot): with LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (enemy
 -- creeps attacking something else keep a 200 ring, enemy heroes our tower would punish a short reach). Supports, and off: the
 -- open-lane limits everywhere.
--- LaneSpotThreat (slice retreat): with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 4 s (burst
+-- LaneSpotThreat (slice retreat): with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 3 s (burst
 -- under 0.25 of our HP, threat under 0.5) instead of the hero reach and the HP margin on it. Off: the old hero limits.
 -- CoreLaneFight (slice lane-fight): with CoreLastHit and CoreTrade on, an in-lane pos1-3's fights are ours: it commits on a target at
 -- 40% HP or less with even numbers or more (our attack mode), joins an ally's running play near it (hum/plays), and rolls a

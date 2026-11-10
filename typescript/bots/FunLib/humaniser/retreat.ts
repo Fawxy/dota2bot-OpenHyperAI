@@ -606,7 +606,9 @@ export function Think(bot: Unit): void {
         moveTo(bot, st, anchorPoint(st.ep.anchor), now);
         return;
     }
-    const [kind, p] = plainTarget(bot);
+    // A hero we do not own walks to the fountain, as Valve's walk does: OHA also retreats for mana near base (botMP < 0.4) and
+    // holds until it refills, which a tower stand point never does (review 10/11/2026 of 1eacd10e, high).
+    const [kind, p]: [string, Vector] = RetreatState.Owns(bot) ? plainTarget(bot) : ["fountain", Fountain(bot.GetTeam())];
     if (st.plainAt === undefined || now - st.plainAt > 1) {
         Telemetry.Event("retreat", [["ph", "start"], ["pid", bot.GetPlayerID()], ["kind", "plain"], ["anchor", kind], ["hp", r2(hpShare(bot))], ["x", math.floor(p.x)], ["y", math.floor(p.y)]]);
     }

@@ -65,7 +65,7 @@ export const DEFAULTS = {
      *  creeps attacking something else there keep a small ring, enemy heroes our tower would punish a short reach. Supports,
      *  and off: the open-lane limits. */
     LaneSpotTower: true,
-    /** Slice retreat: with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 4 s (states/lane_spot
+    /** Slice retreat: with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 3 s (states/lane_spot
      *  READ_HORIZON) instead of the hero reach and the HP margin on it; off: the old hero limits. */
     LaneSpotThreat: true,
     /**

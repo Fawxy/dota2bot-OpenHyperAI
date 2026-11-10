@@ -1103,7 +1103,10 @@ function ____exports.Think(bot)
         )
         return
     end
-    local kind, p = unpack(plainTarget(bot))
+    local kind, p = unpack(RetreatState.Owns(bot) and plainTarget(bot) or ({
+        "fountain",
+        ____exports.Fountain(bot:GetTeam())
+    }))
     if st.plainAt == nil or now - st.plainAt > 1 then
         Telemetry.Event(
             "retreat",
