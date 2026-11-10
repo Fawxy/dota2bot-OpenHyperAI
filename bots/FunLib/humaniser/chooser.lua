@@ -20,7 +20,6 @@ local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
-local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
@@ -241,39 +240,51 @@ local function hostDesire(bot)
     end
     return nil
 end
---- While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+--- While our retreat's episode runs, only the retreat mode (the hold's host) and the human's order modes, listed here, may hold the hero: OHA's modes post
 -- up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1).
-local EPISODE_MODES = {retreat = true, assemble = true, assemble_with_humans = true}
---- A number replaces OHA's desire for `mode`; undefined lets OHA's code run.
+local EPISODE_MODES = {assemble = true, assemble_with_humans = true}
+--- OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs.
+local ADMITTED = {retreat = EPISODE_MODES, job = ____exports.EXCEPTIONS}
+--- A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under the arbiter's hold the host mode runs
+-- and every mode the hold does not admit gets 0. A job hosted in the rune mode (the mid's 6:00 trip) leaves the chooser's
+-- host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
+-- not take it either.
 function ____exports.Decide(bot, mode)
-    if RetreatState.Running(bot) then
-        local ____EPISODE_MODES_mode_3
-        if EPISODE_MODES[mode] then
-            ____EPISODE_MODES_mode_3 = nil
+    local jobs = Ours.On("JobChooser")
+    local ____Arbiter_Hold_5 = Arbiter.Hold
+    local ____bot_4 = bot
+    local ____jobs_3
+    if jobs then
+        ____jobs_3 = ____exports.RunningJobName(bot)
+    else
+        ____jobs_3 = nil
+    end
+    local hold = ____Arbiter_Hold_5(____bot_4, ____jobs_3)
+    if hold == nil then
+        local ____temp_6
+        if jobs and mode == ____exports.HOST then
+            ____temp_6 = hostDesire(bot)
         else
-            ____EPISODE_MODES_mode_3 = 0
+            ____temp_6 = nil
         end
-        return ____EPISODE_MODES_mode_3
+        return ____temp_6
     end
-    if not Ours.On("JobChooser") then
-        return nil
-    end
-    if RuneJob.HostOf(bot) == BotMode.Rune then
-        local ____temp_4
-        if mode == "rune" or ____exports.EXCEPTIONS[mode] ~= nil then
-            ____temp_4 = nil
+    if mode == hold.host then
+        local ____temp_7
+        if mode == ____exports.HOST then
+            ____temp_7 = hostDesire(bot)
         else
-            ____temp_4 = 0
+            ____temp_7 = nil
         end
-        return ____temp_4
+        return ____temp_7
     end
-    if mode == ____exports.HOST then
-        return hostDesire(bot)
+    local ____temp_8
+    if ADMITTED[hold.name][mode] ~= nil then
+        ____temp_8 = nil
+    else
+        ____temp_8 = 0
     end
-    if not ____exports.Running(bot) or ____exports.EXCEPTIONS[mode] ~= nil then
-        return nil
-    end
-    return 0
+    return ____temp_8
 end
 --- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
 function ____exports.Gate(bot, mode, inner)
@@ -281,8 +292,8 @@ function ____exports.Gate(bot, mode, inner)
         Arbiter.Shadow(
             bot,
             function()
-                local ____opt_5 = runningJob(bot)
-                return ____opt_5 and ____opt_5.name
+                local ____opt_9 = runningJob(bot)
+                return ____opt_9 and ____opt_9.name
             end
         )
         local v = ____exports.Decide(bot, mode)
@@ -299,13 +310,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_7
+        local ____table_Step_result_11
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_7 = nil
+            ____table_Step_result_11 = nil
         else
-            ____table_Step_result_7 = inner()
+            ____table_Step_result_11 = inner()
         end
-        return ____table_Step_result_7
+        return ____table_Step_result_11
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -327,9 +338,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_8 = runningJob(bot)
-    if ____opt_8 ~= nil then
-        ____opt_8.End(bot, why)
+    local ____opt_12 = runningJob(bot)
+    if ____opt_12 ~= nil then
+        ____opt_12.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

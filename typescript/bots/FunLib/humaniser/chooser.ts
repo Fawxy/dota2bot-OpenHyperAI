@@ -13,7 +13,6 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Drill from "bots/FunLib/humaniser/drill";
-import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Arbiter from "bots/FunLib/humaniser/arbiter";
 
 // All judgement; values moved unchanged from StackJob.
@@ -192,20 +191,25 @@ function hostDesire(bot: Unit): number | undefined {
     return undefined;
 }
 
-/** While our retreat's episode runs, only the retreat mode and the human's order modes may hold the hero: OHA's modes post
+/** While our retreat's episode runs, only the retreat mode (the hold's host) and the human's order modes, listed here, may hold the hero: OHA's modes post
  *  up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1). */
-const EPISODE_MODES: Record<string, true> = { retreat: true, assemble: true, assemble_with_humans: true };
+const EPISODE_MODES: Record<string, true> = { assemble: true, assemble_with_humans: true };
 
-/** A number replaces OHA's desire for `mode`; undefined lets OHA's code run. */
+/** OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs. */
+const ADMITTED: Record<string, Record<string, unknown>> = { retreat: EPISODE_MODES, job: EXCEPTIONS };
+
+/**
+ * A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under the arbiter's hold the host mode runs
+ * and every mode the hold does not admit gets 0. A job hosted in the rune mode (the mid's 6:00 trip) leaves the chooser's
+ * host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
+ * not take it either.
+ */
 export function Decide(bot: Unit, mode: string): number | undefined {
-    if (RetreatState.Running(bot)) return EPISODE_MODES[mode] ? undefined : 0;
-    if (!Ours.On("JobChooser")) return undefined;
-    // The mid's 6:00 trip runs in the rune mode, not the host: gating that mode to 0 handed the mid to the attack mode
-    // 9 of 10 trips (rspchk1), and the host must hold 0 so OHA's farm desire cannot take it either.
-    if (RuneJob.HostOf(bot) === BotMode.Rune) return mode === "rune" || EXCEPTIONS[mode] !== undefined ? undefined : 0;
-    if (mode === HOST) return hostDesire(bot);
-    if (!Running(bot) || EXCEPTIONS[mode] !== undefined) return undefined;
-    return 0;
+    const jobs = Ours.On("JobChooser");
+    const hold = Arbiter.Hold(bot, jobs ? RunningJobName(bot) : undefined);
+    if (hold === undefined) return jobs && mode === HOST ? hostDesire(bot) : undefined;
+    if (mode === hold.host) return mode === HOST ? hostDesire(bot) : undefined;
+    return ADMITTED[hold.name][mode] !== undefined ? undefined : 0;
 }
 
 /** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. */
