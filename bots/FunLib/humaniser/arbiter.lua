@@ -117,9 +117,23 @@ local function lastHitNow(bot)
     local age = string.match(d, "sc=([%d%.]+)")
     return age ~= nil and tonumber(age) <= 1
 end
+local function retreatCandidate(bot)
+    return {
+        name = "retreat",
+        group = 1,
+        host = "retreat",
+        applies = RetreatState.Running(bot)
+    }
+end
+--- A pull lever of the controller lifts the running pull job to group 4; any other job is group 6.
+local function jobCandidate(bot, job, lever)
+    local host = RuneJob.HostOf(bot) == BotMode.Rune and "rune" or "farm"
+    local pulls = job == "pull" or job ~= nil and __TS__StringEndsWith(job, "_pull")
+    return {name = "job", group = lever == "pull" and pulls and 4 or 6, host = host, applies = job ~= nil}
+end
 --- The job is the chooser's running job, else a live camp job of the older camp-job path (`jobName` is then its kind). The
--- controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the in-lane levers
--- are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
+-- controller's lever is no candidate of its own: the in-lane levers are carried out by the laning body, so they ride on
+-- `lane` and are logged as the `lever` field.
 function ____exports.Candidates(bot, jobName, lever)
     if lever == nil then
         lever = ____exports.LeverOf(bot)
@@ -128,12 +142,7 @@ function ____exports.Candidates(bot, jobName, lever)
         return {{name = ____exports.OHA, group = OHA_GROUP, applies = true}}
     end
     local out = {}
-    out[#out + 1] = {
-        name = "retreat",
-        group = 1,
-        host = "retreat",
-        applies = RetreatState.Running(bot)
-    }
+    out[#out + 1] = retreatCandidate(bot)
     out[#out + 1] = {
         name = "trade",
         group = 5,
@@ -146,10 +155,11 @@ function ____exports.Candidates(bot, jobName, lever)
         host = "team_roam",
         applies = LaneFight.CurrentPhase(bot) ~= "idle"
     }
-    local job = jobName or CampJobs.LiveKind(bot)
-    local jobHost = RuneJob.HostOf(bot) == BotMode.Rune and "rune" or "farm"
-    local pulls = job == "pull" or job ~= nil and __TS__StringEndsWith(job, "_pull")
-    out[#out + 1] = {name = "job", group = lever == "pull" and pulls and 4 or 6, host = jobHost, applies = job ~= nil}
+    out[#out + 1] = jobCandidate(
+        bot,
+        jobName or CampJobs.LiveKind(bot),
+        lever
+    )
     out[#out + 1] = {
         name = "mid_rune",
         group = 6,
@@ -164,6 +174,16 @@ function ____exports.Candidates(bot, jobName, lever)
     }
     out[#out + 1] = {name = ____exports.OHA, group = OHA_GROUP, applies = true}
     return out
+end
+--- The candidate the gate enforces now, if any: the hero's modes other than its host and the modes the gate admits for it
+-- get desire 0. Only the driven candidates are asked (the retreat episode and the chooser's running job); every other
+-- candidate is still shadow only and interrupts nothing. Not limited to laning heroes: an episode or a job is its own
+-- claim on the hero (a drill's cast runs jobs while held).
+function ____exports.Hold(bot, chooserJob)
+    return ____exports.Pick({
+        retreatCandidate(bot),
+        jobCandidate(bot, chooserJob, nil)
+    })
 end
 local last = {}
 local nextAt = {}

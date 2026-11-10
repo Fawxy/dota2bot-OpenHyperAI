@@ -81,26 +81,44 @@ function lastHitNow(bot: Unit): boolean {
     return age !== undefined && tonumber(age)! <= 1;
 }
 
+function retreatCandidate(bot: Unit): Candidate {
+    return { name: "retreat", group: 1, host: "retreat", applies: RetreatState.Running(bot) };
+}
+
+/** A pull lever of the controller lifts the running pull job to group 4; any other job is group 6. */
+function jobCandidate(bot: Unit, job: string | undefined, lever: string | undefined): Candidate {
+    const host = RuneJob.HostOf(bot) === BotMode.Rune ? "rune" : "farm";
+    const pulls = job === "pull" || (job !== undefined && job.endsWith("_pull"));
+    return { name: "job", group: lever === "pull" && pulls ? 4 : 6, host, applies: job !== undefined };
+}
+
 /**
  * The job is the chooser's running job, else a live camp job of the older camp-job path (`jobName` is then its kind). The
- * controller's lever is no candidate of its own: a pull lever lifts the running pull job to group 4, and the in-lane levers
- * are carried out by the laning body, so they ride on `lane` and are logged as the `lever` field.
+ * controller's lever is no candidate of its own: the in-lane levers are carried out by the laning body, so they ride on
+ * `lane` and are logged as the `lever` field.
  */
 export function Candidates(bot: Unit, jobName: string | undefined, lever: string | undefined = LeverOf(bot)): Candidate[] {
     if (!owned(bot)) return [{ name: OHA, group: OHA_GROUP, applies: true }];
     const out: Candidate[] = [];
-    out.push({ name: "retreat", group: 1, host: "retreat", applies: RetreatState.Running(bot) });
+    out.push(retreatCandidate(bot));
     out.push({ name: "trade", group: 5, host: "attack", applies: CoreTrade.Running(bot) });
     out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: LaneFight.CurrentPhase(bot) !== "idle" });
-    const job = jobName ?? CampJobs.LiveKind(bot);
-    const jobHost = RuneJob.HostOf(bot) === BotMode.Rune ? "rune" : "farm";
-    const pulls = job === "pull" || (job !== undefined && job.endsWith("_pull"));
-    out.push({ name: "job", group: lever === "pull" && pulls ? 4 : 6, host: jobHost, applies: job !== undefined });
+    out.push(jobCandidate(bot, jobName ?? CampJobs.LiveKind(bot), lever));
     out.push({ name: "mid_rune", group: 6, host: "rune", applies: MidRunes.Claiming(bot) });
     // The base: it wins when no interrupt applies, and is group 3 only while a last hit is under way (D11).
     out.push({ name: "lane", group: lastHitNow(bot) ? 3 : BASE_GROUP, host: "laning", applies: true });
     out.push({ name: OHA, group: OHA_GROUP, applies: true });
     return out;
+}
+
+/**
+ * The candidate the gate enforces now, if any: the hero's modes other than its host and the modes the gate admits for it
+ * get desire 0. Only the driven candidates are asked (the retreat episode and the chooser's running job); every other
+ * candidate is still shadow only and interrupts nothing. Not limited to laning heroes: an episode or a job is its own
+ * claim on the hero (a drill's cast runs jobs while held).
+ */
+export function Hold(bot: Unit, chooserJob: string | undefined): Candidate | undefined {
+    return Pick([retreatCandidate(bot), jobCandidate(bot, chooserJob, undefined)]);
 }
 
 interface Last {
