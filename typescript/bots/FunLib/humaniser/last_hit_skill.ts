@@ -21,12 +21,12 @@ import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 export const DEFAULTS = {
     RequireOwnedLaning: true,
     ErrorLow: 0.15,
-    ErrorHigh: 0.02,
+    ErrorHigh: 0,
     AttemptLow: 0.75,
-    AttemptHigh: 0.98,
+    AttemptHigh: 1,
     // Denies take more attention, so low skill denies much less.
     DenyAttemptLow: 0.35,
-    DenyAttemptHigh: 0.9,
+    DenyAttemptHigh: 1,
     PressureMult: 1.5,
     PressureSeconds: 2,
     RangedPrioritySkill: 0.6,

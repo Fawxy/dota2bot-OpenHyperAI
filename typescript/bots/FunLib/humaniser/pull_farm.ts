@@ -192,7 +192,7 @@ function guard(bot: Unit, f: Farm): string | undefined {
     }
     const now = DotaTime();
     f.threatSince = f.threatSince ?? now;
-    return now - f.threatSince >= Profile.Get(bot).reactBase ? "threat" : undefined;
+    return now - f.threatSince >= Profile.ThreatHold(bot) ? "threat" : undefined;
 }
 
 // CANDIDATE(walkBack): core_camp's `walkBack` is the same walk to the lane front; the rule of two is met, a shared verb waits for a third consumer.

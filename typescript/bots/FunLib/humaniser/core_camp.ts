@@ -978,7 +978,7 @@ function guard(bot: Unit, t: Trip): string | undefined {
     }
     const now = DotaTime();
     t.threatSince = t.threatSince ?? now;
-    return now - t.threatSince >= Profile.Get(bot).reactBase ? "threat" : undefined;
+    return now - t.threatSince >= Profile.ThreatHold(bot) ? "threat" : undefined;
 }
 
 function* walkBack(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {

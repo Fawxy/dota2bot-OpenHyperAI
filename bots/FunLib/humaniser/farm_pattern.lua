@@ -1142,7 +1142,7 @@ local function threatened(bot, trip, now)
         return false
     end
     trip.enemySince = trip.enemySince or now
-    return now - trip.enemySince >= Profile.Get(bot).reactBase
+    return now - trip.enemySince >= Profile.ThreatHold(bot)
 end
 --- Why a live trip must end now, or undefined.
 local function stopReason(bot, trip, now)

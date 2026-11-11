@@ -709,7 +709,7 @@ function unpaid(bot: Unit, r: Threat.Read): number {
     return n;
 }
 
-/** The leave rule: lethal, a tower on us or the heal floor at once; over budget for the hero's reaction time. */
+/** The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. */
 function leaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number): Why | undefined {
     if (r.band === "lethal") return "lethal";
     if (TowerOnUs(bot) !== undefined) return "tower";
@@ -735,7 +735,7 @@ function leaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now:
         return undefined;
     }
     st.overSince = st.overSince ?? now;
-    return now - st.overSince >= Profile.Get(bot).reactBase ? "threat" : undefined;
+    return now - st.overSince >= Profile.ThreatHold(bot) ? "threat" : undefined;
 }
 
 // ---------------------------------------------------------------------------------------------------------------- drill

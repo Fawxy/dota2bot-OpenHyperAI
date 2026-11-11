@@ -55,8 +55,8 @@ export const DEFAULTS = {
     DecideFrom: 25,
     DecideTo: 20,
     ArriveLead: 4,
-    RotateChance: { Low: 0.3, High: 0.9 } as LerpPair,
-    ArriveSigma: { Low: 6, High: 1 } as LerpPair,
+    RotateChance: { Low: 0.3, High: 1 } as LerpPair,
+    ArriveSigma: { Low: 6, High: 0 } as LerpPair,
     // Skips LaneCanSpare, never IsBusy.
     MistakeChance: { Low: 0.15, High: 0 } as LerpPair,
     MidSupportRadius: 1500,
@@ -122,7 +122,7 @@ export const DEFAULTS = {
     TpRefresh: 0.25,
     WardFrom: 150,
     WardTo: 270,
-    WardChance: { Low: 0.4, High: 0.95 } as LerpPair,
+    WardChance: { Low: 0.4, High: 1 } as LerpPair,
     // An allied observer this close to the gank anchor already covers the lane.
     WardCoverRadius: 1600,
     // Only a spot this close to the gank anchor is worth the early ward; otherwise the ward mode chooses.

@@ -177,14 +177,14 @@ return ____exports
 local ____exports = {}
 local ____adapter = require("adapter")
 local get = ____adapter.get
---- Last-hit error half-width (fraction of own damage) at skill 0 and 1.
+--- Last-hit error half-width (fraction of own damage) at skill 0 and 1. Skill 1 is exact (user 12/11/2026), here and below.
 ____exports.LAST_HIT_ERROR_LOW = 0.15
-____exports.LAST_HIT_ERROR_HIGH = 0.02
---- Seconds of swing-timing error per unit of last-hit error: 0.02 -> 0.04 s, 0.15 -> 0.3 s.
+____exports.LAST_HIT_ERROR_HIGH = 0
+--- Seconds of swing-timing error per unit of last-hit error: 0.15 -> 0.3 s.
 ____exports.TIMING_PER_ERROR = 2
 --- Chance per creep of a lapse (a clearly late swing) at skill 0 and 1, when the profile has no `lapse`.
 ____exports.LAPSE_LOW = 0.15
-____exports.LAPSE_HIGH = 0.01
+____exports.LAPSE_HIGH = 0
 function ____exports.lerp(low, high, t)
     return low + (high - low) * t
 end
@@ -249,7 +249,7 @@ function ____exports.lapseChance(bot)
 end
 --- Gaussian sigma (s) of a timed action's error at skill 0 and 1.
 ____exports.TIMING_SIGMA_LOW = 1.5
-____exports.TIMING_SIGMA_HIGH = 0.2
+____exports.TIMING_SIGMA_HIGH = 0
 --- Draws past this many sigmas are clamped, so one roll can never wreck a job outright.
 ____exports.TIMING_CLAMP = 2.5
 --- Standard normal (Box-Muller) from `random()`.

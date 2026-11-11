@@ -23,28 +23,29 @@ export const DEFAULTS = {
         FretBotsLevelOverride: undefined as number | undefined,
         BridgeModifier: undefined as string | undefined,
     },
+    // Skill 1 is no handicap of ours (user 12/11/2026): every High end is 0. The Low ends are the difficulty workstream's.
     Profile: {
         PersonalMin: 0.85,
         PersonalMax: 1.15,
         NoticeLow: 0.55,
-        NoticeHigh: 0.18,
+        NoticeHigh: 0,
         ReactLow: 0.5,
-        ReactHigh: 0.17,
+        ReactHigh: 0,
         // Reading a ping or typed chat takes far longer than a visual reaction.
         PingLow: 2.0,
-        PingHigh: 0.8,
+        PingHigh: 0,
         ChatLow: 2.0,
-        ChatHigh: 1.0,
+        ChatHigh: 0,
         JitterLow: 0.45,
-        JitterHigh: 0.2,
+        JitterHigh: 0,
         LapseLow: 0.15,
-        LapseHigh: 0.02,
+        LapseHigh: 0,
         LapseMinExtra: 0.3,
         LapseMaxExtra: 0.8,
         AimErrorLow: 250,
-        AimErrorHigh: 40,
-        // OpenAI Five at ~0.2s still felt inhuman; never go below this.
-        MinReact: 0.17,
+        AimErrorHigh: 0,
+        // A floor on the react delay at every skill; 0 since skill 1 reacts on the frame.
+        MinReact: 0,
     },
     Orders: {
         DesireFloor: 0.85,
