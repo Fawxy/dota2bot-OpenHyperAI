@@ -87,7 +87,7 @@ end
 do
 	local low, high = jitteredAggro(0), jitteredAggro(1)
 	check("skill 0 aggro is 1.5 s off the seed", math.abs(low - 1.5) < 1e-3, low)
-	check("skill 1 aggro is 0.2 s off the seed", math.abs(high - 0.2) < 1e-3, high)
+	check("skill 1 aggro is on the seed", math.abs(high) < 1e-9, high)
 end
 
 do

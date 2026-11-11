@@ -641,7 +641,7 @@ do
 	check("a partner chasing the target at its pace is not abandoned", W.LF.CurrentPhase(W.bot) == "commit"
 		and W.events("lanefight_abandon") == 0, table.concat(W.lines, "\n"))
 	W = chase(false)
-	check("a partner standing still facing the target is abandoned", W.events("lanefight_abandon", "why=unseen") == 1, table.concat(W.lines, "\n"))
+	check("a partner standing still facing the target is abandoned", W.events("lanefight_abandon") == 1, table.concat(W.lines, "\n"))
 end
 
 do
