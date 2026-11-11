@@ -1435,14 +1435,6 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 30, from = 0}
     },
-    ["lane-spot-statue"] = {
-        note = "Radiant pos1 lane-only, Dire pos3 a statue in its lane, everyone else benched",
-        cast = SAFE_CORE,
-        statue = {d = {3}},
-        others = "bench",
-        castLaneOnly = true,
-        rep = {every = 30, from = 0}
-    },
     ["lane-spot-duel"] = {
         note = "Radiant pos1 and Dire pos3 lane-only, everyone else benched",
         cast = {r = {1}, d = {3}},
@@ -1514,7 +1506,7 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 90, from = 60, control = 4}
     },
-    ["retreat-hitback"] = {
+    ["lane-spot-statue"] = {
         note = "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
         cast = SAFE_CORE,
         others = "bench",
