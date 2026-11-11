@@ -30,6 +30,7 @@ ____exports.UNIT = {
     kills = "num",
     deaths = "num",
     tgt = "str",
+    tid = "str",
     ln = "str",
     s = "num",
     ld = "num"
@@ -210,6 +211,7 @@ ____exports.EVENTS = {
     },
     player = {pid = "num", hero = "str", team = "num", human = "bool"},
     snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
+    inv = {pid = "num", items = "str"},
     game_end = {pid = "num", radiantAncient = "bool", direAncient = "bool"},
     intent_cadence = {pid = "num", rf = "str", modes = "str", lapses = "str"},
     thrash = {

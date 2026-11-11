@@ -419,6 +419,56 @@ do
 	for _, n in ipairs(names) do U[n] = saved[n] end
 end
 
+-- ev=inv: the item layout, once at the first snapshot and then only when a slot, an item or a charge count differs.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1 })
+	local function item(name, charges) return { GetName = function() return "item_" .. name end, GetCurrentCharges = function() return charges or 0 end } end
+	local slots = { [0] = item("flask", 1), [1] = item("tango", 3), [7] = item("magic_wand", 4), [9] = item("blink"), [16] = item("trident") }
+	b.GetItemInSlot = function(_, i) return slots[i] end
+	local function tick(at) T = at H.Telemetry.Tick(b) end
+	tick(0)
+	local inv = events("inv")
+	check("first snapshot logs the layout", #inv == 1 and field(inv[1], "items") == "s0=flask:1 s1=tango:3 s7=magic_wand:4 s9=blink s16=trident", inv[1])
+	tick(1.2)
+	tick(2.4)
+	check("unchanged layout logs nothing", #events("inv") == 1, #events("inv"))
+	slots[1] = item("tango", 2)
+	tick(3.6)
+	check("a charge count change logs a line", #events("inv") == 2 and field(events("inv")[2], "items"):find("s1=tango:2", 1, true), events("inv")[2])
+	slots[0], slots[3] = nil, slots[0]
+	tick(4.8)
+	local moved = field(events("inv")[3] or "", "items") or ""
+	check("a move shows the new slot and drops the old", moved:find("s3=flask:1", 1, true) and not moved:find("s0=", 1, true), moved)
+	slots[16] = nil
+	tick(6)
+	check("a removed item logs a line", #events("inv") == 4 and not field(events("inv")[4], "items"):find("trident", 1, true), events("inv")[4])
+	check("every line names the hero", field(events("inv")[1], "pid") == "1")
+end
+
+-- The snapshot's target id: a hero by player id, any other unit by the creep id an ev=creep_death carries.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1 })
+	local enemy = MakeUnit({ pid = 7, team = 3 })
+	local creepUnit = { GetUnitName = function() return "npc_dota_creep_badguys_melee" end }
+	b.GetAttackTarget = function(self) return self.tgt end
+	b.tgt = enemy
+	T = 0
+	H.Telemetry.Tick(b)
+	b.tgt = creepUnit
+	T = 1.2
+	H.Telemetry.Tick(b)
+	local cid = H.Telemetry.CreepId(creepUnit)
+	b.tgt = nil
+	T = 2.4
+	H.Telemetry.Tick(b)
+	local snaps = events("snap")
+	check("hero target by pid", field(snaps[1], "tid") == "h7", snaps[1])
+	check("creep target by creep id", field(snaps[2], "tid") == "u" .. cid, snaps[2])
+	check("no target omits the field", field(snaps[3], "tid") == nil and field(snaps[3], "tgt") == nil, snaps[3])
+end
+
 finish()
 
 -- Before/after runs: the bot line names the build and the position; snapshots carry kills and deaths.

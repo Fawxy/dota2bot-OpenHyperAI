@@ -19,6 +19,8 @@ export const UNIT = {
     kills: "num",
     deaths: "num",
     tgt: "str",
+    /** The attack target as `h<pid>` (hero) or `u<n>` (any other unit, the creep id of `ev=creep_death` `cid`). */
+    tid: "str",
     ln: "str",
     s: "num",
     ld: "num",
@@ -254,6 +256,11 @@ export const EVENTS = {
         pid: "num",
         human: "bool",
         ...BOT,
+    },
+    /** Item layout when it changes (checked at the snapshot cadence) and at the first snapshot: `s<slot>=<name>[:<charges>]`, empty slots omitted; slots 0-5 main, 6-8 backpack, 9-14 stash, 15 TP, 16 neutral. */
+    inv: {
+        pid: "num",
+        items: "str",
     },
     game_end: {
         pid: "num",
