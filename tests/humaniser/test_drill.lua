@@ -694,13 +694,13 @@ do
 	T = 61
 	capture(function() tick(cast) end)
 	local spot = lastMoveTo(1)
-	check("hitback rig: the cast's spot is our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, 0)), spot and (spot.x .. "," .. spot.y))
+	check("hitback rig: the cast's spot is 100 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)), spot and (spot.x .. "," .. spot.y))
 	-- fix1: creeps at the front shove the statue; 150 off its spot it still stands there.
 	-- fix6: the front moves on; the statue's spot follows it, so it stays with our wave.
 	LANE_FRONT[2][dota.Lane.Bot] = 0.45
 	ACTIONS = {}
 	capture(function() tick(cast) end)
-	check("hitback rig: the cast's spot follows our lane front as it moves", near(lastMoveTo(1), GetLaneFrontLocation(RAD, dota.Lane.Bot, 0)) and not near(lastMoveTo(1), spot, 100))
+	check("hitback rig: the cast's spot follows our lane front as it moves", near(lastMoveTo(1), GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)) and not near(lastMoveTo(1), spot, 100))
 	LANE_FRONT[2][dota.Lane.Bot] = 0.5
 	cast.loc = Vector(spot.x + 150, spot.y, 0)
 	capture(function() tick(cast) end)
@@ -754,7 +754,7 @@ do
 	ACTIONS = {}
 	capture(function() tick(cast) end)
 	local spot2 = lastMoveTo(1)
-	check("hitback rig: the next rep reads the front again", near(spot2, GetLaneFrontLocation(RAD, dota.Lane.Bot, 0)) and not near(spot2, spot, 100))
+	check("hitback rig: the next rep reads the front again", near(spot2, GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)) and not near(spot2, spot, 100))
 	cast.loc = Vector(spot2.x, spot2.y, 0)
 	capture(function() tick(r5) end)
 	local pspot = lastMoveTo(5)

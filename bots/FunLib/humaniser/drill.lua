@@ -1523,11 +1523,11 @@ ____exports.TABLE = {
             half = "decision",
             switch = "HitBack",
             window = 600,
-            spots = {cast = {"r:frontbot", 0, 0}, partner = {"r:frontbot", -250, 0}, near = {"r:frontbot", 0, 0}},
+            spots = {cast = {"r:frontbot", -100, 0}, partner = {"r:frontbot", -350, 0}, near = {"r:frontbot", 0, 0}},
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
+            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2043,6 +2043,9 @@ local function failingCheck(bot, st, rr)
             return "hp"
         end
     end
+    if r.hpAtLeast ~= nil and hpShare(bot) < r.hpAtLeast then
+        return "hplow"
+    end
     for ____, it in ipairs(r.holds or ({})) do
         if not holdsItem(bot, it) then
             return "holds"
@@ -2057,19 +2060,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue238
+                local __continue239
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue238 = true
+                        __continue239 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue238 = true
+                    __continue239 = true
                 until true
-                if not __continue238 then
+                if not __continue239 then
                     break
                 end
             end
@@ -2112,10 +2115,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue256
+                local __continue257
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue256 = true
+                        __continue257 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2126,9 +2129,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue256 = true
+                    __continue257 = true
                 until true
-                if not __continue256 then
+                if not __continue257 then
                     break
                 end
             end

@@ -396,24 +396,19 @@ export function Desire(bot: Unit): number | undefined {
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
-    if (d.kind === undefined) {
+    const gap = recoverTo[pid];
+    const held = d.kind === "trade" && gap !== undefined && inputs.hp - inputs.targetHp < gap - 1e-6;
+    if (d.kind === undefined || held) {
         const hb = hitBackTarget(bot);
         if (hb === undefined) return 0;
-        const hi = Gather(bot, hb);
-        const hd = Decide(hi, false, killHpFor(bot), true);
+        // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
+        // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
+        // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
+        const hd = Decide(Gather(bot, hb), false, killHpFor(bot), true);
         if (hd.kind === undefined) return 0;
-        const lost = recoverTo[pid];
-        if (hd.kind === "trade" && lost !== undefined) {
-            if (hi.hp - hi.targetHp < lost - 1e-6) return 0;
-            recoverTo[pid] = undefined;
-        }
         return open(bot, hd.kind, hb, now, undefined, undefined, true);
     }
-    const gap = recoverTo[pid];
-    if (d.kind === "trade" && gap !== undefined) {
-        if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
-        recoverTo[pid] = undefined;
-    }
+    if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
     return open(bot, d.kind, target, now);
 }
 

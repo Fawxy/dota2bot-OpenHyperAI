@@ -565,6 +565,22 @@ do
 	CoreTrade.Desire(bot)
 	check("its end line says it was a hit back", last():find("ev=trade") and last():find("hb=1"), last())
 	enemy.dead = false
+	-- drill fix9: a trade lost moments in leaves an HP gap that holds new trades; a hit back does not wait for it.
+	fresh()
+	bot.hitBy = nil
+	bot.hp, enemy.hp = 80, 70
+	theirs = {}
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	bot.hp, enemy.hp = 70, 69
+	T = T + 0.5
+	CoreTrade.Desire(bot)
+	check("(setup) a plain trade lost by 10 of 100 ends losing", last():find("why=losing") ~= nil, last())
+	T = T + 0.5
+	check("(setup) with the gap not back, no plain trade", CoreTrade.Desire(bot) == 0)
+	bot.hitBy = enemy
+	check("hit back: the lost trade's gap does not hold it", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	for k = 1, 5 do theirs[k] = MakeUnit({ pid = 30 + k, team = 3, loc = Vector(200, 300) }) end
 	fresh()
 	bot.hitBy = enemy
 	ourCreep.loc = Vector(1000, 0)

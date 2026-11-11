@@ -194,7 +194,8 @@ export const TABLE: Record<string, Entry> = {
     // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%) but the
     // `wave` and `behind` ones the hit back passes (`refused`: 4 or more of their creeps within 500 of the cast, or the cast
     // 16 points under its hitter: fix5 and fix7, without either the plain trade rule answered, so the off arm hit back too;
-    // fix8: 4 creeps alone was rare at the front, a full early wave), the
+    // fix8: 4 creeps alone was rare at the front, a full early wave), HP at 55% or more (fix9: at the front itself their
+    // creeps drained the statue under half before ready, so it stands 100 back), the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
     // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5, fix6), so the cast
@@ -211,8 +212,8 @@ export const TABLE: Record<string, Entry> = {
             switch: "HitBack",
             window: 600,
             spots: {
-                cast: ["r:frontbot", 0, 0],
-                partner: ["r:frontbot", -250, 0],
+                cast: ["r:frontbot", -100, 0],
+                partner: ["r:frontbot", -350, 0],
                 near: ["r:frontbot", 0, 0],
             },
             timeout: 95,
@@ -222,7 +223,7 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 } },
+                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 }, hpAtLeast: 0.55 },
                 },
                 {
                     name: "pair",
@@ -233,12 +234,12 @@ export const TABLE: Record<string, Entry> = {
                         d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
-                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 } },
+                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 }, hpAtLeast: 0.55 },
                 },
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 } },
+                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 }, hpAtLeast: 0.55 },
                 },
                 {
                     name: "control",
@@ -967,6 +968,8 @@ function sentryAttack(bot: Unit, spot: ReturnType<typeof GetLaneFrontLocation>):
 export interface RigReady {
     /** The cast's HP share at or under this. */
     hpAtMost?: number;
+    /** The cast's HP share at or over this (slice hit-back: the hold and D24 need half HP and more). */
+    hpAtLeast?: number;
     /** Items the cast holds (inventory, one of each name). */
     holds?: string[];
     /** Items the cast does not hold. */
@@ -1560,6 +1563,7 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (hpShare(bot) <= r.hpAtMost) st.hpMet[bot.GetPlayerID()] = true;
         else if (st.hpMet[bot.GetPlayerID()] !== true) return "hp";
     }
+    if (r.hpAtLeast !== undefined && hpShare(bot) < r.hpAtLeast) return "hplow";
     for (const it of r.holds ?? []) if (!holdsItem(bot, it)) return "holds";
     for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
     if (r.clear !== undefined || r.near !== undefined) {

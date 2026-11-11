@@ -239,11 +239,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue80
+            local __continue77
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue80 = true
+                    __continue77 = true
                     break
                 end
                 local r = ____exports.Decide(
@@ -252,7 +252,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if r == "tower" or r == "outnumbered" then
-                    __continue80 = true
+                    __continue77 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -261,12 +261,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue80 = true
+                    __continue77 = true
                     break
                 end
                 return p
             until true
-            if not __continue80 then
+            if not __continue77 then
                 break
             end
         end
@@ -367,19 +367,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue117
+            local __continue114
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue117 = true
+                    __continue114 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue117 = true
+                __continue114 = true
             until true
-            if not __continue117 then
+            if not __continue114 then
                 break
             end
         end
@@ -708,27 +708,21 @@ function ____exports.Desire(bot)
             )
         end
     end
-    if d.kind == nil then
+    local gap = recoverTo[pid]
+    local held = d.kind == "trade" and gap ~= nil and inputs.hp - inputs.targetHp < gap - 0.000001
+    if d.kind == nil or held then
         local hb = hitBackTarget(bot)
         if hb == nil then
             return 0
         end
-        local hi = ____exports.Gather(bot, hb)
         local hd = ____exports.Decide(
-            hi,
+            ____exports.Gather(bot, hb),
             false,
             killHpFor(bot),
             true
         )
         if hd.kind == nil then
             return 0
-        end
-        local lost = recoverTo[pid]
-        if hd.kind == "trade" and lost ~= nil then
-            if hi.hp - hi.targetHp < lost - 0.000001 then
-                return 0
-            end
-            recoverTo[pid] = nil
         end
         return open(
             bot,
@@ -740,11 +734,7 @@ function ____exports.Desire(bot)
             true
         )
     end
-    local gap = recoverTo[pid]
     if d.kind == "trade" and gap ~= nil then
-        if inputs.hp - inputs.targetHp < gap - 0.000001 then
-            return 0
-        end
         recoverTo[pid] = nil
     end
     return open(bot, d.kind, target, now)
@@ -772,19 +762,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue107
+            local __continue104
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue107 = true
+                    __continue104 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue107 = true
+                __continue104 = true
             until true
-            if not __continue107 then
+            if not __continue104 then
                 break
             end
         end
