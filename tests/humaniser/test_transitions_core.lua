@@ -38,9 +38,9 @@ do
 	check("flag off", not S.IsOn("Rotation"))
 	check("other flags keep defaults", S.IsOn("MidRunes") and S.IsOn("LostLane"))
 	check("untouched values keep defaults", near(S.Get().Refresh, 0.5) and near(S.Get().RotateChance.Low, 0.3))
-	H = LaneFresh({ Enable = true }, { transitions = { RotateChance = { High = 1.0 } } })
+	H = LaneFresh({ Enable = true }, { transitions = { RotateChance = { High = 0.8 } } })
 	S = H.Transitions.Settings
-	check("partial lerp pair merges", near(S.Get().RotateChance.High, 1.0) and near(S.Get().RotateChance.Low, 0.3))
+	check("partial lerp pair merges", near(S.Get().RotateChance.High, 0.8) and near(S.Get().RotateChance.Low, 0.3))
 end
 
 do
@@ -48,7 +48,7 @@ do
 	local pair = { Low = 0.3, High = 0.9 }
 	check("lerp interpolates", near(S.Lerp(pair, 0.5), 0.6))
 	check("lerp clamps skill", near(S.Lerp(pair, 2), 0.9) and near(S.Lerp(pair, -1), 0.3))
-	check("falling pair interpolates", near(S.Lerp(S.Get().ArriveSigma, 1), 1))
+	check("falling pair interpolates", near(S.Lerp(S.Get().ArriveSigma, 0.5), 3))
 end
 
 do

@@ -60,9 +60,9 @@ local function world(o)
 	return W
 end
 
-local function rememberStun(W, roll)
+local function rememberStun(W, roll, skill)
 	SetRandomSequence({ roll or 0.1, 0.5 })
-	W.M.Record(1, 6, "lion_impale", "key", 12, 1, T)
+	W.M.Record(1, 6, "lion_impale", "key", 12, skill or 1, T)
 	SetRandomSequence({})
 end
 
@@ -86,7 +86,7 @@ end
 
 do
 	local W = world()
-	rememberStun(W, 0.95)
+	rememberStun(W, 0.95, 0.5)
 	T = T + 1
 	local r = W.read()
 	check("no spell window when the stun was forgotten", r.window == nil and r.target == W.enemy, tostring(r.window))

@@ -11,7 +11,7 @@ ____exports.DEFAULTS = {
     CallKills = true,
     Teams = "all",
     ShareMemory = false,
-    UseCastCallback = false,
+    UseCastCallback = true,
     PollInterval = 0.1,
     KillCheckEvery = 0.5,
     WindowReadEvery = 0.25,
@@ -50,16 +50,16 @@ ____exports.DEFAULTS = {
     SoloSkill = 0.7,
     CallCooldown = 30,
     Curves = {
-        RememberUlt = {0.6, 0.98},
-        RememberKey = {0.35, 0.9},
-        RememberOther = {0.1, 0.6},
-        TimingError = {0.35, 0.05},
+        RememberUlt = {0.6, 1},
+        RememberKey = {0.35, 1},
+        RememberOther = {0.1, 1},
+        TimingError = {0.35, 0},
         ForgetWindow = {20, 90},
-        ShareLoss = {0.3, 0.05},
-        Notice = {0.3, 0.9},
-        BurstError = {0.3, 0.05},
+        ShareLoss = {0.3, 0},
+        Notice = {0.3, 1},
+        BurstError = {0.3, 0},
         AbortNotice = {0.8, 0.15},
-        SyncDelay = {0.6, 0.1}
+        SyncDelay = {0.6, 0}
     }
 }
 local function isArray(t)

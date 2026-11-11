@@ -960,7 +960,7 @@ local function step(bot, st, r, now)
     ep.underSince = ep.underSince or now
     return now - ep.underSince >= s.ExitDwell and "safe" or nil
 end
---- The leave rule: lethal, a tower on us or the heal floor at once; over budget for the hero's reaction time.
+--- The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`.
 local function leaveWhy(bot, st, r, budget, now)
     if r.band == "lethal" then
         return "lethal"
@@ -1015,7 +1015,7 @@ local function leaveWhy(bot, st, r, budget, now)
         return nil
     end
     st.overSince = st.overSince or now
-    return now - st.overSince >= Profile.Get(bot).reactBase and "threat" or nil
+    return now - st.overSince >= Profile.ThreatHold(bot) and "threat" or nil
 end
 --- The retreat-walk drill's cast: walk to the rep's start spot, then the forced episode, then stand. Undefined when not in it.
 local function drillDesire(bot, st, now)

@@ -30,8 +30,9 @@ export const DEFAULTS = {
     // 'all' | 'allies' (bots whose team has a human) | 'enemies' (bots whose team has none)
     Teams: "all" as string,
     ShareMemory: false,
-    // Install cast callbacks for exact cast events; false reads cooldowns and levels instead (Task 1 probe pending).
-    UseCastCallback: false,
+    // Cast callbacks beside the poll: they heard 312 of 317 casts by a visible hero, instant ones included (ApiProbe game
+    // 12/11/2026). An enemy's cooldown remaining is not readable (-1 on every ability), so seen casts are the only source.
+    UseCastCallback: true,
     PollInterval: 0.1,
     KillCheckEvery: 0.5,
     WindowReadEvery: 0.25,
@@ -87,17 +88,20 @@ export const DEFAULTS = {
     MissingMargin: 1.5,
     SoloSkill: 0.7,
     CallCooldown: 30,
+    // Skill 1 is no handicap of ours (user 12/11/2026): chances end at 1, errors and delays at 0.
     Curves: {
-        RememberUlt: [0.6, 0.98],
-        RememberKey: [0.35, 0.9],
-        RememberOther: [0.1, 0.6],
-        TimingError: [0.35, 0.05],
+        RememberUlt: [0.6, 1],
+        RememberKey: [0.35, 1],
+        RememberOther: [0.1, 1],
+        TimingError: [0.35, 0],
         ForgetWindow: [20, 90],
-        ShareLoss: [0.3, 0.05],
-        Notice: [0.3, 0.9],
-        BurstError: [0.3, 0.05],
+        ShareLoss: [0.3, 0],
+        Notice: [0.3, 1],
+        BurstError: [0.3, 0],
+        // Not only a handicap: the re-check must come after the signal has played out (an escape cast re-checked on its own
+        // frame still passes, the target not yet moved), so skill 1 keeps a wait.
         AbortNotice: [0.8, 0.15],
-        SyncDelay: [0.6, 0.1],
+        SyncDelay: [0.6, 0],
     } as Record<string, number[]>,
 };
 

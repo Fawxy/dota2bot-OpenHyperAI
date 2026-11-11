@@ -35,8 +35,8 @@ do
 		and M.ProbablyReady(1, 6, "b", true, 145.1, 0))
 	RANDOM_FRACTION = 0
 	M.Record(1, 6, "c", "ult", 100, 1, 10)
-	check("skill 1 low end is 0.95 cd", not M.ProbablyReady(1, 6, "c", true, 104.9, 1)
-		and M.ProbablyReady(1, 6, "c", true, 105.1, 1))
+	check("skill 1 remembers the cooldown exactly", not M.ProbablyReady(1, 6, "c", true, 109.9, 1)
+		and M.ProbablyReady(1, 6, "c", true, 110.1, 1))
 end
 
 do

@@ -190,7 +190,8 @@ do
 		end
 		return drewAt
 	end
-	local slow, fast = drawTimes(0.5), drawTimes(1)
+	local slow, fast = drawTimes(0.5), drawTimes(0.9)
+	check("skill 1 draws with no jitter", drawTimes(1) == 95, drawTimes(1))
 	check("aggro draw waits for its jitter", fast ~= nil and fast > 95)
 	check("lower skill draws later", slow ~= nil and fast ~= nil and slow > fast + 0.4, tostring(slow) .. " vs " .. tostring(fast))
 end
@@ -236,7 +237,7 @@ end
 do
 	local H, bot, creep = aggroWorld(0.5, { x = 2200 })
 	TOWERS_W[3][dota.Tower.Bot1].target = bot
-	SetRandomSequence({ 0.99 })
+	SetRandomSequence({ 0.99, 0.99 })
 	local c = H.Lane.LanePlanner.Plan(bot, H.Lane.LaneState.ForBot(bot))
 	check("precondition: planner choice none", c.tech == "none", c.reason)
 	check("tower aggro: drops on an allied creep", H.Lane.PreThink(bot, { creep }, {}, {}) == true

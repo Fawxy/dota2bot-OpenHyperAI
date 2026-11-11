@@ -178,7 +178,7 @@ end
 
 for _, team in ipairs({ 2, 3 }) do
 	local tag = team == 2 and " (radiant)" or " (dire)"
-	local W = world({ team = team, burst = 1000 })
+	local W = world({ team = team, burst = 1000, skill = 0.5 })
 	score(W)
 	check("a kill pass waits a reaction delay before committing" .. tag, W.age("commit") == nil)
 	T = T + ROUND

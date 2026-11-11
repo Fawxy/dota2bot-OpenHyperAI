@@ -107,8 +107,8 @@ do
 		end
 		return n
 	end
-	check("skill 0.9 punishes 16 of 20 attempts", punishes(0.9) == 16, punishes(0.9))
-	check("skill 0.2 punishes 7 of 20 attempts", punishes(0.2) == 7, punishes(0.2))
+	check("skill 0.9 punishes 18 of 20 attempts", punishes(0.9) == 18, punishes(0.9))
+	check("skill 0.2 punishes 8 of 20 attempts", punishes(0.2) == 8, punishes(0.2))
 	check("Harass off: the shared tool never runs", punishes(0.9, { Enable = true, Harass = false }) == 0)
 end
 

@@ -68,11 +68,11 @@ end
 do
 	local C = LaneFresh({ Enable = true }).Lane.Config
 	check("sigma at 0", near(C.Curve("JitterSigma", 0), 1.5))
-	check("sigma at 1", near(C.Curve("JitterSigma", 1), 0.2))
-	check("sigma at 0.5", near(C.Curve("JitterSigma", 0.5), 0.85))
-	check("attempt midpoint", near(C.Curve("AttemptRate", 0.5), 0.5))
+	check("sigma at 1 is none", near(C.Curve("JitterSigma", 1), 0))
+	check("sigma at 0.5", near(C.Curve("JitterSigma", 0.5), 0.75))
+	check("attempt midpoint", near(C.Curve("AttemptRate", 0.5), 0.575))
 	check("path noise at 0", near(C.Curve("PathNoise", 0), 150))
-	check("clamped above 1", near(C.Curve("AttemptRate", 1.7), 0.85))
+	check("clamped above 1", near(C.Curve("AttemptRate", 1.7), 1))
 	check("clamped below 0", near(C.Curve("AttemptRate", -1), 0.15))
 end
 
@@ -97,7 +97,7 @@ do
 	SetRandomSequence({ 0.5, 0.25 })
 	check("zero z gives zero jitter", math.abs(C.Jitter(0)) < 1e-3)
 	SetRandomSequence({ math.exp(-2), 1.0 })
-	check("jitter at high skill", math.abs(C.Jitter(1) - 0.4) < 1e-3)
+	check("no jitter at skill 1", math.abs(C.Jitter(1)) < 1e-9)
 	SetRandomSequence({ math.exp(-2), 1.0 })
 	local j0 = C.Jitter(0)
 	check("jitter scales with sigma", math.abs(j0 - 3.0) < 1e-3, j0)

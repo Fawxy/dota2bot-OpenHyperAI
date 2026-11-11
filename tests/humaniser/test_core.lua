@@ -74,7 +74,7 @@ end
 -- Profile: higher skill reacts faster, react delay never below MinReact even with jitter at minimum
 do
 	ResetWorld()
-	local H = FreshHumaniser({ Enable = true })
+	local H = FreshHumaniser({ Enable = true, Profile = { MinReact = 0.17 } })
 	local slow = MakeUnit({ pid = 1, difficulty = DIFFICULTY_PASSIVE })
 	local fast = MakeUnit({ pid = 2, difficulty = DIFFICULTY_UNFAIR })
 	check("skill speeds reaction", H.Profile.Get(fast).reactBase < H.Profile.Get(slow).reactBase)

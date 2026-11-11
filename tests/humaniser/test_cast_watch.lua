@@ -255,7 +255,7 @@ do
 end
 
 do
-	local H, bot, enemy = world()
+	local H, bot, enemy = world({ laneFight = { UseCastCallback = false } })
 	enemy.casting = enemy.impale
 	poll(H, bot, 2)
 	check("UseCastCallback false installs no callback", next(CAST_CALLBACKS) == nil)
@@ -268,20 +268,31 @@ do
 	poll(H, bot, 3)
 	check("the callback is installed once", #CAST_CALLBACKS[6] == 1)
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = enemy.impale, unit = enemy })
+	check("a callback cast waits for the observer's tick (a callback has no bot context)", recordsOf(records, "lion_impale") == 0, #records)
+	H.LaneFight.Tick(bot)
 	check("a callback cast by a visible enemy is recorded", recordsOf(records, "lion_impale") == 1, #records)
 	T = T + 1
 	-- A summon of the same player: its own handle, not the hero's (kept out of the world so the hero stays the caster).
 	local summon = setmetatable({ pid = 6, team = 3, alive = true, loc = Vector(-2400, BOT_Y), modifiers = {} }, getmetatable(enemy))
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = ability("lion_mana_drain"), unit = summon })
+	H.LaneFight.Tick(bot)
 	check("a callback cast by another unit of the enemy player is not the hero's", recordsOf(records, "lion_mana_drain") == 0, #records)
 	-- Still in the cached lane list, but in fog by the time the event fires.
 	enemy.CanBeSeen = function() return false end
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = ability("lion_mana_drain"), unit = enemy })
+	H.LaneFight.Tick(bot)
 	check("a callback cast by a fogged enemy is ignored", recordsOf(records, "lion_mana_drain") == 0, #records)
 	enemy.CanBeSeen = nil
 	T = T + 1
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = "lion_impale", unit = enemy })
+	H.LaneFight.Tick(bot)
 	check("a callback naming the ability by string is read from the ability list", recordsOf(records, "lion_impale") == 2, #records)
+	-- The observer had no tick for 5 s (dead): the queued cast is not handled as a fresh one on its next tick.
+	T = T + 1
+	CAST_CALLBACKS[6][1]({ player_id = 6, ability = enemy.impale, unit = enemy })
+	T = T + 5
+	H.LaneFight.Tick(bot)
+	check("a queued cast older than the event gap is dropped", recordsOf(records, "lion_impale") == 2, #records)
 end
 
 do

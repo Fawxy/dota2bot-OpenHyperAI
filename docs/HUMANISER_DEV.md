@@ -724,7 +724,7 @@ Post claims instead of editing desires: camp jobs as `CAMP_JOB` floors on the jo
 Low-skill bots misjudge last hits and deny less. `Customize.Humaniser.LastHitSkill.Enable = false` (or `Humaniser.Enable = false`) restores upstream exactly, and skill 1.0 is always upstream.
 
 - **Module:** `FunLib/humaniser/last_hit_skill.lua`, `J.Humaniser.LastHitSkill.WillKill(bot, creep, damage, delay, isDeny)`. It replaces the bare kill check in laning's `GetBestLastHitCreep` (last hit and move-to lookahead), `GetBestDenyCreep`, mid's ranged deny (`LaneMid.PickDeny`) and team roam's `X.GetLastHitCreep`. Farm mode never times a last hit, so it is not wrapped.
-- **Per creep, per bot,** kept until the creep is gone: an error `eps` in [-1, 1] and whether the bot tries at all. Damage is judged as `damage * (1 + eps * e)`, where `e = lerp(0.15, 0.02, skill)`, ×1.5 when the bot was hit by a hero, or attacked one, in the last 2 s (time-latched, so turning to a creep does not end it at once). The try rate is `lerp(0.75, 0.98, skill)`, or `lerp(0.35, 0.9, skill)` for denies. Because the rolls are kept, `GetDesire` (laning 0.9, team roam 1.5) and `Think` agree on the same creep, so nothing flickers under intent arbitration and no claim is needed.
+- **Per creep, per bot,** kept until the creep is gone: an error `eps` in [-1, 1] and whether the bot tries at all. Damage is judged as `damage * (1 + eps * e)`, where `e = lerp(0.15, 0, skill)` (no error at skill 1), ×1.5 when the bot was hit by a hero, or attacked one, in the last 2 s (time-latched, so turning to a creep does not end it at once). The try rate is `lerp(0.75, 1, skill)`, or `lerp(0.35, 1, skill)` for denies. Because the rolls are kept, `GetDesire` (laning 0.9, team roam 1.5) and `Think` agree on the same creep, so nothing flickers under intent arbitration and no claim is needed.
 - **Ranged priority:** for `0.6 < skill < 1`, the bot takes a ranged or siege creep first when several are killable together.
 - **Valve laning:** with `RequireOwnedLaning = true` (default) only bots whose laning `Think()` OHA owns are affected, everywhere. Each other bot logs `[Humaniser] LastHitSkill: pid=<pid> <hero> is on Valve laning; no effect (set Lane.OwnLaningThink='all')` once. Enemy bots are only owned with `Lane.OwnLaningThink = 'all'`. The trainer's self-test bot always stays exact.
 - **Overlay** (`Debug = true`): `cs: e=<e> attempts=<n> misses=<n>`. An attempt is a last-hit or deny swing the bot issued (`NoteAttempt` beside the attack in laning and team roam), not a kill check. Each 0.25 s, attempts whose creep has gone count as hits up to how far `GetLastHits()` (`GetDenies()` for denies) moved since the previous tick; the rest are misses. A spell last hit in the same tick can hide one miss.
@@ -868,7 +868,7 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | `CallKills` | true | The `go on X` line and ping for a human partner |
 | `Teams` | `'all'` | `'allies'`: only bots on a team with a human; `'enemies'`: only bots on a team without one |
 | `ShareMemory` | false | Passing remembered casts to lane allies (with `ShareLoss`) |
-| `UseCastCallback` | false | `InstallCastCallback` per enemy player (off until the probe confirms it) |
+| `UseCastCallback` | true | `InstallCastCallback` per enemy player; a callback runs outside any bot's think, so casts are queued with their time and drained on the observer's tick (older than `EventGap`: dropped) |
 
 ### Config keys (`lane_fight_config.ts` `DEFAULTS`)
 | Key | Default | Meaning |
@@ -899,7 +899,7 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | `Overwhelming` | 1.5 | Margin for a solo commit beside a human, or a support's forced commit |
 | `SoloSkill` | 0.7 | Overwhelming solo commits only above this skill |
 | `CallCooldown` | 30 s | Kill call line cooldown |
-| `Curves.RememberUlt` / `RememberKey` / `RememberOther` | [0.6, 0.98] / [0.35, 0.9] / [0.1, 0.6] | Remember chance by class |
+| `Curves.RememberUlt` / `RememberKey` / `RememberOther` | [0.6, 1] / [0.35, 1] / [0.1, 1] | Remember chance by class (skill 1 remembers every cast it can record) |
 | `Curves.TimingError` | [0.35, 0.05] | Remembered cooldown error (fraction) |
 | `Curves.ForgetWindow` | [20, 90] s | How long a memory lasts |
 | `Curves.ShareLoss` | [0.3, 0.05] | Chance a shared memory is lost |
@@ -919,7 +919,7 @@ From the plan:
 7. Instant casts: poll plus a blink-jump heuristic, and the cast callback behind `UseCastCallback`.
 
 Controller rulings:
-- Tasks 1–9 ran without the in-game probe; `UseCastCallback` defaults false and Task 4b is skipped until the probe says otherwise.
+- Tasks 1–9 ran without the in-game probe; `UseCastCallback` is on since the API probe (casts by visible enemies fire it); `GetCooldown()` on an enemy ability gives no length, so `lanefight_mem reason=no_cd` is every cast and nothing is recorded until Task 4b (a cooldown table).
 - Partner lookup is `LaneRoles.Partner(bot, LaneState.ForBot(bot))` resolved to its unit.
 - The kill call is a localization key taking the hero name; `Orders.Say` gained a format argument and keeps its 10 s per-bot limit.
 - Starts need HP ≥ `StartHP` (trades) or `CommitStartHP` (commits and waits), retreat < `StartMaxRetreat`, no camp job or cover, no live HUMAN_ORDER/SURVIVAL claim; each blocked start logs `lanefight_gate` once per window instance. The mode gate is checked first, then (trades) the range, measured on the target as the bot sees it at that moment rather than the cached read's handle (`gate=unseen` when it is no longer visible).
@@ -1056,7 +1056,7 @@ Posted from the trip's start, because a claim from farm's GetDesire reaches retr
 
 ### Stops
 - Dead, HP < 0.3, or an order.
-- A visible enemy hero within 1,400 for the bot's reaction time (`Profile.reactBase`, on top of perception's delay). Ignored on the walk back, where laning and retreat decide.
+- A visible enemy hero within 1,400 for `Profile.ThreatHold` (0.17 s, or the reaction time when longer; on top of perception's delay). Ignored on the walk back, where laning and retreat decide.
 - Retreat's resolved desire over the trip's (`retreat`). The hold keeps it below on the walk in and in the camp, so this fires on a real threat or on the walk back. In console.9057083956 Enigma left a half-cleared centaur camp at leaveBy with the camp chasing it, and retreat (0.9, creep damage) and the trip (0.62) swapped the bot five times in five seconds until it fell under `AbortHP`.
 - Another mode active with no farm Think for 2 s. Farm's `OnEnd` doesn't end a trip: upstream team_roam grabs a neutral's last hit at 0.72 for under a second, and in the first test game that ended both trips mid-camp.
 - The walk back ends at 900 from the front, when the wave arrives, or after 25 s.

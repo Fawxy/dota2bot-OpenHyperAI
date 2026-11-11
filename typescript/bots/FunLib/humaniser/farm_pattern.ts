@@ -598,7 +598,7 @@ function threatened(bot: Unit, trip: Trip, now: number): boolean {
         return false;
     }
     trip.enemySince = trip.enemySince ?? now;
-    return now - trip.enemySince >= Profile.Get(bot).reactBase;
+    return now - trip.enemySince >= Profile.ThreatHold(bot);
 }
 
 /** Why a live trip must end now, or undefined. */

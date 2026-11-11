@@ -1,14 +1,14 @@
 import { get } from "./adapter";
 import { SkillProfile, TaskUnit } from "./types";
 
-/** Last-hit error half-width (fraction of own damage) at skill 0 and 1. */
+/** Last-hit error half-width (fraction of own damage) at skill 0 and 1. Skill 1 is exact (user 12/11/2026), here and below. */
 export const LAST_HIT_ERROR_LOW = 0.15;
-export const LAST_HIT_ERROR_HIGH = 0.02;
-/** Seconds of swing-timing error per unit of last-hit error: 0.02 -> 0.04 s, 0.15 -> 0.3 s. */
+export const LAST_HIT_ERROR_HIGH = 0;
+/** Seconds of swing-timing error per unit of last-hit error: 0.15 -> 0.3 s. */
 export const TIMING_PER_ERROR = 2;
 /** Chance per creep of a lapse (a clearly late swing) at skill 0 and 1, when the profile has no `lapse`. */
 export const LAPSE_LOW = 0.15;
-export const LAPSE_HIGH = 0.01;
+export const LAPSE_HIGH = 0;
 
 export function lerp(low: number, high: number, t: number): number {
     return low + (high - low) * t;
@@ -59,7 +59,7 @@ export function lapseChance(bot: TaskUnit): number {
 
 /** Gaussian sigma (s) of a timed action's error at skill 0 and 1. */
 export const TIMING_SIGMA_LOW = 1.5;
-export const TIMING_SIGMA_HIGH = 0.2;
+export const TIMING_SIGMA_HIGH = 0;
 /** Draws past this many sigmas are clamped, so one roll can never wreck a job outright. */
 export const TIMING_CLAMP = 2.5;
 
