@@ -192,8 +192,9 @@ export const TABLE: Record<string, Entry> = {
     // hit back reads: an enemy hero damaged the cast within 1 s (forced: the Dire actor attacks it), standing inside our
     // creeps' aggro (forced: the spots sit at our bot lane front, which `paid` checks at ready), the trade's remaining
     // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%) but the
-    // `wave` one the hit back passes (the cast stands at our front, ready with 4 or more of their creeps within 500: fix5 and
-    // fix7, with fewer and the cast not behind on HP the plain trade rule answered, so the off arm hit back too), the
+    // `wave` and `behind` ones the hit back passes (`refused`: 4 or more of their creeps within 500 of the cast, or the cast
+    // 16 points under its hitter: fix5 and fix7, without either the plain trade rule answered, so the off arm hit back too;
+    // fix8: 4 creeps alone was rare at the front, a full early wave), the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
     // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5, fix6), so the cast
@@ -221,7 +222,7 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 1000, theirCreeps: 4 },
+                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 } },
                 },
                 {
                     name: "pair",
@@ -232,12 +233,12 @@ export const TABLE: Record<string, Entry> = {
                         d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
-                    ready: { paid: 500, towers: 1000, theirCreeps: 4 },
+                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 } },
                 },
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 1000, theirCreeps: 4 },
+                    ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 } },
                 },
                 {
                     name: "control",
@@ -979,8 +980,11 @@ export interface RigReady {
      * cast team's lane creeps (inside our creeps' aggro: slice hit-back).
      */
     paid?: number;
-    /** At least this many enemy lane creeps within 500 of the cast (the trade rule's `wave` refusal; slice hit-back). */
-    theirCreeps?: number;
+    /**
+     * The trade rule's refusal facts (slice hit-back): at least `wave` enemy lane creeps within 500 of the cast, or the cast's
+     * HP share at least `behind` under that of an enemy hero that damaged it within the last second.
+     */
+    refused?: { wave: number; behind: number };
     /** No tower of either team within this distance of the cast (hit-back fix3: the front sat under our T1, which killed the attackers). */
     towers?: number;
 }
@@ -1567,9 +1571,13 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (r.clear !== undefined && nearest <= r.clear) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
     }
-    if (r.theirCreeps !== undefined) {
+    if (r.refused !== undefined) {
         const n = (bot.GetNearbyLaneCreeps(500, true) ?? []).filter((c) => c.IsAlive()).length;
-        if (n < r.theirCreeps) return "theirs";
+        let behind = false;
+        for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (h.IsAlive() && bot.WasRecentlyDamagedByHero(h, 1) && hpShare(h) - hpShare(bot) >= r.refused.behind) behind = true;
+        }
+        if (n < r.refused.wave && !behind) return "refused";
     }
     if (r.towers !== undefined) {
         const at = bot.GetLocation();

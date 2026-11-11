@@ -1527,7 +1527,7 @@ ____exports.TABLE = {
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, theirCreeps = 4}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, theirCreeps = 4}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, theirCreeps = 4}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
+            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2081,13 +2081,19 @@ local function failingCheck(bot, st, rr)
             return "near"
         end
     end
-    if r.theirCreeps ~= nil then
+    if r.refused ~= nil then
         local n = #__TS__ArrayFilter(
             bot:GetNearbyLaneCreeps(500, true) or ({}),
             function(____, c) return c:IsAlive() end
         )
-        if n < r.theirCreeps then
-            return "theirs"
+        local behind = false
+        for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+            if h:IsAlive() and bot:WasRecentlyDamagedByHero(h, 1) and hpShare(h) - hpShare(bot) >= r.refused.behind then
+                behind = true
+            end
+        end
+        if n < r.refused.wave and not behind then
+            return "refused"
         end
     end
     if r.towers ~= nil then
@@ -2106,10 +2112,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue253
+                local __continue256
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue253 = true
+                        __continue256 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2120,9 +2126,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue253 = true
+                    __continue256 = true
                 until true
-                if not __continue253 then
+                if not __continue256 then
                     break
                 end
             end
