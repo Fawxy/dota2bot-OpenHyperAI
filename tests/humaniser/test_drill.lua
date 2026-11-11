@@ -458,7 +458,8 @@ do
 		ACTIONS = {}
 		return H, cast, atk, mid
 	end
-	local function tick(H, ...) for _, u in ipairs({ ... }) do H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end end
+	-- Each hero ticks as its own team (each team's bots run in their own VM; GetUnitList answers from CURRENT_TEAM).
+	local function tick(H, ...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end CURRENT_TEAM = 2 end
 	local function lastMoveTo(pid)
 		local mv = ActionsOf(pid, "MoveToLocation")
 		return mv[#mv] and mv[#mv].args[1]
@@ -501,6 +502,19 @@ do
 	T = 211
 	capture(function() tick(H, cast, atk) end)
 	check("rig: the next rep holds the cast again", H.Drill.Held(cast))
+
+	-- The attacker's VM never sees the cast's own setup state (rig1, 12/11/2026: the Dire actor waited all game): it attacks
+	-- once it sees the cast standing at the cast's spot, though the cast has not ticked in this world.
+	local spotOf = spot
+	local Hv, cv, av = rigWorld()
+	T = 61
+	av.loc = Vector(spotOf.x, spotOf.y + 600, 0)
+	cv.loc = Vector(spotOf.x + 400, spotOf.y, 0)
+	capture(function() tick(Hv, av) tick(Hv, av) end)
+	check("rig VMs: the cast 400 off its spot: no attack", #ActionsOf(7, "AttackUnit") == 0)
+	cv.loc = Vector(spotOf.x + 20, spotOf.y, 0)
+	capture(function() tick(Hv, av) end)
+	check("rig VMs: the cast seen at its spot: the attacker attacks with no state from the cast's VM", #ActionsOf(7, "AttackUnit") == 1)
 
 	-- Host on: the same release frees every mode and OHA's items and spells.
 	local Hh, ch, ah = rigWorld({ DrillHost = true })

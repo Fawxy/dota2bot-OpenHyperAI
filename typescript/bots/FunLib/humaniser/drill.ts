@@ -10,7 +10,7 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { BotMode, GameState, Item, Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, GameState, Item, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -926,7 +926,7 @@ export interface RigRep {
      *   under the share (or it dies); ends then.
      * - `leave [spot]`: walk to the spot (default its fountain) and stay; never ends.
      * Each list ends in `stand` or `leave`: a hero is placed once it stands at its last step's point, and ready needs every
-     * listed hero placed.
+     * listed hero of its own team placed (the other team runs in its own VM: its part is read from the facts).
      */
     setup: Record<string, string[]>;
     ready: RigReady;
@@ -1113,12 +1113,35 @@ function rigPoint(bot: Unit, name: string): Vector | undefined {
     return p;
 }
 
-/** Each rig hero's unit by key (`r5`), registered from its own Tick: the setup reads heroes of both teams, seen or not. */
+/**
+ * Each team's bots run in their own Lua VM (rig1, 12/11/2026: the Dire actor never saw the Radiant cast as placed), so a
+ * rig reads the other team only through the API: own-team heroes register here from their Tick; an enemy hero is found among
+ * the visible enemy heroes by position.
+ */
 const rigUnits: Record<string, Unit> = {};
 
-/** The unit of hero key `r5` / `d3`, alive or not, or undefined before it has ticked. */
-function heroOf(key: string): Unit | undefined {
-    return rigUnits[key];
+/** The unit of hero key `r5` / `d3` as `bot` can see it: its own team's from the registry, an enemy only while visible. */
+function heroOf(bot: Unit, key: string): Unit | undefined {
+    const [side, p] = string.match(key, "^([rd])(%d)$");
+    if (side === undefined) return undefined;
+    const team = side === "r" ? Team.Radiant : Team.Dire;
+    if (team === bot.GetTeam()) return rigUnits[key];
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (h.IsAlive() && h.GetLocation() !== undefined && LaneConfig.PositionOf(h) === tonumber(p)) return h;
+    }
+    return undefined;
+}
+
+/** A hero counts as standing at its last step's point within this (it sways about 20 either side). `judgement`. */
+const RIG_PLACED = 200;
+
+/** Whether hero `key` stands at the point of its last setup step, read from where it is seen (no state of its VM). */
+function standsAtLast(st: RigState, key: string, target: Unit): boolean {
+    const steps = RigRepOf(st.rep)?.setup[key];
+    if (steps === undefined || steps.length === 0) return true;
+    const words = steps[steps.length - 1].split(" ");
+    const p = rigPoint(target, words[1] ?? "fountain");
+    return p !== undefined && GetUnitToLocationDistance(target, p) <= RIG_PLACED;
 }
 
 interface ShopBot extends Unit {
@@ -1212,11 +1235,11 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
     }
     if (verb === "attack") {
         // attack <hero> until hp <share>
-        const target = heroOf(words[1]);
+        const target = heroOf(bot, words[1]);
         const share = tonumber(words[4]);
-        if (target === undefined || share === undefined) return false;
-        if (!target.IsAlive() || hpShare(target) <= share) return true;
-        if (st.placed[target.GetPlayerID()] !== true) {
+        if (share === undefined) return false;
+        if (target !== undefined && hpShare(target) <= share) return true;
+        if (target === undefined || !standsAtLast(st, words[1], target)) {
             // Waits where it stands for the target to take its place.
             bot.Action_MoveToLocation(bot.GetLocation());
             return false;
@@ -1256,9 +1279,10 @@ function rigHold(bot: Unit): boolean {
 
 /** The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step. */
 function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
+    // Only the cast's own team's setup is known here (the other team's runs in its own VM); the facts below read the rest.
     for (const k of Object.keys(rr.setup)) {
-        const u = heroOf(k);
-        if (u === undefined || st.placed[u.GetPlayerID()] !== true) return "setup";
+        const u = heroOf(bot, k);
+        if (u !== undefined && u.GetTeam() === bot.GetTeam() && st.placed[u.GetPlayerID()] !== true) return "setup";
     }
     const r = rr.ready;
     if (r.hpAtMost !== undefined && hpShare(bot) > r.hpAtMost) return "hp";
@@ -1266,9 +1290,8 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
     for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
     if (r.clear !== undefined || r.near !== undefined) {
         let nearest = math.huge;
-        for (const k of Object.keys(rigUnits)) {
-            const h = rigUnits[k];
-            if (h.GetTeam() === bot.GetTeam() || !h.IsAlive() || h.GetLocation() === undefined) continue;
+        for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (!h.IsAlive() || h.GetLocation() === undefined) continue;
             nearest = math.min(nearest, GetUnitToUnitDistance(bot, h));
         }
         if (r.clear !== undefined && nearest <= r.clear) return "clear";

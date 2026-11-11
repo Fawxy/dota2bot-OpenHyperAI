@@ -263,13 +263,14 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, standsAtLast, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
@@ -999,8 +1000,31 @@ function rigPoint(bot, name)
     )
     return p
 end
-function heroOf(key)
-    return rigUnits[key]
+function heroOf(bot, key)
+    local side, p = string.match(key, "^([rd])(%d)$")
+    if side == nil then
+        return nil
+    end
+    local team = side == "r" and Team.Radiant or Team.Dire
+    if team == bot:GetTeam() then
+        return rigUnits[key]
+    end
+    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if h:IsAlive() and h:GetLocation() ~= nil and LaneConfig.PositionOf(h) == tonumber(p) then
+            return h
+        end
+    end
+    return nil
+end
+function standsAtLast(st, key, target)
+    local ____opt_54 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_54 and ____opt_54.setup[key]
+    if steps == nil or #steps == 0 then
+        return true
+    end
+    local words = __TS__StringSplit(steps[#steps], " ")
+    local p = rigPoint(target, words[2] or "fountain")
+    return p ~= nil and GetUnitToLocationDistance(target, p) <= RIG_PLACED
 end
 function hpShare(u)
     return u:GetHealth() / math.max(
@@ -1090,15 +1114,15 @@ function rigStep(bot, st, step, last)
         return true
     end
     if verb == "attack" then
-        local target = heroOf(words[2])
+        local target = heroOf(bot, words[2])
         local share = tonumber(words[5])
-        if target == nil or share == nil then
+        if share == nil then
             return false
         end
-        if not target:IsAlive() or hpShare(target) <= share then
+        if target ~= nil and hpShare(target) <= share then
             return true
         end
-        if st.placed[target:GetPlayerID()] ~= true then
+        if target == nil or not standsAtLast(st, words[2], target) then
             bot:Action_MoveToLocation(bot:GetLocation())
             return false
         end
@@ -1114,8 +1138,8 @@ function rigHold(bot)
         atFountain(bot)
         return true
     end
-    local ____opt_54 = ____exports.RigRepOf(st.rep)
-    local steps = ____opt_54 and ____opt_54.setup[k]
+    local ____opt_56 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_56 and ____opt_56.setup[k]
     local pid = bot:GetPlayerID()
     if steps == nil or #steps == 0 then
         st.placed[pid] = true
@@ -1733,6 +1757,7 @@ RIG_SNAP_STEP = 50
 RIG_SNAP_RINGS = 20
 rigSpots = {}
 rigUnits = {}
+RIG_PLACED = 200
 RIG_SHOP_REACH = 400
 RIG_FULL_HP = 0.95
 RIG_AT = 100
@@ -1743,8 +1768,8 @@ end
 --- The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step.
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
-        local u = heroOf(k)
-        if u == nil or st.placed[u:GetPlayerID()] ~= true then
+        local u = heroOf(bot, k)
+        if u ~= nil and u:GetTeam() == bot:GetTeam() and st.placed[u:GetPlayerID()] ~= true then
             return "setup"
         end
     end
@@ -1764,22 +1789,21 @@ local function failingCheck(bot, st, rr)
     end
     if r.clear ~= nil or r.near ~= nil then
         local nearest = math.huge
-        for ____, k in ipairs(__TS__ObjectKeys(rigUnits)) do
+        for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue192
+                local __continue199
                 repeat
-                    local h = rigUnits[k]
-                    if h:GetTeam() == bot:GetTeam() or not h:IsAlive() or h:GetLocation() == nil then
-                        __continue192 = true
+                    if not h:IsAlive() or h:GetLocation() == nil then
+                        __continue199 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue192 = true
+                    __continue199 = true
                 until true
-                if not __continue192 then
+                if not __continue199 then
                     break
                 end
             end
@@ -1876,8 +1900,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_56 = overrides()
-            local v = ____opt_56 and ____opt_56[k]
+            local ____opt_58 = overrides()
+            local v = ____opt_58 and ____opt_58[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -1891,8 +1915,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_58 = overrides()
-        local asked = ____opt_58 and ____opt_58.Drill
+        local ____opt_60 = overrides()
+        local asked = ____opt_60 and ____opt_60.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -1932,8 +1956,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_63 = Telemetry.Event
-    local ____array_62 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_65 = Telemetry.Event
+    local ____array_64 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -1945,11 +1969,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_60 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_62, {"var", ____opt_60 and ____opt_60.name})
-    ____Telemetry_Event_63(
+    local ____opt_62 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_64, {"var", ____opt_62 and ____opt_62.name})
+    ____Telemetry_Event_65(
         "drill",
-        {__TS__SparseArraySpread(____array_62)}
+        {__TS__SparseArraySpread(____array_64)}
     )
     rigTick(bot)
 end
