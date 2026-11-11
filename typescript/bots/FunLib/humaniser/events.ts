@@ -37,10 +37,21 @@ export const BOT = {
     /** What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered. */
     ol: "num",
     od: "num",
-    /** Attack range, nearest visible enemy hero within 1,200 (absent if none), hit by a hero in the last second. */
+    /** Attack range, nearest visible enemy hero within 1,200 (absent if none). */
     ar: "num",
     ed: "num",
+    /**
+     * Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's
+     * flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
+     */
+    hv: "num",
     hit: "bool",
+    hc: "bool",
+    ht: "bool",
+    ah: "num",
+    ac: "num",
+    an: "num",
+    at: "num",
     by: "str",
     order: "str",
 } as const;
