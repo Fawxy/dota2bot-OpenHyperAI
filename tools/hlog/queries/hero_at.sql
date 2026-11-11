@@ -1,18 +1,19 @@
 -- One hero's state at a clock: the last ev=snap, the last ev=inv and (in a drill game) the last drill rep, each at or before t.
 -- Params: like (log path pattern, default all logs), game (default 1; remote-batch logs need game=2), pid or hero (a name as in ev=bot), t (seconds, or m:ss).
 -- Row: snap_t (age = t - snap_t), alive hp mp lvl gold nw x y mode by act tgt tid, inv_t and inv (`s<slot>=<item>[:<charges>]`; NULL for a log from before ev=inv),
--- drill rep input. A hero with no snap by t gives a row with the snap columns NULL. `+game_id` and the (game_id, pid, t) joins keep it index-bound.
+-- drill rep input. A hero with no snap by t gives a row with the snap columns NULL. Fast because each join filters on the store's (game_id, pid, t) index (ev_snap and ev_inv both have it); `m:ss` may be negative (-1:30 is -90).
 -- ensure: ev_snap(pid, alive, hp, mp, lvl, gold, nw, x, y, mode, by, act, tgt, tid)
 -- ensure: ev_inv(pid, items)
 -- ensure: ev_drill(ph, name, rep, input)
 WITH q AS (
-    SELECT CASE WHEN :t LIKE '%:%' THEN cast(substr(:t, 1, instr(:t, ':') - 1) AS INTEGER) * 60 + cast(substr(:t, instr(:t, ':') + 1) AS REAL)
+    SELECT CASE WHEN :t LIKE '%:%' THEN (CASE WHEN :t LIKE '-%' THEN -1 ELSE 1 END) *
+        (abs(cast(substr(:t, 1, instr(:t, ':') - 1) AS INTEGER)) * 60 + cast(substr(:t, instr(:t, ':') + 1) AS REAL))
         ELSE :t END AS t
 ),
 w AS (
     SELECT g.game_id, g.file, g.game,
         coalesce(:pid, (SELECT n.pid FROM hero_names n WHERE n.game_id = g.game_id AND n.hero = :hero)) AS pid
-    FROM (SELECT +game_id AS game_id, file, game FROM games WHERE file LIKE coalesce(:like, '%') AND game = coalesce(:game, 1)) g
+    FROM (SELECT game_id, file, game FROM games WHERE file LIKE coalesce(:like, '%') AND game = coalesce(:game, 1)) g
 ),
 s AS (
     SELECT w.game_id, e.t, e.alive, e.hp, e.mp, e.lvl, e.gold, e.nw, e.x, e.y, e.mode, e."by", e.act, e.tgt, e.tid,

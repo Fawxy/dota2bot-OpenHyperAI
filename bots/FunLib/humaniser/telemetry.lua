@@ -907,9 +907,9 @@ local guardedLaneFields = ____exports.Guard(
 )
 local guardedFront = ____exports.Guard("Telemetry.Front", trackFront)
 local guardedLaneRead = ____exports.Guard("Telemetry.LaneRead", trackLaneRead)
---- `h<pid>` for a hero, else `u<n>` from `CreepId` (the id an `ev=creep_death` carries as `cid`; towers and neutrals share the numbering).
+--- `h<pid>` for a real hero, else `u<n>` from `CreepId` (the id an `ev=creep_death` carries as `cid`; towers, neutrals and illusions, whose `GetPlayerID` is their owner's, share the numbering).
 local function targetId(target, name)
-    if (string.find(name, "npc_dota_hero_", 1, true)) ~= nil then
+    if (string.find(name, "npc_dota_hero_", 1, true)) ~= nil and not target:IsIllusion() then
         return "h" .. tostring(target:GetPlayerID())
     end
     return "u" .. tostring(____exports.CreepId(target))

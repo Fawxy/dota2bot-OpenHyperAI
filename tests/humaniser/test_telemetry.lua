@@ -6,6 +6,7 @@ local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index
 function UnitMeta:GetLastHits() return self.lh or 0 end
 function UnitMeta:GetDenies() return self.dn or 0 end
 function UnitMeta:GetAttackTarget() return self.target end
+function UnitMeta:IsIllusion() return self.illusion == true end
 function UnitMeta:GetMana() return 50 end
 function UnitMeta:GetMaxMana() return 100 end
 function UnitMeta:GetGold() return 600 end
@@ -443,7 +444,20 @@ do
 	slots[16] = nil
 	tick(6)
 	check("a removed item logs a line", #events("inv") == 4 and not field(events("inv")[4], "items"):find("trident", 1, true), events("inv")[4])
-	check("every line names the hero", field(events("inv")[1], "pid") == "1")
+end
+
+-- A failing item read costs only the inventory line: the same second's snapshot stays, and the error names the site.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1 })
+	b.GetItemInSlot = function() error("bad slot") end
+	T = 0
+	H.Telemetry.Tick(b)
+	local e = {}
+	for _, l in ipairs(events("lua_error")) do if field(l, "where") == "Telemetry.Inventory" then table.insert(e, l) end end
+	check("a throwing item read keeps the snapshot", #events("snap") == 1, #events("snap"))
+	check("a throwing item read logs no inventory line", #events("inv") == 0, #events("inv"))
+	check("a throwing item read names Telemetry.Inventory", #e == 1, #e)
 end
 
 -- The snapshot's target id: a hero by player id, any other unit by the creep id an ev=creep_death carries.
@@ -451,6 +465,8 @@ do
 	local H = fresh()
 	local b = MakeUnit({ pid = 1 })
 	local enemy = MakeUnit({ pid = 7, team = 3 })
+	local ghost = MakeUnit({ pid = 7, team = 3 })
+	ghost.IsIllusion = function() return true end
 	local creepUnit = { GetUnitName = function() return "npc_dota_creep_badguys_melee" end }
 	b.GetAttackTarget = function(self) return self.tgt end
 	b.tgt = enemy
@@ -463,10 +479,14 @@ do
 	b.tgt = nil
 	T = 2.4
 	H.Telemetry.Tick(b)
+	b.tgt = ghost
+	T = 3.6
+	H.Telemetry.Tick(b)
 	local snaps = events("snap")
 	check("hero target by pid", field(snaps[1], "tid") == "h7", snaps[1])
+	check("an illusion is a unit, not its owner", field(snaps[4], "tid") == "u" .. H.Telemetry.CreepId(ghost), snaps[4])
 	check("creep target by creep id", field(snaps[2], "tid") == "u" .. cid, snaps[2])
-	check("no target omits the field", field(snaps[3], "tid") == nil and field(snaps[3], "tgt") == nil, snaps[3])
+	check("no target omits the field after a target", field(snaps[2], "tid") ~= nil and field(snaps[3], "tid") == nil and field(snaps[3], "tgt") == nil, snaps[3])
 end
 
 finish()

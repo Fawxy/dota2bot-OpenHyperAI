@@ -624,9 +624,9 @@ const guardedLaneFields = Guard("Telemetry.Lane", laneFields, () => []);
 const guardedFront = Guard("Telemetry.Front", trackFront);
 const guardedLaneRead = Guard("Telemetry.LaneRead", trackLaneRead);
 
-/** `h<pid>` for a hero, else `u<n>` from `CreepId` (the id an `ev=creep_death` carries as `cid`; towers and neutrals share the numbering). */
+/** `h<pid>` for a real hero, else `u<n>` from `CreepId` (the id an `ev=creep_death` carries as `cid`; towers, neutrals and illusions, whose `GetPlayerID` is their owner's, share the numbering). */
 function targetId(target: Unit, name: string): string {
-    if (string.find(name, "npc_dota_hero_", 1, true)[0] !== undefined) return `h${target.GetPlayerID()}`;
+    if (string.find(name, "npc_dota_hero_", 1, true)[0] !== undefined && !target.IsIllusion()) return `h${target.GetPlayerID()}`;
     return `u${CreepId(target)}`;
 }
 

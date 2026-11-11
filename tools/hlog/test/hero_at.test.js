@@ -51,6 +51,19 @@ test('hero_at: a hero name and an m:ss clock pick the same row as pid and second
     s.db.close();
 });
 
+test('hero_at: a pre-game m:ss clock is negative as a whole', () => {
+    const { s, f } = open([
+        '[HEV] t=-100 ev=bot pid=3 hero=luna team=2 schema=2 build=abc pos=1',
+        '[HEV] t=-90 ev=snap pid=3 x=0 y=0 alive=1 hp=100 lvl=1 gold=600',
+        '[HEV] t=-30 ev=snap pid=3 x=0 y=0 alive=1 hp=100 lvl=1 gold=700',
+    ].join('\n'));
+    assert.strictEqual(at(s, f, { pid: 3, t: '-1:30' })[0].snap_t, -90);
+    assert.strictEqual(at(s, f, { pid: 3, t: '-0:45' })[0].snap_t, -90);
+    assert.strictEqual(at(s, f, { pid: 3, t: '-0:20' })[0].snap_t, -30);
+    assert.strictEqual(at(s, f, { pid: 3, t: '-1:31' })[0].snap_t, null, 'before the first snapshot');
+    s.db.close();
+});
+
 test('hero_at: before the first snapshot the row keeps the hero with empty state', () => {
     const { s, f } = open(NEW);
     const [r] = at(s, f, { pid: 3, t: 30 });
