@@ -410,6 +410,7 @@ if Telemetry.GuardsEnabled() then
             LaneHold = no,
             LaneAggro = no,
             IdleStatue = no,
+            HoldsPurchases = no,
             ForcedJob = none,
             ForcedAt = none,
             RoleOf = function() return "play" end,

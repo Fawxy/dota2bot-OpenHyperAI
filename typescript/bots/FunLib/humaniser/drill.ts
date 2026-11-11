@@ -1025,6 +1025,17 @@ function releasedModes(bot: Unit): Record<string, true> | undefined {
     return out;
 }
 
+/**
+ * item_purchase_generic: a rig's cast and actors buy nothing through OHA, so they hold only what the rig's `buy` steps hand
+ * them and the attacker hits as hard every rep (user 12/11/2026: a Vengeful Spirit cast with OHA's Tranquil Boots
+ * regenerated over the ready bar).
+ */
+export function HoldsPurchases(bot: Unit): boolean {
+    if (Active()?.rig === undefined) return false;
+    const r = RoleOf(bot);
+    return r === "cast" || r === "actor";
+}
+
 /** Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list. */
 export function RigDesire(bot: Unit, mode: string): number | undefined {
     const m = releasedModes(bot);

@@ -438,6 +438,12 @@ do
 	end
 end
 
+-- A drill without a rig leaves OHA's purchases alone.
+do
+	local Hs = world("retreat-heal")
+	check("no rig: OHA buys for the cast", not Hs.Drill.HoldsPurchases(hero(0, RAD, 1, 3)))
+end
+
 -- A rig rep end to end (retreat-heal-items, rep 1 `salve`): the cast heals and buys at its fountain, walks to its spot; the
 -- attacker waits until the cast stands there, hits it to 25%, leaves; ready then holds and the cast is released into our
 -- retreat only, with OHA's item and ability use still off. A rep whose checks never hold times out invalid and stays held.
@@ -469,6 +475,7 @@ do
 
 	local H, cast, atk, mid = rigWorld()
 	check("rig: roles (cast, actor, bench)", H.Drill.RoleOf(cast) == "cast" and H.Drill.RoleOf(atk) == "actor" and H.Drill.RoleOf(mid) == "bench")
+	check("rig: the cast and the actor buy nothing through OHA; a benched hero does", H.Drill.HoldsPurchases(cast) and H.Drill.HoldsPurchases(atk) and not H.Drill.HoldsPurchases(mid))
 	T = 30
 	check("rig: the cast is held before the first rep", H.Drill.Held(cast) and H.Chooser.HoldsCasts(cast, true))
 	T = 61
