@@ -1,4 +1,4 @@
--- Fragment (`-- include: lane_rules`): the doctrine's violations for D1, D2, D3, D7, D9 and D24 (docs/team/DOCTRINE.md), found from
+-- Fragment (`-- include: lane_rules`): the doctrine's violations for D1, D2, D3, D7, D9, D24 and D24h (docs/team/DOCTRINE.md), found from
 -- what happened (every hero's own ev=snap: position, HP, the `hit` flag, mode, level, lane distance; deaths), never from our
 -- threat read, so it runs on games from before the rules were built. The including query defines `gm(game_id, file)` first.
 -- Params: until (default 720, the head-to-head's 12:00). Ends with a comma. Final CTEs:
@@ -42,8 +42,14 @@
 --    stepping out is right (cause free_hit). Else cause oha_retreat or ours_retreat by side. The front is the wave's lead
 --    creep, so an enemy beside the back of our wave reads free (`judgement`: under-counts, the same for both sides).
 --    A log with no ev=front line before the onset reads every case free_hit (no violations).
--- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths)
--- ensure: ev_bot(pid, team, pos, ours)
+-- D24h (the hit-back half, slice hit-back): a second from 1:30 in which I am hit by a hero (`hit`), at 50% HP or more, not in
+--    retreat mode, outside an enemy tower's reach, not outnumbered (as D24), with an enemy hero in reach standing within creep
+--    aggro (500) of our lane front (as D24's test); one case per onset (no such second in the 5 before). Cause, first match:
+--    hit_back (in that second or the 3 after, my snapshot's attack target `tgt` is an enemy hero), left (retreat mode in them:
+--    D24's leave half counts it), died (within 5 s), none. viol: died or none. The snapshot does not say which hero hit me, so
+--    a hit back on another enemy hero counts (`judgement`).
+-- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths, tgt)
+-- ensure: ev_bot(pid, team, pos, ours, hero)
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 lr_who AS MATERIALIZED (
     SELECT game_id, pid, team, pos, CASE WHEN instr(coalesce(ours, ''), ':1') > 0 THEN 'ours' ELSE 'oha' END AS side
@@ -55,7 +61,7 @@ lr_who AS MATERIALIZED (
 -- Every snapshot second, HP 0 ones too (a killed hero logs a few where it fell), for dating deaths.
 lr_s0 AS MATERIALIZED (
     SELECT s.game_id, s.pid, w.team, w.pos, w.side, CAST(round(s.t) AS INTEGER) AS sec, max(s.seq) AS seq, s.x, s.y, s.hp,
-        coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths,
+        coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths, s.tgt,
         CASE w.team WHEN 2 THEN (s.x + 6700) * (s.x + 6700) + (s.y + 6700) * (s.y + 6700)
                     ELSE (s.x - 6928) * (s.x - 6928) + (s.y - 6372) * (s.y - 6372) END AS fnt2
     FROM ev_snap s JOIN lr_who w ON w.game_id = s.game_id AND w.pid = s.pid
@@ -246,6 +252,36 @@ lr_d24 AS (
         ) AS free_n
     FROM lr_d24o o
 ),
+lr_hn AS MATERIALIZED (
+    SELECT DISTINCT b.game_id, b.team, 'npc_dota_hero_' || b.hero AS unit FROM ev_bot b JOIN gm ON gm.game_id = b.game_id
+    WHERE b.team IS NOT NULL AND b.hero IS NOT NULL
+),
+lr_hb0 AS MATERIALIZED (
+    SELECT o.game_id, o.pid, o.team, o.pos, o.side, o.sec AS t, o.x, o.y, o.hp, o.en_r AS en, o.al12 AS al, o.mode,
+        (SELECT f.seq FROM ev_front f WHERE f.game_id = o.game_id AND f.team = o.team AND f.t <= o.sec + 0.5 ORDER BY f.t DESC LIMIT 1) AS fseq
+    FROM lr_f o
+    WHERE o.hit > 0 AND o.mode IS NOT 'retreat' AND o.hp >= 50 AND o.en_r >= 1 AND o.en_r <= o.al12 + 1
+        AND o.en_tw2 > 750 * 750 AND o.sec >= 90 AND o.sec <= coalesce(:until, 720)
+),
+lr_hb1 AS (
+    SELECT o.*, lag(o.t) OVER (PARTITION BY o.game_id, o.pid ORDER BY o.t) AS prev
+    FROM lr_hb0 o
+    WHERE EXISTS (SELECT 1 FROM lr_s b JOIN ev_front f ON f.seq = o.fseq AND f.game_id = o.game_id
+        WHERE b.game_id = o.game_id AND b.sec = o.t AND b.team <> o.team
+            AND (b.x - o.x) * (b.x - o.x) + (b.y - o.y) * (b.y - o.y) <= (b.ar + 600) * (b.ar + 600)
+            AND ((b.x - f.topx) * (b.x - f.topx) + (b.y - f.topy) * (b.y - f.topy) <= 500 * 500
+                OR (b.x - f.midx) * (b.x - f.midx) + (b.y - f.midy) * (b.y - f.midy) <= 500 * 500
+                OR (b.x - f.botx) * (b.x - f.botx) + (b.y - f.boty) * (b.y - f.boty) <= 500 * 500))
+),
+lr_hb AS (
+    SELECT o.*,
+        EXISTS (SELECT 1 FROM lr_s a JOIN lr_hn n ON n.game_id = a.game_id AND n.team <> o.team AND n.unit = a.tgt
+            WHERE a.game_id = o.game_id AND a.pid = o.pid AND a.sec >= o.t AND a.sec <= o.t + 3) AS hb,
+        EXISTS (SELECT 1 FROM lr_s a WHERE a.game_id = o.game_id AND a.pid = o.pid AND a.sec > o.t AND a.sec <= o.t + 3 AND a.mode = 'retreat') AS went,
+        (SELECT min(d.dsec) FROM lr_death d WHERE d.game_id = o.game_id AND d.pid = o.pid AND d.dsec >= o.t AND d.dsec <= o.t + 5) AS died
+    FROM lr_hb1 o
+    WHERE o.prev IS NULL OR o.t - o.prev > 5
+),
 lr_case AS (
     SELECT 'D1' AS rule, game_id, pid, team, pos, side, t,
         died IS NOT NULL OR (a_sec IS NOT NULL AND NOT coalesce(went, 0) AND holds) AS viol,
@@ -267,4 +303,8 @@ lr_case AS (
     SELECT 'D24', game_id, pid, team, pos, side, t, free_n = 0, CASE WHEN free_n > 0 THEN 'free_hit' ELSE side || '_retreat' END,
         hp, en, al, NULL, mode
     FROM lr_d24
+    UNION ALL
+    SELECT 'D24h', game_id, pid, team, pos, side, t, NOT hb AND (died IS NOT NULL OR NOT went),
+        CASE WHEN hb THEN 'hit_back' WHEN went THEN 'left' WHEN died IS NOT NULL THEN 'died' ELSE 'none' END, hp, en, al, NULL, mode
+    FROM lr_hb
 ),
