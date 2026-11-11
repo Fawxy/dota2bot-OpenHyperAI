@@ -192,8 +192,8 @@ export const TABLE: Record<string, Entry> = {
     // hit back reads: an enemy hero damaged the cast within 1 s (forced: the Dire actor attacks it), standing inside our
     // creeps' aggro (forced: the spots sit at our bot lane front, which `paid` checks at ready), the trade's remaining
     // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%) but the
-    // `behind` one the hit back passes (ready at 80% HP or less with the attacker near full: fix5, at full HP the plain trade
-    // rule took rep 1, so the off arm hit back too), the
+    // `wave` one the hit back passes (the cast stands at our front, ready with 4 or more of their creeps within 500: fix5 and
+    // fix7, with fewer and the cast not behind on HP the plain trade rule answered, so the off arm hit back too), the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
     // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5, fix6), so the cast
@@ -210,8 +210,8 @@ export const TABLE: Record<string, Entry> = {
             switch: "HitBack",
             window: 600,
             spots: {
-                cast: ["r:frontbot", -200, 0],
-                partner: ["r:frontbot", -450, 0],
+                cast: ["r:frontbot", 0, 0],
+                partner: ["r:frontbot", -250, 0],
                 near: ["r:frontbot", 0, 0],
             },
             timeout: 95,
@@ -221,7 +221,7 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 1000, hpAtMost: 0.8 },
+                    ready: { paid: 500, towers: 1000, theirCreeps: 4 },
                 },
                 {
                     name: "pair",
@@ -232,12 +232,12 @@ export const TABLE: Record<string, Entry> = {
                         d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
-                    ready: { paid: 500, towers: 1000, hpAtMost: 0.8 },
+                    ready: { paid: 500, towers: 1000, theirCreeps: 4 },
                 },
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 1000, hpAtMost: 0.8 },
+                    ready: { paid: 500, towers: 1000, theirCreeps: 4 },
                 },
                 {
                     name: "control",
@@ -979,6 +979,8 @@ export interface RigReady {
      * cast team's lane creeps (inside our creeps' aggro: slice hit-back).
      */
     paid?: number;
+    /** At least this many enemy lane creeps within 500 of the cast (the trade rule's `wave` refusal; slice hit-back). */
+    theirCreeps?: number;
     /** No tower of either team within this distance of the cast (hit-back fix3: the front sat under our T1, which killed the attackers). */
     towers?: number;
 }
@@ -1564,6 +1566,10 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         }
         if (r.clear !== undefined && nearest <= r.clear) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
+    }
+    if (r.theirCreeps !== undefined) {
+        const n = (bot.GetNearbyLaneCreeps(500, true) ?? []).filter((c) => c.IsAlive()).length;
+        if (n < r.theirCreeps) return "theirs";
     }
     if (r.towers !== undefined) {
         const at = bot.GetLocation();

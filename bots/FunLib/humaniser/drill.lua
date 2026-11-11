@@ -1523,11 +1523,11 @@ ____exports.TABLE = {
             half = "decision",
             switch = "HitBack",
             window = 600,
-            spots = {cast = {"r:frontbot", -200, 0}, partner = {"r:frontbot", -450, 0}, near = {"r:frontbot", 0, 0}},
+            spots = {cast = {"r:frontbot", 0, 0}, partner = {"r:frontbot", -250, 0}, near = {"r:frontbot", 0, 0}},
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, hpAtMost = 0.8}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, hpAtMost = 0.8}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, hpAtMost = 0.8}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
+            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, theirCreeps = 4}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, theirCreeps = 4}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, theirCreeps = 4}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2081,6 +2081,15 @@ local function failingCheck(bot, st, rr)
             return "near"
         end
     end
+    if r.theirCreeps ~= nil then
+        local n = #__TS__ArrayFilter(
+            bot:GetNearbyLaneCreeps(500, true) or ({}),
+            function(____, c) return c:IsAlive() end
+        )
+        if n < r.theirCreeps then
+            return "theirs"
+        end
+    end
     if r.towers ~= nil then
         local at = bot:GetLocation()
         for ____, team in ipairs({Team.Radiant, Team.Dire}) do
@@ -2097,10 +2106,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue250
+                local __continue253
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue250 = true
+                        __continue253 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2111,9 +2120,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue250 = true
+                    __continue253 = true
                 until true
-                if not __continue250 then
+                if not __continue253 then
                     break
                 end
             end
