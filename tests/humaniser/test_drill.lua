@@ -690,19 +690,18 @@ do
 	local function ready(lines) for _, l in ipairs(lines) do if field(l, "ph") == "ready" then return l end end end
 	local function near(a, b, d) return a ~= nil and b ~= nil and math.abs(a.x - b.x) < (d or 1) and math.abs(a.y - b.y) < (d or 1) end
 
-	LANE_FRONT[2][dota.Lane.Bot] = 0.6
-	T = 61
-	capture(function() tick(cast) end)
-	check("hitback rig: before 50 s into the rep the front spot is not read yet", #ActionsOf(1, "MoveToLocation") == 0)
-	T = 111
-	ACTIONS = {}
-	capture(function() tick(cast) end)
-	check("hitback rig: a front within 1,300 of a tower is not read: the cast waits", #ActionsOf(1, "MoveToLocation") == 0)
 	LANE_FRONT[2][dota.Lane.Bot] = 0.5
+	T = 61
 	capture(function() tick(cast) end)
 	local spot = lastMoveTo(1)
 	check("hitback rig: the cast's spot is 200 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -200)), spot and (spot.x .. "," .. spot.y))
 	-- fix1: creeps at the front shove the statue; 150 off its spot it still stands there.
+	-- fix6: the front moves on; the statue's spot follows it, so it stays with our wave.
+	LANE_FRONT[2][dota.Lane.Bot] = 0.45
+	ACTIONS = {}
+	capture(function() tick(cast) end)
+	check("hitback rig: the cast's spot follows our lane front as it moves", near(lastMoveTo(1), GetLaneFrontLocation(RAD, dota.Lane.Bot, -200)) and not near(lastMoveTo(1), spot, 100))
+	LANE_FRONT[2][dota.Lane.Bot] = 0.5
 	cast.loc = Vector(spot.x + 150, spot.y, 0)
 	capture(function() tick(cast) end)
 	d3.loc = Vector(spot.x + 150, spot.y, 0)
@@ -723,6 +722,15 @@ do
 	capture(function() tick(d3) tick(d3) end)
 	local hits = ActionsOf(7, "AttackUnit")
 	check("hitback rig: the attacker finds the cast 350 off its reading of a front spot", #hits >= 1 and hits[#hits].args[1] == cast)
+	-- fix6: by role, not position: a Radiant hero in its fountain is never the target, the one out of it is, at any distance.
+	local benched = hero(2, RAD, 2, dota.Lane.Mid)
+	benched.loc = Vector(-6500, -6300, 0)
+	cast.loc = Vector(spot.x + 2000, spot.y, 0)
+	H.Drill.ResetCache()
+	ACTIONS = {}
+	capture(function() tick(d3) end)
+	hits = ActionsOf(7, "AttackUnit")
+	check("hitback rig: a fresh attacker takes the hero out of its fountain 2,000 off, not the benched one", #hits >= 1 and hits[#hits].args[1] == cast)
 	-- fix2: released, the cast walks off its spot to hit back; the attacker keeps attacking it.
 	cast.loc = Vector(spot.x + 900, spot.y, 0)
 	local n = #ActionsOf(7, "AttackUnit")

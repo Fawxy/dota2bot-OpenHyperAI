@@ -196,8 +196,8 @@ export const TABLE: Record<string, Entry> = {
     // rule took rep 1, so the off arm hit back too), the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
-    // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5), so the spots are
-    // read when the front is clear of every tower (frontsNow); `towers` leaves out a rep whose cast still stands under one. Release: laning (last hits compete), attack (the trade),
+    // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5, fix6), so the cast
+    // and its partner follow it live; `towers` leaves out a rep whose cast stands within 1,000 of one. Release: laning (last hits compete), attack (the trade),
     // retreat, idle. `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
     "retreat-hitback": {
         note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
@@ -221,7 +221,7 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 900, hpAtMost: 0.8 },
+                    ready: { paid: 500, towers: 1000, hpAtMost: 0.8 },
                 },
                 {
                     name: "pair",
@@ -232,17 +232,17 @@ export const TABLE: Record<string, Entry> = {
                         d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
-                    ready: { paid: 500, towers: 900, hpAtMost: 0.8 },
+                    ready: { paid: 500, towers: 1000, hpAtMost: 0.8 },
                 },
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 900, hpAtMost: 0.8 },
+                    ready: { paid: 500, towers: 1000, hpAtMost: 0.8 },
                 },
                 {
                     name: "control",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "stand near"] },
-                    ready: { near: 800, towers: 900 },
+                    ready: { near: 800, towers: 1000 },
                 },
             ],
         },
@@ -1064,31 +1064,8 @@ interface RigState {
 
 let rig: RigState | undefined;
 
-/** A lane-front spot is read only this far from every live tower (`judgement`: a T1 shoots at 700, and the fight drifts). */
-const RIG_FRONT_CLEAR = 1300;
-
-/** Reads every lane-front spot of the rig into rigSpots when all of them are clear of the towers now; whether it did. */
-function frontsNow(): boolean {
-    const names = Object.keys(rigOf(Active())?.spots ?? {}).filter((n) => FRONT_LANES[frontOf(n) ?? ""] !== undefined);
-    const pts: Record<string, Vector> = {};
-    for (const n of names) {
-        const raw = rawSpot(n);
-        const p = raw !== undefined ? passableNear(raw) : undefined;
-        if (p === undefined) return false;
-        for (const team of [Team.Radiant, Team.Dire]) {
-            for (const k of Object.keys(TOWER_IDS)) {
-                const tw = GetTower(team, TOWER_IDS[k]);
-                if (tw !== null && tw !== undefined && tw.IsAlive() && GetUnitToLocationDistance(tw, p) < RIG_FRONT_CLEAR) return false;
-            }
-        }
-        pts[n] = p;
-    }
-    for (const n of names) {
-        rigSpots[n] = pts[n];
-        logSpot(n, pts[n], 0);
-    }
-    return true;
-}
+/** The rep each lane-front spot was last logged in. */
+const frontLogged: Record<string, number> = {};
 
 const FRONT_LANES: Record<string, Lane> = { fronttop: Lane.Top, frontmid: Lane.Mid, frontbot: Lane.Bot };
 
@@ -1119,8 +1096,6 @@ function rigState(): RigState | undefined {
     if (n === 0) return undefined;
     if (rig === undefined || rig.rep !== n) {
         rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, afterStep: {}, atk: {} };
-        // Front spots are read again this rep, from RIG_FRONT_AT into it (rigPoint).
-        for (const name of Object.keys(rigOf(d)!.spots)) if (FRONT_LANES[frontOf(name) ?? ""] !== undefined) rigSpots[name] = undefined;
     }
     return rig;
 }
@@ -1299,9 +1274,18 @@ function rigPoint(bot: Unit, name: string): Vector | undefined {
     }
     const known = rigSpots[name];
     if (known !== undefined) return known === false ? undefined : known;
-    // A rep's lane-front spots are read together, at the first frame every one stands RIG_FRONT_CLEAR from every tower: the
-    // front wanders between the two T1s on its own (fix5), and a fight under a tower is no rep (fix3).
-    if (FRONT_LANES[frontOf(name) ?? ""] !== undefined) return frontsNow() ? rigPoint(bot, name) : undefined;
+    // A lane-front spot is read live, every call: the front wanders between the two T1s (fix5, fix6: read once a rep, the
+    // wave left the spot), so a statue there follows our wave. Logged once a rep.
+    if (FRONT_LANES[frontOf(name) ?? ""] !== undefined) {
+        const raw = rawSpot(name);
+        const p = raw !== undefined ? passableNear(raw) : undefined;
+        const st = rigState();
+        if (p !== undefined && st !== undefined && frontLogged[name] !== st.rep) {
+            frontLogged[name] = st.rep;
+            logSpot(name, p, 0);
+        }
+        return p;
+    }
     const raw = rawSpot(name);
     const p = raw !== undefined ? passableNear(raw) : undefined;
     rigSpots[name] = p ?? false;
@@ -1342,12 +1326,8 @@ const RIG_PLACED = 200;
 /** An attacker that does not see its target walks to within this of the target's spot. `judgement` (inside night vision, 800). */
 const RIG_APPROACH = 400;
 
-/**
- * An attacker finds an enemy hero standing at a lane-front spot within this of its own reading of the spot: the two teams' VMs
- * read our lane front 250-370 apart (hit-back fix1). `judgement`; the cast's partner stands 250 behind it, farther from the
- * attacker's reading, which lies ahead of ours.
- */
-const RIG_FIND_FRONT = 500;
+/** A hero within this of its fountain is benched, not a rig target (`judgement`: the fountain's area). */
+const RIG_BENCHED = 2500;
 
 /** The spot name of hero `key`'s last setup step this rep. */
 function lastSpotName(st: RigState, key: string): string | undefined {
@@ -1375,8 +1355,14 @@ function attackTarget(bot: Unit, st: RigState, key: string): Unit | undefined {
     if (own !== undefined) return GetUnitToLocationDistance(own, p) <= RIG_PLACED ? own : undefined;
     let best: Unit | undefined;
     const spot = lastSpotName(st, key);
-    let bestD = spot !== undefined && FRONT_LANES[frontOf(spot) ?? ""] !== undefined ? RIG_FIND_FRONT : RIG_PLACED;
+    const front = spot !== undefined && FRONT_LANES[frontOf(spot) ?? ""] !== undefined;
+    let bestD = front ? math.huge : RIG_PLACED;
+    const [fx, fy, fz] = FOUNTAIN[bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant];
+    const theirs = Vector(fx, fy, fz);
     for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        // At a lane-front spot the attacker's VM reads the front hundreds off ours (fix1), so it takes the enemy hero out of
+        // its fountain (everyone else of a rig is benched there) nearest its reading, at any distance.
+        if (front && h.GetLocation() !== undefined && GetUnitToLocationDistance(h, theirs) <= RIG_BENCHED) continue;
         if (!h.IsAlive() || h.GetLocation() === undefined) continue;
         const d = GetUnitToLocationDistance(h, p);
         if (d <= bestD) {
