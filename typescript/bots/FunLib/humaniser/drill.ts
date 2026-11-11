@@ -95,14 +95,7 @@ export const TABLE: Record<string, Entry> = {
     // Lane positioning's drill, step 1: the Radiant safe-lane core alone in its lane with natural waves (one rep each).
     "lane-spot": { note: "Radiant pos1 lane-only, everyone else benched", cast: SAFE_CORE, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // Step 2: the Dire offlaner (the same lane) stands in range as a statue.
-    "lane-spot-statue": {
-        note: "Radiant pos1 lane-only, Dire pos3 a statue in its lane, everyone else benched",
-        cast: SAFE_CORE,
-        statue: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-    },
+
     // Step 3: the enemy laner active, both lane-only.
     "lane-spot-duel": { note: "Radiant pos1 and Dire pos3 lane-only, everyone else benched", cast: { r: [1], d: [3] }, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // The contest walk-in's price: the Dire pos3 stands as a statue but hits back, so `cc` (the priced HP-%) is graded
@@ -200,7 +193,7 @@ export const TABLE: Record<string, Entry> = {
     // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5, fix6), so the cast
     // and its partner follow it live; `towers` leaves out a rep whose cast stands within 1,000 of one. Release: laning (last hits compete), attack (the trade),
     // retreat, idle. `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
-    "retreat-hitback": {
+    "lane-spot-statue": {
         note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
         cast: SAFE_CORE,
         others: "bench",
