@@ -22,6 +22,7 @@ import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RegenObs from "bots/FunLib/humaniser/regen_obs";
+import * as ApiProbe from "bots/FunLib/humaniser/api_probe";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Etiquette from "bots/FunLib/humaniser/etiquette";
@@ -177,6 +178,7 @@ function tick(this: void, bot: Unit): void {
     Telemetry.Tick(bot, telemetryContext);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
     pcall(RegenObs.Tick, bot);
+    pcall(ApiProbe.Tick, bot);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
     // tasks: task runner spike
