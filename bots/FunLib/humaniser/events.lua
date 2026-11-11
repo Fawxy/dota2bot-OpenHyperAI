@@ -604,7 +604,8 @@ ____exports.EVENTS = {
         fail = "str",
         hp = "num",
         rt = "num",
-        dt = "num"
+        dt = "num",
+        gold = "num"
     },
     job = {
         pid = "num",

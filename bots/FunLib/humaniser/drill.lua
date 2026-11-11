@@ -263,7 +263,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -841,7 +841,8 @@ function rigState()
             step = {},
             placed = {},
             phase = {},
-            bought = {}
+            bought = {},
+            waiting = {}
         }
     end
     return rig
@@ -1057,6 +1058,10 @@ function hpShare(u)
         u:GetMaxHealth()
     )
 end
+function holdsItem(bot, name)
+    local slot = bot:FindItemSlot(name)
+    return slot >= 0 and slot <= 8
+end
 function standAt(bot, p)
     if GetUnitToLocationDistance(bot, p) > RIG_AT then
         bot:Action_MoveToLocation(p)
@@ -1119,12 +1124,41 @@ function rigStep(bot, st, step, last)
         local b = bot
         local item = words[2]
         if verb == "buy" then
-            st.bought[pid] = st.bought[pid] or ({})
-            if st.bought[pid][item] ~= true then
-                st.bought[pid][item] = true
-                b:ActionImmediate_PurchaseItem(item)
+            if holdsItem(bot, item) then
+                return true
             end
-            return true
+            local now = DotaTime()
+            st.bought[pid] = st.bought[pid] or ({})
+            local tried = st.bought[pid][item]
+            if tried ~= nil and now - tried[1] >= RIG_BUY_SECS then
+                return true
+            end
+            if tried == nil or now - tried[2] >= 1 then
+                st.bought[pid][item] = {tried ~= nil and tried[1] or now, now}
+                local res = b:ActionImmediate_PurchaseItem(item)
+                Telemetry.Event(
+                    "drill",
+                    {
+                        {"ph", "buy"},
+                        {
+                            "name",
+                            ____exports.Name()
+                        },
+                        {"pid", pid},
+                        {"rep", st.rep},
+                        {"step", item},
+                        {
+                            "res",
+                            tostring(res)
+                        },
+                        {
+                            "gold",
+                            bot:GetGold()
+                        }
+                    }
+                )
+            end
+            return false
         end
         do
             local slot = 0
@@ -1790,12 +1824,9 @@ rigUnits = {}
 RIG_PLACED = 200
 RIG_APPROACH = 400
 RIG_SHOP_REACH = 400
+RIG_BUY_SECS = 10
 RIG_FULL_HP = 0.95
 RIG_AT = 100
-local function holdsItem(bot, name)
-    local slot = bot:FindItemSlot(name)
-    return slot >= 0 and slot <= 8
-end
 --- The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step.
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
@@ -1822,19 +1853,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue204
+                local __continue206
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue204 = true
+                        __continue206 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue204 = true
+                    __continue206 = true
                 until true
-                if not __continue204 then
+                if not __continue206 then
                     break
                 end
             end
@@ -1868,6 +1899,30 @@ local function rigTick(bot)
     end
     local fail = failingCheck(bot, st, rr)
     local secs = DotaTime() - st.start
+    if fail ~= nil and st.waiting[pid] ~= fail then
+        st.waiting[pid] = fail
+        Telemetry.Event(
+            "drill",
+            {
+                {"ph", "wait"},
+                {
+                    "name",
+                    ____exports.Name()
+                },
+                {"pid", pid},
+                {"rep", st.rep},
+                {"fail", fail},
+                {
+                    "secs",
+                    math.floor(secs * 10 + 0.5) / 10
+                },
+                {
+                    "hp",
+                    math.floor(hpShare(bot) * 100 + 0.5) / 100
+                }
+            }
+        )
+    end
     if fail ~= nil and secs < r.timeout then
         return
     end

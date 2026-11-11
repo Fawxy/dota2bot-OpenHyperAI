@@ -454,6 +454,7 @@ do
 		cast.loc = Vector(-6619, -6336, 0)
 		atk.loc = Vector(6928, 6372, 0)
 		cast.ActionImmediate_PurchaseItem = function(self, name) self.items[0] = { name = name } return 0 end
+		cast.GetGold = function() return 600 end
 		cast.ActionImmediate_SellItem = function(self, it) for s, v in pairs(self.items) do if v.name == it:GetName() then self.items[s] = nil end end end
 		ACTIONS = {}
 		return H, cast, atk, mid
@@ -471,8 +472,9 @@ do
 	T = 30
 	check("rig: the cast is held before the first rep", H.Drill.Held(cast) and H.Chooser.HoldsCasts(cast, true))
 	T = 61
-	local lines = capture(function() tick(H, cast, atk) end)
-	check("rig: full HP at the fountain, so heal and buy end at once and the cast walks to its spot", cast.items[0] and cast.items[0].name == "item_flask" and lastMoveTo(4) ~= nil)
+	-- Frame 1 tries the buy, frame 2 sees the salve held and moves on.
+	local lines = capture(function() tick(H, cast, atk) tick(H, cast, atk) end)
+	check("rig: full HP at the fountain, so heal ends at once, the buy lands and the cast walks to its spot", cast.items[0] and cast.items[0].name == "item_flask" and lastMoveTo(4) ~= nil)
 	local spot = lastMoveTo(4)
 	check("rig: the cast spot is logged once with its tower distances", (function()
 		for _, l in ipairs(lines) do if field(l, "ph") == "spot" and field(l, "spot") == "cast" then return tonumber(field(l, "rt")) ~= nil end end
@@ -535,6 +537,7 @@ do
 	local Hh, ch, ah = rigWorld({ DrillHost = true })
 	T = 61
 	tick(Hh, ch, ah)
+	tick(Hh, ch, ah)
 	local sp = lastMoveTo(4)
 	ch.loc = Vector(sp.x, sp.y, 0)
 	ch.hp = 20
@@ -548,12 +551,27 @@ do
 	local Ht, ct, at = rigWorld()
 	ct.ActionImmediate_PurchaseItem = function() return 1 end
 	T = 211
+	local buys = {}
+	local function grab(ls, ph) for _, l in ipairs(ls) do if field(l, "ph") == ph then table.insert(buys, l) end end end
+	grab(capture(function() tick(Ht, ct, at) end), "buy")
+	T = 211.5
+	grab(capture(function() tick(Ht, ct, at) end), "buy")
+	T = 212.2
+	grab(capture(function() tick(Ht, ct, at) end), "buy")
+	check("rig buy: retried once a second while not held, the result logged", #buys == 2 and field(buys[1], "step") == "item_tango" and field(buys[1], "res") == "1", #buys)
+	check("rig buy: the cast waits at its fountain meanwhile", lastMoveTo(4) == nil)
+	T = 221.5
 	tick(Ht, ct, at)
 	local s2 = lastMoveTo(4)
+	check("rig buy: after 10 s it gives up and the cast takes its spot", s2 ~= nil)
 	ct.loc = Vector(s2.x, s2.y, 0)
 	ct.hp = 20
 	at.loc = Vector(s2.x + 5000, s2.y, 0)
-	capture(function() for _ = 1, 4 do tick(Ht, ct, at) local m = lastMoveTo(7) if m then at.loc = Vector(m.x, m.y, 0) end end end)
+	local waits = {}
+	for _, l in ipairs(capture(function() for _ = 1, 4 do tick(Ht, ct, at) local m = lastMoveTo(7) if m then at.loc = Vector(m.x, m.y, 0) end end end)) do
+		if field(l, "ph") == "wait" then table.insert(waits, field(l, "fail")) end
+	end
+	check("rig wait: each change of the failing check logged once, ending on holds", #waits >= 1 and waits[#waits] == "holds", table.concat(waits, ","))
 	T = 211 + 111
 	local rt = readyLines(capture(function() tick(Ht, ct) end))
 	check("rig timeout: ok=0 fail=holds, the cast stays held", #rt == 1 and field(rt[1], "ok") == "0" and field(rt[1], "fail") == "holds" and Ht.Drill.Held(ct), rt[1])

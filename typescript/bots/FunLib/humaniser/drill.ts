@@ -959,7 +959,10 @@ interface RigState {
     step: Record<number, number>;
     placed: Record<number, boolean>;
     phase: Record<number, Phase>;
-    bought: Record<number, Record<string, boolean>>;
+    /** Per pid and item: the first and the last purchase attempt this rep. */
+    bought: Record<number, Record<string, [number, number]>>;
+    /** Per cast pid: the ready check failing at the last frame, logged when it changes (`ph=wait`). */
+    waiting: Record<number, string>;
 }
 
 let rig: RigState | undefined;
@@ -986,7 +989,7 @@ function rigState(): RigState | undefined {
     if (rigOf(d) === undefined) return undefined;
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
-    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {} };
+    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {} };
     return rig;
 }
 
@@ -1171,6 +1174,8 @@ interface ShopBot extends Unit {
 
 /** Within this of its fountain a hero can buy and heals. `judgement` (the shop's reach is wider). */
 const RIG_SHOP_REACH = 400;
+/** A `buy` step gives up after this many seconds of tries (no gold, or the shop refuses). `judgement`. */
+const RIG_BUY_SECS = 10;
 /** `heal` ends at this HP share. `judgement`. */
 const RIG_FULL_HP = 0.95;
 /** A hero stands at a point within this. */
@@ -1239,12 +1244,19 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         const b = bot as ShopBot;
         const item = words[1];
         if (verb === "buy") {
+            // Retried each second until held (fix4, 12/11/2026: rep 1's salve was not held at ready), giving up after
+            // RIG_BUY_SECS: ready then fails `holds`.
+            if (holdsItem(bot, item)) return true;
+            const now = DotaTime();
             st.bought[pid] = st.bought[pid] ?? {};
-            if (st.bought[pid][item] !== true) {
-                st.bought[pid][item] = true;
-                b.ActionImmediate_PurchaseItem(item);
+            const tried = st.bought[pid][item];
+            if (tried !== undefined && now - tried[0] >= RIG_BUY_SECS) return true;
+            if (tried === undefined || now - tried[1] >= 1) {
+                st.bought[pid][item] = [tried !== undefined ? tried[0] : now, now];
+                const res = b.ActionImmediate_PurchaseItem(item);
+                Telemetry.Event("drill", [["ph", "buy"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["step", item], ["res", tostring(res)], ["gold", bot.GetGold()]]);
             }
-            return true;
+            return false;
         }
         for (let slot = 0; slot <= 8; slot++) {
             const it = bot.GetItemInSlot(slot);
@@ -1334,6 +1346,11 @@ function rigTick(bot: Unit): void {
     if (rr === undefined || r === undefined) return;
     const fail = failingCheck(bot, st, rr);
     const secs = DotaTime() - st.start;
+    // Each change of the first failing check is logged, so a rep that times out shows what held it and when.
+    if (fail !== undefined && st.waiting[pid] !== fail) {
+        st.waiting[pid] = fail;
+        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100]]);
+    }
     if (fail !== undefined && secs < r.timeout) return;
     st.phase[pid] = fail === undefined ? "released" : "invalid";
     Telemetry.Event("drill", [
