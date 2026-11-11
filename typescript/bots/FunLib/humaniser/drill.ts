@@ -192,10 +192,12 @@ export const TABLE: Record<string, Entry> = {
     // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
     // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
     // fountain (the waves, untouched). Forced: HP by the Dire pos3 attacking the statue cast until its share; items bought by
-    // the cast at its fountain during setup (gold from the recipe); reach by where the attacker stands after. The cast heals
-    // in its fountain first (no console control sets a bot's HP: probe 12/11/2026, SCENARIOS.md). Release: our retreat only.
+    // the cast at its fountain during setup (gold from the recipe); reach by where the attacker stands after. Both heal in
+    // their fountain first (no console control sets a bot's HP: probe 12/11/2026, SCENARIOS.md; fix3: the attacker lost HP
+    // standing beside a camp and died). Spots: 2,850 west of our bot T1, 700 off the lane (our creeps would hit the attacker),
+    // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). Release: our retreat only.
     "retreat-heal-items": {
-        note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood beside our bot T1 out of reach, hit by the Dire pos3 to 25% (60% control); the attacker leaves (or stays near); then only our retreat runs for it",
+        note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
         cast: { r: [5] },
         others: "bench",
         rep: { every: 150, from: 60 },
@@ -203,31 +205,30 @@ export const TABLE: Record<string, Entry> = {
             half: "decision",
             switch: "HealItems",
             spots: {
-                cast: ["r:bot1", -1500, 700],
-                near: ["r:bot1", -1500, 1300],
-                wait: ["r:bot1", -1500, 2700],
+                cast: ["r:bot1", -2750, 700],
+                near: ["r:bot1", -2250, 700],
             },
             timeout: 110,
             release: { modes: ["retreat"] },
             reps: [
                 {
                     name: "salve",
-                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["walk near", "attack r5 until hp 0.25", "leave wait"] },
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.25", "leave"] },
                     ready: { hpAtMost: 0.25, holds: ["item_flask"], clear: 1600 },
                 },
                 {
                     name: "tango",
-                    setup: { r5: ["heal", "sell item_flask", "buy item_tango", "stand cast"], d3: ["walk near", "attack r5 until hp 0.25", "leave wait"] },
+                    setup: { r5: ["heal", "sell item_flask", "buy item_tango", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.25", "leave"] },
                     ready: { hpAtMost: 0.25, holds: ["item_tango"], lacks: ["item_flask"], clear: 1600 },
                 },
                 {
                     name: "stays",
-                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["walk near", "attack r5 until hp 0.25", "stand near"] },
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.25", "stand near"] },
                     ready: { hpAtMost: 0.25, holds: ["item_flask"], near: 1200 },
                 },
                 {
                     name: "control",
-                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["walk near", "attack r5 until hp 0.6", "leave wait"] },
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.6", "leave"] },
                     ready: { hpAtMost: 0.6, holds: ["item_flask"], clear: 1600 },
                 },
             ],
@@ -1129,6 +1130,8 @@ function heroOf(bot: Unit, key: string): Unit | undefined {
 
 /** A hero counts as standing at its last step's point within this (it sways about 20 either side). `judgement`. */
 const RIG_PLACED = 200;
+/** An attacker that does not see its target walks to within this of the target's spot. `judgement` (inside night vision, 800). */
+const RIG_APPROACH = 400;
 
 /** The point of hero `key`'s last setup step this rep. */
 function lastPoint(st: RigState, key: string, bot: Unit): Vector | undefined {
@@ -1256,8 +1259,11 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         const target = attackTarget(bot, st, words[1]);
         if (target !== undefined && hpShare(target) <= share) return true;
         if (target === undefined) {
-            // Waits where it stands for the target to take its place.
-            bot.Action_MoveToLocation(bot.GetLocation());
+            // Not seen at its spot yet (still walking there, or in fog): go to that spot (fix3, 12/11/2026: a respawned
+            // attacker that stood waiting in its fountain never saw the cast again).
+            const p = lastPoint(st, words[1], bot);
+            if (p !== undefined && GetUnitToLocationDistance(bot, p) > RIG_APPROACH) bot.Action_MoveToLocation(p);
+            else bot.Action_MoveToLocation(bot.GetLocation());
             return false;
         }
         bot.Action_AttackUnit(target, true);

@@ -483,6 +483,8 @@ do
 	tick(H, atk)
 	tick(H, atk)
 	check("rig: the attacker does not attack before the cast stands at its spot", #ActionsOf(7, "AttackUnit") == 0)
+	local toward = lastMoveTo(7)
+	check("rig: meanwhile it walks to the cast's spot (a respawned attacker must find the cast again)", toward ~= nil and math.abs(toward.x - spot.x) < 1 and math.abs(toward.y - spot.y) < 1)
 	cast.loc = Vector(spot.x, spot.y, 0)
 	tick(H, cast, atk)
 	check("rig: the cast stands, the attacker attacks it", #ActionsOf(7, "AttackUnit") > 0 and ActionsOf(7, "AttackUnit")[1].args[1] == cast)
@@ -490,7 +492,7 @@ do
 	cast.hp = 24
 	tick(H, cast, atk)
 	local wait = lastMoveTo(7)
-	check("rig: at 24% the attacker leaves for its wait spot", wait ~= nil and math.sqrt((wait.x - spot.x) ^ 2 + (wait.y - spot.y) ^ 2) > 1600)
+	check("rig: at 24% the attacker leaves for its fountain", wait ~= nil and math.sqrt((wait.x - spot.x) ^ 2 + (wait.y - spot.y) ^ 2) > 1600)
 	check("rig: the attacker still near: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	atk.loc = Vector(wait.x, wait.y, 0)
 	T = 80
@@ -508,7 +510,7 @@ do
 	local spotOf = spot
 	local Hv, cv, av = rigWorld()
 	T = 61
-	av.loc = Vector(spotOf.x, spotOf.y + 600, 0)
+	av.loc = Vector(spotOf.x + 500, spotOf.y, 0)
 	cv.loc = Vector(spotOf.x + 400, spotOf.y, 0)
 	capture(function() tick(Hv, av) tick(Hv, av) end)
 	check("rig VMs: the cast 400 off its spot: no attack", #ActionsOf(7, "AttackUnit") == 0)
@@ -523,7 +525,7 @@ do
 	T = 61
 	cp.pos = 3
 	mp.loc = Vector(spotOf.x + 2000, spotOf.y, 0)
-	ap.loc = Vector(spotOf.x, spotOf.y + 600, 0)
+	ap.loc = Vector(spotOf.x + 500, spotOf.y, 0)
 	cp.loc = Vector(spotOf.x + 20, spotOf.y, 0)
 	capture(function() tick(Hp, ap) tick(Hp, ap) end)
 	local at = ActionsOf(7, "AttackUnit")

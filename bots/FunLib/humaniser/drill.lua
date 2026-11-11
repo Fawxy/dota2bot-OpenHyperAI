@@ -263,7 +263,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -1148,7 +1148,12 @@ function rigStep(bot, st, step, last)
             return true
         end
         if target == nil then
-            bot:Action_MoveToLocation(bot:GetLocation())
+            local p = lastPoint(st, words[2], bot)
+            if p ~= nil and GetUnitToLocationDistance(bot, p) > RIG_APPROACH then
+                bot:Action_MoveToLocation(p)
+            else
+                bot:Action_MoveToLocation(bot:GetLocation())
+            end
             return false
         end
         bot:Action_AttackUnit(target, true)
@@ -1315,17 +1320,17 @@ ____exports.TABLE = {
         rep = {every = 90, from = 60, control = 4}
     },
     ["retreat-heal-items"] = {
-        note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood beside our bot T1 out of reach, hit by the Dire pos3 to 25% (60% control); the attacker leaves (or stays near); then only our retreat runs for it",
+        note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
         cast = {r = {5}},
         others = "bench",
         rep = {every = 150, from = 60},
         rig = {
             half = "decision",
             switch = "HealItems",
-            spots = {cast = {"r:bot1", -1500, 700}, near = {"r:bot1", -1500, 1300}, wait = {"r:bot1", -1500, 2700}},
+            spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
             timeout = 110,
             release = {modes = {"retreat"}},
-            reps = {{name = "salve", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"walk near", "attack r5 until hp 0.25", "leave wait"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, clear = 1600}}, {name = "tango", setup = {r5 = {"heal", "sell item_flask", "buy item_tango", "stand cast"}, d3 = {"walk near", "attack r5 until hp 0.25", "leave wait"}}, ready = {hpAtMost = 0.25, holds = {"item_tango"}, lacks = {"item_flask"}, clear = 1600}}, {name = "stays", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"walk near", "attack r5 until hp 0.25", "stand near"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, near = 1200}}, {name = "control", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"walk near", "attack r5 until hp 0.6", "leave wait"}}, ready = {hpAtMost = 0.6, holds = {"item_flask"}, clear = 1600}}}
+            reps = {{name = "salve", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.25", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, clear = 1600}}, {name = "tango", setup = {r5 = {"heal", "sell item_flask", "buy item_tango", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.25", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_tango"}, lacks = {"item_flask"}, clear = 1600}}, {name = "stays", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.25", "stand near"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, near = 1200}}, {name = "control", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.6", "leave"}}, ready = {hpAtMost = 0.6, holds = {"item_flask"}, clear = 1600}}}
         }
     },
     ["lane-only"] = {
@@ -1783,6 +1788,7 @@ RIG_SNAP_RINGS = 20
 rigSpots = {}
 rigUnits = {}
 RIG_PLACED = 200
+RIG_APPROACH = 400
 RIG_SHOP_REACH = 400
 RIG_FULL_HP = 0.95
 RIG_AT = 100
@@ -1816,19 +1822,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue202
+                local __continue204
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue202 = true
+                        __continue204 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue202 = true
+                    __continue204 = true
                 until true
-                if not __continue202 then
+                if not __continue204 then
                     break
                 end
             end
