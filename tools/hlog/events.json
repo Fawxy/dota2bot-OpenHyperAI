@@ -322,6 +322,75 @@
    "x1": "num",
    "y1": "num"
   },
+  "apiprobe_own": {
+   "team": "num",
+   "pid": "num",
+   "seen": "num",
+   "loc": "num",
+   "x": "num",
+   "y": "num",
+   "alive": "num",
+   "hp": "num",
+   "mp": "num",
+   "lvl": "num",
+   "ms": "num",
+   "nw": "num",
+   "nmod": "num",
+   "cds": "num",
+   "nitem": "num",
+   "it0": "str",
+   "tgt": "num",
+   "chan": "num",
+   "cast": "num"
+  },
+  "apiprobe_enemy": {
+   "team": "num",
+   "pid": "num",
+   "vis": "num",
+   "loc": "num",
+   "x": "num",
+   "y": "num",
+   "alive": "num",
+   "hp": "num",
+   "mp": "num",
+   "lvl": "num",
+   "ms": "num",
+   "nw": "num",
+   "nmod": "num",
+   "cds": "num",
+   "nitem": "num",
+   "it0": "str",
+   "tgt": "num",
+   "chan": "num",
+   "cast": "num"
+  },
+  "apiprobe_cast": {
+   "team": "num",
+   "pid": "num",
+   "own": "num",
+   "vis": "num",
+   "ability": "str"
+  },
+  "apiprobe_dmg": {
+   "team": "num",
+   "pid": "num",
+   "own": "num",
+   "n": "num",
+   "fog": "num",
+   "sum": "num"
+  },
+  "apiprobe_dmgshape": {
+   "team": "num",
+   "args": "str"
+  },
+  "apiprobe_tp": {
+   "team": "num",
+   "pid": "num",
+   "own": "num",
+   "x": "num",
+   "y": "num",
+   "rem": "num"
+  },
   "visprobe": {
    "pid": "num",
    "camp": "num",
@@ -1705,6 +1774,18 @@
   },
   "ev_camp": {
    "type": "text"
+  },
+  "ev_apiprobe_own": {
+   "it0": "text"
+  },
+  "ev_apiprobe_enemy": {
+   "it0": "text"
+  },
+  "ev_apiprobe_cast": {
+   "ability": "text"
+  },
+  "ev_apiprobe_dmgshape": {
+   "args": "text"
   },
   "ev_stuck": {
    "mode": "text"
