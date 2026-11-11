@@ -39,6 +39,7 @@
 --    (ev=front, its latest line): D24 stays while they pay in creep damage (EC-102); one outside it hits for free, and
 --    stepping out is right (cause free_hit). Else cause oha_retreat or ours_retreat by side. The front is the wave's lead
 --    creep, so an enemy beside the back of our wave reads free (`judgement`: under-counts, the same for both sides).
+--    A log with no ev=front line before the onset reads every case free_hit (no violations).
 -- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths)
 -- ensure: ev_bot(pid, team, pos, ours)
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
