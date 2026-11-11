@@ -410,6 +410,126 @@ do
 	check("linger: a point inside our T1's reach is pulled out to its reach + 100 (844 + 100)", tb ~= nil and math.abs(dTw - 944) < 2, dTw)
 end
 
+-- Rigs (slice drill-rig): every rig entry's setup lists end in a step that stands (a hero is placed only there), name only
+-- spots the rig defines, and attack heroes the rep lists; rep kinds and release are non-empty.
+do
+	local H = world(nil)
+	for name, e in pairs(H.Drill.TABLE) do
+		local r = e.rig
+		if r ~= nil then
+			check(name .. ": rig has reps and a release", #r.reps > 0 and #r.release.modes > 0 and r.timeout > 0 and type(r.switch) == "string")
+			for _, rr in ipairs(r.reps) do
+				for k, steps in pairs(rr.setup) do
+					local last = steps[#steps]:match("^(%a+)")
+					check(name .. "/" .. rr.name .. "/" .. k .. ": the last step stands", last == "stand" or last == "leave", steps[#steps])
+					for _, s in ipairs(steps) do
+						local verb, a = s:match("^(%a+)%s*(%S*)")
+						if verb == "stand" or verb == "walk" or (verb == "leave" and a ~= "") then
+							check(name .. "/" .. rr.name .. ": spot " .. a .. " defined", r.spots[a] ~= nil)
+						elseif verb == "attack" then
+							check(name .. "/" .. rr.name .. ": attack target listed", rr.setup[a] ~= nil and tonumber(s:match("until hp ([%d%.]+)$")) ~= nil, s)
+						else
+							check(name .. "/" .. rr.name .. ": known step " .. s, verb == "heal" or verb == "buy" or verb == "sell" or verb == "leave")
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- A rig rep end to end (retreat-heal-items, rep 1 `salve`): the cast heals and buys at its fountain, walks to its spot; the
+-- attacker waits until the cast stands there, hits it to 25%, leaves; ready then holds and the cast is released into our
+-- retreat only, with OHA's item and ability use still off. A rep whose checks never hold times out invalid and stays held.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local function rigWorld(over)
+		local H, C = world("retreat-heal-items")
+		for k, v in pairs(over or {}) do C.Overrides[k] = v end
+		local cast = hero(4, RAD, 5, 3)
+		local atk = hero(7, DIRE, 3, 3)
+		local mid = hero(2, RAD, 2, 2)
+		cast.maxhp, cast.hp, cast.items = 100, 100, {}
+		atk.maxhp, atk.hp = 100, 100
+		cast.loc = Vector(-6619, -6336, 0)
+		atk.loc = Vector(6928, 6372, 0)
+		cast.ActionImmediate_PurchaseItem = function(self, name) self.items[0] = { name = name } return 0 end
+		cast.ActionImmediate_SellItem = function(self, it) for s, v in pairs(self.items) do if v.name == it:GetName() then self.items[s] = nil end end end
+		ACTIONS = {}
+		return H, cast, atk, mid
+	end
+	local function tick(H, ...) for _, u in ipairs({ ... }) do H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end end
+	local function lastMoveTo(pid)
+		local mv = ActionsOf(pid, "MoveToLocation")
+		return mv[#mv] and mv[#mv].args[1]
+	end
+	local function readyLines(lines) local r = {} for _, l in ipairs(lines) do if field(l, "ph") == "ready" then table.insert(r, l) end end return r end
+
+	local H, cast, atk, mid = rigWorld()
+	check("rig: roles (cast, actor, bench)", H.Drill.RoleOf(cast) == "cast" and H.Drill.RoleOf(atk) == "actor" and H.Drill.RoleOf(mid) == "bench")
+	T = 30
+	check("rig: the cast is held before the first rep", H.Drill.Held(cast) and H.Chooser.HoldsCasts(cast, true))
+	T = 61
+	local lines = capture(function() tick(H, cast, atk) end)
+	check("rig: full HP at the fountain, so heal and buy end at once and the cast walks to its spot", cast.items[0] and cast.items[0].name == "item_flask" and lastMoveTo(4) ~= nil)
+	local spot = lastMoveTo(4)
+	check("rig: the cast spot is logged once with its tower distances", (function()
+		for _, l in ipairs(lines) do if field(l, "ph") == "spot" and field(l, "spot") == "cast" then return tonumber(field(l, "rt")) ~= nil end end
+	end)())
+	-- The attacker reaches `near` but the cast is not standing yet: it waits, no attack.
+	local near = lastMoveTo(7)
+	atk.loc = Vector(near.x, near.y, 0)
+	tick(H, atk)
+	tick(H, atk)
+	check("rig: the attacker does not attack before the cast stands at its spot", #ActionsOf(7, "AttackUnit") == 0)
+	cast.loc = Vector(spot.x, spot.y, 0)
+	tick(H, cast, atk)
+	check("rig: the cast stands, the attacker attacks it", #ActionsOf(7, "AttackUnit") > 0 and ActionsOf(7, "AttackUnit")[1].args[1] == cast)
+	check("rig: still in setup, nothing ready", #readyLines(capture(function() tick(H, cast) end)) == 0 and H.Drill.Held(cast))
+	cast.hp = 24
+	tick(H, cast, atk)
+	local wait = lastMoveTo(7)
+	check("rig: at 24% the attacker leaves for its wait spot", wait ~= nil and math.sqrt((wait.x - spot.x) ^ 2 + (wait.y - spot.y) ^ 2) > 1600)
+	check("rig: the attacker still near: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	atk.loc = Vector(wait.x, wait.y, 0)
+	T = 80
+	local r = readyLines(capture(function() tick(H, atk, cast) end))
+	check("rig: ready once, ok=1, var=salve", #r == 1 and field(r[1], "ok") == "1" and field(r[1], "var") == "salve" and field(r[1], "secs") == "20", r[1])
+	check("rig: released: not held, retreat runs, farm and laning get 0", not H.Drill.Held(cast) and H.Chooser.Decide(cast, "farm") == 0 and H.Chooser.Decide(cast, "laning") == 0 and H.Drill.RigDesire(cast, "retreat") == nil)
+	check("rig: released: OHA's items and spells stay off (not listed)", H.Chooser.HoldsCasts(cast, true) and H.Chooser.HoldsCasts(cast, false))
+	check("rig: ready logs once per rep", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	T = 211
+	capture(function() tick(H, cast, atk) end)
+	check("rig: the next rep holds the cast again", H.Drill.Held(cast))
+
+	-- Host on: the same release frees every mode and OHA's items and spells.
+	local Hh, ch, ah = rigWorld({ DrillHost = true })
+	T = 61
+	tick(Hh, ch, ah)
+	local sp = lastMoveTo(4)
+	ch.loc = Vector(sp.x, sp.y, 0)
+	ch.hp = 20
+	local w = Hh.Drill.TABLE["retreat-heal-items"]
+	ah.loc = Vector(sp.x + 5000, sp.y, 0)
+	-- The attacker's step list is skipped straight to its last (it is placed where it stands at its wait point).
+	capture(function() for _ = 1, 4 do tick(Hh, ch, ah) local m = lastMoveTo(7) if m then ah.loc = Vector(m.x, m.y, 0) end end end)
+	check("rig host: released with no mode gate and casts free", w ~= nil and not Hh.Drill.Held(ch) and Hh.Drill.RigDesire(ch, "farm") == nil and Hh.Drill.RigHoldsCasts(ch, true) == nil)
+
+	-- Rep 2 (`tango`) never gets its tango (the buy fails): at the timeout the rep is invalid, logged with the failing check.
+	local Ht, ct, at = rigWorld()
+	ct.ActionImmediate_PurchaseItem = function() return 1 end
+	T = 211
+	tick(Ht, ct, at)
+	local s2 = lastMoveTo(4)
+	ct.loc = Vector(s2.x, s2.y, 0)
+	ct.hp = 20
+	at.loc = Vector(s2.x + 5000, s2.y, 0)
+	capture(function() for _ = 1, 4 do tick(Ht, ct, at) local m = lastMoveTo(7) if m then at.loc = Vector(m.x, m.y, 0) end end end)
+	T = 211 + 111
+	local rt = readyLines(capture(function() tick(Ht, ct) end))
+	check("rig timeout: ok=0 fail=holds, the cast stays held", #rt == 1 and field(rt[1], "ok") == "0" and field(rt[1], "fail") == "holds" and Ht.Drill.Held(ct), rt[1])
+end
+
 finish()
 
 -- retreat-chase: a chaser waits behind its own T1 on control reps (user 10/11/2026), not in its fountain, and chases on odd reps.

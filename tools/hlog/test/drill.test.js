@@ -74,3 +74,28 @@ test('drill_roles: each hero\'s role, its attack-target samples and farm share',
     assert.strictEqual(by[7].farm, 1);
     assert.strictEqual(by[7].x, 120);
 });
+
+test('drill on a rig: reps that never reached ready are dropped, ready n of m and the release second are kept', () => {
+    const name = 'retreat-heal-items';
+    const ready = (t, n, ok, v, fail = '') => line(t, `drill ph=ready name=${name} pid=4 rep=${n} var=${v} ok=${ok}${fail ? ` fail=${fail}` : ''} secs=${t % 150} hp=0.25`);
+    const rrep = (t, n, v) => line(t, `drill ph=rep name=${name} team=2 rep=${n} input=on start=${t} var=${v}`);
+    const lines = [
+        role(4, 2, 5, 'cast', name), role(7, 3, 3, 'actor', name),
+        rrep(60, 1, 'salve'), rrep(210, 2, 'tango'), rrep(360, 3, 'stays'),
+        ready(100, 1, 1, 'salve'), ready(320, 2, 0, 'tango', 'holds'), ready(400, 3, 1, 'stays'),
+        snap(61, 4), snap(100, 4, { hp: 25, mode: 'farm' }), snap(110, 4, { hp: 20, mode: 'retreat' }), snap(209, 4, { mode: 'retreat' }),
+        snap(211, 4, { mode: 'farm' }), snap(330, 4, { mode: 'farm' }), snap(401, 4, { mode: 'retreat' }), snap(420, 4, { mode: 'retreat' }),
+    ];
+    const out = run(lines, 'drill');
+    assert.deepStrictEqual(out.map(r => [r.rep, r.var, r.released, r.ready_n, r.ready_m]), [[1, 'salve', 100, 2, 3], [3, 'stays', 400, 2, 3]]);
+    const roles = run(lines, 'drill_roles');
+    const cast = roles.find(r => r.pid === 4);
+    // The ready second itself is the last setup frame (farm); after it only retreat, and rep 2 (invalid, farm) adds nothing.
+    assert.strictEqual(cast.rel_modes, 'retreat');
+    assert.strictEqual(roles.find(r => r.pid === 7).rel_modes, null);
+});
+
+test('drill without ready lines keeps every rep (drills built before rigs)', () => {
+    const out = run([role(0, 2, 1, 'cast'), rep(1, 1), rep(31, 2), snap(1, 0), snap(29, 0), snap(32, 0), snap(50, 0)], 'drill');
+    assert.deepStrictEqual(out.map(r => [r.rep, r.ready_m]), [[1, null], [2, null]]);
+});

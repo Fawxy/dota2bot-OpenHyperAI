@@ -205,6 +205,9 @@ const ADMITTED: Record<string, Record<string, unknown>> = { retreat: EPISODE_MOD
  * not take it either.
  */
 export function Decide(bot: Unit, mode: string): number | undefined {
+    // A drill rig's cast after ready runs only the modes its release lists.
+    const rig = Drill.RigDesire(bot, mode);
+    if (rig !== undefined) return rig;
     const jobs = Ours.On("JobChooser");
     const hold = Arbiter.Hold(bot, jobs ? RunningJobName(bot) : undefined);
     if (hold === undefined) return jobs && mode === HOST ? hostDesire(bot) : undefined;
@@ -291,6 +294,8 @@ export function HoldsRun(bot: Unit): boolean {
  * `chaserCasts` does, in a chase rep. `items`: the caller is OHA's item use, which a cast of an entry with `castItems` keeps.
  */
 export function HoldsCasts(bot: Unit, items?: boolean): boolean {
+    const rig = Drill.RigHoldsCasts(bot, items === true);
+    if (rig !== undefined) return rig;
     if ((StackJob.Benched(bot) && !Drill.Casts(bot)) || (Overrides.LaneOnly(bot) && !(items === true && Drill.CastItems(bot)))) return true;
     if (!Running(bot)) return Drill.IdleStatue(bot);
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;

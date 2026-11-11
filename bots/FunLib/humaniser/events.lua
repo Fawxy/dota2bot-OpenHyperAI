@@ -596,7 +596,15 @@ ____exports.EVENTS = {
         dmax = "num",
         dend = "num",
         uns = "num",
-        rend = "num"
+        rend = "num",
+        var = "str",
+        i = "num",
+        step = "str",
+        ok = "num",
+        fail = "str",
+        hp = "num",
+        rt = "num",
+        dt = "num"
     },
     job = {
         pid = "num",
