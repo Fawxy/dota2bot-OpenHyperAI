@@ -300,7 +300,8 @@ local function install(bot, st)
                     __continue46 = true
                     break
                 end
-                g.InstallDamageCallback(
+                local installDamage = g.InstallDamageCallback
+                installDamage(
                     pid,
                     function(...)
                         local args = {...}

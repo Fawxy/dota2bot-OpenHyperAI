@@ -183,7 +183,8 @@ function install(bot: Unit, st: State): void {
             });
         });
         if (type(g.InstallDamageCallback) !== "function") continue;
-        g.InstallDamageCallback(pid, (...args: any[]) => {
+        const installDamage = g.InstallDamageCallback as (this: void, pid: number, fn: (this: void, ...args: any[]) => void) => void;
+        installDamage(pid, (...args: any[]) => {
             pcall(() => {
                 if (!shapeLogged) {
                     shapeLogged = true;
