@@ -195,7 +195,9 @@ export const TABLE: Record<string, Entry> = {
     // `wave` and `behind` ones the hit back passes (`refused`: 4 or more of their creeps within 500 of the cast, or the cast
     // 16 points under its hitter: fix5 and fix7, without either the plain trade rule answered, so the off arm hit back too;
     // fix8: 4 creeps alone was rare at the front, a full early wave), HP at 55% or more (fix9: at the front itself their
-    // creeps drained the statue under half before ready, so it stands 100 back), the
+    // creeps drained the statue under half before ready, so it stands 100 back). Redesign after rig1 (5 of 12 ready: a hitter
+    // in our creeps' aggro loses HP, so the gap closed before ready): the Dire pos3 first hits the cast to 72% at the heal
+    // rig's off-lane spot, clear of our creeps, and follows it to the front, so it arrives near full HP. Also the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
     // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5, fix6), so the cast
@@ -215,6 +217,9 @@ export const TABLE: Record<string, Entry> = {
                 cast: ["r:frontbot", -100, 0],
                 partner: ["r:frontbot", -350, 0],
                 near: ["r:frontbot", 0, 0],
+                // The heal rig's spots: off the lane and clear of camps, so the cast is put behind on HP away from our creeps.
+                side: ["r:bot1", -2750, 700],
+                sidenear: ["r:bot1", -2250, 700],
             },
             timeout: 95,
             keeps: ["levelup"],
@@ -222,23 +227,23 @@ export const TABLE: Record<string, Entry> = {
             reps: [
                 {
                     name: "hit",
-                    setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
+                    setup: { r1: ["heal", "stand side until hp 0.72", "stand cast"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.72", "attack r1 until hp 0.55", "leave"] },
                     ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 }, hpAtLeast: 0.55 },
                 },
                 {
                     name: "pair",
                     setup: {
-                        r1: ["heal", "stand cast"],
+                        r1: ["heal", "stand side until hp 0.72", "stand cast"],
                         r5: ["heal", "stand partner"],
-                        d3: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
-                        d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
+                        d3: ["heal", "walk sidenear", "attack r1 until hp 0.72", "attack r1 until hp 0.5", "leave"],
+                        d4: ["heal", "walk near", "attack r1 until hp 0.5", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
                     ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 }, hpAtLeast: 0.55 },
                 },
                 {
                     name: "hit",
-                    setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
+                    setup: { r1: ["heal", "stand side until hp 0.72", "stand cast"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.72", "attack r1 until hp 0.55", "leave"] },
                     ready: { paid: 500, towers: 1000, refused: { wave: 4, behind: 0.16 }, hpAtLeast: 0.55 },
                 },
                 {
@@ -1006,6 +1011,7 @@ export interface RigRep {
      * - `attack <hero> until hp <share>`: once that hero stands on its last step, attack it until its HP share is at or
      *   under the share (or it dies); ends then.
      * - `leave [spot]`: walk to the spot (default its fountain) and stay; never ends.
+     * - `stand <spot> until hp <share>`: a statue there until its own HP share is at or under the share; ends then.
      * Each list ends in `stand` or `leave`: a hero is placed once it stands at its last step's point, and ready needs every
      * listed hero of its own team placed (no state is shared across teams: the other team's part is read from the facts).
      */
@@ -1440,6 +1446,12 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
     if (verb === "stand" || verb === "leave") {
         const p = rigPoint(bot, words[1] ?? "fountain");
         if (p === undefined) return false;
+        // `stand <spot> until hp <share>`: a statue there until its own HP share is at or under the share; ends then.
+        const until = verb === "stand" && words[2] === "until" ? tonumber(words[4]) : undefined;
+        if (until !== undefined) {
+            standAt(bot, p);
+            return hpShare(bot) <= until;
+        }
         standAt(bot, p);
         // Within RIG_PLACED, not standAt's 100: at a lane front the creeps shove a statue past 100 (hit-back fix1).
         st.placed[pid] = last && GetUnitToLocationDistance(bot, p) <= RIG_PLACED;

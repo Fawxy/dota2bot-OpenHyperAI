@@ -1206,6 +1206,17 @@ function rigStep(bot, st, step, last)
         if p == nil then
             return false
         end
+        local ____temp_63
+        if verb == "stand" and words[3] == "until" then
+            ____temp_63 = tonumber(words[5])
+        else
+            ____temp_63 = nil
+        end
+        local ____until = ____temp_63
+        if ____until ~= nil then
+            standAt(bot, p)
+            return hpShare(bot) <= ____until
+        end
         standAt(bot, p)
         st.placed[pid] = last and GetUnitToLocationDistance(bot, p) <= RIG_PLACED
         return false
@@ -1334,8 +1345,8 @@ function rigHold(bot)
     end
     local rr = ____exports.RigRepOf(st.rep)
     local pid = bot:GetPlayerID()
-    local ____opt_63 = rr and rr.after
-    local after = ____opt_63 and ____opt_63[k]
+    local ____opt_64 = rr and rr.after
+    local after = ____opt_64 and ____opt_64[k]
     if after ~= nil and #after > 0 and st.releasedAt ~= nil and ____exports.RoleOf(bot) ~= "cast" then
         do
             local guard = 0
@@ -1523,11 +1534,35 @@ ____exports.TABLE = {
             half = "decision",
             switch = "HitBack",
             window = 600,
-            spots = {cast = {"r:frontbot", -100, 0}, partner = {"r:frontbot", -350, 0}, near = {"r:frontbot", 0, 0}},
+            spots = {
+                cast = {"r:frontbot", -100, 0},
+                partner = {"r:frontbot", -350, 0},
+                near = {"r:frontbot", 0, 0},
+                side = {"r:bot1", -2750, 700},
+                sidenear = {"r:bot1", -2250, 700}
+            },
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
+            reps = {{name = "hit", setup = {r1 = {"heal", "stand side until hp 0.72", "stand cast"}, d3 = {
+                "heal",
+                "walk sidenear",
+                "attack r1 until hp 0.72",
+                "attack r1 until hp 0.55",
+                "leave"
+            }}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "pair", setup = {r1 = {"heal", "stand side until hp 0.72", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {
+                "heal",
+                "walk sidenear",
+                "attack r1 until hp 0.72",
+                "attack r1 until hp 0.5",
+                "leave"
+            }, d4 = {"heal", "walk near", "attack r1 until hp 0.5", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "hit", setup = {r1 = {"heal", "stand side until hp 0.72", "stand cast"}, d3 = {
+                "heal",
+                "walk sidenear",
+                "attack r1 until hp 0.72",
+                "attack r1 until hp 0.55",
+                "leave"
+            }}, ready = {paid = 500, towers = 1000, refused = {wave = 4, behind = 0.16}, hpAtLeast = 0.55}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 1000}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2060,19 +2095,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue239
+                local __continue240
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue239 = true
+                        __continue240 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue239 = true
+                    __continue240 = true
                 until true
-                if not __continue239 then
+                if not __continue240 then
                     break
                 end
             end
@@ -2115,10 +2150,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue257
+                local __continue258
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue257 = true
+                        __continue258 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2129,9 +2164,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue257 = true
+                    __continue258 = true
                 until true
-                if not __continue257 then
+                if not __continue258 then
                     break
                 end
             end
@@ -2267,8 +2302,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_69 = overrides()
-            local v = ____opt_69 and ____opt_69[k]
+            local ____opt_70 = overrides()
+            local v = ____opt_70 and ____opt_70[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -2282,8 +2317,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_71 = overrides()
-        local asked = ____opt_71 and ____opt_71.Drill
+        local ____opt_72 = overrides()
+        local asked = ____opt_72 and ____opt_72.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -2323,8 +2358,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_76 = Telemetry.Event
-    local ____array_75 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_77 = Telemetry.Event
+    local ____array_76 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -2336,11 +2371,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_73 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_75, {"var", ____opt_73 and ____opt_73.name})
-    ____Telemetry_Event_76(
+    local ____opt_74 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_76, {"var", ____opt_74 and ____opt_74.name})
+    ____Telemetry_Event_77(
         "drill",
-        {__TS__SparseArraySpread(____array_75)}
+        {__TS__SparseArraySpread(____array_76)}
     )
     rigTick(bot)
 end

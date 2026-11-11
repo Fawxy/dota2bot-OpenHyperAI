@@ -693,6 +693,16 @@ do
 	LANE_FRONT[2][dota.Lane.Bot] = 0.5
 	T = 61
 	capture(function() tick(cast) end)
+	-- Redesign: first the off-lane spot, a statue there until 72%, then the front.
+	local side = lastMoveTo(1)
+	check("hitback rig: the cast goes first to the off-lane spot", side ~= nil and math.abs(side.y - -5000) > 300, side and (side.x .. "," .. side.y))
+	cast.loc = Vector(side.x, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(cast) end)
+	check("hitback rig: at full HP it stays at the side spot", near(lastMoveTo(1), side, 120))
+	cast.hp = 70
+	ACTIONS = {}
+	capture(function() tick(cast) tick(cast) end)
 	local spot = lastMoveTo(1)
 	check("hitback rig: the cast's spot is 100 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)), spot and (spot.x .. "," .. spot.y))
 	-- fix1: creeps at the front shove the statue; 150 off its spot it still stands there.
@@ -753,6 +763,10 @@ do
 	T = 246
 	ACTIONS = {}
 	capture(function() tick(cast) end)
+	cast.loc = Vector(side.x, side.y, 0)
+	cast.hp = 70
+	ACTIONS = {}
+	capture(function() tick(cast) tick(cast) end)
 	local spot2 = lastMoveTo(1)
 	check("hitback rig: the next rep reads the front again", near(spot2, GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)) and not near(spot2, spot, 100))
 	cast.loc = Vector(spot2.x, spot2.y, 0)
