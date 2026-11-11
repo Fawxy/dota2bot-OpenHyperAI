@@ -1905,6 +1905,42 @@ RIG_SHOP_REACH = 400
 RIG_BUY_SECS = 10
 RIG_FULL_HP = 0.95
 RIG_AT = 100
+--- `clear`: an enemy hero out of sight counts as gone only once its last sighting is farther than `clear`, or RIG_FOG_CLEAR s
+-- old (on1 to on3 and r1: the attacker leaving stepped into fog 490 off, `clear` held at once and the cast's heal start read a
+-- hero seen 0.3 s before). `judgement`: a 300-speed hero walks 1,600 in about 5.3 s.
+local RIG_FOG_CLEAR = 6
+--- An enemy hero not in sight whose last sighting is within `r` of `bot` and under RIG_FOG_CLEAR s old.
+local function foggedWithin(bot, r)
+    do
+        local pid = 0
+        while pid <= 23 do
+            do
+                local __continue209
+                repeat
+                    local t = GetTeamForPlayer(pid)
+                    if t == bot:GetTeam() or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
+                        __continue209 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(pid)[1]
+                    if info == nil or info.time_since_seen >= RIG_FOG_CLEAR then
+                        __continue209 = true
+                        break
+                    end
+                    if GetUnitToLocationDistance(bot, info.location) <= r then
+                        return true
+                    end
+                    __continue209 = true
+                until true
+                if not __continue209 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    return false
+end
 --- The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step.
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
@@ -1935,24 +1971,24 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue222
+                local __continue227
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue222 = true
+                        __continue227 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue222 = true
+                    __continue227 = true
                 until true
-                if not __continue222 then
+                if not __continue227 then
                     break
                 end
             end
         end
-        if r.clear ~= nil and nearest <= r.clear then
+        if r.clear ~= nil and (nearest <= r.clear or foggedWithin(bot, r.clear)) then
             return "clear"
         end
         if r.near ~= nil and nearest > r.near then

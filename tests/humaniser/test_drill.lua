@@ -532,6 +532,12 @@ do
 	check("rig: the attacker still near: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	cast.hp = 30
 	check("rig: HP latched: regen back over the bar while the attacker walks off still counts (fix5)", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	-- r1: the attacker leaving stepped into fog 490 off; out of sight is not gone until its last sighting is 6 s old.
+	atk.GetLocation = function() return nil end
+	LAST_SEEN[7] = { location = Vector(spot.x + 490, spot.y, 0), time_since_seen = 0.3 }
+	check("rig: the attacker in fog 490 off, seen 0.3 s ago: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	atk.GetLocation = nil
+	LAST_SEEN[7].time_since_seen = 6
 	atk.loc = Vector(wait.x, wait.y, 0)
 	T = 80
 	local r = readyLines(capture(function() tick(H, atk, cast) end))

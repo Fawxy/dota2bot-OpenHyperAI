@@ -1384,6 +1384,25 @@ function rigHold(bot: Unit): boolean {
     return true;
 }
 
+/**
+ * `clear`: an enemy hero out of sight counts as gone only once its last sighting is farther than `clear`, or RIG_FOG_CLEAR s
+ * old (on1 to on3 and r1: the attacker leaving stepped into fog 490 off, `clear` held at once and the cast's heal start read a
+ * hero seen 0.3 s before). `judgement`: a 300-speed hero walks 1,600 in about 5.3 s.
+ */
+const RIG_FOG_CLEAR = 6;
+
+/** An enemy hero not in sight whose last sighting is within `r` of `bot` and under RIG_FOG_CLEAR s old. */
+function foggedWithin(bot: Unit, r: number): boolean {
+    for (let pid = 0; pid <= 23; pid++) {
+        const t = GetTeamForPlayer(pid);
+        if (t === bot.GetTeam() || (t !== Team.Radiant && t !== Team.Dire) || !IsHeroAlive(pid)) continue;
+        const info = GetHeroLastSeenInfo(pid)[0];
+        if (info === undefined || info.time_since_seen >= RIG_FOG_CLEAR) continue;
+        if (GetUnitToLocationDistance(bot, info.location) <= r) return true;
+    }
+    return false;
+}
+
 /** The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step. */
 function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
     // Only the cast's own team's setup is read here (no state is shared across teams); the facts below read the rest.
@@ -1405,7 +1424,7 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
             if (!h.IsAlive() || h.GetLocation() === undefined) continue;
             nearest = math.min(nearest, GetUnitToUnitDistance(bot, h));
         }
-        if (r.clear !== undefined && nearest <= r.clear) return "clear";
+        if (r.clear !== undefined && (nearest <= r.clear || foggedWithin(bot, r.clear))) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
     }
     return undefined;
