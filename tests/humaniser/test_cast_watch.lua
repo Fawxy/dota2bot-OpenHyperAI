@@ -287,6 +287,12 @@ do
 	CAST_CALLBACKS[6][1]({ player_id = 6, ability = "lion_impale", unit = enemy })
 	H.LaneFight.Tick(bot)
 	check("a callback naming the ability by string is read from the ability list", recordsOf(records, "lion_impale") == 2, #records)
+	-- The observer had no tick for 5 s (dead): the queued cast is not handled as a fresh one on its next tick.
+	T = T + 1
+	CAST_CALLBACKS[6][1]({ player_id = 6, ability = enemy.impale, unit = enemy })
+	T = T + 5
+	H.LaneFight.Tick(bot)
+	check("a queued cast older than the event gap is dropped", recordsOf(records, "lion_impale") == 2, #records)
 end
 
 do

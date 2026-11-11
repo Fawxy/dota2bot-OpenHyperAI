@@ -810,7 +810,7 @@ local function guard(bot, f)
     end
     local now = DotaTime()
     f.threatSince = f.threatSince or now
-    return now - f.threatSince >= Profile.Get(bot).reactBase and "threat" or nil
+    return now - f.threatSince >= Profile.ThreatHold(bot) and "threat" or nil
 end
 local walkBack = __TS__Generator(function(bot, f, ctx)
     ctx.label("return")

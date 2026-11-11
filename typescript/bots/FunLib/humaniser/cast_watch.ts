@@ -40,7 +40,7 @@ interface Watch {
     callbacks: Record<number, boolean>;
     // Cast events waiting for the observer's next Tick: a callback runs outside any bot's think, where GetBot() is nil
     // and host helpers that read it fail (smoke skill1-clean: 19 lua_error in J.IsInLaningPhase after 10:00).
-    pending: { enemyPid: number; event: any }[];
+    pending: { enemyPid: number; event: any; at: number }[];
     last?: Recorded;
     lastSeen?: Recorded;
     stats: Stats;
@@ -279,9 +279,8 @@ function visibleEnemy(bot: Unit, enemyPid: number): Unit | undefined {
     return undefined;
 }
 
-function onCastEvent(bot: Unit, enemyPid: number, event: any): void {
+function onCastEvent(bot: Unit, enemyPid: number, event: any, now: number): void {
     if (!LaneFightConfig.IsOn("Memory") || !LaneFightConfig.Settings().UseCastCallback) return;
-    const now = DotaTime();
     if (now < 0 || !LaneConfig.InLaningPhase() || isNullHandle(bot)) return;
     const caster = visibleEnemy(bot, enemyPid);
     if (caster === undefined || type(event) !== "table") return;
@@ -308,7 +307,7 @@ function installCallbacks(bot: Unit, w: Watch): void {
         if (w.callbacks[enemyPid] === true) continue;
         w.callbacks[enemyPid] = true;
         const handler = (event: any): void => {
-            if (w.pending.length < PENDING_MAX) w.pending.push({ enemyPid, event });
+            if (w.pending.length < PENDING_MAX) w.pending.push({ enemyPid, event, at: DotaTime() });
         };
         InstallCastCallback(enemyPid, Telemetry.GuardsEnabled() ? Telemetry.Guard("CastWatch.OnCast", handler) : handler);
     }
@@ -335,7 +334,9 @@ export function Tick(bot: Unit): void {
     if (w.pending.length > 0) {
         const queued = w.pending;
         w.pending = [];
-        for (const q of queued) onCastEvent(bot, q.enemyPid, q.event);
+        // A cast queued while the observer had no tick (dead) is stale by the time it drains.
+        const gap = Perception.Settings().EventGap;
+        for (const q of queued) if (now - q.at <= gap) onCastEvent(bot, q.enemyPid, q.event, q.at);
     }
     if (now < w.nextPoll) return;
     const s = LaneFightConfig.Settings();

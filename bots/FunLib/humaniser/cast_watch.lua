@@ -363,11 +363,10 @@ local function visibleEnemy(bot, enemyPid)
     end
     return nil
 end
-local function onCastEvent(bot, enemyPid, event)
+local function onCastEvent(bot, enemyPid, event, now)
     if not LaneFightConfig.IsOn("Memory") or not LaneFightConfig.Settings().UseCastCallback then
         return
     end
-    local now = DotaTime()
     if now < 0 or not LaneConfig.InLaningPhase() or isNullHandle(bot) then
         return
     end
@@ -420,7 +419,11 @@ local function installCallbacks(bot, w)
                 local function handler(event)
                     if #w.pending < PENDING_MAX then
                         local ____w_pending_8 = w.pending
-                        ____w_pending_8[#____w_pending_8 + 1] = {enemyPid = enemyPid, event = event}
+                        ____w_pending_8[#____w_pending_8 + 1] = {
+                            enemyPid = enemyPid,
+                            event = event,
+                            at = DotaTime()
+                        }
                     end
                 end
                 InstallCastCallback(
@@ -465,8 +468,11 @@ function ____exports.Tick(bot)
     if #w.pending > 0 then
         local queued = w.pending
         w.pending = {}
+        local gap = Perception.Settings().EventGap
         for ____, q in ipairs(queued) do
-            onCastEvent(bot, q.enemyPid, q.event)
+            if now - q.at <= gap then
+                onCastEvent(bot, q.enemyPid, q.event, q.at)
+            end
         end
     end
     if now < w.nextPoll then
@@ -483,10 +489,10 @@ function ____exports.Tick(bot)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue90
+            local __continue91
             repeat
                 if e == nil or not e.visible or not usable(e.unit) then
-                    __continue90 = true
+                    __continue91 = true
                     break
                 end
                 visible[e.pid] = true
@@ -506,9 +512,9 @@ function ____exports.Tick(bot)
                     e.pid,
                     now
                 )
-                __continue90 = true
+                __continue91 = true
             until true
-            if not __continue90 then
+            if not __continue91 then
                 break
             end
         end

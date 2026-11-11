@@ -226,7 +226,7 @@ do
 	T = 445.05
 	H.FarmPattern.Desire(core)
 	check("enemy: not on the first sighting", H.FarmPattern.Current(core) ~= nil)
-	T = 445.06 + H.Profile.Get(core).reactBase
+	T = 445.06 + H.Profile.ThreatHold(core)
 	H.FarmPattern.Think(core)
 	H.FarmPattern.Desire(core)
 	check("enemy: ends after the reaction time", H.FarmPattern.Current(core) == nil)

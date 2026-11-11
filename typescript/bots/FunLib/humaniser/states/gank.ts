@@ -40,7 +40,7 @@ export const SETTINGS = {
     /** Target score needed, lerped from skill 0 to 1: high skill waits for better targets. */
     Threshold: [1.0, 1.8],
     /** Chance to commit to a passing target, per target and Bucket seconds, lerped from skill. */
-    Commit: [0.25, 0.55],
+    Commit: [0.25, 1],
     Bucket: 20,
     /** From this skill up the approach goes through a flank point off the lane line, and the lane is pinged. */
     FlankSkill: 0.5,
