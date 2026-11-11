@@ -36,6 +36,7 @@ local function watchFor(pid)
             lastLoc = {},
             noCdLogged = {},
             callbacks = {},
+            pending = {},
             stats = freshStats(DotaTime())
         }
         watches[pid] = w
@@ -403,6 +404,8 @@ local function onCastEvent(bot, enemyPid, event)
         )
     end
 end
+--- A dead observer has no Tick to drain its queue; casts past this many are dropped.
+local PENDING_MAX = 32
 local function installCallbacks(bot, w)
     local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     for ____, enemyPid in ipairs(GetTeamPlayers(enemyTeam)) do
@@ -415,7 +418,10 @@ local function installCallbacks(bot, w)
                 end
                 w.callbacks[enemyPid] = true
                 local function handler(event)
-                    return onCastEvent(bot, enemyPid, event)
+                    if #w.pending < PENDING_MAX then
+                        local ____w_pending_8 = w.pending
+                        ____w_pending_8[#____w_pending_8 + 1] = {enemyPid = enemyPid, event = event}
+                    end
                 end
                 InstallCastCallback(
                     enemyPid,
@@ -456,6 +462,13 @@ function ____exports.Tick(bot)
         return
     end
     local w = watchFor(bot:GetPlayerID())
+    if #w.pending > 0 then
+        local queued = w.pending
+        w.pending = {}
+        for ____, q in ipairs(queued) do
+            onCastEvent(bot, q.enemyPid, q.event)
+        end
+    end
     if now < w.nextPoll then
         return
     end
@@ -470,15 +483,15 @@ function ____exports.Tick(bot)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue86
+            local __continue90
             repeat
                 if e == nil or not e.visible or not usable(e.unit) then
-                    __continue86 = true
+                    __continue90 = true
                     break
                 end
                 visible[e.pid] = true
-                local ____w_stats_8, ____visible_9 = w.stats, "visible"
-                ____w_stats_8[____visible_9] = ____w_stats_8[____visible_9] + 1
+                local ____w_stats_9, ____visible_10 = w.stats, "visible"
+                ____w_stats_9[____visible_10] = ____w_stats_9[____visible_10] + 1
                 pollCast(
                     bot,
                     w,
@@ -493,15 +506,15 @@ function ____exports.Tick(bot)
                     e.pid,
                     now
                 )
-                __continue86 = true
+                __continue90 = true
             until true
-            if not __continue86 then
+            if not __continue90 then
                 break
             end
         end
     end
-    local ____w_stats_10, ____polls_11 = w.stats, "polls"
-    ____w_stats_10[____polls_11] = ____w_stats_10[____polls_11] + 1
+    local ____w_stats_11, ____polls_12 = w.stats, "polls"
+    ____w_stats_11[____polls_12] = ____w_stats_11[____polls_12] + 1
     summarise(bot, w, now)
     for pid in pairs(w.lastLoc) do
         if visible[pid] ~= true then

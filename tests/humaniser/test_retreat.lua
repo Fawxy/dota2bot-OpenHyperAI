@@ -44,7 +44,7 @@ end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 
 local function react(bot)
-	return require("bots/FunLib/humaniser/profile").Get(bot).reactBase
+	return require("bots/FunLib/humaniser/profile").ThreatHold(bot)
 end
 
 -- Over budget: the hero leaves only once the threat has lasted its reaction time, not on a flicker. Two heroes in reach with

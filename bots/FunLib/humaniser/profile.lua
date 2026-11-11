@@ -55,6 +55,16 @@ function ____exports.Get(bot)
     end
     return profile
 end
+--- How long a threat reading must hold before a hero leaves on it (the retreat's leave rule, the camp trip's threat end):
+-- a debounce against a one-frame reading, not a handicap, so skill 1 keeps it. 0.17 s is the skill-1 reaction time
+-- those two were drilled with (`judgement`); a lower skill waits its own reaction time.
+____exports.THREAT_HOLD = 0.17
+function ____exports.ThreatHold(bot)
+    return math.max(
+        ____exports.THREAT_HOLD,
+        ____exports.Get(bot).reactBase
+    )
+end
 local function baseFor(profile, kind)
     if kind == "notice" then
         return profile.noticeBase

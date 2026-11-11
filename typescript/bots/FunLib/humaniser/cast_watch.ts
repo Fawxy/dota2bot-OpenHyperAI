@@ -38,6 +38,9 @@ interface Watch {
     lastLoc: Record<number, { x: number; y: number; at: number }>;
     noCdLogged: Record<string, boolean>;
     callbacks: Record<number, boolean>;
+    // Cast events waiting for the observer's next Tick: a callback runs outside any bot's think, where GetBot() is nil
+    // and host helpers that read it fail (smoke skill1-clean: 19 lua_error in J.IsInLaningPhase after 10:00).
+    pending: { enemyPid: number; event: any }[];
     last?: Recorded;
     lastSeen?: Recorded;
     stats: Stats;
@@ -79,7 +82,7 @@ function freshStats(now: number): Stats {
 function watchFor(pid: number): Watch {
     let w = watches[pid];
     if (w === undefined) {
-        w = { nextPoll: -math.huge, seen: {}, lastLoc: {}, noCdLogged: {}, callbacks: {}, stats: freshStats(DotaTime()) };
+        w = { nextPoll: -math.huge, seen: {}, lastLoc: {}, noCdLogged: {}, callbacks: {}, pending: [], stats: freshStats(DotaTime()) };
         watches[pid] = w;
     }
     return w;
@@ -296,12 +299,17 @@ function onCastEvent(bot: Unit, enemyPid: number, event: any): void {
     if (info !== undefined) noteCast(bot, watchFor(bot.GetPlayerID()), enemyPid, info, now, "callback");
 }
 
+/** A dead observer has no Tick to drain its queue; casts past this many are dropped. */
+const PENDING_MAX = 32;
+
 function installCallbacks(bot: Unit, w: Watch): void {
     const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
     for (const enemyPid of GetTeamPlayers(enemyTeam)) {
         if (w.callbacks[enemyPid] === true) continue;
         w.callbacks[enemyPid] = true;
-        const handler = (event: any): void => onCastEvent(bot, enemyPid, event);
+        const handler = (event: any): void => {
+            if (w.pending.length < PENDING_MAX) w.pending.push({ enemyPid, event });
+        };
         InstallCastCallback(enemyPid, Telemetry.GuardsEnabled() ? Telemetry.Guard("CastWatch.OnCast", handler) : handler);
     }
 }
@@ -324,6 +332,11 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     if (now < 0) return;
     const w = watchFor(bot.GetPlayerID());
+    if (w.pending.length > 0) {
+        const queued = w.pending;
+        w.pending = [];
+        for (const q of queued) onCastEvent(bot, q.enemyPid, q.event);
+    }
     if (now < w.nextPoll) return;
     const s = LaneFightConfig.Settings();
     w.nextPoll = now + s.PollInterval - 1e-6;
