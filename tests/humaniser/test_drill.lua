@@ -695,6 +695,10 @@ do
 	capture(function() tick(cast) end)
 	check("hitback rig: before 50 s into the rep the front spot is not read yet", #ActionsOf(1, "MoveToLocation") == 0)
 	T = 111
+	ACTIONS = {}
+	capture(function() tick(cast) end)
+	check("hitback rig: a front within 1,300 of a tower is not read: the cast waits", #ActionsOf(1, "MoveToLocation") == 0)
+	LANE_FRONT[2][dota.Lane.Bot] = 0.5
 	capture(function() tick(cast) end)
 	local spot = lastMoveTo(1)
 	check("hitback rig: the cast's spot is 200 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -200)), spot and (spot.x .. "," .. spot.y))
@@ -704,6 +708,8 @@ do
 	d3.loc = Vector(spot.x + 150, spot.y, 0)
 	check("hitback rig: standing, not yet hit: not ready", ready(capture(function() tick(cast) end)) == nil)
 	cast.hitBy[d3] = T
+	check("hitback rig: hit at full HP: not ready (the plain trade rule would answer it; fix5)", ready(capture(function() tick(cast) end)) == nil)
+	cast.hp = 75
 	check("hitback rig: hit by a hero with none of our creeps within 500 of it: not ready", ready(capture(function() tick(cast) end)) == nil)
 	MakeCreep({ team = 2, x = spot.x + 450, y = spot.y })
 	local r = ready(capture(function() tick(cast) end))
@@ -728,7 +734,8 @@ do
 	cast.hitBy[d3] = nil
 
 	-- Rep 2 (`pair`): the front has moved; the spot follows it. The partner stands until 3 s after the release, then leaves.
-	LANE_FRONT[2][dota.Lane.Bot] = 0.5
+	LANE_FRONT[2][dota.Lane.Bot] = 0.4
+	cast.hp = 100
 	T = 246
 	ACTIONS = {}
 	capture(function() tick(cast) end)
@@ -742,6 +749,7 @@ do
 	d3.loc = Vector(spot2.x + 150, spot2.y, 0)
 	CREEPS[2][1].loc = Vector(spot2.x + 450, spot2.y, 0)
 	cast.hitBy[d3] = T
+	cast.hp = 75
 	-- fix3: a front under a tower (the attackers died to our T1) is no rep: ready waits on `towers`.
 	local t1 = TOWERS_W[RAD][dota.Tower.Bot1]
 	local t1at = t1.loc

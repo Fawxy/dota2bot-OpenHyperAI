@@ -191,11 +191,13 @@ export const TABLE: Record<string, Entry> = {
     // Slice hit-back (D24's hit-back half; D10's leave-together as a rep kind, user 12/11/2026). half: decision. Facts the
     // hit back reads: an enemy hero damaged the cast within 1 s (forced: the Dire actor attacks it), standing inside our
     // creeps' aggro (forced: the spots sit at our bot lane front, which `paid` checks at ready), the trade's remaining
-    // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%), the
+    // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%) but the
+    // `behind` one the hit back passes (ready at 80% HP or less with the attacker near full: fix5, at full HP the plain trade
+    // rule took rep 1, so the off arm hit back too), the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
-    // 1,200). `control`: the pos3 stands beside and never attacks. The recipe kills every lane creep 5 s before each rep, so
-    // the waves meet afresh (fix3: the front had drifted under our T1); `towers` leaves out a rep whose front is under one. Release: laning (last hits compete), attack (the trade),
+    // 1,200). `control`: the pos3 stands beside and never attacks. The front wanders between the T1s (fix5), so the spots are
+    // read when the front is clear of every tower (frontsNow); `towers` leaves out a rep whose cast still stands under one. Release: laning (last hits compete), attack (the trade),
     // retreat, idle. `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
     "retreat-hitback": {
         note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
@@ -219,7 +221,7 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 900 },
+                    ready: { paid: 500, towers: 900, hpAtMost: 0.8 },
                 },
                 {
                     name: "pair",
@@ -230,12 +232,12 @@ export const TABLE: Record<string, Entry> = {
                         d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
-                    ready: { paid: 500, towers: 900 },
+                    ready: { paid: 500, towers: 900, hpAtMost: 0.8 },
                 },
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500, towers: 900 },
+                    ready: { paid: 500, towers: 900, hpAtMost: 0.8 },
                 },
                 {
                     name: "control",
@@ -1062,8 +1064,31 @@ interface RigState {
 
 let rig: RigState | undefined;
 
-/** Seconds into a rep before a lane-front spot is read: the waves spawned after the kill meet by about +45 s (fix4). `judgement`. */
-const RIG_FRONT_AT = 50;
+/** A lane-front spot is read only this far from every live tower (`judgement`: a T1 shoots at 700, and the fight drifts). */
+const RIG_FRONT_CLEAR = 1300;
+
+/** Reads every lane-front spot of the rig into rigSpots when all of them are clear of the towers now; whether it did. */
+function frontsNow(): boolean {
+    const names = Object.keys(rigOf(Active())?.spots ?? {}).filter((n) => FRONT_LANES[frontOf(n) ?? ""] !== undefined);
+    const pts: Record<string, Vector> = {};
+    for (const n of names) {
+        const raw = rawSpot(n);
+        const p = raw !== undefined ? passableNear(raw) : undefined;
+        if (p === undefined) return false;
+        for (const team of [Team.Radiant, Team.Dire]) {
+            for (const k of Object.keys(TOWER_IDS)) {
+                const tw = GetTower(team, TOWER_IDS[k]);
+                if (tw !== null && tw !== undefined && tw.IsAlive() && GetUnitToLocationDistance(tw, p) < RIG_FRONT_CLEAR) return false;
+            }
+        }
+        pts[n] = p;
+    }
+    for (const n of names) {
+        rigSpots[n] = pts[n];
+        logSpot(n, pts[n], 0);
+    }
+    return true;
+}
 
 const FRONT_LANES: Record<string, Lane> = { fronttop: Lane.Top, frontmid: Lane.Mid, frontbot: Lane.Bot };
 
@@ -1274,24 +1299,28 @@ function rigPoint(bot: Unit, name: string): Vector | undefined {
     }
     const known = rigSpots[name];
     if (known !== undefined) return known === false ? undefined : known;
-    // A lane-front spot waits until the waves have met again (the recipe kills the lane creeps before each rep: fix4, read
-    // at the rep's start the front sat at our T1), so both teams' VMs read it at the same game second.
-    const st = rigState();
-    if (FRONT_LANES[frontOf(name) ?? ""] !== undefined && (st === undefined || DotaTime() < st.start + RIG_FRONT_AT)) return undefined;
+    // A rep's lane-front spots are read together, at the first frame every one stands RIG_FRONT_CLEAR from every tower: the
+    // front wanders between the two T1s on its own (fix5), and a fight under a tower is no rep (fix3).
+    if (FRONT_LANES[frontOf(name) ?? ""] !== undefined) return frontsNow() ? rigPoint(bot, name) : undefined;
     const raw = rawSpot(name);
     const p = raw !== undefined ? passableNear(raw) : undefined;
     rigSpots[name] = p ?? false;
+    logSpot(name, p, raw !== undefined && p !== undefined ? math.floor(math.sqrt((raw.x - p.x) ** 2 + (raw.y - p.y) ** 2)) : undefined);
+    return p;
+}
+
+/** The `ph=spot` line: where a spot resolved, how far it moved to be passable, and its nearest tower of each team. */
+function logSpot(name: string, p: Vector | undefined, moved: number | undefined): void {
     Telemetry.Event("drill", [
         ["ph", "spot"],
         ["name", Name()],
         ["spot", name],
         ["x", p !== undefined ? math.floor(p.x) : undefined],
         ["y", p !== undefined ? math.floor(p.y) : undefined],
-        ["d", raw !== undefined && p !== undefined ? math.floor(math.sqrt((raw.x - p.x) ** 2 + (raw.y - p.y) ** 2)) : undefined],
+        ["d", moved],
         ["rt", p !== undefined ? math.floor(nearestTower(Team.Radiant, p)) : undefined],
         ["dt", p !== undefined ? math.floor(nearestTower(Team.Dire, p)) : undefined],
     ]);
-    return p;
 }
 
 /**
