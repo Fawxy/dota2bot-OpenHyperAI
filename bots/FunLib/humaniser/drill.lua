@@ -237,6 +237,18 @@ do
     end
 end
 
+local function __TS__ArrayFilter(self, callbackfn, thisArg)
+    local result = {}
+    local len = 0
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            len = len + 1
+            result[len] = self[i]
+        end
+    end
+    return result
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -1407,6 +1419,7 @@ ____exports.TABLE = {
         rig = {
             half = "decision",
             switch = "HealItems",
+            window = 600,
             spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
             timeout = 110,
             keeps = {"levelup"},
@@ -2016,6 +2029,21 @@ local function rigTick(bot)
             {
                 "hp",
                 math.floor(hpShare(bot) * 100 + 0.5) / 100
+            },
+            {
+                "rend",
+                st.start + ____exports.Active().rep.every
+            },
+            {"win", r.window},
+            {
+                "rel",
+                table.concat(
+                    __TS__ArrayFilter(
+                        r.release.modes,
+                        function(____, m) return m ~= "idle" end
+                    ),
+                    ","
+                )
             }
         }
     )
