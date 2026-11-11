@@ -492,9 +492,13 @@ do
 	check("rig: the cast stands, the attacker attacks it", #ActionsOf(7, "AttackUnit") > 0 and ActionsOf(7, "AttackUnit")[1].args[1] == cast)
 	check("rig: still in setup, nothing ready", #readyLines(capture(function() tick(H, cast) end)) == 0 and H.Drill.Held(cast))
 	cast.hp = 24
+	local hits = #ActionsOf(7, "AttackUnit")
+	tick(H, cast, atk)
+	check("rig: at 24%, under the ready bar but over the attack's 20%, the attack goes on (fix5: regen over the bar)", #ActionsOf(7, "AttackUnit") == hits + 1)
+	cast.hp = 19
 	tick(H, cast, atk)
 	local wait = lastMoveTo(7)
-	check("rig: at 24% the attacker leaves for its fountain", wait ~= nil and math.sqrt((wait.x - spot.x) ^ 2 + (wait.y - spot.y) ^ 2) > 1600)
+	check("rig: at 19% the attacker leaves for its fountain", wait ~= nil and math.sqrt((wait.x - spot.x) ^ 2 + (wait.y - spot.y) ^ 2) > 1600)
 	check("rig: the attacker still near: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	atk.loc = Vector(wait.x, wait.y, 0)
 	T = 80

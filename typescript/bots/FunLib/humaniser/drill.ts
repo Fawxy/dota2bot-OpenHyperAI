@@ -195,7 +195,9 @@ export const TABLE: Record<string, Entry> = {
     // the cast at its fountain during setup (gold from the recipe); reach by where the attacker stands after. Both heal in
     // their fountain first (no console control sets a bot's HP: probe 12/11/2026, SCENARIOS.md; fix3: the attacker lost HP
     // standing beside a camp and died). Spots: 2,850 west of our bot T1, 700 off the lane (our creeps would hit the attacker),
-    // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). Release: our retreat only.
+    // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). The attack stops 5 points under the ready
+    // bar (fix5: stopping at the bar, the cast regenerated over it while the attacker walked out of reach). Release: our
+    // retreat only.
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
         cast: { r: [5] },
@@ -213,22 +215,22 @@ export const TABLE: Record<string, Entry> = {
             reps: [
                 {
                     name: "salve",
-                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.25", "leave"] },
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.2", "leave"] },
                     ready: { hpAtMost: 0.25, holds: ["item_flask"], clear: 1600 },
                 },
                 {
                     name: "tango",
-                    setup: { r5: ["heal", "sell item_flask", "buy item_tango", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.25", "leave"] },
+                    setup: { r5: ["heal", "sell item_flask", "buy item_tango", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.2", "leave"] },
                     ready: { hpAtMost: 0.25, holds: ["item_tango"], lacks: ["item_flask"], clear: 1600 },
                 },
                 {
                     name: "stays",
-                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.25", "stand near"] },
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.2", "stand near"] },
                     ready: { hpAtMost: 0.25, holds: ["item_flask"], near: 1200 },
                 },
                 {
                     name: "control",
-                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.6", "leave"] },
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.55", "leave"] },
                     ready: { hpAtMost: 0.6, holds: ["item_flask"], clear: 1600 },
                 },
             ],
