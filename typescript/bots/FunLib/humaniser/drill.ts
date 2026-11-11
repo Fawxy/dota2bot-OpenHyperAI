@@ -197,7 +197,7 @@ export const TABLE: Record<string, Entry> = {
     // standing beside a camp and died). Spots: 2,850 west of our bot T1, 700 off the lane (our creeps would hit the attacker),
     // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). The attack stops 5 points under the ready
     // bar (fix5: stopping at the bar, the cast regenerated over it while the attacker walked out of reach). Release: our
-    // retreat only.
+    // retreat, else it stands (`idle`; fix6: a Valve built-in mode took the control rep's cast).
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
         cast: { r: [5] },
@@ -211,7 +211,7 @@ export const TABLE: Record<string, Entry> = {
                 near: ["r:bot1", -2250, 700],
             },
             timeout: 110,
-            release: { modes: ["retreat"] },
+            release: { modes: ["retreat", "idle"] },
             reps: [
                 {
                     name: "salve",
@@ -563,7 +563,7 @@ export function ForcedAt(context: string, t: number): "on" | "off" | "none" | un
 export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
-    if (d?.rig !== undefined && (r === "actor" || r === "cast")) return Held(bot) && rigHold(bot);
+    if (d?.rig !== undefined && (r === "actor" || r === "cast")) return Held(bot) ? rigHold(bot) : rigIdle(bot);
     if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0 && brokeOff[bot.GetPlayerID()] !== RepAt(DotaTime())) {
         if (chase(bot)) return true;
     }
@@ -944,7 +944,9 @@ export interface Rig {
     /** Seconds from the rep's start for the ready checks to hold; else the rep is invalid. */
     timeout: number;
     /**
-     * What runs for the cast after ready: its modes (the Gate names in the mode files), OHA's item use, OHA's ability use.
+     * What runs for the cast after ready: its modes (the Gate names in the mode files, and `idle`: stand still,
+     * at RIG_IDLE_DESIRE, when no released mode wants it), OHA's item use, OHA's ability use. A Valve built-in mode with
+     * no mode file is not gated; `idle` holds against those seen so far, and `@drill_roles` `rel_modes` shows any that win.
      * Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases everything (the host-on step).
      */
     release: { modes: string[]; items?: boolean; abilities?: boolean };
@@ -965,6 +967,8 @@ interface RigState {
     bought: Record<number, Record<string, [number, number]>>;
     /** Per cast pid: the ready check failing at the last frame, logged when it changes (`ph=wait`). */
     waiting: Record<number, string>;
+    /** Per cast pid: where its current idle spell stands, and the spell's last frame. */
+    idleAt: Record<number, [Vector, number]>;
 }
 
 let rig: RigState | undefined;
@@ -991,7 +995,7 @@ function rigState(): RigState | undefined {
     if (rigOf(d) === undefined) return undefined;
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
-    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {} };
+    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {} };
     return rig;
 }
 
@@ -1024,7 +1028,35 @@ function releasedModes(bot: Unit): Record<string, true> | undefined {
 /** Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list. */
 export function RigDesire(bot: Unit, mode: string): number | undefined {
     const m = releasedModes(bot);
-    return m !== undefined && m[mode] !== true ? 0 : undefined;
+    if (m === undefined || m[mode] === true) return undefined;
+    // `idle` listed: farm (the bench's host) holds the cast standing, under the released modes' holds.
+    return mode === "farm" && m["idle"] === true ? RIG_IDLE_DESIRE : 0;
+}
+
+/**
+ * A released cast's desire for `idle` (farm mode, standing where it was released). Over the Valve built-in mode that took a
+ * released cast nothing else wanted (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates), under the 0.95 at which
+ * our retreat and the arbiter's hosts hold. `judgement`.
+ */
+const RIG_IDLE_DESIRE = 0.5;
+
+/**
+ * Farm Think for a released rig cast: while farm is not itself released it stands still (`idle`; Valve also keeps an
+ * active mode at desire 0 for a few seconds, and OHA's farm Think ran then: fix6). False for anyone else.
+ */
+function rigIdle(bot: Unit): boolean {
+    const m = releasedModes(bot);
+    if (RoleOf(bot) !== "cast" || m === undefined || m["farm"] === true) return false;
+    const st = rigState();
+    if (st === undefined) return false;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    // A new idle spell (none in the last second) stands where the cast is now, not where it was released.
+    const last = st.idleAt[pid];
+    if (last === undefined || now - last[1] > 1) st.idleAt[pid] = [bot.GetLocation(), now];
+    else last[1] = now;
+    standAt(bot, st.idleAt[pid][0]);
+    return true;
 }
 
 /**

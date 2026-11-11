@@ -504,7 +504,19 @@ do
 	T = 80
 	local r = readyLines(capture(function() tick(H, atk, cast) end))
 	check("rig: ready once, ok=1, var=salve", #r == 1 and field(r[1], "ok") == "1" and field(r[1], "var") == "salve" and field(r[1], "secs") == "20", r[1])
-	check("rig: released: not held, retreat runs, farm and laning get 0", not H.Drill.Held(cast) and H.Chooser.Decide(cast, "farm") == 0 and H.Chooser.Decide(cast, "laning") == 0 and H.Drill.RigDesire(cast, "retreat") == nil)
+	check("rig: released: not held, retreat runs, laning gets 0, farm holds idle at 0.5", not H.Drill.Held(cast) and H.Chooser.Decide(cast, "laning") == 0 and H.Chooser.Decide(cast, "farm") == 0.5 and H.Drill.RigDesire(cast, "retreat") == nil)
+	-- fix6: Valve kept farm active at desire 0 and OHA's farm Think ran; a released cast's farm Think is ours: it stands
+	-- where its idle spell began, and a later spell (after a retreat walked it home) stands there, not back at the release.
+	local relAt = Vector(cast.loc.x, cast.loc.y, 0)
+	ACTIONS = {}
+	check("rig: released: farm Think is ours, it stands still", H.Chooser.Bench(cast) == true and lastMoveTo(4) ~= nil and math.abs(lastMoveTo(4).x - relAt.x) < 30)
+	T = T + 5
+	cast.loc = Vector(-6619, -6336, 0)
+	ACTIONS = {}
+	H.Chooser.Bench(cast)
+	check("rig: released: a later idle spell stands where the cast is now (the fountain)", lastMoveTo(4) ~= nil and math.abs(lastMoveTo(4).x - -6619) < 30)
+	cast.loc = relAt
+	T = T - 5
 	check("rig: released: OHA's items and spells stay off (not listed)", H.Chooser.HoldsCasts(cast, true) and H.Chooser.HoldsCasts(cast, false))
 	check("rig: ready logs once per rep", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	T = 211
