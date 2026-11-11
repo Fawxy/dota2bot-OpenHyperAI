@@ -714,12 +714,19 @@ do
 	capture(function() tick(d3) tick(d3) end)
 	local hits = ActionsOf(7, "AttackUnit")
 	check("hitback rig: the attacker finds the cast 350 off its reading of a front spot", #hits >= 1 and hits[#hits].args[1] == cast)
+	-- fix2: released, the cast walks off its spot to hit back; the attacker keeps attacking it.
+	cast.loc = Vector(spot.x + 900, spot.y, 0)
+	local n = #ActionsOf(7, "AttackUnit")
+	capture(function() tick(d3) end)
+	hits = ActionsOf(7, "AttackUnit")
+	check("hitback rig: the attacker keeps the hero it found when it walks 900 off the spot", #hits == n + 1 and hits[#hits].args[1] == cast)
+	cast.loc = Vector(spot.x + 150, spot.y, 0)
 	T = 62.5
 	cast.hitBy[d3] = nil
 
 	-- Rep 2 (`pair`): the front has moved; the spot follows it. The partner stands until 3 s after the release, then leaves.
 	LANE_FRONT[2][dota.Lane.Bot] = 0.7
-	T = 151
+	T = 196
 	ACTIONS = {}
 	capture(function() tick(cast) end)
 	local spot2 = lastMoveTo(1)
@@ -733,11 +740,11 @@ do
 	CREEPS[2][1].loc = Vector(spot2.x + 450, spot2.y, 0)
 	cast.hitBy[d3] = T
 	check("hitback rig: pair is ready on the same facts", ready(capture(function() tick(cast, r5) end)) ~= nil)
-	T = 153
+	T = 198
 	ACTIONS = {}
 	capture(function() tick(r5) end)
 	check("hitback rig: 2 s after the release the partner still stands by", near(lastMoveTo(5), pspot, 60))
-	T = 154.2
+	T = 199.2
 	ACTIONS = {}
 	capture(function() tick(r5) tick(r5) end)
 	local home = lastMoveTo(5)

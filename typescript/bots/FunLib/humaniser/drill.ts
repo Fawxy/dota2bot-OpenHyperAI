@@ -197,10 +197,11 @@ export const TABLE: Record<string, Entry> = {
     // 1,200). `control`: the pos3 stands beside and never attacks. Release: laning (last hits compete), attack (the trade),
     // retreat, idle. `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
     "retreat-hitback": {
-        note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat",
+        note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
         cast: SAFE_CORE,
         others: "bench",
-        rep: { every: 90, from: 60 },
+        // 135 s (fix2: the cast's heal walk from the front and back is about 80 s, and the fight 20 s), so four reps by 10:00.
+        rep: { every: 135, from: 60 },
         rig: {
             half: "decision",
             switch: "HitBack",
@@ -210,7 +211,7 @@ export const TABLE: Record<string, Entry> = {
                 partner: ["r:frontbot", -450, 0],
                 near: ["r:frontbot", 0, 0],
             },
-            timeout: 60,
+            timeout: 95,
             keeps: ["levelup"],
             release: { modes: ["laning", "attack", "retreat", "idle"] },
             reps: [
@@ -1052,6 +1053,8 @@ interface RigState {
     releasedAt?: number;
     /** Per actor pid: the index into its `after` steps. */
     afterStep: Record<number, number>;
+    /** Per attacker pid: the hero its attack step found, kept for the rep (hit-back fix2: the cast walked off its spot to hit back). */
+    atk: Record<number, Unit>;
 }
 
 let rig: RigState | undefined;
@@ -1084,7 +1087,7 @@ function rigState(): RigState | undefined {
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
     if (rig === undefined || rig.rep !== n) {
-        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, afterStep: {} };
+        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, afterStep: {}, atk: {} };
         // Front spots are re-read now, on the rep's first frame, so both teams' VMs take the front at about the same moment.
         for (const name of Object.keys(rigOf(d)!.spots)) {
             if (FRONT_LANES[frontOf(name) ?? ""] === undefined) continue;
@@ -1460,7 +1463,9 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         // attack <hero> until hp <share>
         const share = tonumber(words[4]);
         if (share === undefined) return false;
-        const target = attackTarget(bot, st, words[1]);
+        const kept = st.atk[pid];
+        const target = kept !== undefined && !kept.IsNull() && kept.IsAlive() && kept.CanBeSeen() ? kept : attackTarget(bot, st, words[1]);
+        if (target !== undefined) st.atk[pid] = target;
         if (target !== undefined && hpShare(target) <= share) return true;
         if (target === undefined) {
             // Not seen at its spot yet (still walking there, or in fog): go to that spot (fix3, 12/11/2026: a respawned

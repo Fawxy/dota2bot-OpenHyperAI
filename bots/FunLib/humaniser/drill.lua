@@ -857,7 +857,8 @@ function rigState()
             waiting = {},
             idleAt = {},
             hpMet = {},
-            afterStep = {}
+            afterStep = {},
+            atk = {}
         }
         for ____, name in ipairs(__TS__ObjectKeys(rigOf(d).spots)) do
             do
@@ -1295,7 +1296,11 @@ function rigStep(bot, st, step, last)
         if share == nil then
             return false
         end
-        local target = attackTarget(bot, st, words[2])
+        local kept = st.atk[pid]
+        local target = kept ~= nil and not kept:IsNull() and kept:IsAlive() and kept:CanBeSeen() and kept or attackTarget(bot, st, words[2])
+        if target ~= nil then
+            st.atk[pid] = target
+        end
         if target ~= nil and hpShare(target) <= share then
             return true
         end
@@ -1503,16 +1508,16 @@ ____exports.TABLE = {
         rep = {every = 90, from = 60, control = 4}
     },
     ["retreat-hitback"] = {
-        note = "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat",
+        note = "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
         cast = SAFE_CORE,
         others = "bench",
-        rep = {every = 90, from = 60},
+        rep = {every = 135, from = 60},
         rig = {
             half = "decision",
             switch = "HitBack",
             window = 600,
             spots = {cast = {"r:frontbot", -200, 0}, partner = {"r:frontbot", -450, 0}, near = {"r:frontbot", 0, 0}},
-            timeout = 60,
+            timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
             reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800}}}
@@ -2044,19 +2049,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue236
+                local __continue237
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue236 = true
+                        __continue237 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue236 = true
+                    __continue237 = true
                 until true
-                if not __continue236 then
+                if not __continue237 then
                     break
                 end
             end
@@ -2073,10 +2078,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue242
+                local __continue243
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue242 = true
+                        __continue243 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2087,9 +2092,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue242 = true
+                    __continue243 = true
                 until true
-                if not __continue242 then
+                if not __continue243 then
                     break
                 end
             end
