@@ -1026,9 +1026,9 @@ function releasedModes(bot: Unit): Record<string, true> | undefined {
 }
 
 /**
- * item_purchase_generic: a rig's cast and actors buy nothing through OHA, so they hold only what the rig's `buy` steps hand
- * them and the attacker hits as hard every rep (user 12/11/2026: a Vengeful Spirit cast with OHA's Tranquil Boots
- * regenerated over the ready bar).
+ * OHA's purchase, courier and buyback thinks: a rig's cast and actors buy, fetch and buy back nothing, so they hold only
+ * what the rig's `buy` steps hand them, keep the rig's gold, and the attacker hits as hard every rep (rigA2, 12/11/2026:
+ * OHA spent the cast's 600 gold before each rep, so the salve buy failed).
  */
 export function HoldsPurchases(bot: Unit): boolean {
     if (Active()?.rig === undefined) return false;

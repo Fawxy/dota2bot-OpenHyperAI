@@ -1815,9 +1815,9 @@ function ____exports.CastSpotPoint(bot, spot)
     end
     return spotPoint(bot, spot)
 end
---- item_purchase_generic: a rig's cast and actors buy nothing through OHA, so they hold only what the rig's `buy` steps hand
--- them and the attacker hits as hard every rep (user 12/11/2026: a Vengeful Spirit cast with OHA's Tranquil Boots
--- regenerated over the ready bar).
+--- OHA's purchase, courier and buyback thinks: a rig's cast and actors buy, fetch and buy back nothing, so they hold only
+-- what the rig's `buy` steps hand them, keep the rig's gold, and the attacker hits as hard every rep (rigA2, 12/11/2026:
+-- OHA spent the cast's 600 gold before each rep, so the salve buy failed).
 function ____exports.HoldsPurchases(bot)
     local ____opt_50 = ____exports.Active()
     if (____opt_50 and ____opt_50.rig) == nil then
