@@ -1062,6 +1062,9 @@ interface RigState {
 
 let rig: RigState | undefined;
 
+/** Seconds into a rep before a lane-front spot is read: the waves spawned after the kill meet by about +45 s (fix4). `judgement`. */
+const RIG_FRONT_AT = 50;
+
 const FRONT_LANES: Record<string, Lane> = { fronttop: Lane.Top, frontmid: Lane.Mid, frontbot: Lane.Bot };
 
 /** Resolved rig spots by name, for the game (logged once each, `ph=spot`; a front spot once a rep). */
@@ -1091,12 +1094,8 @@ function rigState(): RigState | undefined {
     if (n === 0) return undefined;
     if (rig === undefined || rig.rep !== n) {
         rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, afterStep: {}, atk: {} };
-        // Front spots are re-read now, on the rep's first frame, so both teams' VMs take the front at about the same moment.
-        for (const name of Object.keys(rigOf(d)!.spots)) {
-            if (FRONT_LANES[frontOf(name) ?? ""] === undefined) continue;
-            rigSpots[name] = undefined;
-            rigPoint(GetBot(), name);
-        }
+        // Front spots are read again this rep, from RIG_FRONT_AT into it (rigPoint).
+        for (const name of Object.keys(rigOf(d)!.spots)) if (FRONT_LANES[frontOf(name) ?? ""] !== undefined) rigSpots[name] = undefined;
     }
     return rig;
 }
@@ -1275,6 +1274,10 @@ function rigPoint(bot: Unit, name: string): Vector | undefined {
     }
     const known = rigSpots[name];
     if (known !== undefined) return known === false ? undefined : known;
+    // A lane-front spot waits until the waves have met again (the recipe kills the lane creeps before each rep: fix4, read
+    // at the rep's start the front sat at our T1), so both teams' VMs read it at the same game second.
+    const st = rigState();
+    if (FRONT_LANES[frontOf(name) ?? ""] !== undefined && (st === undefined || DotaTime() < st.start + RIG_FRONT_AT)) return undefined;
     const raw = rawSpot(name);
     const p = raw !== undefined ? passableNear(raw) : undefined;
     rigSpots[name] = p ?? false;

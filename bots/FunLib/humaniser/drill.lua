@@ -275,7 +275,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, frontOf, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastSpotName, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, FRONT_LANES, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_FIND_FRONT, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, frontOf, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastSpotName, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, RIG_FRONT_AT, FRONT_LANES, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_FIND_FRONT, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -861,23 +861,8 @@ function rigState()
             atk = {}
         }
         for ____, name in ipairs(__TS__ObjectKeys(rigOf(d).spots)) do
-            do
-                local __continue118
-                repeat
-                    if FRONT_LANES[frontOf(name) or ""] == nil then
-                        __continue118 = true
-                        break
-                    end
-                    rigSpots[name] = nil
-                    rigPoint(
-                        GetBot(),
-                        name
-                    )
-                    __continue118 = true
-                until true
-                if not __continue118 then
-                    break
-                end
+            if FRONT_LANES[frontOf(name) or ""] ~= nil then
+                rigSpots[name] = nil
             end
         end
     end
@@ -1053,6 +1038,10 @@ function rigPoint(bot, name)
         end
         return ____temp_56
     end
+    local st = rigState()
+    if FRONT_LANES[frontOf(name) or ""] ~= nil and (st == nil or DotaTime() < st.start + RIG_FRONT_AT) then
+        return nil
+    end
     local raw = rawSpot(name)
     local ____temp_57
     if raw ~= nil then
@@ -1135,10 +1124,10 @@ function attackTarget(bot, st, key)
     local bestD = spot ~= nil and FRONT_LANES[frontOf(spot) or ""] ~= nil and RIG_FIND_FRONT or RIG_PLACED
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue178
+            local __continue179
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil then
-                    __continue178 = true
+                    __continue179 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(h, p)
@@ -1146,9 +1135,9 @@ function attackTarget(bot, st, key)
                     best = h
                     bestD = d
                 end
-                __continue178 = true
+                __continue179 = true
             until true
-            if not __continue178 then
+            if not __continue179 then
                 break
             end
         end
@@ -1942,6 +1931,7 @@ function ____exports.CastSpotPoint(bot, spot)
     end
     return spotPoint(bot, spot)
 end
+RIG_FRONT_AT = 50
 FRONT_LANES = {fronttop = Lane.Top, frontmid = Lane.Mid, frontbot = Lane.Bot}
 rigSpots = {}
 --- A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
@@ -2049,19 +2039,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue237
+                local __continue238
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue237 = true
+                        __continue238 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue237 = true
+                    __continue238 = true
                 until true
-                if not __continue237 then
+                if not __continue238 then
                     break
                 end
             end
@@ -2089,10 +2079,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue249
+                local __continue250
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue249 = true
+                        __continue250 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2103,9 +2093,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue249 = true
+                    __continue250 = true
                 until true
-                if not __continue249 then
+                if not __continue250 then
                     break
                 end
             end

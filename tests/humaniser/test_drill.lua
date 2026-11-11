@@ -693,6 +693,9 @@ do
 	LANE_FRONT[2][dota.Lane.Bot] = 0.6
 	T = 61
 	capture(function() tick(cast) end)
+	check("hitback rig: before 50 s into the rep the front spot is not read yet", #ActionsOf(1, "MoveToLocation") == 0)
+	T = 111
+	capture(function() tick(cast) end)
 	local spot = lastMoveTo(1)
 	check("hitback rig: the cast's spot is 200 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -200)), spot and (spot.x .. "," .. spot.y))
 	-- fix1: creeps at the front shove the statue; 150 off its spot it still stands there.
@@ -721,12 +724,12 @@ do
 	hits = ActionsOf(7, "AttackUnit")
 	check("hitback rig: the attacker keeps the hero it found when it walks 900 off the spot", #hits == n + 1 and hits[#hits].args[1] == cast)
 	cast.loc = Vector(spot.x + 150, spot.y, 0)
-	T = 62.5
+	T = 112.5
 	cast.hitBy[d3] = nil
 
 	-- Rep 2 (`pair`): the front has moved; the spot follows it. The partner stands until 3 s after the release, then leaves.
 	LANE_FRONT[2][dota.Lane.Bot] = 0.5
-	T = 196
+	T = 246
 	ACTIONS = {}
 	capture(function() tick(cast) end)
 	local spot2 = lastMoveTo(1)
@@ -746,11 +749,11 @@ do
 	check("hitback rig: a tower within 900 of the cast holds ready", ready(capture(function() tick(cast, r5) end)) == nil)
 	t1.loc = t1at
 	check("hitback rig: pair is ready on the same facts", ready(capture(function() tick(cast, r5) end)) ~= nil)
-	T = 198
+	T = 248
 	ACTIONS = {}
 	capture(function() tick(r5) end)
 	check("hitback rig: 2 s after the release the partner still stands by", near(lastMoveTo(5), pspot, 60))
-	T = 199.2
+	T = 249.2
 	ACTIONS = {}
 	capture(function() tick(r5) tick(r5) end)
 	local home = lastMoveTo(5)
