@@ -270,6 +270,7 @@ do
 		package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = o.on
 		bot.items = o.items
 		TREES = o.tree ~= false and { [7] = Vector(bot.loc.x + 150, bot.loc.y) } or nil
+		if o.pre then o.pre(bot) end
 		local out = capture(function()
 			check("heal items: the heal start", H.Retreat.Desire(bot) == 0.95)
 			H.Retreat.Think(bot)
@@ -307,6 +308,26 @@ do
 
 	_, bot, l = start({ hp = 150, loc = Vector(-6000, -6000), items = { [1] = SALVE } })
 	check("heal items: our fountain nearer, home with the salve kept", field(l, "skip") == "fountain" and kinds(bot.pid) == "", l)
+
+	-- A salve's 13 s breaks on a hero's hit: items wait for a hero who can reach us within 4 s, which the stay read's 2 s misses
+	-- (a standing hero 1,100 off), and for one just out of sight (rig on2, on3 `stays`: the attacker 700 off, the salve drunk).
+	_, bot, l = start({ hp = 150, items = { [1] = SALVE }, pre = function(bot)
+		enemy(10, Vector(bot.loc.x + 1100, bot.loc.y))
+		LAST_SEEN[10] = { location = Vector(bot.loc.x + 1100, bot.loc.y), time_since_seen = 0 }
+	end })
+	check("heal items: a hero 4 s off, home with the salve kept", field(l, "skip") == "reach" and kinds(bot.pid) == "" and field(l, "ed") == "1100", l)
+	_, bot, l = start({ hp = 150, items = { [1] = SALVE }, pre = function(bot)
+		local e = enemy(10, Vector(bot.loc.x + 700, bot.loc.y))
+		e.CanBeSeen = function() return false end
+		LAST_SEEN[10] = { location = Vector(bot.loc.x + 700, bot.loc.y), time_since_seen = 1 }
+	end })
+	check("heal items: a hero seen 700 off a second ago, home with the salve kept", field(l, "skip") == "reach" and kinds(bot.pid) == "" and field(l, "ets") == "1", l)
+	_, bot, l = start({ hp = 150, items = { [1] = SALVE }, pre = function(bot)
+		local e = enemy(10, Vector(bot.loc.x + 3000, bot.loc.y))
+		e.CanBeSeen = function() return false end
+		LAST_SEEN[10] = { location = Vector(bot.loc.x + 3000, bot.loc.y), time_since_seen = 2 }
+	end })
+	check("heal items: a hero last seen 3,000 off cannot reach us, the salve", field(l, "set") == "salve", l)
 
 	-- The wait at our tower: the anchor is our T1's stand point; a hero in reach sends it on home before the salve has done its work.
 	local H

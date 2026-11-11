@@ -997,6 +997,8 @@ ____exports.EVENTS = {
         got = "num",
         tree = "bool",
         skip = "str",
+        ed = "num",
+        ets = "num",
         x = "num",
         y = "num"
     },

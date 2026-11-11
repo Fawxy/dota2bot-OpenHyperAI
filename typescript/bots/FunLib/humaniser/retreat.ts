@@ -82,6 +82,18 @@ export const SETTINGS = {
     HealTree: 300,
     /** After a use, no other order until its buff shows or this long has passed (a tango walks to its tree first). judgement. */
     HealUseWait: 1.5,
+    /**
+     * The read's horizon (s) for using items: a salve's 13 s breaks on a hero's hit, so a hero who can reach us within the gates'
+     * horizon (Threat GateHorizon, about 1,400 for a melee) holds them, not only one in the stay read's 2 s (rig on2, on3
+     * `stays`: the attacker standing 700 off read out of reach, and the salve was drunk). judgement.
+     */
+    HealItemHorizon: Threat.SETTINGS.GateHorizon,
+    /**
+     * A hero out of sight for no more than Threat MissingAfter is in neither the read's reach (it reads visible heroes) nor its
+     * missing belief (after MissingAfter); for items it counts from its last sighting: MissingSpeed over the time since plus
+     * HealItemHorizon, plus this for its attack range and both hulls (a melee's 150 and two 24s). judgement.
+     */
+    HealItemUnseenMargin: 200,
     /** The desire while an episode runs; the chooser's gate holds every other mode but the human's orders at 0 meanwhile. judgement. */
     EpisodeDesire: 0.95,
     /** A forced drill rep holds the retreat mode above every mode the cast could otherwise take. */
@@ -432,6 +444,34 @@ function anchorPoint(a: Anchor): Vector {
  * HealItems: the first set in HealSets whose items are all usable now (a tango with a tree near, faerie fire with no salve, no
  * buff already running for an item) and restore HP to HealBack; on one, the anchor becomes our nearest tower behind us.
  */
+/**
+ * Enemy heroes who can reach `bot` within HealItemHorizon, seen or just out of sight: items wait for none. Also the nearest
+ * enemy hero's last sighting (distance, seconds since), for the log.
+ */
+function itemReach(bot: Unit): LuaMultiReturn<[number, number | undefined, number | undefined]> {
+    const s = SETTINGS;
+    const t = Threat.SETTINGS;
+    const here = bot.GetLocation();
+    const read = Threat.Read(bot, here, here, s.HealItemHorizon);
+    let n = read.reach.length;
+    let near: number | undefined;
+    let tss: number | undefined;
+    for (let pid = 0; pid <= 23; pid++) {
+        const team = GetTeamForPlayer(pid);
+        if (team === bot.GetTeam() || (team !== Team.Radiant && team !== Team.Dire) || !IsHeroAlive(pid)) continue;
+        const info = GetHeroLastSeenInfo(pid)[0];
+        if (info === undefined) continue;
+        const d = dist(info.location, here);
+        if (near === undefined || d < near) {
+            near = d;
+            tss = info.time_since_seen;
+        }
+        if (read.reach.includes(pid) || info.time_since_seen <= 0.1 || info.time_since_seen > t.MissingAfter) continue;
+        if (d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin) n++;
+    }
+    return $multi(n, near, tss);
+}
+
 function planItems(bot: Unit, ep: Episode): void {
     const s = SETTINGS;
     const max = math.max(1, bot.GetMaxHealth());
@@ -463,7 +503,8 @@ function planItems(bot: Unit, ep: Episode): void {
         }
     }
     const tower = nearestTowerBehind(bot);
-    const skip = !laneNearer(bot, here) ? "fountain" : Object.keys(got).length === 0 ? "none" : set === undefined ? "short" : tower === undefined ? "no-tower" : undefined;
+    const [reachN, near, tss] = itemReach(bot);
+    const skip = !laneNearer(bot, here) ? "fountain" : reachN > 0 ? "reach" : Object.keys(got).length === 0 ? "none" : set === undefined ? "short" : tower === undefined ? "no-tower" : undefined;
     Telemetry.Event("retreat", [
         ["ph", "items"],
         ["pid", bot.GetPlayerID()],
@@ -474,6 +515,8 @@ function planItems(bot: Unit, ep: Episode): void {
         ["got", math.floor(restore)],
         ["tree", tree !== undefined],
         ["skip", skip ?? "-"],
+        ["ed", near !== undefined ? math.floor(near) : -1],
+        ["ets", tss !== undefined ? r2(tss) : -1],
     ]);
     if (skip !== undefined || set === undefined || tower === undefined) return;
     // A tango first, while its tree is the one found here; the others are immediate.
@@ -488,7 +531,8 @@ function planItems(bot: Unit, ep: Episode): void {
 function itemHealOn(bot: Unit, ep: Episode, r: Threat.Read, now: number): void {
     const spent = (ep.uses === undefined || ep.uses.length === 0) && (ep.useUntil === undefined || now >= ep.useUntil)
         && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing");
-    const why = r.reach.length > 0 ? "reach" : spent ? "spent" : undefined;
+    const [reachN] = itemReach(bot);
+    const why = r.reach.length > 0 || reachN > 0 ? "reach" : spent ? "spent" : undefined;
     if (why === undefined) return;
     ep.itemHeal = false;
     ep.uses = undefined;

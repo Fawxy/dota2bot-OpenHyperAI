@@ -190,6 +190,26 @@ local function __TS__ArraySort(self, compareFn)
     return self
 end
 
+local function __TS__ArrayIncludes(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    local k = fromIndex
+    if fromIndex < 0 then
+        k = len + fromIndex
+    end
+    if k < 0 then
+        k = 0
+    end
+    for i = k + 1, len do
+        if self[i] == searchElement then
+            return true
+        end
+    end
+    return false
+end
+
 local function __TS__ArrayMap(self, callbackfn, thisArg)
     local result = {}
     for i = 1, #self do
@@ -299,26 +319,6 @@ local function __TS__SparseArraySpread(sparseArray)
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
 
-local function __TS__ArrayIncludes(self, searchElement, fromIndex)
-    if fromIndex == nil then
-        fromIndex = 0
-    end
-    local len = #self
-    local k = fromIndex
-    if fromIndex < 0 then
-        k = len + fromIndex
-    end
-    if k < 0 then
-        k = 0
-    end
-    for i = k + 1, len do
-        if self[i] == searchElement then
-            return true
-        end
-    end
-    return false
-end
-
 local function __TS__ArraySome(self, callbackfn, thisArg)
     for i = 1, #self do
         if callbackfn(thisArg, self[i], i - 1, self) then
@@ -404,13 +404,13 @@ function unpaid(bot, r)
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue129
+            local __continue136
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue129 = true
+                    __continue136 = true
                     break
                 end
                 local at = h:GetLocation()
@@ -423,9 +423,9 @@ function unpaid(bot, r)
                 ) then
                     n = n + 1
                 end
-                __continue129 = true
+                __continue136 = true
             until true
-            if not __continue129 then
+            if not __continue136 then
                 break
             end
         end
@@ -459,6 +459,8 @@ ____exports.SETTINGS = {
     },
     HealTree = 300,
     HealUseWait = 1.5,
+    HealItemHorizon = Threat.SETTINGS.GateHorizon,
+    HealItemUnseenMargin = 200,
     EpisodeDesire = 0.95,
     DrillDesire = 1,
     Arrive = 200,
@@ -853,8 +855,55 @@ end
 local function anchorPoint(a)
     return a.ally ~= nil and valid(a.ally) and a.ally:GetLocation() or a.at
 end
---- HealItems: the first set in HealSets whose items are all usable now (a tango with a tree near, faerie fire with no salve, no
--- buff already running for an item) and restore HP to HealBack; on one, the anchor becomes our nearest tower behind us.
+--- Enemy heroes who can reach `bot` within HealItemHorizon, seen or just out of sight: items wait for none. Also the nearest
+-- enemy hero's last sighting (distance, seconds since), for the log.
+local function itemReach(bot)
+    local s = ____exports.SETTINGS
+    local t = Threat.SETTINGS
+    local here = bot:GetLocation()
+    local read = Threat.Read(bot, here, here, s.HealItemHorizon)
+    local n = #read.reach
+    local near
+    local tss
+    do
+        local pid = 0
+        while pid <= 23 do
+            do
+                local __continue77
+                repeat
+                    local team = GetTeamForPlayer(pid)
+                    if team == bot:GetTeam() or team ~= Team.Radiant and team ~= Team.Dire or not IsHeroAlive(pid) then
+                        __continue77 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(pid)[1]
+                    if info == nil then
+                        __continue77 = true
+                        break
+                    end
+                    local d = dist(info.location, here)
+                    if near == nil or d < near then
+                        near = d
+                        tss = info.time_since_seen
+                    end
+                    if __TS__ArrayIncludes(read.reach, pid) or info.time_since_seen <= 0.1 or info.time_since_seen > t.MissingAfter then
+                        __continue77 = true
+                        break
+                    end
+                    if d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin then
+                        n = n + 1
+                    end
+                    __continue77 = true
+                until true
+                if not __continue77 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    return n, near, tss
+end
 local function planItems(bot, ep)
     local s = ____exports.SETTINGS
     local max = math.max(
@@ -868,30 +917,30 @@ local function planItems(bot, ep)
     local got = {}
     for ____, k in ipairs(__TS__ObjectKeys(HEAL_ITEM)) do
         do
-            local __continue77
+            local __continue84
             repeat
                 local it = ItemUse.Usable(bot, HEAL_ITEM[k].name)
                 if it == nil then
-                    __continue77 = true
+                    __continue84 = true
                     break
                 end
                 local mod = HEAL_ITEM[k].modifier
                 if mod ~= nil and bot:HasModifier(mod) then
-                    __continue77 = true
+                    __continue84 = true
                     break
                 end
                 if (k == "tango" or k == "tango_single") and tree == nil then
-                    __continue77 = true
+                    __continue84 = true
                     break
                 end
                 if k == "fire" and salveHeld then
-                    __continue77 = true
+                    __continue84 = true
                     break
                 end
                 got[k] = ItemUse.HpRestore(it)
-                __continue77 = true
+                __continue84 = true
             until true
-            if not __continue77 then
+            if not __continue84 then
                 break
             end
         end
@@ -900,7 +949,7 @@ local function planItems(bot, ep)
     local restore = 0
     for ____, cand in ipairs(s.HealSets) do
         do
-            local __continue83
+            local __continue90
             repeat
                 local items = __TS__ArrayMap(
                     cand,
@@ -910,7 +959,7 @@ local function planItems(bot, ep)
                     items,
                     function(____, k) return got[k] ~= nil end
                 ) then
-                    __continue83 = true
+                    __continue90 = true
                     break
                 end
                 local sum = __TS__ArrayReduce(
@@ -923,15 +972,16 @@ local function planItems(bot, ep)
                     restore = sum
                     break
                 end
-                __continue83 = true
+                __continue90 = true
             until true
-            if not __continue83 then
+            if not __continue90 then
                 break
             end
         end
     end
     local tower = nearestTowerBehind(bot)
-    local skip = not laneNearer(bot, here) and "fountain" or (#__TS__ObjectKeys(got) == 0 and "none" or (set == nil and "short" or (tower == nil and "no-tower" or nil)))
+    local reachN, near, tss = itemReach(bot)
+    local skip = not laneNearer(bot, here) and "fountain" or (reachN > 0 and "reach" or (#__TS__ObjectKeys(got) == 0 and "none" or (set == nil and "short" or (tower == nil and "no-tower" or nil))))
     Telemetry.Event(
         "retreat",
         {
@@ -958,7 +1008,15 @@ local function planItems(bot, ep)
                 math.floor(restore)
             },
             {"tree", tree ~= nil},
-            {"skip", skip or "-"}
+            {"skip", skip or "-"},
+            {
+                "ed",
+                near ~= nil and math.floor(near) or -1
+            },
+            {
+                "ets",
+                tss ~= nil and r2(tss) or -1
+            }
         }
     )
     if skip ~= nil or set == nil or tower == nil then
@@ -984,7 +1042,8 @@ end
 --- HealItems: the wait at our tower ends, and the walk home resumes, when a hero reaches us or the items are spent without a `healed` end.
 local function itemHealOn(bot, ep, r, now)
     local spent = (ep.uses == nil or #ep.uses == 0) and (ep.useUntil == nil or now >= ep.useUntil) and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing")
-    local why = #r.reach > 0 and "reach" or (spent and "spent" or nil)
+    local reachN = itemReach(bot)
+    local why = (#r.reach > 0 or reachN > 0) and "reach" or (spent and "spent" or nil)
     if why == nil then
         return
     end
