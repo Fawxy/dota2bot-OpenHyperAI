@@ -181,6 +181,15 @@ local function __TS__Delete(target, key)
     return true
 end
 
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
+
 local function __TS__ObjectKeys(obj)
     local result = {}
     local len = 0
@@ -190,15 +199,78 @@ local function __TS__ObjectKeys(obj)
     end
     return result
 end
+
+local __TS__StringSplit
+do
+    local sub = string.sub
+    local find = string.find
+    function __TS__StringSplit(source, separator, limit)
+        if limit == nil then
+            limit = 4294967295
+        end
+        if limit == 0 then
+            return {}
+        end
+        local result = {}
+        local resultIndex = 1
+        if separator == nil or separator == "" then
+            for i = 1, #source do
+                result[resultIndex] = sub(source, i, i)
+                resultIndex = resultIndex + 1
+            end
+        else
+            local currentPos = 1
+            while resultIndex <= limit do
+                local startPos, endPos = find(source, separator, currentPos, true)
+                if not startPos then
+                    break
+                end
+                result[resultIndex] = sub(source, currentPos, startPos - 1)
+                resultIndex = resultIndex + 1
+                currentPos = endPos + 1
+            end
+            if resultIndex <= limit then
+                result[resultIndex] = sub(source, currentPos)
+            end
+        end
+        return result
+    end
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
@@ -252,6 +324,9 @@ function ____exports.RoleOf(bot)
     ) then
         return "cast"
     end
+    if rigActor(d, bot) then
+        return "actor"
+    end
     if listed(
         d.statue,
         bot:GetTeam(),
@@ -286,21 +361,21 @@ end
 function ____exports.SpotOf(bot)
     local d = ____exports.Active()
     local pos = LaneConfig.PositionOf(bot)
-    local ____temp_31
+    local ____temp_34
     if pos ~= nil then
-        local ____temp_30
+        local ____temp_33
         if bot:GetTeam() == Team.Radiant then
-            local ____opt_22 = d and d.spots
-            ____temp_30 = ____opt_22 and ____opt_22.r
+            local ____opt_25 = d and d.spots
+            ____temp_33 = ____opt_25 and ____opt_25.r
         else
-            local ____opt_26 = d and d.spots
-            ____temp_30 = ____opt_26 and ____opt_26.d
+            local ____opt_29 = d and d.spots
+            ____temp_33 = ____opt_29 and ____opt_29.d
         end
-        ____temp_31 = ____temp_30 and ____temp_30[pos]
+        ____temp_34 = ____temp_33 and ____temp_33[pos]
     else
-        ____temp_31 = nil
+        ____temp_34 = nil
     end
-    local list = ____temp_31
+    local list = ____temp_34
     local rep = ____exports.RepAt(DotaTime())
     if list == nil or #list == 0 or rep == 0 then
         return "lane"
@@ -322,13 +397,13 @@ function spotPoint(bot, spot)
         team,
         Camps.LaneOfKind(team, kind)
     )[1]
-    local ____temp_32
+    local ____temp_35
     if camp ~= nil then
-        ____temp_32 = Camps.SpawnerByIdx(camp.campIdx)
+        ____temp_35 = Camps.SpawnerByIdx(camp.campIdx)
     else
-        ____temp_32 = nil
+        ____temp_35 = nil
     end
-    local s = ____temp_32
+    local s = ____temp_35
     if s == nil then
         return nil
     end
@@ -613,18 +688,18 @@ function chase(bot)
     )
     local best
     local bestD = math.huge
-    local ____opt_33 = ____exports.Active()
-    local castOnly = (____opt_33 and ____opt_33.chaseCast) == true
+    local ____opt_36 = ____exports.Active()
+    local castOnly = (____opt_36 and ____opt_36.chaseCast) == true
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue83
+            local __continue85
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue83 = true
+                    __continue85 = true
                     break
                 end
                 if castOnly and ____exports.RoleOf(h) ~= "cast" then
-                    __continue83 = true
+                    __continue85 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -632,9 +707,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue83 = true
+                __continue85 = true
             until true
-            if not __continue83 then
+            if not __continue85 then
                 break
             end
         end
@@ -643,8 +718,8 @@ function chase(bot)
     if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
         endLinger(bot, "rep_end")
     end
-    local ____opt_35 = ____exports.Active()
-    if (____opt_35 and ____opt_35.linger) == true then
+    local ____opt_38 = ____exports.Active()
+    if (____opt_38 and ____opt_38.linger) == true then
         if best ~= nil and lingering[bot:GetPlayerID()] == nil then
             startLinger(bot, best)
         end
@@ -652,8 +727,8 @@ function chase(bot)
             return true
         end
     end
-    local ____opt_37 = ____exports.Active()
-    local breakAt = ____opt_37 and ____opt_37.breakAt
+    local ____opt_40 = ____exports.Active()
+    local breakAt = ____opt_40 and ____opt_40.breakAt
     if best ~= nil and breakAt ~= nil and best:GetHealth() / math.max(
         1,
         best:GetMaxHealth()
@@ -705,10 +780,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue103
+            local __continue105
             repeat
                 if not h:IsAlive() then
-                    __continue103 = true
+                    __continue105 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -716,9 +791,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue103 = true
+                __continue105 = true
             until true
-            if not __continue103 then
+            if not __continue105 then
                 break
             end
         end
@@ -727,6 +802,486 @@ function sentryAttack(bot, spot)
         return false
     end
     bot:Action_AttackUnit(best, true)
+    return true
+end
+function keyOf(bot)
+    local pos = LaneConfig.PositionOf(bot)
+    local ____temp_44
+    if pos == nil then
+        ____temp_44 = nil
+    else
+        ____temp_44 = (bot:GetTeam() == Team.Radiant and "r" or "d") .. tostring(pos)
+    end
+    return ____temp_44
+end
+function rigOf(d)
+    return d and d.rig
+end
+--- The rep kind for rep `n` (1-based).
+function ____exports.RigRepOf(n)
+    local r = rigOf(____exports.Active())
+    if r == nil or #r.reps == 0 or n <= 0 then
+        return nil
+    end
+    return r.reps[(n - 1) % #r.reps + 1]
+end
+function rigState()
+    local d = ____exports.Active()
+    if rigOf(d) == nil then
+        return nil
+    end
+    local n = ____exports.RepAt(DotaTime())
+    if n == 0 then
+        return nil
+    end
+    if rig == nil or rig.rep ~= n then
+        rig = {
+            rep = n,
+            start = d.rep.from + (n - 1) * d.rep.every,
+            step = {},
+            placed = {},
+            phase = {},
+            bought = {},
+            waiting = {},
+            idleAt = {},
+            hpMet = {}
+        }
+    end
+    return rig
+end
+function rigActor(d, bot)
+    local k = keyOf(bot)
+    if k == nil or d.rig == nil then
+        return false
+    end
+    return __TS__ArraySome(
+        d.rig.reps,
+        function(____, r) return r.setup[k] ~= nil end
+    )
+end
+function rigCastHeld(bot)
+    local st = rigState()
+    if st == nil then
+        return rigOf(____exports.Active()) ~= nil
+    end
+    return st.phase[bot:GetPlayerID()] ~= "released"
+end
+function releasedModes(bot)
+    local d = ____exports.Active()
+    local r = rigOf(d)
+    local ____temp_49 = r == nil or ____exports.RoleOf(bot) ~= "cast"
+    if not ____temp_49 then
+        local ____opt_47 = overrides()
+        ____temp_49 = (____opt_47 and ____opt_47.DrillHost) == true
+    end
+    if ____temp_49 then
+        return nil
+    end
+    local st = rigState()
+    if st == nil or st.phase[bot:GetPlayerID()] ~= "released" then
+        return nil
+    end
+    local out = {}
+    for ____, m in ipairs(r.release.modes) do
+        out[m] = true
+    end
+    return out
+end
+function rigIdle(bot)
+    local m = releasedModes(bot)
+    if ____exports.RoleOf(bot) ~= "cast" or m == nil or m.farm == true then
+        return false
+    end
+    local st = rigState()
+    if st == nil then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local last = st.idleAt[pid]
+    if last == nil or now - last[2] > 1 then
+        st.idleAt[pid] = {
+            bot:GetLocation(),
+            now
+        }
+    else
+        last[2] = now
+    end
+    standAt(bot, st.idleAt[pid][1])
+    return true
+end
+function rawSpot(name)
+    local ____opt_53 = rigOf(____exports.Active())
+    local s = ____opt_53 and ____opt_53.spots[name]
+    if s == nil then
+        return nil
+    end
+    local anchor, dx, dy = unpack(s)
+    local side, what = string.match(anchor, "^([rd]):(%w+)$")
+    if side == nil then
+        return nil
+    end
+    local team = side == "r" and Team.Radiant or Team.Dire
+    if what == "fountain" then
+        local x, y, z = unpack(FOUNTAIN[team])
+        return Vector(x + dx, y + dy, z)
+    end
+    local id = TOWER_IDS[what]
+    if id == nil then
+        return nil
+    end
+    local tw = GetTower(team, id)
+    if tw == nil or tw == nil then
+        return nil
+    end
+    local a = tw:GetLocation()
+    return Vector(a.x + dx, a.y + dy, a.z)
+end
+function passableNear(p)
+    if IsLocationPassable(p) then
+        return p
+    end
+    do
+        local ring = 1
+        while ring <= RIG_SNAP_RINGS do
+            local r = ring * RIG_SNAP_STEP
+            do
+                local k = 0
+                while k < 16 do
+                    local a = k / 16 * 2 * math.pi
+                    local q = Vector(
+                        p.x + r * math.cos(a),
+                        p.y + r * math.sin(a),
+                        p.z
+                    )
+                    if IsLocationPassable(q) then
+                        return q
+                    end
+                    k = k + 1
+                end
+            end
+            ring = ring + 1
+        end
+    end
+    return nil
+end
+function nearestTower(team, p)
+    local best = math.huge
+    for ____, k in ipairs(__TS__ObjectKeys(TOWER_IDS)) do
+        do
+            local __continue151
+            repeat
+                local tw = GetTower(team, TOWER_IDS[k])
+                if tw == nil or tw == nil or not tw:IsAlive() then
+                    __continue151 = true
+                    break
+                end
+                local a = tw:GetLocation()
+                best = math.min(
+                    best,
+                    math.sqrt((a.x - p.x) ^ 2 + (a.y - p.y) ^ 2)
+                )
+                __continue151 = true
+            until true
+            if not __continue151 then
+                break
+            end
+        end
+    end
+    return best
+end
+function rigPoint(bot, name)
+    if name == "fountain" then
+        local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
+        return Vector(x, y, z)
+    end
+    local known = rigSpots[name]
+    if known ~= nil then
+        local ____temp_55
+        if known == false then
+            ____temp_55 = nil
+        else
+            ____temp_55 = known
+        end
+        return ____temp_55
+    end
+    local raw = rawSpot(name)
+    local ____temp_56
+    if raw ~= nil then
+        ____temp_56 = passableNear(raw)
+    else
+        ____temp_56 = nil
+    end
+    local p = ____temp_56
+    rigSpots[name] = p or false
+    Telemetry.Event(
+        "drill",
+        {
+            {"ph", "spot"},
+            {
+                "name",
+                ____exports.Name()
+            },
+            {"spot", name},
+            {
+                "x",
+                p ~= nil and math.floor(p.x) or nil
+            },
+            {
+                "y",
+                p ~= nil and math.floor(p.y) or nil
+            },
+            {
+                "d",
+                raw ~= nil and p ~= nil and math.floor(math.sqrt((raw.x - p.x) ^ 2 + (raw.y - p.y) ^ 2)) or nil
+            },
+            {
+                "rt",
+                p ~= nil and math.floor(nearestTower(Team.Radiant, p)) or nil
+            },
+            {
+                "dt",
+                p ~= nil and math.floor(nearestTower(Team.Dire, p)) or nil
+            }
+        }
+    )
+    return p
+end
+function heroOf(bot, key)
+    local side = string.match(key, "^([rd])%d$")
+    if side == nil or (side == "r" and Team.Radiant or Team.Dire) ~= bot:GetTeam() then
+        return nil
+    end
+    return rigUnits[key]
+end
+function lastPoint(st, key, bot)
+    local ____opt_57 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_57 and ____opt_57.setup[key]
+    if steps == nil or #steps == 0 then
+        return nil
+    end
+    return rigPoint(
+        bot,
+        __TS__StringSplit(steps[#steps], " ")[2] or "fountain"
+    )
+end
+function attackTarget(bot, st, key)
+    local p = lastPoint(st, key, bot)
+    if p == nil then
+        return nil
+    end
+    local own = heroOf(bot, key)
+    if own ~= nil then
+        return GetUnitToLocationDistance(own, p) <= RIG_PLACED and own or nil
+    end
+    local best
+    local bestD = RIG_PLACED
+    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue164
+            repeat
+                if not h:IsAlive() or h:GetLocation() == nil then
+                    __continue164 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(h, p)
+                if d <= bestD then
+                    best = h
+                    bestD = d
+                end
+                __continue164 = true
+            until true
+            if not __continue164 then
+                break
+            end
+        end
+    end
+    return best
+end
+function hpShare(u)
+    return u:GetHealth() / math.max(
+        1,
+        u:GetMaxHealth()
+    )
+end
+function holdsItem(bot, name)
+    local slot = bot:FindItemSlot(name)
+    return slot >= 0 and slot <= 8
+end
+function standAt(bot, p)
+    if GetUnitToLocationDistance(bot, p) > RIG_AT then
+        bot:Action_MoveToLocation(p)
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    local side = statueSide[pid] or 1
+    local target = Vector(p.x + side * STATUE_SWAY * 0.5, p.y, p.z)
+    if GetUnitToLocationDistance(bot, target) < 15 then
+        side = -side
+        statueSide[pid] = side
+        target = Vector(p.x + side * STATUE_SWAY * 0.5, p.y, p.z)
+    end
+    bot:Action_MoveToLocation(target)
+    return true
+end
+function atFountain(bot)
+    local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
+    local f = Vector(x, y, z)
+    if GetUnitToLocationDistance(bot, f) <= RIG_SHOP_REACH then
+        return true
+    end
+    bot:Action_MoveToLocation(f)
+    return false
+end
+function rigStep(bot, st, step, last)
+    local pid = bot:GetPlayerID()
+    local words = __TS__StringSplit(step, " ")
+    local verb = words[1]
+    if verb == "stand" or verb == "leave" then
+        local p = rigPoint(bot, words[2] or "fountain")
+        if p == nil then
+            return false
+        end
+        st.placed[pid] = standAt(bot, p) and last
+        return false
+    end
+    if verb == "walk" then
+        local p = rigPoint(bot, words[2])
+        if p == nil then
+            return false
+        end
+        if GetUnitToLocationDistance(bot, p) <= RIG_AT then
+            return true
+        end
+        bot:Action_MoveToLocation(p)
+        return false
+    end
+    if verb == "heal" then
+        if hpShare(bot) >= RIG_FULL_HP then
+            return true
+        end
+        atFountain(bot)
+        return false
+    end
+    if verb == "buy" or verb == "sell" then
+        if not atFountain(bot) then
+            return false
+        end
+        local b = bot
+        local item = words[2]
+        if verb == "buy" then
+            if holdsItem(bot, item) then
+                return true
+            end
+            local now = DotaTime()
+            st.bought[pid] = st.bought[pid] or ({})
+            local tried = st.bought[pid][item]
+            if tried ~= nil and now - tried[1] >= RIG_BUY_SECS then
+                return true
+            end
+            if tried == nil or now - tried[2] >= 1 then
+                st.bought[pid][item] = {tried ~= nil and tried[1] or now, now}
+                local res = b:ActionImmediate_PurchaseItem(item)
+                Telemetry.Event(
+                    "drill",
+                    {
+                        {"ph", "buy"},
+                        {
+                            "name",
+                            ____exports.Name()
+                        },
+                        {"pid", pid},
+                        {"rep", st.rep},
+                        {"step", item},
+                        {
+                            "res",
+                            tostring(res)
+                        },
+                        {
+                            "gold",
+                            bot:GetGold()
+                        }
+                    }
+                )
+            end
+            return false
+        end
+        do
+            local slot = 0
+            while slot <= 8 do
+                local it = bot:GetItemInSlot(slot)
+                if it ~= nil and it ~= nil and it:GetName() == item then
+                    b:ActionImmediate_SellItem(it)
+                end
+                slot = slot + 1
+            end
+        end
+        return true
+    end
+    if verb == "attack" then
+        local share = tonumber(words[5])
+        if share == nil then
+            return false
+        end
+        local target = attackTarget(bot, st, words[2])
+        if target ~= nil and hpShare(target) <= share then
+            return true
+        end
+        if target == nil then
+            local p = lastPoint(st, words[2], bot)
+            if p ~= nil and GetUnitToLocationDistance(bot, p) > RIG_APPROACH then
+                bot:Action_MoveToLocation(p)
+            else
+                bot:Action_MoveToLocation(bot:GetLocation())
+            end
+            return false
+        end
+        bot:Action_AttackUnit(target, true)
+        return false
+    end
+    return false
+end
+function rigHold(bot)
+    local st = rigState()
+    local k = keyOf(bot)
+    if st == nil or k == nil then
+        atFountain(bot)
+        return true
+    end
+    local ____opt_59 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_59 and ____opt_59.setup[k]
+    local pid = bot:GetPlayerID()
+    if steps == nil or #steps == 0 then
+        st.placed[pid] = true
+        atFountain(bot)
+        return true
+    end
+    do
+        local guard = 0
+        while guard < #steps do
+            local i = st.step[pid] or 0
+            local last = i >= #steps - 1
+            if not rigStep(bot, st, steps[i + 1], last) or last then
+                return true
+            end
+            st.step[pid] = i + 1
+            Telemetry.Event(
+                "drill",
+                {
+                    {"ph", "step"},
+                    {
+                        "name",
+                        ____exports.Name()
+                    },
+                    {"pid", pid},
+                    {"rep", st.rep},
+                    {"i", i + 1},
+                    {"step", steps[i + 1 + 1]}
+                }
+            )
+            guard = guard + 1
+        end
+    end
     return true
 end
 function controlRep(d, n)
@@ -843,6 +1398,20 @@ ____exports.TABLE = {
         others = "bench",
         castLaneOnly = true,
         rep = {every = 90, from = 60, control = 4}
+    },
+    ["retreat-heal-items"] = {
+        note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
+        cast = {r = {5}},
+        others = "bench",
+        rep = {every = 150, from = 60},
+        rig = {
+            half = "decision",
+            switch = "HealItems",
+            spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
+            timeout = 110,
+            release = {modes = {"retreat", "idle"}},
+            reps = {{name = "salve", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, clear = 1600}}, {name = "tango", setup = {r5 = {"heal", "sell item_flask", "buy item_tango", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_tango"}, lacks = {"item_flask"}, clear = 1600}}, {name = "stays", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "stand near"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, near = 1200}}, {name = "control", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.55", "leave"}}, ready = {hpAtMost = 0.6, holds = {"item_flask"}, clear = 1600}}}
+        }
     },
     ["lane-only"] = {
         note = "every hero lane-only (the last-hit harness)",
@@ -994,7 +1563,7 @@ ____exports.TABLE = {
 --- Benched, a statue, a sentry or a chaser: the hero holds farm mode above every other mode, takes the drill's step and never casts.
 function ____exports.Held(bot)
     local r = ____exports.RoleOf(bot)
-    return r == "bench" or r == "statue" or r == "sentry" or r == "chaser"
+    return r == "bench" or r == "statue" or r == "sentry" or r == "chaser" or r == "actor" or r == "cast" and rigCastHeld(bot)
 end
 --- A chaser of an entry with `chaserCasts`, in a chase rep: OHA's spells and items stay on for it although it is held.
 function ____exports.Casts(bot)
@@ -1071,8 +1640,8 @@ function ____exports.Implied(key)
 end
 FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 STATUE_BEHIND = -300
-local STATUE_SWAY = 40
-local statueSide = {}
+STATUE_SWAY = 40
+statueSide = {}
 lastSpot = {}
 SPOT_OFFSET = 250
 --- A sentry answers an enemy hero within its attack range + both bounding radii + this many seconds of its own movement, and
@@ -1120,6 +1689,15 @@ end
 function ____exports.Hold(bot)
     local r = ____exports.RoleOf(bot)
     local d = ____exports.Active()
+    if (d and d.rig) ~= nil and (r == "actor" or r == "cast") then
+        local ____Held_result_19
+        if ____exports.Held(bot) then
+            ____Held_result_19 = rigHold(bot)
+        else
+            ____Held_result_19 = rigIdle(bot)
+        end
+        return ____Held_result_19
+    end
     if r == "chaser" and d ~= nil and not controlRep(
         d,
         ____exports.RepAt(DotaTime())
@@ -1167,12 +1745,12 @@ function ____exports.Hold(bot)
         end
         return true
     end
-    local ____temp_19 = r == "statue"
-    if ____temp_19 then
-        local ____opt_17 = ____exports.Active()
-        ____temp_19 = (____opt_17 and ____opt_17.spots) ~= nil
+    local ____temp_22 = r == "statue"
+    if ____temp_22 then
+        local ____opt_20 = ____exports.Active()
+        ____temp_22 = (____opt_20 and ____opt_20.spots) ~= nil
     end
-    if ____temp_19 then
+    if ____temp_22 then
         noteSpot(bot, named, nil)
     end
     local lane = bot:GetAssignedLane()
@@ -1206,8 +1784,8 @@ lingering = {}
 lingered = {}
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
-    local ____opt_39 = ____exports.Active()
-    local list = ____opt_39 and ____opt_39.castSpots
+    local ____opt_42 = ____exports.Active()
+    local list = ____opt_42 and ____opt_42.castSpots
     if list == nil or #list == 0 or rep <= 0 then
         return nil
     end
@@ -1237,6 +1815,193 @@ function ____exports.CastSpotPoint(bot, spot)
         return Vector(a.x + (b.x - a.x) * TOWER_SPOT / len, a.y + (b.y - a.y) * TOWER_SPOT / len, a.z)
     end
     return spotPoint(bot, spot)
+end
+--- OHA's purchase, courier and buyback thinks: a rig's cast and actors buy, fetch and buy back nothing, so they hold only
+-- what the rig's `buy` steps hand them, keep the rig's gold, and the attacker hits as hard every rep (rigA2, 12/11/2026:
+-- OHA spent the cast's 600 gold before each rep, so the salve buy failed).
+function ____exports.HoldsPurchases(bot)
+    local ____opt_50 = ____exports.Active()
+    if (____opt_50 and ____opt_50.rig) == nil then
+        return false
+    end
+    local r = ____exports.RoleOf(bot)
+    return r == "cast" or r == "actor"
+end
+--- Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list.
+function ____exports.RigDesire(bot, mode)
+    local m = releasedModes(bot)
+    if m == nil or m[mode] == true then
+        return nil
+    end
+    return mode == "farm" and m.idle == true and RIG_IDLE_DESIRE or 0
+end
+--- A released cast's desire for `idle` (farm mode, standing where it was released). Over the Valve built-in mode that took a
+-- released cast nothing else wanted (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates), under the 0.95 at which
+-- our retreat and the arbiter's hosts hold. `judgement`.
+RIG_IDLE_DESIRE = 0.5
+--- Chooser.HoldsCasts: for a rig cast after release, whether OHA's item use (`items`) or ability use waits; undefined when
+-- the rig does not decide (not a rig cast, not released, or host on).
+function ____exports.RigHoldsCasts(bot, items)
+    local r = rigOf(____exports.Active())
+    if r == nil or releasedModes(bot) == nil then
+        return nil
+    end
+    local ____items_52
+    if items then
+        ____items_52 = r.release.items ~= true
+    else
+        ____items_52 = r.release.abilities ~= true
+    end
+    return ____items_52
+end
+TOWER_IDS = {
+    top1 = Tower.Top1,
+    mid1 = Tower.Mid1,
+    bot1 = Tower.Bot1,
+    top2 = Tower.Top2,
+    mid2 = Tower.Mid2,
+    bot2 = Tower.Bot2,
+    top3 = Tower.Top3,
+    mid3 = Tower.Mid3,
+    bot3 = Tower.Bot3
+}
+RIG_SNAP_STEP = 50
+RIG_SNAP_RINGS = 20
+rigSpots = {}
+rigUnits = {}
+RIG_PLACED = 200
+RIG_APPROACH = 400
+RIG_SHOP_REACH = 400
+RIG_BUY_SECS = 10
+RIG_FULL_HP = 0.95
+RIG_AT = 100
+--- The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step.
+local function failingCheck(bot, st, rr)
+    for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
+        local u = heroOf(bot, k)
+        if u ~= nil and st.placed[u:GetPlayerID()] ~= true then
+            return "setup"
+        end
+    end
+    local r = rr.ready
+    if r.hpAtMost ~= nil then
+        if hpShare(bot) <= r.hpAtMost then
+            st.hpMet[bot:GetPlayerID()] = true
+        elseif st.hpMet[bot:GetPlayerID()] ~= true then
+            return "hp"
+        end
+    end
+    for ____, it in ipairs(r.holds or ({})) do
+        if not holdsItem(bot, it) then
+            return "holds"
+        end
+    end
+    for ____, it in ipairs(r.lacks or ({})) do
+        if holdsItem(bot, it) then
+            return "lacks"
+        end
+    end
+    if r.clear ~= nil or r.near ~= nil then
+        local nearest = math.huge
+        for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+            do
+                local __continue216
+                repeat
+                    if not h:IsAlive() or h:GetLocation() == nil then
+                        __continue216 = true
+                        break
+                    end
+                    nearest = math.min(
+                        nearest,
+                        GetUnitToUnitDistance(bot, h)
+                    )
+                    __continue216 = true
+                until true
+                if not __continue216 then
+                    break
+                end
+            end
+        end
+        if r.clear ~= nil and nearest <= r.clear then
+            return "clear"
+        end
+        if r.near ~= nil and nearest > r.near then
+            return "near"
+        end
+    end
+    return nil
+end
+--- Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout).
+local function rigTick(bot)
+    local st = rigState()
+    if st == nil then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    if st.phase[pid] == nil then
+        st.phase[pid] = "setup"
+    end
+    if st.phase[pid] ~= "setup" then
+        return
+    end
+    local rr = ____exports.RigRepOf(st.rep)
+    local r = rigOf(____exports.Active())
+    if rr == nil or r == nil then
+        return
+    end
+    local fail = failingCheck(bot, st, rr)
+    local secs = DotaTime() - st.start
+    if fail ~= nil and st.waiting[pid] ~= fail then
+        st.waiting[pid] = fail
+        Telemetry.Event(
+            "drill",
+            {
+                {"ph", "wait"},
+                {
+                    "name",
+                    ____exports.Name()
+                },
+                {"pid", pid},
+                {"rep", st.rep},
+                {"fail", fail},
+                {
+                    "secs",
+                    math.floor(secs * 10 + 0.5) / 10
+                },
+                {
+                    "hp",
+                    math.floor(hpShare(bot) * 100 + 0.5) / 100
+                }
+            }
+        )
+    end
+    if fail ~= nil and secs < r.timeout then
+        return
+    end
+    st.phase[pid] = fail == nil and "released" or "invalid"
+    Telemetry.Event(
+        "drill",
+        {
+            {"ph", "ready"},
+            {
+                "name",
+                ____exports.Name()
+            },
+            {"pid", pid},
+            {"rep", st.rep},
+            {"var", rr.name},
+            {"ok", fail == nil and 1 or 0},
+            {"fail", fail},
+            {
+                "secs",
+                math.floor(secs * 10 + 0.5) / 10
+            },
+            {
+                "hp",
+                math.floor(hpShare(bot) * 100 + 0.5) / 100
+            }
+        }
+    )
 end
 --- The active drill's rep start times for a forced context (DotaTime seconds, up to 60:00), input-on reps only.
 function ____exports.RepTimes(context)
@@ -1273,17 +2038,23 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_41 = overrides()
-            local v = ____opt_41 and ____opt_41[k]
+            local ____opt_61 = overrides()
+            local v = ____opt_61 and ____opt_61[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
         end
     end
     local name = ____exports.Name()
+    if name ~= nil and ____exports.TABLE[name].rig ~= nil then
+        local k = keyOf(bot)
+        if k ~= nil then
+            rigUnits[k] = bot
+        end
+    end
     if name == nil then
-        local ____opt_43 = overrides()
-        local asked = ____opt_43 and ____opt_43.Drill
+        local ____opt_63 = overrides()
+        local asked = ____opt_63 and ____opt_63.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -1318,25 +2089,31 @@ function ____exports.Tick(bot)
     local rep = ____exports.RepAt(now)
     local team = bot:GetTeam()
     if rep == 0 or lastRep[team] == rep then
+        rigTick(bot)
         return
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    Telemetry.Event(
-        "drill",
+    local ____Telemetry_Event_68 = Telemetry.Event
+    local ____array_67 = __TS__SparseArrayNew(
+        {"ph", "rep"},
+        {"name", name},
+        {"team", team},
+        {"rep", rep},
         {
-            {"ph", "rep"},
-            {"name", name},
-            {"team", team},
-            {"rep", rep},
-            {
-                "input",
-                controlRep(d, rep) and "off" or "on"
-            },
-            {"start", start},
-            {"forces", d.forces}
-        }
+            "input",
+            controlRep(d, rep) and "off" or "on"
+        },
+        {"start", start},
+        {"forces", d.forces}
     )
+    local ____opt_65 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_67, {"var", ____opt_65 and ____opt_65.name})
+    ____Telemetry_Event_68(
+        "drill",
+        {__TS__SparseArraySpread(____array_67)}
+    )
+    rigTick(bot)
 end
 --- Tests: forget the role and rep lines already logged.
 function ____exports.ResetCache()
@@ -1365,5 +2142,12 @@ function ____exports.ResetCache()
         __TS__Delete(brokeOff, k)
     end
     removedLogged = false
+    rig = nil
+    for ____, k in ipairs(__TS__ObjectKeys(rigUnits)) do
+        __TS__Delete(rigUnits, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(rigSpots)) do
+        __TS__Delete(rigSpots, k)
+    end
 end
 return ____exports

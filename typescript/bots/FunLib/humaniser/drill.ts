@@ -10,14 +10,15 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { BotMode, GameState, Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, GameState, Item, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
-export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "play";
+/** `actor`: a hero a rig's setup scripts (it takes only those steps). */
+export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "actor" | "play";
 
 /** Positions (1-5) per team: `r` Radiant, `d` Dire. */
 export interface Sides {
@@ -79,6 +80,8 @@ export interface Entry {
     forces?: string;
     /** Overrides keys the drill implies (`Overrides.Get` falls back to them; an explicit `--set` wins). */
     overrides?: Record<string, unknown>;
+    /** A rig (drills from 11/11/2026): each rep is setup, ready, release (see `Rig`). */
+    rig?: Rig;
 }
 
 const SAFE_CORE: Sides = { r: [1] };
@@ -184,6 +187,54 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
+    },
+    // Slice heal-items' drill as a rig (slice drill-rig's first consumer). half: decision. Facts the heal start reads: the
+    // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
+    // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
+    // fountain (the waves, untouched). Forced: HP by the Dire pos3 attacking the statue cast until its share; items bought by
+    // the cast at its fountain during setup (gold from the recipe); reach by where the attacker stands after. Both heal in
+    // their fountain first (no console control sets a bot's HP: probe 12/11/2026, SCENARIOS.md; fix3: the attacker lost HP
+    // standing beside a camp and died). Spots: 2,850 west of our bot T1, 700 off the lane (our creeps would hit the attacker),
+    // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). The attack stops 5 points under the ready
+    // bar (fix5: stopping at the bar, the cast regenerated over it while the attacker walked out of reach). Release: our
+    // retreat, else it stands (`idle`; fix6: a Valve built-in mode took the control rep's cast).
+    "retreat-heal-items": {
+        note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
+        cast: { r: [5] },
+        others: "bench",
+        rep: { every: 150, from: 60 },
+        rig: {
+            half: "decision",
+            switch: "HealItems",
+            spots: {
+                cast: ["r:bot1", -2750, 700],
+                near: ["r:bot1", -2250, 700],
+            },
+            timeout: 110,
+            release: { modes: ["retreat", "idle"] },
+            reps: [
+                {
+                    name: "salve",
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.2", "leave"] },
+                    ready: { hpAtMost: 0.25, holds: ["item_flask"], clear: 1600 },
+                },
+                {
+                    name: "tango",
+                    setup: { r5: ["heal", "sell item_flask", "buy item_tango", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.2", "leave"] },
+                    ready: { hpAtMost: 0.25, holds: ["item_tango"], lacks: ["item_flask"], clear: 1600 },
+                },
+                {
+                    name: "stays",
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.2", "stand near"] },
+                    ready: { hpAtMost: 0.25, holds: ["item_flask"], near: 1200 },
+                },
+                {
+                    name: "control",
+                    setup: { r5: ["heal", "buy item_flask", "stand cast"], d3: ["heal", "walk near", "attack r5 until hp 0.55", "leave"] },
+                    ready: { hpAtMost: 0.6, holds: ["item_flask"], clear: 1600 },
+                },
+            ],
+        },
     },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
@@ -389,6 +440,7 @@ export function RoleOf(bot: Unit): Role {
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined) return "play";
     if (listed(d.cast, bot.GetTeam(), pos)) return "cast";
+    if (rigActor(d, bot)) return "actor";
     if (listed(d.statue, bot.GetTeam(), pos)) return "statue";
     if (listed(d.sentry, bot.GetTeam(), pos)) return "sentry";
     if (listed(d.chaser, bot.GetTeam(), pos)) return "chaser";
@@ -399,7 +451,7 @@ export function RoleOf(bot: Unit): Role {
 /** Benched, a statue, a sentry or a chaser: the hero holds farm mode above every other mode, takes the drill's step and never casts. */
 export function Held(bot: Unit): boolean {
     const r = RoleOf(bot);
-    return r === "bench" || r === "statue" || r === "sentry" || r === "chaser";
+    return r === "bench" || r === "statue" || r === "sentry" || r === "chaser" || r === "actor" || (r === "cast" && rigCastHeld(bot));
 }
 
 /** A chaser of an entry with `chaserCasts`, in a chase rep: OHA's spells and items stay on for it although it is held. */
@@ -511,6 +563,7 @@ export function ForcedAt(context: string, t: number): "on" | "off" | "none" | un
 export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
+    if (d?.rig !== undefined && (r === "actor" || r === "cast")) return Held(bot) ? rigHold(bot) : rigIdle(bot);
     if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0 && brokeOff[bot.GetPlayerID()] !== RepAt(DotaTime())) {
         if (chase(bot)) return true;
     }
@@ -845,6 +898,525 @@ function sentryAttack(bot: Unit, spot: ReturnType<typeof GetLaneFrontLocation>):
     return true;
 }
 
+// ---- Rigs (skill eval-run "Drill", SCENARIOS.md "A new drill's entry is a rig spec", slice drill-rig) ----
+
+/** The rig's ready checks: all must hold at once, on each cast hero. */
+export interface RigReady {
+    /** The cast's HP share at or under this. */
+    hpAtMost?: number;
+    /** Items the cast holds (inventory, one of each name). */
+    holds?: string[];
+    /** Items the cast does not hold. */
+    lacks?: string[];
+    /** No enemy hero within this distance of the cast. */
+    clear?: number;
+    /** An enemy hero within this distance of the cast. */
+    near?: number;
+}
+
+/** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
+export interface RigRep {
+    /** Logged as `var=` on the rep's lines. */
+    name: string;
+    /**
+     * Ordered steps per hero (`r5`, `d3`: team and position). The cast's heroes and every actor are listed; a listed hero
+     * that is not cast is an actor (held, it only takes these steps). Steps:
+     * - `stand <spot>`: walk there and stay, swaying so it never auto-attacks (a statue); never ends.
+     * - `walk <spot>`: walk there; ends on arrival.
+     * - `heal`: its fountain until full HP (95%); ends at once when already full.
+     * - `buy <item>` / `sell <item>`: at its fountain (walks there first); ends when done.
+     * - `attack <hero> until hp <share>`: once that hero stands on its last step, attack it until its HP share is at or
+     *   under the share (or it dies); ends then.
+     * - `leave [spot]`: walk to the spot (default its fountain) and stay; never ends.
+     * Each list ends in `stand` or `leave`: a hero is placed once it stands at its last step's point, and ready needs every
+     * listed hero of its own team placed (no state is shared across teams: the other team's part is read from the facts).
+     */
+    setup: Record<string, string[]>;
+    ready: RigReady;
+}
+
+export interface Rig {
+    /** `decision`: inputs forced, the choice read; `execution`: the choice forced, the doing read. */
+    half: "decision" | "execution";
+    /** Named points: an anchor (`r:fountain`, `d:fountain`, `<r|d>:<top|mid|bot><1|2|3>` a tower) and an offset. */
+    spots: Record<string, [string, number, number]>;
+    reps: RigRep[];
+    /** Seconds from the rep's start for the ready checks to hold; else the rep is invalid. */
+    timeout: number;
+    /**
+     * What runs for the cast after ready: its modes (the Gate names in the mode files, and `idle`: stand still,
+     * at RIG_IDLE_DESIRE, when no released mode wants it), OHA's item use, OHA's ability use. A Valve built-in mode with
+     * no mode file is not gated; `idle` holds against those seen so far, and `@drill_roles` `rel_modes` shows any that win.
+     * Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases everything (the host-on step).
+     */
+    release: { modes: string[]; items?: boolean; abilities?: boolean };
+    /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
+    switch: string;
+}
+
+type Phase = "setup" | "released" | "invalid";
+
+interface RigState {
+    rep: number;
+    start: number;
+    /** Per pid: the step index, whether it stands on its last step at its point. */
+    step: Record<number, number>;
+    placed: Record<number, boolean>;
+    phase: Record<number, Phase>;
+    /** Per pid and item: the first and the last purchase attempt this rep. */
+    bought: Record<number, Record<string, [number, number]>>;
+    /** Per cast pid: the ready check failing at the last frame, logged when it changes (`ph=wait`). */
+    waiting: Record<number, string>;
+    /** Per cast pid: where its current idle spell stands, and the spell's last frame. */
+    idleAt: Record<number, [Vector, number]>;
+    /** Per cast pid: its HP share has been at or under the ready bar this rep. */
+    hpMet: Record<number, boolean>;
+}
+
+let rig: RigState | undefined;
+
+/** The hero key `r5` / `d3` of a bot, or undefined before its position is known. */
+function keyOf(bot: Unit): string | undefined {
+    const pos = LaneConfig.PositionOf(bot);
+    return pos === undefined ? undefined : `${bot.GetTeam() === Team.Radiant ? "r" : "d"}${pos}`;
+}
+
+function rigOf(d: Entry | undefined): Rig | undefined {
+    return d?.rig;
+}
+
+/** The rep kind for rep `n` (1-based). */
+export function RigRepOf(n: number): RigRep | undefined {
+    const r = rigOf(Active());
+    if (r === undefined || r.reps.length === 0 || n <= 0) return undefined;
+    return r.reps[(n - 1) % r.reps.length];
+}
+
+function rigState(): RigState | undefined {
+    const d = Active();
+    if (rigOf(d) === undefined) return undefined;
+    const n = RepAt(DotaTime());
+    if (n === 0) return undefined;
+    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {} };
+    return rig;
+}
+
+/** A hero listed in the rig's setup that is not cast: an actor. */
+function rigActor(d: Entry, bot: Unit): boolean {
+    const k = keyOf(bot);
+    if (k === undefined || d.rig === undefined) return false;
+    return d.rig.reps.some(r => r.setup[k] !== undefined);
+}
+
+/** A rig's cast hero, before release or on an invalid rep: held, taking its own setup steps. */
+function rigCastHeld(bot: Unit): boolean {
+    const st = rigState();
+    if (st === undefined) return rigOf(Active()) !== undefined;
+    return st.phase[bot.GetPlayerID()] !== "released";
+}
+
+/** For a rig's cast after release: the modes it may run (undefined: not a rig cast, not released, or host on). */
+function releasedModes(bot: Unit): Record<string, true> | undefined {
+    const d = Active();
+    const r = rigOf(d);
+    if (r === undefined || RoleOf(bot) !== "cast" || overrides()?.["DrillHost"] === true) return undefined;
+    const st = rigState();
+    if (st === undefined || st.phase[bot.GetPlayerID()] !== "released") return undefined;
+    const out: Record<string, true> = {};
+    for (const m of r.release.modes) out[m] = true;
+    return out;
+}
+
+/**
+ * OHA's purchase, courier and buyback thinks: a rig's cast and actors buy, fetch and buy back nothing, so they hold only
+ * what the rig's `buy` steps hand them, keep the rig's gold, and the attacker hits as hard every rep (rigA2, 12/11/2026:
+ * OHA spent the cast's 600 gold before each rep, so the salve buy failed).
+ */
+export function HoldsPurchases(bot: Unit): boolean {
+    if (Active()?.rig === undefined) return false;
+    const r = RoleOf(bot);
+    return r === "cast" || r === "actor";
+}
+
+/** Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list. */
+export function RigDesire(bot: Unit, mode: string): number | undefined {
+    const m = releasedModes(bot);
+    if (m === undefined || m[mode] === true) return undefined;
+    // `idle` listed: farm (the bench's host) holds the cast standing, under the released modes' holds.
+    return mode === "farm" && m["idle"] === true ? RIG_IDLE_DESIRE : 0;
+}
+
+/**
+ * A released cast's desire for `idle` (farm mode, standing where it was released). Over the Valve built-in mode that took a
+ * released cast nothing else wanted (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates), under the 0.95 at which
+ * our retreat and the arbiter's hosts hold. `judgement`.
+ */
+const RIG_IDLE_DESIRE = 0.5;
+
+/**
+ * Farm Think for a released rig cast: while farm is not itself released it stands still (`idle`; Valve also keeps an
+ * active mode at desire 0 for a few seconds, and OHA's farm Think ran then: fix6). False for anyone else.
+ */
+function rigIdle(bot: Unit): boolean {
+    const m = releasedModes(bot);
+    if (RoleOf(bot) !== "cast" || m === undefined || m["farm"] === true) return false;
+    const st = rigState();
+    if (st === undefined) return false;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    // A new idle spell (none in the last second) stands where the cast is now, not where it was released.
+    const last = st.idleAt[pid];
+    if (last === undefined || now - last[1] > 1) st.idleAt[pid] = [bot.GetLocation(), now];
+    else last[1] = now;
+    standAt(bot, st.idleAt[pid][0]);
+    return true;
+}
+
+/**
+ * Chooser.HoldsCasts: for a rig cast after release, whether OHA's item use (`items`) or ability use waits; undefined when
+ * the rig does not decide (not a rig cast, not released, or host on).
+ */
+export function RigHoldsCasts(bot: Unit, items: boolean): boolean | undefined {
+    const r = rigOf(Active());
+    if (r === undefined || releasedModes(bot) === undefined) return undefined;
+    return items ? r.release.items !== true : r.release.abilities !== true;
+}
+
+const TOWER_IDS: Record<string, Tower> = {
+    top1: Tower.Top1, mid1: Tower.Mid1, bot1: Tower.Bot1,
+    top2: Tower.Top2, mid2: Tower.Mid2, bot2: Tower.Bot2,
+    top3: Tower.Top3, mid3: Tower.Mid3, bot3: Tower.Bot3,
+};
+
+/** The anchor plus offset a spot names, before it is made passable. */
+function rawSpot(name: string): Vector | undefined {
+    const s = rigOf(Active())?.spots[name];
+    if (s === undefined) return undefined;
+    const [anchor, dx, dy] = s;
+    const [side, what] = string.match(anchor, "^([rd]):(%w+)$");
+    if (side === undefined) return undefined;
+    const team = side === "r" ? Team.Radiant : Team.Dire;
+    if (what === "fountain") {
+        const [x, y, z] = FOUNTAIN[team];
+        return Vector(x + dx, y + dy, z);
+    }
+    const id = TOWER_IDS[what];
+    if (id === undefined) return undefined;
+    const tw = GetTower(team, id);
+    if (tw === null || tw === undefined) return undefined;
+    const a = tw.GetLocation();
+    return Vector(a.x + dx, a.y + dy, a.z);
+}
+
+/** A spot off the walkable map moves to the nearest passable point on rings this far apart, up to RIG_SNAP_RINGS. `judgement`. */
+const RIG_SNAP_STEP = 50;
+const RIG_SNAP_RINGS = 20;
+
+function passableNear(p: Vector): Vector | undefined {
+    if (IsLocationPassable(p)) return p;
+    for (let ring = 1; ring <= RIG_SNAP_RINGS; ring++) {
+        const r = ring * RIG_SNAP_STEP;
+        for (let k = 0; k < 16; k++) {
+            const a = (k / 16) * 2 * math.pi;
+            const q = Vector(p.x + r * math.cos(a), p.y + r * math.sin(a), p.z);
+            if (IsLocationPassable(q)) return q;
+        }
+    }
+    return undefined;
+}
+
+/** The distance from `p` to the nearest live tower of `team`, for the spot line. */
+function nearestTower(team: Team, p: Vector): number {
+    let best = math.huge;
+    for (const k of Object.keys(TOWER_IDS)) {
+        const tw = GetTower(team, TOWER_IDS[k]);
+        if (tw === null || tw === undefined || !tw.IsAlive()) continue;
+        const a = tw.GetLocation();
+        best = math.min(best, math.sqrt((a.x - p.x) ** 2 + (a.y - p.y) ** 2));
+    }
+    return best;
+}
+
+/** Resolved rig spots by name, for the game (logged once each, `ph=spot`). */
+const rigSpots: Record<string, Vector | false> = {};
+
+/** A rig spot's point; `fountain` is the bot's own. Undefined for an unknown name, a dead anchor tower or no passable point. */
+function rigPoint(bot: Unit, name: string): Vector | undefined {
+    if (name === "fountain") {
+        const [x, y, z] = FOUNTAIN[bot.GetTeam()];
+        return Vector(x, y, z);
+    }
+    const known = rigSpots[name];
+    if (known !== undefined) return known === false ? undefined : known;
+    const raw = rawSpot(name);
+    const p = raw !== undefined ? passableNear(raw) : undefined;
+    rigSpots[name] = p ?? false;
+    Telemetry.Event("drill", [
+        ["ph", "spot"],
+        ["name", Name()],
+        ["spot", name],
+        ["x", p !== undefined ? math.floor(p.x) : undefined],
+        ["y", p !== undefined ? math.floor(p.y) : undefined],
+        ["d", raw !== undefined && p !== undefined ? math.floor(math.sqrt((raw.x - p.x) ** 2 + (raw.y - p.y) ** 2)) : undefined],
+        ["rt", p !== undefined ? math.floor(nearestTower(Team.Radiant, p)) : undefined],
+        ["dt", p !== undefined ? math.floor(nearestTower(Team.Dire, p)) : undefined],
+    ]);
+    return p;
+}
+
+/**
+ * A rig shares no state across teams: each team's bots may run in their own Lua VM (not verified; rig1, 12/11/2026, the Dire
+ * actor waited all game on the Radiant cast's flag), so the other team is read only through the API (`attackTarget`, the
+ * ready facts). Own-team heroes register here from their Tick.
+ */
+const rigUnits: Record<string, Unit> = {};
+
+/** The unit of own-team hero key `r5` / `d3`, or undefined (another team's hero, or one that has not ticked yet). */
+function heroOf(bot: Unit, key: string): Unit | undefined {
+    const [side] = string.match(key, "^([rd])%d$");
+    if (side === undefined || (side === "r" ? Team.Radiant : Team.Dire) !== bot.GetTeam()) return undefined;
+    return rigUnits[key];
+}
+
+/** A hero counts as standing at its last step's point within this (it sways about 20 either side). `judgement`. */
+const RIG_PLACED = 200;
+/** An attacker that does not see its target walks to within this of the target's spot. `judgement` (inside night vision, 800). */
+const RIG_APPROACH = 400;
+
+/** The point of hero `key`'s last setup step this rep. */
+function lastPoint(st: RigState, key: string, bot: Unit): Vector | undefined {
+    const steps = RigRepOf(st.rep)?.setup[key];
+    if (steps === undefined || steps.length === 0) return undefined;
+    return rigPoint(bot, steps[steps.length - 1].split(" ")[1] ?? "fountain");
+}
+
+/**
+ * The target of an attack step: an own-team hero by key once it stands at its last step's point; an enemy hero is the visible
+ * one nearest that point within RIG_PLACED (rig2, 12/11/2026: OHA's position of an enemy hero is its estimate, 3 by default,
+ * so the Dire actor never found the Radiant pos5 by position). Only the cast stands there; everyone else is benched.
+ */
+function attackTarget(bot: Unit, st: RigState, key: string): Unit | undefined {
+    const p = lastPoint(st, key, bot);
+    if (p === undefined) return undefined;
+    const own = heroOf(bot, key);
+    if (own !== undefined) return GetUnitToLocationDistance(own, p) <= RIG_PLACED ? own : undefined;
+    let best: Unit | undefined;
+    let bestD = RIG_PLACED;
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (!h.IsAlive() || h.GetLocation() === undefined) continue;
+        const d = GetUnitToLocationDistance(h, p);
+        if (d <= bestD) {
+            best = h;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+interface ShopBot extends Unit {
+    ActionImmediate_PurchaseItem(name: string): number;
+    ActionImmediate_SellItem(item: Item): void;
+    DistanceFromFountain(): number;
+}
+
+/** Within this of its fountain a hero can buy and heals. `judgement` (the shop's reach is wider). */
+const RIG_SHOP_REACH = 400;
+/** A `buy` step gives up after this many seconds of tries (no gold, or the shop refuses). `judgement`. */
+const RIG_BUY_SECS = 10;
+/** `heal` ends at this HP share. `judgement`. */
+const RIG_FULL_HP = 0.95;
+/** A hero stands at a point within this. */
+const RIG_AT = 100;
+
+function hpShare(u: Unit): number {
+    return u.GetHealth() / math.max(1, u.GetMaxHealth());
+}
+
+function holdsItem(bot: Unit, name: string): boolean {
+    const slot = bot.FindItemSlot(name);
+    return slot >= 0 && slot <= 8;
+}
+
+/** Stands at `p` as a statue does: a move order always on, swaying, so it never acquires a target. */
+function standAt(bot: Unit, p: Vector): boolean {
+    if (GetUnitToLocationDistance(bot, p) > RIG_AT) {
+        bot.Action_MoveToLocation(p);
+        return false;
+    }
+    const pid = bot.GetPlayerID();
+    let side = statueSide[pid] ?? 1;
+    let target = Vector(p.x + side * STATUE_SWAY * 0.5, p.y, p.z);
+    if (GetUnitToLocationDistance(bot, target) < 15) {
+        side = -side;
+        statueSide[pid] = side;
+        target = Vector(p.x + side * STATUE_SWAY * 0.5, p.y, p.z);
+    }
+    bot.Action_MoveToLocation(target);
+    return true;
+}
+
+function atFountain(bot: Unit): boolean {
+    const [x, y, z] = FOUNTAIN[bot.GetTeam()];
+    const f = Vector(x, y, z);
+    if (GetUnitToLocationDistance(bot, f) <= RIG_SHOP_REACH) return true;
+    bot.Action_MoveToLocation(f);
+    return false;
+}
+
+/** One step's order this frame; true when the step has ended (the next one starts). */
+function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean {
+    const pid = bot.GetPlayerID();
+    const words = step.split(" ");
+    const verb = words[0];
+    if (verb === "stand" || verb === "leave") {
+        const p = rigPoint(bot, words[1] ?? "fountain");
+        if (p === undefined) return false;
+        st.placed[pid] = standAt(bot, p) && last;
+        return false;
+    }
+    if (verb === "walk") {
+        const p = rigPoint(bot, words[1]);
+        if (p === undefined) return false;
+        if (GetUnitToLocationDistance(bot, p) <= RIG_AT) return true;
+        bot.Action_MoveToLocation(p);
+        return false;
+    }
+    if (verb === "heal") {
+        if (hpShare(bot) >= RIG_FULL_HP) return true;
+        atFountain(bot);
+        return false;
+    }
+    if (verb === "buy" || verb === "sell") {
+        if (!atFountain(bot)) return false;
+        const b = bot as ShopBot;
+        const item = words[1];
+        if (verb === "buy") {
+            // Retried each second until held (fix4, 12/11/2026: rep 1's salve was not held at ready), giving up after
+            // RIG_BUY_SECS: ready then fails `holds`.
+            if (holdsItem(bot, item)) return true;
+            const now = DotaTime();
+            st.bought[pid] = st.bought[pid] ?? {};
+            const tried = st.bought[pid][item];
+            if (tried !== undefined && now - tried[0] >= RIG_BUY_SECS) return true;
+            if (tried === undefined || now - tried[1] >= 1) {
+                st.bought[pid][item] = [tried !== undefined ? tried[0] : now, now];
+                const res = b.ActionImmediate_PurchaseItem(item);
+                Telemetry.Event("drill", [["ph", "buy"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["step", item], ["res", tostring(res)], ["gold", bot.GetGold()]]);
+            }
+            return false;
+        }
+        for (let slot = 0; slot <= 8; slot++) {
+            const it = bot.GetItemInSlot(slot);
+            if (it !== null && it !== undefined && it.GetName() === item) b.ActionImmediate_SellItem(it);
+        }
+        return true;
+    }
+    if (verb === "attack") {
+        // attack <hero> until hp <share>
+        const share = tonumber(words[4]);
+        if (share === undefined) return false;
+        const target = attackTarget(bot, st, words[1]);
+        if (target !== undefined && hpShare(target) <= share) return true;
+        if (target === undefined) {
+            // Not seen at its spot yet (still walking there, or in fog): go to that spot (fix3, 12/11/2026: a respawned
+            // attacker that stood waiting in its fountain never saw the cast again).
+            const p = lastPoint(st, words[1], bot);
+            if (p !== undefined && GetUnitToLocationDistance(bot, p) > RIG_APPROACH) bot.Action_MoveToLocation(p);
+            else bot.Action_MoveToLocation(bot.GetLocation());
+            return false;
+        }
+        bot.Action_AttackUnit(target, true);
+        return false;
+    }
+    return false;
+}
+
+/** A rig hero's setup this frame (cast before release, or an actor): runs its current step, moving on as steps end. */
+function rigHold(bot: Unit): boolean {
+    const st = rigState();
+    const k = keyOf(bot);
+    if (st === undefined || k === undefined) {
+        // Before the first rep everyone in a rig waits in its fountain.
+        atFountain(bot);
+        return true;
+    }
+    const steps = RigRepOf(st.rep)?.setup[k];
+    const pid = bot.GetPlayerID();
+    if (steps === undefined || steps.length === 0) {
+        st.placed[pid] = true;
+        atFountain(bot);
+        return true;
+    }
+    // Several steps may end in one frame (buy, sell); a step that keeps the frame stops the loop.
+    for (let guard = 0; guard < steps.length; guard++) {
+        const i = st.step[pid] ?? 0;
+        const last = i >= steps.length - 1;
+        if (!rigStep(bot, st, steps[i], last) || last) return true;
+        st.step[pid] = i + 1;
+        Telemetry.Event("drill", [["ph", "step"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["i", i + 1], ["step", steps[i + 1]]]);
+    }
+    return true;
+}
+
+/** The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step. */
+function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
+    // Only the cast's own team's setup is read here (no state is shared across teams); the facts below read the rest.
+    for (const k of Object.keys(rr.setup)) {
+        const u = heroOf(bot, k);
+        if (u !== undefined && st.placed[u.GetPlayerID()] !== true) return "setup";
+    }
+    const r = rr.ready;
+    // Latched: once at or under the bar this rep it stays met, so regen while the attacker walks off cannot race it (fix5).
+    if (r.hpAtMost !== undefined) {
+        if (hpShare(bot) <= r.hpAtMost) st.hpMet[bot.GetPlayerID()] = true;
+        else if (st.hpMet[bot.GetPlayerID()] !== true) return "hp";
+    }
+    for (const it of r.holds ?? []) if (!holdsItem(bot, it)) return "holds";
+    for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
+    if (r.clear !== undefined || r.near !== undefined) {
+        let nearest = math.huge;
+        for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (!h.IsAlive() || h.GetLocation() === undefined) continue;
+            nearest = math.min(nearest, GetUnitToUnitDistance(bot, h));
+        }
+        if (r.clear !== undefined && nearest <= r.clear) return "clear";
+        if (r.near !== undefined && nearest > r.near) return "near";
+    }
+    return undefined;
+}
+
+/** Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout). */
+function rigTick(bot: Unit): void {
+    const st = rigState();
+    if (st === undefined) return;
+    const pid = bot.GetPlayerID();
+    if (st.phase[pid] === undefined) st.phase[pid] = "setup";
+    if (st.phase[pid] !== "setup") return;
+    const rr = RigRepOf(st.rep);
+    const r = rigOf(Active());
+    if (rr === undefined || r === undefined) return;
+    const fail = failingCheck(bot, st, rr);
+    const secs = DotaTime() - st.start;
+    // Each change of the first failing check is logged, so a rep that times out shows what held it and when.
+    if (fail !== undefined && st.waiting[pid] !== fail) {
+        st.waiting[pid] = fail;
+        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100]]);
+    }
+    if (fail !== undefined && secs < r.timeout) return;
+    st.phase[pid] = fail === undefined ? "released" : "invalid";
+    Telemetry.Event("drill", [
+        ["ph", "ready"],
+        ["name", Name()],
+        ["pid", pid],
+        ["rep", st.rep],
+        ["var", rr.name],
+        ["ok", fail === undefined ? 1 : 0],
+        ["fail", fail],
+        ["secs", math.floor(secs * 10 + 0.5) / 10],
+        ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100],
+    ]);
+}
+
 /** The active drill's rep start times for a forced context (DotaTime seconds, up to 60:00), input-on reps only. */
 export function RepTimes(context: string): number[] | undefined {
     const d = Active();
@@ -891,6 +1463,10 @@ export function Tick(bot: Unit): void {
         }
     }
     const name = Name();
+    if (name !== undefined && TABLE[name].rig !== undefined) {
+        const k = keyOf(bot);
+        if (k !== undefined) rigUnits[k] = bot;
+    }
     if (name === undefined) {
         const asked = overrides()?.["Drill"];
         if (typeof asked === "string" && asked !== "" && lastRole[-1] !== asked) {
@@ -911,7 +1487,10 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     const rep = RepAt(now);
     const team = bot.GetTeam();
-    if (rep === 0 || lastRep[team] === rep) return;
+    if (rep === 0 || lastRep[team] === rep) {
+        rigTick(bot);
+        return;
+    }
     lastRep[team] = rep;
     const start = d.rep.from + (rep - 1) * d.rep.every;
     Telemetry.Event("drill", [
@@ -922,7 +1501,9 @@ export function Tick(bot: Unit): void {
         ["input", controlRep(d, rep) ? "off" : "on"],
         ["start", start],
         ["forces", d.forces],
+        ["var", RigRepOf(rep)?.name],
     ]);
+    rigTick(bot);
 }
 
 /** Tests: forget the role and rep lines already logged. */
@@ -936,4 +1517,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(reachedBreak)) delete reachedBreak[k as unknown as number];
     for (const k of Object.keys(brokeOff)) delete brokeOff[k as unknown as number];
     removedLogged = false;
+    rig = undefined;
+    for (const k of Object.keys(rigUnits)) delete rigUnits[k];
+    for (const k of Object.keys(rigSpots)) delete rigSpots[k];
 }

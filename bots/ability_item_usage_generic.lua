@@ -8416,6 +8416,8 @@ end
 
 function BuybackUsageThink()
 	if RefreshBotHandle() then return end
+	-- A drill rig's cast and actors keep the rig's gold and items (humaniser/drill.ts HoldsPurchases).
+	if J.Humaniser.Drill.HoldsPurchases(bot) then return end
 	if bot.lastBuybackFrameProcessTime == nil then bot.lastBuybackFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastBuybackFrameProcessTime < 2) then return end
 	bot.lastBuybackFrameProcessTime = DotaTime()
@@ -8425,6 +8427,7 @@ end
 
 function CourierUsageThink()
 	if RefreshBotHandle() then return end
+	if J.Humaniser.Drill.HoldsPurchases(bot) then return end
 	if bot.lastCourierFrameProcessTime == nil then bot.lastCourierFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastCourierFrameProcessTime < 0.5) then return end
 	bot.lastCourierFrameProcessTime = DotaTime()

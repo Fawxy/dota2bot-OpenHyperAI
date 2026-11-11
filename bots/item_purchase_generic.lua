@@ -438,6 +438,8 @@ end
 
 function ItemPurchaseThink()
 	currentTime = DotaTime()
+	-- A drill rig's cast and actors buy only what the rig hands them (humaniser/drill.ts HoldsPurchases).
+	if J.Humaniser.Drill.HoldsPurchases(bot) then return end
 
 	-- ARDM: detect stale hero instance and rebuild purchase list on hero swap
 	local isStale, freshBot, freshName = J.IsStaleARDMHero(bot, botName)
