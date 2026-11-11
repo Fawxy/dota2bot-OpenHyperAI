@@ -267,7 +267,7 @@ do
 	local function start(o)
 		local H, bot = world({ hp = o.hp, loc = o.loc })
 		bot.maxhp = o.max or 600
-		package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = o.on
+		package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = o.on ~= false
 		bot.items = o.items
 		TREES = o.tree ~= false and { [7] = Vector(bot.loc.x + 150, bot.loc.y) } or nil
 		if o.pre then o.pre(bot) end
@@ -367,6 +367,7 @@ end
 -- heal items; in a fight under the floor OHA's salve and faerie fire stay, and other items are never held.
 do
 	local H, bot = world({ hp = 150 })
+	package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = true
 	local e = enemy(10, Vector(300, -5000), 50)
 	capture(function()
 		H.Retreat.Desire(bot)
