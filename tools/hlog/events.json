@@ -97,6 +97,7 @@
    "kills": "num",
    "deaths": "num",
    "tgt": "str",
+   "tid": "str",
    "ln": "str",
    "s": "num",
    "ld": "num",
@@ -235,6 +236,7 @@
    "kills": "num",
    "deaths": "num",
    "tgt": "str",
+   "tid": "str",
    "ln": "str",
    "s": "num",
    "ld": "num",
@@ -258,6 +260,10 @@
    "at": "num",
    "by": "str",
    "order": "str"
+  },
+  "inv": {
+   "pid": "num",
+   "items": "str"
   },
   "game_end": {
    "pid": "num",
@@ -1721,6 +1727,7 @@
    "hero": "text",
    "competing": "text",
    "tgt": "text",
+   "tid": "text",
    "ln": "text",
    "mode": "text",
    "lf": "text",
@@ -1754,11 +1761,15 @@
   },
   "ev_snap": {
    "tgt": "text",
+   "tid": "text",
    "ln": "text",
    "mode": "text",
    "lf": "text",
    "by": "text",
    "order": "text"
+  },
+  "ev_inv": {
+   "items": "text"
   },
   "ev_intent_cadence": {
    "rf": "text",
