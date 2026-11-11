@@ -418,6 +418,9 @@ do
 		local r = e.rig
 		if r ~= nil then
 			check(name .. ": rig has reps and a release", #r.reps > 0 and #r.release.modes > 0 and r.timeout > 0 and type(r.switch) == "string")
+			-- A rep that cannot finish its setup inside its own length overlaps the next; one that ends after the window is not a
+			-- rep of the rule at all, so rep 1 must end inside it.
+			check(name .. ": rep 1 ends inside the rig's window, and the ready timeout fits the rep", type(r.window) == "number" and e.rep.from + e.rep.every <= r.window and r.timeout < e.rep.every, r.window)
 			for _, rr in ipairs(r.reps) do
 				for k, steps in pairs(rr.setup) do
 					local last = steps[#steps]:match("^(%a+)")
@@ -533,6 +536,7 @@ do
 	T = 80
 	local r = readyLines(capture(function() tick(H, atk, cast) end))
 	check("rig: ready once, ok=1, var=salve", #r == 1 and field(r[1], "ok") == "1" and field(r[1], "var") == "salve" and field(r[1], "secs") == "20", r[1])
+	check("rig: the ready line carries the rep's end, the window and the released modes without idle", field(r[1], "rend") == "210" and field(r[1], "win") == "600" and field(r[1], "rel") == "retreat", r[1])
 	check("rig: released: not held, retreat runs, laning gets 0, farm holds idle at 0.5", not H.Drill.Held(cast) and H.Chooser.Decide(cast, "laning") == 0 and H.Chooser.Decide(cast, "farm") == 0.5 and H.Drill.RigDesire(cast, "retreat") == nil)
 	-- The path every mode file takes (test_rig_entry_points.lua): Chooser.Gate answers for a released cast before OHA's desire.
 	check("rig: released: a mode file's Gate keeps OHA's desire for a listed mode and gives 0 for an unlisted one", H.Chooser.Gate(cast, "retreat", function() return 0.7 end)() == 0.7 and H.Chooser.Gate(cast, "laning", function() return 0.7 end)() == 0)
