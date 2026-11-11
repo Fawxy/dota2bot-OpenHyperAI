@@ -199,6 +199,7 @@ local GameState = ____dota.GameState
 local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
@@ -678,11 +679,14 @@ function chase(bot)
         end
         return true
     end
-    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
+    local ____opt_39 = ____exports.Active()
+    local range = ____opt_39 and ____opt_39.chaseRange or ____exports.CHASE_RANGE
+    local candidates = range > ____exports.CHASE_RANGE and castOnly and (GetUnitList(UnitType.EnemyHeroes) or ({})) or (bot:GetNearbyHeroes(1600, true, BotMode.None) or ({}))
+    for ____, h in ipairs(candidates) do
         do
             local __continue101
             repeat
-                if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
+                if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > range then
                     __continue101 = true
                     break
                 end
@@ -706,8 +710,8 @@ function chase(bot)
     if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
         endLinger(bot, "rep_end")
     end
-    local ____opt_39 = ____exports.Active()
-    if (____opt_39 and ____opt_39.linger) == true then
+    local ____opt_41 = ____exports.Active()
+    if (____opt_41 and ____opt_41.linger) == true then
         if best ~= nil and lingering[bot:GetPlayerID()] == nil then
             startLinger(bot, best)
         end
@@ -715,8 +719,8 @@ function chase(bot)
             return true
         end
     end
-    local ____opt_41 = ____exports.Active()
-    local breakAt = ____opt_41 and ____opt_41.breakAt
+    local ____opt_43 = ____exports.Active()
+    local breakAt = ____opt_43 and ____opt_43.breakAt
     if best ~= nil and breakAt ~= nil and best:GetHealth() / math.max(
         1,
         best:GetMaxHealth()
@@ -913,6 +917,7 @@ ____exports.TABLE = {
         chaser = {d = {3}},
         chaseCast = true,
         noDive = true,
+        chaseRange = 3000,
         breakAt = 0.25,
         castItems = true,
         others = "bench",
@@ -1288,8 +1293,8 @@ CHASER_HOME_UNTIL = 0.9
 chaserHome = {}
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
-    local ____opt_43 = ____exports.Active()
-    local list = ____opt_43 and ____opt_43.castSpots
+    local ____opt_45 = ____exports.Active()
+    local list = ____opt_45 and ____opt_45.castSpots
     if list == nil or #list == 0 or rep <= 0 then
         return nil
     end
@@ -1355,8 +1360,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_45 = overrides()
-            local v = ____opt_45 and ____opt_45[k]
+            local ____opt_47 = overrides()
+            local v = ____opt_47 and ____opt_47[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -1364,8 +1369,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_47 = overrides()
-        local asked = ____opt_47 and ____opt_47.Drill
+        local ____opt_49 = overrides()
+        local asked = ____opt_49 and ____opt_49.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})

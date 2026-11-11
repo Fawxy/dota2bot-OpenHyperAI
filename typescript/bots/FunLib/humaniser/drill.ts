@@ -10,7 +10,7 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { BotMode, GameState, Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, GameState, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -49,6 +49,8 @@ export interface Entry {
      *  think, then chases again (hi0, hi1: the chaser died or fell under 15% HP in each chase rep that did not bring the cast to
      *  `breakAt`; hi5: skipping a cast under its tower left a pos5 cast unchased). */
     noDive?: boolean;
+    /** Chasers follow the cast this far from their lane spot (default CHASE_RANGE); a support stands back near its tower (hi6). */
+    chaseRange?: number;
     /** Chasers keep OHA's spell and item use during a chase rep (the fast drop into `lethal` in games is not auto-attacks). */
     chaserCasts?: boolean;
     /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
@@ -200,6 +202,7 @@ export const TABLE: Record<string, Entry> = {
         chaser: { d: [3] },
         chaseCast: true,
         noDive: true,
+        chaseRange: 3000,
         breakAt: 0.25,
         castItems: true,
         others: "bench",
@@ -845,8 +848,10 @@ function chase(bot: Unit): boolean {
         if (GetUnitToLocationDistance(bot, back) > 100) bot.Action_MoveToLocation(back);
         return true;
     }
-    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
-        if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
+    const range = Active()?.chaseRange ?? CHASE_RANGE;
+    const candidates = range > CHASE_RANGE && castOnly ? GetUnitList(UnitType.EnemyHeroes) ?? [] : bot.GetNearbyHeroes(1600, true, BotMode.None) ?? [];
+    for (const h of candidates) {
+        if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > range) continue;
         if (castOnly && RoleOf(h) !== "cast") continue;
         const dd = GetUnitToUnitDistance(bot, h);
         if (dd < bestD) {
