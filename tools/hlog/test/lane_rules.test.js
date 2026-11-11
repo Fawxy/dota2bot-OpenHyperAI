@@ -162,6 +162,18 @@ test('D3: walking on counts only while our own lane front is nearer than our fou
     assert.deepStrictEqual(cases(lines, 'D3'), [[1, 100, 1, 'no_stop'], [1, 200, 0, 'ok']]);
 });
 
+test('D3: a Dire pos3 reads the bot lane front (Dire offlane), not its top or mid', () => {
+    // Dire fountain (6928, 6372). Bot front (6000, -1000) is 2,000 from the walk at (6000, 1000), the fountain 5,400; top and
+    // mid fronts are farther than the fountain, so only the bot lane makes the walk-on count.
+    const lines = bots([[1, 2, 1], [6, 3, 3]]);
+    for (let t = 100; t <= 115; t++) {
+        lines.push(snap(t, 6, 6000, 1000 + 50 * (t - 100), { mode: 'retreat', hp: 90 }));
+        lines.push(snap(t, 1, t <= 102 ? 6000 : 0, t <= 102 ? 200 : -4000));
+        lines.push(line(t, 'front team=3 top=0.5 topx=-6000 topy=6000 mid=0.5 midx=-1000 midy=-1000 bot=0.5 botx=6000 boty=-1000'));
+    }
+    assert.deepStrictEqual(cases(lines, 'D3').filter(c => c[0] === 6), [[6, 100, 1, 'no_stop']]);
+});
+
 test('D7: a support leaving its core in a 1v2 at low HP violates; leaving a healthy core does not', () => {
     const lines = bots([[0, 2, 1], [3, 2, 5], [5, 3, 3], [6, 3, 4]]);
     for (const [t0, hp] of [[100, 60], [200, 100]]) {
