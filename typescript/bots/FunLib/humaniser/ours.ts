@@ -134,6 +134,9 @@ export const DEFAULTS = {
     /** Slice heal-stop (D3): with Retreat on, a heal episode ends where HP is back over half, nobody is in reach and our lane
      *  front is nearer than our fountain (retreat.ts HealBack). Off: it walks on to the fountain and 0.8 HP. */
     HealStop: true,
+    /** Slice heal-items (D6 stop-gap, user 11/11/2026): with Retreat and HealStop on, a heal start that holds items restoring HP to
+     *  HealBack uses them and waits at our tower (retreat.ts HealSets). Off: the walk home, OHA's item use only. */
+    HealItems: true,
     /** Slice arbiter-shadow (design docs/proposals/2026-11-11-arbiter.md): per owned hero, the arbiter's pick as ev=arb beside
      *  Valve's active mode (arbiter.ts). Logging only, no desire changes. Off: no line. */
     ArbiterShadow: true,

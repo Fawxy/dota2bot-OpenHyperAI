@@ -37,8 +37,11 @@ local function capture(fn)
 end
 local function lines(all, ev)
 	local r = {}
-	-- ph=read lines (band changes) are counted apart: the checks below read starts and ends.
-	for _, l in ipairs(all) do if l:find("ev=" .. ev .. " ", 1, true) and not l:find(" ph=read ", 1, true) then r[#r + 1] = l end end
+	-- ph=read lines (band changes) and HealItems' lines are counted apart: the checks below read starts and ends.
+	for _, l in ipairs(all) do
+		local ph = l:match(" ph=(%S+)")
+		if l:find("ev=" .. ev .. " ", 1, true) and ph ~= "read" and ph ~= "items" and ph ~= "use" and ph ~= "items_off" then r[#r + 1] = l end
+	end
 	return r
 end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
@@ -252,6 +255,91 @@ do
 		T = T + 1
 		check("heal stop: an enemy in reach keeps the walk going", H.Retreat.Desire(bot) == 0.95)
 	end)
+end
+
+-- HealItems (D6 stop-gap): a heal start uses the first set of held items that brings HP back to half and waits at our tower.
+-- One tango short means the walk home with the tangoes kept (never two: a recast refreshes); a salve covers a deep heal, salve
+-- and tango a deeper one; past that, home. Faerie fire only with no salve held; the fountain nearer, home.
+do
+	local SALVE = { name = "item_flask", spec = { health_regen = 30, buff_duration = 13 } }
+	local TANGO = { name = "item_tango", spec = { health_regen = 7, buff_duration = 16 } }
+	local FIRE = { name = "item_faerie_fire", spec = { hp_restore = 85 } }
+	local function start(o)
+		local H, bot = world({ hp = o.hp, loc = o.loc })
+		bot.maxhp = o.max or 600
+		package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = o.on
+		bot.items = o.items
+		TREES = o.tree ~= false and { [7] = Vector(bot.loc.x + 150, bot.loc.y) } or nil
+		local out = capture(function()
+			check("heal items: the heal start", H.Retreat.Desire(bot) == 0.95)
+			H.Retreat.Think(bot)
+			if o.after then o.after(H, bot) end
+		end)
+		local items
+		for _, l in ipairs(out) do if l:find("ev=retreat ph=items ", 1, true) then items = l end end
+		return H, bot, items, out
+	end
+	local function kinds(pid)
+		local r = {}
+		for _, a in ipairs(ActionsOf(pid)) do if a.kind ~= "MoveToLocation" then r[#r + 1] = a.kind end end
+		return table.concat(r, ",")
+	end
+
+	local _, bot, l = start({ hp = 150, items = { [0] = TANGO } })
+	check("heal items: one tango short of half, nothing used, home", field(l, "skip") == "short" and kinds(bot.pid) == "", l)
+
+	_, bot, l = start({ hp = 150, items = { [0] = TANGO, [1] = SALVE } })
+	check("heal items: a salve covers it, the salve alone", field(l, "set") == "salve" and kinds(bot.pid) == "UseAbilityOnEntity", l)
+
+	_, bot, l = start({ hp = 50, max = 1000, items = { [0] = TANGO, [1] = SALVE } })
+	check("heal items: deeper, salve and tango, the tango first", field(l, "set") == "salve,tango" and kinds(bot.pid) == "UseAbilityOnTree", l)
+
+	_, bot, l = start({ hp = 50, max = 1200, items = { [0] = TANGO, [1] = SALVE } })
+	check("heal items: past salve and tango, home with both kept", field(l, "skip") == "short" and kinds(bot.pid) == "", l)
+
+	_, bot, l = start({ hp = 150, items = { [0] = TANGO, [1] = FIRE } })
+	check("heal items: no salve, tango and faerie fire", field(l, "set") == "tango,fire", l)
+	_, bot, l = start({ hp = 50, max = 1200, items = { [0] = FIRE, [1] = SALVE } })
+	check("heal items: faerie fire is not counted while a salve is held", field(l, "held") == "salve", l)
+
+	_, bot, l = start({ hp = 150, items = { [0] = TANGO, [1] = FIRE }, tree = false })
+	check("heal items: no tree near, no tango set", field(l, "skip") == "short", l)
+
+	_, bot, l = start({ hp = 150, loc = Vector(-6000, -6000), items = { [1] = SALVE } })
+	check("heal items: our fountain nearer, home with the salve kept", field(l, "skip") == "fountain" and kinds(bot.pid) == "", l)
+
+	-- The wait at our tower: the anchor is our T1's stand point; a hero in reach sends it on home before the salve has done its work.
+	local H
+	H, bot, l = start({ hp = 150, items = { [1] = SALVE }, after = function(H, bot)
+		bot.modifiers["modifier_flask_healing"] = true
+		T = T + 2
+		H.Retreat.Desire(bot)
+		H.Retreat.Think(bot)
+		local m = ActionsOf(bot.pid, "MoveToLocation")
+		check("heal items: the walk goes to our tower", #m > 0 and m[#m].args[1].x > -3500 and m[#m].args[1].x < -2800, m[#m] and m[#m].args[1].x)
+		enemy(10, Vector(bot.loc.x + 300, bot.loc.y), 50)
+		T = T + 1
+		H.Retreat.Desire(bot)
+		H.Retreat.Think(bot)
+		m = ActionsOf(bot.pid, "MoveToLocation")
+		check("heal items: a hero in reach, on to the fountain", m[#m].args[1].x < -6000, m[#m].args[1].x)
+	end })
+
+	-- At half on the salve the wait ends `healed`, short of the fountain.
+	local out
+	H, bot, l, out = start({ hp = 150, items = { [1] = SALVE }, after = function(H, bot)
+		bot.modifiers["modifier_flask_healing"] = true
+		bot.hp = 320
+		T = T + 6
+		check("heal items: at half the episode ends", H.Retreat.Desire(bot) == 0)
+	end })
+	local ended
+	for _, x in ipairs(lines(out, "retreat")) do if field(x, "ph") == "end" then ended = x end end
+	check("heal items: res=healed", field(ended, "res") == "healed", ended)
+
+	_, bot, l = start({ hp = 150, items = { [1] = SALVE }, on = false })
+	check("heal items: off, no plan and no use", l == nil and kinds(bot.pid) == "", l)
+	package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = nil
 end
 
 -- retreat-heal's harness: in a chase rep the cast's retreat starts nothing above the drill's 25% HP (a lethal read

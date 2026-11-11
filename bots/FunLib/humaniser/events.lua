@@ -905,6 +905,12 @@ ____exports.EVENTS = {
         wave = "bool",
         dmgh = "num",
         crp = "bool",
+        need = "num",
+        held = "str",
+        set = "str",
+        got = "num",
+        tree = "bool",
+        skip = "str",
         x = "num",
         y = "num"
     },

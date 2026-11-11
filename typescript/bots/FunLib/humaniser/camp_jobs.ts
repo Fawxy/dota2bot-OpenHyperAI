@@ -5,7 +5,7 @@
  * aborted. Each pull's outcome is measured as the divert fraction, each stack's as the box's neutral count after
  * the minute, and both are logged for tools/replay-mining.
  */
-import { BotMode, Item, Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Team, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -27,6 +27,7 @@ import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings"
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Threat from "bots/FunLib/humaniser/threat";
+import * as ItemUse from "bots/FunLib/humaniser/item_use";
 
 export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
 
@@ -1619,29 +1620,6 @@ function aggroLanded(bot: Unit, job: Job, now: number): number {
     return math.min(now, now - (GameTime() - last)) + flight;
 }
 
-/** Bot API methods for item use that ts_libs does not declare yet (its Action_UseAbilityOnEntity takes abilities only). */
-interface SupplyBot {
-    GetNearbyTrees(radius: number): number[];
-    Action_UseAbilityOnTree(item: Item, tree: number): void;
-    Action_UseAbilityOnEntity(item: Item, target: Unit): void;
-}
-declare function GetTreeLocation(tree: number): Vector;
-
-function usableItem(bot: Unit, name: string): Item | undefined {
-    const slot = bot.FindItemSlot(name);
-    if (slot === undefined || slot < 0 || slot > 5) return undefined;
-    const item = bot.GetItemInSlot(slot);
-    return item !== null && item !== undefined && item.IsFullyCastable() ? item : undefined;
-}
-
-function tangoTree(bot: Unit): number | undefined {
-    for (const tree of (bot as unknown as SupplyBot).GetNearbyTrees(settings().Radii.TangoTree) ?? []) {
-        const loc = GetTreeLocation(tree);
-        if (IsLocationVisible(loc) && IsLocationPassable(loc)) return tree;
-    }
-    return undefined;
-}
-
 /**
  * A support about to take a camp's hits eats a tango and drinks a clarity on the way, with time to spare: upstream
  * waits for 200 HP or 60% mana lost, and from the camp coming into sight the cast hold keeps its item code off.
@@ -1664,23 +1642,23 @@ function supply(bot: Unit, job: Job, now: number): boolean {
     if (!needClarity && !needTango) return false;
     const blocked = slack < cfg.Timing.SupplySlack ? "slack" : enemyHeroNear(bot) ? "enemy" : undefined;
     if (needClarity) {
-        const clarity = usableItem(bot, "item_clarity");
+        const clarity = ItemUse.Usable(bot, "item_clarity");
         if (blocked !== undefined || clarity === undefined) noteSupply(bot, job, "clarity", "skip", blocked ?? "no-item");
         else {
             job.clarityUsed = true;
             awaitSupply(bot, job, now, "clarity", "modifier_clarity_potion");
-            (bot as unknown as SupplyBot).Action_UseAbilityOnEntity(clarity, bot);
+            ItemUse.UseOnSelf(bot, clarity);
             return true;
         }
     }
     if (needTango) {
-        const tango = usableItem(bot, "item_tango_single") ?? usableItem(bot, "item_tango");
-        const tree = tango !== undefined && blocked === undefined ? tangoTree(bot) : undefined;
+        const tango = ItemUse.Usable(bot, "item_tango_single") ?? ItemUse.Usable(bot, "item_tango");
+        const tree = tango !== undefined && blocked === undefined ? ItemUse.TangoTree(bot, cfg.Radii.TangoTree) : undefined;
         if (tango === undefined || tree === undefined) noteSupply(bot, job, "tango", "skip", blocked ?? (tango === undefined ? "no-item" : "no-tree"));
         else {
             job.tangoUsed = true;
             awaitSupply(bot, job, now, "tango", "modifier_tango_heal");
-            (bot as unknown as SupplyBot).Action_UseAbilityOnTree(tango, tree);
+            ItemUse.UseOnTree(bot, tango, tree);
             return true;
         }
     }

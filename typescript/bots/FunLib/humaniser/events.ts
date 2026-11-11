@@ -1143,6 +1143,13 @@ export const EVENTS = {
         wave: "bool",
         dmgh: "num",
         crp: "bool",
+        /** HealItems (ph=items, use, items_off): HP to HealBack, the usable heal items, the set used (or the item, on use), what it restores, a tree near, why not. */
+        need: "num",
+        held: "str",
+        set: "str",
+        got: "num",
+        tree: "bool",
+        skip: "str",
         x: "num",
         y: "num",
     },

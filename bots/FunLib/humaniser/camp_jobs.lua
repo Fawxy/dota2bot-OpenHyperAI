@@ -248,6 +248,7 @@ local TransitionSettings = require(GetScriptDirectory().."/FunLib/humaniser/tran
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 function settings()
     return LaneConfig.Settings()
 end
@@ -2463,23 +2464,6 @@ local function aggroLanded(bot, job, now)
         now - (GameTime() - last)
     ) + flight
 end
-local function usableItem(bot, name)
-    local slot = bot:FindItemSlot(name)
-    if slot == nil or slot < 0 or slot > 5 then
-        return nil
-    end
-    local item = bot:GetItemInSlot(slot)
-    return item ~= nil and item ~= nil and item:IsFullyCastable() and item or nil
-end
-local function tangoTree(bot)
-    for ____, tree in ipairs(bot:GetNearbyTrees(settings().Radii.TangoTree) or ({})) do
-        local loc = GetTreeLocation(tree)
-        if IsLocationVisible(loc) and IsLocationPassable(loc) then
-            return tree
-        end
-    end
-    return nil
-end
 --- A support about to take a camp's hits eats a tango and drinks a clarity on the way, with time to spare: upstream
 -- waits for 200 HP or 60% mana lost, and from the camp coming into sight the cast hold keeps its item code off.
 -- True while the job leaves the frame to the use.
@@ -2504,7 +2488,7 @@ local function supply(bot, job, now)
     end
     local blocked = slack < cfg.Timing.SupplySlack and "slack" or (enemyHeroNear(bot) and "enemy" or nil)
     if needClarity then
-        local clarity = usableItem(bot, "item_clarity")
+        local clarity = ItemUse.Usable(bot, "item_clarity")
         if blocked ~= nil or clarity == nil then
             noteSupply(
                 bot,
@@ -2522,15 +2506,15 @@ local function supply(bot, job, now)
                 "clarity",
                 "modifier_clarity_potion"
             )
-            bot:Action_UseAbilityOnEntity(clarity, bot)
+            ItemUse.UseOnSelf(bot, clarity)
             return true
         end
     end
     if needTango then
-        local tango = usableItem(bot, "item_tango_single") or usableItem(bot, "item_tango")
+        local tango = ItemUse.Usable(bot, "item_tango_single") or ItemUse.Usable(bot, "item_tango")
         local ____temp_45
         if tango ~= nil and blocked == nil then
-            ____temp_45 = tangoTree(bot)
+            ____temp_45 = ItemUse.TangoTree(bot, cfg.Radii.TangoTree)
         else
             ____temp_45 = nil
         end
@@ -2552,7 +2536,7 @@ local function supply(bot, job, now)
                 "tango",
                 "modifier_tango_heal"
             )
-            bot:Action_UseAbilityOnTree(tango, tree)
+            ItemUse.UseOnTree(bot, tango, tree)
             return true
         end
     end
