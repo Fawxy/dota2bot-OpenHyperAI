@@ -843,7 +843,8 @@ function rigState()
             phase = {},
             bought = {},
             waiting = {},
-            idleAt = {}
+            idleAt = {},
+            hpMet = {}
         }
     end
     return rig
@@ -1883,8 +1884,12 @@ local function failingCheck(bot, st, rr)
         end
     end
     local r = rr.ready
-    if r.hpAtMost ~= nil and hpShare(bot) > r.hpAtMost then
-        return "hp"
+    if r.hpAtMost ~= nil then
+        if hpShare(bot) <= r.hpAtMost then
+            st.hpMet[bot:GetPlayerID()] = true
+        elseif st.hpMet[bot:GetPlayerID()] ~= true then
+            return "hp"
+        end
     end
     for ____, it in ipairs(r.holds or ({})) do
         if not holdsItem(bot, it) then
@@ -1900,19 +1905,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue214
+                local __continue216
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue214 = true
+                        __continue216 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue214 = true
+                    __continue216 = true
                 until true
-                if not __continue214 then
+                if not __continue216 then
                     break
                 end
             end

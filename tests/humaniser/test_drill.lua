@@ -507,6 +507,8 @@ do
 	local wait = lastMoveTo(7)
 	check("rig: at 19% the attacker leaves for its fountain", wait ~= nil and math.sqrt((wait.x - spot.x) ^ 2 + (wait.y - spot.y) ^ 2) > 1600)
 	check("rig: the attacker still near: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	cast.hp = 30
+	check("rig: HP latched: regen back over the bar while the attacker walks off still counts (fix5)", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	atk.loc = Vector(wait.x, wait.y, 0)
 	T = 80
 	local r = readyLines(capture(function() tick(H, atk, cast) end))

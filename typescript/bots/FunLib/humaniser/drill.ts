@@ -969,6 +969,8 @@ interface RigState {
     waiting: Record<number, string>;
     /** Per cast pid: where its current idle spell stands, and the spell's last frame. */
     idleAt: Record<number, [Vector, number]>;
+    /** Per cast pid: its HP share has been at or under the ready bar this rep. */
+    hpMet: Record<number, boolean>;
 }
 
 let rig: RigState | undefined;
@@ -995,7 +997,7 @@ function rigState(): RigState | undefined {
     if (rigOf(d) === undefined) return undefined;
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
-    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {} };
+    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {} };
     return rig;
 }
 
@@ -1364,7 +1366,11 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (u !== undefined && st.placed[u.GetPlayerID()] !== true) return "setup";
     }
     const r = rr.ready;
-    if (r.hpAtMost !== undefined && hpShare(bot) > r.hpAtMost) return "hp";
+    // Latched: once at or under the bar this rep it stays met, so regen while the attacker walks off cannot race it (fix5).
+    if (r.hpAtMost !== undefined) {
+        if (hpShare(bot) <= r.hpAtMost) st.hpMet[bot.GetPlayerID()] = true;
+        else if (st.hpMet[bot.GetPlayerID()] !== true) return "hp";
+    }
     for (const it of r.holds ?? []) if (!holdsItem(bot, it)) return "holds";
     for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
     if (r.clear !== undefined || r.near !== undefined) {
