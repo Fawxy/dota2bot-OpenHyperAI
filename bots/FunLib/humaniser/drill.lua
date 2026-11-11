@@ -844,6 +844,17 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 90, from = 60, control = 4}
     },
+    ["retreat-heal-items"] = {
+        note = "retreat-heal; the recipe hands a salve before odd reps and a tango before even ones; to 16:00 for ten reps",
+        cast = SAFE_CORE,
+        chaser = {d = {3}},
+        chaseCast = true,
+        breakAt = 0.25,
+        castItems = true,
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 90, from = 60, control = 4}
+    },
     ["lane-only"] = {
         note = "every hero lane-only (the last-hit harness)",
         cast = ALL,

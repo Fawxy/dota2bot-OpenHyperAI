@@ -185,6 +185,19 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
     },
+    // Slice heal-items: retreat-heal with a salve before odd reps and a tango before even ones (recipe), so a salve rep's heal
+    // start uses it and waits at our tower, and a tango-only rep (one tango short of half from 25%) walks home.
+    "retreat-heal-items": {
+        note: "retreat-heal; the recipe hands a salve before odd reps and a tango before even ones; to 16:00 for ten reps",
+        cast: SAFE_CORE,
+        chaser: { d: [3] },
+        chaseCast: true,
+        breakAt: 0.25,
+        castItems: true,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 90, from: 60, control: 4 },
+    },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // The old Overrides.Solo + StackEvery = 3 harness (slice 4, double-stack): the Radiant pos5 alone stacks every third
