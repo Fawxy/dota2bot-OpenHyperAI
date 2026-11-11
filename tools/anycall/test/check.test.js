@@ -31,8 +31,25 @@ test('an any member of a typed value is flagged: it has no method declaration ei
     assert.deepStrictEqual(run('typed.extra();'), ['typed.extra']);
 });
 
-test('a declared method, a bare any function and a field read off any are not flagged', () => {
-    assert.deepStrictEqual(run('typed.GetHealth();\ndeclare const fn: any;\nfn(1);\nconst d = loose.damage;\nvoid d;'), []);
+test('a cast on the callee and a Function member are flagged: the compiler drops the cast and finds no signature', () => {
+    assert.deepStrictEqual(run('(typed.GetHealth as any)();\ndeclare const holder: { fn: Function };\nholder.fn();'), ['typed.GetHealth', 'holder.fn']);
+});
+
+test('only the undeclared call is reported among declared methods, this-void members, bare functions and field reads', () => {
+    const body = [
+        'typed.GetHealth();',
+        'declare const mod: { plain: (this: void, n: number) => number };',
+        'mod.plain(1);',
+        'declare const fn: any;',
+        'fn(1);',
+        'const d = loose.damage;',
+        'loose.GetMana(d);',
+    ].join('\n');
+    assert.deepStrictEqual(run(body), ['loose.GetMana']);
+});
+
+test('one allow comment does not cover two undeclared calls on a line', () => {
+    assert.deepStrictEqual(run('loose.A(loose.B()); // any-call-ok: only one of these was meant'), ['loose.A', 'loose.B']);
 });
 
 test('the allow comment covers its own line and the next, and nothing further', () => {
