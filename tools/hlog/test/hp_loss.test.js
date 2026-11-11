@@ -69,26 +69,25 @@ test('hp loss: snapshots more than 1.5 s apart are not a pair', () => {
 });
 
 test('hp loss, inferred basis: an older build gets the hero flag as fact and the rest as what stood near, marked `?`', () => {
-    const old = (t, hp, x, y, hit) => line(t, `snap pid=1 x=${x} y=${y} alive=1 hp=${hp} deaths=0 hit=${hit}`);
     const [tx, ty] = [TOWERS.find(r => r[0] === 3)[1], TOWERS.find(r => r[0] === 3)[2]];
-    const out = rows([...BOTS,
-        // The enemy (team 3) front on mid stands at (0, -2500) from 99 to 102; our own front beside the camp must not count.
-        ...[99, 100, 101, 102].map(t => line(t, 'front team=3 top=0.5 topx=9000 topy=9000 mid=0.5 midx=0 midy=-2500 bot=0.5 botx=9000 boty=9000')),
-        ...[103, 104].map(t => line(t, 'front team=2 top=0.5 topx=3978 topy=-5027 mid=0.5 midx=9000 midy=9000 bot=0.5 botx=9000 boty=9000')),
-        old(100, 100, 300, -2500, 0),
-        old(101, 95, 300, -2500, 0),            // 300 from their front
-        old(102, 90, 300, -2500, 1),            // and a hero hit
-        old(103, 85, 3978 + 500, -5027, 0),     // 500 from camp 1's spawn, our own front near: neutral only
-        old(104, 80, tx + 700, ty, 0),          // 700 from an enemy tower
-        old(105, 75, 0, 9000, 0),               // nothing near
-    ]).map(r => [Math.round(r.t), r.basis, r.src]);
-    assert.deepStrictEqual(out, [
-        [101, 'inferred', 'creep?'],
-        [102, 'inferred', 'hero+creep?'],
-        [103, 'inferred', 'neutral?'],
-        [104, 'inferred', 'tower?'],
-        [105, 'inferred', 'unexplained'],
-    ]);
+    // Each case is its own pair ten seconds apart: [x, y of the later snapshot, hit, x of the earlier one if it differs].
+    const cases = [
+        [[300, -2500, 0], 'creep?'],                    // 300 from their front
+        [[300, -2500, 1], 'hero+creep?'],               // and a hero hit
+        [[3978 + 700, -5027, 0], 'neutral?'],           // 700 from camp 1's spawn; our own front on the camp must not count
+        [[tx + 800, ty, 0], 'tower?'],                  // 800 from an enemy tower
+        [[tx + 1400, ty, 0, tx + 800], 'tower?'],       // walked out of reach by the snapshot: the earlier end still counts
+        [[0, 9000, 0], 'unexplained'],
+    ];
+    const lines = [...BOTS];
+    cases.forEach(([[x, y, hit, x0]], i) => {
+        const t = 100 + 10 * i;
+        lines.push(line(t, 'front team=3 top=0.5 topx=9000 topy=9000 mid=0.5 midx=0 midy=-2500 bot=0.5 botx=9000 boty=9000'));
+        lines.push(line(t, 'front team=2 top=0.5 topx=3978 topy=-5027 mid=0.5 midx=9000 midy=9000 bot=0.5 botx=9000 boty=9000'));
+        lines.push(line(t, `snap pid=1 x=${x0 === undefined ? x : x0} y=${y} alive=1 hp=100 deaths=0 hit=0`));
+        lines.push(line(t + 1, `snap pid=1 x=${x} y=${y} alive=1 hp=95 deaths=0 hit=${hit}`));
+    });
+    assert.deepStrictEqual(rows(lines).map(r => [r.basis, r.src]), cases.map(([, src]) => ['inferred', src]));
 });
 
 test('hp loss: an allied tower is no source for the inferred basis', () => {
