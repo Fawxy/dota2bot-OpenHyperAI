@@ -128,7 +128,7 @@ test('D24: leaving an even fight at high HP inside our creep aggro violates; out
     assert.deepStrictEqual(out, [[1, 200, 1, 'ours_retreat'], [1, 600, 0, 'free_hit']]);
 });
 
-test('D24h: hit by a hero standing in our creep aggro, a hero that never attacks an enemy hero violates; a hit back, a leave, a free hit or low HP does not', () => {
+test('D24h: hit by a hero standing in our creep aggro, a hero that stands or leaves violates; a hit back, a free hit or low HP does not', () => {
     const lines = bots([[1, 2, 1], [6, 3, 3]]);
     const front = (t, x) => line(t, `front team=2 top=0.5 topx=${x} topy=${PY} mid=0.5 midx=0 midy=0 bot=0.5 botx=5000 boty=-6000`);
     const tgtSnap = (t, o, tgt) => snap(t, 1, PX, PY, o).replace(/$/, tgt ? ` tgt=${tgt}` : '');
@@ -144,7 +144,9 @@ test('D24h: hit by a hero standing in our creep aggro, a hero that never attacks
         lines.push(tgtSnap(t, { hit, hp, mode }, tgt), snap(t, 6, PX + 400, PY));
         lines.push(front(t, at === 500 ? PX - 1500 : PX + 300));
     }
-    assert.deepStrictEqual(cases(lines, 'D24h'), [[1, 200, 1, 'none'], [1, 300, 0, 'hit_back'], [1, 400, 0, 'left']]);
+    assert.deepStrictEqual(cases(lines, 'D24h'), [[1, 200, 1, 'none'], [1, 300, 0, 'hit_back'], [1, 400, 1, 'left']]);
+    const ours = run('rule_counts', lines).find(r => r.team === 2);
+    assert.deepStrictEqual([ours.d24h_n, ours.d24h_v, ours.d24h_hb, ours.d24h_left], [3, 2, 1, 1]);
 });
 
 test('D3: a retreat that walks on after the threat ends, or into an enemy tower, violates; a short one does not', () => {

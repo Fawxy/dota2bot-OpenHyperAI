@@ -590,6 +590,19 @@ do
 	bot.hitBy = enemy
 	Ours.HitBack = false
 	check("switch off: the trade rule alone, so no trade", CoreTrade.Desire(bot) == 0)
+	check("the unanswered hit is logged with the respect that refused it and the hitter inside our creeps' aggro",
+		last():find("ev=trade_no") and last():find("why=behind") and last():find("agg=1") and last():find("tgt=6"), last())
+	local n = #lines
+	T = T + 1
+	CoreTrade.Desire(bot)
+	check("one line per run of unanswered hits, not one a frame", #lines == n)
+	fresh()
+	check("not hit: nothing refused is logged", CoreTrade.Desire(bot) == 0 and #lines == n, last())
+	fresh()
+	bot.hitBy = enemy
+	enemy.loc = Vector(900, 0)
+	check("a hitter outside our reach: no trade, logged as no_target with its distance",
+		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("d=900") and last():find("agg=1"), last())
 	Ours.HitBack = nil
 	Ours.CoreLaneFight = true
 	function Unit:GetNearbyLaneCreeps() return {} end

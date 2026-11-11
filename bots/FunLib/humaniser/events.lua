@@ -1171,6 +1171,24 @@ ____exports.EVENTS = {
         fs = "str",
         fire = "str"
     },
+    trade_no = {
+        pid = "num",
+        role = "str",
+        why = "str",
+        tgt = "num",
+        d = "num",
+        reach = "num",
+        har = "num",
+        agg = "num",
+        hp = "num",
+        thp = "num",
+        en = "num",
+        al = "num",
+        cr = "num",
+        hc = "num",
+        mode = "num",
+        md = "num"
+    },
     trade = {
         pid = "num",
         role = "str",

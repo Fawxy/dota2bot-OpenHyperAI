@@ -1512,6 +1512,32 @@ export const EVENTS = {
         fs: "str",
         fire: "str",
     },
+    /**
+     * An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s.
+     * `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`,
+     * `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left), or `hb_<respect>`
+     * (the hit back itself refused).
+     */
+    trade_no: {
+        pid: "num",
+        role: "str",
+        why: "str",
+        /** The nearest hero that hit us: its pid, distance, attack range, HP fraction; `agg` 1 with one of our lane creeps within creep aggro of it. */
+        tgt: "num",
+        d: "num",
+        reach: "num",
+        har: "num",
+        agg: "num",
+        hp: "num",
+        thp: "num",
+        /** As `ev=trade`: heroes within 1200, enemy lane creeps within 500, enemy units attacking us. */
+        en: "num",
+        al: "num",
+        cr: "num",
+        hc: "num",
+        mode: "num",
+        md: "num",
+    },
     /** One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
         pid: "num",

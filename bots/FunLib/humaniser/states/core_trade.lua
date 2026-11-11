@@ -156,19 +156,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue45
+            local __continue53
             repeat
                 if not c:IsAlive() then
-                    __continue45 = true
+                    __continue53 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue45 = true
+                __continue53 = true
             until true
-            if not __continue45 then
+            if not __continue53 then
                 break
             end
         end
@@ -177,10 +177,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue49
+            local __continue57
             repeat
                 if not t:IsAlive() then
-                    __continue49 = true
+                    __continue57 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -189,9 +189,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue49 = true
+                __continue57 = true
             until true
-            if not __continue49 then
+            if not __continue57 then
                 break
             end
         end
@@ -239,11 +239,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue77
+            local __continue85
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue77 = true
+                    __continue85 = true
                     break
                 end
                 local r = ____exports.Decide(
@@ -252,7 +252,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if r == "tower" or r == "outnumbered" then
-                    __continue77 = true
+                    __continue85 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -261,12 +261,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue77 = true
+                    __continue85 = true
                     break
                 end
                 return p
             until true
-            if not __continue77 then
+            if not __continue85 then
                 break
             end
         end
@@ -367,19 +367,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue114
+            local __continue122
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue114 = true
+                    __continue122 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue114 = true
+                __continue122 = true
             until true
-            if not __continue114 then
+            if not __continue122 then
                 break
             end
         end
@@ -529,6 +529,102 @@ local function hitBackTarget(bot)
     end
     return best
 end
+--- Hitters are looked for this far out: past any laning hero's attack range.
+local HITTER_RADIUS = 1600
+--- One `ev=trade_no` per run of unanswered hits: none for the same hero within this (s), as the D24h view's onset.
+local NO_EVERY = 5
+local lastNo = {}
+--- Logs why no trade opened this frame while an enemy hero is hitting us (`ev=trade_no`), so the D24h view's unanswered
+-- cases have a cause. Always returns 0, the desire of a frame with no trade.
+local function unanswered(bot, now, why, i)
+    local pid = bot:GetPlayerID()
+    local last = lastNo[pid]
+    if last ~= nil and now - last < NO_EVERY then
+        return 0
+    end
+    local hitter
+    local hd = math.huge
+    for ____, h in ipairs(bot:GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) do
+        do
+            local __continue32
+            repeat
+                if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
+                    __continue32 = true
+                    break
+                end
+                local d = GetUnitToUnitDistance(bot, h)
+                if d < hd then
+                    hitter = h
+                    hd = d
+                end
+                __continue32 = true
+            until true
+            if not __continue32 then
+                break
+            end
+        end
+    end
+    if hitter == nil then
+        return 0
+    end
+    lastNo[pid] = now
+    local at = hitter:GetLocation()
+    local radius = LaneFightConfig.Settings().CreepAggroRadius
+    local agg = __TS__ArraySome(
+        bot:GetNearbyLaneCreeps(1600, false) or ({}),
+        function(____, c) return c:IsAlive() and GetUnitToLocationDistance(c, at) <= radius end
+    )
+    local g = i or ____exports.Gather(bot, hitter)
+    Telemetry.Event(
+        "trade_no",
+        {
+            {"pid", pid},
+            {
+                "role",
+                isSupport(bot) and "support" or "core"
+            },
+            {"why", why},
+            {
+                "tgt",
+                hitter:GetPlayerID()
+            },
+            {
+                "d",
+                math.floor(hd)
+            },
+            {
+                "reach",
+                math.floor(reachOf(bot))
+            },
+            {
+                "har",
+                math.floor(hitter:GetAttackRange())
+            },
+            {"agg", agg and 1 or 0},
+            {
+                "hp",
+                math.floor(frac(bot) * 100) / 100
+            },
+            {
+                "thp",
+                math.floor(frac(hitter) * 100) / 100
+            },
+            {"en", g.enemiesNear},
+            {"al", g.alliesNear},
+            {"cr", g.enemyCreepsNear},
+            {"hc", g.hitByCreeps},
+            {
+                "mode",
+                bot:GetActiveMode()
+            },
+            {
+                "md",
+                math.floor(bot:GetActiveModeDesire() * 100) / 100
+            }
+        }
+    )
+    return 0
+end
 local function nearestTarget(bot)
     local reach = reachOf(bot)
     local support = isSupport(bot)
@@ -536,10 +632,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue34
+            local __continue42
             repeat
                 if not valid(h) then
-                    __continue34 = true
+                    __continue42 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -547,9 +643,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue34 = true
+                __continue42 = true
             until true
-            if not __continue34 then
+            if not __continue42 then
                 break
             end
         end
@@ -670,7 +766,7 @@ function ____exports.Desire(bot)
     end
     local owns = ____exports.OwnsLaneFights(bot)
     if owns and Plays.Of(bot) ~= nil then
-        return 0
+        return unanswered(bot, now, "play")
     end
     local target = nearestTarget(bot)
     local inputs = target ~= nil and ____exports.Gather(bot, target) or nil
@@ -693,7 +789,7 @@ function ____exports.Desire(bot)
         end
     end
     if target == nil or inputs == nil then
-        return 0
+        return unanswered(bot, now, "no_target")
     end
     if owns and d.kind ~= "kill" and d.respect ~= "tower" and d.respect ~= "outnumbered" then
         local play = rollFight(bot, target, now)
@@ -713,7 +809,7 @@ function ____exports.Desire(bot)
     if d.kind == nil or held then
         local hb = hitBackTarget(bot)
         if hb == nil then
-            return 0
+            return unanswered(bot, now, d.respect or "gap", inputs)
         end
         local hd = ____exports.Decide(
             ____exports.Gather(bot, hb),
@@ -722,7 +818,11 @@ function ____exports.Desire(bot)
             true
         )
         if hd.kind == nil then
-            return 0
+            return unanswered(
+                bot,
+                now,
+                "hb_" .. tostring(hd.respect)
+            )
         end
         return open(
             bot,
@@ -762,19 +862,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue104
+            local __continue112
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue104 = true
+                    __continue112 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue104 = true
+                __continue112 = true
             until true
-            if not __continue104 then
+            if not __continue112 then
                 break
             end
         end
@@ -854,6 +954,9 @@ function ____exports.Reset()
     end
     for k in pairs(rolledAt) do
         rolledAt[k] = nil
+    end
+    for k in pairs(lastNo) do
+        lastNo[k] = nil
     end
 end
 return ____exports

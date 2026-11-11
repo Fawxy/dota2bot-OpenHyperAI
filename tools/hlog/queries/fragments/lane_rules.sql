@@ -45,9 +45,11 @@
 -- D24h (the hit-back half, slice hit-back): a second from 1:30 in which I am hit by a hero (`hit`), at 50% HP or more, not in
 --    retreat mode, outside an enemy tower's reach, not outnumbered (as D24), with an enemy hero in reach standing within creep
 --    aggro (500) of our lane front (as D24's test); one case per onset (no such second in the 5 before). Cause, first match:
---    hit_back (in that second or the 3 after, my snapshot's attack target `tgt` is an enemy hero), left (retreat mode in them:
---    D24's leave half counts it), died (within 5 s), none. viol: died or none. The snapshot does not say which hero hit me, so
---    a hit back on another enemy hero counts (`judgement`).
+--    hit_back (in that second or the 3 after, my snapshot's attack target `tgt` is an enemy hero), left (retreat mode in them),
+--    died (within 5 s), none. viol: every cause but hit_back. A leave counts: the hitter is paying our creeps and we are in
+--    no danger, so leaving gives the exchange away as standing does (on h2hskill1 the sides left the same share unanswered
+--    and differed only in leaves and hits back, so the count without leaves hid the difference). The snapshot does not say
+--    which hero hit me, so a hit back on another enemy hero counts (`judgement`).
 -- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths, tgt)
 -- ensure: ev_bot(pid, team, pos, ours, hero)
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
@@ -304,7 +306,7 @@ lr_case AS (
         hp, en, al, NULL, mode
     FROM lr_d24
     UNION ALL
-    SELECT 'D24h', game_id, pid, team, pos, side, t, NOT hb AND (died IS NOT NULL OR NOT went),
+    SELECT 'D24h', game_id, pid, team, pos, side, t, NOT hb,
         CASE WHEN hb THEN 'hit_back' WHEN went THEN 'left' WHEN died IS NOT NULL THEN 'died' ELSE 'none' END, hp, en, al, NULL, mode
     FROM lr_hb
 ),

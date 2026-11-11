@@ -1303,6 +1303,24 @@
    "fs": "str",
    "fire": "str"
   },
+  "trade_no": {
+   "pid": "num",
+   "role": "str",
+   "why": "str",
+   "tgt": "num",
+   "d": "num",
+   "reach": "num",
+   "har": "num",
+   "agg": "num",
+   "hp": "num",
+   "thp": "num",
+   "en": "num",
+   "al": "num",
+   "cr": "num",
+   "hc": "num",
+   "mode": "num",
+   "md": "num"
+  },
   "trade": {
    "pid": "num",
    "role": "str",
@@ -2135,6 +2153,10 @@
    "hs": "text",
    "fs": "text",
    "fire": "text"
+  },
+  "ev_trade_no": {
+   "role": "text",
+   "why": "text"
   },
   "ev_trade": {
    "role": "text",
