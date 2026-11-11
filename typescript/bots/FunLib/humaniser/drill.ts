@@ -44,6 +44,9 @@ export interface Entry {
     chaser?: Sides;
     /** Chasers hit only the cast, never a statue beside it (an ally statue in reach must not draw the chase). */
     chaseCast?: boolean;
+    /** Chasers never dive: a target inside one of its towers' reach is not chased, and a chaser inside it walks back out
+     *  (hi0, hi1: the chaser died or fell under 15% HP in each chase rep that did not bring the cast to `breakAt`). */
+    noDive?: boolean;
     /** Chasers keep OHA's spell and item use during a chase rep (the fast drop into `lethal` in games is not auto-attacks). */
     chaserCasts?: boolean;
     /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
@@ -185,13 +188,16 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
     },
-    // Slice heal-items: retreat-heal with a salve before odd reps and a tango before even ones (recipe), so a salve rep's heal
-    // start uses it and waits at our tower, and a tango-only rep (one tango short of half from 25%) walks home.
+    // Slice heal-items: retreat-heal on the Radiant pos5, whose HP at 25% is under the 500 missing at which OHA drinks a salve
+    // itself (hi0, hi4: OHA's salve on the pos1 cast ended the walk `healed` too, so the off arm already passed). The recipe
+    // hands a salve before odd reps and a tango before even ones; the chaser never dives (it died or fell under 15% HP in each
+    // chase rep that failed to force, hi0 and hi1).
     "retreat-heal-items": {
-        note: "retreat-heal; the recipe hands a salve before odd reps and a tango before even ones; to 16:00 for ten reps",
-        cast: SAFE_CORE,
+        note: "Radiant pos5 lane-only with our retreat live but held in a chase rep until 25% HP, OHA's items on; Dire pos3 chases only it, never under its tower, and breaks off at 25%; a salve before odd reps, a tango before even ones; to 16:00",
+        cast: { r: [5] },
         chaser: { d: [3] },
         chaseCast: true,
+        noDive: true,
         breakAt: 0.25,
         castItems: true,
         others: "bench",
@@ -778,15 +784,29 @@ function lingerTick(bot: Unit, spot: Vector): boolean {
     return true;
 }
 
+/** Whether a point is inside the reach of a tower of the bot's enemies (`noDive`). */
+function underEnemyTower(bot: Unit, at: Vector): boolean {
+    for (const t of bot.GetNearbyTowers(1600, true) ?? []) {
+        if (t.IsAlive() && GetUnitToLocationDistance(t, at) <= WorldFacts.TowerReach(t, TOWER_REACH_FALLBACK)) return true;
+    }
+    return false;
+}
+
 /** The chaser's step: attack the nearest enemy hero within CHASE_RANGE of its lane spot, else walk back to the spot. */
 function chase(bot: Unit): boolean {
     const spot = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND);
     let best: Unit | undefined;
     let bestD = math.huge;
     const castOnly = Active()?.chaseCast === true;
+    const noDive = Active()?.noDive === true;
+    if (noDive && underEnemyTower(bot, bot.GetLocation())) {
+        bot.Action_MoveToLocation(spot);
+        return true;
+    }
     for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
         if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
         if (castOnly && RoleOf(h) !== "cast") continue;
+        if (noDive && underEnemyTower(bot, h.GetLocation())) continue;
         const dd = GetUnitToUnitDistance(bot, h);
         if (dd < bestD) {
             best = h;

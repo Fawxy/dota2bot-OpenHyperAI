@@ -830,7 +830,7 @@ export function Running(bot: Unit): boolean {
 
 /**
  * HealItems: OHA's item code (ItemUsageComplement, roam's tango) leaves our heal items alone on a hero our retreat owns while
- * a heal episode runs, or under the heal floor with nobody in reach (where one starts): the heal start's plan decides their
+ * a heal episode runs, or under the heal floor (where one starts; faerie fire only with nobody in reach): the heal start's plan decides their
  * use, and a walk home keeps them. hi1: OHA drank the planned salve the frame our episode started (rep 2), and in the second
  * between a `gone` end and the heal start (rep 5). In a fight OHA's salve and faerie fire stay. Reads the cached read only.
  */
@@ -839,7 +839,12 @@ export function HoldsItem(bot: Unit, name: string): boolean {
     if (!(Object.keys(HEAL_ITEM) as HealItem[]).some((k) => HEAL_ITEM[k].name === name)) return false;
     const st = states[bot.GetPlayerID()];
     if (st?.ep !== undefined) return st.ep.why === "heal";
-    return hpShare(bot) < SETTINGS.HealFloor && st?.read !== undefined && st.read.reach.length === 0;
+    if (hpShare(bot) >= SETTINGS.HealFloor) return false;
+    // OHA drinks a salve with no enemy within 900, before our read lets nobody reach us within its horizon (hi2 rep 1: 0.3 s
+    // ahead of the heal start); its salve and tango never fire in a fight, so they are held under the floor whatever the reach.
+    // Faerie fire, a fight's burst, only once nobody can reach us.
+    if (name !== HEAL_ITEM.fire.name) return true;
+    return st?.read !== undefined && st.read.reach.length === 0;
 }
 
 /** mode_farm_generic: none of ShouldRun's runs apply to a hero our retreat owns. */
