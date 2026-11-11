@@ -13,7 +13,8 @@
         "typescript-to-lua": "^1.26.2"
     },
     "scripts": {
-        "build:lua": "tstl -p tsconfig-tstl.json && node ./typescript/post-process/post-process-lua.js && node ./typescript/post-process/build-info.js",
+        "check:calls": "node ./tools/anycall/check.js",
+        "build:lua": "npm run check:calls && tstl -p tsconfig-tstl.json && node ./typescript/post-process/post-process-lua.js && node ./typescript/post-process/build-info.js",
         "build:node": "tsc -p tsconfig-node.json",
         "build": "npm run build:engine && npm run build:lua",
         "dev": "tstl -p tsconfig-tstl.json --watch",
