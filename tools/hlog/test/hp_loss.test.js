@@ -90,6 +90,18 @@ test('hp loss, inferred basis: an older build gets the hero flag as fact and the
     assert.deepStrictEqual(rows(lines).map(r => [r.basis, r.src]), cases.map(([, src]) => ['inferred', src]));
 });
 
+test('hp loss: a log without `deaths` and a hero without a lineup row still give counted rows and the enemy-side tests', () => {
+    const [tx, ty] = [TOWERS.find(r => r[0] === 3)[1], TOWERS.find(r => r[0] === 3)[2]];
+    const old = (t, hp) => line(t, `snap pid=1 x=${tx + 100} y=${ty} alive=1 hp=${hp} hit=0`);
+    // No ev=bot line: pid 1 is Radiant by its pid, so the Dire tower counts.
+    const s = open([old(100, 100), old(101, 95)]);
+    const view = s.query('SELECT died, src FROM hp_loss').map(r => [r.died, r.src]);
+    const sum = s.query(fs.readFileSync(path.join(__dirname, '..', 'queries', 'hp_loss.sql'), 'utf8'), { like: null, from: null, until: null, pid: null })
+        .map(r => [r.secs, r.deaths]);
+    s.db.close();
+    assert.deepStrictEqual([view, sum], [[[0, 'tower?']], [[1, 0]]]);
+});
+
 test('hp loss: an allied tower is no source for the inferred basis', () => {
     const [tx, ty] = [TOWERS.find(r => r[0] === 2)[1], TOWERS.find(r => r[0] === 2)[2]];
     const old = (t, hp) => line(t, `snap pid=1 x=${tx + 100} y=${ty} alive=1 hp=${hp} deaths=0 hit=0`);

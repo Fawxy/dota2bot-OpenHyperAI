@@ -402,7 +402,9 @@ do
 	local saved = {}
 	for _, n in ipairs(names) do saved[n] = rawget(U, n) end
 	function U:GetNearbyHeroes() return { attacker(b), attacker(other) } end
-	function U:GetNearbyLaneCreeps() return { attacker(b), attacker(b), attacker(other), attacker(nil) } end
+	local dead = attacker(b)
+	dead.alive = false
+	function U:GetNearbyLaneCreeps() return { attacker(b), attacker(b), attacker(other), attacker(nil), dead } end
 	function U:GetNearbyNeutralCreeps() return { attacker(other) } end
 	function U:GetNearbyTowers() return { attacker(b) } end
 	function U:WasRecentlyDamagedByAnyHero() return false end
@@ -413,7 +415,7 @@ do
 	H.Telemetry.Tick(b)
 	local snap = events("snap")[1]
 	check("damage: flags by source and raw HP, past 12:00 too", snap ~= nil and field(snap, "hit") == "0" and field(snap, "hc") == "1" and field(snap, "ht") == "1" and field(snap, "hv") == "431", snap)
-	check("damage: only units attacking this bot are counted, by kind", snap ~= nil and field(snap, "ah") == "1" and field(snap, "ac") == "2" and field(snap, "an") == "0" and field(snap, "at") == "1", snap)
+	check("damage: only live units attacking this bot are counted, by kind", snap ~= nil and field(snap, "ah") == "1" and field(snap, "ac") == "2" and field(snap, "an") == "0" and field(snap, "at") == "1", snap)
 	for _, n in ipairs(names) do U[n] = saved[n] end
 end
 

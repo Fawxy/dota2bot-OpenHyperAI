@@ -10,16 +10,19 @@
 --                 tower    damaged by a tower (`ht`)
 --                 creep    damaged by a creep (`hc`) with an enemy lane creep attacking the hero (`ac`)
 --                 neutral  a neutral attacking the hero (`an`), with the creep flag or with no other source flagged
+--                          (the second case is an inference: the creep flag misses some neutral hits)
 --                 unit     the creep flag with no lane creep or neutral seen attacking (kind unknown)
 --               With `inferred`, every source but `hero` carries `?`: `tower?` within 900 of an enemy tower, `creep?` within
 --               520 of the enemy team's lane front on any lane, `neutral?` within 800 of a camp's spawn. These say what
---               could have reached the hero, not what hit it. Against one replay's combat log (h2hgone1, to 10:00) the
+--               could have reached the hero, not what hit it. Against one replay's combat log (to 10:00) the
 --               source set was right in 70% of rows: `hero` is reliable, `creep?` is over-called beside a hero hit, and
 --               `tower?` finds a third of tower hits (a tower's shot lands on a hero that has left). Distances fitted there.
 --   hit hc ht   the flags as logged;  ah ac an at  enemy heroes, enemy lane creeps, neutrals and enemy towers whose attack
 --               target was the hero, the larger of the pair's two snapshots
 --   near_tower near_front near_camp   the `inferred` tests, on every row
 -- A death's flags and attackers are the last live snapshot's, so a killing blow from a source that arrived after it is missed.
+-- A death is seen at the hero's next live snapshot: one with no snapshot after it (the log ended first) has no `died` row, and
+-- logs without `deaths` have none at all. A hero with no lineup row takes its team from its pid (0-4 Radiant).
 -- needs: ev_snap(hv, hit, hc, ht, ah, ac, an, at, deaths)
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 WITH
@@ -35,7 +38,7 @@ pr AS (
 ),
 -- One pass over `pr` (a UNION would materialise it for every game): a pair is a death or a loss, never both.
 r AS (
-    SELECT game_id, pid, deaths > deaths0 AS died,
+    SELECT game_id, pid, coalesce(deaths > deaths0, 0) AS died,
         CASE WHEN deaths > deaths0 THEN t0 ELSE t END AS t, CASE WHEN deaths > deaths0 THEN x0 ELSE x END AS x,
         CASE WHEN deaths > deaths0 THEN y0 ELSE y END AS y, x0 AS px, y0 AS py,
         CASE WHEN deaths > deaths0 THEN hp0 ELSE hp0 - hp END AS loss, CASE WHEN deaths > deaths0 THEN hv0 ELSE hv0 - hv END AS loss_hp,
@@ -51,7 +54,7 @@ r AS (
 -- earlier snapshot; for a death both ends are the last live one).
 e AS (
     SELECT r.*, r.hc IS NOT NULL AS api,
-        EXISTS (SELECT 1 FROM tw WHERE tw.team = 5 - l.team AND min((tw.x - r.x) * (tw.x - r.x) + (tw.y - r.y) * (tw.y - r.y),
+        EXISTS (SELECT 1 FROM tw WHERE tw.team = 5 - coalesce(l.team, CASE WHEN r.pid < 5 THEN 2 ELSE 3 END) AND min((tw.x - r.x) * (tw.x - r.x) + (tw.y - r.y) * (tw.y - r.y),
             (tw.x - r.px) * (tw.x - r.px) + (tw.y - r.py) * (tw.y - r.py)) <= 900 * 900) AS near_tower,
         EXISTS (SELECT 1 FROM camps c WHERE min((c.x - r.x) * (c.x - r.x) + (c.y - r.y) * (c.y - r.y),
             (c.x - r.px) * (c.x - r.px) + (c.y - r.py) * (c.y - r.py)) <= 800 * 800) AS near_camp,
@@ -61,7 +64,7 @@ e AS (
                                  (f.topx - r.px) * (f.topx - r.px) + (f.topy - r.py) * (f.topy - r.py),
                                  (f.midx - r.px) * (f.midx - r.px) + (f.midy - r.py) * (f.midy - r.py),
                                  (f.botx - r.px) * (f.botx - r.px) + (f.boty - r.py) * (f.boty - r.py)))
-                  FROM ev_front f WHERE f.game_id = r.game_id AND f.t > r.t - 1.5 AND f.t <= r.t + 0.5 AND f.team = 5 - l.team) <= 520 * 520, 0) AS near_front
+                  FROM ev_front f WHERE f.game_id = r.game_id AND f.t > r.t - 1.5 AND f.t <= r.t + 0.5 AND f.team = 5 - coalesce(l.team, CASE WHEN r.pid < 5 THEN 2 ELSE 3 END)) <= 520 * 520, 0) AS near_front
     FROM r LEFT JOIN lineup l ON l.game_id = r.game_id AND l.pid = r.pid
 )
 SELECT game_id, pid, t, x, y, died, loss, loss_hp,
