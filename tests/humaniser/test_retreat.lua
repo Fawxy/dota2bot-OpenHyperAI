@@ -342,6 +342,30 @@ do
 	package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = nil
 end
 
+-- HealItems' hold on OHA's item code: under the heal floor with nobody in reach, and through a heal episode, our plan decides the
+-- heal items; in a fight under the floor OHA's salve and faerie fire stay, and other items are never held.
+do
+	local H, bot = world({ hp = 150 })
+	local e = enemy(10, Vector(300, -5000), 50)
+	capture(function()
+		H.Retreat.Desire(bot)
+		check("hold: under the floor with a hero in reach, OHA keeps its salve and faerie fire",
+			not H.Retreat.HoldsItem(bot, "item_flask") and not H.Retreat.HoldsItem(bot, "item_faerie_fire"))
+		e.alive = false
+		T = T + 1
+		H.Retreat.Desire(bot)
+		check("hold: in our heal episode the salve and tango are ours", H.Retreat.HoldsItem(bot, "item_flask") and H.Retreat.HoldsItem(bot, "item_tango"))
+		check("hold: other items are never held", not H.Retreat.HoldsItem(bot, "item_magic_wand"))
+	end)
+	H, bot = world({ hp = 150 })
+	package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = false
+	capture(function()
+		H.Retreat.Desire(bot)
+		check("hold: off, OHA keeps them", not H.Retreat.HoldsItem(bot, "item_flask"))
+	end)
+	package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = nil
+end
+
 -- retreat-heal's harness: in a chase rep the cast's retreat starts nothing above the drill's 25% HP (a lethal read
 -- included), and once it has been there it leaves as usual for the rest of the rep; a control rep is not held.
 do

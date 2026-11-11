@@ -1618,6 +1618,26 @@ end
 function ____exports.Running(bot)
     return RetreatState.Running(bot)
 end
+--- HealItems: OHA's item code (ItemUsageComplement, roam's tango) leaves our heal items alone on a hero our retreat owns while
+-- a heal episode runs, or under the heal floor with nobody in reach (where one starts): the heal start's plan decides their
+-- use, and a walk home keeps them. hi1: OHA drank the planned salve the frame our episode started (rep 2), and in the second
+-- between a `gone` end and the heal start (rep 5). In a fight OHA's salve and faerie fire stay. Reads the cached read only.
+function ____exports.HoldsItem(bot, name)
+    if not Ours.On("HealItems") or not Ours.On("HealStop") or not RetreatState.Owns(bot) then
+        return false
+    end
+    if not __TS__ArraySome(
+        __TS__ObjectKeys(HEAL_ITEM),
+        function(____, k) return HEAL_ITEM[k].name == name end
+    ) then
+        return false
+    end
+    local st = states[bot:GetPlayerID()]
+    if (st and st.ep) ~= nil then
+        return st.ep.why == "heal"
+    end
+    return hpShare(bot) < ____exports.SETTINGS.HealFloor and (st and st.read) ~= nil and #st.read.reach == 0
+end
 --- mode_farm_generic: none of ShouldRun's runs apply to a hero our retreat owns.
 function ____exports.Owns(bot)
     return RetreatState.Owns(bot)

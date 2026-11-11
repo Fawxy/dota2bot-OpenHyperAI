@@ -455,6 +455,7 @@ if Telemetry.GuardsEnabled() then
         Tick = none,
         Running = no,
         Owns = no,
+        HoldsItem = no,
         On = no,
         Fountain = none,
         TowerOnUs = none,
