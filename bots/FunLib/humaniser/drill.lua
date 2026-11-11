@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -221,6 +221,66 @@ function ____exports.Active()
         ____temp_2 = ____exports.TABLE[n]
     end
     return ____temp_2
+end
+function listed(s, team, pos)
+    if s == nil or pos == nil then
+        return false
+    end
+    local ____temp_3
+    if team == Team.Radiant then
+        ____temp_3 = s.r
+    else
+        ____temp_3 = s.d
+    end
+    local list = ____temp_3
+    return list ~= nil and __TS__ArrayIndexOf(list, pos) >= 0
+end
+--- The bot's role in the active drill: `play` when no drill is on. A hero whose position is not known yet plays.
+function ____exports.RoleOf(bot)
+    local d = ____exports.Active()
+    if d == nil then
+        return "play"
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    if pos == nil then
+        return "play"
+    end
+    if listed(
+        d.cast,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "cast"
+    end
+    if listed(
+        d.statue,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "statue"
+    end
+    if listed(
+        d.sentry,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "sentry"
+    end
+    if listed(
+        d.chaser,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "chaser"
+    end
+    if listed(
+        d.laneOnly,
+        bot:GetTeam(),
+        pos
+    ) then
+        return "laneonly"
+    end
+    return d.others
 end
 --- A statue's spot for the current rep (`lane` before the first rep or without a spot list).
 function ____exports.SpotOf(bot)
@@ -553,12 +613,18 @@ function chase(bot)
     )
     local best
     local bestD = math.huge
+    local ____opt_31 = ____exports.Active()
+    local castOnly = (____opt_31 and ____opt_31.chaseCast) == true
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue75
+            local __continue76
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue75 = true
+                    __continue76 = true
+                    break
+                end
+                if castOnly and ____exports.RoleOf(h) ~= "cast" then
+                    __continue76 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -566,9 +632,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue75 = true
+                __continue76 = true
             until true
-            if not __continue75 then
+            if not __continue76 then
                 break
             end
         end
@@ -577,8 +643,8 @@ function chase(bot)
     if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
         endLinger(bot, "rep_end")
     end
-    local ____opt_31 = ____exports.Active()
-    if (____opt_31 and ____opt_31.linger) == true then
+    local ____opt_33 = ____exports.Active()
+    if (____opt_33 and ____opt_33.linger) == true then
         if best ~= nil and lingering[bot:GetPlayerID()] == nil then
             startLinger(bot, best)
         end
@@ -603,10 +669,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue93
+            local __continue95
             repeat
                 if not h:IsAlive() then
-                    __continue93 = true
+                    __continue95 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -614,9 +680,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue93 = true
+                __continue95 = true
             until true
-            if not __continue93 then
+            if not __continue95 then
                 break
             end
         end
@@ -719,6 +785,17 @@ ____exports.TABLE = {
         others = "bench",
         castLaneOnly = true,
         rep = {every = 60, from = 60, control = 2}
+    },
+    ["retreat-even"] = {
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it, with their spells and items; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
+        cast = SAFE_CORE,
+        sentry = {r = {5}},
+        chaser = {d = {3, 4}},
+        chaseCast = true,
+        chaserCasts = true,
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 60, from = 60, control = 4}
     },
     ["lane-only"] = {
         note = "every hero lane-only (the last-hit harness)",
@@ -867,70 +944,16 @@ ____exports.TABLE = {
         overrides = {ForceLever = "r:bot=none"}
     }
 }
-local function listed(s, team, pos)
-    if s == nil or pos == nil then
-        return false
-    end
-    local ____temp_3
-    if team == Team.Radiant then
-        ____temp_3 = s.r
-    else
-        ____temp_3 = s.d
-    end
-    local list = ____temp_3
-    return list ~= nil and __TS__ArrayIndexOf(list, pos) >= 0
-end
---- The bot's role in the active drill: `play` when no drill is on. A hero whose position is not known yet plays.
-function ____exports.RoleOf(bot)
-    local d = ____exports.Active()
-    if d == nil then
-        return "play"
-    end
-    local pos = LaneConfig.PositionOf(bot)
-    if pos == nil then
-        return "play"
-    end
-    if listed(
-        d.cast,
-        bot:GetTeam(),
-        pos
-    ) then
-        return "cast"
-    end
-    if listed(
-        d.statue,
-        bot:GetTeam(),
-        pos
-    ) then
-        return "statue"
-    end
-    if listed(
-        d.sentry,
-        bot:GetTeam(),
-        pos
-    ) then
-        return "sentry"
-    end
-    if listed(
-        d.chaser,
-        bot:GetTeam(),
-        pos
-    ) then
-        return "chaser"
-    end
-    if listed(
-        d.laneOnly,
-        bot:GetTeam(),
-        pos
-    ) then
-        return "laneonly"
-    end
-    return d.others
-end
 --- Benched, a statue, a sentry or a chaser: the hero holds farm mode above every other mode, takes the drill's step and never casts.
 function ____exports.Held(bot)
     local r = ____exports.RoleOf(bot)
     return r == "bench" or r == "statue" or r == "sentry" or r == "chaser"
+end
+--- A chaser of an entry with `chaserCasts`, in a chase rep: OHA's spells and items stay on for it although it is held.
+function ____exports.Casts(bot)
+    local d = ____exports.Active()
+    local rep = ____exports.RepAt(DotaTime())
+    return d ~= nil and d.chaserCasts == true and ____exports.RoleOf(bot) == "chaser" and rep > 0 and not controlRep(d, rep)
 end
 --- Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`.
 function ____exports.LaneOnly(bot)
@@ -1089,8 +1112,8 @@ lingering = {}
 lingered = {}
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
-    local ____opt_33 = ____exports.Active()
-    local list = ____opt_33 and ____opt_33.castSpots
+    local ____opt_35 = ____exports.Active()
+    local list = ____opt_35 and ____opt_35.castSpots
     if list == nil or #list == 0 or rep <= 0 then
         return nil
     end
@@ -1156,8 +1179,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_35 = overrides()
-            local v = ____opt_35 and ____opt_35[k]
+            local ____opt_37 = overrides()
+            local v = ____opt_37 and ____opt_37[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -1165,8 +1188,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_37 = overrides()
-        local asked = ____opt_37 and ____opt_37.Drill
+        local ____opt_39 = overrides()
+        local asked = ____opt_39 and ____opt_39.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})

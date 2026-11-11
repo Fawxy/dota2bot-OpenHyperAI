@@ -1,4 +1,4 @@
--- Fragment (`-- include: lane_rules`): the doctrine's violations for D1, D2, D3, D7 and D9 (docs/team/DOCTRINE.md), found from
+-- Fragment (`-- include: lane_rules`): the doctrine's violations for D1, D2, D3, D7, D9 and D24 (docs/team/DOCTRINE.md), found from
 -- what happened (every hero's own ev=snap: position, HP, the `hit` flag, mode, level, lane distance; deaths), never from our
 -- threat read, so it runs on games from before the rules were built. The including query defines `gm(game_id, file)` first.
 -- Params: until (default 720, the head-to-head's 12:00). Ends with a comma. Final CTEs:
@@ -32,8 +32,17 @@
 --    outside 2,500 of the fountain, from 0:30, that starts from lane (the snapshot before, 3 s or less earlier, within 1,200
 --    of a lane path) and not in retreat mode (a flight is D1's). viol: some second of it with 2 or more enemies in reach and
 --    no ally near (cause died when the hero died in it or within 2 s after, else exposed).
+-- D24 (the leave half): a retreat-mode onset (in retreat this second, not in the 3 s before) from 1:30 with an enemy hero in
+--    reach that does not outnumber us (enemies in reach no more than me and the allies near), at 50% HP or more (`judgement`:
+--    the snapshot has no burst, so HP stands in for "not in danger of dying"), outside an enemy tower's reach and 1,500 of our
+--    fountain. viol: every enemy in reach stands within creep aggro (500) of our lane front, the nearest of the three
+--    (ev=front, its latest line): D24 stays while they pay in creep damage (EC-102); one outside it hits for free, and
+--    stepping out is right (cause free_hit). Else cause oha_retreat or ours_retreat by side. The front is the wave's lead
+--    creep, so an enemy beside the back of our wave reads free (`judgement`: under-counts, the same for both sides).
+--    A log with no ev=front line before the onset reads every case free_hit (no violations).
 -- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths)
 -- ensure: ev_bot(pid, team, pos, ours)
+-- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 lr_who AS MATERIALIZED (
     SELECT game_id, pid, team, pos, CASE WHEN instr(coalesce(ours, ''), ':1') > 0 THEN 'ours' ELSE 'oha' END AS side
     FROM (
@@ -206,6 +215,26 @@ lr_d9 AS (
     FROM lr_d9e e
     WHERE e.t <= coalesce(:until, 720) AND e.secs >= 3 AND e.start NOT LIKE 'retreat %' AND e.start LIKE '% 1'
 ),
+lr_d24o AS MATERIALIZED (
+    SELECT o.game_id, o.pid, o.team, o.pos, o.side, o.sec AS t, o.x, o.y, o.hp, o.en_r AS en, o.al12 AS al, o.mode,
+        (SELECT f.seq FROM ev_front f WHERE f.game_id = o.game_id AND f.team = o.team AND f.t <= o.sec + 0.5 ORDER BY f.t DESC LIMIT 1) AS fseq
+    FROM lr_f o
+    WHERE o.mode = 'retreat'
+        AND NOT EXISTS (SELECT 1 FROM lr_f z WHERE z.game_id = o.game_id AND z.pid = o.pid AND z.sec >= o.sec - 3 AND z.sec < o.sec AND z.mode = 'retreat')
+        AND o.sec >= 90 AND o.sec <= coalesce(:until, 720) AND o.en_r >= 1 AND o.en_r <= o.al12 + 1 AND o.hp >= 50
+        AND o.en_tw2 > 750 * 750 AND o.fnt2 > 1500 * 1500
+),
+lr_d24 AS (
+    SELECT o.*,
+        (SELECT count(*) FROM lr_s b WHERE b.game_id = o.game_id AND b.sec = o.t AND b.team <> o.team
+            AND (b.x - o.x) * (b.x - o.x) + (b.y - o.y) * (b.y - o.y) <= (b.ar + 600) * (b.ar + 600)
+            AND NOT EXISTS (SELECT 1 FROM ev_front f WHERE f.seq = o.fseq AND f.game_id = o.game_id AND (
+                (b.x - f.topx) * (b.x - f.topx) + (b.y - f.topy) * (b.y - f.topy) <= 500 * 500
+                OR (b.x - f.midx) * (b.x - f.midx) + (b.y - f.midy) * (b.y - f.midy) <= 500 * 500
+                OR (b.x - f.botx) * (b.x - f.botx) + (b.y - f.boty) * (b.y - f.boty) <= 500 * 500))
+        ) AS free_n
+    FROM lr_d24o o
+),
 lr_case AS (
     SELECT 'D1' AS rule, game_id, pid, team, pos, side, t,
         died IS NOT NULL OR (a_sec IS NOT NULL AND NOT coalesce(went, 0) AND holds) AS viol,
@@ -223,4 +252,8 @@ lr_case AS (
     SELECT 'D9', game_id, pid, team, pos, side, t, exposed > 0, CASE WHEN exposed = 0 THEN 'safe' WHEN died THEN 'died' ELSE 'exposed' END,
         hp, en, 0, secs, mode
     FROM lr_d9
+    UNION ALL
+    SELECT 'D24', game_id, pid, team, pos, side, t, free_n = 0, CASE WHEN free_n > 0 THEN 'free_hit' ELSE side || '_retreat' END,
+        hp, en, al, NULL, mode
+    FROM lr_d24
 ),

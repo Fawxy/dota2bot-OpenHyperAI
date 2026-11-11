@@ -1020,6 +1020,10 @@ local function botFields(bot, ctx)
         bot:GetGold()
     }
     fields[#fields + 1] = {
+        "nw",
+        bot:GetNetWorth()
+    }
+    fields[#fields + 1] = {
         "lf",
         LanePick.Describe(
             bot:GetPlayerID(),

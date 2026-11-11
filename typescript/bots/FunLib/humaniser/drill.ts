@@ -40,8 +40,12 @@ export interface Entry {
     /** Heroes that stand as statues but attack an enemy hero inside their zone (Hold); checked after `statue`. */
     sentry?: Sides;
     /** Heroes that stand behind their own creeps and chase and hit an enemy hero within CHASE_RANGE of that spot, walking
-     *  back past it; benched (in the fountain) on control reps. Checked after `sentry`. */
+     *  back past it; waiting behind their own T1 on control reps. Checked after `sentry`. */
     chaser?: Sides;
+    /** Chasers hit only the cast, never a statue beside it (an ally statue in reach must not draw the chase). */
+    chaseCast?: boolean;
+    /** Chasers keep OHA's spell and item use during a chase rep (the fast drop into `lethal` in games is not auto-attacks). */
+    chaserCasts?: boolean;
     /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
     linger?: boolean;
     /** The cast's start spot per rep, cycling as `spots` (rep n takes entry (n - 1) mod length): `tower` (inside the enemy
@@ -117,7 +121,7 @@ export const TABLE: Record<string, Entry> = {
         forces: "retreat",
     },
     // The chase drill (prediction): the Radiant pos1 lane-only with our retreat live; the Dire pos3 chases and hits it whenever
-    // it comes within CHASE_RANGE of the chaser's lane spot on odd reps, and is benched on even reps (the control).
+    // it comes within CHASE_RANGE of the chaser's lane spot on odd reps, and waits behind its own T1 on even reps (the control).
     "retreat-chase": {
         note: "Radiant pos1 lane-only with our retreat live; Dire pos3 chases it within 1,500 of its lane spot on odd reps, waits behind its own T1 on even reps (control); everyone else benched",
         cast: SAFE_CORE,
@@ -146,6 +150,20 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castLaneOnly: true,
         rep: { every: 60, from: 60, control: 2 },
+    },
+    // Slice even-fight (D24, D1): the same two chasers on the Radiant pos1, its pos5 a sentry in lane on every rep (it hits
+    // them back, so the fight costs them), every fourth rep the control (no chase). A partner benched on alternate reps did
+    // not walk back in time (drill retreat-even 1-4: beside the cast on rep 1 only); the 1v2 is retreat-chase2's.
+    "retreat-even": {
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it, with their spells and items; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
+        cast: SAFE_CORE,
+        sentry: { r: [5] },
+        chaser: { d: [3, 4] },
+        chaseCast: true,
+        chaserCasts: true,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 60, from: 60, control: 4 },
     },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
@@ -362,6 +380,13 @@ export function RoleOf(bot: Unit): Role {
 export function Held(bot: Unit): boolean {
     const r = RoleOf(bot);
     return r === "bench" || r === "statue" || r === "sentry" || r === "chaser";
+}
+
+/** A chaser of an entry with `chaserCasts`, in a chase rep: OHA's spells and items stay on for it although it is held. */
+export function Casts(bot: Unit): boolean {
+    const d = Active();
+    const rep = RepAt(DotaTime());
+    return d !== undefined && d.chaserCasts === true && RoleOf(bot) === "chaser" && rep > 0 && !controlRep(d, rep);
 }
 
 /** Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`. */
@@ -697,8 +722,10 @@ function chase(bot: Unit): boolean {
     const spot = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND);
     let best: Unit | undefined;
     let bestD = math.huge;
+    const castOnly = Active()?.chaseCast === true;
     for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
         if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
+        if (castOnly && RoleOf(h) !== "cast") continue;
         const dd = GetUnitToUnitDistance(bot, h);
         if (dd < bestD) {
             best = h;

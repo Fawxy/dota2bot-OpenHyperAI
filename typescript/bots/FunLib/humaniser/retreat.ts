@@ -5,7 +5,7 @@
  * reach, enemy creep acquisition and heroes who can reach it) and when it stops (the exit band for ExitDwell, or the anchor).
  * Every other hero walking in retreat mode gets the plain walk (a mode file with Think replaces Valve's walk for all).
  */
-import { Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -16,6 +16,7 @@ import * as Lane_ from "bots/FunLib/humaniser/lane";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
@@ -27,6 +28,15 @@ export const SETTINGS = {
      * from about 31% HP, and 0.33 at full HP (a lone harasser at full HP starts nothing). judgement.
      */
     EngagedWindow: 6,
+    /**
+     * RetreatOdds: a fight the heroes in reach do not outnumber is held (no `threat` leave) only while their burst, as the read
+     * counts it (an engaged hero over EngagedWindow), is under this share of our current HP: D1's "their burst can kill me".
+     * 0.5 left nearly every forced 2v2 (drill retreat-even 3-4: two engaged heroes pass half our HP over 6 s). judgement.
+     */
+    EvenBurst: 1,
+    /** RetreatOdds: and only at this HP share or more, the D24 view's "not in danger" bar: under it the hero, which does not
+     *  hit back yet, would only absorb the damage (a melee hero hitting us at 25% HP still sends us home). judgement. */
+    EvenHp: 0.5,
     /** Base budget by purpose. judgement. */
     BudgetFree: 0.5,
     BudgetBusy: 0.6,
@@ -123,6 +133,8 @@ interface DrillRep {
 interface HeroState {
     ep?: Episode;
     overSince?: number;
+    /** An over-budget read held only by the numbers (RetreatOdds) has been logged as ph=stay since the read last fell under. */
+    stayLogged?: boolean;
     read?: Threat.Read;
     readAt?: number;
     orderAt?: number;
@@ -402,8 +414,10 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: numbe
         ["thr", r2(r.threat)],
         ["band", r.band],
         ["reach", r.reach.length],
+        ["al", r.allies],
         ["burst", r2(r.burst)],
         ["eng", r.eng.length],
+        ["unp", unpaid(bot, r)],
         ["tower", r.tower],
         ["esc", r.reach.length > 0 ? r.escape : undefined],
         ["budget", r2(budget)],
@@ -484,6 +498,24 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
     return now - ep.underSince >= s.ExitDwell ? "safe" : undefined;
 }
 
+/**
+ * RetreatOdds (D24): the heroes hitting us (the read's `eng`) with none of our lane creeps within creep aggro of them. Our
+ * creeps turn on an enemy hero that attacks us within that radius, so one standing outside it hits us for free: the hold
+ * never wins anything there, since our hero does not hit back (h2hevenfight1: held seconds hit an enemy hero 3-8% of the time).
+ */
+function unpaid(bot: Unit, r: Threat.Read): number {
+    if (r.eng.length === 0) return 0;
+    const radius = LaneFightConfig.Settings().CreepAggroRadius;
+    const ours = (bot.GetNearbyLaneCreeps(1600, false) ?? []).filter((c) => valid(c) && c.IsAlive());
+    let n = 0;
+    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
+        if (!valid(h) || !r.eng.includes(h.GetPlayerID())) continue;
+        const at = h.GetLocation();
+        if (!ours.some((c) => dist(c.GetLocation(), at) <= radius)) n++;
+    }
+    return n;
+}
+
 /** The leave rule: lethal, a tower on us or the heal floor at once; over budget for the hero's reaction time. */
 function leaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number): Why | undefined {
     if (r.band === "lethal") return "lethal";
@@ -491,6 +523,22 @@ function leaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now:
     if (hpShare(bot) < SETTINGS.HealFloor && r.reach.length === 0) return "heal";
     if (r.threat <= budget) {
         st.overSince = undefined;
+        st.stayLogged = undefined;
+        return undefined;
+    }
+    // D1 leaves when more enemy heroes than we have can reach us (the hero itself counts on our side). A fight they do not
+    // outnumber is D24's while we are not in danger of dying: their burst under EvenBurst of our HP, our HP at EvenHp or more.
+    // The read's allies are the heroes not in retreat who can reach us within its horizon.
+    const even = r.reach.length <= r.allies + 1 && r.burst < SETTINGS.EvenBurst && hpShare(bot) >= SETTINGS.EvenHp;
+    if (Ours.On("RetreatOdds") && even && unpaid(bot, r) === 0) {
+        st.overSince = undefined;
+        if (st.stayLogged !== true) {
+            st.stayLogged = true;
+            Telemetry.Event("retreat", [
+                ["ph", "stay"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
+                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
+            ]);
+        }
         return undefined;
     }
     st.overSince = st.overSince ?? now;

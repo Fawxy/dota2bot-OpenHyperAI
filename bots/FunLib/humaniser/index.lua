@@ -404,6 +404,7 @@ if Telemetry.GuardsEnabled() then
         {
             Tick = none,
             Held = no,
+            Casts = no,
             Hold = no,
             LaneOnly = no,
             LaneHold = no,

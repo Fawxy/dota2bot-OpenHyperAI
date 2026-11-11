@@ -9,6 +9,7 @@ function UnitMeta:GetDenies() return self.dn or 0 end
 function UnitMeta:GetAttackTarget() return self.target end
 function UnitMeta:GetLastAttackTime() return self.attackAt or -1 end
 function UnitMeta:GetGold() return 600 end
+function UnitMeta:GetNetWorth() return 1200 end
 
 CREEPS, ENEMIES, OWN, NEUTRALS = {}, {}, {}, {}
 function GetUnitList(kind)

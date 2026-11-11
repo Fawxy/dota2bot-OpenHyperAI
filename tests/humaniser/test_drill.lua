@@ -291,6 +291,21 @@ do
 	check("no spot list: a statue logs no spot line", #capture(function() world("lane-spot-statue") H.Drill.Hold(hero(7, DIRE, 3, 3)) end) == 0)
 end
 
+-- retreat-even (even-fight round 2): its chasers keep OHA's spells and items on a chase rep, as the lethal drops in games need;
+-- on its control rep and in an entry without `chaserCasts` a chaser is cast-held like any held hero.
+do
+	local H = world("retreat-even")
+	local chaser = hero(9, DIRE, 3, 3)
+	T = 65
+	check("chaserCasts: a chaser on a chase rep may cast", not H.Chooser.HoldsCasts(chaser))
+	T = 245
+	check("chaserCasts: on the control rep (4) it is held", H.Chooser.HoldsCasts(chaser))
+	local H2 = world("retreat-chase2")
+	local other = hero(9, DIRE, 3, 3)
+	T = 65
+	check("chaserCasts: retreat-chase2's chaser on a chase rep never casts", H2.Chooser.HoldsCasts(other))
+end
+
 -- retreat-linger (slice retreat, plan 2026-11-10-retreat-read-bars): on a chase rep the chaser hits as retreat-chase until the cast
 -- is at or under 45% HP (ph=linger_go), backs off to 1,100 from her (outside our T1's reach + 100), and the window's clock starts
 -- when it first stands at 1,000 or more (ph=linger). The window ends on contact (her within its attack range + 100), after 20 s,

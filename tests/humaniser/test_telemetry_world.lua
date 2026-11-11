@@ -8,6 +8,7 @@ function UnitMeta:GetLastHits() return 0 end
 function UnitMeta:GetDenies() return 0 end
 function UnitMeta:GetAttackTarget() return nil end
 function UnitMeta:GetGold() return 600 end
+function UnitMeta:GetNetWorth() return 1200 end
 function UnitMeta:FindItemSlot(name) return (self.items or {})[name] and 0 or -1 end
 
 RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = 0, 1, 2
