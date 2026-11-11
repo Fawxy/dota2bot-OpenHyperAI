@@ -617,14 +617,14 @@ function chase(bot)
     local castOnly = (____opt_31 and ____opt_31.chaseCast) == true
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue75
+            local __continue76
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue75 = true
+                    __continue76 = true
                     break
                 end
                 if castOnly and ____exports.RoleOf(h) ~= "cast" then
-                    __continue75 = true
+                    __continue76 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -632,9 +632,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue75 = true
+                __continue76 = true
             until true
-            if not __continue75 then
+            if not __continue76 then
                 break
             end
         end
@@ -669,10 +669,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue94
+            local __continue95
             repeat
                 if not h:IsAlive() then
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -680,9 +680,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue94 = true
+                __continue95 = true
             until true
-            if not __continue94 then
+            if not __continue95 then
                 break
             end
         end
@@ -787,11 +787,12 @@ ____exports.TABLE = {
         rep = {every = 60, from = 60, control = 2}
     },
     ["retreat-even"] = {
-        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
+        note = "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it, with their spells and items; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
         cast = SAFE_CORE,
         sentry = {r = {5}},
         chaser = {d = {3, 4}},
         chaseCast = true,
+        chaserCasts = true,
         others = "bench",
         castLaneOnly = true,
         rep = {every = 60, from = 60, control = 4}
@@ -947,6 +948,12 @@ ____exports.TABLE = {
 function ____exports.Held(bot)
     local r = ____exports.RoleOf(bot)
     return r == "bench" or r == "statue" or r == "sentry" or r == "chaser"
+end
+--- A chaser of an entry with `chaserCasts`, in a chase rep: OHA's spells and items stay on for it although it is held.
+function ____exports.Casts(bot)
+    local d = ____exports.Active()
+    local rep = ____exports.RepAt(DotaTime())
+    return d ~= nil and d.chaserCasts == true and ____exports.RoleOf(bot) == "chaser" and rep > 0 and not controlRep(d, rep)
 end
 --- Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`.
 function ____exports.LaneOnly(bot)

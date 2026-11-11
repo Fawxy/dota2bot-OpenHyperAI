@@ -1089,6 +1089,8 @@ export const EVENTS = {
         burst: "num",
         /** The reaching heroes counted as engaged (hitting us within a second) by the read. */
         eng: "num",
+        /** RetreatOdds (start, stay): the engaged heroes with none of our lane creeps within creep aggro of them. */
+        unp: "num",
         tower: "bool",
         esc: "bool",
         budget: "num",

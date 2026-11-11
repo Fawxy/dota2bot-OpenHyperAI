@@ -348,6 +348,32 @@ do
 	check("odds: an even 2v2 whose burst kills us still leaves why=lethal", lethalOn and field(lethalLines[1], "why") == "lethal", lethalLines[1])
 end
 
+-- Even-fight round 2 (D24): the hold stands only while the heroes hitting us pay for it in creep aggro (our lane creeps within
+-- 500 of them). Hitting us from outside it, the same even 2v2 is left on `threat`, as with the switch off.
+do
+	local function hitFrom(creepX)
+		local H, bot = world()
+		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = true
+		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
+		ally.maxhp, ally.hp = 600, 600
+		local e1, e2 = enemy(10, Vector(300, -5000), 100), enemy(11, Vector(300, -4900), 100)
+		MakeCreep({ team = 2, x = creepX, y = -5000 })
+		local out = capture(function()
+			for _ = 1, 4 do
+				bot.hitBy = { [e1] = T - 0.2, [e2] = T - 0.2 }
+				H.Retreat.Desire(bot)
+				T = T + react(bot)
+			end
+		end)
+		return H.Retreat.Running(bot), lines(out, "retreat")
+	end
+	local paidOn = hitFrom(150)
+	check("aggro: two heroes hitting us beside our creeps are held (they pay in creep damage)", not paidOn)
+	local freeOn, freeLines = hitFrom(-1200)
+	check("aggro: the same two hitting us with no creep of ours within 500 leave why=threat, logged unp=2",
+		freeOn and field(freeLines[1], "why") == "threat" and field(freeLines[1], "unp") == "2", freeLines[1])
+end
+
 -- A death ends the episode with res=died.
 do
 	local H, bot = world({ hp = 200 })

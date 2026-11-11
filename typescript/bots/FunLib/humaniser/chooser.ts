@@ -287,10 +287,11 @@ export function HoldsRun(bot: Unit): boolean {
  * branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
  * neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
  * An enemy hero in reach lifts it so the bot can fight or save itself. A drill's benched heroes and statues never cast, nor
- * does a lane-only hero (spells on creeps would change the last-hit contest under test).
+ * does a lane-only hero (spells on creeps would change the last-hit contest under test); a chaser of an entry with
+ * `chaserCasts` does, in a chase rep.
  */
 export function HoldsCasts(bot: Unit): boolean {
-    if (StackJob.Benched(bot) || Overrides.LaneOnly(bot)) return true;
+    if ((StackJob.Benched(bot) && !Drill.Casts(bot)) || Overrides.LaneOnly(bot)) return true;
     if (!Running(bot)) return Drill.IdleStatue(bot);
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
 }

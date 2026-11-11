@@ -44,6 +44,8 @@ export interface Entry {
     chaser?: Sides;
     /** Chasers hit only the cast, never a statue beside it (an ally statue in reach must not draw the chase). */
     chaseCast?: boolean;
+    /** Chasers keep OHA's spell and item use during a chase rep (the fast drop into `lethal` in games is not auto-attacks). */
+    chaserCasts?: boolean;
     /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
     linger?: boolean;
     /** The cast's start spot per rep, cycling as `spots` (rep n takes entry (n - 1) mod length): `tower` (inside the enemy
@@ -153,11 +155,12 @@ export const TABLE: Record<string, Entry> = {
     // them back, so the fight costs them), every fourth rep the control (no chase). A partner benched on alternate reps did
     // not walk back in time (drill retreat-even 1-4: beside the cast on rep 1 only); the 1v2 is retreat-chase2's.
     "retreat-even": {
-        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
+        note: "Radiant pos1 lane-only with our retreat live; Dire pos3 and pos4 chase only it, with their spells and items; Radiant pos5 a sentry beside it (2v2); every 4th rep no chase",
         cast: SAFE_CORE,
         sentry: { r: [5] },
         chaser: { d: [3, 4] },
         chaseCast: true,
+        chaserCasts: true,
         others: "bench",
         castLaneOnly: true,
         rep: { every: 60, from: 60, control: 4 },
@@ -377,6 +380,13 @@ export function RoleOf(bot: Unit): Role {
 export function Held(bot: Unit): boolean {
     const r = RoleOf(bot);
     return r === "bench" || r === "statue" || r === "sentry" || r === "chaser";
+}
+
+/** A chaser of an entry with `chaserCasts`, in a chase rep: OHA's spells and items stay on for it although it is held. */
+export function Casts(bot: Unit): boolean {
+    const d = Active();
+    const rep = RepAt(DotaTime());
+    return d !== undefined && d.chaserCasts === true && RoleOf(bot) === "chaser" && rep > 0 && !controlRep(d, rep);
 }
 
 /** Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`. */

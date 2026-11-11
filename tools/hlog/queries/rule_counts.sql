@@ -14,7 +14,7 @@ SELECT gm.file, s.side, s.team,
     coalesce(sum(c.rule = 'D3'), 0) AS d3_n, coalesce(sum(c.rule = 'D3' AND c.viol), 0) AS d3_v,
     coalesce(sum(c.rule = 'D7'), 0) AS d7_n, coalesce(sum(c.rule = 'D7' AND c.viol), 0) AS d7_v,
     coalesce(sum(c.rule = 'D9'), 0) AS d9_n, coalesce(sum(c.rule = 'D9' AND c.viol), 0) AS d9_v,
-    coalesce(sum(c.rule = 'D24'), 0) AS d24_v,
+    coalesce(sum(c.rule = 'D24'), 0) AS d24_n, coalesce(sum(c.rule = 'D24' AND c.viol), 0) AS d24_v,
     coalesce((SELECT deaths FROM dth WHERE dth.game_id = s.game_id AND dth.team = s.team), 0) AS deaths
 FROM sides s JOIN gm ON gm.game_id = s.game_id
 LEFT JOIN lr_case c ON c.game_id = s.game_id AND c.team = s.team

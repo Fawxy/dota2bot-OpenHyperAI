@@ -214,9 +214,40 @@ local function __TS__SparseArraySpread(sparseArray)
     local _unpack = unpack or table.unpack
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
+
+local function __TS__ArrayIncludes(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    local k = fromIndex
+    if fromIndex < 0 then
+        k = len + fromIndex
+    end
+    if k < 0 then
+        k = 0
+    end
+    for i = k + 1, len do
+        if self[i] == searchElement then
+            return true
+        end
+    end
+    return false
+end
+
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
 -- End of Lua Library inline imports
 local ____exports = {}
+local dist, valid, unpaid
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local Shop = ____dota.Shop
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -231,6 +262,53 @@ local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
+function dist(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+function valid(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
+end
+function unpaid(bot, r)
+    if #r.eng == 0 then
+        return 0
+    end
+    local radius = LaneFightConfig.Settings().CreepAggroRadius
+    local ours = __TS__ArrayFilter(
+        bot:GetNearbyLaneCreeps(1600, false) or ({}),
+        function(____, c) return valid(c) and c:IsAlive() end
+    )
+    local n = 0
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
+        do
+            local __continue94
+            repeat
+                if not valid(h) or not __TS__ArrayIncludes(
+                    r.eng,
+                    h:GetPlayerID()
+                ) then
+                    __continue94 = true
+                    break
+                end
+                local at = h:GetLocation()
+                if not __TS__ArraySome(
+                    ours,
+                    function(____, c) return dist(
+                        c:GetLocation(),
+                        at
+                    ) <= radius end
+                ) then
+                    n = n + 1
+                end
+                __continue94 = true
+            until true
+            if not __continue94 then
+                break
+            end
+        end
+    end
+    return n
+end
 ____exports.SETTINGS = {
     Horizon = 2,
     EngagedWindow = 6,
@@ -295,9 +373,6 @@ local function stateOf(bot)
     end
     return s
 end
-local function dist(a, b)
-    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
-end
 local function hpShare(bot)
     return bot:GetHealth() / math.max(
         1,
@@ -306,9 +381,6 @@ local function hpShare(bot)
 end
 local function enemyOf(team)
     return team == Team.Radiant and Team.Dire or Team.Radiant
-end
-local function valid(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
@@ -712,6 +784,10 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
             r2(r.burst)
         },
         {"eng", #r.eng},
+        {
+            "unp",
+            unpaid(bot, r)
+        },
         {"tower", r.tower}
     )
     local ____temp_3
@@ -882,7 +958,7 @@ local function leaveWhy(bot, st, r, budget, now)
         return nil
     end
     local even = #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst and hpShare(bot) >= ____exports.SETTINGS.EvenHp
-    if Ours.On("RetreatOdds") and even then
+    if Ours.On("RetreatOdds") and even and unpaid(bot, r) == 0 then
         st.overSince = nil
         if st.stayLogged ~= true then
             st.stayLogged = true
