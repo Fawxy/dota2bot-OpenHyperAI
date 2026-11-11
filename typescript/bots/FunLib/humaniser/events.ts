@@ -1100,7 +1100,7 @@ export const EVENTS = {
     /** Slice retreat (retreat.ts): one start and one end per episode of our retreat, and one start per plain walk (kind
      *  plain: heroes our retreat does not own). Start: why (threat, lethal, tower, heal, forced), the read at entry (thr, band,
      *  reach, burst, tower), the budget and its purpose, the anchor kind, its route cost and the next-best anchor's (alt), and
-     *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: the band's dwell; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
+     *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: the band's dwell; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
      *  walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the
      *  cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band
      *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay

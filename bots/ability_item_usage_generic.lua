@@ -8394,7 +8394,7 @@ function ItemUsageThink()
 	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).
-	if J.Humaniser.Chooser.HoldsCasts(bot) then return end
+	if J.Humaniser.Chooser.HoldsCasts(bot, true) then return end
 	if bot.lastItemFrameProcessTime == nil then bot.lastItemFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastItemFrameProcessTime < (bot.frameProcessTime * (1 + Customize.ThinkLess))) then return end
 	bot.lastItemFrameProcessTime = DotaTime()

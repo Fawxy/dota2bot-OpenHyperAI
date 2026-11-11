@@ -281,13 +281,13 @@ function unpaid(bot, r)
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue94
+            local __continue97
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue94 = true
+                    __continue97 = true
                     break
                 end
                 local at = h:GetLocation()
@@ -300,9 +300,9 @@ function unpaid(bot, r)
                 ) then
                     n = n + 1
                 end
-                __continue94 = true
+                __continue97 = true
             until true
-            if not __continue94 then
+            if not __continue97 then
                 break
             end
         end
@@ -321,6 +321,7 @@ ____exports.SETTINGS = {
     ExitDwell = 1.5,
     HealFloor = 0.3,
     HealUntil = 0.8,
+    HealBack = 0.5,
     RouteStep = 300,
     SecsPerCost = 5,
     RegenItems = {"item_tango", "item_tango_single", "item_flask", "item_faerie_fire"},
@@ -694,6 +695,18 @@ local function anchorsOf(bot, why)
     end
     return out
 end
+--- Whether our lane front of the hero's lane is nearer than our fountain: going back costs less walk than going on.
+local function laneNearer(bot, here)
+    local front = GetLaneFrontLocation(
+        bot:GetTeam(),
+        bot:GetAssignedLane(),
+        0
+    )
+    return front ~= nil and dist(here, front) < dist(
+        here,
+        ____exports.Fountain(bot:GetTeam())
+    )
+end
 --- Whether a healing item is held in the inventory (slots 0-5).
 local function regenHeld(bot)
     for ____, name in ipairs(____exports.SETTINGS.RegenItems) do
@@ -912,7 +925,13 @@ local function step(bot, st, r, now)
         anchorPoint(ep.anchor)
     ) <= s.Arrive
     if ep.why == "heal" then
-        return at and hpShare(bot) >= s.HealUntil and "anchor" or nil
+        if at and hpShare(bot) >= s.HealUntil then
+            return "anchor"
+        end
+        if Ours.On("HealStop") and hpShare(bot) >= s.HealBack and #r.reach == 0 and r.threat < ep.budget - s.ExitBand and laneNearer(bot, here) then
+            return "healed"
+        end
+        return nil
     end
     if at then
         if forced or r.threat < ep.budget then
@@ -1135,6 +1154,12 @@ function ____exports.Desire(bot)
                 }
             }
         )
+    end
+    if Drill.RetreatHeld(
+        bot,
+        hpShare(bot)
+    ) then
+        return 0
     end
     local why = leaveWhy(
         bot,

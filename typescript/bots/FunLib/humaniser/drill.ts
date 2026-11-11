@@ -48,6 +48,11 @@ export interface Entry {
     chaserCasts?: boolean;
     /** Chasers of this entry stand off once per chase rep when the target's HP share is at or under LINGER_HP (see `lingerStep`). */
     linger?: boolean;
+    /** In a chase rep, the chasers break off for the rest of the rep (waiting behind their T1) once the cast's HP share is at
+     *  or under this, and the cast's retreat starts nothing until then (`RetreatHeld`): the low-HP walk is forced. */
+    breakAt?: number;
+    /** A lane-only cast keeps OHA's item use (not its spells): the heal walk's salve. */
+    castItems?: boolean;
     /** The cast's start spot per rep, cycling as `spots` (rep n takes entry (n - 1) mod length): `tower` (inside the enemy
      *  T1's reach of the cast's lane), `front` (our lane front of the cast's lane), `pull:<r|d>:<safe|off>`. The forced
      *  context walks the cast there (`CastSpot`) before it acts. */
@@ -164,6 +169,21 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castLaneOnly: true,
         rep: { every: 60, from: 60, control: 4 },
+    },
+    // Slice heal-stop (D3): the low-HP walk. The Dire pos3 hits only the Radiant pos1, whose retreat is held until it is at
+    // 25% HP; then the chaser breaks off and the cast's own retreat runs (a leave, then the heal floor). Every bot is handed a
+    // salve each rep (recipe), which the cast uses through OHA's item code, so HP comes back on the walk. 90 s reps (the off
+    // arm's walk home and back is about 80 s); every 4th rep no chase.
+    "retreat-heal": {
+        note: "Radiant pos1 lane-only with our retreat live but held in a chase rep until 25% HP, OHA's items on; Dire pos3 chases only it and breaks off at 25%; a salve each rep; every 4th rep no chase",
+        cast: SAFE_CORE,
+        chaser: { d: [3] },
+        chaseCast: true,
+        breakAt: 0.25,
+        castItems: true,
+        others: "bench",
+        castLaneOnly: true,
+        rep: { every: 90, from: 60, control: 4 },
     },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
@@ -389,6 +409,34 @@ export function Casts(bot: Unit): boolean {
     return d !== undefined && d.chaserCasts === true && RoleOf(bot) === "chaser" && rep > 0 && !controlRep(d, rep);
 }
 
+/** The cast of an entry with `castItems`: OHA's item use stays on for it although it is lane-only. */
+export function CastItems(bot: Unit): boolean {
+    return Active()?.castItems === true && RoleOf(bot) === "cast";
+}
+
+/** The rep in which each cast first stood at or under `breakAt` HP (once reached, its retreat is free for the rest of the rep). */
+const reachedBreak: Record<number, number> = {};
+
+/**
+ * The cast of an entry with `breakAt`, in a chase rep, above that HP share and not yet under it this rep: its retreat starts
+ * nothing. `hp` is the cast's HP share (the caller's read).
+ */
+export function RetreatHeld(bot: Unit, hp: number): boolean {
+    const d = Active();
+    if (d === undefined || d.breakAt === undefined || RoleOf(bot) !== "cast") return false;
+    const rep = RepAt(DotaTime());
+    if (rep === 0 || controlRep(d, rep)) return false;
+    const pid = bot.GetPlayerID();
+    if (reachedBreak[pid] === rep) return false;
+    if (hp > d.breakAt) return true;
+    reachedBreak[pid] = rep;
+    Telemetry.Event("drill", [["ph", "break"], ["name", Name()], ["pid", pid], ["rep", rep], ["thp", math.floor(hp * 100 + 0.5) / 100]]);
+    return false;
+}
+
+/** The rep in which each chaser broke off (`breakAt`). */
+const brokeOff: Record<number, number> = {};
+
 /** Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`. */
 export function LaneOnly(bot: Unit): boolean {
     const r = RoleOf(bot);
@@ -463,8 +511,8 @@ export function ForcedAt(context: string, t: number): "on" | "off" | "none" | un
 export function Hold(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
-    if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0) {
-        return chase(bot);
+    if (r === "chaser" && d !== undefined && !controlRep(d, RepAt(DotaTime())) && RepAt(DotaTime()) > 0 && brokeOff[bot.GetPlayerID()] !== RepAt(DotaTime())) {
+        if (chase(bot)) return true;
     }
     // A stand-off started late in a chase rep runs on into the control rep that follows (its wait starts after the window).
     if (r === "chaser" && lingering[bot.GetPlayerID()] !== undefined && lingerTick(bot, GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND))) return true;
@@ -738,6 +786,13 @@ function chase(bot: Unit): boolean {
         if (best !== undefined && lingering[bot.GetPlayerID()] === undefined) startLinger(bot, best);
         if (lingerTick(bot, spot)) return true;
     }
+    const breakAt = Active()?.breakAt;
+    if (best !== undefined && breakAt !== undefined && best.GetHealth() / math.max(1, best.GetMaxHealth()) <= breakAt) {
+        const rep = RepAt(DotaTime());
+        brokeOff[bot.GetPlayerID()] = rep;
+        Telemetry.Event("drill", [["ph", "break"], ["name", Name()], ["pid", bot.GetPlayerID()], ["tpid", best.GetPlayerID()], ["rep", rep], ["thp", math.floor((best.GetHealth() / math.max(1, best.GetMaxHealth())) * 100 + 0.5) / 100]]);
+        return false;
+    }
     if (best !== undefined) bot.Action_AttackUnit(best, true);
     else if (GetUnitToLocationDistance(bot, spot) > 50) bot.Action_MoveToLocation(spot);
     return true;
@@ -878,5 +933,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(lastSpot)) delete lastSpot[k as unknown as number];
     for (const k of Object.keys(lingering)) delete lingering[k as unknown as number];
     for (const k of Object.keys(lingered)) delete lingered[k as unknown as number];
+    for (const k of Object.keys(reachedBreak)) delete reachedBreak[k as unknown as number];
+    for (const k of Object.keys(brokeOff)) delete brokeOff[k as unknown as number];
     removedLogged = false;
 }

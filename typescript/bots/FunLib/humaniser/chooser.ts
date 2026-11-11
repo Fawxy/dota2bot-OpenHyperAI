@@ -288,10 +288,10 @@ export function HoldsRun(bot: Unit): boolean {
  * neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).
  * An enemy hero in reach lifts it so the bot can fight or save itself. A drill's benched heroes and statues never cast, nor
  * does a lane-only hero (spells on creeps would change the last-hit contest under test); a chaser of an entry with
- * `chaserCasts` does, in a chase rep.
+ * `chaserCasts` does, in a chase rep. `items`: the caller is OHA's item use, which a cast of an entry with `castItems` keeps.
  */
-export function HoldsCasts(bot: Unit): boolean {
-    if ((StackJob.Benched(bot) && !Drill.Casts(bot)) || Overrides.LaneOnly(bot)) return true;
+export function HoldsCasts(bot: Unit, items?: boolean): boolean {
+    if ((StackJob.Benched(bot) && !Drill.Casts(bot)) || (Overrides.LaneOnly(bot) && !(items === true && Drill.CastItems(bot)))) return true;
     if (!Running(bot)) return Drill.IdleStatue(bot);
     return (bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length === 0;
 }
