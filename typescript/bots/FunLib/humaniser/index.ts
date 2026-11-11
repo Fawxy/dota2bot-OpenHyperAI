@@ -22,6 +22,7 @@ import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RegenObs from "bots/FunLib/humaniser/regen_obs";
+import * as ApiProbe from "bots/FunLib/humaniser/api_probe";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Etiquette from "bots/FunLib/humaniser/etiquette";
@@ -177,6 +178,7 @@ function tick(this: void, bot: Unit): void {
     Telemetry.Tick(bot, telemetryContext);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
     pcall(RegenObs.Tick, bot);
+    pcall(ApiProbe.Tick, bot);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
     // tasks: task runner spike
@@ -227,7 +229,7 @@ if (Telemetry.GuardsEnabled()) {
     // An error leaves the farm mode to OHA (no job desire, no owned Think).
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
-    Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, LaneHold: no, LaneAggro: no, IdleStatue: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
+    Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, LaneHold: no, LaneAggro: no, IdleStatue: no, Owns: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
     Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {

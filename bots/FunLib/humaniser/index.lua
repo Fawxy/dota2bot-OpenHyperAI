@@ -21,6 +21,7 @@ local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_patter
 local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RegenObs = require(GetScriptDirectory().."/FunLib/humaniser/regen_obs")
+local ApiProbe = require(GetScriptDirectory().."/FunLib/humaniser/api_probe")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
@@ -275,6 +276,7 @@ local function tick(bot)
     LaneControl.Tick(bot)
     Telemetry.Tick(bot, telemetryContext)
     pcall(RegenObs.Tick, bot)
+    pcall(ApiProbe.Tick, bot)
     States.Tick(bot)
     Tasks.Tick(bot)
     HDebug.SharedStateProbe(bot)
@@ -410,6 +412,7 @@ if Telemetry.GuardsEnabled() then
             LaneHold = no,
             LaneAggro = no,
             IdleStatue = no,
+            Owns = no,
             ForcedJob = none,
             ForcedAt = none,
             RoleOf = function() return "play" end,

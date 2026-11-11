@@ -88,6 +88,8 @@ interface BotState {
     // Hero events (BACKLOG 0.6): last frame's modifier and item edges.
     smoked: boolean;
     aegis: boolean;
+    // Last logged item layout (`inventorySignature`); undefined until the first snapshot logs one.
+    invSig?: string;
     tpFrom?: [number, number, number];
     tpEndAt?: number;
 }
@@ -622,10 +624,17 @@ const guardedLaneFields = Guard("Telemetry.Lane", laneFields, () => []);
 const guardedFront = Guard("Telemetry.Front", trackFront);
 const guardedLaneRead = Guard("Telemetry.LaneRead", trackLaneRead);
 
+/** `h<pid>` for a real hero, else `u<n>` from `CreepId` (the id an `ev=creep_death` carries as `cid`; towers, neutrals and illusions, whose `GetPlayerID` is their owner's, share the numbering). */
+function targetId(target: Unit, name: string): string {
+    if (string.find(name, "npc_dota_hero_", 1, true)[0] !== undefined && !target.IsIllusion()) return `h${target.GetPlayerID()}`;
+    return `u${CreepId(target)}`;
+}
+
 function unitFields(unit: Unit): UnitPair[] {
     const loc = unit.GetLocation();
     const stats = unit as unknown as StatsUnit;
     const target = unit.GetAttackTarget();
+    const targetName = target !== null && target !== undefined ? target.GetUnitName() : undefined;
     const fields: UnitPair[] = [
         ["x", math.floor(loc.x)],
         ["y", math.floor(loc.y)],
@@ -638,7 +647,8 @@ function unitFields(unit: Unit): UnitPair[] {
         // Snapshots stop while a bot is dead, so deaths come from the scoreboard, not from alive=0.
         ["kills", GetHeroKills !== undefined ? GetHeroKills(unit.GetPlayerID()) : undefined],
         ["deaths", GetHeroDeaths !== undefined ? GetHeroDeaths(unit.GetPlayerID()) : undefined],
-        ["tgt", target !== null && target !== undefined ? target.GetUnitName() : undefined],
+        ["tgt", targetName],
+        ["tid", target !== null && target !== undefined && targetName !== undefined ? targetId(target, targetName) : undefined],
     ];
     for (const f of guardedLaneFields(loc)) fields.push(f);
     return fields;
@@ -649,7 +659,7 @@ const OPTIONS_UNTIL = 720;
 const ENEMY_RADIUS = 1200;
 
 /**
- * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero, hit by a hero.
+ * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero.
  * With the snapshot's mode and `tgt` it says what the bot chose against what it had. Reads facts only. Skipped for an ally of a
  * human, where the offers would run the etiquette filter, whose decisions log themselves.
  */
@@ -668,11 +678,41 @@ function optionFields(bot: Unit): BotPair[] {
         ["od", od],
         ["ar", bot.GetAttackRange()],
         ["ed", nearest !== undefined ? math.floor(nearest) : undefined],
-        ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
     ];
 }
 
 const guardedOptionFields = Guard("Telemetry.Options", optionFields, () => []);
+
+/** The API's largest unit search; every attacker that can reach the bot stands inside it. */
+const ATTACKER_RADIUS = 1600;
+
+function targeting(bot: Unit, units: Unit[] | undefined): number {
+    let n = 0;
+    for (const u of units ?? []) {
+        if (u.IsAlive() && u.GetAttackTarget() === bot) n++;
+    }
+    return n;
+}
+
+/**
+ * Who is hurting the bot this second, all game (view `hp_loss`): raw HP, the API's damaged-in-the-last-second flags by source
+ * and the units whose attack target is the bot, by kind. Reads facts only.
+ */
+function damageFields(bot: Unit): BotPair[] {
+    if (!bot.IsAlive()) return [];
+    return [
+        ["hv", math.floor(bot.GetHealth())],
+        ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
+        ["hc", bot.WasRecentlyDamagedByCreep(1)],
+        ["ht", bot.WasRecentlyDamagedByTower(1)],
+        ["ah", targeting(bot, bot.GetNearbyHeroes(ATTACKER_RADIUS, true, BotMode.None))],
+        ["ac", targeting(bot, bot.GetNearbyLaneCreeps(ATTACKER_RADIUS, true))],
+        ["an", targeting(bot, bot.GetNearbyNeutralCreeps(ATTACKER_RADIUS, true))],
+        ["at", targeting(bot, bot.GetNearbyTowers(ATTACKER_RADIUS, true))],
+    ];
+}
+
+const guardedDamageFields = Guard("Telemetry.Damage", damageFields, () => []);
 
 function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     const fields: BotPair[] = unitFields(bot);
@@ -683,12 +723,42 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["nw", bot.GetNetWorth()]);
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     for (const f of guardedOptionFields(bot)) fields.push(f);
+    for (const f of guardedDamageFields(bot)) fields.push(f);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);
     }
     return fields;
 }
+
+/** Slots from the Valve API (docs/BOT_API_REFERENCE.md `GetItemInSlot`): 0-5 main, 6-8 backpack, 9-14 stash, 15 TP, 16 neutral. */
+const ITEM_SLOTS = 17;
+
+/** `s<slot>=<name>[:<charges>]` per filled slot, charges only when above 0; empty slots omitted. */
+function inventorySignature(bot: Unit): string {
+    const parts: string[] = [];
+    for (let slot = 0; slot < ITEM_SLOTS; slot++) {
+        const item = bot.GetItemInSlot(slot);
+        if (item === null || item === undefined) continue;
+        const name = string.gsub(item.GetName(), "^item_", "")[0];
+        const charges = item.GetCurrentCharges();
+        parts.push(charges > 0 ? `s${slot}=${name}:${charges}` : `s${slot}=${name}`);
+    }
+    return parts.join(" ");
+}
+
+/** One `ev=inv` line at the first snapshot and whenever the layout (slot, item or charge count) differs from the last logged. */
+function trackInventory(bot: Unit, s: BotState): void {
+    const sig = inventorySignature(bot);
+    if (sig === s.invSig) return;
+    s.invSig = sig;
+    Event("inv", [
+        ["pid", bot.GetPlayerID()],
+        ["items", sig],
+    ]);
+}
+
+const guardedInventory = Guard("Telemetry.Inventory", trackInventory);
 
 function maybeProfile(bot: Unit, s: BotState): void {
     // Profile.Get draws RandomFloat, which a humaniser-off game must not do; skill is read-only.
@@ -1480,6 +1550,7 @@ export function Tick(bot: Unit, provider?: ContextProvider): void {
         const fields: Fields<"snap"> = [["pid", bot.GetPlayerID()]];
         for (const f of botFields(bot, provider !== undefined ? provider(bot) : undefined)) fields.push(f);
         Event("snap", fields);
+        guardedInventory(bot, s);
     }
     snapHumans(bot, now);
     if (state === GameState.PostGame || ancientDown(Team.Radiant) || ancientDown(Team.Dire)) {

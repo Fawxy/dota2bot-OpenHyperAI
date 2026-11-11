@@ -97,6 +97,7 @@
    "kills": "num",
    "deaths": "num",
    "tgt": "str",
+   "tid": "str",
    "ln": "str",
    "s": "num",
    "ld": "num",
@@ -110,7 +111,14 @@
    "od": "num",
    "ar": "num",
    "ed": "num",
+   "hv": "num",
    "hit": "bool",
+   "hc": "bool",
+   "ht": "bool",
+   "ah": "num",
+   "ac": "num",
+   "an": "num",
+   "at": "num",
    "by": "str",
    "order": "str"
   },
@@ -228,6 +236,7 @@
    "kills": "num",
    "deaths": "num",
    "tgt": "str",
+   "tid": "str",
    "ln": "str",
    "s": "num",
    "ld": "num",
@@ -241,9 +250,20 @@
    "od": "num",
    "ar": "num",
    "ed": "num",
+   "hv": "num",
    "hit": "bool",
+   "hc": "bool",
+   "ht": "bool",
+   "ah": "num",
+   "ac": "num",
+   "an": "num",
+   "at": "num",
    "by": "str",
    "order": "str"
+  },
+  "inv": {
+   "pid": "num",
+   "items": "str"
   },
   "game_end": {
    "pid": "num",
@@ -307,6 +327,75 @@
    "y0": "num",
    "x1": "num",
    "y1": "num"
+  },
+  "apiprobe_own": {
+   "team": "num",
+   "pid": "num",
+   "seen": "num",
+   "loc": "num",
+   "x": "num",
+   "y": "num",
+   "alive": "num",
+   "hp": "num",
+   "mp": "num",
+   "lvl": "num",
+   "ms": "num",
+   "nw": "num",
+   "nmod": "num",
+   "cds": "num",
+   "nitem": "num",
+   "it0": "str",
+   "tgt": "num",
+   "chan": "num",
+   "cast": "num"
+  },
+  "apiprobe_enemy": {
+   "team": "num",
+   "pid": "num",
+   "vis": "num",
+   "loc": "num",
+   "x": "num",
+   "y": "num",
+   "alive": "num",
+   "hp": "num",
+   "mp": "num",
+   "lvl": "num",
+   "ms": "num",
+   "nw": "num",
+   "nmod": "num",
+   "cds": "num",
+   "nitem": "num",
+   "it0": "str",
+   "tgt": "num",
+   "chan": "num",
+   "cast": "num"
+  },
+  "apiprobe_cast": {
+   "team": "num",
+   "pid": "num",
+   "own": "num",
+   "vis": "num",
+   "ability": "str"
+  },
+  "apiprobe_dmg": {
+   "team": "num",
+   "pid": "num",
+   "own": "num",
+   "n": "num",
+   "fog": "num",
+   "sum": "num"
+  },
+  "apiprobe_dmgshape": {
+   "team": "num",
+   "args": "str"
+  },
+  "apiprobe_tp": {
+   "team": "num",
+   "pid": "num",
+   "own": "num",
+   "x": "num",
+   "y": "num",
+   "rem": "num"
   },
   "visprobe": {
    "pid": "num",
@@ -671,7 +760,16 @@
    "dmax": "num",
    "dend": "num",
    "uns": "num",
-   "rend": "num"
+   "rend": "num",
+   "var": "str",
+   "i": "num",
+   "step": "str",
+   "ok": "num",
+   "fail": "str",
+   "hp": "num",
+   "rt": "num",
+   "dt": "num",
+   "gold": "num"
   },
   "job": {
    "pid": "num",
@@ -1629,6 +1727,7 @@
    "hero": "text",
    "competing": "text",
    "tgt": "text",
+   "tid": "text",
    "ln": "text",
    "mode": "text",
    "lf": "text",
@@ -1662,11 +1761,15 @@
   },
   "ev_snap": {
    "tgt": "text",
+   "tid": "text",
    "ln": "text",
    "mode": "text",
    "lf": "text",
    "by": "text",
    "order": "text"
+  },
+  "ev_inv": {
+   "items": "text"
   },
   "ev_intent_cadence": {
    "rf": "text",
@@ -1691,6 +1794,18 @@
   },
   "ev_camp": {
    "type": "text"
+  },
+  "ev_apiprobe_own": {
+   "it0": "text"
+  },
+  "ev_apiprobe_enemy": {
+   "it0": "text"
+  },
+  "ev_apiprobe_cast": {
+   "ability": "text"
+  },
+  "ev_apiprobe_dmgshape": {
+   "args": "text"
   },
   "ev_stuck": {
    "mode": "text"
@@ -1822,7 +1937,10 @@
    "input": "text",
    "forces": "text",
    "spot": "text",
-   "res": "text"
+   "res": "text",
+   "var": "text",
+   "step": "text",
+   "fail": "text"
   },
   "ev_job": {
    "job": "text",

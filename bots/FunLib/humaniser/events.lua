@@ -30,6 +30,7 @@ ____exports.UNIT = {
     kills = "num",
     deaths = "num",
     tgt = "str",
+    tid = "str",
     ln = "str",
     s = "num",
     ld = "num"
@@ -45,7 +46,14 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     od = "num",
     ar = "num",
     ed = "num",
+    hv = "num",
     hit = "bool",
+    hc = "bool",
+    ht = "bool",
+    ah = "num",
+    ac = "num",
+    an = "num",
+    at = "num",
     by = "str",
     order = "str"
 })
@@ -203,6 +211,7 @@ ____exports.EVENTS = {
     },
     player = {pid = "num", hero = "str", team = "num", human = "bool"},
     snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
+    inv = {pid = "num", items = "str"},
     game_end = {pid = "num", radiantAncient = "bool", direAncient = "bool"},
     intent_cadence = {pid = "num", rf = "str", modes = "str", lapses = "str"},
     thrash = {
@@ -252,6 +261,72 @@ ____exports.EVENTS = {
         y0 = "num",
         x1 = "num",
         y1 = "num"
+    },
+    apiprobe_own = {
+        team = "num",
+        pid = "num",
+        seen = "num",
+        loc = "num",
+        x = "num",
+        y = "num",
+        alive = "num",
+        hp = "num",
+        mp = "num",
+        lvl = "num",
+        ms = "num",
+        nw = "num",
+        nmod = "num",
+        cds = "num",
+        nitem = "num",
+        it0 = "str",
+        tgt = "num",
+        chan = "num",
+        cast = "num"
+    },
+    apiprobe_enemy = {
+        team = "num",
+        pid = "num",
+        vis = "num",
+        loc = "num",
+        x = "num",
+        y = "num",
+        alive = "num",
+        hp = "num",
+        mp = "num",
+        lvl = "num",
+        ms = "num",
+        nw = "num",
+        nmod = "num",
+        cds = "num",
+        nitem = "num",
+        it0 = "str",
+        tgt = "num",
+        chan = "num",
+        cast = "num"
+    },
+    apiprobe_cast = {
+        team = "num",
+        pid = "num",
+        own = "num",
+        vis = "num",
+        ability = "str"
+    },
+    apiprobe_dmg = {
+        team = "num",
+        pid = "num",
+        own = "num",
+        n = "num",
+        fog = "num",
+        sum = "num"
+    },
+    apiprobe_dmgshape = {team = "num", args = "str"},
+    apiprobe_tp = {
+        team = "num",
+        pid = "num",
+        own = "num",
+        x = "num",
+        y = "num",
+        rem = "num"
     },
     visprobe = {
         pid = "num",
@@ -596,7 +671,16 @@ ____exports.EVENTS = {
         dmax = "num",
         dend = "num",
         uns = "num",
-        rend = "num"
+        rend = "num",
+        var = "str",
+        i = "num",
+        step = "str",
+        ok = "num",
+        fail = "str",
+        hp = "num",
+        rt = "num",
+        dt = "num",
+        gold = "num"
     },
     job = {
         pid = "num",
