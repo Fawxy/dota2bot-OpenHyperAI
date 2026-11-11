@@ -79,7 +79,7 @@ every use (never cached by the SDK), so a mid-game difficulty change applies at 
 |---|---|---|
 | `skill(bot): number` in [0, 1] | `Difficulty.GetSkill(bot)` | 1 |
 | `profile(bot): { react, jitter, aimError?, lapse? }` | `Profile.Get(bot)`: `reactBase`, `jitter`, `aimError`, `lapseChance` | `{ react: 0, jitter: 0 }` |
-| `lastHitError(bot): number` | `LastHitSkill.ErrorWidth(bot)` (pressure x1.5 included) | `lerp(0.15, 0.02, skill)` |
+| `lastHitError(bot): number` | `LastHitSkill.ErrorWidth(bot)` (pressure x1.5 included) | `lerp(0.15, 0, skill)` |
 | `random(): number` in [0, 1) | `RandomFloat(0, 1)` | `math.random()` |
 | `attackClock(): number` | `GameTime()` (the clock of `GetLastAttackTime`) | none: attack cooldown not counted |
 
@@ -162,8 +162,8 @@ target (attack activities 1503 and 1504); `CanBeSeen` filters enemies only.
 
 **Skill error.** Per bot and creep the verb rolls, once (kept in a weak table until the creep is gone, so
 re-calling the verb does not re-roll towards perfect): `eps` in [-1, 1] scaling the believed own damage by
-`1 + eps * w`, and a timing shift `(2u - 1) * 2w` seconds, where `w = lastHitError(bot)` (0.04 s at skill 1,
-0.25 s at skill 0.2). A lapse (`profile.lapse`, else `lerp(0.15, 0.01, skill)`) adds 0.15-0.4 s of lateness.
+`1 + eps * w`, and a timing shift `(2u - 1) * 2w` seconds, where `w = lastHitError(bot)` (0 at skill 1,
+0.24 s at skill 0.2). A lapse (`profile.lapse`, else `lerp(0.15, 0, skill)`) adds 0.15-0.4 s of lateness.
 A negative shift shortens the prediction horizon: a late swing, lost to others (`taken_by_other`/`denied`). A
 positive shift extends it with the attackers' DPS (hits not yet started): an early swing that lands while the
 creep is still too healthy (`missed`). There is no random "don't try": a low-skill bot always swings, badly.

@@ -255,7 +255,7 @@ do
 end
 
 do
-	local H, bot, enemy = world()
+	local H, bot, enemy = world({ laneFight = { UseCastCallback = false } })
 	enemy.casting = enemy.impale
 	poll(H, bot, 2)
 	check("UseCastCallback false installs no callback", next(CAST_CALLBACKS) == nil)

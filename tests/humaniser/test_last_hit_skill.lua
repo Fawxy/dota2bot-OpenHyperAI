@@ -42,14 +42,14 @@ end
 
 local function will(H, bot, creep, dmg, isDeny) return H.LastHitSkill.WillKill(bot, creep, dmg or 10, 0.3, isDeny == true) end
 
--- e = lerp(0.15, 0.02, skill)
+-- e = lerp(0.15, 0, skill)
 do
 	local H, bot = Setup(0)
 	check("error width at skill 0", near(H.LastHitSkill.ErrorWidth(bot), 0.15), H.LastHitSkill.ErrorWidth(bot))
 	H, bot = Setup(0.5)
-	check("error width at skill 0.5", near(H.LastHitSkill.ErrorWidth(bot), 0.085), H.LastHitSkill.ErrorWidth(bot))
+	check("error width at skill 0.5", near(H.LastHitSkill.ErrorWidth(bot), 0.075), H.LastHitSkill.ErrorWidth(bot))
 	H, bot = Setup(0.99)
-	check("error width at skill 0.99", near(H.LastHitSkill.ErrorWidth(bot), 0.02 + 0.13 * 0.01), H.LastHitSkill.ErrorWidth(bot))
+	check("error width at skill 0.99", near(H.LastHitSkill.ErrorWidth(bot), 0.15 * 0.01), H.LastHitSkill.ErrorWidth(bot))
 end
 
 -- Skill 1.0 and a disabled feature both pass the upstream predicate straight through, even on the worst roll.

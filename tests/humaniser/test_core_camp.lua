@@ -364,7 +364,7 @@ do
 	local cameAt
 	local out = run(H, core, 325, function()
 		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
-		if cameAt == nil and H.CoreCamp.Running(core) and dist(core.loc, SMALL) < 700 then
+		if cameAt == nil and H.CoreCamp.Running(core) and camp[1].maxhp == 5000 then
 			enemy.loc = Vector(core.loc.x + 300, core.loc.y)
 			cameAt = T
 		elseif cameAt ~= nil and enemy.loc.x ~= 6000 then

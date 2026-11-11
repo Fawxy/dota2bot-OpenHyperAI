@@ -220,8 +220,8 @@ do
 		return n
 	end
 	local hi, lo = noticed(0.9), noticed(0.2)
-	check("skill 0.9 notices 15 of 20 (0.74)", hi == 15, hi)
-	check("skill 0.2 notices 6 of 20 (0.32)", lo == 6, lo)
+	check("skill 0.9 notices 18 of 20 (0.92)", hi == 18, hi)
+	check("skill 0.2 notices 7 of 20 (0.36)", lo == 7, lo)
 end
 
 do
@@ -1138,7 +1138,7 @@ do
 	skips = evs(select(4, taking({ setup = function(_, _) STRONGER = true end, enemyCoreAt = true })), "lane_take_skip")
 	check("lane_take_skip: punishing instead", #skips == 1 and skips[1]:find("reason=punish", 1, true) ~= nil, skips[1])
 	do
-		local H2, _, core2, _, esup2 = world(1, { telemetry = { Enable = true } })
+		local H2, _, core2, _, esup2 = world(0.5, { telemetry = { Enable = true } })
 		OBSERVER = 3
 		local ls = {}
 		H2.Telemetry.SetSink(function(l) table.insert(ls, l) end)
