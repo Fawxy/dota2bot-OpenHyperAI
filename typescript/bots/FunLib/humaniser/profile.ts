@@ -71,6 +71,17 @@ export function Get(bot: Unit): HumanProfile {
     return profile;
 }
 
+/**
+ * How long a threat reading must hold before a hero leaves on it (the retreat's leave rule, the camp trip's threat end):
+ * a debounce against a one-frame reading, not a handicap, so skill 1 keeps it. 0.17 s is the skill-1 reaction time
+ * those two were drilled with (`judgement`); a lower skill waits its own reaction time.
+ */
+export const THREAT_HOLD = 0.17;
+
+export function ThreatHold(bot: Unit): number {
+    return math.max(THREAT_HOLD, Get(bot).reactBase);
+}
+
 function baseFor(profile: HumanProfile, kind: DelayKind): number {
     if (kind === "notice") return profile.noticeBase;
     if (kind === "react") return profile.reactBase;
