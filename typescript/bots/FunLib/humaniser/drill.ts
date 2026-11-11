@@ -15,6 +15,7 @@ import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
+import * as ItemUse from "bots/FunLib/humaniser/item_use";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
 export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "play";
@@ -44,8 +45,9 @@ export interface Entry {
     chaser?: Sides;
     /** Chasers hit only the cast, never a statue beside it (an ally statue in reach must not draw the chase). */
     chaseCast?: boolean;
-    /** Chasers never dive: a target inside one of its towers' reach is not chased, and a chaser inside it walks back out
-     *  (hi0, hi1: the chaser died or fell under 15% HP in each chase rep that did not bring the cast to `breakAt`). */
+    /** Chasers do not die diving: one that a tower targets, or under CHASER_HP_FLOOR, walks back behind its own T1 for that
+     *  think, then chases again (hi0, hi1: the chaser died or fell under 15% HP in each chase rep that did not bring the cast to
+     *  `breakAt`; hi5: skipping a cast under its tower left a pos5 cast unchased). */
     noDive?: boolean;
     /** Chasers keep OHA's spell and item use during a chase rep (the fast drop into `lethal` in games is not auto-attacks). */
     chaserCasts?: boolean;
@@ -193,7 +195,7 @@ export const TABLE: Record<string, Entry> = {
     // hands a salve before odd reps and a tango before even ones; the chaser never dives (it died or fell under 15% HP in each
     // chase rep that failed to force, hi0 and hi1).
     "retreat-heal-items": {
-        note: "Radiant pos5 lane-only with our retreat live but held in a chase rep until 25% HP, OHA's items on; Dire pos3 chases only it, never under its tower, and breaks off at 25%; a salve before odd reps, a tango before even ones; to 16:00",
+        note: "Radiant pos5 lane-only with our retreat live but held in a chase rep until 25% HP, OHA's items on; Dire pos3 chases only it, backing off behind its T1 while a tower targets it or under 35% HP, and breaks off at 25%; a salve before odd reps, a tango before even ones; to 16:00",
         cast: { r: [5] },
         chaser: { d: [3] },
         chaseCast: true,
@@ -536,7 +538,9 @@ export function Hold(bot: Unit): boolean {
     // A stand-off started late in a chase rep runs on into the control rep that follows (its wait starts after the window).
     if (r === "chaser" && lingering[bot.GetPlayerID()] !== undefined && lingerTick(bot, GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, STATUE_BEHIND))) return true;
     if (r === "chaser") {
-        // Waiting between chase reps: behind its own T1 (user 10/11/2026), so the next rep starts without the fountain walk.
+        // Waiting between chase reps: behind its own T1 (user 10/11/2026), so the next rep starts without the fountain walk;
+        // healing first when low (user 11/11/2026).
+        if (chaserHeal(bot)) return true;
         const at = behindOwnT1(bot);
         if (at !== undefined) {
             if (GetUnitToLocationDistance(bot, at) > 100) bot.Action_MoveToLocation(at);
@@ -784,10 +788,45 @@ function lingerTick(bot: Unit, spot: Vector): boolean {
     return true;
 }
 
-/** Whether a point is inside the reach of a tower of the bot's enemies (`noDive`). */
-function underEnemyTower(bot: Unit, at: Vector): boolean {
+/** `noDive`: under this HP share the chaser walks back behind its own T1. `judgement`. */
+const CHASER_HP_FLOOR = 0.35;
+
+/** `noDive`: out of the fight, a chaser drinks a salve it holds under this HP share. `judgement`. */
+const CHASER_SALVE_BELOW = 0.6;
+/** `noDive`: a chaser that went home to heal (under CHASER_HP_FLOOR with no salve) stays in its fountain until this HP share. `judgement`. */
+const CHASER_HOME_UNTIL = 0.9;
+const chaserHome: Record<number, boolean> = {};
+
+/**
+ * `noDive`, out of the fight (backing off or waiting between reps): heal so the next rep has a chaser. A salve when under
+ * CHASER_SALVE_BELOW (the recipe hands every bot one); with none and under CHASER_HP_FLOOR, the fountain until CHASER_HOME_UNTIL.
+ * True when this think's order is the heal's.
+ */
+function chaserHeal(bot: Unit): boolean {
+    if (Active()?.noDive !== true) return false;
+    const pid = bot.GetPlayerID();
+    const hp = bot.GetHealth() / math.max(1, bot.GetMaxHealth());
+    if (chaserHome[pid] === true && hp >= CHASER_HOME_UNTIL) chaserHome[pid] = false;
+    if (hp < CHASER_SALVE_BELOW && !bot.HasModifier("modifier_flask_healing") && !bot.WasRecentlyDamagedByAnyHero(2)) {
+        const salve = ItemUse.Usable(bot, "item_flask");
+        if (salve !== undefined) {
+            ItemUse.UseOnSelf(bot, salve);
+            return true;
+        }
+    }
+    if (hp < CHASER_HP_FLOOR && !bot.HasModifier("modifier_flask_healing")) chaserHome[pid] = true;
+    if (chaserHome[pid] !== true) return false;
+    const [x, y, z] = FOUNTAIN[bot.GetTeam()];
+    const f = Vector(x, y, z);
+    if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
+    return true;
+}
+
+/** `noDive`: an enemy tower is attacking the bot, or the bot is under CHASER_HP_FLOOR. */
+function diveRisk(bot: Unit): boolean {
+    if (bot.GetHealth() / math.max(1, bot.GetMaxHealth()) < CHASER_HP_FLOOR) return true;
     for (const t of bot.GetNearbyTowers(1600, true) ?? []) {
-        if (t.IsAlive() && GetUnitToLocationDistance(t, at) <= WorldFacts.TowerReach(t, TOWER_REACH_FALLBACK)) return true;
+        if (t.IsAlive() && t.GetAttackTarget() === bot) return true;
     }
     return false;
 }
@@ -799,14 +838,16 @@ function chase(bot: Unit): boolean {
     let bestD = math.huge;
     const castOnly = Active()?.chaseCast === true;
     const noDive = Active()?.noDive === true;
-    if (noDive && underEnemyTower(bot, bot.GetLocation())) {
-        bot.Action_MoveToLocation(spot);
+    if (noDive && chaserHome[bot.GetPlayerID()] === true && chaserHeal(bot)) return true;
+    if (noDive && diveRisk(bot)) {
+        if (chaserHeal(bot)) return true;
+        const back = behindOwnT1(bot) ?? spot;
+        if (GetUnitToLocationDistance(bot, back) > 100) bot.Action_MoveToLocation(back);
         return true;
     }
     for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
         if (!h.IsAlive() || h.GetLocation() === undefined || GetUnitToLocationDistance(h, spot) > CHASE_RANGE) continue;
         if (castOnly && RoleOf(h) !== "cast") continue;
-        if (noDive && underEnemyTower(bot, h.GetLocation())) continue;
         const dd = GetUnitToUnitDistance(bot, h);
         if (dd < bestD) {
             best = h;
@@ -965,6 +1006,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(statueSide)) delete statueSide[k as unknown as number];
     for (const k of Object.keys(lastSpot)) delete lastSpot[k as unknown as number];
     for (const k of Object.keys(lingering)) delete lingering[k as unknown as number];
+    for (const k of Object.keys(chaserHome)) delete chaserHome[k as unknown as number];
     for (const k of Object.keys(lingered)) delete lingered[k as unknown as number];
     for (const k of Object.keys(reachedBreak)) delete reachedBreak[k as unknown as number];
     for (const k of Object.keys(brokeOff)) delete brokeOff[k as unknown as number];
