@@ -293,10 +293,13 @@ Customize.Humaniser = {
 -- on again after leave-together and hit-back). Off: the budget alone.
 -- HealStop (slice heal-stop, D3): with Retreat on, a heal walk ends where HP is back over half, nobody is in reach and our
 -- lane front is nearer than our fountain. Off: on to the fountain and 0.8 HP.
+-- HealItems (slice heal-items, D6 stop-gap): with Retreat and HealStop on, a heal start uses the held items that restore HP to
+-- half (one tango, a salve, salve and tango; never two tangoes) and waits at our tower. Off: the walk home. Off by default: in
+-- games the plan skipped nearly every start (a hero within reach) while holding the items from OHA (slice heal-items, missed).
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, ArbiterShadow = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
