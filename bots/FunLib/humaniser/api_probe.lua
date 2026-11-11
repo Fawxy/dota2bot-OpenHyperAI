@@ -280,7 +280,7 @@ local function install(bot, st)
                             elseif a ~= nil and a ~= nil then
                                 name = a:GetName()
                             end
-                            Telemetry.EventUntyped(
+                            Telemetry.Event(
                                 "apiprobe_cast",
                                 {
                                     {"team", team},
@@ -308,7 +308,7 @@ local function install(bot, st)
                         pcall(function()
                             if not shapeLogged then
                                 shapeLogged = true
-                                Telemetry.EventUntyped(
+                                Telemetry.Event(
                                     "apiprobe_dmgshape",
                                     {
                                         {"team", team},
@@ -358,7 +358,7 @@ local function teamRows(bot, st)
                     __continue60 = true
                     break
                 end
-                Telemetry.EventUntyped(
+                Telemetry.Event(
                     "apiprobe_enemy",
                     {
                         {"team", team},
@@ -388,7 +388,7 @@ local function teamRows(bot, st)
                     __continue64 = true
                     break
                 end
-                Telemetry.EventUntyped(
+                Telemetry.Event(
                     "apiprobe_dmg",
                     {
                         {"team", team},
@@ -420,7 +420,7 @@ local function teamRows(bot, st)
         return
     end
     for ____, tp in ipairs(tps) do
-        Telemetry.EventUntyped(
+        Telemetry.Event(
             "apiprobe_tp",
             {
                 {"team", team},
@@ -476,7 +476,7 @@ function ____exports.Tick(bot)
         return
     end
     st.nextAt = math.floor(now) + 1
-    Telemetry.EventUntyped(
+    Telemetry.Event(
         "apiprobe_own",
         {
             {

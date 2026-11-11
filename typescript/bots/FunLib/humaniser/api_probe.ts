@@ -1,12 +1,16 @@
 /**
  * API probe (`Overrides.ApiProbe`, probe games only): what the Valve API returns about units we cannot see, so a read can
  * replace a guess where one exists. Both teams run it in one game and each team's own rows are the other's truth:
- *   `apiprobe_own`    each hero about itself, once a second (the truth; `seen` is its own CanBeSeen);
- *   `apiprobe_enemy`  the team's reporter about every enemy hero handle it has held, visible (`vis=1`, the control) or not;
+ *   `apiprobe_own`    each hero about itself, once a second (the truth for the fields below; `seen`, its own CanBeSeen,
+ *                     is always 1 and is no truth about what the enemy sees: that is whether the enemy wrote a row);
+ *   `apiprobe_enemy`  the team's reporter about every enemy hero handle it holds; a hero out of sight has no row, since
+ *                     its handle is null, so "unseen at t" is read as no enemy row within 1 s of t;
  *   `apiprobe_cast`   every cast callback, own and enemy, with whether the caster was visible to us when it fired;
  *   `apiprobe_dmg`    damage callbacks per player and second: how many fired, and how many with the hero out of sight;
  *   `apiprobe_tp`     GetIncomingTeleports once a second, own and enemy.
  * A read that fails prints -2, one that returns nil -1. Reads and logs only; it changes no order.
+ * The tick runs under pcall: a probe error is silent, so a run is judged by its row counts, not by `lua_error`.
+ * Run it with LaneFight.UseCastCallback off: whether two cast callbacks installed for one player stack is not known.
  * Rows are sampled on the whole game second so the two VMs' rows pair up by `t`.
  */
 import { Team, Unit, UnitType } from "bots/ts_libs/dota";
@@ -173,7 +177,7 @@ function install(bot: Unit, st: State): void {
                 let name = "?";
                 if (type(a) === "string") name = a as string;
                 else if (a !== undefined && a !== null) name = (a as Named).GetName();
-                Telemetry.EventUntyped("apiprobe_cast", [
+                Telemetry.Event("apiprobe_cast", [
                     ["team", team],
                     ["pid", pid],
                     ["own", own],
@@ -188,7 +192,7 @@ function install(bot: Unit, st: State): void {
             pcall(() => {
                 if (!shapeLogged) {
                     shapeLogged = true;
-                    Telemetry.EventUntyped("apiprobe_dmgshape", [["team", team], ["args", describeArgs(args)]]);
+                    Telemetry.Event("apiprobe_dmgshape", [["team", team], ["args", describeArgs(args)]]);
                 }
                 const d = damage[pid] ?? { n: 0, fog: 0, sum: 0 };
                 damage[pid] = d;
@@ -207,11 +211,11 @@ function teamRows(bot: Unit, st: State): void {
     for (const [pid, h] of pairs(st.handles)) {
         const [okNull, isNull] = pcall((): boolean => h.IsNull());
         if (okNull && isNull) continue;
-        Telemetry.EventUntyped("apiprobe_enemy", [["team", team], ["pid", pid], ["vis", num(h, (u) => u.CanBeSeen())], ...unitFields(h)]);
+        Telemetry.Event("apiprobe_enemy", [["team", team], ["pid", pid], ["vis", num(h, (u) => u.CanBeSeen())], ...unitFields(h)] as Telemetry.Fields<"apiprobe_enemy">);
     }
     for (const [pid, d] of pairs(damage)) {
         if (d.n === 0) continue;
-        Telemetry.EventUntyped("apiprobe_dmg", [
+        Telemetry.Event("apiprobe_dmg", [
             ["team", team],
             ["pid", pid],
             ["own", GetTeamForPlayer(pid as number) === team ? 1 : 0],
@@ -226,7 +230,7 @@ function teamRows(bot: Unit, st: State): void {
     const [ok, tps] = pcall(() => GetIncomingTeleports());
     if (!ok || tps === undefined || tps === null) return;
     for (const tp of tps as any[]) {
-        Telemetry.EventUntyped("apiprobe_tp", [
+        Telemetry.Event("apiprobe_tp", [
             ["team", team],
             ["pid", tp.playerid],
             ["own", GetTeamForPlayer(tp.playerid) === team ? 1 : 0],
@@ -250,6 +254,6 @@ export function Tick(bot: Unit): void {
     if (reporterPid(false) === pid) install(bot, st);
     if (now < st.nextAt) return;
     st.nextAt = math.floor(now) + 1;
-    Telemetry.EventUntyped("apiprobe_own", [["team", bot.GetTeam()], ["pid", pid], ["seen", num(bot as unknown as Handle, (u) => u.CanBeSeen())], ...unitFields(bot as unknown as Handle)]);
+    Telemetry.Event("apiprobe_own", [["team", bot.GetTeam()], ["pid", pid], ["seen", num(bot as unknown as Handle, (u) => u.CanBeSeen())], ...unitFields(bot as unknown as Handle)] as Telemetry.Fields<"apiprobe_own">);
     if (reporterPid(true) === pid) teamRows(bot, st);
 }
