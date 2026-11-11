@@ -363,7 +363,7 @@ do
 	package.loaded["bots/FunLib/custom_loader"].Ours.HealItems = nil
 end
 
--- HealItems' hold on OHA's item code: under the heal floor with nobody in reach, and through a heal episode, our plan decides the
+-- HealItems' hold on OHA's item code: under the heal floor (whatever the reach) and through a heal episode, our plan decides the
 -- heal items; in a fight under the floor OHA's salve and faerie fire stay, and other items are never held.
 do
 	local H, bot = world({ hp = 150 })
