@@ -380,14 +380,41 @@ do
 	T = 100
 	H.Telemetry.Tick(b)
 	local snap = events("snap")[1]
-	check("options: range, nearest enemy and hit on the snap", snap ~= nil and field(snap, "ar") ~= nil and field(snap, "ed") == "432" and field(snap, "hit") == "1", snap)
+	check("options: range and nearest enemy on the snap", snap ~= nil and field(snap, "ar") ~= nil and field(snap, "ed") == "432", snap)
 	lines = {}
 	T = 721
 	H.Telemetry.Tick(b)
 	snap = events("snap")[1]
-	check("options: none past 12:00", snap ~= nil and field(snap, "ar") == nil and field(snap, "hit") == nil, snap)
+	check("options: none past 12:00", snap ~= nil and field(snap, "ar") == nil and field(snap, "ed") == nil, snap)
 	GetUnitToUnitDistance = dist
 	U.GetNearbyHeroes, U.WasRecentlyDamagedByAnyHero = nil, nil
+end
+
+-- Tool slice hp-loss: who is hurting the bot, all game. Only units whose attack target is the bot count, by kind.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1, team = 2, mode = BotMode.Laning })
+	local function attacker(target) local u = MakeUnit({ team = 3 }) u.target = target return u end
+	local other = MakeUnit({ pid = 2, team = 2 })
+	local U = getmetatable(b).__index
+	for name, fn in pairs(UnitMeta) do if U[name] == nil then U[name] = fn end end
+	local names = { "GetNearbyHeroes", "GetNearbyLaneCreeps", "GetNearbyNeutralCreeps", "GetNearbyTowers", "WasRecentlyDamagedByAnyHero", "WasRecentlyDamagedByCreep", "WasRecentlyDamagedByTower", "GetHealth" }
+	local saved = {}
+	for _, n in ipairs(names) do saved[n] = rawget(U, n) end
+	function U:GetNearbyHeroes() return { attacker(b), attacker(other) } end
+	function U:GetNearbyLaneCreeps() return { attacker(b), attacker(b), attacker(other), attacker(nil) } end
+	function U:GetNearbyNeutralCreeps() return { attacker(other) } end
+	function U:GetNearbyTowers() return { attacker(b) } end
+	function U:WasRecentlyDamagedByAnyHero() return false end
+	function U:WasRecentlyDamagedByCreep() return true end
+	function U:WasRecentlyDamagedByTower() return true end
+	function U:GetHealth() return 431.6 end
+	T = 900
+	H.Telemetry.Tick(b)
+	local snap = events("snap")[1]
+	check("damage: flags by source and raw HP, past 12:00 too", snap ~= nil and field(snap, "hit") == "0" and field(snap, "hc") == "1" and field(snap, "ht") == "1" and field(snap, "hv") == "431", snap)
+	check("damage: only units attacking this bot are counted, by kind", snap ~= nil and field(snap, "ah") == "1" and field(snap, "ac") == "2" and field(snap, "an") == "0" and field(snap, "at") == "1", snap)
+	for _, n in ipairs(names) do U[n] = saved[n] end
 end
 
 finish()

@@ -649,7 +649,7 @@ const OPTIONS_UNTIL = 720;
 const ENEMY_RADIUS = 1200;
 
 /**
- * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero, hit by a hero.
+ * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero.
  * With the snapshot's mode and `tgt` it says what the bot chose against what it had. Reads facts only. Skipped for an ally of a
  * human, where the offers would run the etiquette filter, whose decisions log themselves.
  */
@@ -668,11 +668,41 @@ function optionFields(bot: Unit): BotPair[] {
         ["od", od],
         ["ar", bot.GetAttackRange()],
         ["ed", nearest !== undefined ? math.floor(nearest) : undefined],
-        ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
     ];
 }
 
 const guardedOptionFields = Guard("Telemetry.Options", optionFields, () => []);
+
+/** The API's largest unit search; every attacker that can reach the bot stands inside it. */
+const ATTACKER_RADIUS = 1600;
+
+function targeting(bot: Unit, units: Unit[] | undefined): number {
+    let n = 0;
+    for (const u of units ?? []) {
+        if (u.IsAlive() && u.GetAttackTarget() === bot) n++;
+    }
+    return n;
+}
+
+/**
+ * Who is hurting the bot this second, all game (view `hp_loss`): raw HP, the API's damaged-in-the-last-second flags by source
+ * and the units whose attack target is the bot, by kind. Reads facts only.
+ */
+function damageFields(bot: Unit): BotPair[] {
+    if (!bot.IsAlive()) return [];
+    return [
+        ["hv", math.floor(bot.GetHealth())],
+        ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
+        ["hc", bot.WasRecentlyDamagedByCreep(1)],
+        ["ht", bot.WasRecentlyDamagedByTower(1)],
+        ["ah", targeting(bot, bot.GetNearbyHeroes(ATTACKER_RADIUS, true, BotMode.None))],
+        ["ac", targeting(bot, bot.GetNearbyLaneCreeps(ATTACKER_RADIUS, true))],
+        ["an", targeting(bot, bot.GetNearbyNeutralCreeps(ATTACKER_RADIUS, true))],
+        ["at", targeting(bot, bot.GetNearbyTowers(ATTACKER_RADIUS, true))],
+    ];
+}
+
+const guardedDamageFields = Guard("Telemetry.Damage", damageFields, () => []);
 
 function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     const fields: BotPair[] = unitFields(bot);
@@ -683,6 +713,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["nw", bot.GetNetWorth()]);
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     for (const f of guardedOptionFields(bot)) fields.push(f);
+    for (const f of guardedDamageFields(bot)) fields.push(f);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);
