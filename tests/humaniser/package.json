@@ -7,7 +7,8 @@
         "test": "node run.js",
         "mining": "node ../../tools/replay-mining/test/run.js",
         "hlog": "node --test \"../../tools/hlog/test/*.test.js\"",
-        "check": "npm run syntax && npm test && npm run fixtures && npm run mining && npm run hlog",
+        "check": "npm run syntax && npm test && npm run fixtures && npm run mining && npm run hlog && npm run anycall",
+        "anycall": "node --test ../../tools/anycall/test/check.test.js",
         "fixtures": "node --test fixtures.test.js && node fixtures.js",
         "fixtures:controls": "node fixtures.js --controls"
     },
