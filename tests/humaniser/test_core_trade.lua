@@ -53,6 +53,8 @@ function Unit:GetNearbyHeroes(r, enemies)
 	return { self }
 end
 function Unit:GetNearbyLaneCreeps() return {} end
+-- The hero that hit us last (slice hit-back); nobody by default.
+function Unit:WasRecentlyDamagedByHero(h) return self.hitBy == h end
 function Unit:GetNearbyTowers() return {} end
 function Unit:GetAttackTarget() return self.attacking end
 function Unit:Action_AttackUnit(u) self.attacking = u self.orders = (self.orders or 0) + 1 end
@@ -511,6 +513,71 @@ do
 	LaneConfig.SetRng(nil)
 	CoreTrade.Reset()
 	Plays.ResetCache()
+end
+
+-- Slice hit-back (D24): a hero hitting us from inside our creeps' aggro is traded back even beside their wave or with us a
+-- little behind on HP, the refusals the trade rule alone keeps; tower, numbers, our HP floor and creeps on us still refuse.
+do
+	check("hit back: a big enemy wave does not refuse it", CoreTrade.Decide(inputs({ enemyCreepsNear = 6 }), false, nil, true).kind == "trade")
+	check("hit back: behind on HP does not refuse it", CoreTrade.Decide(inputs({ hp = 0.6, targetHp = 0.9 }), false, nil, true).kind == "trade")
+	check("hit back: their tower, their numbers, our HP floor and two creeps on us still refuse it",
+		CoreTrade.Decide(inputs({ tower = true }), false, nil, true).respect == "tower"
+		and CoreTrade.Decide(inputs({ enemiesNear = 2 }), false, nil, true).respect == "outnumbered"
+		and CoreTrade.Decide(inputs({ hp = 0.45, targetHp = 0.4 }), false, nil, true).respect == "low_hp"
+		and CoreTrade.Decide(inputs({ hitByCreeps = 2 }), false, nil, true).respect == "creeps")
+
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	Ours.CoreLaneFight = false
+	-- Behind on HP inside their wave: the trade rule alone refuses (`behind`, `wave`).
+	local theirs = {}
+	for k = 1, 5 do theirs[k] = MakeUnit({ pid = 30 + k, team = 3, loc = Vector(200, 300) }) end
+	local ourCreep = MakeUnit({ pid = 40, team = 2, loc = Vector(700, 0) })
+	local ourCreeps = { ourCreep }
+	function Unit:GetNearbyLaneCreeps(r, enemies)
+		local out = {}
+		for _, c in ipairs(enemies and theirs or ourCreeps) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end
+		return out
+	end
+	local function fresh()
+		CoreTrade.Reset()
+		bot.loc, enemy.loc = Vector(0, 0), Vector(400, 0)
+		bot.hp, enemy.hp, bot.attacking, bot.hitBy = 60, 90, nil, nil
+		T = T + 30
+	end
+	fresh()
+	check("(setup) behind on HP in their wave and not hit: no trade", CoreTrade.Desire(bot) == 0)
+	fresh()
+	bot.hitBy = enemy
+	check("hit by a hero standing 300 from our creep: it is traded back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	bot.moves, bot.orders = {}, 0
+	CoreTrade.Think(bot)
+	check("beside their wave the hit back first steps out of it, as a trade does", bot.orders == 0 and #bot.moves == 1)
+	bot.loc = Vector(-400, 0)
+	T = T + 0.3
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	check("clear of their creeps it attacks the hitter", bot.attacking == enemy and bot.orders == 1)
+	bot.loc = Vector(0, 0)
+	T = T + 0.5
+	check("a running hit back is not ended by the wave or the HP gap", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	enemy.dead = true
+	T = T + 0.1
+	CoreTrade.Desire(bot)
+	check("its end line says it was a hit back", last():find("ev=trade") and last():find("hb=1"), last())
+	enemy.dead = false
+	fresh()
+	bot.hitBy = enemy
+	ourCreep.loc = Vector(1000, 0)
+	check("hit from outside our creeps' aggro (600 from the nearest): no hit back", CoreTrade.Desire(bot) == 0)
+	ourCreep.loc = Vector(700, 0)
+	fresh()
+	bot.hitBy = enemy
+	Ours.HitBack = false
+	check("switch off: the trade rule alone, so no trade", CoreTrade.Desire(bot) == 0)
+	Ours.HitBack = nil
+	Ours.CoreLaneFight = true
+	function Unit:GetNearbyLaneCreeps() return {} end
+	CoreTrade.Reset()
 end
 
 finish()

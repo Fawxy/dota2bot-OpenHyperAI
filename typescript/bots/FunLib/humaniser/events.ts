@@ -1522,6 +1522,8 @@ export const EVENTS = {
         /** `trade`, `kill` (a commit) or `fight` (a lane fight from the play roll: rolled here or joined). */
         kind: "str",
         tgt: "num",
+        /** 1 for a hit back (slice hit-back, `Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro. */
+        hb: "num",
         /** A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own. */
         play: "num",
         join: "num",

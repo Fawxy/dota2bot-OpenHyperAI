@@ -188,6 +188,61 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
     },
+    // Slice hit-back (D24's hit-back half; D10's leave-together as a rep kind, user 12/11/2026). half: decision. Facts the
+    // hit back reads: an enemy hero damaged the cast within 1 s (forced: the Dire actor attacks it), standing inside our
+    // creeps' aggro (forced: the spots sit at our bot lane front, which `paid` checks at ready), the trade's remaining
+    // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%), the
+    // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
+    // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
+    // 1,200). `control`: the pos3 stands beside and never attacks. Release: laning (last hits compete), attack (the trade),
+    // retreat, idle. `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
+    "retreat-hitback": {
+        note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat",
+        cast: SAFE_CORE,
+        others: "bench",
+        rep: { every: 90, from: 60 },
+        rig: {
+            half: "decision",
+            switch: "HitBack",
+            window: 600,
+            spots: {
+                cast: ["r:frontbot", -200, 0],
+                partner: ["r:frontbot", -450, 0],
+                near: ["r:frontbot", 0, 0],
+            },
+            timeout: 60,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "hit",
+                    setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
+                    ready: { paid: 500 },
+                },
+                {
+                    name: "pair",
+                    setup: {
+                        r1: ["heal", "stand cast"],
+                        r5: ["heal", "stand partner"],
+                        d3: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
+                        d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
+                    },
+                    after: { r5: ["wait 3", "leave"] },
+                    ready: { paid: 500 },
+                },
+                {
+                    name: "hit",
+                    setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
+                    ready: { paid: 500 },
+                },
+                {
+                    name: "control",
+                    setup: { r1: ["heal", "stand cast"], d3: ["heal", "stand near"] },
+                    ready: { near: 800 },
+                },
+            ],
+        },
+    },
     // Slice heal-items' drill as a rig (slice drill-rig's first consumer). half: decision. Facts the heal start reads: the
     // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
     // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
@@ -915,6 +970,11 @@ export interface RigReady {
     clear?: number;
     /** An enemy hero within this distance of the cast. */
     near?: number;
+    /**
+     * An enemy hero damaged the cast within the last second, and every such hero stands within this distance of one of the
+     * cast team's lane creeps (inside our creeps' aggro: slice hit-back).
+     */
+    paid?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -935,13 +995,22 @@ export interface RigRep {
      * listed hero of its own team placed (no state is shared across teams: the other team's part is read from the facts).
      */
     setup: Record<string, string[]>;
+    /**
+     * Steps an own-team actor takes once the cast is released, in place of its setup (slice hit-back: the partner walks off
+     * mid-hold). Also `wait <s>`: stand at its last setup point until s seconds after the release; ends then.
+     */
+    after?: Record<string, string[]>;
     ready: RigReady;
 }
 
 export interface Rig {
     /** `decision`: inputs forced, the choice read; `execution`: the choice forced, the doing read. */
     half: "decision" | "execution";
-    /** Named points: an anchor (`r:fountain`, `d:fountain`, `<r|d>:<top|mid|bot><1|2|3>` a tower) and an offset. */
+    /**
+     * Named points: an anchor (`r:fountain`, `d:fountain`, `<r|d>:<top|mid|bot><1|2|3>` a tower, `<r|d>:front<top|mid|bot>`
+     * that team's lane front, `GetLaneFrontLocation`, whose dx is a distance along the lane, negative towards that team's base)
+     * and an offset. A front spot is resolved again at each rep's first frame.
+     */
     spots: Record<string, [string, number, number]>;
     reps: RigRep[];
     /** Seconds from the rep's start for the ready checks to hold; else the rep is invalid. */
@@ -979,9 +1048,18 @@ interface RigState {
     idleAt: Record<number, [Vector, number]>;
     /** Per cast pid: its HP share has been at or under the ready bar this rep. */
     hpMet: Record<number, boolean>;
+    /** When this VM's cast was released this rep (`after` steps and `wait` read it). */
+    releasedAt?: number;
+    /** Per actor pid: the index into its `after` steps. */
+    afterStep: Record<number, number>;
 }
 
 let rig: RigState | undefined;
+
+const FRONT_LANES: Record<string, Lane> = { fronttop: Lane.Top, frontmid: Lane.Mid, frontbot: Lane.Bot };
+
+/** Resolved rig spots by name, for the game (logged once each, `ph=spot`; a front spot once a rep). */
+const rigSpots: Record<string, Vector | false | undefined> = {};
 
 /** The hero key `r5` / `d3` of a bot, or undefined before its position is known. */
 function keyOf(bot: Unit): string | undefined {
@@ -1005,7 +1083,15 @@ function rigState(): RigState | undefined {
     if (rigOf(d) === undefined) return undefined;
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
-    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {} };
+    if (rig === undefined || rig.rep !== n) {
+        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, afterStep: {} };
+        // Front spots are re-read now, on the rep's first frame, so both teams' VMs take the front at about the same moment.
+        for (const name of Object.keys(rigOf(d)!.spots)) {
+            if (FRONT_LANES[frontOf(name) ?? ""] === undefined) continue;
+            rigSpots[name] = undefined;
+            rigPoint(GetBot(), name);
+        }
+    }
     return rig;
 }
 
@@ -1111,6 +1197,14 @@ const TOWER_IDS: Record<string, Tower> = {
     top3: Tower.Top3, mid3: Tower.Mid3, bot3: Tower.Bot3,
 };
 
+/** The `front<lane>` part of a spot's anchor, if it names a lane front. */
+function frontOf(name: string): string | undefined {
+    const s = rigOf(Active())?.spots[name];
+    if (s === undefined) return undefined;
+    const [, what] = string.match(s[0], "^([rd]):(%w+)$");
+    return what;
+}
+
 /** The anchor plus offset a spot names, before it is made passable. */
 function rawSpot(name: string): Vector | undefined {
     const s = rigOf(Active())?.spots[name];
@@ -1119,6 +1213,12 @@ function rawSpot(name: string): Vector | undefined {
     const [side, what] = string.match(anchor, "^([rd]):(%w+)$");
     if (side === undefined) return undefined;
     const team = side === "r" ? Team.Radiant : Team.Dire;
+    const lane = FRONT_LANES[what];
+    if (lane !== undefined) {
+        // dx is along the lane here (negative: back towards that team's base), so the spot follows the lane's bend.
+        const f = GetLaneFrontLocation(team, lane, dx);
+        return Vector(f.x, f.y + dy, f.z);
+    }
     if (what === "fountain") {
         const [x, y, z] = FOUNTAIN[team];
         return Vector(x + dx, y + dy, z);
@@ -1160,8 +1260,6 @@ function nearestTower(team: Team, p: Vector): number {
     return best;
 }
 
-/** Resolved rig spots by name, for the game (logged once each, `ph=spot`). */
-const rigSpots: Record<string, Vector | false> = {};
 
 /** A rig spot's point; `fountain` is the bot's own. Undefined for an unknown name, a dead anchor tower or no passable point. */
 function rigPoint(bot: Unit, name: string): Vector | undefined {
@@ -1297,6 +1395,13 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         st.placed[pid] = standAt(bot, p) && last;
         return false;
     }
+    if (verb === "wait") {
+        const secs = tonumber(words[1]) ?? 0;
+        if (st.releasedAt !== undefined && DotaTime() - st.releasedAt >= secs) return true;
+        const p = lastPoint(st, keyOf(bot)!, bot);
+        if (p !== undefined) standAt(bot, p);
+        return false;
+    }
     if (verb === "walk") {
         const p = rigPoint(bot, words[1]);
         if (p === undefined) return false;
@@ -1363,8 +1468,20 @@ function rigHold(bot: Unit): boolean {
         atFountain(bot);
         return true;
     }
-    const steps = RigRepOf(st.rep)?.setup[k];
+    const rr = RigRepOf(st.rep);
     const pid = bot.GetPlayerID();
+    const after = rr?.after?.[k];
+    if (after !== undefined && after.length > 0 && st.releasedAt !== undefined && RoleOf(bot) !== "cast") {
+        for (let guard = 0; guard < after.length; guard++) {
+            const i = st.afterStep[pid] ?? 0;
+            const last = i >= after.length - 1;
+            if (!rigStep(bot, st, after[i], last) || last) return true;
+            st.afterStep[pid] = i + 1;
+            Telemetry.Event("drill", [["ph", "after"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["i", i + 1], ["step", after[i + 1]]]);
+        }
+        return true;
+    }
+    const steps = rr?.setup[k];
     if (steps === undefined || steps.length === 0) {
         st.placed[pid] = true;
         atFountain(bot);
@@ -1405,6 +1522,17 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (r.clear !== undefined && nearest <= r.clear) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
     }
+    if (r.paid !== undefined) {
+        const ours = bot.GetNearbyLaneCreeps(1600, false) ?? [];
+        let hitters = 0;
+        for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (!h.IsAlive() || h.GetLocation() === undefined || !bot.WasRecentlyDamagedByHero(h, 1)) continue;
+            hitters++;
+            const at = h.GetLocation();
+            if (!ours.some((c) => c.IsAlive() && GetUnitToLocationDistance(c, at) <= r.paid!)) return "paid";
+        }
+        if (hitters === 0) return "hit";
+    }
     return undefined;
 }
 
@@ -1427,6 +1555,7 @@ function rigTick(bot: Unit): void {
     }
     if (fail !== undefined && secs < r.timeout) return;
     st.phase[pid] = fail === undefined ? "released" : "invalid";
+    if (fail === undefined) st.releasedAt = DotaTime();
     Telemetry.Event("drill", [
         ["ph", "ready"],
         ["name", Name()],

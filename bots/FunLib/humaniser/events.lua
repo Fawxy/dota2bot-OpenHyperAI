@@ -1177,6 +1177,7 @@ ____exports.EVENTS = {
         lf = "num",
         kind = "str",
         tgt = "num",
+        hb = "num",
         play = "num",
         join = "num",
         result = "str",

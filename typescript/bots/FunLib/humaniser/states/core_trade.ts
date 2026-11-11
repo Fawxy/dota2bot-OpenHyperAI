@@ -13,6 +13,7 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
+import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -105,6 +106,8 @@ const AGGRO_COOLDOWN = 3;
 const COOLDOWN_LEFT = 0.3;
 /** A step out of the creeps that has not cleared them in this long ends the trade (`no_clear`). */
 const STEP_OUT_LIMIT = 2;
+/** A hit back answers a hero that damaged us within this (s): the threat read's `EngagedRecent`. `judgement`. */
+const HIT_RECENT = 1;
 /** A window Desire offered that attack mode did not take within this is logged as lost. */
 const LOST_AFTER = 1;
 
@@ -112,15 +115,15 @@ const LOST_AFTER = 1;
  * Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
  * the borders get their slack.
  */
-export function Decide(i: Inputs, running = false, killHp = KILL_HP): { kind?: Kind; respect?: Respect } {
+export function Decide(i: Inputs, running = false, killHp = KILL_HP, hitBack = false): { kind?: Kind; respect?: Respect } {
     const slack = running ? KEEP_HP_SLACK : 0;
     if (i.tower) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
     if (i.targetHp <= killHp && i.hp >= i.targetHp) return { kind: "kill" };
     if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
-    if (i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
+    if (!hitBack && i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
-    if (i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
+    if (!hitBack && i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
     return { kind: "trade" };
 }
 
@@ -154,6 +157,8 @@ interface Episode {
     /** The play a `fight` runs in, and whether the hero joined it (another hero's play) rather than rolled it. */
     play?: Plays.Play;
     joined?: boolean;
+    /** A hit back (`Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro, so `wave` and `behind` do not end it. */
+    hb?: boolean;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
 }
@@ -228,6 +233,30 @@ function reachOf(bot: Unit): number {
 function lastHitting(h: Unit): boolean {
     const t = h.GetAttackTarget();
     return t !== undefined && t !== null && !t.IsNull() && t.IsCreep() && !t.IsHero();
+}
+
+/**
+ * Slice hit-back (D24, `Ours.HitBack`): the enemy hero in reach that hit us within HIT_RECENT while one of our lane creeps
+ * stands within creep aggro of it. It pays our creeps for every hit, so hitting back is the exchange D24 says to take even
+ * beside their wave or a little behind on HP; the respects that remain are the trade's tower, numbers, HP floor and creeps on us.
+ */
+function hitBackTarget(bot: Unit): Unit | undefined {
+    if (!Ours.On("HitBack")) return undefined;
+    const radius = LaneFightConfig.Settings().CreepAggroRadius;
+    const ours = bot.GetNearbyLaneCreeps(1600, false) ?? [];
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const h of bot.GetNearbyHeroes(reachOf(bot), true, BotMode.None)) {
+        if (!valid(h) || !bot.WasRecentlyDamagedByHero(h, HIT_RECENT)) continue;
+        const at = h.GetLocation();
+        if (!ours.some((c) => c.IsAlive() && GetUnitToLocationDistance(c, at) <= radius)) continue;
+        const d = GetUnitToUnitDistance(bot, h);
+        if (d < bestD) {
+            best = h;
+            bestD = d;
+        }
+    }
+    return best;
 }
 
 /** The core lanes: laning phase for it (transitions/phase) and standing by its own lane; elsewhere OHA's port fights. */
@@ -307,6 +336,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["tgt", ep.tpid],
         ["play", ep.play?.id],
         ["join", ep.play !== undefined ? (ep.joined ? 1 : 0) : undefined],
+        ["hb", ep.hb === true ? 1 : undefined],
         ["result", started ? (killed ? "kill" : "done") : "lost"],
         ["why", why],
         ["dur", started ? math.floor((now - ep.startedAt!) * 10) / 10 : 0],
@@ -366,7 +396,19 @@ export function Desire(bot: Unit): number | undefined {
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
-    if (d.kind === undefined) return 0;
+    if (d.kind === undefined) {
+        const hb = hitBackTarget(bot);
+        if (hb === undefined) return 0;
+        const hi = Gather(bot, hb);
+        const hd = Decide(hi, false, killHpFor(bot), true);
+        if (hd.kind === undefined) return 0;
+        const lost = recoverTo[pid];
+        if (hd.kind === "trade" && lost !== undefined) {
+            if (hi.hp - hi.targetHp < lost - 1e-6) return 0;
+            recoverTo[pid] = undefined;
+        }
+        return open(bot, hd.kind, hb, now, undefined, undefined, true);
+    }
     const gap = recoverTo[pid];
     if (d.kind === "trade" && gap !== undefined) {
         if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
@@ -375,7 +417,7 @@ export function Desire(bot: Unit): number | undefined {
     return open(bot, d.kind, target, now);
 }
 
-function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean): number {
+function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean, hb?: boolean): number {
     if (joined) Plays.Join(play!, bot);
     episodes[bot.GetPlayerID()] = {
         kind,
@@ -392,6 +434,7 @@ function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Pla
         aggro: 0,
         play,
         joined,
+        hb,
     };
     return kind === "trade" ? DESIRE_TRADE : DESIRE_KILL;
 }
@@ -451,7 +494,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
         if (ep.stepSince === undefined && !walkingIn && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
         if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
     }
-    const d = Decide(Gather(bot, ep.target), true, killHpFor(bot));
+    const d = Decide(Gather(bot, ep.target), true, killHpFor(bot), ep.hb === true);
     if (d.kind === undefined) return d.respect;
     return undefined;
 }
