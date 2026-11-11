@@ -263,7 +263,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, standsAtLast, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_SHOP_REACH, RIG_FULL_HP, RIG_AT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -1001,30 +1001,55 @@ function rigPoint(bot, name)
     return p
 end
 function heroOf(bot, key)
-    local side, p = string.match(key, "^([rd])(%d)$")
-    if side == nil then
+    local side = string.match(key, "^([rd])%d$")
+    if side == nil or (side == "r" and Team.Radiant or Team.Dire) ~= bot:GetTeam() then
         return nil
     end
-    local team = side == "r" and Team.Radiant or Team.Dire
-    if team == bot:GetTeam() then
-        return rigUnits[key]
-    end
-    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if h:IsAlive() and h:GetLocation() ~= nil and LaneConfig.PositionOf(h) == tonumber(p) then
-            return h
-        end
-    end
-    return nil
+    return rigUnits[key]
 end
-function standsAtLast(st, key, target)
+function lastPoint(st, key, bot)
     local ____opt_54 = ____exports.RigRepOf(st.rep)
     local steps = ____opt_54 and ____opt_54.setup[key]
     if steps == nil or #steps == 0 then
-        return true
+        return nil
     end
-    local words = __TS__StringSplit(steps[#steps], " ")
-    local p = rigPoint(target, words[2] or "fountain")
-    return p ~= nil and GetUnitToLocationDistance(target, p) <= RIG_PLACED
+    return rigPoint(
+        bot,
+        __TS__StringSplit(steps[#steps], " ")[2] or "fountain"
+    )
+end
+function attackTarget(bot, st, key)
+    local p = lastPoint(st, key, bot)
+    if p == nil then
+        return nil
+    end
+    local own = heroOf(bot, key)
+    if own ~= nil then
+        return GetUnitToLocationDistance(own, p) <= RIG_PLACED and own or nil
+    end
+    local best
+    local bestD = RIG_PLACED
+    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue156
+            repeat
+                if not h:IsAlive() or h:GetLocation() == nil then
+                    __continue156 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(h, p)
+                if d <= bestD then
+                    best = h
+                    bestD = d
+                end
+                __continue156 = true
+            until true
+            if not __continue156 then
+                break
+            end
+        end
+    end
+    return best
 end
 function hpShare(u)
     return u:GetHealth() / math.max(
@@ -1114,15 +1139,15 @@ function rigStep(bot, st, step, last)
         return true
     end
     if verb == "attack" then
-        local target = heroOf(bot, words[2])
         local share = tonumber(words[5])
         if share == nil then
             return false
         end
+        local target = attackTarget(bot, st, words[2])
         if target ~= nil and hpShare(target) <= share then
             return true
         end
-        if target == nil or not standsAtLast(st, words[2], target) then
+        if target == nil then
             bot:Action_MoveToLocation(bot:GetLocation())
             return false
         end
@@ -1769,7 +1794,7 @@ end
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
         local u = heroOf(bot, k)
-        if u ~= nil and u:GetTeam() == bot:GetTeam() and st.placed[u:GetPlayerID()] ~= true then
+        if u ~= nil and st.placed[u:GetPlayerID()] ~= true then
             return "setup"
         end
     end
@@ -1791,19 +1816,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue199
+                local __continue202
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue199 = true
+                        __continue202 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue199 = true
+                    __continue202 = true
                 until true
-                if not __continue199 then
+                if not __continue202 then
                     break
                 end
             end

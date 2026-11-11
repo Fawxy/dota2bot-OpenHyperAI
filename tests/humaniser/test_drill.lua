@@ -516,6 +516,19 @@ do
 	capture(function() tick(Hv, av) end)
 	check("rig VMs: the cast seen at its spot: the attacker attacks with no state from the cast's VM", #ActionsOf(7, "AttackUnit") == 1)
 
+	-- rig2 (12/11/2026): OHA gives an enemy hero its estimated position (3 by default), so the attacker finds the cast by
+	-- where it stands, not by position: a cast whose position reads 3 to the attacker is still attacked; a benched hero
+	-- elsewhere is not.
+	local Hp, cp, ap, mp = rigWorld()
+	T = 61
+	cp.pos = 3
+	mp.loc = Vector(spotOf.x + 2000, spotOf.y, 0)
+	ap.loc = Vector(spotOf.x, spotOf.y + 600, 0)
+	cp.loc = Vector(spotOf.x + 20, spotOf.y, 0)
+	capture(function() tick(Hp, ap) tick(Hp, ap) end)
+	local at = ActionsOf(7, "AttackUnit")
+	check("rig: the attacker finds the cast by its spot, whatever position it reads", #at >= 1 and at[1].args[1] == cp)
+
 	-- Host on: the same release frees every mode and OHA's items and spells.
 	local Hh, ch, ah = rigWorld({ DrillHost = true })
 	T = 61
