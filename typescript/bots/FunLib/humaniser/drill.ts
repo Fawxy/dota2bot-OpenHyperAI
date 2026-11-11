@@ -1304,6 +1304,20 @@ const RIG_PLACED = 200;
 /** An attacker that does not see its target walks to within this of the target's spot. `judgement` (inside night vision, 800). */
 const RIG_APPROACH = 400;
 
+/**
+ * An attacker finds an enemy hero standing at a lane-front spot within this of its own reading of the spot: the two teams' VMs
+ * read our lane front 250-370 apart (hit-back fix1). `judgement`; the cast's partner stands 250 behind it, farther from the
+ * attacker's reading, which lies ahead of ours.
+ */
+const RIG_FIND_FRONT = 500;
+
+/** The spot name of hero `key`'s last setup step this rep. */
+function lastSpotName(st: RigState, key: string): string | undefined {
+    const steps = RigRepOf(st.rep)?.setup[key];
+    if (steps === undefined || steps.length === 0) return undefined;
+    return steps[steps.length - 1].split(" ")[1];
+}
+
 /** The point of hero `key`'s last setup step this rep. */
 function lastPoint(st: RigState, key: string, bot: Unit): Vector | undefined {
     const steps = RigRepOf(st.rep)?.setup[key];
@@ -1322,7 +1336,8 @@ function attackTarget(bot: Unit, st: RigState, key: string): Unit | undefined {
     const own = heroOf(bot, key);
     if (own !== undefined) return GetUnitToLocationDistance(own, p) <= RIG_PLACED ? own : undefined;
     let best: Unit | undefined;
-    let bestD = RIG_PLACED;
+    const spot = lastSpotName(st, key);
+    let bestD = spot !== undefined && FRONT_LANES[frontOf(spot) ?? ""] !== undefined ? RIG_FIND_FRONT : RIG_PLACED;
     for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!h.IsAlive() || h.GetLocation() === undefined) continue;
         const d = GetUnitToLocationDistance(h, p);
@@ -1392,7 +1407,9 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
     if (verb === "stand" || verb === "leave") {
         const p = rigPoint(bot, words[1] ?? "fountain");
         if (p === undefined) return false;
-        st.placed[pid] = standAt(bot, p) && last;
+        standAt(bot, p);
+        // Within RIG_PLACED, not standAt's 100: at a lane front the creeps shove a statue past 100 (hit-back fix1).
+        st.placed[pid] = last && GetUnitToLocationDistance(bot, p) <= RIG_PLACED;
         return false;
     }
     if (verb === "wait") {

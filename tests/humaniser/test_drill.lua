@@ -695,7 +695,8 @@ do
 	capture(function() tick(cast) end)
 	local spot = lastMoveTo(1)
 	check("hitback rig: the cast's spot is 200 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -200)), spot and (spot.x .. "," .. spot.y))
-	cast.loc = Vector(spot.x, spot.y, 0)
+	-- fix1: creeps at the front shove the statue; 150 off its spot it still stands there.
+	cast.loc = Vector(spot.x + 150, spot.y, 0)
 	capture(function() tick(cast) end)
 	d3.loc = Vector(spot.x + 150, spot.y, 0)
 	check("hitback rig: standing, not yet hit: not ready", ready(capture(function() tick(cast) end)) == nil)
@@ -704,6 +705,15 @@ do
 	MakeCreep({ team = 2, x = spot.x + 450, y = spot.y })
 	local r = ready(capture(function() tick(cast) end))
 	check("hitback rig: hit by a hero standing 300 from our creep: ready", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "hit", r)
+	-- fix1: the attacker's VM reads the front 250-370 from ours; it attacks a cast 350 from its own reading of the spot.
+	ACTIONS = {}
+	capture(function() tick(d3) end)
+	local nearPt = lastMoveTo(7)
+	d3.loc = Vector(nearPt.x, nearPt.y, 0)
+	cast.loc = Vector(spot.x + 350, spot.y, 0)
+	capture(function() tick(d3) tick(d3) end)
+	local hits = ActionsOf(7, "AttackUnit")
+	check("hitback rig: the attacker finds the cast 350 off its reading of a front spot", #hits >= 1 and hits[#hits].args[1] == cast)
 	T = 62.5
 	cast.hitBy[d3] = nil
 
