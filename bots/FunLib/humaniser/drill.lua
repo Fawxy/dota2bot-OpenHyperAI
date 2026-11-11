@@ -911,8 +911,8 @@ function rigIdle(bot)
     return true
 end
 function rawSpot(name)
-    local ____opt_53 = rigOf(____exports.Active())
-    local s = ____opt_53 and ____opt_53.spots[name]
+    local ____opt_52 = rigOf(____exports.Active())
+    local s = ____opt_52 and ____opt_52.spots[name]
     if s == nil then
         return nil
     end
@@ -969,11 +969,11 @@ function nearestTower(team, p)
     local best = math.huge
     for ____, k in ipairs(__TS__ObjectKeys(TOWER_IDS)) do
         do
-            local __continue151
+            local __continue157
             repeat
                 local tw = GetTower(team, TOWER_IDS[k])
                 if tw == nil or tw == nil or not tw:IsAlive() then
-                    __continue151 = true
+                    __continue157 = true
                     break
                 end
                 local a = tw:GetLocation()
@@ -981,9 +981,9 @@ function nearestTower(team, p)
                     best,
                     math.sqrt((a.x - p.x) ^ 2 + (a.y - p.y) ^ 2)
                 )
-                __continue151 = true
+                __continue157 = true
             until true
-            if not __continue151 then
+            if not __continue157 then
                 break
             end
         end
@@ -997,22 +997,22 @@ function rigPoint(bot, name)
     end
     local known = rigSpots[name]
     if known ~= nil then
-        local ____temp_55
+        local ____temp_54
         if known == false then
-            ____temp_55 = nil
+            ____temp_54 = nil
         else
-            ____temp_55 = known
+            ____temp_54 = known
         end
-        return ____temp_55
+        return ____temp_54
     end
     local raw = rawSpot(name)
-    local ____temp_56
+    local ____temp_55
     if raw ~= nil then
-        ____temp_56 = passableNear(raw)
+        ____temp_55 = passableNear(raw)
     else
-        ____temp_56 = nil
+        ____temp_55 = nil
     end
-    local p = ____temp_56
+    local p = ____temp_55
     rigSpots[name] = p or false
     Telemetry.Event(
         "drill",
@@ -1055,8 +1055,8 @@ function heroOf(bot, key)
     return rigUnits[key]
 end
 function lastPoint(st, key, bot)
-    local ____opt_57 = ____exports.RigRepOf(st.rep)
-    local steps = ____opt_57 and ____opt_57.setup[key]
+    local ____opt_56 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_56 and ____opt_56.setup[key]
     if steps == nil or #steps == 0 then
         return nil
     end
@@ -1078,10 +1078,10 @@ function attackTarget(bot, st, key)
     local bestD = RIG_PLACED
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue164
+            local __continue170
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil then
-                    __continue164 = true
+                    __continue170 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(h, p)
@@ -1089,9 +1089,9 @@ function attackTarget(bot, st, key)
                     best = h
                     bestD = d
                 end
-                __continue164 = true
+                __continue170 = true
             until true
-            if not __continue164 then
+            if not __continue170 then
                 break
             end
         end
@@ -1248,8 +1248,8 @@ function rigHold(bot)
         atFountain(bot)
         return true
     end
-    local ____opt_59 = ____exports.RigRepOf(st.rep)
-    local steps = ____opt_59 and ____opt_59.setup[k]
+    local ____opt_58 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_58 and ____opt_58.setup[k]
     local pid = bot:GetPlayerID()
     if steps == nil or #steps == 0 then
         st.placed[pid] = true
@@ -1409,6 +1409,7 @@ ____exports.TABLE = {
             switch = "HealItems",
             spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
             timeout = 110,
+            keeps = {"levelup"},
             release = {modes = {"retreat", "idle"}},
             reps = {{name = "salve", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, clear = 1600}}, {name = "tango", setup = {r5 = {"heal", "sell item_flask", "buy item_tango", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_tango"}, lacks = {"item_flask"}, clear = 1600}}, {name = "stays", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "stand near"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, near = 1200}}, {name = "control", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.55", "leave"}}, ready = {hpAtMost = 0.6, holds = {"item_flask"}, clear = 1600}}}
         }
@@ -1816,16 +1817,38 @@ function ____exports.CastSpotPoint(bot, spot)
     end
     return spotPoint(bot, spot)
 end
---- OHA's purchase, courier and buyback thinks: a rig's cast and actors buy, fetch and buy back nothing, so they hold only
--- what the rig's `buy` steps hand them, keep the rig's gold, and the attacker hits as hard every rep (rigA2, 12/11/2026:
--- OHA spent the cast's 600 gold before each rep, so the salve buy failed).
-function ____exports.HoldsPurchases(bot)
-    local ____opt_50 = ____exports.Active()
-    if (____opt_50 and ____opt_50.rig) == nil then
+--- A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
+-- true when OHA's code for `what` must not run for this hero. A rig's actors always; its cast until ready, and after ready
+-- for every kind its release does not list (host-on frees only items and abilities: OHA's purchases would spend the gold the
+-- next rep's `buy` needs). A kind the rig `keeps` is never owned. False for every other hero, in every other drill, and with no drill. Modes are
+-- held through `RigDesire` (Chooser.Decide) instead.
+function ____exports.Owns(bot, what)
+    local r = rigOf(____exports.Active())
+    if r == nil then
         return false
     end
-    local r = ____exports.RoleOf(bot)
-    return r == "cast" or r == "actor"
+    if r.keeps ~= nil and __TS__ArrayIndexOf(r.keeps, what) >= 0 then
+        return false
+    end
+    local role = ____exports.RoleOf(bot)
+    if role == "actor" then
+        return true
+    end
+    if role ~= "cast" then
+        return false
+    end
+    if rigCastHeld(bot) then
+        return true
+    end
+    local ____opt_50 = overrides()
+    local host = (____opt_50 and ____opt_50.DrillHost) == true
+    if what == "items" then
+        return not host and r.release.items ~= true
+    end
+    if what == "abilities" then
+        return not host and r.release.abilities ~= true
+    end
+    return r.release.also == nil or __TS__ArrayIndexOf(r.release.also, what) < 0
 end
 --- Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list.
 function ____exports.RigDesire(bot, mode)
@@ -1846,13 +1869,7 @@ function ____exports.RigHoldsCasts(bot, items)
     if r == nil or releasedModes(bot) == nil then
         return nil
     end
-    local ____items_52
-    if items then
-        ____items_52 = r.release.items ~= true
-    else
-        ____items_52 = r.release.abilities ~= true
-    end
-    return ____items_52
+    return ____exports.Owns(bot, items and "items" or "abilities")
 end
 TOWER_IDS = {
     top1 = Tower.Top1,
@@ -1905,19 +1922,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue216
+                local __continue222
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue216 = true
+                        __continue222 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue216 = true
+                    __continue222 = true
                 until true
-                if not __continue216 then
+                if not __continue222 then
                     break
                 end
             end
@@ -2038,8 +2055,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_61 = overrides()
-            local v = ____opt_61 and ____opt_61[k]
+            local ____opt_60 = overrides()
+            local v = ____opt_60 and ____opt_60[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -2053,8 +2070,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_63 = overrides()
-        local asked = ____opt_63 and ____opt_63.Drill
+        local ____opt_62 = overrides()
+        local asked = ____opt_62 and ____opt_62.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -2094,8 +2111,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_68 = Telemetry.Event
-    local ____array_67 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_67 = Telemetry.Event
+    local ____array_66 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -2107,11 +2124,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_65 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_67, {"var", ____opt_65 and ____opt_65.name})
-    ____Telemetry_Event_68(
+    local ____opt_64 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_66, {"var", ____opt_64 and ____opt_64.name})
+    ____Telemetry_Event_67(
         "drill",
-        {__TS__SparseArraySpread(____array_67)}
+        {__TS__SparseArraySpread(____array_66)}
     )
     rigTick(bot)
 end
