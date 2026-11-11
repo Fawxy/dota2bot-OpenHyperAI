@@ -17,8 +17,10 @@
 --    violation (cause oha_retreat or ours_retreat by side: the mode name does not tell whose code ran).
 -- D3: each retreat-mode run (gaps of 3 s or less, 2 s or more long). viol tower: it entered an enemy tower's reach it did not
 --    start in; viol no_stop: 10 s or more of it at 50% HP or more after the last second with an enemy within 1,500 (the
---    whole run when none came near; `fountain` when it reached 1,500 of our fountain). Not measured: walking through the
---    enemy wave (no per-second creep positions for the other team here).
+--    whole run when none came near; `fountain` when it reached 1,500 of our fountain). A tail second counts only while our
+--    own lane's front (ev=front, its latest line; the lane from team and pos as GetAssignedLane gives it) is nearer than our
+--    fountain: walking on to a nearer fountain is right (user 11/11/2026); a log with no ev=front line counts every one.
+--    Not measured: walking through the enemy wave (no per-second creep positions for the other team here).
 -- D7: per lane pair (pos 5 with pos 1, pos 4 with pos 3), 1:30 to 10:00: a departure is a second the support is more than
 --    2,000 from its core, the second before (a snapshot one second earlier) it was not, and it was within 1,200 of the core
 --    in the 15 s before; one departure per together spell (a dip back under 2,000 is the same departure). The core needs
@@ -153,11 +155,20 @@ lr_r2 AS (
         first_value(r.hp) OVER (PARTITION BY r.game_id, r.pid, r.ep ORDER BY r.sec) AS hp0
     FROM lr_r1 r WINDOW e AS (PARTITION BY r.game_id, r.pid, r.ep)
 ),
+-- ln2: the squared distance to our own lane's front in a tail second (NULL elsewhere, or with no ev=front line).
+lr_r3 AS (
+    SELECT r.*, CASE WHEN r.sec > coalesce(r.last_thr, -1) AND r.hp >= 50 THEN (
+        SELECT CASE WHEN r.pos = 2 THEN (f.midx - r.x) * (f.midx - r.x) + (f.midy - r.y) * (f.midy - r.y)
+                    WHEN (r.team = 2) = (r.pos IN (1, 5)) THEN (f.botx - r.x) * (f.botx - r.x) + (f.boty - r.y) * (f.boty - r.y)
+                    ELSE (f.topx - r.x) * (f.topx - r.x) + (f.topy - r.y) * (f.topy - r.y) END
+        FROM ev_front f WHERE f.game_id = r.game_id AND f.team = r.team AND f.t <= r.sec + 0.5 ORDER BY f.t DESC LIMIT 1) END AS ln2
+    FROM lr_r2 r
+),
 lr_d3e AS (
     SELECT game_id, pid, team, pos, side, ep, min(sec) AS t, max(sec) - min(sec) + 1 AS span, max(hp0) AS hp,
         max(tw0) <= 750 * 750 AS start_tower, sum(en_tw2 <= 750 * 750) AS tower_s,
-        sum(sec > coalesce(last_thr, -1) AND hp >= 50) AS tail_s, max(fnt2 <= 1500 * 1500) AS fountain
-    FROM lr_r2 GROUP BY game_id, pid, ep
+        sum(sec > coalesce(last_thr, -1) AND hp >= 50 AND (ln2 IS NULL OR ln2 < fnt2)) AS tail_s, max(fnt2 <= 1500 * 1500) AS fountain
+    FROM lr_r3 GROUP BY game_id, pid, ep
 ),
 lr_d3 AS (
     SELECT e.*, CASE WHEN NOT e.start_tower AND e.tower_s > 0 THEN 'tower'
