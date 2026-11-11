@@ -219,6 +219,65 @@ do
 	check("heal: anchor fountain, end res=anchor", field(l[1], "anchor") == "fountain" and field(l[2], "res") == "anchor", l[2])
 end
 
+-- HealStop (D3): HP back over half on the walk, nobody in reach, the lane front nearer than the fountain: the walk stops
+-- there. Short of half, or with the fountain nearer, or with the switch off, it walks on.
+do
+	local function healWalk(o)
+		local H, bot = world({ hp = 150 })
+		package.loaded["bots/FunLib/custom_loader"].Ours.HealStop = o.on
+		local out = capture(function()
+			check("heal stop: leaves under the floor", H.Retreat.Desire(bot) == 0.95)
+			bot.loc = o.loc
+			bot.hp = 290
+			T = T + 5
+			check("heal stop: under half the walk goes on", H.Retreat.Desire(bot) == 0.95)
+			bot.hp = 330
+			T = T + 1
+			o.after = H.Retreat.Desire(bot)
+		end)
+		package.loaded["bots/FunLib/custom_loader"].Ours.HealStop = nil
+		return o.after, lines(out, "retreat")
+	end
+	local d, l = healWalk({ on = true, loc = Vector(-1500, -5000) })
+	check("heal stop: back over half nearer the lane, the episode ends healed", d == 0 and field(l[2], "res") == "healed", l[2])
+	d = healWalk({ on = true, loc = Vector(-6000, -6000) })
+	check("heal stop: nearer the fountain it walks on", d == 0.95)
+	d = healWalk({ on = false, loc = Vector(-1500, -5000) })
+	check("heal stop: off, it walks on to the fountain", d == 0.95)
+	local H, bot = world({ hp = 150 })
+	capture(function()
+		H.Retreat.Desire(bot)
+		bot.loc, bot.hp = Vector(-1500, -5000), 330
+		enemy(10, Vector(-1300, -5000), 50)
+		T = T + 1
+		check("heal stop: an enemy in reach keeps the walk going", H.Retreat.Desire(bot) == 0.95)
+	end)
+end
+
+-- retreat-heal's harness: in a chase rep the cast's retreat starts nothing above the drill's 25% HP (a lethal read
+-- included), and once it has been there it leaves as usual for the rest of the rep; a control rep is not held.
+do
+	local H, bot = world({ hp = 300, t = 70 })
+	package.loaded["bots/FunLib/custom_loader"].Overrides = { Drill = "retreat-heal" }
+	H.Drill.ResetCache()
+	enemy(10, Vector(300, -5000), 400)
+	enemy(11, Vector(300, -4900), 400)
+	capture(function()
+		check("heal drill: the cast is the cast", H.Drill.RoleOf(bot) == "cast", H.Drill.RoleOf(bot))
+		check("heal drill: held above the break", H.Retreat.Desire(bot) == 0)
+		bot.hp = 140
+		T = T + 0.2
+		check("heal drill: at the break it leaves", H.Retreat.Desire(bot) == 0.95)
+	end)
+	local H2, bot2 = world({ hp = 300, t = 60 + 3 * 90 + 10 })
+	H2.Drill.ResetCache()
+	enemy(10, Vector(300, -5000), 400)
+	enemy(11, Vector(300, -4900), 400)
+	capture(function() check("heal drill: a control rep is not held", H2.Retreat.Desire(bot2) == 0.95) end)
+	package.loaded["bots/FunLib/custom_loader"].Overrides = nil
+	H2.Drill.ResetCache()
+end
+
 -- Route cost: our T1 lies past an enemy wave (its acquisition covers the walk), so with an ally standing clear behind us
 -- the ally anchor wins over the shorter walk through the wave.
 do

@@ -89,6 +89,7 @@ ____exports.DEFAULTS = {
     Threat = true,
     Retreat = true,
     RetreatOdds = false,
+    HealStop = true,
     ArbiterShadow = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).

@@ -597,8 +597,9 @@ do
 	local benchThink = farm:find('if J.Humaniser.Chooser.Bench(bot) then return end', 1, true)
 	check('farm: bench Think before the stack Think', benchThink ~= nil and benchThink < think)
 	local usage = source('bots/ability_item_usage_generic.lua')
-	local _, holds = usage:gsub('if J.Humaniser.Chooser.HoldsCasts%(bot%) then return end', '')
-	check('usage: spells and items held for the stack job and the bench', holds == 2, holds)
+	local _, spells = usage:gsub('if J.Humaniser.Chooser.HoldsCasts%(bot%) then return end', '')
+	local _, items = usage:gsub('if J.Humaniser.Chooser.HoldsCasts%(bot, true%) then return end', '')
+	check('usage: spells and items held for the stack job and the bench', spells == 1 and items == 1, spells .. ' ' .. items)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
 	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then\n"))
 	-- cil4: with only the two trade triggers skipped, the tower branches still ran our cores out of their lane.

@@ -131,6 +131,9 @@ export const DEFAULTS = {
      *  heal floor. Off by default: the hold does not hit back and cost deaths in its drill (user 11/11/2026: on again once
      *  leave-together and hit-back are built). Off: the budget alone decides, whatever the numbers. */
     RetreatOdds: false,
+    /** Slice heal-stop (D3): with Retreat on, a heal episode ends where HP is back over half, nobody is in reach and our lane
+     *  front is nearer than our fountain (retreat.ts HealBack). Off: it walks on to the fountain and 0.8 HP. */
+    HealStop: true,
     /** Slice arbiter-shadow (design docs/proposals/2026-11-11-arbiter.md): per owned hero, the arbiter's pick as ev=arb beside
      *  Valve's active mode (arbiter.ts). Logging only, no desire changes. Off: no line. */
     ArbiterShadow: true,

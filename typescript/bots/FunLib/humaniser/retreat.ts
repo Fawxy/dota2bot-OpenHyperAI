@@ -5,7 +5,7 @@
  * reach, enemy creep acquisition and heroes who can reach it) and when it stops (the exit band for ExitDwell, or the anchor).
  * Every other hero walking in retreat mode gets the plain walk (a mode file with Think replaces Valve's walk for all).
  */
-import { BotMode, Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, Lane, Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -50,6 +50,11 @@ export const SETTINGS = {
     /** Heal floor: HP share under HealFloor with no enemy in reach sends the hero to the fountain until HealUntil. judgement. */
     HealFloor: 0.3,
     HealUntil: 0.8,
+    /**
+     * HealStop (D3): a heal episode also ends `healed` at this HP share with nobody in reach, while our lane front is nearer
+     * than our fountain. The D3 view's bar: a retreat run at 50% HP+ with nobody near is a violation after 10 s. judgement.
+     */
+    HealBack: 0.5,
     /** Route points every RouteStep along each anchor's straight walk. judgement. */
     RouteStep: 300,
     /**
@@ -353,6 +358,12 @@ function anchorsOf(bot: Unit, why: Why): Anchor[] {
     return out;
 }
 
+/** Whether our lane front of the hero's lane is nearer than our fountain: going back costs less walk than going on. */
+function laneNearer(bot: Unit, here: Vector): boolean {
+    const front = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, 0);
+    return front !== undefined && dist(here, front) < dist(here, Fountain(bot.GetTeam()));
+}
+
 /** Whether a healing item is held in the inventory (slots 0-5). */
 function regenHeld(bot: Unit): boolean {
     for (const name of SETTINGS.RegenItems) {
@@ -476,7 +487,11 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
     const forced = ep.why === "forced";
     if (!forced && !RetreatState.Owns(bot)) return "cut";
     const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive;
-    if (ep.why === "heal") return at && hpShare(bot) >= s.HealUntil ? "anchor" : undefined;
+    if (ep.why === "heal") {
+        if (at && hpShare(bot) >= s.HealUntil) return "anchor";
+        if (Ours.On("HealStop") && hpShare(bot) >= s.HealBack && r.reach.length === 0 && r.threat < ep.budget - s.ExitBand && laneNearer(bot, here)) return "healed";
+        return undefined;
+    }
     if (at) {
         if (forced || r.threat < ep.budget) return "anchor";
         // Still over budget at a stop short of home: on to the fountain.
@@ -610,6 +625,8 @@ export function Desire(bot: Unit): number | undefined {
             ["crp", bot.WasRecentlyDamagedByCreep(1)],
         ]);
     }
+    // retreat-heal: the chase drops the cast to the drill's HP before any leave, so the heal walk is forced.
+    if (Drill.RetreatHeld(bot, hpShare(bot))) return 0;
     const why = leaveWhy(bot, st, r, budget, now);
     if (why === undefined) return 0;
     start(bot, st, why, r, budget, purp);

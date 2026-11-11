@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, controlRep, Customize, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -286,21 +286,21 @@ end
 function ____exports.SpotOf(bot)
     local d = ____exports.Active()
     local pos = LaneConfig.PositionOf(bot)
-    local ____temp_29
+    local ____temp_31
     if pos ~= nil then
-        local ____temp_28
+        local ____temp_30
         if bot:GetTeam() == Team.Radiant then
-            local ____opt_20 = d and d.spots
-            ____temp_28 = ____opt_20 and ____opt_20.r
+            local ____opt_22 = d and d.spots
+            ____temp_30 = ____opt_22 and ____opt_22.r
         else
-            local ____opt_24 = d and d.spots
-            ____temp_28 = ____opt_24 and ____opt_24.d
+            local ____opt_26 = d and d.spots
+            ____temp_30 = ____opt_26 and ____opt_26.d
         end
-        ____temp_29 = ____temp_28 and ____temp_28[pos]
+        ____temp_31 = ____temp_30 and ____temp_30[pos]
     else
-        ____temp_29 = nil
+        ____temp_31 = nil
     end
-    local list = ____temp_29
+    local list = ____temp_31
     local rep = ____exports.RepAt(DotaTime())
     if list == nil or #list == 0 or rep == 0 then
         return "lane"
@@ -322,13 +322,13 @@ function spotPoint(bot, spot)
         team,
         Camps.LaneOfKind(team, kind)
     )[1]
-    local ____temp_30
+    local ____temp_32
     if camp ~= nil then
-        ____temp_30 = Camps.SpawnerByIdx(camp.campIdx)
+        ____temp_32 = Camps.SpawnerByIdx(camp.campIdx)
     else
-        ____temp_30 = nil
+        ____temp_32 = nil
     end
-    local s = ____temp_30
+    local s = ____temp_32
     if s == nil then
         return nil
     end
@@ -613,18 +613,18 @@ function chase(bot)
     )
     local best
     local bestD = math.huge
-    local ____opt_31 = ____exports.Active()
-    local castOnly = (____opt_31 and ____opt_31.chaseCast) == true
+    local ____opt_33 = ____exports.Active()
+    local castOnly = (____opt_33 and ____opt_33.chaseCast) == true
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue76
+            local __continue83
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue76 = true
+                    __continue83 = true
                     break
                 end
                 if castOnly and ____exports.RoleOf(h) ~= "cast" then
-                    __continue76 = true
+                    __continue83 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -632,9 +632,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue76 = true
+                __continue83 = true
             until true
-            if not __continue76 then
+            if not __continue83 then
                 break
             end
         end
@@ -643,14 +643,50 @@ function chase(bot)
     if st ~= nil and st.rep ~= ____exports.RepAt(DotaTime()) then
         endLinger(bot, "rep_end")
     end
-    local ____opt_33 = ____exports.Active()
-    if (____opt_33 and ____opt_33.linger) == true then
+    local ____opt_35 = ____exports.Active()
+    if (____opt_35 and ____opt_35.linger) == true then
         if best ~= nil and lingering[bot:GetPlayerID()] == nil then
             startLinger(bot, best)
         end
         if lingerTick(bot, spot) then
             return true
         end
+    end
+    local ____opt_37 = ____exports.Active()
+    local breakAt = ____opt_37 and ____opt_37.breakAt
+    if best ~= nil and breakAt ~= nil and best:GetHealth() / math.max(
+        1,
+        best:GetMaxHealth()
+    ) <= breakAt then
+        local rep = ____exports.RepAt(DotaTime())
+        brokeOff[bot:GetPlayerID()] = rep
+        Telemetry.Event(
+            "drill",
+            {
+                {"ph", "break"},
+                {
+                    "name",
+                    ____exports.Name()
+                },
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {
+                    "tpid",
+                    best:GetPlayerID()
+                },
+                {"rep", rep},
+                {
+                    "thp",
+                    math.floor(best:GetHealth() / math.max(
+                        1,
+                        best:GetMaxHealth()
+                    ) * 100 + 0.5) / 100
+                }
+            }
+        )
+        return false
     end
     if best ~= nil then
         bot:Action_AttackUnit(best, true)
@@ -669,10 +705,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue95
+            local __continue103
             repeat
                 if not h:IsAlive() then
-                    __continue95 = true
+                    __continue103 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -680,9 +716,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue95 = true
+                __continue103 = true
             until true
-            if not __continue95 then
+            if not __continue103 then
                 break
             end
         end
@@ -796,6 +832,17 @@ ____exports.TABLE = {
         others = "bench",
         castLaneOnly = true,
         rep = {every = 60, from = 60, control = 4}
+    },
+    ["retreat-heal"] = {
+        note = "Radiant pos1 lane-only with our retreat live but held in a chase rep until 25% HP, OHA's items on; Dire pos3 chases only it and breaks off at 25%; a salve each rep; every 4th rep no chase",
+        cast = SAFE_CORE,
+        chaser = {d = {3}},
+        chaseCast = true,
+        breakAt = 0.25,
+        castItems = true,
+        others = "bench",
+        castLaneOnly = true,
+        rep = {every = 90, from = 60, control = 4}
     },
     ["lane-only"] = {
         note = "every hero lane-only (the last-hit harness)",
@@ -955,6 +1002,51 @@ function ____exports.Casts(bot)
     local rep = ____exports.RepAt(DotaTime())
     return d ~= nil and d.chaserCasts == true and ____exports.RoleOf(bot) == "chaser" and rep > 0 and not controlRep(d, rep)
 end
+--- The cast of an entry with `castItems`: OHA's item use stays on for it although it is lane-only.
+function ____exports.CastItems(bot)
+    local ____opt_4 = ____exports.Active()
+    return (____opt_4 and ____opt_4.castItems) == true and ____exports.RoleOf(bot) == "cast"
+end
+--- The rep in which each cast first stood at or under `breakAt` HP (once reached, its retreat is free for the rest of the rep).
+local reachedBreak = {}
+--- The cast of an entry with `breakAt`, in a chase rep, above that HP share and not yet under it this rep: its retreat starts
+-- nothing. `hp` is the cast's HP share (the caller's read).
+function ____exports.RetreatHeld(bot, hp)
+    local d = ____exports.Active()
+    if d == nil or d.breakAt == nil or ____exports.RoleOf(bot) ~= "cast" then
+        return false
+    end
+    local rep = ____exports.RepAt(DotaTime())
+    if rep == 0 or controlRep(d, rep) then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    if reachedBreak[pid] == rep then
+        return false
+    end
+    if hp > d.breakAt then
+        return true
+    end
+    reachedBreak[pid] = rep
+    Telemetry.Event(
+        "drill",
+        {
+            {"ph", "break"},
+            {
+                "name",
+                ____exports.Name()
+            },
+            {"pid", pid},
+            {"rep", rep},
+            {
+                "thp",
+                math.floor(hp * 100 + 0.5) / 100
+            }
+        }
+    )
+    return false
+end
+brokeOff = {}
 --- Lane-only: the cast of an entry with `castLaneOnly`, or another hero under `others: "laneonly"`.
 function ____exports.LaneOnly(bot)
     local r = ____exports.RoleOf(bot)
@@ -963,19 +1055,19 @@ function ____exports.LaneOnly(bot)
 end
 --- A lane-only hero of an entry with `laneHold`: the wave hold may act for it.
 function ____exports.LaneHold(bot)
-    local ____opt_4 = ____exports.Active()
-    return (____opt_4 and ____opt_4.laneHold) == true and ____exports.LaneOnly(bot)
+    local ____opt_6 = ____exports.Active()
+    return (____opt_6 and ____opt_6.laneHold) == true and ____exports.LaneOnly(bot)
 end
 --- A lane-only hero of an entry with `laneAggro`: lane aggro's draws may act for it.
 function ____exports.LaneAggro(bot)
-    local ____opt_6 = ____exports.Active()
-    return (____opt_6 and ____opt_6.laneAggro) == true and ____exports.LaneOnly(bot)
+    local ____opt_8 = ____exports.Active()
+    return (____opt_8 and ____opt_8.laneAggro) == true and ____exports.LaneOnly(bot)
 end
 --- An Overrides key the active drill implies, or undefined.
 function ____exports.Implied(key)
-    local ____opt_10 = ____exports.Active()
-    local ____opt_8 = ____opt_10 and ____opt_10.overrides
-    return ____opt_8 and ____opt_8[key]
+    local ____opt_12 = ____exports.Active()
+    local ____opt_10 = ____opt_12 and ____opt_12.overrides
+    return ____opt_10 and ____opt_10[key]
 end
 FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
 STATUE_BEHIND = -300
@@ -995,19 +1087,19 @@ local TOWER_SPOT = 500
 --- A cast with `castIdle: "statue"`: it stands as a statue while its forced job does not run (the chooser asks the job
 -- first and gives this hero the statue's step only when the job neither runs nor starts).
 function ____exports.IdleStatue(bot)
-    local ____opt_12 = ____exports.Active()
-    return (____opt_12 and ____opt_12.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
+    local ____opt_14 = ____exports.Active()
+    return (____opt_14 and ____opt_14.castIdle) == "statue" and ____exports.RoleOf(bot) == "cast"
 end
 --- The one chooser job a cast may run (the forced context, for an entry with `castIdle`), or undefined: every job.
 function ____exports.ForcedJob(bot)
     local d = ____exports.Active()
-    local ____temp_14
+    local ____temp_16
     if d ~= nil and d.castIdle ~= nil and ____exports.RoleOf(bot) == "cast" then
-        ____temp_14 = d.forces
+        ____temp_16 = d.forces
     else
-        ____temp_14 = nil
+        ____temp_16 = nil
     end
-    return ____temp_14
+    return ____temp_16
 end
 --- For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a
 -- control rep) or is before the first rep (`none`); undefined when the drill does not force `context`. A pull reads it at
@@ -1031,8 +1123,10 @@ function ____exports.Hold(bot)
     if r == "chaser" and d ~= nil and not controlRep(
         d,
         ____exports.RepAt(DotaTime())
-    ) and ____exports.RepAt(DotaTime()) > 0 then
-        return chase(bot)
+    ) and ____exports.RepAt(DotaTime()) > 0 and brokeOff[bot:GetPlayerID()] ~= ____exports.RepAt(DotaTime()) then
+        if chase(bot) then
+            return true
+        end
     end
     if r == "chaser" and lingering[bot:GetPlayerID()] ~= nil and lingerTick(
         bot,
@@ -1073,12 +1167,12 @@ function ____exports.Hold(bot)
         end
         return true
     end
-    local ____temp_17 = r == "statue"
-    if ____temp_17 then
-        local ____opt_15 = ____exports.Active()
-        ____temp_17 = (____opt_15 and ____opt_15.spots) ~= nil
+    local ____temp_19 = r == "statue"
+    if ____temp_19 then
+        local ____opt_17 = ____exports.Active()
+        ____temp_19 = (____opt_17 and ____opt_17.spots) ~= nil
     end
-    if ____temp_17 then
+    if ____temp_19 then
         noteSpot(bot, named, nil)
     end
     local lane = bot:GetAssignedLane()
@@ -1112,8 +1206,8 @@ lingering = {}
 lingered = {}
 --- The cast's start spot for rep `rep` (`castSpots`), or undefined when the entry has none.
 function ____exports.CastSpot(rep)
-    local ____opt_35 = ____exports.Active()
-    local list = ____opt_35 and ____opt_35.castSpots
+    local ____opt_39 = ____exports.Active()
+    local list = ____opt_39 and ____opt_39.castSpots
     if list == nil or #list == 0 or rep <= 0 then
         return nil
     end
@@ -1179,8 +1273,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_37 = overrides()
-            local v = ____opt_37 and ____opt_37[k]
+            local ____opt_41 = overrides()
+            local v = ____opt_41 and ____opt_41[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -1188,8 +1282,8 @@ function ____exports.Tick(bot)
     end
     local name = ____exports.Name()
     if name == nil then
-        local ____opt_39 = overrides()
-        local asked = ____opt_39 and ____opt_39.Drill
+        local ____opt_43 = overrides()
+        local asked = ____opt_43 and ____opt_43.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -1263,6 +1357,12 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(lingered)) do
         __TS__Delete(lingered, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(reachedBreak)) do
+        __TS__Delete(reachedBreak, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(brokeOff)) do
+        __TS__Delete(brokeOff, k)
     end
     removedLogged = false
 end
