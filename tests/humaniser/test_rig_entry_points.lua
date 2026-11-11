@@ -1,13 +1,15 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
--- A rig owns its heroes (humaniser/drill.ts Owns): every per-hero entry point Dota calls in bots/ must reach a Drill gate,
--- directly or through a listed route. A new `*Think` or `GetDesire` with no gate fails here, naming the file and function,
--- so an un-held OHA path is found by this test instead of by a rig run.
+-- A rig owns its heroes (humaniser/drill.ts Owns): the per-hero entry points in bots/ that this scan can see must reach a
+-- Drill gate, directly or through a listed route. A new `function ...Think` or `function GetDesire` with no gate fails here,
+-- naming the file and function. It cannot see a Valve built-in mode with no file (held by the rig's `idle` release), nor an
+-- entry point written `Name = function` or under another name.
 local ROOT = BOTS_ROOT .. "/bots"
 
--- Direct gates: the function's first lines call Drill.Owns with this kind.
+-- Direct gates: the function's first lines contain this call. Item and ability use go through Chooser.HoldsCasts, the one
+-- combiner for the cast hold (OWNERSHIP.md), which asks Drill for rig heroes.
 local DIRECT = {
-	["ability_item_usage_generic.lua"] = { ItemUsageThink = "items", AbilityUsageThink = "abilities", BuybackUsageThink = "buyback", CourierUsageThink = "courier", AbilityLevelUpThink = "levelup" },
-	["item_purchase_generic.lua"] = { ItemPurchaseThink = "purchase" },
+	["ability_item_usage_generic.lua"] = { ItemUsageThink = "Chooser.HoldsCasts(bot, true)", AbilityUsageThink = "Chooser.HoldsCasts(bot)", BuybackUsageThink = 'Drill.Owns(bot, "buyback")', CourierUsageThink = 'Drill.Owns(bot, "courier")', AbilityLevelUpThink = 'Drill.Owns(bot, "levelup")' },
+	["item_purchase_generic.lua"] = { ItemPurchaseThink = 'Drill.Owns(bot, "purchase")' },
 }
 
 -- Not an entry point for a rig hero: the reason is the entry.
@@ -22,6 +24,10 @@ local ALLOW = {
 -- A mode file's GetDesire and Think: Chooser.Gate wraps GetDesire (Chooser.Decide asks Drill.RigDesire first, so a rig cast
 -- gets 0 for every mode its release does not list), and Think only runs while that mode wins.
 local function modeFile(name) return name:match("^mode_.*_generic%.lua$") ~= nil and name ~= "mode_retreat_generic_wip.lua" end
+
+local function stripComments(text)
+	return (text:gsub("%-%-%[%[.-%]%]", ""):gsub("%-%-[^\n]*", ""))
+end
 
 local function entryPoints(text)
 	local found, order = {}, {}
@@ -56,9 +62,9 @@ local function gateProblem(file, fn, text, line)
 	if kind ~= nil then
 		local body = bodyOf(text, line)
 		for i = 2, math.min(#body, 10) do
-			if body[i]:find('Drill.Owns(bot, "' .. kind .. '")', 1, true) then return nil end
+			if body[i]:find(kind, 1, true) then return nil end
 		end
-		return key .. ": no Drill.Owns(bot, \"" .. kind .. "\") in its first lines"
+		return key .. ": no " .. kind .. " in its first lines"
 	end
 	if modeFile(file) then
 		if text:find("C.Gate(GetBot(), '", 1, true) then return nil end
@@ -72,7 +78,7 @@ local function scan(root, direct, allow)
 	local problems, seen, matchedAllow, count = {}, {}, {}, 0
 	for _, file in ipairs(LIST_FILES(root)) do
 		if file:match("%.lua$") then
-			local text = io.open(root .. "/" .. file, "r"):read("a")
+			local text = stripComments(io.open(root .. "/" .. file, "r"):read("a"))
 			local found, order = entryPoints(text)
 			for _, fn in ipairs(order) do
 				count = count + 1

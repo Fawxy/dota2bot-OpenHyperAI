@@ -1408,6 +1408,7 @@ ____exports.TABLE = {
             switch = "HealItems",
             spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
             timeout = 110,
+            keeps = {"levelup"},
             release = {modes = {"retreat", "idle"}},
             reps = {{name = "salve", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, clear = 1600}}, {name = "tango", setup = {r5 = {"heal", "sell item_flask", "buy item_tango", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_tango"}, lacks = {"item_flask"}, clear = 1600}}, {name = "stays", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "stand near"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, near = 1200}}, {name = "control", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.55", "leave"}}, ready = {hpAtMost = 0.6, holds = {"item_flask"}, clear = 1600}}}
         }
@@ -1817,11 +1818,15 @@ function ____exports.CastSpotPoint(bot, spot)
 end
 --- A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
 -- true when OHA's code for `what` must not run for this hero. A rig's actors always; its cast until ready, and after ready
--- for every kind its release does not list. False for every other hero, in every other drill, and with no drill. Modes are
+-- for every kind its release does not list (host-on frees only items and abilities: OHA's purchases would spend the gold the
+-- next rep's `buy` needs). A kind the rig `keeps` is never owned. False for every other hero, in every other drill, and with no drill. Modes are
 -- held through `RigDesire` (Chooser.Decide) instead.
 function ____exports.Owns(bot, what)
     local r = rigOf(____exports.Active())
     if r == nil then
+        return false
+    end
+    if r.keeps ~= nil and __TS__ArrayIndexOf(r.keeps, what) >= 0 then
         return false
     end
     local role = ____exports.RoleOf(bot)
@@ -1835,14 +1840,12 @@ function ____exports.Owns(bot, what)
         return true
     end
     local ____opt_50 = overrides()
-    if (____opt_50 and ____opt_50.DrillHost) == true then
-        return false
-    end
+    local host = (____opt_50 and ____opt_50.DrillHost) == true
     if what == "items" then
-        return r.release.items ~= true
+        return not host and r.release.items ~= true
     end
     if what == "abilities" then
-        return r.release.abilities ~= true
+        return not host and r.release.abilities ~= true
     end
     return r.release.also == nil or __TS__ArrayIndexOf(r.release.also, what) < 0
 end

@@ -8391,7 +8391,6 @@ function ItemUsageThink()
 	if RefreshBotHandle() then return end
 	J.Humaniser.Tick(bot)
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
-	if J.Humaniser.Drill.Owns(bot, "items") then return end
 	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).
@@ -8405,7 +8404,6 @@ end
 function AbilityUsageThink()
 	if RefreshBotHandle() then return end
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
-	if J.Humaniser.Drill.Owns(bot, "abilities") then return end
 	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).

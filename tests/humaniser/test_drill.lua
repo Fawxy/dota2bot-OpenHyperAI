@@ -440,15 +440,21 @@ end
 
 local KINDS = { "purchase", "courier", "buyback", "levelup", "items", "abilities" }
 local function ownsAny(H, u) for _, k in ipairs(KINDS) do if H.Drill.Owns(u, k) then return k end end return nil end
-local function ownsAll(H, u) for _, k in ipairs(KINDS) do if not H.Drill.Owns(u, k) then return false end end return true end
+-- Every kind but level-ups, which retreat-heal-items keeps for its heroes (tested on its own).
+local function ownsAll(H, u) for _, k in ipairs(KINDS) do if k ~= "levelup" and not H.Drill.Owns(u, k) then return false end end return true end
 
 -- A drill without a rig leaves OHA's purchases, courier, level-ups and casts alone, for its cast too.
 do
 	local Hs = world("retreat-heal")
 	local cast = hero(0, RAD, 1, 3)
 	check("no rig: the cast is a cast and OHA keeps every entry point for it", Hs.Drill.RoleOf(cast) == "cast" and ownsAny(Hs, cast) == nil)
+	local Hr = world("retreat-heal-items")
+	check("the same kind of hero is owned once the rig drill is the active one", ownsAll(Hr, hero(4, RAD, 5, 3)))
 	local Hn = world(nil)
 	check("no drill: OHA keeps every entry point", ownsAny(Hn, hero(4, RAD, 5, 3)) == nil)
+	package.loaded["bots/FunLib/custom_loader"].Overrides = { Drill = "retreat-heal-items" }
+	Hn.Drill.ResetCache()
+	check("no drill: the same hero is owned as soon as a rig drill is on", ownsAll(Hn, hero(4, RAD, 5, 3)))
 end
 
 -- A rig rep end to end (retreat-heal-items, rep 1 `salve`): the cast heals and buys at its fountain, walks to its spot; the
@@ -483,6 +489,13 @@ do
 	local H, cast, atk, mid = rigWorld()
 	check("rig: roles (cast, actor, bench)", H.Drill.RoleOf(cast) == "cast" and H.Drill.RoleOf(atk) == "actor" and H.Drill.RoleOf(mid) == "bench")
 	check("rig: nothing of OHA's runs for the cast or the actor, in any kind, before the first rep and in setup; a benched hero keeps all", ownsAll(H, cast) and ownsAll(H, atk) and ownsAny(H, mid) == nil)
+	local Hk = H.Drill.TABLE["retreat-heal-items"].rig
+	check("rig: retreat-heal-items keeps level-ups for the cast and the attacker, and owns the rest", Hk.keeps ~= nil and not H.Drill.Owns(cast, "levelup") and not H.Drill.Owns(atk, "levelup") and H.Drill.Owns(cast, "purchase") and H.Drill.Owns(atk, "purchase"))
+	Hk.keeps = nil
+	check("rig: an entry without keeps owns level-ups for the cast and the actor", H.Drill.Owns(cast, "levelup") and H.Drill.Owns(atk, "levelup"))
+	Hk.keeps = { "levelup" }
+	check("rig: Chooser.HoldsCasts alone holds the cast in setup and the actor, for items and abilities",
+		H.Chooser.HoldsCasts(cast, true) and H.Chooser.HoldsCasts(cast) and H.Chooser.HoldsCasts(atk, true) and H.Chooser.HoldsCasts(atk))
 	T = 30
 	check("rig: the cast is held before the first rep", H.Drill.Held(cast) and H.Chooser.HoldsCasts(cast, true))
 	T = 61
@@ -534,21 +547,24 @@ do
 	cast.loc = relAt
 	T = T - 5
 	check("rig: released: OHA's items and spells stay off (not listed)", H.Chooser.HoldsCasts(cast, true) and H.Chooser.HoldsCasts(cast, false))
-	-- A release lists what runs: items and level-ups here. Everything unlisted stays owned, and in setup nothing is released.
+	-- A release lists what runs: items and the courier here (keeps is lifted so level-ups follow the release too). Everything unlisted stays owned, and in setup nothing is released.
 	local release = H.Drill.TABLE["retreat-heal-items"].rig.release
-	local unlisted = { "purchase", "courier", "buyback", "abilities" }
-	check("rig: released, nothing listed: every kind stays owned", ownsAll(H, cast) and ownsAll(H, atk))
-	release.items, release.also = true, { "levelup" }
-	local listedOk = not H.Drill.Owns(cast, "items") and not H.Drill.Owns(cast, "levelup")
+	local unlisted = { "purchase", "buyback", "abilities", "levelup" }
+	check("rig: released, nothing listed: every kind stays owned but the kept level-ups", ownsAll(H, cast) and ownsAll(H, atk) and not H.Drill.Owns(cast, "levelup"))
+	release.items, release.also = true, { "courier" }
+	H.Drill.TABLE["retreat-heal-items"].rig.keeps = nil
+	local listedOk = not H.Drill.Owns(cast, "items") and not H.Drill.Owns(cast, "courier")
 	for _, k in ipairs(unlisted) do listedOk = listedOk and H.Drill.Owns(cast, k) end
 	check("rig: released: a listed kind runs for the cast, each unlisted one stays owned", listedOk)
 	check("rig: the release never frees the actor", ownsAll(H, atk))
+	check("rig: released, Chooser.HoldsCasts holds the unlisted kind only, for the cast (by itself, with no second gate)", H.Chooser.HoldsCasts(cast, false) and not H.Chooser.HoldsCasts(cast, true))
 	check("rig: the listed items run in OHA's item use and the unlisted abilities stay off", not H.Chooser.HoldsCasts(cast, true) and H.Chooser.HoldsCasts(cast, false))
 	check("rig: ready logs once per rep", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	T = 211
 	capture(function() tick(H, cast, atk) end)
 	check("rig: the next rep holds the cast again, and owns every kind again although the release lists some", H.Drill.Held(cast) and ownsAll(H, cast))
 	release.items, release.also = nil, nil
+	H.Drill.TABLE["retreat-heal-items"].rig.keeps = { "levelup" }
 
 	-- The attacker's VM never sees the cast's own setup state (rig1, 12/11/2026: the Dire actor waited all game): it attacks
 	-- once it sees the cast standing at the cast's spot, though the cast has not ticked in this world.
@@ -590,7 +606,9 @@ do
 	-- The attacker's step list is skipped straight to its last (it is placed where it stands at its wait point).
 	capture(function() for _ = 1, 4 do tick(Hh, ch, ah) local m = lastMoveTo(7) if m then ah.loc = Vector(m.x, m.y, 0) end end end)
 	check("rig host: released with no mode gate and casts free", w ~= nil and not Hh.Drill.Held(ch) and Hh.Drill.RigDesire(ch, "farm") == nil and Hh.Drill.RigHoldsCasts(ch, true) == nil)
-	check("rig host: released, the cast owns no kind; the actor still owns every kind", ownsAny(Hh, ch) == nil and ownsAll(Hh, ah))
+	check("rig host: released, OHA's items and abilities are free, but purchases, courier and buyback stay owned (the rig's gold)",
+		not Hh.Drill.Owns(ch, "items") and not Hh.Drill.Owns(ch, "abilities") and Hh.Drill.Owns(ch, "purchase") and Hh.Drill.Owns(ch, "courier") and Hh.Drill.Owns(ch, "buyback"))
+	check("rig host: the actor still owns every kind", ownsAll(Hh, ah))
 
 	-- Rep 2 (`tango`) never gets its tango (the buy fails): at the timeout the rep is invalid, logged with the failing check.
 	local Ht, ct, at = rigWorld()

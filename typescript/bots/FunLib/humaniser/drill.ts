@@ -211,6 +211,8 @@ export const TABLE: Record<string, Entry> = {
                 near: ["r:bot1", -2250, 700],
             },
             timeout: 110,
+            // The attacker's learned spells count in the retreat's threat read (GetEstimatedDamageToTarget), so both level as on the base branch.
+            keeps: ["levelup"],
             release: { modes: ["retreat", "idle"] },
             reps: [
                 {
@@ -947,9 +949,11 @@ export interface Rig {
      * What runs for the cast after ready: its modes (the Gate names in the mode files, and `idle`: stand still,
      * at RIG_IDLE_DESIRE, when no released mode wants it), OHA's item use, OHA's ability use. A Valve built-in mode with
      * no mode file is not gated; `idle` holds against those seen so far, and `@drill_roles` `rel_modes` shows any that win.
-     * `also` lists any of OHA's purchases, courier, buyback and level-ups the cast may use. Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases everything (the host-on step).
+     * `also` lists any of OHA's purchases, courier, buyback and level-ups the cast may use. Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases the cast's modes, items and abilities (the host-on step); purchases, courier, buyback and level-ups still follow `also`.
      */
-    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: ("purchase" | "courier" | "buyback" | "levelup")[] };
+    /** Kinds OHA keeps for every hero of the rig, in every phase (the rig's situation depends on them). */
+    keeps?: OwnedKind[];
+    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: OwnedKind[] };
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
 }
@@ -1031,19 +1035,21 @@ export type OwnedKind = "purchase" | "courier" | "buyback" | "levelup" | "items"
 /**
  * A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
  * true when OHA's code for `what` must not run for this hero. A rig's actors always; its cast until ready, and after ready
- * for every kind its release does not list. False for every other hero, in every other drill, and with no drill. Modes are
+ * for every kind its release does not list (host-on frees only items and abilities: OHA's purchases would spend the gold the
+ * next rep's `buy` needs). A kind the rig `keeps` is never owned. False for every other hero, in every other drill, and with no drill. Modes are
  * held through `RigDesire` (Chooser.Decide) instead.
  */
 export function Owns(bot: Unit, what: OwnedKind): boolean {
     const r = rigOf(Active());
     if (r === undefined) return false;
+    if (r.keeps !== undefined && r.keeps.indexOf(what) >= 0) return false;
     const role = RoleOf(bot);
     if (role === "actor") return true;
     if (role !== "cast") return false;
     if (rigCastHeld(bot)) return true;
-    if (overrides()?.["DrillHost"] === true) return false;
-    if (what === "items") return r.release.items !== true;
-    if (what === "abilities") return r.release.abilities !== true;
+    const host = overrides()?.["DrillHost"] === true;
+    if (what === "items") return !host && r.release.items !== true;
+    if (what === "abilities") return !host && r.release.abilities !== true;
     return r.release.also === undefined || r.release.also.indexOf(what) < 0;
 }
 
