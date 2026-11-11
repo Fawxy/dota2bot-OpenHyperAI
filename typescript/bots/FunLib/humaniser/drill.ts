@@ -952,8 +952,8 @@ export interface Rig {
      * `also` lists any of OHA's purchases, courier, buyback and level-ups the cast may use. Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases the cast's modes, items and abilities (the host-on step); purchases, courier, buyback and level-ups still follow `also`.
      */
     /** Kinds OHA keeps for every hero of the rig, in every phase (the rig's situation depends on them). */
-    keeps?: OwnedKind[];
-    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: OwnedKind[] };
+    keeps?: HeldKind[];
+    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: HeldKind[] };
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
 }
@@ -973,6 +973,8 @@ interface RigState {
     waiting: Record<number, string>;
     /** Per cast pid: where its current idle spell stands, and the spell's last frame. */
     idleAt: Record<number, [Vector, number]>;
+    /** Per cast pid: its HP share has been at or under the ready bar this rep. */
+    hpMet: Record<number, boolean>;
 }
 
 let rig: RigState | undefined;
@@ -999,7 +1001,7 @@ function rigState(): RigState | undefined {
     if (rigOf(d) === undefined) return undefined;
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
-    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {} };
+    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {} };
     return rig;
 }
 
@@ -1030,7 +1032,9 @@ function releasedModes(bot: Unit): Record<string, true> | undefined {
 }
 
 /** What OHA's per-hero entry points do for a hero; `Owns` is asked once at the top of each. */
-export type OwnedKind = "purchase" | "courier" | "buyback" | "levelup" | "items" | "abilities";
+/** The kinds a rig entry can free by name; items and abilities are held through `Chooser.HoldsCasts` and freed only by `release`. */
+export type HeldKind = "purchase" | "courier" | "buyback" | "levelup";
+export type OwnedKind = HeldKind | "items" | "abilities";
 
 /**
  * A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
@@ -1042,7 +1046,7 @@ export type OwnedKind = "purchase" | "courier" | "buyback" | "levelup" | "items"
 export function Owns(bot: Unit, what: OwnedKind): boolean {
     const r = rigOf(Active());
     if (r === undefined) return false;
-    if (r.keeps !== undefined && r.keeps.indexOf(what) >= 0) return false;
+    if (r.keeps !== undefined && r.keeps.indexOf(what as HeldKind) >= 0) return false;
     const role = RoleOf(bot);
     if (role === "actor") return true;
     if (role !== "cast") return false;
@@ -1381,7 +1385,11 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (u !== undefined && st.placed[u.GetPlayerID()] !== true) return "setup";
     }
     const r = rr.ready;
-    if (r.hpAtMost !== undefined && hpShare(bot) > r.hpAtMost) return "hp";
+    // Latched: once at or under the bar this rep it stays met, so regen while the attacker walks off cannot race it (fix5).
+    if (r.hpAtMost !== undefined) {
+        if (hpShare(bot) <= r.hpAtMost) st.hpMet[bot.GetPlayerID()] = true;
+        else if (st.hpMet[bot.GetPlayerID()] !== true) return "hp";
+    }
     for (const it of r.holds ?? []) if (!holdsItem(bot, it)) return "holds";
     for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
     if (r.clear !== undefined || r.near !== undefined) {

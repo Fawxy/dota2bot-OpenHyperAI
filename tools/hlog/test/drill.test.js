@@ -88,6 +88,8 @@ test('drill on a rig: reps that never reached ready are dropped, ready n of m an
     ];
     const out = run(lines, 'drill');
     assert.deepStrictEqual(out.map(r => [r.rep, r.var, r.released, r.ready_n, r.ready_m]), [[1, 'salve', 100, 2, 3], [3, 'stays', 400, 2, 3]]);
+    // Rep 1 is graded from its release (100): the setup's drop to 25% before it is not hp_lost; the drop to 20% after is.
+    assert.strictEqual(out[0].hp_lost, 5);
     const roles = run(lines, 'drill_roles');
     const cast = roles.find(r => r.pid === 4);
     // The ready second itself is the last setup frame (farm); after it only retreat, and rep 2 (invalid, farm) adds nothing.

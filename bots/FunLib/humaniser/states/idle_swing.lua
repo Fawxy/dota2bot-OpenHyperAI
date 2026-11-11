@@ -208,11 +208,10 @@ local function enemyReach(bot, creep)
                 )
                 local gap = GetUnitToUnitDistance(h, creep) - h:GetAttackRange() - (h:GetBoundingRadius() or 0) - (creep:GetBoundingRadius() or 0)
                 local walk = math.max(0, gap) / speed
-                local ____opt_2 = h.GetAttackPoint
-                if ____opt_2 ~= nil then
-                    ____opt_2 = ____opt_2(h)
-                end
-                local point = ____opt_2
+                local ____this_3
+                ____this_3 = h
+                local ____opt_2 = ____this_3.GetAttackPoint
+                local point = ____opt_2 and ____opt_2(____this_3)
                 local t = walk + (point ~= nil and point >= 0 and point or WorldFacts.Fallback("attack_point", ATTACK_POINT_FALLBACK))
                 if t < best then
                     best = t

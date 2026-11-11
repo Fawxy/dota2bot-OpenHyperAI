@@ -36,21 +36,26 @@ rd AS MATERIALIZED (
 rn AS MATERIALIZED (
     SELECT game_id, pid, sum(ok = 1) AS ready_n, count(*) AS ready_m FROM rd GROUP BY game_id, pid
 ),
-rc AS (
+rc0 AS (
     SELECT r.*, c.pid, c.pos, coalesce(r.next, (SELECT max(t) FROM sn WHERE sn.game_id = r.game_id AND sn.pid = c.pid)) AS stop
     FROM reps r JOIN cast c ON c.game_id = r.game_id AND c.team = r.team
+),
+-- A rig rep is graded from its release: the forced setup (the attack that brings the cast's HP down) is not counted.
+rc AS (
+    SELECT rc0.*, coalesce((SELECT rd.released FROM rd WHERE rd.game_id = rc0.game_id AND rd.pid = rc0.pid AND rd.rep = rc0.rep AND rd.ok = 1), rc0.start) AS g0
+    FROM rc0
 )
 SELECT rc.game_id, g.file, rc.name, rc.team, rc.pid, rc.pos, rc.rep, rc.input, rc.start, rc.stop, rc.forces,
     rd.var, CASE WHEN rd.ok = 1 THEN rd.released END AS released, rn.ready_n, rn.ready_m,
-    (SELECT max(lh) - min(lh) FROM sn WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t >= rc.start AND sn.t <= rc.stop) AS lh,
-    (SELECT max(dn) - min(dn) FROM sn WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t >= rc.start AND sn.t <= rc.stop) AS dn,
-    (SELECT max(deaths) - min(deaths) FROM sn WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t >= rc.start AND sn.t <= rc.stop) AS deaths,
+    (SELECT max(lh) - min(lh) FROM sn WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t >= rc.g0 AND sn.t <= rc.stop) AS lh,
+    (SELECT max(dn) - min(dn) FROM sn WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t >= rc.g0 AND sn.t <= rc.stop) AS dn,
+    (SELECT max(deaths) - min(deaths) FROM sn WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t >= rc.g0 AND sn.t <= rc.stop) AS deaths,
     (SELECT coalesce(sum(CASE WHEN php > hp THEN php - hp ELSE 0 END), 0) FROM sn
-        WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t > rc.start AND sn.t <= rc.stop) AS hp_lost,
+        WHERE sn.game_id = rc.game_id AND sn.pid = rc.pid AND sn.t > rc.g0 AND sn.t <= rc.stop) AS hp_lost,
     CASE WHEN rc.forces = 'stack' THEN (SELECT count(*) FROM ev_stack s WHERE s.game_id = rc.game_id AND s.pid = rc.pid
-        AND s.t >= rc.start AND s.t < rc.stop) END AS results,
+        AND s.t >= rc.g0 AND s.t < rc.stop) END AS results,
     CASE WHEN rc.forces = 'stack' THEN (SELECT count(*) FROM ev_stack s WHERE s.game_id = rc.game_id AND s.pid = rc.pid
-        AND s.t >= rc.start AND s.t < rc.stop AND s.res = 'stacked') END AS ok
+        AND s.t >= rc.g0 AND s.t < rc.stop AND s.res = 'stacked') END AS ok
 FROM rc JOIN games g ON g.game_id = rc.game_id
 LEFT JOIN rd ON rd.game_id = rc.game_id AND rd.pid = rc.pid AND rd.rep = rc.rep
 LEFT JOIN rn ON rn.game_id = rc.game_id AND rn.pid = rc.pid

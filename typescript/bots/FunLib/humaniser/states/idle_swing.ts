@@ -211,7 +211,7 @@ function enemyReach(bot: Unit, creep: Unit): number {
         // Attack range counts from edge to edge: both bounding radii come off the centre distance (slice 4).
         const gap = GetUnitToUnitDistance(h, creep) - h.GetAttackRange() - (h.GetBoundingRadius() ?? 0) - (creep.GetBoundingRadius() ?? 0);
         const walk = math.max(0, gap) / speed;
-        const point = (h as any).GetAttackPoint?.(h) as number | undefined;
+        const point = (h as Unit & { GetAttackPoint?(): number }).GetAttackPoint?.();
         const t = walk + (point !== undefined && point >= 0 ? point : WorldFacts.Fallback("attack_point", ATTACK_POINT_FALLBACK));
         if (t < best) best = t;
     }

@@ -37,10 +37,21 @@ export const BOT = {
     /** What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered. */
     ol: "num",
     od: "num",
-    /** Attack range, nearest visible enemy hero within 1,200 (absent if none), hit by a hero in the last second. */
+    /** Attack range, nearest visible enemy hero within 1,200 (absent if none). */
     ar: "num",
     ed: "num",
+    /**
+     * Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's
+     * flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
+     */
+    hv: "num",
     hit: "bool",
+    hc: "bool",
+    ht: "bool",
+    ah: "num",
+    ac: "num",
+    an: "num",
+    at: "num",
     by: "str",
     order: "str",
 } as const;
@@ -309,6 +320,82 @@ export const EVENTS = {
         y0: "num",
         x1: "num",
         y1: "num",
+    },
+    /** Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once a second, the truth for the other team's
+     *  `apiprobe_enemy` row of the same second. -1 is a nil read, -2 a failed one. */
+    apiprobe_own: {
+        team: "num",
+        pid: "num",
+        seen: "num",
+        loc: "num",
+        x: "num",
+        y: "num",
+        alive: "num",
+        hp: "num",
+        mp: "num",
+        lvl: "num",
+        ms: "num",
+        nw: "num",
+        nmod: "num",
+        cds: "num",
+        nitem: "num",
+        it0: "str",
+        tgt: "num",
+        chan: "num",
+        cast: "num",
+    },
+    /** Overrides.ApiProbe: the team's reporter about an enemy hero handle it holds; a hero out of sight has no row (its handle is null). */
+    apiprobe_enemy: {
+        team: "num",
+        pid: "num",
+        vis: "num",
+        loc: "num",
+        x: "num",
+        y: "num",
+        alive: "num",
+        hp: "num",
+        mp: "num",
+        lvl: "num",
+        ms: "num",
+        nw: "num",
+        nmod: "num",
+        cds: "num",
+        nitem: "num",
+        it0: "str",
+        tgt: "num",
+        chan: "num",
+        cast: "num",
+    },
+    /** Overrides.ApiProbe: one cast callback; `vis` whether the caster was visible to `team` as it fired (-2: its handle was null). */
+    apiprobe_cast: {
+        team: "num",
+        pid: "num",
+        own: "num",
+        vis: "num",
+        ability: "str",
+    },
+    /** Overrides.ApiProbe: damage callbacks for one player in one second: `n` fired, `fog` of them with the hero not visible to `team`. */
+    apiprobe_dmg: {
+        team: "num",
+        pid: "num",
+        own: "num",
+        n: "num",
+        fog: "num",
+        sum: "num",
+    },
+    /** Overrides.ApiProbe: the argument shape of the first damage callback, once per team. */
+    apiprobe_dmgshape: {
+        team: "num",
+        args: "str",
+    },
+    /** Overrides.ApiProbe: one GetIncomingTeleports entry, once a second. */
+    apiprobe_tp: {
+        team: "num",
+        pid: "num",
+        own: "num",
+        x: "num",
+        y: "num",
+        rem: "num",
     },
     /** Overrides.VisionProbe (scenario games only): whether the camp's neutrals are in sight from one candidate stand point. */
     visprobe: {
