@@ -725,7 +725,7 @@ do
 	cast.hitBy[d3] = nil
 
 	-- Rep 2 (`pair`): the front has moved; the spot follows it. The partner stands until 3 s after the release, then leaves.
-	LANE_FRONT[2][dota.Lane.Bot] = 0.7
+	LANE_FRONT[2][dota.Lane.Bot] = 0.5
 	T = 196
 	ACTIONS = {}
 	capture(function() tick(cast) end)
@@ -739,6 +739,12 @@ do
 	d3.loc = Vector(spot2.x + 150, spot2.y, 0)
 	CREEPS[2][1].loc = Vector(spot2.x + 450, spot2.y, 0)
 	cast.hitBy[d3] = T
+	-- fix3: a front under a tower (the attackers died to our T1) is no rep: ready waits on `towers`.
+	local t1 = TOWERS_W[RAD][dota.Tower.Bot1]
+	local t1at = t1.loc
+	t1.loc = Vector(spot2.x + 500, spot2.y, 0)
+	check("hitback rig: a tower within 900 of the cast holds ready", ready(capture(function() tick(cast, r5) end)) == nil)
+	t1.loc = t1at
 	check("hitback rig: pair is ready on the same facts", ready(capture(function() tick(cast, r5) end)) ~= nil)
 	T = 198
 	ACTIONS = {}

@@ -1520,7 +1520,7 @@ ____exports.TABLE = {
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800}}}
+            reps = {{name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 900}}, {name = "pair", setup = {r1 = {"heal", "stand cast"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}, d4 = {"heal", "walk near", "attack r1 until hp 0.55", "leave"}}, after = {r5 = {"wait 3", "leave"}}, ready = {paid = 500, towers = 900}}, {name = "hit", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "walk near", "attack r1 until hp 0.6", "leave"}}, ready = {paid = 500, towers = 900}}, {name = "control", setup = {r1 = {"heal", "stand cast"}, d3 = {"heal", "stand near"}}, ready = {near = 800, towers = 900}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2073,15 +2073,26 @@ local function failingCheck(bot, st, rr)
             return "near"
         end
     end
+    if r.towers ~= nil then
+        local at = bot:GetLocation()
+        for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+            for ____, k in ipairs(__TS__ObjectKeys(TOWER_IDS)) do
+                local tw = GetTower(team, TOWER_IDS[k])
+                if tw ~= nil and tw ~= nil and tw:IsAlive() and GetUnitToLocationDistance(tw, at) <= r.towers then
+                    return "towers"
+                end
+            end
+        end
+    end
     if r.paid ~= nil then
         local ours = bot:GetNearbyLaneCreeps(1600, false) or ({})
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue243
+                local __continue249
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue243 = true
+                        __continue249 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2092,9 +2103,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue243 = true
+                    __continue249 = true
                 until true
-                if not __continue243 then
+                if not __continue249 then
                     break
                 end
             end

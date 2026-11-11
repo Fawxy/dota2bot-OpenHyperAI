@@ -194,7 +194,8 @@ export const TABLE: Record<string, Entry> = {
     // respects clear (no tower: the front is off both towers early; numbers even; HP over half: the attack stops at 60%), the
     // laning stage (window 600) and the cast in its lane. `pair`: two hitters and the Radiant pos5 beside the cast (an even
     // 2v2 the hold keeps), the pos5 walking home 3 s after ready (leave-together: the cast leaves within 2 s of it passing
-    // 1,200). `control`: the pos3 stands beside and never attacks. Release: laning (last hits compete), attack (the trade),
+    // 1,200). `control`: the pos3 stands beside and never attacks. The recipe kills every lane creep 5 s before each rep, so
+    // the waves meet afresh (fix3: the front had drifted under our T1); `towers` leaves out a rep whose front is under one. Release: laning (last hits compete), attack (the trade),
     // retreat, idle. `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
     "retreat-hitback": {
         note: "rig: Radiant pos1 at our bot lane front, hit by the Dire pos3 from inside our creeps' aggro to 60% (hit), or by the Dire pos3 and pos4 with our pos5 beside it until the pos5 walks home 3 s after ready (pair), or the pos3 stands by (control); then laning, attack, retreat; four 135 s reps from 1:00",
@@ -218,7 +219,7 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500 },
+                    ready: { paid: 500, towers: 900 },
                 },
                 {
                     name: "pair",
@@ -229,17 +230,17 @@ export const TABLE: Record<string, Entry> = {
                         d4: ["heal", "walk near", "attack r1 until hp 0.55", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
-                    ready: { paid: 500 },
+                    ready: { paid: 500, towers: 900 },
                 },
                 {
                     name: "hit",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "walk near", "attack r1 until hp 0.6", "leave"] },
-                    ready: { paid: 500 },
+                    ready: { paid: 500, towers: 900 },
                 },
                 {
                     name: "control",
                     setup: { r1: ["heal", "stand cast"], d3: ["heal", "stand near"] },
-                    ready: { near: 800 },
+                    ready: { near: 800, towers: 900 },
                 },
             ],
         },
@@ -976,6 +977,8 @@ export interface RigReady {
      * cast team's lane creeps (inside our creeps' aggro: slice hit-back).
      */
     paid?: number;
+    /** No tower of either team within this distance of the cast (hit-back fix3: the front sat under our T1, which killed the attackers). */
+    towers?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1543,6 +1546,15 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         }
         if (r.clear !== undefined && nearest <= r.clear) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
+    }
+    if (r.towers !== undefined) {
+        const at = bot.GetLocation();
+        for (const team of [Team.Radiant, Team.Dire]) {
+            for (const k of Object.keys(TOWER_IDS)) {
+                const tw = GetTower(team, TOWER_IDS[k]);
+                if (tw !== null && tw !== undefined && tw.IsAlive() && GetUnitToLocationDistance(tw, at) <= r.towers) return "towers";
+            }
+        }
     }
     if (r.paid !== undefined) {
         const ours = bot.GetNearbyLaneCreeps(1600, false) ?? [];
