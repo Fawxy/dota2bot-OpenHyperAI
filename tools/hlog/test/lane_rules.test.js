@@ -147,6 +147,33 @@ test('D3: a retreat that walks on after the threat ends, or into an enemy tower,
     assert.deepStrictEqual(cases(lines, 'D3'), [[1, 400, 1, 'no_stop'], [1, 500, 1, 'tower'], [1, 600, 0, 'ok']]);
 });
 
+test('D3: walking on counts only while our own lane front is nearer than our fountain', () => {
+    // Radiant pos1 (bot lane), front at (5000, -6000), chased to 102 or 202, then 13 s at 90% HP with nobody near.
+    const lines = bots([[1, 2, 1], [6, 3, 1]]);
+    const walk = (t0, x, y) => {
+        for (let t = t0; t <= t0 + 15; t++) {
+            lines.push(snap(t, 1, x - 50 * (t - t0), y, { mode: 'retreat', hp: 90 }));
+            lines.push(snap(t, 6, t <= t0 + 2 ? x + 800 : x + 6000, y + 4000));
+            lines.push(line(t, 'front team=2 top=0.5 topx=-6300 topy=2000 mid=0.5 midx=-1500 midy=-1300 bot=0.5 botx=5000 boty=-6000'));
+        }
+    };
+    walk(100, 3000, -5500); // 2,000 from the front, 9,800 from the fountain: no_stop
+    walk(200, -4500, -5000); // 2,800 from the fountain, 9,500 from the front: walking home is right
+    assert.deepStrictEqual(cases(lines, 'D3'), [[1, 100, 1, 'no_stop'], [1, 200, 0, 'ok']]);
+});
+
+test('D3: a Dire pos3 reads the bot lane front (Dire offlane), not its top or mid', () => {
+    // Dire fountain (6928, 6372). Bot front (6000, -1000) is 2,000 from the walk at (6000, 1000), the fountain 5,400; top and
+    // mid fronts are farther than the fountain, so only the bot lane makes the walk-on count.
+    const lines = bots([[1, 2, 1], [6, 3, 3]]);
+    for (let t = 100; t <= 115; t++) {
+        lines.push(snap(t, 6, 6000, 1000 + 50 * (t - 100), { mode: 'retreat', hp: 90 }));
+        lines.push(snap(t, 1, t <= 102 ? 6000 : 0, t <= 102 ? 200 : -4000));
+        lines.push(line(t, 'front team=3 top=0.5 topx=-6000 topy=6000 mid=0.5 midx=-1000 midy=-1000 bot=0.5 botx=6000 boty=-1000'));
+    }
+    assert.deepStrictEqual(cases(lines, 'D3').filter(c => c[0] === 6), [[6, 100, 1, 'no_stop']]);
+});
+
 test('D7: a support leaving its core in a 1v2 at low HP violates; leaving a healthy core does not', () => {
     const lines = bots([[0, 2, 1], [3, 2, 5], [5, 3, 3], [6, 3, 4]]);
     for (const [t0, hp] of [[100, 60], [200, 100]]) {
