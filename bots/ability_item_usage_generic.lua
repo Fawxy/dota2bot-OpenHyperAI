@@ -8391,6 +8391,7 @@ function ItemUsageThink()
 	if RefreshBotHandle() then return end
 	J.Humaniser.Tick(bot)
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
+	if J.Humaniser.Drill.Owns(bot, "items") then return end
 	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).
@@ -8404,6 +8405,7 @@ end
 function AbilityUsageThink()
 	if RefreshBotHandle() then return end
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
+	if J.Humaniser.Drill.Owns(bot, "abilities") then return end
 	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).
@@ -8416,8 +8418,8 @@ end
 
 function BuybackUsageThink()
 	if RefreshBotHandle() then return end
-	-- A drill rig's cast and actors keep the rig's gold and items (humaniser/drill.ts HoldsPurchases).
-	if J.Humaniser.Drill.HoldsPurchases(bot) then return end
+	-- A drill rig owns its heroes' gold and items (humaniser/drill.ts Owns).
+	if J.Humaniser.Drill.Owns(bot, "buyback") then return end
 	if bot.lastBuybackFrameProcessTime == nil then bot.lastBuybackFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastBuybackFrameProcessTime < 2) then return end
 	bot.lastBuybackFrameProcessTime = DotaTime()
@@ -8427,7 +8429,7 @@ end
 
 function CourierUsageThink()
 	if RefreshBotHandle() then return end
-	if J.Humaniser.Drill.HoldsPurchases(bot) then return end
+	if J.Humaniser.Drill.Owns(bot, "courier") then return end
 	if bot.lastCourierFrameProcessTime == nil then bot.lastCourierFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastCourierFrameProcessTime < 0.5) then return end
 	bot.lastCourierFrameProcessTime = DotaTime()
@@ -8436,6 +8438,7 @@ end
 
 function AbilityLevelUpThink()
 	if RefreshBotHandle() then return end
+	if J.Humaniser.Drill.Owns(bot, "levelup") then return end
 	if bot.lastLevelUpFrameProcessTime == nil then bot.lastLevelUpFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastLevelUpFrameProcessTime < 1) then return end
 	bot.lastLevelUpFrameProcessTime = DotaTime()

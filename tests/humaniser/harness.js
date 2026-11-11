@@ -22,6 +22,15 @@ function newState(root = path.resolve(__dirname, '../..')) {
         return 1;
     });
     lua.lua_setglobal(L, to_luastring('READ_FILE'));
+    // Directory listing for tests that scan source files (a new file must be seen without editing the test).
+    lua.lua_pushjsfunction(L, L => {
+        const dir = lua.lua_tojsstring(L, 1);
+        const names = fs.existsSync(dir) ? fs.readdirSync(dir).sort() : [];
+        lua.lua_createtable(L, names.length, 0);
+        names.forEach((n, i) => { lua.lua_pushstring(L, to_luastring(n)); lua.lua_rawseti(L, -2, i + 1); });
+        return 1;
+    });
+    lua.lua_setglobal(L, to_luastring('LIST_FILES'));
     const ioShim = `if io.open == nil then io.open = function(p, m) if m ~= nil and m ~= "r" then return nil end local t = READ_FILE(p) if t == nil then return nil end return { read = function() return t end, close = function() end } end end\n`;
     // Compile cache: FreshHumaniser clears package.loaded and re-requires about 1 MB of Lua per test case, and fengari's
     // parser is slow. Re-running a cached chunk gives fresh module state (new locals and tables per call). Lua 5.3 may

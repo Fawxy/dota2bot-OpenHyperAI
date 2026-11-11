@@ -947,9 +947,9 @@ export interface Rig {
      * What runs for the cast after ready: its modes (the Gate names in the mode files, and `idle`: stand still,
      * at RIG_IDLE_DESIRE, when no released mode wants it), OHA's item use, OHA's ability use. A Valve built-in mode with
      * no mode file is not gated; `idle` holds against those seen so far, and `@drill_roles` `rel_modes` shows any that win.
-     * Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases everything (the host-on step).
+     * `also` lists any of OHA's purchases, courier, buyback and level-ups the cast may use. Everything else gets desire 0 or is held. `Overrides.DrillHost = true` releases everything (the host-on step).
      */
-    release: { modes: string[]; items?: boolean; abilities?: boolean };
+    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: ("purchase" | "courier" | "buyback" | "levelup")[] };
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
 }
@@ -1025,15 +1025,26 @@ function releasedModes(bot: Unit): Record<string, true> | undefined {
     return out;
 }
 
+/** What OHA's per-hero entry points do for a hero; `Owns` is asked once at the top of each. */
+export type OwnedKind = "purchase" | "courier" | "buyback" | "levelup" | "items" | "abilities";
+
 /**
- * OHA's purchase, courier and buyback thinks: a rig's cast and actors buy, fetch and buy back nothing, so they hold only
- * what the rig's `buy` steps hand them, keep the rig's gold, and the attacker hits as hard every rep (rigA2, 12/11/2026:
- * OHA spent the cast's 600 gold before each rep, so the salve buy failed).
+ * A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
+ * true when OHA's code for `what` must not run for this hero. A rig's actors always; its cast until ready, and after ready
+ * for every kind its release does not list. False for every other hero, in every other drill, and with no drill. Modes are
+ * held through `RigDesire` (Chooser.Decide) instead.
  */
-export function HoldsPurchases(bot: Unit): boolean {
-    if (Active()?.rig === undefined) return false;
-    const r = RoleOf(bot);
-    return r === "cast" || r === "actor";
+export function Owns(bot: Unit, what: OwnedKind): boolean {
+    const r = rigOf(Active());
+    if (r === undefined) return false;
+    const role = RoleOf(bot);
+    if (role === "actor") return true;
+    if (role !== "cast") return false;
+    if (rigCastHeld(bot)) return true;
+    if (overrides()?.["DrillHost"] === true) return false;
+    if (what === "items") return r.release.items !== true;
+    if (what === "abilities") return r.release.abilities !== true;
+    return r.release.also === undefined || r.release.also.indexOf(what) < 0;
 }
 
 /** Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list. */
@@ -1077,7 +1088,7 @@ function rigIdle(bot: Unit): boolean {
 export function RigHoldsCasts(bot: Unit, items: boolean): boolean | undefined {
     const r = rigOf(Active());
     if (r === undefined || releasedModes(bot) === undefined) return undefined;
-    return items ? r.release.items !== true : r.release.abilities !== true;
+    return Owns(bot, items ? "items" : "abilities");
 }
 
 const TOWER_IDS: Record<string, Tower> = {
