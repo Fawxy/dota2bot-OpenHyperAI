@@ -209,6 +209,7 @@ export const TABLE: Record<string, Entry> = {
         rig: {
             half: "decision",
             switch: "HealItems",
+            window: 600,
             spots: {
                 cast: ["r:bot1", -2750, 700],
                 near: ["r:bot1", -2250, 700],
@@ -959,6 +960,9 @@ export interface Rig {
     release: { modes: string[]; items?: boolean; abilities?: boolean; also?: HeldKind[] };
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
+    /** DotaTime seconds the rule's stage ends (a laning rule: 600). A rep ending after it is logged `rend` past `win` and the
+     *  rig check leaves it out of the count: the rule does not run there, so the off arm cannot fail it. */
+    window: number;
 }
 
 type Phase = "setup" | "released" | "invalid";
@@ -1436,6 +1440,9 @@ function rigTick(bot: Unit): void {
         ["fail", fail],
         ["secs", math.floor(secs * 10 + 0.5) / 10],
         ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100],
+        ["rend", st.start + Active()!.rep.every],
+        ["win", r.window],
+        ["rel", r.release.modes.filter((m) => m !== "idle").join(",")],
     ]);
 }
 

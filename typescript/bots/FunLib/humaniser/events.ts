@@ -872,8 +872,12 @@ export const EVENTS = {
          *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|holds|lacks|clear|near: the rep is
          *  invalid), `secs` from the rep's start, the cast's HP share `hp`; ph=spot once per rig spot: its point `x`, `y`, how
          *  far it moved to be passable `d`, the nearest Radiant and Dire tower `rt`, `dt`; ph=wait when the cast's first
-         *  failing ready check `fail` changes; ph=buy per purchase try (`step` the item, `res` the API's result, `gold`). */
+         *  failing ready check `fail` changes; ph=buy per purchase try (`step` the item, `res` the API's result, `gold`); ph=ready
+         *  also carries `rend` (the rep's end), `win` (the end of the stage the rule lives in; a rep ending after it is outside)
+         *  and `rel` (the release list's modes but `idle`, comma-separated). */
         var: "str",
+        win: "num",
+        rel: "str",
         i: "num",
         step: "str",
         ok: "num",
