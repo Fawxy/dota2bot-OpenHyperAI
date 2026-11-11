@@ -601,8 +601,34 @@ do
 	fresh()
 	bot.hitBy = enemy
 	enemy.loc = Vector(900, 0)
-	check("a hitter outside our reach: no trade, logged as no_target with its distance",
+	check("switch off, a hitter 250 outside our reach: no trade, logged as no_target with its distance",
 		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("d=900") and last():find("agg=1"), last())
+	-- The walk-in (user 12/11/2026): reach is 648 here, so a hitter at 900 is 252 past it and one at 1,000 is 352 past it.
+	Ours.HitBack = nil
+	theirs = {}
+	fresh()
+	bot.hitBy = enemy
+	bot.hp, enemy.hp = 95, 100
+	enemy.loc = Vector(900, 0)
+	ourCreep.loc = Vector(700, 0)
+	check("a hitter 250 outside our reach, in our creeps' aggro: the hit back walks in", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	bot.moves, bot.orders = {}, 0
+	CoreTrade.Think(bot)
+	check("clear of their creeps the walk-in is the primed attack order", bot.attacking == enemy and bot.orders == 1)
+	T = T + 0.5
+	check("the walk-in is not ended as out of reach", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	fresh()
+	bot.hitBy = enemy
+	enemy.loc = Vector(1000, 0)
+	ourCreep.loc = Vector(800, 0)
+	check("a hitter 350 outside our reach is not walked to", CoreTrade.Desire(bot) == 0 and last():find("why=no_target"), last())
+	fresh()
+	bot.hitBy = enemy
+	enemy.loc = Vector(900, 0)
+	ourCreep.loc = Vector(100, 0)
+	check("a hitter outside our reach and outside our creeps' aggro is not walked to (a free hit: D24 steps out)",
+		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("agg=0"), last())
+	Ours.HitBack = false
 	Ours.HitBack = nil
 	Ours.CoreLaneFight = true
 	function Unit:GetNearbyLaneCreeps() return {} end

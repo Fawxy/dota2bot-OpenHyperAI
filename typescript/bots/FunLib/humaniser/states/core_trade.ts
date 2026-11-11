@@ -108,6 +108,12 @@ const COOLDOWN_LEFT = 0.3;
 const STEP_OUT_LIMIT = 2;
 /** A hit back answers a hero that damaged us within this (s): the threat read's `EngagedRecent`. `judgement`. */
 const HIT_RECENT = 1;
+/**
+ * A hit back walks in this far past the hero's reach (user 12/11/2026: answer a hitter standing just out of reach, on the
+ * aggro-free order, which also carries the hero towards its next last hit). Smoke game smoke-hit-back-refusals: 6 of the 7
+ * unanswered hitters out of reach stood within 300 of it; the support's HARASS_REACH is the same walk. `judgement`.
+ */
+const HIT_BACK_WALK = 300;
 /** A window Desire offered that attack mode did not take within this is logged as lost. */
 const LOST_AFTER = 1;
 
@@ -236,7 +242,7 @@ function lastHitting(h: Unit): boolean {
 }
 
 /**
- * Slice hit-back (D24, `Ours.HitBack`): the enemy hero in reach that hit us within HIT_RECENT while one of our lane creeps
+ * Slice hit-back (D24, `Ours.HitBack`): the enemy hero within reach plus HIT_BACK_WALK that hit us within HIT_RECENT while one of our lane creeps
  * stands within creep aggro of it. It pays our creeps for every hit, so hitting back is the exchange D24 says to take even
  * beside their wave or a little behind on HP; the respects that remain are the trade's tower, numbers, HP floor and creeps on us.
  */
@@ -246,7 +252,7 @@ function hitBackTarget(bot: Unit): Unit | undefined {
     const ours = bot.GetNearbyLaneCreeps(1600, false) ?? [];
     let best: Unit | undefined;
     let bestD = math.huge;
-    for (const h of bot.GetNearbyHeroes(reachOf(bot), true, BotMode.None)) {
+    for (const h of bot.GetNearbyHeroes(reachOf(bot) + HIT_BACK_WALK, true, BotMode.None)) {
         if (!valid(h) || !bot.WasRecentlyDamagedByHero(h, HIT_RECENT)) continue;
         const at = h.GetLocation();
         if (!ours.some((c) => c.IsAlive() && GetUnitToLocationDistance(c, at) <= radius)) continue;
@@ -442,25 +448,28 @@ export function Desire(bot: Unit): number | undefined {
         const join = joinable(bot);
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
     }
-    if (target === undefined || inputs === undefined) return unanswered(bot, now, "no_target");
+    if (target === undefined || inputs === undefined) return hitBack(bot, now, "no_target");
     if (owns && d.kind !== "kill" && d.respect !== "tower" && d.respect !== "outnumbered") {
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
     const gap = recoverTo[pid];
     const held = d.kind === "trade" && gap !== undefined && inputs.hp - inputs.targetHp < gap - 1e-6;
-    if (d.kind === undefined || held) {
-        const hb = hitBackTarget(bot);
-        if (hb === undefined) return unanswered(bot, now, d.respect ?? "gap", inputs);
-        // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
-        // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
-        // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
-        const hd = Decide(Gather(bot, hb), false, killHpFor(bot), true);
-        if (hd.kind === undefined) return unanswered(bot, now, `hb_${hd.respect}`);
-        return open(bot, hd.kind, hb, now, undefined, undefined, true);
-    }
+    // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
+    // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
+    // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
+    if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? "gap", inputs);
     if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
     return open(bot, d.kind, target, now);
+}
+
+/** The trade rule opened nothing (`why`): a hit back if there is a hitter to answer, else the unanswered hit is logged. */
+function hitBack(bot: Unit, now: number, why: string, inputs?: Inputs): number {
+    const hb = hitBackTarget(bot);
+    if (hb === undefined) return unanswered(bot, now, why, inputs);
+    const hd = Decide(Gather(bot, hb), false, killHpFor(bot), true);
+    if (hd.kind === undefined) return unanswered(bot, now, `hb_${hd.respect}`);
+    return open(bot, hd.kind, hb, now, undefined, undefined, true);
 }
 
 function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean, hb?: boolean): number {
@@ -532,7 +541,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
         return r === "tower" || r === "outnumbered" ? r : undefined;
     } else {
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
-        const reach = reachOf(bot);
+        const reach = reachOf(bot) + (ep.hb === true ? HIT_BACK_WALK : 0);
         // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
         // cooldown covers the hits.
         const primed = primedAt[bot.GetPlayerID()];

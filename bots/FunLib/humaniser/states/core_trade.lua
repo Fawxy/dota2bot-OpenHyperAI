@@ -55,7 +55,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local killHpFor, isSupport, reachOf, inLane, frac, valid, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, LOST_AFTER, episodes, primedAt, rolledAt
+local killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
@@ -124,370 +124,7 @@ end
 function reachOf(bot)
     return bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + (isSupport(bot) and HARASS_REACH or REACH)
 end
-function inLane(bot)
-    return Phase.IsLaningFor(bot) and GetAmountAlongLane(
-        bot:GetAssignedLane(),
-        bot:GetLocation()
-    ).distance <= LANE_WIDTH
-end
-function frac(u)
-    return u:GetHealth() / math.max(
-        1,
-        u:GetMaxHealth()
-    )
-end
-function valid(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen() and not u:IsIllusion()
-end
-function ____exports.Gather(bot, target)
-    local enemiesNear = 0
-    for ____, h in ipairs(bot:GetNearbyHeroes(NEAR, true, BotMode.None)) do
-        if valid(h) then
-            enemiesNear = enemiesNear + 1
-        end
-    end
-    local alliesNear = 0
-    for ____, h in ipairs(bot:GetNearbyHeroes(NEAR, false, BotMode.None)) do
-        if h:IsAlive() and not h:IsIllusion() then
-            alliesNear = alliesNear + 1
-        end
-    end
-    local enemyCreepsNear = 0
-    local hitByCreeps = 0
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
-        do
-            local __continue53
-            repeat
-                if not c:IsAlive() then
-                    __continue53 = true
-                    break
-                end
-                enemyCreepsNear = enemyCreepsNear + 1
-                if c:GetAttackTarget() == bot then
-                    hitByCreeps = hitByCreeps + 1
-                end
-                __continue53 = true
-            until true
-            if not __continue53 then
-                break
-            end
-        end
-    end
-    local tower = false
-    local reach = LaneConfig.TowerReach()
-    for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
-        do
-            local __continue57
-            repeat
-                if not t:IsAlive() then
-                    __continue57 = true
-                    break
-                end
-                if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
-                    tower = true
-                end
-                if t:GetAttackTarget() == bot then
-                    hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
-                end
-                __continue57 = true
-            until true
-            if not __continue57 then
-                break
-            end
-        end
-    end
-    return {
-        hp = frac(bot),
-        targetHp = frac(target),
-        enemiesNear = enemiesNear,
-        alliesNear = math.max(1, alliesNear),
-        enemyCreepsNear = enemyCreepsNear,
-        hitByCreeps = hitByCreeps,
-        tower = tower
-    }
-end
-function open(bot, kind, target, now, play, joined, hb)
-    if joined then
-        Plays.Join(play, bot)
-    end
-    episodes[bot:GetPlayerID()] = {
-        kind = kind,
-        target = target,
-        tpid = target:GetPlayerID(),
-        offeredAt = now,
-        lf = ____exports.OwnsLaneFights(bot),
-        hp0 = bot:GetHealth(),
-        thp0 = target:GetHealth(),
-        thpSeen = target:GetHealth(),
-        inputs = ____exports.Gather(bot, target),
-        primes = 0,
-        stepOuts = 0,
-        aggro = 0,
-        play = play,
-        joined = joined,
-        hb = hb
-    }
-    return kind == "trade" and ____exports.DESIRE_TRADE or ____exports.DESIRE_KILL
-end
-function joinable(bot)
-    if Plays.Of(bot) ~= nil then
-        return nil
-    end
-    local reach = reachOf(bot) + JOIN_WALK
-    for ____, p in ipairs(Plays.Near(
-        bot:GetLocation(),
-        JOIN_NEAR
-    )) do
-        do
-            local __continue85
-            repeat
-                local t = p.target
-                if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue85 = true
-                    break
-                end
-                local r = ____exports.Decide(
-                    ____exports.Gather(bot, t),
-                    false,
-                    killHpFor(bot)
-                ).respect
-                if r == "tower" or r == "outnumbered" then
-                    __continue85 = true
-                    break
-                end
-                if Plays.Weigh(Plays.InputsOf({
-                    kind = p.kind,
-                    by = bot,
-                    target = t,
-                    at = t:GetLocation()
-                })).zero ~= nil then
-                    __continue85 = true
-                    break
-                end
-                return p
-            until true
-            if not __continue85 then
-                break
-            end
-        end
-    end
-    return nil
-end
-function rollFight(bot, target, now)
-    local pid = bot:GetPlayerID()
-    local ____temp_5 = rolledAt[pid] or ({})
-    rolledAt[pid] = ____temp_5
-    local seen = ____temp_5
-    local tpid = target:GetPlayerID()
-    local last = seen[tpid]
-    if last ~= nil and now - last < FIGHT_ROLL_EVERY then
-        return nil
-    end
-    seen[tpid] = now
-    return Plays.Roll(
-        {
-            kind = ____exports.LANE_FIGHT,
-            by = bot,
-            target = target,
-            at = target:GetLocation()
-        },
-        now
-    )
-end
-function keepWhy(bot, ep, now)
-    local t = ep.target
-    if not IsHeroAlive(ep.tpid) then
-        return "target_dead"
-    end
-    if not valid(t) then
-        return "target_lost"
-    end
-    ep.thpSeen = t:GetHealth()
-    if ep.startedAt == nil then
-        return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
-    end
-    if ep.kind == "kill" then
-        if now - ep.startedAt > KILL_TIME then
-            return "time"
-        end
-    elseif ep.kind == "fight" then
-        if now - ep.startedAt > FIGHT_TIME then
-            return "time"
-        end
-        if ep.play ~= nil and not __TS__ArrayIncludes(
-            Plays.Active(),
-            ep.play
-        ) then
-            return "play_end"
-        end
-        if FR.HpFraction(bot) < Plays.SETTINGS.HpFloor then
-            return "hp"
-        end
-        local r = ____exports.Decide(
-            ____exports.Gather(bot, ep.target),
-            true,
-            killHpFor(bot)
-        ).respect
-        return (r == "tower" or r == "outnumbered") and r or nil
-    else
-        if ep.stepSince ~= nil and now - ep.stepSince > STEP_OUT_LIMIT then
-            return "no_clear"
-        end
-        local reach = reachOf(bot)
-        local primed = primedAt[bot:GetPlayerID()]
-        local walkingIn = primed ~= nil and now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT
-        if ep.stepSince == nil and not walkingIn and GetUnitToUnitDistance(bot, ep.target) > reach then
-            return "out_of_reach"
-        end
-        if ____exports.Deficit(
-            ep.hp0,
-            bot:GetHealth(),
-            ep.thp0,
-            ep.target:GetHealth(),
-            bot:GetMaxHealth()
-        ) > LOSING_BY then
-            return "losing"
-        end
-    end
-    local d = ____exports.Decide(
-        ____exports.Gather(bot, ep.target),
-        true,
-        killHpFor(bot),
-        ep.hb == true
-    )
-    if d.kind == nil then
-        return d.respect
-    end
-    return nil
-end
-function stepOutPoint(bot, creeps)
-    local me = bot:GetLocation()
-    local x = 0
-    local y = 0
-    local seen = 0
-    for ____, c in ipairs(creeps) do
-        do
-            local __continue122
-            repeat
-                local l = c:GetLocation()
-                if l == nil then
-                    __continue122 = true
-                    break
-                end
-                x = x + l.x
-                y = y + l.y
-                seen = seen + 1
-                __continue122 = true
-            until true
-            if not __continue122 then
-                break
-            end
-        end
-    end
-    x = seen > 0 and x / seen or me.x
-    y = seen > 0 and y / seen or me.y
-    local dx = me.x - x
-    local dy = me.y - y
-    local len = math.sqrt(dx * dx + dy * dy)
-    if len < 1 then
-        local back = GetLocationAlongLane(
-            bot:GetAssignedLane(),
-            math.max(
-                0,
-                GetAmountAlongLane(
-                    bot:GetAssignedLane(),
-                    me
-                ).amount - 0.05
-            )
-        )
-        dx = back.x - me.x
-        dy = back.y - me.y
-    end
-    local n = math.max(
-        1,
-        math.sqrt(dx * dx + dy * dy)
-    )
-    return Vector(x + dx / n * (AGGRO_CLEAR + 100), y + dy / n * (AGGRO_CLEAR + 100), me.z)
-end
-____exports.DESIRE_TRADE = 0.6
-____exports.DESIRE_KILL = 0.75
-MIN_HP = 0.5
-BEHIND_BY = 0.15
-KILL_HP = 0.25
-COMMIT_HP = 0.4
---- The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll).
--- Before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at even numbers with the enemy
--- over 40%, about 110 such core encounters a game, so the base is low (`judgement`). lfpchk1 at 0.05: 68 chances and 1.6
--- fired a game at a mean weight of 0.03, so 0.1 for about 4. A chance per target at most every FIGHT_ROLL_EVERY seconds, so standing beside a hero is not a roll a frame.
-____exports.LANE_FIGHT = "lane_fight"
-local FIGHT_BASE = 0.1
-FIGHT_ROLL_EVERY = 15
-FIGHT_TIME = 8
-JOIN_NEAR = 1600
-JOIN_WALK = 600
-MAX_WAVE = 3
-MAX_CREEPS_ON_ME = 2
-KEEP_HP_SLACK = 0.05
-KEEP_WAVE_SLACK = 1
-LOSING_BY = 0.05
-KILL_TIME = 6
-REACH = 100
-HARASS_REACH = 300
---- A support prefers an enemy hero whose attack target is a lane creep (a last-hit attempt: its swing goes to the creep, not back
--- at us) by counting it this much nearer (judgement).
-local PUNISH_BONUS = 300
-NEAR = 1200
-CREEP_AGGRO = 500
-LANE_WIDTH = 1200
-AGGRO_CLEAR = 550
-AGGRO_COOLDOWN = 3
-COOLDOWN_LEFT = 0.3
-STEP_OUT_LIMIT = 2
---- A hit back answers a hero that damaged us within this (s): the threat read's `EngagedRecent`. `judgement`.
-local HIT_RECENT = 1
-LOST_AFTER = 1
---- The aggro-free attack, for core trades and support harass alike (one plan, so not an engine verb: a lane technique is bot code,
--- CLAUDE.md rule 3; slice support-spot). What a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
--- order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
-function ____exports.AggroPlan(now, primedAt, creepsWithinClear)
-    if primedAt ~= nil and now - primedAt < AGGRO_COOLDOWN - COOLDOWN_LEFT then
-        return "attack"
-    end
-    return creepsWithinClear == 0 and "prime" or "step_out"
-end
-episodes = {}
---- After a trade lost on the exchange: the core's HP fraction minus the target's when that trade began. No new trade until the
--- gap is back there (the core regained what it lost relative to the enemy), instead of a fixed wait.
-local recoverTo = {}
---- Which arm this frame's GetDesire took: Think follows it.
-local ownsFrame = {}
-primedAt = {}
-rolledAt = {}
---- The lane fight's own hard zeros on top of the library's (HP floor, two down, a target by its tower): the decline rule (the
--- other side more near the place) and the trade's `behind` (the hero well under the target's HP).
-function ____exports.FightZero(i)
-    if i.theirs > i.ours then
-        return "outnumbered"
-    end
-    if i.targetHp ~= nil and i.hp < i.targetHp - BEHIND_BY then
-        return "behind"
-    end
-    return nil
-end
-Plays.Define(____exports.LANE_FIGHT, {base = FIGHT_BASE, timeout = FIGHT_TIME + 2, chases = true, zero = ____exports.FightZero})
---- Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it).
-function ____exports.Owns(bot)
-    return Ours.On("CoreTrade") and CoreLastHit.Applies(bot) or isSupport(bot)
-end
---- The enemy hero is swinging at a lane creep: a last-hit or deny attempt.
-local function lastHitting(h)
-    local t = h:GetAttackTarget()
-    return t ~= nil and t ~= nil and not t:IsNull() and t:IsCreep() and not t:IsHero()
-end
---- Slice hit-back (D24, `Ours.HitBack`): the enemy hero in reach that hit us within HIT_RECENT while one of our lane creeps
--- stands within creep aggro of it. It pays our creeps for every hit, so hitting back is the exchange D24 says to take even
--- beside their wave or a little behind on HP; the respects that remain are the trade's tower, numbers, HP floor and creeps on us.
-local function hitBackTarget(bot)
+function hitBackTarget(bot)
     if not Ours.On("HitBack") then
         return nil
     end
@@ -496,7 +133,7 @@ local function hitBackTarget(bot)
     local best
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(
-        reachOf(bot),
+        reachOf(bot) + HIT_BACK_WALK,
         true,
         BotMode.None
     )) do
@@ -529,14 +166,7 @@ local function hitBackTarget(bot)
     end
     return best
 end
---- Hitters are looked for this far out: past any laning hero's attack range.
-local HITTER_RADIUS = 1600
---- One `ev=trade_no` per run of unanswered hits: none for the same hero within this (s), as the D24h view's onset.
-local NO_EVERY = 5
-local lastNo = {}
---- Logs why no trade opened this frame while an enemy hero is hitting us (`ev=trade_no`), so the D24h view's unanswered
--- cases have a cause. Always returns 0, the desire of a frame with no trade.
-local function unanswered(bot, now, why, i)
+function unanswered(bot, now, why, i)
     local pid = bot:GetPlayerID()
     local last = lastNo[pid]
     if last ~= nil and now - last < NO_EVERY then
@@ -625,6 +255,397 @@ local function unanswered(bot, now, why, i)
     )
     return 0
 end
+function inLane(bot)
+    return Phase.IsLaningFor(bot) and GetAmountAlongLane(
+        bot:GetAssignedLane(),
+        bot:GetLocation()
+    ).distance <= LANE_WIDTH
+end
+function frac(u)
+    return u:GetHealth() / math.max(
+        1,
+        u:GetMaxHealth()
+    )
+end
+function valid(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen() and not u:IsIllusion()
+end
+function ____exports.Gather(bot, target)
+    local enemiesNear = 0
+    for ____, h in ipairs(bot:GetNearbyHeroes(NEAR, true, BotMode.None)) do
+        if valid(h) then
+            enemiesNear = enemiesNear + 1
+        end
+    end
+    local alliesNear = 0
+    for ____, h in ipairs(bot:GetNearbyHeroes(NEAR, false, BotMode.None)) do
+        if h:IsAlive() and not h:IsIllusion() then
+            alliesNear = alliesNear + 1
+        end
+    end
+    local enemyCreepsNear = 0
+    local hitByCreeps = 0
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
+        do
+            local __continue53
+            repeat
+                if not c:IsAlive() then
+                    __continue53 = true
+                    break
+                end
+                enemyCreepsNear = enemyCreepsNear + 1
+                if c:GetAttackTarget() == bot then
+                    hitByCreeps = hitByCreeps + 1
+                end
+                __continue53 = true
+            until true
+            if not __continue53 then
+                break
+            end
+        end
+    end
+    local tower = false
+    local reach = LaneConfig.TowerReach()
+    for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
+        do
+            local __continue57
+            repeat
+                if not t:IsAlive() then
+                    __continue57 = true
+                    break
+                end
+                if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
+                    tower = true
+                end
+                if t:GetAttackTarget() == bot then
+                    hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
+                end
+                __continue57 = true
+            until true
+            if not __continue57 then
+                break
+            end
+        end
+    end
+    return {
+        hp = frac(bot),
+        targetHp = frac(target),
+        enemiesNear = enemiesNear,
+        alliesNear = math.max(1, alliesNear),
+        enemyCreepsNear = enemyCreepsNear,
+        hitByCreeps = hitByCreeps,
+        tower = tower
+    }
+end
+function hitBack(bot, now, why, inputs)
+    local hb = hitBackTarget(bot)
+    if hb == nil then
+        return unanswered(bot, now, why, inputs)
+    end
+    local hd = ____exports.Decide(
+        ____exports.Gather(bot, hb),
+        false,
+        killHpFor(bot),
+        true
+    )
+    if hd.kind == nil then
+        return unanswered(
+            bot,
+            now,
+            "hb_" .. tostring(hd.respect)
+        )
+    end
+    return open(
+        bot,
+        hd.kind,
+        hb,
+        now,
+        nil,
+        nil,
+        true
+    )
+end
+function open(bot, kind, target, now, play, joined, hb)
+    if joined then
+        Plays.Join(play, bot)
+    end
+    episodes[bot:GetPlayerID()] = {
+        kind = kind,
+        target = target,
+        tpid = target:GetPlayerID(),
+        offeredAt = now,
+        lf = ____exports.OwnsLaneFights(bot),
+        hp0 = bot:GetHealth(),
+        thp0 = target:GetHealth(),
+        thpSeen = target:GetHealth(),
+        inputs = ____exports.Gather(bot, target),
+        primes = 0,
+        stepOuts = 0,
+        aggro = 0,
+        play = play,
+        joined = joined,
+        hb = hb
+    }
+    return kind == "trade" and ____exports.DESIRE_TRADE or ____exports.DESIRE_KILL
+end
+function joinable(bot)
+    if Plays.Of(bot) ~= nil then
+        return nil
+    end
+    local reach = reachOf(bot) + JOIN_WALK
+    for ____, p in ipairs(Plays.Near(
+        bot:GetLocation(),
+        JOIN_NEAR
+    )) do
+        do
+            local __continue86
+            repeat
+                local t = p.target
+                if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
+                    __continue86 = true
+                    break
+                end
+                local r = ____exports.Decide(
+                    ____exports.Gather(bot, t),
+                    false,
+                    killHpFor(bot)
+                ).respect
+                if r == "tower" or r == "outnumbered" then
+                    __continue86 = true
+                    break
+                end
+                if Plays.Weigh(Plays.InputsOf({
+                    kind = p.kind,
+                    by = bot,
+                    target = t,
+                    at = t:GetLocation()
+                })).zero ~= nil then
+                    __continue86 = true
+                    break
+                end
+                return p
+            until true
+            if not __continue86 then
+                break
+            end
+        end
+    end
+    return nil
+end
+function rollFight(bot, target, now)
+    local pid = bot:GetPlayerID()
+    local ____temp_5 = rolledAt[pid] or ({})
+    rolledAt[pid] = ____temp_5
+    local seen = ____temp_5
+    local tpid = target:GetPlayerID()
+    local last = seen[tpid]
+    if last ~= nil and now - last < FIGHT_ROLL_EVERY then
+        return nil
+    end
+    seen[tpid] = now
+    return Plays.Roll(
+        {
+            kind = ____exports.LANE_FIGHT,
+            by = bot,
+            target = target,
+            at = target:GetLocation()
+        },
+        now
+    )
+end
+function keepWhy(bot, ep, now)
+    local t = ep.target
+    if not IsHeroAlive(ep.tpid) then
+        return "target_dead"
+    end
+    if not valid(t) then
+        return "target_lost"
+    end
+    ep.thpSeen = t:GetHealth()
+    if ep.startedAt == nil then
+        return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
+    end
+    if ep.kind == "kill" then
+        if now - ep.startedAt > KILL_TIME then
+            return "time"
+        end
+    elseif ep.kind == "fight" then
+        if now - ep.startedAt > FIGHT_TIME then
+            return "time"
+        end
+        if ep.play ~= nil and not __TS__ArrayIncludes(
+            Plays.Active(),
+            ep.play
+        ) then
+            return "play_end"
+        end
+        if FR.HpFraction(bot) < Plays.SETTINGS.HpFloor then
+            return "hp"
+        end
+        local r = ____exports.Decide(
+            ____exports.Gather(bot, ep.target),
+            true,
+            killHpFor(bot)
+        ).respect
+        return (r == "tower" or r == "outnumbered") and r or nil
+    else
+        if ep.stepSince ~= nil and now - ep.stepSince > STEP_OUT_LIMIT then
+            return "no_clear"
+        end
+        local reach = reachOf(bot) + (ep.hb == true and HIT_BACK_WALK or 0)
+        local primed = primedAt[bot:GetPlayerID()]
+        local walkingIn = primed ~= nil and now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT
+        if ep.stepSince == nil and not walkingIn and GetUnitToUnitDistance(bot, ep.target) > reach then
+            return "out_of_reach"
+        end
+        if ____exports.Deficit(
+            ep.hp0,
+            bot:GetHealth(),
+            ep.thp0,
+            ep.target:GetHealth(),
+            bot:GetMaxHealth()
+        ) > LOSING_BY then
+            return "losing"
+        end
+    end
+    local d = ____exports.Decide(
+        ____exports.Gather(bot, ep.target),
+        true,
+        killHpFor(bot),
+        ep.hb == true
+    )
+    if d.kind == nil then
+        return d.respect
+    end
+    return nil
+end
+function stepOutPoint(bot, creeps)
+    local me = bot:GetLocation()
+    local x = 0
+    local y = 0
+    local seen = 0
+    for ____, c in ipairs(creeps) do
+        do
+            local __continue123
+            repeat
+                local l = c:GetLocation()
+                if l == nil then
+                    __continue123 = true
+                    break
+                end
+                x = x + l.x
+                y = y + l.y
+                seen = seen + 1
+                __continue123 = true
+            until true
+            if not __continue123 then
+                break
+            end
+        end
+    end
+    x = seen > 0 and x / seen or me.x
+    y = seen > 0 and y / seen or me.y
+    local dx = me.x - x
+    local dy = me.y - y
+    local len = math.sqrt(dx * dx + dy * dy)
+    if len < 1 then
+        local back = GetLocationAlongLane(
+            bot:GetAssignedLane(),
+            math.max(
+                0,
+                GetAmountAlongLane(
+                    bot:GetAssignedLane(),
+                    me
+                ).amount - 0.05
+            )
+        )
+        dx = back.x - me.x
+        dy = back.y - me.y
+    end
+    local n = math.max(
+        1,
+        math.sqrt(dx * dx + dy * dy)
+    )
+    return Vector(x + dx / n * (AGGRO_CLEAR + 100), y + dy / n * (AGGRO_CLEAR + 100), me.z)
+end
+____exports.DESIRE_TRADE = 0.6
+____exports.DESIRE_KILL = 0.75
+MIN_HP = 0.5
+BEHIND_BY = 0.15
+KILL_HP = 0.25
+COMMIT_HP = 0.4
+--- The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll).
+-- Before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at even numbers with the enemy
+-- over 40%, about 110 such core encounters a game, so the base is low (`judgement`). lfpchk1 at 0.05: 68 chances and 1.6
+-- fired a game at a mean weight of 0.03, so 0.1 for about 4. A chance per target at most every FIGHT_ROLL_EVERY seconds, so standing beside a hero is not a roll a frame.
+____exports.LANE_FIGHT = "lane_fight"
+local FIGHT_BASE = 0.1
+FIGHT_ROLL_EVERY = 15
+FIGHT_TIME = 8
+JOIN_NEAR = 1600
+JOIN_WALK = 600
+MAX_WAVE = 3
+MAX_CREEPS_ON_ME = 2
+KEEP_HP_SLACK = 0.05
+KEEP_WAVE_SLACK = 1
+LOSING_BY = 0.05
+KILL_TIME = 6
+REACH = 100
+HARASS_REACH = 300
+--- A support prefers an enemy hero whose attack target is a lane creep (a last-hit attempt: its swing goes to the creep, not back
+-- at us) by counting it this much nearer (judgement).
+local PUNISH_BONUS = 300
+NEAR = 1200
+CREEP_AGGRO = 500
+LANE_WIDTH = 1200
+AGGRO_CLEAR = 550
+AGGRO_COOLDOWN = 3
+COOLDOWN_LEFT = 0.3
+STEP_OUT_LIMIT = 2
+HIT_RECENT = 1
+HIT_BACK_WALK = 300
+LOST_AFTER = 1
+--- The aggro-free attack, for core trades and support harass alike (one plan, so not an engine verb: a lane technique is bot code,
+-- CLAUDE.md rule 3; slice support-spot). What a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
+-- order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
+function ____exports.AggroPlan(now, primedAt, creepsWithinClear)
+    if primedAt ~= nil and now - primedAt < AGGRO_COOLDOWN - COOLDOWN_LEFT then
+        return "attack"
+    end
+    return creepsWithinClear == 0 and "prime" or "step_out"
+end
+episodes = {}
+--- After a trade lost on the exchange: the core's HP fraction minus the target's when that trade began. No new trade until the
+-- gap is back there (the core regained what it lost relative to the enemy), instead of a fixed wait.
+local recoverTo = {}
+--- Which arm this frame's GetDesire took: Think follows it.
+local ownsFrame = {}
+primedAt = {}
+rolledAt = {}
+--- The lane fight's own hard zeros on top of the library's (HP floor, two down, a target by its tower): the decline rule (the
+-- other side more near the place) and the trade's `behind` (the hero well under the target's HP).
+function ____exports.FightZero(i)
+    if i.theirs > i.ours then
+        return "outnumbered"
+    end
+    if i.targetHp ~= nil and i.hp < i.targetHp - BEHIND_BY then
+        return "behind"
+    end
+    return nil
+end
+Plays.Define(____exports.LANE_FIGHT, {base = FIGHT_BASE, timeout = FIGHT_TIME + 2, chases = true, zero = ____exports.FightZero})
+--- Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it).
+function ____exports.Owns(bot)
+    return Ours.On("CoreTrade") and CoreLastHit.Applies(bot) or isSupport(bot)
+end
+--- The enemy hero is swinging at a lane creep: a last-hit or deny attempt.
+local function lastHitting(h)
+    local t = h:GetAttackTarget()
+    return t ~= nil and t ~= nil and not t:IsNull() and t:IsCreep() and not t:IsHero()
+end
+HITTER_RADIUS = 1600
+NO_EVERY = 5
+lastNo = {}
 local function nearestTarget(bot)
     local reach = reachOf(bot)
     local support = isSupport(bot)
@@ -789,7 +810,7 @@ function ____exports.Desire(bot)
         end
     end
     if target == nil or inputs == nil then
-        return unanswered(bot, now, "no_target")
+        return hitBack(bot, now, "no_target")
     end
     if owns and d.kind ~= "kill" and d.respect ~= "tower" and d.respect ~= "outnumbered" then
         local play = rollFight(bot, target, now)
@@ -807,32 +828,7 @@ function ____exports.Desire(bot)
     local gap = recoverTo[pid]
     local held = d.kind == "trade" and gap ~= nil and inputs.hp - inputs.targetHp < gap - 0.000001
     if d.kind == nil or held then
-        local hb = hitBackTarget(bot)
-        if hb == nil then
-            return unanswered(bot, now, d.respect or "gap", inputs)
-        end
-        local hd = ____exports.Decide(
-            ____exports.Gather(bot, hb),
-            false,
-            killHpFor(bot),
-            true
-        )
-        if hd.kind == nil then
-            return unanswered(
-                bot,
-                now,
-                "hb_" .. tostring(hd.respect)
-            )
-        end
-        return open(
-            bot,
-            hd.kind,
-            hb,
-            now,
-            nil,
-            nil,
-            true
-        )
+        return hitBack(bot, now, d.respect or "gap", inputs)
     end
     if d.kind == "trade" and gap ~= nil then
         recoverTo[pid] = nil
@@ -862,19 +858,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue112
+            local __continue113
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue112 = true
+                    __continue113 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue112 = true
+                __continue113 = true
             until true
-            if not __continue112 then
+            if not __continue113 then
                 break
             end
         end
