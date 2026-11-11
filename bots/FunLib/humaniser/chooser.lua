@@ -250,6 +250,10 @@ local ADMITTED = {retreat = EPISODE_MODES, job = ____exports.EXCEPTIONS}
 -- host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
 -- not take it either.
 function ____exports.Decide(bot, mode)
+    local rig = Drill.RigDesire(bot, mode)
+    if rig ~= nil then
+        return rig
+    end
     local jobs = Ours.On("JobChooser")
     local ____Arbiter_Hold_5 = Arbiter.Hold
     local ____bot_4 = bot
@@ -355,6 +359,10 @@ end
 -- does a lane-only hero (spells on creeps would change the last-hit contest under test); a chaser of an entry with
 -- `chaserCasts` does, in a chase rep. `items`: the caller is OHA's item use, which a cast of an entry with `castItems` keeps.
 function ____exports.HoldsCasts(bot, items)
+    local rig = Drill.RigHoldsCasts(bot, items == true)
+    if rig ~= nil then
+        return rig
+    end
     if StackJob.Benched(bot) and not Drill.Casts(bot) or Overrides.LaneOnly(bot) and not (items == true and Drill.CastItems(bot)) then
         return true
     end

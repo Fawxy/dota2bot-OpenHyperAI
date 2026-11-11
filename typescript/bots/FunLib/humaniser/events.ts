@@ -867,6 +867,21 @@ export const EVENTS = {
         dend: "num",
         uns: "num",
         rend: "num",
+        /** Rigs (an entry with `rig`): ph=rep and ph=ready carry the rep's kind `var`; ph=step when a rig hero `pid` moves to
+         *  step `i` (0-based) `step` of its setup; ph=ready once per rep and cast hero: `ok` 1 when every ready check held (the
+         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|holds|lacks|clear|near: the rep is
+         *  invalid), `secs` from the rep's start, the cast's HP share `hp`; ph=spot once per rig spot: its point `x`, `y`, how
+         *  far it moved to be passable `d`, the nearest Radiant and Dire tower `rt`, `dt`; ph=wait when the cast's first
+         *  failing ready check `fail` changes; ph=buy per purchase try (`step` the item, `res` the API's result, `gold`). */
+        var: "str",
+        i: "num",
+        step: "str",
+        ok: "num",
+        fail: "str",
+        hp: "num",
+        rt: "num",
+        dt: "num",
+        gold: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
