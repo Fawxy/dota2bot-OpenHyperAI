@@ -243,6 +243,34 @@ do
 	check("entry overflow message raised", type(errd) == "string" and errd:find("overflow", 1, true) ~= nil, tostring(errd))
 end
 
+-- Perf probe (Telemetry.Perf): an entry point's time is all script time; inside it only the outermost guarded call counts
+-- as ours, and a guarded call made from it is reported under its caller, not a second time as ours.
+do
+	local realClock, C, spin = os.clock, 0, true
+	os.clock = function() if spin then C = C + 0.01 end return C end
+	local H = fresh({ Enable = true, Perf = true, PerfInterval = 10 })
+	spin = false
+	local inner = H.Telemetry.Guard("Test.Inner", function() C = C + 0.001 end)
+	local outer = H.Telemetry.Guard("Test.Outer", function() C = C + 0.002 inner() return "kept" end)
+	local kept
+	local entry = H.Telemetry.Entry("mode_test.Think", function() C = C + 0.004 kept = outer() return 1, "two" end)
+	entry()
+	T = T + 10
+	local a, b = entry()
+	os.clock = realClock
+	local near = function(line, key, want) return line ~= nil and math.abs(tonumber(field(line, key)) - want) < 0.01 end
+	local row = function(kind, where)
+		for _, l in ipairs(events("perf_top")) do if field(l, "kind") == kind and field(l, "where") == where then return l end end
+	end
+	check("timed entry and guard pass returns through", a == 1 and b == "two" and kept == "kept")
+	local p = events("perf")[1]
+	check("one window, the first call only opens it", #events("perf") == 1, #events("perf"))
+	check("entry time is the whole call", near(p, "entry_ms", 7), p)
+	check("ours is the outermost guard, nested not added again", near(p, "ours_ms", 3), p)
+	check("nested guard reported under its caller", near(row("sub", "Test.Outer>Test.Inner"), "ms", 1), row("sub", "Test.Outer>Test.Inner"))
+	check("nested guard has no row of its own", row("ours", "Test.Inner") == nil)
+end
+
 -- Entry is a no-op with telemetry off.
 do
 	local H = fresh({ Enable = false })

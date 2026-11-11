@@ -44,6 +44,9 @@ export const DEFAULTS = {
     LuaErrorRepeat: 10,
     // ev=creep_death (BACKLOG 1.12, WO-025): enemy lane creep deaths near own heroes are logged until this game time.
     CreepDeathUntil: 720,
+    // Perf probe: CPU time per OHA entry point, in our guarded calls and in event printing (ev=perf, ev=perf_top).
+    Perf: false,
+    PerfInterval: 10,
 };
 
 export type TelemetryConfig = typeof DEFAULTS;
@@ -151,16 +154,165 @@ type BotPair = PairOf<typeof BOT>;
 type LanePair = Extract<UnitPair, ["ln" | "s" | "ld", any]>;
 export type Fields<K extends EventName> = Pair<K>[];
 
+interface PerfStat {
+    kind: string;
+    n: number;
+    s: number;
+    max: number;
+}
+let perfClock: ((this: void) => number) | undefined;
+let perfProbed = false;
+let perfStats: Record<string, PerfStat> = {};
+const perfTotal = { entry: 0, ours: 0, log: 0, logN: 0 };
+const perfWindow = { at: undefined as number | undefined, clock: 0, real: 0 };
+let perfOursDepth = 0;
+let perfOuter = "";
+const PERF_VM = string.gsub(tostring(perfTotal), "table: ", "")[0];
+
 /** For names built at run time (farm_pattern trips, the engine adapter); listed as untyped in tools/hlog/EVENTS.md. */
 export function EventUntyped(ev: string, fields: [string, any][]): void {
     if (!IsEnabled()) return;
+    const t0 = perfClock !== undefined ? perfClock() : 0;
     const line = FormatLine(ev, fields);
     if (sink !== undefined) {
         sink(line);
-        return;
+    } else {
+        const rawPrint: ((s: string) => void) | undefined = (Utils as any).RawPrint;
+        (rawPrint ?? print)(line);
     }
-    const rawPrint: ((s: string) => void) | undefined = (Utils as any).RawPrint;
-    (rawPrint ?? print)(line);
+    if (perfClock !== undefined) {
+        perfTotal.log += perfClock() - t0;
+        perfTotal.logN++;
+    }
+}
+
+// Perf probe (Telemetry.Perf). Three overlapping totals: `entry` is every OHA entry point (all script time, ours
+// included), `ours` the outermost Guard()ed call (nested guards are not timed twice), `log` event formatting and printing.
+/**
+ * Picks the clock once, at the first Entry(): os.clock when the bot VM has it, else RealTime when it advances inside
+ * one call. Logs what it found either way, so one game answers whether script time can be measured at all.
+ */
+function perfProbe(): void {
+    if (perfProbed) return;
+    perfProbed = true;
+    if (!IsEnabled() || Get().Perf !== true) return;
+    const osClock: ((this: void) => number) | undefined = type(os) === "table" && type(os.clock) === "function" ? os.clock : undefined;
+    const real: ((this: void) => number) | undefined = type((_G as any).RealTime) === "function" ? (_G as any).RealTime : undefined;
+    const r0 = real !== undefined ? real() : 0;
+    const c0 = osClock !== undefined ? osClock() : 0;
+    let res = 0;
+    let spins = 0;
+    for (let i = 0; i < 3000000; i++) {
+        spins = i;
+        if (osClock !== undefined) {
+            const d = osClock() - c0;
+            if (d > 0 && res === 0) res = d;
+            if (d > 0.005) break;
+        }
+    }
+    const realMoved = real !== undefined ? real() - r0 : 0;
+    perfClock = osClock ?? (realMoved > 0 ? real : undefined);
+    Event("perf_probe", [
+        ["vm", PERF_VM],
+        ["os_clock", osClock !== undefined ? 1 : 0],
+        ["real_time", real !== undefined ? 1 : 0],
+        ["res_us", res * 1e6],
+        ["spins", spins],
+        ["spin_cpu_ms", osClock !== undefined ? (osClock() - c0) * 1000 : undefined],
+        ["spin_real_ms", realMoved * 1000],
+        ["src", perfClock === undefined ? "none" : osClock !== undefined ? "os.clock" : "RealTime"],
+    ]);
+}
+
+function perfAdd(kind: "entry" | "ours" | "sub", where: string, t0: number): void {
+    const d = perfClock!() - t0;
+    let st = perfStats[where];
+    if (st === undefined) {
+        st = { kind, n: 0, s: 0, max: 0 };
+        perfStats[where] = st;
+    }
+    st.n++;
+    st.s += d;
+    if (d > st.max) st.max = d;
+    if (kind === "entry" || kind === "ours") perfTotal[kind] += d;
+}
+
+function perfFlush(): void {
+    const now = DotaTime();
+    const real: ((this: void) => number) | undefined = (_G as any).RealTime;
+    const w = perfWindow;
+    if (w.at !== undefined && now - w.at < Get().PerfInterval) return;
+    if (w.at !== undefined) {
+        const [okPid, pid] = pcall(currentPID);
+        Event("perf", [
+            ["pid", okPid ? pid : undefined],
+            ["vm", PERF_VM],
+            ["dt", now - w.at],
+            ["cpu_ms", (perfClock!() - w.clock) * 1000],
+            ["real_ms", real !== undefined ? (real() - w.real) * 1000 : undefined],
+            ["entry_ms", perfTotal.entry * 1000],
+            ["ours_ms", perfTotal.ours * 1000],
+            ["log_ms", perfTotal.log * 1000],
+            ["log_n", perfTotal.logN],
+        ]);
+        const rows: [string, PerfStat][] = [];
+        for (const [where, st] of pairs(perfStats)) rows.push([where, st]);
+        table.sort(rows, (a, b) => a[1].s > b[1].s);
+        for (let i = 0; i < math.min(rows.length, 25); i++) {
+            const [where, st] = rows[i];
+            Event("perf_top", [
+                ["vm", PERF_VM],
+                ["kind", st.kind],
+                ["where", where],
+                ["n", st.n],
+                ["ms", st.s * 1000],
+                ["max_ms", st.max * 1000],
+            ]);
+        }
+    }
+    perfStats = {};
+    perfTotal.entry = 0;
+    perfTotal.ours = 0;
+    perfTotal.log = 0;
+    perfTotal.logN = 0;
+    w.at = now;
+    w.clock = perfClock!();
+    w.real = real !== undefined ? real() : 0;
+}
+
+function perfTimedOurs<F extends AnyFn>(where: string, g: F): F {
+    if (perfClock === undefined) return g;
+    const enter = (): number => {
+        perfOursDepth = 1;
+        perfOuter = where;
+        return perfClock!();
+    };
+    // Guarded calls made directly from the outermost one, keyed by their caller (kind `sub`, inclusive).
+    const subKeys: Record<string, string | undefined> = {};
+    const enterSub = (): number => {
+        perfOursDepth = 2;
+        return perfClock!();
+    };
+    const doneSub = (t0: number, ...res: any[]): any => {
+        perfOursDepth = 1;
+        let key = subKeys[perfOuter];
+        if (key === undefined) {
+            key = `${perfOuter}>${where}`;
+            subKeys[perfOuter] = key;
+        }
+        perfAdd("sub", key, t0);
+        return $multi(...res);
+    };
+    const done = (t0: number, ...res: any[]): any => {
+        perfOursDepth = 0;
+        perfAdd("ours", where, t0);
+        return $multi(...res);
+    };
+    return ((b1: any, b2: any, b3: any, b4: any, b5: any, b6: any) => {
+        if (perfOursDepth === 0) return done(enter(), g(b1, b2, b3, b4, b5, b6));
+        if (perfOursDepth === 1) return doneSub(enterSub(), g(b1, b2, b3, b4, b5, b6));
+        return g(b1, b2, b3, b4, b5, b6);
+    }) as unknown as F;
 }
 
 /** Typed event: the name and every key must be declared in events.ts. The printed line is exactly what EventUntyped prints. */
@@ -259,7 +411,8 @@ export function Guard<F extends AnyFn>(where: string, fn: F, fallback?: AnyFn): 
         if (ok) return $multi(...res);
         return fail(b1, b2, b3, b4, b5, b6, ...(res as [any]));
     };
-    return ((b1: any, b2: any, b3: any, b4: any, b5: any, b6: any) => {
+    perfProbe();
+    return perfTimedOurs(where, ((b1: any, b2: any, b3: any, b4: any, b5: any, b6: any) => {
         a1 = b1;
         a2 = b2;
         a3 = b3;
@@ -268,7 +421,7 @@ export function Guard<F extends AnyFn>(where: string, fn: F, fallback?: AnyFn): 
         a6 = b6;
         tb = undefined;
         return finish(b1, b2, b3, b4, b5, b6, ...(xpcall(thunk, handler) as unknown as [boolean, any]));
-    }) as unknown as F;
+    }) as unknown as F);
 }
 
 /**
@@ -288,7 +441,16 @@ export function Entry<F extends AnyFn>(where: string, fn: F | undefined): F | un
         if (ok) return $multi(...res);
         return fail(...(res as [any]));
     };
-    return ((...args: any[]) => finish(...(pcall(fn, ...args) as unknown as [boolean, any]))) as unknown as F;
+    perfProbe();
+    if (perfClock === undefined) return ((...args: any[]) => finish(...(pcall(fn, ...args) as unknown as [boolean, any]))) as unknown as F;
+    const timed = (t0: number, ok: boolean, ...res: any[]): any => {
+        perfAdd("entry", name, t0);
+        perfOursDepth = 0;
+        pcall(perfFlush);
+        if (ok) return $multi(...res);
+        return fail(...(res as [any]));
+    };
+    return ((...args: any[]) => timed(perfClock!(), ...(pcall(fn, ...args) as unknown as [boolean, any]))) as unknown as F;
 }
 
 /** Replaces each named export of a module table with a Guard()ed one. Lua callers resolve exports at call time. */
