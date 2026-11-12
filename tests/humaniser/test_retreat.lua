@@ -410,8 +410,9 @@ end
 -- Even-fight round 2 (D24): the hold stands only while the heroes hitting us pay for it in creep aggro (our lane creeps within
 -- 500 of them). Hitting us from outside it, the same even 2v2 is left on `threat`, as with the switch off.
 do
-	local function hitFrom(creepX)
+	local function hitFrom(creepX, fact)
 		local H, bot = world()
+		if fact ~= nil then package.loaded["bots/FunLib/humaniser/drill"].RigCreepAggro = function() return fact end end
 		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = true
 		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
 		ally.maxhp, ally.hp = 600, 600
@@ -431,6 +432,12 @@ do
 	local freeOn, freeLines = hitFrom(-1200)
 	check("aggro: the same two hitting us with no creep of ours within 500 leave why=threat, logged unp=2",
 		freeOn and field(freeLines[1], "why") == "threat" and field(freeLines[1], "unp") == "2", freeLines[1])
+	-- A drill rig supplies the fact (creep_aggro.Paid, as the hit back reads it): on1, off the lane, the hold read the empty
+	-- map and our retreat left every 1v1 the hit back was answering.
+	check("aggro: rig fact true, no creep of ours near: held", not hitFrom(-1200, true))
+	local rigOn, rigLines = hitFrom(150, false)
+	check("aggro: rig fact false, our creep beside them: they leave why=threat",
+		rigOn and field(rigLines[1], "why") == "threat" and field(rigLines[1], "unp") == "2", rigLines[1])
 end
 
 -- A death ends the episode with res=died.

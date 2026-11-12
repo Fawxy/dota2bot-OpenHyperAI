@@ -191,7 +191,8 @@ export const TABLE: Record<string, Entry> = {
     // Slice hit-back (D24's hit-back half). half: decision. Rebuilt off
     // the lane (rig1, rig2 at the lane front: ready 6 of 20, the wave and the HP gap sat right by chance). Facts the hit back
     // reads: an enemy hero damaged the cast within 1 s (forced: an actor attacks it); that hero inside our creeps' aggro (the
-    // rep's `aggro`, read in place of the creep test: `RigCreepAggro`); the hitter out of reach but within the walk-in (`far`)
+    // rep's `aggro`, read in place of the creep test by the hit back and the hold alike: `creep_aggro.Paid`; on1: the hold
+    // read the empty map, so our retreat left every 1v1 the hold keeps in games); the hitter out of reach but within the walk-in (`far`)
     // or the cast 16+ points under it (`behind`), the two starts the trade rule alone refuses (no_target, behind); the trade's
     // other respects clear (no tower or creep near the side spot, 1v1, HP over half); the laning stage (window 600) and the cast
     // in its lane (the side spot is 763 from the bot lane, rig2 `ld`). Seed 8 (lineup B): the cast Sven (melee, reach about
@@ -1123,7 +1124,7 @@ function rigState(): RigState | undefined {
 }
 
 /**
- * CANDIDATE(rig-fact): a fact the rig supplies in place of the game's (one consumer, core_trade's hit back). While a rig
+ * A fact the rig supplies in place of the game's (read through creep_aggro.Paid, by the hit back and the hold). While a rig
  * rep runs whose kind sets `aggro`: whether an enemy hero stands inside our lane creeps' aggro; otherwise undefined and
  * the caller reads the game. Off the lane no creep is near, so the rep says.
  */

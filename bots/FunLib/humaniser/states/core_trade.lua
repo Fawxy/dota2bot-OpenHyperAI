@@ -1,14 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__ArraySome(self, callbackfn, thisArg)
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            return true
-        end
-    end
-    return false
-end
-
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -55,15 +46,14 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local killHpFor, isSupport, reachOf, hitBackTarget, inOurAggro, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
-local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
+local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
-local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
@@ -143,7 +133,7 @@ function hitBackTarget(bot)
                     __continue24 = true
                     break
                 end
-                if not inOurAggro(bot, h) then
+                if not CreepAggro.Paid(bot, h) then
                     __continue24 = true
                     break
                 end
@@ -161,18 +151,6 @@ function hitBackTarget(bot)
     end
     return best
 end
-function inOurAggro(bot, h)
-    local forced = Drill.RigCreepAggro()
-    if forced ~= nil then
-        return forced
-    end
-    local radius = LaneFightConfig.Settings().CreepAggroRadius
-    local at = h:GetLocation()
-    return __TS__ArraySome(
-        bot:GetNearbyLaneCreeps(1600, false) or ({}),
-        function(____, c) return c:IsAlive() and GetUnitToLocationDistance(c, at) <= radius end
-    )
-end
 function unanswered(bot, now, why, i)
     local pid = bot:GetPlayerID()
     local last = lastNo[pid]
@@ -183,10 +161,10 @@ function unanswered(bot, now, why, i)
     local hd = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) do
         do
-            local __continue34
+            local __continue31
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue34 = true
+                    __continue31 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -194,9 +172,9 @@ function unanswered(bot, now, why, i)
                     hitter = h
                     hd = d
                 end
-                __continue34 = true
+                __continue31 = true
             until true
-            if not __continue34 then
+            if not __continue31 then
                 break
             end
         end
@@ -205,7 +183,7 @@ function unanswered(bot, now, why, i)
         return 0
     end
     lastNo[pid] = now
-    local agg = inOurAggro(bot, hitter)
+    local agg = CreepAggro.Paid(bot, hitter)
     local g = i or ____exports.Gather(bot, hitter)
     Telemetry.Event(
         "trade_no",
@@ -289,19 +267,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue54
+            local __continue51
             repeat
                 if not c:IsAlive() then
-                    __continue54 = true
+                    __continue51 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue54 = true
+                __continue51 = true
             until true
-            if not __continue54 then
+            if not __continue51 then
                 break
             end
         end
@@ -310,10 +288,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue58
+            local __continue55
             repeat
                 if not t:IsAlive() then
-                    __continue58 = true
+                    __continue55 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -322,9 +300,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue58 = true
+                __continue55 = true
             until true
-            if not __continue58 then
+            if not __continue55 then
                 break
             end
         end
@@ -400,11 +378,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue87
+            local __continue84
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue87 = true
+                    __continue84 = true
                     break
                 end
                 local r = ____exports.Decide(
@@ -413,7 +391,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if r == "tower" or r == "outnumbered" then
-                    __continue87 = true
+                    __continue84 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -422,12 +400,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue87 = true
+                    __continue84 = true
                     break
                 end
                 return p
             until true
-            if not __continue87 then
+            if not __continue84 then
                 break
             end
         end
@@ -528,19 +506,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue124
+            local __continue121
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue124 = true
+                    __continue121 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue124 = true
+                __continue121 = true
             until true
-            if not __continue124 then
+            if not __continue121 then
                 break
             end
         end
@@ -655,10 +633,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue43
+            local __continue40
             repeat
                 if not valid(h) then
-                    __continue43 = true
+                    __continue40 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -666,9 +644,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue43 = true
+                __continue40 = true
             until true
-            if not __continue43 then
+            if not __continue40 then
                 break
             end
         end
@@ -860,19 +838,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue114
+            local __continue111
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue114 = true
+                    __continue111 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue114 = true
+                __continue111 = true
             until true
-            if not __continue114 then
+            if not __continue111 then
                 break
             end
         end

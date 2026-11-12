@@ -1991,7 +1991,7 @@ end
 frontLogged = {}
 FRONT_LANES = {fronttop = Lane.Top, frontmid = Lane.Mid, frontbot = Lane.Bot}
 rigSpots = {}
---- CANDIDATE(rig-fact): a fact the rig supplies in place of the game's (one consumer, core_trade's hit back). While a rig
+--- A fact the rig supplies in place of the game's (read through creep_aggro.Paid, by the hit back and the hold). While a rig
 -- rep runs whose kind sets `aggro`: whether an enemy hero stands inside our lane creeps' aggro; otherwise undefined and
 -- the caller reads the game. Off the lane no creep is near, so the rep says.
 function ____exports.RigCreepAggro()

@@ -234,18 +234,9 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
     end
     return false
 end
-
-local function __TS__ArraySome(self, callbackfn, thisArg)
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            return true
-        end
-    end
-    return false
-end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, valid, unpaid
+local valid, unpaid
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Shop = ____dota.Shop
@@ -261,11 +252,8 @@ local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
+local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
-function dist(a, b)
-    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
-end
 function valid(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
@@ -273,36 +261,24 @@ function unpaid(bot, r)
     if #r.eng == 0 then
         return 0
     end
-    local radius = LaneFightConfig.Settings().CreepAggroRadius
-    local ours = __TS__ArrayFilter(
-        bot:GetNearbyLaneCreeps(1600, false) or ({}),
-        function(____, c) return valid(c) and c:IsAlive() end
-    )
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue97
+            local __continue96
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue97 = true
+                    __continue96 = true
                     break
                 end
-                local at = h:GetLocation()
-                if not __TS__ArraySome(
-                    ours,
-                    function(____, c) return dist(
-                        c:GetLocation(),
-                        at
-                    ) <= radius end
-                ) then
+                if not CreepAggro.Paid(bot, h) then
                     n = n + 1
                 end
-                __continue97 = true
+                __continue96 = true
             until true
-            if not __continue97 then
+            if not __continue96 then
                 break
             end
         end
@@ -373,6 +349,9 @@ local function stateOf(bot)
         states[pid] = s
     end
     return s
+end
+local function dist(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
 local function hpShare(bot)
     return bot:GetHealth() / math.max(

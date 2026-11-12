@@ -10,11 +10,10 @@
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
-import * as Drill from "bots/FunLib/humaniser/drill";
+import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
-import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -253,7 +252,7 @@ function hitBackTarget(bot: Unit): Unit | undefined {
     let bestD = math.huge;
     for (const h of bot.GetNearbyHeroes(reachOf(bot) + HIT_BACK_WALK, true, BotMode.None)) {
         if (!valid(h) || !bot.WasRecentlyDamagedByHero(h, HIT_RECENT)) continue;
-        if (!inOurAggro(bot, h)) continue;
+        if (!CreepAggro.Paid(bot, h)) continue;
         const d = GetUnitToUnitDistance(bot, h);
         if (d < bestD) {
             best = h;
@@ -261,15 +260,6 @@ function hitBackTarget(bot: Unit): Unit | undefined {
         }
     }
     return best;
-}
-
-/** One of our lane creeps stands within creep aggro of `h`; a drill rig supplies the fact instead (`Drill.RigCreepAggro`). */
-function inOurAggro(bot: Unit, h: Unit): boolean {
-    const forced = Drill.RigCreepAggro();
-    if (forced !== undefined) return forced;
-    const radius = LaneFightConfig.Settings().CreepAggroRadius;
-    const at = h.GetLocation();
-    return (bot.GetNearbyLaneCreeps(1600, false) ?? []).some((c) => c.IsAlive() && GetUnitToLocationDistance(c, at) <= radius);
 }
 
 /** Hitters are looked for this far out: past any laning hero's attack range. */
@@ -298,7 +288,7 @@ function unanswered(bot: Unit, now: number, why: string, i?: Inputs): number {
     }
     if (hitter === undefined) return 0;
     lastNo[pid] = now;
-    const agg = inOurAggro(bot, hitter);
+    const agg = CreepAggro.Paid(bot, hitter);
     const g = i ?? Gather(bot, hitter);
     Telemetry.Event("trade_no", [
         ["pid", pid],
