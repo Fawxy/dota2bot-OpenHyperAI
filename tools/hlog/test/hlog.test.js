@@ -556,25 +556,6 @@ function byT(a, b) {
     return t(a) - t(b);
 }
 
-test('compare: picks games by build, skips incomplete ones, and flags a delta under 2 pooled SE as noisy', () => {
-    const { compareGames } = require('../compare');
-    const game = (build, lhs, until = 620) => {
-        const lines = [];
-        lhs.forEach((lh, i) => lines.push(botLine(i + 1, build, 1)));
-        lhs.forEach((lh, i) => lines.push(snapAt(i + 1, 0), snapAt(i + 1, until - 30, { lh }), snapAt(i + 1, until, { lh })));
-        return parseLog(lines.sort(byT).join('\n'))[0];
-    };
-    const games = [game('base', [20, 22]), game('base', [21, 23]), game('base', [99], 300), game('cand', [40, 42]), game('cand', [41, 43]), game('other', [0])];
-    const rows = compareGames(games, { base: 'base', cand: 'cand' });
-    const lh = rows.find(r => r.metric === 'lh' && r.pos === 1);
-    assert.strictEqual(lh.base.n, 4);
-    assert.strictEqual(lh.cand.n, 4);
-    assert.ok(Math.abs(lh.delta - 20) < 1e-9);
-    assert.strictEqual(lh.noisy, false);
-    const noisy = compareGames([game('base', [10, 30]), game('cand', [12, 31])], { base: 'base', cand: 'cand' }).find(r => r.metric === 'lh' && r.pos === 1);
-    assert.strictEqual(noisy.noisy, true);
-});
-
 test('laningMetrics: deaths and kills come from the snapshot scoreboard fields when present', () => {
     const lines = [botLine(1, 'aaa', 1), snapAt(1, 0), snapAt(1, 590).replace('gold=600', 'gold=600 kills=2 deaths=3'), snapAt(1, 620).replace('gold=600', 'gold=600 kills=5 deaths=4')];
     const b = laningMetrics(parseLog(lines.join('\n'))[0]).bots.find(x => x.pid === 1);

@@ -46,7 +46,7 @@ const USAGE = `usage: node tools/hlog/analyse.js [log file] [options]
   --ev mode,lasthit    limit the timeline to these event names
   --snaps              include 1 s snapshots in timelines
   --json               dump the parsed game as JSON; with --laning or --states, those rows as JSON instead
-  --laning [--until T] per-position laning metrics to T (default 10:00), as compare.js computes them
+  --laning [--until T] per-position laning metrics to T (default 10:00)
   --states [--from T] [--until T]  behaviour states per bot, 0:00 (default) to T (default 10:00): seconds per state, switches/min,
                        agreement of the state's host mode with the active mode outside interrupts,
                        task starts, restart lag, end reasons, lane_pos distance (ev=state*, lane_pos, snap)
