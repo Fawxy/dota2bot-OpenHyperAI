@@ -86,6 +86,7 @@ Team-wide: written once per module instance, de-duplicated by `parse.js` within 
 - `d` num: The active mode's desire.
 - `act` num: `GetCurrentActionType`: 0 none, 1 idle, 2 move to, 3 move directly, 4 attack, 5 attack-move, 6 use ability, 7 pick up rune, 8 pick up item, 9 drop item, 10 shrine, 11 delay.
 - `nw` num: Net worth (`GetNetWorth`: gold plus items), for the head-to-head farm readout without replays (`@h2h_farm`).
+- `xpn` num: `GetXPNeededToLevel`: with `lvl` and the patch's level table, the hero's experience (the merge gate's third measure without replays); -1 for non-heroes (API reference); its value at the level cap is unconfirmed.
 - `lf` str: Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers.
 - `ol` num: What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered.
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
@@ -223,6 +224,7 @@ A hero's snapshot, about once a second, for bots and humans. Read by `hero_minut
 - `d` num: The active mode's desire.
 - `act` num: `GetCurrentActionType`: 0 none, 1 idle, 2 move to, 3 move directly, 4 attack, 5 attack-move, 6 use ability, 7 pick up rune, 8 pick up item, 9 drop item, 10 shrine, 11 delay.
 - `nw` num: Net worth (`GetNetWorth`: gold plus items), for the head-to-head farm readout without replays (`@h2h_farm`).
+- `xpn` num: `GetXPNeededToLevel`: with `lvl` and the patch's level table, the hero's experience (the merge gate's third measure without replays); -1 for non-heroes (API reference); its value at the level cap is unconfirmed.
 - `lf` str: Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers.
 - `ol` num: What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered.
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).

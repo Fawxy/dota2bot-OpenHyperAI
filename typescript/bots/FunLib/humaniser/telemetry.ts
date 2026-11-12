@@ -63,6 +63,7 @@ interface StatsUnit {
     GetLastHits(): number;
     GetDenies(): number;
     GetCurrentActionType(): number;
+    GetXPNeededToLevel(): number;
 }
 
 interface Decision {
@@ -721,6 +722,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["act", (bot as unknown as StatsUnit).GetCurrentActionType()]);
     fields.push(["gold", bot.GetGold()]);
     fields.push(["nw", bot.GetNetWorth()]);
+    fields.push(["xpn", (bot as unknown as StatsUnit).GetXPNeededToLevel()]);
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     for (const f of guardedOptionFields(bot)) fields.push(f);
     for (const f of guardedDamageFields(bot)) fields.push(f);
