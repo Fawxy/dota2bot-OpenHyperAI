@@ -188,7 +188,7 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
     },
-    // Slice hit-back (D24's hit-back half; D10's leave-together as a rep kind, user 12/11/2026). half: decision. Rebuilt off
+    // Slice hit-back (D24's hit-back half). half: decision. Rebuilt off
     // the lane (rig1, rig2 at the lane front: ready 6 of 20, the wave and the HP gap sat right by chance). Facts the hit back
     // reads: an enemy hero damaged the cast within 1 s (forced: an actor attacks it); that hero inside our creeps' aggro (the
     // rep's `aggro`, read in place of the creep test: `RigCreepAggro`); the hitter out of reach but within the walk-in (`far`)
@@ -197,13 +197,12 @@ export const TABLE: Record<string, Entry> = {
     // in its lane (the side spot is 763 from the bot lane, rig2 `ld`). Seed 8 (lineup B): the cast Sven (melee, reach about
     // 300); the far hitter Lich (range 550) comes straight at the cast and attacks from 500, so 200 past its reach without
     // stepping in (not via `sidenear`: it snapped to 338 from `side` in rig2); the behind hitter Bristleback (melee) stands
-    // in reach. Controls: `free` (as far, the fact false), `stand` (Lich beside, never
-    // attacking). `pair`: both hitters and the Radiant pos5 beside the cast, which walks home 3 s after ready (leave-together:
-    // the cast leaves within 2 s of it passing 1,200). 120 s reps from 0:00, five inside 10:00 (the cast's heal walk from the
+    // in reach. Controls: `free` (as far, the fact false), `stand` (Lich beside, never attacking). A leave-together rep (`pair`) was dropped (user 12/11/2026: the cast's own retreat left before the partner
+    // did, or the hitters did). 120 s reps from 0:00, five inside 10:00, so rep 5 is a second `far` (the cast's heal walk from the
     // side spot and back is about 60 s). Release: laning (last hits compete), attack (the trade), retreat, idle.
     // `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
     "retreat-hitback": {
-        note: "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand), or both with our pos5 beside it until the pos5 walks home 3 s after ready (pair); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 120, from: 0 },
@@ -216,9 +215,6 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 sidenear: ["r:bot1", -2250, 700],
                 beside: ["r:bot1", -2600, 700],
-                // East of the cast, 337 from it as snapped (rig3: 250 west snapped onto the cast's spot, so the hitters took the
-                // partner for the cast; the attack step takes the hero nearest the cast's spot within 200).
-                partner: ["r:bot1", -2250, 700],
             },
             timeout: 100,
             keeps: ["levelup"],
@@ -247,18 +243,6 @@ export const TABLE: Record<string, Entry> = {
                     aggro: true,
                     setup: { r1: ["heal", "stand side"], d4: ["heal", "stand beside"] },
                     ready: { near: 800 },
-                },
-                {
-                    name: "pair",
-                    aggro: true,
-                    setup: {
-                        r1: ["heal", "stand side until hp 0.72", "stand side"],
-                        r5: ["heal", "stand partner"],
-                        d3: ["heal", "attack r1 until hp 0.72", "attack r1 until hp 0.5", "leave"],
-                        d4: ["heal", "attack r1 until hp 0.5", "leave"],
-                    },
-                    after: { r5: ["wait 3", "leave"] },
-                    ready: { hit: true, behind: 0.16, hpAtLeast: 0.55 },
                 },
             ],
         },

@@ -1548,7 +1548,7 @@ ____exports.TABLE = {
         rep = {every = 90, from = 60, control = 4}
     },
     ["retreat-hitback"] = {
-        note = "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand), or both with our pos5 beside it until the pos5 walks home 3 s after ready (pair); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast = SAFE_CORE,
         others = "bench",
         rep = {every = 120, from = 0},
@@ -1556,29 +1556,17 @@ ____exports.TABLE = {
             half = "decision",
             switch = "HitBack",
             window = 600,
-            spots = {side = {"r:bot1", -2750, 700}, sidenear = {"r:bot1", -2250, 700}, beside = {"r:bot1", -2600, 700}, partner = {"r:bot1", -2250, 700}},
+            spots = {side = {"r:bot1", -2750, 700}, sidenear = {"r:bot1", -2250, 700}, beside = {"r:bot1", -2600, 700}},
             timeout = 100,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {
-                {name = "far", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}},
-                {name = "behind", aggro = true, setup = {r1 = {"heal", "stand side until hp 0.72", "stand side"}, d3 = {
-                    "heal",
-                    "walk sidenear",
-                    "attack r1 until hp 0.72",
-                    "attack r1 until hp 0.55",
-                    "leave"
-                }}, ready = {hit = true, behind = 0.16, hpAtLeast = 0.55}},
-                {name = "free", aggro = false, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}},
-                {name = "stand", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "stand beside"}}, ready = {near = 800}},
-                {
-                    name = "pair",
-                    aggro = true,
-                    setup = {r1 = {"heal", "stand side until hp 0.72", "stand side"}, r5 = {"heal", "stand partner"}, d3 = {"heal", "attack r1 until hp 0.72", "attack r1 until hp 0.5", "leave"}, d4 = {"heal", "attack r1 until hp 0.5", "leave"}},
-                    after = {r5 = {"wait 3", "leave"}},
-                    ready = {hit = true, behind = 0.16, hpAtLeast = 0.55}
-                }
-            }
+            reps = {{name = "far", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}}, {name = "behind", aggro = true, setup = {r1 = {"heal", "stand side until hp 0.72", "stand side"}, d3 = {
+                "heal",
+                "walk sidenear",
+                "attack r1 until hp 0.72",
+                "attack r1 until hp 0.55",
+                "leave"
+            }}, ready = {hit = true, behind = 0.16, hpAtLeast = 0.55}}, {name = "free", aggro = false, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}}, {name = "stand", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "stand beside"}}, ready = {near = 800}}}
         }
     },
     ["retreat-heal-items"] = {
