@@ -1538,12 +1538,13 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
             else bot.Action_MoveToLocation(bot.GetLocation());
             return false;
         }
-        // Once at `from` it attacks from there for the rest of the step, even if the target walks in.
+        // Once at `from` it attacks from there for the rest of the step, even if the target walks in. Before that it also backs
+        // off to `from` (on2: an attacker that arrived first, or stood beside the cast the rep before, hit from in reach).
         if (from !== undefined && st.inPlace[pid] !== true) {
             const t = target.GetLocation();
             const me = bot.GetLocation();
             const dd = math.max(1, math.sqrt((me.x - t.x) ** 2 + (me.y - t.y) ** 2));
-            if (dd > from + RIG_FROM_SLACK) {
+            if (math.abs(dd - from) > RIG_FROM_SLACK) {
                 const goal = passableNear(Vector(t.x + ((me.x - t.x) * from) / dd, t.y + ((me.y - t.y) * from) / dd, me.z));
                 bot.Action_MoveToLocation(goal ?? t);
                 return false;

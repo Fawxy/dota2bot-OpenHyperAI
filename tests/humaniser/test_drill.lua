@@ -707,6 +707,16 @@ do
 	ACTIONS = {}
 	capture(function() tick(d4) tick(d4) end)
 	local goal = lastMoveTo(8)
+	-- on2: a hitter already beside the cast (it arrived first, or stood there the rep before) backs off to 500 before its first hit.
+	d4.loc = Vector(side.x + 230, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) tick(d4) end)
+	local back = lastMoveTo(8)
+	check("hitback rig: a far hitter 230 from the cast backs off to 500 rather than hitting from in reach",
+		back ~= nil and math.abs(dist(back, cast.loc) - 500) < 60 and #ActionsOf(8, "AttackUnit") == 0, back and dist(back, cast.loc))
+	d4.loc = Vector(side.x + 1500, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) tick(d4) end)
 	check("hitback rig: the far hitter walks to 500 from the cast on its own line, not into its attack range",
 		goal ~= nil and math.abs(dist(goal, cast.loc) - 500) < 60 and goal.x > side.x and #ActionsOf(8, "AttackUnit") == 0, goal and dist(goal, cast.loc))
 	d4.loc = Vector(side.x + 500, side.y, 0)

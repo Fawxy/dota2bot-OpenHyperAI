@@ -1346,7 +1346,7 @@ function rigStep(bot, st, step, last)
                 1,
                 math.sqrt((me.x - t.x) ^ 2 + (me.y - t.y) ^ 2)
             )
-            if dd > from + RIG_FROM_SLACK then
+            if math.abs(dd - from) > RIG_FROM_SLACK then
                 local goal = passableNear(Vector(t.x + (me.x - t.x) * from / dd, t.y + (me.y - t.y) * from / dd, me.z))
                 bot:Action_MoveToLocation(goal or t)
                 return false
