@@ -869,12 +869,13 @@ export const EVENTS = {
         rend: "num",
         /** Rigs (an entry with `rig`): ph=rep and ph=ready carry the rep's kind `var`; ph=step when a rig hero `pid` moves to
          *  step `i` (0-based) `step` of its setup; ph=ready once per rep and cast hero: `ok` 1 when every ready check held (the
-         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|holds|lacks|clear|near: the rep is
+         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|hplow|holds|lacks|clear|near|hit|past|behind: the rep is
          *  invalid), `secs` from the rep's start, the cast's HP share `hp`; ph=spot once per rig spot: its point `x`, `y`, how
          *  far it moved to be passable `d`, the nearest Radiant and Dire tower `rt`, `dt`; ph=wait when the cast's first
          *  failing ready check `fail` changes; ph=buy per purchase try (`step` the item, `res` the API's result, `gold`); ph=ready
          *  also carries `rend` (the rep's end), `win` (the end of the stage the rule lives in; a rep ending after it is outside)
-         *  and `rel` (the release list's modes but `idle`, comma-separated). */
+         *  and `rel` (the release list's modes but `idle`, comma-separated); ph=wait and ph=ready carry `d`, the nearest hero
+         *  that hit the cast in the last second, as distance past the cast's trade reach. */
         var: "str",
         win: "num",
         rel: "str",
@@ -1521,6 +1522,32 @@ export const EVENTS = {
         fs: "str",
         fire: "str",
     },
+    /**
+     * An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s.
+     * `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`,
+     * `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left), or `hb_<respect>`
+     * (the hit back itself refused).
+     */
+    trade_no: {
+        pid: "num",
+        role: "str",
+        why: "str",
+        /** The nearest hero that hit us: its pid, distance, attack range, HP fraction; `agg` 1 with one of our lane creeps within creep aggro of it. */
+        tgt: "num",
+        d: "num",
+        reach: "num",
+        har: "num",
+        agg: "num",
+        hp: "num",
+        thp: "num",
+        /** As `ev=trade`: heroes within 1200, enemy lane creeps within 500, enemy units attacking us. */
+        en: "num",
+        al: "num",
+        cr: "num",
+        hc: "num",
+        mode: "num",
+        md: "num",
+    },
     /** One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
         pid: "num",
@@ -1531,6 +1558,8 @@ export const EVENTS = {
         /** `trade`, `kill` (a commit) or `fight` (a lane fight from the play roll: rolled here or joined). */
         kind: "str",
         tgt: "num",
+        /** 1 for a hit back (slice hit-back, `Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro. */
+        hb: "num",
         /** A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own. */
         play: "num",
         join: "num",

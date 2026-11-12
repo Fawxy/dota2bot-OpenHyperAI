@@ -653,7 +653,6 @@ do
 	check("rig timeout: ok=0 fail=holds, the cast stays held", #rt == 1 and field(rt[1], "ok") == "0" and field(rt[1], "fail") == "holds" and Ht.Drill.Held(ct), rt[1])
 end
 
-finish()
 
 -- retreat-chase: a chaser waits behind its own T1 on control reps (user 10/11/2026), not in its fountain, and chases on odd reps.
 do
@@ -673,3 +672,96 @@ do
 	local dF = to and math.sqrt((to.x - fx) ^ 2 + (to.y - fy) ^ 2)
 	check("chase wait: on a control rep it walks to 350 behind its own T1, not to the fountain", to ~= nil and math.abs(d1 - 350) < 5 and dF > 1000, to and (to.x .. "," .. to.y))
 end
+
+-- Slice hit-back's rig (retreat-hitback), rebuilt off the lane: the cast stands at the side spot; `far` is ready only on a
+-- hit from 100-300 past its trade reach at 90%+ HP, `behind` only 16+ points under its hitter; the rep supplies the creep-aggro
+-- fact (`RigCreepAggro`); the far hitter attacks from 500 without stepping in.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local H = world("retreat-hitback")
+	local cast, d3, r5, d4 = hero(1, RAD, 1, dota.Lane.Bot), hero(7, DIRE, 3, dota.Lane.Top), hero(5, RAD, 5, dota.Lane.Bot), hero(8, DIRE, 4, dota.Lane.Bot)
+	for _, u in ipairs({ cast, d3, r5, d4 }) do u.maxhp, u.hp, u.hitBy = 100, 100, {} end
+	-- Seed 8's cast is a melee Sven: reach 150 + 2 x 24 + 100 = 298.
+	cast.range = 150
+	cast.loc, r5.loc = Vector(-6619, -6336, 0), Vector(-6619, -6336, 0)
+	d3.loc, d4.loc = Vector(6928, 6372, 0), Vector(6928, 6372, 0)
+	CREEPS[2], CREEPS[3] = {}, {}
+	ACTIONS = {}
+	local function tick(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	local function lastMoveTo(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
+	local function ready(lines) for _, l in ipairs(lines) do if field(l, "ph") == "ready" then return l end end end
+	local function waitFail(lines) local f for _, l in ipairs(lines) do if field(l, "ph") == "wait" then f = field(l, "fail") end end return f end
+	local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
+
+	-- Rep 1 `far`.
+	T = 5
+	check("hitback rig: the rep's creep-aggro fact is supplied (far: true)", H.Drill.RigCreepAggro() == true)
+	capture(function() tick(cast) end)
+	local side = lastMoveTo(1)
+	check("hitback rig: the cast walks to the side spot, off the lane", side ~= nil and math.abs(side.y - -5000) > 300, side and (side.x .. "," .. side.y))
+	cast.loc = Vector(side.x, side.y, 0)
+	capture(function() tick(cast) end)
+	-- The far hitter comes in from the east, 1,500 off; it walks to 500 from the cast on that line rather than into its range.
+	d4.loc = Vector(side.x + 1500, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) tick(d4) end)
+	local goal = lastMoveTo(8)
+	-- on2: a hitter already beside the cast (it arrived first, or stood there the rep before) backs off to 500 before its first hit.
+	d4.loc = Vector(side.x + 230, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) tick(d4) end)
+	local back = lastMoveTo(8)
+	check("hitback rig: a far hitter 230 from the cast backs off to 500 rather than hitting from in reach",
+		back ~= nil and math.abs(dist(back, cast.loc) - 500) < 60 and #ActionsOf(8, "AttackUnit") == 0, back and dist(back, cast.loc))
+	d4.loc = Vector(side.x + 1500, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) tick(d4) end)
+	check("hitback rig: the far hitter walks to 500 from the cast on its own line, not into its attack range",
+		goal ~= nil and math.abs(dist(goal, cast.loc) - 500) < 60 and goal.x > side.x and #ActionsOf(8, "AttackUnit") == 0, goal and dist(goal, cast.loc))
+	d4.loc = Vector(side.x + 500, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) end)
+	check("hitback rig: at 500 it attacks", #ActionsOf(8, "AttackUnit") == 1 and ActionsOf(8, "AttackUnit")[1].args[1] == cast)
+	-- Released, the cast walks in on it; the hitter keeps attacking from where it stands, not walking off to 500 again.
+	cast.loc = Vector(side.x + 300, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) end)
+	check("hitback rig: once in place the hitter keeps attacking as the cast walks in", #ActionsOf(8, "AttackUnit") == 1 and #ActionsOf(8, "MoveToLocation") == 0)
+	cast.loc = Vector(side.x, side.y, 0)
+
+	check("hitback rig far: standing, not hit: not ready (hit)", waitFail(capture(function() tick(cast) end)) == "hit")
+	d4.loc = Vector(side.x + 350, side.y, 0)
+	cast.hitBy[d4] = T
+	check("hitback rig far: hit from 52 past its reach (in reach of the plain trade's walk): not ready (past)", waitFail(capture(function() tick(cast) end)) == "past")
+	d4.loc = Vector(side.x + 500, side.y, 0)
+	cast.hp = 85
+	check("hitback rig far: from 202 past, but at 85% HP: not ready (hplow)", waitFail(capture(function() tick(cast) end)) == "hplow")
+	cast.hp = 93
+	local r = ready(capture(function() tick(cast) end))
+	check("hitback rig far: hit from 202 past its reach at 93%: ready, the distance on the line", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "far" and field(r, "d") == "202", r)
+	cast.hitBy[d4] = nil
+
+	-- Rep 2 `behind`: the cast is hit to 72% at the side spot; ready only once 16 points under its hitter.
+	T = 125
+	cast.hp = 100
+	check("hitback rig behind: at full HP the cast is not placed yet (stands until 72%)", waitFail(capture(function() tick(cast) tick(cast) end)) == "setup")
+	cast.hp = 72
+	capture(function() tick(cast) tick(cast) end)
+	d3.loc = Vector(side.x + 150, side.y, 0)
+	d3.hp = 85
+	cast.hitBy[d3] = T
+	check("hitback rig behind: 13 points under its hitter: not ready (behind)", waitFail(capture(function() tick(cast) end)) == "behind")
+	d3.hp = 95
+	r = ready(capture(function() tick(cast) end))
+	check("hitback rig behind: 23 points under its hitter in reach: ready", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "behind", r)
+	cast.hitBy[d3] = nil
+
+	T = 245
+	check("hitback rig: the free control supplies the fact false", H.Drill.RigCreepAggro() == false)
+
+	CREEPS[2], CREEPS[3] = {}, {}
+	local Hn = world(nil)
+	check("no drill: no creep-aggro fact, the game decides", Hn.Drill.RigCreepAggro() == nil)
+end
+
+finish()

@@ -15,8 +15,8 @@ import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Lane_ from "bots/FunLib/humaniser/lane";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Drill from "bots/FunLib/humaniser/drill";
+import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 
 export const SETTINGS = {
@@ -698,13 +698,10 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
  */
 function unpaid(bot: Unit, r: Threat.Read): number {
     if (r.eng.length === 0) return 0;
-    const radius = LaneFightConfig.Settings().CreepAggroRadius;
-    const ours = (bot.GetNearbyLaneCreeps(1600, false) ?? []).filter((c) => valid(c) && c.IsAlive());
     let n = 0;
     for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
         if (!valid(h) || !r.eng.includes(h.GetPlayerID())) continue;
-        const at = h.GetLocation();
-        if (!ours.some((c) => dist(c.GetLocation(), at) <= radius)) n++;
+        if (!CreepAggro.Paid(bot, h)) n++;
     }
     return n;
 }

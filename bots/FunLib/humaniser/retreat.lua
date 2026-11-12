@@ -345,8 +345,8 @@ local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
+local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
@@ -396,36 +396,24 @@ function unpaid(bot, r)
     if #r.eng == 0 then
         return 0
     end
-    local radius = LaneFightConfig.Settings().CreepAggroRadius
-    local ours = __TS__ArrayFilter(
-        bot:GetNearbyLaneCreeps(1600, false) or ({}),
-        function(____, c) return valid(c) and c:IsAlive() end
-    )
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue136
+            local __continue135
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue136 = true
+                    __continue135 = true
                     break
                 end
-                local at = h:GetLocation()
-                if not __TS__ArraySome(
-                    ours,
-                    function(____, c) return dist(
-                        c:GetLocation(),
-                        at
-                    ) <= radius end
-                ) then
+                if not CreepAggro.Paid(bot, h) then
                     n = n + 1
                 end
-                __continue136 = true
+                __continue135 = true
             until true
-            if not __continue136 then
+            if not __continue135 then
                 break
             end
         end

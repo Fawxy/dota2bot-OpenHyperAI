@@ -188,6 +188,66 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
     },
+    // Slice hit-back (D24's hit-back half). half: decision. Rebuilt off
+    // the lane (rig1, rig2 at the lane front: ready 6 of 20, the wave and the HP gap sat right by chance). Facts the hit back
+    // reads: an enemy hero damaged the cast within 1 s (forced: an actor attacks it); that hero inside our creeps' aggro (the
+    // rep's `aggro`, read in place of the creep test by the hit back and the hold alike: `creep_aggro.Paid`; on1: the hold
+    // read the empty map, so our retreat left every 1v1 the hold keeps in games); the hitter out of reach but within the walk-in (`far`)
+    // or the cast 16+ points under it (`behind`), the two starts the trade rule alone refuses (no_target, behind); the trade's
+    // other respects clear (no tower or creep near the side spot, 1v1, HP over half); the laning stage (window 600) and the cast
+    // in its lane (the side spot is 763 from the bot lane, rig2 `ld`). Seed 8 (lineup B): the cast Sven (melee, reach about
+    // 300); the far hitter Lich (range 550) comes straight at the cast and attacks from 500, so 200 past its reach without
+    // stepping in (not via `sidenear`: it snapped to 338 from `side` in rig2); the behind hitter Bristleback (melee) stands
+    // in reach. Controls: `free` (as far, the fact false), `stand` (Lich beside, never attacking). A leave-together rep (`pair`) was dropped (user 12/11/2026: the cast's own retreat left before the partner
+    // did, or the hitters did). 120 s reps from 0:00, five inside 10:00, so rep 5 is a second `far` (the cast's heal walk from the
+    // side spot and back is about 60 s). Release: laning (last hits compete), attack (the trade), retreat, idle.
+    // `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
+    "retreat-hitback": {
+        note: "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        cast: SAFE_CORE,
+        others: "bench",
+        rep: { every: 120, from: 0 },
+        rig: {
+            half: "decision",
+            switch: "HitBack",
+            window: 600,
+            spots: {
+                // The heal rig's spots: off the lane and clear of camps.
+                side: ["r:bot1", -2750, 700],
+                sidenear: ["r:bot1", -2250, 700],
+                beside: ["r:bot1", -2600, 700],
+            },
+            timeout: 100,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "far",
+                    aggro: true,
+                    setup: { r1: ["heal", "stand side"], d4: ["heal", "attack r1 from 500 until hp 0.6", "leave"] },
+                    ready: { hit: true, past: [100, 300], hpAtLeast: 0.9 },
+                },
+                {
+                    name: "behind",
+                    aggro: true,
+                    setup: { r1: ["heal", "stand side until hp 0.72", "stand side"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.72", "attack r1 until hp 0.55", "leave"] },
+                    ready: { hit: true, behind: 0.16, hpAtLeast: 0.55 },
+                },
+                {
+                    name: "free",
+                    aggro: false,
+                    setup: { r1: ["heal", "stand side"], d4: ["heal", "attack r1 from 500 until hp 0.6", "leave"] },
+                    ready: { hit: true, past: [100, 300], hpAtLeast: 0.9 },
+                },
+                {
+                    name: "stand",
+                    aggro: true,
+                    setup: { r1: ["heal", "stand side"], d4: ["heal", "stand beside"] },
+                    ready: { near: 800 },
+                },
+            ],
+        },
+    },
     // Slice heal-items' drill as a rig (slice drill-rig's first consumer). half: decision. Facts the heal start reads: the
     // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
     // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
@@ -910,6 +970,8 @@ function sentryAttack(bot: Unit, spot: ReturnType<typeof GetLaneFrontLocation>):
 export interface RigReady {
     /** The cast's HP share at or under this. */
     hpAtMost?: number;
+    /** The cast's HP share at or over this (slice hit-back: the hold and D24 need half HP and more). */
+    hpAtLeast?: number;
     /** Items the cast holds (inventory, one of each name). */
     holds?: string[];
     /** Items the cast does not hold. */
@@ -918,6 +980,15 @@ export interface RigReady {
     clear?: number;
     /** An enemy hero within this distance of the cast. */
     near?: number;
+    /** An enemy hero damaged the cast within the last second. */
+    hit?: boolean;
+    /**
+     * Every enemy hero that damaged the cast within the last second stands this far past the cast's trade reach, [min, max]
+     * (slice hit-back `far`: out of reach, inside the walk-in).
+     */
+    past?: [number, number];
+    /** The cast's HP share at least this under that of an enemy hero that damaged it within the last second. */
+    behind?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -932,19 +1003,25 @@ export interface RigRep {
      * - `heal`: its fountain until full HP (95%); ends at once when already full.
      * - `buy <item>` / `sell <item>`: at its fountain (walks there first); ends when done.
      * - `attack <hero> until hp <share>`: once that hero stands on its last step, attack it until its HP share is at or
-     *   under the share (or it dies); ends then.
+     *   under the share (or it dies); ends then. `attack <hero> from <d> until hp <share>`: first walk to `d` from it on
+     *   the line it came in on, then attack from there (inside the attacker's range it does not step in).
      * - `leave [spot]`: walk to the spot (default its fountain) and stay; never ends.
+     * - `stand <spot> until hp <share>`: a statue there until its own HP share is at or under the share; ends then.
      * Each list ends in `stand` or `leave`: a hero is placed once it stands at its last step's point, and ready needs every
      * listed hero of its own team placed (no state is shared across teams: the other team's part is read from the facts).
      */
     setup: Record<string, string[]>;
     ready: RigReady;
+    /** The creep-aggro fact for the rep (slice hit-back): whether an enemy hero stands inside our lane creeps' aggro (`RigCreepAggro`). */
+    aggro?: boolean;
 }
 
 export interface Rig {
     /** `decision`: inputs forced, the choice read; `execution`: the choice forced, the doing read. */
     half: "decision" | "execution";
-    /** Named points: an anchor (`r:fountain`, `d:fountain`, `<r|d>:<top|mid|bot><1|2|3>` a tower) and an offset. */
+    /**
+     * Named points: an anchor (`r:fountain`, `d:fountain`, `<r|d>:<top|mid|bot><1|2|3>` a tower) and an offset.
+     */
     spots: Record<string, [string, number, number]>;
     reps: RigRep[];
     /** Seconds from the rep's start for the ready checks to hold; else the rep is invalid. */
@@ -982,9 +1059,16 @@ interface RigState {
     idleAt: Record<number, [Vector, number]>;
     /** Per cast pid: its HP share has been at or under the ready bar this rep. */
     hpMet: Record<number, boolean>;
+    /** Per attacker pid: the hero its attack step found, kept for the rep (hit-back fix2: the cast walked off its spot to hit back). */
+    atk: Record<number, Unit>;
+    /** Per attacker pid: an `attack ... from <d>` step reached its distance this rep. */
+    inPlace: Record<number, boolean>;
 }
 
 let rig: RigState | undefined;
+
+/** Resolved rig spots by name, for the game (logged once each, `ph=spot`). */
+const rigSpots: Record<string, Vector | false | undefined> = {};
 
 /** The hero key `r5` / `d3` of a bot, or undefined before its position is known. */
 function keyOf(bot: Unit): string | undefined {
@@ -1008,8 +1092,20 @@ function rigState(): RigState | undefined {
     if (rigOf(d) === undefined) return undefined;
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
-    if (rig === undefined || rig.rep !== n) rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {} };
+    if (rig === undefined || rig.rep !== n) {
+        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, atk: {}, inPlace: {} };
+    }
     return rig;
+}
+
+/**
+ * A fact the rig supplies in place of the game's (read through creep_aggro.Paid, by the hit back and the hold). While a rig
+ * rep runs whose kind sets `aggro`: whether an enemy hero stands inside our lane creeps' aggro; otherwise undefined and
+ * the caller reads the game. Off the lane no creep is near, so the rep says.
+ */
+export function RigCreepAggro(): boolean | undefined {
+    const st = rigState();
+    return st === undefined ? undefined : RigRepOf(st.rep)?.aggro;
 }
 
 /** A hero listed in the rig's setup that is not cast: an actor. */
@@ -1163,8 +1259,6 @@ function nearestTower(team: Team, p: Vector): number {
     return best;
 }
 
-/** Resolved rig spots by name, for the game (logged once each, `ph=spot`). */
-const rigSpots: Record<string, Vector | false> = {};
 
 /** A rig spot's point; `fountain` is the bot's own. Undefined for an unknown name, a dead anchor tower or no passable point. */
 function rigPoint(bot: Unit, name: string): Vector | undefined {
@@ -1177,17 +1271,22 @@ function rigPoint(bot: Unit, name: string): Vector | undefined {
     const raw = rawSpot(name);
     const p = raw !== undefined ? passableNear(raw) : undefined;
     rigSpots[name] = p ?? false;
+    logSpot(name, p, raw !== undefined && p !== undefined ? math.floor(math.sqrt((raw.x - p.x) ** 2 + (raw.y - p.y) ** 2)) : undefined);
+    return p;
+}
+
+/** The `ph=spot` line: where a spot resolved, how far it moved to be passable, and its nearest tower of each team. */
+function logSpot(name: string, p: Vector | undefined, moved: number | undefined): void {
     Telemetry.Event("drill", [
         ["ph", "spot"],
         ["name", Name()],
         ["spot", name],
         ["x", p !== undefined ? math.floor(p.x) : undefined],
         ["y", p !== undefined ? math.floor(p.y) : undefined],
-        ["d", raw !== undefined && p !== undefined ? math.floor(math.sqrt((raw.x - p.x) ** 2 + (raw.y - p.y) ** 2)) : undefined],
+        ["d", moved],
         ["rt", p !== undefined ? math.floor(nearestTower(Team.Radiant, p)) : undefined],
         ["dt", p !== undefined ? math.floor(nearestTower(Team.Dire, p)) : undefined],
     ]);
-    return p;
 }
 
 /**
@@ -1253,6 +1352,8 @@ const RIG_BUY_SECS = 10;
 const RIG_FULL_HP = 0.95;
 /** A hero stands at a point within this. */
 const RIG_AT = 100;
+/** An `attack ... from <d>` step is in place within this past `d`. `judgement`. */
+const RIG_FROM_SLACK = 50;
 
 function hpShare(u: Unit): number {
     return u.GetHealth() / math.max(1, u.GetMaxHealth());
@@ -1297,7 +1398,15 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
     if (verb === "stand" || verb === "leave") {
         const p = rigPoint(bot, words[1] ?? "fountain");
         if (p === undefined) return false;
-        st.placed[pid] = standAt(bot, p) && last;
+        // `stand <spot> until hp <share>`: a statue there until its own HP share is at or under the share; ends then.
+        const until = verb === "stand" && words[2] === "until" ? tonumber(words[4]) : undefined;
+        if (until !== undefined) {
+            standAt(bot, p);
+            return hpShare(bot) <= until;
+        }
+        standAt(bot, p);
+        // Within RIG_PLACED, not standAt's 100: lane creeps can shove a statue past 100 (hit-back fix1).
+        st.placed[pid] = last && GetUnitToLocationDistance(bot, p) <= RIG_PLACED;
         return false;
     }
     if (verb === "walk") {
@@ -1338,10 +1447,13 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         return true;
     }
     if (verb === "attack") {
-        // attack <hero> until hp <share>
-        const share = tonumber(words[4]);
+        // attack <hero> [from <d>] until hp <share>
+        const share = tonumber(words[words.length - 1]);
         if (share === undefined) return false;
-        const target = attackTarget(bot, st, words[1]);
+        const from = words[2] === "from" ? tonumber(words[3]) : undefined;
+        const kept = st.atk[pid];
+        const target = kept !== undefined && !kept.IsNull() && kept.IsAlive() && kept.CanBeSeen() ? kept : attackTarget(bot, st, words[1]);
+        if (target !== undefined) st.atk[pid] = target;
         if (target !== undefined && hpShare(target) <= share) return true;
         if (target === undefined) {
             // Not seen at its spot yet (still walking there, or in fog): go to that spot (fix3, 12/11/2026: a respawned
@@ -1350,6 +1462,19 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
             if (p !== undefined && GetUnitToLocationDistance(bot, p) > RIG_APPROACH) bot.Action_MoveToLocation(p);
             else bot.Action_MoveToLocation(bot.GetLocation());
             return false;
+        }
+        // Once at `from` it attacks from there for the rest of the step, even if the target walks in. Before that it also backs
+        // off to `from` (on2: an attacker that arrived first, or stood beside the cast the rep before, hit from in reach).
+        if (from !== undefined && st.inPlace[pid] !== true) {
+            const t = target.GetLocation();
+            const me = bot.GetLocation();
+            const dd = math.max(1, math.sqrt((me.x - t.x) ** 2 + (me.y - t.y) ** 2));
+            if (math.abs(dd - from) > RIG_FROM_SLACK) {
+                const goal = passableNear(Vector(t.x + ((me.x - t.x) * from) / dd, t.y + ((me.y - t.y) * from) / dd, me.z));
+                bot.Action_MoveToLocation(goal ?? t);
+                return false;
+            }
+            st.inPlace[pid] = true;
         }
         bot.Action_AttackUnit(target, true);
         return false;
@@ -1366,8 +1491,9 @@ function rigHold(bot: Unit): boolean {
         atFountain(bot);
         return true;
     }
-    const steps = RigRepOf(st.rep)?.setup[k];
+    const rr = RigRepOf(st.rep);
     const pid = bot.GetPlayerID();
+    const steps = rr?.setup[k];
     if (steps === undefined || steps.length === 0) {
         st.placed[pid] = true;
         atFountain(bot);
@@ -1382,6 +1508,29 @@ function rigHold(bot: Unit): boolean {
         Telemetry.Event("drill", [["ph", "step"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["i", i + 1], ["step", steps[i + 1]]]);
     }
     return true;
+}
+
+/** Enemy heroes that damaged the cast within the last second. */
+function hitters(bot: Unit): Unit[] {
+    return (GetUnitList(UnitType.EnemyHeroes) ?? []).filter((h) => h.IsAlive() && h.GetLocation() !== undefined && bot.WasRecentlyDamagedByHero(h, 1));
+}
+
+/**
+ * How far `h` stands past the cast's trade reach: core_trade's reachOf for a core (attack range, both bounding radii, its
+ * REACH of 100). Kept in step with it by hand: the drill does not import the behaviour it tests.
+ */
+function pastReach(bot: Unit, h: Unit): number {
+    return GetUnitToUnitDistance(bot, h) - (bot.GetAttackRange() + bot.GetBoundingRadius() * 2 + 100);
+}
+
+/** The nearest hitter's distance past the cast's reach, for the wait and ready lines (undefined when nobody hit it). */
+function nearestPast(bot: Unit): number | undefined {
+    let best: number | undefined;
+    for (const h of hitters(bot)) {
+        const p = math.floor(pastReach(bot, h));
+        if (best === undefined || p < best) best = p;
+    }
+    return best;
 }
 
 /**
@@ -1416,6 +1565,7 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (hpShare(bot) <= r.hpAtMost) st.hpMet[bot.GetPlayerID()] = true;
         else if (st.hpMet[bot.GetPlayerID()] !== true) return "hp";
     }
+    if (r.hpAtLeast !== undefined && hpShare(bot) < r.hpAtLeast) return "hplow";
     for (const it of r.holds ?? []) if (!holdsItem(bot, it)) return "holds";
     for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
     if (r.clear !== undefined || r.near !== undefined) {
@@ -1426,6 +1576,17 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         }
         if (r.clear !== undefined && (nearest <= r.clear || foggedWithin(bot, r.clear))) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
+    }
+    if (r.hit === true || r.past !== undefined || r.behind !== undefined) {
+        const hs = hitters(bot);
+        if (hs.length === 0) return "hit";
+        if (r.past !== undefined) {
+            for (const h of hs) {
+                const p = pastReach(bot, h);
+                if (p < r.past[0] || p > r.past[1]) return "past";
+            }
+        }
+        if (r.behind !== undefined && !hs.some((h) => hpShare(h) - hpShare(bot) >= r.behind!)) return "behind";
     }
     return undefined;
 }
@@ -1445,7 +1606,7 @@ function rigTick(bot: Unit): void {
     // Each change of the first failing check is logged, so a rep that times out shows what held it and when.
     if (fail !== undefined && st.waiting[pid] !== fail) {
         st.waiting[pid] = fail;
-        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100]]);
+        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100], ["d", nearestPast(bot)]]);
     }
     if (fail !== undefined && secs < r.timeout) return;
     st.phase[pid] = fail === undefined ? "released" : "invalid";
@@ -1459,6 +1620,7 @@ function rigTick(bot: Unit): void {
         ["fail", fail],
         ["secs", math.floor(secs * 10 + 0.5) / 10],
         ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100],
+        ["d", nearestPast(bot)],
         ["rend", st.start + Active()!.rep.every],
         ["win", r.window],
         ["rel", r.release.modes.filter((m) => m !== "idle").join(",")],

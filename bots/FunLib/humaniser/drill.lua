@@ -275,7 +275,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigSpots, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local GameState = ____dota.GameState
@@ -856,7 +856,9 @@ function rigState()
             bought = {},
             waiting = {},
             idleAt = {},
-            hpMet = {}
+            hpMet = {},
+            atk = {},
+            inPlace = {}
         }
     end
     return rig
@@ -881,12 +883,12 @@ end
 function releasedModes(bot)
     local d = ____exports.Active()
     local r = rigOf(d)
-    local ____temp_49 = r == nil or ____exports.RoleOf(bot) ~= "cast"
-    if not ____temp_49 then
-        local ____opt_47 = overrides()
-        ____temp_49 = (____opt_47 and ____opt_47.DrillHost) == true
+    local ____temp_52 = r == nil or ____exports.RoleOf(bot) ~= "cast"
+    if not ____temp_52 then
+        local ____opt_50 = overrides()
+        ____temp_52 = (____opt_50 and ____opt_50.DrillHost) == true
     end
-    if ____temp_49 then
+    if ____temp_52 then
         return nil
     end
     local st = rigState()
@@ -923,8 +925,8 @@ function rigIdle(bot)
     return true
 end
 function rawSpot(name)
-    local ____opt_52 = rigOf(____exports.Active())
-    local s = ____opt_52 and ____opt_52.spots[name]
+    local ____opt_55 = rigOf(____exports.Active())
+    local s = ____opt_55 and ____opt_55.spots[name]
     if s == nil then
         return nil
     end
@@ -981,11 +983,11 @@ function nearestTower(team, p)
     local best = math.huge
     for ____, k in ipairs(__TS__ObjectKeys(TOWER_IDS)) do
         do
-            local __continue157
+            local __continue158
             repeat
                 local tw = GetTower(team, TOWER_IDS[k])
                 if tw == nil or tw == nil or not tw:IsAlive() then
-                    __continue157 = true
+                    __continue158 = true
                     break
                 end
                 local a = tw:GetLocation()
@@ -993,9 +995,9 @@ function nearestTower(team, p)
                     best,
                     math.sqrt((a.x - p.x) ^ 2 + (a.y - p.y) ^ 2)
                 )
-                __continue157 = true
+                __continue158 = true
             until true
-            if not __continue157 then
+            if not __continue158 then
                 break
             end
         end
@@ -1009,23 +1011,31 @@ function rigPoint(bot, name)
     end
     local known = rigSpots[name]
     if known ~= nil then
-        local ____temp_54
+        local ____temp_57
         if known == false then
-            ____temp_54 = nil
+            ____temp_57 = nil
         else
-            ____temp_54 = known
+            ____temp_57 = known
         end
-        return ____temp_54
+        return ____temp_57
     end
     local raw = rawSpot(name)
-    local ____temp_55
+    local ____temp_58
     if raw ~= nil then
-        ____temp_55 = passableNear(raw)
+        ____temp_58 = passableNear(raw)
     else
-        ____temp_55 = nil
+        ____temp_58 = nil
     end
-    local p = ____temp_55
+    local p = ____temp_58
     rigSpots[name] = p or false
+    logSpot(
+        name,
+        p,
+        raw ~= nil and p ~= nil and math.floor(math.sqrt((raw.x - p.x) ^ 2 + (raw.y - p.y) ^ 2)) or nil
+    )
+    return p
+end
+function logSpot(name, p, moved)
     Telemetry.Event(
         "drill",
         {
@@ -1043,10 +1053,7 @@ function rigPoint(bot, name)
                 "y",
                 p ~= nil and math.floor(p.y) or nil
             },
-            {
-                "d",
-                raw ~= nil and p ~= nil and math.floor(math.sqrt((raw.x - p.x) ^ 2 + (raw.y - p.y) ^ 2)) or nil
-            },
+            {"d", moved},
             {
                 "rt",
                 p ~= nil and math.floor(nearestTower(Team.Radiant, p)) or nil
@@ -1057,7 +1064,6 @@ function rigPoint(bot, name)
             }
         }
     )
-    return p
 end
 function heroOf(bot, key)
     local side = string.match(key, "^([rd])%d$")
@@ -1067,8 +1073,8 @@ function heroOf(bot, key)
     return rigUnits[key]
 end
 function lastPoint(st, key, bot)
-    local ____opt_56 = ____exports.RigRepOf(st.rep)
-    local steps = ____opt_56 and ____opt_56.setup[key]
+    local ____opt_59 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_59 and ____opt_59.setup[key]
     if steps == nil or #steps == 0 then
         return nil
     end
@@ -1090,10 +1096,10 @@ function attackTarget(bot, st, key)
     local bestD = RIG_PLACED
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue170
+            local __continue172
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil then
-                    __continue170 = true
+                    __continue172 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(h, p)
@@ -1101,9 +1107,9 @@ function attackTarget(bot, st, key)
                     best = h
                     bestD = d
                 end
-                __continue170 = true
+                __continue172 = true
             until true
-            if not __continue170 then
+            if not __continue172 then
                 break
             end
         end
@@ -1154,7 +1160,19 @@ function rigStep(bot, st, step, last)
         if p == nil then
             return false
         end
-        st.placed[pid] = standAt(bot, p) and last
+        local ____temp_61
+        if verb == "stand" and words[3] == "until" then
+            ____temp_61 = tonumber(words[5])
+        else
+            ____temp_61 = nil
+        end
+        local ____until = ____temp_61
+        if ____until ~= nil then
+            standAt(bot, p)
+            return hpShare(bot) <= ____until
+        end
+        standAt(bot, p)
+        st.placed[pid] = last and GetUnitToLocationDistance(bot, p) <= RIG_PLACED
         return false
     end
     if verb == "walk" then
@@ -1231,11 +1249,22 @@ function rigStep(bot, st, step, last)
         return true
     end
     if verb == "attack" then
-        local share = tonumber(words[5])
+        local share = tonumber(words[#words])
         if share == nil then
             return false
         end
-        local target = attackTarget(bot, st, words[2])
+        local ____temp_62
+        if words[3] == "from" then
+            ____temp_62 = tonumber(words[4])
+        else
+            ____temp_62 = nil
+        end
+        local from = ____temp_62
+        local kept = st.atk[pid]
+        local target = kept ~= nil and not kept:IsNull() and kept:IsAlive() and kept:CanBeSeen() and kept or attackTarget(bot, st, words[2])
+        if target ~= nil then
+            st.atk[pid] = target
+        end
         if target ~= nil and hpShare(target) <= share then
             return true
         end
@@ -1247,6 +1276,20 @@ function rigStep(bot, st, step, last)
                 bot:Action_MoveToLocation(bot:GetLocation())
             end
             return false
+        end
+        if from ~= nil and st.inPlace[pid] ~= true then
+            local t = target:GetLocation()
+            local me = bot:GetLocation()
+            local dd = math.max(
+                1,
+                math.sqrt((me.x - t.x) ^ 2 + (me.y - t.y) ^ 2)
+            )
+            if math.abs(dd - from) > RIG_FROM_SLACK then
+                local goal = passableNear(Vector(t.x + (me.x - t.x) * from / dd, t.y + (me.y - t.y) * from / dd, me.z))
+                bot:Action_MoveToLocation(goal or t)
+                return false
+            end
+            st.inPlace[pid] = true
         end
         bot:Action_AttackUnit(target, true)
         return false
@@ -1260,9 +1303,9 @@ function rigHold(bot)
         atFountain(bot)
         return true
     end
-    local ____opt_58 = ____exports.RigRepOf(st.rep)
-    local steps = ____opt_58 and ____opt_58.setup[k]
+    local rr = ____exports.RigRepOf(st.rep)
     local pid = bot:GetPlayerID()
+    local steps = rr and rr.setup[k]
     if steps == nil or #steps == 0 then
         st.placed[pid] = true
         atFountain(bot)
@@ -1410,6 +1453,28 @@ ____exports.TABLE = {
         others = "bench",
         castLaneOnly = true,
         rep = {every = 90, from = 60, control = 4}
+    },
+    ["retreat-hitback"] = {
+        note = "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        cast = SAFE_CORE,
+        others = "bench",
+        rep = {every = 120, from = 0},
+        rig = {
+            half = "decision",
+            switch = "HitBack",
+            window = 600,
+            spots = {side = {"r:bot1", -2750, 700}, sidenear = {"r:bot1", -2250, 700}, beside = {"r:bot1", -2600, 700}},
+            timeout = 100,
+            keeps = {"levelup"},
+            release = {modes = {"laning", "attack", "retreat", "idle"}},
+            reps = {{name = "far", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}}, {name = "behind", aggro = true, setup = {r1 = {"heal", "stand side until hp 0.72", "stand side"}, d3 = {
+                "heal",
+                "walk sidenear",
+                "attack r1 until hp 0.72",
+                "attack r1 until hp 0.55",
+                "leave"
+            }}, ready = {hit = true, behind = 0.16, hpAtLeast = 0.55}}, {name = "free", aggro = false, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}}, {name = "stand", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "stand beside"}}, ready = {near = 800}}}
+        }
     },
     ["retreat-heal-items"] = {
         note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
@@ -1830,6 +1895,21 @@ function ____exports.CastSpotPoint(bot, spot)
     end
     return spotPoint(bot, spot)
 end
+rigSpots = {}
+--- A fact the rig supplies in place of the game's (read through creep_aggro.Paid, by the hit back and the hold). While a rig
+-- rep runs whose kind sets `aggro`: whether an enemy hero stands inside our lane creeps' aggro; otherwise undefined and
+-- the caller reads the game. Off the lane no creep is near, so the rep says.
+function ____exports.RigCreepAggro()
+    local st = rigState()
+    local ____temp_49
+    if st == nil then
+        ____temp_49 = nil
+    else
+        local ____opt_47 = ____exports.RigRepOf(st.rep)
+        ____temp_49 = ____opt_47 and ____opt_47.aggro
+    end
+    return ____temp_49
+end
 --- A rig owns its heroes (user 12/11/2026, rigA2: OHA spent the cast's 600 gold before each rep, so the salve buy failed):
 -- true when OHA's code for `what` must not run for this hero. A rig's actors always; its cast until ready, and after ready
 -- for every kind its release does not list (host-on frees only items and abilities: OHA's purchases would spend the gold the
@@ -1853,8 +1933,8 @@ function ____exports.Owns(bot, what)
     if rigCastHeld(bot) then
         return true
     end
-    local ____opt_50 = overrides()
-    local host = (____opt_50 and ____opt_50.DrillHost) == true
+    local ____opt_53 = overrides()
+    local host = (____opt_53 and ____opt_53.DrillHost) == true
     if what == "items" then
         return not host and r.release.items ~= true
     end
@@ -1897,7 +1977,6 @@ TOWER_IDS = {
 }
 RIG_SNAP_STEP = 50
 RIG_SNAP_RINGS = 20
-rigSpots = {}
 rigUnits = {}
 RIG_PLACED = 200
 RIG_APPROACH = 400
@@ -1905,6 +1984,30 @@ RIG_SHOP_REACH = 400
 RIG_BUY_SECS = 10
 RIG_FULL_HP = 0.95
 RIG_AT = 100
+RIG_FROM_SLACK = 50
+--- Enemy heroes that damaged the cast within the last second.
+local function hitters(bot)
+    return __TS__ArrayFilter(
+        GetUnitList(UnitType.EnemyHeroes) or ({}),
+        function(____, h) return h:IsAlive() and h:GetLocation() ~= nil and bot:WasRecentlyDamagedByHero(h, 1) end
+    )
+end
+--- How far `h` stands past the cast's trade reach: core_trade's reachOf for a core (attack range, both bounding radii, its
+-- REACH of 100). Kept in step with it by hand: the drill does not import the behaviour it tests.
+local function pastReach(bot, h)
+    return GetUnitToUnitDistance(bot, h) - (bot:GetAttackRange() + bot:GetBoundingRadius() * 2 + 100)
+end
+--- The nearest hitter's distance past the cast's reach, for the wait and ready lines (undefined when nobody hit it).
+local function nearestPast(bot)
+    local best
+    for ____, h in ipairs(hitters(bot)) do
+        local p = math.floor(pastReach(bot, h))
+        if best == nil or p < best then
+            best = p
+        end
+    end
+    return best
+end
 --- `clear`: an enemy hero out of sight counts as gone only once its last sighting is farther than `clear`, or RIG_FOG_CLEAR s
 -- old (on1 to on3 and r1: the attacker leaving stepped into fog 490 off, `clear` held at once and the cast's heal start read a
 -- hero seen 0.3 s before). `judgement`: a 300-speed hero walks 1,600 in about 5.3 s.
@@ -1915,24 +2018,24 @@ local function foggedWithin(bot, r)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue209
+                local __continue222
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == bot:GetTeam() or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue209 = true
+                        __continue222 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen >= RIG_FOG_CLEAR then
-                        __continue209 = true
+                        __continue222 = true
                         break
                     end
                     if GetUnitToLocationDistance(bot, info.location) <= r then
                         return true
                     end
-                    __continue209 = true
+                    __continue222 = true
                 until true
-                if not __continue209 then
+                if not __continue222 then
                     break
                 end
             end
@@ -1957,6 +2060,9 @@ local function failingCheck(bot, st, rr)
             return "hp"
         end
     end
+    if r.hpAtLeast ~= nil and hpShare(bot) < r.hpAtLeast then
+        return "hplow"
+    end
     for ____, it in ipairs(r.holds or ({})) do
         if not holdsItem(bot, it) then
             return "holds"
@@ -1971,19 +2077,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue227
+                local __continue241
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue227 = true
+                        __continue241 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue227 = true
+                    __continue241 = true
                 until true
-                if not __continue227 then
+                if not __continue241 then
                     break
                 end
             end
@@ -1993,6 +2099,26 @@ local function failingCheck(bot, st, rr)
         end
         if r.near ~= nil and nearest > r.near then
             return "near"
+        end
+    end
+    if r.hit == true or r.past ~= nil or r.behind ~= nil then
+        local hs = hitters(bot)
+        if #hs == 0 then
+            return "hit"
+        end
+        if r.past ~= nil then
+            for ____, h in ipairs(hs) do
+                local p = pastReach(bot, h)
+                if p < r.past[1] or p > r.past[2] then
+                    return "past"
+                end
+            end
+        end
+        if r.behind ~= nil and not __TS__ArraySome(
+            hs,
+            function(____, h) return hpShare(h) - hpShare(bot) >= r.behind end
+        ) then
+            return "behind"
         end
     end
     return nil
@@ -2037,6 +2163,10 @@ local function rigTick(bot)
                 {
                     "hp",
                     math.floor(hpShare(bot) * 100 + 0.5) / 100
+                },
+                {
+                    "d",
+                    nearestPast(bot)
                 }
             }
         )
@@ -2065,6 +2195,10 @@ local function rigTick(bot)
             {
                 "hp",
                 math.floor(hpShare(bot) * 100 + 0.5) / 100
+            },
+            {
+                "d",
+                nearestPast(bot)
             },
             {
                 "rend",
@@ -2119,8 +2253,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_60 = overrides()
-            local v = ____opt_60 and ____opt_60[k]
+            local ____opt_65 = overrides()
+            local v = ____opt_65 and ____opt_65[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -2134,8 +2268,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_62 = overrides()
-        local asked = ____opt_62 and ____opt_62.Drill
+        local ____opt_67 = overrides()
+        local asked = ____opt_67 and ____opt_67.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -2175,8 +2309,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_67 = Telemetry.Event
-    local ____array_66 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_72 = Telemetry.Event
+    local ____array_71 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -2188,11 +2322,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_64 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_66, {"var", ____opt_64 and ____opt_64.name})
-    ____Telemetry_Event_67(
+    local ____opt_69 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_71, {"var", ____opt_69 and ____opt_69.name})
+    ____Telemetry_Event_72(
         "drill",
-        {__TS__SparseArraySpread(____array_66)}
+        {__TS__SparseArraySpread(____array_71)}
     )
     rigTick(bot)
 end

@@ -10,6 +10,7 @@
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
+import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
@@ -105,6 +106,14 @@ const AGGRO_COOLDOWN = 3;
 const COOLDOWN_LEFT = 0.3;
 /** A step out of the creeps that has not cleared them in this long ends the trade (`no_clear`). */
 const STEP_OUT_LIMIT = 2;
+/** A hit back answers a hero that damaged us within this (s): the threat read's `EngagedRecent`. `judgement`. */
+const HIT_RECENT = 1;
+/**
+ * A hit back walks in this far past the hero's reach (user 12/11/2026: answer a hitter standing just out of reach, on the
+ * aggro-free order, which also carries the hero towards its next last hit). Smoke game smoke-hit-back-refusals: 6 of the 7
+ * unanswered hitters out of reach stood within 300 of it; the support's HARASS_REACH is the same walk. `judgement`.
+ */
+const HIT_BACK_WALK = 300;
 /** A window Desire offered that attack mode did not take within this is logged as lost. */
 const LOST_AFTER = 1;
 
@@ -112,15 +121,15 @@ const LOST_AFTER = 1;
  * Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
  * the borders get their slack.
  */
-export function Decide(i: Inputs, running = false, killHp = KILL_HP): { kind?: Kind; respect?: Respect } {
+export function Decide(i: Inputs, running = false, killHp = KILL_HP, hitBack = false): { kind?: Kind; respect?: Respect } {
     const slack = running ? KEEP_HP_SLACK : 0;
     if (i.tower) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
     if (i.targetHp <= killHp && i.hp >= i.targetHp) return { kind: "kill" };
     if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
-    if (i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
+    if (!hitBack && i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
-    if (i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
+    if (!hitBack && i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
     return { kind: "trade" };
 }
 
@@ -154,6 +163,8 @@ interface Episode {
     /** The play a `fight` runs in, and whether the hero joined it (another hero's play) rather than rolled it. */
     play?: Plays.Play;
     joined?: boolean;
+    /** A hit back (`Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro, so `wave` and `behind` do not end it. */
+    hb?: boolean;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
 }
@@ -228,6 +239,76 @@ function reachOf(bot: Unit): number {
 function lastHitting(h: Unit): boolean {
     const t = h.GetAttackTarget();
     return t !== undefined && t !== null && !t.IsNull() && t.IsCreep() && !t.IsHero();
+}
+
+/**
+ * Slice hit-back (D24, `Ours.HitBack`): the enemy hero within reach plus HIT_BACK_WALK that hit us within HIT_RECENT while one of our lane creeps
+ * stands within creep aggro of it. It pays our creeps for every hit, so hitting back is the exchange D24 says to take even
+ * beside their wave or a little behind on HP; the respects that remain are the trade's tower, numbers, HP floor and creeps on us.
+ */
+function hitBackTarget(bot: Unit): Unit | undefined {
+    if (!Ours.On("HitBack")) return undefined;
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const h of bot.GetNearbyHeroes(reachOf(bot) + HIT_BACK_WALK, true, BotMode.None)) {
+        if (!valid(h) || !bot.WasRecentlyDamagedByHero(h, HIT_RECENT)) continue;
+        if (!CreepAggro.Paid(bot, h)) continue;
+        const d = GetUnitToUnitDistance(bot, h);
+        if (d < bestD) {
+            best = h;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+/** Hitters are looked for this far out: past any laning hero's attack range. */
+const HITTER_RADIUS = 1600;
+/** One `ev=trade_no` per run of unanswered hits: none for the same hero within this (s), as the D24h view's onset. */
+const NO_EVERY = 5;
+const lastNo: Record<number, number | undefined> = {};
+
+/**
+ * Logs why no trade opened this frame while an enemy hero is hitting us (`ev=trade_no`), so the D24h view's unanswered
+ * cases have a cause. Always returns 0, the desire of a frame with no trade.
+ */
+function unanswered(bot: Unit, now: number, why: string, i?: Inputs): number {
+    const pid = bot.GetPlayerID();
+    const last = lastNo[pid];
+    if (last !== undefined && now - last < NO_EVERY) return 0;
+    let hitter: Unit | undefined;
+    let hd = math.huge;
+    for (const h of bot.GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) {
+        if (!valid(h) || !bot.WasRecentlyDamagedByHero(h, HIT_RECENT)) continue;
+        const d = GetUnitToUnitDistance(bot, h);
+        if (d < hd) {
+            hitter = h;
+            hd = d;
+        }
+    }
+    if (hitter === undefined) return 0;
+    lastNo[pid] = now;
+    const agg = CreepAggro.Paid(bot, hitter);
+    const g = i ?? Gather(bot, hitter);
+    Telemetry.Event("trade_no", [
+        ["pid", pid],
+        ["role", isSupport(bot) ? "support" : "core"],
+        ["why", why],
+        ["tgt", hitter.GetPlayerID()],
+        ["d", math.floor(hd)],
+        ["reach", math.floor(reachOf(bot))],
+        ["har", math.floor(hitter.GetAttackRange())],
+        ["agg", agg ? 1 : 0],
+        ["hp", math.floor(frac(bot) * 100) / 100],
+        ["thp", math.floor(frac(hitter) * 100) / 100],
+        ["en", g.enemiesNear],
+        ["al", g.alliesNear],
+        ["cr", g.enemyCreepsNear],
+        ["hc", g.hitByCreeps],
+        ["mode", bot.GetActiveMode()],
+        ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
+    ]);
+    return 0;
 }
 
 /** The core lanes: laning phase for it (transitions/phase) and standing by its own lane; elsewhere OHA's port fights. */
@@ -307,6 +388,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["tgt", ep.tpid],
         ["play", ep.play?.id],
         ["join", ep.play !== undefined ? (ep.joined ? 1 : 0) : undefined],
+        ["hb", ep.hb === true ? 1 : undefined],
         ["result", started ? (killed ? "kill" : "done") : "lost"],
         ["why", why],
         ["dur", started ? math.floor((now - ep.startedAt!) * 10) / 10 : 0],
@@ -353,7 +435,7 @@ export function Desire(bot: Unit): number | undefined {
     // A hero in a play with no fight of ours running (one it started in another context, the rune spawn's, or one it
     // joined whose fight already ended) is driven by that play until it ends (OWNERSHIP H24).
     const owns = OwnsLaneFights(bot);
-    if (owns && Plays.Of(bot) !== undefined) return 0;
+    if (owns && Plays.Of(bot) !== undefined) return unanswered(bot, now, "play");
     const target = nearestTarget(bot);
     const inputs = target !== undefined ? Gather(bot, target) : undefined;
     const d = inputs !== undefined ? Decide(inputs, false, killHpFor(bot)) : {};
@@ -361,21 +443,31 @@ export function Desire(bot: Unit): number | undefined {
         const join = joinable(bot);
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
     }
-    if (target === undefined || inputs === undefined) return 0;
+    if (target === undefined || inputs === undefined) return hitBack(bot, now, "no_target");
     if (owns && d.kind !== "kill" && d.respect !== "tower" && d.respect !== "outnumbered") {
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
-    if (d.kind === undefined) return 0;
     const gap = recoverTo[pid];
-    if (d.kind === "trade" && gap !== undefined) {
-        if (inputs.hp - inputs.targetHp < gap - 1e-6) return 0;
-        recoverTo[pid] = undefined;
-    }
+    const held = d.kind === "trade" && gap !== undefined && inputs.hp - inputs.targetHp < gap - 1e-6;
+    // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
+    // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
+    // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
+    if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? "gap", inputs);
+    if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
     return open(bot, d.kind, target, now);
 }
 
-function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean): number {
+/** The trade rule opened nothing (`why`): a hit back if there is a hitter to answer, else the unanswered hit is logged. */
+function hitBack(bot: Unit, now: number, why: string, inputs?: Inputs): number {
+    const hb = hitBackTarget(bot);
+    if (hb === undefined) return unanswered(bot, now, why, inputs);
+    const hd = Decide(Gather(bot, hb), false, killHpFor(bot), true);
+    if (hd.kind === undefined) return unanswered(bot, now, `hb_${hd.respect}`);
+    return open(bot, hd.kind, hb, now, undefined, undefined, true);
+}
+
+function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean, hb?: boolean): number {
     if (joined) Plays.Join(play!, bot);
     episodes[bot.GetPlayerID()] = {
         kind,
@@ -392,6 +484,7 @@ function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Pla
         aggro: 0,
         play,
         joined,
+        hb,
     };
     return kind === "trade" ? DESIRE_TRADE : DESIRE_KILL;
 }
@@ -443,7 +536,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
         return r === "tower" || r === "outnumbered" ? r : undefined;
     } else {
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
-        const reach = reachOf(bot);
+        const reach = reachOf(bot) + (ep.hb === true ? HIT_BACK_WALK : 0);
         // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
         // cooldown covers the hits.
         const primed = primedAt[bot.GetPlayerID()];
@@ -451,7 +544,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
         if (ep.stepSince === undefined && !walkingIn && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
         if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
     }
-    const d = Decide(Gather(bot, ep.target), true, killHpFor(bot));
+    const d = Decide(Gather(bot, ep.target), true, killHpFor(bot), ep.hb === true);
     if (d.kind === undefined) return d.respect;
     return undefined;
 }
@@ -580,4 +673,5 @@ export function Reset(): void {
     for (const k in primedAt) primedAt[k as unknown as number] = undefined;
     for (const k in ownsFrame) ownsFrame[k as unknown as number] = undefined;
     for (const k in rolledAt) rolledAt[k as unknown as number] = undefined;
+    for (const k in lastNo) lastNo[k as unknown as number] = undefined;
 }
