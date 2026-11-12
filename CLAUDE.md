@@ -16,13 +16,12 @@ the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../.
   `Customize/override.lua` loader) or to add a hook. Do not improve OHA behaviour we will replace. The patch-update tasks below
   are maintenance of the host and do not change this.
 - **Process:** work in a `worktrees/oha-<slice>` worktree off `team-bots`; load the master skill `bot-structure` before changing bot
-  code (hook points: master `docs/team/OWNERSHIP.md`). Games run only through dotactl (skill `dotactl`). A behaviour slice is done
-  only with a reviewed Eval Report; verdict words are PASS, PROVISIONAL, FAIL, UNTESTED. Merge into `team-bots` with
-  `git merge --no-ff`, citing the review report and an `ER-nnn` id or a `No ER: <reason>` line (git hook), then push `team-bots` to
+  code (hook points: master `docs/team/OWNERSHIP.md`). Games run only through dotactl (skill `dotactl`). Merge into `team-bots`
+  with `git merge --no-ff`; the merge message is the slice record (master `docs/templates/slice.md`) with a `Check:` or
+  `No check: <reason>` line, and a `Review:` verdict when it changes bot runtime code (git hook); then push `team-bots` to
   `origin` (fast-forward only).
-- **Jitter** goes through the engine's `Skill` model, never host-side randomness. Engine changes follow the master skill
-  `engine-change`: the engine is `engine/` in this repo (lua-tasks, built into `bots/FunLib/engine`); a merge that changes it
-  cites an `sdk-reviewer` report (git hook).
+- **Engine changes** follow the master skill `engine-change`: the engine is `engine/` in this repo (lua-tasks, built into
+  `bots/FunLib/engine`); a merge that changes its source or docs carries an `Engine-review:` verdict (git hook).
 
 ## Project Overview
 
