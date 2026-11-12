@@ -89,7 +89,7 @@ ____exports.DEFAULTS = {
     Threat = true,
     Retreat = true,
     RetreatOdds = false,
-    HitBack = true,
+    HitBack = false,
     HealStop = true,
     ArbiterShadow = true
 }

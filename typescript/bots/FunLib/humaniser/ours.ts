@@ -131,10 +131,11 @@ export const DEFAULTS = {
      *  heal floor. Off by default: the hold does not hit back and cost deaths in its drill (user 11/11/2026: on again once
      *  leave-together and hit-back are built). Off: the budget alone decides, whatever the numbers. */
     RetreatOdds: false,
-    /** Slice hit-back (D24): with CoreTrade on, a laner hit by an enemy hero standing inside our creeps' aggro trades it back
-     *  (states/core_trade `hitBackTarget`), past the trade rule's wave and behind refusals, under a due last hit. Off: the
-     *  trade rule alone. */
-    HitBack: true,
+    /** Slice hit-back (D24; missed): with CoreTrade on, a laner hit by an enemy hero standing inside our creeps' aggro trades
+     *  it back (states/core_trade `hitBackTarget`), past the trade rule's wave and behind refusals, under a due last hit. Off
+     *  by default: in games its lost exchanges reopen and step out instead of swinging (user 13/11/2026). Off: the trade rule
+     *  alone. */
+    HitBack: false,
     /** Slice heal-stop (D3): with Retreat on, a heal episode ends where HP is back over half, nobody is in reach and our lane
      *  front is nearer than our fountain (retreat.ts HealBack). Off: it walks on to the fountain and 0.8 HP. */
     HealStop: true,

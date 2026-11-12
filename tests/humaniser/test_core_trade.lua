@@ -528,6 +528,7 @@ do
 
 	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
 	Ours.CoreLaneFight = false
+	Ours.HitBack = true
 	-- Behind on HP inside their wave: the trade rule alone refuses (`behind`, `wave`).
 	local theirs = {}
 	for k = 1, 5 do theirs[k] = MakeUnit({ pid = 30 + k, team = 3, loc = Vector(200, 300) }) end
@@ -604,7 +605,7 @@ do
 	check("switch off, a hitter 250 outside our reach: no trade, logged as no_target with its distance",
 		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("d=900") and last():find("agg=1"), last())
 	-- The walk-in (user 12/11/2026): reach is 648 here, so a hitter at 900 is 252 past it and one at 1,000 is 352 past it.
-	Ours.HitBack = nil
+	Ours.HitBack = true
 	theirs = {}
 	fresh()
 	bot.hitBy = enemy
@@ -631,7 +632,7 @@ do
 	-- A drill rig supplies the creep-aggro fact in place of the creep test (slice hit-back's rig, off the lane).
 	local Drill = require("bots/FunLib/humaniser/drill")
 	local fact = Drill.RigCreepAggro
-	Ours.HitBack = nil
+	Ours.HitBack = true
 	fresh()
 	bot.hitBy = enemy
 	enemy.loc = Vector(900, 0)
@@ -646,7 +647,6 @@ do
 	check("rig fact false, our creep 200 from the hitter: no hit back, logged as outside our creeps' aggro",
 		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("agg=0"), last())
 	Drill.RigCreepAggro = fact
-	Ours.HitBack = false
 	Ours.HitBack = nil
 	Ours.CoreLaneFight = true
 	function Unit:GetNearbyLaneCreeps() return {} end
