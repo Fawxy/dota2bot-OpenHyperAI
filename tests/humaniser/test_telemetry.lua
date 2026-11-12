@@ -11,6 +11,7 @@ function UnitMeta:GetMana() return 50 end
 function UnitMeta:GetMaxMana() return 100 end
 function UnitMeta:GetGold() return 600 end
 function UnitMeta:GetNetWorth() return 1200 end
+function UnitMeta:GetXPNeededToLevel() return 200 end
 function UnitMeta:ActionImmediate_Chat(line) self.said = self.said or {} table.insert(self.said, line) end
 
 local lines
@@ -508,6 +509,7 @@ do
 	b.GetMaxMana = function() return 100 end
 	b.GetGold = function() return 600 end
 	b.GetNetWorth = function() return 1200 end
+	b.GetXPNeededToLevel = function() return 200 end
 	b.GetAttackTarget = function() return nil end
 	T = 0
 	H.Telemetry.Tick(b)

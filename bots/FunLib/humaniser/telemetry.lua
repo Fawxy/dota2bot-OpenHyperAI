@@ -1107,6 +1107,10 @@ local function botFields(bot, ctx)
         bot:GetNetWorth()
     }
     fields[#fields + 1] = {
+        "xpn",
+        bot:GetXPNeededToLevel()
+    }
+    fields[#fields + 1] = {
         "lf",
         LanePick.Describe(
             bot:GetPlayerID(),

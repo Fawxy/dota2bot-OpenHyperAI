@@ -10,6 +10,7 @@ function UnitMeta:GetDenies() return 0 end
 function UnitMeta:GetAttackTarget() return nil end
 function UnitMeta:GetGold() return 600 end
 function UnitMeta:GetNetWorth() return 1200 end
+function UnitMeta:GetXPNeededToLevel() return 200 end
 function UnitMeta:FindItemSlot() return -1 end
 function GetRuneStatus() return 2 end
 function GetRuneSpawnLocation() return Vector(9000, 9000) end

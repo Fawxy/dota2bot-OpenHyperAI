@@ -43,6 +43,9 @@ export const BOT = {
     gold: "num",
     /** Net worth (`GetNetWorth`: gold plus items), for the head-to-head farm readout without replays (`@h2h_farm`). */
     nw: "num",
+    /** `GetXPNeededToLevel`: with `lvl` and the patch's level table, the hero's experience (the merge gate's third measure
+     *  without replays); -1 for non-heroes (API reference); its value at the level cap is unconfirmed. */
+    xpn: "num",
     /** Laning body's last-hit scan (states/lane_pick Describe): phase, scan and pick ages, distance to the spot, offers. */
     lf: "str",
     /** What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered. */

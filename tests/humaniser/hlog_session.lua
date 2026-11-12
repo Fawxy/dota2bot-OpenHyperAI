@@ -15,6 +15,7 @@ function UnitMeta:GetMana() return 50 end
 function UnitMeta:GetMaxMana() return 100 end
 function UnitMeta:GetGold() return 600 end
 function UnitMeta:GetNetWorth() return 1200 end
+function UnitMeta:GetXPNeededToLevel() return 200 end
 function UnitMeta:ActionImmediate_Chat() end
 function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
 function GetUnitList(t) return {} end
