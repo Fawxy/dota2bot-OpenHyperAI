@@ -1008,8 +1008,10 @@ local function ItemUsageComplement()
 		if J.CanCastAbility(hItem)
 		then
 			local sItemName = hItem:GetName()
+			-- Humaniser HealItems (slice heal-items): our retreat's heal start decides tango, salve and faerie fire on a hero it owns.
 			if	X.ConsiderItemDesire[sItemName] ~= nil
 				and not X.IsItemInStash( sItemName )
+				and not ( J.Humaniser.IsEnabled() and J.Humaniser.Retreat.HoldsItem( bot, sItemName ) )
 			then
 				local nItemDesire, hItemTarget, sCastType, sMotive = X.ConsiderItemDesire[sItemName]( hItem )
 

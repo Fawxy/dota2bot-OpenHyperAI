@@ -243,7 +243,7 @@ if (Telemetry.GuardsEnabled()) {
     // A controller error drops that wave's ev=lane_ctl line; no bot action reads it.
     Telemetry.GuardModule("LaneControl", LaneControl, { Tick: none });
     // An error hands the hero to OHA's retreat desire for that call (undefined) and a Think that issues nothing.
-    Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
+    Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, HoldsItem: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
     Telemetry.GuardModule("Perception", Perception, {
         FilterNearbyEnemies: arg2,
         FilterUnitList: arg1,

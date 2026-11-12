@@ -257,12 +257,15 @@ export const TABLE: Record<string, Entry> = {
     // standing beside a camp and died). Spots: 2,850 west of our bot T1, 700 off the lane (our creeps would hit the attacker),
     // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). The attack stops 5 points under the ready
     // bar (fix5: stopping at the bar, the cast regenerated over it while the attacker walked out of reach). Release: our
-    // retreat, else it stands (`idle`; fix6: a Valve built-in mode took the control rep's cast).
+    // retreat, else it stands (`idle`; fix6: a Valve built-in mode took the control rep's cast). Window: the laning stage, so
+    // every rep ends by 10:00 (rigB: from 14:40 OHA's retreat took the cast and `idle` outbid it): four 135 s reps from 1:00,
+    // one of each kind a game; rigB before 10:00 was ready in 46 to 71 s and walked home in 37 to 40 s, and the 95 s timeout
+    // leaves a ready rep that walk. Acceptance takes three games on one seed.
     "retreat-heal-items": {
-        note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
+        note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast: { r: [5] },
         others: "bench",
-        rep: { every: 150, from: 60 },
+        rep: { every: 135, from: 60 },
         rig: {
             half: "decision",
             switch: "HealItems",
@@ -271,7 +274,7 @@ export const TABLE: Record<string, Entry> = {
                 cast: ["r:bot1", -2750, 700],
                 near: ["r:bot1", -2250, 700],
             },
-            timeout: 110,
+            timeout: 95,
             // The attacker's learned spells count in the retreat's threat read (GetEstimatedDamageToTarget), so both level as on the base branch.
             keeps: ["levelup"],
             release: { modes: ["retreat", "idle"] },
@@ -1619,6 +1622,25 @@ function nearestPast(bot: Unit): number | undefined {
     return best;
 }
 
+/**
+ * `clear`: an enemy hero out of sight counts as gone only once its last sighting is farther than `clear`, or RIG_FOG_CLEAR s
+ * old (on1 to on3 and r1: the attacker leaving stepped into fog 490 off, `clear` held at once and the cast's heal start read a
+ * hero seen 0.3 s before). `judgement`: a 300-speed hero walks 1,600 in about 5.3 s.
+ */
+const RIG_FOG_CLEAR = 6;
+
+/** An enemy hero not in sight whose last sighting is within `r` of `bot` and under RIG_FOG_CLEAR s old. */
+function foggedWithin(bot: Unit, r: number): boolean {
+    for (let pid = 0; pid <= 23; pid++) {
+        const t = GetTeamForPlayer(pid);
+        if (t === bot.GetTeam() || (t !== Team.Radiant && t !== Team.Dire) || !IsHeroAlive(pid)) continue;
+        const info = GetHeroLastSeenInfo(pid)[0];
+        if (info === undefined || info.time_since_seen >= RIG_FOG_CLEAR) continue;
+        if (GetUnitToLocationDistance(bot, info.location) <= r) return true;
+    }
+    return false;
+}
+
 /** The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step. */
 function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
     // Only the cast's own team's setup is read here (no state is shared across teams); the facts below read the rest.
@@ -1641,7 +1663,7 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
             if (!h.IsAlive() || h.GetLocation() === undefined) continue;
             nearest = math.min(nearest, GetUnitToUnitDistance(bot, h));
         }
-        if (r.clear !== undefined && nearest <= r.clear) return "clear";
+        if (r.clear !== undefined && (nearest <= r.clear || foggedWithin(bot, r.clear))) return "clear";
         if (r.near !== undefined && nearest > r.near) return "near";
     }
     if (r.refused !== undefined) {

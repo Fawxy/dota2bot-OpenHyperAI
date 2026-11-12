@@ -1570,16 +1570,16 @@ ____exports.TABLE = {
         }
     },
     ["retreat-heal-items"] = {
-        note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it",
+        note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast = {r = {5}},
         others = "bench",
-        rep = {every = 150, from = 60},
+        rep = {every = 135, from = 60},
         rig = {
             half = "decision",
             switch = "HealItems",
             window = 600,
             spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
-            timeout = 110,
+            timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"retreat", "idle"}},
             reps = {{name = "salve", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, clear = 1600}}, {name = "tango", setup = {r5 = {"heal", "sell item_flask", "buy item_tango", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "leave"}}, ready = {hpAtMost = 0.25, holds = {"item_tango"}, lacks = {"item_flask"}, clear = 1600}}, {name = "stays", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.2", "stand near"}}, ready = {hpAtMost = 0.25, holds = {"item_flask"}, near = 1200}}, {name = "control", setup = {r5 = {"heal", "buy item_flask", "stand cast"}, d3 = {"heal", "walk near", "attack r5 until hp 0.55", "leave"}}, ready = {hpAtMost = 0.6, holds = {"item_flask"}, clear = 1600}}}
@@ -2104,6 +2104,42 @@ local function nearestPast(bot)
     end
     return best
 end
+--- `clear`: an enemy hero out of sight counts as gone only once its last sighting is farther than `clear`, or RIG_FOG_CLEAR s
+-- old (on1 to on3 and r1: the attacker leaving stepped into fog 490 off, `clear` held at once and the cast's heal start read a
+-- hero seen 0.3 s before). `judgement`: a 300-speed hero walks 1,600 in about 5.3 s.
+local RIG_FOG_CLEAR = 6
+--- An enemy hero not in sight whose last sighting is within `r` of `bot` and under RIG_FOG_CLEAR s old.
+local function foggedWithin(bot, r)
+    do
+        local pid = 0
+        while pid <= 23 do
+            do
+                local __continue236
+                repeat
+                    local t = GetTeamForPlayer(pid)
+                    if t == bot:GetTeam() or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
+                        __continue236 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(pid)[1]
+                    if info == nil or info.time_since_seen >= RIG_FOG_CLEAR then
+                        __continue236 = true
+                        break
+                    end
+                    if GetUnitToLocationDistance(bot, info.location) <= r then
+                        return true
+                    end
+                    __continue236 = true
+                until true
+                if not __continue236 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    return false
+end
 --- The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step.
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
@@ -2137,24 +2173,24 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue250
+                local __continue255
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue250 = true
+                        __continue255 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue250 = true
+                    __continue255 = true
                 until true
-                if not __continue250 then
+                if not __continue255 then
                     break
                 end
             end
         end
-        if r.clear ~= nil and nearest <= r.clear then
+        if r.clear ~= nil and (nearest <= r.clear or foggedWithin(bot, r.clear)) then
             return "clear"
         end
         if r.near ~= nil and nearest > r.near then
@@ -2212,10 +2248,10 @@ local function failingCheck(bot, st, rr)
         local hitters = 0
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue276
+                local __continue281
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil or not bot:WasRecentlyDamagedByHero(h, 1) then
-                        __continue276 = true
+                        __continue281 = true
                         break
                     end
                     hitters = hitters + 1
@@ -2226,9 +2262,9 @@ local function failingCheck(bot, st, rr)
                     ) then
                         return "paid"
                     end
-                    __continue276 = true
+                    __continue281 = true
                 until true
-                if not __continue276 then
+                if not __continue281 then
                     break
                 end
             end

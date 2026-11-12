@@ -232,7 +232,7 @@ function UnitMeta:GetNearbyLaneCreeps(r, enemy)
 	end
 	return out
 end
--- Items: u.items = { [slot] = { name = ..., ready = bool } }; trees: TREES = { [id] = Vector }.
+-- Items: u.items = { [slot] = { name = ..., ready = bool, spec = { [special value] = n } } }; trees: TREES = { [id] = Vector }.
 function UnitMeta:FindItemSlot(name)
 	for slot, it in pairs(self.items or {}) do if it.name == name then return slot end end
 	return -1
@@ -240,7 +240,8 @@ end
 function UnitMeta:GetItemInSlot(slot)
 	local it = (self.items or {})[slot]
 	if it == nil then return nil end
-	return { GetName = function() return it.name end, IsFullyCastable = function() return it.ready ~= false end, name = it.name }
+	return { GetName = function() return it.name end, IsFullyCastable = function() return it.ready ~= false end, name = it.name,
+		GetSpecialValueFloat = function(_, k) return (it.spec or {})[k] or 0 end }
 end
 function UnitMeta:GetMana() return self.mana or 100 end
 function UnitMeta:GetMaxMana() return self.maxMana or 100 end
@@ -252,7 +253,7 @@ function UnitMeta:GetNearbyTrees(r)
 	return ids
 end
 function GetTreeLocation(id) return TREES[id] end
-for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation", "UseAbilityOnTree", "UseAbilityOnEntity", "PickUpItem" }) do
+for _, kind in ipairs({ "MoveToLocation", "AttackUnit", "MovePath", "ClearActions", "UseAbilityOnLocation", "UseAbility", "UseAbilityOnTree", "UseAbilityOnEntity", "PickUpItem" }) do
 	UnitMeta["Action_" .. kind] = function(self, ...)
 		table.insert(ACTIONS, { pid = self.pid, kind = kind, args = { ... } })
 	end

@@ -539,11 +539,17 @@ do
 	check("rig: the attacker still near: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
 	cast.hp = 30
 	check("rig: HP latched: regen back over the bar while the attacker walks off still counts (fix5)", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	-- r1: the attacker leaving stepped into fog 490 off; out of sight is not gone until its last sighting is 6 s old.
+	atk.GetLocation = function() return nil end
+	LAST_SEEN[7] = { location = Vector(spot.x + 490, spot.y, 0), time_since_seen = 0.3 }
+	check("rig: the attacker in fog 490 off, seen 0.3 s ago: not ready (clear)", #readyLines(capture(function() tick(H, cast) end)) == 0)
+	atk.GetLocation = nil
+	LAST_SEEN[7].time_since_seen = 6
 	atk.loc = Vector(wait.x, wait.y, 0)
 	T = 80
 	local r = readyLines(capture(function() tick(H, atk, cast) end))
 	check("rig: ready once, ok=1, var=salve", #r == 1 and field(r[1], "ok") == "1" and field(r[1], "var") == "salve" and field(r[1], "secs") == "20", r[1])
-	check("rig: the ready line carries the rep's end, the window and the released modes without idle", field(r[1], "rend") == "210" and field(r[1], "win") == "600" and field(r[1], "rel") == "retreat", r[1])
+	check("rig: the ready line carries the rep's end, the window and the released modes without idle", field(r[1], "rend") == "195" and field(r[1], "win") == "600" and field(r[1], "rel") == "retreat", r[1])
 	check("rig: released: not held, retreat runs, laning gets 0, farm holds idle at 0.5", not H.Drill.Held(cast) and H.Chooser.Decide(cast, "laning") == 0 and H.Chooser.Decide(cast, "farm") == 0.5 and H.Drill.RigDesire(cast, "retreat") == nil)
 	-- The path every mode file takes (test_rig_entry_points.lua): Chooser.Gate answers for a released cast before OHA's desire.
 	check("rig: released: a mode file's Gate keeps OHA's desire for a listed mode and gives 0 for an unlisted one", H.Chooser.Gate(cast, "retreat", function() return 0.7 end)() == 0.7 and H.Chooser.Gate(cast, "laning", function() return 0.7 end)() == 0)
