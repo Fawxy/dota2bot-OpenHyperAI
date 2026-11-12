@@ -1113,6 +1113,14 @@
    "wave": "bool",
    "dmgh": "num",
    "crp": "bool",
+   "need": "num",
+   "held": "str",
+   "set": "str",
+   "got": "num",
+   "tree": "bool",
+   "skip": "str",
+   "ed": "num",
+   "ets": "num",
    "x": "num",
    "y": "num"
   },
@@ -2096,7 +2104,10 @@
    "purp": "text",
    "anchor": "text",
    "spot": "text",
-   "res": "text"
+   "res": "text",
+   "held": "text",
+   "set": "text",
+   "skip": "text"
   },
   "ev_tr_tp_react": {
    "mode": "text"

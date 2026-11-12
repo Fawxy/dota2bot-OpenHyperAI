@@ -1,4 +1,4 @@
-// Per-bot laning-phase metrics for before/after comparisons of humaniser builds (compare.js).
+// Per-bot laning-phase metrics for before/after comparisons of humaniser builds.
 'use strict';
 
 const HEALTHY_HP = 60;
