@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { Store } = require('../store');
-const { load, build, tableName, STORE_KIND } = require('../gen_events');
+const { load, build, docs, tableName, STORE_KIND } = require('../gen_events');
 
 const GEN = path.join(__dirname, '../gen_events.js');
 
@@ -34,6 +34,32 @@ test('declaration: known types only, unique tables, no key that collides with a 
 test('build: only str is forced to text; the rest are inferred', () => {
     const { json } = build({ probe: { a: 'num', b: 'bool', c: 'str', d: 'mixed', e: 'numstr' } });
     assert.deepStrictEqual(JSON.parse(json).kinds, { ev_probe: { c: 'text' } });
+});
+
+test('docs: a field or event comment reaches EVENTS.md, through spreads, and never events.json', () => {
+    const src = [
+        'export const BASE = {',
+        '    /** Where it stood. */',
+        '    x: "num",',
+        '} as const;',
+        'export const EVENTS = {',
+        '    // One per probe.',
+        '    probe: {',
+        '        ...BASE,',
+        '        /**',
+        '         * The probe',
+        '         * reading.',
+        '         */',
+        '        v: "num",',
+        '        w: "str",',
+        '    },',
+        '} as const;',
+    ].join('\n');
+    const events = { probe: { x: 'num', v: 'num', w: 'str' } };
+    const { md, json } = build(events, docs(src));
+    const want = ['## probe', '', 'One per probe.', '', '`w` str', '', '- `x` num: Where it stood.', '- `v` num: The probe reading.', ''];
+    assert.ok(md.includes(want.join('\n')), md);
+    assert.strictEqual(json, build(events).json);
 });
 
 test('store: a declared text field stays text when every logged value looks numeric', () => {

@@ -22,7 +22,91 @@ function load() {
     }
 }
 
-function build(events) {
+// Field and event meanings: the comment (`/** */` or `//` lines) right above a field or an event in events.ts. They go to
+// EVENTS.md only; events.json (and so the store version) ignores them, so a comment edit never empties the store. A field
+// from a spread (`...BOT`) keeps the comment it has where it is declared.
+function docs(text) {
+    const consts = {};
+    const events = {};
+    let pending = [];
+    let inComment = false;
+    let top = null;
+    let ev = null;
+    const take = () => {
+        const d = pending.join(' ').replace(/\s+/g, ' ').trim();
+        pending = [];
+        return d || undefined;
+    };
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (inComment) {
+            const end = line.indexOf('*/');
+            pending.push((end >= 0 ? line.slice(0, end) : line).replace(/^\*\s?/, ''));
+            if (end >= 0) inComment = false;
+            continue;
+        }
+        if (line.startsWith('/**')) {
+            const body = line.slice(3);
+            const end = body.indexOf('*/');
+            pending.push(end >= 0 ? body.slice(0, end) : body);
+            if (end < 0) inComment = true;
+            continue;
+        }
+        if (line.startsWith('//')) {
+            pending.push(line.slice(2));
+            continue;
+        }
+        let m;
+        if ((m = /^export const (\w+) = \{/.exec(line))) {
+            top = { spreads: [], fields: {} };
+            consts[m[1]] = top;
+            ev = null;
+            pending = [];
+            continue;
+        }
+        if (top && top === consts.EVENTS && !ev && (m = /^(\w+): \{$/.exec(line))) {
+            ev = { spreads: [], fields: {}, doc: take() };
+            events[m[1]] = ev;
+            continue;
+        }
+        const into = ev || top;
+        if (into && (m = /^\.\.\.(\w+),?$/.exec(line))) {
+            into.spreads.push(m[1]);
+            pending = [];
+            continue;
+        }
+        if (into && (m = /^(\w+): "\w+",?$/.exec(line))) {
+            const d = take();
+            if (d) into.fields[m[1]] = d;
+            continue;
+        }
+        if (line === '},' && ev) ev = null;
+        else if (line.startsWith('} as const')) top = ev = null;
+        if (line) pending = [];
+    }
+    const fieldDoc = (blk, f) => blk.fields[f] ?? blk.spreads.map(s => consts[s] && fieldDoc(consts[s], f)).find(Boolean);
+    return { event: e => events[e]?.doc, field: (e, f) => (events[e] ? fieldDoc(events[e], f) : undefined) };
+}
+
+// An event's section: its comment, the fields with no meaning on one line, then one line per field with a meaning.
+function section(ev, fields, doc) {
+    const plain = [];
+    const meant = [];
+    for (const [f, t] of Object.entries(fields)) {
+        const d = doc.field(ev, f);
+        if (d) meant.push(`- \`${f}\` ${t}: ${d}`);
+        else plain.push(`\`${f}\` ${t}`);
+    }
+    const out = [`## ${ev}`, ''];
+    if (doc.event(ev)) out.push(doc.event(ev), '');
+    if (plain.length) out.push(plain.join(', '), '');
+    if (meant.length) out.push(...meant, '');
+    return out;
+}
+
+const NO_DOCS = { event: () => undefined, field: () => undefined };
+
+function build(events, doc = NO_DOCS) {
     const kinds = {};
     for (const [ev, fields] of Object.entries(events)) {
         const k = {};
@@ -43,12 +127,7 @@ function build(events) {
         '',
         `${Object.keys(events).length} typed events.`,
         '',
-        ...Object.entries(events).flatMap(([ev, fields]) => [
-            `## ${ev}`,
-            '',
-            Object.entries(fields).map(([f, t]) => `\`${f}\` ${t}`).join(', '),
-            '',
-        ]),
+        ...Object.entries(events).flatMap(([ev, fields]) => section(ev, fields, doc)),
         '## Untyped',
         '',
         'Printed through `Telemetry.EventUntyped`, name or fields built at run time, so nothing checks them: the',
@@ -60,7 +139,7 @@ function build(events) {
 }
 
 function main() {
-    const { json, md } = build(load());
+    const { json, md } = build(load(), docs(fs.readFileSync(SRC, "utf8")));
     const check = process.argv.includes('--check');
     let stale = false;
     for (const [file, want] of [[JSON_OUT, json], [MD, md]]) {
@@ -75,4 +154,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { load, build, tableName, STORE_KIND };
+module.exports = { load, build, docs, tableName, STORE_KIND };

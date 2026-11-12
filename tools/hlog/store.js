@@ -26,6 +26,8 @@ const { DatabaseSync } = require('node:sqlite');
 
 const HOME = path.join(os.homedir(), '.dotactl');
 const LOGS = path.join(HOME, 'logs');
+// Remote-batch games: one folder per job, `<id>/game.log` beside the `job.json` that names its label.
+const JOBS = path.join(HOME, 'remote', 'jobs');
 const VIEWS = path.join(__dirname, 'views');
 const FRAGMENTS = path.join(__dirname, 'queries', 'fragments');
 
@@ -40,7 +42,7 @@ function include(sql, seen = []) {
     });
 }
 // Bump when ingest changes what it writes or the tables' shape: the store is emptied and rebuilt on its next open.
-const INGEST_VERSION = 5;
+const INGEST_VERSION = 6;
 
 // Declared column kinds from the typed event declaration (gen_events.js writes events.json); absent file means inference only.
 const DECLARED = (() => {
@@ -130,7 +132,7 @@ class Store {
             CREATE TABLE games (game_id INTEGER PRIMARY KEY, log_id INTEGER, file TEXT, game INTEGER, build TEXT,
                 mode TEXT, seed INTEGER, "set" TEXT, scenario TEXT, worktree TEXT, timescale REAL, lineup TEXT, human TEXT,
                 human_pos INTEGER, stop_t REAL, min_t REAL, max_t REAL, ended INTEGER, bots INTEGER, events INTEGER,
-                errors INTEGER, squelches INTEGER, error_squelches INTEGER);
+                errors INTEGER, squelches INTEGER, error_squelches INTEGER, label TEXT);
             CREATE TABLE errors (game_id INTEGER, t REAL, text TEXT);
             CREATE TABLE columns (tbl TEXT, col TEXT, kind TEXT, PRIMARY KEY (tbl, col));
             CREATE INDEX games_log ON games (log_id);
@@ -295,10 +297,10 @@ class Store {
         const bot = g.events.find(e => e.ev === 'bot' && e.build !== undefined);
         const factKeys = ['mode', 'seed', 'set', 'scenario', 'worktree', 'timescale', 'lineup', 'human', 'human_pos', 'stop_t'];
         const gameId = Number(this.db.prepare(`INSERT INTO games (log_id, file, game, build, ${factKeys.map(q).join(', ')},
-            min_t, max_t, ended, bots, events, errors, squelches, error_squelches) VALUES (${Array(22).fill('?').join(', ')})`).run(logId, file, g.index,
+            min_t, max_t, ended, bots, events, errors, squelches, error_squelches, label) VALUES (${Array(23).fill('?').join(', ')})`).run(logId, file, g.index,
             bot ? String(bot.build) : null, ...factKeys.map(k => bind(facts[k] ?? null)),
             Number.isFinite(g.minT) ? g.minT : null, Number.isFinite(g.maxT) ? g.maxT : null, g.ended ? 1 : 0,
-            Object.values(g.bots).filter(b => !b.human).length, g.events.length, g.errors.length, g.squelches, g.errorSquelches).lastInsertRowid);
+            Object.values(g.bots).filter(b => !b.human).length, g.events.length, g.errors.length, g.squelches, g.errorSquelches, labelOf(file)).lastInsertRowid);
         const byEv = new Map();
         g.events.forEach((e, seq) => {
             const r = { game_id: gameId, seq, t: e.t };
@@ -398,14 +400,34 @@ class Store {
     }
 }
 
+/**
+ * A game's run label: a remote job's `job.json` `label`, else the log's file name less dotactl's timestamp prefix
+ * (`2026-11-07T08-18-43-h2hlane1_A_on_1.log` is `h2hlane1_A_on_1`).
+ */
+function labelOf(file) {
+    const job = path.join(path.dirname(file), 'job.json');
+    if (path.basename(file) === 'game.log' && fs.existsSync(job)) {
+        try {
+            return JSON.parse(fs.readFileSync(job, 'utf8')).label ?? null;
+        } catch {
+            return null;
+        }
+    }
+    return path.basename(file).replace(/\.log$/, '').replace(/^\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-/, '');
+}
+
+/** Files, a directory's *.log and its job folders' game.log (the remote jobs layout), and a manifest's ok logs. */
 function expand(args) {
     const out = [];
     for (const a of args) {
-        if (fs.statSync(a).isDirectory()) out.push(...fs.readdirSync(a).filter(f => f.endsWith('.log')).sort().map(f => path.join(a, f)));
+        if (fs.statSync(a).isDirectory()) {
+            out.push(...fs.readdirSync(a).filter(f => f.endsWith('.log')).sort().map(f => path.join(a, f)));
+            out.push(...fs.readdirSync(a).sort().map(f => path.join(a, f, 'game.log')).filter(f => fs.existsSync(f)));
+        }
         else if (/\.manifest$/.test(a)) out.push(...readManifest(a).map(g => g.log));
         else out.push(a);
     }
     return out;
 }
 
-module.exports = { Store, DB, LOGS, INGEST_VERSION, DECLARED, versionOf, storeFile, STALE_MS, q };
+module.exports = { Store, DB, LOGS, JOBS, INGEST_VERSION, labelOf, DECLARED, versionOf, storeFile, STALE_MS, q };
