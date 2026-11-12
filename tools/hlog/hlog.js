@@ -47,6 +47,22 @@ function params(argv) {
 }
 
 /**
+ * A `like` or `file` param naming a run label (games.label) instead of a log path becomes that log's path, so
+ * `--p like=%h2hX_C_dire_3%` works as well as a path fragment. A label in several logs is an error naming them.
+ */
+function labelToFile(store, p) {
+    for (const k of ['like', 'file']) {
+        if (typeof p[k] !== 'string') continue;
+        const op = k === 'like' ? 'LIKE' : '=';
+        if (store.query(`SELECT 1 FROM games WHERE file ${op} :v LIMIT 1`, { v: p[k] }).length) continue;
+        const files = store.query('SELECT DISTINCT file FROM games WHERE label LIKE :v', { v: p[k] }).map(r => r.file);
+        if (files.length > 1) throw new Error(`${k}=${p[k]} matches the labels of ${files.length} logs; name one label, or a path fragment (SELECT file, label FROM games WHERE label LIKE '...')`);
+        if (files.length === 1) { console.error(`${k}=${p[k]} is a label: using ${files[0]}`); p[k] = files[0]; }
+    }
+    return p;
+}
+
+/**
  * Every named query (`@name`, run with `q @name`) and view (a table name for `q "<sql>"`): its header's first sentence and the
  * params its SQL reads (`:k`, set with `--p k=v`). With a word, only those whose name or first sentence holds it.
  */
@@ -195,7 +211,7 @@ function main(argv) {
             sync();
             const logsIn = store.query('SELECT count(*) AS n FROM logs')[0].n;
             if (!logsIn) console.error(`the store ${path.basename(opt("db") || DB)} has no logs (a new store version starts empty): run without --no-ingest, or hlog.js ingest <log>`);
-            say(store.query(sqlOf(rest[0]), params(argv)));
+            say(store.query(sqlOf(rest[0]), labelToFile(store, params(argv))));
         } else if (cmd === 'events' && rest[0]) {
             store.ingest(rest[0]);
             console.log(events(store, rest[0], { game: opt('game'), pid: opt('pid'), hero: opt('hero'), from: opt('from'), to: opt('to'), ev: opt('ev'), all: argv.includes('--all') }));

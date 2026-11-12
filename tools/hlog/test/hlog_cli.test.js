@@ -52,3 +52,17 @@ test('events: one hero in a window, oldest first, noisy lines left out, a short 
     assert.match(d.stdout, /pids: 0=luna\(rad pos1\) 1=pudge\(rad pos3\)/);
     assert.match(d.stdout, /label: probe_A_on_1/);
 });
+
+test('q: a like or file param naming a run label resolves to that log', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-label-'));
+    const log = path.join(dir, '2026-11-13T00-00-00-probe_B_on_1.log');
+    fs.writeFileSync(log, '[HEV] t=1 ev=bot pid=0 hero=luna team=2 pos=1\n');
+    const db = path.join(dir, 's.sqlite');
+    const q = p => spawnSync(process.execPath, [HLOG, 'q', 'SELECT count(*) AS n FROM games WHERE file LIKE :like', '--p', p, '--db', db, '--logs', dir, '--json'], { encoding: 'utf8' });
+    const r = q('like=%probe_B_on_1%');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /"n": ?1/);
+    const byLabel = q('like=probe_B_on_1');
+    assert.match(byLabel.stderr, /is a label: using/);
+    assert.match(byLabel.stdout, /"n": ?1/);
+});
