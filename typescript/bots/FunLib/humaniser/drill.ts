@@ -216,7 +216,9 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 sidenear: ["r:bot1", -2250, 700],
                 beside: ["r:bot1", -2600, 700],
-                partner: ["r:bot1", -3000, 700],
+                // East of the cast, 337 from it as snapped (rig3: 250 west snapped onto the cast's spot, so the hitters took the
+                // partner for the cast; the attack step takes the hero nearest the cast's spot within 200).
+                partner: ["r:bot1", -2250, 700],
             },
             timeout: 100,
             keeps: ["levelup"],
@@ -252,8 +254,8 @@ export const TABLE: Record<string, Entry> = {
                     setup: {
                         r1: ["heal", "stand side until hp 0.72", "stand side"],
                         r5: ["heal", "stand partner"],
-                        d3: ["heal", "walk sidenear", "attack r1 until hp 0.72", "attack r1 until hp 0.5", "leave"],
-                        d4: ["heal", "walk sidenear", "attack r1 until hp 0.5", "leave"],
+                        d3: ["heal", "attack r1 until hp 0.72", "attack r1 until hp 0.5", "leave"],
+                        d4: ["heal", "attack r1 until hp 0.5", "leave"],
                     },
                     after: { r5: ["wait 3", "leave"] },
                     ready: { hit: true, behind: 0.16, hpAtLeast: 0.55 },
