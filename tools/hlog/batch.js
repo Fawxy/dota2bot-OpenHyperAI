@@ -275,6 +275,16 @@ async function main(argv) {
     process.exit(bad ? 1 : 0);
 }
 
-if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
+// `--help`: the comment block that opens this file.
+function printHelp() {
+    const lines = fs.readFileSync(__filename, 'utf8').split('\n');
+    const head = lines.slice(lines[0].startsWith('#!') ? 1 : 0).filter(l => l !== "'use strict';");
+    const block = [];
+    for (const l of head) { if (!l.startsWith('//')) break; block.push(l.replace(/^\/\/ ?/, '')); }
+    console.log(block.join('\n'));
+}
+
+if (require.main === module && (process.argv.includes('--help') || process.argv.includes('-h'))) printHelp();
+else if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 
 module.exports = { plan, planSummary, runArgs, seconds, remoteJob, runRemote, judge, decided };

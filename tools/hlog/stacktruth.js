@@ -160,5 +160,15 @@ function main() {
   for (const o of out) console.log([o.file, o.min, o.camp, o.nin, o.log, o.true, o.block, o.woff ?? '', o.fcamp ?? '', o.fnin ?? '', o.flog ?? '', o.ftrue ?? '', o.fblock ?? '', o.fwoff ?? ''].join('\t'));
 }
 
-if (require.main === module) main();
+// `--help`: the comment block that opens this file.
+function printHelp() {
+    const lines = fs.readFileSync(__filename, 'utf8').split('\n');
+    const head = lines.slice(lines[0].startsWith('#!') ? 1 : 0).filter(l => l !== "'use strict';");
+    const block = [];
+    for (const l of head) { if (!l.startsWith('//')) break; block.push(l.replace(/^\/\/ ?/, '')); }
+    console.log(block.join('\n'));
+}
+
+if (require.main === module && (process.argv.includes('--help') || process.argv.includes('-h'))) printHelp();
+else if (require.main === module) main();
 module.exports = { grade, campMap, boxesOf, near, nin, tiers };
