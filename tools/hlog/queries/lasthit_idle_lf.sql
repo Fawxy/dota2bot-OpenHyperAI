@@ -8,8 +8,8 @@
 -- `taken_by_other` or `denied` with a `why=`, started by the death, ended from 0.05 s before it to 2.5 s after, its creep
 -- within 80 of the death point; each attempt goes to its nearest such death). `wait`: in range, the swing held for its
 -- moment (K1); `range`: still walking in; `stall`: reported over 0.5 s after the creep died, so the verb was not stepped;
--- `other`: any other `why`. Only `wait` is an attempt OHA's laning would show in the creep facts (it attacks a creep in range
--- at once, but walks in with a bare move), so only `wait` rows are left out, unless held=1 (intake 12/11/2026: about 4.4 a
+-- `other`: any other `why`. Only `wait` is an attempt OHA's laning would show in the creep facts (it attacks a last-hit creep
+-- in range once it is due, but walks in with a bare move), so only `wait` rows are left out, unless held=1 (intake 12/11/2026: about 4.4 a
 -- game under laning in h2hskill1); `range`, `stall` and `other` stay violations with their label. OHA has no ev=lh, so its
 -- `held` is NULL. Params: file (absolute log path, as in games.file), game (default 1), until (s, default 600), held (1 to
 -- keep the `wait` rows, default 0).
