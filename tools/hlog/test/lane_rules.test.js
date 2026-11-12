@@ -201,6 +201,23 @@ test('D7: a dip back under 2,000 is one departure, a respawn is none, and a supp
     assert.deepStrictEqual(cases(lines, 'D7'), [[3, 306, 0, 'free'], [3, 506, 0, 'self']]);
 });
 
+test('D7: a low core retreating away from a support that stays is core_left; a support walking off farther than its core still violates', () => {
+    const lines = bots([[0, 2, 1], [3, 2, 5], [5, 3, 3], [6, 3, 4]]);
+    // 100-105 together, then the core (at 35%) runs 2,100 east in retreat mode while the support holds: core_left.
+    // 200-205 together, then the core (at 35%) steps 600 east and the support walks 1,500 west: needed.
+    for (let t = 100; t <= 110; t++) {
+        const away = t > 105;
+        lines.push(snap(t, 0, away ? PX + 2100 : PX, PY, { hp: 35, mode: away ? 'retreat' : 'laning' }), snap(t, 3, PX - 100, PY));
+        lines.push(snap(t, 5, PX + 800, PY + 800), snap(t, 6, PX + 800, PY + 900));
+    }
+    for (let t = 200; t <= 210; t++) {
+        const away = t > 205;
+        lines.push(snap(t, 0, away ? PX + 600 : PX, PY, { hp: 35 }), snap(t, 3, away ? PX - 1500 : PX - 100, PY));
+        lines.push(snap(t, 5, PX + 800, PY + 800), snap(t, 6, PX + 800, PY + 900));
+    }
+    assert.deepStrictEqual(cases(lines, 'D7'), [[3, 106, 0, 'core_left'], [3, 206, 1, 'needed']]);
+});
+
 test('D9: a trip out of lane where two enemies reach the hero alone violates; a quiet one does not', () => {
     const lines = bots([[4, 2, 4], [5, 3, 3], [6, 3, 4]]);
     // 300-305 exposed, 400-405 quiet, 500-505 a flight that starts in retreat mode (D1's, not a trip).
