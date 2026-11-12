@@ -82,6 +82,8 @@ do
 		end
 		local v, called = gated(H, bot, "laning", 0.2)
 		check("lane pick, laning is the host at the lane desire", v == Arb.SETTINGS.LaneDesire and called, tostring(v))
+		v = gated(H, bot, "laning", 0.9)
+		check("lane pick, laning's own last-hit desire stands above the lane desire", v == 0.9, tostring(v))
 		for _, m in ipairs({ "ward", "rune", "retreat", "assemble", "assemble_with_humans" }) do
 			v, called = gated(H, bot, m)
 			check("lane pick, " .. m .. " runs its own desire", v == 0.5 and called, tostring(v))
@@ -129,14 +131,15 @@ do
 		check("trade pick hosted in attack", Arb.Drive(bot, nil).name == "trade")
 		v = gated(H, bot, "attack")
 		check("trade pick: attack is the host", v == 0.5, tostring(v))
-		v = gated(H, bot, "laning")
-		check("trade pick: laning 0", v == 0, tostring(v))
+		v, called = gated(H, bot, "laning", 0.9)
+		check("trade pick: laning keeps its own last-hit desire (H2: a trade yields to a last hit)", v == 0.9 and called, tostring(v))
 		v = gated(H, bot, "ward")
 		check("trade pick: the admitted ward waits", v == 0, tostring(v))
 	end)
 	local p = { name = "lane", group = 3, host = "laning", applies = true }
 	local farm = function() return nil end
-	check("last hit under way: attack 0", Arb.DriveDecide(bot, "attack", p, farm) == 0)
+	check("last hit under way: attack asked, so a running trade or kill is not ended by the lift", Arb.DriveDecide(bot, "attack", p, farm) == nil)
+	check("last hit under way: team roam 0", Arb.DriveDecide(bot, "team_roam", p, farm) == 0)
 	check("last hit under way: rune 0", Arb.DriveDecide(bot, "rune", p, farm) == 0)
 	check("last hit under way: laning runs", Arb.DriveDecide(bot, "laning", p, farm) == nil)
 	local job = { name = "job", group = 6, host = "farm", applies = true }
@@ -146,5 +149,13 @@ do
 	local rune = { name = "job", group = 6, host = "rune", applies = true }
 	check("job hosted in rune: rune runs, farm 0", Arb.DriveDecide(bot, "rune", rune, farm) == nil
 		and Arb.DriveDecide(bot, "farm", rune, function() return 0.92 end) == 0)
+end
+-- A drill's lane-only hero is not driven: its laning holds it (only the thing under test acts).
+do
+	local H, bot = world(true)
+	local Arb = require("bots/FunLib/humaniser/arbiter")
+	local Overrides = require("bots/FunLib/humaniser/overrides")
+	Overrides.LaneOnly = function() return true end
+	check("drive: a lane-only drill hero is not owned", Arb.Owned(bot) == false and not Arb.Drives(bot))
 end
 finish()

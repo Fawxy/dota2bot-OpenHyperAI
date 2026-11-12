@@ -26,6 +26,7 @@ local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_contro
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -102,13 +103,14 @@ function ____exports.LeverOf(bot)
     return nil
 end
 --- A hero of ours the arbiter reasons about, one no drill holds: with `Ours.ArbiterDrive`, from its first laning read to an
--- end event (Phase.LaningHeld); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
+-- end event (Phase.LaningHeld), and never a drill's lane-only hero (its laning holds it at 1.2, only the thing under test
+-- acts); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
 function ____exports.Owned(bot)
     if Drill.Held(bot) then
         return false
     end
     if Ours.On("ArbiterDrive") then
-        return Phase.LaningHeld(bot)
+        return not Overrides.LaneOnly(bot) and Phase.LaningHeld(bot)
     end
     return Phase.LaningTransitionsSeen(bot) == true
 end
@@ -217,6 +219,13 @@ function ____exports.Drive(bot, chooserJob)
     drivePrev[pid] = p.name
     return p
 end
+--- The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
+-- hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+-- trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
+-- scan, which goes stale once attack holds the hero.
+local function laneAndTrade(p)
+    return p.name == "lane" or p.name == "trade"
+end
 --- Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit).
 local BORROWED = {
     attack = function(bot) return CoreTrade.Running(bot) end,
@@ -233,6 +242,7 @@ local ALWAYS = {retreat = true, assemble = true, assemble_with_humans = true}
 -- the mode's own code (then After). `farmHost` is the chooser's host desire (a job may start from the lane base).
 -- - always: retreat (ours), assemble, assemble_with_humans; the retreat pick keeps only these.
 -- - the pick's host runs (farm: the chooser's host desire, its own code for an older-path camp job).
+-- - laning under a trade pick and attack under any lane pick run (laneAndTrade).
 -- - borrowed attack and team roam run below a group-5 pick, kept by After only while our fight read wants them.
 -- - farm below a group-6 pick: a chooser job may start, OHA's farm desire is denied.
 -- - admitted ward and rune beside the lane base.
@@ -252,6 +262,12 @@ function ____exports.DriveDecide(_bot, mode, p, farmHost)
             ____temp_0 = nil
         end
         return ____temp_0
+    end
+    if mode == "laning" and p.name == "trade" then
+        return nil
+    end
+    if mode == "attack" and p.name == "lane" then
+        return nil
     end
     if BORROWED[mode] ~= nil then
         local ____temp_1
@@ -275,17 +291,26 @@ end
 -- mode's own GetDesire, which opens a trade or a fight).
 function ____exports.DriveAfter(bot, mode, p, desire)
     if mode == "laning" and p.name == "lane" then
-        return ____exports.SETTINGS.LaneDesire
+        local ____temp_2
+        if type(desire) == "number" and desire > ____exports.SETTINGS.LaneDesire then
+            ____temp_2 = desire
+        else
+            ____temp_2 = ____exports.SETTINGS.LaneDesire
+        end
+        return ____temp_2
+    end
+    if mode == "laning" and laneAndTrade(p) then
+        return desire
     end
     local borrowed = BORROWED[mode]
     if borrowed ~= nil and mode ~= p.host then
-        local ____borrowed_result_2
+        local ____borrowed_result_3
         if borrowed(bot) then
-            ____borrowed_result_2 = desire
+            ____borrowed_result_3 = desire
         else
-            ____borrowed_result_2 = 0
+            ____borrowed_result_3 = 0
         end
-        return ____borrowed_result_2
+        return ____borrowed_result_3
     end
     return desire
 end

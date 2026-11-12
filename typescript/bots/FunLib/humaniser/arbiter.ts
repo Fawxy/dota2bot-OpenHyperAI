@@ -13,6 +13,7 @@ import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as LaneFight from "bots/FunLib/humaniser/lane_fight";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -70,11 +71,12 @@ export function LeverOf(bot: Unit): string | undefined {
 
 /**
  * A hero of ours the arbiter reasons about, one no drill holds: with `Ours.ArbiterDrive`, from its first laning read to an
- * end event (Phase.LaningHeld); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
+ * end event (Phase.LaningHeld), and never a drill's lane-only hero (its laning holds it at 1.2, only the thing under test
+ * acts); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
  */
 export function Owned(bot: Unit): boolean {
     if (Drill.Held(bot)) return false;
-    if (Ours.On("ArbiterDrive")) return Phase.LaningHeld(bot);
+    if (Ours.On("ArbiterDrive")) return !Overrides.LaneOnly(bot) && Phase.LaningHeld(bot);
     return Phase.LaningTransitionsSeen(bot) === true;
 }
 const owned = Owned;
@@ -134,7 +136,8 @@ export const SETTINGS = {
      * The laning mode's desire while the lane is the pick. Over the Valve built-in mode that took a hero no file wanted
      * (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates); under a trade's opening desire (core_trade
      * DESIRE_TRADE 0.6), so a trade the borrowed attack mode opens takes the hero; an admitted mode (wards, runes no plan of
-     * ours covers) wins when OHA's own desire for it is higher. `judgement`.
+     * ours covers) wins when OHA's own desire for it is higher. Laning's own last-hit desire (0.9, our body's branch under
+     * bOwnsThink, OWNERSHIP H2) stands when higher. `judgement`.
      */
     LaneDesire: 0.55,
 };
@@ -165,6 +168,16 @@ export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
     return p;
 }
 
+/**
+ * The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
+ * hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+ * trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
+ * scan, which goes stale once attack holds the hero.
+ */
+function laneAndTrade(p: Candidate): boolean {
+    return p.name === "lane" || p.name === "trade";
+}
+
 /** Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit). */
 const BORROWED: Record<string, (this: void, bot: Unit) => boolean> = {
     attack: (bot) => CoreTrade.Running(bot),
@@ -185,6 +198,7 @@ const ALWAYS: Record<string, true> = { retreat: true, assemble: true, assemble_w
  * the mode's own code (then After). `farmHost` is the chooser's host desire (a job may start from the lane base).
  * - always: retreat (ours), assemble, assemble_with_humans; the retreat pick keeps only these.
  * - the pick's host runs (farm: the chooser's host desire, its own code for an older-path camp job).
+ * - laning under a trade pick and attack under any lane pick run (laneAndTrade).
  * - borrowed attack and team roam run below a group-5 pick, kept by After only while our fight read wants them.
  * - farm below a group-6 pick: a chooser job may start, OHA's farm desire is denied.
  * - admitted ward and rune beside the lane base.
@@ -194,6 +208,8 @@ export function DriveDecide(_bot: Unit, mode: string, p: Candidate, farmHost: (t
     if (ALWAYS[mode] === true) return undefined;
     if (p.name === "retreat") return 0;
     if (mode === p.host) return mode === "farm" ? farmHost() : undefined;
+    if (mode === "laning" && p.name === "trade") return undefined;
+    if (mode === "attack" && p.name === "lane") return undefined;
     if (BORROWED[mode] !== undefined) return p.group > 5 ? undefined : 0;
     if (mode === "farm") return p.group > 6 ? farmHost() ?? 0 : 0;
     if (ADMITTED_AT_BASE[mode] === true && p.group >= BASE_GROUP) return undefined;
@@ -206,7 +222,8 @@ export function DriveDecide(_bot: Unit, mode: string, p: Candidate, farmHost: (t
  * mode's own GetDesire, which opens a trade or a fight).
  */
 export function DriveAfter(bot: Unit, mode: string, p: Candidate, desire: any): any {
-    if (mode === "laning" && p.name === "lane") return SETTINGS.LaneDesire;
+    if (mode === "laning" && p.name === "lane") return type(desire) === "number" && desire > SETTINGS.LaneDesire ? desire : SETTINGS.LaneDesire;
+    if (mode === "laning" && laneAndTrade(p)) return desire;
     const borrowed = BORROWED[mode];
     if (borrowed !== undefined && mode !== p.host) return borrowed(bot) ? desire : 0;
     return desire;

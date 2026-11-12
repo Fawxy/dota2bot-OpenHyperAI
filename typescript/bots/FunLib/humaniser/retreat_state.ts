@@ -16,8 +16,9 @@ const running: Record<number, boolean> = {};
  */
 export function Owns(bot: Unit): boolean {
     if (!Ours.On("Retreat")) return false;
-    const laning = Ours.On("ArbiterDrive") ? Phase.LaningHeld(bot) : Phase.LaningTransitions(bot);
-    return laning && !Drill.Held(bot);
+    // Under the drive a drill's held hero is never read, so it logs no ownership line.
+    if (Ours.On("ArbiterDrive")) return !Drill.Held(bot) && Phase.LaningHeld(bot);
+    return Phase.LaningTransitions(bot) && !Drill.Held(bot);
 }
 
 /** An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does). */

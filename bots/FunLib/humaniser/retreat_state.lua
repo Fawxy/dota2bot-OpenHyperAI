@@ -178,28 +178,24 @@ function ____exports.Owns(bot)
     if not Ours.On("Retreat") then
         return false
     end
-    local ____Ours_On_result_0
     if Ours.On("ArbiterDrive") then
-        ____Ours_On_result_0 = Phase.LaningHeld(bot)
-    else
-        ____Ours_On_result_0 = Phase.LaningTransitions(bot)
+        return not Drill.Held(bot) and Phase.LaningHeld(bot)
     end
-    local laning = ____Ours_On_result_0
-    return laning and not Drill.Held(bot)
+    return Phase.LaningTransitions(bot) and not Drill.Held(bot)
 end
 --- An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does).
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] == true
 end
 function ____exports.SetRunning(bot, on)
-    local ____temp_2 = bot:GetPlayerID()
-    local ____on_1
+    local ____temp_1 = bot:GetPlayerID()
+    local ____on_0
     if on then
-        ____on_1 = true
+        ____on_0 = true
     else
-        ____on_1 = nil
+        ____on_0 = nil
     end
-    running[____temp_2] = ____on_1
+    running[____temp_1] = ____on_0
 end
 function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(running)) do
