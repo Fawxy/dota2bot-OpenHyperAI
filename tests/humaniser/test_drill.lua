@@ -436,13 +436,6 @@ do
 						end
 					end
 				end
-				for k, steps in pairs(rr.after or {}) do
-					check(name .. "/" .. rr.name .. "/" .. k .. ": an after list is an own actor's", rr.setup[k] ~= nil)
-					for _, s in ipairs(steps) do
-						local verb, a = s:match("^(%a+)%s*(%S*)")
-						check(name .. "/" .. rr.name .. ": known after step " .. s, (verb == "wait" and tonumber(a) ~= nil) or verb == "leave" or ((verb == "stand" or verb == "walk") and r.spots[a] ~= nil))
-					end
-				end
 			end
 		end
 	end
@@ -682,7 +675,7 @@ end
 
 -- Slice hit-back's rig (retreat-hitback), rebuilt off the lane: the cast stands at the side spot; `far` is ready only on a
 -- hit from 100-300 past its trade reach at 90%+ HP, `behind` only 16+ points under its hitter; the rep supplies the creep-aggro
--- fact (`RigCreepAggro`); the far hitter attacks from 500 without stepping in; the partner's `after` steps once released.
+-- fact (`RigCreepAggro`); the far hitter attacks from 500 without stepping in.
 do
 	local dota = require("bots/ts_libs/dota/index")
 	local H = world("retreat-hitback")
@@ -766,39 +759,6 @@ do
 	T = 245
 	check("hitback rig: the free control supplies the fact false", H.Drill.RigCreepAggro() == false)
 
-	-- An own-team actor's `after` steps (no entry uses them since the pair rep was dropped, 12/11/2026): a fifth rep kind
-	-- added here, in which the partner stands until 3 s after the release, then walks home.
-	local rig = H.Drill.TABLE["retreat-hitback"].rig
-	rig.spots.partner = { "r:bot1", -2250, 700 }
-	rig.reps[5] = {
-		name = "pair", aggro = true,
-		setup = { r1 = { "heal", "stand side until hp 0.72", "stand side" }, r5 = { "heal", "stand partner" }, d3 = { "heal", "attack r1 until hp 0.5", "leave" } },
-		after = { r5 = { "wait 3", "leave" } },
-		ready = { hit = true, behind = 0.16, hpAtLeast = 0.55 },
-	}
-	T = 481
-	cast.hp = 100
-	ACTIONS = {}
-	capture(function() tick(cast, r5) end)
-	local pspot = lastMoveTo(5)
-	r5.loc = Vector(pspot.x, pspot.y, 0)
-	cast.hp = 70
-	capture(function() tick(cast, r5) tick(cast, r5) end)
-	d3.loc = Vector(side.x + 150, side.y, 0)
-	d3.hp = 100
-	cast.hitBy[d3] = T
-	check("rig after steps: ready on a hit with the cast behind", ready(capture(function() tick(cast, r5) end)) ~= nil)
-	T = 483
-	ACTIONS = {}
-	capture(function() tick(r5) end)
-	check("rig after steps: 2 s after the release the partner still stands by", lastMoveTo(5) ~= nil and dist(lastMoveTo(5), pspot) < 60)
-	T = 484.2
-	ACTIONS = {}
-	capture(function() tick(r5) tick(r5) end)
-	local home = lastMoveTo(5)
-	check("rig after steps: 3 s after the release the partner walks home", home ~= nil and math.abs(home.x - -6619) < 400, home and (home.x .. "," .. home.y))
-	cast.hitBy[d3] = nil
-	rig.reps[5], rig.spots.partner = nil, nil
 	CREEPS[2], CREEPS[3] = {}, {}
 	local Hn = world(nil)
 	check("no drill: no creep-aggro fact, the game decides", Hn.Drill.RigCreepAggro() == nil)
