@@ -29,8 +29,8 @@
 --    laners near is every 2v2 lane second, so alone it is no need), or an enemy within 1,500 of it is 2 levels above it or
 --    has 6 while it has not. Cause: self (the support was in retreat mode: staying alive is the higher group; at any HP, so a
 --    needless high-HP retreat away from the core is D2's count, not D7's), core_left (from the last together second to the
---    departure the core moved at least as far as the support: the core retreated, went home or went to a camp, and the
---    support stayed), needed, free. viol: needed.
+--    departure the core moved at least as far as the support, and the support is still within 1,200 of a lane path (`ld`):
+--    the core retreated, went home or went to a camp, and the support stayed), needed, free. viol: needed.
 -- D9: a trip is a run of seconds (gaps of 3 s or less, 3 s or more long) more than 1,200 from every lane path (`ld`),
 --    outside 2,500 of the fountain, from 0:30, that starts from lane (the snapshot before, 3 s or less earlier, within 1,200
 --    of a lane path) and not in retreat mode (a flight is D1's). viol: some second of it with 2 or more enemies in reach and
@@ -203,7 +203,8 @@ lr_dep AS (
 lr_d7 AS (
     SELECT d.game_id, d.sup AS pid, d.team, d.spos AS pos, d.side, d.sec AS t, d.smode AS mode, d.chp AS hp, d.cen AS en,
         EXISTS (SELECT 1 FROM lr_ps n WHERE n.game_id = d.game_id AND n.sup = d.sup AND n.sec >= d.last_tog AND n.sec <= d.sec AND n.need) AS needed,
-        (SELECT sqrt((a1.x - a0.x) * (a1.x - a0.x) + (a1.y - a0.y) * (a1.y - a0.y)) <= sqrt((c1.x - c0.x) * (c1.x - c0.x) + (c1.y - c0.y) * (c1.y - c0.y))
+        (SELECT coalesce(a1.ld, 0) <= 1200
+                AND sqrt((a1.x - a0.x) * (a1.x - a0.x) + (a1.y - a0.y) * (a1.y - a0.y)) <= sqrt((c1.x - c0.x) * (c1.x - c0.x) + (c1.y - c0.y) * (c1.y - c0.y))
             FROM lr_f a0, lr_f a1, lr_f c0, lr_f c1
             WHERE a0.game_id = d.game_id AND a0.pid = d.sup AND a0.sec = d.last_tog AND a1.game_id = d.game_id AND a1.pid = d.sup AND a1.sec = d.sec
                 AND c0.game_id = d.game_id AND c0.pid = p.core AND c0.sec = d.last_tog AND c1.game_id = d.game_id AND c1.pid = p.core AND c1.sec = d.sec) AS core_left

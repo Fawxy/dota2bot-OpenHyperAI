@@ -215,7 +215,13 @@ test('D7: a low core retreating away from a support that stays is core_left; a s
         lines.push(snap(t, 0, away ? PX + 600 : PX, PY, { hp: 35 }), snap(t, 3, away ? PX - 1500 : PX - 100, PY));
         lines.push(snap(t, 5, PX + 800, PY + 800), snap(t, 6, PX + 800, PY + 900));
     }
-    assert.deepStrictEqual(cases(lines, 'D7'), [[3, 106, 0, 'core_left'], [3, 206, 1, 'needed']]);
+    // 300-305 together, then the core (at 35%) walks 1,100 east and the support 1,000 west, off the lane: needed.
+    for (let t = 300; t <= 310; t++) {
+        const away = t > 305;
+        lines.push(snap(t, 0, away ? PX + 1100 : PX, PY, { hp: 35 }), snap(t, 3, away ? PX - 1000 : PX - 100, PY, { ld: away ? 1500 : 0 }));
+        lines.push(snap(t, 5, PX + 800, PY + 800), snap(t, 6, PX + 800, PY + 900));
+    }
+    assert.deepStrictEqual(cases(lines, 'D7'), [[3, 106, 0, 'core_left'], [3, 206, 1, 'needed'], [3, 306, 1, 'needed']]);
 });
 
 test('D9: a trip out of lane where two enemies reach the hero alone violates; a quiet one does not', () => {
