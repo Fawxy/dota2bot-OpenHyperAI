@@ -628,6 +628,24 @@ do
 	ourCreep.loc = Vector(100, 0)
 	check("a hitter outside our reach and outside our creeps' aggro is not walked to (a free hit: D24 steps out)",
 		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("agg=0"), last())
+	-- A drill rig supplies the creep-aggro fact in place of the creep test (slice hit-back's rig, off the lane).
+	local Drill = require("bots/FunLib/humaniser/drill")
+	local fact = Drill.RigCreepAggro
+	Ours.HitBack = nil
+	fresh()
+	bot.hitBy = enemy
+	enemy.loc = Vector(900, 0)
+	ourCreep.loc = Vector(-2000, 0)
+	Drill.RigCreepAggro = function() return true end
+	check("rig fact true, no creep of ours near the hitter: it is hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	fresh()
+	bot.hitBy = enemy
+	enemy.loc = Vector(900, 0)
+	ourCreep.loc = Vector(700, 0)
+	Drill.RigCreepAggro = function() return false end
+	check("rig fact false, our creep 200 from the hitter: no hit back, logged as outside our creeps' aggro",
+		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("agg=0"), last())
+	Drill.RigCreepAggro = fact
 	Ours.HitBack = false
 	Ours.HitBack = nil
 	Ours.CoreLaneFight = true

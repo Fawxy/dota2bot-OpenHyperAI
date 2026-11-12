@@ -674,13 +674,16 @@ do
 	check("chase wait: on a control rep it walks to 350 behind its own T1, not to the fountain", to ~= nil and math.abs(d1 - 350) < 5 and dF > 1000, to and (to.x .. "," .. to.y))
 end
 
--- Slice hit-back's rig (retreat-hitback): spots at our lane front, read again each rep; ready on `paid` (a hero hit the cast
--- within 1 s and stands within 500 of one of our lane creeps); the partner's `after` steps once the cast is released.
+-- Slice hit-back's rig (retreat-hitback), rebuilt off the lane: the cast stands at the side spot; `far` is ready only on a
+-- hit from 100-300 past its trade reach at 90%+ HP, `behind` only 16+ points under its hitter; the rep supplies the creep-aggro
+-- fact (`RigCreepAggro`); the far hitter attacks from 500 without stepping in; the partner's `after` steps once released.
 do
 	local dota = require("bots/ts_libs/dota/index")
 	local H = world("retreat-hitback")
-	local cast, d3, r5, d4 = hero(1, RAD, 1, dota.Lane.Bot), hero(7, DIRE, 3, dota.Lane.Bot), hero(5, RAD, 5, dota.Lane.Bot), hero(8, DIRE, 4, dota.Lane.Bot)
+	local cast, d3, r5, d4 = hero(1, RAD, 1, dota.Lane.Bot), hero(7, DIRE, 3, dota.Lane.Top), hero(5, RAD, 5, dota.Lane.Bot), hero(8, DIRE, 4, dota.Lane.Bot)
 	for _, u in ipairs({ cast, d3, r5, d4 }) do u.maxhp, u.hp, u.hitBy = 100, 100, {} end
+	-- Seed 8's cast is a melee Sven: reach 150 + 2 x 24 + 100 = 298.
+	cast.range = 150
 	cast.loc, r5.loc = Vector(-6619, -6336, 0), Vector(-6619, -6336, 0)
 	d3.loc, d4.loc = Vector(6928, 6372, 0), Vector(6928, 6372, 0)
 	CREEPS[2], CREEPS[3] = {}, {}
@@ -688,117 +691,91 @@ do
 	local function tick(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end CURRENT_TEAM = 2 end
 	local function lastMoveTo(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
 	local function ready(lines) for _, l in ipairs(lines) do if field(l, "ph") == "ready" then return l end end end
-	local function near(a, b, d) return a ~= nil and b ~= nil and math.abs(a.x - b.x) < (d or 1) and math.abs(a.y - b.y) < (d or 1) end
+	local function waitFail(lines) local f for _, l in ipairs(lines) do if field(l, "ph") == "wait" then f = field(l, "fail") end end return f end
+	local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
 
-	LANE_FRONT[2][dota.Lane.Bot] = 0.5
-	T = 61
+	-- Rep 1 `far`.
+	T = 5
+	check("hitback rig: the rep's creep-aggro fact is supplied (far: true)", H.Drill.RigCreepAggro() == true)
 	capture(function() tick(cast) end)
-	-- Redesign: first the off-lane spot, a statue there until 72%, then the front.
 	local side = lastMoveTo(1)
-	check("hitback rig: the cast goes first to the off-lane spot", side ~= nil and math.abs(side.y - -5000) > 300, side and (side.x .. "," .. side.y))
+	check("hitback rig: the cast walks to the side spot, off the lane", side ~= nil and math.abs(side.y - -5000) > 300, side and (side.x .. "," .. side.y))
 	cast.loc = Vector(side.x, side.y, 0)
-	ACTIONS = {}
 	capture(function() tick(cast) end)
-	check("hitback rig: at full HP it stays at the side spot", near(lastMoveTo(1), side, 120))
-	cast.hp = 70
+	-- The far hitter comes in from the east, 1,500 off; it walks to 500 from the cast on that line rather than into its range.
+	d4.loc = Vector(side.x + 1500, side.y, 0)
 	ACTIONS = {}
-	capture(function() tick(cast) tick(cast) end)
-	local spot = lastMoveTo(1)
-	check("hitback rig: the cast's spot is 100 back from our bot lane front", near(spot, GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)), spot and (spot.x .. "," .. spot.y))
-	-- fix1: creeps at the front shove the statue; 150 off its spot it still stands there.
-	-- fix6: the front moves on; the statue's spot follows it, so it stays with our wave.
-	LANE_FRONT[2][dota.Lane.Bot] = 0.45
+	capture(function() tick(d4) tick(d4) end)
+	local goal = lastMoveTo(8)
+	check("hitback rig: the far hitter walks to 500 from the cast on its own line, not into its attack range",
+		goal ~= nil and math.abs(dist(goal, cast.loc) - 500) < 60 and goal.x > side.x and #ActionsOf(8, "AttackUnit") == 0, goal and dist(goal, cast.loc))
+	d4.loc = Vector(side.x + 500, side.y, 0)
 	ACTIONS = {}
-	capture(function() tick(cast) end)
-	check("hitback rig: the cast's spot follows our lane front as it moves", near(lastMoveTo(1), GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)) and not near(lastMoveTo(1), spot, 100))
-	LANE_FRONT[2][dota.Lane.Bot] = 0.5
-	cast.loc = Vector(spot.x + 150, spot.y, 0)
-	capture(function() tick(cast) end)
-	d3.loc = Vector(spot.x + 150, spot.y, 0)
-	check("hitback rig: standing, not yet hit: not ready", ready(capture(function() tick(cast) end)) == nil)
-	cast.hitBy[d3] = T
-	check("hitback rig: hit at full HP: not ready (the plain trade rule would answer it; fix5)", ready(capture(function() tick(cast) end)) == nil)
-	cast.hp = 75
-	check("hitback rig: hit by a hero with none of our creeps within 500 of it: not ready", ready(capture(function() tick(cast) end)) == nil)
-	MakeCreep({ team = 2, x = spot.x + 450, y = spot.y })
-	d3.hp = 85
-	check("hitback rig: paid, 3 of their creeps and the cast 10 points behind: not ready (the plain trade rule would answer)", (function()
-		for k = 1, 3 do MakeCreep({ team = 3, x = spot.x + 300, y = spot.y + 50 * k }) end
-		return ready(capture(function() tick(cast) end)) == nil
-	end)())
-	d3.hp = 95
+	capture(function() tick(d4) end)
+	check("hitback rig: at 500 it attacks", #ActionsOf(8, "AttackUnit") == 1 and ActionsOf(8, "AttackUnit")[1].args[1] == cast)
+	-- Released, the cast walks in on it; the hitter keeps attacking from where it stands, not walking off to 500 again.
+	cast.loc = Vector(side.x + 300, side.y, 0)
+	ACTIONS = {}
+	capture(function() tick(d4) end)
+	check("hitback rig: once in place the hitter keeps attacking as the cast walks in", #ActionsOf(8, "AttackUnit") == 1 and #ActionsOf(8, "MoveToLocation") == 0)
+	cast.loc = Vector(side.x, side.y, 0)
+
+	check("hitback rig far: standing, not hit: not ready (hit)", waitFail(capture(function() tick(cast) end)) == "hit")
+	d4.loc = Vector(side.x + 350, side.y, 0)
+	cast.hitBy[d4] = T
+	check("hitback rig far: hit from 52 past its reach (in reach of the plain trade's walk): not ready (past)", waitFail(capture(function() tick(cast) end)) == "past")
+	d4.loc = Vector(side.x + 500, side.y, 0)
+	cast.hp = 85
+	check("hitback rig far: from 202 past, but at 85% HP: not ready (hplow)", waitFail(capture(function() tick(cast) end)) == "hplow")
+	cast.hp = 93
 	local r = ready(capture(function() tick(cast) end))
-	check("hitback rig: hit by a hero standing 300 from our creep, 20 points behind it: ready", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "hit", r)
-	-- fix1: the attacker's VM reads the front 250-370 from ours; it attacks a cast 350 from its own reading of the spot.
-	ACTIONS = {}
-	capture(function() tick(d3) end)
-	local nearPt = lastMoveTo(7)
-	d3.loc = Vector(nearPt.x, nearPt.y, 0)
-	cast.loc = Vector(spot.x + 350, spot.y, 0)
-	capture(function() tick(d3) tick(d3) end)
-	local hits = ActionsOf(7, "AttackUnit")
-	check("hitback rig: the attacker finds the cast 350 off its reading of a front spot", #hits >= 1 and hits[#hits].args[1] == cast)
-	-- fix6: by role, not position: a Radiant hero in its fountain is never the target, the one out of it is, at any distance.
-	local benched = hero(2, RAD, 2, dota.Lane.Mid)
-	benched.loc = Vector(-6500, -6300, 0)
-	cast.loc = Vector(spot.x + 2000, spot.y, 0)
-	H.Drill.ResetCache()
-	ACTIONS = {}
-	capture(function() tick(d3) end)
-	hits = ActionsOf(7, "AttackUnit")
-	check("hitback rig: a fresh attacker takes the hero out of its fountain 2,000 off, not the benched one", #hits >= 1 and hits[#hits].args[1] == cast)
-	-- fix2: released, the cast walks off its spot to hit back; the attacker keeps attacking it.
-	cast.loc = Vector(spot.x + 900, spot.y, 0)
-	local n = #ActionsOf(7, "AttackUnit")
-	capture(function() tick(d3) end)
-	hits = ActionsOf(7, "AttackUnit")
-	check("hitback rig: the attacker keeps the hero it found when it walks 900 off the spot", #hits == n + 1 and hits[#hits].args[1] == cast)
-	cast.loc = Vector(spot.x + 150, spot.y, 0)
-	T = 112.5
+	check("hitback rig far: hit from 202 past its reach at 93%: ready, the distance on the line", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "far" and field(r, "d") == "202", r)
+	cast.hitBy[d4] = nil
+
+	-- Rep 2 `behind`: the cast is hit to 72% at the side spot; ready only once 16 points under its hitter.
+	T = 125
+	cast.hp = 100
+	check("hitback rig behind: at full HP the cast is not placed yet (stands until 72%)", waitFail(capture(function() tick(cast) tick(cast) end)) == "setup")
+	cast.hp = 72
+	capture(function() tick(cast) tick(cast) end)
+	d3.loc = Vector(side.x + 150, side.y, 0)
+	d3.hp = 85
+	cast.hitBy[d3] = T
+	check("hitback rig behind: 13 points under its hitter: not ready (behind)", waitFail(capture(function() tick(cast) end)) == "behind")
+	d3.hp = 95
+	r = ready(capture(function() tick(cast) end))
+	check("hitback rig behind: 23 points under its hitter in reach: ready", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "behind", r)
 	cast.hitBy[d3] = nil
 
-	-- Rep 2 (`pair`): the front has moved; the spot follows it. The partner stands until 3 s after the release, then leaves.
-	LANE_FRONT[2][dota.Lane.Bot] = 0.4
+	T = 245
+	check("hitback rig: the free control supplies the fact false", H.Drill.RigCreepAggro() == false)
+
+	-- Rep 5 `pair`: the partner stands until 3 s after the release, then walks home.
+	T = 481
 	cast.hp = 100
-	T = 246
 	ACTIONS = {}
-	capture(function() tick(cast) end)
-	cast.loc = Vector(side.x, side.y, 0)
-	cast.hp = 70
-	ACTIONS = {}
-	capture(function() tick(cast) tick(cast) end)
-	local spot2 = lastMoveTo(1)
-	check("hitback rig: the next rep reads the front again", near(spot2, GetLaneFrontLocation(RAD, dota.Lane.Bot, -100)) and not near(spot2, spot, 100))
-	cast.loc = Vector(spot2.x, spot2.y, 0)
-	capture(function() tick(r5) end)
+	capture(function() tick(cast, r5) end)
 	local pspot = lastMoveTo(5)
 	r5.loc = Vector(pspot.x, pspot.y, 0)
-	capture(function() tick(cast, r5) end)
-	d3.loc = Vector(spot2.x + 150, spot2.y, 0)
-	CREEPS[2][1].loc = Vector(spot2.x + 450, spot2.y, 0)
-	-- Rep 2's refusal is their wave alone: 4 creeps by the cast, no HP gap.
-	MakeCreep({ team = 3, x = spot2.x + 300, y = spot2.y + 200 })
-	for k, c in ipairs(CREEPS[3]) do c.loc = Vector(spot2.x + 300, spot2.y + 50 * k, 0) end
-	d3.hp = cast.hp
+	cast.hp = 70
+	capture(function() tick(cast, r5) tick(cast, r5) end)
+	d3.loc = Vector(side.x + 150, side.y, 0)
+	d3.hp = 100
 	cast.hitBy[d3] = T
-	cast.hp = 75
-	-- fix3: a front under a tower (the attackers died to our T1) is no rep: ready waits on `towers`.
-	local t1 = TOWERS_W[RAD][dota.Tower.Bot1]
-	local t1at = t1.loc
-	t1.loc = Vector(spot2.x + 500, spot2.y, 0)
-	check("hitback rig: a tower within 900 of the cast holds ready", ready(capture(function() tick(cast, r5) end)) == nil)
-	t1.loc = t1at
-	check("hitback rig: pair is ready on the same facts", ready(capture(function() tick(cast, r5) end)) ~= nil)
-	T = 248
+	check("hitback rig pair: ready on a hit with the cast behind", ready(capture(function() tick(cast, r5) end)) ~= nil)
+	T = 483
 	ACTIONS = {}
 	capture(function() tick(r5) end)
-	check("hitback rig: 2 s after the release the partner still stands by", near(lastMoveTo(5), pspot, 60))
-	T = 249.2
+	check("hitback rig pair: 2 s after the release the partner still stands by", lastMoveTo(5) ~= nil and dist(lastMoveTo(5), pspot) < 60)
+	T = 484.2
 	ACTIONS = {}
 	capture(function() tick(r5) tick(r5) end)
 	local home = lastMoveTo(5)
-	check("hitback rig: 3 s after the release the partner walks home", home ~= nil and math.abs(home.x - -6619) < 400, home and (home.x .. "," .. home.y))
+	check("hitback rig pair: 3 s after the release the partner walks home", home ~= nil and math.abs(home.x - -6619) < 400, home and (home.x .. "," .. home.y))
+	cast.hitBy[d3] = nil
 	CREEPS[2], CREEPS[3] = {}, {}
+	local Hn = world(nil)
+	check("no drill: no creep-aggro fact, the game decides", Hn.Drill.RigCreepAggro() == nil)
 end
 
 finish()

@@ -55,10 +55,11 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local killHpFor, isSupport, reachOf, hitBackTarget, inOurAggro, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
+local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
@@ -128,8 +129,6 @@ function hitBackTarget(bot)
     if not Ours.On("HitBack") then
         return nil
     end
-    local radius = LaneFightConfig.Settings().CreepAggroRadius
-    local ours = bot:GetNearbyLaneCreeps(1600, false) or ({})
     local best
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(
@@ -144,11 +143,7 @@ function hitBackTarget(bot)
                     __continue24 = true
                     break
                 end
-                local at = h:GetLocation()
-                if not __TS__ArraySome(
-                    ours,
-                    function(____, c) return c:IsAlive() and GetUnitToLocationDistance(c, at) <= radius end
-                ) then
+                if not inOurAggro(bot, h) then
                     __continue24 = true
                     break
                 end
@@ -166,6 +161,18 @@ function hitBackTarget(bot)
     end
     return best
 end
+function inOurAggro(bot, h)
+    local forced = Drill.RigCreepAggro()
+    if forced ~= nil then
+        return forced
+    end
+    local radius = LaneFightConfig.Settings().CreepAggroRadius
+    local at = h:GetLocation()
+    return __TS__ArraySome(
+        bot:GetNearbyLaneCreeps(1600, false) or ({}),
+        function(____, c) return c:IsAlive() and GetUnitToLocationDistance(c, at) <= radius end
+    )
+end
 function unanswered(bot, now, why, i)
     local pid = bot:GetPlayerID()
     local last = lastNo[pid]
@@ -176,10 +183,10 @@ function unanswered(bot, now, why, i)
     local hd = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) do
         do
-            local __continue32
+            local __continue34
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue32 = true
+                    __continue34 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -187,9 +194,9 @@ function unanswered(bot, now, why, i)
                     hitter = h
                     hd = d
                 end
-                __continue32 = true
+                __continue34 = true
             until true
-            if not __continue32 then
+            if not __continue34 then
                 break
             end
         end
@@ -198,12 +205,7 @@ function unanswered(bot, now, why, i)
         return 0
     end
     lastNo[pid] = now
-    local at = hitter:GetLocation()
-    local radius = LaneFightConfig.Settings().CreepAggroRadius
-    local agg = __TS__ArraySome(
-        bot:GetNearbyLaneCreeps(1600, false) or ({}),
-        function(____, c) return c:IsAlive() and GetUnitToLocationDistance(c, at) <= radius end
-    )
+    local agg = inOurAggro(bot, hitter)
     local g = i or ____exports.Gather(bot, hitter)
     Telemetry.Event(
         "trade_no",
@@ -287,19 +289,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue53
+            local __continue54
             repeat
                 if not c:IsAlive() then
-                    __continue53 = true
+                    __continue54 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue53 = true
+                __continue54 = true
             until true
-            if not __continue53 then
+            if not __continue54 then
                 break
             end
         end
@@ -308,10 +310,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue57
+            local __continue58
             repeat
                 if not t:IsAlive() then
-                    __continue57 = true
+                    __continue58 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -320,9 +322,9 @@ function ____exports.Gather(bot, target)
                 if t:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + MAX_CREEPS_ON_ME
                 end
-                __continue57 = true
+                __continue58 = true
             until true
-            if not __continue57 then
+            if not __continue58 then
                 break
             end
         end
@@ -398,11 +400,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue86
+            local __continue87
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue86 = true
+                    __continue87 = true
                     break
                 end
                 local r = ____exports.Decide(
@@ -411,7 +413,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if r == "tower" or r == "outnumbered" then
-                    __continue86 = true
+                    __continue87 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -420,12 +422,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue86 = true
+                    __continue87 = true
                     break
                 end
                 return p
             until true
-            if not __continue86 then
+            if not __continue87 then
                 break
             end
         end
@@ -526,19 +528,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue123
+            local __continue124
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue123 = true
+                    __continue124 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue123 = true
+                __continue124 = true
             until true
-            if not __continue123 then
+            if not __continue124 then
                 break
             end
         end
@@ -653,10 +655,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue42
+            local __continue43
             repeat
                 if not valid(h) then
-                    __continue42 = true
+                    __continue43 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -664,9 +666,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue42 = true
+                __continue43 = true
             until true
-            if not __continue42 then
+            if not __continue43 then
                 break
             end
         end
@@ -858,19 +860,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue113
+            local __continue114
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue113 = true
+                __continue114 = true
             until true
-            if not __continue113 then
+            if not __continue114 then
                 break
             end
         end
