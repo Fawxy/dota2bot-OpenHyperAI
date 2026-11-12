@@ -36,11 +36,12 @@ import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
+import * as Arbiter from "bots/FunLib/humaniser/arbiter";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, CampClaims, Chooser, Overrides, Drill, CoreCamp };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, CampClaims, Chooser, Overrides, Drill, CoreCamp, Arbiter };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -230,7 +231,9 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
     Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, LaneHold: no, LaneAggro: no, IdleStatue: no, Owns: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
-    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
+    // An error leaves the complete-items TP to OHA.
+    Telemetry.GuardModule("Arbiter", Arbiter, { DeniesItemsTp: no });
+    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, After: (_b: unknown, _m: unknown, d: unknown) => d, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,

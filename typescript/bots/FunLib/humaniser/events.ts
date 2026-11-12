@@ -167,6 +167,9 @@ export const EVENTS = {
         lever: "str",
         prev: "str",
         dwell: "num",
+        /** Rework step 7: `own` when the drive starts holding the hero, `end` when it hands it to OHA (`why`). */
+        ph: "str",
+        why: "str",
     },
     /** Team-wide: written once per module instance, de-duplicated by `parse.js` within 1 s. */
     mark: {

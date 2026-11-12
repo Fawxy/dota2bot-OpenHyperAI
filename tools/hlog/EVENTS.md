@@ -63,7 +63,9 @@ A hero's change of mode. View `mode_time` sums the seconds per hero per mode.
 
 Slice arbiter-shadow: the arbiter's pick for an owned hero beside the mode Valve holds it in, on a change of either. `grp` the doctrine group 1-6, or `base` (the lane) or `oha`; `agree` 1 when `act` is the pick's host or the pick is `oha`; `dwell` seconds the previous pick and mode pair lasted.
 
-`pid` num, `pick` str, `grp` mixed, `host` str, `act` str, `agree` num, `job` str, `lever` str, `prev` str, `dwell` num
+`pid` num, `pick` str, `grp` mixed, `host` str, `act` str, `agree` num, `job` str, `lever` str, `prev` str, `dwell` num, `why` str
+
+- `ph` str: Rework step 7: `own` when the drive starts holding the hero, `end` when it hands it to OHA (`why`).
 
 ## mark
 

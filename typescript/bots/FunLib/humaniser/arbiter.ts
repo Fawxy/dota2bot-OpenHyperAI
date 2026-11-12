@@ -68,10 +68,16 @@ export function LeverOf(bot: Unit): string | undefined {
     return undefined;
 }
 
-/** A hero of ours the arbiter reasons about: a bot in its laning phase (as last read by its own callers) that no drill holds. */
-function owned(bot: Unit): boolean {
-    return Phase.LaningTransitionsSeen(bot) === true && !Drill.Held(bot);
+/**
+ * A hero of ours the arbiter reasons about, one no drill holds: with `Ours.ArbiterDrive`, from its first laning read to an
+ * end event (Phase.LaningHeld); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
+ */
+export function Owned(bot: Unit): boolean {
+    if (Drill.Held(bot)) return false;
+    if (Ours.On("ArbiterDrive")) return Phase.LaningHeld(bot);
+    return Phase.LaningTransitionsSeen(bot) === true;
 }
+const owned = Owned;
 
 /** The lane picker's body is in a last-hit attempt right now: its stored phase label, fresh within a second of its last scan. */
 function lastHitNow(bot: Unit): boolean {
@@ -121,6 +127,96 @@ export function Hold(bot: Unit, chooserJob: string | undefined): Candidate | und
     return Pick([retreatCandidate(bot), jobCandidate(bot, chooserJob, undefined)]);
 }
 
+// --- The drive (rework step 7, Ours.ArbiterDrive): the pick holds every owned laner. ---
+
+export const SETTINGS = {
+    /**
+     * The laning mode's desire while the lane is the pick. Over the Valve built-in mode that took a hero no file wanted
+     * (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates); under a trade's opening desire (core_trade
+     * DESIRE_TRADE 0.6), so a trade the borrowed attack mode opens takes the hero; an admitted mode (wards, runes no plan of
+     * ours covers) wins when OHA's own desire for it is higher. `judgement`.
+     */
+    LaneDesire: 0.55,
+};
+
+const drivePrev: Record<number, string | undefined> = {};
+const driveAt: Record<number, number | undefined> = {};
+const drivePick: Record<number, Candidate | undefined> = {};
+
+/** Whether the drive holds this hero now: the switch on and the hero owned. */
+export function Drives(bot: Unit): boolean {
+    return Ours.On("ArbiterDrive") && owned(bot);
+}
+
+/**
+ * The pick the gate enforces for an owned hero under the drive, computed once per hero per frame (the gate asks from all 20
+ * mode files) and remembered for the next frame's tie. `chooserJob` is the chooser's running job.
+ */
+export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const cached = drivePick[pid];
+    if (cached !== undefined && driveAt[pid] === now) return cached;
+    const cands = Candidates(bot, chooserJob);
+    const p = Pick(cands, drivePrev[pid]) ?? cands[cands.length - 1];
+    drivePick[pid] = p;
+    driveAt[pid] = now;
+    drivePrev[pid] = p.name;
+    return p;
+}
+
+/** Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit). */
+const BORROWED: Record<string, (this: void, bot: Unit) => boolean> = {
+    attack: (bot) => CoreTrade.Running(bot),
+    team_roam: (bot) => {
+        const p = LaneFight.CurrentPhase(bot);
+        return p === "trade" || p === "commit";
+    },
+};
+
+/** OHA's modes that run their own desire beside the lane base (the inventory's admitted rows); each is a job-group activity. */
+const ADMITTED_AT_BASE: Record<string, true> = { ward: true, rune: true };
+
+/** Human interface and our own retreat: run their own code whatever the pick (retreat's desire is ours, Retreat.Desire). */
+const ALWAYS: Record<string, true> = { retreat: true, assemble: true, assemble_with_humans: true };
+
+/**
+ * The drive's rule for `mode` against pick `p`, before OHA's code runs: a number replaces the mode's desire, undefined runs
+ * the mode's own code (then After). `farmHost` is the chooser's host desire (a job may start from the lane base).
+ * - always: retreat (ours), assemble, assemble_with_humans; the retreat pick keeps only these.
+ * - the pick's host runs (farm: the chooser's host desire, its own code for an older-path camp job).
+ * - borrowed attack and team roam run below a group-5 pick, kept by After only while our fight read wants them.
+ * - farm below a group-6 pick: a chooser job may start, OHA's farm desire is denied.
+ * - admitted ward and rune beside the lane base.
+ * - everything else 0: laning when not the host, roam, defend, push, roshan, outpost and the shops.
+ */
+export function DriveDecide(_bot: Unit, mode: string, p: Candidate, farmHost: (this: void) => number | undefined): number | undefined {
+    if (ALWAYS[mode] === true) return undefined;
+    if (p.name === "retreat") return 0;
+    if (mode === p.host) return mode === "farm" ? farmHost() : undefined;
+    if (BORROWED[mode] !== undefined) return p.group > 5 ? undefined : 0;
+    if (mode === "farm") return p.group > 6 ? farmHost() ?? 0 : 0;
+    if (ADMITTED_AT_BASE[mode] === true && p.group >= BASE_GROUP) return undefined;
+    return 0;
+}
+
+/**
+ * After OHA's code for `mode` returned `desire` under the drive: the lane host's desire replaces laning's, and a borrowed
+ * fight mode that is not the pick's host keeps its desire only while our fight read wants it (the read is asked after the
+ * mode's own GetDesire, which opens a trade or a fight).
+ */
+export function DriveAfter(bot: Unit, mode: string, p: Candidate, desire: any): any {
+    if (mode === "laning" && p.name === "lane") return SETTINGS.LaneDesire;
+    const borrowed = BORROWED[mode];
+    if (borrowed !== undefined && mode !== p.host) return borrowed(bot) ? desire : 0;
+    return desire;
+}
+
+/** ability_item_usage's "go complete items" TP to the fountain is denied for a hero the drive holds (user 13/11/2026). */
+export function DeniesItemsTp(bot: Unit): boolean {
+    return Drives(bot);
+}
+
 interface Last {
     pick: string;
     act: string;
@@ -140,7 +236,8 @@ function compute(bot: Unit, jobName: string | undefined): void {
     const lever = LeverOf(bot);
     const cands = Candidates(bot, jobName, lever);
     const job = jobName ?? CampJobs.LiveKind(bot);
-    const picked = Pick(cands, l?.pick) ?? cands[cands.length - 1];
+    // Under the drive the line names the pick the gate enforces.
+    const picked = Drives(bot) ? Drive(bot, jobName) : Pick(cands, l?.pick) ?? cands[cands.length - 1];
     const act = HDebug.ModeName(bot.GetActiveMode());
     if (l !== undefined && l.pick === picked.name && l.act === act) return;
     Telemetry.Event("arb", [

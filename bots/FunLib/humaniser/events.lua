@@ -126,7 +126,9 @@ ____exports.EVENTS = {
         job = "str",
         lever = "str",
         prev = "str",
-        dwell = "num"
+        dwell = "num",
+        ph = "str",
+        why = "str"
     },
     mark = {
         n = "num",

@@ -5,12 +5,13 @@
 -- out: the shadow reads every 0.25 s, so a mode Valve held for a frame would be paired with the pick before it. The source
 -- is the snap's `by` ("<mode> <desire> by <source>"; see @mode_hold to find the branch); it and the desire are NULL where
 -- `by` does not name the active mode, as for Valve's built-in modes (evasive, item, defend_ally), which have no mode file.
+-- The drive's own and end lines (`ph`, rework step 7) name no pick and are skipped.
 -- Params: like (LIKE pattern on games.file), from, until (seconds, default 90 and 600), pos_lo, pos_hi (lineup positions,
 -- default 1-5), min_secs (default 1).
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
 s AS (
     SELECT a.game_id, a.mode, a.by, a.pos, a.by LIKE a.mode || ' % by %' AS named,
-        (SELECT r.seq FROM ev_arb r WHERE r.game_id = a.game_id AND r.pid = a.pid AND r.t <= a.t ORDER BY r.t DESC, r.seq DESC LIMIT 1) AS arb_seq
+        (SELECT r.seq FROM ev_arb r WHERE r.game_id = a.game_id AND r.pid = a.pid AND r.t <= a.t AND r.ph IS NULL ORDER BY r.t DESC, r.seq DESC LIMIT 1) AS arb_seq
     FROM lane_activity a JOIN gm ON gm.game_id = a.game_id
     WHERE a.t >= coalesce(:from, 90) AND a.t <= coalesce(:until, 600)
       AND a.pos BETWEEN coalesce(:pos_lo, 1) AND coalesce(:pos_hi, 5)

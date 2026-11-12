@@ -146,6 +146,10 @@ export const DEFAULTS = {
     /** Slice arbiter-shadow (design docs/proposals/2026-11-11-arbiter.md): per owned hero, the arbiter's pick as ev=arb beside
      *  Valve's active mode (arbiter.ts). Logging only, no desire changes. Off: no line. */
     ArbiterShadow: true,
+    /** Rework step 7 (docs/proposals/2026-11-13-rework.md s7): the arbiter's pick holds every owned laner, from its first
+     *  laning read to an end event; OHA's modes are ours, borrowed, admitted or denied by the inventory (chooser.ts Decide).
+     *  Off: only the retreat episode and the running job hold, as before. */
+    ArbiterDrive: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

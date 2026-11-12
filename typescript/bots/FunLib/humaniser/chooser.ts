@@ -209,6 +209,11 @@ export function Decide(bot: Unit, mode: string): number | undefined {
     const rig = Drill.RigDesire(bot, mode);
     if (rig !== undefined) return rig;
     const jobs = Ours.On("JobChooser");
+    // Rework step 7: under the drive the arbiter's pick holds an owned laner (Arbiter.DriveDecide, the inventory's tiers).
+    if (Arbiter.Drives(bot)) {
+        const p = Arbiter.Drive(bot, jobs ? RunningJobName(bot) : undefined);
+        return Arbiter.DriveDecide(bot, mode, p, () => (jobs ? hostDesire(bot) : undefined));
+    }
     const hold = Arbiter.Hold(bot, jobs ? RunningJobName(bot) : undefined);
     if (hold === undefined) return jobs && mode === HOST ? hostDesire(bot) : undefined;
     if (mode === hold.host) return mode === HOST ? hostDesire(bot) : undefined;
@@ -220,8 +225,17 @@ export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
         Arbiter.Shadow(bot, () => runningJob(bot)?.name);
         const v = Decide(bot, mode);
-        return v !== undefined ? v : inner();
+        if (v !== undefined) return v;
+        const d = inner();
+        return After(bot, mode, d);
     };
+}
+
+/** Under the drive, the arbiter's word on what OHA's code for `mode` returned (Arbiter.DriveAfter); else that value. */
+export function After(bot: Unit, mode: string, desire: any): any {
+    if (!Arbiter.Drives(bot)) return desire;
+    const jobs = Ours.On("JobChooser");
+    return Arbiter.DriveAfter(bot, mode, Arbiter.Drive(bot, jobs ? RunningJobName(bot) : undefined), desire);
 }
 
 /**

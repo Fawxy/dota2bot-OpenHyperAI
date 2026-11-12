@@ -9,7 +9,7 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local hit
+local runningJob, hit, JOBS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -21,6 +21,43 @@ local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
+function runningJob(bot)
+    for ____, j in ipairs(JOBS) do
+        if j.Running(bot) then
+            return j
+        end
+    end
+    return nil
+end
+--- The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose).
+function ____exports.RunningJobName(bot)
+    local ____opt_1 = runningJob(bot)
+    return ____opt_1 and ____opt_1.name
+end
+--- Under the drive, the arbiter's word on what OHA's code for `mode` returned (Arbiter.DriveAfter); else that value.
+function ____exports.After(bot, mode, desire)
+    if not Arbiter.Drives(bot) then
+        return desire
+    end
+    local jobs = Ours.On("JobChooser")
+    local ____Arbiter_DriveAfter_20 = Arbiter.DriveAfter
+    local ____bot_18 = bot
+    local ____mode_19 = mode
+    local ____Arbiter_Drive_17 = Arbiter.Drive
+    local ____bot_16 = bot
+    local ____jobs_15
+    if jobs then
+        ____jobs_15 = ____exports.RunningJobName(bot)
+    else
+        ____jobs_15 = nil
+    end
+    return ____Arbiter_DriveAfter_20(
+        ____bot_18,
+        ____mode_19,
+        ____Arbiter_Drive_17(____bot_16, ____jobs_15),
+        desire
+    )
+end
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -111,7 +148,7 @@ local PULLFARM = {
     NoteHit = function(bot) return PullFarm.NoteHit(bot) end,
     NoteIdleHeld = function(bot) return PullFarm.NoteIdleHeld(bot) end
 }
-local JOBS = {
+JOBS = {
     STACK,
     RUNE,
     PULL,
@@ -160,19 +197,6 @@ local function ranked(bot)
         out,
         function(____, e) return e[1] end
     )
-end
-local function runningJob(bot)
-    for ____, j in ipairs(JOBS) do
-        if j.Running(bot) then
-            return j
-        end
-    end
-    return nil
-end
---- The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose).
-function ____exports.RunningJobName(bot)
-    local ____opt_1 = runningJob(bot)
-    return ____opt_1 and ____opt_1.name
 end
 --- Any of our jobs runs for this hero.
 function ____exports.Running(bot)
@@ -255,40 +279,65 @@ function ____exports.Decide(bot, mode)
         return rig
     end
     local jobs = Ours.On("JobChooser")
-    local ____Arbiter_Hold_5 = Arbiter.Hold
-    local ____bot_4 = bot
-    local ____jobs_3
-    if jobs then
-        ____jobs_3 = ____exports.RunningJobName(bot)
-    else
-        ____jobs_3 = nil
-    end
-    local hold = ____Arbiter_Hold_5(____bot_4, ____jobs_3)
-    if hold == nil then
-        local ____temp_6
-        if jobs and mode == ____exports.HOST then
-            ____temp_6 = hostDesire(bot)
+    if Arbiter.Drives(bot) then
+        local ____Arbiter_Drive_5 = Arbiter.Drive
+        local ____bot_4 = bot
+        local ____jobs_3
+        if jobs then
+            ____jobs_3 = ____exports.RunningJobName(bot)
         else
-            ____temp_6 = nil
+            ____jobs_3 = nil
         end
-        return ____temp_6
+        local p = ____Arbiter_Drive_5(____bot_4, ____jobs_3)
+        return Arbiter.DriveDecide(
+            bot,
+            mode,
+            p,
+            function()
+                local ____jobs_6
+                if jobs then
+                    ____jobs_6 = hostDesire(bot)
+                else
+                    ____jobs_6 = nil
+                end
+                return ____jobs_6
+            end
+        )
+    end
+    local ____Arbiter_Hold_9 = Arbiter.Hold
+    local ____bot_8 = bot
+    local ____jobs_7
+    if jobs then
+        ____jobs_7 = ____exports.RunningJobName(bot)
+    else
+        ____jobs_7 = nil
+    end
+    local hold = ____Arbiter_Hold_9(____bot_8, ____jobs_7)
+    if hold == nil then
+        local ____temp_10
+        if jobs and mode == ____exports.HOST then
+            ____temp_10 = hostDesire(bot)
+        else
+            ____temp_10 = nil
+        end
+        return ____temp_10
     end
     if mode == hold.host then
-        local ____temp_7
+        local ____temp_11
         if mode == ____exports.HOST then
-            ____temp_7 = hostDesire(bot)
+            ____temp_11 = hostDesire(bot)
         else
-            ____temp_7 = nil
+            ____temp_11 = nil
         end
-        return ____temp_7
+        return ____temp_11
     end
-    local ____temp_8
+    local ____temp_12
     if ADMITTED[hold.name][mode] ~= nil then
-        ____temp_8 = nil
+        ____temp_12 = nil
     else
-        ____temp_8 = 0
+        ____temp_12 = 0
     end
-    return ____temp_8
+    return ____temp_12
 end
 --- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
 function ____exports.Gate(bot, mode, inner)
@@ -296,12 +345,16 @@ function ____exports.Gate(bot, mode, inner)
         Arbiter.Shadow(
             bot,
             function()
-                local ____opt_9 = runningJob(bot)
-                return ____opt_9 and ____opt_9.name
+                local ____opt_13 = runningJob(bot)
+                return ____opt_13 and ____opt_13.name
             end
         )
         local v = ____exports.Decide(bot, mode)
-        return v ~= nil and v or inner()
+        if v ~= nil then
+            return v
+        end
+        local d = inner()
+        return ____exports.After(bot, mode, d)
     end
 end
 --- Wraps the host file's Think, switch on: the job steps without entering OHA's code, so its defend-ping and run aborts cannot
@@ -314,13 +367,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_11
+        local ____table_Step_result_21
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_11 = nil
+            ____table_Step_result_21 = nil
         else
-            ____table_Step_result_11 = inner()
+            ____table_Step_result_21 = inner()
         end
-        return ____table_Step_result_11
+        return ____table_Step_result_21
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -342,9 +395,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_12 = runningJob(bot)
-    if ____opt_12 ~= nil then
-        ____opt_12.End(bot, why)
+    local ____opt_22 = runningJob(bot)
+    if ____opt_22 ~= nil then
+        ____opt_22.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

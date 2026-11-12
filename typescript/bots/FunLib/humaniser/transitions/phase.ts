@@ -54,10 +54,12 @@ interface PhaseState {
 
 let states: Record<number, PhaseState> = {};
 let laningReads: Record<number, { at: number; value: boolean }> = {};
+let held: Record<number, { on: boolean; ended?: string; checkAt: number }> = {};
 
 export function ResetCache(): void {
     states = {};
     laningReads = {};
+    held = {};
 }
 
 function stateOf(bot: Unit): PhaseState {
@@ -164,6 +166,51 @@ export function LaningTransitionsSeen(bot: Unit): boolean | undefined {
     const r = laningReads[bot.GetPlayerID()];
     const now = DotaTime();
     return r !== undefined && now >= r.at && now - r.at <= 2 ? r.value : undefined;
+}
+
+/** judgement: seconds between end checks of a held hero (LaningHeld). */
+const HELD_CHECK = 1;
+
+/** Why a held hero's laning ends (rework step 7): the clock exit (until D23), a tier-1 of its lane lost (ours or theirs), the lane lost. */
+function heldEndWhy(bot: Unit): string | undefined {
+    if (!LaneConfig.InLaningPhase()) return "clock";
+    const team = bot.GetTeam();
+    const lane = bot.GetAssignedLane();
+    if (towerDown(team, lane) || towerDown(team === 2 ? 3 : 2, lane)) return "tower";
+    const [lost] = LaneLost(bot);
+    if (lost) return "lost";
+    return undefined;
+}
+
+/**
+ * Rework step 7 (`Ours.ArbiterDrive`, asked by the arbiter and our retreat): the hero is held from its first laning read
+ * (LaningTransitions true) to an end event (heldEndWhy), and never again after it. Other not-laning reasons (a support's
+ * smoke, a core's farm item) do not end it, and no read goes stale. The start and the end log `ev=arb` with `ph`.
+ */
+export function LaningHeld(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    let h = held[pid];
+    if (h === undefined) {
+        h = { on: false, checkAt: -math.huge };
+        held[pid] = h;
+    }
+    if (h.ended !== undefined) return false;
+    if (!h.on) {
+        if (!LaningTransitions(bot)) return false;
+        h.on = true;
+        h.checkAt = now + HELD_CHECK;
+        Telemetry.Event("arb", [["pid", pid], ["ph", "own"]]);
+        return true;
+    }
+    if (now < h.checkAt) return true;
+    h.checkAt = now + HELD_CHECK;
+    const why = heldEndWhy(bot);
+    if (why === undefined) return true;
+    h.on = false;
+    h.ended = why;
+    Telemetry.Event("arb", [["pid", pid], ["ph", "end"], ["why", why]]);
+    return false;
 }
 
 export interface LostInput {

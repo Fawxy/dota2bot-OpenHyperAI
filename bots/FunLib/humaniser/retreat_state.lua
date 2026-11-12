@@ -173,22 +173,33 @@ local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase
 local running = {}
 --- With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. A
 -- drill's held hero (bench, statue, sentry, chaser) is the drill's: our retreat outbid its hold (drills rtwalk2, rtchase2).
+-- Under `Ours.ArbiterDrive` the laning phase is the arbiter's (Phase.LaningHeld: to an end event, never stale).
 function ____exports.Owns(bot)
-    return Ours.On("Retreat") and Phase.LaningTransitions(bot) and not Drill.Held(bot)
+    if not Ours.On("Retreat") then
+        return false
+    end
+    local ____Ours_On_result_0
+    if Ours.On("ArbiterDrive") then
+        ____Ours_On_result_0 = Phase.LaningHeld(bot)
+    else
+        ____Ours_On_result_0 = Phase.LaningTransitions(bot)
+    end
+    local laning = ____Ours_On_result_0
+    return laning and not Drill.Held(bot)
 end
 --- An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does).
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] == true
 end
 function ____exports.SetRunning(bot, on)
-    local ____temp_1 = bot:GetPlayerID()
-    local ____on_0
+    local ____temp_2 = bot:GetPlayerID()
+    local ____on_1
     if on then
-        ____on_0 = true
+        ____on_1 = true
     else
-        ____on_0 = nil
+        ____on_1 = nil
     end
-    running[____temp_1] = ____on_0
+    running[____temp_2] = ____on_1
 end
 function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(running)) do

@@ -56,6 +56,16 @@ function dist2D(a, b)
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
 end
+function ____exports.LaneLostPure(i)
+    local cfg = Settings.Get()
+    if i.deathsInWindow >= cfg.LostDeaths then
+        return true, "deaths"
+    end
+    if i.levelGap >= cfg.LostLevelGap then
+        return true, "levels"
+    end
+    return false, ""
+end
 function pruneRecord(r, now)
     local from = now - Settings.Get().LostWindow
     r.deaths = __TS__ArrayFilter(
@@ -72,24 +82,27 @@ function levelGapOf(bot, st, s)
     local top = 0
     for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
         do
-            local __continue40
+            local __continue51
             repeat
                 if dist2D(e.location, s.frontLoc) > radius then
-                    __continue40 = true
+                    __continue51 = true
                     break
                 end
                 local level = e.visible and e.unit ~= nil and e.unit:GetLevel() or st.levelSeen[e.pid]
                 if level ~= nil and level > top then
                     top = level
                 end
-                __continue40 = true
+                __continue51 = true
             until true
-            if not __continue40 then
+            if not __continue51 then
                 break
             end
         end
     end
     return top > 0 and top - bot:GetLevel() or 0
+end
+function ____exports.LaneLost(bot)
+    return ____exports.LaneLostPure(lostInput(bot))
 end
 function lostInput(bot)
     local st = stateOf(bot)
@@ -118,9 +131,11 @@ ____exports.FARM_ITEMS = {
 local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 states = {}
 local laningReads = {}
+local held = {}
 function ____exports.ResetCache()
     states = {}
     laningReads = {}
+    held = {}
 end
 function ____exports.Record(bot)
     return stateOf(bot).record
@@ -247,18 +262,59 @@ function ____exports.LaningTransitionsSeen(bot)
     end
     return ____temp_2
 end
-function ____exports.LaneLostPure(i)
-    local cfg = Settings.Get()
-    if i.deathsInWindow >= cfg.LostDeaths then
-        return true, "deaths"
+--- judgement: seconds between end checks of a held hero (LaningHeld).
+local HELD_CHECK = 1
+--- Why a held hero's laning ends (rework step 7): the clock exit (until D23), a tier-1 of its lane lost (ours or theirs), the lane lost.
+local function heldEndWhy(bot)
+    if not LaneConfig.InLaningPhase() then
+        return "clock"
     end
-    if i.levelGap >= cfg.LostLevelGap then
-        return true, "levels"
+    local team = bot:GetTeam()
+    local lane = bot:GetAssignedLane()
+    if towerDown(team, lane) or towerDown(team == 2 and 3 or 2, lane) then
+        return "tower"
     end
-    return false, ""
+    local lost = ____exports.LaneLost(bot)
+    if lost then
+        return "lost"
+    end
+    return nil
 end
-function ____exports.LaneLost(bot)
-    return ____exports.LaneLostPure(lostInput(bot))
+--- Rework step 7 (`Ours.ArbiterDrive`, asked by the arbiter and our retreat): the hero is held from its first laning read
+-- (LaningTransitions true) to an end event (heldEndWhy), and never again after it. Other not-laning reasons (a support's
+-- smoke, a core's farm item) do not end it, and no read goes stale. The start and the end log `ev=arb` with `ph`.
+function ____exports.LaningHeld(bot)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local h = held[pid]
+    if h == nil then
+        h = {on = false, checkAt = -math.huge}
+        held[pid] = h
+    end
+    if h.ended ~= nil then
+        return false
+    end
+    if not h.on then
+        if not ____exports.LaningTransitions(bot) then
+            return false
+        end
+        h.on = true
+        h.checkAt = now + HELD_CHECK
+        Telemetry.Event("arb", {{"pid", pid}, {"ph", "own"}})
+        return true
+    end
+    if now < h.checkAt then
+        return true
+    end
+    h.checkAt = now + HELD_CHECK
+    local why = heldEndWhy(bot)
+    if why == nil then
+        return true
+    end
+    h.on = false
+    h.ended = why
+    Telemetry.Event("arb", {{"pid", pid}, {"ph", "end"}, {"why", why}})
+    return false
 end
 local function partnerOf(bot)
     local s = LaneState.ForBot(bot)
