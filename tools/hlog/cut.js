@@ -5,8 +5,8 @@
 //   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
-//       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec) and say
-//       whether the bar (19 of 20 of each answer) is met
+//       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
+//       checks every cut and judges the bar (95% of each answer)
 //   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P]   one line per cut: time, pid, answer, HP, heroes
 // --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped).
 const fs = require('fs'), path = require('path');
@@ -269,7 +269,10 @@ function sampleByAnswer(game, pool, n) {
     return picked.sort((a, b) => a - b).map(i => pool[i]);
 }
 
-/** The replay bar (eval-run): 19 of 20 of each answer, all of an answer checked fewer than 20 times. The answers that miss it. */
+/**
+ * The replay bar (eval-run): 95% of each answer the game gave, judged over all the game's cuts (--all). On a sample it is a
+ * quick look only: at a true rate near 95%, 20 cuts of an answer fall short about one time in five. The answers that miss it.
+ */
 function barMisses(byAnswer) {
     return Object.entries(byAnswer).filter(([, v]) => { const [same, n] = v.split('/').map(Number); return same < 0.95 * n; }).map(([k, v]) => `${k} ${v}`);
 }
@@ -346,7 +349,8 @@ function main(argv) {
         else console.log(`kind ${kind}: cuts ${summary.cuts}, checked ${summary.checked}: same as the game decided ${ok}; errors ${summary.errors}`
             + (kind === 'gate' ? `; gate decisions without a cut ${summary.uncut}` : ''));
         console.log(`  by the game's answer (same/checked): ${Object.entries(summary.byDecision).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-        console.log(`  bar (19 of 20 of each answer): ${summary.barMisses.length ? `missed by ${summary.barMisses.join(', ')}` : 'met'}`);
+        const judged = argv.includes('--all') ? 'bar (95% of each answer)' : 'on this sample, the bar (95% of each answer; judge it with --all)';
+        console.log(`  ${judged}: ${summary.barMisses.length ? `missed by ${summary.barMisses.join(', ')}` : 'met'}`);
         for (const { cut, r } of rows.filter(x => !x.r.same).slice(0, 15)) {
             console.log(`  pid ${cut.pid} t=${cut.t} (${mmss(Number(cut.t))}): ${r.error || `replay ${r.got}, game ${r.want}${r.detail ? ` (${r.detail})` : ''}`}`);
         }

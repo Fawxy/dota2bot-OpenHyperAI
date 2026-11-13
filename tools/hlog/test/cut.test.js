@@ -169,7 +169,7 @@ test('the check samples each answer the game gave: a rare answer is checked even
     assert.deepStrictEqual([late.length, Number(late[19].t) >= 37], [20, true]);
 });
 
-test('the bar is 19 of 20 of each answer, and every one of an answer seen fewer than 20 times', () => {
+test('the bar is 95% of each answer: 19 of 20 passes, 18 of 20 and 5 of 6 do not', () => {
     assert.deepStrictEqual(barMisses({ under: '19/20', tower: '18/20', heal: '3/3', lethal: '5/6' }), ['tower 18/20', 'lethal 5/6']);
 });
 

@@ -53,8 +53,8 @@ does produce the action when the condition is absent; otherwise it passes when t
 | `retreat_leave` | `retreat.LeaveWhy` and the `Threat.Read` it decides on, on a world cut from a game (`ev=cut kind=leave`, `cut.js --kind leave`; the hold timer and `Profile.ThreatHold` as logged) | `leave(<lethal\|tower\|heal\|threat>)`, `stay(<under\|even\|hold>)`; `fact.threat`, `fact.burst`, `fact.reach`, `fact.eng`, `fact.budget`, `fact.over`, `fact.hp` |
 
 A cut fixture's world is the game's, not hand-built: `node tools/hlog/cut.js <log> --pid P --t m:ss [--kind spot|gate|leave]` prints one with an
-empty `expect` for the author to fill; `--check [--kind K]` replays up to 20 cuts of each answer the game gave, compares them with what it logged and says whether
-the bar (19 of 20 of each answer) is met; `--list` finds moments by answer, pid and HP. A printed fixture's header gives the
+empty `expect` for the author to fill; `--check [--kind K]` replays up to 20 cuts of each answer the game gave and compares them with what it logged (a quick
+look); `--check --all` replays every cut and judges the bar, 95% of each answer; `--list` finds moments by answer, pid and HP. A printed fixture's header gives the
 distances and HP its notes quote.
 
 A new cut kind: its driver builds the world with `fixture_drivers/cut_world.lua`, and `cut.js` gets one `DECISIONS` entry.
