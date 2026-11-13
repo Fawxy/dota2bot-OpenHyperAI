@@ -15,6 +15,7 @@ local function __TS__StringEndsWith(self, searchString, endPosition)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local BORROWED
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
@@ -163,7 +164,7 @@ function ____exports.Candidates(bot, jobName, lever)
         name = "lane_fight",
         group = 5,
         host = "team_roam",
-        applies = LaneFight.CurrentPhase(bot) ~= "idle"
+        applies = BORROWED.team_roam(bot)
     }
     out[#out + 1] = jobCandidate(
         bot,
@@ -227,7 +228,7 @@ local function laneAndTrade(p)
     return p.name == "lane" or p.name == "trade"
 end
 --- Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit).
-local BORROWED = {
+BORROWED = {
     attack = function(bot) return CoreTrade.Running(bot) end,
     team_roam = function(bot)
         local p = LaneFight.CurrentPhase(bot)

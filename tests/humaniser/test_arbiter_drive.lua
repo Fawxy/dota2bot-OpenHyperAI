@@ -150,6 +150,22 @@ do
 	check("job hosted in rune: rune runs, farm 0", Arb.DriveDecide(bot, "rune", rune, farm) == nil
 		and Arb.DriveDecide(bot, "farm", rune, function() return 0.92 end) == 0)
 end
+-- A core waiting for its partner's commit keeps laning (lane_fight: a wait posts no floor): the lane stays the pick.
+do
+	local H, bot = world(true)
+	local Arb = require("bots/FunLib/humaniser/arbiter")
+	local Trade = require("bots/FunLib/humaniser/states/core_trade")
+	local Fight = require("bots/FunLib/humaniser/lane_fight")
+	Trade.Running = function() return false end
+	Fight.CurrentPhase = function() return "wait_partner" end
+	capture(function()
+		check("wait for the partner: the lane is the pick", Arb.Drive(bot, nil).name == "lane")
+		local v, called = gated(H, bot, "laning", 0.2)
+		check("wait for the partner: laning holds at the lane desire", v == Arb.SETTINGS.LaneDesire and called, tostring(v))
+		v = gated(H, bot, "team_roam")
+		check("wait for the partner: team roam 0", v == 0, tostring(v))
+	end)
+end
 -- A drill's lane-only hero is not driven: its laning holds it (only the thing under test acts).
 do
 	local H, bot = world(true)
