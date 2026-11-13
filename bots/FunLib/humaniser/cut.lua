@@ -239,10 +239,10 @@ local function towersNow(team, bot, at, front, out)
     end
     return string.format("%x", mask)
 end
---- The enemy heroes in sight, the unseen ones with a sighting and our other heroes, near the bot or `front` (pass `at` twice for
--- a decision with no lane front). `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the
--- windows the decision's Threat.Read counts a hero over (3 and 6 for the spot, 2 and 6 for the leave).
-local function units(bot, at, front, short, long)
+--- The enemy heroes in sight and our other heroes at the places `keep` takes (the decision's own area), and every unseen enemy
+-- with a sighting. `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the windows the
+-- decision's Threat.Read counts a hero over (3 and 6 for the spot and the gate, 2 and 6 for the leave).
+local function units(bot, keep, short, long)
     local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     local visible = {}
     local he = {}
@@ -259,7 +259,7 @@ local function units(bot, at, front, short, long)
                 if not ill then
                     visible[e:GetPlayerID()] = true
                 end
-                if not near(l, at, front) then
+                if not keep(l) then
                     __continue33 = true
                     break
                 end
@@ -335,11 +335,7 @@ local function units(bot, at, front, short, long)
                     __continue41 = true
                     break
                 end
-                if not near(
-                    a:GetLocation(),
-                    at,
-                    front
-                ) then
+                if not keep(a:GetLocation()) then
                     __continue41 = true
                     break
                 end
@@ -379,8 +375,7 @@ function ____exports.Spot(bot)
     local back = GetLaneFrontLocation(team, lane, -400)
     local ____units_result_0 = units(
         bot,
-        at,
-        front,
+        function(l) return near(l, at, front) end,
         3,
         6
     )
@@ -492,8 +487,7 @@ function ____exports.Leave(bot, i)
     logTowers(enemyTeam)
     local ____units_result_1 = units(
         bot,
-        at,
-        at,
+        function(l) return near(l, at, at) end,
         i.short,
         i.long
     )
@@ -630,121 +624,15 @@ function ____exports.Gate(bot, from, place, consumer)
     local at = bot:GetLocation()
     logTowers(team)
     logTowers(enemyTeam)
-    local visible = {}
-    local he = {}
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        do
-            local __continue55
-            repeat
-                if not live(e) or not e:CanBeSeen() then
-                    __continue55 = true
-                    break
-                end
-                local l = e:GetLocation()
-                local ill = e:IsIllusion()
-                if not ill then
-                    visible[e:GetPlayerID()] = true
-                end
-                if not nearWalk(l, from, place) then
-                    __continue55 = true
-                    break
-                end
-                local e3 = e:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
-                local e6 = e:GetEstimatedDamageToTarget(true, bot, 6, DamageType.All)
-                local atk = e:GetAttackTarget() == bot and 1 or 0
-                local eng = bot:WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) and 1 or 0
-                he[#he + 1] = table.concat(
-                    {
-                        e:GetPlayerID(),
-                        f(l.x),
-                        f(l.y),
-                        f(e:GetHealth()),
-                        f(e:GetAttackRange()),
-                        f(e:GetBoundingRadius()),
-                        f(e:GetCurrentMovementSpeed()),
-                        atk,
-                        eng,
-                        f(e3),
-                        f(e6),
-                        ill and 1 or 0
-                    },
-                    ","
-                )
-                __continue55 = true
-            until true
-            if not __continue55 then
-                break
-            end
-        end
-    end
-    local hu = {}
-    do
-        local p = 0
-        while p <= MAX_PLAYER_ID do
-            do
-                local __continue60
-                repeat
-                    if GetTeamForPlayer(p) ~= enemyTeam or visible[p] == true or not IsHeroAlive(p) then
-                        __continue60 = true
-                        break
-                    end
-                    local info = GetHeroLastSeenInfo(p)[1]
-                    if info == nil then
-                        __continue60 = true
-                        break
-                    end
-                    hu[#hu + 1] = table.concat(
-                        {
-                            p,
-                            f(info.location.x),
-                            f(info.location.y),
-                            math.floor(info.time_since_seen * 10 + 0.5) / 10,
-                            f(Threat.SeenSpeed(p))
-                        },
-                        ","
-                    )
-                    __continue60 = true
-                until true
-                if not __continue60 then
-                    break
-                end
-            end
-            p = p + 1
-        end
-    end
-    local ha = {}
-    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
-        do
-            local __continue63
-            repeat
-                if not live(a) or a == bot or a:IsIllusion() then
-                    __continue63 = true
-                    break
-                end
-                local l = a:GetLocation()
-                if not nearWalk(l, from, place) then
-                    __continue63 = true
-                    break
-                end
-                ha[#ha + 1] = table.concat(
-                    {
-                        a:GetPlayerID(),
-                        f(l.x),
-                        f(l.y),
-                        f(a:GetAttackRange()),
-                        f(a:GetBoundingRadius()),
-                        f(a:GetCurrentMovementSpeed()),
-                        RetreatState.Running(a) and 1 or 0
-                    },
-                    ","
-                )
-                __continue63 = true
-            until true
-            if not __continue63 then
-                break
-            end
-        end
-    end
+    local ____units_result_2 = units(
+        bot,
+        function(l) return nearWalk(l, from, place) end,
+        3,
+        6
+    )
+    local he = ____units_result_2.he
+    local hu = ____units_result_2.hu
+    local ha = ____units_result_2.ha
     local unused = {}
     local ta = (towersNow(
         team,
