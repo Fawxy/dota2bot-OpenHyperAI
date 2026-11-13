@@ -1,0 +1,34 @@
+id: retreat.leave.pair-full-hp-ally-near.001
+source: log
+ref: {log: 2026-11-13T03-23-41-cut-leave_smoke_1.log, t: 34.367}
+status: quarantined
+decision: retreat_leave
+# Cut by tools/hlog/cut.js; the game left (why=threat) at 0.52 against the 0.50 budget after the 0.17 s hold.
+world:
+  t: 34.367
+  team: 2
+  pid: 4
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-6215,"y":4425,"hp":692,"mhp":692,"range":150,"hull":24,"speed":325,"esc":0}
+  ce: [{"id":21,"x":-6060,"y":4958,"hp":474,"mhp":550,"ranged":0,"tgt":"u5","hull":16},{"id":22,"x":-6172,"y":5048,"hp":550,"mhp":550,"ranged":0,"tgt":"u7","hull":16},{"id":17,"x":-6124,"y":4992,"hp":224,"mhp":550,"ranged":0,"tgt":"u5","hull":16},{"id":23,"x":-5976,"y":5307,"hp":300,"mhp":300,"ranged":1,"tgt":"u5","hull":8}]
+  ca: [{"id":6,"x":-5956,"y":4947,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":5,"x":-6051,"y":4887,"hp":123,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":7,"x":-6221,"y":4934,"hp":550,"mhp":550,"ranged":0,"tgt":"u17","hull":16},{"id":8,"x":-6220,"y":4491,"hp":300,"mhp":300,"ranged":1,"tgt":"u17","hull":8}]
+  he: [{"pid":5,"x":-5799,"y":5069,"hp":764,"range":425,"hull":24,"speed":305,"atk":0,"eng":0,"e3":167,"e6":323,"ill":0},{"pid":9,"x":-5945,"y":5359,"hp":626,"range":550,"hull":24,"speed":285,"atk":0,"eng":0,"e3":64,"e6":193,"ill":0}]
+  hu: []
+  ha: [{"pid":0,"x":-6060,"y":3853,"range":150,"hull":24,"speed":325,"ret":0}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  budget: 0.5
+  over: 0.4
+  hold: 0.17
+  dt: 0
+expect:
+  must: ["stay"]
+  mustNot: ["leave(threat)"]
+notes: >
+  The commonest leave start of smoke 1 (cut-leave smoke 1, 0:34, 145 of 153 `threat` leaves on the free budget, 100 of the 153 at 80% HP or more): a
+  full-HP melee core (692 of 692) with an ally 590 away, two enemy heroes 770 and 970 off standing at their wave, nobody hitting it. The
+  read counts two in reach and one ally, 0.52 over the free budget 0.5 by 0.02, and the bot leaves after 0.40 s. D1 leaves when
+  more enemy heroes than allies can reach us and their burst can kill: two against one ally holds as D1 is written (the code also
+  counts the bot itself), but the burst is 0.33 of HP over 2 s and cannot kill, so staying is the right action. RetreatOdds is off
+  in this world; with it on, LeaveWhy holds this as even (reach 2 against the bot and its ally, burst under EvenBurst 1, HP over
+  EvenHp 0.5, nobody hitting). Quarantined: it fails today (the card's fault "Retreat leaves at full HP"); not an active guard
+  until a fix. Its control is lethal-pair-half-hp, which must leave.

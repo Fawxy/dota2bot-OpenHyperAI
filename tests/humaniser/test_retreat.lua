@@ -10,7 +10,7 @@ local HERE = Vector(0, -5000)
 
 local function world(o)
 	o = o or {}
-	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true }, retreat = o.off ~= true })
+	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = o.telemetry or { Enable = true }, retreat = o.off ~= true })
 	T = o.t or 300
 	CURRENT_TEAM, OBSERVER = 2, 1
 	FOGGED = function() return false end
@@ -620,6 +620,50 @@ do
 	capture(function() H.Retreat.Think(bot) end)
 	local m = ACTIONS[#ACTIONS] and ACTIONS[#ACTIONS].args[1]
 	check("plain: an unowned hero at full HP walks to the fountain, not our T1", m ~= nil and m.x < -6000, m and m.x)
+end
+
+-- ev=cut kind=leave (fixture cuts): a line when the answer changes and, while a hero is in reach, every CutEvery; the decisions are
+-- the same with the cut off (it only reads).
+do
+	local function run(cut)
+		local H, bot = world({ telemetry = { Enable = true, Cut = cut } })
+		enemy(10, Vector(300, -5000), 100)
+		enemy(11, Vector(300, -4900), 100)
+		local desires = {}
+		local out = capture(function()
+			for _ = 1, 12 do
+				desires[#desires + 1] = H.Retreat.Desire(bot)
+				T = T + 0.2
+			end
+		end)
+		local cuts = {}
+		for _, l in ipairs(out) do if l:find("ev=cut ", 1, true) and l:find("kind=leave", 1, true) then cuts[#cuts + 1] = l end end
+		return desires, cuts
+	end
+	local on, cuts = run(true)
+	local off, none = run(false)
+	check("cut: the desires are the same with the cut off", table.concat(on, ",") == table.concat(off, ","), table.concat(on, ",") .. " / " .. table.concat(off, ","))
+	check("cut: no line with the cut off", #none == 0, #none)
+	check("cut: the hold, then the leave, each logged once as the answer changes (the episode ends the reads)", #cuts == 2 and field(cuts[1], "dec") == "hold" and field(cuts[2], "dec") == "threat", #cuts)
+	check("cut: the hold line says the read was not over budget before it (ov -1) and carries the threshold", tonumber(field(cuts[1], "ov")) == -1 and tonumber(field(cuts[1], "th")) > 0, cuts[1])
+	check("cut: the leave line carries the time over budget", tonumber(field(cuts[2], "ov")) > 0.17 and field(cuts[2], "purp") == "free" and tonumber(field(cuts[2], "bud")) == 0.5, cuts[2])
+end
+
+-- While no episode runs and a hero stays in reach under budget, the samples are CutEvery apart, not per read.
+do
+	local H, bot = world()
+	enemy(10, Vector(300, -5000), 60)
+	local out = capture(function()
+		for _ = 1, 50 do
+			H.Retreat.Desire(bot)
+			T = T + 0.2
+		end
+	end)
+	local n, first = 0, nil
+	for _, l in ipairs(out) do if l:find("ev=cut ", 1, true) and l:find("kind=leave", 1, true) then n = n + 1; first = first or l end end
+	-- 10 s of reads: the first (answer new), then one per 2 s.
+	check("cut: a hero in reach under budget is sampled every CutEvery, not per read", n == 5 or n == 6, n)
+	check("cut: the stay's reason is logged", field(first, "dec") == "under", first)
 end
 
 finish()

@@ -1342,9 +1342,9 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num
+`pid` num, `band` str
 
-- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat).
+- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`).
 - `role` str: The spot's role input: `core` or `support`.
 - `who` str: `gate`: the consumer that asked (ev=threat `who`).
 - `fm` str: `gate`: the walk's start, x,y (Threat.Gate's `from`).
@@ -1360,6 +1360,14 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `ta` str: Towers standing, hex masks over cut.ts TOWER_IDS: ours, theirs.
 - `tt` str: Towers within 3,000 of either: team, TOWER_IDS index, attack target.
 - `vis` str: With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid).
+- `dec` str: kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read).
+- `bud` num: kind=leave: the budget the read was held against (by purpose `purp`: free, busy or committed).
+- `purp` str: kind=leave: the budget's purpose.
+- `ov` num: kind=leave: seconds the read had been over budget before this decision (-1 not over); the hold timer.
+- `th` num: kind=leave: Profile.ThreatHold, the seconds the read must stay over budget.
+- `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
+- `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
+- `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
 
 ## cut_creeps
@@ -1368,6 +1376,7 @@ The lane creeps of an ev=cut, the same frame and pid (cut.ts).
 
 `pid` num
 
+- `kind` str: `leave` for a kind=leave cut's creeps (absent for the spot's), so two cuts in one frame do not share a line.
 - `ce` str: Enemy lane creeps in sight within 3,000 of the bot or its lane front: id, x, y, HP, max HP, ranged, attack target, hull.
 - `ca` str: Our lane creeps within 3,000 of either, as `ce`.
 

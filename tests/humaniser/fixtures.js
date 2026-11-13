@@ -27,6 +27,7 @@ const VERBS = {
     core_trip: ['noTrip', 'trip'],
     support_claim: ['claim', 'noClaim'],
     lane_spot: ['stand', 'anchor', 'read'],
+    retreat_leave: ['leave', 'stay'],
     threat_gate: ['go', 'hold'],
 };
 
