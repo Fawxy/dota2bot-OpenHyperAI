@@ -263,8 +263,8 @@ function sampleByAnswer(game, pool, n) {
     }
     const picked = [];
     for (const idx of groups.values()) {
-        const step = Math.max(1, Math.floor(idx.length / n));
-        for (let j = 0; j < idx.length && j / step < n; j += step) picked.push(idx[j]);
+        const k = Math.min(n, idx.length);
+        for (let j = 0; j < k; j++) picked.push(idx[Math.floor(j * idx.length / k)]);
     }
     return picked.sort((a, b) => a - b).map(i => pool[i]);
 }

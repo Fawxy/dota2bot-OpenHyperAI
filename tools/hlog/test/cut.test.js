@@ -163,6 +163,10 @@ test('the check samples each answer the game gave: a rare answer is checked even
     assert.deepStrictEqual([picked.filter((c) => c.dec === 'under').length, picked.filter((c) => c.dec === 'lethal').length], [20, 1]);
     // Picked in game order, spread over the game rather than its first 20 moments.
     assert.ok(Number(picked[19].t) > 90);
+    // An answer with under twice the sample still reaches its late moments.
+    const mid = Array.from({ length: 39 }, (_, i) => ({ kind: 'leave', dec: 'hold', t: String(i) }));
+    const late = sampleByAnswer({}, mid, 20);
+    assert.deepStrictEqual([late.length, Number(late[19].t) >= 37], [20, true]);
 });
 
 test('the bar is 19 of 20 of each answer, and every one of an answer seen fewer than 20 times', () => {
