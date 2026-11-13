@@ -24,7 +24,6 @@ expect:
   must: ["stay"]
   mustNot: ["leave(threat)", "leave(lethal)", "leave(tower)"]
 notes: >
-  The control for the opposite rule (cut-leave smoke 1, 0:23): a ranged core at 90% HP (541 of 604) with one enemy hero 1,000 away
-  that is not hitting it, no ally, and a read of 0.31 under the free budget 0.5. Standing is safe: one hero at high HP is not
-  a reason to leave (D2). Passes before and after a fix of fixture pair-full-hp-ally-near, which it keeps from over-correcting
-  into never leaving.
+  A stay at high HP (cut-leave smoke 1, 0:23): a ranged core at 90% HP (541 of 604) with one enemy hero 1,000 away
+  that is not hitting it, no ally, and a read of 0.31 under the free budget 0.5. Standing is safe: one hero who cannot kill it
+  is not a reason to leave (D1 does not apply).

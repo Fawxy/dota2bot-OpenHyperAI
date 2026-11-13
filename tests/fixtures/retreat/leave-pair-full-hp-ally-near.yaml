@@ -26,7 +26,9 @@ expect:
 notes: >
   The commonest leave start of smoke 1 (cut-leave smoke 1, 0:34, 145 of 153 `threat` leaves on the free budget, 100 of the 153 at 80% HP or more): a
   full-HP melee core (692 of 692) with an ally 590 away, two enemy heroes 770 and 970 off standing at their wave, nobody hitting it. The
-  read counts two in reach against us and one ally, 0.52 over the free budget 0.5 by 0.02, and the bot leaves after 0.40 s. D1 asks
-  for more enemy heroes than allies in reach and a burst that can kill (0.33 of HP over 2 s): neither holds, so staying is the
-  right action by the doctrine. Quarantined: it fails today (the leave is the fault `Retreat takes a seventh of laning`);
-  not an active guard until a fix.
+  read counts two in reach and one ally, 0.52 over the free budget 0.5 by 0.02, and the bot leaves after 0.40 s. D1 leaves when
+  more enemy heroes than allies can reach us and their burst can kill: two against one ally holds as D1 is written (the code also
+  counts the bot itself), but the burst is 0.33 of HP over 2 s and cannot kill, so staying is the right action. RetreatOdds is off
+  in this world; with it on, LeaveWhy holds this as even (reach 2 against the bot and its ally, burst under EvenBurst 1, HP over
+  EvenHp 0.5, nobody hitting). Quarantined: it fails today (the card's fault "Retreat leaves at full HP"); not an active guard
+  until a fix. Its control is lethal-pair-half-hp, which must leave.

@@ -27,5 +27,6 @@ expect:
 notes: >
   The end of a leave (cut-leave smoke 1, 1:03): the episode that started at 0:59 ended on the ally anchor and the bot, at 53% HP,
   stands with one melee enemy 1,300 away (out of its 2 s reach: 314 x 2 + 150 + hulls = 826) and a hero unseen for 0.7 s (under
-  the missing belief's wait). Nothing can hit it, so it stays and goes back to work (D2). The guard against a retreat that
-  restarts at the reach's edge.
+  the missing belief's wait). Nothing can reach it and its HP is over the heal floor 0.3, so D1 does not apply and the leave
+  rule stays. (A plain retreat walk began at 1:03.0, just before this cut; the fixture grades only the leave rule.) The guard against
+  a retreat that restarts at the reach's edge.
