@@ -35,6 +35,7 @@ local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
+local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
@@ -74,6 +75,7 @@ ____exports.Chooser = Chooser
 ____exports.Overrides = Overrides
 ____exports.Drill = Drill
 ____exports.CoreCamp = CoreCamp
+____exports.Arbiter = Arbiter
 ____exports.Tasks = Tasks
 ____exports.States = States
 ____exports.CoreTrade = CoreTrade
@@ -423,18 +425,24 @@ if Telemetry.GuardsEnabled() then
             Active = none
         }
     )
-    Telemetry.GuardModule("Chooser", Chooser, {
-        RunningJobName = none,
-        Decide = none,
-        FarmDesire = zero,
-        FarmThink = no,
-        Abort = none,
-        HoldsRun = no,
-        HoldsIdle = no,
-        HoldsCasts = no,
-        Benched = no,
-        Bench = no
-    })
+    Telemetry.GuardModule("Arbiter", Arbiter, {DeniesItemsTp = no})
+    Telemetry.GuardModule(
+        "Chooser",
+        Chooser,
+        {
+            RunningJobName = none,
+            Decide = none,
+            After = function(_b, _m, d) return d end,
+            FarmDesire = zero,
+            FarmThink = no,
+            Abort = none,
+            HoldsRun = no,
+            HoldsIdle = no,
+            HoldsCasts = no,
+            Benched = no,
+            Bench = no
+        }
+    )
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,

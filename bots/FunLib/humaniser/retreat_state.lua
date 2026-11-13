@@ -173,8 +173,15 @@ local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase
 local running = {}
 --- With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. A
 -- drill's held hero (bench, statue, sentry, chaser) is the drill's: our retreat outbid its hold (drills rtwalk2, rtchase2).
+-- Under `Ours.ArbiterDrive` the laning phase is the arbiter's (Phase.LaningHeld: to an end event, never stale).
 function ____exports.Owns(bot)
-    return Ours.On("Retreat") and Phase.LaningTransitions(bot) and not Drill.Held(bot)
+    if not Ours.On("Retreat") then
+        return false
+    end
+    if Ours.On("ArbiterDrive") then
+        return not Drill.Held(bot) and Phase.LaningHeld(bot)
+    end
+    return Phase.LaningTransitions(bot) and not Drill.Held(bot)
 end
 --- An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does).
 function ____exports.Running(bot)

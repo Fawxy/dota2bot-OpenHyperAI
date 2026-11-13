@@ -12,9 +12,13 @@ const running: Record<number, boolean> = {};
 /**
  * With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. A
  * drill's held hero (bench, statue, sentry, chaser) is the drill's: our retreat outbid its hold (drills rtwalk2, rtchase2).
+ * Under `Ours.ArbiterDrive` the laning phase is the arbiter's (Phase.LaningHeld: to an end event, never stale).
  */
 export function Owns(bot: Unit): boolean {
-    return Ours.On("Retreat") && Phase.LaningTransitions(bot) && !Drill.Held(bot);
+    if (!Ours.On("Retreat")) return false;
+    // Under the drive a drill's held hero is never read, so it logs no ownership line.
+    if (Ours.On("ArbiterDrive")) return !Drill.Held(bot) && Phase.LaningHeld(bot);
+    return Phase.LaningTransitions(bot) && !Drill.Held(bot);
 }
 
 /** An episode of our retreat runs for this hero (an ally counts no help to the threat read while it does). */

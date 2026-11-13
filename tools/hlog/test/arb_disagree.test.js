@@ -14,6 +14,8 @@ test('arb disagree: seconds under the pick in force where its host is not the he
     const lines = [
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         arb(95, 'lane', 'laning', 'laning', 1),
+        // The drive's ownership line names no pick: the pick in force stays the line before it.
+        line(99, 'arb pid=1 ph=own'),
         snap(96, 'laning', 'laning 0.90 by raw'),
         // The pick moves to retreat while Valve keeps farm at its run value: three seconds of disagreement.
         arb(100, 'retreat', 'retreat', 'farm', 0),
@@ -49,5 +51,27 @@ test('arb disagree: seconds under the pick in force where its host is not the he
     assert.deepStrictEqual(rows({}), [['core', 'retreat', 'farm', 'raw', 3, 1.1, 1.1], ['core', 'lane', 'evasive', null, 2, null, null], ['sup', 'lane', 'ward', 'raw', 1, 0.7, 0.7]]);
     assert.strictEqual(rows({ min_secs: 3 }).length, 1);
     assert.deepStrictEqual(rows({ pos_lo: 4, pos_hi: 5 }), [['sup', 'lane', 'ward', 'raw', 1, 0.7, 0.7]]);
+    s.db.close();
+});
+
+test('arb agree: per owned hero, the share of seconds under a pick of ours held in its host; oha seconds and own lines skipped', () => {
+    const snap = (t, mode) => line(t, `snap pid=1 x=0 y=0 alive=1 mode=${mode} d=0.5 deaths=0 by="${mode} 0.5 by raw"`);
+    const lines = [
+        line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
+        line(95, 'arb pid=1 ph=own'),
+        line(95, 'arb pid=1 pick=lane grp=base host=laning act=laning agree=1'),
+        snap(96, 'laning'), snap(97, 'laning'), snap(98, 'laning'),
+        snap(99, 'ward'),
+        line(100, 'arb pid=1 pick=oha grp=oha act=roam agree=1'),
+        snap(100, 'roam'),
+    ];
+    const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-arb-')), 'b.log');
+    fs.writeFileSync(f, lines.join('\n') + '\n');
+    const s = new Store(':memory:');
+    s.ingest(f);
+    s.refreshViews();
+    const sql = fs.readFileSync(path.join(__dirname, '..', 'queries', 'arb_agree.sql'), 'utf8');
+    const rows = s.query(sql, {}).map(r => [r.pid, r.secs, r.agree, r.share]);
+    assert.deepStrictEqual(rows, [[1, 4, 3, 0.75]]);
     s.db.close();
 });

@@ -72,7 +72,9 @@
    "job": "str",
    "lever": "str",
    "prev": "str",
-   "dwell": "num"
+   "dwell": "num",
+   "ph": "str",
+   "why": "str"
   },
   "mark": {
    "n": "num",
@@ -1749,7 +1751,9 @@
    "act": "text",
    "job": "text",
    "lever": "text",
-   "prev": "text"
+   "prev": "text",
+   "ph": "text",
+   "why": "text"
   },
   "ev_mark": {
    "text": "text"

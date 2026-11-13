@@ -5107,6 +5107,8 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 	and (bot:GetActiveMode() ~= BOT_MODE_PUSH_TOWER_TOP or bot:GetActiveMode() ~= BOT_MODE_PUSH_TOWER_MID or bot:GetActiveMode() ~= BOT_MODE_PUSH_TOWER_BOT or bot:GetActiveMode() ~= BOT_MODE_ATTACK)
 	and not J.IsInTeamFight(bot, 1000)
 	and nEnemyCount == 0
+	-- Rework step 7 (Ours.ArbiterDrive): denied for a laner the arbiter holds (user 13/11/2026); items finish by courier.
+	and not ( J.Humaniser.IsEnabled() and J.Humaniser.Arbiter.DeniesItemsTp( bot ) )
 	then
 		hEffectTarget = J.GetTeamFountain()
 		sCastMotive = '撤退:1'

@@ -26,6 +26,7 @@ local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_contro
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -101,10 +102,19 @@ function ____exports.LeverOf(bot)
     end
     return nil
 end
---- A hero of ours the arbiter reasons about: a bot in its laning phase (as last read by its own callers) that no drill holds.
-local function owned(bot)
-    return Phase.LaningTransitionsSeen(bot) == true and not Drill.Held(bot)
+--- A hero of ours the arbiter reasons about, one no drill holds: with `Ours.ArbiterDrive`, from its first laning read to an
+-- end event (Phase.LaningHeld), and never a drill's lane-only hero (its laning holds it at 1.2, only the thing under test
+-- acts); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
+function ____exports.Owned(bot)
+    if Drill.Held(bot) then
+        return false
+    end
+    if Ours.On("ArbiterDrive") then
+        return not Overrides.LaneOnly(bot) and Phase.LaningHeld(bot)
+    end
+    return Phase.LaningTransitionsSeen(bot) == true
 end
+local owned = ____exports.Owned
 --- The lane picker's body is in a last-hit attempt right now: its stored phase label, fresh within a second of its last scan.
 local function lastHitNow(bot)
     local d = LanePick.Describe(
@@ -185,6 +195,129 @@ function ____exports.Hold(bot, chooserJob)
         jobCandidate(bot, chooserJob, nil)
     })
 end
+____exports.SETTINGS = {LaneDesire = 0.55}
+local drivePrev = {}
+local driveAt = {}
+local drivePick = {}
+--- Whether the drive holds this hero now: the switch on and the hero owned.
+function ____exports.Drives(bot)
+    return Ours.On("ArbiterDrive") and owned(bot)
+end
+--- The pick the gate enforces for an owned hero under the drive, computed once per hero per frame (the gate asks from all 20
+-- mode files) and remembered for the next frame's tie. `chooserJob` is the chooser's running job.
+function ____exports.Drive(bot, chooserJob)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local cached = drivePick[pid]
+    if cached ~= nil and driveAt[pid] == now then
+        return cached
+    end
+    local cands = ____exports.Candidates(bot, chooserJob)
+    local p = ____exports.Pick(cands, drivePrev[pid]) or cands[#cands]
+    drivePick[pid] = p
+    driveAt[pid] = now
+    drivePrev[pid] = p.name
+    return p
+end
+--- The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
+-- hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+-- trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
+-- scan, which goes stale once attack holds the hero.
+local function laneAndTrade(p)
+    return p.name == "lane" or p.name == "trade"
+end
+--- Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit).
+local BORROWED = {
+    attack = function(bot) return CoreTrade.Running(bot) end,
+    team_roam = function(bot)
+        local p = LaneFight.CurrentPhase(bot)
+        return p == "trade" or p == "commit"
+    end
+}
+--- OHA's modes that run their own desire beside the lane base (the inventory's admitted rows); each is a job-group activity.
+local ADMITTED_AT_BASE = {ward = true, rune = true}
+--- Human interface and our own retreat: run their own code whatever the pick (retreat's desire is ours, Retreat.Desire).
+local ALWAYS = {retreat = true, assemble = true, assemble_with_humans = true}
+--- The drive's rule for `mode` against pick `p`, before OHA's code runs: a number replaces the mode's desire, undefined runs
+-- the mode's own code (then After). `farmHost` is the chooser's host desire (a job may start from the lane base).
+-- - always: retreat (ours), assemble, assemble_with_humans; the retreat pick keeps only these.
+-- - the pick's host runs (farm: the chooser's host desire, its own code for an older-path camp job).
+-- - laning under a trade pick and attack under any lane pick run (laneAndTrade).
+-- - borrowed attack and team roam run below a group-5 pick, kept by After only while our fight read wants them.
+-- - farm below a group-6 pick: a chooser job may start, OHA's farm desire is denied.
+-- - admitted ward and rune beside the lane base.
+-- - everything else 0: laning when not the host, roam, defend, push, roshan, outpost and the shops.
+function ____exports.DriveDecide(_bot, mode, p, farmHost)
+    if ALWAYS[mode] == true then
+        return nil
+    end
+    if p.name == "retreat" then
+        return 0
+    end
+    if mode == p.host then
+        local ____temp_0
+        if mode == "farm" then
+            ____temp_0 = farmHost()
+        else
+            ____temp_0 = nil
+        end
+        return ____temp_0
+    end
+    if mode == "laning" and p.name == "trade" then
+        return nil
+    end
+    if mode == "attack" and p.name == "lane" then
+        return nil
+    end
+    if BORROWED[mode] ~= nil then
+        local ____temp_1
+        if p.group > 5 then
+            ____temp_1 = nil
+        else
+            ____temp_1 = 0
+        end
+        return ____temp_1
+    end
+    if mode == "farm" then
+        return p.group > 6 and (farmHost() or 0) or 0
+    end
+    if ADMITTED_AT_BASE[mode] == true and p.group >= ____exports.BASE_GROUP then
+        return nil
+    end
+    return 0
+end
+--- After OHA's code for `mode` returned `desire` under the drive: the lane host's desire replaces laning's, and a borrowed
+-- fight mode that is not the pick's host keeps its desire only while our fight read wants it (the read is asked after the
+-- mode's own GetDesire, which opens a trade or a fight).
+function ____exports.DriveAfter(bot, mode, p, desire)
+    if mode == "laning" and p.name == "lane" then
+        local ____temp_2
+        if type(desire) == "number" and desire > ____exports.SETTINGS.LaneDesire then
+            ____temp_2 = desire
+        else
+            ____temp_2 = ____exports.SETTINGS.LaneDesire
+        end
+        return ____temp_2
+    end
+    if mode == "laning" and laneAndTrade(p) then
+        return desire
+    end
+    local borrowed = BORROWED[mode]
+    if borrowed ~= nil and mode ~= p.host then
+        local ____borrowed_result_3
+        if borrowed(bot) then
+            ____borrowed_result_3 = desire
+        else
+            ____borrowed_result_3 = 0
+        end
+        return ____borrowed_result_3
+    end
+    return desire
+end
+--- ability_item_usage's "go complete items" TP to the fountain is denied for a hero the drive holds (user 13/11/2026).
+function ____exports.DeniesItemsTp(bot)
+    return ____exports.Drives(bot)
+end
 local last = {}
 local nextAt = {}
 --- judgement: seconds between computes per hero; the gate calls Shadow from all 20 mode files every frame.
@@ -196,7 +329,7 @@ local function compute(bot, jobName)
     local lever = ____exports.LeverOf(bot)
     local cands = ____exports.Candidates(bot, jobName, lever)
     local job = jobName or CampJobs.LiveKind(bot)
-    local picked = ____exports.Pick(cands, l and l.pick) or cands[#cands]
+    local picked = ____exports.Drives(bot) and ____exports.Drive(bot, jobName) or (____exports.Pick(cands, l and l.pick) or cands[#cands])
     local act = HDebug.ModeName(bot:GetActiveMode())
     if l ~= nil and l.pick == picked.name and l.act == act then
         return
