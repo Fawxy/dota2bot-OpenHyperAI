@@ -1,0 +1,24 @@
+id: gate.sup_job.heroes-too-far-to-reach.001
+source: log
+ref: {log: 2026-11-13T03-18-39-cut-gate_smoke_1.log, t: 126.033}
+status: active
+decision: threat_gate
+# Cut by tools/hlog/cut.js; the game chose go (reach 0, miss 0, tower 0).
+world:
+  t: 126.033
+  team: 3
+  pid: 5
+  who: "sup_job"
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-6359,"y":4386,"hp":736,"mhp":736,"range":425,"hull":24,"speed":305,"esc":0}
+  from: {"x":-3940,"y":4946}
+  place: {"x":-3940,"y":4946}
+  he: [{"pid":0,"x":-6010,"y":3245,"hp":701,"range":150,"hull":24,"speed":325,"atk":0,"eng":0,"e3":205,"e6":323,"ill":0},{"pid":4,"x":-6279,"y":2919,"hp":644,"range":150,"hull":24,"speed":325,"atk":0,"eng":0,"e3":174,"e6":292,"ill":0}]
+  hu: []
+  ha: [{"pid":9,"x":-6280,"y":4301,"range":710,"hull":24,"speed":285,"ret":0}]
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+expect:
+  must: ["go"]
+  mustNot: ["hold(threat)"]
+notes: >
+  Control for the opposite rule: Dire pos 5 (pid 5) at full HP with two Radiant heroes in sight 1,100-1,500 from it, but 2,700 and 3,100 from the camp it would pull, to the east, and its ally beside it. Neither can reach the camp in 4 s (run 1,300 plus range), so a hold here would stop every pull a visible enemy lane could ever block. Going is right; the walk leads away from them.
