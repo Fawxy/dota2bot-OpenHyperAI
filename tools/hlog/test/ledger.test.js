@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Store } = require('../store');
-const { ledger, summary } = require('../ledger');
+const { ledger, summary, noise } = require('../ledger');
 
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 // Radiant pos 1 and pos 5 against Dire pos 1 and pos 5; Radiant is ours (the `_rad_` seat).
@@ -77,4 +77,35 @@ test('lane creeps: the other team\'s own deaths fill the pool, causes come from 
         assert.ok(Math.abs(sum - total.gap) < 1e-9, `${measure}: lines sum to ${sum}, total gap ${total.gap}`);
     }
     assert.strictEqual(summary(r).find((l) => l.line === 'total' && l.measure === 'last_hits').ours, 1);
+});
+
+// Per-game records as ledger() returns them: one miss line and the last hits each side took.
+const rec = (label, [oursDenied, oursLh], [ohaDenied, ohaLh]) => {
+    const side = (denied, lh) => ({ deaths: {}, miss: { denied }, pool: 0, unseen: 0, taken: lh, lh, neutral: 0, unattributed: 0 });
+    return { label, ours: side(oursDenied, oursLh), oha: side(ohaDenied, ohaLh) };
+};
+
+test('the mirror splits a gap: what we do worse than OHA against itself, and what OHA gains against us', () => {
+    const row = { games: [rec('x_A_rad_1', [50, 90], [40, 120])] };
+    const nul = { games: [rec('n_A_rad_1', [44, 96], [46, 100])] };
+    const of = (line) => summary(row, nul).find((l) => l.line === line && l.measure === 'last_hits');
+    // Last hits: the mirror is 98; we are 8 under it, OHA 22 over it against us.
+    assert.deepStrictEqual([of('total').mirror, of('total').we, of('total').they, of('total').gap], [98, -8, -22, -30]);
+    // A miss line is a loss: denied 50 against the mirror's 45 costs us 5; OHA's 40 against 45 gains it 5.
+    assert.deepStrictEqual([of('denied').mirror, of('denied').we, of('denied').they, of('denied').gap], [45, -5, -5, -10]);
+    assert.strictEqual(summary(row).find((l) => l.line === 'denied').mirror, undefined);
+});
+
+test('noise: the gap\'s spread inside lineup-and-seat cells, a cell of one game adding nothing', () => {
+    // A_rad gaps in last hits -10 and -30, B_dire -5 and -5, C_rad alone (ignored).
+    const row = { games: [
+        rec('x_A_rad_1', [0, 90], [0, 100]), rec('x_A_rad_4', [0, 80], [0, 110]),
+        rec('x_B_dire_2', [0, 95], [0, 100]), rec('x_B_dire_5', [0, 100], [0, 105]),
+        rec('x_C_rad_3', [0, 10], [0, 200]),
+    ] };
+    const total = noise(row, { n: 10 }).find((l) => l.line === 'total' && l.measure === 'last_hits');
+    assert.strictEqual(total.df, 2);
+    assert.ok(Math.abs(total.sd - 10) < 1e-9, `sd ${total.sd}`); // sqrt((100 + 100 + 0 + 0) / 2)
+    assert.ok(Math.abs(total.se - 10 * Math.sqrt(0.2)) < 1e-9);
+    assert.throws(() => noise({ games: [row.games[0], row.games[1], row.games[4]] }), /degrees of freedom/);
 });
