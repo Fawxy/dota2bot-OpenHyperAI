@@ -60,6 +60,7 @@ local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_patter
 local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local WaveHold = require(GetScriptDirectory().."/FunLib/humaniser/states/wave_hold")
+local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 function ____exports.Settings()
     return Config.Get().States
 end
@@ -303,6 +304,9 @@ local function lanePos(bot, l)
         "lane_pos",
         {__TS__SparseArraySpread(____array_36)}
     )
+    if info ~= nil and Telemetry.IsEnabled() and Telemetry.Get().Cut == true then
+        pcall(Cut.Spot, bot)
+    end
 end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
 function ____exports.Tick(bot)

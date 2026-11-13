@@ -47,6 +47,8 @@ export const DEFAULTS = {
     // Perf probe: CPU time per OHA entry point, in our guarded calls and in event printing (ev=perf, ev=perf_top).
     Perf: false,
     PerfInterval: 10,
+    // ev=cut: a decision's API inputs beside it, so banked moments replay as fixtures (cut.ts; rework step 8).
+    Cut: true,
 };
 
 export type TelemetryConfig = typeof DEFAULTS;

@@ -1,0 +1,29 @@
+id: retreat.leave.lone-hero-far-high-hp.001
+source: log
+ref: {log: 2026-11-13T03-23-41-cut-leave_smoke_1.log, t: 23.500}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js; the game stayed (under).
+world:
+  t: 23.5
+  team: 3
+  pid: 8
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-321,"y":65,"hp":541,"mhp":604,"range":500,"hull":24,"speed":280,"esc":0}
+  ce: [{"id":15,"x":-619,"y":-296,"hp":550,"mhp":550,"ranged":0,"tgt":"u2","hull":16},{"id":13,"x":-538,"y":-393,"hp":387,"mhp":550,"ranged":0,"tgt":"u3","hull":16},{"id":14,"x":-551,"y":-323,"hp":407,"mhp":550,"ranged":0,"tgt":"u3","hull":16},{"id":16,"x":-828,"y":-654,"hp":300,"mhp":300,"ranged":1,"tgt":"u3","hull":8}]
+  ca: [{"id":1,"x":-423,"y":-382,"hp":452,"mhp":550,"ranged":0,"tgt":"u13","hull":16},{"id":2,"x":-499,"y":-247,"hp":391,"mhp":550,"ranged":0,"tgt":"u14","hull":16},{"id":3,"x":-456,"y":-318,"hp":157,"mhp":550,"ranged":0,"tgt":"u13","hull":16},{"id":4,"x":-170,"y":-72,"hp":207,"mhp":300,"ranged":1,"tgt":"u14","hull":8}]
+  he: [{"pid":1,"x":-815,"y":-815,"hp":670,"range":600,"hull":24,"speed":293,"atk":0,"eng":0,"e3":68,"e6":204,"ill":0}]
+  hu: []
+  ha: []
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+  budget: 0.5
+  over: -1
+  hold: 0.17
+  dt: 0
+expect:
+  must: ["stay"]
+  mustNot: ["leave(threat)", "leave(lethal)", "leave(tower)"]
+notes: >
+  A stay at high HP (cut-leave smoke 1, 0:23): a ranged core at 90% HP (541 of 604) with one enemy hero 1,000 away
+  that is not hitting it, no ally, and a read of 0.31 under the free budget 0.5. Standing is safe: one hero who cannot kill it
+  is not a reason to leave (D1 does not apply).

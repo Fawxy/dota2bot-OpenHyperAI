@@ -1,0 +1,29 @@
+id: retreat.leave.lethal-pair-half-hp.001
+source: log
+ref: {log: 2026-11-13T03-23-41-cut-leave_smoke_1.log, t: 449.667}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js; the game left (why=lethal, threat 0.85).
+world:
+  t: 449.667
+  team: 3
+  pid: 7
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":6329,"y":-3631,"hp":593,"mhp":1072,"range":150,"hull":24,"speed":335,"esc":0}
+  ce: []
+  ca: [{"id":369,"x":6363,"y":-3545,"hp":414,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":370,"x":6331,"y":-3473,"hp":296,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":371,"x":6346,"y":-3136,"hp":300,"mhp":300,"ranged":1,"tgt":"h3","hull":8},{"id":368,"x":6262,"y":-3506,"hp":289,"mhp":550,"ranged":0,"tgt":"-","hull":16}]
+  he: [{"pid":3,"x":6275,"y":-3828,"hp":571,"range":150,"hull":24,"speed":350,"atk":0,"eng":1,"e3":126,"e6":379,"ill":0},{"pid":2,"x":6271,"y":-4227,"hp":547,"range":600,"hull":24,"speed":290,"atk":0,"eng":1,"e3":77,"e6":233,"ill":0}]
+  hu: []
+  ha: [{"pid":6,"x":6403,"y":-3028,"range":625,"hull":24,"speed":325,"ret":0},{"pid":8,"x":3392,"y":-2212,"range":500,"hull":24,"speed":325,"ret":0}]
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+  budget: 0.5
+  over: 0.4
+  hold: 0.17
+  dt: 0
+expect:
+  must: ["leave(lethal)"]
+  mustNot: ["stay"]
+notes: >
+  The control for the opposite rule (cut-leave smoke 1, 7:29): a melee core at 55% HP (593 of 1,072). Both enemy heroes have hit it
+  recently and stand 200 and 600 away; over 6 s their damage (379 + 233 = 612) is more than its HP. One ally is 600 away, the other
+  3,000. D1: their burst can kill it, so it leaves at once. A fix that makes pair-full-hp-ally-near stay must still leave here.

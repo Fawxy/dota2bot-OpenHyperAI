@@ -297,6 +297,11 @@ function ____exports.Spot(bot)
     spotCache[pid] = {t = now, v = v, info = info}
     return v
 end
+--- The named inputs LaneSpot.Compute takes for this bot (the fixture cut logs them).
+function ____exports.SpotInputs(bot)
+    local pid = bot:GetPlayerID()
+    return ____exports.RoleOf(bot), fedCreep[pid], holdPoint[pid]
+end
 --- The last computed SDK spot details for telemetry, if any.
 function ____exports.SpotInfo(bot)
     local ____opt_9 = spotCache[bot:GetPlayerID()]

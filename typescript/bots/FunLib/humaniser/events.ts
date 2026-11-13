@@ -2639,6 +2639,76 @@ export const EVENTS = {
         re: "num",
         rat: "num",
     },
+    /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
+    cut: {
+        pid: "num",
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`). */
+        kind: "str",
+        /** The spot's role input: `core` or `support`. */
+        role: "str",
+        /** `gate`: the consumer that asked (ev=threat `who`). */
+        who: "str",
+        /** `gate`: the walk's start, x,y (Threat.Gate's `from`). */
+        fm: "str",
+        /** `gate`: the walk's end, x,y (the camp or place the trip goes to). */
+        pl: "str",
+        /** The bot's assigned lane. */
+        lane: "num",
+        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready. */
+        b: "str",
+        /** GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y. */
+        fr: "str",
+        /** The spot's `fed` input: lane_aggro's fed creep (CreepId). */
+        fed: "num",
+        /** The spot's `hold` input: wave_hold's hold point, x,y. */
+        hold: "str",
+        /** Enemy heroes in sight within 3,000 of the bot or its lane front (`gate`: of the walk's box): pid, x, y, HP, range, hull, speed, attacking the bot, damaged the bot within Threat EngagedRecent, GetEstimatedDamageToTarget over 3 s and 6 s, illusion. */
+        he: "str",
+        /** Enemy heroes alive and unseen with a sighting: pid, last-seen x, y, seconds unseen, last speed Threat read (-1 none). */
+        hu: "str",
+        /** Our other heroes within 3,000 of either: pid, x, y, range, hull, speed, in our retreat. */
+        ha: "str",
+        /** Towers standing, hex masks over cut.ts TOWER_IDS: ours, theirs. */
+        ta: "str",
+        /** Towers within 3,000 of either: team, TOWER_IDS index, attack target. */
+        tt: "str",
+        /** With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid). */
+        vis: "str",
+        /** kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read). */
+        dec: "str",
+        /** kind=leave: the budget the read was held against (by purpose `purp`: free, busy or committed). */
+        bud: "num",
+        /** kind=leave: the budget's purpose. */
+        purp: "str",
+        /** kind=leave: seconds the read had been over budget before this decision (-1 not over); the hold timer. */
+        ov: "num",
+        /** kind=leave: Profile.ThreatHold, the seconds the read must stay over budget. */
+        th: "num",
+        /** kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them. */
+        unp: "num",
+        /** kind=leave: 1 when an enemy tower damaged the bot within 0.5 s. */
+        dt: "num",
+        /** kind=leave: the read's threat and band, for reading a line without replaying it. */
+        thr: "num",
+        band: "str",
+        /** `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision). */
+        vw: "str",
+    },
+    /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
+    cut_creeps: {
+        pid: "num",
+        /** `leave` for a kind=leave cut's creeps (absent for the spot's), so two cuts in one frame do not share a line. */
+        kind: "str",
+        /** Enemy lane creeps in sight within 3,000 of the bot or its lane front: id, x, y, HP, max HP, ranged, attack target, hull. */
+        ce: "str",
+        /** Our lane creeps within 3,000 of either, as `ce`. */
+        ca: "str",
+    },
+    /** Once per team per game, before its first ev=cut: every standing tower as TOWER_IDS index, x, y, attack range, hull. */
+    cut_towers: {
+        team: "num",
+        tw: "str",
+    },
 } as const;
 
 export type EventName = keyof typeof EVENTS;

@@ -1,0 +1,32 @@
+id: retreat.leave.end-nobody-in-reach.001
+source: log
+ref: {log: 2026-11-13T03-23-41-cut-leave_smoke_1.log, t: 63.267}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js; the game stayed (under) the first read after a leave ended.
+world:
+  t: 63.267
+  team: 3
+  pid: 6
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":6418,"y":-4352,"hp":368,"mhp":698,"range":625,"hull":24,"speed":325,"esc":0}
+  ce: [{"id":45,"x":6164,"y":-5219,"hp":550,"mhp":550,"ranged":0,"tgt":"u11","hull":16},{"id":46,"x":6218,"y":-5349,"hp":550,"mhp":550,"ranged":0,"tgt":"u11","hull":16},{"id":42,"x":6210,"y":-5275,"hp":550,"mhp":550,"ranged":0,"tgt":"u11","hull":16},{"id":48,"x":5905,"y":-5559,"hp":300,"mhp":300,"ranged":1,"tgt":"u11","hull":8},{"id":18,"x":6189,"y":-5133,"hp":70,"mhp":550,"ranged":0,"tgt":"u10","hull":16}]
+  ca: [{"id":34,"x":6172,"y":-4814,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":32,"x":6171,"y":-4983,"hp":495,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":33,"x":6219,"y":-5037,"hp":550,"mhp":550,"ranged":0,"tgt":"u18","hull":16},{"id":35,"x":6256,"y":-4576,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8},{"id":10,"x":6256,"y":-5161,"hp":353,"mhp":550,"ranged":0,"tgt":"u18","hull":16},{"id":11,"x":6269,"y":-5232,"hp":392,"mhp":550,"ranged":0,"tgt":"u18","hull":16}]
+  he: [{"pid":3,"x":5656,"y":-5390,"hp":518,"range":150,"hull":24,"speed":314,"atk":0,"eng":0,"e3":134,"e6":402,"ill":0}]
+  hu: [{"pid":2,"x":6334,"y":-5663,"tss":0.7,"sp":290}]
+  ha: [{"pid":7,"x":6444,"y":-4303,"range":150,"hull":24,"speed":290,"ret":0}]
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":4750,"y0":-6000,"nx":15,"ny":14,"step":250,"hex":"0c007c807c007c01f803e003e0038007c02700bf81ff03fc01f00"}
+  budget: 0.5
+  over: -1
+  hold: 0.17
+  dt: 0
+expect:
+  must: ["stay"]
+  mustNot: ["leave(threat)", "leave(lethal)"]
+notes: >
+  The end of a leave (cut-leave smoke 1, 1:03): the episode that started at 0:59 ended on the ally anchor and the bot, at 53% HP,
+  stands with one melee enemy 1,300 away (out of its 2 s reach: 314 x 2 + 150 + hulls = 826) and a hero unseen for 0.7 s (under
+  the missing belief's wait). Nothing can reach it and its HP is over the heal floor 0.3, so D1 does not apply and the leave
+  rule stays. (A plain retreat walk began at 1:03.0, just before this cut; the fixture grades only the leave rule.) The guard against
+  a retreat that restarts at the reach's edge.
