@@ -63,6 +63,7 @@ return function(fx)
 
 	world = { theirCreeps = {}, ourCreeps = {}, theirTowers = {}, ourTowers = {}, enemies = {}, allies = {} }
 	local byCreep, byHero = {}, {}
+	local elsewhere = unit({ loc = Vector(0, 0), hp = 1 })
 	local b = w.bot
 	local bot = unit({ loc = Vector(b.x, b.y), team = team, hp = b.hp, mhp = b.mhp, range = b.range, hull = b.hull, speed = b.speed,
 		esc = b.esc == 1 or b.esc == true, pid = w.pid, lane = w.lane, hero = true })
@@ -103,6 +104,8 @@ return function(fx)
 		if tgt == "b" then p[1].target = bot
 		elseif type(tgt) == "string" and tgt:sub(1, 1) == "h" then p[1].target = byHero[tonumber(tgt:sub(2))]
 		elseif type(tgt) == "string" and tgt:sub(1, 1) == "u" then p[1].target = byCreep[tonumber(tgt:sub(2))] end
+		-- A target outside the cut (a creep on a tower, a ward, a summon) is still a target: the spot tests only nil, the bot and the fed creep.
+		if p[1].target == nil and tgt ~= "-" and tgt ~= nil then p[1].target = elsewhere end
 	end
 
 	function GetUnitList(kind)

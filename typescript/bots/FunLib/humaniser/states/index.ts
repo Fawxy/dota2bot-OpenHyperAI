@@ -195,7 +195,7 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["rat", info?.rat],
     ]);
     // Same frame as Compute (Spot caches per frame), so the line holds the state that spot was computed from.
-    if (info !== undefined && Telemetry.Get().Cut === true) pcall(Cut.Spot, bot);
+    if (info !== undefined && Telemetry.IsEnabled() && Telemetry.Get().Cut === true) pcall(Cut.Spot, bot);
 }
 
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */

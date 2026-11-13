@@ -23,5 +23,6 @@ world:
 expect:
   mustNot: ["read(none)"]
 notes: >
-  Control for the opposite rule: a Radiant top-lane core at full HP with two enemy heroes in reach and no ally (the read's
-  0.25 per hero alone reaches the pressured band). Backing off is right: a 2v1 at the creeps is not "standing there is safe".
+  Control for the opposite rule: a Radiant top-lane core at full HP with two enemy heroes in reach and one ally about 490
+  away (the read: 0.50 for the two heroes, 0.17 more, 0.15 less for the ally, 0.52, pressured). Backing off is right: two
+  enemy heroes on a lone core at the creeps is not "standing there is safe".

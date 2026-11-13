@@ -304,7 +304,7 @@ local function lanePos(bot, l)
         "lane_pos",
         {__TS__SparseArraySpread(____array_36)}
     )
-    if info ~= nil and Telemetry.Get().Cut == true then
+    if info ~= nil and Telemetry.IsEnabled() and Telemetry.Get().Cut == true then
         pcall(Cut.Spot, bot)
     end
 end
