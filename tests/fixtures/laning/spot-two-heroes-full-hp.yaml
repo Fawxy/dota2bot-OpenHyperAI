@@ -1,0 +1,28 @@
+id: lane.spot.two-heroes-full-hp.001
+source: log
+ref: {log: 2026-11-13T02-43-52-fixture-cut_smoke_2.log, t: 60.567}
+status: active
+decision: lane_spot
+# Cut by tools/hlog/cut.js; the game read threat at the preferred point and stood 11 rows back (creep limit).
+world:
+  t: 60.567
+  team: 2
+  pid: 4
+  role: "core"
+  lane: 1
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-6353,"y":4581,"hp":604,"mhp":604,"range":150,"hull":24,"speed":325,"esc":0}
+  front: {"x":-6217,"y":4893,"bx":-6233,"by":4494}
+  ce: [{"id":45,"x":-6095,"y":4970,"hp":453,"mhp":550,"ranged":0,"tgt":"u33","hull":16},{"id":47,"x":-5968,"y":5262,"hp":300,"mhp":300,"ranged":1,"tgt":"u33","hull":8},{"id":48,"x":-6023,"y":4966,"hp":550,"mhp":550,"ranged":0,"tgt":"u33","hull":16},{"id":46,"x":-6168,"y":4972,"hp":550,"mhp":550,"ranged":0,"tgt":"u32","hull":16}]
+  ca: [{"id":38,"x":-6185,"y":4540,"hp":300,"mhp":300,"ranged":1,"tgt":"u45","hull":8},{"id":32,"x":-6119,"y":4889,"hp":529,"mhp":550,"ranged":0,"tgt":"u45","hull":16},{"id":35,"x":-6191,"y":4878,"hp":550,"mhp":550,"ranged":0,"tgt":"u46","hull":16},{"id":33,"x":-6047,"y":4881,"hp":484,"mhp":550,"ranged":0,"tgt":"u45","hull":16}]
+  he: [{"pid":7,"x":-5837,"y":5160,"hp":460,"range":625,"hull":24,"speed":310,"atk":0,"eng":0,"e3":97,"e6":194,"ill":0},{"pid":8,"x":-5504,"y":5470,"hp":517,"range":550,"hull":24,"speed":290,"atk":0,"eng":0,"e3":106,"e6":183,"ill":0}]
+  hu: [{"pid":6,"x":6460,"y":-4410,"tss":0.2,"sp":305}]
+  ha: [{"pid":2,"x":-6035,"y":4210,"range":625,"hull":24,"speed":325,"ret":0}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-8000,"y0":2750,"nx":15,"ny":16,"step":250,"hex":"0fc03fc0ffc03f87f80fe000f001d007e00fa817001f001f003e00500000"}
+expect:
+  mustNot: ["read(none)"]
+notes: >
+  Control for the opposite rule: a Radiant top-lane core at full HP with two enemy heroes in reach and one ally about 490
+  away (the read: 0.50 for the two heroes, 0.17 more, 0.15 less for the ally, 0.52, pressured). Backing off is right: two
+  enemy heroes on a lone core at the creeps is not "standing there is safe".

@@ -2639,6 +2639,49 @@ export const EVENTS = {
         re: "num",
         rat: "num",
     },
+    /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
+    cut: {
+        pid: "num",
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos). */
+        kind: "str",
+        /** The spot's role input: `core` or `support`. */
+        role: "str",
+        /** The bot's assigned lane. */
+        lane: "num",
+        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready. */
+        b: "str",
+        /** GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y. */
+        fr: "str",
+        /** The spot's `fed` input: lane_aggro's fed creep (CreepId). */
+        fed: "num",
+        /** The spot's `hold` input: wave_hold's hold point, x,y. */
+        hold: "str",
+        /** Enemy heroes in sight within 3,000 of the bot or its lane front: pid, x, y, HP, range, hull, speed, attacking the bot, damaged the bot within Threat EngagedRecent, GetEstimatedDamageToTarget over 3 s and 6 s, illusion. */
+        he: "str",
+        /** Enemy heroes alive and unseen with a sighting: pid, last-seen x, y, seconds unseen, last speed Threat read (-1 none). */
+        hu: "str",
+        /** Our other heroes within 3,000 of either: pid, x, y, range, hull, speed, in our retreat. */
+        ha: "str",
+        /** Towers standing, hex masks over cut.ts TOWER_IDS: ours, theirs. */
+        ta: "str",
+        /** Towers within 3,000 of either: team, TOWER_IDS index, attack target. */
+        tt: "str",
+        /** With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid). */
+        vis: "str",
+    },
+    /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
+    cut_creeps: {
+        pid: "num",
+        /** Enemy lane creeps in sight within 3,000 of the bot or its lane front: id, x, y, HP, max HP, ranged, attack target, hull. */
+        ce: "str",
+        /** Our lane creeps within 3,000 of either, as `ce`. */
+        ca: "str",
+    },
+    /** Once per team per game, before its first ev=cut: every standing tower as TOWER_IDS index, x, y, attack range, hull. */
+    cut_towers: {
+        team: "num",
+        tw: "str",
+    },
 } as const;
 
 export type EventName = keyof typeof EVENTS;

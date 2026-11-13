@@ -28,6 +28,7 @@ import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as WaveHold from "bots/FunLib/humaniser/states/wave_hold";
+import * as Cut from "bots/FunLib/humaniser/cut";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -193,6 +194,8 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["re", info?.re],
         ["rat", info?.rat],
     ]);
+    // Same frame as Compute (Spot caches per frame), so the line holds the state that spot was computed from.
+    if (info !== undefined && Telemetry.IsEnabled() && Telemetry.Get().Cut === true) pcall(Cut.Spot, bot);
 }
 
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */

@@ -131,6 +131,12 @@ export function Spot(bot: Unit): Vector | undefined {
     return v;
 }
 
+/** The named inputs LaneSpot.Compute takes for this bot (the fixture cut logs them). */
+export function SpotInputs(bot: Unit): LuaMultiReturn<[LaneSpot.Role, Unit | undefined, Vector | undefined]> {
+    const pid = bot.GetPlayerID();
+    return $multi(RoleOf(bot), fedCreep[pid], holdPoint[pid]);
+}
+
 /** The last computed SDK spot details for telemetry, if any. */
 export function SpotInfo(bot: Unit): LaneSpot.SpotInfo | undefined {
     return spotCache[bot.GetPlayerID()]?.info;

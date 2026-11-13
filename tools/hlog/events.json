@@ -1723,6 +1723,31 @@
    "rp": "str",
    "re": "num",
    "rat": "num"
+  },
+  "cut": {
+   "pid": "num",
+   "kind": "str",
+   "role": "str",
+   "lane": "num",
+   "b": "str",
+   "fr": "str",
+   "fed": "num",
+   "hold": "str",
+   "he": "str",
+   "hu": "str",
+   "ha": "str",
+   "ta": "str",
+   "tt": "str",
+   "vis": "str"
+  },
+  "cut_creeps": {
+   "pid": "num",
+   "ce": "str",
+   "ca": "str"
+  },
+  "cut_towers": {
+   "team": "num",
+   "tw": "str"
   }
  },
  "kinds": {
@@ -2281,6 +2306,26 @@
    "mp": "text",
    "op": "text",
    "rp": "text"
+  },
+  "ev_cut": {
+   "kind": "text",
+   "role": "text",
+   "b": "text",
+   "fr": "text",
+   "hold": "text",
+   "he": "text",
+   "hu": "text",
+   "ha": "text",
+   "ta": "text",
+   "tt": "text",
+   "vis": "text"
+  },
+  "ev_cut_creeps": {
+   "ce": "text",
+   "ca": "text"
+  },
+  "ev_cut_towers": {
+   "tw": "text"
   }
  }
 }
