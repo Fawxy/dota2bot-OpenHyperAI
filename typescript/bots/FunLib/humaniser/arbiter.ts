@@ -110,7 +110,8 @@ export function Candidates(bot: Unit, jobName: string | undefined, lever: string
     const out: Candidate[] = [];
     out.push(retreatCandidate(bot));
     out.push({ name: "trade", group: 5, host: "attack", applies: CoreTrade.Running(bot) });
-    out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: LaneFight.CurrentPhase(bot) !== "idle" });
+    // Only a trade or a commit: a core waiting for its partner (wait_partner) posts no floor and keeps laning (lane_fight.ts).
+    out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: BORROWED.team_roam(bot) });
     out.push(jobCandidate(bot, jobName ?? CampJobs.LiveKind(bot), lever));
     out.push({ name: "mid_rune", group: 6, host: "rune", applies: MidRunes.Claiming(bot) });
     // The base: it wins when no interrupt applies, and is group 3 only while a last hit is under way (D11).
