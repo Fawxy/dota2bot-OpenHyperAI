@@ -53,7 +53,9 @@ does produce the action when the condition is absent; otherwise it passes when t
 | `retreat_leave` | `retreat.LeaveWhy` and the `Threat.Read` it decides on, on a world cut from a game (`ev=cut kind=leave`, `cut.js --kind leave`; the hold timer and `Profile.ThreatHold` as logged) | `leave(<lethal\|tower\|heal\|threat>)`, `stay(<under\|even\|hold>)`; `fact.threat`, `fact.burst`, `fact.reach`, `fact.eng`, `fact.budget`, `fact.over`, `fact.hp` |
 
 A cut fixture's world is the game's, not hand-built: `node tools/hlog/cut.js <log> --pid P --t m:ss [--kind spot|gate|leave]` prints one with an
-empty `expect` for the author to fill; `--check [--kind K]` replays a game's cuts and compares them with what it logged.
+empty `expect` for the author to fill; `--check [--kind K]` replays up to 20 cuts of each answer the game gave, compares them with what it logged and says whether
+the bar (19 of 20 of each answer) is met; `--list` finds moments by answer, pid and HP. A printed fixture's header gives the
+distances and HP its notes quote.
 
 The verbs are this runner's vocabulary until behaviour contracts exist (`docs/contracts/`); they move there then. The
 worlds are the hand-built test worlds the unit tests already use, so a driver adds no new simulation.
