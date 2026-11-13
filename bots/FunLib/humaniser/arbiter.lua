@@ -236,6 +236,7 @@ BORROWED = {
     end
 }
 --- OHA's modes that run their own desire beside the lane base (the inventory's admitted rows); each is a job-group activity.
+-- Of the rune mode only OHA's bounty and pre-game branches and our own rune reads (DeniesOhaRune).
 local ADMITTED_AT_BASE = {ward = true, rune = true}
 --- Human interface and our own retreat: run their own code whatever the pick (retreat's desire is ours, Retreat.Desire).
 local ALWAYS = {retreat = true, assemble = true, assemble_with_humans = true}
@@ -246,7 +247,7 @@ local ALWAYS = {retreat = true, assemble = true, assemble_with_humans = true}
 -- - laning under a trade pick and attack under any lane pick run (laneAndTrade).
 -- - borrowed attack and team roam run below a group-5 pick, kept by After only while our fight read wants them.
 -- - farm below a group-6 pick: a chooser job may start, OHA's farm desire is denied.
--- - admitted ward and rune beside the lane base.
+-- - admitted ward and rune beside the lane base (rune: less OHA's power, water and wisdom reasons, DeniesOhaRune).
 -- - everything else 0: laning when not the host, roam, defend, push, roshan, outpost and the shops.
 function ____exports.DriveDecide(_bot, mode, p, farmHost)
     if ALWAYS[mode] == true then
@@ -314,6 +315,12 @@ function ____exports.DriveAfter(bot, mode, p, desire)
         return ____borrowed_result_3
     end
     return desire
+end
+--- mode_rune_generic: OHA's own reasons to walk to a river rune or a shrine (its power and water desire, its wisdom branch)
+-- are denied to a hero the drive holds. The trip is ours to start and end (the mid's plan and water trips, a rune job, the
+-- mid's claim, a lane's rune contest, the shrine trip); OHA's bounty and pre-game branches stay admitted beside the lane base.
+function ____exports.DeniesOhaRune(bot)
+    return ____exports.Drives(bot)
 end
 --- ability_item_usage's "go complete items" TP to the fountain is denied for a hero the drive holds (user 13/11/2026).
 function ____exports.DeniesItemsTp(bot)

@@ -63,6 +63,7 @@ do
 	local v, called = gated(H, bot, "roam")
 	check("drive off: roam runs OHA's code", v == 0.5 and called)
 	check("drive off: the complete-items TP is OHA's", Arb.DeniesItemsTp(bot) == false)
+	check("drive off: the rune mode's own reasons are OHA's", Arb.DeniesOhaRune(bot) == false)
 end
 
 -- The tiers with the lane as the pick.
@@ -101,6 +102,7 @@ do
 		v = gated(H, bot, "team_roam")
 		check("team roam keeps its desire while our fight commits", v == 0.5, tostring(v))
 		check("the complete-items TP is denied for an owned hero", Arb.DeniesItemsTp(bot) == true)
+		check("OHA's own river-rune and shrine reasons are denied for an owned hero", Arb.DeniesOhaRune(bot) == true)
 	end)
 end
 

@@ -21,7 +21,7 @@ import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 
-type Kind = "power" | "wisdom" | "contest";
+type Kind = "power" | "wisdom" | "contest" | "water";
 
 // All judgement (slice file, Decisions).
 export const SETTINGS = {
@@ -39,10 +39,10 @@ export const SETTINGS = {
     /** Walking paths run longer than the straight line (states/rotate's PATH_FACTOR). */
     PathFactor: 1.2,
     /** Not at the spot this long after the spawn: the verb ends `timeout:late`. Power: the verb's default. */
-    LateBy: { power: 5, wisdom: 15, contest: 15 } as Record<Kind, number>,
+    LateBy: { power: 5, wisdom: 15, contest: 15, water: 5 } as Record<Kind, number>,
     /** After its spawn, the trip's decision stays ours until that rune's next spawn (power every 2 min, the next shrine at 14:00):
      *  OHA's rune mode does not send the hero there, whether the trip ran or was skipped. */
-    OwnFor: { power: Runes.RUNE_RULES.power.every, wisdom: Runes.RUNE_RULES.wisdom.every, contest: 0 } as Record<Kind, number>,
+    OwnFor: { power: Runes.RUNE_RULES.power.every, wisdom: Runes.RUNE_RULES.wisdom.every, contest: 0, water: 0 } as Record<Kind, number>,
     /** Liquipedia/7.41: stand within 300 of the shrine for 3 s. */
     ShrineChannel: 3,
     ShrineRadius: 300,
@@ -258,7 +258,7 @@ function planFor(t: Trip): JobVerbs.RunePlan {
             pickupFor: 20,
         };
     }
-    return { at: t.at as unknown as Lib.Vec, spawnAt: t.spawn, rune: t.rune, lateBy: SETTINGS.LateBy.power };
+    return { at: t.at as unknown as Lib.Vec, spawnAt: t.spawn, rune: t.rune, lateBy: SETTINGS.LateBy[t.kind] };
 }
 
 /** When to leave for the trip: the verb's skill-scaled arrival less the walk (path factor on the straight line). */
@@ -643,10 +643,35 @@ export function spawnPlanFor(bot: Unit, t: Trip): JobVerbs.SpawnPlan {
 export const MID_DESIRE = 0.97;
 const MID_HOST = BotMode.Rune;
 
+/** Ours.MidWater: the mid's water spawns are its own trips (the 6:00 plan's prerequisites; a drill's held hero never). */
+function midWaterOn(bot: Unit): boolean {
+    return Ours.On("MidWater") && RunePlan.On() && bot.IsBot() && LaneConfig.PositionOf(bot) === 2 && !Drill.Held(bot) && Drill.ForcedJob(bot) === undefined;
+}
+
+/** The mid's spawns in time order: with Ours.MidWater each water spawn (RUNE_RULES.water: 2:00 and 4:00), then the 6:00 plan's. */
+function midSpawns(bot: Unit): [Kind, number][] {
+    const out: [Kind, number][] = [];
+    const w = Runes.RUNE_RULES.water;
+    if (midWaterOn(bot)) for (let s = w.first; s <= (w.last ?? w.first); s += w.every) out.push(["water", s]);
+    out.push(["power", RunePlan.SETTINGS.Spawn]);
+    return out;
+}
+
 /**
- * Ours.RuneSpawn, the mid's side of the 6:00 plan, every frame from the rune mode's GetDesire: true while its trip runs or
- * as it starts (the mode then returns MidDesire and steps it in Think). Not a chooser job: the mid has no other jobs, and
- * the rune mode is the mode Valve would give a rune walk.
+ * Ours.MidWater: until the 6:00 plan takes over (RunePlan.OwnsMid), the mid's river runes are these trips' to decide, taken
+ * or skipped: OHA's power and water branch stands aside. Its bottle branch walked a mid to an unseen spot and its own
+ * `power2_spot` guard dropped the desire within 80 of it, in a loop (fact3, 13/11/2026, pid 3, 2:55 to 5:20, no last hit).
+ */
+export function MidWaterOwns(bot: Unit): boolean {
+    return midWaterOn(bot) && DotaTime() < RunePlan.SETTINGS.PlanAt;
+}
+
+/**
+ * The mid's rune trips, every frame from the rune mode's GetDesire: true while a trip runs or as one starts (the mode then
+ * returns MidDesire and steps it in Think). Ours.RuneSpawn: its side of the 6:00 plan. Ours.MidWater: one plain trip per
+ * water spawn to the nearer spot (both spots spawn one), started so it arrives at the spawn, ended by the pickup, the rune
+ * gone or the verb's timeout, and never repeated for that spawn. Not a chooser job: the mid has no other jobs, and the rune
+ * mode is the mode Valve would give a rune walk.
  */
 export function MidWants(bot: Unit): boolean {
     // A drill's benched hero or statue, or a cast held to its forced job, is never the plan's mid (drill pull ldr1: both benched
@@ -657,33 +682,47 @@ export function MidWants(bot: Unit): boolean {
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
     if (Tasks.Jobs() === undefined) return false;
-    const spawn = RunePlan.SETTINGS.Spawn;
     const now = DotaTime();
     handled[pid] = handled[pid] ?? {};
-    const k = key("power", spawn);
-    if (handled[pid][k] === true || now < RunePlan.SETTINGS.PlanAt || now >= spawn + SETTINGS.LateBy.power) return false;
-    const mine = RunePlan.SpotOf(bot, Busy);
-    if (mine === undefined) return false;
-    const skip = (why: string) => {
+    for (const [kind, spawn] of midSpawns(bot)) {
+        const k = key(kind, spawn);
+        if (handled[pid][k] === true || now >= spawn + SETTINGS.LateBy[kind]) continue;
+        let mine: number | undefined;
+        if (kind === "power") {
+            if (now < RunePlan.SETTINGS.PlanAt) continue;
+            mine = RunePlan.SpotOf(bot, Busy);
+            if (mine === undefined) continue;
+        }
+        const skip = (why: string) => {
+            handled[pid][k] = true;
+            log(bot, kind, spawn, [["res", "skip"], ["why", why]]);
+        };
+        if (!bot.IsAlive()) {
+            if (now >= spawn) skip("dead");
+            continue;
+        }
+        const t = tripFor(bot, kind, spawn, MID_HOST, mine);
+        const leave = leaveAt(bot, t);
+        if (now < leave) continue;
+        // A held start walks straight in when it goes (runeSpawnRun skips the stand once late); held past the slack it is skipped.
+        const why = bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MidMinHp ? "low-hp" : acting(bot) ? "acting" : undefined;
+        if (why !== undefined) {
+            if (now > leave + SETTINGS.StartSlack) skip(why);
+            continue;
+        }
+        const ok = Tasks.Start(bot, { name: "rune", host: MID_HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
+            body(bot, t, ctx)
+        );
+        if (!ok) {
+            skip("refused");
+            continue;
+        }
         handled[pid][k] = true;
-        log(bot, "power", spawn, [["res", "skip"], ["why", why]]);
-        return false;
-    };
-    if (!bot.IsAlive()) return now >= spawn ? skip("dead") : false;
-    const t = tripFor(bot, "power", spawn, MID_HOST, mine);
-    const leave = leaveAt(bot, t);
-    if (now < leave) return false;
-    // A held start walks straight in when it goes (runeSpawnRun skips the stand once late); held past the slack it is skipped.
-    const why = bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MidMinHp ? "low-hp" : acting(bot) ? "acting" : undefined;
-    if (why !== undefined) return now > leave + SETTINGS.StartSlack ? skip(why) : false;
-    const ok = Tasks.Start(bot, { name: "rune", host: MID_HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, t, r, info.label) }, (ctx: Lib.Ctx) =>
-        body(bot, t, ctx)
-    );
-    if (!ok) return skip("refused");
-    handled[pid][k] = true;
-    running[pid] = t;
-    jobLine(bot, t, "start", "plan");
-    return true;
+        running[pid] = t;
+        jobLine(bot, t, "start", kind === "power" ? "plan" : "trigger");
+        return true;
+    }
+    return false;
 }
 
 export function MidStep(bot: Unit): boolean {

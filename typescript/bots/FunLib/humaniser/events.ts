@@ -2217,7 +2217,7 @@ export const EVENTS = {
         pid: "num",
         /** The hero's lineup position. */
         pos: "num",
-        /** `power`, `wisdom` or `contest` (the enemy shrine play's trip). */
+        /** `power`, `wisdom`, `contest` (the enemy shrine play's trip) or `water` (the mid's 2:00 and 4:00 trips, `Ours.MidWater`). */
         kind: "str",
         /** The rune's game time. */
         spawn: "num",

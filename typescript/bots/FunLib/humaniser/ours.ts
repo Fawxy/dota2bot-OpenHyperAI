@@ -150,6 +150,9 @@ export const DEFAULTS = {
      *  laning read to an end event; OHA's modes are ours, borrowed, admitted or denied by the inventory (chooser.ts Decide).
      *  Off: only the retreat episode and the running job hold, as before. */
     ArbiterDrive: false,
+    /** Slice rune-verb (rework s7): under the 6:00 plan's switches, the mid's water spawns (2:00, 4:00) are its own trips, one
+     *  per spawn (rune_job MidWants), and OHA's power and water branch stands aside for it until the plan takes over. Off: OHA's. */
+    MidWater: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

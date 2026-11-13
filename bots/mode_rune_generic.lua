@@ -139,6 +139,8 @@ function GetDesire()
 		and bot.rune and bot.rune.wisdom and bot.rune.wisdom[nShrineOfWisdomTime]
 		-- A shrine trip run by the state layer (team slice 9) owns this fill: OHA's wisdom logic stands aside.
 		and not J.Humaniser.States.WisdomOwned(bot)
+		-- Rework step 7: a hero the arbiter holds goes to a shrine only on our trip.
+		and not J.Humaniser.Arbiter.DeniesOhaRune(bot)
 		then
 			local wisdom = bot.rune.wisdom[nShrineOfWisdomTime]
 
@@ -237,9 +239,12 @@ function GetDesire()
 			else
 				-- Power rune / water rune
 				-- Ours.RuneRotation: this hero's power spawn is the rune job's to decide, taken or skipped.
-				if J.Humaniser.RuneJob.Owns(bot, 'power') or J.Humaniser.RunePlan.OwnsMid(bot) then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
+				-- Ours.MidWater: likewise the mid's river runes before the 6:00 plan.
+				if J.Humaniser.RuneJob.Owns(bot, 'power') or J.Humaniser.RunePlan.OwnsMid(bot) or J.Humaniser.RuneJob.MidWaterOwns(bot) then return Gate('rune_job', BOT_MODE_DESIRE_NONE) end
 				if rune.status == RUNE_STATUS_AVAILABLE and X.IsEnemyPickRune(rune.location) then return Gate('enemy_pick', BOT_MODE_DESIRE_NONE) end
-				return Gate('power', math.max(X.PowerRuneDesire(rune, nProximityRadius), J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
+				-- Rework step 7: for a hero the arbiter holds, OHA's own power and water desire is denied; our reads beside it stand.
+				local nOwn = J.Humaniser.Arbiter.DeniesOhaRune(bot) and BOT_MODE_DESIRE_NONE or X.PowerRuneDesire(rune, nProximityRadius)
+				return Gate('power', math.max(nOwn, J.Humaniser.Lane.RuneContestDesire(bot), J.Humaniser.Transitions.MidRuneDesire(bot)))
 			end
 		end
 	end
@@ -341,6 +346,7 @@ function Think()
 	-- Wisdom Rune
 	if nShrineOfWisdomTeam and DotaTime() >= 7 * 60
 	and not J.Humaniser.States.WisdomOwned(bot)
+	and not J.Humaniser.Arbiter.DeniesOhaRune(bot)
 	and bot.rune and bot.rune.wisdom and bot.rune.wisdom[nShrineOfWisdomTime]
 	then
 		local wisdom = bot.rune.wisdom[nShrineOfWisdomTime]
