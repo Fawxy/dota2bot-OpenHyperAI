@@ -57,6 +57,11 @@ empty `expect` for the author to fill; `--check [--kind K]` replays up to 20 cut
 the bar (19 of 20 of each answer) is met; `--list` finds moments by answer, pid and HP. A printed fixture's header gives the
 distances and HP its notes quote.
 
+A new cut kind: its driver builds the world with `fixture_drivers/cut_world.lua`, and `cut.js` gets one `DECISIONS` entry.
+`cut.ts` never imports the decision's module: the decision calls `Cut.<Kind>` with values or, where `cut.ts` imports the
+decision (`threat.ts`), registers through a setter (`Threat.SetGateCut`); a build does not catch a Lua `require` cycle. The
+generated Lua under `bots/` is tracked and the drivers run on it: build before committing.
+
 The verbs are this runner's vocabulary until behaviour contracts exist (`docs/contracts/`); they move there then. The
 worlds are the hand-built test worlds the unit tests already use, so a driver adds no new simulation.
 
