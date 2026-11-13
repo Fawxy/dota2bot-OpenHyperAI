@@ -169,13 +169,14 @@ if (require.main === module) {
     const store = new Store(DB);
     if (!o.noIngest) for (const f of store.ingestAll([LOGS, JOBS].filter((d) => fs.existsSync(d))).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
     const row = rowOf(store, o.runs, o);
-    const r0 = (v) => (v === undefined ? '?' : Math.round(v));
+    // Deaths are a few a game: one decimal; net worth and experience to the unit.
+    const r0 = (v, k) => (v === undefined ? '?' : k === 'deaths' ? v.toFixed(1) : String(Math.round(v)));
     if (o.noise) {
         const z = noise(row, { rate: o.rate, n: o.n });
         if (o.json) console.log(JSON.stringify({ games: row, noise: z }));
         else {
             console.log(`${z.games} games, ${z.df} degrees of freedom; rows of ${z.n} games, ${z.rate * 100}% of null rows fail; k = ${z.k.toFixed(2)}`);
-            for (const k of MEASURES) console.log(`${k.padEnd(7)} seat (Radiant minus Dire) ${r0(z.seat[k])}  within-cell sd ${r0(z.sd[k])}  tolerance per game ${r0(z.tol[k])}`);
+            for (const k of MEASURES) console.log(`${k.padEnd(7)} seat (Radiant minus Dire) ${r0(z.seat[k], k)}  within-cell sd ${r0(z.sd[k], k)}  tolerance per game ${r0(z.tol[k], k)}`);
             console.log(`correlation deaths-nw ${z.corr[0][1].toFixed(2)}, deaths-xp ${z.corr[0][2].toFixed(2)}, nw-xp ${z.corr[1][2].toFixed(2)}`);
         }
     } else {
@@ -183,10 +184,10 @@ if (require.main === module) {
         const j = judge(row, ref, o.tol);
         if (o.json) console.log(JSON.stringify({ games: row, judge: j }));
         else {
-            for (const r of row) console.log(`${r.label.padEnd(24)} ${MEASURES.map((k) => `${k} ${r0(r.d[k])}`).join('  ')}`);
+            for (const r of row) console.log(`${r.label.padEnd(24)} ${MEASURES.map((k) => `${k} ${r0(r.d[k], k)}`).join('  ')}`);
             for (const k of MEASURES) {
                 const e = j[k];
-                console.log(`${k.padEnd(7)} row ${r0(e.row)}` + (ref ? `  ref ${r0(e.ref)}  diff ${r0(e.diff)}` : '') + (e.fails === undefined ? '' : e.fails ? '  FAILS' : '  passes'));
+                console.log(`${k.padEnd(7)} row ${r0(e.row, k)}` + (ref ? `  ref ${r0(e.ref, k)}  diff ${r0(e.diff, k)}` : '') + (e.fails === undefined ? '' : e.fails ? '  FAILS' : '  passes'));
             }
         }
     }
