@@ -35,6 +35,8 @@ local function world(o)
 	-- The 6:00 rune claim (slice rune-rotation) holds the pos4's 5:5x stack back; these tests run the stack alone unless rune = true.
 	Customize.Ours = Customize.Ours or {}
 	Customize.Ours.RuneRotation = o.rune == true
+	-- This file tests the stack job with the arbiter's drive off; the drive is test_arbiter_drive's.
+	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	T = o.t or 200
 	CURRENT_TEAM = 2
 	FOGGED = o.fogged

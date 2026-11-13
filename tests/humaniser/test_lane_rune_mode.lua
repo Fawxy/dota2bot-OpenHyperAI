@@ -165,6 +165,8 @@ local function realHumaniser(transitions)
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = C.Ours or {}
 	C.Ours.RuneRotation = false
+	-- OHA's own rune desire is the off path of the arbiter's drive; the held cases above stub DeniesOhaRune.
+	C.Ours.ArbiterDrive = false
 	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return T < 600 end })
 	return H
 end
