@@ -146,11 +146,11 @@ interface Units {
 }
 
 /**
- * The enemy heroes in sight, the unseen ones with a sighting and our other heroes, near the bot or `front` (pass `at` twice for
- * a decision with no lane front). `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the
- * windows the decision's Threat.Read counts a hero over (3 and 6 for the spot, 2 and 6 for the leave).
+ * The enemy heroes in sight and our other heroes at the places `keep` takes (the decision's own area), and every unseen enemy
+ * with a sighting. `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the windows the
+ * decision's Threat.Read counts a hero over (3 and 6 for the spot and the gate, 2 and 6 for the leave).
  */
-function units(bot: Unit, at: Vector, front: Vector, short: number, long: number): Units {
+function units(bot: Unit, keep: (this: void, l: Vector) => boolean, short: number, long: number): Units {
     const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
     const visible: Record<number, boolean> = {};
     const he: string[] = [];
@@ -159,7 +159,7 @@ function units(bot: Unit, at: Vector, front: Vector, short: number, long: number
         const l = e.GetLocation();
         const ill = e.IsIllusion();
         if (!ill) visible[e.GetPlayerID()] = true;
-        if (!near(l, at, front)) continue;
+        if (!keep(l)) continue;
         const e3 = e.GetEstimatedDamageToTarget(true, bot, short, DamageType.All);
         const e6 = e.GetEstimatedDamageToTarget(true, bot, long, DamageType.All);
         const atk = e.GetAttackTarget() === bot ? 1 : 0;
@@ -178,7 +178,7 @@ function units(bot: Unit, at: Vector, front: Vector, short: number, long: number
     const ha: string[] = [];
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
         if (!live(a) || a === bot || a.IsIllusion()) continue;
-        if (!near(a.GetLocation(), at, front)) continue;
+        if (!keep(a.GetLocation())) continue;
         const l = a.GetLocation();
         // pid,x,y,range,hull,speed,in our retreat
         ha.push([a.GetPlayerID(), f(l.x), f(l.y), f(a.GetAttackRange()), f(a.GetBoundingRadius()), f(a.GetCurrentMovementSpeed()), RetreatState.Running(a) ? 1 : 0].join(","));
@@ -199,7 +199,7 @@ export function Spot(bot: Unit): void {
 
     const front = GetLaneFrontLocation(team, lane, 0);
     const back = GetLaneFrontLocation(team, lane, -400);
-    const { he, hu, ha } = units(bot, at, front, 3, 6);
+    const { he, hu, ha } = units(bot, (l) => near(l, at, front), 3, 6);
     const nearTowers: string[] = [];
     const ta = `${towersNow(team, bot, at, front, nearTowers)},${towersNow(enemyTeam, bot, at, front, nearTowers)}`;
     Telemetry.Event("cut", [
@@ -251,7 +251,7 @@ export function Leave(bot: Unit, i: LeaveInputs): void {
     const at = bot.GetLocation();
     logTowers(team);
     logTowers(enemyTeam);
-    const { he, hu, ha } = units(bot, at, at, i.short, i.long);
+    const { he, hu, ha } = units(bot, (l) => near(l, at, at), i.short, i.long);
     const nearTowers: string[] = [];
     const ta = `${towersNow(team, bot, at, at, nearTowers)},${towersNow(enemyTeam, bot, at, at, nearTowers)}`;
     Telemetry.Event("cut", [
@@ -321,35 +321,7 @@ export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): 
     logTowers(team);
     logTowers(enemyTeam);
 
-    const visible: Record<number, boolean> = {};
-    const he: string[] = [];
-    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (!live(e) || !e.CanBeSeen()) continue;
-        const l = e.GetLocation();
-        const ill = e.IsIllusion();
-        if (!ill) visible[e.GetPlayerID()] = true;
-        if (!nearWalk(l, from, place)) continue;
-        const e3 = e.GetEstimatedDamageToTarget(true, bot, 3, DamageType.All);
-        const e6 = e.GetEstimatedDamageToTarget(true, bot, 6, DamageType.All);
-        const atk = e.GetAttackTarget() === bot ? 1 : 0;
-        const eng = bot.WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) ? 1 : 0;
-        // The spot's record: pid,x,y,hp,range,hull,speed,atk,eng,e3,e6,illusion
-        he.push([e.GetPlayerID(), f(l.x), f(l.y), f(e.GetHealth()), f(e.GetAttackRange()), f(e.GetBoundingRadius()), f(e.GetCurrentMovementSpeed()), atk, eng, f(e3), f(e6), ill ? 1 : 0].join(","));
-    }
-    const hu: string[] = [];
-    for (let p = 0; p <= MAX_PLAYER_ID; p++) {
-        if (GetTeamForPlayer(p) !== enemyTeam || visible[p] === true || !IsHeroAlive(p)) continue;
-        const info = GetHeroLastSeenInfo(p)[0];
-        if (info === undefined) continue;
-        hu.push([p, f(info.location.x), f(info.location.y), math.floor(info.time_since_seen * 10 + 0.5) / 10, f(Threat.SeenSpeed(p))].join(","));
-    }
-    const ha: string[] = [];
-    for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
-        if (!live(a) || a === bot || a.IsIllusion()) continue;
-        const l = a.GetLocation();
-        if (!nearWalk(l, from, place)) continue;
-        ha.push([a.GetPlayerID(), f(l.x), f(l.y), f(a.GetAttackRange()), f(a.GetBoundingRadius()), f(a.GetCurrentMovementSpeed()), RetreatState.Running(a) ? 1 : 0].join(","));
-    }
+    const { he, hu, ha } = units(bot, (l) => nearWalk(l, from, place), 3, 6);
     const unused: string[] = [];
     const ta = `${towersNow(team, bot, at, at, unused)},${towersNow(enemyTeam, bot, at, at, unused)}`;
     Telemetry.Event("cut", [

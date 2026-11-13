@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { readGames, worldOf, checkOne, uncutGates } = require('../cut');
+const { readGames, worldOf, checkOne, uncutGates, sampleByAnswer, barMisses, factsOf } = require('../cut');
 
 const hev = (s) => `11/13 15:33:39 [VScript] [HEV] ${s}`;
 // Smoke 1's shape: the towers line is written in the pregame, and a clock jump to 0:00 later splits the log's games.
@@ -155,4 +155,30 @@ test('a gate decision with no cut beside it is counted, and a direct Threat.Log 
     const g = readGames(text)[0];
     assert.strictEqual(uncutGates(g), 1);
     assert.strictEqual(uncutGates(g, 'core_camp'), 0);
+});
+
+test('the check samples each answer the game gave: a rare answer is checked even when a common one fills the sample', () => {
+    const cuts = [...Array.from({ length: 100 }, (_, i) => ({ kind: 'leave', dec: 'under', t: String(i) })), { kind: 'leave', dec: 'lethal', t: '100' }];
+    const picked = sampleByAnswer({}, cuts, 20);
+    assert.deepStrictEqual([picked.filter((c) => c.dec === 'under').length, picked.filter((c) => c.dec === 'lethal').length], [20, 1]);
+    // Picked in game order, spread over the game rather than its first 20 moments.
+    assert.ok(Number(picked[19].t) > 90);
+    // An answer with under twice the sample still reaches its late moments.
+    const mid = Array.from({ length: 39 }, (_, i) => ({ kind: 'leave', dec: 'hold', t: String(i) }));
+    const late = sampleByAnswer({}, mid, 20);
+    assert.deepStrictEqual([late.length, Number(late[19].t) >= 37], [20, true]);
+});
+
+test('the bar is 95% of each answer: 19 of 20 passes, 18 of 20 and 5 of 6 do not', () => {
+    assert.deepStrictEqual(barMisses({ under: '19/20', tower: '18/20', heal: '3/3', lethal: '5/6' }), ['tower 18/20', 'lethal 5/6']);
+});
+
+test('a printed fixture states its distances and HP, from the bot and from a gate\'s place', () => {
+    const w = { pid: 1, bot: { x: 0, y: 0, hp: 300, mhp: 600 }, place: { x: 0, y: 1000 },
+        he: [{ pid: 6, x: 300, y: 400, hp: 500, e3: 100, e6: 200, atk: 1, eng: 0 }], hu: [], ha: [{ pid: 2, x: 0, y: 600 }] };
+    assert.deepStrictEqual(factsOf(w), [
+        '# bot pid 1: HP 50% (300 of 600), 1000 from the place',
+        '# enemy pid 6: 500 from the bot, 671 from the place, HP 500, damage 100 / 200 (short / long window), attacking the bot',
+        '# ally pid 2: 600 from the bot, 400 from the place',
+    ]);
 });

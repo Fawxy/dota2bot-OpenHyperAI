@@ -4,9 +4,10 @@
 // cut replays what the game decided.
 //   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
-//   node cut.js <log> --check [--kind spot|gate|leave] [--who CONSUMER] [--game N] [--sample 150] [--json]   replay a sample
-//       of the game's cuts of one kind (default spot) through the decision's driver and compare with what the game logged
-//       (spot: the ev=lane_pos beside it, sx, sy, why, rp; gate: its ev=threat dec; leave: the cut's own dec)
+//   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
+//       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
+//       checks every cut and judges the bar (95% of each answer)
+//   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P]   one line per cut: time, pid, answer, HP, heroes
 // --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped).
 const fs = require('fs'), path = require('path');
 const { newState, doFile, doString, getGlobal } = require('../../tests/humaniser/harness');
@@ -127,7 +128,8 @@ function uncutGates(game, who) {
 
 /**
  * Each decision's cut kind: its fixture driver, the world its ev=cut line makes, and how a replay is compared with the game's
- * answer. `check` gives { same, got, want, answer, detail? } or { error }; `answer` is the game's, for the per-answer tally.
+ * answer. `answer` is what the game decided (sampling and the tally group by it), `check` gives { same, got, want, detail? } or
+ * { error }, `brief` is the rest of a --list line.
  */
 const DECISIONS = {
     spot: {
@@ -147,6 +149,11 @@ const DECISIONS = {
             const d = Math.hypot(obs.fact.x - Number(lp.sx), obs.fact.y - Number(lp.sy));
             const why = verb('stand') === lp.why, rp = (verb('read') ?? 'none') === (lp.rp ?? 'off');
             return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.rp}`, detail: `off by ${d.toFixed(0)}` };
+        },
+        answer: (game, cut) => (game.lanePos.get(`${cut.pid}@${cut.t}`) || {}).why ?? '?',
+        brief(game, cut) {
+            const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
+            return `${cut.role}, read ${lp.rp ?? 'off'}`;
         },
         id: (cut) => `lane.spot.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note(game, cut) {
@@ -176,8 +183,13 @@ const DECISIONS = {
             if (!th) return { error: 'no ev=threat beside it' };
             const a = obs.actions[0];
             const got = a.verb === 'hold' ? a.target : 'go';
-            return { same: got === th.dec, got, want: th.dec, answer: th.dec, reach: obs.fact.reach, missing: obs.fact.missing,
+            return { same: got === th.dec, got, want: th.dec, reach: obs.fact.reach, missing: obs.fact.missing,
                 detail: `${cut.who}, reach ${obs.fact.reach} vs ${th.reach}, missing ${obs.fact.missing} vs ${th.miss}` };
+        },
+        answer: (game, cut) => (game.threats.get(`${cut.pid}@${cut.t}@${cut.who}`) || {}).dec ?? '?',
+        brief(game, cut) {
+            const th = game.threats.get(`${cut.pid}@${cut.t}@${cut.who}`) || {};
+            return `${cut.who}, reach ${th.reach}, missing ${th.miss}`;
         },
         id: (cut) => `gate.${cut.who}.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note(game, cut) {
@@ -196,8 +208,10 @@ const DECISIONS = {
             const a = obs.actions[0] || {};
             const got = `${a.verb}(${a.target})`;
             const want = ['lethal', 'tower', 'heal', 'threat'].includes(cut.dec) ? `leave(${cut.dec})` : `stay(${cut.dec})`;
-            return { same: got === want, got, want, answer: cut.dec };
+            return { same: got === want, got, want };
         },
+        answer: (game, cut) => cut.dec,
+        brief: (game, cut) => `threat ${cut.thr} (${cut.band}), ${cut.purp} budget ${cut.bud}`,
         id: (cut) => `retreat.leave.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.dec} (threat ${cut.thr}, ${cut.purp} budget ${cut.bud}, over ${cut.ov} s)`,
     },
@@ -229,12 +243,53 @@ function replay(decision, world, root) {
 }
 
 /** Per answer of the game: `same/checked` of the replayed rows. */
-function tally(rows) {
+function tally(game, rows) {
     const out = {};
-    for (const { r } of rows) {
-        const k = r.answer ?? 'error';
+    for (const { cut, r } of rows) {
+        const k = DECISIONS[cut.kind].answer(game, cut);
         const [same, n] = (out[k] || '0/0').split('/').map(Number);
         out[k] = `${same + (r.same ? 1 : 0)}/${n + 1}`;
+    }
+    return out;
+}
+
+/** Up to n cuts of each answer the game gave, evenly spread over the game: a rare answer is checked as well as a common one. */
+function sampleByAnswer(game, pool, n) {
+    const groups = new Map();
+    for (const [i, cut] of pool.entries()) {
+        const a = DECISIONS[cut.kind].answer(game, cut);
+        if (!groups.has(a)) groups.set(a, []);
+        groups.get(a).push(i);
+    }
+    const picked = [];
+    for (const idx of groups.values()) {
+        const k = Math.min(n, idx.length);
+        for (let j = 0; j < k; j++) picked.push(idx[Math.floor(j * idx.length / k)]);
+    }
+    return picked.sort((a, b) => a - b).map(i => pool[i]);
+}
+
+/**
+ * The replay bar (eval-run): 95% of each answer the game gave, judged over all the game's cuts (--all). On a sample it is a
+ * quick look only: at a true rate near 95%, 20 cuts of an answer fall short about one time in five. The answers that miss it.
+ */
+function barMisses(byAnswer) {
+    return Object.entries(byAnswer).filter(([, v]) => { const [same, n] = v.split('/').map(Number); return same < 0.95 * n; }).map(([k, v]) => `${k} ${v}`);
+}
+
+/** Distances and HP for a fixture's notes, so they copy numbers rather than estimate them. */
+function factsOf(w) {
+    const d = (u, p) => Math.round(Math.hypot(u.x - p.x, u.y - p.y));
+    const b = w.bot;
+    const at = w.place ? `, ${d(b, w.place)} from the place` : '';
+    const out = [`# bot pid ${w.pid}: HP ${Math.round(100 * b.hp / b.mhp)}% (${b.hp} of ${b.mhp})${at}`];
+    for (const [label, list] of [['enemy', w.he], ['unseen', w.hu], ['ally', w.ha]]) {
+        for (const u of list || []) {
+            let line = `# ${label} pid ${u.pid}: ${d(u, b)} from the bot${w.place ? `, ${d(u, w.place)} from the place` : ''}`;
+            if (label === 'enemy') line += `, HP ${u.hp}, damage ${u.e3} / ${u.e6} (short / long window)${u.atk ? ', attacking the bot' : ''}${u.eng ? ', hit it recently' : ''}`;
+            if (label === 'unseen') line += ` (where last seen), unseen ${u.tss} s`;
+            out.push(line);
+        }
     }
     return out;
 }
@@ -258,7 +313,7 @@ function main(argv) {
     const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
     const log = argv.find((a, i) => !a.startsWith('--') && (i === 0 || !argv[i - 1].startsWith('--')));
     if (!log || argv.includes('--help')) {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 10).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 11).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
         process.exit(log ? 0 : 1);
     }
     const games = readGames(fs.readFileSync(log, 'utf8'));
@@ -270,21 +325,32 @@ function main(argv) {
     const root = opt('--root');
     const who = opt('--who');
     const pool = who === undefined ? cuts : cuts.filter(c => c.who === who);
+    const d = DECISIONS[kind];
+    if (argv.includes('--list')) {
+        const answer = opt('--answer'), pid = opt('--pid');
+        for (const cut of pool) {
+            const a = d.answer(game, cut);
+            if ((answer !== undefined && a !== answer) || (pid !== undefined && cut.pid !== pid)) continue;
+            const [, , hp, mhp] = nums(cut.b);
+            console.log(`${mmss(Number(cut.t))} t=${cut.t} pid ${cut.pid} ${a}: HP ${Math.round(100 * hp / mhp)}%, enemies in the cut ${records(cut.he).length}, allies ${records(cut.ha).length}; ${d.brief(game, cut)}`);
+        }
+        return;
+    }
     if (argv.includes('--check')) {
-        const n = Number(opt('--sample', 150));
-        const step = Math.max(1, Math.floor(pool.length / n));
-        const rows = [];
-        for (let i = 0; i < pool.length && rows.length < n; i += step) rows.push({ cut: pool[i], r: checkOne(game, pool[i], root) });
+        const n = Number(opt('--sample', 20));
+        const rows = (argv.includes('--all') ? pool : sampleByAnswer(game, pool, n)).map(cut => ({ cut, r: checkOne(game, cut, root) }));
         const ok = rows.filter(x => x.r.same).length, errs = rows.filter(x => x.r.error);
-        const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length };
+        const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length, byDecision: tally(game, rows) };
+        summary.barMisses = barMisses(summary.byDecision);
         if (kind === 'spot') Object.assign(summary, { why: rows.filter(x => x.r.why).length, read: rows.filter(x => x.r.rp).length, near: rows.filter(x => x.r.d <= SAME_SPOT).length });
-        else summary.byDecision = tally(rows);
         if (kind === 'gate') summary.uncut = uncutGates(game, who);
         if (argv.includes('--json')) { console.log(JSON.stringify({ summary, rows }, null, 1)); return; }
         if (kind === 'spot') console.log(`cuts ${summary.cuts}, checked ${summary.checked}: same spot, limit and read ${ok}; spot within ${SAME_SPOT} ${summary.near}, limit ${summary.why}, read ${summary.read}; errors ${summary.errors}`);
         else console.log(`kind ${kind}: cuts ${summary.cuts}, checked ${summary.checked}: same as the game decided ${ok}; errors ${summary.errors}`
-            + (kind === 'gate' ? `; gate decisions without a cut ${summary.uncut}` : '')
-            + `\n  by the game's answer (same/checked): ${Object.entries(summary.byDecision).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+            + (kind === 'gate' ? `; gate decisions without a cut ${summary.uncut}` : ''));
+        console.log(`  by the game's answer (same/checked): ${Object.entries(summary.byDecision).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+        const judged = argv.includes('--all') ? 'bar (95% of each answer)' : 'on this sample, the bar (95% of each answer; judge it with --all)';
+        console.log(`  ${judged}: ${summary.barMisses.length ? `missed by ${summary.barMisses.join(', ')}` : 'met'}`);
         for (const { cut, r } of rows.filter(x => !x.r.same).slice(0, 15)) {
             console.log(`  pid ${cut.pid} t=${cut.t} (${mmss(Number(cut.t))}): ${r.error || `replay ${r.got}, game ${r.want}${r.detail ? ` (${r.detail})` : ''}`}`);
         }
@@ -295,11 +361,11 @@ function main(argv) {
     if (!mine.length) { console.error(`no ev=cut kind=${kind} for pid ${pid} at or before ${opt('--t')}`); process.exit(1); }
     const cut = mine[mine.length - 1];
     const world = worldOf(game, cut);
-    const d = DECISIONS[kind];
     const id = opt('--id', d.id(cut));
     const lines = [
         `id: ${id}`, 'source: log', `ref: {log: ${path.basename(log)}, t: ${cut.t}}`, 'status: quarantined', `decision: ${d.driver}`,
         `# Cut by tools/hlog/cut.js. ${d.note(game, cut)}; write the right action, not this.`,
+        ...factsOf(world),
         'world:',
         ...Object.entries(world).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`),
         'expect:', '  must: []', 'notes: >', '  TODO: the situation, and why the expectation is the right action.',
@@ -308,4 +374,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { readGames, worldOf, replay, checkOne, uncutGates };
+module.exports = { readGames, worldOf, replay, checkOne, uncutGates, sampleByAnswer, barMisses, factsOf };
