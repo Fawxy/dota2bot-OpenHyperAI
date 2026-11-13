@@ -1,7 +1,16 @@
 // The loss ledger (rework step 6, docs/proposals/2026-11-13-rework.md s6): for the games of one or more runs, every death to
 // --until and every last hit of the gap at --at assigned to exactly one cause, ours against OHA, summing to the gap.
-// Usage: node ledger.js <run> [<run> ...] [--at 600] [--until 720] [--rows deaths|creeps] [--json] [--no-ingest]
+// Usage: node ledger.js <run> [<run> ...] [--null <run> ...] [--noise [--games 10]] [--at 600] [--until 720]
+//                       [--rows deaths|creeps] [--json] [--no-ingest]
 //   <run> is a label prefix (h2hskill1 takes h2hskill1_* and, as a separate prefix, h2hskill1r_*: name both halves).
+//   --null <runs>  OHA against OHA runs. Each line gains `mirror` (the line in the mirror, both seats' mean) and the gap's
+//                  two parts: `we` (ours against the mirror: what we do worse than OHA does against itself) and `they`
+//                  (the mirror against OHA: what OHA gains against us that it cannot gain against itself). we + they = gap.
+//                  The mirror is a level to read against, not a target: it has more fighting and a different creep pool.
+//   --noise        per line, the game-to-game spread of the gap inside cells (lineup and seat, as gate.js; name one build's
+//                  runs) and `se`: the standard error of a row of --games games minus a reference row of the same size,
+//                  sd * sqrt(2 / games). A line under about two a game behaves as a count; with this many lines one or
+//                  two pass two errors by chance, so a slice names its target line before its batch.
 //
 // Ours is the seat in the label (`_rad_` Radiant, `_dire_` Dire): the scoped team of a head-to-head, a label only in OHA
 // against OHA. A remote job's stub game is skipped (each log's last game is read).
@@ -24,16 +33,20 @@ const DEATH_CAUSES = ['tower', 'outnumbered_alone', 'outnumbered', 'duel', 'even
 const MISS_CAUSES = ['denied', 'off_lane', 'core_dead', 'away_base', 'away_lane', 'away_jungle', 'far_in_lane', 'swing_lost', 'held_back_hero', 'held_back_low_hp', 'held_back', 'idle_in_reach'];
 
 function args(argv) {
-    const o = { runs: [], at: 600, until: 720, rows: undefined, json: false };
+    const o = { runs: [], null: [], at: 600, until: 720, rows: undefined, json: false, n: 10 };
+    let into = o.runs;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
-        if (a === '--at') o.at = Number(argv[++i]);
+        if (a === '--null') into = o.null;
+        else if (a === '--noise') o.noise = true;
+        else if (a === '--games') o.n = Number(argv[++i]);
+        else if (a === '--at') o.at = Number(argv[++i]);
         else if (a === '--until') o.until = Number(argv[++i]);
         else if (a === '--rows') o.rows = argv[++i];
         else if (a === '--json') o.json = true;
         else if (a === '--no-ingest') o.noIngest = true;
         else if (a === '--help' || a === '-h') o.help = true;
-        else o.runs.push(a);
+        else into.push(a);
     }
     return o;
 }
@@ -110,32 +123,70 @@ function ledger(store, runs, { at = 600, until = 720 } = {}) {
 
 function blank() { return { deaths: {}, miss: {}, pool: 0, unseen: 0, taken: 0, lh: 0, neutral: 0, unattributed: 0 }; }
 
-/** Lines as per-game means: { measure, line, ours, oha, gap } with gap the line's share of ours minus OHA. */
-function summary(result) {
-    const n = result.games.length || 1;
-    const mean = (f) => ['ours', 'oha'].map((s) => result.games.reduce((a, g) => a + f(g[s]), 0) / n);
-    const out = [];
-    const push = (measure, line, [o, h], sign = 1) => out.push({ measure, line, ours: o, oha: h, gap: sign * (o - h) });
-    let dTotal = [0, 0];
-    for (const c of DEATH_CAUSES) {
-        const v = mean((s) => s.deaths[c] || 0);
-        dTotal = [dTotal[0] + v[0], dTotal[1] + v[1]];
-        push('deaths', c, v);
-    }
-    push('deaths', 'total', dTotal);
-    push('last_hits', 'neutral', mean((s) => s.neutral));
-    push('last_hits', 'pool', mean((s) => s.pool));
-    for (const c of MISS_CAUSES) push('last_hits', c, mean((s) => s.miss[c] || 0), -1);
-    push('last_hits', 'unattributed', mean((s) => s.unattributed));
-    push('last_hits', 'total', mean((s) => s.lh));
-    return out;
+/** The ledger's lines: { measure, line, get(side record), sign }; a line's gap is sign * (ours - OHA). */
+const LINES = [
+    ...DEATH_CAUSES.map((c) => ({ measure: 'deaths', line: c, get: (s) => s.deaths[c] || 0, sign: 1 })),
+    { measure: 'deaths', line: 'total', get: (s) => DEATH_CAUSES.reduce((a, c) => a + (s.deaths[c] || 0), 0), sign: 1 },
+    { measure: 'last_hits', line: 'neutral', get: (s) => s.neutral, sign: 1 },
+    { measure: 'last_hits', line: 'pool', get: (s) => s.pool, sign: 1 },
+    ...MISS_CAUSES.map((c) => ({ measure: 'last_hits', line: c, get: (s) => s.miss[c] || 0, sign: -1 })),
+    { measure: 'last_hits', line: 'unattributed', get: (s) => s.unattributed, sign: 1 },
+    { measure: 'last_hits', line: 'total', get: (s) => s.lh, sign: 1 },
+];
+const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+
+/**
+ * Lines as per-game means: { measure, line, ours, oha, gap } with gap the line's share of ours minus OHA. With `nul` (the
+ * ledger of OHA against OHA) each line adds `mirror` (both seats' mean there) and the gap's parts `we` (ours against the
+ * mirror) and `they` (the mirror against OHA).
+ */
+function summary(result, nul) {
+    return LINES.map(({ measure, line, get, sign }) => {
+        const ours = avg(result.games.map((g) => get(g.ours)));
+        const oha = avg(result.games.map((g) => get(g.oha)));
+        const l = { measure, line, ours, oha, gap: sign * (ours - oha) };
+        if (nul) {
+            l.mirror = avg(nul.games.flatMap((g) => [get(g.ours), get(g.oha)]));
+            l.we = sign * (ours - l.mirror);
+            l.they = sign * (l.mirror - oha);
+        }
+        return l;
+    });
 }
 
-function print(lines, n) {
+function cellOf(label) {
+    const m = label.match(/_([A-Z])_(?:ours_)?(rad|dire)_\d+$/);
+    return m ? `${m[1]}_${m[2]}` : label;
+}
+
+/**
+ * Per line, the spread of the per-game gap inside cells (lineup and seat; a cell of one game adds nothing):
+ * { measure, line, gap, sd, se, df }, se being that of a row of `n` games minus a reference row of `n`.
+ */
+function noise(result, { n = 10 } = {}) {
+    const cells = {};
+    for (const g of result.games) (cells[cellOf(g.label)] = cells[cellOf(g.label)] || []).push(g);
+    const lists = Object.values(cells).filter((l) => l.length > 1);
+    const df = lists.reduce((a, l) => a + l.length - 1, 0);
+    if (df < 2) throw new Error(`only ${df} degrees of freedom: too few repeated cells`);
+    return LINES.map(({ measure, line, get, sign }) => {
+        const d = (g) => sign * (get(g.ours) - get(g.oha));
+        let ss = 0;
+        for (const list of lists) {
+            const mu = avg(list.map(d));
+            for (const g of list) ss += (d(g) - mu) ** 2;
+        }
+        const sd = Math.sqrt(ss / df);
+        return { measure, line, gap: avg(result.games.map(d)), sd, se: sd * Math.sqrt(2 / n), df };
+    });
+}
+
+function print(lines, n, head) {
     const f = (v) => (Math.round(v * 10) / 10).toFixed(1);
-    console.log(`${n} games; per game, ours / OHA; gap = the line's share of ours minus OHA (deaths: more is worse; last hits: less is worse)`);
-    console.log(`${'measure'.padEnd(10)} ${'line'.padEnd(18)} ${'ours'.padStart(7)} ${'oha'.padStart(7)} ${'gap'.padStart(7)}`);
-    for (const l of lines) console.log(`${l.measure.padEnd(10)} ${l.line.padEnd(18)} ${f(l.ours).padStart(7)} ${f(l.oha).padStart(7)} ${f(l.gap).padStart(7)}`);
+    const cols = Object.keys(lines[0]).filter((k) => k !== 'measure' && k !== 'line' && k !== 'df');
+    console.log(`${n} games; ${head}`);
+    console.log(`${'measure'.padEnd(10)} ${'line'.padEnd(18)} ${cols.map((c) => c.padStart(7)).join(' ')}`);
+    for (const l of lines) console.log(`${l.measure.padEnd(10)} ${l.line.padEnd(18)} ${cols.map((c) => f(l[c]).padStart(7)).join(' ')}`);
 }
 
 if (require.main === module) {
@@ -151,11 +202,18 @@ if (require.main === module) {
         const rows = result.rows[o.rows];
         if (!rows) throw new Error('--rows takes deaths or creeps');
         console.log(o.json ? JSON.stringify(rows) : rows.map((r) => JSON.stringify(r)).join('\n'));
-    } else if (o.json) {
-        console.log(JSON.stringify({ games: result.games, lines: summary(result) }));
+    } else if (o.noise) {
+        const lines = noise(result, o);
+        if (o.json) console.log(JSON.stringify({ games: result.games, noise: lines }));
+        else print(lines, result.games.length, `${lines[0].df} degrees of freedom; sd = the per-game gap's spread inside lineup-and-seat cells; se = a row of ${o.n} games minus a reference row of ${o.n}`);
     } else {
-        print(summary(result), result.games.length);
+        const nul = o.null.length ? ledger(store, o.null, o) : undefined;
+        if (nul && !nul.games.length) throw new Error(`--null: no games for ${o.null.join(', ')}`);
+        const lines = summary(result, nul);
+        if (o.json) console.log(JSON.stringify({ games: result.games, lines }));
+        else print(lines, result.games.length, 'per game, ours / OHA; gap = the line\'s share of ours minus OHA (deaths: more is worse; last hits: less is worse)'
+            + (nul ? `; mirror = OHA against OHA (${nul.games.length} games); gap = we (ours against the mirror) + they (the mirror against OHA)` : ''));
     }
 }
 
-module.exports = { ledger, summary, games, DEATH_CAUSES, MISS_CAUSES };
+module.exports = { ledger, summary, noise, games, cellOf, LINES, DEATH_CAUSES, MISS_CAUSES };
