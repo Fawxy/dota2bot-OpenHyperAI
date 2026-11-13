@@ -1344,14 +1344,17 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 
 `pid` num, `band` str
 
-- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos) or `leave` (retreat's leaveWhy; the answer is `dec`).
+- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`).
 - `role` str: The spot's role input: `core` or `support`.
+- `who` str: `gate`: the consumer that asked (ev=threat `who`).
+- `fm` str: `gate`: the walk's start, x,y (Threat.Gate's `from`).
+- `pl` str: `gate`: the walk's end, x,y (the camp or place the trip goes to).
 - `lane` num: The bot's assigned lane.
 - `b` str: The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready.
 - `fr` str: GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y.
 - `fed` num: The spot's `fed` input: lane_aggro's fed creep (CreepId).
 - `hold` str: The spot's `hold` input: wave_hold's hold point, x,y.
-- `he` str: Enemy heroes in sight within 3,000 of the bot or its lane front: pid, x, y, HP, range, hull, speed, attacking the bot, damaged the bot within Threat EngagedRecent, GetEstimatedDamageToTarget over 3 s and 6 s, illusion.
+- `he` str: Enemy heroes in sight within 3,000 of the bot or its lane front (`gate`: of the walk's box): pid, x, y, HP, range, hull, speed, attacking the bot, damaged the bot within Threat EngagedRecent, GetEstimatedDamageToTarget over 3 s and 6 s, illusion.
 - `hu` str: Enemy heroes alive and unseen with a sighting: pid, last-seen x, y, seconds unseen, last speed Threat read (-1 none).
 - `ha` str: Our other heroes within 3,000 of either: pid, x, y, range, hull, speed, in our retreat.
 - `ta` str: Towers standing, hex masks over cut.ts TOWER_IDS: ours, theirs.
@@ -1365,6 +1368,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
 - `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
+- `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
 
 ## cut_creeps
 
