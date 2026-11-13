@@ -127,6 +127,9 @@ return function(w)
 		if h == nil then return {} end
 		return { { location = Vector(h.x, h.y), time_since_seen = h.tss } }
 	end
+	-- Before the prime below: its Read can measure distances.
+	function GetUnitToUnitDistance(a, c) return dist(a.loc, c.loc) end
+	function GetUnitToLocationDistance(u, v) return dist(u.loc, v) end
 	-- Threat's speed memory for unseen heroes (what the game's Read last saw): one throwaway Read with them in sight.
 	local ghosts = {}
 	for _, h in ipairs(w.hu or {}) do
@@ -148,7 +151,5 @@ return function(w)
 		local nib = tonumber(vis.hex:sub(math.floor(bit / 4) + 1, math.floor(bit / 4) + 1), 16) or 0
 		return math.floor(nib / 2 ^ (3 - bit % 4)) % 2 == 1
 	end
-	function GetUnitToUnitDistance(a, c) return dist(a.loc, c.loc) end
-	function GetUnitToLocationDistance(u, v) return dist(u.loc, v) end
 	return { bot = bot, byCreep = byCreep, Threat = Threat, dist = dist }
 end
