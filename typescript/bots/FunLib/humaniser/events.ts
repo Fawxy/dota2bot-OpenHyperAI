@@ -2270,6 +2270,13 @@ export const EVENTS = {
         play: "num",
         /** The id of the gank rolled after it. */
         gank: "num",
+        /** A river-rune trip: both river spots as the API reported them when the pickup began (`rs0`) and at the trip's end
+         *  (`rs1`), `RUNE_POWERUP_1` first, each `<GetRuneStatus>:<GetRuneType>`. */
+        rs0: "str",
+        rs1: "str",
+        /** Where the hero stood at the trip's end. */
+        x: "num",
+        y: "num",
     },
     // Slice support-lane: one line per started pull (PullJob). res ok|fail; why: the verb's end reason (ok, timeout:late,
     // no_target:mistake:no-camp, ...) or the chooser's cancel; label: the verb's last label; slot: the planned hit second;

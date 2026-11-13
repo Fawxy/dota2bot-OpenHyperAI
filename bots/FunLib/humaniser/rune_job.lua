@@ -127,7 +127,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local planned, key, calendarLeave, powerRunes, takenSpots, powerSpot, planFor, leaveAt, edgeVia, pathAge, closestOn, tripFor, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, paths, rejected, body, playFight
+local riverNow, planned, key, calendarLeave, powerRunes, takenSpots, powerSpot, planFor, leaveAt, edgeVia, pathAge, closestOn, tripFor, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, paths, rejected, body, playFight
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
@@ -144,6 +144,15 @@ local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+function riverNow()
+    return table.concat(
+        __TS__ArrayMap(
+            {Rune.Power1, Rune.Power2},
+            function(____, r) return (tostring(GetRuneStatus(r)) .. ":") .. tostring(GetRuneType(r)) end
+        ),
+        ","
+    )
+end
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)
     return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
@@ -208,20 +217,20 @@ function takenSpots(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue35
+                local __continue37
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot then
-                        __continue35 = true
+                        __continue37 = true
                         break
                     end
                     local t = running[m:GetPlayerID()]
                     if t ~= nil and t.rune ~= nil then
                         out[t.rune] = true
                     end
-                    __continue35 = true
+                    __continue37 = true
                 until true
-                if not __continue35 then
+                if not __continue37 then
                     break
                 end
             end
@@ -322,10 +331,10 @@ function ____exports.PathVia(bot, to)
                 local args = {...}
                 for ____, a in ipairs(args) do
                     do
-                        local __continue54
+                        local __continue56
                         repeat
                             if type(a) ~= "table" then
-                                __continue54 = true
+                                __continue56 = true
                                 break
                             end
                             local wp = a
@@ -334,9 +343,9 @@ function ____exports.PathVia(bot, to)
                             else
                                 rejected[pid] = (rejected[pid] or 0) + 1
                             end
-                            __continue54 = true
+                            __continue56 = true
                         until true
-                        if not __continue54 then
+                        if not __continue56 then
                             break
                         end
                     end
@@ -495,6 +504,9 @@ body = __TS__Generator(function(bot, t, ctx)
             ctx.label(l)
             if (l == "wait" or l == "channel" or l == "decide") and t.arr == nil then
                 t.arr = DotaTime()
+            end
+            if l == "pickup" and t.rune ~= nil then
+                t.seen = riverNow()
             end
         end,
         urgent = ctx.urgent
@@ -694,19 +706,19 @@ local function open(bot)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue12
+            local __continue14
             repeat
                 if kind == "contest" and not RunePlan.On() then
-                    __continue12 = true
+                    __continue14 = true
                     break
                 end
                 local ____opt_0 = handled[pid]
                 if (____opt_0 and ____opt_0[key(kind, spawn)]) ~= true and now >= spawn - ____exports.SETTINGS.ClaimFrom and now < spawn + ____exports.SETTINGS.LateBy[kind] then
                     out[#out + 1] = {kind, spawn}
                 end
-                __continue12 = true
+                __continue14 = true
             until true
-            if not __continue12 then
+            if not __continue14 then
                 break
             end
         end
@@ -739,10 +751,10 @@ function ____exports.CalendarEntries(bot, now)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue20
+            local __continue22
             repeat
                 if kind == "contest" and not RunePlan.On() then
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 local back = spawn + ____exports.SETTINGS.CalendarBack + walk
@@ -756,12 +768,12 @@ function ____exports.CalendarEntries(bot, now)
                         fixed = true,
                         running = true
                     }
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 local ____opt_2 = handled[pid]
                 if (____opt_2 and ____opt_2[key(kind, spawn)]) == true or now >= spawn + ____exports.SETTINGS.LateBy[kind] then
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 local ____temp_4
@@ -772,7 +784,7 @@ function ____exports.CalendarEntries(bot, now)
                 end
                 local leave = ____temp_4
                 if leave == false then
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 out[#out + 1] = {
@@ -783,9 +795,9 @@ function ____exports.CalendarEntries(bot, now)
                     back = back,
                     fixed = true
                 }
-                __continue20 = true
+                __continue22 = true
             until true
-            if not __continue20 then
+            if not __continue22 then
                 break
             end
         end
@@ -941,7 +953,23 @@ local function finish(bot, t, r, label)
     local ____opt_27 = t.play or t.fight
     __TS__SparseArrayPush(____array_31, {"play", ____opt_27 and ____opt_27.id})
     local ____opt_29 = t.gank
-    __TS__SparseArrayPush(____array_31, {"gank", ____opt_29 and ____opt_29.id})
+    __TS__SparseArrayPush(
+        ____array_31,
+        {"gank", ____opt_29 and ____opt_29.id},
+        {"rs0", t.seen},
+        {
+            "rs1",
+            t.rune ~= nil and riverNow() or nil
+        },
+        {
+            "x",
+            math.floor(bot:GetLocation().x)
+        },
+        {
+            "y",
+            math.floor(bot:GetLocation().y)
+        }
+    )
     __TS__SparseArrayPush(
         ____array_32,
         {__TS__SparseArraySpread(____array_31)}
@@ -973,7 +1001,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue88
+            local __continue90
             repeat
                 local mine
                 local function skip(why)
@@ -990,12 +1018,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue88 = true
+                    __continue90 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue88 = true
+                        __continue90 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -1064,7 +1092,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue88 then
+            if not __continue90 then
                 break
             end
         end
@@ -1125,22 +1153,22 @@ function ____exports.MidWants(bot)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue147
+            local __continue150
             repeat
                 local k = key(kind, spawn)
                 if handled[pid][k] == true or now >= spawn + ____exports.SETTINGS.LateBy[kind] then
-                    __continue147 = true
+                    __continue150 = true
                     break
                 end
                 local mine
                 if kind == "power" then
                     if now < RunePlan.SETTINGS.PlanAt then
-                        __continue147 = true
+                        __continue150 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
                     if mine == nil then
-                        __continue147 = true
+                        __continue150 = true
                         break
                     end
                 end
@@ -1152,7 +1180,7 @@ function ____exports.MidWants(bot)
                     if now >= spawn then
                         skip("dead")
                     end
-                    __continue147 = true
+                    __continue150 = true
                     break
                 end
                 local t = tripFor(
@@ -1164,7 +1192,7 @@ function ____exports.MidWants(bot)
                 )
                 local leave = leaveAt(bot, t)
                 if now < leave then
-                    __continue147 = true
+                    __continue150 = true
                     break
                 end
                 local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
@@ -1172,7 +1200,7 @@ function ____exports.MidWants(bot)
                     if now > leave + ____exports.SETTINGS.StartSlack then
                         skip(why)
                     end
-                    __continue147 = true
+                    __continue150 = true
                     break
                 end
                 local ok = Tasks.Start(
@@ -1188,7 +1216,7 @@ function ____exports.MidWants(bot)
                 )
                 if not ok then
                     skip("refused")
-                    __continue147 = true
+                    __continue150 = true
                     break
                 end
                 handled[pid][k] = true
@@ -1196,7 +1224,7 @@ function ____exports.MidWants(bot)
                 jobLine(bot, t, "start", kind == "power" and "plan" or "trigger")
                 return true
             until true
-            if not __continue147 then
+            if not __continue150 then
                 break
             end
         end
@@ -1255,20 +1283,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue179
+                local __continue182
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue179 = true
+                        __continue182 = true
                         break
                     end
                     local ____opt_38 = running[m:GetPlayerID()]
                     if (____opt_38 and ____opt_38.kind) == "wisdom" then
                         return true
                     end
-                    __continue179 = true
+                    __continue182 = true
                 until true
-                if not __continue179 then
+                if not __continue182 then
                     break
                 end
             end

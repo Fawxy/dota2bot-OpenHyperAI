@@ -20,6 +20,8 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
+declare function GetRuneStatus(this: void, rune: number): number;
+declare function GetRuneType(this: void, rune: number): number;
 
 type Kind = "power" | "wisdom" | "contest" | "water";
 
@@ -116,6 +118,13 @@ interface Trip {
     play?: Plays.Play;
     fight?: Plays.Play;
     gank?: Plays.Play;
+    /** What the API said of both river spots when the pickup began (`riverNow`). */
+    seen?: string;
+}
+
+/** Both river spots as the API reports them now, top spot id first: `<status>:<type>,<status>:<type>`. */
+function riverNow(): string {
+    return [Rune.Power1, Rune.Power2].map((r) => `${GetRuneStatus(r)}:${GetRuneType(r)}`).join(",");
 }
 
 /** A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack). */
@@ -449,6 +458,10 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
         ["vpts", t.via !== undefined && t.route !== undefined ? t.via.map((q) => `${math.floor(q.x)},${math.floor(q.y)}`).join(";") : undefined],
         ["play", (t.play ?? t.fight)?.id],
         ["gank", t.gank?.id],
+        ["rs0", t.seen],
+        ["rs1", t.rune !== undefined ? riverNow() : undefined],
+        ["x", math.floor(bot.GetLocation().x)],
+        ["y", math.floor(bot.GetLocation().y)],
     ]);
 }
 
@@ -532,6 +545,7 @@ function* body(bot: Unit, t: Trip, ctx: Lib.Ctx): Lib.TaskBody {
         label: (l) => {
             ctx.label(l);
             if ((l === "wait" || l === "channel" || l === "decide") && t.arr === undefined) t.arr = DotaTime();
+            if (l === "pickup" && t.rune !== undefined) t.seen = riverNow();
         },
         urgent: ctx.urgent,
     };

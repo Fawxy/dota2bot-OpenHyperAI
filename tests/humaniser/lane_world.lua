@@ -134,6 +134,7 @@ function GetShopLocation(team) return team == 2 and Vector(-7000, -6500) or Vect
 RUNE_STATUS_UNKNOWN, RUNE_STATUS_AVAILABLE, RUNE_STATUS_MISSING = RUNE_STATUS_UNKNOWN or 0, RUNE_STATUS_AVAILABLE or 1, RUNE_STATUS_MISSING or 2
 function GetRuneSpawnLocation(r) return Vector(-9000 + 1000 * (r or 0), 9000) end
 function GetRuneStatus(r) return RUNE_STATUS_MISSING end
+function GetRuneType(r) return -1 end
 -- FOGGED(v) true marks a location the team cannot see; nil means everything is visible.
 function IsLocationVisible(v) return FOGGED == nil or not FOGGED(v) end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
