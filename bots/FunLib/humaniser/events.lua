@@ -1591,6 +1591,9 @@ ____exports.EVENTS = {
         pid = "num",
         kind = "str",
         role = "str",
+        who = "str",
+        fm = "str",
+        pl = "str",
         lane = "num",
         b = "str",
         fr = "str",
@@ -1601,7 +1604,8 @@ ____exports.EVENTS = {
         ha = "str",
         ta = "str",
         tt = "str",
-        vis = "str"
+        vis = "str",
+        vw = "str"
     },
     cut_creeps = {pid = "num", ce = "str", ca = "str"},
     cut_towers = {team = "num", tw = "str"}

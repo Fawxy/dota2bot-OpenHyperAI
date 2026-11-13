@@ -27,6 +27,7 @@ const VERBS = {
     core_trip: ['noTrip', 'trip'],
     support_claim: ['claim', 'noClaim'],
     lane_spot: ['stand', 'anchor', 'read'],
+    threat_gate: ['go', 'hold'],
 };
 
 function listFixtures(dir) {

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { readGames, worldOf, checkOne } = require('../cut');
+const { readGames, worldOf, checkOne, uncutGates } = require('../cut');
 
 const hev = (s) => `11/13 15:33:39 [VScript] [HEV] ${s}`;
 // Smoke 1's shape: the towers line is written in the pregame, and a clock jump to 0:00 later splits the log's games.
@@ -43,4 +43,61 @@ test('a cut missing its creeps line is reported, not replayed on a world without
     const g = readGames(LOG.split('\n').filter((l) => !l.includes('cut_creeps')).join('\n'))[1];
     assert.throws(() => worldOf(g, g.cuts[0]), /no ev=cut_creeps/);
     assert.match(checkOne(g, g.cuts[0]).error, /no ev=lane_pos|no ev=cut_creeps/);
+});
+
+// Gate cuts: a Radiant core at (-200, 200) walking to a camp at (800, 900), a tower pair that puts the camp next to the
+// enemy's (depth well under 0.5, so an unseen hero counts its full late weight of 0.5, the refusal line).
+const gateLog = ({ he = '', hu = '', vw = '', dec = 'go', who = 'core_camp', t = '300.000' }) => [
+    hev('t=-90.000 ev=bot pid=1 team=2 ours=Threat:1'),
+    hev('t=-14.800 ev=cut_towers team=2 tw=3,-1544,-1408,700,144'),
+    hev('t=-14.800 ev=cut_towers team=3 tw=3,524,652,700,144'),
+    hev(`t=${t} ev=threat pid=1 who=${who} dec=${dec}`),
+    hev(`t=${t} ev=cut pid=1 kind=gate who=${who} b=-200,200,600,600,150,24,300,0 fm=-200,200 pl=800,900 he=${he || '""'} ta=8,8`
+        + (hu ? ` hu=${hu}` : '') + (vw ? ` vw=${vw}` : '')),
+].join('\n');
+const gateGame = (opts) => readGames(gateLog(opts))[0];
+const UNSEEN = '7,1500,1500,10,305';
+
+test('a visible hero able to reach the walk holds the trip as threat; one too far to reach does not', () => {
+    // 330 speed over 4 s, plus range and hulls, is about 2,000: a hero 1,100 from the walk reaches it, one 4,000 away cannot.
+    const near = gateGame({ he: '6,1500,-100,500,600,24,330,0,0,100,200,0', dec: 'threat' });
+    const r = checkOne(near, near.cuts[0]);
+    assert.deepStrictEqual([r.got, r.same, r.reach], ['threat', true, 1]);
+    const far = gateGame({ he: '6,4800,-3000,500,600,24,330,0,0,100,200,0', dec: 'go' });
+    const f = checkOne(far, far.cuts[0]);
+    assert.deepStrictEqual([f.got, f.same, f.reach], ['go', true, 0]);
+});
+
+test('an unseen hero holds the trip as missing only while part of the walk it could reach is out of sight', () => {
+    const blind = gateGame({ hu: UNSEEN, vw: '5,f4', dec: 'missing' });
+    const b = checkOne(blind, blind.cuts[0]);
+    assert.deepStrictEqual([b.got, b.same, b.missing], ['missing', true, 0.5]);
+    // The same hero with every walk point in sight is not there: the vision cut drops it and the gate goes.
+    const seen = gateGame({ hu: UNSEEN, vw: '5,fc', dec: 'go' });
+    const s = checkOne(seen, seen.cuts[0]);
+    assert.deepStrictEqual([s.got, s.same, s.missing], ['go', true, 0]);
+});
+
+test('a replay that decides otherwise than the game is reported as different, not forced to match', () => {
+    const g = gateGame({ hu: UNSEEN, vw: '5,f4', dec: 'go' });
+    const r = checkOne(g, g.cuts[0]);
+    assert.deepStrictEqual([r.same, r.got, r.want], [false, 'missing', 'go']);
+});
+
+test('gate cuts join their ev=threat by consumer: two consumers deciding in one frame are each checked against their own', () => {
+    const text = gateLog({ hu: UNSEEN, vw: '5,f4', dec: 'missing', who: 'core_camp' }) + '\n'
+        + hev('t=300.000 ev=threat pid=1 who=pull_farm dec=go') + '\n'
+        + hev('t=300.000 ev=cut pid=1 kind=gate who=pull_farm b=-200,200,600,600,150,24,300,0 fm=-200,200 pl=800,900 he="" ta=8,8 hu=' + UNSEEN + ' vw=5,f4');
+    const g = readGames(text)[0];
+    const res = Object.fromEntries(g.cuts.map((c) => [c.who, checkOne(g, c).same]));
+    assert.deepStrictEqual(res, { core_camp: true, pull_farm: false });
+});
+
+test('a gate decision with no cut beside it is counted, and a direct Threat.Log consumer is not', () => {
+    const text = gateLog({ dec: 'go' }) + '\n'
+        + hev('t=301.000 ev=threat pid=1 who=pull_farm dec=go') + '\n'
+        + hev('t=301.000 ev=threat pid=1 who=core_pull dec=go');
+    const g = readGames(text)[0];
+    assert.strictEqual(uncutGates(g), 1);
+    assert.strictEqual(uncutGates(g, 'core_camp'), 0);
 });

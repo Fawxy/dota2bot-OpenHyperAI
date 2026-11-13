@@ -465,4 +465,219 @@ function ____exports.Spot(bot)
         }
     )
 end
+--- Within CUT_R of the box that holds the walk `a` to `b`.
+local function nearWalk(l, a, b)
+    return l.x >= math.min(a.x, b.x) - CUT_R and l.x <= math.max(a.x, b.x) + CUT_R and l.y >= math.min(a.y, b.y) - CUT_R and l.y <= math.max(a.y, b.y) + CUT_R
+end
+--- IsLocationVisible at each of Threat's walk points, as `n,hex`: n steps (n + 1 points), bit i (from the high bit of the first digit) the i-th point.
+local function walkVision(from, place)
+    local hex = ""
+    local nib = 0
+    local bits = 0
+    local points = Threat.WalkPoints(from, place)
+    for ____, p in ipairs(points) do
+        nib = nib * 2 + (IsLocationVisible(p) and 1 or 0)
+        bits = bits + 1
+        if bits == 4 then
+            hex = hex .. string.format("%x", nib)
+            nib = 0
+            bits = 0
+        end
+    end
+    if bits > 0 then
+        hex = hex .. string.format("%x", nib * 2 ^ (4 - bits))
+    end
+    return (tostring(#points - 1) .. ",") .. hex
+end
+--- The inputs of one Threat.Gate decision, logged right after the gate's ev=threat line (same frame, same Read).
+function ____exports.Gate(bot, from, place, consumer)
+    if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local team = bot:GetTeam()
+    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
+    local at = bot:GetLocation()
+    logTowers(team)
+    logTowers(enemyTeam)
+    local visible = {}
+    local he = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue53
+            repeat
+                if not live(e) or not e:CanBeSeen() then
+                    __continue53 = true
+                    break
+                end
+                local l = e:GetLocation()
+                local ill = e:IsIllusion()
+                if not ill then
+                    visible[e:GetPlayerID()] = true
+                end
+                if not nearWalk(l, from, place) then
+                    __continue53 = true
+                    break
+                end
+                local e3 = e:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
+                local e6 = e:GetEstimatedDamageToTarget(true, bot, 6, DamageType.All)
+                local atk = e:GetAttackTarget() == bot and 1 or 0
+                local eng = bot:WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) and 1 or 0
+                he[#he + 1] = table.concat(
+                    {
+                        e:GetPlayerID(),
+                        f(l.x),
+                        f(l.y),
+                        f(e:GetHealth()),
+                        f(e:GetAttackRange()),
+                        f(e:GetBoundingRadius()),
+                        f(e:GetCurrentMovementSpeed()),
+                        atk,
+                        eng,
+                        f(e3),
+                        f(e6),
+                        ill and 1 or 0
+                    },
+                    ","
+                )
+                __continue53 = true
+            until true
+            if not __continue53 then
+                break
+            end
+        end
+    end
+    local hu = {}
+    do
+        local p = 0
+        while p <= MAX_PLAYER_ID do
+            do
+                local __continue58
+                repeat
+                    if GetTeamForPlayer(p) ~= enemyTeam or visible[p] == true or not IsHeroAlive(p) then
+                        __continue58 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(p)[1]
+                    if info == nil then
+                        __continue58 = true
+                        break
+                    end
+                    hu[#hu + 1] = table.concat(
+                        {
+                            p,
+                            f(info.location.x),
+                            f(info.location.y),
+                            math.floor(info.time_since_seen * 10 + 0.5) / 10,
+                            f(Threat.SeenSpeed(p))
+                        },
+                        ","
+                    )
+                    __continue58 = true
+                until true
+                if not __continue58 then
+                    break
+                end
+            end
+            p = p + 1
+        end
+    end
+    local ha = {}
+    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+        do
+            local __continue61
+            repeat
+                if not live(a) or a == bot or a:IsIllusion() then
+                    __continue61 = true
+                    break
+                end
+                local l = a:GetLocation()
+                if not nearWalk(l, from, place) then
+                    __continue61 = true
+                    break
+                end
+                ha[#ha + 1] = table.concat(
+                    {
+                        a:GetPlayerID(),
+                        f(l.x),
+                        f(l.y),
+                        f(a:GetAttackRange()),
+                        f(a:GetBoundingRadius()),
+                        f(a:GetCurrentMovementSpeed()),
+                        RetreatState.Running(a) and 1 or 0
+                    },
+                    ","
+                )
+                __continue61 = true
+            until true
+            if not __continue61 then
+                break
+            end
+        end
+    end
+    local unused = {}
+    local ta = (towersNow(
+        team,
+        bot,
+        at,
+        at,
+        unused
+    ) .. ",") .. towersNow(
+        enemyTeam,
+        bot,
+        at,
+        at,
+        unused
+    )
+    Telemetry.Event(
+        "cut",
+        {
+            {"pid", pid},
+            {"kind", "gate"},
+            {"who", consumer},
+            {
+                "b",
+                table.concat(
+                    {
+                        f(at.x),
+                        f(at.y),
+                        f(bot:GetHealth()),
+                        f(bot:GetMaxHealth()),
+                        f(bot:GetAttackRange()),
+                        f(bot:GetBoundingRadius()),
+                        f(bot:GetCurrentMovementSpeed()),
+                        escapeReady(bot) and 1 or 0
+                    },
+                    ","
+                )
+            },
+            {
+                "fm",
+                (tostring(f(from.x)) .. ",") .. tostring(f(from.y))
+            },
+            {
+                "pl",
+                (tostring(f(place.x)) .. ",") .. tostring(f(place.y))
+            },
+            {
+                "he",
+                table.concat(he, ";")
+            },
+            {
+                "hu",
+                #hu > 0 and table.concat(hu, ";") or nil
+            },
+            {
+                "ha",
+                #ha > 0 and table.concat(ha, ";") or nil
+            },
+            {"ta", ta},
+            {
+                "vw",
+                #hu > 0 and walkVision(from, place) or nil
+            }
+        }
+    )
+end
+Threat.SetGateCut(____exports.Gate)
 return ____exports

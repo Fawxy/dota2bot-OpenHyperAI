@@ -1,0 +1,24 @@
+id: gate.sup_job.two-heroes-near-camp.001
+source: log
+ref: {log: 2026-11-13T03-18-39-cut-gate_smoke_1.log, t: 222.933}
+status: active
+decision: threat_gate
+# Cut by tools/hlog/cut.js; the game chose threat (reach 2, miss 0, tower 0).
+world:
+  t: 222.933
+  team: 2
+  pid: 0
+  who: "sup_job"
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-6035,"y":3784,"hp":606,"mhp":758,"range":150,"hull":24,"speed":325,"esc":0}
+  from: {"x":-4854,"y":3991}
+  place: {"x":-4854,"y":3991}
+  he: [{"pid":9,"x":-5918,"y":5314,"hp":460,"range":710,"hull":24,"speed":285,"atk":0,"eng":0,"e3":101,"e6":203,"ill":0},{"pid":5,"x":-5787,"y":5099,"hp":437,"range":425,"hull":24,"speed":305,"atk":0,"eng":0,"e3":201,"e6":312,"ill":0}]
+  hu: [{"pid":6,"x":5010,"y":-3762,"tss":0.6,"sp":325}]
+  ha: [{"pid":4,"x":-6364,"y":3825,"range":150,"hull":24,"speed":370,"ret":0}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vw: {"n":1,"hex":"c"}
+expect:
+  must: ["hold(threat)"]
+notes: >
+  Radiant pos 4 (pid 0) at 80% HP, 1,200 from its pull camp, with two enemy heroes (a Dire core and a support, 1,450 and 1,700 from the camp) in sight and one ally behind it. Both can reach the camp inside 4 s; a support who walks to the camp holds on a visible hero in reach, so the right action is to hold the pull (the game held it too, threat, reach 2).

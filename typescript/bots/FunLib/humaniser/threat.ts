@@ -195,7 +195,7 @@ function inTowerReach(enemyTeam: number, place: Vector): boolean {
  * Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team). A hero the API has no sighting of is
  * not placed and not counted.
  */
-function walkPoints(from: Vector, place: Vector): Vector[] {
+export function WalkPoints(from: Vector, place: Vector): Vector[] {
     const d = dist(from, place);
     const n = math.max(1, math.ceil(d / SETTINGS.WalkStep));
     const out: Vector[] = [];
@@ -240,7 +240,7 @@ function missingOf(
         const r = math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin;
         if (distToSegment(info.location, from, place) > r) continue;
         if (s.VisionCut) {
-            points = points ?? walkPoints(from, place);
+            points = points ?? WalkPoints(from, place);
             if (!unseenWithin(points, info.location, r)) {
                 cut++;
                 continue;
@@ -341,6 +341,13 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, op
     return { t: now, from, place, horizon, depth, reach, burst, allies, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att };
 }
 
+let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;
+
+/** cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision. */
+export function SetGateCut(fn: (this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void): void {
+    gateCut = fn;
+}
+
 /**
  * The gate rule the starts share (the core camp trip, the pos3's pull, the support's pull and stack, the farm trip, the pull farm): held
  * by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
@@ -349,7 +356,7 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, op
 export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): { why?: "threat" | "missing"; r: Read } {
     const r = Read(bot, from, place, SETTINGS.GateHorizon);
     const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
-    Log(bot, consumer, r, why ?? "go");
+    if (Log(bot, consumer, r, why ?? "go") && gateCut !== undefined) pcall(gateCut, bot, from, place, consumer);
     return { why, r };
 }
 
@@ -357,13 +364,13 @@ const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;
 
 /**
  * ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
- * consumer (gates run every think; the design's "once per decision" would flood).
+ * consumer (gates run every think; the design's "once per decision" would flood). Returns whether it logged.
  */
-export function Log(bot: Unit, consumer: string, r: Read, decision: string): void {
+export function Log(bot: Unit, consumer: string, r: Read, decision: string): boolean {
     const pid = bot.GetPlayerID();
     const key = `${pid}:${consumer}`;
     const last = logged[key];
-    if (last !== undefined && last.decision === decision && r.t - last.t < SETTINGS.LogEvery) return;
+    if (last !== undefined && last.decision === decision && r.t - last.t < SETTINGS.LogEvery) return false;
     logged[key] = { t: r.t, decision };
     Telemetry.Event("threat", [
         ["pid", pid],
@@ -387,4 +394,5 @@ export function Log(bot: Unit, consumer: string, r: Read, decision: string): voi
         ["mcut", r.mcut > 0 ? r.mcut : undefined],
         ["hp", r2(bot.GetHealth() / math.max(1, bot.GetMaxHealth()))],
     ]);
+    return true;
 }

@@ -36,13 +36,13 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 --- ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
--- consumer (gates run every think; the design's "once per decision" would flood).
+-- consumer (gates run every think; the design's "once per decision" would flood). Returns whether it logged.
 function ____exports.Log(bot, consumer, r, decision)
     local pid = bot:GetPlayerID()
     local key = (tostring(pid) .. ":") .. consumer
     local last = logged[key]
     if last ~= nil and last.decision == decision and r.t - last.t < ____exports.SETTINGS.LogEvery then
-        return
+        return false
     end
     logged[key] = {t = r.t, decision = decision}
     local ____Telemetry_Event_4 = Telemetry.Event
@@ -117,6 +117,7 @@ function ____exports.Log(bot, consumer, r, decision)
         "threat",
         {__TS__SparseArraySpread(____array_3)}
     )
+    return true
 end
 ____exports.SETTINGS = {
     MissingAfter = 3,
@@ -272,7 +273,7 @@ end
 -- read speed, capped) plus MissingMargin; one whose run touches the walk adds EarlyWeight or LateWeight by game minute.
 -- Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team). A hero the API has no sighting of is
 -- not placed and not counted.
-local function walkPoints(from, place)
+function ____exports.WalkPoints(from, place)
     local d = dist(from, place)
     local n = math.max(
         1,
@@ -333,7 +334,7 @@ local function missingOf(bot, from, place, depth, now, visible)
                         break
                     end
                     if s.VisionCut then
-                        points = points or walkPoints(from, place)
+                        points = points or ____exports.WalkPoints(from, place)
                         if not unseenWithin(points, info.location, r) then
                             cut = cut + 1
                             __continue32 = true
@@ -524,13 +525,26 @@ function ____exports.Read(bot, from, place, horizon, opts)
         att = att
     }
 end
+local gateCut
+--- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.
+function ____exports.SetGateCut(fn)
+    gateCut = fn
+end
 --- The gate rule the starts share (the core camp trip, the pos3's pull, the support's pull and stack, the farm trip, the pull farm): held
 -- by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
 -- ("missing"); the read and its decision are logged as ev=threat for `consumer`.
 function ____exports.Gate(bot, from, place, consumer)
     local r = ____exports.Read(bot, from, place, ____exports.SETTINGS.GateHorizon)
     local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
-    ____exports.Log(bot, consumer, r, why or "go")
+    if ____exports.Log(bot, consumer, r, why or "go") and gateCut ~= nil then
+        pcall(
+            gateCut,
+            bot,
+            from,
+            place,
+            consumer
+        )
+    end
     return {why = why, r = r}
 end
 r2 = function(x) return math.floor(x * 100 + 0.5) / 100 end
