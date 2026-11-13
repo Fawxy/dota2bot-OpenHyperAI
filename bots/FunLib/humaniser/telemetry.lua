@@ -177,7 +177,8 @@ ____exports.DEFAULTS = {
     LuaErrorRepeat = 10,
     CreepDeathUntil = 720,
     Perf = false,
-    PerfInterval = 10
+    PerfInterval = 10,
+    Cut = true
 }
 --- Tests capture lines here instead of printing them.
 function ____exports.SetSink(fn)

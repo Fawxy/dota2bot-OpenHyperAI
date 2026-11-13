@@ -26,6 +26,7 @@ const VERBS = {
     lane_fight: ['commitEnd', 'committing'],
     core_trip: ['noTrip', 'trip'],
     support_claim: ['claim', 'noClaim'],
+    lane_spot: ['stand', 'anchor', 'read'],
 };
 
 function listFixtures(dir) {

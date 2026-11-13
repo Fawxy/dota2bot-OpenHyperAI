@@ -1586,6 +1586,24 @@ ____exports.EVENTS = {
         rp = "str",
         re = "num",
         rat = "num"
-    }
+    },
+    cut = {
+        pid = "num",
+        kind = "str",
+        role = "str",
+        lane = "num",
+        b = "str",
+        fr = "str",
+        fed = "num",
+        hold = "str",
+        he = "str",
+        hu = "str",
+        ha = "str",
+        ta = "str",
+        tt = "str",
+        vis = "str"
+    },
+    cut_creeps = {pid = "num", ce = "str", ca = "str"},
+    cut_towers = {team = "num", tw = "str"}
 }
 return ____exports

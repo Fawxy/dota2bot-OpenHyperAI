@@ -274,6 +274,11 @@ function escapeOf(bot: Unit, chasers: Unit[]): boolean {
     return true;
 }
 
+/** The last movement speed Read saw for an enemy hero (the missing belief's run uses it), or undefined. */
+export function SeenSpeed(pid: number): number | undefined {
+    return speeds[pid];
+}
+
 export function BandOf(threat: number, lethal: boolean): Band {
     if (lethal) return "lethal";
     return threat >= SETTINGS.Pressured ? "pressured" : threat >= SETTINGS.Watch ? "watch" : "none";

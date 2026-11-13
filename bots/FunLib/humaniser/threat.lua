@@ -387,6 +387,10 @@ local function escapeOf(bot, chasers)
     end
     return true
 end
+--- The last movement speed Read saw for an enemy hero (the missing belief's run uses it), or undefined.
+function ____exports.SeenSpeed(pid)
+    return speeds[pid]
+end
 function ____exports.BandOf(threat, lethal)
     if lethal then
         return "lethal"
@@ -407,10 +411,10 @@ function ____exports.Read(bot, from, place, horizon, opts)
     local window = math.min(horizon, s.BurstWindow)
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue52
+            local __continue53
             repeat
                 if not valid(e) or not e:CanBeSeen() then
-                    __continue52 = true
+                    __continue53 = true
                     break
                 end
                 local pid = e:GetPlayerID()
@@ -440,9 +444,9 @@ function ____exports.Read(bot, from, place, horizon, opts)
                     end
                     dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, w, DamageType.All)
                 end
-                __continue52 = true
+                __continue53 = true
             until true
-            if not __continue52 then
+            if not __continue53 then
                 break
             end
         end
@@ -450,10 +454,10 @@ function ____exports.Read(bot, from, place, horizon, opts)
     local allies = 0
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue60
+            local __continue61
             repeat
                 if not valid(a) or a == bot or RetreatState.Running(a) then
-                    __continue60 = true
+                    __continue61 = true
                     break
                 end
                 if canReach(
@@ -465,9 +469,9 @@ function ____exports.Read(bot, from, place, horizon, opts)
                 ) then
                     allies = allies + 1
                 end
-                __continue60 = true
+                __continue61 = true
             until true
-            if not __continue60 then
+            if not __continue61 then
                 break
             end
         end
