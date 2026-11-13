@@ -2642,10 +2642,15 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos). */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat). */
         kind: "str",
         /** The spot's role input: `core` or `support`. */
         role: "str",
+        /** `gate`: the consumer that asked (ev=threat `who`). */
+        who: "str",
+        /** `gate`: the walk's start and end, x,y each (Threat.Gate's `from` and `place`). */
+        fm: "str",
+        pl: "str",
         /** The bot's assigned lane. */
         lane: "num",
         /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready. */
@@ -2656,7 +2661,7 @@ export const EVENTS = {
         fed: "num",
         /** The spot's `hold` input: wave_hold's hold point, x,y. */
         hold: "str",
-        /** Enemy heroes in sight within 3,000 of the bot or its lane front: pid, x, y, HP, range, hull, speed, attacking the bot, damaged the bot within Threat EngagedRecent, GetEstimatedDamageToTarget over 3 s and 6 s, illusion. */
+        /** Enemy heroes in sight within 3,000 of the bot or its lane front (`gate`: of the walk's box): pid, x, y, HP, range, hull, speed, attacking the bot, damaged the bot within Threat EngagedRecent, GetEstimatedDamageToTarget over 3 s and 6 s, illusion. */
         he: "str",
         /** Enemy heroes alive and unseen with a sighting: pid, last-seen x, y, seconds unseen, last speed Threat read (-1 none). */
         hu: "str",
@@ -2668,6 +2673,8 @@ export const EVENTS = {
         tt: "str",
         /** With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid). */
         vis: "str",
+        /** `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision). */
+        vw: "str",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
     cut_creeps: {

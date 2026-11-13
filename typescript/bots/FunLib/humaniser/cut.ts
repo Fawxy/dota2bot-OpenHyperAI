@@ -9,6 +9,12 @@
  * bot (only while an enemy is unseen), the lane creeps of both teams near the bot and the lane fronts. Lists are `;`-joined
  * records of `,`-joined numbers in the order the field's comment gives (lane creeps on ev=cut_creeps, the same frame); a target is `b` (this bot), `h<pid>`, `u<CreepId>`
  * or `-`.
+ *
+ * `gate` (Threat.Gate: the start gate of a trip, the walk from `fm` to `pl`): the same machinery over a walk instead of the
+ * bot's lane. Visible heroes and allies within CUT_R of the walk's box (a hero reaches the walk within the 4 s horizon from
+ * 3,000 at most), the unseen heroes, and IsLocationVisible at the walk points Threat reads (`vw`, one bit per point, no grid). Logged
+ * beside the gate's own ev=threat line, which is what the replay is compared with. `he`, `hu`, `ha`, `ta` and `b` keep the
+ * spot's record formats.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -198,3 +204,90 @@ export function Spot(bot: Unit): void {
         ["ca", creeps(UnitType.AlliedCreeps, bot, at, front)],
     ]);
 }
+
+/** Within CUT_R of the box that holds the walk `a` to `b`. */
+function nearWalk(l: Vector, a: Vector, b: Vector): boolean {
+    return (
+        l.x >= math.min(a.x, b.x) - CUT_R &&
+        l.x <= math.max(a.x, b.x) + CUT_R &&
+        l.y >= math.min(a.y, b.y) - CUT_R &&
+        l.y <= math.max(a.y, b.y) + CUT_R
+    );
+}
+
+/** IsLocationVisible at each of Threat's walk points, as `n,hex`: n steps (n + 1 points), bit i (from the high bit of the first digit) the i-th point. */
+function walkVision(from: Vector, place: Vector): string {
+    let hex = "";
+    let nib = 0;
+    let bits = 0;
+    const points = Threat.WalkPoints(from, place);
+    for (const p of points) {
+        nib = nib * 2 + (IsLocationVisible(p) ? 1 : 0);
+        bits++;
+        if (bits === 4) {
+            hex += string.format("%x", nib);
+            nib = 0;
+            bits = 0;
+        }
+    }
+    if (bits > 0) hex += string.format("%x", nib * 2 ** (4 - bits));
+    return `${points.length - 1},${hex}`;
+}
+
+/** The inputs of one Threat.Gate decision, logged right after the gate's ev=threat line (same frame, same Read). */
+export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): void {
+    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true) return;
+    const pid = bot.GetPlayerID();
+    const team = bot.GetTeam();
+    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
+    const at = bot.GetLocation();
+    logTowers(team);
+    logTowers(enemyTeam);
+
+    const visible: Record<number, boolean> = {};
+    const he: string[] = [];
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (!live(e) || !e.CanBeSeen()) continue;
+        const l = e.GetLocation();
+        const ill = e.IsIllusion();
+        if (!ill) visible[e.GetPlayerID()] = true;
+        if (!nearWalk(l, from, place)) continue;
+        const e3 = e.GetEstimatedDamageToTarget(true, bot, 3, DamageType.All);
+        const e6 = e.GetEstimatedDamageToTarget(true, bot, 6, DamageType.All);
+        const atk = e.GetAttackTarget() === bot ? 1 : 0;
+        const eng = bot.WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) ? 1 : 0;
+        // The spot's record: pid,x,y,hp,range,hull,speed,atk,eng,e3,e6,illusion
+        he.push([e.GetPlayerID(), f(l.x), f(l.y), f(e.GetHealth()), f(e.GetAttackRange()), f(e.GetBoundingRadius()), f(e.GetCurrentMovementSpeed()), atk, eng, f(e3), f(e6), ill ? 1 : 0].join(","));
+    }
+    const hu: string[] = [];
+    for (let p = 0; p <= MAX_PLAYER_ID; p++) {
+        if (GetTeamForPlayer(p) !== enemyTeam || visible[p] === true || !IsHeroAlive(p)) continue;
+        const info = GetHeroLastSeenInfo(p)[0];
+        if (info === undefined) continue;
+        hu.push([p, f(info.location.x), f(info.location.y), math.floor(info.time_since_seen * 10 + 0.5) / 10, f(Threat.SeenSpeed(p))].join(","));
+    }
+    const ha: string[] = [];
+    for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
+        if (!live(a) || a === bot || a.IsIllusion()) continue;
+        const l = a.GetLocation();
+        if (!nearWalk(l, from, place)) continue;
+        ha.push([a.GetPlayerID(), f(l.x), f(l.y), f(a.GetAttackRange()), f(a.GetBoundingRadius()), f(a.GetCurrentMovementSpeed()), RetreatState.Running(a) ? 1 : 0].join(","));
+    }
+    const unused: string[] = [];
+    const ta = `${towersNow(team, bot, at, at, unused)},${towersNow(enemyTeam, bot, at, at, unused)}`;
+    Telemetry.Event("cut", [
+        ["pid", pid],
+        ["kind", "gate"],
+        ["who", consumer],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0].join(",")],
+        ["fm", `${f(from.x)},${f(from.y)}`],
+        ["pl", `${f(place.x)},${f(place.y)}`],
+        ["he", he.join(";")],
+        ["hu", hu.length > 0 ? hu.join(";") : undefined],
+        ["ha", ha.length > 0 ? ha.join(";") : undefined],
+        ["ta", ta],
+        ["vw", hu.length > 0 ? walkVision(from, place) : undefined],
+    ]);
+}
+
+Threat.SetGateCut(Gate);

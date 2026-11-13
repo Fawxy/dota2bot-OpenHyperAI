@@ -1728,6 +1728,9 @@
    "pid": "num",
    "kind": "str",
    "role": "str",
+   "who": "str",
+   "fm": "str",
+   "pl": "str",
    "lane": "num",
    "b": "str",
    "fr": "str",
@@ -1738,7 +1741,8 @@
    "ha": "str",
    "ta": "str",
    "tt": "str",
-   "vis": "str"
+   "vis": "str",
+   "vw": "str"
   },
   "cut_creeps": {
    "pid": "num",
@@ -2310,6 +2314,9 @@
   "ev_cut": {
    "kind": "text",
    "role": "text",
+   "who": "text",
+   "fm": "text",
+   "pl": "text",
    "b": "text",
    "fr": "text",
    "hold": "text",
@@ -2318,7 +2325,8 @@
    "ha": "text",
    "ta": "text",
    "tt": "text",
-   "vis": "text"
+   "vis": "text",
+   "vw": "text"
   },
   "ev_cut_creeps": {
    "ce": "text",

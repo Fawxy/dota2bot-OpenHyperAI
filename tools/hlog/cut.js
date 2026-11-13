@@ -2,9 +2,11 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--game N] [--id ID]   print a fixture (YAML) for the cut at or just before t
-//   node cut.js <log> --check [--game N] [--sample 150] [--json]   replay a sample of the game's cuts through the
-//       decision's driver and compare with what the game logged beside them (kind spot: ev=lane_pos sx, sy, why, rp)
+//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate] [--who CONSUMER] [--game N] [--id ID]   print a fixture (YAML) for
+//       the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
+//   node cut.js <log> --check [--kind spot|gate] [--game N] [--sample 150] [--json]   replay a sample of the game's cuts of
+//       one kind (default spot) through the decision's driver and compare with what the game logged beside them
+//       (spot: ev=lane_pos sx, sy, why, rp; gate: the ev=threat dec, go or threat or missing)
 // --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped).
 const fs = require('fs'), path = require('path');
 const { newState, doFile, doString, getGlobal } = require('../../tests/humaniser/harness');
@@ -22,7 +24,7 @@ function fields(text) {
     return out;
 }
 
-/** The log's games, each { cuts, creeps, lanePos, bots, towers } keyed for joining by pid and t. */
+/** The log's games, each { cuts, creeps, lanePos, threats, bots, towers } keyed for joining by pid and t (threats also by consumer). */
 function readGames(text) {
     const games = [];
     let g, last = -Infinity;
@@ -35,7 +37,7 @@ function readGames(text) {
         if (!Number.isFinite(t)) continue;
         if (g === undefined || t < last - GAME_SPLIT) {
             // Tower places do not move: a pregame line split off by a clock jump still serves the game after it.
-            g = { cuts: [], creeps: new Map(), lanePos: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
+            g = { cuts: [], creeps: new Map(), lanePos: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
             games.push(g);
         }
         last = t;
@@ -43,6 +45,7 @@ function readGames(text) {
         if (f.ev === 'cut') g.cuts.push(f);
         else if (f.ev === 'cut_creeps') g.creeps.set(key, f);
         else if (f.ev === 'lane_pos') g.lanePos.set(key, f);
+        else if (f.ev === 'threat') g.threats.set(`${key}@${f.who}`, f);
         else if (f.ev === 'bot' && !g.bots.has(f.pid)) g.bots.set(f.pid, f);
         else if (f.ev === 'cut_towers' && !g.towers.has(f.team)) g.towers.set(f.team, f);
     }
@@ -65,20 +68,11 @@ function oursOf(bot) {
     return out;
 }
 
-/** The fixture world for one ev=cut line (kind spot), or throws naming what the log lacks. */
-function worldOf(game, cut) {
-    if (cut.kind !== 'spot') throw new Error(`no world builder for kind ${cut.kind}`);
-    const key = `${cut.pid}@${cut.t}`;
-    const cc = game.creeps.get(key);
-    if (!cc) throw new Error(`no ev=cut_creeps for pid ${cut.pid} at ${cut.t}`);
-    const bot = game.bots.get(cut.pid);
-    if (!bot) throw new Error(`no ev=bot for pid ${cut.pid}`);
-    const team = Number(bot.team);
+/** The standing towers of both teams for a cut's `ta` masks (own, enemy), with the attack targets `tt` gives. */
+function towersOf(game, team, ta, tt) {
     const enemy = team === 2 ? 3 : 2;
-    const [bx, by, hp, mhp, range, hull, speed, esc] = nums(cut.b);
-    const [fx, fy, fbx, fby] = nums(cut.fr);
-    const [ownMask, enemyMask] = String(cut.ta).split(',').map(h => parseInt(h, 16));
-    const targets = new Map(records(cut.tt).map(([t, i, tgt]) => [`${t}:${i}`, tgt]));
+    const [ownMask, enemyMask] = String(ta).split(',').map(h => parseInt(h, 16));
+    const targets = new Map(records(tt).map(([t, i, tgt]) => [`${t}:${i}`, tgt]));
     const towers = [];
     for (const [t, mask] of [[team, ownMask], [enemy, enemyMask]]) {
         const line = game.towers.get(String(t));
@@ -88,16 +82,51 @@ function worldOf(game, cut) {
             towers.push({ team: t, i, x, y, range: r, hull: h, tgt: targets.get(`${t}:${i}`) || '-' });
         }
     }
+    return towers;
+}
+
+const heroRecords = s => records(s).map(([pid, x, y, hp, r, h, sp, atk, eng, e3, e6, ill]) =>
+    ({ pid: +pid, x: +x, y: +y, hp: +hp, range: +r, hull: +h, speed: +sp, atk: +atk, eng: +eng, e3: +e3, e6: +e6, ill: +ill }));
+const unseenRecords = s => records(s).map(([pid, x, y, tss, sp]) => ({ pid: +pid, x: +x, y: +y, tss: +tss, sp: +sp }));
+const allyRecords = s => records(s).map(([pid, x, y, r, h, sp, ret]) => ({ pid: +pid, x: +x, y: +y, range: +r, hull: +h, speed: +sp, ret: +ret }));
+
+/** The fixture world for one ev=cut line of kind `gate`: the walk, the heroes, the towers and the walk's vision. */
+function gateWorld(game, cut) {
+    const bot = game.bots.get(cut.pid);
+    if (!bot) throw new Error(`no ev=bot for pid ${cut.pid}`);
+    const team = Number(bot.team);
+    const [bx, by, hp, mhp, range, hull, speed, esc] = nums(cut.b);
+    const [fx, fy] = nums(cut.fm), [px, py] = nums(cut.pl);
+    const w = {
+        t: Number(cut.t), team, pid: Number(cut.pid), who: cut.who, ours: oursOf(bot),
+        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc },
+        from: { x: fx, y: fy }, place: { x: px, y: py },
+        he: heroRecords(cut.he), hu: unseenRecords(cut.hu), ha: allyRecords(cut.ha),
+        towers: towersOf(game, team, cut.ta, undefined),
+    };
+    if (cut.vw !== undefined) { const [n, hex] = cut.vw.split(','); w.vw = { n: +n, hex }; }
+    return w;
+}
+
+/** The fixture world for one ev=cut line, or throws naming what the log lacks. */
+function worldOf(game, cut) {
+    if (cut.kind === 'gate') return gateWorld(game, cut);
+    if (cut.kind !== 'spot') throw new Error(`no world builder for kind ${cut.kind}`);
+    const key = `${cut.pid}@${cut.t}`;
+    const cc = game.creeps.get(key);
+    if (!cc) throw new Error(`no ev=cut_creeps for pid ${cut.pid} at ${cut.t}`);
+    const bot = game.bots.get(cut.pid);
+    if (!bot) throw new Error(`no ev=bot for pid ${cut.pid}`);
+    const team = Number(bot.team);
+    const [bx, by, hp, mhp, range, hull, speed, esc] = nums(cut.b);
+    const [fx, fy, fbx, fby] = nums(cut.fr);
     const w = {
         t: Number(cut.t), team, pid: Number(cut.pid), role: cut.role, lane: Number(cut.lane), ours: oursOf(bot),
         bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc },
         front: { x: fx, y: fy, bx: fbx, by: fby },
         ce: creepList(cc.ce), ca: creepList(cc.ca),
-        he: records(cut.he).map(([pid, x, y, hp2, r, h, sp, atk, eng, e3, e6, ill]) =>
-            ({ pid: +pid, x: +x, y: +y, hp: +hp2, range: +r, hull: +h, speed: +sp, atk: +atk, eng: +eng, e3: +e3, e6: +e6, ill: +ill })),
-        hu: records(cut.hu).map(([pid, x, y, tss, sp]) => ({ pid: +pid, x: +x, y: +y, tss: +tss, sp: +sp })),
-        ha: records(cut.ha).map(([pid, x, y, r, h, sp, ret]) => ({ pid: +pid, x: +x, y: +y, range: +r, hull: +h, speed: +sp, ret: +ret })),
-        towers,
+        he: heroRecords(cut.he), hu: unseenRecords(cut.hu), ha: allyRecords(cut.ha),
+        towers: towersOf(game, team, cut.ta, cut.tt),
     };
     if (cut.fed !== undefined) w.fed = Number(cut.fed);
     if (cut.hold !== undefined) { const [x, y] = nums(cut.hold); w.hold = { x, y }; }
@@ -129,8 +158,20 @@ function clock(s) {
 }
 const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
-/** One cut against its ev=lane_pos: { same, why, rp, d } or { error }. */
+/** One gate cut against the ev=threat the gate logged for it: { same, got, want } or { error }. */
+function checkGate(game, cut, root) {
+    const th = game.threats.get(`${cut.pid}@${cut.t}@${cut.who}`);
+    if (!th) return { error: 'no ev=threat beside it' };
+    let obs;
+    try { obs = replay('threat_gate', worldOf(game, cut), root); } catch (e) { return { error: String(e.message).split('\n')[0] }; }
+    const a = obs.actions[0];
+    const got = a.verb === 'hold' ? a.target : 'go';
+    return { same: got === th.dec, got, want: th.dec, reach: obs.fact.reach, missing: obs.fact.missing, wantReach: Number(th.reach), wantMiss: Number(th.miss) };
+}
+
+/** One cut against what the game logged beside it: spot { same, why, rp, d }, gate { same, got, want }, or { error }. */
 function checkOne(game, cut, root) {
+    if (cut.kind === 'gate') return checkGate(game, cut, root);
     const lp = game.lanePos.get(`${cut.pid}@${cut.t}`);
     if (!lp) return { error: 'no ev=lane_pos beside it' };
     let obs;
@@ -151,33 +192,48 @@ function main(argv) {
     const games = readGames(fs.readFileSync(log, 'utf8'));
     const gi = opt('--game') !== undefined ? Number(opt('--game')) - 1 : games.length - 1;
     const game = games[gi];
-    if (!game || !game.cuts.length) { console.error(`no ev=cut lines in game ${gi + 1} of ${log}`); process.exit(1); }
+    const kind = opt('--kind', 'spot');
+    const cuts = game ? game.cuts.filter(c => c.kind === kind) : [];
+    if (!cuts.length) { console.error(`no ev=cut kind=${kind} lines in game ${gi + 1} of ${log}`); process.exit(1); }
     const root = opt('--root');
+    const who = opt('--who');
+    const pool = who === undefined ? cuts : cuts.filter(c => c.who === who);
     if (argv.includes('--check')) {
         const n = Number(opt('--sample', 150));
-        const step = Math.max(1, Math.floor(game.cuts.length / n));
+        const step = Math.max(1, Math.floor(pool.length / n));
         const rows = [];
-        for (let i = 0; i < game.cuts.length && rows.length < n; i += step) rows.push({ cut: game.cuts[i], r: checkOne(game, game.cuts[i], root) });
+        for (let i = 0; i < pool.length && rows.length < n; i += step) rows.push({ cut: pool[i], r: checkOne(game, pool[i], root) });
         const ok = rows.filter(x => x.r.same).length, errs = rows.filter(x => x.r.error);
-        const summary = { cuts: game.cuts.length, checked: rows.length, same: ok, errors: errs.length,
-            why: rows.filter(x => x.r.why).length, read: rows.filter(x => x.r.rp).length, near: rows.filter(x => x.r.d <= SAME_SPOT).length };
+        const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length };
+        if (kind === 'gate') {
+            summary.byDecision = {};
+            for (const { r } of rows) if (!r.error) { const d = summary.byDecision[r.want] ||= { checked: 0, same: 0 }; d.checked++; if (r.same) d.same++; }
+        } else Object.assign(summary, { why: rows.filter(x => x.r.why).length, read: rows.filter(x => x.r.rp).length, near: rows.filter(x => x.r.d <= SAME_SPOT).length });
         if (argv.includes('--json')) { console.log(JSON.stringify({ summary, rows }, null, 1)); return; }
-        console.log(`cuts ${summary.cuts}, checked ${summary.checked}: same spot, limit and read ${ok}; spot within ${SAME_SPOT} ${summary.near}, limit ${summary.why}, read ${summary.read}; errors ${summary.errors}`);
+        if (kind === 'gate') {
+            const by = Object.entries(summary.byDecision).map(([d, v]) => `${d} ${v.same}/${v.checked}`).join(', ');
+            console.log(`gate cuts ${summary.cuts}, checked ${summary.checked}: same decision ${ok} (${by}); errors ${summary.errors}`);
+        } else console.log(`cuts ${summary.cuts}, checked ${summary.checked}: same spot, limit and read ${ok}; spot within ${SAME_SPOT} ${summary.near}, limit ${summary.why}, read ${summary.read}; errors ${summary.errors}`);
         for (const { cut, r } of rows.filter(x => !x.r.same).slice(0, 15)) {
-            console.log(`  pid ${cut.pid} t=${cut.t} (${mmss(Number(cut.t))}): ${r.error || `off by ${r.d.toFixed(0)}, replay ${r.got}, game ${r.want}`}`);
+            const what = r.error || (kind === 'gate' ? `${cut.who}: replay ${r.got}, game ${r.want} (reach ${r.reach} vs ${r.wantReach}, missing ${r.missing} vs ${r.wantMiss})`
+                : `off by ${r.d.toFixed(0)}, replay ${r.got}, game ${r.want}`);
+            console.log(`  pid ${cut.pid} t=${cut.t} (${mmss(Number(cut.t))}): ${what}`);
         }
         return;
     }
     const pid = opt('--pid'), t = clock(opt('--t'));
-    const mine = game.cuts.filter(c => c.pid === pid && Number(c.t) <= t + 1e-6);
-    if (!mine.length) { console.error(`no ev=cut for pid ${pid} at or before ${opt('--t')}`); process.exit(1); }
+    const mine = pool.filter(c => c.pid === pid && Number(c.t) <= t + 1e-6);
+    if (!mine.length) { console.error(`no ev=cut kind=${kind} for pid ${pid} at or before ${opt('--t')}`); process.exit(1); }
     const cut = mine[mine.length - 1];
     const world = worldOf(game, cut);
-    const id = opt('--id', `lane.spot.cut-${pid}-${Math.floor(Number(cut.t))}.001`);
-    const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
+    const gate = kind === 'gate';
+    const th = gate ? game.threats.get(`${cut.pid}@${cut.t}@${cut.who}`) || {} : {};
+    const lp = gate ? {} : game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
+    const id = opt('--id', gate ? `gate.${cut.who}.cut-${pid}-${Math.floor(Number(cut.t))}.001` : `lane.spot.cut-${pid}-${Math.floor(Number(cut.t))}.001`);
+    const game_said = gate ? `${th.dec} (reach ${th.reach}, miss ${th.miss}, tower ${th.tower})` : `${lp.why}/${lp.rp} at (${lp.sx}, ${lp.sy})`;
     const lines = [
-        `id: ${id}`, 'source: log', `ref: {log: ${path.basename(log)}, t: ${cut.t}}`, 'status: quarantined', 'decision: lane_spot',
-        `# Cut by tools/hlog/cut.js. The game chose ${lp.why}/${lp.rp} at (${lp.sx}, ${lp.sy}); write the right action, not this.`,
+        `id: ${id}`, 'source: log', `ref: {log: ${path.basename(log)}, t: ${cut.t}}`, 'status: quarantined', `decision: ${gate ? 'threat_gate' : 'lane_spot'}`,
+        `# Cut by tools/hlog/cut.js. The game chose ${game_said}; write the right action, not this.`,
         'world:',
         ...Object.entries(world).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`),
         'expect:', '  must: []', 'notes: >', '  TODO: the situation, and why the expectation is the right action.',
