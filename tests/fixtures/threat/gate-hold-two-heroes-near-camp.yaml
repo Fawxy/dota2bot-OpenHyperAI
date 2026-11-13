@@ -21,4 +21,4 @@ world:
 expect:
   must: ["hold(threat)"]
 notes: >
-  Radiant pos 4 (pid 0) at 79% HP, 1,200 from its pull camp, with two enemy heroes (a Dire core and a support, 1,300-1,500 from the camp) in sight and one ally behind it. Both can reach the camp inside 4 s; a support who walks to the camp holds on a visible hero in reach, so the right action is to hold the pull (the game held it too, threat, reach 2).
+  Radiant pos 4 (pid 0) at 80% HP, 1,200 from its pull camp, with two enemy heroes (a Dire core and a support, 1,450 and 1,700 from the camp) in sight and one ally behind it. Both can reach the camp inside 4 s; a support who walks to the camp holds on a visible hero in reach, so the right action is to hold the pull (the game held it too, threat, reach 2).

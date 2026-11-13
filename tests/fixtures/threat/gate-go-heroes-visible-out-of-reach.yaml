@@ -21,4 +21,4 @@ expect:
   must: ["go"]
   mustNot: ["hold(threat)"]
 notes: >
-  Control for the opposite rule: Dire pos 5 (pid 5) at full HP with two Radiant heroes in sight 1,100-1,500 from it, but 2,700 and 3,100 from the camp it would pull, to the east, and its ally beside it. Neither can reach the camp in 4 s (run 1,300 plus range), so a hold here would stop every pull a visible enemy lane could ever block. Going is right; the walk leads away from them.
+  Control for the opposite rule: Dire pos 5 (pid 5) at full HP with two Radiant heroes in sight 1,100-1,500 from it, but 2,700 and 3,100 from the camp it would pull, to the east, and its ally beside it. Neither can reach the camp in 4 s (run 1,300 plus range), so a hold here would stop every pull a visible enemy lane could ever block. Going is right. A support's gate reads the camp alone (its walk is the camp to itself), so where the bot stands does not count.

@@ -1342,12 +1342,13 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `pl` str
+`pid` num
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat).
 - `role` str: The spot's role input: `core` or `support`.
 - `who` str: `gate`: the consumer that asked (ev=threat `who`).
-- `fm` str: `gate`: the walk's start and end, x,y each (Threat.Gate's `from` and `place`).
+- `fm` str: `gate`: the walk's start, x,y (Threat.Gate's `from`).
+- `pl` str: `gate`: the walk's end, x,y (the camp or place the trip goes to).
 - `lane` num: The bot's assigned lane.
 - `b` str: The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready.
 - `fr` str: GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y.

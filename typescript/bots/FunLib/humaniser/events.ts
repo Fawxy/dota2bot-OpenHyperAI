@@ -2648,8 +2648,9 @@ export const EVENTS = {
         role: "str",
         /** `gate`: the consumer that asked (ev=threat `who`). */
         who: "str",
-        /** `gate`: the walk's start and end, x,y each (Threat.Gate's `from` and `place`). */
+        /** `gate`: the walk's start, x,y (Threat.Gate's `from`). */
         fm: "str",
+        /** `gate`: the walk's end, x,y (the camp or place the trip goes to). */
         pl: "str",
         /** The bot's assigned lane. */
         lane: "num",

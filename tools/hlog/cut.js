@@ -182,6 +182,15 @@ function checkOne(game, cut, root) {
     return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.rp}` };
 }
 
+// Threat.Gate's consumers (ev=threat `who`); core_pull and lane_ctl call Threat.Log directly and have no gate cut.
+const GATE_WHO = new Set(['core_camp', 'pull_farm', 'pull_job', 'sup_job', 'farm_trip']);
+
+/** Gate decisions logged with no gate cut beside them: a cut that throws is swallowed by the game's pcall and shows only so. */
+function uncutGates(game, who) {
+    const cutKeys = new Set(game.cuts.filter(c => c.kind === 'gate').map(c => `${c.pid}@${c.t}@${c.who}`));
+    return [...game.threats].filter(([k, th]) => GATE_WHO.has(th.who) && (who === undefined || th.who === who) && !cutKeys.has(k)).length;
+}
+
 function main(argv) {
     const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
     const log = argv.find((a, i) => !a.startsWith('--') && (i === 0 || !argv[i - 1].startsWith('--')));
@@ -206,13 +215,14 @@ function main(argv) {
         const ok = rows.filter(x => x.r.same).length, errs = rows.filter(x => x.r.error);
         const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length };
         if (kind === 'gate') {
+            summary.uncut = uncutGates(game, who);
             summary.byDecision = {};
             for (const { r } of rows) if (!r.error) { const d = summary.byDecision[r.want] ||= { checked: 0, same: 0 }; d.checked++; if (r.same) d.same++; }
         } else Object.assign(summary, { why: rows.filter(x => x.r.why).length, read: rows.filter(x => x.r.rp).length, near: rows.filter(x => x.r.d <= SAME_SPOT).length });
         if (argv.includes('--json')) { console.log(JSON.stringify({ summary, rows }, null, 1)); return; }
         if (kind === 'gate') {
             const by = Object.entries(summary.byDecision).map(([d, v]) => `${d} ${v.same}/${v.checked}`).join(', ');
-            console.log(`gate cuts ${summary.cuts}, checked ${summary.checked}: same decision ${ok} (${by}); errors ${summary.errors}`);
+            console.log(`gate cuts ${summary.cuts}, checked ${summary.checked}: same decision ${ok} (${by}); errors ${summary.errors}; gate decisions without a cut ${summary.uncut}`);
         } else console.log(`cuts ${summary.cuts}, checked ${summary.checked}: same spot, limit and read ${ok}; spot within ${SAME_SPOT} ${summary.near}, limit ${summary.why}, read ${summary.read}; errors ${summary.errors}`);
         for (const { cut, r } of rows.filter(x => !x.r.same).slice(0, 15)) {
             const what = r.error || (kind === 'gate' ? `${cut.who}: replay ${r.got}, game ${r.want} (reach ${r.reach} vs ${r.wantReach}, missing ${r.missing} vs ${r.wantMiss})`
@@ -242,4 +252,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { readGames, worldOf, replay, checkOne };
+module.exports = { readGames, worldOf, replay, checkOne, uncutGates };

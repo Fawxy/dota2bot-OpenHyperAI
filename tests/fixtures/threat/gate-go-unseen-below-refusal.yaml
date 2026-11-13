@@ -22,4 +22,4 @@ expect:
   must: ["go"]
   mustNot: ["hold(threat)", "hold(missing)"]
 notes: >
-  Dire pos 4 (pid 6) at 85% HP, by its pull camp with an ally beside it, 4:39. No enemy hero in sight; two have been unseen for 30 and 37 s, last placed 1,400 and 1,000 from the camp, and the belief weighs them 0.125 each (0.25, under the 0.5 refusal). A long-unseen hero's presence is a likelihood, not a sighting: going is right.
+  Dire pos 4 (pid 6) at 85% HP, 1,560 from its pull camp with an ally beside it, 4:39. No enemy hero in sight within 3,000 of the camp (the cut lists no others); two have been unseen for 30 and 37 s, last placed 1,400 and 1,000 from the camp, and the belief weighs them 0.125 each (0.25, under the 0.5 refusal). A long-unseen hero's presence is a likelihood, not a sighting: going is right.
