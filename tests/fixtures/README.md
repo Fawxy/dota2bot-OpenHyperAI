@@ -49,9 +49,10 @@ does produce the action when the condition is absent; otherwise it passes when t
 | `core_trip` | `FarmPattern.StartGate` then `Desire` (`farm_world.lua`) | `noTrip(<reason>)`, `trip(camp#)` |
 | `support_claim` | `states/lane_claims` `SupportClaim` for one creep, the cores' `laneTargets` and laning attempts given (`lane_world_fixture.lua`) | `claim(<deny\|free\|busy>)`, `noClaim` |
 | `lane_spot` | `LaneSpot.Compute` and its `Threat.Read`, on a world cut from a game (`tools/hlog/cut.js` from `ev=cut kind=spot`; real map and lane paths) | `stand(<why>)`, `anchor(<anchor>)`, `read(<none\|burst\|missing\|threat>)` (the read at the preferred point); `fact.x`, `fact.y`, `fact.pushed`, `fact.burst`, `fact.threat`, `fact.missing` |
+| `retreat_leave` | `retreat.LeaveWhy` and the `Threat.Read` it decides on, on a world cut from a game (`ev=cut kind=leave`, `cut.js --kind leave`; the hold timer and `Profile.ThreatHold` as logged) | `leave(<lethal\|tower\|heal\|threat>)`, `stay(<under\|even\|hold>)`; `fact.threat`, `fact.burst`, `fact.reach`, `fact.eng`, `fact.budget`, `fact.over`, `fact.hp` |
 
-A cut fixture's world is the game's, not hand-built: `node tools/hlog/cut.js <log> --pid P --t m:ss` prints one with an
-empty `expect` for the author to fill; `--check` replays a game's cuts and compares them with what it logged.
+A cut fixture's world is the game's, not hand-built: `node tools/hlog/cut.js <log> --pid P --t m:ss [--kind spot|leave]` prints one with an
+empty `expect` for the author to fill; `--check [--kind K]` replays a game's cuts and compares them with what it logged.
 
 The verbs are this runner's vocabulary until behaviour contracts exist (`docs/contracts/`); they move there then. The
 worlds are the hand-built test worlds the unit tests already use, so a driver adds no new simulation.
