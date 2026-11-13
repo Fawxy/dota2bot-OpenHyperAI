@@ -1142,10 +1142,10 @@ Slice core-next-gold (CoreCamp): an in-lane core's camp trip. phase start, next 
 
 One line per rune or wisdom trip (`Ours.RuneRotation`; OHA has none) or per trip it did not start (`res=skip`). View `rune_jobs` reads it.
 
-`pid` num, `away` num
+`pid` num, `away` num, `rs1` str, `y` num
 
 - `pos` num: The hero's lineup position.
-- `kind` str: `power`, `wisdom` or `contest` (the enemy shrine play's trip).
+- `kind` str: `power`, `wisdom`, `contest` (the enemy shrine play's trip) or `water` (the mid's 2:00 and 4:00 trips, `Ours.MidWater`).
 - `spawn` num: The rune's game time.
 - `res` str: `ok`, `fail` or `skip`.
 - `why` str: The `runeRun` verb's end reason (`ok`, `no_target:rune missing`, `timeout:late`, `preempted:mode=N`, `cancelled:retreat`, `cancelled:off`, `missed`) or, on a skip, the gate that held it (`late`, `low-hp`, `enemy-near`, `hit`, `busy`, `acting`, a higher job's name, `dead`, `refused`, `plan-other`).
@@ -1171,6 +1171,8 @@ One line per rune or wisdom trip (`Ours.RuneRotation`; OHA has none) or per trip
 - `vpts` str: The waypoints as `x,y;x,y;...`.
 - `play` num: The id of the play this trip ran on.
 - `gank` num: The id of the gank rolled after it.
+- `rs0` str: A river-rune trip: both river spots as the API reported them when the pickup began (`rs0`) and at the trip's end (`rs1`), `RUNE_POWERUP_1` first, each `<GetRuneStatus>:<GetRuneType>`.
+- `x` num: Where the hero stood at the trip's end.
 
 ## pull_clear
 

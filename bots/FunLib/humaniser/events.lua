@@ -1409,7 +1409,11 @@ ____exports.EVENTS = {
         vbad = "num",
         vpts = "str",
         play = "num",
-        gank = "num"
+        gank = "num",
+        rs0 = "str",
+        rs1 = "str",
+        x = "num",
+        y = "num"
     },
     pull_clear = {
         pid = "num",

@@ -1546,7 +1546,11 @@
    "vbad": "num",
    "vpts": "str",
    "play": "num",
-   "gank": "num"
+   "gank": "num",
+   "rs0": "str",
+   "rs1": "str",
+   "x": "num",
+   "y": "num"
   },
   "pull_clear": {
    "pid": "num",
@@ -2281,7 +2285,9 @@
    "side": "text",
    "phase": "text",
    "route": "text",
-   "vpts": "text"
+   "vpts": "text",
+   "rs0": "text",
+   "rs1": "text"
   },
   "ev_pull_clear": {
    "phase": "text",

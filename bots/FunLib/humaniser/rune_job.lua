@@ -127,7 +127,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local planned, key, calendarLeave, powerRunes, takenSpots, powerSpot, planFor, leaveAt, edgeVia, pathAge, closestOn, tripFor, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, paths, rejected, body, playFight
+local riverNow, planned, key, calendarLeave, powerRunes, takenSpots, powerSpot, planFor, leaveAt, edgeVia, pathAge, closestOn, tripFor, dropFromPlan, canStillArrive, nearestEnemy, offerGank, running, handled, paths, rejected, body, playFight
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Rune = ____dota.Rune
@@ -144,6 +144,15 @@ local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+function riverNow()
+    return table.concat(
+        __TS__ArrayMap(
+            {Rune.Power1, Rune.Power2},
+            function(____, r) return (tostring(GetRuneStatus(r)) .. ":") .. tostring(GetRuneType(r)) end
+        ),
+        ","
+    )
+end
 --- A support with a stack open that minute is not free for the 6:00 plan (pos5's trip yields to its stack).
 function ____exports.Busy(u)
     return LaneConfig.PositionOf(u) == 5 and StackJob.Pending(u)
@@ -208,20 +217,20 @@ function takenSpots(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue35
+                local __continue37
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot then
-                        __continue35 = true
+                        __continue37 = true
                         break
                     end
                     local t = running[m:GetPlayerID()]
                     if t ~= nil and t.rune ~= nil then
                         out[t.rune] = true
                     end
-                    __continue35 = true
+                    __continue37 = true
                 until true
-                if not __continue35 then
+                if not __continue37 then
                     break
                 end
             end
@@ -255,7 +264,7 @@ function planFor(t)
             pickupFor = 20
         }
     end
-    return {at = t.at, spawnAt = t.spawn, rune = t.rune, lateBy = ____exports.SETTINGS.LateBy.power}
+    return {at = t.at, spawnAt = t.spawn, rune = t.rune, lateBy = ____exports.SETTINGS.LateBy[t.kind]}
 end
 function leaveAt(bot, t)
     if t.stand ~= nil then
@@ -322,10 +331,10 @@ function ____exports.PathVia(bot, to)
                 local args = {...}
                 for ____, a in ipairs(args) do
                     do
-                        local __continue54
+                        local __continue56
                         repeat
                             if type(a) ~= "table" then
-                                __continue54 = true
+                                __continue56 = true
                                 break
                             end
                             local wp = a
@@ -334,9 +343,9 @@ function ____exports.PathVia(bot, to)
                             else
                                 rejected[pid] = (rejected[pid] or 0) + 1
                             end
-                            __continue54 = true
+                            __continue56 = true
                         until true
-                        if not __continue54 then
+                        if not __continue56 then
                             break
                         end
                     end
@@ -496,6 +505,9 @@ body = __TS__Generator(function(bot, t, ctx)
             if (l == "wait" or l == "channel" or l == "decide") and t.arr == nil then
                 t.arr = DotaTime()
             end
+            if l == "pickup" and t.rune ~= nil then
+                t.seen = riverNow()
+            end
         end,
         urgent = ctx.urgent
     }
@@ -635,8 +647,8 @@ ____exports.SETTINGS = {
     CalendarBack = 10,
     StartSlack = 3,
     PathFactor = 1.2,
-    LateBy = {power = 5, wisdom = 15, contest = 15},
-    OwnFor = {power = Runes.RUNE_RULES.power.every, wisdom = Runes.RUNE_RULES.wisdom.every, contest = 0},
+    LateBy = {power = 5, wisdom = 15, contest = 15, water = 5},
+    OwnFor = {power = Runes.RUNE_RULES.power.every, wisdom = Runes.RUNE_RULES.wisdom.every, contest = 0, water = 0},
     ShrineChannel = 3,
     ShrineRadius = 300,
     GankReach = 4000,
@@ -694,19 +706,19 @@ local function open(bot)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue12
+            local __continue14
             repeat
                 if kind == "contest" and not RunePlan.On() then
-                    __continue12 = true
+                    __continue14 = true
                     break
                 end
                 local ____opt_0 = handled[pid]
                 if (____opt_0 and ____opt_0[key(kind, spawn)]) ~= true and now >= spawn - ____exports.SETTINGS.ClaimFrom and now < spawn + ____exports.SETTINGS.LateBy[kind] then
                     out[#out + 1] = {kind, spawn}
                 end
-                __continue12 = true
+                __continue14 = true
             until true
-            if not __continue12 then
+            if not __continue14 then
                 break
             end
         end
@@ -739,10 +751,10 @@ function ____exports.CalendarEntries(bot, now)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue20
+            local __continue22
             repeat
                 if kind == "contest" and not RunePlan.On() then
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 local back = spawn + ____exports.SETTINGS.CalendarBack + walk
@@ -756,12 +768,12 @@ function ____exports.CalendarEntries(bot, now)
                         fixed = true,
                         running = true
                     }
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 local ____opt_2 = handled[pid]
                 if (____opt_2 and ____opt_2[key(kind, spawn)]) == true or now >= spawn + ____exports.SETTINGS.LateBy[kind] then
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 local ____temp_4
@@ -772,7 +784,7 @@ function ____exports.CalendarEntries(bot, now)
                 end
                 local leave = ____temp_4
                 if leave == false then
-                    __continue20 = true
+                    __continue22 = true
                     break
                 end
                 out[#out + 1] = {
@@ -783,9 +795,9 @@ function ____exports.CalendarEntries(bot, now)
                     back = back,
                     fixed = true
                 }
-                __continue20 = true
+                __continue22 = true
             until true
-            if not __continue20 then
+            if not __continue22 then
                 break
             end
         end
@@ -941,7 +953,23 @@ local function finish(bot, t, r, label)
     local ____opt_27 = t.play or t.fight
     __TS__SparseArrayPush(____array_31, {"play", ____opt_27 and ____opt_27.id})
     local ____opt_29 = t.gank
-    __TS__SparseArrayPush(____array_31, {"gank", ____opt_29 and ____opt_29.id})
+    __TS__SparseArrayPush(
+        ____array_31,
+        {"gank", ____opt_29 and ____opt_29.id},
+        {"rs0", t.seen},
+        {
+            "rs1",
+            t.rune ~= nil and riverNow() or nil
+        },
+        {
+            "x",
+            math.floor(bot:GetLocation().x)
+        },
+        {
+            "y",
+            math.floor(bot:GetLocation().y)
+        }
+    )
     __TS__SparseArrayPush(
         ____array_32,
         {__TS__SparseArraySpread(____array_31)}
@@ -973,7 +1001,7 @@ function ____exports.Wants(bot, blocked, host)
         local kind = ____value[1]
         local spawn = ____value[2]
         do
-            local __continue88
+            local __continue90
             repeat
                 local mine
                 local function skip(why)
@@ -990,12 +1018,12 @@ function ____exports.Wants(bot, blocked, host)
                         return skip("dead")
                     end
                     gateWhy[pid] = "dead"
-                    __continue88 = true
+                    __continue90 = true
                     break
                 end
                 if planned(kind, spawn) then
                     if DotaTime() < RunePlan.SETTINGS.PlanAt then
-                        __continue88 = true
+                        __continue90 = true
                         break
                     end
                     mine = RunePlan.SpotOf(bot, ____exports.Busy)
@@ -1064,7 +1092,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
-            if not __continue88 then
+            if not __continue90 then
                 break
             end
         end
@@ -1075,9 +1103,37 @@ end
 -- beat it; its HIGH and VERYHIGH returns (0.8, 0.9) lose once the trip runs (it starts only at MidMinHp or more).
 ____exports.MID_DESIRE = 0.97
 local MID_HOST = BotMode.Rune
---- Ours.RuneSpawn, the mid's side of the 6:00 plan, every frame from the rune mode's GetDesire: true while its trip runs or
--- as it starts (the mode then returns MidDesire and steps it in Think). Not a chooser job: the mid has no other jobs, and
--- the rune mode is the mode Valve would give a rune walk.
+--- Ours.MidWater: the mid's water spawns are its own trips (the 6:00 plan's prerequisites; a drill's held hero never).
+local function midWaterOn(bot)
+    return Ours.On("MidWater") and RunePlan.On() and bot:IsBot() and LaneConfig.PositionOf(bot) == 2 and not Drill.Held(bot) and Drill.ForcedJob(bot) == nil
+end
+--- The mid's spawns in time order: with Ours.MidWater each water spawn (RUNE_RULES.water: 2:00 and 4:00), then the 6:00 plan's.
+local function midSpawns(bot)
+    local out = {}
+    local w = Runes.RUNE_RULES.water
+    if midWaterOn(bot) then
+        do
+            local s = w.first
+            while s <= (w.last or w.first) do
+                out[#out + 1] = {"water", s}
+                s = s + w.every
+            end
+        end
+    end
+    out[#out + 1] = {"power", RunePlan.SETTINGS.Spawn}
+    return out
+end
+--- Ours.MidWater: until the 6:00 plan takes over (RunePlan.OwnsMid), the mid's river runes are these trips' to decide, taken
+-- or skipped: OHA's power and water branch stands aside. Its bottle branch walked a mid to an unseen spot and its own
+-- `power2_spot` guard dropped the desire within 80 of it, in a loop (fact3, 13/11/2026, pid 3, 2:55 to 5:20, no last hit).
+function ____exports.MidWaterOwns(bot)
+    return midWaterOn(bot) and DotaTime() < RunePlan.SETTINGS.PlanAt
+end
+--- The mid's rune trips, every frame from the rune mode's GetDesire: true while a trip runs or as one starts (the mode then
+-- returns MidDesire and steps it in Think). Ours.RuneSpawn: its side of the 6:00 plan. Ours.MidWater: one plain trip per
+-- water spawn to the nearer spot (both spots spawn one), started so it arrives at the spawn, ended by the pickup, the rune
+-- gone or the verb's timeout, and never repeated for that spawn. Not a chooser job: the mid has no other jobs, and the rune
+-- mode is the mode Valve would give a rune walk.
 function ____exports.MidWants(bot)
     if not RunePlan.On() or not bot:IsBot() or LaneConfig.PositionOf(bot) ~= 2 or Drill.Held(bot) or Drill.ForcedJob(bot) ~= nil then
         return false
@@ -1091,78 +1147,97 @@ function ____exports.MidWants(bot)
     if Tasks.Jobs() == nil then
         return false
     end
-    local spawn = RunePlan.SETTINGS.Spawn
     local now = DotaTime()
     handled[pid] = handled[pid] or ({})
-    local k = key("power", spawn)
-    if handled[pid][k] == true or now < RunePlan.SETTINGS.PlanAt or now >= spawn + ____exports.SETTINGS.LateBy.power then
-        return false
-    end
-    local mine = RunePlan.SpotOf(bot, ____exports.Busy)
-    if mine == nil then
-        return false
-    end
-    local function skip(why)
-        handled[pid][k] = true
-        log(bot, "power", spawn, {{"res", "skip"}, {"why", why}})
-        return false
-    end
-    if not bot:IsAlive() then
-        local ____temp_36
-        if now >= spawn then
-            ____temp_36 = skip("dead")
-        else
-            ____temp_36 = false
+    for ____, ____value in ipairs(midSpawns(bot)) do
+        local kind = ____value[1]
+        local spawn = ____value[2]
+        do
+            local __continue150
+            repeat
+                local k = key(kind, spawn)
+                if handled[pid][k] == true or now >= spawn + ____exports.SETTINGS.LateBy[kind] then
+                    __continue150 = true
+                    break
+                end
+                local mine
+                if kind == "power" then
+                    if now < RunePlan.SETTINGS.PlanAt then
+                        __continue150 = true
+                        break
+                    end
+                    mine = RunePlan.SpotOf(bot, ____exports.Busy)
+                    if mine == nil then
+                        __continue150 = true
+                        break
+                    end
+                end
+                local function skip(why)
+                    handled[pid][k] = true
+                    log(bot, kind, spawn, {{"res", "skip"}, {"why", why}})
+                end
+                if not bot:IsAlive() then
+                    if now >= spawn then
+                        skip("dead")
+                    end
+                    __continue150 = true
+                    break
+                end
+                local t = tripFor(
+                    bot,
+                    kind,
+                    spawn,
+                    MID_HOST,
+                    mine
+                )
+                local leave = leaveAt(bot, t)
+                if now < leave then
+                    __continue150 = true
+                    break
+                end
+                local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
+                if why ~= nil then
+                    if now > leave + ____exports.SETTINGS.StartSlack then
+                        skip(why)
+                    end
+                    __continue150 = true
+                    break
+                end
+                local ok = Tasks.Start(
+                    bot,
+                    {
+                        name = "rune",
+                        host = MID_HOST,
+                        preemptAfter = 1,
+                        stallAfter = 4,
+                        onEnd = function(r, info) return finish(bot, t, r, info.label) end
+                    },
+                    function(ctx) return body(bot, t, ctx) end
+                )
+                if not ok then
+                    skip("refused")
+                    __continue150 = true
+                    break
+                end
+                handled[pid][k] = true
+                running[pid] = t
+                jobLine(bot, t, "start", kind == "power" and "plan" or "trigger")
+                return true
+            until true
+            if not __continue150 then
+                break
+            end
         end
-        return ____temp_36
     end
-    local t = tripFor(
-        bot,
-        "power",
-        spawn,
-        MID_HOST,
-        mine
-    )
-    local leave = leaveAt(bot, t)
-    if now < leave then
-        return false
-    end
-    local why = bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MidMinHp and "low-hp" or (acting(bot) and "acting" or nil)
-    if why ~= nil then
-        local ____temp_37
-        if now > leave + ____exports.SETTINGS.StartSlack then
-            ____temp_37 = skip(why)
-        else
-            ____temp_37 = false
-        end
-        return ____temp_37
-    end
-    local ok = Tasks.Start(
-        bot,
-        {
-            name = "rune",
-            host = MID_HOST,
-            preemptAfter = 1,
-            stallAfter = 4,
-            onEnd = function(r, info) return finish(bot, t, r, info.label) end
-        },
-        function(ctx) return body(bot, t, ctx) end
-    )
-    if not ok then
-        return skip("refused")
-    end
-    handled[pid][k] = true
-    running[pid] = t
-    jobLine(bot, t, "start", "plan")
-    return true
+    return false
 end
 function ____exports.MidStep(bot)
     return LaneConfig.PositionOf(bot) == 2 and ____exports.Step(bot, MID_HOST)
 end
 --- The mode that steps this hero's running trip (the chooser's host, or the rune mode for the mid's 6:00 trip), if any.
 function ____exports.HostOf(bot)
-    local ____opt_38 = running[bot:GetPlayerID()]
-    return ____opt_38 and ____opt_38.host
+    local ____opt_36 = running[bot:GetPlayerID()]
+    return ____opt_36 and ____opt_36.host
 end
 function ____exports.End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
@@ -1208,20 +1283,20 @@ function ____exports.ShrineHeld(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue168
+                local __continue182
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetTeam() ~= bot:GetTeam() then
-                        __continue168 = true
+                        __continue182 = true
                         break
                     end
-                    local ____opt_40 = running[m:GetPlayerID()]
-                    if (____opt_40 and ____opt_40.kind) == "wisdom" then
+                    local ____opt_38 = running[m:GetPlayerID()]
+                    if (____opt_38 and ____opt_38.kind) == "wisdom" then
                         return true
                     end
-                    __continue168 = true
+                    __continue182 = true
                 until true
-                if not __continue168 then
+                if not __continue182 then
                     break
                 end
             end

@@ -425,7 +425,7 @@ if Telemetry.GuardsEnabled() then
             Active = none
         }
     )
-    Telemetry.GuardModule("Arbiter", Arbiter, {DeniesItemsTp = no})
+    Telemetry.GuardModule("Arbiter", Arbiter, {DeniesItemsTp = no, DeniesOhaRune = no})
     Telemetry.GuardModule(
         "Chooser",
         Chooser,

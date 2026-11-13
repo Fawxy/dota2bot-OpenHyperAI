@@ -188,7 +188,10 @@ const BORROWED: Record<string, (this: void, bot: Unit) => boolean> = {
     },
 };
 
-/** OHA's modes that run their own desire beside the lane base (the inventory's admitted rows); each is a job-group activity. */
+/**
+ * OHA's modes that run their own desire beside the lane base (the inventory's admitted rows); each is a job-group activity.
+ * Of the rune mode only OHA's bounty and pre-game branches and our own rune reads (DeniesOhaRune).
+ */
 const ADMITTED_AT_BASE: Record<string, true> = { ward: true, rune: true };
 
 /** Human interface and our own retreat: run their own code whatever the pick (retreat's desire is ours, Retreat.Desire). */
@@ -202,7 +205,7 @@ const ALWAYS: Record<string, true> = { retreat: true, assemble: true, assemble_w
  * - laning under a trade pick and attack under any lane pick run (laneAndTrade).
  * - borrowed attack and team roam run below a group-5 pick, kept by After only while our fight read wants them.
  * - farm below a group-6 pick: a chooser job may start, OHA's farm desire is denied.
- * - admitted ward and rune beside the lane base.
+ * - admitted ward and rune beside the lane base (rune: less OHA's power, water and wisdom reasons, DeniesOhaRune).
  * - everything else 0: laning when not the host, roam, defend, push, roshan, outpost and the shops.
  */
 export function DriveDecide(_bot: Unit, mode: string, p: Candidate, farmHost: (this: void) => number | undefined): number | undefined {
@@ -228,6 +231,15 @@ export function DriveAfter(bot: Unit, mode: string, p: Candidate, desire: any): 
     const borrowed = BORROWED[mode];
     if (borrowed !== undefined && mode !== p.host) return borrowed(bot) ? desire : 0;
     return desire;
+}
+
+/**
+ * mode_rune_generic: OHA's own reasons to walk to a river rune or a shrine (its power and water desire, its wisdom branch)
+ * are denied to a hero the drive holds. The trip is ours to start and end (the mid's plan and water trips, a rune job, the
+ * mid's claim, a lane's rune contest, the shrine trip); OHA's bounty and pre-game branches stay admitted beside the lane base.
+ */
+export function DeniesOhaRune(bot: Unit): boolean {
+    return Drives(bot);
 }
 
 /** ability_item_usage's "go complete items" TP to the fountain is denied for a hero the drive holds (user 13/11/2026). */

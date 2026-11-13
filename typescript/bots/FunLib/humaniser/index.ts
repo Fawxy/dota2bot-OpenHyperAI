@@ -231,8 +231,8 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
     Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, LaneHold: no, LaneAggro: no, IdleStatue: no, Owns: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
-    // An error leaves the complete-items TP to OHA.
-    Telemetry.GuardModule("Arbiter", Arbiter, { DeniesItemsTp: no });
+    // An error leaves the complete-items TP and the rune mode to OHA.
+    Telemetry.GuardModule("Arbiter", Arbiter, { DeniesItemsTp: no, DeniesOhaRune: no });
     Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, After: (_b: unknown, _m: unknown, d: unknown) => d, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {

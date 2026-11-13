@@ -76,7 +76,9 @@ local function load(contest, opts)
 			HoldsRune = function() return false end,
 		},
 		States = { Step = function() return false end, WisdomOwned = function() return false end },
-		RuneJob = { Owns = function() return opts.runeJobOwns == true end, MidWants = function() return false end, MidStep = function() return false end },
+		RuneJob = { Owns = function() return opts.runeJobOwns == true end, MidWants = function() return false end, MidStep = function() return false end,
+			MidWaterOwns = function() return opts.midWater == true end },
+		Arbiter = { DeniesOhaRune = function() return opts.held == true end },
 		RunePlan = { OwnsMid = function() return false end },
 		RunePickup = { On = function() return false end },
 	}
@@ -123,6 +125,27 @@ do
 	-- Ours.RuneRotation: the rune job owns this hero's power spawn (its trip ran or was skipped), so OHA does not send it.
 	load(0, { runeJobOwns = true })
 	check("power spawn owned by the rune job: no OHA power desire", GetDesire() == 0 and base > 0)
+
+	-- Ours.MidWater: the mid's river runes before the 6:00 plan are its water trips' to decide.
+	load(0, { midWater = true })
+	check("mid's river runes owned by its water trips: no OHA power desire", GetDesire() == 0)
+
+	-- Rework step 7: OHA's own power desire is denied to a hero the arbiter holds; our contest beside it stands.
+	load(0, { held = true })
+	check("held by the arbiter: no OHA power desire", GetDesire() == 0)
+	load(0.6, { held = true })
+	check("held by the arbiter: our rune contest stands", near(GetDesire(), 0.6))
+
+	-- fact3 (2026-11-13T00-28-17 drill_arbiter-wait, pid 3, t=175-320): a mid with a bottle and an unseen power spot.
+	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_UNKNOWN }
+	load(0, { T = 200, bottle = true })
+	local bottle = GetDesire()
+	check("fact3: OHA's bottle branch sends the mid to an unseen spot", bottle > 0.55, bottle)
+	load(0, { T = 200, bottle = true, held = true })
+	check("fact3: not a mid the arbiter holds", GetDesire() == 0)
+	load(0, { T = 200, bottle = true, midWater = true })
+	check("fact3: not a mid whose water trips own the river", GetDesire() == 0)
+	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE }
 
 	local human = hero({ loc = Vector(-600, 600), isBot = false })
 	load(0.6, { allies = { human } })

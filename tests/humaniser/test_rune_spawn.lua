@@ -30,7 +30,8 @@ local function world(o)
 	package.loaded["bots/FunLib/engine/tasks"] = nil
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
-	C.Ours = { StackExecute = false, DoubleStack = false, RuneRotation = true, JobChooser = true, RuneSpawn = o.spawn ~= false }
+	C.Ours = { StackExecute = false, DoubleStack = false, RuneRotation = true, JobChooser = true, RuneSpawn = o.spawn ~= false, MidWater = o.water == true,
+		ArbiterDrive = o.drive == true }
 	T = o.t or 315
 	CURRENT_TEAM = RAD
 	status = {}
@@ -92,8 +93,8 @@ local function frame(H, bots, spawnAt)
 	T = T + 0.1
 end
 
-local function run(H, bots, untilT)
-	return capture(function() while T < untilT do frame(H, bots, 360) end end)
+local function run(H, bots, untilT, spawnAt)
+	return capture(function() while T < untilT do frame(H, bots, spawnAt or 360) end end)
 end
 
 -- The plan: mid nearer the top spot gets it; pos4 and pos5 both free, the one nearer the bottom spot gets that; with pos5
@@ -147,6 +148,60 @@ do
 	check("mid gate: the rune mode keeps the trip's desire", H.Chooser.Gate(mid, "rune", function() return 0.97 end)() == 0.97)
 	check("mid gate: the farm host is held at 0", H.Chooser.Gate(mid, "farm", function() return 0.6 end)() == 0)
 	check("mid gate: retreat stays OHA's", H.Chooser.Gate(mid, "retreat", function() return 0.8 end)() == 0.8)
+end
+
+-- Ours.MidWater: one trip per water spawn to the nearer spot, timed to the spawn, ended by the pickup and not repeated; the
+-- river is the trips' to decide until the 6:00 plan (fact3, 13/11/2026: OHA's bottle branch looped a mid on the spot).
+do
+	local H = world({ t = 100, water = true })
+	SPAWN_AT = P1
+	local mid = hero(2, 2, Vector(-600, 300))
+	check("water: the river is the mid's trips' to decide before the plan", H.RuneJob.MidWaterOwns(mid) == true)
+	local out = run(H, { mid }, 135, 120)
+	local ls = lines(out, "rune_job")
+	check("water: one trip for the 2:00 spawn", #ls == 1 and field(ls[1], "kind") == "water" and field(ls[1], "spawn") == "120", table.concat(ls, "\n"))
+	check("water: it took the rune", field(ls[1], "res") == "ok", ls[1])
+	check("water: at the spot by the spawn", tonumber(field(ls[1], "arr") or "999") <= 120.5, ls[1])
+	check("water: left no earlier than 20 s before", tonumber(field(ls[1], "left") or "0") >= 100, ls[1])
+	check("water: the trip is over and the mid lanes", H.RuneJob.HostOf(mid) == nil)
+	-- The rune gone, the spot unseen again: no second trip for that spawn.
+	status[P1] = RUNE_STATUS_UNKNOWN
+	out = run(H, { mid }, 200, 120)
+	check("water: no second trip for the same spawn", #lines(out, "rune_job") == 0 and H.RuneJob.HostOf(mid) == nil)
+	mid.loc = Vector(-600, 300)
+	out = run(H, { mid }, 255, 240)
+	ls = lines(out, "rune_job")
+	check("water: one trip for the 4:00 spawn", #ls == 1 and field(ls[1], "spawn") == "240" and field(ls[1], "res") == "ok", table.concat(ls, "\n"))
+	T = 330
+	check("water: from the plan's time the 6:00 plan owns the mid", H.RuneJob.MidWaterOwns(mid) == false)
+end
+
+-- Under the arbiter's drive the water trip holds the mid in the rune mode: the pick is the job, laning waits.
+do
+	local H = world({ t = 100, water = true, drive = true })
+	SPAWN_AT = P1
+	local mid = hero(2, 2, Vector(-600, 300))
+	mid.lane, mid.mode = dota.Lane.Mid, LANING
+	local Arb = require("bots/FunLib/humaniser/arbiter")
+	capture(function() while H.RuneJob.HostOf(mid) == nil and T < 120 do frame(H, { mid }, 120) end end)
+	check("water under the drive: the trip started", H.RuneJob.HostOf(mid) == dota.BotMode.Rune and Arb.Drives(mid), T)
+	capture(function()
+		frame(H, { mid }, 120)
+		check("water under the drive: the pick is the job hosted in rune", Arb.Drive(mid, "rune").name == "job" and Arb.Drive(mid, "rune").host == "rune")
+		check("water under the drive: laning waits", H.Chooser.Gate(mid, "laning", function() return 0.9 end)() == 0)
+	end)
+	local out = run(H, { mid }, 135, 120)
+	local l = lines(out, "rune_job")[1]
+	check("water under the drive: it took the rune", l ~= nil and field(l, "res") == "ok", l)
+end
+
+-- Switch off: no water trip, and the river before the plan is OHA's.
+do
+	local H = world({ t = 100 })
+	SPAWN_AT = P1
+	local mid = hero(2, 2, Vector(-600, 300))
+	local out = run(H, { mid }, 135, 120)
+	check("water off: no trip", #lines(out, "rune_job") == 0 and H.RuneJob.MidWaterOwns(mid) == false)
 end
 
 -- Stand points: on the high ground and on our side when the map has it.
