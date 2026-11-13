@@ -40,6 +40,8 @@ end
 -- change of pick or mode only, and an error inside never reaches the caller.
 do
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true }, retreat = true })
+	-- This file tests the shadow's lines with the arbiter's drive off; the drive is test_arbiter_drive's.
+	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	T = 300
 	CURRENT_TEAM, OBSERVER = 2, 1
 	local Arb = require("bots/FunLib/humaniser/arbiter")

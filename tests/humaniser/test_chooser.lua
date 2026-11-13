@@ -8,6 +8,8 @@ local EXCEPTED = { "retreat", "assemble", "assemble_with_humans", "attack" }
 local function world(ours)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	if ours ~= nil then package.loaded["bots/FunLib/custom_loader"].Ours = ours end
+	-- This file tests the gate with the arbiter's drive off; the drive is test_arbiter_drive's.
+	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	T = 200
 	H.StackJob.ResetCache()
 	return H, MakeUnit({ pid = 5, team = 2, loc = Vector(0, 0, 0) })

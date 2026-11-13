@@ -29,7 +29,10 @@ local OFF = {
 local ON = { name = "defaults (control)", cfg = { Enable = true, OwnLaningThink = "all" } }
 
 local function fresh(entry, skill)
-	return LaneFresh(entry.cfg, { enable = entry.humaniser ~= false, skill = skill or 0.9, debug = true })
+	local H = LaneFresh(entry.cfg, { enable = entry.humaniser ~= false, skill = skill or 0.9, debug = true })
+	-- The regression entries are the lane with the arbiter's drive off; the drive is test_arbiter_drive's.
+	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
+	return H
 end
 
 local function unit(o)

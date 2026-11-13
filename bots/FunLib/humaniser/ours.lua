@@ -93,7 +93,7 @@ ____exports.DEFAULTS = {
     HealStop = true,
     HealItems = false,
     ArbiterShadow = true,
-    ArbiterDrive = false,
+    ArbiterDrive = true,
     MidWater = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
