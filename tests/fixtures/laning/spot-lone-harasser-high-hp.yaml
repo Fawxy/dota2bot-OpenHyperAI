@@ -22,7 +22,7 @@ world:
 expect:
   mustNot: ["read(burst)", "read(threat)"]
 notes: >
-  Rework step 8 trial (the start of the funnel): a Dire core at full HP (668 of 670), one enemy hero (pid 3) 640 away
+  Rework step 8 trial (the start of the funnel): a Dire mid core at full HP (668 of 670), one enemy hero (pid 3) 640 away
   that hit it within the last second, so the read counts that hero over the 6 s engaged window: 262 / 668 = 0.39 burst,
   over READ_BURST 0.35, and the spot backs off 14 rows from its creep. Quarantined: the expectation (a lone harasser at full
   HP does not move a core off its last-hit spot, D11 over a 6 s window nobody stands through) is the step-10 candidate,
