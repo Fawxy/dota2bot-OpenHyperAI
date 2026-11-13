@@ -1738,10 +1738,20 @@
    "ha": "str",
    "ta": "str",
    "tt": "str",
-   "vis": "str"
+   "vis": "str",
+   "dec": "str",
+   "bud": "num",
+   "purp": "str",
+   "ov": "num",
+   "th": "num",
+   "unp": "num",
+   "dt": "num",
+   "thr": "num",
+   "band": "str"
   },
   "cut_creeps": {
    "pid": "num",
+   "kind": "str",
    "ce": "str",
    "ca": "str"
   },
@@ -2318,9 +2328,13 @@
    "ha": "text",
    "ta": "text",
    "tt": "text",
-   "vis": "text"
+   "vis": "text",
+   "dec": "text",
+   "purp": "text",
+   "band": "text"
   },
   "ev_cut_creeps": {
+   "kind": "text",
    "ce": "text",
    "ca": "text"
   },

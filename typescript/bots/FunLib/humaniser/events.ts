@@ -2642,7 +2642,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos). */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos) or `leave` (retreat's leaveWhy; the answer is `dec`). */
         kind: "str",
         /** The spot's role input: `core` or `support`. */
         role: "str",
@@ -2668,10 +2668,29 @@ export const EVENTS = {
         tt: "str",
         /** With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid). */
         vis: "str",
+        /** kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read). */
+        dec: "str",
+        /** kind=leave: the budget the read was held against (by purpose `purp`: free, busy or committed). */
+        bud: "num",
+        /** kind=leave: the budget's purpose. */
+        purp: "str",
+        /** kind=leave: seconds the read had been over budget before this decision (-1 not over); the hold timer. */
+        ov: "num",
+        /** kind=leave: Profile.ThreatHold, the seconds the read must stay over budget. */
+        th: "num",
+        /** kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them. */
+        unp: "num",
+        /** kind=leave: 1 when an enemy tower damaged the bot within 0.5 s. */
+        dt: "num",
+        /** kind=leave: the read's threat and band, for reading a line without replaying it. */
+        thr: "num",
+        band: "str",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
     cut_creeps: {
         pid: "num",
+        /** `leave` for a kind=leave cut's creeps (absent for the spot's), so two cuts in one frame do not share a line. */
+        kind: "str",
         /** Enemy lane creeps in sight within 3,000 of the bot or its lane front: id, x, y, HP, max HP, ranged, attack target, hull. */
         ce: "str",
         /** Our lane creeps within 3,000 of either, as `ce`. */

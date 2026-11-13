@@ -44,3 +44,58 @@ test('a cut missing its creeps line is reported, not replayed on a world without
     assert.throws(() => worldOf(g, g.cuts[0]), /no ev=cut_creeps/);
     assert.match(checkOne(g, g.cuts[0]).error, /no ev=lane_pos|no ev=cut_creeps/);
 });
+
+// kind=leave: retreat's leave rule replayed through the retreat_leave driver on a made-up world (the real map's towers).
+const leaveLog = ({ b, he, ca = '', tt = '', ta = '9,8', dec, ov = -1, extra = '' }) => [
+    hev('t=-90.000 ev=bot pid=1 team=2 ours=Retreat:1,RetreatOdds:1'),
+    hev('t=-14.800 ev=cut_towers team=2 tw=0,-6336,1856,700,144;3,-1544,-1408,700,144'),
+    hev('t=-14.800 ev=cut_towers team=3 tw=3,524,652,700,144;6,6269,-2240,700,144'),
+    hev(`t=200.000 ev=cut pid=1 kind=leave b=${b} he=${he} ta=${ta} tt=${tt} dec=${dec} bud=0.5 purp=free ov=${ov} th=0.17 unp=0 dt=0 ${extra}`),
+    hev(`t=200.000 ev=cut_creeps pid=1 kind=leave ce= ca=${ca}`),
+].join('\n');
+const replayOf = (spec) => {
+    const g = readGames(leaveLog(spec)).pop();
+    return checkOne(g, g.cuts[0]);
+};
+// A hero hitting us that outnumbers nobody: pid 6, 500 away, 300 over the 6 s window against 400 HP is a burst of 0.75.
+const HITTER = '6,-1500,-1800,500,600,24,300,1,1,120,300,0';
+const MID = { b: '-2000,-1800,400,600,600,24,300,0', he: HITTER };
+
+test('leave: the hold timer decides between a stay and a leave on the same over-budget read', () => {
+    const held = replayOf({ ...MID, dec: 'hold', ov: 0.05 });
+    const gone = replayOf({ ...MID, dec: 'threat', ov: 0.5 });
+    assert.deepStrictEqual([held.got, gone.got], ['stay(hold)', 'leave(threat)']);
+    assert.ok(held.same && gone.same);
+});
+
+test('leave: RetreatOdds holds an even fight only while our creeps are near the hitter', () => {
+    // Our ranged creep stands 60 from pid 6, inside creep aggro: the hits are paid for, so the even fight is held.
+    const paid = replayOf({ ...MID, dec: 'even', ca: '5,-1500,-1860,300,300,1,-,8' });
+    const unpaid = replayOf({ ...MID, dec: 'threat', ov: 0.5 });
+    assert.deepStrictEqual([paid.got, unpaid.got], ['stay(even)', 'leave(threat)']);
+});
+
+test('leave: a tower on us leaves at once, and replays only from the tower records of the cut', () => {
+    const at = '200,300,500,600,600,24,300,0';
+    const he = '6,2000,300,500,600,24,300,0,0,10,10,0';
+    const on = replayOf({ b: at, he, dec: 'tower', tt: '3,3,b' });
+    // Same place and tower, but it targets somebody else and has not hit us: nothing to leave for.
+    const off = replayOf({ b: at, he, dec: 'under', tt: '3,3,-' });
+    assert.deepStrictEqual([on.got, off.got], ['leave(tower)', 'stay(under)']);
+});
+
+test('leave: a mismatch with the game is reported, with what each side decided', () => {
+    // Not over budget before this decision (ov -1) starts the hold timer at zero, so the replay holds; the game said under.
+    const r = replayOf({ ...MID, dec: 'under', ov: -1 });
+    assert.deepStrictEqual([r.same, r.got, r.want], [false, 'stay(hold)', 'stay(under)']);
+});
+
+test('two cuts of one hero in one frame keep their own creeps', () => {
+    const spot = LOG.split('\n');
+    const leave = leaveLog({ ...MID, dec: 'under', ca: '5,-1500,-1860,300,300,1,-,8' }).split('\n');
+    const text = [...spot.slice(0, 5), leave[3], spot[5], leave[4]].join('\n');
+    const g = readGames(text).pop();
+    const [spotCut, leaveCut] = [g.cuts.find((c) => c.kind === 'spot'), g.cuts.find((c) => c.kind === 'leave')];
+    assert.strictEqual(worldOf(g, spotCut).ce[0].id, 11);
+    assert.deepStrictEqual([worldOf(g, leaveCut).ce.length, worldOf(g, leaveCut).ca[0].id], [0, 5]);
+});

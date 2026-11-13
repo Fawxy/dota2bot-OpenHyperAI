@@ -9,6 +9,10 @@
  * bot (only while an enemy is unseen), the lane creeps of both teams near the bot and the lane fronts. Lists are `;`-joined
  * records of `,`-joined numbers in the order the field's comment gives (lane creeps on ev=cut_creeps, the same frame); a target is `b` (this bot), `h<pid>`, `u<CreepId>`
  * or `-`.
+ *
+ * `leave` (retreat's leaveWhy, beside the answer it logs as `dec`): the read at the bot's own place with the engaged window, plus
+ * what the rule reads past it: the budget, the hold timer, RetreatOdds' unpaid count, the threshold, a tower's damage on the
+ * bot. The same hero, tower and vision records as the spot, with no lane front; its cut_creeps line carries `kind=leave`.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -129,19 +133,19 @@ function towersNow(team: number, bot: Unit, at: Vector, front: Vector, out: stri
     return string.format("%x", mask);
 }
 
-/** The spot's inputs this frame, beside its ev=lane_pos line. */
-export function Spot(bot: Unit): void {
-    const pid = bot.GetPlayerID();
-    const team = bot.GetTeam();
-    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
-    const lane = bot.GetAssignedLane();
-    const at = bot.GetLocation();
-    const [role, fed, hold] = Laning.SpotInputs(bot);
-    logTowers(team);
-    logTowers(enemyTeam);
+interface Units {
+    he: string[];
+    hu: string[];
+    ha: string[];
+}
 
-    const front = GetLaneFrontLocation(team, lane, 0);
-    const back = GetLaneFrontLocation(team, lane, -400);
+/**
+ * The enemy heroes in sight, the unseen ones with a sighting and our other heroes, near the bot or `front` (pass `at` twice for
+ * a decision with no lane front). `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the
+ * windows the decision's Threat.Read counts a hero over (3 and 6 for the spot, 2 and 6 for the leave).
+ */
+function units(bot: Unit, at: Vector, front: Vector, short: number, long: number): Units {
+    const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
     const visible: Record<number, boolean> = {};
     const he: string[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
@@ -150,8 +154,8 @@ export function Spot(bot: Unit): void {
         const ill = e.IsIllusion();
         if (!ill) visible[e.GetPlayerID()] = true;
         if (!near(l, at, front)) continue;
-        const e3 = e.GetEstimatedDamageToTarget(true, bot, 3, DamageType.All);
-        const e6 = e.GetEstimatedDamageToTarget(true, bot, 6, DamageType.All);
+        const e3 = e.GetEstimatedDamageToTarget(true, bot, short, DamageType.All);
+        const e6 = e.GetEstimatedDamageToTarget(true, bot, long, DamageType.All);
         const atk = e.GetAttackTarget() === bot ? 1 : 0;
         const eng = bot.WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) ? 1 : 0;
         // pid,x,y,hp,range,hull,speed,atk,eng,e3,e6,illusion
@@ -173,6 +177,23 @@ export function Spot(bot: Unit): void {
         // pid,x,y,range,hull,speed,in our retreat
         ha.push([a.GetPlayerID(), f(l.x), f(l.y), f(a.GetAttackRange()), f(a.GetBoundingRadius()), f(a.GetCurrentMovementSpeed()), RetreatState.Running(a) ? 1 : 0].join(","));
     }
+    return { he, hu, ha };
+}
+
+/** The spot's inputs this frame, beside its ev=lane_pos line. */
+export function Spot(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    const team = bot.GetTeam();
+    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
+    const lane = bot.GetAssignedLane();
+    const at = bot.GetLocation();
+    const [role, fed, hold] = Laning.SpotInputs(bot);
+    logTowers(team);
+    logTowers(enemyTeam);
+
+    const front = GetLaneFrontLocation(team, lane, 0);
+    const back = GetLaneFrontLocation(team, lane, -400);
+    const { he, hu, ha } = units(bot, at, front, 3, 6);
     const nearTowers: string[] = [];
     const ta = `${towersNow(team, bot, at, front, nearTowers)},${towersNow(enemyTeam, bot, at, front, nearTowers)}`;
     Telemetry.Event("cut", [
@@ -196,5 +217,61 @@ export function Spot(bot: Unit): void {
         ["pid", pid],
         ["ce", creeps(UnitType.EnemyCreeps, bot, at, front)],
         ["ca", creeps(UnitType.AlliedCreeps, bot, at, front)],
+    ]);
+}
+
+export interface LeaveInputs {
+    r: Threat.Read;
+    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). */
+    dec: string;
+    budget: number;
+    purp: string;
+    /** Seconds the read had been over budget before this decision (undefined: not over). */
+    over?: number;
+    /** Profile.ThreatHold. */
+    hold: number;
+    /** RetreatOdds' unpaid engaged heroes. */
+    unp: number;
+    /** The damage windows of the read: `he`'s e3 and e6. */
+    short: number;
+    long: number;
+}
+
+/** The leave decision's inputs this frame, with the answer the game gave. Reads only: nothing the decision uses changes. */
+export function Leave(bot: Unit, i: LeaveInputs): void {
+    const pid = bot.GetPlayerID();
+    const team = bot.GetTeam();
+    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
+    const at = bot.GetLocation();
+    logTowers(team);
+    logTowers(enemyTeam);
+    const { he, hu, ha } = units(bot, at, at, i.short, i.long);
+    const nearTowers: string[] = [];
+    const ta = `${towersNow(team, bot, at, at, nearTowers)},${towersNow(enemyTeam, bot, at, at, nearTowers)}`;
+    Telemetry.Event("cut", [
+        ["pid", pid],
+        ["kind", "leave"],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0].join(",")],
+        ["he", he.join(";")],
+        ["hu", hu.length > 0 ? hu.join(";") : undefined],
+        ["ha", ha.length > 0 ? ha.join(";") : undefined],
+        ["ta", ta],
+        ["tt", nearTowers.join(";")],
+        ["vis", hu.length > 0 ? visionGrid(at, at) : undefined],
+        ["dec", i.dec],
+        ["bud", i.budget],
+        ["purp", i.purp],
+        ["ov", i.over !== undefined ? math.floor(i.over * 10000 + 0.5) / 10000 : -1],
+        ["th", math.floor(i.hold * 10000 + 0.5) / 10000],
+        ["unp", i.unp],
+        ["dt", bot.WasRecentlyDamagedByTower(0.5) ? 1 : 0],
+        ["thr", math.floor(i.r.threat * 100 + 0.5) / 100],
+        ["band", i.r.band],
+    ]);
+    Telemetry.Event("cut_creeps", [
+        ["pid", pid],
+        ["kind", "leave"],
+        ["ce", creeps(UnitType.EnemyCreeps, bot, at, at)],
+        ["ca", creeps(UnitType.AlliedCreeps, bot, at, at)],
     ]);
 }

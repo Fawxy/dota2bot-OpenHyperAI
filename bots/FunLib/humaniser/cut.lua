@@ -239,18 +239,11 @@ local function towersNow(team, bot, at, front, out)
     end
     return string.format("%x", mask)
 end
---- The spot's inputs this frame, beside its ev=lane_pos line.
-function ____exports.Spot(bot)
-    local pid = bot:GetPlayerID()
-    local team = bot:GetTeam()
-    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
-    local lane = bot:GetAssignedLane()
-    local at = bot:GetLocation()
-    local role, fed, hold = Laning.SpotInputs(bot)
-    logTowers(team)
-    logTowers(enemyTeam)
-    local front = GetLaneFrontLocation(team, lane, 0)
-    local back = GetLaneFrontLocation(team, lane, -400)
+--- The enemy heroes in sight, the unseen ones with a sighting and our other heroes, near the bot or `front` (pass `at` twice for
+-- a decision with no lane front). `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the
+-- windows the decision's Threat.Read counts a hero over (3 and 6 for the spot, 2 and 6 for the leave).
+local function units(bot, at, front, short, long)
+    local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     local visible = {}
     local he = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
@@ -270,8 +263,8 @@ function ____exports.Spot(bot)
                     __continue33 = true
                     break
                 end
-                local e3 = e:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
-                local e6 = e:GetEstimatedDamageToTarget(true, bot, 6, DamageType.All)
+                local e3 = e:GetEstimatedDamageToTarget(true, bot, short, DamageType.All)
+                local e6 = e:GetEstimatedDamageToTarget(true, bot, long, DamageType.All)
                 local atk = e:GetAttackTarget() == bot and 1 or 0
                 local eng = bot:WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) and 1 or 0
                 he[#he + 1] = table.concat(
@@ -370,6 +363,30 @@ function ____exports.Spot(bot)
             end
         end
     end
+    return {he = he, hu = hu, ha = ha}
+end
+--- The spot's inputs this frame, beside its ev=lane_pos line.
+function ____exports.Spot(bot)
+    local pid = bot:GetPlayerID()
+    local team = bot:GetTeam()
+    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
+    local lane = bot:GetAssignedLane()
+    local at = bot:GetLocation()
+    local role, fed, hold = Laning.SpotInputs(bot)
+    logTowers(team)
+    logTowers(enemyTeam)
+    local front = GetLaneFrontLocation(team, lane, 0)
+    local back = GetLaneFrontLocation(team, lane, -400)
+    local ____units_result_0 = units(
+        bot,
+        at,
+        front,
+        3,
+        6
+    )
+    local he = ____units_result_0.he
+    local hu = ____units_result_0.hu
+    local ha = ____units_result_0.ha
     local nearTowers = {}
     local ta = (towersNow(
         team,
@@ -461,6 +478,119 @@ function ____exports.Spot(bot)
             {
                 "ca",
                 creeps(UnitType.AlliedCreeps, bot, at, front)
+            }
+        }
+    )
+end
+--- The leave decision's inputs this frame, with the answer the game gave. Reads only: nothing the decision uses changes.
+function ____exports.Leave(bot, i)
+    local pid = bot:GetPlayerID()
+    local team = bot:GetTeam()
+    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
+    local at = bot:GetLocation()
+    logTowers(team)
+    logTowers(enemyTeam)
+    local ____units_result_1 = units(
+        bot,
+        at,
+        at,
+        i.short,
+        i.long
+    )
+    local he = ____units_result_1.he
+    local hu = ____units_result_1.hu
+    local ha = ____units_result_1.ha
+    local nearTowers = {}
+    local ta = (towersNow(
+        team,
+        bot,
+        at,
+        at,
+        nearTowers
+    ) .. ",") .. towersNow(
+        enemyTeam,
+        bot,
+        at,
+        at,
+        nearTowers
+    )
+    Telemetry.Event(
+        "cut",
+        {
+            {"pid", pid},
+            {"kind", "leave"},
+            {
+                "b",
+                table.concat(
+                    {
+                        f(at.x),
+                        f(at.y),
+                        f(bot:GetHealth()),
+                        f(bot:GetMaxHealth()),
+                        f(bot:GetAttackRange()),
+                        f(bot:GetBoundingRadius()),
+                        f(bot:GetCurrentMovementSpeed()),
+                        escapeReady(bot) and 1 or 0
+                    },
+                    ","
+                )
+            },
+            {
+                "he",
+                table.concat(he, ";")
+            },
+            {
+                "hu",
+                #hu > 0 and table.concat(hu, ";") or nil
+            },
+            {
+                "ha",
+                #ha > 0 and table.concat(ha, ";") or nil
+            },
+            {"ta", ta},
+            {
+                "tt",
+                table.concat(nearTowers, ";")
+            },
+            {
+                "vis",
+                #hu > 0 and visionGrid(at, at) or nil
+            },
+            {"dec", i.dec},
+            {"bud", i.budget},
+            {"purp", i.purp},
+            {
+                "ov",
+                i.over ~= nil and math.floor(i.over * 10000 + 0.5) / 10000 or -1
+            },
+            {
+                "th",
+                math.floor(i.hold * 10000 + 0.5) / 10000
+            },
+            {"unp", i.unp},
+            {
+                "dt",
+                bot:WasRecentlyDamagedByTower(0.5) and 1 or 0
+            },
+            {
+                "thr",
+                math.floor(i.r.threat * 100 + 0.5) / 100
+            },
+            {"band", i.r.band}
+        }
+    )
+    Telemetry.Event(
+        "cut_creeps",
+        {
+            {"pid", pid},
+            {"kind", "leave"},
+            {
+                "ce",
+                creeps(UnitType.EnemyCreeps, bot, at, at)
+            },
+            {
+                "ca",
+                creeps(UnitType.AlliedCreeps, bot, at, at)
             }
         }
     )

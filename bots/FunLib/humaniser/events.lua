@@ -1601,9 +1601,18 @@ ____exports.EVENTS = {
         ha = "str",
         ta = "str",
         tt = "str",
-        vis = "str"
+        vis = "str",
+        dec = "str",
+        bud = "num",
+        purp = "str",
+        ov = "num",
+        th = "num",
+        unp = "num",
+        dt = "num",
+        thr = "num",
+        band = "str"
     },
-    cut_creeps = {pid = "num", ce = "str", ca = "str"},
+    cut_creeps = {pid = "num", kind = "str", ce = "str", ca = "str"},
     cut_towers = {team = "num", tw = "str"}
 }
 return ____exports

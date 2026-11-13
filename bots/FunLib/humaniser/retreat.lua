@@ -348,6 +348,7 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
+local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
@@ -399,21 +400,21 @@ function unpaid(bot, r)
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue135
+            local __continue136
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue135 = true
+                    __continue136 = true
                     break
                 end
                 if not CreepAggro.Paid(bot, h) then
                     n = n + 1
                 end
-                __continue135 = true
+                __continue136 = true
             until true
-            if not __continue135 then
+            if not __continue136 then
                 break
             end
         end
@@ -458,6 +459,7 @@ ____exports.SETTINGS = {
     MaxSecs = 40,
     PlainFountainHP = 0.5,
     ReadEvery = 0.1,
+    CutEvery = 2,
     OrderEvery = 0.3,
     DrillMinHP = 0.5,
     DrillSpotArrive = 150
@@ -592,18 +594,22 @@ local function purposeOf(bot)
     end
     return {"free", s.BudgetFree}
 end
-local function readOf(bot, st, now)
-    if st.read ~= nil and st.readAt ~= nil and now - st.readAt < ____exports.SETTINGS.ReadEvery then
-        return st.read
-    end
+--- The read `leaveWhy` decides on: Threat.Read at the hero's own place with the retreat's horizon and engaged window.
+function ____exports.ReadHere(bot)
     local here = bot:GetLocation()
-    st.read = Threat.Read(
+    return Threat.Read(
         bot,
         here,
         here,
         ____exports.SETTINGS.Horizon,
         {engagedWindow = ____exports.SETTINGS.EngagedWindow}
     )
+end
+local function readOf(bot, st, now)
+    if st.read ~= nil and st.readAt ~= nil and now - st.readAt < ____exports.SETTINGS.ReadEvery then
+        return st.read
+    end
+    st.read = ____exports.ReadHere(bot)
     st.readAt = now
     return st.read
 end
@@ -761,10 +767,10 @@ local function anchorsOf(bot, why)
     local allyD = ____exports.SETTINGS.AllyAnchorMax
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue61
+            local __continue62
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or RetreatState.Running(a) then
-                    __continue61 = true
+                    __continue62 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, a)
@@ -772,9 +778,9 @@ local function anchorsOf(bot, why)
                     ally = a
                     allyD = d
                 end
-                __continue61 = true
+                __continue62 = true
             until true
-            if not __continue61 then
+            if not __continue62 then
                 break
             end
         end
@@ -857,16 +863,16 @@ local function itemReach(bot)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue77
+                local __continue78
                 repeat
                     local team = GetTeamForPlayer(pid)
                     if team == bot:GetTeam() or team ~= Team.Radiant and team ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue77 = true
+                        __continue78 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil then
-                        __continue77 = true
+                        __continue78 = true
                         break
                     end
                     local d = dist(info.location, here)
@@ -875,15 +881,15 @@ local function itemReach(bot)
                         tss = info.time_since_seen
                     end
                     if __TS__ArrayIncludes(read.reach, pid) or info.time_since_seen <= 0.1 or info.time_since_seen > t.MissingAfter then
-                        __continue77 = true
+                        __continue78 = true
                         break
                     end
                     if d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin then
                         n = n + 1
                     end
-                    __continue77 = true
+                    __continue78 = true
                 until true
-                if not __continue77 then
+                if not __continue78 then
                     break
                 end
             end
@@ -905,30 +911,30 @@ local function planItems(bot, ep)
     local got = {}
     for ____, k in ipairs(__TS__ObjectKeys(HEAL_ITEM)) do
         do
-            local __continue84
+            local __continue85
             repeat
                 local it = ItemUse.Usable(bot, HEAL_ITEM[k].name)
                 if it == nil then
-                    __continue84 = true
+                    __continue85 = true
                     break
                 end
                 local mod = HEAL_ITEM[k].modifier
                 if mod ~= nil and bot:HasModifier(mod) then
-                    __continue84 = true
+                    __continue85 = true
                     break
                 end
                 if (k == "tango" or k == "tango_single") and tree == nil then
-                    __continue84 = true
+                    __continue85 = true
                     break
                 end
                 if k == "fire" and salveHeld then
-                    __continue84 = true
+                    __continue85 = true
                     break
                 end
                 got[k] = ItemUse.HpRestore(it)
-                __continue84 = true
+                __continue85 = true
             until true
-            if not __continue84 then
+            if not __continue85 then
                 break
             end
         end
@@ -937,7 +943,7 @@ local function planItems(bot, ep)
     local restore = 0
     for ____, cand in ipairs(s.HealSets) do
         do
-            local __continue90
+            local __continue91
             repeat
                 local items = __TS__ArrayMap(
                     cand,
@@ -947,7 +953,7 @@ local function planItems(bot, ep)
                     items,
                     function(____, k) return got[k] ~= nil end
                 ) then
-                    __continue90 = true
+                    __continue91 = true
                     break
                 end
                 local sum = __TS__ArrayReduce(
@@ -960,9 +966,9 @@ local function planItems(bot, ep)
                     restore = sum
                     break
                 end
-                __continue90 = true
+                __continue91 = true
             until true
-            if not __continue90 then
+            if not __continue91 then
                 break
             end
         end
@@ -1336,21 +1342,22 @@ local function step(bot, st, r, now)
     ep.underSince = ep.underSince or now
     return now - ep.underSince >= s.ExitDwell and "safe" or nil
 end
---- The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`.
-local function leaveWhy(bot, st, r, budget, now)
+--- The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
+-- leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
+function ____exports.LeaveWhy(bot, st, r, budget, now)
     if r.band == "lethal" then
-        return "lethal"
+        return "lethal", nil
     end
     if ____exports.TowerOnUs(bot) ~= nil then
-        return "tower"
+        return "tower", nil
     end
     if hpShare(bot) < ____exports.SETTINGS.HealFloor and #r.reach == 0 then
-        return "heal"
+        return "heal", nil
     end
     if r.threat <= budget then
         st.overSince = nil
         st.stayLogged = nil
-        return nil
+        return nil, "under"
     end
     local even = #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst and hpShare(bot) >= ____exports.SETTINGS.EvenHp
     if Ours.On("RetreatOdds") and even and unpaid(bot, r) == 0 then
@@ -1388,10 +1395,13 @@ local function leaveWhy(bot, st, r, budget, now)
                 }
             )
         end
-        return nil
+        return nil, "even"
     end
     st.overSince = st.overSince or now
-    return now - st.overSince >= Profile.ThreatHold(bot) and "threat" or nil
+    if now - st.overSince >= Profile.ThreatHold(bot) then
+        return "threat", nil
+    end
+    return nil, "hold"
 end
 --- The retreat-walk drill's cast: walk to the rep's start spot, then the forced episode, then stand. Undefined when not in it.
 local function drillDesire(bot, st, now)
@@ -1460,6 +1470,34 @@ local function drillDesire(bot, st, now)
     end
     return ____exports.SETTINGS.DrillDesire
 end
+--- ev=cut kind=leave on a changed answer, else while a hero is in reach, at most every CutEvery. Reads state; the decision does not use it.
+local function cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now)
+    if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true then
+        return
+    end
+    local dec = why or stay
+    local changed = st.cutDec ~= dec
+    if not changed and not (#r.reach > 0 and now - (st.cutAt or -math.huge) >= ____exports.SETTINGS.CutEvery) then
+        return
+    end
+    st.cutDec = dec
+    st.cutAt = now
+    pcall(
+        Cut.Leave,
+        bot,
+        {
+            r = r,
+            dec = dec,
+            budget = budget,
+            purp = purp,
+            over = overBefore ~= nil and now - overBefore or nil,
+            hold = Profile.ThreatHold(bot),
+            unp = unpaid(bot, r),
+            short = math.min(____exports.SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
+            long = ____exports.SETTINGS.EngagedWindow
+        }
+    )
+end
 --- With the switch on: Think is assigned at load (mode_retreat_generic).
 function ____exports.On()
     return Ours.On("Retreat")
@@ -1486,6 +1524,7 @@ function ____exports.Desire(bot)
         st.overSince = nil
         return 0
     end
+    local readAtBefore = st.readAt
     local r = readOf(bot, st, now)
     if st.ep ~= nil then
         local res = step(bot, st, r, now)
@@ -1537,13 +1576,27 @@ function ____exports.Desire(bot)
     ) then
         return 0
     end
-    local why = leaveWhy(
+    local overBefore = st.overSince
+    local why, stay = ____exports.LeaveWhy(
         bot,
         st,
         r,
         budget,
         now
     )
+    if readAtBefore ~= st.readAt then
+        cutLeave(
+            bot,
+            st,
+            r,
+            budget,
+            purp,
+            why,
+            stay,
+            overBefore,
+            now
+        )
+    end
     if why == nil then
         return 0
     end
