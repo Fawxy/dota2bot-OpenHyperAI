@@ -68,7 +68,7 @@ local function Fresh(states, o)
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
 		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot, SupportHarass = o.supportHarass,
-		LaneSpotTower = o.laneSpotTower, LaneSpotThreat = o.threat == true }
+		LaneSpotTower = o.laneSpotTower, LaneSpotThreat = o.threat == true, EvenStand = o.evenStand }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.IsLaningFor = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
@@ -488,11 +488,29 @@ end
 do
 	local e
 	local s, bot = spotFor(SDK, { hp = 100, threat = true }, function()
-		e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 40
+		e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 100
 		GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then return { e } end return {} end
 	end)
 	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
 	check("in reach: the spot is the nearest candidate outside his reach, not the fallback", s ~= nil and info.why == "hero" and dist(s, e.loc) >= 1098 and dist(s, e.loc) < 1098 + 51, s and dist(s, e.loc))
+	GetUnitList = function() return {} end
+end
+
+-- Ours.EvenStand (slice mid-stand): the same lone hero, not hitting us, whose burst (40 of 100 HP) cannot kill us refuses no
+-- place: the spot is the preferred point. Off, the burst bar (0.35) refuses it as before.
+do
+	local function run(on)
+		local e
+		local s, bot = spotFor(SDK, { hp = 100, threat = true, evenStand = on }, function()
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) }) e.range = 150 e.estDamage = 40
+			GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then return { e } end return {} end
+		end)
+		return s, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot), e
+	end
+	local _, iOn = run(true)
+	check("EvenStand on: a lone hero who cannot kill us does not move the spot", iOn.why == "pref" and iOn.rp == "none", iOn.why)
+	local _, iOff = run(false)
+	check("EvenStand off: the burst bar refuses the point", iOff.why == "hero" and iOff.rp == "burst", iOff.why)
 	GetUnitList = function() return {} end
 end
 

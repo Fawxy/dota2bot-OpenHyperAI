@@ -146,6 +146,8 @@ ____exports.SETTINGS = {
     EscapeItems = {"item_blink", "item_force_staff", "item_tpscroll"},
     EscapeMargin = 100,
     EngagedRecent = 1,
+    StandBurst = 1,
+    StandHp = 0.5,
     LogEvery = 5
 }
 local TOWER_IDS = {
@@ -524,6 +526,25 @@ function ____exports.Read(bot, from, place, horizon, opts)
         eng = eng,
         att = att
     }
+end
+--- The lone-hero stand (slice mid-stand): exactly one visible enemy hero can reach the walk, it has not damaged us within
+-- EngagedRecent (the read was made with `opts.engagedWindow`, so `eng` is filled), its burst is under StandBurst of our HP,
+-- our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar. The lane
+-- spot does not refuse such a place and retreat does not leave it on `threat`: h2harbiter1 and 2, the mid stood about 1,400
+-- from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a stand 21 times a game.
+-- Once that hero hits us the callers' own rules apply again (the dead end "a hold that never hits back" is the hit case).
+function ____exports.LoneStand(bot, r)
+    local s = ____exports.SETTINGS
+    if #r.reach ~= 1 or #r.eng > 0 or r.tower then
+        return false
+    end
+    if r.burst >= s.StandBurst or r.missing >= s.MissingRefuse then
+        return false
+    end
+    return bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    ) >= s.StandHp
 end
 local gateCut
 --- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.

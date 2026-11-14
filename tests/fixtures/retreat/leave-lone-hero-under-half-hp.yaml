@@ -1,0 +1,33 @@
+id: retreat.leave.lone-hero-under-half-hp.001
+source: log
+ref: {log: 2026-11-13T18-26-40-h2harbiter2_A_rad_1.log, t: 563.567}
+status: active
+control: {commit: 142786a3, outcome: pass}
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose threat (threat 0.510, free budget 0.500, over 0.367 s).
+# bot pid 2: HP 37% (352 of 956)
+# enemy pid 8: 984 from the bot, HP 868, damage 180 / 414 (short / long window)
+# unseen pid 7: 7351 from the bot (where last seen), unseen 9.1 s
+# unseen pid 9: 8343 from the bot (where last seen), unseen 0.1 s
+world:
+  t: 563.567
+  team: 2
+  pid: 2
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-840,"y":-864,"hp":352,"mhp":956,"range":790,"hull":24,"speed":330,"esc":0}
+  ce: [{"id":469,"x":-442,"y":-400,"hp":562,"mhp":562,"ranged":0,"tgt":"u458","hull":16},{"id":470,"x":-516,"y":-283,"hp":562,"mhp":562,"ranged":0,"tgt":"u457","hull":16},{"id":468,"x":-499,"y":-354,"hp":139,"mhp":562,"ranged":0,"tgt":"u456","hull":16},{"id":471,"x":-208,"y":-117,"hp":312,"mhp":312,"ranged":1,"tgt":"u456","hull":8}]
+  ca: [{"id":459,"x":-854,"y":-674,"hp":312,"mhp":312,"ranged":1,"tgt":"u468","hull":8},{"id":456,"x":-593,"y":-441,"hp":336,"mhp":562,"ranged":0,"tgt":"u468","hull":16},{"id":457,"x":-600,"y":-369,"hp":495,"mhp":562,"ranged":0,"tgt":"u468","hull":16},{"id":458,"x":-531,"y":-477,"hp":492,"mhp":562,"ranged":0,"tgt":"u468","hull":16}]
+  he: [{"pid":8,"x":-293,"y":-46,"hp":868,"range":380,"hull":24,"speed":350,"atk":0,"eng":0,"e3":180,"e6":414,"ill":0}]
+  hu: [{"pid":7,"x":5664,"y":-4289,"tss":9.1,"sp":380},{"pid":9,"x":5877,"y":-5813,"tss":0.1,"sp":335}]
+  ha: []
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-2500,"y0":-2500,"nx":15,"ny":14,"step":250,"hex":"c0010000f201ee07fc0ffe07fe07fc0ff81fe07f803e007800000"}
+  budget: 0.5
+  over: 0.367
+  hold: 0.17
+  dt: 0
+expect:
+  must: ["leave(threat)"]
+notes: >
+  Slice mid-stand, the HP floor: one enemy hero 984 away, not hitting, the mid at 37% HP (352 of 956), threat 0.51 over the
+  free budget. Under half HP the old rule stands: the leave is right, before and after the change.

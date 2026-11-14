@@ -1479,7 +1479,7 @@ export const EVENTS = {
         kind: "str",
         /** The episode number. */
         ep: "num",
-        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. */
+        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the lone-hero stand (`Ours.EvenStand`), absent for the `Ours.RetreatOdds` hold. */
         why: "str",
         /** The hero's HP share at the line. */
         hp: "num",

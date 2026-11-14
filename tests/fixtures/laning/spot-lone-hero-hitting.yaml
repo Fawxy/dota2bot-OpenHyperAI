@@ -1,0 +1,35 @@
+id: lane.spot.lone-hero-hitting.001
+source: log
+ref: {log: 2026-11-13T18-55-22-h2harbiter2_C_dire_3.log, t: 510.900}
+status: active
+control: {commit: 142786a3, outcome: pass}
+decision: lane_spot
+# Cut by tools/hlog/cut.js. The game chose creep/burst at (222, 60).
+# bot pid 8: HP 79% (971 of 1226)
+# enemy pid 2: 588 from the bot, HP 1028, damage 426 / 725 (short / long window), hit it recently
+# unseen pid 0: 7841 from the bot (where last seen), unseen 5.8 s
+# unseen pid 1: 6523 from the bot (where last seen), unseen 2.5 s
+# unseen pid 4: 6099 from the bot (where last seen), unseen 2.8 s
+world:
+  t: 510.9
+  team: 3
+  pid: 8
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-266,"y":-138,"hp":971,"mhp":1226,"range":150,"hull":24,"speed":310,"esc":0}
+  ce: [{"id":414,"x":-238,"y":-224,"hp":562,"mhp":562,"ranged":0,"tgt":"u429","hull":16},{"id":423,"x":-646,"y":-524,"hp":300,"mhp":312,"ranged":1,"tgt":"b","hull":8},{"id":421,"x":-310,"y":-230,"hp":76,"mhp":562,"ranged":0,"tgt":"u429","hull":16}]
+  ca: [{"id":406,"x":-188,"y":-108,"hp":309,"mhp":312,"ranged":1,"tgt":"u421","hull":8},{"id":386,"x":-138,"y":-106,"hp":217,"mhp":312,"ranged":1,"tgt":"u421","hull":8}]
+  he: [{"pid":2,"x":-751,"y":-471,"hp":1028,"range":500,"hull":24,"speed":325,"atk":0,"eng":1,"e3":426,"e6":725,"ill":0}]
+  hu: [{"pid":0,"x":5723,"y":-5199,"tss":5.8,"sp":350},{"pid":1,"x":-6556,"y":1589,"tss":2.5,"sp":335},{"pid":4,"x":-6162,"y":1423,"tss":2.8,"sp":330}]
+  ha: []
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-2000,"y0":-1750,"nx":15,"ny":15,"step":250,"hex":"00000000000000003c00fc03f807f807f807f807f007e00e000000008"}
+  role: "core"
+  lane: 2
+  front: {"x":-215,"y":-100,"bx":113,"by":130}
+expect:
+  must: ["read(burst)"]
+  mustNot: ["stand(pref)"]
+notes: >
+  Slice mid-stand, the end: the lone hero hit the mid within the last second (79% HP, 971 of 1,226; 725 over the 6 s engaged
+  window = 0.75). The stand rule stops at the first hit and the old bar applies: a hold that never hits back is a dead end
+  (card threat-and-retreat), so the spot backs off, before and after the change.

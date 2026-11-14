@@ -228,7 +228,7 @@ export function Spot(bot: Unit): void {
 
 export interface LeaveInputs {
     r: Threat.Read;
-    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). */
+    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold`, `stand` (stay). */
     dec: string;
     budget: number;
     purp: string;

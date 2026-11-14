@@ -1,0 +1,32 @@
+id: lane.spot.lone-hero-not-hitting.002
+source: log
+ref: {log: 2026-11-13T19-12-29-h2harbiter2_B_rad_5.log, t: 134.633}
+status: active
+control: {commit: 142786a3, outcome: fail}
+decision: lane_spot
+# Cut by tools/hlog/cut.js. The game chose hero/burst at (-1081, -920).
+# bot pid 4: HP 87% (604 of 692)
+# enemy pid 9: 1607 from the bot, HP 690, damage 413 / 626 (short / long window)
+# unseen pid 6: 7219 from the bot (where last seen), unseen 2.6 s
+world:
+  t: 134.633
+  team: 2
+  pid: 4
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-1212,"y":-839,"hp":604,"mhp":692,"range":600,"hull":24,"speed":290,"esc":0}
+  ce: [{"id":81,"x":-7,"y":-2,"hp":300,"mhp":300,"ranged":1,"tgt":"u73","hull":8}]
+  ca: [{"id":99,"x":-1765,"y":-1372,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":100,"x":-1712,"y":-1317,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":101,"x":-1628,"y":-1246,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":73,"x":-373,"y":-320,"hp":265,"mhp":300,"ranged":1,"tgt":"u81","hull":8},{"id":102,"x":-1856,"y":-1495,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
+  he: [{"pid":9,"x":161,"y":-3,"hp":690,"range":625,"hull":24,"speed":295,"atk":0,"eng":0,"e3":413,"e6":626,"ill":0}]
+  hu: [{"pid":6,"x":-5768,"y":4761,"tss":2.6,"sp":310}]
+  ha: []
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-3000,"y0":-2500,"nx":18,"ny":17,"step":250,"hex":"f0c03c200ffa83fce0fff01fff007fe00ff803fe00ff007fc01fe00df00268000000000000000"}
+  role: "core"
+  lane: 2
+  front: {"x":-382,"y":-276,"bx":-676,"by":-547}
+expect:
+  must: ["read(none)"]
+  mustNot: ["read(burst)", "read(threat)", "stand(hero)", "stand(xp)"]
+notes: >
+  Slice mid-stand, the start at its usual distance: a Radiant mid at 87% HP (604 of 692), the enemy mid 1,607 away and not
+  hitting, burst 413 / 604 = 0.68. The old read refused; standing at the creep is safe (D11).

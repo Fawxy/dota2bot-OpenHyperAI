@@ -76,6 +76,14 @@ export const SETTINGS = {
      * for as long as we stand there. judgement.
      */
     EngagedRecent: 1,
+    /**
+     * The lone-hero stand (slice mid-stand, D11 read against D1; `Ours.EvenStand`, see LoneStand): one enemy hero in reach who
+     * is not hitting us is no reason to stand back or leave while its burst over the read's window is under StandBurst of our
+     * current HP (D1's "their burst can kill me") and our HP share is StandHp or more (under it the old limits stand; the same
+     * bars as retreat's EvenBurst and EvenHp). judgement.
+     */
+    StandBurst: 1,
+    StandHp: 0.5,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };
@@ -339,6 +347,21 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, op
     const escape = escapeOf(bot, chasers);
     const lethal = burst >= 1 && reach.length > allies && !escape;
     return { t: now, from, place, horizon, depth, reach, burst, allies, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att };
+}
+
+/**
+ * The lone-hero stand (slice mid-stand): exactly one visible enemy hero can reach the walk, it has not damaged us within
+ * EngagedRecent (the read was made with `opts.engagedWindow`, so `eng` is filled), its burst is under StandBurst of our HP,
+ * our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar. The lane
+ * spot does not refuse such a place and retreat does not leave it on `threat`: h2harbiter1 and 2, the mid stood about 1,400
+ * from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a stand 21 times a game.
+ * Once that hero hits us the callers' own rules apply again (the dead end "a hold that never hits back" is the hit case).
+ */
+export function LoneStand(bot: Unit, r: Read): boolean {
+    const s = SETTINGS;
+    if (r.reach.length !== 1 || r.eng.length > 0 || r.tower) return false;
+    if (r.burst >= s.StandBurst || r.missing >= s.MissingRefuse) return false;
+    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= s.StandHp;
 }
 
 let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;

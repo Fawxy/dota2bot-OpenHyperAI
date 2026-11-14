@@ -720,8 +720,8 @@ function unpaid(bot: Unit, r: Threat.Read): number {
     return n;
 }
 
-/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), or the over-budget read has not yet held for `Profile.ThreatHold`. */
-export type Stay = "under" | "even" | "hold";
+/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, or it is a lone hero who is not hitting us and cannot kill us (EvenStand). */
+export type Stay = "under" | "even" | "hold" | "stand";
 
 /**
  * The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
@@ -735,6 +735,19 @@ export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: numbe
         st.overSince = undefined;
         st.stayLogged = undefined;
         return $multi(undefined, "under");
+    }
+    // EvenStand (slice mid-stand, D11 against D1): one hero in reach who is not hitting us and cannot kill us is no reason to
+    // leave (Threat.LoneStand, the lane spot's rule too, so the spot does not walk us back into a place this rule leaves).
+    if (Ours.On("EvenStand") && Threat.LoneStand(bot, r)) {
+        st.overSince = undefined;
+        if (st.stayLogged !== true) {
+            st.stayLogged = true;
+            Telemetry.Event("retreat", [
+                ["ph", "stay"], ["why", "stand"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
+                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
+            ]);
+        }
+        return $multi(undefined, "stand");
     }
     // D1 leaves when more enemy heroes than we have can reach us (the hero itself counts on our side). A fight they do not
     // outnumber is D24's while we are not in danger of dying: their burst under EvenBurst of our HP, our HP at EvenHp or more.

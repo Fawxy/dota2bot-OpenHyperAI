@@ -504,11 +504,13 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         }
         return r;
     };
-    const readBreaks = (p: Vector): boolean => {
-        if (!readOn(p)) return false;
-        const r = readAt(p);
-        return r.burst >= READ_BURST || r.missing >= READ_MISSING || pressured(r);
+    // Ours.EvenStand: a lone hero who is not hitting us and cannot kill us refuses no place (Threat.LoneStand).
+    const stand = On("EvenStand");
+    const verdict = (r: Threat.Read): "burst" | "missing" | "threat" | "none" => {
+        if (stand && Threat.LoneStand(bot, r)) return "none";
+        return r.burst >= READ_BURST ? "burst" : r.missing >= READ_MISSING ? "missing" : pressured(r) ? "threat" : "none";
     };
+    const readBreaks = (p: Vector): boolean => readOn(p) && verdict(readAt(p)) !== "none";
     const limits = (p: Vector, cov: Cover | undefined): Why | undefined =>
         readOn(p) ? Breaks(p, creeps, towers, margin, [], [], cov, busy) : Breaks(p, creeps, towers, margin, heroes, reach, cov, busy);
     const covered = (p: Vector): number => (cover !== undefined && limits(p, undefined) !== undefined ? 1 : 0);
@@ -523,10 +525,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
             info.mp = r.mpids.length > 0 ? r.mpids.join(",") : undefined;
             info.op = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
             info.rp = "none";
-            if (readOn(pref)) {
-                const rpr = readAt(pref);
-                info.rp = rpr.burst >= READ_BURST ? "burst" : rpr.missing >= READ_MISSING ? "missing" : pressured(rpr) ? "threat" : "none";
-            }
+            if (readOn(pref)) info.rp = verdict(readAt(pref));
             info.re = r.eng.length;
             info.rat = r.att.length > 0 ? 1 : 0;
             info.rn = readN;

@@ -794,7 +794,7 @@ Slice retreat (retreat.ts): one start and one end per episode of our retreat, an
 - `ph` str: `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per over-budget spell the `Ours.RetreatOdds` hold keeps in lane), `skip`, `items`, `use`, `items_off`.
 - `kind` str: `plain` for a walk by a hero our retreat does not own; else our episode.
 - `ep` num: The episode number.
-- `why` str: On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`.
+- `why` str: On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the lone-hero stand (`Ours.EvenStand`), absent for the `Ours.RetreatOdds` hold.
 - `hp` num: The hero's HP share at the line.
 - `thr` num: The read's threat.
 - `band` str: The read's band at the line; `ph=read` is logged on a band change.
