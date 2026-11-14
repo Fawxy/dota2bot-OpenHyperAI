@@ -277,17 +277,20 @@ export const TABLE: Record<string, Entry> = {
         },
     },
     // Slice pair-join-on (D10's join). half: execution. The join's facts (PairJoin.Decide): one of ours hit by an enemy hero
-    // within 1 s (forced: the Dire pos3 actor attacks the Radiant pos1); another of ours within 1,200 of it (forced: the pos5
-    // stands beside it); not outnumbered, enemy heroes in sight within 1,000 of the hit hero no more than ours within 1,200
+    // within 1 s (forced: the Dire pos4 actor attacks the Radiant pos1 from 500); another of ours within 1,200 of it (forced:
+    // the pos5 stands 400 behind it); not outnumbered, enemy heroes in sight within 1,000 of the hit hero no more than ours within 1,200
     // (forced: the rest bench); our best 3 s kill share over theirs (forced by numbers: two healed heroes against one healed
     // hero; checked with the same estimate the rule reads). Ready: `pair` and `ahead` for both casts, HP at half or more.
     // Read after release: each cast's `ev=trade kind=join` taken (`result` done or kill) and the pos1 starts no `threat`
     // retreat while its join runs. Control (`alone`): the pos5 stands 2,500 off, so there is no pair (D1 and D24 alone).
-    // Spots: hit-back's side spot off our bot lane (763 from the lane: CoreTrade's in lane). Seed 8 (lineup B): Sven and
-    // Witch Doctor against Bristleback. 120 s reps from 0:00 (heal walk and back), five inside 10:00. Release: laning,
+    // The common start (join cuts of smoke pairjoin smoke1+2, 105 with the joiner not the hit hero): the hitter 820 from the
+    // hit hero (median; 5 of 105 under 300), the joiner 1,034 from it (19 under 700). rig1 had a melee hitter in reach of both,
+    // where the trade rule already fights (both casts traded in every ready pair rep with the switch off), so the hitter is a
+    // ranged one attacking from 500 and the pos5 stands about 900 from it. Spots: hit-back's side spot off our bot lane (763
+    // from the lane: CoreTrade's in lane). Seed 8 (lineup B): Sven and Witch Doctor against Lich (range 550). 120 s reps from 0:00 (heal walk and back), five inside 10:00. Release: laning,
     // attack (the join), retreat, idle.
     "pair-join": {
-        note: "rig: Radiant pos1 and pos5 side by side off our bot lane, the Dire pos3 attacks the pos1 to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane with the pos5 400 behind it, the Dire pos4 attacks the pos1 from 500 to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: { r: [1, 5] },
         others: "bench",
         rep: { every: 120, from: 0 },
@@ -297,7 +300,7 @@ export const TABLE: Record<string, Entry> = {
             window: 600,
             spots: {
                 side: ["r:bot1", -2750, 700],
-                beside: ["r:bot1", -2600, 850],
+                beside: ["r:bot1", -3150, 700],
                 sidenear: ["r:bot1", -2250, 700],
                 away: ["r:bot1", -2750, 3200],
             },
@@ -307,17 +310,17 @@ export const TABLE: Record<string, Entry> = {
             reps: [
                 {
                     name: "pair",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand beside"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.5", "leave"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand beside"], d4: ["heal", "walk sidenear", "attack r1 from 500 until hp 0.5", "leave"] },
                     ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
                 },
                 {
                     name: "pair",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand beside"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.5", "leave"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand beside"], d4: ["heal", "walk sidenear", "attack r1 from 500 until hp 0.5", "leave"] },
                     ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
                 },
                 {
                     name: "alone",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand away"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.5", "leave"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand away"], d4: ["heal", "walk sidenear", "attack r1 from 500 until hp 0.5", "leave"] },
                     ready: { hit: true, hpAtLeast: 0.5 },
                 },
             ],

@@ -1565,7 +1565,7 @@ ____exports.TABLE = {
         }
     },
     ["pair-join"] = {
-        note = "rig: Radiant pos1 and pos5 side by side off our bot lane, the Dire pos3 attacks the pos1 to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 off our bot lane with the pos5 400 behind it, the Dire pos4 attacks the pos1 from 500 to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast = {r = {1, 5}},
         others = "bench",
         rep = {every = 120, from = 0},
@@ -1573,11 +1573,11 @@ ____exports.TABLE = {
             half = "execution",
             switch = "PairJoin",
             window = 600,
-            spots = {side = {"r:bot1", -2750, 700}, beside = {"r:bot1", -2600, 850}, sidenear = {"r:bot1", -2250, 700}, away = {"r:bot1", -2750, 3200}},
+            spots = {side = {"r:bot1", -2750, 700}, beside = {"r:bot1", -3150, 700}, sidenear = {"r:bot1", -2250, 700}, away = {"r:bot1", -2750, 3200}},
             timeout = 60,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand beside"}, d3 = {"heal", "walk sidenear", "attack r1 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand beside"}, d3 = {"heal", "walk sidenear", "attack r1 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "alone", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand away"}, d3 = {"heal", "walk sidenear", "attack r1 until hp 0.5", "leave"}}, ready = {hit = true, hpAtLeast = 0.5}}}
+            reps = {{name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand beside"}, d4 = {"heal", "walk sidenear", "attack r1 from 500 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand beside"}, d4 = {"heal", "walk sidenear", "attack r1 from 500 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "alone", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand away"}, d4 = {"heal", "walk sidenear", "attack r1 from 500 until hp 0.5", "leave"}}, ready = {hit = true, hpAtLeast = 0.5}}}
         }
     },
     ["retreat-heal-items"] = {
