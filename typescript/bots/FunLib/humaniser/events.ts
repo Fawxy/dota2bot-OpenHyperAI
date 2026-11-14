@@ -2652,7 +2652,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`). */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`). */
         kind: "str",
         /** The spot's role input: `core` or `support`. */
         role: "str",
@@ -2703,6 +2703,19 @@ export const EVENTS = {
         band: "str",
         /** `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision). */
         vw: "str",
+        /** kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join`, `outnumbered`, `losing`. */
+        al: "num",
+        /** kind=join: our heroes within OursRange of the ally, the bot and the ally included: pid, x, y, HP, max HP, in our retreat. */
+        po: "str",
+        /** kind=join: enemy heroes in sight within FoeRange of the ally: pid, x, y, HP, max HP. */
+        pt: "str",
+        /** kind=join: GetEstimatedDamageToTarget over PairJoin Window between the two sides, both ways: from pid, to pid, damage. */
+        dm: "str",
+        /** kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none. */
+        tgt: "num",
+        /** kind=join: our best kill share (damage over the target's HP) and theirs on ours. */
+        ko: "num",
+        kt: "num",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
     cut_creeps: {

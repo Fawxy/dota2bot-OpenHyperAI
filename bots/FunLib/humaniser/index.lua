@@ -44,6 +44,7 @@ local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
 local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
+local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -266,6 +267,7 @@ local function tick(bot)
     logStart(bot)
     Drill.Tick(bot)
     Retreat.Tick(bot)
+    pcall(PairJoin.Tick, bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)

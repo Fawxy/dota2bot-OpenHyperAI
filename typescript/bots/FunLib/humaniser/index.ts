@@ -53,6 +53,7 @@ export { CoreTrade };
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";
+import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 export { Retreat };
 
 const OVERLAY_REFRESH = 0.25;
@@ -164,6 +165,7 @@ function tick(this: void, bot: Unit): void {
     logStart(bot);
     Drill.Tick(bot);
     Retreat.Tick(bot);
+    pcall(PairJoin.Tick, bot);
     Pings.Tick(bot);
     Commands.Tick(bot);
     Lane.Tick(bot);

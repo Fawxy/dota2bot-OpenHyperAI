@@ -1756,7 +1756,14 @@
    "dt": "num",
    "thr": "num",
    "band": "str",
-   "vw": "str"
+   "vw": "str",
+   "al": "num",
+   "po": "str",
+   "pt": "str",
+   "dm": "str",
+   "tgt": "num",
+   "ko": "num",
+   "kt": "num"
   },
   "cut_creeps": {
    "pid": "num",
@@ -2346,7 +2353,10 @@
    "dec": "text",
    "purp": "text",
    "band": "text",
-   "vw": "text"
+   "vw": "text",
+   "po": "text",
+   "pt": "text",
+   "dm": "text"
   },
   "ev_cut_creeps": {
    "kind": "text",

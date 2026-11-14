@@ -2,7 +2,7 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave] [--who CONSUMER] [--game N] [--id ID]   print a fixture
+//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
@@ -220,6 +220,27 @@ const DECISIONS = {
         brief: (game, cut) => `threat ${cut.thr} (${cut.band}), ${cut.purp} budget ${cut.bud}`,
         id: (cut) => `retreat.leave.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.dec} (threat ${cut.thr}, ${cut.purp} budget ${cut.bud}, over ${cut.ov} s)`,
+    },
+    join: {
+        driver: 'pair_join',
+        world(game, cut) {
+            const side = (s, ours) => (s ? s.split(';') : []).map(r => {
+                const [pid, x, y, hp, mhp, ret] = nums(r);
+                return ours ? { pid, x, y, hp, mhp, ret } : { pid, x, y, hp, mhp };
+            });
+            const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
+            return { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+        },
+        check(game, cut, obs) {
+            const a = obs.actions[0] || {};
+            const got = a.verb === 'join' ? `join(${a.target})` : `out(${a.target})`;
+            const want = cut.dec === 'join' ? `join(hero#${cut.tgt})` : `out(${cut.dec})`;
+            return { same: got === want, got, want };
+        },
+        answer: (game, cut) => cut.dec,
+        brief: (game, cut) => `ally ${cut.al}, ${cut.po.split(';').length}v${cut.pt.split(';').length}, ours ${cut.ko} theirs ${cut.kt}`,
+        id: (cut) => `fights.join.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
+        note: (game, cut) => `The game chose ${cut.dec} on ${cut.tgt} (ours ${cut.ko}, theirs ${cut.kt})`,
     },
 };
 
