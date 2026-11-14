@@ -153,6 +153,10 @@ export const DEFAULTS = {
     /** Slice rune-verb (rework s7): under the 6:00 plan's switches, the mid's water spawns (2:00, 4:00) are its own trips, one
      *  per spawn (rune_job MidWants), and OHA's power and water branch stands aside for it until the plan takes over. Off: OHA's. */
     MidWater: false,
+    /** Slice mid-stand (D11 read against D1): with LaneSpotThreat and Retreat on, one enemy hero in reach who is not hitting
+     *  us, whose burst is under our HP, at half HP or more, refuses no lane spot and starts no `threat` leave
+     *  (Threat.LoneStand). Off: the spot's burst bar and band, and the budget, whatever the numbers. */
+    EvenStand: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

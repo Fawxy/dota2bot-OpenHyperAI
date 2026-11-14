@@ -1,0 +1,32 @@
+id: lane.spot.lone-hero-not-hitting.001
+source: log
+ref: {log: 2026-11-13T19-12-29-h2harbiter2_B_rad_5.log, t: 369.633}
+status: active
+control: {commit: 142786a3, outcome: fail}
+decision: lane_spot
+# Cut by tools/hlog/cut.js. The game chose hero/burst at (-1310, -790).
+# bot pid 4: HP 100% (846 of 846)
+# enemy pid 9: 788 from the bot, HP 802, damage 639 / 1018 (short / long window)
+# unseen pid 6: 6877 from the bot (where last seen), unseen 0.5 s
+world:
+  t: 369.633
+  team: 2
+  pid: 4
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-567,"y":-254,"hp":846,"mhp":846,"range":600,"hull":24,"speed":290,"esc":0}
+  ce: [{"id":310,"x":294,"y":302,"hp":300,"mhp":300,"ranged":1,"tgt":"u288","hull":8},{"id":308,"x":11,"y":32,"hp":134,"mhp":550,"ranged":0,"tgt":"u288","hull":16},{"id":269,"x":371,"y":297,"hp":646,"mhp":935,"ranged":0,"tgt":"u288","hull":16}]
+  ca: [{"id":297,"x":-354,"y":-279,"hp":300,"mhp":300,"ranged":1,"tgt":"u308","hull":8},{"id":324,"x":-2918,"y":-2482,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":323,"x":-2752,"y":-2352,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":325,"x":-2832,"y":-2414,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":288,"x":-103,"y":-29,"hp":99,"mhp":550,"ranged":0,"tgt":"u308","hull":16},{"id":326,"x":-3033,"y":-2591,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
+  he: [{"pid":9,"x":174,"y":13,"hp":802,"range":625,"hull":24,"speed":340,"atk":0,"eng":0,"e3":639,"e6":1018,"ill":0}]
+  hu: [{"pid":6,"x":-5640,"y":4389,"tss":0.5,"sp":310}]
+  ha: []
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-2250,"y0":-2000,"nx":17,"ny":16,"step":250,"hex":"f8003c003f001f8003c000cf000fc00fe00ff003f800f80000000000000000000000"}
+  role: "core"
+  lane: 2
+  front: {"x":-88,"y":-65,"bx":-410,"by":-302}
+expect:
+  mustNot: ["read(burst)", "read(threat)", "stand(hero)"]
+notes: >
+  Slice mid-stand, the commonest start (D11): a Radiant mid at full HP (846 of 846), one enemy hero 788 away that is not hitting
+  it, burst 639 / 846 = 0.76 over 3 s. The old read refused the stand at 0.35 and the mid stood back while its creeps were
+  denied. The hero cannot kill it and does not outnumber it, so the spot stands at its creep.

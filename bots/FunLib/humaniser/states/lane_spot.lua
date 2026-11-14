@@ -637,12 +637,15 @@ function ____exports.Compute(bot, role, fed, hold)
         end
         return r
     end
-    local function readBreaks(p)
-        if not readOn(p) then
-            return false
+    local stand = On("EvenStand")
+    local function verdict(r)
+        if stand and Threat.LoneStand(bot, r) then
+            return "none"
         end
-        local r = readAt(p)
-        return r.burst >= READ_BURST or r.missing >= READ_MISSING or pressured(r)
+        return r.burst >= READ_BURST and "burst" or (r.missing >= READ_MISSING and "missing" or (pressured(r) and "threat" or "none"))
+    end
+    local function readBreaks(p)
+        return readOn(p) and verdict(readAt(p)) ~= "none"
     end
     local function limits(p, cov)
         local ____readOn_result_6
@@ -713,8 +716,7 @@ function ____exports.Compute(bot, role, fed, hold)
             ) or "none"
             info.rp = "none"
             if readOn(pref) then
-                local rpr = readAt(pref)
-                info.rp = rpr.burst >= READ_BURST and "burst" or (rpr.missing >= READ_MISSING and "missing" or (pressured(rpr) and "threat" or "none"))
+                info.rp = verdict(readAt(pref))
             end
             info.re = #r.eng
             info.rat = #r.att > 0 and 1 or 0
@@ -748,11 +750,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue121
+                    local __continue122
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue121 = true
+                            __continue122 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -765,9 +767,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue121 = true
+                        __continue122 = true
                     until true
-                    if not __continue121 then
+                    if not __continue122 then
                         break
                     end
                 end

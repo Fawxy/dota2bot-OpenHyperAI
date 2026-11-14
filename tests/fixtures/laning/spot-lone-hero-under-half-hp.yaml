@@ -1,0 +1,33 @@
+id: lane.spot.lone-hero-under-half-hp.001
+source: log
+ref: {log: 2026-11-13T19-01-06-h2harbiter2_A_dire_4.log, t: 555.533}
+status: active
+control: {commit: 142786a3, outcome: pass}
+decision: lane_spot
+# Cut by tools/hlog/cut.js. The game chose creep/burst at (332, -55).
+# bot pid 8: HP 43% (353 of 824)
+# enemy pid 2: 760 from the bot, HP 956, damage 250 / 500 (short / long window), attacking the bot
+# unseen pid 0: 7588 from the bot (where last seen), unseen 1.6 s
+# unseen pid 3: 7462 from the bot (where last seen), unseen 6 s
+world:
+  t: 555.533
+  team: 3
+  pid: 8
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":56,"y":-6,"hp":353,"mhp":824,"range":380,"hull":24,"speed":305,"esc":0}
+  ce: [{"id":448,"x":-350,"y":-270,"hp":92,"mhp":312,"ranged":1,"tgt":"u432","hull":8}]
+  ca: [{"id":455,"x":483,"y":397,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":432,"x":17,"y":17,"hp":244,"mhp":312,"ranged":1,"tgt":"u448","hull":8},{"id":459,"x":754,"y":590,"hp":312,"mhp":312,"ranged":1,"tgt":"-","hull":8},{"id":460,"x":408,"y":341,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":462,"x":313,"y":278,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16}]
+  he: [{"pid":2,"x":-652,"y":-282,"hp":956,"range":790,"hull":24,"speed":330,"atk":1,"eng":0,"e3":250,"e6":500,"ill":0}]
+  hu: [{"pid":0,"x":5997,"y":-4727,"tss":1.6,"sp":370},{"pid":3,"x":5762,"y":-4814,"tss":6,"sp":335}]
+  ha: []
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-1750,"y0":-1750,"nx":15,"ny":15,"step":250,"hex":"00000000000000003800f803f807f007f00ff00fe00fc01d000040018"}
+  role: "core"
+  lane: 2
+  front: {"x":-18,"y":38,"bx":308,"by":270}
+expect:
+  must: ["read(burst)"]
+  mustNot: ["stand(pref)"]
+notes: >
+  Slice mid-stand, the HP floor: one enemy hero at 760, the mid at 43% HP (353 of 824), burst 250 / 353 = 0.71. Under half HP
+  the old limits stand: backing off is right, before and after the change.

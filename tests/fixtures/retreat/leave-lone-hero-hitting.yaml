@@ -1,0 +1,33 @@
+id: retreat.leave.lone-hero-hitting.001
+source: log
+ref: {log: 2026-11-13T18-26-40-h2harbiter2_A_rad_1.log, t: 523.033}
+status: active
+control: {commit: 142786a3, outcome: pass}
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose threat (threat 0.580, free budget 0.500, over 0.400 s).
+# bot pid 2: HP 80% (733 of 912)
+# enemy pid 8: 1095 from the bot, HP 868, damage 213 / 483 (short / long window), hit it recently
+# unseen pid 6: 6503 from the bot (where last seen), unseen 34.9 s
+world:
+  t: 523.033
+  team: 2
+  pid: 2
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  bot: {"x":-1661,"y":-1281,"hp":733,"mhp":912,"range":790,"hull":24,"speed":330,"esc":0}
+  ce: [{"id":421,"x":-1152,"y":-955,"hp":312,"mhp":312,"ranged":1,"tgt":"b","hull":8},{"id":413,"x":-1167,"y":-921,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
+  ca: [{"id":430,"x":-2108,"y":-1734,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":431,"x":-2014,"y":-1637,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":432,"x":-1952,"y":-1571,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":435,"x":-2224,"y":-1875,"hp":312,"mhp":312,"ranged":1,"tgt":"-","hull":8}]
+  he: [{"pid":8,"x":-913,"y":-481,"hp":868,"range":380,"hull":24,"speed":350,"atk":0,"eng":1,"e3":213,"e6":483,"ill":0}]
+  hu: [{"pid":6,"x":-5767,"y":3762,"tss":34.9,"sp":335}]
+  ha: []
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"u421"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":-3500,"y0":-3000,"nx":15,"ny":15,"step":250,"hex":"e001f003f003f103fe03f80ffe07fc01f801f003e007800c000000000"}
+  budget: 0.5
+  over: 0.4
+  hold: 0.17
+  dt: 0
+expect:
+  must: ["leave(threat)"]
+notes: >
+  Slice mid-stand, the end: the lone hero hit the mid within the last second (80% HP, 733 of 912; 483 over 6 s = 0.66,
+  threat 0.58 over the free budget). The stand rule stops at the first hit: the leave is right, before and after the change
+  (D24: step out after a hit; the passive hold is a dead end).

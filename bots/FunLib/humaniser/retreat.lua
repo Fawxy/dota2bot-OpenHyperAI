@@ -1359,6 +1359,44 @@ function ____exports.LeaveWhy(bot, st, r, budget, now)
         st.stayLogged = nil
         return nil, "under"
     end
+    if Ours.On("EvenStand") and Threat.LoneStand(bot, r) then
+        st.overSince = nil
+        if st.stayLogged ~= true then
+            st.stayLogged = true
+            Telemetry.Event(
+                "retreat",
+                {
+                    {"ph", "stay"},
+                    {"why", "stand"},
+                    {
+                        "pid",
+                        bot:GetPlayerID()
+                    },
+                    {
+                        "thr",
+                        r2(r.threat)
+                    },
+                    {"band", r.band},
+                    {"reach", #r.reach},
+                    {"al", r.allies},
+                    {
+                        "burst",
+                        r2(r.burst)
+                    },
+                    {"eng", #r.eng},
+                    {
+                        "budget",
+                        r2(budget)
+                    },
+                    {
+                        "hp",
+                        r2(hpShare(bot))
+                    }
+                }
+            )
+        end
+        return nil, "stand"
+    end
     local even = #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst and hpShare(bot) >= ____exports.SETTINGS.EvenHp
     if Ours.On("RetreatOdds") and even and unpaid(bot, r) == 0 then
         st.overSince = nil
