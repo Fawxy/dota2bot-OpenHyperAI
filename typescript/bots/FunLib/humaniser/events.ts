@@ -1030,13 +1030,15 @@ export const EVENTS = {
         rend: "num",
         /** Rigs (an entry with `rig`): ph=rep and ph=ready carry the rep's kind `var`; ph=step when a rig hero `pid` moves to
          *  step `i` (0-based) `step` of its setup; ph=ready once per rep and cast hero: `ok` 1 when every ready check held (the
-         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|hplow|holds|lacks|clear|near|hit|past|behind: the rep is
+         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|hplow|holds|lacks|clear|near|hit|past|behind|lone|lonehit|burst: the rep is
          *  invalid), `secs` from the rep's start, the cast's HP share `hp`; ph=spot once per rig spot: its point `x`, `y`, how
          *  far it moved to be passable `d`, the nearest Radiant and Dire tower `rt`, `dt`; ph=wait when the cast's first
          *  failing ready check `fail` changes; ph=buy per purchase try (`step` the item, `res` the API's result, `gold`); ph=ready
          *  also carries `rend` (the rep's end), `win` (the end of the stage the rule lives in; a rep ending after it is outside)
          *  and `rel` (the release list's modes but `idle`, comma-separated); ph=wait and ph=ready carry `d`, the nearest hero
-         *  that hit the cast in the last second, as distance past the cast's trade reach. */
+         *  that hit the cast in the last second, as distance past the cast's trade reach; in a `lone` rep also `bu`, the lone
+         *  enemy hero's estimated damage over 3 s as a share of the cast's HP. */
+        bu: "num",
         var: "str",
         win: "num",
         rel: "str",

@@ -278,6 +278,7 @@ local ____exports = {}
 local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local DamageType = ____dota.DamageType
 local GameState = ____dota.GameState
 local Lane = ____dota.Lane
 local Team = ____dota.Team
@@ -1398,6 +1399,22 @@ ____exports.TABLE = {
         castLaneOnly = true,
         rep = {every = 30, from = 0}
     },
+    ["lane-stand"] = {
+        note = "rig: Radiant pos2 behind the mid river, the Dire pos2 a statue across it (one hero in reach, not hitting, burst between 0.35 and 1 of the cast's HP at level 6, HP at half or more); then laning, retreat; 30 s reps from 0:30; seed 30",
+        cast = {r = {2}},
+        others = "bench",
+        rep = {every = 30, from = 30},
+        rig = {
+            half = "execution",
+            switch = "EvenStand",
+            window = 600,
+            spots = {home = {"r:mid1", 450, 450}, foe = {"d:mid1", -550, -550}},
+            timeout = 15,
+            keeps = {"levelup"},
+            release = {modes = {"laning", "retreat", "idle"}},
+            reps = {{name = "lone", setup = {r2 = {"stand home"}, d2 = {"stand foe"}}, ready = {lone = {1700, 0.35, 1}, hpAtLeast = 0.5}}}
+        }
+    },
     ["retreat-walk"] = {
         note = "Radiant pos1 walks to a start spot each 60 s rep (Dire bot T1 reach, our lane front, our safe pull camp) and our retreat is forced there; Dire pos3 and pos4 statues in lane; everyone else benched",
         cast = SAFE_CORE,
@@ -2044,6 +2061,32 @@ local function foggedWithin(bot, r)
     end
     return false
 end
+--- With exactly one live enemy hero in sight within `r` of the cast: its estimated damage over 3 s as a share of the cast's HP.
+local function loneBurst(bot, r)
+    local n = 0
+    local dmg = 0
+    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue227
+            repeat
+                if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > r then
+                    __continue227 = true
+                    break
+                end
+                n = n + 1
+                dmg = dmg + h:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
+                __continue227 = true
+            until true
+            if not __continue227 then
+                break
+            end
+        end
+    end
+    return n == 1 and dmg / math.max(
+        1,
+        bot:GetHealth()
+    ) or nil
+end
 --- The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step.
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
@@ -2077,19 +2120,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue241
+                local __continue245
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue241 = true
+                        __continue245 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue241 = true
+                    __continue245 = true
                 until true
-                if not __continue241 then
+                if not __continue245 then
                     break
                 end
             end
@@ -2121,7 +2164,33 @@ local function failingCheck(bot, st, rr)
             return "behind"
         end
     end
+    if r.lone ~= nil then
+        local b = loneBurst(bot, r.lone[1])
+        if b == nil then
+            return "lone"
+        end
+        if #hitters(bot) > 0 then
+            return "lonehit"
+        end
+        if b < r.lone[2] or b >= r.lone[3] then
+            return "burst"
+        end
+    end
     return nil
+end
+--- A `lone` rep's burst share for the wait and ready lines, two decimals (undefined otherwise, or with no lone hero).
+local function burstField(bot, rr)
+    if rr.ready.lone == nil then
+        return nil
+    end
+    local b = loneBurst(bot, rr.ready.lone[1])
+    local ____temp_65
+    if b == nil then
+        ____temp_65 = nil
+    else
+        ____temp_65 = math.floor(b * 100 + 0.5) / 100
+    end
+    return ____temp_65
 end
 --- Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout).
 local function rigTick(bot)
@@ -2167,6 +2236,10 @@ local function rigTick(bot)
                 {
                     "d",
                     nearestPast(bot)
+                },
+                {
+                    "bu",
+                    burstField(bot, rr)
                 }
             }
         )
@@ -2199,6 +2272,10 @@ local function rigTick(bot)
             {
                 "d",
                 nearestPast(bot)
+            },
+            {
+                "bu",
+                burstField(bot, rr)
             },
             {
                 "rend",
@@ -2253,8 +2330,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_65 = overrides()
-            local v = ____opt_65 and ____opt_65[k]
+            local ____opt_66 = overrides()
+            local v = ____opt_66 and ____opt_66[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -2268,8 +2345,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_67 = overrides()
-        local asked = ____opt_67 and ____opt_67.Drill
+        local ____opt_68 = overrides()
+        local asked = ____opt_68 and ____opt_68.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -2309,8 +2386,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_72 = Telemetry.Event
-    local ____array_71 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_73 = Telemetry.Event
+    local ____array_72 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -2322,11 +2399,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_69 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_71, {"var", ____opt_69 and ____opt_69.name})
-    ____Telemetry_Event_72(
+    local ____opt_70 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_72, {"var", ____opt_70 and ____opt_70.name})
+    ____Telemetry_Event_73(
         "drill",
-        {__TS__SparseArraySpread(____array_71)}
+        {__TS__SparseArraySpread(____array_72)}
     )
     rigTick(bot)
 end

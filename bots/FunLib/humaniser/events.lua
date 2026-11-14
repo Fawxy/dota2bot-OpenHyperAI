@@ -675,6 +675,7 @@ ____exports.EVENTS = {
         dend = "num",
         uns = "num",
         rend = "num",
+        bu = "num",
         var = "str",
         win = "num",
         rel = "str",
