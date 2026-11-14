@@ -53,8 +53,8 @@ export { CoreTrade };
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";
-import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 export { Retreat };
+import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -165,7 +165,7 @@ function tick(this: void, bot: Unit): void {
     logStart(bot);
     Drill.Tick(bot);
     Retreat.Tick(bot);
-    pcall(PairJoin.Tick, bot);
+    PairJoin.Tick(bot);
     Pings.Tick(bot);
     Commands.Tick(bot);
     Lane.Tick(bot);
@@ -227,6 +227,7 @@ if (Telemetry.GuardsEnabled()) {
     // An error hands the attack mode to OHA's port (undefined desire, port Think) and leaves laning's 0.9 as it was.
     Telemetry.GuardModule("CoreTrade", CoreTrade, { Owns: no, Desire: none, OwnsFrame: no, Think: none, OnEnd: none, LastHitYields: no, TradeOwnsLaneRun: no, OwnsLaneFights: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
+    Telemetry.GuardModule("PairJoin", PairJoin, { Tick: none });
     // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.
     Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no, LeavesTarget: no });
     // An error leaves the farm mode to OHA (no job desire, no owned Think).

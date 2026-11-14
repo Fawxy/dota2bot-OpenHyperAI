@@ -2713,8 +2713,9 @@ export const EVENTS = {
         dm: "str",
         /** kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none. */
         tgt: "num",
-        /** kind=join: our best kill share (damage over the target's HP) and theirs on ours. */
+        /** kind=join: our best kill share, our heroes' damage on `tgt` over its HP. */
         ko: "num",
+        /** kind=join: theirs, their heroes' best kill share on one of ours. */
         kt: "num",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */

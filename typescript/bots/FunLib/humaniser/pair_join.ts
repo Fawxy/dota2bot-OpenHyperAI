@@ -174,6 +174,3 @@ export function Tick(bot: Unit): void {
     ]);
 }
 
-export function ResetCache(): void {
-    for (const k of Object.keys(states)) delete states[k as unknown as number];
-}

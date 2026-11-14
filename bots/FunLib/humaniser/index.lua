@@ -267,7 +267,7 @@ local function tick(bot)
     logStart(bot)
     Drill.Tick(bot)
     Retreat.Tick(bot)
-    pcall(PairJoin.Tick, bot)
+    PairJoin.Tick(bot)
     Pings.Tick(bot)
     Commands.Tick(bot)
     Lane.Tick(bot)
@@ -379,6 +379,7 @@ if Telemetry.GuardsEnabled() then
         OwnsLaneFights = no
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
+    Telemetry.GuardModule("PairJoin", PairJoin, {Tick = none})
     Telemetry.GuardModule(
         "Etiquette",
         Etiquette,

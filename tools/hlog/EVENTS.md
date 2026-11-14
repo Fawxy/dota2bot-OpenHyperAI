@@ -1345,7 +1345,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `kt` num
+`pid` num, `band` str
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`).
 - `role` str: The spot's role input: `core` or `support`.
@@ -1377,7 +1377,8 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `pt` str: kind=join: enemy heroes in sight within FoeRange of the ally: pid, x, y, HP, max HP.
 - `dm` str: kind=join: GetEstimatedDamageToTarget over PairJoin Window between the two sides, both ways: from pid, to pid, damage.
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
-- `ko` num: kind=join: our best kill share (damage over the target's HP) and theirs on ours.
+- `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP.
+- `kt` num: kind=join: theirs, their heroes' best kill share on one of ours.
 
 ## cut_creeps
 
