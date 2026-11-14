@@ -1,7 +1,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { readGames, worldOf, checkOne, uncutGates, sampleByAnswer, barMisses, factsOf } = require('../cut');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { readGames, worldOf, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf } = require('../cut');
 
 const hev = (s) => `11/13 15:33:39 [VScript] [HEV] ${s}`;
 // Smoke 1's shape: the towers line is written in the pregame, and a clock jump to 0:00 later splits the log's games.
@@ -181,4 +184,20 @@ test('a printed fixture states its distances and HP, from the bot and from a gat
         '# enemy pid 6: 500 from the bot, 671 from the place, HP 500, damage 100 / 200 (short / long window), attacking the bot',
         '# ally pid 2: 600 from the bot, 400 from the place',
     ]);
+});
+
+test('replaying on worker threads gives the results of replaying in this process, in the order of the cuts', async () => {
+    const lines = ['t=300.000', 't=301.000', 't=302.000', 't=303.000'].flatMap((t, i) => [
+        hev(`${t} ev=threat pid=1 who=core_camp dec=${i % 2 ? 'go' : 'missing'}`),
+        hev(`${t} ev=cut pid=1 kind=gate who=core_camp b=-200,200,600,600,150,24,300,0 fm=-200,200 pl=800,900 he="" ta=8,8 hu=${UNSEEN} vw=5,f4`),
+    ]);
+    const text = [hev('t=-90.000 ev=bot pid=1 team=2 ours=Threat:1'), hev('t=-14.800 ev=cut_towers team=2 tw=3,-1544,-1408,700,144'),
+        hev('t=-14.800 ev=cut_towers team=3 tw=3,524,652,700,144'), ...lines].join('\n');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-cut-')), 'game.log');
+    fs.writeFileSync(file, text);
+    const g = readGames(text)[0];
+    const alone = await checkMany(file, 0, g, g.cuts, undefined, 1);
+    const threads = await checkMany(file, 0, g, g.cuts, undefined, 2);
+    assert.deepStrictEqual(threads, alone);
+    assert.deepStrictEqual(alone.map((r) => r.same), [true, false, true, false]);
 });

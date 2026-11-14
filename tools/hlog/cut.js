@@ -7,10 +7,12 @@
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
 //       checks every cut and judges the bar (95% of each answer)
+//       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 40 cuts always do)
 //   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P]   one line per cut: time, pid, answer, HP, heroes
 // --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped).
-const fs = require('fs'), path = require('path');
-const { newState, doFile, doString, getGlobal } = require('../../tests/humaniser/harness');
+const fs = require('fs'), path = require('path'), os = require('os');
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const { newState, doString, getGlobal } = require('../../tests/humaniser/harness');
 
 const FIELD_RE = /(\w+)=("([^"]*)"|\S+)/g;
 /** The game clock goes back by more than this between games of one log (parse.js GAME_SPLIT_REGRESSION). */
@@ -233,12 +235,44 @@ function toLua(v) {
     return `{${Object.entries(v).map(([k, x]) => `[${JSON.stringify(k)}] = ${toLua(x)}`).join(', ')}}`;
 }
 
-/** Runs the decision's driver on `world` in a fresh fengari state: the driver's observation. */
+// Speed: a fresh fengari state per replay spent about 0.3 s of its time parsing the bot's Lua (about 1 MB; the harness's compile
+// cache lives in the state). One state per root serves every replay: the globals and the loaded modules (package.loaded) are put
+// back to what they were after the harness prelude before each one, and the compile cache stays, so a replay runs
+// the cached chunks anew (fresh module tables) and parses nothing.
+const RESET = `
+if GLOBALS0 == nil then
+    local chunks, plain = {}, dofile
+    dofile = function(p) -- the fixture runner, driver and world files parse once as well
+        if chunks[p] == nil then chunks[p] = assert(loadfile(p)) end
+        return chunks[p]()
+    end
+    local found, search = {}, package.searchpath -- and each module's path is looked up (a file open per candidate) once
+    package.searchpath = function(name, path, ...)
+        local k = name .. " " .. path
+        if found[k] == nil then found[k] = table.pack(search(name, path, ...)) end
+        return table.unpack(found[k], 1, found[k].n)
+    end
+    GLOBALS0, LOADED0 = {}, {}
+    for k, v in pairs(_G) do GLOBALS0[k] = v end
+    for k, v in pairs(package.loaded) do LOADED0[k] = v end
+end
+for k in pairs(_G) do if GLOBALS0[k] == nil then _G[k] = nil end end
+for k, v in pairs(GLOBALS0) do _G[k] = v end
+for k in pairs(package.loaded) do if LOADED0[k] == nil then package.loaded[k] = nil end end
+for k, v in pairs(LOADED0) do package.loaded[k] = v end
+`;
+const STATES = new Map();
+
+/** Runs the decision's driver on `world` in a reset fengari state: the driver's observation. */
 function replay(decision, world, root) {
-    const L = newState(root);
-    let err = doString(L, `FIXTURE = ${toLua({ decision, world })}\nSKILL = nil\n`);
-    if (err === null) err = doFile(L, path.join(__dirname, '../../tests/humaniser/fixture_run.lua'));
-    if (err !== null) throw new Error(err);
+    const key = root === undefined ? '' : String(root);
+    if (!STATES.has(key)) STATES.set(key, newState(root));
+    const L = STATES.get(key);
+    const runner = JSON.stringify(path.resolve(__dirname, '../../tests/humaniser/fixture_run.lua').split(path.sep).join('/'));
+    const err = doString(L, RESET + `FIXTURE = ${toLua({ decision, world })}
+SKILL = nil
+dofile(${runner})`);
+    if (err !== null) { STATES.delete(key); throw new Error(err); }
     return JSON.parse(getGlobal(L, 'OBS_JSON'));
 }
 
@@ -309,11 +343,11 @@ function checkOne(game, cut, root) {
     return d.check(game, cut, obs);
 }
 
-function main(argv) {
+async function main(argv) {
     const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
     const log = argv.find((a, i) => !a.startsWith('--') && (i === 0 || !argv[i - 1].startsWith('--')));
     if (!log || argv.includes('--help')) {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 11).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 12).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
         process.exit(log ? 0 : 1);
     }
     const games = readGames(fs.readFileSync(log, 'utf8'));
@@ -338,7 +372,10 @@ function main(argv) {
     }
     if (argv.includes('--check')) {
         const n = Number(opt('--sample', 20));
-        const rows = (argv.includes('--all') ? pool : sampleByAnswer(game, pool, n)).map(cut => ({ cut, r: checkOne(game, cut, root) }));
+        const picked = argv.includes('--all') ? pool : sampleByAnswer(game, pool, n);
+        const jobs = Number(opt('--jobs', Math.min(6, os.availableParallelism())));
+        const results = await checkMany(log, gi, game, picked, root, picked.length < MIN_PARALLEL ? 1 : jobs);
+        const rows = picked.map((cut, i) => ({ cut, r: results[i] }));
         const ok = rows.filter(x => x.r.same).length, errs = rows.filter(x => x.r.error);
         const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length, byDecision: tally(game, rows) };
         summary.barMisses = barMisses(summary.byDecision);
@@ -373,5 +410,29 @@ function main(argv) {
     console.log(lines.join('\n'));
 }
 
-if (require.main === module) main(process.argv.slice(2));
-module.exports = { readGames, worldOf, replay, checkOne, uncutGates, sampleByAnswer, barMisses, factsOf };
+/** Fewer cuts than this are replayed in-process: starting a worker costs more than it saves. */
+const MIN_PARALLEL = 40;
+
+/**
+ * checkOne for each cut, in order. With jobs > 1 the cuts (interleaved, so each worker gets a like mix) are replayed on worker
+ * threads, each reading the log itself and keeping its own Lua state; the results are the same as in-process.
+ */
+async function checkMany(log, gi, game, cuts, root, jobs) {
+    if (jobs <= 1) return cuts.map(cut => checkOne(game, cut, root));
+    const index = new Map(game.cuts.map((c, i) => [c, i]));
+    const out = new Array(cuts.length);
+    await Promise.all(Array.from({ length: Math.min(jobs, cuts.length) }, (_, w) => new Promise((resolve, reject) => {
+        const slots = [];
+        for (let i = w; i < cuts.length; i += Math.min(jobs, cuts.length)) slots.push(i);
+        const worker = new Worker(__filename, { workerData: { log, gi, root, cutIdx: slots.map(i => index.get(cuts[i])) } });
+        worker.once('message', rs => { rs.forEach((r, k) => { out[slots[k]] = r; }); resolve(); });
+        worker.once('error', reject);
+    })));
+    return out;
+}
+
+if (!isMainThread && workerData && workerData.cutIdx) {
+    const game = readGames(fs.readFileSync(workerData.log, 'utf8'))[workerData.gi];
+    parentPort.postMessage(workerData.cutIdx.map(i => checkOne(game, game.cuts[i], workerData.root)));
+} else if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
+module.exports = { readGames, worldOf, replay, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf };

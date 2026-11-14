@@ -3,11 +3,15 @@
 -- x, tw (enemy tower positions), c, and cd(game_id, pid, t, team, pos, hp, mode, activity, in_range, x, y, trade, cut, tower, cause).
 -- Ends with a comma.
 -- ensure: ev_trade(pid, kind, result, why, dur, hpd, thpd)
+-- Speed: view lane_activity read whole (every game of the store) is the cost of this fragment, so `la` is its rows for the including
+-- query's games only (SQLite pushes the filter into the view), and joins start from `gm` (CROSS JOIN fixes the order: from the
+-- store-wide `lineup` view the planner would walk every snapshot of every game before meeting `gm`).
+la AS MATERIALIZED (SELECT * FROM lane_activity WHERE game_id IN (SELECT game_id FROM gm)),
 s0 AS (
     SELECT s.game_id, s.seq, s.t, s.pid, s.deaths, s.x, s.y, s.hp,
         ((s.x + 6700) * (s.x + 6700) + (s.y + 6700) * (s.y + 6700) <= 1200 * 1200
             OR (s.x - 6928) * (s.x - 6928) + (s.y - 6372) * (s.y - 6372) <= 1200 * 1200) AS nearf
-    FROM ev_snap s JOIN gm ON gm.game_id = s.game_id JOIN lineup l ON l.game_id = s.game_id AND l.pid = s.pid
+    FROM gm CROSS JOIN ev_snap s ON s.game_id = gm.game_id CROSS JOIN lineup l ON l.game_id = s.game_id AND l.pid = s.pid
     WHERE l.pos >= coalesce(:pos_lo, 1) AND l.pos <= coalesce(:pos_hi, 3) AND s.deaths IS NOT NULL
 ),
 -- The death count rises only at the first snap after the respawn, and the snaps before it are not the hero's last living moment
@@ -47,16 +51,16 @@ d AS (
 ),
 last AS (
     SELECT d.game_id, d.pid, d.t,
-        (SELECT a.seq FROM lane_activity a WHERE a.game_id = d.game_id AND a.pid = d.pid AND a.t <= d.t AND a.t >= d.t - 10 ORDER BY a.t DESC LIMIT 1) AS seq
+        (SELECT a.seq FROM la a WHERE a.game_id = d.game_id AND a.pid = d.pid AND a.t <= d.t AND a.t >= d.t - 10 ORDER BY a.t DESC LIMIT 1) AS seq
     FROM d
 ),
 x AS (
     SELECT l.game_id, l.pid, l.t, a.team, a.pos, a.hp, a.mode, a.activity, a.in_range, a.x, a.y,
         EXISTS (SELECT 1 FROM ev_trade tr WHERE tr.game_id = l.game_id AND tr.pid = l.pid AND tr.result IN ('done', 'kill')
             AND tr.t >= l.t - 10 AND tr.t - tr.dur <= l.t + 1) AS trade,
-        EXISTS (SELECT 1 FROM lane_activity r JOIN lane_activity c ON c.game_id = r.game_id AND c.pid = r.pid AND c.t > r.t AND c.spike
+        EXISTS (SELECT 1 FROM la r JOIN la c ON c.game_id = r.game_id AND c.pid = r.pid AND c.t > r.t AND c.spike
             WHERE r.game_id = l.game_id AND r.pid = l.pid AND r.mode = 'retreat' AND r.t >= l.t - 10 AND c.t <= l.t) AS cut
-    FROM last l LEFT JOIN lane_activity a ON a.game_id = l.game_id AND a.seq = l.seq
+    FROM last l LEFT JOIN la a ON a.game_id = l.game_id AND a.seq = l.seq
 ),
 -- Tower positions (team, x, y): dynamic.js TOWERS (7.41, from validated pro replays); keep the two equal.
 tw (team, x, y) AS (VALUES
