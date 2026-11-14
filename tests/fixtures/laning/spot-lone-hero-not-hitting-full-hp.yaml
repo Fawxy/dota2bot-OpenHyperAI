@@ -25,7 +25,8 @@ world:
   lane: 2
   front: {"x":-88,"y":-65,"bx":-410,"by":-302}
 expect:
-  mustNot: ["read(burst)", "read(threat)", "stand(hero)"]
+  must: ["read(none)"]
+  mustNot: ["read(burst)", "read(threat)", "stand(hero)", "stand(xp)"]
 notes: >
   Slice mid-stand, the commonest start (D11): a Radiant mid at full HP (846 of 846), one enemy hero 788 away that is not hitting
   it, burst 639 / 846 = 0.76 over 3 s. The old read refused the stand at 0.35 and the mid stood back while its creeps were

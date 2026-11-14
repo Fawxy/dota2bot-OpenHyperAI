@@ -25,7 +25,8 @@ world:
   lane: 2
   front: {"x":-382,"y":-276,"bx":-676,"by":-547}
 expect:
-  mustNot: ["read(burst)", "read(threat)", "stand(hero)"]
+  must: ["read(none)"]
+  mustNot: ["read(burst)", "read(threat)", "stand(hero)", "stand(xp)"]
 notes: >
   Slice mid-stand, the start at its usual distance: a Radiant mid at 87% HP (604 of 692), the enemy mid 1,607 away and not
   hitting, burst 413 / 604 = 0.68. The old read refused; standing at the creep is safe (D11).
