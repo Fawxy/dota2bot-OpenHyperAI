@@ -1400,10 +1400,10 @@ ____exports.TABLE = {
         rep = {every = 30, from = 0}
     },
     ["lane-stand"] = {
-        note = "rig: Radiant pos2 behind the mid river, the Dire pos2 a statue across it (one hero in reach, not hitting, burst between 0.35 and 1 of the cast's HP at level 6, HP at half or more); then laning, retreat; 30 s reps from 0:30; seed 30",
+        note = "rig: Radiant pos2 behind the mid river, the Dire pos2 a statue across it (one hero in reach, not hitting, burst between 0.35 and 1 of the cast's HP at level 6, HP at half or more); then laning, retreat; HP set to 70% before each rep; 30 s reps from 1:00; seed 30",
         cast = {r = {2}},
         others = "bench",
-        rep = {every = 30, from = 30},
+        rep = {every = 30, from = 60},
         rig = {
             half = "execution",
             switch = "EvenStand",
