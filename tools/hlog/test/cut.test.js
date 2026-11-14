@@ -201,3 +201,14 @@ test('replaying on worker threads gives the results of replaying in this process
     assert.deepStrictEqual(threads, alone);
     assert.deepStrictEqual(alone.map((r) => r.same), [true, false, true, false]);
 });
+
+test('--list shows whether an enemy hero in the cut is hitting and the burst over HP, and --engaged filters on it', () => {
+    const { execFileSync } = require('child_process');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-cut-')), 'game.log');
+    fs.writeFileSync(file, LOG);
+    const list = (...a) => execFileSync(process.execPath, [path.join(__dirname, '..', 'cut.js'), file, '--list', ...a], { encoding: 'utf8' });
+    // One hero, not hitting, 120 over 3 s against 500 HP.
+    assert.match(list(), /enemies in the cut 1, allies 0, hitting 0, burst 0\.24;/);
+    assert.match(list('--engaged', '0'), /hitting 0/);
+    assert.strictEqual(list('--engaged', '1'), '');
+});

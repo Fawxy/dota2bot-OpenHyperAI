@@ -8,7 +8,9 @@
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
 //       checks every cut and judges the bar (95% of each answer)
 //       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 40 cuts always do)
-//   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P]   one line per cut: time, pid, answer, HP, heroes
+//   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P] [--engaged 0|1]   one line per cut: time, pid, answer,
+//       HP, heroes, whether an enemy hero in it is hitting the bot (the cut's engaged flag) and the burst (their damage, over 6 s
+//       for a hitting hero else 3 s, over the bot's HP: the threat read's); --engaged keeps the cuts with (1) or without (0) one
 // --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped).
 const fs = require('fs'), path = require('path'), os = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -91,6 +93,8 @@ function towersOf(game, team, ta, tt) {
 
 const heroRecords = s => records(s).map(([pid, x, y, hp, r, h, sp, atk, eng, e3, e6, ill]) =>
     ({ pid: +pid, x: +x, y: +y, hp: +hp, range: +r, hull: +h, speed: +sp, atk: +atk, eng: +eng, e3: +e3, e6: +e6, ill: +ill }));
+/** The threat read's burst: each hero's damage (6 s window when it is engaged, else 3 s) over the bot's HP. */
+const burstOf = (he, hp) => he.reduce((sum, h) => sum + (h.eng ? h.e6 : h.e3), 0) / hp;
 const unseenRecords = s => records(s).map(([pid, x, y, tss, sp]) => ({ pid: +pid, x: +x, y: +y, tss: +tss, sp: +sp }));
 const allyRecords = s => records(s).map(([pid, x, y, r, h, sp, ret]) => ({ pid: +pid, x: +x, y: +y, range: +r, hull: +h, speed: +sp, ret: +ret }));
 
@@ -347,7 +351,7 @@ async function main(argv) {
     const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
     const log = argv.find((a, i) => !a.startsWith('--') && (i === 0 || !argv[i - 1].startsWith('--')));
     if (!log || argv.includes('--help')) {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 12).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 14).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
         process.exit(log ? 0 : 1);
     }
     const games = readGames(fs.readFileSync(log, 'utf8'));
@@ -361,12 +365,15 @@ async function main(argv) {
     const pool = who === undefined ? cuts : cuts.filter(c => c.who === who);
     const d = DECISIONS[kind];
     if (argv.includes('--list')) {
-        const answer = opt('--answer'), pid = opt('--pid');
+        const answer = opt('--answer'), pid = opt('--pid'), engaged = opt('--engaged');
         for (const cut of pool) {
             const a = d.answer(game, cut);
             if ((answer !== undefined && a !== answer) || (pid !== undefined && cut.pid !== pid)) continue;
             const [, , hp, mhp] = nums(cut.b);
-            console.log(`${mmss(Number(cut.t))} t=${cut.t} pid ${cut.pid} ${a}: HP ${Math.round(100 * hp / mhp)}%, enemies in the cut ${records(cut.he).length}, allies ${records(cut.ha).length}; ${d.brief(game, cut)}`);
+            const he = heroRecords(cut.he);
+            const hitting = he.some(h => h.eng);
+            if (engaged !== undefined && hitting !== (engaged === '1')) continue;
+            console.log(`${mmss(Number(cut.t))} t=${cut.t} pid ${cut.pid} ${a}: HP ${Math.round(100 * hp / mhp)}%, enemies in the cut ${he.length}, allies ${records(cut.ha).length}, hitting ${hitting ? 1 : 0}, burst ${burstOf(he, hp).toFixed(2)}; ${d.brief(game, cut)}`);
         }
         return;
     }
@@ -435,4 +442,4 @@ if (!isMainThread && workerData && workerData.cutIdx) {
     const game = readGames(fs.readFileSync(workerData.log, 'utf8'))[workerData.gi];
     parentPort.postMessage(workerData.cutIdx.map(i => checkOne(game, game.cuts[i], workerData.root)));
 } else if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
-module.exports = { readGames, worldOf, replay, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf };
+module.exports = { burstOf, heroRecords, readGames, worldOf, replay, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf };

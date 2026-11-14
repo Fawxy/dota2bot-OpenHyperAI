@@ -1,7 +1,7 @@
 // The loss ledger (rework step 6, docs/proposals/2026-11-13-rework.md s6): for the games of one or more runs, every death to
 // --until and every last hit of the gap at --at assigned to exactly one cause, ours against OHA, summing to the gap.
 // Usage: node ledger.js <run> [<run> ...] [--null <run> ...] [--noise [--games 10]] [--at 600] [--until 720]
-//                       [--rows deaths|creeps] [--json] [--no-ingest]
+//                       [--rows deaths|creeps] [--by lane|pos] [--json] [--no-ingest]
 //   <run> is a label prefix (h2hskill1 takes h2hskill1_* and, as a separate prefix, h2hskill1r_*: name both halves).
 //   --null <runs>  OHA against OHA runs. Each line gains `mirror` (the line in the mirror, both seats' mean) and the gap's
 //                  two parts: `we` (ours against the mirror: what we do worse than OHA does against itself) and `they`
@@ -11,6 +11,12 @@
 //                  runs) and `se`: the standard error of a row of --games games minus a reference row of the same size,
 //                  sd * sqrt(2 / games). A line under about two a game behaves as a count; with this many lines one or
 //                  two pass two errors by chance, so a slice names its target line before its batch.
+//
+//   --by lane|pos  the same table once per lane (top, mid, bot, base, other: where the creep died) or per position (the hero's
+//                  pos 1-5; a creep's is its lane's core, `none` when no core of the team holds the lane), per game, ours /
+//                  OHA, each split's games all counted. Only the lines the split reaches: by lane the creep lines (pool and
+//                  its causes), by pos those and the deaths lines; neutral, unattributed and last-hit totals have no lane.
+//                  Takes --null (the mirror's rows split the same way); not --noise.
 //
 // Ours is the seat in the label (`_rad_` Radiant, `_dire_` Dire): the scoped team of a head-to-head, a label only in OHA
 // against OHA. A remote job's stub game is skipped (each log's last game is read).
@@ -43,6 +49,7 @@ function args(argv) {
         else if (a === '--at') o.at = Number(argv[++i]);
         else if (a === '--until') o.until = Number(argv[++i]);
         else if (a === '--rows') o.rows = argv[++i];
+        else if (a === '--by') o.by = argv[++i];
         else if (a === '--json') o.json = true;
         else if (a === '--no-ingest') o.noIngest = true;
         else if (a === '--help' || a === '-h') o.help = true;
@@ -181,6 +188,46 @@ function noise(result, { n = 10 } = {}) {
     });
 }
 
+const HEAD = "per game, ours / OHA; gap = the line's share of ours minus OHA (deaths: more is worse; last hits: less is worse)";
+const SPLITS = {
+    lane: { creeps: (r) => r.lane, deaths: undefined },
+    pos: { creeps: (r) => r.pos, deaths: (r) => r.pos },
+};
+
+/**
+ * The result split by `by` (lane or pos): { value: { games } } with each game's blank record filled from the rows the split reaches,
+ * every value having every game (a game with none of a value counts zero). Lines the split cannot reach are not in `lines`.
+ */
+function split(result, by) {
+    const how = SPLITS[by];
+    if (!how) throw new Error('--by takes lane or pos');
+    const values = new Set();
+    const key = (f, r) => { const v = f(r); return v === undefined || v === null ? 'none' : String(v); };
+    for (const r of result.rows.creeps) values.add(key(how.creeps, r));
+    if (how.deaths) for (const r of result.rows.deaths) values.add(key(how.deaths, r));
+    const out = {};
+    for (const v of [...values].sort()) {
+        const recs = new Map(result.games.map((g) => [g.label, { label: g.label, ours: blank(), oha: blank() }]));
+        for (const r of result.rows.creeps) {
+            if (key(how.creeps, r) !== v) continue;
+            const s = recs.get(r.label)[r.side];
+            s.pool++;
+            if (r.src === 'unseen') s.unseen++;
+            if (r.cause === 'taken') s.taken++;
+            else s.miss[r.cause] = (s.miss[r.cause] || 0) + 1;
+        }
+        if (how.deaths) {
+            for (const r of result.rows.deaths) {
+                if (key(how.deaths, r) !== v) continue;
+                const s = recs.get(r.label)[r.side];
+                s.deaths[r.cause] = (s.deaths[r.cause] || 0) + 1;
+            }
+        }
+        out[v] = { games: [...recs.values()] };
+    }
+    return { values: out, reaches: (l) => (l.measure === 'deaths' ? !!how.deaths : l.line === 'pool' || MISS_CAUSES.includes(l.line)) };
+}
+
 function print(lines, n, head) {
     const f = (v) => (Math.round(v * 10) / 10).toFixed(1);
     const cols = Object.keys(lines[0]).filter((k) => k !== 'measure' && k !== 'line' && k !== 'df');
@@ -197,6 +244,7 @@ if (require.main === module) {
     }
     const store = new Store(DB);
     if (!o.noIngest) for (const f of store.ingestAll([LOGS, JOBS].filter((d) => fs.existsSync(d))).failed) console.error(`not ingested: ${f.file}: ${f.error}`);
+    if (o.by && (o.noise || o.rows)) throw new Error('--by takes neither --noise nor --rows');
     const result = ledger(store, o.runs, o);
     if (o.rows) {
         const rows = result.rows[o.rows];
@@ -209,11 +257,25 @@ if (require.main === module) {
     } else {
         const nul = o.null.length ? ledger(store, o.null, o) : undefined;
         if (nul && !nul.games.length) throw new Error(`--null: no games for ${o.null.join(', ')}`);
-        const lines = summary(result, nul);
-        if (o.json) console.log(JSON.stringify({ games: result.games, lines }));
-        else print(lines, result.games.length, 'per game, ours / OHA; gap = the line\'s share of ours minus OHA (deaths: more is worse; last hits: less is worse)'
-            + (nul ? `; mirror = OHA against OHA (${nul.games.length} games); gap = we (ours against the mirror) + they (the mirror against OHA)` : ''));
+        if (o.by) {
+            const mine = split(result, o.by);
+            const theirs = nul ? split(nul, o.by) : undefined;
+            const blocks = Object.entries(mine.values).map(([v, r]) => {
+                const m = theirs && (theirs.values[v] || { games: nul.games.map((g) => ({ label: g.label, ours: blank(), oha: blank() })) });
+                return [v, summary(r, m).filter(mine.reaches)];
+            });
+            if (o.json) console.log(JSON.stringify({ by: o.by, games: result.games.length, splits: Object.fromEntries(blocks) }));
+            else for (const [v, lines] of blocks) {
+                console.log(`== ${o.by} ${v}`);
+                print(lines, result.games.length, HEAD + (nul ? `; mirror = OHA against OHA (${nul.games.length} games)` : ''));
+            }
+        } else {
+            const lines = summary(result, nul);
+            if (o.json) console.log(JSON.stringify({ games: result.games, lines }));
+            else print(lines, result.games.length, HEAD
+                + (nul ? `; mirror = OHA against OHA (${nul.games.length} games); gap = we (ours against the mirror) + they (the mirror against OHA)` : ''));
+        }
     }
 }
 
-module.exports = { ledger, summary, noise, games, cellOf, LINES, DEATH_CAUSES, MISS_CAUSES };
+module.exports = { ledger, summary, noise, games, split, blank, cellOf, LINES, DEATH_CAUSES, MISS_CAUSES };
