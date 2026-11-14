@@ -686,6 +686,14 @@ do
 	answer = other
 	T = 610.5
 	check("a join on another hero takes over the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	-- A trade on the join's own target becomes the join too (review of pair-join-on: it kept the trade's group and ends).
+	answer = nil
+	CoreTrade.Reset()
+	T = 620
+	check("a trade opens on the near hero again", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and not CoreTrade.Joining(bot))
+	answer = enemy
+	T = 620.5
+	check("a join on the trade's own target takes it over", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
 	PairJoin.Joins = joins
 	other.alive = false
 	CoreTrade.Reset()

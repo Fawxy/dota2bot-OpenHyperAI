@@ -772,7 +772,7 @@ function ____exports.Desire(bot)
         ep = nil
     end
     local join = PairJoin.Joins(bot)
-    if ep ~= nil and ep.kind ~= "join" and join ~= nil and join ~= ep.target then
+    if ep ~= nil and ep.kind ~= "join" and join ~= nil then
         close(bot, ep, "pair_join", now)
         ep = nil
     end

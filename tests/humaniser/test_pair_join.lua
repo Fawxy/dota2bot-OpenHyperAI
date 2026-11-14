@@ -88,6 +88,13 @@ do
 	check("the bot hit with a partner near is its own situation", own ~= nil and own.ally == 0 and #own.ours == 2)
 	lists({ hitBot, far }, { e })
 	check("a hit hero with nobody of ours near is no pair", P.Gather(hitBot) == nil)
+	-- Its only partner retreating: a hero alone, no pair (review of pair-join-on).
+	local leaving = unit({ pid = 1, x = 500, y = 0, hp = 600 })
+	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
+	RetreatState.SetRunning(leaving, true)
+	lists({ hitBot, leaving }, { e })
+	check("a hit hero whose only partner retreats is no pair", P.Gather(hitBot) == nil)
+	RetreatState.SetRunning(leaving, false)
 end
 
 do
@@ -98,7 +105,7 @@ do
 	local a = P.Decide({ ally = 1, ours = { m(0, 600), ret }, theirs = { m(6, 600), m(7, 400) },
 		dmg = { [0] = { [6] = 500, [7] = 500 }, [6] = { [0] = 10, [1] = 300 }, [7] = { [0] = 10, [1] = 300 } } })
 	check("a retreating ally does not count on our side", a.dec == "outnumbered")
-	-- 1v1 left: the retreating ally's low HP is not theirs to weigh.
+	-- 1v1 left (Decide alone; Gather hands it no such record): the retreating ally's low HP is not theirs to weigh.
 	local b = P.Decide({ ally = 1, ours = { m(0, 600), ret }, theirs = { m(6, 600) },
 		dmg = { [0] = { [6] = 300 }, [6] = { [0] = 100, [1] = 300 } } })
 	check("theirs are weighed on ours still fighting", b.dec == "join" and math.abs(b.kt - 100 / 600) < 1e-9)

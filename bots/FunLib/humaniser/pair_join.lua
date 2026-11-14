@@ -112,8 +112,9 @@ local function member(u, ours)
     return m
 end
 --- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
--- or the hit ally has nobody of ours within OursRange (a hero alone is D1's and D24's, not a pair's). The hit ally is the
--- one at the lowest HP share.
+-- or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
+-- pair's; review of pair-join-on: a partner in retreat left a lone hero weighed 1v1, which could join). The hit ally is
+-- the one at the lowest HP share.
 function ____exports.Gather(bot)
     local ally
     local allies = {}
@@ -147,7 +148,10 @@ function ____exports.Gather(bot)
         allies,
         function(____, a) return dist(a, ally) <= ____exports.SETTINGS.OursRange end
     )
-    if #ours < 2 then
+    if #__TS__ArrayFilter(
+        ours,
+        function(____, a) return not RetreatState.Running(a) end
+    ) < 2 then
         return nil
     end
     local theirs = {}

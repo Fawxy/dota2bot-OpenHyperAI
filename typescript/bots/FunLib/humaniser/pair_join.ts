@@ -113,8 +113,9 @@ function member(u: Unit, ours: boolean): Member {
 
 /**
  * The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
- * or the hit ally has nobody of ours within OursRange (a hero alone is D1's and D24's, not a pair's). The hit ally is the
- * one at the lowest HP share.
+ * or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
+ * pair's; review of pair-join-on: a partner in retreat left a lone hero weighed 1v1, which could join). The hit ally is
+ * the one at the lowest HP share.
  */
 export function Gather(bot: Unit): Rec | undefined {
     let ally: Unit | undefined;
@@ -127,7 +128,7 @@ export function Gather(bot: Unit): Rec | undefined {
     }
     if (ally === undefined) return undefined;
     const ours: Unit[] = allies.filter((a) => dist(a, ally!) <= SETTINGS.OursRange);
-    if (ours.length < 2) return undefined;
+    if (ours.filter((a) => !RetreatState.Running(a)).length < 2) return undefined;
     const theirs: Unit[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (live(e) && e.CanBeSeen() && dist(e, ally) <= SETTINGS.FoeRange) theirs.push(e);

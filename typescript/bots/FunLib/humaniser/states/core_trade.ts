@@ -432,9 +432,10 @@ export function Desire(bot: Unit): number | undefined {
         close(bot, ep, `mode_${bot.GetActiveMode()}`, now);
         ep = undefined;
     }
-    // D10 (pair, group 2) comes before every other fight of the lane: a running trade, kill or fight on another hero gives way to it.
+    // D10 (pair, group 2) comes before every other fight of the lane: a running trade, kill or fight gives way to it, on
+    // its own target too (it reopens as the join, so the join's group, ends and last-hit yield hold; review of pair-join-on).
     const join = PairJoin.Joins(bot);
-    if (ep !== undefined && ep.kind !== "join" && join !== undefined && join !== ep.target) {
+    if (ep !== undefined && ep.kind !== "join" && join !== undefined) {
         close(bot, ep, "pair_join", now);
         ep = undefined;
     }
