@@ -305,7 +305,7 @@ export const TABLE: Record<string, Entry> = {
                 foe: ["r:bot1", -2750, 1200],
                 away: ["r:bot1", -2750, 3200],
             },
-            timeout: 60,
+            timeout: 90, // on2: after a rep where the Lich died it walks in from the fountain and hit after 60 s in 3 of 4 pair reps
             keeps: ["levelup"],
             release: { modes: ["laning", "attack", "retreat", "idle"] },
             reps: [

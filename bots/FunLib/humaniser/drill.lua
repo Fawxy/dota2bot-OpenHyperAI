@@ -1574,7 +1574,7 @@ ____exports.TABLE = {
             switch = "PairJoin",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, behind = {"r:bot1", -2750, 300}, foe = {"r:bot1", -2750, 1200}, away = {"r:bot1", -2750, 3200}},
-            timeout = 60,
+            timeout = 90,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
             reps = {{name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, d4 = {"heal", "walk foe", "attack r1 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, d4 = {"heal", "walk foe", "attack r1 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "alone", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand away"}, d4 = {"heal", "walk foe", "attack r1 until hp 0.5", "leave"}}, ready = {hit = true, hpAtLeast = 0.5}}}
