@@ -1038,8 +1038,9 @@ export const EVENTS = {
          *  and `rel` (the release list's modes but `idle`, comma-separated); ph=wait and ph=ready carry `d`, the nearest hero
          *  that hit the cast in the last second, as distance past the cast's trade reach; in a `lone` rep also `bu`, the lone
          *  enemy hero's estimated damage over 3 s as a share of the cast's HP. */
-        bu: "num",
         var: "str",
+        /** In a `lone` rep, on ph=wait and ph=ready: the lone enemy hero's estimated damage over 3 s as a share of the cast's HP. */
+        bu: "num",
         win: "num",
         rel: "str",
         i: "num",

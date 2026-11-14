@@ -120,7 +120,7 @@ export const TABLE: Record<string, Entry> = {
     // else benched); it is not hitting the cast (a rig statue never attacks or casts); its estimated damage over 3 s is
     // between the old refusal bar and the cast's HP (forced: both mids at level 6 by the recipe with level-ups kept, so its
     // learned spells count in GetEstimatedDamageToTarget as in games; a statue at level 1 read 0.13 to 0.18; and the cast's HP
-    // set to 70% a second before each rep by the recipe, since at full HP the burst read 0.31 to 0.39, on the bar); the
+    // set to 70% about 3 s before each rep by the recipe, since at full HP the burst read 0.31 to 0.39, on the bar); the
     // cast at half HP or more. Seed 30 (lineup A): the cast Sniper (ranged, low HP), the statue Zeus (two nukes). The cast waits
     // behind the river on its side each rep, then lanes against natural waves with our retreat live. Read after release:
     // no `threat` retreat and the spot not refused on `burst` or `threat` (scratch readout until a view exists).
@@ -1018,10 +1018,11 @@ export interface RigReady {
     /** The cast's HP share at least this under that of an enemy hero that damaged it within the last second. */
     behind?: number;
     /**
-     * The lone-hero stand's facts, [distance, low, high]: exactly one live enemy hero in sight within the distance, none
-     * seen within it in the last RIG_FOG_CLEAR s besides, nobody hit the cast in the last second, and that hero's estimated
+     * The lone-hero stand's facts, [distance, low, high]: exactly one live enemy hero in sight within the distance (a
+     * straight line, not the rule's walk; fogged heroes are not counted), nobody hit the cast in the last second, and that hero's estimated
      * damage over 3 s (GetEstimatedDamageToTarget, the call the threat read makes) is at least `low` and under `high` of
-     * the cast's HP. Fails `lone`, `lonehit` or `burst`.
+     * the cast's HP. Fails `lone`, `lonehit` or `burst`. The rule's tower and
+     * `missing` conditions are neither forced nor checked.
      */
     lone?: [number, number, number];
 }
