@@ -10,7 +10,7 @@
  * harness, never a behaviour: no drill is on unless the override names it. Absorbs the old `Overrides.Solo`
  * (bench), `LaneOnly` and `StackEvery` knobs.
  */
-import { BotMode, GameState, Item, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, DamageType, GameState, Item, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -114,6 +114,34 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castLaneOnly: true,
         rep: { every: 30, from: 0 },
+    },
+    // The lone-hero stand (slice mid-stand, D11 against D1; switch `Ours.EvenStand`). half: execution. Facts the stand reads:
+    // exactly one enemy hero in reach (forced: the Dire mid stands at a fixed point on its side of the mid river, everyone
+    // else benched); it is not hitting the cast (a rig statue never attacks or casts); its estimated damage over 3 s is
+    // between the old refusal bar and the cast's HP (forced: both mids at level 6 by the recipe with level-ups kept, so its
+    // learned spells count in GetEstimatedDamageToTarget as in games; a statue at level 1 read 0.13 to 0.18; and the cast's HP
+    // set to 70% about 3 s before each rep by the recipe, since at full HP the burst read 0.31 to 0.39, on the bar); the
+    // cast at half HP or more. Seed 30 (lineup A): the cast Sniper (ranged, low HP), the statue Zeus (two nukes). The cast waits
+    // behind the river on its side each rep, then lanes against natural waves with our retreat live. Read after release:
+    // no `threat` retreat and the spot not refused on `burst` or `threat` (scratch readout until a view exists).
+    "lane-stand": {
+        note: "rig: Radiant pos2 behind the mid river, the Dire pos2 a statue across it (one hero in reach, not hitting, burst between 0.35 and 1 of the cast's HP at level 6, HP at half or more); then laning, retreat; HP set to 70% before each rep; 30 s reps from 1:00; seed 30",
+        cast: { r: [2] },
+        others: "bench",
+        rep: { every: 30, from: 60 },
+        rig: {
+            half: "execution",
+            switch: "EvenStand",
+            window: 600,
+            spots: {
+                home: ["r:mid1", 450, 450],
+                foe: ["d:mid1", -550, -550],
+            },
+            timeout: 15,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "retreat", "idle"] },
+            reps: [{ name: "lone", setup: { r2: ["stand home"], d2: ["stand foe"] }, ready: { lone: [1700, 0.35, 1], hpAtLeast: 0.5 } }],
+        },
     },
     // Slice retreat (master slices/retreat.md "Drill"): the forced retreat from fixed points. Each rep the Radiant pos1 walks
     // to the rep's start spot and our retreat starts there (why=forced) and runs to its anchor; the Dire offlane pair stand in
@@ -989,6 +1017,14 @@ export interface RigReady {
     past?: [number, number];
     /** The cast's HP share at least this under that of an enemy hero that damaged it within the last second. */
     behind?: number;
+    /**
+     * The lone-hero stand's facts, [distance, low, high]: exactly one live enemy hero in sight within the distance (a
+     * straight line, not the rule's walk; fogged heroes are not counted), nobody hit the cast in the last second, and that hero's estimated
+     * damage over 3 s (GetEstimatedDamageToTarget, the call the threat read makes) is at least `low` and under `high` of
+     * the cast's HP. Fails `lone`, `lonehit` or `burst`. The rule's tower and
+     * `missing` conditions are neither forced nor checked.
+     */
+    lone?: [number, number, number];
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1552,6 +1588,18 @@ function foggedWithin(bot: Unit, r: number): boolean {
     return false;
 }
 
+/** With exactly one live enemy hero in sight within `r` of the cast: its estimated damage over 3 s as a share of the cast's HP. */
+function loneBurst(bot: Unit, r: number): number | undefined {
+    let n = 0;
+    let dmg = 0;
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (!h.IsAlive() || h.GetLocation() === undefined || !h.CanBeSeen() || GetUnitToUnitDistance(bot, h) > r) continue;
+        n += 1;
+        dmg += h.GetEstimatedDamageToTarget(true, bot, 3, DamageType.All);
+    }
+    return n === 1 ? dmg / math.max(1, bot.GetHealth()) : undefined;
+}
+
 /** The first ready check that fails for the cast, or undefined when all hold. `setup`: a rig hero not yet on its last step. */
 function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
     // Only the cast's own team's setup is read here (no state is shared across teams); the facts below read the rest.
@@ -1588,7 +1636,20 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         }
         if (r.behind !== undefined && !hs.some((h) => hpShare(h) - hpShare(bot) >= r.behind!)) return "behind";
     }
+    if (r.lone !== undefined) {
+        const b = loneBurst(bot, r.lone[0]);
+        if (b === undefined) return "lone";
+        if (hitters(bot).length > 0) return "lonehit";
+        if (b < r.lone[1] || b >= r.lone[2]) return "burst";
+    }
     return undefined;
+}
+
+/** A `lone` rep's burst share for the wait and ready lines, two decimals (undefined otherwise, or with no lone hero). */
+function burstField(bot: Unit, rr: RigRep): number | undefined {
+    if (rr.ready.lone === undefined) return undefined;
+    const b = loneBurst(bot, rr.ready.lone[0]);
+    return b === undefined ? undefined : math.floor(b * 100 + 0.5) / 100;
 }
 
 /** Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout). */
@@ -1606,7 +1667,7 @@ function rigTick(bot: Unit): void {
     // Each change of the first failing check is logged, so a rep that times out shows what held it and when.
     if (fail !== undefined && st.waiting[pid] !== fail) {
         st.waiting[pid] = fail;
-        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100], ["d", nearestPast(bot)]]);
+        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100], ["d", nearestPast(bot)], ["bu", burstField(bot, rr)]]);
     }
     if (fail !== undefined && secs < r.timeout) return;
     st.phase[pid] = fail === undefined ? "released" : "invalid";
@@ -1621,6 +1682,7 @@ function rigTick(bot: Unit): void {
         ["secs", math.floor(secs * 10 + 0.5) / 10],
         ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100],
         ["d", nearestPast(bot)],
+        ["bu", burstField(bot, rr)],
         ["rend", st.start + Active()!.rep.every],
         ["win", r.window],
         ["rel", r.release.modes.filter((m) => m !== "idle").join(",")],

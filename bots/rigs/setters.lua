@@ -2,6 +2,7 @@
 -- dotactl game, through the same vscripts/bots link the bot VM loads from; it registers console commands that a rig's
 -- `--at`/`--every` steps call for the rest of the game. Each prints one `[RIG]` line saying what it did.
 --   rig_hp <pid> <hp>               set a hero's health (clamped to 1..max)
+--   rig_hp_share <pid> <share>      set a hero's health to a share of its maximum (0..1)
 --   rig_pos <pid> <x> <y>           place a hero (nearest clear ground) and stop its current order
 --   rig_creep <team 2|3> <melee|ranged> <x> <y> [n]   create n lane creeps of that team
 --   rig_kill_creeps <team 2|3> <x> <y> <radius>       kill that team's lane creeps in the circle
@@ -21,6 +22,13 @@ Convars:RegisterCommand("rig_hp", function(_, pid, hp)
 	h:SetHealth(math.max(1, math.min(h:GetMaxHealth(), tonumber(hp) or 1)))
 	say(string.format("hp pid=%s hp=%d max=%d", pid, h:GetHealth(), h:GetMaxHealth()))
 end, "rig: set a hero's health", FCVAR_CHEAT)
+
+Convars:RegisterCommand("rig_hp_share", function(_, pid, share)
+	local h = hero(pid)
+	if h == nil then return say("hp_share no hero " .. tostring(pid)) end
+	h:SetHealth(math.max(1, math.floor(h:GetMaxHealth() * math.max(0, math.min(1, tonumber(share) or 1)))))
+	say(string.format("hp_share pid=%s hp=%d max=%d", pid, h:GetHealth(), h:GetMaxHealth()))
+end, "rig: set a hero's health to a share of its maximum", FCVAR_CHEAT)
 
 Convars:RegisterCommand("rig_pos", function(_, pid, x, y)
 	local h = hero(pid)
