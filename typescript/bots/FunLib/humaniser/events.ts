@@ -1482,7 +1482,7 @@ export const EVENTS = {
         kind: "str",
         /** The episode number. */
         ep: "num",
-        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the lone-hero stand (`Ours.EvenStand`), absent for the `Ours.RetreatOdds` hold. */
+        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the lone-hero stand (`Ours.EvenStand`), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold. */
         why: "str",
         /** The hero's HP share at the line. */
         hp: "num",
@@ -1889,7 +1889,7 @@ export const EVENTS = {
         role: "str",
         /** 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%. */
         lf: "num",
-        /** `trade`, `kill` (a commit) or `fight` (a lane fight from the play roll: rolled here or joined). */
+        /** `trade`, `kill` (a commit), `fight` (a lane fight from the play roll: rolled here or joined) or `join` (D10's pair join, `Ours.PairJoin`). */
         kind: "str",
         /** The target hero's pid. */
         tgt: "num",
@@ -1900,7 +1900,7 @@ export const EVENTS = {
         join: "num",
         /** `done` (taken), `kill` (the game says the target died, `IsHeroAlive`) or `lost` (offered, not taken within 1 s; `mode`/`md` is the mode that held the core). */
         result: "str",
-        /** How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`. */
+        /** How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over. */
         why: "str",
         /** Seconds the window lasted. */
         dur: "num",
@@ -2698,6 +2698,8 @@ export const EVENTS = {
         unp: "num",
         /** kind=leave: 1 when an enemy tower damaged the bot within 0.5 s. */
         dt: "num",
+        /** kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise. */
+        pj: "num",
         /** kind=leave: the read's threat and band, for reading a line without replaying it. */
         thr: "num",
         band: "str",

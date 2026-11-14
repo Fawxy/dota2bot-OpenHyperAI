@@ -653,4 +653,42 @@ do
 	CoreTrade.Reset()
 end
 
+-- Slice pair-join-on (D10): PairJoin's answer opens a committed `join` on its target past the trade's refusals, takes over a
+-- trade on another hero, ends when the answer does, and holds laning's last hit off once taken.
+do
+	local PairJoin = require("bots/FunLib/humaniser/pair_join")
+	local joins = PairJoin.Joins
+	local answer
+	PairJoin.Joins = function() return answer end
+	CoreTrade.Reset()
+	enemy.loc = Vector(400, 0)
+	bot.hp, enemy.hp = 40, 90
+	bot.attacking = nil
+	T = 600
+	answer = nil
+	check("under half HP and behind, no join: no trade", CoreTrade.Desire(bot) == 0)
+	answer = enemy
+	check("the pair's join opens a committed attack whatever the trade's inputs", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	CoreTrade.Think(bot)
+	check("Think attacks the join's target", bot.attacking == enemy)
+	T = 601
+	check("laning's last hit yields to a taken join", CoreTrade.LastHitYields(bot))
+	T = 602
+	answer = nil
+	check("the answer ending ends the join", CoreTrade.Desire(bot) == 0 and lines[#lines - 0]:find("kind=join") ~= nil, lines[#lines])
+	check("its line names why", (function() for i = #lines, 1, -1 do if lines[i]:find("ev=trade") then return lines[i]:find("why=pair_end") ~= nil end end end)())
+	-- A trade on another hero gives way to the join.
+	local other = hero(7, 3, 300, 90)
+	bot.hp, enemy.hp = 80, 70
+	CoreTrade.Reset()
+	T = 610
+	check("a trade opens on the near hero", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and not CoreTrade.Joining(bot))
+	answer = other
+	T = 610.5
+	check("a join on another hero takes over the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	PairJoin.Joins = joins
+	other.alive = false
+	CoreTrade.Reset()
+end
+
 finish()

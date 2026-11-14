@@ -46,7 +46,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
@@ -55,6 +55,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -378,11 +379,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue84
+            local __continue86
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue84 = true
+                    __continue86 = true
                     break
                 end
                 local r = ____exports.Decide(
@@ -391,7 +392,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if r == "tower" or r == "outnumbered" then
-                    __continue84 = true
+                    __continue86 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -400,12 +401,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue84 = true
+                    __continue86 = true
                     break
                 end
                 return p
             until true
-            if not __continue84 then
+            if not __continue86 then
                 break
             end
         end
@@ -433,7 +434,7 @@ function rollFight(bot, target, now)
         now
     )
 end
-function keepWhy(bot, ep, now)
+function keepWhy(bot, ep, now, join)
     local t = ep.target
     if not IsHeroAlive(ep.tpid) then
         return "target_dead"
@@ -442,6 +443,18 @@ function keepWhy(bot, ep, now)
         return "target_lost"
     end
     ep.thpSeen = t:GetHealth()
+    if ep.kind == "join" then
+        if join == nil then
+            return "pair_end"
+        end
+        if join ~= t then
+            return "retarget"
+        end
+        if ep.startedAt == nil then
+            return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
+        end
+        return now - ep.startedAt > JOIN_TIME and "time" or nil
+    end
     if ep.startedAt == nil then
         return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
     end
@@ -506,19 +519,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue121
+            local __continue128
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue121 = true
+                    __continue128 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue121 = true
+                __continue128 = true
             until true
-            if not __continue121 then
+            if not __continue128 then
                 break
             end
         end
@@ -570,6 +583,7 @@ KEEP_HP_SLACK = 0.05
 KEEP_WAVE_SLACK = 1
 LOSING_BY = 0.05
 KILL_TIME = 6
+JOIN_TIME = FIGHT_TIME
 REACH = 100
 HARASS_REACH = 300
 --- A support prefers an enemy hero whose attack target is a lane creep (a last-hit attempt: its swing goes to the creep, not back
@@ -757,13 +771,21 @@ function ____exports.Desire(bot)
         )
         ep = nil
     end
+    local join = PairJoin.Joins(bot)
+    if ep ~= nil and ep.kind ~= "join" and join ~= nil and join ~= ep.target then
+        close(bot, ep, "pair_join", now)
+        ep = nil
+    end
     if ep ~= nil then
-        local why = keepWhy(bot, ep, now)
+        local why = keepWhy(bot, ep, now, join)
         if why == nil then
             return ep.kind == "trade" and ____exports.DESIRE_TRADE or ____exports.DESIRE_KILL
         end
         close(bot, ep, why, now)
         ep = nil
+    end
+    if join ~= nil then
+        return open(bot, "join", join, now)
     end
     local owns = ____exports.OwnsLaneFights(bot)
     if owns and Plays.Of(bot) ~= nil then
@@ -815,7 +837,12 @@ function ____exports.Desire(bot)
     end
     return open(bot, d.kind, target, now)
 end
---- A trade, kill or fight episode is open for this hero (Desire returns its desire in attack mode); reads only.
+--- A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only.
+function ____exports.Joining(bot)
+    local ep = episodes[bot:GetPlayerID()]
+    return ep ~= nil and ep.ended ~= true and ep.kind == "join"
+end
+--- A trade, kill, fight or join episode is open for this hero (Desire returns its desire in attack mode); reads only.
 function ____exports.Running(bot)
     local ep = episodes[bot:GetPlayerID()]
     return ep ~= nil and ep.ended ~= true
@@ -838,19 +865,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue111
+            local __continue118
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue111 = true
+                    __continue118 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue111 = true
+                __continue118 = true
             until true
-            if not __continue111 then
+            if not __continue118 then
                 break
             end
         end
@@ -905,7 +932,7 @@ function ____exports.LastHitYields(bot)
         return true
     end
     local ep = episodes[bot:GetPlayerID()]
-    return ep ~= nil and ep.lf and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
+    return ep ~= nil and (ep.lf or ep.kind == "join") and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
 end
 --- When this bot last gave an attack order on an enemy hero from a trade (lane_aggro shares the 3 s draw clock).
 function ____exports.PrimedAt(pid)

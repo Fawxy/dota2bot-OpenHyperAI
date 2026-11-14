@@ -349,6 +349,7 @@ local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro"
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
+local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
@@ -1344,7 +1345,10 @@ local function step(bot, st, r, now)
 end
 --- The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
 -- leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
-function ____exports.LeaveWhy(bot, st, r, budget, now)
+function ____exports.LeaveWhy(bot, st, r, budget, now, joins)
+    if joins == nil then
+        joins = PairJoin.Joins(bot) ~= nil
+    end
     if r.band == "lethal" then
         return "lethal", nil
     end
@@ -1396,6 +1400,44 @@ function ____exports.LeaveWhy(bot, st, r, budget, now)
             )
         end
         return nil, "stand"
+    end
+    if joins then
+        st.overSince = nil
+        if st.stayLogged ~= true then
+            st.stayLogged = true
+            Telemetry.Event(
+                "retreat",
+                {
+                    {"ph", "stay"},
+                    {"why", "join"},
+                    {
+                        "pid",
+                        bot:GetPlayerID()
+                    },
+                    {
+                        "thr",
+                        r2(r.threat)
+                    },
+                    {"band", r.band},
+                    {"reach", #r.reach},
+                    {"al", r.allies},
+                    {
+                        "burst",
+                        r2(r.burst)
+                    },
+                    {"eng", #r.eng},
+                    {
+                        "budget",
+                        r2(budget)
+                    },
+                    {
+                        "hp",
+                        r2(hpShare(bot))
+                    }
+                }
+            )
+        end
+        return nil, "join"
     end
     local even = #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst and hpShare(bot) >= ____exports.SETTINGS.EvenHp
     if Ours.On("RetreatOdds") and even and unpaid(bot, r) == 0 then
@@ -1509,7 +1551,7 @@ local function drillDesire(bot, st, now)
     return ____exports.SETTINGS.DrillDesire
 end
 --- ev=cut kind=leave on a changed answer, else while a hero is in reach, at most every CutEvery. Reads state; the decision does not use it.
-local function cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now)
+local function cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins)
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true then
         return
     end
@@ -1531,6 +1573,7 @@ local function cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now)
             over = overBefore ~= nil and now - overBefore or nil,
             hold = Profile.ThreatHold(bot),
             unp = unpaid(bot, r),
+            pj = joins,
             short = math.min(____exports.SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
             long = ____exports.SETTINGS.EngagedWindow
         }
@@ -1615,12 +1658,14 @@ function ____exports.Desire(bot)
         return 0
     end
     local overBefore = st.overSince
+    local joins = PairJoin.Joins(bot) ~= nil
     local why, stay = ____exports.LeaveWhy(
         bot,
         st,
         r,
         budget,
-        now
+        now,
+        joins
     )
     if readAtBefore ~= st.readAt then
         cutLeave(
@@ -1632,7 +1677,8 @@ function ____exports.Desire(bot)
             why,
             stay,
             overBefore,
-            now
+            now,
+            joins
         )
     end
     if why == nil then

@@ -156,7 +156,7 @@ function ____exports.Candidates(bot, jobName, lever)
     out[#out + 1] = retreatCandidate(bot)
     out[#out + 1] = {
         name = "trade",
-        group = 5,
+        group = CoreTrade.Joining(bot) and 2 or 5,
         host = "attack",
         applies = CoreTrade.Running(bot)
     }

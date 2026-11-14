@@ -795,7 +795,7 @@ Slice retreat (retreat.ts): one start and one end per episode of our retreat, an
 - `ph` str: `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per over-budget spell the `Ours.RetreatOdds` hold keeps in lane), `skip`, `items`, `use`, `items_off`.
 - `kind` str: `plain` for a walk by a hero our retreat does not own; else our episode.
 - `ep` num: The episode number.
-- `why` str: On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the lone-hero stand (`Ours.EvenStand`), absent for the `Ours.RetreatOdds` hold.
+- `why` str: On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the lone-hero stand (`Ours.EvenStand`), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold.
 - `hp` num: The hero's HP share at the line.
 - `thr` num: The read's threat.
 - `band` str: The read's band at the line; `ph=read` is logged on a band change.
@@ -975,12 +975,12 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 
 - `role` str: `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot).
 - `lf` num: 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%.
-- `kind` str: `trade`, `kill` (a commit) or `fight` (a lane fight from the play roll: rolled here or joined).
+- `kind` str: `trade`, `kill` (a commit), `fight` (a lane fight from the play roll: rolled here or joined) or `join` (D10's pair join, `Ours.PairJoin`).
 - `tgt` num: The target hero's pid.
 - `hb` num: 1 for a hit back (slice hit-back, `Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro.
 - `play` num: A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own.
 - `result` str: `done` (taken), `kill` (the game says the target died, `IsHeroAlive`) or `lost` (offered, not taken within 1 s; `mode`/`md` is the mode that held the core).
-- `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`.
+- `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over.
 - `dur` num: Seconds the window lasted.
 - `hpd` num: HP the bot and the target lost from the trade's start to its end.
 - `hp` num: Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500.
@@ -1370,6 +1370,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `th` num: kind=leave: Profile.ThreatHold, the seconds the read must stay over budget.
 - `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
+- `pj` num: kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise.
 - `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
 - `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join`, `outnumbered`, `losing`.

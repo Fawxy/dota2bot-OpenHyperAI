@@ -109,7 +109,8 @@ export function Candidates(bot: Unit, jobName: string | undefined, lever: string
     if (!owned(bot)) return [{ name: OHA, group: OHA_GROUP, applies: true }];
     const out: Candidate[] = [];
     out.push(retreatCandidate(bot));
-    out.push({ name: "trade", group: 5, host: "attack", applies: CoreTrade.Running(bot) });
+    // A pair join (D10) is the pair group's; every other trade, kill or fight is pressure.
+    out.push({ name: "trade", group: CoreTrade.Joining(bot) ? 2 : 5, host: "attack", applies: CoreTrade.Running(bot) });
     // Only a trade or a commit: a core waiting for its partner (wait_partner) posts no floor and keeps laning (lane_fight.ts).
     out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: BORROWED.team_roam(bot) });
     out.push(jobCandidate(bot, jobName ?? CampJobs.LiveKind(bot), lever));

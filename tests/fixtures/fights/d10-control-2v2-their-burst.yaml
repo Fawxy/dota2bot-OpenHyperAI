@@ -1,0 +1,23 @@
+id: fights.join.control-2v2-their-burst.001
+source: log
+ref: {log: 2026-11-14T04-56-25-pairjoin_smoke2.log, t: 133.200}
+status: active
+decision: pair_join
+# ours pid 2 (the hit ally): HP 691 of 764, 0 from the ally
+# ours pid 4: HP 738 of 758, 413 from the ally
+# theirs pid 5: HP 714 of 714, 625 from the ally
+# theirs pid 7: HP 651 of 758, 827 from the ally
+world:
+  t: 133.2
+  pid: 4
+  ally: 2
+  ours: [{"pid":2,"x":6112,"y":-4453,"hp":691,"mhp":764,"ret":0},{"pid":4,"x":5893,"y":-4803,"hp":738,"mhp":758,"ret":0}]
+  theirs: [{"pid":5,"x":5918,"y":-3859,"hp":714,"mhp":714},{"pid":7,"x":6148,"y":-3627,"hp":651,"mhp":758}]
+  dmg: [{"from":2,"to":5,"d":94},{"from":2,"to":7,"d":92},{"from":4,"to":5,"d":107},{"from":4,"to":7,"d":105},{"from":5,"to":2,"d":206},{"from":5,"to":4,"d":206},{"from":7,"to":2,"d":162},{"from":7,"to":4,"d":163}]
+expect:
+  must: ["out(losing)"]
+  mustNot: ["join(hero#7)", "join(hero#5)"]
+notes: >
+  Control, the opposite rule (smoke2, 2:13): a 2v2 at near full HP on both sides (ours 90% and 97%, theirs 100% and 86%),
+  nobody retreating, but theirs hit twice as hard: 0.53 of our hit ally's HP in 3 s against our best 0.30. Even numbers
+  alone are no reason to fight: the pair stays out and both leave together (D10, D1 leaves when the fight is lost).

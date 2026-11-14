@@ -275,7 +275,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, pairFacts, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -1340,6 +1340,77 @@ function rigHold(bot)
     end
     return true
 end
+function pairFacts(bot, ally, foe)
+    local function live(u)
+        return not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil and not u:IsIllusion()
+    end
+    local allies = __TS__ArrayFilter(
+        GetUnitList(UnitType.AlliedHeroes) or ({}),
+        function(____, u) return live(u) end
+    )
+    local hit
+    for ____, a in ipairs(allies) do
+        do
+            local __continue268
+            repeat
+                if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
+                    __continue268 = true
+                    break
+                end
+                if hit == nil or hpShare(a) < hpShare(hit) then
+                    hit = a
+                end
+                __continue268 = true
+            until true
+            if not __continue268 then
+                break
+            end
+        end
+    end
+    if hit == nil then
+        return "pairhit"
+    end
+    local ours = __TS__ArrayFilter(
+        allies,
+        function(____, a) return GetUnitToUnitDistance(a, hit) <= ally end
+    )
+    if #ours < 2 then
+        return "pairnone"
+    end
+    local theirs = __TS__ArrayFilter(
+        GetUnitList(UnitType.EnemyHeroes) or ({}),
+        function(____, e) return live(e) and e:CanBeSeen() and GetUnitToUnitDistance(e, hit) <= foe end
+    )
+    if #theirs == 0 then
+        return "pairhit"
+    end
+    if #theirs > #ours then
+        return "outnum"
+    end
+    local function share(from, on)
+        local best = 0
+        for ____, o in ipairs(on) do
+            local d = 0
+            for ____, f in ipairs(from) do
+                d = d + f:GetEstimatedDamageToTarget(true, o, 3, DamageType.All)
+            end
+            best = math.max(
+                best,
+                d / math.max(
+                    1,
+                    o:GetHealth()
+                )
+            )
+        end
+        return best
+    end
+    return {
+        ko = share(ours, theirs),
+        kt = share(theirs, ours),
+        ours = #ours,
+        theirs = #theirs
+    }
+end
 function controlRep(d, n)
     return d.rep.control ~= nil and d.rep.control > 0 and n % d.rep.control == 0
 end
@@ -1491,6 +1562,22 @@ ____exports.TABLE = {
                 "attack r1 until hp 0.55",
                 "leave"
             }}, ready = {hit = true, behind = 0.16, hpAtLeast = 0.55}}, {name = "free", aggro = false, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "attack r1 from 500 until hp 0.6", "leave"}}, ready = {hit = true, past = {100, 300}, hpAtLeast = 0.9}}, {name = "stand", aggro = true, setup = {r1 = {"heal", "stand side"}, d4 = {"heal", "stand beside"}}, ready = {near = 800}}}
+        }
+    },
+    ["pair-join"] = {
+        note = "rig: Radiant pos1 and pos5 side by side off our bot lane, the Dire pos3 attacks the pos1 to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        cast = {r = {1, 5}},
+        others = "bench",
+        rep = {every = 120, from = 0},
+        rig = {
+            half = "execution",
+            switch = "PairJoin",
+            window = 600,
+            spots = {side = {"r:bot1", -2750, 700}, beside = {"r:bot1", -2600, 850}, sidenear = {"r:bot1", -2250, 700}, away = {"r:bot1", -2750, 3200}},
+            timeout = 60,
+            keeps = {"levelup"},
+            release = {modes = {"laning", "attack", "retreat", "idle"}},
+            reps = {{name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand beside"}, d3 = {"heal", "walk sidenear", "attack r1 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "pair", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand beside"}, d3 = {"heal", "walk sidenear", "attack r1 until hp 0.5", "leave"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}}, {name = "alone", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand away"}, d3 = {"heal", "walk sidenear", "attack r1 until hp 0.5", "leave"}}, ready = {hit = true, hpAtLeast = 0.5}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2174,6 +2261,15 @@ local function failingCheck(bot, st, rr)
         end
         if b < r.lone[2] or b >= r.lone[3] then
             return "burst"
+        end
+    end
+    if r.pair ~= nil then
+        local f = pairFacts(bot, r.pair[1], r.pair[2])
+        if type(f) == "string" then
+            return f
+        end
+        if r.ahead == true and not (f.ko > f.kt) then
+            return "ahead"
         end
     end
     return nil

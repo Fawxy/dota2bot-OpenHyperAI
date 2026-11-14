@@ -1,13 +1,16 @@
 /**
- * Pair join (D10, slice pair-join): a laner whose ally in reach is being hit by an enemy hero joins the fight when what our
- * heroes there can do to theirs outweighs what theirs can do to ours. In shadow: `Tick` decides and logs `ev=cut kind=join`
- * (the inputs, the answer); nothing acts on it yet. `Decide` is pure, so a cut replays offline (driver pair_join).
+ * Pair join (D10, slices pair-join, pair-join-on): a laner whose ally in reach (or who itself) is being hit by an enemy hero
+ * joins the fight when what our heroes there can do to theirs outweighs what theirs can do to ours. `For` decides at most
+ * every `Every` s; `Tick` logs `ev=cut kind=join` (the inputs, the answer). With `Ours.PairJoin`, `Joins` is acted on:
+ * CoreTrade opens a committed attack (kind `join`) on `tgt` and retreat's LeaveWhy stays (`join`). `Decide` is pure, so a
+ * cut replays offline (driver pair_join).
  *
  * The weighing: over `Window` s, each side's best kill share, GetEstimatedDamageToTarget summed over its heroes on one target
  * over that target's HP, the target the side does best on. We join on theirs (`tgt`) when our share is the larger; numbers
  * against us leave it out at once (D1 is retreat's).
  */
 import { DamageType, Unit, UnitType } from "bots/ts_libs/dota";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
@@ -28,6 +31,13 @@ export const SETTINGS = {
     Until: 720,
     /** An unchanged answer is logged again after this many seconds (Retreat CutEvery). */
     CutEvery: 2,
+    /**
+     * A join holds this long after the last `join` answer while no other answer replaces it (the ally's last hit leaves the
+     * 1 s HitRecent between two swings): about one and a half lane attack intervals. judgement.
+     */
+    Keep: 1.5,
+    /** The joiner acts only on a target within this of it: D10's 1,200, about 4 s of walking. judgement. */
+    TargetRange: 1200,
 };
 
 /** One hero in the fight: pid, place, HP, in our retreat (ours only). */
@@ -75,11 +85,12 @@ function best(from: Member[], on: Member[], dmg: Record<number, Record<number, n
     return $multi(tgt, share);
 }
 
-/** The rule: outnumbered stays out; else join when our best kill share beats theirs. */
+/** The rule: outnumbered stays out; else join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side. */
 export function Decide(rec: Rec): Answer {
-    const [tgt, ko] = best(rec.ours, rec.theirs, rec.dmg);
-    const [, kt] = best(rec.theirs, rec.ours, rec.dmg);
-    if (rec.theirs.length > rec.ours.length) return { dec: "outnumbered", tgt, ko, kt };
+    const ours = rec.ours.filter((m) => m.ret !== 1);
+    const [tgt, ko] = best(ours, rec.theirs, rec.dmg);
+    const [, kt] = best(rec.theirs, ours, rec.dmg);
+    if (rec.theirs.length > ours.length) return { dec: "outnumbered", tgt, ko, kt };
     return { dec: ko > kt ? "join" : "losing", tgt, ko, kt };
 }
 
@@ -100,18 +111,23 @@ function member(u: Unit, ours: boolean): Member {
     return m;
 }
 
-/** The situation's record, or undefined when no ally within AllyRange was hit by a hero within HitRecent. The hit ally is the one at the lowest HP share. */
+/**
+ * The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
+ * or the hit ally has nobody of ours within OursRange (a hero alone is D1's and D24's, not a pair's). The hit ally is the
+ * one at the lowest HP share.
+ */
 export function Gather(bot: Unit): Rec | undefined {
     let ally: Unit | undefined;
     const allies: Unit[] = [];
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
         if (!live(a)) continue;
         allies.push(a);
-        if (a === bot || dist(a, bot) > SETTINGS.AllyRange || !a.WasRecentlyDamagedByAnyHero(SETTINGS.HitRecent)) continue;
+        if (dist(a, bot) > SETTINGS.AllyRange || !a.WasRecentlyDamagedByAnyHero(SETTINGS.HitRecent)) continue;
         if (ally === undefined || a.GetHealth() / a.GetMaxHealth() < ally.GetHealth() / ally.GetMaxHealth()) ally = a;
     }
     if (ally === undefined) return undefined;
     const ours: Unit[] = allies.filter((a) => dist(a, ally!) <= SETTINGS.OursRange);
+    if (ours.length < 2) return undefined;
     const theirs: Unit[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (live(e) && e.CanBeSeen() && dist(e, ally) <= SETTINGS.FoeRange) theirs.push(e);
@@ -130,7 +146,55 @@ export function Gather(bot: Unit): Rec | undefined {
     return { ally: ally.GetPlayerID(), ours: ours.map((u) => member(u, true)), theirs: theirs.map((u) => member(u, false)), dmg };
 }
 
-const states: Record<number, { at?: number; dec?: Dec; cutAt?: number }> = {};
+interface State {
+    /** When For last decided, and what: the record and answer, or none (no situation). */
+    at?: number;
+    rec?: Rec;
+    ans?: Answer;
+    /** The last `join` answer: when, and its target. */
+    joinAt?: number;
+    joinTgt?: number;
+    /** The cut's last logged answer and when. */
+    dec?: Dec;
+    cutAt?: number;
+}
+
+const states: Record<number, State> = {};
+
+/** The bot's decision, made afresh at most every Every s (the matrix is 2 x n x m estimates); reads only. */
+export function For(bot: Unit): { rec?: Rec; ans?: Answer; fresh: boolean } {
+    const now = DotaTime();
+    const pid = bot.GetPlayerID();
+    const st = (states[pid] = states[pid] ?? {});
+    if (st.at !== undefined && now >= st.at && now - st.at < SETTINGS.Every) return { rec: st.rec, ans: st.ans, fresh: false };
+    st.at = now;
+    st.rec = bot.IsAlive() && now <= SETTINGS.Until ? Gather(bot) : undefined;
+    st.ans = st.rec !== undefined ? Decide(st.rec) : undefined;
+    if (st.ans?.dec === "join") {
+        st.joinAt = now;
+        st.joinTgt = st.ans.tgt;
+    } else if (st.ans !== undefined) st.joinAt = undefined;
+    return { rec: st.rec, ans: st.ans, fresh: true };
+}
+
+/**
+ * With `Ours.PairJoin`: the enemy hero this bot joins the fight on (D10), or undefined. The last answer was `join` within
+ * Keep s with no other answer since, the bot is not retreating, and the target is alive, seen and within TargetRange of it.
+ */
+export function Joins(bot: Unit): Unit | undefined {
+    if (!Ours.On("PairJoin") || !bot.IsAlive() || RetreatState.Running(bot)) return undefined;
+    For(bot);
+    const st = states[bot.GetPlayerID()];
+    if (st?.joinAt === undefined || DotaTime() - st.joinAt > SETTINGS.Keep) return undefined;
+    const t = st.joinTgt !== undefined ? heroOf(st.joinTgt) : undefined;
+    if (t === undefined || !t.CanBeSeen() || dist(t, bot) > SETTINGS.TargetRange) return undefined;
+    return t;
+}
+
+function heroOf(pid: number): Unit | undefined {
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) if (live(e) && e.GetPlayerID() === pid) return e;
+    return undefined;
+}
 
 function members(ms: Member[]): string {
     return ms.map((m) => [m.pid, m.x, m.y, m.hp, m.mhp, ...(m.ret !== undefined ? [m.ret] : [])].join(",")).join(";");
@@ -142,21 +206,19 @@ function dmgOf(rec: Rec): string {
     return out.join(";");
 }
 
-/** Per frame (index Tick): every Every s in the laning stage, the decision and its cut. Reads only. */
+/** Per frame (index Tick): on each fresh decision in the laning stage, its cut. Reads only. */
 export function Tick(bot: Unit): void {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || !bot.IsAlive()) return;
     const now = DotaTime();
     if (now > SETTINGS.Until) return;
     const pid = bot.GetPlayerID();
-    const st = (states[pid] = states[pid] ?? {});
-    if (st.at !== undefined && now - st.at < SETTINGS.Every) return;
-    st.at = now;
-    const rec = Gather(bot);
-    if (rec === undefined) {
+    const { rec, ans: a, fresh } = For(bot);
+    if (!fresh) return;
+    const st = states[pid];
+    if (rec === undefined || a === undefined) {
         st.dec = undefined;
         return;
     }
-    const a = Decide(rec);
     if (a.dec === st.dec && now - (st.cutAt ?? -math.huge) < SETTINGS.CutEvery) return;
     st.dec = a.dec;
     st.cutAt = now;
