@@ -1347,7 +1347,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 
 `pid` num, `band` str
 
-- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`).
+- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`).
 - `role` str: The spot's role input: `core` or `support`.
 - `who` str: `gate`: the consumer that asked (ev=threat `who`).
 - `fm` str: `gate`: the walk's start, x,y (Threat.Gate's `from`).
@@ -1372,6 +1372,13 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
 - `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
+- `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join`, `outnumbered`, `losing`.
+- `po` str: kind=join: our heroes within OursRange of the ally, the bot and the ally included: pid, x, y, HP, max HP, in our retreat.
+- `pt` str: kind=join: enemy heroes in sight within FoeRange of the ally: pid, x, y, HP, max HP.
+- `dm` str: kind=join: GetEstimatedDamageToTarget over PairJoin Window between the two sides, both ways: from pid, to pid, damage.
+- `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
+- `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP.
+- `kt` num: kind=join: theirs, their heroes' best kill share on one of ours.
 
 ## cut_creeps
 
