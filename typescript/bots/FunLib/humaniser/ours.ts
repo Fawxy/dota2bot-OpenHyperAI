@@ -157,6 +157,11 @@ export const DEFAULTS = {
      *  us, whose burst is under our HP, at half HP or more, refuses no lane spot and starts no `threat` leave
      *  (Threat.LoneStand). Off: the spot's burst bar and band, and the budget, whatever the numbers. */
     EvenStand: true,
+    /** Slice pair-join-on (D10): a laner of ours in a fight where an ally of ours (or itself) is hit by an enemy hero, not
+     *  outnumbered, whose side's best 3 s kill share beats theirs (PairJoin.Joins) commits an attack on the pair's target
+     *  (CoreTrade kind `join`), and retreat's `threat` leave waits for it (LeaveWhy `join`). Off: the pair's answer is only
+     *  logged (`ev=cut kind=join`). */
+    PairJoin: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

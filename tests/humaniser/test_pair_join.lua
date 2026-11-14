@@ -81,6 +81,74 @@ do
 	check("no hit ally, no situation", P.Gather(bot) == nil)
 	lists({ bot, ally }, { away })
 	check("no enemy near the ally, no situation", P.Gather(bot) == nil)
+	-- The bot itself hit, its partner near: the bot is the hit ally (it holds and joins too).
+	local hitBot = unit({ pid = 0, x = 0, y = 0, hp = 200, hit = true, dmg = { [6] = 90 } })
+	lists({ hitBot, unit({ pid = 1, x = 500, y = 0, hp = 600 }) }, { e })
+	local own = P.Gather(hitBot)
+	check("the bot hit with a partner near is its own situation", own ~= nil and own.ally == 0 and #own.ours == 2)
+	lists({ hitBot, far }, { e })
+	check("a hit hero with nobody of ours near is no pair", P.Gather(hitBot) == nil)
+	-- Its only partner retreating: a hero alone, no pair (review of pair-join-on).
+	local leaving = unit({ pid = 1, x = 500, y = 0, hp = 600 })
+	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
+	RetreatState.SetRunning(leaving, true)
+	lists({ hitBot, leaving }, { e })
+	check("a hit hero whose only partner retreats is no pair", P.Gather(hitBot) == nil)
+	RetreatState.SetRunning(leaving, false)
+end
+
+do
+	local P = fresh()
+	-- 2v2 with our hit ally retreating: it counts on neither side, so one of ours against two is outnumbered.
+	local ret = m(1, 300)
+	ret.ret = 1
+	local a = P.Decide({ ally = 1, ours = { m(0, 600), ret }, theirs = { m(6, 600), m(7, 400) },
+		dmg = { [0] = { [6] = 500, [7] = 500 }, [6] = { [0] = 10, [1] = 300 }, [7] = { [0] = 10, [1] = 300 } } })
+	check("a retreating ally does not count on our side", a.dec == "outnumbered")
+	-- 1v1 left (Decide alone; Gather hands it no such record): the retreating ally's low HP is not theirs to weigh.
+	local b = P.Decide({ ally = 1, ours = { m(0, 600), ret }, theirs = { m(6, 600) },
+		dmg = { [0] = { [6] = 300 }, [6] = { [0] = 100, [1] = 300 } } })
+	check("theirs are weighed on ours still fighting", b.dec == "join" and math.abs(b.kt - 100 / 600) < 1e-9)
+end
+
+do
+	-- Joins: the switch, the answer and its Keep, the target's range.
+	local P = fresh()
+	local Customize = require("bots.Customize.general")
+	local bot = unit({ pid = 0, x = 0, y = 0, hp = 600, dmg = { [6] = 400 } })
+	local ally = unit({ pid = 1, x = 500, y = 0, hp = 500, hit = true, dmg = { [6] = 100 } })
+	local e = unit({ pid = 6, x = 900, y = 0, hp = 500, dmg = { [1] = 50 } })
+	lists({ bot, ally }, { e })
+	T = 100
+	local t = P.Joins(bot)
+	check("join answered: the bot joins on the pair's target", t ~= nil and t:GetPlayerID() == 6)
+	lists({ bot, unit({ pid = 1, x = 500, y = 0, hp = 500 }) }, { e })
+	T = 100.6
+	check("the join holds for Keep with no situation", P.Joins(bot) ~= nil)
+	T = 102.2
+	check("past Keep it ends", P.Joins(bot) == nil)
+	-- A losing answer ends it at once.
+	lists({ bot, ally }, { e })
+	T = 103
+	check("join again", P.Joins(bot) ~= nil)
+	local weak = unit({ pid = 1, x = 500, y = 0, hp = 40, hit = true, dmg = {} })
+	local hard = unit({ pid = 6, x = 900, y = 0, hp = 500, dmg = { [1] = 300, [0] = 300 } })
+	local soft = unit({ pid = 0, x = 0, y = 0, hp = 600, dmg = { [6] = 10 } })
+	lists({ soft, weak }, { hard })
+	T = 103.6
+	check("a losing answer ends the join at once", P.Joins(soft) == nil)
+	-- Off: logged only.
+	lists({ bot, ally }, { e })
+	T = 110
+	Customize.Ours.PairJoin = false
+	check("switch off: no join", P.Joins(bot) == nil)
+	Customize.Ours.PairJoin = true
+	-- A target past TargetRange of the bot is not walked to.
+	local P2 = fresh()
+	local farE = unit({ pid = 6, x = 1500, y = 0, hp = 500, dmg = { [1] = 50 } })
+	lists({ bot, ally }, { farE })
+	T = 120
+	check("a target past TargetRange is not joined", P2.Joins(bot) == nil)
 end
 
 finish()

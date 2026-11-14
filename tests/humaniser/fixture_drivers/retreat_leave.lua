@@ -2,8 +2,8 @@
 -- (ev=cut kind=leave, tools/hlog/cut.js; real map coordinates). The world and its API answers: cut_world.lua; the hold timer
 -- and Profile.ThreatHold are the logged ones.
 -- world: as cut_world.lua (no lane or front), plus budget (the read's budget), over (seconds the read had been over it, -1 not
---        over), hold (Profile.ThreatHold), dt (1: an enemy tower damaged the bot within 0.5 s).
--- Observation: leave(<lethal|tower|heal|threat>) or stay(<under|even|hold|stand>); fact.threat, fact.burst, fact.reach, fact.eng,
+--        over), hold (Profile.ThreatHold), dt (1: an enemy tower damaged the bot within 0.5 s), pj (1: PairJoin.Joins held).
+-- Observation: leave(<lethal|tower|heal|threat>) or stay(<under|even|hold|stand|join>); fact.threat, fact.burst, fact.reach, fact.eng,
 -- fact.budget, fact.over, fact.hp (HP share).
 local cutWorld = dofile(HARNESS_DIR .. "/fixture_drivers/cut_world.lua")
 
@@ -18,7 +18,7 @@ return function(fx)
 	local r = Retreat.ReadHere(bot)
 	local st = {}
 	if w.over >= 0 then st.overSince = w.t - w.over end
-	local why, stay = Retreat.LeaveWhy(bot, st, r, w.budget, w.t)
+	local why, stay = Retreat.LeaveWhy(bot, st, r, w.budget, w.t, w.pj == 1)
 	local verb, target = "stay", stay
 	if why ~= nil then verb, target = "leave", why end
 	return {

@@ -64,6 +64,7 @@ function Unit:GetRespawnTime() return self.respawn or 0 end
 function Unit:GetItemInSlot() return nil end
 function Unit:GetAbilityInSlot(i) return self.abilities and self.abilities[i] or nil end
 function Unit:GetEstimatedDamageToTarget(current, target, duration, dtype) return self.estDamage or 0 end
+function Unit:WasRecentlyDamagedByAnyHero(t) return self.hitByHero == true end
 function Unit:GetLastHits() return self.lh or 0 end
 -- Intent arbitration (task 09): action queue, busy states and fountain distance.
 BOT_ACTION_TYPE_NONE, BOT_ACTION_TYPE_IDLE, BOT_ACTION_TYPE_MOVE_TO = 0, 1, 2

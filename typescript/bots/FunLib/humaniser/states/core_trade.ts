@@ -15,12 +15,16 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
-/** `fight`: a lane fight from the play roll, rolled here or joined from an ally's play (slice lane-fight). */
-export type Kind = "trade" | "kill" | "fight";
+/**
+ * `fight`: a lane fight from the play roll, rolled here or joined from an ally's play (slice lane-fight). `join`: D10's pair
+ * join (`Ours.PairJoin`, PairJoin.Joins), a committed attack on the target the pair does best on.
+ */
+export type Kind = "trade" | "kill" | "fight" | "join";
 export type Respect = "low_hp" | "behind" | "outnumbered" | "tower" | "creeps" | "wave";
 
 export interface Inputs {
@@ -79,6 +83,8 @@ const KEEP_WAVE_SLACK = 1;
 const LOSING_BY = 0.05;
 /** A kill window commits and ignores the exchange, so it keeps a time limit. */
 const KILL_TIME = 6;
+/** A pair join commits like a fight and keeps its limit; it reopens at once while PairJoin still answers join. */
+const JOIN_TIME = FIGHT_TIME;
 /** Reach beyond the bot's attack range (plus both bounding radii) within which a hero is a target. */
 const REACH = 100;
 /**
@@ -426,12 +432,20 @@ export function Desire(bot: Unit): number | undefined {
         close(bot, ep, `mode_${bot.GetActiveMode()}`, now);
         ep = undefined;
     }
+    // D10 (pair, group 2) comes before every other fight of the lane: a running trade, kill or fight gives way to it, on
+    // its own target too (it reopens as the join, so the join's group, ends and last-hit yield hold; review of pair-join-on).
+    const join = PairJoin.Joins(bot);
+    if (ep !== undefined && ep.kind !== "join" && join !== undefined) {
+        close(bot, ep, "pair_join", now);
+        ep = undefined;
+    }
     if (ep !== undefined) {
-        const why = keepWhy(bot, ep, now);
+        const why = keepWhy(bot, ep, now, join);
         if (why === undefined) return ep.kind === "trade" ? DESIRE_TRADE : DESIRE_KILL;
         close(bot, ep, why, now);
         ep = undefined;
     }
+    if (join !== undefined) return open(bot, "join", join, now);
     // A hero in a play with no fight of ours running (one it started in another context, the rune spawn's, or one it
     // joined whose fight already ended) is driven by that play until it ends (OWNERSHIP H24).
     const owns = OwnsLaneFights(bot);
@@ -519,12 +533,20 @@ function rollFight(bot: Unit, target: Unit, now: number): Plays.Play | undefined
     return Plays.Roll({ kind: LANE_FIGHT, by: bot, target, at: target.GetLocation() }, now);
 }
 
-/** Why a running episode ends now, or undefined to keep it. */
-function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
+/** Why a running episode ends now, or undefined to keep it. `join` is this frame's PairJoin.Joins. */
+function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): string | undefined {
     const t: Unit = ep.target;
     if (!IsHeroAlive(ep.tpid)) return "target_dead";
     if (!valid(t)) return "target_lost";
     ep.thpSeen = t.GetHealth();
+    if (ep.kind === "join") {
+        // The pair's answer, not the trade's inputs, holds a join: it ends when that answer does (losing, outnumbered, no
+        // ally hit within Keep) or names another target, which the same frame opens.
+        if (join === undefined) return "pair_end";
+        if (join !== t) return "retarget";
+        if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
+        return now - ep.startedAt > JOIN_TIME ? "time" : undefined;
+    }
     if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
     if (ep.kind === "kill") {
         if (now - ep.startedAt > KILL_TIME) return "time";
@@ -549,7 +571,13 @@ function keepWhy(bot: Unit, ep: Episode, now: number): string | undefined {
     return undefined;
 }
 
-/** A trade, kill or fight episode is open for this hero (Desire returns its desire in attack mode); reads only. */
+/** A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only. */
+export function Joining(bot: Unit): boolean {
+    const ep = episodes[bot.GetPlayerID()];
+    return ep !== undefined && ep.ended !== true && ep.kind === "join";
+}
+
+/** A trade, kill, fight or join episode is open for this hero (Desire returns its desire in attack mode); reads only. */
 export function Running(bot: Unit): boolean {
     const ep = episodes[bot.GetPlayerID()];
     return ep !== undefined && ep.ended !== true;
@@ -654,7 +682,8 @@ export function LastHitYields(bot: Unit): boolean {
     if (!CoreLastHit.Applies(bot)) return false;
     if (bot.GetActiveMode() === BotMode.Retreat) return true;
     const ep = episodes[bot.GetPlayerID()];
-    return ep !== undefined && ep.lf && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
+    // A pair join (D10, group 2) is above the last hit (D11, group 3) whoever owns the lane fights.
+    return ep !== undefined && (ep.lf || ep.kind === "join") && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
 }
 
 /** When this bot last gave an attack order on an enemy hero from a trade (lane_aggro shares the 3 s draw clock). */

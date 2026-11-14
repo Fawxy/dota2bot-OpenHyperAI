@@ -1,0 +1,23 @@
+id: fights.join.pair-2v2-full-hp.001
+source: log
+ref: {log: 2026-11-14T04-56-25-pairjoin_smoke2.log, t: 35.767}
+status: active
+decision: pair_join
+# ours pid 5: HP 670 of 670, 402 from the ally
+# ours pid 7 (the hit ally): HP 704 of 714, 0 from the ally
+# theirs pid 2: HP 698 of 698, 996 from the ally
+# theirs pid 4: HP 714 of 714, 836 from the ally
+world:
+  t: 35.767
+  pid: 5
+  ally: 7
+  ours: [{"pid":5,"x":6110,"y":-4835,"hp":670,"mhp":670,"ret":0},{"pid":7,"x":6060,"y":-5234,"hp":704,"mhp":714,"ret":0}]
+  theirs: [{"pid":2,"x":5440,"y":-6014,"hp":698,"mhp":698},{"pid":4,"x":5894,"y":-6053,"hp":714,"mhp":714}]
+  dmg: [{"from":5,"to":2,"d":187},{"from":5,"to":4,"d":200},{"from":7,"to":2,"d":143},{"from":7,"to":4,"d":157},{"from":2,"to":5,"d":88},{"from":2,"to":7,"d":84},{"from":4,"to":5,"d":106},{"from":4,"to":7,"d":102}]
+expect:
+  must: ["join(hero#4)"]
+  mustNot: ["out(losing)", "out(outnumbered)"]
+notes: >
+  A full-HP 2v2 (smoke2, 0:35): our two at 100% and 99%, theirs at 100%, 840-1,000 from our hit ally. Our pair's damage
+  over 3 s is 0.50 of their pid 4's HP against their 0.29 of ours: even numbers, our kill share the larger, so we join and
+  fight it rather than give the lane (D10's first half). The target is the one our pair does best on.

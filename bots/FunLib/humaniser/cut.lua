@@ -562,6 +562,7 @@ function ____exports.Leave(bot, i)
                 math.floor(i.hold * 10000 + 0.5) / 10000
             },
             {"unp", i.unp},
+            {"pj", i.pj and 1 or nil},
             {
                 "dt",
                 bot:WasRecentlyDamagedByTower(0.5) and 1 or 0

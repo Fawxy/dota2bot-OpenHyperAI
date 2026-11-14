@@ -207,7 +207,7 @@ const DECISIONS = {
         driver: 'retreat_leave',
         world(game, cut) {
             const w = commonWorld(game, cut);
-            Object.assign(w, { budget: Number(cut.bud), over: Number(cut.ov), hold: Number(cut.th), dt: Number(cut.dt) });
+            Object.assign(w, { budget: Number(cut.bud), over: Number(cut.ov), hold: Number(cut.th), dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0 });
             return w;
         },
         check(game, cut, obs) {
@@ -340,6 +340,12 @@ function barMisses(byAnswer) {
 function factsOf(w) {
     const d = (u, p) => Math.round(Math.hypot(u.x - p.x, u.y - p.y));
     const b = w.bot;
+    // A join world is the fight itself: each hero's HP and its distance from the hit ally.
+    if (b === undefined && Array.isArray(w.ours)) {
+        const al = w.ours.find(m => m.pid === w.ally) || w.ours[0];
+        return [...w.ours.map(m => `# ours pid ${m.pid}${m.pid === w.ally ? ' (the hit ally)' : ''}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally${m.ret === 1 ? ', retreating' : ''}`),
+            ...w.theirs.map(m => `# theirs pid ${m.pid}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally`)];
+    }
     const at = w.place ? `, ${d(b, w.place)} from the place` : '';
     const out = [`# bot pid ${w.pid}: HP ${Math.round(100 * b.hp / b.mhp)}% (${b.hp} of ${b.mhp})${at}`];
     for (const [label, list] of [['enemy', w.he], ['unseen', w.hu], ['ally', w.ha]]) {
@@ -390,6 +396,8 @@ async function main(argv) {
         for (const cut of pool) {
             const a = d.answer(game, cut);
             if ((answer !== undefined && a !== answer) || (pid !== undefined && cut.pid !== pid)) continue;
+            // A join cut carries its fight, not the bot's place and reads: its brief is the line.
+            if (cut.b === undefined) { console.log(`${mmss(Number(cut.t))} t=${cut.t} pid ${cut.pid} ${a}: ${d.brief(game, cut)}`); continue; }
             const [, , hp, mhp] = nums(cut.b);
             const he = heroRecords(cut.he);
             const hitting = he.some(h => h.eng);

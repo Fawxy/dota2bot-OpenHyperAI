@@ -276,6 +276,57 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // Slice pair-join-on (D10's join). half: execution. The join's facts (PairJoin.Decide): one of ours hit by an enemy hero
+    // within 1 s (forced: the Dire pos4 actor attacks the Radiant pos1 from 500 north); another of ours within 1,200 of it (forced:
+    // the pos5 stands 400 south of it); not outnumbered, enemy heroes in sight within 1,000 of the hit hero no more than ours within 1,200
+    // (forced: the rest bench); our best 3 s kill share over theirs (forced by numbers: two healed heroes against one healed
+    // hero; checked with the same estimate the rule reads). Ready: `pair` and `ahead` for both casts, HP at half or more.
+    // Read after release: each cast's `ev=trade kind=join` taken (`result` done or kill) and the pos1 starts no `threat`
+    // retreat while its join runs. Control (`alone`): the pos5 stands 2,500 off, so there is no pair (D1 and D24 alone).
+    // The common start (join cuts of smoke pairjoin smoke1+2, 105 with the joiner not the hit hero): the hitter 820 from the
+    // hit hero (median; 5 of 105 under 300), the joiner 1,034 from it (19 under 700). rig1 had a melee hitter in reach of both,
+    // where the trade rule already fights (both casts traded in every ready pair rep with the switch off), so the hitter is a
+    // ranged one 500 north of the pos1 (its 550 range hits from there; rig2: `attack ... from 500` east of the side spot never
+    // settled, the terrain snaps points there, so it never hit) and the pos5 400 south of the pos1, about 900 from it. Spots: hit-back's side spot off our bot lane (763
+    // from the lane: CoreTrade's in lane). Seed 8 (lineup B): Sven and Witch Doctor against Lich (range 550). 120 s reps from 0:00 (heal walk and back), five inside 10:00. Release: laning,
+    // attack (the join), retreat, idle.
+    "pair-join": {
+        note: "rig: Radiant pos1 off our bot lane with the pos5 400 south of it, the Dire pos4 attacks the pos1 from 500 north to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        cast: { r: [1, 5] },
+        others: "bench",
+        rep: { every: 120, from: 0 },
+        rig: {
+            half: "execution",
+            switch: "PairJoin",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                behind: ["r:bot1", -2750, 300],
+                foe: ["r:bot1", -2750, 1200],
+                away: ["r:bot1", -2750, 3200],
+            },
+            timeout: 90, // on2: after a rep where the Lich died it walks in from the fountain and hit after 60 s in 3 of 4 pair reps
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "pair",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], d4: ["heal", "walk foe", "attack r1 until hp 0.5", "leave"] },
+                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "pair",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], d4: ["heal", "walk foe", "attack r1 until hp 0.5", "leave"] },
+                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "alone",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand away"], d4: ["heal", "walk foe", "attack r1 until hp 0.5", "leave"] },
+                    ready: { hit: true, hpAtLeast: 0.5 },
+                },
+            ],
+        },
+    },
     // Slice heal-items' drill as a rig (slice drill-rig's first consumer). half: decision. Facts the heal start reads: the
     // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
     // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
@@ -1025,6 +1076,17 @@ export interface RigReady {
      * `missing` conditions are neither forced nor checked.
      */
     lone?: [number, number, number];
+    /**
+     * The pair join's situation (D10), [ally, foe]: a hero of the cast's team within `ally` of the cast (the cast included)
+     * damaged by an enemy hero within the last second, with another live one of ours within `ally` of it, and the enemy heroes
+     * in sight within `foe` of it no more than ours within `ally` of it. Fails `pairhit`, `pairnone` or `outnum`.
+     */
+    pair?: [number, number];
+    /**
+     * With `pair`: our side's best kill share over 3 s (GetEstimatedDamageToTarget summed on one enemy hero, over its HP) beats
+     * theirs on ours: the rule's weighing, kept in step with PairJoin.Decide by hand. Fails `ahead`.
+     */
+    ahead?: boolean;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1642,7 +1704,42 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (hitters(bot).length > 0) return "lonehit";
         if (b < r.lone[1] || b >= r.lone[2]) return "burst";
     }
+    if (r.pair !== undefined) {
+        const f = pairFacts(bot, r.pair[0], r.pair[1]);
+        if (typeof f === "string") return f;
+        if (r.ahead === true && !(f.ko > f.kt)) return "ahead";
+    }
     return undefined;
+}
+
+/**
+ * The pair join's facts around the cast (RigReady `pair`): the hit hero of ours (the lowest HP share), ours within `ally` of
+ * it and the enemy heroes in sight within `foe` of it, and both sides' best kill share over 3 s; or the failing check.
+ */
+function pairFacts(bot: Unit, ally: number, foe: number): { ko: number; kt: number; ours: number; theirs: number } | string {
+    const live = (u: Unit) => !u.IsNull() && u.IsAlive() && u.GetLocation() !== undefined && !u.IsIllusion();
+    const allies = (GetUnitList(UnitType.AlliedHeroes) ?? []).filter((u) => live(u));
+    let hit: Unit | undefined;
+    for (const a of allies) {
+        if (GetUnitToUnitDistance(a, bot) > ally || !a.WasRecentlyDamagedByAnyHero(1)) continue;
+        if (hit === undefined || hpShare(a) < hpShare(hit)) hit = a;
+    }
+    if (hit === undefined) return "pairhit";
+    const ours = allies.filter((a) => GetUnitToUnitDistance(a, hit!) <= ally);
+    if (ours.length < 2) return "pairnone";
+    const theirs = (GetUnitList(UnitType.EnemyHeroes) ?? []).filter((e) => live(e) && e.CanBeSeen() && GetUnitToUnitDistance(e, hit!) <= foe);
+    if (theirs.length === 0) return "pairhit";
+    if (theirs.length > ours.length) return "outnum";
+    const share = (from: Unit[], on: Unit[]) => {
+        let best = 0;
+        for (const o of on) {
+            let d = 0;
+            for (const f of from) d += f.GetEstimatedDamageToTarget(true, o, 3, DamageType.All);
+            best = math.max(best, d / math.max(1, o.GetHealth()));
+        }
+        return best;
+    };
+    return { ko: share(ours, theirs), kt: share(theirs, ours), ours: ours.length, theirs: theirs.length };
 }
 
 /** A `lone` rep's burst share for the wait and ready lines, two decimals (undefined otherwise, or with no lone hero). */

@@ -1,0 +1,22 @@
+id: fights.join.ally-near-dead-ends.001
+source: log
+ref: {log: 2026-11-14T04-56-25-pairjoin_smoke2.log, t: 317.333}
+status: active
+decision: pair_join
+# ours pid 6: HP 302 of 786, 482 from the ally
+# ours pid 8 (the hit ally): HP 51 of 780, 0 from the ally
+# theirs pid 0: HP 474 of 758, 697 from the ally
+world:
+  t: 317.333
+  pid: 6
+  ally: 8
+  ours: [{"pid":6,"x":-4199,"y":5175,"hp":302,"mhp":786,"ret":0},{"pid":8,"x":-4641,"y":4983,"hp":51,"mhp":780,"ret":0}]
+  theirs: [{"pid":0,"x":-5319,"y":4821,"hp":474,"mhp":758}]
+  dmg: [{"from":6,"to":0,"d":283},{"from":8,"to":0,"d":136},{"from":0,"to":8,"d":89},{"from":0,"to":6,"d":83}]
+expect:
+  must: ["out(losing)"]
+  mustNot: ["join(hero#0)"]
+notes: >
+  The end of a join (smoke2, 5:17): two seconds after the same pair answered `join` (5:15), the hit ally is down to 51 of
+  780 HP. Their 3 s damage is 1.75 of its HP, ours 0.88 of theirs: one more exchange kills our hero first. The pair's
+  answer turns to `losing`, the join ends and D10's other half runs: retreat's leave rule takes both out.

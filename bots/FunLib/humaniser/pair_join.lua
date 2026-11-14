@@ -31,11 +31,24 @@ local function __TS__ObjectEntries(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local live, heroOf
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local UnitType = ____dota.UnitType
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+function live(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil and not u:IsIllusion()
+end
+function heroOf(pid)
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if live(e) and e:GetPlayerID() == pid then
+            return e
+        end
+    end
+    return nil
+end
 ____exports.SETTINGS = {
     AllyRange = 1200,
     FoeRange = 1000,
@@ -44,7 +57,9 @@ ____exports.SETTINGS = {
     Window = 3,
     Every = 0.5,
     Until = 720,
-    CutEvery = 2
+    CutEvery = 2,
+    Keep = 1.5,
+    TargetRange = 1200
 }
 --- The side `from`'s best kill share on `on` over the window: the target and the share.
 local function best(from, on, dmg)
@@ -64,17 +79,18 @@ local function best(from, on, dmg)
     end
     return tgt, share
 end
---- The rule: outnumbered stays out; else join when our best kill share beats theirs.
+--- The rule: outnumbered stays out; else join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side.
 function ____exports.Decide(rec)
-    local tgt, ko = best(rec.ours, rec.theirs, rec.dmg)
-    local ____, kt = best(rec.theirs, rec.ours, rec.dmg)
-    if #rec.theirs > #rec.ours then
+    local ours = __TS__ArrayFilter(
+        rec.ours,
+        function(____, m) return m.ret ~= 1 end
+    )
+    local tgt, ko = best(ours, rec.theirs, rec.dmg)
+    local ____, kt = best(rec.theirs, ours, rec.dmg)
+    if #rec.theirs > #ours then
         return {dec = "outnumbered", tgt = tgt, ko = ko, kt = kt}
     end
     return {dec = ko > kt and "join" or "losing", tgt = tgt, ko = ko, kt = kt}
-end
-local function live(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil and not u:IsIllusion()
 end
 local function dist(a, b)
     local p = a:GetLocation()
@@ -95,29 +111,32 @@ local function member(u, ours)
     end
     return m
 end
---- The situation's record, or undefined when no ally within AllyRange was hit by a hero within HitRecent. The hit ally is the one at the lowest HP share.
+--- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
+-- or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
+-- pair's; review of pair-join-on: a partner in retreat left a lone hero weighed 1v1, which could join). The hit ally is
+-- the one at the lowest HP share.
 function ____exports.Gather(bot)
     local ally
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue15
+            local __continue16
             repeat
                 if not live(a) then
-                    __continue15 = true
+                    __continue16 = true
                     break
                 end
                 allies[#allies + 1] = a
-                if a == bot or dist(a, bot) > ____exports.SETTINGS.AllyRange or not a:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitRecent) then
-                    __continue15 = true
+                if dist(a, bot) > ____exports.SETTINGS.AllyRange or not a:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitRecent) then
+                    __continue16 = true
                     break
                 end
                 if ally == nil or a:GetHealth() / a:GetMaxHealth() < ally:GetHealth() / ally:GetMaxHealth() then
                     ally = a
                 end
-                __continue15 = true
+                __continue16 = true
             until true
-            if not __continue15 then
+            if not __continue16 then
                 break
             end
         end
@@ -129,6 +148,12 @@ function ____exports.Gather(bot)
         allies,
         function(____, a) return dist(a, ally) <= ____exports.SETTINGS.OursRange end
     )
+    if #__TS__ArrayFilter(
+        ours,
+        function(____, a) return not RetreatState.Running(a) end
+    ) < 2 then
+        return nil
+    end
     local theirs = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         if live(e) and e:CanBeSeen() and dist(e, ally) <= ____exports.SETTINGS.FoeRange then
@@ -164,6 +189,57 @@ function ____exports.Gather(bot)
     }
 end
 local states = {}
+--- The bot's decision, made afresh at most every Every s (the matrix is 2 x n x m estimates); reads only.
+function ____exports.For(bot)
+    local now = DotaTime()
+    local pid = bot:GetPlayerID()
+    local ____temp_2 = states[pid] or ({})
+    states[pid] = ____temp_2
+    local st = ____temp_2
+    if st.at ~= nil and now >= st.at and now - st.at < ____exports.SETTINGS.Every then
+        return {rec = st.rec, ans = st.ans, fresh = false}
+    end
+    st.at = now
+    local ____temp_3
+    if bot:IsAlive() and now <= ____exports.SETTINGS.Until then
+        ____temp_3 = ____exports.Gather(bot)
+    else
+        ____temp_3 = nil
+    end
+    st.rec = ____temp_3
+    st.ans = st.rec ~= nil and ____exports.Decide(st.rec) or nil
+    local ____opt_4 = st.ans
+    if (____opt_4 and ____opt_4.dec) == "join" then
+        st.joinAt = now
+        st.joinTgt = st.ans.tgt
+    elseif st.ans ~= nil then
+        st.joinAt = nil
+    end
+    return {rec = st.rec, ans = st.ans, fresh = true}
+end
+--- With `Ours.PairJoin`: the enemy hero this bot joins the fight on (D10), or undefined. The last answer was `join` within
+-- Keep s with no other answer since, the bot is not retreating, and the target is alive, seen and within TargetRange of it.
+function ____exports.Joins(bot)
+    if not Ours.On("PairJoin") or not bot:IsAlive() or RetreatState.Running(bot) then
+        return nil
+    end
+    ____exports.For(bot)
+    local st = states[bot:GetPlayerID()]
+    if (st and st.joinAt) == nil or DotaTime() - st.joinAt > ____exports.SETTINGS.Keep then
+        return nil
+    end
+    local ____temp_8
+    if st.joinTgt ~= nil then
+        ____temp_8 = heroOf(st.joinTgt)
+    else
+        ____temp_8 = nil
+    end
+    local t = ____temp_8
+    if t == nil or not t:CanBeSeen() or dist(t, bot) > ____exports.SETTINGS.TargetRange then
+        return nil
+    end
+    return t
+end
 local function members(ms)
     return table.concat(
         __TS__ArrayMap(
@@ -196,7 +272,7 @@ local function dmgOf(rec)
     end
     return table.concat(out, ";")
 end
---- Per frame (index Tick): every Every s in the laning stage, the decision and its cut. Reads only.
+--- Per frame (index Tick): on each fresh decision in the laning stage, its cut. Reads only.
 function ____exports.Tick(bot)
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true or not bot:IsAlive() then
         return
@@ -206,19 +282,18 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____temp_2 = states[pid] or ({})
-    states[pid] = ____temp_2
-    local st = ____temp_2
-    if st.at ~= nil and now - st.at < ____exports.SETTINGS.Every then
+    local ____exports_For_result_9 = ____exports.For(bot)
+    local rec = ____exports_For_result_9.rec
+    local a = ____exports_For_result_9.ans
+    local fresh = ____exports_For_result_9.fresh
+    if not fresh then
         return
     end
-    st.at = now
-    local rec = ____exports.Gather(bot)
-    if rec == nil then
+    local st = states[pid]
+    if rec == nil or a == nil then
         st.dec = nil
         return
     end
-    local a = ____exports.Decide(rec)
     if a.dec == st.dec and now - (st.cutAt or -math.huge) < ____exports.SETTINGS.CutEvery then
         return
     end

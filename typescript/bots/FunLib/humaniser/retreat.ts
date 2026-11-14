@@ -19,6 +19,7 @@ import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 import * as Cut from "bots/FunLib/humaniser/cut";
+import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
@@ -720,14 +721,14 @@ function unpaid(bot: Unit, r: Threat.Read): number {
     return n;
 }
 
-/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, or it is a lone hero who is not hitting us and cannot kill us (EvenStand). */
-export type Stay = "under" | "even" | "hold" | "stand";
+/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, it is a lone hero who is not hitting us and cannot kill us (EvenStand), or our pair is joining the fight (PairJoin). */
+export type Stay = "under" | "even" | "hold" | "stand" | "join";
 
 /**
  * The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
  * leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
  */
-export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number): LuaMultiReturn<[Why | undefined, Stay | undefined]> {
+export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number, joins: boolean = PairJoin.Joins(bot) !== undefined): LuaMultiReturn<[Why | undefined, Stay | undefined]> {
     if (r.band === "lethal") return $multi("lethal", undefined);
     if (TowerOnUs(bot) !== undefined) return $multi("tower", undefined);
     if (hpShare(bot) < SETTINGS.HealFloor && r.reach.length === 0) return $multi("heal", undefined);
@@ -748,6 +749,19 @@ export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: numbe
             ]);
         }
         return $multi(undefined, "stand");
+    }
+    // D10 (slice pair-join-on, `Ours.PairJoin`): our pair is in the fight and can do more to theirs than they can to us, so the
+    // over-budget `threat` leave waits while the join holds; lethal, a tower and the heal floor still leave first (D1).
+    if (joins) {
+        st.overSince = undefined;
+        if (st.stayLogged !== true) {
+            st.stayLogged = true;
+            Telemetry.Event("retreat", [
+                ["ph", "stay"], ["why", "join"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
+                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
+            ]);
+        }
+        return $multi(undefined, "join");
     }
     // D1 leaves when more enemy heroes than we have can reach us (the hero itself counts on our side). A fight they do not
     // outnumber is D24's while we are not in danger of dying: their burst under EvenBurst of our HP, our HP at EvenHp or more.
@@ -798,7 +812,7 @@ function drillDesire(bot: Unit, st: HeroState, now: number): number | undefined 
 // ---------------------------------------------------------------------------------------------------------------- hooks
 
 /** ev=cut kind=leave on a changed answer, else while a hero is in reach, at most every CutEvery. Reads state; the decision does not use it. */
-function cutLeave(bot: Unit, st: HeroState, r: Threat.Read, budget: number, purp: string, why: Why | undefined, stay: Stay | undefined, overBefore: number | undefined, now: number): void {
+function cutLeave(bot: Unit, st: HeroState, r: Threat.Read, budget: number, purp: string, why: Why | undefined, stay: Stay | undefined, overBefore: number | undefined, now: number, joins: boolean): void {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true) return;
     const dec = why ?? stay!;
     const changed = st.cutDec !== dec;
@@ -810,6 +824,7 @@ function cutLeave(bot: Unit, st: HeroState, r: Threat.Read, budget: number, purp
         over: overBefore !== undefined ? now - overBefore : undefined,
         hold: Profile.ThreatHold(bot),
         unp: unpaid(bot, r),
+        pj: joins,
         short: math.min(SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
         long: SETTINGS.EngagedWindow,
     });
@@ -856,8 +871,9 @@ export function Desire(bot: Unit): number | undefined {
     // retreat-heal: the chase drops the cast to the drill's HP before any leave, so the heal walk is forced.
     if (Drill.RetreatHeld(bot, hpShare(bot))) return 0;
     const overBefore = st.overSince;
-    const [why, stay] = LeaveWhy(bot, st, r, budget, now);
-    if (readAtBefore !== st.readAt) cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now);
+    const joins = PairJoin.Joins(bot) !== undefined;
+    const [why, stay] = LeaveWhy(bot, st, r, budget, now, joins);
+    if (readAtBefore !== st.readAt) cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins);
     if (why === undefined) return 0;
     start(bot, st, why, r, budget, purp);
     return SETTINGS.EpisodeDesire;

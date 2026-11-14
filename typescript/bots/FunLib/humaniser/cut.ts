@@ -228,7 +228,7 @@ export function Spot(bot: Unit): void {
 
 export interface LeaveInputs {
     r: Threat.Read;
-    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold`, `stand` (stay). */
+    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold`, `stand`, `join` (stay). */
     dec: string;
     budget: number;
     purp: string;
@@ -238,6 +238,8 @@ export interface LeaveInputs {
     hold: number;
     /** RetreatOdds' unpaid engaged heroes. */
     unp: number;
+    /** PairJoin.Joins held for the bot (D10's join: LeaveWhy stays `join`). */
+    pj: boolean;
     /** The damage windows of the read: `he`'s e3 and e6. */
     short: number;
     long: number;
@@ -270,6 +272,7 @@ export function Leave(bot: Unit, i: LeaveInputs): void {
         ["ov", i.over !== undefined ? math.floor(i.over * 10000 + 0.5) / 10000 : -1],
         ["th", math.floor(i.hold * 10000 + 0.5) / 10000],
         ["unp", i.unp],
+        ["pj", i.pj ? 1 : undefined],
         ["dt", bot.WasRecentlyDamagedByTower(0.5) ? 1 : 0],
         ["thr", math.floor(i.r.threat * 100 + 0.5) / 100],
         ["band", i.r.band],
