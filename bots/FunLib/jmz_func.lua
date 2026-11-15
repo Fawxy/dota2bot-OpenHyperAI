@@ -4613,7 +4613,16 @@ function J.GetClosestUnit(units)
 	return target;
 end
 
+-- One scan per frame: this walks every allied unit, and J.IsInLaningPhase asks it from over a hundred call sites
+-- (perf probe 16/11/2026). The answer cannot change inside a frame, so the frame's first answer serves the rest.
+local nTurboAt = nil
+local bTurboSeen = false
+
 function J.IsModeTurbo()
+	local nNow = DotaTime()
+	if nNow == nTurboAt then return bTurboSeen end
+
+	local bFound = false
 	for _, u in pairs(GetUnitList(UNIT_LIST_ALLIES))
 	do
 		if u ~= nil
@@ -4621,12 +4630,15 @@ function J.IsModeTurbo()
 		then
 			if u:GetCurrentMovementSpeed() == 1100
 			then
-				return true
+				bFound = true
+				break
 			end
 		end
 	end
 
-    return false
+	bTurboSeen = bFound
+	nTurboAt = nNow
+	return bFound
 end
 
 function J.IsCore(bot)
