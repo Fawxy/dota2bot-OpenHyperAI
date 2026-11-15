@@ -255,43 +255,6 @@ function covers(cover: Cover, p: Vector, hit: number): boolean {
     return false;
 }
 
-/**
- * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
- * `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order;
- * `cover`, when given, relaxes them under our towers.
- */
-export function Breaks(
-    p: Vector,
-    creeps: Unit[],
-    towers: Unit[],
-    margin = 0,
-    heroes: Unit[] = [],
-    reach: number[] = [],
-    cover?: Cover,
-    busy?: boolean[],
-): Why | undefined {
-    let hp = false;
-    for (let i = 0; i < heroes.length; i++) {
-        const h = heroes[i];
-        if (!alive(h)) continue;
-        let r = reach[i];
-        if (cover !== undefined && (cover.tanking[i] || covers(cover, p, cover.hit[i]))) r = cover.near[i];
-        const dist = d2(p, h.GetLocation());
-        if (dist < r) return "hero";
-        if (dist < r + margin) hp = true;
-    }
-    for (let i = 0; i < creeps.length; i++) {
-        const c = creeps[i];
-        if (!alive(c)) continue;
-        const ring = (cover !== undefined && cover.held[i]) || (busy !== undefined && busy[i]) ? HELD_RING : isRangedCreep(c) ? RANGED_RING : MELEE_RING;
-        const dist = d2(p, c.GetLocation());
-        if (dist < ring) return "creep";
-        if (dist < ring + margin) hp = true;
-    }
-    if (breaksTower(p, towers)) return "tower";
-    return hp ? "hp" : undefined;
-}
-
 /** Our towers in reach and what they cover; undefined with Ours.LaneSpotTower off or no tower of ours near. */
 function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined {
     if (!On("LaneSpotTower")) return undefined;
@@ -325,15 +288,10 @@ function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined 
     return { towers, held, tanking, near, hit };
 }
 
-function breaksTower(p: Vector, towers: Unit[]): boolean {
-    for (const t of towers) if (alive(t) && d2(p, t.GetLocation()) < TOWER_RING + HOLD_DRIFT) return true;
-    return false;
-}
-
 /**
- * What `Breaks` reads from the game, taken once per Compute: Compute asks about some thirty places in one frame, and each
- * ask through `Breaks` reads every creep, hero and tower again. `ring` is each creep's ring under our towers' cover,
- * `ringOpen` without it.
+ * What the spot's limits read from the game, taken once per Compute: Compute asks about some thirty places in one frame,
+ * and the units do not move inside it. `reach` holds each hero's reach (HeroReach), in `heroes` order. `ring` is each
+ * creep's ring under our towers' cover, `ringOpen` without it.
  */
 interface Field {
     hx: number[];
@@ -378,7 +336,11 @@ function fieldBreaksTower(f: Field, p: Vector): boolean {
     return false;
 }
 
-/** `Breaks` on a Field: the same limits in the same order. `heroes` false leaves the hero limit out (the threat read has it). */
+/**
+ * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
+ * `hp` when only the HP margin breaks a hero or creep limit. `heroes` false leaves the hero limit out (the threat read has
+ * it); `cover`, when given, relaxes the limits under our towers.
+ */
 function fieldBreaks(f: Field, p: Vector, margin: number, heroes: boolean, cover: Cover | undefined): Why | undefined {
     let hp = false;
     if (heroes) {

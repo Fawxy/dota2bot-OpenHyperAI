@@ -229,4 +229,37 @@ do
 	check("gate: each decision logged with dep", #l == 3 and field(l[1], "dec") == "go" and field(l[2], "dec") == "missing" and field(l[3], "dec") == "threat" and field(l[3], "dep") ~= nil, #l)
 end
 
+-- One reader over several walks (the lane spot's use) answers each as a read of its own would: what it keeps between
+-- walks (a hero's damage and engagement, the escape item, a tower's reach) must not carry from one walk into the next.
+do
+	local _, Threat, bot, e = world({ t = 300 })
+	e.loc, e.speed, e.estDamage = Vector(-1200, -5000), 300, 700
+	bot.hitBy = { [e] = T }
+	local far = MakeUnit({ pid = 11, team = 3, loc = Vector(2600, -5000) })
+	far.maxhp, far.hp, far.estDamage = 600, 600, 200
+	local gone = MakeUnit({ pid = 12, team = 3 })
+	hide(gone, Vector(-500, -7000), 10)
+	local walks = {
+		{ HERE, HERE },                   -- the engaged hero reaches: lethal on its damage
+		{ HERE, CAMP },                   -- the unseen hero's run touches the walk
+		{ HERE, Vector(2200, -5000) },    -- under the enemy tower, the second hero in reach
+		{ Vector(-6000, -6000), Vector(-6500, -6500) }, -- nobody reaches
+		{ HERE, HERE },                   -- the first walk again, after the others
+	}
+	local opts = { engagedWindow = 6 }
+	local reader = Threat.Reader(bot, 3, opts)
+	local fields = { "burst", "threat", "band", "allies", "escape", "tower", "missing", "depth", "mcut" }
+	local same, bands = true, {}
+	for i, w in ipairs(walks) do
+		local a, b = Threat.Read(bot, w[1], w[2], 3, opts), reader(w[1], w[2])
+		bands[i] = a.band
+		for _, f in ipairs(fields) do if a[f] ~= b[f] then same = false end end
+		for _, list in ipairs({ "reach", "eng", "att", "mpids" }) do
+			if table.concat(a[list], ",") ~= table.concat(b[list], ",") then same = false end
+		end
+	end
+	check("reader: each walk reads as a read of its own", same)
+	check("reader: the walks differ (lethal, then not; nobody in reach on the fourth)", bands[1] == "lethal" and bands[4] == "none" and bands[5] == "lethal", table.concat(bands, " "))
+end
+
 finish()

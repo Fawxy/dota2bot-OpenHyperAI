@@ -1,41 +1,17 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local sub, len, d2, alive, breaksTower, HOLD_DRIFT
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local On = ____ours.On
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
-function sub(a, b)
-    return {a.x - b.x, a.y - b.y}
-end
-function len(x, y)
-    return math.sqrt(x * x + y * y)
-end
-function d2(a, b)
-    local x, y = unpack(sub(a, b))
-    return len(x, y)
-end
-function alive(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
-end
-function breaksTower(p, towers)
-    for ____, t in ipairs(towers) do
-        if alive(t) and d2(
-            p,
-            t:GetLocation()
-        ) < ____exports.TOWER_RING + HOLD_DRIFT then
-            return true
-        end
-    end
-    return false
-end
 ____exports.MELEE_RING = 520
 ____exports.RANGED_RING = 620
 --- Enemy tower attack range (~700) plus a margin; at every level, since nothing in lane owns a dive.
 ____exports.TOWER_RING = 750
-HOLD_DRIFT = 80
+--- How far the hold may leave the spot (its tolerance 40 plus scatter 40), so a hold on a spot at the ring stays outside it.
+local HOLD_DRIFT = 80
 local RANGED_ABOVE = 320
 --- Ranged cores stand this much inside their range from the creep they will hit next.
 local RANGE_INSET = 50
@@ -116,6 +92,16 @@ local MEET_R = 700
 local PATH_R = 600
 --- The lane direction is read between the anchor and this far back along the path (GetLaneFrontLocation's -400).
 local BACK_ALONG = 400
+local function sub(a, b)
+    return {a.x - b.x, a.y - b.y}
+end
+local function len(x, y)
+    return math.sqrt(x * x + y * y)
+end
+local function d2(a, b)
+    local x, y = unpack(sub(a, b))
+    return len(x, y)
+end
 local function isRangedCreep(c)
     return (string.find(
         c:GetUnitName(),
@@ -123,6 +109,10 @@ local function isRangedCreep(c)
         1,
         true
     )) ~= nil
+end
+--- Alive and in sight: a unit in the fog keeps a valid handle but reads no location.
+local function alive(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
 --- An enemy hero's damaging abilities it could cast now (trained, not passive or hidden, off cooldown, its mana covers them) and
 -- the longest cast range among them: read for telemetry (ev=lane_pos `nk`, `nr`), not a limit yet (lane-positioning Open items).
@@ -216,90 +206,6 @@ local function covers(cover, p, hit)
     end
     return false
 end
---- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
--- `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order;
--- `cover`, when given, relaxes them under our towers.
-function ____exports.Breaks(p, creeps, towers, margin, heroes, reach, cover, busy)
-    if margin == nil then
-        margin = 0
-    end
-    if heroes == nil then
-        heroes = {}
-    end
-    if reach == nil then
-        reach = {}
-    end
-    local hp = false
-    do
-        local i = 0
-        while i < #heroes do
-            do
-                local __continue27
-                repeat
-                    local h = heroes[i + 1]
-                    if not alive(h) then
-                        __continue27 = true
-                        break
-                    end
-                    local r = reach[i + 1]
-                    if cover ~= nil and (cover.tanking[i + 1] or covers(cover, p, cover.hit[i + 1])) then
-                        r = cover.near[i + 1]
-                    end
-                    local dist = d2(
-                        p,
-                        h:GetLocation()
-                    )
-                    if dist < r then
-                        return "hero"
-                    end
-                    if dist < r + margin then
-                        hp = true
-                    end
-                    __continue27 = true
-                until true
-                if not __continue27 then
-                    break
-                end
-            end
-            i = i + 1
-        end
-    end
-    do
-        local i = 0
-        while i < #creeps do
-            do
-                local __continue32
-                repeat
-                    local c = creeps[i + 1]
-                    if not alive(c) then
-                        __continue32 = true
-                        break
-                    end
-                    local ring = (cover ~= nil and cover.held[i + 1] or busy ~= nil and busy[i + 1]) and HELD_RING or (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING)
-                    local dist = d2(
-                        p,
-                        c:GetLocation()
-                    )
-                    if dist < ring then
-                        return "creep"
-                    end
-                    if dist < ring + margin then
-                        hp = true
-                    end
-                    __continue32 = true
-                until true
-                if not __continue32 then
-                    break
-                end
-            end
-            i = i + 1
-        end
-    end
-    if breaksTower(p, towers) then
-        return "tower"
-    end
-    return hp and "hp" or nil
-end
 --- Our towers in reach and what they cover; undefined with Ours.LaneSpotTower off or no tower of ours near.
 local function coverFor(bot, creeps, heroes)
     if not On("LaneSpotTower") then
@@ -309,10 +215,10 @@ local function coverFor(bot, creeps, heroes)
     local targets = {}
     for ____, t in ipairs(bot:GetNearbyTowers(1600, false)) do
         do
-            local __continue39
+            local __continue28
             repeat
                 if not alive(t) then
-                    __continue39 = true
+                    __continue28 = true
                     break
                 end
                 towers[#towers + 1] = {
@@ -323,9 +229,9 @@ local function coverFor(bot, creeps, heroes)
                 if target ~= nil and target ~= nil then
                     targets[#targets + 1] = target
                 end
-                __continue39 = true
+                __continue28 = true
             until true
-            if not __continue39 then
+            if not __continue28 then
                 break
             end
         end
@@ -414,10 +320,10 @@ local function fieldOf(creeps, towers, heroes, reach, cover, busy)
     end
     for ____, t in ipairs(towers) do
         do
-            local __continue61
+            local __continue46
             repeat
                 if not alive(t) then
-                    __continue61 = true
+                    __continue46 = true
                     break
                 end
                 local at = t:GetLocation()
@@ -425,9 +331,9 @@ local function fieldOf(creeps, towers, heroes, reach, cover, busy)
                 ____f_tx_7[#____f_tx_7 + 1] = at.x
                 local ____f_ty_8 = f.ty
                 ____f_ty_8[#____f_ty_8 + 1] = at.y
-                __continue61 = true
+                __continue46 = true
             until true
-            if not __continue61 then
+            if not __continue46 then
                 break
             end
         end
@@ -446,7 +352,9 @@ local function fieldBreaksTower(f, p)
     end
     return false
 end
---- `Breaks` on a Field: the same limits in the same order. `heroes` false leaves the hero limit out (the threat read has it).
+--- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
+-- `hp` when only the HP margin breaks a hero or creep limit. `heroes` false leaves the hero limit out (the threat read has
+-- it); `cover`, when given, relaxes the limits under our towers.
 local function fieldBreaks(f, p, margin, heroes, cover)
     local hp = false
     if heroes then
@@ -523,24 +431,24 @@ local function ownDistances(path, t1, dir, list)
     local out = {}
     for ____, c in ipairs(list) do
         do
-            local __continue88
+            local __continue73
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue88 = true
+                    __continue73 = true
                     break
                 end
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue88 = true
+                    __continue73 = true
                     break
                 end
                 local s, d = LanePush.Project(path, l.x, l.y)
                 if d <= PATH_R then
                     out[#out + 1] = dir * (s - t1)
                 end
-                __continue88 = true
+                __continue73 = true
             until true
-            if not __continue88 then
+            if not __continue73 then
                 break
             end
         end
@@ -845,11 +753,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue140
+                    local __continue125
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue140 = true
+                            __continue125 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -862,9 +770,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue140 = true
+                        __continue125 = true
                     until true
-                    if not __continue140 then
+                    if not __continue125 then
                         break
                     end
                 end

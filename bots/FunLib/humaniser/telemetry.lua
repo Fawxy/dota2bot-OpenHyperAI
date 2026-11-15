@@ -1957,24 +1957,29 @@ local function creepKind(name)
     return (string.find(name, "ranged", 1, true)) ~= nil and "ranged" or "melee"
 end
 --- This frame's state of a live unit, written into the record it already has: its kind does not change while it is listed,
--- and a record is dropped from its table the frame its unit is gone, so a death's `seen` is never written again.
+-- and a record is dropped from its table the frame its unit is gone, so a death's `seen` is never written again. The unit
+-- is read before a record is made, so a read that errors leaves none behind.
 local function see(into, u, kindOf)
     local rec = into[u]
-    if rec == nil then
-        local kind = kindOf(u)
-        if kind == nil then
-            return
-        end
-        rec = {kind = kind, x = 0, y = 0, hp = 0}
-        into[u] = rec
+    local kind = rec ~= nil and rec.kind or kindOf(u)
+    if kind == nil then
+        return
     end
     local loc = u:GetLocation()
-    rec.x = loc.x
-    rec.y = loc.y
-    rec.hp = u:GetHealth() / math.max(
+    local x = loc.x
+    local y = loc.y
+    local hp = u:GetHealth() / math.max(
         1,
         u:GetMaxHealth()
     )
+    if rec == nil then
+        rec = {kind = kind, x = x, y = y, hp = hp}
+        into[u] = rec
+        return
+    end
+    rec.x = x
+    rec.y = y
+    rec.hp = hp
 end
 local function laneKindOf(u)
     return creepKind(u:GetUnitName())

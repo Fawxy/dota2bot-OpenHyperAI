@@ -1277,19 +1277,24 @@ function creepKind(name: string): string | undefined {
 }
 
 /** This frame's state of a live unit, written into the record it already has: its kind does not change while it is listed,
- *  and a record is dropped from its table the frame its unit is gone, so a death's `seen` is never written again. */
+ *  and a record is dropped from its table the frame its unit is gone, so a death's `seen` is never written again. The unit
+ *  is read before a record is made, so a read that errors leaves none behind. */
 function see(into: LuaTable<Unit, CreepSeen>, u: Unit, kindOf: (this: void, u: Unit) => string | undefined): void {
     let rec = into.get(u);
-    if (rec === undefined) {
-        const kind = kindOf(u);
-        if (kind === undefined) return;
-        rec = { kind, x: 0, y: 0, hp: 0 };
-        into.set(u, rec);
-    }
+    const kind = rec !== undefined ? rec.kind : kindOf(u);
+    if (kind === undefined) return;
     const loc = u.GetLocation();
-    rec.x = loc.x;
-    rec.y = loc.y;
-    rec.hp = u.GetHealth() / math.max(1, u.GetMaxHealth());
+    const x = loc.x;
+    const y = loc.y;
+    const hp = u.GetHealth() / math.max(1, u.GetMaxHealth());
+    if (rec === undefined) {
+        rec = { kind, x, y, hp };
+        into.set(u, rec);
+        return;
+    }
+    rec.x = x;
+    rec.y = y;
+    rec.hp = hp;
 }
 
 const laneKindOf = (u: Unit): string | undefined => creepKind(u.GetUnitName());
