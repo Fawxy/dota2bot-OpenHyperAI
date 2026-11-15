@@ -109,11 +109,26 @@ do
 	local i = CoreTrade.Gather(bot, enemy)
 	check("Gather: no deny offered: the free trade stays", i.denyDue == false and CoreTrade.Answer(i, 0.25, nil) == "trade")
 	offered = { { creep = creep, kind = "deny", eta = 0.1, due = 0.1, walk = 0, dies = 2, ranged = false } }
+	check("DenyDue is read once per game time", Laning.DenyDue(bot) == false)
+	T = T + 0.1
 	i = CoreTrade.Gather(bot, enemy)
 	check("Gather: a deny in range is due and outbids the trade", i.denyDue == true and CoreTrade.Answer(i, 0.25, nil) == "deny")
 	offered = { { creep = creep, kind = "deny", eta = 0.9, due = 0, walk = 0.9, dies = 1.0, ranged = false } }
+	T = T + 0.1
 	i = CoreTrade.Gather(bot, enemy)
 	check("Gather: a deny that dies before our walk and swing is not due", i.denyDue == false)
+	-- A support: its body takes a hit only within the leash (900) of its spot (review of round 2).
+	local ownsSup, spot = Laning.OwnsSupportHits, Laning.Spot
+	Laning.OwnsLastHit = function() return false end
+	Laning.OwnsSupportHits = function() return true end
+	offered = { { creep = creep, kind = "deny", eta = 0.1, due = 0.1, walk = 0, dies = 2, ranged = false } }
+	Laning.Spot = function() return Vector(300, 0) end
+	T = T + 0.1
+	check("a support near its spot: a deny is due", Laning.DenyDue(bot) == true)
+	Laning.Spot = function() return Vector(-1000, 0) end
+	T = T + 0.1
+	check("a support beyond the leash: no deny is due (its body would not step)", Laning.DenyDue(bot) == false)
+	Laning.OwnsSupportHits, Laning.Spot = ownsSup, spot
 	Tasks.Verbs = verbs
 	Laning.OwnsLastHit = owns
 	Ours.CoreDenyYield = yield

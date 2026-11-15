@@ -368,10 +368,28 @@ export function HitOffered(bot: Unit): boolean {
 /**
  * Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
  * rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a
- * trade. Reads facts only (no pick, no skill roll).
+ * trade. A support's body takes a hit only within LEASH of its spot (HitOffered, support_lane's step), so beyond it no deny
+ * is due (review of round 2). Reads facts only (no pick, no skill roll); once per bot per game time, as Gather and keepWhy
+ * ask it several times a frame.
  */
+const denyDueAt: Record<number, { t: number; due: boolean } | undefined> = {};
 export function DenyDue(bot: Unit): boolean {
-    if (!OwnsLastHit(bot) && !OwnsSupportHits(bot)) return false;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const memo = denyDueAt[pid];
+    if (memo !== undefined && memo.t === now) return memo.due;
+    const due = denyDue(bot);
+    denyDueAt[pid] = { t: now, due };
+    return due;
+}
+
+function denyDue(bot: Unit): boolean {
+    const core = OwnsLastHit(bot);
+    if (!core && !OwnsSupportHits(bot)) return false;
+    if (!core) {
+        const spot = Spot(bot);
+        if (spot !== undefined && GetUnitToLocationDistance(bot, spot) > LEASH) return false;
+    }
     const verbs = Tasks.Verbs();
     if (verbs === undefined) return false;
     const claims = claimsFor(bot);
