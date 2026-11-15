@@ -4613,8 +4613,8 @@ function J.GetClosestUnit(units)
 	return target;
 end
 
--- One scan per frame: this walks every allied unit, and J.IsInLaningPhase asks it from over a hundred call sites
--- (perf probe 16/11/2026). The answer cannot change inside a frame, so the frame's first answer serves the rest.
+-- One scan per DotaTime() value: this walks every allied unit, and J.IsInLaningPhase asks it from over a hundred call
+-- sites (perf probe 16/11/2026). The first answer at a clock value serves the other calls at that value.
 local nTurboAt = nil
 local bTurboSeen = false
 
