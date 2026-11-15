@@ -271,11 +271,11 @@ Perf probe: one window per VM. entry_ms all script time through OHA entry points
 
 ## perf_top
 
-The window's 25 largest rows. Rows overlap across kinds; sum within `entry` only.
+The window's largest rows (`PerfTop`, 25). Rows overlap across kinds; sum within `entry` only.
 
 `vm` str, `n` num, `ms` num, `max_ms` num
 
-- `kind` str: `entry` (an OHA entry point), `ours` (an outermost guarded call) or `sub` (a guarded call made directly from an outermost one).
+- `kind` str: `entry` (an OHA entry point), `ours` (an outermost guarded call), `sub` (a guarded call made directly from an outermost one), `step` (an unguarded step of the tick, `Tick:<step>`) or `fn` (`PerfDeep`: an exported function, `<module>.<fn>`).
 - `where` str: `oha.<file>.<fn>` for `entry`; for `sub`, `outer>inner` (inclusive).
 
 ## oha_idle
