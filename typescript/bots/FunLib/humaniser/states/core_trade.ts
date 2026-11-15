@@ -47,6 +47,14 @@ export interface Inputs {
     burst?: number;
     /** With `burst`: the bot's attack point on the target (here, or where it stops at attack range) inside an enemy tower's reach, or a tower attacking the bot. */
     towerOnMe?: boolean;
+    /**
+     * Slice trade-free (`Ours.TradeFree`, D18's second question): the hit is free (`Free`: the target swings at a lane creep or
+     * we outrange it), and each side's kill share over PairJoin's Window (`ko` ours on it, `kt` its on us; read only when not
+     * free). Present only with the switch on; Answer then asks "free or favoured?" in place of `gap`.
+     */
+    free?: boolean;
+    ko?: number;
+    kt?: number;
 }
 
 export const DESIRE_TRADE = 0.6;
@@ -176,6 +184,34 @@ function decideSafe(i: Inputs, burst: number, running: boolean, killHp: number, 
     return { kind: "trade" };
 }
 
+/**
+ * Slice trade-free: a hit with no answer coming back. The target's attack target is a lane creep (a last-hit or deny swing), or
+ * our attack range is OUTRANGE or more over its, so it must walk in to answer. OUTRANGE is about a third of a second of
+ * walking at laning speeds (`judgement`): necrolyte on dragon knight (400) and sniper on zeus (170) are free, oracle on lion
+ * (20) and dazzle on necrolyte (75) are not.
+ */
+const OUTRANGE = 100;
+export function Free(targetLastHitting: boolean, range: number, targetRange: number): boolean {
+    return targetLastHitting || range >= targetRange + OUTRANGE;
+}
+
+/**
+ * Harass's second question (slice trade-free, D18): a trade the safe rule allows is taken when the hit is free or the exchange
+ * favours us, our kill share over the window beating theirs (PairJoin's estimate). Undefined when the inputs carry no answer
+ * (the switch off): the lost trade's `gap` then decides.
+ */
+function favoured(i: Inputs): boolean | undefined {
+    if (i.free === undefined) return undefined;
+    return i.free || (i.ko ?? 0) > (i.kt ?? 0);
+}
+
+/** Whether question 2, or with the switch off the gap a lost trade left, holds a trade Decide allows; its respect. */
+function heldBy(i: Inputs, gap: number | undefined): string | undefined {
+    const f = favoured(i);
+    if (f !== undefined) return f ? undefined : "unfavoured";
+    return heldByGap(i, gap) ? "gap" : undefined;
+}
+
 /** A trade the HP gap a lost trade left holds: the core has not regained, against the target, what it lost (`recoverTo`). */
 function heldByGap(i: Inputs, gap: number | undefined): boolean {
     return gap !== undefined && i.hp - i.targetHp < gap - 1e-6;
@@ -183,11 +219,13 @@ function heldByGap(i: Inputs, gap: number | undefined): boolean {
 
 /**
  * The fresh decision on a target in reach with no trade running, as one answer (the cut kind `trade`, driver core_trade):
- * Decide's kind or respect, or `gap` when a trade is held by the gap a lost trade left.
+ * Decide's kind or respect, or `gap` when a trade is held by the gap a lost trade left (with `Ours.TradeFree`, `unfavoured`
+ * when the hit is neither free nor favoured).
  */
 export function Answer(i: Inputs, killHp: number, gap: number | undefined): string {
     const d = Decide(i, false, killHp);
-    if (d.kind === "trade" && heldByGap(i, gap)) return "gap";
+    const held = d.kind === "trade" ? heldBy(i, gap) : undefined;
+    if (held !== undefined) return held;
     return d.kind ?? d.respect ?? "none";
 }
 
@@ -444,6 +482,7 @@ export function Gather(bot: Unit, target: Unit): Inputs {
         }
         if (stand !== undefined && distXY(stand, t.GetLocation()) <= reach) towerOnMe = true;
     }
+    const q2 = Ours.On("TradeFree") ? question2(bot, target) : {};
     if (safe) {
         const here = bot.GetLocation();
         const burst = Threat.Read(bot, here, here, SAFE_HORIZON, { engagedWindow: SAFE_ENGAGED }).burst;
@@ -457,6 +496,7 @@ export function Gather(bot: Unit, target: Unit): Inputs {
             tower,
             burst,
             towerOnMe,
+            ...q2,
         };
     }
     return {
@@ -468,6 +508,7 @@ export function Gather(bot: Unit, target: Unit): Inputs {
         enemyCreepsNear,
         hitByCreeps,
         tower,
+        ...q2,
     };
 }
 
@@ -554,10 +595,18 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["ar", math.floor(bot.GetAttackRange())],
         ["tar", math.floor(target.GetAttackRange())],
         ["tme", target.GetAttackTarget() === bot ? 1 : 0],
-        ["ko", round6(shareOn(bot, target))],
-        ["kt", round6(shareOn(target, bot))],
+        ["ko", round6(i.ko ?? shareOn(bot, target))],
+        ["kt", round6(i.kt ?? shareOn(target, bot))],
+        ["tf", i.free !== undefined ? 1 : undefined],
         ["dec", dec],
     ];
+}
+
+/** Slice trade-free: question 2's inputs; the two estimates only when the hit is not free. */
+function question2(bot: Unit, target: Unit): { free?: boolean; ko?: number; kt?: number } {
+    const free = Free(lastHitting(target), bot.GetAttackRange(), target.GetAttackRange());
+    if (free) return { free };
+    return { free, ko: shareOn(bot, target), kt: shareOn(target, bot) };
 }
 
 /**
@@ -638,11 +687,12 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
     const gap = recoverTo[pid];
-    const held = d.kind === "trade" && heldByGap(inputs, gap);
+    const heldWhy = d.kind === "trade" ? heldBy(inputs, gap) : undefined;
+    const held = heldWhy !== undefined;
     // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
     // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
     // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
-    if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? "gap", inputs);
+    if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? heldWhy ?? "gap", inputs);
     if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
     return open(bot, d.kind, target, now);
 }

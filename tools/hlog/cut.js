@@ -250,6 +250,8 @@ const DECISIONS = {
                 cr: n('cr'), hc: n('hc'), tw: n('tw'), kh: n('kh'), lf: n('lf'), d: n('d'), rch: n('rch'), tlh: n('tlh') };
             if (cut.gap !== undefined) w.gap = n('gap');
             if (cut.bu !== undefined) { w.bu = n('bu'); w.tm = n('tm'); }
+            // Slice trade-free-cut / trade-free: question 2's inputs; with tf the driver asks it in place of gap.
+            for (const k of ['ar', 'tar', 'tme', 'ko', 'kt', 'tf']) if (cut[k] !== undefined) w[k] = n(k);
             return w;
         },
         check(game, cut, obs) {

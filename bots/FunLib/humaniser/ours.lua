@@ -97,7 +97,8 @@ ____exports.DEFAULTS = {
     MidWater = false,
     EvenStand = true,
     PairJoin = true,
-    TradeSafe = true
+    TradeSafe = true,
+    TradeFree = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

@@ -2754,6 +2754,8 @@ export const EVENTS = {
         ar: "num",
         tar: "num",
         tme: "num",
+        /** kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off. */
+        tf: "num",
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",

@@ -166,6 +166,10 @@ export const DEFAULTS = {
      *  decideSafe): not outnumbered, half HP or more, their burst in reach under our HP, our attack point outside their tower's
      *  reach. Off: the old refusals, `behind` (15 points under the target's HP) and a tower by either hero. */
     TradeSafe: true,
+    /** Slice trade-free (D18): with CoreTrade on, a trade the safe rule allows is taken only when the hit is free (the target
+     *  swings at a lane creep, or our attack range is 100 over its) or favoured (our 3 s estimated damage over its HP beats its
+     *  over ours, PairJoin's estimate); else `unfavoured`. Off: a lost trade's HP `gap` holds the next one. */
+    TradeFree: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
