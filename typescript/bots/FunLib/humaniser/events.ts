@@ -2744,6 +2744,11 @@ export const EVENTS = {
         rch: "num",
         /** kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing). */
         tlh: "num",
+        /** kind=trade, with `Ours.TradeSafe` (slice trade-safe; absent off): the threat read's burst in reach over the bot's HP
+         *  (retreat's stay read), and 1 when the bot's attack point is in an enemy tower's reach or a tower attacks it. The
+         *  answer adds the respect `burst` (their burst at our HP or more). */
+        bu: "num",
+        tm: "num",
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",

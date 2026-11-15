@@ -19,13 +19,14 @@ import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Threat from "bots/FunLib/humaniser/threat";
 
 /**
  * `fight`: a lane fight from the play roll, rolled here or joined from an ally's play (slice lane-fight). `join`: D10's pair
  * join (`Ours.PairJoin`, PairJoin.Joins), a committed attack on the target the pair does best on.
  */
 export type Kind = "trade" | "kill" | "fight" | "join";
-export type Respect = "low_hp" | "behind" | "outnumbered" | "tower" | "creeps" | "wave";
+export type Respect = "low_hp" | "behind" | "outnumbered" | "tower" | "creeps" | "wave" | "burst";
 
 export interface Inputs {
     hp: number;
@@ -38,6 +39,14 @@ export interface Inputs {
     hitByCreeps: number;
     /** The bot or the target within reach of an enemy tower. */
     tower: boolean;
+    /**
+     * Slice trade-safe (`Ours.TradeSafe`, D18's "the threat to me is low"): the threat read's burst on the bot as retreat's stay
+     * read counts it (enemy heroes in a SAFE_HORIZON reach, an engaged one over SAFE_ENGAGED), over the bot's current HP.
+     * Present only with the switch on; Decide then asks "is it safe?" of it in place of `behind` and the target's tower.
+     */
+    burst?: number;
+    /** With `burst`: the bot's attack point on the target (here, or where it stops at attack range) inside an enemy tower's reach, or a tower attacking the bot. */
+    towerOnMe?: boolean;
 }
 
 export const DESIRE_TRADE = 0.6;
@@ -88,6 +97,14 @@ const JOIN_TIME = FIGHT_TIME;
 /** Reach beyond the bot's attack range (plus both bounding radii) within which a hero is a target. */
 const REACH = 100;
 /**
+ * Slice trade-safe: the threat read the "is it safe?" question asks, the same as retreat's stay read (Retreat SETTINGS Horizon
+ * and EngagedWindow; not imported, since retreat's chooser imports a module that imports this one): enemy heroes able to reach
+ * the bot within 2 s, a hero that hit us in the last second counted over 6 s. `judgement`, kept equal to retreat's so a trade
+ * never opens on a read retreat would leave on.
+ */
+const SAFE_HORIZON = 2;
+const SAFE_ENGAGED = 6;
+/**
  * A support's reach instead (judgement): its spot holds it outside the enemy heroes' reach (states/lane_spot, at least 800), so
  * a harass starts with a walk in. 300 is about 1 s of walking, inside the 3 s aggro cooldown the order primes.
  */
@@ -129,11 +146,31 @@ const LOST_AFTER = 1;
  */
 export function Decide(i: Inputs, running = false, killHp = KILL_HP, hitBack = false): { kind?: Kind; respect?: Respect } {
     const slack = running ? KEEP_HP_SLACK : 0;
+    if (i.burst !== undefined) return decideSafe(i, i.burst, running, killHp, hitBack);
     if (i.tower) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
     if (i.targetHp <= killHp && i.hp >= i.targetHp) return { kind: "kill" };
     if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
     if (!hitBack && i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
+    if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
+    if (!hitBack && i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
+    return { kind: "trade" };
+}
+
+/**
+ * Slice trade-safe: "is it safe?" asked of the threat read (D18), the first of harass's three questions. Unsafe is a tower on
+ * the bot itself, more of them near than us, HP under MIN_HP (the reference's one sourced HP rule) or their burst in reach at
+ * Threat StandBurst of our HP or more (D1's "their burst can kill me", LoneStand's bar). Being behind the target on HP and the
+ * target alone by its tower are no longer refusals: on the h2h trades HP gap did not predict a lost exchange. The kill keeps
+ * the old tower test (a commit chases). Creeps and wave are unchanged.
+ */
+function decideSafe(i: Inputs, burst: number, running: boolean, killHp: number, hitBack: boolean): { kind?: Kind; respect?: Respect } {
+    const slack = running ? KEEP_HP_SLACK : 0;
+    if (i.towerOnMe === true) return { respect: "tower" };
+    if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
+    if (!i.tower && i.targetHp <= killHp && i.hp >= i.targetHp) return { kind: "kill" };
+    if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
+    if (burst >= Threat.SETTINGS.StandBurst + slack) return { respect: "burst" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
     if (!hitBack && i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
     return { kind: "trade" };
@@ -361,6 +398,26 @@ function nearestTarget(bot: Unit): Unit | undefined {
     return best;
 }
 
+function distXY(a: Vector, b: Vector): number {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Where the bot attacks `target` from: here when the target is within attack range plus both hulls, else the point on the
+ * line to it at that distance from the target (where an attack order stops walking). Slice trade-safe's tower test.
+ */
+function attackPoint(bot: Unit, target: Unit): Vector {
+    const me = bot.GetLocation();
+    const at = target.GetLocation();
+    const range = bot.GetAttackRange() + bot.GetBoundingRadius() + target.GetBoundingRadius();
+    const d = distXY(me, at);
+    if (d <= range) return me;
+    const f = range / d;
+    return Vector(at.x + (me.x - at.x) * f, at.y + (me.y - at.y) * f, me.z);
+}
+
 export function Gather(bot: Unit, target: Unit): Inputs {
     let enemiesNear = 0;
     for (const h of bot.GetNearbyHeroes(NEAR, true, BotMode.None)) if (valid(h)) enemiesNear++;
@@ -374,11 +431,33 @@ export function Gather(bot: Unit, target: Unit): Inputs {
         if (c.GetAttackTarget() === bot) hitByCreeps++;
     }
     let tower = false;
+    const safe = Ours.On("TradeSafe");
+    let towerOnMe = false;
+    const stand = safe ? attackPoint(bot, target) : undefined;
     const reach = LaneConfig.TowerReach();
     for (const t of bot.GetNearbyTowers(reach + 1000, true)) {
         if (!t.IsAlive()) continue;
         if (GetUnitToUnitDistance(bot, t) <= reach || GetUnitToUnitDistance(target, t) <= reach) tower = true;
-        if (t.GetAttackTarget() === bot) hitByCreeps += MAX_CREEPS_ON_ME;
+        if (t.GetAttackTarget() === bot) {
+            hitByCreeps += MAX_CREEPS_ON_ME;
+            towerOnMe = true;
+        }
+        if (stand !== undefined && distXY(stand, t.GetLocation()) <= reach) towerOnMe = true;
+    }
+    if (safe) {
+        const here = bot.GetLocation();
+        const burst = Threat.Read(bot, here, here, SAFE_HORIZON, { engagedWindow: SAFE_ENGAGED }).burst;
+        return {
+            hp: frac(bot),
+            targetHp: frac(target),
+            enemiesNear,
+            alliesNear: math.max(1, alliesNear),
+            enemyCreepsNear,
+            hitByCreeps,
+            tower,
+            burst,
+            towerOnMe,
+        };
     }
     return {
         hp: frac(bot),
@@ -470,6 +549,8 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["d", math.floor(GetUnitToUnitDistance(bot, target))],
         ["rch", math.floor(reachOf(bot))],
         ["tlh", lastHitting(target) ? 1 : 0],
+        ["bu", i.burst !== undefined ? round6(i.burst) : undefined],
+        ["tm", i.burst !== undefined ? (i.towerOnMe === true ? 1 : 0) : undefined],
         ["dec", dec],
     ];
 }

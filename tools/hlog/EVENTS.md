@@ -1345,7 +1345,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num
+`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
@@ -1388,6 +1388,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `gap` num: kind=trade: the HP-share gap a lost trade left (`recoverTo`); absent when none.
 - `d` num: kind=trade: the distance to the target and the trade's reach (attack range, both hulls, the role's walk-in).
 - `tlh` num: kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing).
+- `bu` num: kind=trade, with `Ours.TradeSafe` (slice trade-safe; absent off): the threat read's burst in reach over the bot's HP (retreat's stay read), and 1 when the bot's attack point is in an enemy tower's reach or a tower attacks it. The answer adds the respect `burst` (their burst at our HP or more).
 - `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
 
 ## cut_creeps

@@ -1,0 +1,31 @@
+id: lane.trade.tower-on-me.001
+source: log
+ref: {log: 2026-11-15T01-45-22-h2htradecut1_C_rad_3.log, t: 227.933}
+status: active
+control: {commit: 7d07d1a0, outcome: pass}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose tower on 8 (hp 1 vs 0.998, creeps 3, tower 1); bu and tm from the retreat leave cut at the same moment (slice trade-safe).
+# core pid 2 on pid 8: 543 away, reach 648; HP 100% vs 100%; heroes 1 theirs, 1 ours; creeps near 3, on the bot 0; tower 1
+world:
+  t: 227.933
+  pid: 2
+  role: "core"
+  tgt: 8
+  hp: 1
+  thp: 0.998
+  en: 1
+  ally: 1
+  cr: 3
+  hc: 0
+  tw: 1
+  kh: 0.4
+  lf: 1
+  d: 543
+  rch: 648
+  tlh: 0
+  bu: 0.23
+  tm: 1
+expect:
+  must: ["respect(tower)"]
+notes: >
+  Guard (h2htradecut1 C_rad_3, 3:47.9, our mid pid 2): our hero itself stands in the enemy tower's reach (the leave cut's position), both at full HP, burst 0.23. A tower on me stays a refusal under the safe rule, as before.
