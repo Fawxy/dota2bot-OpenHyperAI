@@ -1276,6 +1276,24 @@ function creepKind(name: string): string | undefined {
     return string.find(name, "ranged", 1, true)[0] !== undefined ? "ranged" : "melee";
 }
 
+/** This frame's state of a live unit, written into the record it already has: its kind does not change while it is listed,
+ *  and a record is dropped from its table the frame its unit is gone, so a death's `seen` is never written again. */
+function see(into: LuaTable<Unit, CreepSeen>, u: Unit, kindOf: (this: void, u: Unit) => string | undefined): void {
+    let rec = into.get(u);
+    if (rec === undefined) {
+        const kind = kindOf(u);
+        if (kind === undefined) return;
+        rec = { kind, x: 0, y: 0, hp: 0 };
+        into.set(u, rec);
+    }
+    const loc = u.GetLocation();
+    rec.x = loc.x;
+    rec.y = loc.y;
+    rec.hp = u.GetHealth() / math.max(1, u.GetMaxHealth());
+}
+
+const laneKindOf = (u: Unit): string | undefined => creepKind(u.GetUnitName());
+
 function deathDistance(u: Unit, d: CreepDeath): number {
     const loc = u.GetLocation();
     return math.sqrt((loc.x - d.seen.x) ** 2 + (loc.y - d.seen.y) ** 2);
@@ -1460,8 +1478,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     for (const u of neutralList) {
         // A neutral removed this frame can still be listed with no location (cnghar2_B_harness_5, t=624.0; phchk1 t=271).
         const loc = u.GetLocation();
-        if (loc !== null && loc !== undefined)
-            c.neutrals.set(u, { kind: neutralKind(u), x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
+        if (loc !== null && loc !== undefined) see(c.neutrals, u, neutralKind);
     }
     // This frame's state, read for next frame's deaths.
     c.towerOn = new LuaTable();
@@ -1481,12 +1498,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             c.attackMode[pid] = stateFor(pid).mode;
         }
     }
-    for (const u of alive) {
-        const kind = creepKind(u.GetUnitName());
-        if (kind === undefined) continue;
-        const loc = u.GetLocation();
-        c.creeps.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
-    }
+    for (const u of alive) see(c.creeps, u, laneKindOf);
     // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that died
     // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
     // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
@@ -1526,12 +1538,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["by", d.by ?? "none"],
             ["cid", CreepId(d.creep)],
         ]);
-    for (const u of ownList) {
-        const kind = creepKind(u.GetUnitName());
-        if (kind === undefined) continue;
-        const loc = u.GetLocation();
-        c.own.set(u, { kind, x: loc.x, y: loc.y, hp: u.GetHealth() / math.max(1, u.GetMaxHealth()) });
-    }
+    for (const u of ownList) see(c.own, u, laneKindOf);
 }
 
 const guardedWorld = Guard("Telemetry.World", trackWorld);

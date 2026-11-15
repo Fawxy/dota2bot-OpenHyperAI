@@ -370,6 +370,123 @@ local function coverFor(bot, creeps, heroes)
         hit = hit
     }
 end
+local function fieldOf(creeps, towers, heroes, reach, cover, busy)
+    local f = {
+        hx = {},
+        hy = {},
+        reach = {},
+        cx = {},
+        cy = {},
+        ring = {},
+        ringOpen = {},
+        tx = {},
+        ty = {}
+    }
+    do
+        local i = 0
+        while i < #heroes do
+            local at = heroes[i + 1]:GetLocation()
+            local ____f_hx_0 = f.hx
+            ____f_hx_0[#____f_hx_0 + 1] = at.x
+            local ____f_hy_1 = f.hy
+            ____f_hy_1[#____f_hy_1 + 1] = at.y
+            local ____f_reach_2 = f.reach
+            ____f_reach_2[#____f_reach_2 + 1] = reach[i + 1]
+            i = i + 1
+        end
+    end
+    do
+        local i = 0
+        while i < #creeps do
+            local c = creeps[i + 1]
+            local at = c:GetLocation()
+            local ____f_cx_3 = f.cx
+            ____f_cx_3[#____f_cx_3 + 1] = at.x
+            local ____f_cy_4 = f.cy
+            ____f_cy_4[#____f_cy_4 + 1] = at.y
+            local open = busy ~= nil and busy[i + 1] and HELD_RING or (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING)
+            local ____f_ringOpen_5 = f.ringOpen
+            ____f_ringOpen_5[#____f_ringOpen_5 + 1] = open
+            local ____f_ring_6 = f.ring
+            ____f_ring_6[#____f_ring_6 + 1] = cover ~= nil and cover.held[i + 1] and HELD_RING or open
+            i = i + 1
+        end
+    end
+    for ____, t in ipairs(towers) do
+        do
+            local __continue61
+            repeat
+                if not alive(t) then
+                    __continue61 = true
+                    break
+                end
+                local at = t:GetLocation()
+                local ____f_tx_7 = f.tx
+                ____f_tx_7[#____f_tx_7 + 1] = at.x
+                local ____f_ty_8 = f.ty
+                ____f_ty_8[#____f_ty_8 + 1] = at.y
+                __continue61 = true
+            until true
+            if not __continue61 then
+                break
+            end
+        end
+    end
+    return f
+end
+local function fieldBreaksTower(f, p)
+    do
+        local i = 0
+        while i < #f.tx do
+            if len(p.x - f.tx[i + 1], p.y - f.ty[i + 1]) < ____exports.TOWER_RING + HOLD_DRIFT then
+                return true
+            end
+            i = i + 1
+        end
+    end
+    return false
+end
+--- `Breaks` on a Field: the same limits in the same order. `heroes` false leaves the hero limit out (the threat read has it).
+local function fieldBreaks(f, p, margin, heroes, cover)
+    local hp = false
+    if heroes then
+        do
+            local i = 0
+            while i < #f.hx do
+                local r = f.reach[i + 1]
+                if cover ~= nil and (cover.tanking[i + 1] or covers(cover, p, cover.hit[i + 1])) then
+                    r = cover.near[i + 1]
+                end
+                local dist = len(p.x - f.hx[i + 1], p.y - f.hy[i + 1])
+                if dist < r then
+                    return "hero"
+                end
+                if dist < r + margin then
+                    hp = true
+                end
+                i = i + 1
+            end
+        end
+    end
+    local ring = cover ~= nil and f.ring or f.ringOpen
+    do
+        local i = 0
+        while i < #f.cx do
+            local dist = len(p.x - f.cx[i + 1], p.y - f.cy[i + 1])
+            if dist < ring[i + 1] then
+                return "creep"
+            end
+            if dist < ring[i + 1] + margin then
+                hp = true
+            end
+            i = i + 1
+        end
+    end
+    if fieldBreaksTower(f, p) then
+        return "tower"
+    end
+    return hp and "hp" or nil
+end
 --- The fed creep when it anchors the spot: alive, in sight and at FED_HP or below.
 function ____exports.FedAnchor(fed)
     if not alive(fed) then
@@ -406,24 +523,24 @@ local function ownDistances(path, t1, dir, list)
     local out = {}
     for ____, c in ipairs(list) do
         do
-            local __continue69
+            local __continue88
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue69 = true
+                    __continue88 = true
                     break
                 end
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue69 = true
+                    __continue88 = true
                     break
                 end
                 local s, d = LanePush.Project(path, l.x, l.y)
                 if d <= PATH_R then
                     out[#out + 1] = dir * (s - t1)
                 end
-                __continue69 = true
+                __continue88 = true
             until true
-            if not __continue69 then
+            if not __continue88 then
                 break
             end
         end
@@ -475,13 +592,13 @@ function ____exports.Compute(bot, role, fed, hold)
     local front = GetLaneFrontLocation(team, lane, 0)
     local back = GetLaneFrontLocation(team, lane, -400)
     local anchorFed = ____exports.FedAnchor(fed)
-    local ____temp_0
+    local ____temp_9
     if role == "core" and anchorFed == nil and hold == nil then
-        ____temp_0 = clashFor(team, lane, front)
+        ____temp_9 = clashFor(team, lane, front)
     else
-        ____temp_0 = nil
+        ____temp_9 = nil
     end
-    local clash = ____temp_0
+    local clash = ____temp_9
     if clash ~= nil then
         front = clash.at
         back = clash.back
@@ -582,17 +699,25 @@ function ____exports.Compute(bot, role, fed, hold)
         bot:GetMaxHealth()
     )
     local margin = ____exports.HpMargin(hpFrac)
-    local ____temp_1
+    local ____temp_10
     if role == "core" and hpFrac > HP_LOW then
-        ____temp_1 = coverFor(bot, creeps, heroes)
+        ____temp_10 = coverFor(bot, creeps, heroes)
     else
-        ____temp_1 = nil
+        ____temp_10 = nil
     end
-    local cover = ____temp_1
+    local cover = ____temp_10
     local cl = clash and clash.own
     local fo = clash and clash.far
     local byRead = On("LaneSpotThreat")
     local here = bot:GetLocation()
+    local field = fieldOf(
+        creeps,
+        towers,
+        heroes,
+        reach,
+        cover,
+        busy
+    )
     local function underOwn(p)
         if cover == nil then
             return false
@@ -609,29 +734,23 @@ function ____exports.Compute(bot, role, fed, hold)
     end
     local reads = {}
     local readN = 0
+    local reader
     local function readAt(p)
         local key = (tostring(math.floor(p.x / 25)) .. ",") .. tostring(math.floor(p.y / 25))
         local r = reads[key]
         if r == nil then
             local toward = false
-            for ____, h in ipairs(heroes) do
-                if d2(
-                    p,
-                    h:GetLocation()
-                ) < d2(
-                    here,
-                    h:GetLocation()
-                ) then
-                    toward = true
+            do
+                local i = 0
+                while i < #field.hx do
+                    if len(p.x - field.hx[i + 1], p.y - field.hy[i + 1]) < len(here.x - field.hx[i + 1], here.y - field.hy[i + 1]) then
+                        toward = true
+                    end
+                    i = i + 1
                 end
             end
-            r = Threat.Read(
-                bot,
-                toward and here or p,
-                p,
-                READ_HORIZON,
-                {engagedWindow = LANE_ENGAGED_WINDOW}
-            )
+            reader = reader or Threat.Reader(bot, READ_HORIZON, {engagedWindow = LANE_ENGAGED_WINDOW})
+            r = reader(toward and here or p, p)
             reads[key] = r
             readN = readN + 1
         end
@@ -648,31 +767,13 @@ function ____exports.Compute(bot, role, fed, hold)
         return readOn(p) and verdict(readAt(p)) ~= "none"
     end
     local function limits(p, cov)
-        local ____readOn_result_6
-        if readOn(p) then
-            ____readOn_result_6 = ____exports.Breaks(
-                p,
-                creeps,
-                towers,
-                margin,
-                {},
-                {},
-                cov,
-                busy
-            )
-        else
-            ____readOn_result_6 = ____exports.Breaks(
-                p,
-                creeps,
-                towers,
-                margin,
-                heroes,
-                reach,
-                cov,
-                busy
-            )
-        end
-        return ____readOn_result_6
+        return fieldBreaks(
+            field,
+            p,
+            margin,
+            not readOn(p),
+            cov
+        )
     end
     local function covered(p)
         return cover ~= nil and limits(p, nil) ~= nil and 1 or 0
@@ -692,27 +793,21 @@ function ____exports.Compute(bot, role, fed, hold)
             local r = readAt(spot)
             info.rb = r.burst
             info.rt = r.threat
-            info.ob = ____exports.Breaks(
+            info.ob = fieldBreaks(
+                field,
                 spot,
-                creeps,
-                towers,
                 margin,
-                heroes,
-                reach,
-                cover,
-                busy
+                true,
+                cover
             ) or "none"
             info.rm = r.missing
             info.mp = #r.mpids > 0 and table.concat(r.mpids, ",") or nil
-            info.op = ____exports.Breaks(
+            info.op = fieldBreaks(
+                field,
                 pref,
-                creeps,
-                towers,
                 margin,
-                heroes,
-                reach,
-                cover,
-                busy
+                true,
+                cover
             ) or "none"
             info.rp = "none"
             if readOn(pref) then
@@ -750,15 +845,15 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue122
+                    local __continue140
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue122 = true
+                            __continue140 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
-                        if best == nil and (keep == nil or k > keepPushed) and not breaksTower(p, towers) then
+                        if best == nil and (keep == nil or k > keepPushed) and not fieldBreaksTower(field, p) then
                             keep = p
                             keepPushed = k
                         end
@@ -767,9 +862,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue122 = true
+                        __continue140 = true
                     until true
-                    if not __continue122 then
+                    if not __continue140 then
                         break
                     end
                 end

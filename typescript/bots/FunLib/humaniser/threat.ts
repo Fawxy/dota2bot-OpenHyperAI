@@ -149,38 +149,25 @@ function valid(u: Unit | undefined | null): u is Unit {
     return u !== null && u !== undefined && u.IsAlive() && !u.IsIllusion();
 }
 
-/** Can `u` be in attack range of a point on the walk within `horizon`: its run plus its attack range and both hulls. */
-function canReach(u: Unit, bot: Unit, from: Vector, place: Vector, horizon: number): boolean {
-    const at = u.GetLocation();
-    if (at === null || at === undefined) return false;
-    const run = u.GetCurrentMovementSpeed() * horizon + u.GetAttackRange() + u.GetBoundingRadius() + bot.GetBoundingRadius();
-    return distToSegment(at, from, place) <= run;
-}
-
 const T1_IDS = [Tower.Top1, Tower.Mid1, Tower.Bot1];
 
-function nearestOf(team: number, ids: Tower[], place: Vector): number | undefined {
-    let best: number | undefined;
+/** A team's standing towers among `ids`, in `ids` order. */
+function standing(team: number, ids: Tower[]): Unit[] {
+    const out: Unit[] = [];
     for (const id of ids) {
         const tw = GetTower(team, id);
-        if (!valid(tw)) continue;
-        const d = dist(tw.GetLocation(), place);
+        if (valid(tw)) out.push(tw);
+    }
+    return out;
+}
+
+function nearestOf(at: Vector[], place: Vector): number | undefined {
+    let best: number | undefined;
+    for (const a of at) {
+        const d = dist(a, place);
         if (best === undefined || d < best) best = d;
     }
     return best;
-}
-
-/** The team's nearest standing T1 (the tower set the depth factors were fitted on), else its nearest standing tower. */
-function nearestTower(team: number, place: Vector): number | undefined {
-    return nearestOf(team, T1_IDS, place) ?? nearestOf(team, TOWER_IDS, place);
-}
-
-/** The place's depth: its distance to the nearest enemy tower over the sum with the distance to our nearest; DepthDefault with no read. */
-function placeDepth(team: number, enemyTeam: number, place: Vector): number {
-    const own = nearestTower(team, place);
-    const en = nearestTower(enemyTeam, place);
-    if (own === undefined || en === undefined || own + en <= 0) return SETTINGS.DepthDefault;
-    return en / (own + en);
 }
 
 function stepFactor(steps: [number, number][], v: number): number {
@@ -188,21 +175,7 @@ function stepFactor(steps: [number, number][], v: number): number {
     return steps[steps.length - 1][1];
 }
 
-function inTowerReach(enemyTeam: number, place: Vector): boolean {
-    for (const id of TOWER_IDS) {
-        const tw = GetTower(enemyTeam, id);
-        if (!valid(tw)) continue;
-        if (dist(tw.GetLocation(), place) <= WorldFacts.TowerReach(tw, SETTINGS.TowerReach)) return true;
-    }
-    return false;
-}
-
-/**
- * The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
- * read speed, capped) plus MissingMargin; one whose run touches the walk adds EarlyWeight or LateWeight by game minute.
- * Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team). A hero the API has no sighting of is
- * not placed and not counted.
- */
+/** The walk's points every WalkStep, and the place (the vision cut looks at each). */
 export function WalkPoints(from: Vector, place: Vector): Vector[] {
     const d = dist(from, place);
     const n = math.max(1, math.ceil(d / SETTINGS.WalkStep));
@@ -217,69 +190,12 @@ function unseenWithin(points: Vector[], at: Vector, r: number): boolean {
     return false;
 }
 
-/**
- * The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
- * read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
- * (VisionCut), adds EarlyWeight or LateWeight by game minute, scaled by the place prior (DepthFactor for the place's depth,
- * DistFactor for its last-seen distance to the place). Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for
- * a bot-only team). A hero the API has no sighting of is not placed and not counted.
- */
-function missingOf(
-    bot: Unit,
-    from: Vector,
-    place: Vector,
-    depth: number,
-    now: number,
-    visible: Record<number, boolean>,
-): LuaMultiReturn<[number, number[], number | undefined, number]> {
-    const s = SETTINGS;
-    const team = bot.GetTeam();
-    const base = (now < s.EarlyUntil ? s.EarlyWeight : s.LateWeight) * stepFactor(s.DepthFactor, depth);
-    let sum = 0;
-    let cut = 0;
-    let mtss: number | undefined;
-    const pids: number[] = [];
-    let points: Vector[] | undefined;
-    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
-        const t = GetTeamForPlayer(pid);
-        if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
-        const info = GetHeroLastSeenInfo(pid)[0];
-        if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
-        const r = math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin;
-        if (distToSegment(info.location, from, place) > r) continue;
-        if (s.VisionCut) {
-            points = points ?? WalkPoints(from, place);
-            if (!unseenWithin(points, info.location, r)) {
-                cut++;
-                continue;
-            }
-        }
-        sum += base * stepFactor(s.DistFactor, dist(info.location, place));
-        pids.push(pid);
-        mtss = math.max(mtss ?? 0, info.time_since_seen);
-    }
-    return $multi(sum, pids, mtss, cut);
-}
-
 function itemReady(bot: Unit, name: string): boolean {
     const slot = bot.FindItemSlot(name);
     // Slots 0-5 are the inventory; the backpack's items cannot be cast.
     if (slot < 0 || slot > 5) return false;
     const item = bot.GetItemInSlot(slot);
     return item !== null && item !== undefined && item.IsFullyCastable();
-}
-
-/** Can `bot` leave the reach of `chasers` first (design 5.1): an escape item ready, or faster than each and out of its attack range. */
-function escapeOf(bot: Unit, chasers: Unit[]): boolean {
-    if (chasers.length === 0) return true;
-    for (const name of SETTINGS.EscapeItems) if (itemReady(bot, name)) return true;
-    const ours = bot.GetCurrentMovementSpeed();
-    for (const e of chasers) {
-        if (e.GetCurrentMovementSpeed() >= ours) return false;
-        const gap = GetUnitToUnitDistance(bot, e) - e.GetAttackRange() - e.GetBoundingRadius() - bot.GetBoundingRadius();
-        if (gap < SETTINGS.EscapeMargin) return false;
-    }
-    return true;
 }
 
 /** The last movement speed Read saw for an enemy hero (the missing belief's run uses it), or undefined. */
@@ -297,56 +213,168 @@ export interface ReadOpts {
     engagedWindow?: number;
 }
 
+/** A hero as one set of reads sees it: where it is and how far it gets within the horizon (its run plus its attack range and both hulls). */
+interface Seen {
+    u: Unit;
+    pid: number;
+    at: Vector;
+    run: number;
+    /** Filled the first time the hero reaches a walk: whether it aims at us or hit us just now, and its damage over its window. */
+    dmg?: number;
+    att?: boolean;
+    eng?: boolean;
+}
+
 /**
- * The read for `bot` walking from `from` to `place` with `horizon` seconds ahead. `lethal` fires when the heroes in reach
- * can deal the bot's HP within the burst window, they outnumber our heroes in reach and the bot has no `escape`.
+ * The reads for `bot` with `horizon` seconds ahead, as a function of the walk (`from` to `place`). What does not depend on the
+ * walk (who is seen and where, the standing towers, the unseen heroes' sightings, an escape item) is read from the game once,
+ * here, so a caller weighing several places in one frame (the lane spot) pays for the heroes and towers once. Use it within
+ * the frame it was made in. `lethal` fires when the heroes in reach can deal the bot's HP within the burst window, they
+ * outnumber our heroes in reach and the bot has no `escape`.
+ *
+ * The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
+ * read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
+ * (VisionCut), adds EarlyWeight or LateWeight by game minute, scaled by the place prior (DepthFactor for the place's depth,
+ * DistFactor for its last-seen distance to the place). Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for
+ * a bot-only team). A hero the API has no sighting of is not placed and not counted.
  */
-export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, opts?: ReadOpts): Read {
+export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void, from: Vector, place: Vector) => Read {
     const s = SETTINGS;
     const now = DotaTime();
-    const visible: Record<number, boolean> = {};
-    const reach: number[] = [];
-    const chasers: Unit[] = [];
-    const eng: number[] = [];
-    const att: number[] = [];
-    let dmg = 0;
+    const team = bot.GetTeam();
+    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
+    const hull = bot.GetBoundingRadius();
     const window = math.min(horizon, s.BurstWindow);
+    const visible: Record<number, boolean> = {};
+    const enemies: Seen[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!valid(e) || !e.CanBeSeen()) continue;
         const pid = e.GetPlayerID();
         visible[pid] = true;
         const sp = e.GetCurrentMovementSpeed();
         if (sp !== undefined && sp > 0) speeds[pid] = sp;
-        if (canReach(e, bot, from, place, horizon)) {
-            reach.push(pid);
-            chasers.push(e);
-            let w = window;
-            if (opts?.engagedWindow !== undefined) {
-                if (e.GetAttackTarget() === bot) att.push(pid);
-                if (bot.WasRecentlyDamagedByHero(e, s.EngagedRecent)) {
-                    eng.push(pid);
-                    w = opts.engagedWindow;
-                }
-            }
-            dmg += e.GetEstimatedDamageToTarget(true, bot, w, DamageType.All);
-        }
+        const at = e.GetLocation();
+        if (at === null || at === undefined) continue;
+        enemies.push({ u: e, pid, at, run: sp * horizon + e.GetAttackRange() + e.GetBoundingRadius() + hull });
     }
-    let allies = 0;
+    const allies: Seen[] = [];
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
         if (!valid(a) || a === bot || RetreatState.Running(a)) continue;
-        if (canReach(a, bot, place, place, horizon)) allies++;
+        const at = a.GetLocation();
+        if (at === null || at === undefined) continue;
+        allies.push({ u: a, pid: a.GetPlayerID(), at, run: a.GetCurrentMovementSpeed() * horizon + a.GetAttackRange() + a.GetBoundingRadius() + hull });
     }
-    const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
-    const depth = placeDepth(bot.GetTeam(), enemyTeam, place);
-    const [missing, mpids, mtss, mcut] = missingOf(bot, from, place, depth, now, visible);
-    const tower = inTowerReach(enemyTeam, place);
+    const enemyTowers = standing(enemyTeam, TOWER_IDS);
+    const enemyTowerAt = enemyTowers.map((tw) => tw.GetLocation());
+    const enemyTowerReach: (number | undefined)[] = [];
+    // The depth reads a team's standing T1s (the tower set the depth factors were fitted on), else its standing towers.
+    const depthAt = (t: number, all: Vector[] | undefined): Vector[] => {
+        const t1 = standing(t, T1_IDS).map((tw) => tw.GetLocation());
+        return t1.length > 0 ? t1 : (all ?? standing(t, TOWER_IDS).map((tw) => tw.GetLocation()));
+    };
+    const ownDepthAt = depthAt(team, undefined);
+    const enemyDepthAt = depthAt(enemyTeam, enemyTowerAt);
+    const unseen: { pid: number; at: Vector; tss: number; r: number }[] = [];
+    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
+        const t = GetTeamForPlayer(pid);
+        if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
+        const info = GetHeroLastSeenInfo(pid)[0];
+        if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
+        unseen.push({ pid, at: info.location, tss: info.time_since_seen, r: math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin });
+    }
+    const early = now < s.EarlyUntil ? s.EarlyWeight : s.LateWeight;
     const hp = math.max(1, bot.GetHealth());
-    const burst = dmg / hp;
-    const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * allies;
-    const threat = math.max(0, math.min(1, raw));
-    const escape = escapeOf(bot, chasers);
-    const lethal = burst >= 1 && reach.length > allies && !escape;
-    return { t: now, from, place, horizon, depth, reach, burst, allies, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att };
+    let escapeItem: boolean | undefined;
+
+    return (from, place) => {
+        const reach: number[] = [];
+        const chasers: Unit[] = [];
+        const eng: number[] = [];
+        const att: number[] = [];
+        let dmg = 0;
+        for (const e of enemies) {
+            if (distToSegment(e.at, from, place) > e.run) continue;
+            reach.push(e.pid);
+            chasers.push(e.u);
+            if (e.dmg === undefined) {
+                let w = window;
+                if (opts?.engagedWindow !== undefined) {
+                    e.att = e.u.GetAttackTarget() === bot;
+                    e.eng = bot.WasRecentlyDamagedByHero(e.u, s.EngagedRecent);
+                    if (e.eng) w = opts.engagedWindow;
+                }
+                e.dmg = e.u.GetEstimatedDamageToTarget(true, bot, w, DamageType.All);
+            }
+            if (e.att === true) att.push(e.pid);
+            if (e.eng === true) eng.push(e.pid);
+            dmg += e.dmg;
+        }
+        let near = 0;
+        for (const a of allies) if (distToSegment(a.at, place, place) <= a.run) near++;
+
+        const own = nearestOf(ownDepthAt, place);
+        const en = nearestOf(enemyDepthAt, place);
+        const depth = own === undefined || en === undefined || own + en <= 0 ? s.DepthDefault : en / (own + en);
+
+        const base = early * stepFactor(s.DepthFactor, depth);
+        let missing = 0;
+        let mcut = 0;
+        let mtss: number | undefined;
+        const mpids: number[] = [];
+        let points: Vector[] | undefined;
+        for (const m of unseen) {
+            if (distToSegment(m.at, from, place) > m.r) continue;
+            if (s.VisionCut) {
+                points = points ?? WalkPoints(from, place);
+                if (!unseenWithin(points, m.at, m.r)) {
+                    mcut++;
+                    continue;
+                }
+            }
+            missing += base * stepFactor(s.DistFactor, dist(m.at, place));
+            mpids.push(m.pid);
+            mtss = math.max(mtss ?? 0, m.tss);
+        }
+
+        let tower = false;
+        for (let i = 0; i < enemyTowers.length && !tower; i++) {
+            let r = enemyTowerReach[i];
+            if (r === undefined) {
+                r = WorldFacts.TowerReach(enemyTowers[i], s.TowerReach);
+                enemyTowerReach[i] = r;
+            }
+            tower = dist(enemyTowerAt[i], place) <= r;
+        }
+
+        // Can `bot` leave the chasers' reach first (design 5.1): an escape item ready, or faster than each and out of its attack range.
+        let escape = true;
+        if (chasers.length > 0) {
+            if (escapeItem === undefined) {
+                escapeItem = false;
+                for (const name of s.EscapeItems) if (itemReady(bot, name)) escapeItem = true;
+            }
+            if (!escapeItem) {
+                const ours = bot.GetCurrentMovementSpeed();
+                for (const e of chasers) {
+                    if (e.GetCurrentMovementSpeed() >= ours || GetUnitToUnitDistance(bot, e) - e.GetAttackRange() - e.GetBoundingRadius() - hull < s.EscapeMargin) {
+                        escape = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const burst = dmg / hp;
+        const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * near;
+        const threat = math.max(0, math.min(1, raw));
+        const lethal = burst >= 1 && reach.length > near && !escape;
+        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att };
+    };
+}
+
+/** One read: `bot` walking from `from` to `place` with `horizon` seconds ahead (see Reader). */
+export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, opts?: ReadOpts): Read {
+    return Reader(bot, horizon, opts)(from, place);
 }
 
 /**
