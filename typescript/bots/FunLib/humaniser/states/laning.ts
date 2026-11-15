@@ -365,6 +365,22 @@ export function HitOffered(bot: Unit): boolean {
     return choose(bot, verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin })) !== undefined;
 }
 
+/**
+ * Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
+ * rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a
+ * trade. Reads facts only (no pick, no skill roll).
+ */
+export function DenyDue(bot: Unit): boolean {
+    if (!OwnsLastHit(bot) && !OwnsSupportHits(bot)) return false;
+    const verbs = Tasks.Verbs();
+    if (verbs === undefined) return false;
+    const claims = claimsFor(bot);
+    for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin, lastHit: false })) {
+        if (t.kind === "deny" && LanePick.Reachable(t) && (claims === undefined || claims(t))) return true;
+    }
+    return false;
+}
+
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const sdk = Settings().Spot === "sdk" || OwnsSpot(bot);
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in

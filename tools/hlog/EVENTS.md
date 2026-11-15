@@ -960,7 +960,7 @@ Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on lat
 
 ## trade_no
 
-An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree` `unfavoured` instead: the hit neither free nor favoured), or `hb_<respect>` (the hit back itself refused).
+An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree` `unfavoured` instead: the hit neither free nor favoured; `deny`: a due deny outbids it), or `hb_<respect>` (the hit back itself refused; `hb_deny` a due deny outbid it).
 
 `pid` num, `role` str, `why` str, `d` num, `reach` num, `har` num, `agg` num, `hp` num, `thp` num, `al` num, `cr` num, `hc` num, `mode` num, `md` num
 
@@ -1380,7 +1380,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
 - `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP.
 - `kt` num: kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP.
-- `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds; with `Ours.TradeFree` `unfavoured`, neither free nor favoured, and `gap` no longer decides). The bot's and the target's HP share.
+- `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds; with `Ours.TradeFree` `unfavoured`, neither free nor favoured, or `deny`, a due deny outbids it, and `gap` no longer decides). The bot's and the target's HP share.
 - `en` num: kind=trade: enemy heroes in sight, and our heroes (the bot included, at least 1), within 1,200 of the bot.
 - `cr` num: kind=trade: enemy lane creeps within 500 of the bot, and those attacking it (plus 2 per enemy tower attacking it).
 - `tw` num: kind=trade: 1 when the bot or the target is within an enemy tower's reach.
@@ -1391,6 +1391,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `bu` num: kind=trade, with `Ours.TradeSafe` (slice trade-safe; absent off): the threat read's burst in reach over the bot's HP (retreat's stay read), and 1 when the bot's attack point is in an enemy tower's reach or a tower attacks it. The answer adds the respect `burst` (their burst at our HP or more).
 - `ar` num: kind=trade (slice trade-free-cut): the bot's and the target's attack range, and 1 when the target's attack target is the bot.
 - `tf` num: kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off.
+- `dn` num: kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which outbids the trade.
 - `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
 
 ## cut_creeps

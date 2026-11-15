@@ -38,6 +38,15 @@ do
 	local off = inputs()
 	off.free, off.ko, off.kt = nil, nil, nil
 	check("switch off (no answer in the inputs): the gap holds", CoreTrade.Answer(off, 0.25, 0.9) == "gap")
+	-- Round 2, question 3: a due deny outbids a free or favoured trade; never a kill, and unfavoured stays its own answer.
+	check("a due deny outbids a free trade", CoreTrade.Answer(inputs({ free = true, ko = nil, kt = nil, denyDue = true }), 0.25, nil) == "deny")
+	check("a due deny outbids a favoured trade", CoreTrade.Answer(inputs({ denyDue = true }), 0.25, nil) == "deny")
+	check("no deny due: the trade stays", CoreTrade.Answer(inputs({ denyDue = false }), 0.25, nil) == "trade")
+	check("a kill is not outbid by a deny", CoreTrade.Answer(inputs({ targetHp = 0.2, denyDue = true }), 0.25, nil) == "kill")
+	check("unfavoured stays unfavoured with a deny due", CoreTrade.Answer(inputs({ ko = 0.2, kt = 0.37, denyDue = true }), 0.25, nil) == "unfavoured")
+	local offDeny = inputs({ denyDue = true })
+	offDeny.free, offDeny.ko, offDeny.kt = nil, nil, nil
+	check("switch off: a deny does not hold the trade", CoreTrade.Answer(offDeny, 0.25, nil) == "trade")
 end
 
 -- Gather: one core at x=0, one enemy hero 600 away.
@@ -81,5 +90,33 @@ do
 	i = CoreTrade.Gather(bot, enemy)
 	check("switch off: no question-2 inputs", i.free == nil and i.ko == nil and i.kt == nil)
 	package.loaded["bots/FunLib/custom_loader"].Ours.TradeFree = true
+end
+
+-- Round 2: Gather reads the laning body's deny offer (Laning.DenyDue, laneTargets' denies under the reach rule).
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	local yield = Ours.CoreDenyYield
+	Ours.CoreDenyYield = false
+	local Tasks = require("bots/FunLib/humaniser/tasks")
+	-- Laning loaded with the real CoreLastHit before this file's stub: the bot is a core whose lane hits are ours.
+	local Laning = require("bots/FunLib/humaniser/states/laning")
+	local owns = Laning.OwnsLastHit
+	Laning.OwnsLastHit = function() return true end
+	local verbs = Tasks.Verbs
+	local offered = {}
+	Tasks.Verbs = function() return { laneTargets = function(_, opts) return opts.lastHit == false and offered or {} end } end
+	enemy.range = 150
+	local i = CoreTrade.Gather(bot, enemy)
+	check("Gather: no deny offered: the free trade stays", i.denyDue == false and CoreTrade.Answer(i, 0.25, nil) == "trade")
+	offered = { { creep = creep, kind = "deny", eta = 0.1, due = 0.1, walk = 0, dies = 2, ranged = false } }
+	i = CoreTrade.Gather(bot, enemy)
+	check("Gather: a deny in range is due and outbids the trade", i.denyDue == true and CoreTrade.Answer(i, 0.25, nil) == "deny")
+	offered = { { creep = creep, kind = "deny", eta = 0.9, due = 0, walk = 0.9, dies = 1.0, ranged = false } }
+	i = CoreTrade.Gather(bot, enemy)
+	check("Gather: a deny that dies before our walk and swing is not due", i.denyDue == false)
+	Tasks.Verbs = verbs
+	Laning.OwnsLastHit = owns
+	Ours.CoreDenyYield = yield
+	enemy.range = 500
 end
 finish()

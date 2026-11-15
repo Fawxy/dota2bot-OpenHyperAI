@@ -1,0 +1,38 @@
+id: lane.trade.deny-due.003
+source: log
+ref: {log: 2026-11-15T21-17-18-h2htradefree1_A_rad_4.log, t: 59.033}
+status: active
+control: {commit: b695a0b6, outcome: fail}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose trade on 8 (hp 0.591 vs 0.763, creeps 0, tower 0); dn added by hand: the deny the laning body was offered (slice trade-free round 2).
+# core pid 2 on pid 8: 833 away, reach 858; HP 59% vs 76%; heroes 1 theirs, 1 ours; creeps near 0, on the bot 0; tower 0; the target is last hitting
+world:
+  t: 59.033
+  pid: 2
+  role: "core"
+  tgt: 8
+  hp: 0.591
+  thp: 0.763
+  en: 1
+  ally: 1
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 833
+  rch: 858
+  tlh: 1
+  bu: 0.189
+  tm: 0
+  ar: 710
+  tar: 380
+  tme: 0
+  ko: 0.211
+  kt: 0.258
+  tf: 1
+  dn: 1
+expect:
+  must: ["respect(deny)"]
+notes: >
+  Free because the target swings at a creep (h2htradefree1_A_rad_4, 0:59.0, pid 2 on pid 8, last hitting): 59% against 76%. Our melee creep at 2% died undenied at 0:59.5. The target taking a last hit is a free hit, but our deny on the next creep is worth more than the harass. dn added by hand.

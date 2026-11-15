@@ -567,6 +567,31 @@ function ____exports.HitOffered(bot)
         )
     ) ~= nil
 end
+--- Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
+-- rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a
+-- trade. Reads facts only (no pick, no skill roll).
+function ____exports.DenyDue(bot)
+    if not ____exports.OwnsLastHit(bot) and not ____exports.OwnsSupportHits(bot) then
+        return false
+    end
+    local verbs = Tasks.Verbs()
+    if verbs == nil then
+        return false
+    end
+    local claims = claimsFor(bot)
+    for ____, t in ipairs(verbs.laneTargets(
+        bot,
+        {
+            within = ____exports.Settings().LastHitWithin,
+            lastHit = false
+        }
+    )) do
+        if t.kind == "deny" and LanePick.Reachable(t) and (claims == nil or claims(t)) then
+            return true
+        end
+    end
+    return false
+end
 local body = __TS__Generator(function(bot, ctx)
     local sdk = ____exports.Settings().Spot == "sdk" or ____exports.OwnsSpot(bot)
     local tight = ____exports.OwnsSpot(bot)
