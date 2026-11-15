@@ -4,7 +4,8 @@
 -- and laning's last-hit desire yields to a retreat the core is already in.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
-local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true } })
+-- Cuts off: the line counts below are the trade's own events; the cut block at the end turns them on.
+local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true, Cut = false } })
 local lines = {}
 H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 
@@ -696,6 +697,70 @@ do
 	check("a join on the trade's own target takes it over", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
 	PairJoin.Joins = joins
 	other.alive = false
+	CoreTrade.Reset()
+end
+
+-- Cut kind `trade` (oha-trade-cut): Answer is Decide's kind or respect, or `gap` for a trade the lost trade's gap holds.
+do
+	check("answer: a trade", CoreTrade.Answer(inputs(), 0.25, nil) == "trade")
+	check("answer: a respect by name", CoreTrade.Answer(inputs({ enemyCreepsNear = 4 }), 0.25, nil) == "wave")
+	check("answer: a kill at the kill HP", CoreTrade.Answer(inputs({ targetHp = 0.35 }), 0.4, nil) == "kill"
+		and CoreTrade.Answer(inputs({ targetHp = 0.35 }), 0.25, nil) == "trade")
+	check("answer: the gap holds a trade until it is back", CoreTrade.Answer(inputs(), 0.25, 0.2) == "gap"
+		and CoreTrade.Answer(inputs(), 0.25, 0.1) == "trade")
+	check("answer: the gap never holds a kill", CoreTrade.Answer(inputs({ targetHp = 0.2 }), 0.25, 0.9) == "kill")
+end
+
+do
+	H.Telemetry.Get().Cut = true
+	CoreTrade.Reset()
+	bot.attacking, bot.hitBy = nil, nil
+	bot.hp, enemy.hp, enemy.dead, enemy.alive = 80, 70, false, true
+	enemy.loc = Vector(400, 0)
+	local function cuts()
+		local r = {}
+		for _, l in ipairs(lines) do if l:find("ev=cut ") and l:find("kind=trade") then table.insert(r, l) end end
+		return r
+	end
+	local n0 = #cuts()
+	T = 700
+	CoreTrade.Desire(bot)
+	local c = cuts()
+	check("a fresh decision with a hero in reach logs a trade cut", #c == n0 + 1 and c[#c]:find("dec=trade") and c[#c]:find("tgt=6")
+		and c[#c]:find("hp=0.8") and c[#c]:find("thp=0.7") and c[#c]:find("role=core") and c[#c]:find("did=trade"))
+	-- The trade runs from here: no fresh decision, so no cut.
+	T = 700.6
+	CoreTrade.Desire(bot)
+	check("no cut while a trade is open", #cuts() == n0 + 1)
+	-- The exchange turns (80 to 45 against 70 to 70): the trade ends `losing` and the fresh decision is `low_hp`, a changed
+	-- answer, cut 1.2 s after the last line (inside the 2 s an unchanged answer waits), opening nothing.
+	CoreTrade.Think(bot)
+	bot.hp = 45
+	T = 701.2
+	CoreTrade.Desire(bot)
+	c = cuts()
+	check("a changed answer is cut at once", #c == n0 + 2 and c[#c]:find("dec=low_hp") and c[#c]:find("did=none") and c[#c]:find("gap=0.1"))
+	n0 = #c
+	-- Behind on HP: a respect, logged as soon as the answer changes (0.5 s on).
+	CoreTrade.Reset()
+	bot.hp = 50
+	enemy.hp = 90
+	T = 701.2
+	CoreTrade.Desire(bot)
+	T = 701.5
+	CoreTrade.Desire(bot)
+	c = cuts()
+	check("a refused trade is cut with its respect, once per 0.5 s", #c == n0 + 1 and c[#c]:find("dec=behind"))
+	T = 702.0
+	CoreTrade.Desire(bot)
+	check("an unchanged answer waits 2 s", #cuts() == n0 + 1)
+	T = 703.3
+	CoreTrade.Desire(bot)
+	check("then logs again", #cuts() == n0 + 2)
+	T = 730
+	CoreTrade.Desire(bot)
+	check("no cut after 12:00", #cuts() == n0 + 2)
+	H.Telemetry.Get().Cut = false
 	CoreTrade.Reset()
 end
 

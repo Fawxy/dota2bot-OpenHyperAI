@@ -1345,10 +1345,10 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str
+`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num
 
-- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`).
-- `role` str: The spot's role input: `core` or `support`.
+- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
+- `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
 - `who` str: `gate`: the consumer that asked (ev=threat `who`).
 - `fm` str: `gate`: the walk's start, x,y (Threat.Gate's `from`).
 - `pl` str: `gate`: the walk's end, x,y (the camp or place the trip goes to).
@@ -1380,6 +1380,15 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
 - `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP.
 - `kt` num: kind=join: theirs, their heroes' best kill share on one of ours.
+- `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds). The bot's and the target's HP share.
+- `en` num: kind=trade: enemy heroes in sight, and our heroes (the bot included, at least 1), within 1,200 of the bot.
+- `cr` num: kind=trade: enemy lane creeps within 500 of the bot, and those attacking it (plus 2 per enemy tower attacking it).
+- `tw` num: kind=trade: 1 when the bot or the target is within an enemy tower's reach.
+- `kh` num: kind=trade: the kill HP share (0.4 when the core's lane fights are ours, `lf` 1; else 0.25).
+- `gap` num: kind=trade: the HP-share gap a lost trade left (`recoverTo`); absent when none.
+- `d` num: kind=trade: the distance to the target and the trade's reach (attack range, both hulls, the role's walk-in).
+- `tlh` num: kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing).
+- `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
 
 ## cut_creeps
 
