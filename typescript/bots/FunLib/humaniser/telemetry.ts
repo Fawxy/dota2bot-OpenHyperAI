@@ -229,7 +229,7 @@ function perfProbe(): void {
     ]);
 }
 
-function perfAdd(kind: "entry" | "ours" | "sub", where: string, t0: number): void {
+function perfAdd(kind: "entry" | "ours" | "sub" | "step", where: string, t0: number): void {
     const d = perfClock!() - t0;
     let st = perfStats[where];
     if (st === undefined) {
@@ -318,6 +318,20 @@ function perfTimedOurs<F extends AnyFn>(where: string, g: F): F {
         if (perfOursDepth === 1) return doneSub(enterSub(), g(b1, b2, b3, b4, b5, b6));
         return g(b1, b2, b3, b4, b5, b6);
     }) as unknown as F;
+}
+
+/**
+ * Times an unguarded step inside a guarded call when the perf probe is on (kind `step`, inclusive; it overlaps the
+ * `ours` and `sub` rows around it). Returns fn unchanged with the probe off. Wrap after the first Guard() or Entry().
+ */
+export function PerfStep<F extends AnyFn>(where: string, fn: F): F {
+    perfProbe();
+    if (perfClock === undefined) return fn;
+    const done = (t0: number, ...res: any[]): any => {
+        perfAdd("step", where, t0);
+        return $multi(...res);
+    };
+    return ((b1: any, b2: any, b3: any, b4: any, b5: any, b6: any) => done(perfClock!(), fn(b1, b2, b3, b4, b5, b6))) as unknown as F;
 }
 
 /** Typed event: the name and every key must be declared in events.ts. The printed line is exactly what EventUntyped prints. */

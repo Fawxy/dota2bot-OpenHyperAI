@@ -144,6 +144,23 @@ function drawOverlay(bot: Unit): void {
     HDebug.Draw(bot);
 }
 
+// The unguarded steps of tick, so the perf probe can time each (Telemetry.PerfStep; installed below, after the guards).
+const steps = {
+    feed: Camps.FeedNeutralSpeeds,
+    pings: Pings.Tick,
+    commands: Commands.Tick,
+    lane: Lane.Tick,
+    trainer: Trainer.Tick,
+    lastHit: LastHitSkill.Tick,
+    orders: Orders.GetFor as (this: void, bot: Unit) => unknown,
+    intent: Intent.Tick,
+    telemetry: Telemetry.Tick,
+    regen: RegenObs.Tick,
+    probe: ApiProbe.Tick,
+    tasks: Tasks.Tick,
+    overlay: drawOverlay,
+};
+
 function tick(this: void, bot: Unit): void {
     if (!Config.IsEnabled()) {
         // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
@@ -154,7 +171,7 @@ function tick(this: void, bot: Unit): void {
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
-    Camps.FeedNeutralSpeeds(bot);
+    steps.feed(bot);
     Chat.EnsureInstalled(bot);
     Chat.FlushDeferred((tag, line) => HDebug.Log(tag, line));
     Difficulty.Init();
@@ -166,28 +183,28 @@ function tick(this: void, bot: Unit): void {
     Drill.Tick(bot);
     Retreat.Tick(bot);
     PairJoin.Tick(bot);
-    Pings.Tick(bot);
-    Commands.Tick(bot);
-    Lane.Tick(bot);
+    steps.pings(bot);
+    steps.commands(bot);
+    steps.lane(bot);
     LaneFight.Tick(bot);
     Transitions.Tick(bot);
-    Trainer.Tick(bot);
-    LastHitSkill.Tick(bot);
+    steps.trainer(bot);
+    steps.lastHit(bot);
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
-    Orders.GetFor(bot);
-    Intent.Tick(bot);
+    steps.orders(bot);
+    steps.intent(bot);
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
-    Telemetry.Tick(bot, telemetryContext);
+    steps.telemetry(bot, telemetryContext);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
-    pcall(RegenObs.Tick, bot);
-    pcall(ApiProbe.Tick, bot);
+    pcall(steps.regen, bot);
+    pcall(steps.probe, bot);
     // States select and (re)start their tasks before the runner's Tick checks them.
     States.Tick(bot);
     // tasks: task runner spike
-    Tasks.Tick(bot);
+    steps.tasks(bot);
     HDebug.SharedStateProbe(bot);
-    drawOverlay(bot);
+    steps.overlay(bot);
 }
 
 const none = (): undefined => undefined;
@@ -257,6 +274,9 @@ if (Telemetry.GuardsEnabled()) {
         IsCastKnown: () => true,
         GetIncomingTrackingProjectiles: (target: { GetIncomingTrackingProjectiles(this: unknown): unknown }) => target.GetIncomingTrackingProjectiles(),
     });
+}
+if (Telemetry.GuardsEnabled()) {
+    for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 

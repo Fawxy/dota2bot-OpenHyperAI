@@ -242,6 +242,21 @@ local function drawOverlay(bot)
     end
     HDebug.Draw(bot)
 end
+local steps = {
+    feed = Camps.FeedNeutralSpeeds,
+    pings = Pings.Tick,
+    commands = Commands.Tick,
+    lane = Lane.Tick,
+    trainer = Trainer.Tick,
+    lastHit = LastHitSkill.Tick,
+    orders = Orders.GetFor,
+    intent = Intent.Tick,
+    telemetry = Telemetry.Tick,
+    regen = RegenObs.Tick,
+    probe = ApiProbe.Tick,
+    tasks = Tasks.Tick,
+    overlay = drawOverlay
+}
 local function tick(bot)
     if not Config.IsEnabled() then
         if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
@@ -253,7 +268,7 @@ local function tick(bot)
     if not bot:IsHero() or bot:IsIllusion() then
         return
     end
-    Camps.FeedNeutralSpeeds(bot)
+    steps.feed(bot)
     Chat.EnsureInstalled(bot)
     Chat.FlushDeferred(function(tag, line) return HDebug.Log(tag, line) end)
     Difficulty.Init()
@@ -268,23 +283,23 @@ local function tick(bot)
     Drill.Tick(bot)
     Retreat.Tick(bot)
     PairJoin.Tick(bot)
-    Pings.Tick(bot)
-    Commands.Tick(bot)
-    Lane.Tick(bot)
+    steps.pings(bot)
+    steps.commands(bot)
+    steps.lane(bot)
     LaneFight.Tick(bot)
     Transitions.Tick(bot)
-    Trainer.Tick(bot)
-    LastHitSkill.Tick(bot)
-    Orders.GetFor(bot)
-    Intent.Tick(bot)
+    steps.trainer(bot)
+    steps.lastHit(bot)
+    steps.orders(bot)
+    steps.intent(bot)
     LaneControl.Tick(bot)
-    Telemetry.Tick(bot, telemetryContext)
-    pcall(RegenObs.Tick, bot)
-    pcall(ApiProbe.Tick, bot)
+    steps.telemetry(bot, telemetryContext)
+    pcall(steps.regen, bot)
+    pcall(steps.probe, bot)
     States.Tick(bot)
-    Tasks.Tick(bot)
+    steps.tasks(bot)
     HDebug.SharedStateProbe(bot)
-    drawOverlay(bot)
+    steps.overlay(bot)
 end
 local function none()
     return nil
@@ -486,6 +501,11 @@ if Telemetry.GuardsEnabled() then
             GetIncomingTrackingProjectiles = function(target) return target:GetIncomingTrackingProjectiles() end
         }
     )
+end
+if Telemetry.GuardsEnabled() then
+    for k, fn in pairs(steps) do
+        steps[k] = Telemetry.PerfStep("Tick:" .. k, fn)
+    end
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)
