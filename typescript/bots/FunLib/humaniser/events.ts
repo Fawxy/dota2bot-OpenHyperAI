@@ -2718,7 +2718,7 @@ export const EVENTS = {
         /** kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the
          *  bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP. */
         ko: "num",
-        /** kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over its HP. */
+        /** kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP. */
         kt: "num",
         /** kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no
          *  trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00.
