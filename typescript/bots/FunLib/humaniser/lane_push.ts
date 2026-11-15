@@ -218,8 +218,9 @@ export function Run(
         return pick;
     };
     let nextSample = from;
-    // Read once: a run is 600 steps of every creep, and the live speed does not change inside one call.
-    const walk = speed();
+    // Read once, at the first creep that walks: a run is 600 steps of every creep, and the live speed does not change inside
+    // one call. A run in which nothing walks still reads nothing (a read with no live value counts a fallback).
+    let walk: number | undefined;
     for (let t = from; t <= until + 1e-9; t = round3(t + dt)) {
         if (math.abs(t % GameRules.WAVE_EVERY) < dt / 2 && !(init !== undefined && t < from + dt / 2)) {
             const ts = math.floor(t + 0.5);
@@ -279,6 +280,7 @@ export function Run(
             } else if (u.building !== true) {
                 u.swingAt = undefined;
                 const goal = v !== undefined ? (v.s > u.s ? 1 : v.s < u.s ? -1 : 0) : dirOf(u.team);
+                if (walk === undefined) walk = speed();
                 u.s += goal * walk * dt;
             }
         }

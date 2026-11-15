@@ -343,6 +343,7 @@ export function PerfStep<F extends AnyFn>(where: string, fn: F): F {
  * at call time, so calls inside a module are timed too; a function captured by value before this ran is not.
  */
 export function PerfDeepInstall(): void {
+    if (!GuardsEnabled()) return;
     perfProbe();
     if (perfClock === undefined || Get().PerfDeep !== true) return;
     const done = (where: string, t0: number, ...res: any[]): any => {

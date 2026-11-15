@@ -167,11 +167,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue144
+            local __continue145
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue144 = true
+                    __continue145 = true
                     break
                 end
                 if select(
@@ -180,9 +180,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue144 = true
+                __continue145 = true
             until true
-            if not __continue144 then
+            if not __continue145 then
                 break
             end
         end
@@ -420,7 +420,7 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
         return pick
     end
     local nextSample = from
-    local walk = speed()
+    local walk
     do
         local t = from
         while t <= ____until + 1e-9 do
@@ -502,6 +502,9 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
                 elseif u.building ~= true then
                     u.swingAt = nil
                     local goal = v ~= nil and (v.s > u.s and 1 or (v.s < u.s and -1 or 0)) or dirOf(u.team)
+                    if walk == nil then
+                        walk = speed()
+                    end
                     u.s = u.s + goal * walk * dt
                 end
             end
@@ -522,17 +525,17 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
                 local front = {}
                 for ____, u in ipairs(units) do
                     do
-                        local __continue76
+                        local __continue77
                         repeat
                             if not u.alive or u.building == true then
-                                __continue76 = true
+                                __continue77 = true
                                 break
                             end
                             local f = front[u.team]
                             front[u.team] = f == nil and u.s or (u.team == R and math.max(f, u.s) or math.min(f, u.s))
-                            __continue76 = true
+                            __continue77 = true
                         until true
-                        if not __continue76 then
+                        if not __continue77 then
                             break
                         end
                     end
@@ -635,7 +638,7 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
         local ts = math.floor(t0 / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY
         while ts >= t0 - 3 * GameRules.WAVE_EVERY and ts >= 0 do
             do
-                local __continue101
+                local __continue102
                 repeat
                     local pos = spawnE + de * speed() * (t0 - ts)
                     local seen = false
@@ -645,11 +648,11 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                         end
                     end
                     if seen then
-                        __continue101 = true
+                        __continue102 = true
                         break
                     end
                     if lead ~= nil and de * (pos - lead) >= -____exports.SETTINGS.OurVision then
-                        __continue101 = true
+                        __continue102 = true
                         break
                     end
                     for ____, u in ipairs(____exports.WaveAt(e, ts, spawnE)) do
@@ -661,9 +664,9 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                             maxhp = u.maxhp
                         }
                     end
-                    __continue101 = true
+                    __continue102 = true
                 until true
-                if not __continue101 then
+                if not __continue102 then
                     break
                 end
             end
@@ -734,11 +737,11 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
     local found = not spawned
     for ____, c in ipairs(init) do
         do
-            local __continue118
+            local __continue119
             repeat
                 if c.team == team and inWave(c) then
                     found = true
-                    __continue118 = true
+                    __continue119 = true
                     break
                 end
                 left[#left + 1] = c
@@ -747,9 +750,9 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
                 elseif not inWave(c) then
                     ep = ep + c.hp
                 end
-                __continue118 = true
+                __continue119 = true
             until true
-            if not __continue118 then
+            if not __continue119 then
                 break
             end
         end
@@ -826,21 +829,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue138
+            local __continue139
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 out[#out + 1] = {
@@ -849,9 +852,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue138 = true
+                __continue139 = true
             until true
-            if not __continue138 then
+            if not __continue139 then
                 break
             end
         end

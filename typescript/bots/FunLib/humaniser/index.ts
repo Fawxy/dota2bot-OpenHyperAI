@@ -145,6 +145,7 @@ function drawOverlay(bot: Unit): void {
 }
 
 // The unguarded steps of tick, so the perf probe can time each (Telemetry.PerfStep; installed below, after the guards).
+// Copied here at load, before GuardModule runs: a step that gets a guard later must leave this table and be called by name.
 const steps = {
     feed: Camps.FeedNeutralSpeeds,
     pings: Pings.Tick,
