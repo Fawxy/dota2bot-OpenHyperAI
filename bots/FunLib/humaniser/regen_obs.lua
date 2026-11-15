@@ -212,11 +212,6 @@ function ____exports.Tick(bot)
         ____recent_7[____pid_8] = {}
     end
     local hist = recent[pid]
-    local drop = dropInWindow(
-        pid,
-        now,
-        bot:GetHealth()
-    )
     hist[#hist + 1] = {
         t = now,
         hp = bot:GetHealth()
@@ -280,7 +275,11 @@ function ____exports.Tick(bot)
                 math.max(0, was.dur - elapsed),
                 0,
                 why == "early" and sources(bot) or "-",
-                drop
+                dropInWindow(
+                    pid,
+                    now,
+                    bot:GetHealth()
+                )
             )
         end
     end

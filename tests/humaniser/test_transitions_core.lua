@@ -58,7 +58,9 @@ do
 	LANING = true
 	local line = H.Transitions.Overlay(b)
 	check("overlay format", line:match("^phase: laning busy=%a+ spare=%a+ alone=%a+ rot=%-$") ~= nil, line)
+	-- A later frame: OHA's phase answer is read once per frame (LaneConfig.InLaningPhase).
 	LANING = false
+	T = T + 1
 	check("overlay phase after laning", H.Transitions.Overlay(b):find("^phase: post ") ~= nil)
 	H.Transitions.SetOverlayProviders({ Busy = function() return true end, Rotation = function() return "top" end })
 	line = H.Transitions.Overlay(b)

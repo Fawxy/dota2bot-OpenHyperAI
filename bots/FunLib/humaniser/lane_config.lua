@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local isArray, merge, cached
+local isArray, merge, cached, phaseAt
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -449,6 +449,7 @@ end
 local helpers = {}
 function ____exports.SetHelpers(h)
     helpers = h
+    phaseAt = nil
 end
 function ____exports.Helpers()
     return helpers
@@ -456,16 +457,27 @@ end
 function ____exports.PositionOf(unit)
     return helpers.GetPosition ~= nil and helpers.GetPosition(unit) or nil
 end
+local phaseBot
+local phaseValue = false
+--- OHA's answer, asked once per frame and bot: its helper scans every allied unit on each call (J.IsModeTurbo looks for the
+-- courier) and reads the calling bot's net worth after the time floor, and our gates asked about a million times in ten
+-- minutes (perf probe 16/11/2026: the largest single cost in our script).
 function ____exports.InLaningPhase()
-    if Config.Now() ~= DotaTime() then
-        return Config.Now() < 600
+    local now = DotaTime()
+    local ours = Config.Now()
+    if ours ~= now then
+        return ours < 600
     end
-    local ____temp_3
-    if helpers.IsInLaningPhase ~= nil then
-        ____temp_3 = helpers.IsInLaningPhase()
-    else
-        ____temp_3 = DotaTime() < 600
+    if helpers.IsInLaningPhase == nil then
+        return now < 600
     end
-    return ____temp_3
+    local bot = GetBot ~= nil and GetBot() or nil
+    if now == phaseAt and bot == phaseBot then
+        return phaseValue
+    end
+    phaseValue = helpers.IsInLaningPhase()
+    phaseAt = now
+    phaseBot = bot
+    return phaseValue
 end
 return ____exports

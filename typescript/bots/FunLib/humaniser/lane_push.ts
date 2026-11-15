@@ -192,20 +192,35 @@ export function Run(
     };
     const inReach = (u: SimUnit, v: SimUnit, r: number) => math.abs(v.s - u.s) <= r + REACH;
     let live: SimUnit[] = [];
+    // The run's inner loop (every unit against every live unit, 20 times a second of forecast): inReach and rank are written
+    // out here, since their calls were most of a run's time. test_lane_push holds the results to the offline model.
     const best = (u: SimUnit, r: number): SimUnit | undefined => {
         let pick: SimUnit | undefined;
         let key = math.huge;
+        const team = u.team;
+        const us = u.s;
+        const lim = r + REACH;
+        const siege = u.kind === "siege";
         for (const v of live) {
-            if (v.team === u.team || !v.alive || !inReach(u, v, r)) continue;
-            const k = rank(u, v) * 1e6 + math.abs(v.s - u.s);
-            if (k < key) {
-                key = k;
-                pick = v;
+            if (v.team !== team && v.alive) {
+                let d = v.s - us;
+                if (d < 0) d = -d;
+                if (d <= lim) {
+                    const type = v.building === true ? 0 : v.kind === "siege" ? 2 : 1;
+                    const k = (siege ? type : type === 1 ? 0 : type === 2 ? 1 : 2) * 1e6 + d;
+                    if (k < key) {
+                        key = k;
+                        pick = v;
+                    }
+                }
             }
         }
         return pick;
     };
     let nextSample = from;
+    // Read once, at the first creep that walks: a run is 600 steps of every creep, and the live speed does not change inside
+    // one call. A run in which nothing walks still reads nothing (a read with no live value counts a fallback).
+    let walk: number | undefined;
     for (let t = from; t <= until + 1e-9; t = round3(t + dt)) {
         if (math.abs(t % GameRules.WAVE_EVERY) < dt / 2 && !(init !== undefined && t < from + dt / 2)) {
             const ts = math.floor(t + 0.5);
@@ -213,35 +228,45 @@ export function Run(
             if (skip?.team !== D || skip.t !== ts) for (const u of WaveAt(D, ts, lane.spawnD)) units.push(u);
         }
         live = [];
-        for (const u of units) if (u.alive) live.push(u);
+        const flags: SimUnit[] = [];
+        for (const u of units) {
+            if (u.alive) {
+                live.push(u);
+                if (u.aura === true) flags.push(u);
+            }
+        }
         for (const u of live) {
             let r = u.regen;
             if (u.building !== true) {
-                for (const f of live) {
-                    if (f.aura === true && f.team === u.team && math.abs(f.s - u.s) <= FLAG_RADIUS) {
+                for (const f of flags) {
+                    if (f.team === u.team && math.abs(f.s - u.s) <= FLAG_RADIUS) {
                         r += FLAG_REGEN;
                         break;
                     }
                 }
             }
-            u.hp = math.min(u.maxhp, u.hp + r * dt);
+            const hp = u.hp + r * dt;
+            u.hp = hp < u.maxhp ? hp : u.maxhp;
         }
         for (const u of live) {
             if (u.target !== undefined && !u.target.alive) {
                 u.target = undefined;
                 u.swingAt = undefined;
             }
-            if (u.swingAt !== undefined) continue;
-            if (u.target !== undefined) {
-                const b = best(u, u.range);
-                if (b !== undefined && (rank(u, b) < rank(u, u.target) || !inReach(u, u.target, u.range))) u.target = b;
-                else if (!inReach(u, u.target, u.acq) && b === undefined) u.target = undefined;
+            if (u.swingAt === undefined) {
+                if (u.target !== undefined) {
+                    const b = best(u, u.range);
+                    if (b !== undefined && (rank(u, b) < rank(u, u.target) || !inReach(u, u.target, u.range))) u.target = b;
+                    else if (!inReach(u, u.target, u.acq) && b === undefined) u.target = undefined;
+                }
+                if (u.target === undefined) u.target = best(u, u.acq);
             }
-            if (u.target === undefined) u.target = best(u, u.acq);
         }
         for (const u of live) {
             const v = u.target;
-            if (v !== undefined && math.abs(v.s - u.s) <= u.range + REACH) {
+            let gap = v !== undefined ? v.s - u.s : 0;
+            if (gap < 0) gap = -gap;
+            if (v !== undefined && gap <= u.range + REACH) {
                 if (u.swingAt === undefined && t >= u.readyAt) {
                     u.swingAt = t + u.point;
                     u.readyAt = t + u.bat;
@@ -249,13 +274,14 @@ export function Run(
                 if (u.swingAt !== undefined && t >= u.swingAt) {
                     u.swingAt = undefined;
                     const dmg = damage(u, v);
-                    if (u.proj > 0) projectiles.push({ at: t + math.abs(v.s - u.s) / u.proj, dst: v, dmg });
+                    if (u.proj > 0) projectiles.push({ at: t + gap / u.proj, dst: v, dmg });
                     else hit(v, dmg);
                 }
             } else if (u.building !== true) {
                 u.swingAt = undefined;
                 const goal = v !== undefined ? (v.s > u.s ? 1 : v.s < u.s ? -1 : 0) : dirOf(u.team);
-                u.s += goal * speed() * dt;
+                if (walk === undefined) walk = speed();
+                u.s += goal * walk * dt;
             }
         }
         for (let i = projectiles.length - 1; i >= 0; i--) {
