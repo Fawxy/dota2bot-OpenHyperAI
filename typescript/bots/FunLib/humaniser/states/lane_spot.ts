@@ -255,43 +255,6 @@ function covers(cover: Cover, p: Vector, hit: number): boolean {
     return false;
 }
 
-/**
- * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
- * `hp` when only the HP margin breaks a hero or creep limit. `reach` holds each hero's reach (HeroReach), in `heroes` order;
- * `cover`, when given, relaxes them under our towers.
- */
-export function Breaks(
-    p: Vector,
-    creeps: Unit[],
-    towers: Unit[],
-    margin = 0,
-    heroes: Unit[] = [],
-    reach: number[] = [],
-    cover?: Cover,
-    busy?: boolean[],
-): Why | undefined {
-    let hp = false;
-    for (let i = 0; i < heroes.length; i++) {
-        const h = heroes[i];
-        if (!alive(h)) continue;
-        let r = reach[i];
-        if (cover !== undefined && (cover.tanking[i] || covers(cover, p, cover.hit[i]))) r = cover.near[i];
-        const dist = d2(p, h.GetLocation());
-        if (dist < r) return "hero";
-        if (dist < r + margin) hp = true;
-    }
-    for (let i = 0; i < creeps.length; i++) {
-        const c = creeps[i];
-        if (!alive(c)) continue;
-        const ring = (cover !== undefined && cover.held[i]) || (busy !== undefined && busy[i]) ? HELD_RING : isRangedCreep(c) ? RANGED_RING : MELEE_RING;
-        const dist = d2(p, c.GetLocation());
-        if (dist < ring) return "creep";
-        if (dist < ring + margin) hp = true;
-    }
-    if (breaksTower(p, towers)) return "tower";
-    return hp ? "hp" : undefined;
-}
-
 /** Our towers in reach and what they cover; undefined with Ours.LaneSpotTower off or no tower of ours near. */
 function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined {
     if (!On("LaneSpotTower")) return undefined;
@@ -325,9 +288,78 @@ function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined 
     return { towers, held, tanking, near, hit };
 }
 
-function breaksTower(p: Vector, towers: Unit[]): boolean {
-    for (const t of towers) if (alive(t) && d2(p, t.GetLocation()) < TOWER_RING + HOLD_DRIFT) return true;
+/**
+ * What the spot's limits read from the game, taken once per Compute: Compute asks about some thirty places in one frame,
+ * and the units do not move inside it. `reach` holds each hero's reach (HeroReach), in `heroes` order. `ring` is each
+ * creep's ring under our towers' cover, `ringOpen` without it.
+ */
+interface Field {
+    hx: number[];
+    hy: number[];
+    reach: number[];
+    cx: number[];
+    cy: number[];
+    ring: number[];
+    ringOpen: number[];
+    tx: number[];
+    ty: number[];
+}
+
+function fieldOf(creeps: Unit[], towers: Unit[], heroes: Unit[], reach: number[], cover: Cover | undefined, busy: boolean[] | undefined): Field {
+    const f: Field = { hx: [], hy: [], reach: [], cx: [], cy: [], ring: [], ringOpen: [], tx: [], ty: [] };
+    for (let i = 0; i < heroes.length; i++) {
+        const at = heroes[i].GetLocation();
+        f.hx.push(at.x);
+        f.hy.push(at.y);
+        f.reach.push(reach[i]);
+    }
+    for (let i = 0; i < creeps.length; i++) {
+        const c = creeps[i];
+        const at = c.GetLocation();
+        f.cx.push(at.x);
+        f.cy.push(at.y);
+        const open = busy !== undefined && busy[i] ? HELD_RING : isRangedCreep(c) ? RANGED_RING : MELEE_RING;
+        f.ringOpen.push(open);
+        f.ring.push(cover !== undefined && cover.held[i] ? HELD_RING : open);
+    }
+    for (const t of towers) {
+        if (!alive(t)) continue;
+        const at = t.GetLocation();
+        f.tx.push(at.x);
+        f.ty.push(at.y);
+    }
+    return f;
+}
+
+function fieldBreaksTower(f: Field, p: Vector): boolean {
+    for (let i = 0; i < f.tx.length; i++) if (len(p.x - f.tx[i], p.y - f.ty[i]) < TOWER_RING + HOLD_DRIFT) return true;
     return false;
+}
+
+/**
+ * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
+ * `hp` when only the HP margin breaks a hero or creep limit. `heroes` false leaves the hero limit out (the threat read has
+ * it); `cover`, when given, relaxes the limits under our towers.
+ */
+function fieldBreaks(f: Field, p: Vector, margin: number, heroes: boolean, cover: Cover | undefined): Why | undefined {
+    let hp = false;
+    if (heroes) {
+        for (let i = 0; i < f.hx.length; i++) {
+            let r = f.reach[i];
+            if (cover !== undefined && (cover.tanking[i] || covers(cover, p, cover.hit[i]))) r = cover.near[i];
+            const dist = len(p.x - f.hx[i], p.y - f.hy[i]);
+            if (dist < r) return "hero";
+            if (dist < r + margin) hp = true;
+        }
+    }
+    const ring = cover !== undefined ? f.ring : f.ringOpen;
+    for (let i = 0; i < f.cx.length; i++) {
+        const dist = len(p.x - f.cx[i], p.y - f.cy[i]);
+        if (dist < ring[i]) return "creep";
+        if (dist < ring[i] + margin) hp = true;
+    }
+    if (fieldBreaksTower(f, p)) return "tower";
+    return hp ? "hp" : undefined;
 }
 
 /** The fed creep when it anchors the spot: alive, in sight and at FED_HP or below. */
@@ -483,6 +515,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     // Ours.LaneSpotThreat: the enemy-hero limit is the read (see READ_HORIZON); under our own tower the old limits and the cover stand.
     const byRead = On("LaneSpotThreat");
     const here = bot.GetLocation();
+    const field = fieldOf(creeps, towers, heroes, reach, cover, busy);
     const underOwn = (p: Vector): boolean => {
         if (cover === undefined) return false;
         for (const t of cover.towers) if (d2(p, t.at) <= t.range) return true;
@@ -491,14 +524,18 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     const readOn = (p: Vector): boolean => byRead && !underOwn(p);
     const reads: Record<string, Threat.Read> = {};
     let readN = 0;
+    let reader: ReturnType<typeof Threat.Reader> | undefined;
     // One read per position (a row of candidates reads at its lane-axis point): walks towards a hero from here, else the place alone.
     const readAt = (p: Vector): Threat.Read => {
         const key = `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
         let r = reads[key];
         if (r === undefined) {
             let toward = false;
-            for (const h of heroes) if (d2(p, h.GetLocation()) < d2(here, h.GetLocation())) toward = true;
-            r = Threat.Read(bot, toward ? here : p, p, READ_HORIZON, { engagedWindow: LANE_ENGAGED_WINDOW });
+            for (let i = 0; i < field.hx.length; i++) {
+                if (len(p.x - field.hx[i], p.y - field.hy[i]) < len(here.x - field.hx[i], here.y - field.hy[i])) toward = true;
+            }
+            reader = reader ?? Threat.Reader(bot, READ_HORIZON, { engagedWindow: LANE_ENGAGED_WINDOW });
+            r = reader(toward ? here : p, p);
             reads[key] = r;
             readN++;
         }
@@ -511,8 +548,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         return r.burst >= READ_BURST ? "burst" : r.missing >= READ_MISSING ? "missing" : pressured(r) ? "threat" : "none";
     };
     const readBreaks = (p: Vector): boolean => readOn(p) && verdict(readAt(p)) !== "none";
-    const limits = (p: Vector, cov: Cover | undefined): Why | undefined =>
-        readOn(p) ? Breaks(p, creeps, towers, margin, [], [], cov, busy) : Breaks(p, creeps, towers, margin, heroes, reach, cov, busy);
+    const limits = (p: Vector, cov: Cover | undefined): Why | undefined => fieldBreaks(field, p, margin, !readOn(p), cov);
     const covered = (p: Vector): number => (cover !== undefined && limits(p, undefined) !== undefined ? 1 : 0);
     const done = (spot: Vector, pushed: number, why: Why, cov: number): SpotInfo => {
         const info: SpotInfo = { spot, pushed, anchor, why, margin, covered: cov, clash: cl, far: fo };
@@ -520,10 +556,10 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
             const r = readAt(spot);
             info.rb = r.burst;
             info.rt = r.threat;
-            info.ob = Breaks(spot, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
+            info.ob = fieldBreaks(field, spot, margin, true, cover) ?? "none";
             info.rm = r.missing;
             info.mp = r.mpids.length > 0 ? r.mpids.join(",") : undefined;
-            info.op = Breaks(pref, creeps, towers, margin, heroes, reach, cover, busy) ?? "none";
+            info.op = fieldBreaks(field, pref, margin, true, cover) ?? "none";
             info.rp = "none";
             if (readOn(pref)) info.rp = verdict(readAt(pref));
             info.re = r.eng.length;
@@ -552,7 +588,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
             const cost = len(PUSH_STEP * k, off);
             if (cost >= bestCost) continue;
             const p = Vector(bx + nx * off, by + ny * off, front.z);
-            if (best === undefined && (keep === undefined || k > keepPushed) && !breaksTower(p, towers)) {
+            if (best === undefined && (keep === undefined || k > keepPushed) && !fieldBreaksTower(field, p)) {
                 keep = p;
                 keepPushed = k;
             }

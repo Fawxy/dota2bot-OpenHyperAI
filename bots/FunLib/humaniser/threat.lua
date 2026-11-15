@@ -1,5 +1,13 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
+    end
+    return result
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -186,55 +194,27 @@ end
 local function valid(u)
     return u ~= nil and u ~= nil and u:IsAlive() and not u:IsIllusion()
 end
---- Can `u` be in attack range of a point on the walk within `horizon`: its run plus its attack range and both hulls.
-local function canReach(u, bot, from, place, horizon)
-    local at = u:GetLocation()
-    if at == nil or at == nil then
-        return false
-    end
-    local run = u:GetCurrentMovementSpeed() * horizon + u:GetAttackRange() + u:GetBoundingRadius() + bot:GetBoundingRadius()
-    return distToSegment(at, from, place) <= run
-end
 local T1_IDS = {Tower.Top1, Tower.Mid1, Tower.Bot1}
-local function nearestOf(team, ids, place)
-    local best
+--- A team's standing towers among `ids`, in `ids` order.
+local function standing(team, ids)
+    local out = {}
     for ____, id in ipairs(ids) do
-        do
-            local __continue9
-            repeat
-                local tw = GetTower(team, id)
-                if not valid(tw) then
-                    __continue9 = true
-                    break
-                end
-                local d = dist(
-                    tw:GetLocation(),
-                    place
-                )
-                if best == nil or d < best then
-                    best = d
-                end
-                __continue9 = true
-            until true
-            if not __continue9 then
-                break
-            end
+        local tw = GetTower(team, id)
+        if valid(tw) then
+            out[#out + 1] = tw
+        end
+    end
+    return out
+end
+local function nearestOf(at, place)
+    local best
+    for ____, a in ipairs(at) do
+        local d = dist(a, place)
+        if best == nil or d < best then
+            best = d
         end
     end
     return best
-end
---- The team's nearest standing T1 (the tower set the depth factors were fitted on), else its nearest standing tower.
-local function nearestTower(team, place)
-    return nearestOf(team, T1_IDS, place) or nearestOf(team, TOWER_IDS, place)
-end
---- The place's depth: its distance to the nearest enemy tower over the sum with the distance to our nearest; DepthDefault with no read.
-local function placeDepth(team, enemyTeam, place)
-    local own = nearestTower(team, place)
-    local en = nearestTower(enemyTeam, place)
-    if own == nil or en == nil or own + en <= 0 then
-        return ____exports.SETTINGS.DepthDefault
-    end
-    return en / (own + en)
 end
 local function stepFactor(steps, v)
     for ____, ____value in ipairs(steps) do
@@ -246,35 +226,7 @@ local function stepFactor(steps, v)
     end
     return steps[#steps][2]
 end
-local function inTowerReach(enemyTeam, place)
-    for ____, id in ipairs(TOWER_IDS) do
-        do
-            local __continue21
-            repeat
-                local tw = GetTower(enemyTeam, id)
-                if not valid(tw) then
-                    __continue21 = true
-                    break
-                end
-                if dist(
-                    tw:GetLocation(),
-                    place
-                ) <= WorldFacts.TowerReach(tw, ____exports.SETTINGS.TowerReach) then
-                    return true
-                end
-                __continue21 = true
-            until true
-            if not __continue21 then
-                break
-            end
-        end
-    end
-    return false
-end
---- The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
--- read speed, capped) plus MissingMargin; one whose run touches the walk adds EarlyWeight or LateWeight by game minute.
--- Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for a bot-only team). A hero the API has no sighting of is
--- not placed and not counted.
+--- The walk's points every WalkStep, and the place (the vision cut looks at each).
 function ____exports.WalkPoints(from, place)
     local d = dist(from, place)
     local n = math.max(
@@ -300,66 +252,6 @@ local function unseenWithin(points, at, r)
     end
     return false
 end
---- The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
--- read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
--- (VisionCut), adds EarlyWeight or LateWeight by game minute, scaled by the place prior (DepthFactor for the place's depth,
--- DistFactor for its last-seen distance to the place). Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for
--- a bot-only team). A hero the API has no sighting of is not placed and not counted.
-local function missingOf(bot, from, place, depth, now, visible)
-    local s = ____exports.SETTINGS
-    local team = bot:GetTeam()
-    local base = (now < s.EarlyUntil and s.EarlyWeight or s.LateWeight) * stepFactor(s.DepthFactor, depth)
-    local sum = 0
-    local cut = 0
-    local mtss
-    local pids = {}
-    local points
-    do
-        local pid = 0
-        while pid <= MAX_PLAYER_ID do
-            do
-                local __continue32
-                repeat
-                    local t = GetTeamForPlayer(pid)
-                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue32 = true
-                        break
-                    end
-                    local info = GetHeroLastSeenInfo(pid)[1]
-                    if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue32 = true
-                        break
-                    end
-                    local r = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin
-                    if distToSegment(info.location, from, place) > r then
-                        __continue32 = true
-                        break
-                    end
-                    if s.VisionCut then
-                        points = points or ____exports.WalkPoints(from, place)
-                        if not unseenWithin(points, info.location, r) then
-                            cut = cut + 1
-                            __continue32 = true
-                            break
-                        end
-                    end
-                    sum = sum + base * stepFactor(
-                        s.DistFactor,
-                        dist(info.location, place)
-                    )
-                    pids[#pids + 1] = pid
-                    mtss = math.max(mtss or 0, info.time_since_seen)
-                    __continue32 = true
-                until true
-                if not __continue32 then
-                    break
-                end
-            end
-            pid = pid + 1
-        end
-    end
-    return sum, pids, mtss, cut
-end
 local function itemReady(bot, name)
     local slot = bot:FindItemSlot(name)
     if slot < 0 or slot > 5 then
@@ -367,28 +259,6 @@ local function itemReady(bot, name)
     end
     local item = bot:GetItemInSlot(slot)
     return item ~= nil and item ~= nil and item:IsFullyCastable()
-end
---- Can `bot` leave the reach of `chasers` first (design 5.1): an escape item ready, or faster than each and out of its attack range.
-local function escapeOf(bot, chasers)
-    if #chasers == 0 then
-        return true
-    end
-    for ____, name in ipairs(____exports.SETTINGS.EscapeItems) do
-        if itemReady(bot, name) then
-            return true
-        end
-    end
-    local ours = bot:GetCurrentMovementSpeed()
-    for ____, e in ipairs(chasers) do
-        if e:GetCurrentMovementSpeed() >= ours then
-            return false
-        end
-        local gap = GetUnitToUnitDistance(bot, e) - e:GetAttackRange() - e:GetBoundingRadius() - bot:GetBoundingRadius()
-        if gap < ____exports.SETTINGS.EscapeMargin then
-            return false
-        end
-    end
-    return true
 end
 --- The last movement speed Read saw for an enemy hero (the missing belief's run uses it), or undefined.
 function ____exports.SeenSpeed(pid)
@@ -400,24 +270,32 @@ function ____exports.BandOf(threat, lethal)
     end
     return threat >= ____exports.SETTINGS.Pressured and "pressured" or (threat >= ____exports.SETTINGS.Watch and "watch" or "none")
 end
---- The read for `bot` walking from `from` to `place` with `horizon` seconds ahead. `lethal` fires when the heroes in reach
--- can deal the bot's HP within the burst window, they outnumber our heroes in reach and the bot has no `escape`.
-function ____exports.Read(bot, from, place, horizon, opts)
+--- The reads for `bot` with `horizon` seconds ahead, as a function of the walk (`from` to `place`). What does not depend on the
+-- walk (who is seen and where, the standing towers, the unseen heroes' sightings, an escape item) is read from the game once,
+-- here, so a caller weighing several places in one frame (the lane spot) pays for the heroes and towers once. Use it within
+-- the frame it was made in. `lethal` fires when the heroes in reach can deal the bot's HP within the burst window, they
+-- outnumber our heroes in reach and the bot has no `escape`.
+-- 
+-- The missing belief: per alive enemy hero unseen for more than MissingAfter, its possible run since the sighting (its last
+-- read speed, capped) plus MissingMargin; one whose run touches the walk, with some of that reach out of our sight
+-- (VisionCut), adds EarlyWeight or LateWeight by game minute, scaled by the place prior (DepthFactor for the place's depth,
+-- DistFactor for its last-seen distance to the place). Walks player ids with GetTeamForPlayer (GetTeamPlayers is empty for
+-- a bot-only team). A hero the API has no sighting of is not placed and not counted.
+function ____exports.Reader(bot, horizon, opts)
     local s = ____exports.SETTINGS
     local now = DotaTime()
-    local visible = {}
-    local reach = {}
-    local chasers = {}
-    local eng = {}
-    local att = {}
-    local dmg = 0
+    local team = bot:GetTeam()
+    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
+    local hull = bot:GetBoundingRadius()
     local window = math.min(horizon, s.BurstWindow)
+    local visible = {}
+    local enemies = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue53
+            local __continue30
             repeat
                 if not valid(e) or not e:CanBeSeen() then
-                    __continue53 = true
+                    __continue30 = true
                     break
                 end
                 local pid = e:GetPlayerID()
@@ -426,106 +304,257 @@ function ____exports.Read(bot, from, place, horizon, opts)
                 if sp ~= nil and sp > 0 then
                     speeds[pid] = sp
                 end
-                if canReach(
-                    e,
-                    bot,
-                    from,
-                    place,
-                    horizon
-                ) then
-                    reach[#reach + 1] = pid
-                    chasers[#chasers + 1] = e
-                    local w = window
-                    if (opts and opts.engagedWindow) ~= nil then
-                        if e:GetAttackTarget() == bot then
-                            att[#att + 1] = pid
-                        end
-                        if bot:WasRecentlyDamagedByHero(e, s.EngagedRecent) then
-                            eng[#eng + 1] = pid
-                            w = opts.engagedWindow
-                        end
-                    end
-                    dmg = dmg + e:GetEstimatedDamageToTarget(true, bot, w, DamageType.All)
-                end
-                __continue53 = true
-            until true
-            if not __continue53 then
-                break
-            end
-        end
-    end
-    local allies = 0
-    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
-        do
-            local __continue61
-            repeat
-                if not valid(a) or a == bot or RetreatState.Running(a) then
-                    __continue61 = true
+                local at = e:GetLocation()
+                if at == nil or at == nil then
+                    __continue30 = true
                     break
                 end
-                if canReach(
-                    a,
-                    bot,
-                    place,
-                    place,
-                    horizon
-                ) then
-                    allies = allies + 1
-                end
-                __continue61 = true
+                enemies[#enemies + 1] = {
+                    u = e,
+                    pid = pid,
+                    at = at,
+                    run = sp * horizon + e:GetAttackRange() + e:GetBoundingRadius() + hull
+                }
+                __continue30 = true
             until true
-            if not __continue61 then
+            if not __continue30 then
                 break
             end
         end
     end
-    local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
-    local depth = placeDepth(
-        bot:GetTeam(),
-        enemyTeam,
-        place
+    local allies = {}
+    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+        do
+            local __continue35
+            repeat
+                if not valid(a) or a == bot or RetreatState.Running(a) then
+                    __continue35 = true
+                    break
+                end
+                local at = a:GetLocation()
+                if at == nil or at == nil then
+                    __continue35 = true
+                    break
+                end
+                allies[#allies + 1] = {
+                    u = a,
+                    pid = a:GetPlayerID(),
+                    at = at,
+                    run = a:GetCurrentMovementSpeed() * horizon + a:GetAttackRange() + a:GetBoundingRadius() + hull
+                }
+                __continue35 = true
+            until true
+            if not __continue35 then
+                break
+            end
+        end
+    end
+    local enemyTowers = standing(enemyTeam, TOWER_IDS)
+    local enemyTowerAt = __TS__ArrayMap(
+        enemyTowers,
+        function(____, tw) return tw:GetLocation() end
     )
-    local missing, mpids, mtss, mcut = missingOf(
-        bot,
-        from,
-        place,
-        depth,
-        now,
-        visible
-    )
-    local tower = inTowerReach(enemyTeam, place)
+    local enemyTowerReach = {}
+    local function depthAt(t, all)
+        local t1 = __TS__ArrayMap(
+            standing(t, T1_IDS),
+            function(____, tw) return tw:GetLocation() end
+        )
+        return #t1 > 0 and t1 or (all or __TS__ArrayMap(
+            standing(t, TOWER_IDS),
+            function(____, tw) return tw:GetLocation() end
+        ))
+    end
+    local ownDepthAt = depthAt(team, nil)
+    local enemyDepthAt = depthAt(enemyTeam, enemyTowerAt)
+    local unseen = {}
+    do
+        local pid = 0
+        while pid <= MAX_PLAYER_ID do
+            do
+                local __continue43
+                repeat
+                    local t = GetTeamForPlayer(pid)
+                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
+                        __continue43 = true
+                        break
+                    end
+                    local info = GetHeroLastSeenInfo(pid)[1]
+                    if info == nil or info.time_since_seen <= s.MissingAfter then
+                        __continue43 = true
+                        break
+                    end
+                    unseen[#unseen + 1] = {
+                        pid = pid,
+                        at = info.location,
+                        tss = info.time_since_seen,
+                        r = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin
+                    }
+                    __continue43 = true
+                until true
+                if not __continue43 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    local early = now < s.EarlyUntil and s.EarlyWeight or s.LateWeight
     local hp = math.max(
         1,
         bot:GetHealth()
     )
-    local burst = dmg / hp
-    local raw = s.WReach * #reach + s.WMissing * missing + (tower and s.WTower or 0) + s.WBurst * math.min(1, burst) - s.WAlly * allies
-    local threat = math.max(
-        0,
-        math.min(1, raw)
-    )
-    local escape = escapeOf(bot, chasers)
-    local lethal = burst >= 1 and #reach > allies and not escape
-    return {
-        t = now,
-        from = from,
-        place = place,
-        horizon = horizon,
-        depth = depth,
-        reach = reach,
-        burst = burst,
-        allies = allies,
-        escape = escape,
-        tower = tower,
-        missing = missing,
-        mpids = mpids,
-        mtss = mtss,
-        mcut = mcut,
-        threat = threat,
-        band = ____exports.BandOf(threat, lethal),
-        eng = eng,
-        att = att
-    }
+    local escapeItem
+    return function(from, place)
+        local reach = {}
+        local chasers = {}
+        local eng = {}
+        local att = {}
+        local dmg = 0
+        for ____, e in ipairs(enemies) do
+            do
+                local __continue47
+                repeat
+                    if distToSegment(e.at, from, place) > e.run then
+                        __continue47 = true
+                        break
+                    end
+                    reach[#reach + 1] = e.pid
+                    chasers[#chasers + 1] = e.u
+                    if e.dmg == nil then
+                        local w = window
+                        if (opts and opts.engagedWindow) ~= nil then
+                            e.att = e.u:GetAttackTarget() == bot
+                            e.eng = bot:WasRecentlyDamagedByHero(e.u, s.EngagedRecent)
+                            if e.eng then
+                                w = opts.engagedWindow
+                            end
+                        end
+                        e.dmg = e.u:GetEstimatedDamageToTarget(true, bot, w, DamageType.All)
+                    end
+                    if e.att == true then
+                        att[#att + 1] = e.pid
+                    end
+                    if e.eng == true then
+                        eng[#eng + 1] = e.pid
+                    end
+                    dmg = dmg + e.dmg
+                    __continue47 = true
+                until true
+                if not __continue47 then
+                    break
+                end
+            end
+        end
+        local near = 0
+        for ____, a in ipairs(allies) do
+            if distToSegment(a.at, place, place) <= a.run then
+                near = near + 1
+            end
+        end
+        local own = nearestOf(ownDepthAt, place)
+        local en = nearestOf(enemyDepthAt, place)
+        local depth = (own == nil or en == nil or own + en <= 0) and s.DepthDefault or en / (own + en)
+        local base = early * stepFactor(s.DepthFactor, depth)
+        local missing = 0
+        local mcut = 0
+        local mtss
+        local mpids = {}
+        local points
+        for ____, m in ipairs(unseen) do
+            do
+                local __continue58
+                repeat
+                    if distToSegment(m.at, from, place) > m.r then
+                        __continue58 = true
+                        break
+                    end
+                    if s.VisionCut then
+                        points = points or ____exports.WalkPoints(from, place)
+                        if not unseenWithin(points, m.at, m.r) then
+                            mcut = mcut + 1
+                            __continue58 = true
+                            break
+                        end
+                    end
+                    missing = missing + base * stepFactor(
+                        s.DistFactor,
+                        dist(m.at, place)
+                    )
+                    mpids[#mpids + 1] = m.pid
+                    mtss = math.max(mtss or 0, m.tss)
+                    __continue58 = true
+                until true
+                if not __continue58 then
+                    break
+                end
+            end
+        end
+        local tower = false
+        do
+            local i = 0
+            while i < #enemyTowers and not tower do
+                local r = enemyTowerReach[i + 1]
+                if r == nil then
+                    r = WorldFacts.TowerReach(enemyTowers[i + 1], s.TowerReach)
+                    enemyTowerReach[i + 1] = r
+                end
+                tower = dist(enemyTowerAt[i + 1], place) <= r
+                i = i + 1
+            end
+        end
+        local escape = true
+        if #chasers > 0 then
+            if escapeItem == nil then
+                escapeItem = false
+                for ____, name in ipairs(s.EscapeItems) do
+                    if itemReady(bot, name) then
+                        escapeItem = true
+                    end
+                end
+            end
+            if not escapeItem then
+                local ours = bot:GetCurrentMovementSpeed()
+                for ____, e in ipairs(chasers) do
+                    if e:GetCurrentMovementSpeed() >= ours or GetUnitToUnitDistance(bot, e) - e:GetAttackRange() - e:GetBoundingRadius() - hull < s.EscapeMargin then
+                        escape = false
+                        break
+                    end
+                end
+            end
+        end
+        local burst = dmg / hp
+        local raw = s.WReach * #reach + s.WMissing * missing + (tower and s.WTower or 0) + s.WBurst * math.min(1, burst) - s.WAlly * near
+        local threat = math.max(
+            0,
+            math.min(1, raw)
+        )
+        local lethal = burst >= 1 and #reach > near and not escape
+        return {
+            t = now,
+            from = from,
+            place = place,
+            horizon = horizon,
+            depth = depth,
+            reach = reach,
+            burst = burst,
+            allies = near,
+            escape = escape,
+            tower = tower,
+            missing = missing,
+            mpids = mpids,
+            mtss = mtss,
+            mcut = mcut,
+            threat = threat,
+            band = ____exports.BandOf(threat, lethal),
+            eng = eng,
+            att = att
+        }
+    end
+end
+--- One read: `bot` walking from `from` to `place` with `horizon` seconds ahead (see Reader).
+function ____exports.Read(bot, from, place, horizon, opts)
+    return ____exports.Reader(bot, horizon, opts)(from, place)
 end
 --- The lone-hero stand (slice mid-stand): exactly one visible enemy hero can reach the walk, it has not damaged us within
 -- EngagedRecent (the read was made with `opts.engagedWindow`, so `eng` is filled), its burst is under StandBurst of our HP,
