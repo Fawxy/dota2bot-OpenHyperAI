@@ -619,7 +619,8 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
     }
     if (target === undefined || inputs === undefined) return hitBack(bot, now, "no_target");
-    if (owns && d.kind !== "kill" && d.respect !== "tower" && d.respect !== "outnumbered") {
+    // A lane fight keeps the target-by-tower test the safe rule dropped for harass (a fight chases; D19, not this rule).
+    if (owns && d.kind !== "kill" && !inputs.tower && d.respect !== "tower" && d.respect !== "outnumbered") {
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
@@ -675,8 +676,9 @@ function joinable(bot: Unit): Plays.Play | undefined {
     for (const p of Plays.Near(bot.GetLocation(), JOIN_NEAR)) {
         const t = p.target;
         if (p.by === bot || !valid(t) || GetUnitToUnitDistance(bot, t) > reach) continue;
-        const r = Decide(Gather(bot, t), false, killHpFor(bot)).respect;
-        if (r === "tower" || r === "outnumbered") continue;
+        const g = Gather(bot, t);
+        const r = Decide(g, false, killHpFor(bot)).respect;
+        if (g.tower || r === "tower" || r === "outnumbered") continue;
         if (Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero !== undefined) continue;
         return p;
     }
@@ -715,7 +717,9 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         if (now - ep.startedAt > FIGHT_TIME) return "time";
         if (ep.play !== undefined && !Plays.Active().includes(ep.play)) return "play_end";
         if (FR.HpFraction(bot) < Plays.SETTINGS.HpFloor) return "hp";
-        const r = Decide(Gather(bot, ep.target), true, killHpFor(bot)).respect;
+        const g = Gather(bot, ep.target);
+        if (g.tower) return "tower";
+        const r = Decide(g, true, killHpFor(bot)).respect;
         return r === "tower" || r === "outnumbered" ? r : undefined;
     } else {
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
@@ -727,7 +731,10 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         if (ep.stepSince === undefined && !walkingIn && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
         if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
     }
-    const d = Decide(Gather(bot, ep.target), true, killHpFor(bot), ep.hb === true);
+    const g = Gather(bot, ep.target);
+    // A running kill ends by the target's tower, as at its open (the safe rule's harass would keep it as a trade).
+    if (ep.kind === "kill" && g.tower) return "tower";
+    const d = Decide(g, true, killHpFor(bot), ep.hb === true);
     if (d.kind === undefined) return d.respect;
     return undefined;
 }

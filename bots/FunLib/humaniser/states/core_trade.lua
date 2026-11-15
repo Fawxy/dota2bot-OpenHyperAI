@@ -421,7 +421,7 @@ function freshDecision(bot, pid, now, owns, target, inputs, killHp)
     if target == nil or inputs == nil then
         return hitBack(bot, now, "no_target")
     end
-    if owns and d.kind ~= "kill" and d.respect ~= "tower" and d.respect ~= "outnumbered" then
+    if owns and d.kind ~= "kill" and not inputs.tower and d.respect ~= "tower" and d.respect ~= "outnumbered" then
         local play = rollFight(bot, target, now)
         if play ~= nil then
             return open(
@@ -512,12 +512,13 @@ function joinable(bot)
                     __continue113 = true
                     break
                 end
+                local g = ____exports.Gather(bot, t)
                 local r = ____exports.Decide(
-                    ____exports.Gather(bot, t),
+                    g,
                     false,
                     killHpFor(bot)
                 ).respect
-                if r == "tower" or r == "outnumbered" then
+                if g.tower or r == "tower" or r == "outnumbered" then
                     __continue113 = true
                     break
                 end
@@ -601,8 +602,12 @@ function keepWhy(bot, ep, now, join)
         if FR.HpFraction(bot) < Plays.SETTINGS.HpFloor then
             return "hp"
         end
+        local g = ____exports.Gather(bot, ep.target)
+        if g.tower then
+            return "tower"
+        end
         local r = ____exports.Decide(
-            ____exports.Gather(bot, ep.target),
+            g,
             true,
             killHpFor(bot)
         ).respect
@@ -627,8 +632,12 @@ function keepWhy(bot, ep, now, join)
             return "losing"
         end
     end
+    local g = ____exports.Gather(bot, ep.target)
+    if ep.kind == "kill" and g.tower then
+        return "tower"
+    end
     local d = ____exports.Decide(
-        ____exports.Gather(bot, ep.target),
+        g,
         true,
         killHpFor(bot),
         ep.hb == true
@@ -645,19 +654,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue155
+            local __continue157
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue155 = true
+                    __continue157 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue155 = true
+                __continue157 = true
             until true
-            if not __continue155 then
+            if not __continue157 then
                 break
             end
         end
@@ -1079,19 +1088,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue145
+            local __continue147
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue145 = true
+                    __continue147 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue145 = true
+                __continue147 = true
             until true
-            if not __continue145 then
+            if not __continue147 then
                 break
             end
         end

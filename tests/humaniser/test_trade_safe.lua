@@ -82,6 +82,9 @@ do
 	local i = CoreTrade.Gather(bot, enemy)
 	check("Gather fills the burst from one threat read, retreat's stay read (2 s, engaged over 6 s)",
 		i.burst == 0.3 and world.reads == 1 and world.horizon == 2 and world.engaged == 6)
+	local Retreat = require("bots/FunLib/humaniser/retreat")
+	check("the copied read constants equal retreat's stay read (an import cycle stops core_trade reading them)",
+		world.horizon == Retreat.SETTINGS.Horizon and world.engaged == Retreat.SETTINGS.EngagedWindow)
 	check("target and attack point clear of the tower: no tower either way", i.towerOnMe == false and i.tower == false)
 	-- The target at 1,300, inside the tower's reach; our attack point x=752 is 1,248 from the tower: outside.
 	enemy.loc = Vector(1300, 0)
