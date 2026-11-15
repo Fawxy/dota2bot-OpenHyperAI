@@ -119,7 +119,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local logSkip, DEFAULTS, settings, holdPoint
+local ohaSpot, claimsFor, logSkip, denyDue, LEASH, DEFAULTS, settings, spots, spotCache, fedCreep, holdPoint
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -149,77 +149,7 @@ function ____exports.Settings()
     settings = {Spot = s and s.Spot or DEFAULTS.Spot, LastHit = s and s.LastHit or DEFAULTS.LastHit, LastHitWithin = s and s.LastHitWithin or DEFAULTS.LastHitWithin}
     return settings
 end
---- Whether the body takes this bot's last hits and denies (read every frame by mode_laning_generic.lua).
-function ____exports.OwnsLastHit(bot)
-    if CoreLastHit.Applies(bot) then
-        return true
-    end
-    local pos = LaneConfig.PositionOf(bot)
-    if pos == nil then
-        return false
-    end
-    for ____, p in ipairs(____exports.Settings().LastHit) do
-        if p == pos then
-            return true
-        end
-    end
-    return false
-end
---- Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
--- no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
--- other frames.
-function ____exports.OwnsSupportHits(bot)
-    return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
-end
-function logSkip(bot, t, price, at)
-    Telemetry.Event(
-        "contest_skip",
-        {
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"at", at},
-            {"why", price.why},
-            {
-                "cc",
-                math.floor(price.cost * 1000) / 10
-            },
-            {"n", price.heroes},
-            {
-                "ex",
-                math.floor(price.exposure * 100) / 100
-            },
-            {
-                "walk",
-                math.floor(t.walk * 100) / 100
-            },
-            {
-                "dies",
-                t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
-            },
-            {
-                "hf",
-                math.floor(bot:GetHealth() / math.max(
-                    bot:GetMaxHealth(),
-                    1
-                ) * 100) / 100
-            }
-        }
-    )
-end
-____exports.NAME = "laning"
---- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
-local NEAR = 600
-local FAR = 1200
---- A last-hit attempt is dropped when it would take the bot this far from its spot.
-local LEASH = 900
-DEFAULTS = {Spot = "oha", LastHit = {}, LastHitWithin = 1}
-local spots = {}
-function ____exports.SetSpot(bot, fn)
-    spots[bot:GetPlayerID()] = fn
-end
-local function ohaSpot(bot)
+function ohaSpot(bot)
     local fn = spots[bot:GetPlayerID()]
     if fn == nil then
         return nil
@@ -236,27 +166,6 @@ end
 function ____exports.RoleOf(bot)
     local pos = LaneConfig.PositionOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
-end
-local spotCache = {}
---- lane_aggro's fed creep per bot (the lane_spot input `fed`), set while its feed watch runs.
-local fedCreep = {}
---- lane_aggro: the creep this bot fed their wave onto, or undefined when its watch ends.
-function ____exports.SetFed(bot, creep)
-    fedCreep[bot:GetPlayerID()] = creep
-end
-function ____exports.ClearFed()
-    for k in pairs(fedCreep) do
-        fedCreep[k] = nil
-    end
-    for k in pairs(holdPoint) do
-        holdPoint[k] = nil
-    end
-end
---- wave_hold's hold point per bot (the lane_spot input `hold`), set while a hold runs.
-holdPoint = {}
---- wave_hold: the point this bot holds their wave at, or undefined when the hold ends.
-function ____exports.SetHold(bot, at)
-    holdPoint[bot:GetPlayerID()] = at
 end
 --- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
 -- support-spot supports whose lane hits and harass are ours (Ours.SupportHarass; their attacks on heroes run in our attack
@@ -297,19 +206,29 @@ function ____exports.Spot(bot)
     spotCache[pid] = {t = now, v = v, info = info}
     return v
 end
---- The named inputs LaneSpot.Compute takes for this bot (the fixture cut logs them).
-function ____exports.SpotInputs(bot)
-    local pid = bot:GetPlayerID()
-    return ____exports.RoleOf(bot), fedCreep[pid], holdPoint[pid]
+--- Whether the body takes this bot's last hits and denies (read every frame by mode_laning_generic.lua).
+function ____exports.OwnsLastHit(bot)
+    if CoreLastHit.Applies(bot) then
+        return true
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    if pos == nil then
+        return false
+    end
+    for ____, p in ipairs(____exports.Settings().LastHit) do
+        if p == pos then
+            return true
+        end
+    end
+    return false
 end
---- The last computed SDK spot details for telemetry, if any.
-function ____exports.SpotInfo(bot)
-    local ____opt_9 = spotCache[bot:GetPlayerID()]
-    return ____opt_9 and ____opt_9.info
+--- Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
+-- no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
+-- other frames.
+function ____exports.OwnsSupportHits(bot)
+    return not ____exports.OwnsLastHit(bot) and SupportDeny.Applies(bot)
 end
---- The creeps this laner may take: for a core all but a deny an allied support is attempting (LaneClaims.CoreMine; all with
--- Ours.CoreDenyYield off), the support's claims otherwise.
-local function claimsFor(bot)
+function claimsFor(bot)
     if ____exports.OwnsLastHit(bot) then
         return LaneClaims.CoreMine(bot)
     end
@@ -327,6 +246,112 @@ local function claimsFor(bot)
         end
         return ____temp_11
     end
+end
+function logSkip(bot, t, price, at)
+    Telemetry.Event(
+        "contest_skip",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"at", at},
+            {"why", price.why},
+            {
+                "cc",
+                math.floor(price.cost * 1000) / 10
+            },
+            {"n", price.heroes},
+            {
+                "ex",
+                math.floor(price.exposure * 100) / 100
+            },
+            {
+                "walk",
+                math.floor(t.walk * 100) / 100
+            },
+            {
+                "dies",
+                t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
+            },
+            {
+                "hf",
+                math.floor(bot:GetHealth() / math.max(
+                    bot:GetMaxHealth(),
+                    1
+                ) * 100) / 100
+            }
+        }
+    )
+end
+function denyDue(bot)
+    local core = ____exports.OwnsLastHit(bot)
+    if not core and not ____exports.OwnsSupportHits(bot) then
+        return false
+    end
+    if not core then
+        local spot = ____exports.Spot(bot)
+        if spot ~= nil and GetUnitToLocationDistance(bot, spot) > LEASH then
+            return false
+        end
+    end
+    local verbs = Tasks.Verbs()
+    if verbs == nil then
+        return false
+    end
+    local claims = claimsFor(bot)
+    for ____, t in ipairs(verbs.laneTargets(
+        bot,
+        {
+            within = ____exports.Settings().LastHitWithin,
+            lastHit = false
+        }
+    )) do
+        if t.kind == "deny" and LanePick.Reachable(t) and (claims == nil or claims(t)) then
+            return true
+        end
+    end
+    return false
+end
+____exports.NAME = "laning"
+--- Beyond this the body reports `walk`, within `NEAR` it reports `hold` (with hysteresis between them).
+local NEAR = 600
+local FAR = 1200
+LEASH = 900
+DEFAULTS = {Spot = "oha", LastHit = {}, LastHitWithin = 1}
+spots = {}
+function ____exports.SetSpot(bot, fn)
+    spots[bot:GetPlayerID()] = fn
+end
+spotCache = {}
+fedCreep = {}
+--- lane_aggro: the creep this bot fed their wave onto, or undefined when its watch ends.
+function ____exports.SetFed(bot, creep)
+    fedCreep[bot:GetPlayerID()] = creep
+end
+function ____exports.ClearFed()
+    for k in pairs(fedCreep) do
+        fedCreep[k] = nil
+    end
+    for k in pairs(holdPoint) do
+        holdPoint[k] = nil
+    end
+end
+--- wave_hold's hold point per bot (the lane_spot input `hold`), set while a hold runs.
+holdPoint = {}
+--- wave_hold: the point this bot holds their wave at, or undefined when the hold ends.
+function ____exports.SetHold(bot, at)
+    holdPoint[bot:GetPlayerID()] = at
+end
+--- The named inputs LaneSpot.Compute takes for this bot (the fixture cut logs them).
+function ____exports.SpotInputs(bot)
+    local pid = bot:GetPlayerID()
+    return ____exports.RoleOf(bot), fedCreep[pid], holdPoint[pid]
+end
+--- The last computed SDK spot details for telemetry, if any.
+function ____exports.SpotInfo(bot)
+    local ____opt_9 = spotCache[bot:GetPlayerID()]
+    return ____opt_9 and ____opt_9.info
 end
 --- The claims on each support's last few picks, for its ev=lh (`claim`): a retarget picks the next creep before the attempt it
 -- replaces reports, so the claim is looked up by creep.
@@ -566,6 +591,23 @@ function ____exports.HitOffered(bot)
             {within = ____exports.Settings().LastHitWithin}
         )
     ) ~= nil
+end
+--- Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
+-- rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a
+-- trade. A support's body takes a hit only within LEASH of its spot (HitOffered, support_lane's step), so beyond it no deny
+-- is due (review of round 2). Reads facts only (no pick, no skill roll); once per bot per game time, as Gather and keepWhy
+-- ask it several times a frame.
+local denyDueAt = {}
+function ____exports.DenyDue(bot)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local memo = denyDueAt[pid]
+    if memo ~= nil and memo.t == now then
+        return memo.due
+    end
+    local due = denyDue(bot)
+    denyDueAt[pid] = {t = now, due = due}
+    return due
 end
 local body = __TS__Generator(function(bot, ctx)
     local sdk = ____exports.Settings().Spot == "sdk" or ____exports.OwnsSpot(bot)

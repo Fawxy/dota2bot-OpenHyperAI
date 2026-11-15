@@ -1860,8 +1860,9 @@ export const EVENTS = {
     /**
      * An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s.
      * `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`,
-     * `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left), or `hb_<respect>`
-     * (the hit back itself refused).
+     * `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree`
+     * `unfavoured` instead: the hit neither free nor favoured; `deny`: a due deny outbids it), or `hb_<respect>` (the hit back
+     * itself refused; `hb_deny` a due deny outbid it).
      */
     trade_no: {
         pid: "num",
@@ -2724,8 +2725,9 @@ export const EVENTS = {
         /** kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no
          *  trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00.
          *  `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`,
-         *  `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds). The bot's and the
-         *  target's HP share. */
+         *  `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds; with `Ours.TradeFree`
+         *  `unfavoured`, neither free nor favoured, or `deny`, a due deny outbids it, and `gap` no longer decides). The bot's
+         *  and the target's HP share. */
         hp: "num",
         thp: "num",
         /** kind=trade: enemy heroes in sight, and our heroes (the bot included, at least 1), within 1,200 of the bot. */
@@ -2755,6 +2757,11 @@ export const EVENTS = {
         ar: "num",
         tar: "num",
         tme: "num",
+        /** kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off. */
+        tf: "num",
+        /** kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which
+         *  outbids the trade. */
+        dn: "num",
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",

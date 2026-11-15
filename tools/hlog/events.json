@@ -1783,6 +1783,8 @@
    "ar": "num",
    "tar": "num",
    "tme": "num",
+   "tf": "num",
+   "dn": "num",
    "did": "str"
   },
   "cut_creeps": {

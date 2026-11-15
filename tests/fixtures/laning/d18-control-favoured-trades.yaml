@@ -1,0 +1,37 @@
+id: lane.trade.favoured.001
+source: log
+ref: {log: 2026-11-15T19-32-56-tradefreecut_smoke1.log, t: 243.967}
+status: active
+control: {commit: 9b3ef1bd, outcome: pass}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose trade on 9 (hp 1 vs 0.710, creeps 1, tower 1) (Ours.TradeFree off); tf added by hand: question 2 asked (slice trade-free).
+# core pid 3 on pid 9: 686 away, reach 648; HP 100% vs 71%; heroes 1 theirs, 1 ours; creeps near 1, on the bot 0; tower 1
+world:
+  t: 243.967
+  pid: 3
+  role: "core"
+  tgt: 9
+  hp: 1
+  thp: 0.71
+  en: 1
+  ally: 1
+  cr: 1
+  hc: 0
+  tw: 1
+  kh: 0.4
+  lf: 1
+  d: 686
+  rch: 648
+  tlh: 0
+  bu: 0.205
+  tm: 0
+  ar: 500
+  tar: 575
+  tme: 0
+  ko: 0.383
+  kt: 0.271
+  tf: 1
+expect:
+  must: ["trade"]
+notes: >
+  The control (tradefreecut_smoke1, 4:04.0, necrolyte pid 3 on dazzle pid 9, ranges 500 and 575): full HP against 71%, safe. Not free, but our estimate on it (ko 0.383) beats its on us (kt 0.271): a favoured exchange trades, as before. Question 2 must not refuse a trade that pays.

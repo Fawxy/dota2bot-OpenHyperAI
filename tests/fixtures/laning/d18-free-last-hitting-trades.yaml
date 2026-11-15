@@ -1,0 +1,38 @@
+id: lane.trade.free-last-hitting.001
+source: log
+ref: {log: 2026-11-15T19-32-56-tradefreecut_smoke1.log, t: 235.233}
+status: active
+control: {commit: 9b3ef1bd, outcome: fail}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose gap on 3 (hp 0.700 vs 1, creeps 0, tower 0) (Ours.TradeFree off); tf added by hand: question 2 asked (slice trade-free).
+# core pid 9 on pid 3: 715 away, reach 723; HP 70% vs 100%; heroes 1 theirs, 1 ours; creeps near 0, on the bot 0; tower 0; the target is last hitting
+world:
+  t: 235.233
+  pid: 9
+  role: "core"
+  tgt: 3
+  hp: 0.7
+  thp: 1
+  en: 1
+  ally: 1
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 715
+  rch: 723
+  tlh: 1
+  gap: -0.064
+  bu: 0.535
+  tm: 0
+  ar: 575
+  tar: 500
+  tme: 0
+  ko: 0.206
+  kt: 0.367
+  tf: 1
+expect:
+  must: ["trade"]
+notes: >
+  The mid's `gap` on a target swinging at a creep (tradefreecut_smoke1, 3:55.2, our mid dazzle pid 9 on necrolyte pid 3): 70% against 100%, safe (burst 0.54), no creeps near. A lost trade's gap held it (-0.064 against -0.3 now). The target's swing goes to the creep, so our hit draws no answer: free harass, no comparison needed (D18; ko 0.21 against kt 0.37 does not matter).

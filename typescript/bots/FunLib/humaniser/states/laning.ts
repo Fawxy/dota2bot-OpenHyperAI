@@ -365,6 +365,40 @@ export function HitOffered(bot: Unit): boolean {
     return choose(bot, verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin })) !== undefined;
 }
 
+/**
+ * Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
+ * rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a
+ * trade. A support's body takes a hit only within LEASH of its spot (HitOffered, support_lane's step), so beyond it no deny
+ * is due (review of round 2). Reads facts only (no pick, no skill roll); once per bot per game time, as Gather and keepWhy
+ * ask it several times a frame.
+ */
+const denyDueAt: Record<number, { t: number; due: boolean } | undefined> = {};
+export function DenyDue(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const memo = denyDueAt[pid];
+    if (memo !== undefined && memo.t === now) return memo.due;
+    const due = denyDue(bot);
+    denyDueAt[pid] = { t: now, due };
+    return due;
+}
+
+function denyDue(bot: Unit): boolean {
+    const core = OwnsLastHit(bot);
+    if (!core && !OwnsSupportHits(bot)) return false;
+    if (!core) {
+        const spot = Spot(bot);
+        if (spot !== undefined && GetUnitToLocationDistance(bot, spot) > LEASH) return false;
+    }
+    const verbs = Tasks.Verbs();
+    if (verbs === undefined) return false;
+    const claims = claimsFor(bot);
+    for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin, lastHit: false })) {
+        if (t.kind === "deny" && LanePick.Reachable(t) && (claims === undefined || claims(t))) return true;
+    }
+    return false;
+}
+
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const sdk = Settings().Spot === "sdk" || OwnsSpot(bot);
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in

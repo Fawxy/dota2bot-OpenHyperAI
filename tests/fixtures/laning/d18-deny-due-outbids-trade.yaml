@@ -1,0 +1,38 @@
+id: lane.trade.deny-due.001
+source: log
+ref: {log: 2026-11-15T20-19-56-h2htradefree1_A_rad_1.log, t: 116.400}
+status: active
+control: {commit: b695a0b6, outcome: fail}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose trade on 8 (hp 0.606 vs 0.982, creeps 2, tower 0); dn added by hand: the deny the laning body was offered (slice trade-free round 2).
+# core pid 2 on pid 8: 777 away, reach 858; HP 61% vs 98%; heroes 1 theirs, 1 ours; creeps near 2, on the bot 0; tower 0
+world:
+  t: 116.4
+  pid: 2
+  role: "core"
+  tgt: 8
+  hp: 0.606
+  thp: 0.982
+  en: 1
+  ally: 1
+  cr: 2
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 777
+  rch: 858
+  tlh: 0
+  bu: 0.182
+  tm: 0
+  ar: 710
+  tar: 380
+  tme: 0
+  ko: 0.188
+  kt: 0.249
+  tf: 1
+  dn: 1
+expect:
+  must: ["respect(deny)"]
+notes: >
+  The mid opens a free trade with a deny due (h2htradefree1_A_rad_1, 1:56.4, pid 2, range 710, on pid 8, range 380): 61% against 98%, safe, free by range. Our melee creep at 6% beside it (-538,-429) died undenied at 1:57.3, 0.9 s into the trade. A due deny outbids harass as a due last hit does (user 16/11/2026: deny wins unless the enemy is caught low, which the kill and fight answers already take). dn added by hand: the cut predates the field (slice trade-free round 2).

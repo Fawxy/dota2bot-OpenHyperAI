@@ -4,7 +4,8 @@
 -- world: hp, thp (HP shares), en, ally (heroes within 1,200), cr, hc (enemy creeps within 500, those on the bot), tw (0|1),
 --        kh (kill HP share), gap (HP-share gap a lost trade left; absent none).
 -- world, slice trade-safe: bu (burst over HP), tm (0|1, tower on the bot); with bu the safe rule decides.
--- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap>); fact.hp, fact.thp, fact.cr.
+-- world, slice trade-free: tf (1: question 2 asked), tlh, ar, tar, ko, kt, dn; with tf the answer may be unfavoured or deny, never gap.
+-- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny>); fact.hp, fact.thp, fact.cr.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 return function(fx)
@@ -23,6 +24,13 @@ return function(fx)
 		burst = w.bu,
 		towerOnMe = w.bu ~= nil and (w.tm == 1 or w.tm == true) or nil,
 	}
+	-- Slice trade-free: with tf (a cut made with Ours.TradeFree on, or a hand world) question 2 replaces gap.
+	if (w.tf == 1 or w.tf == true) and CoreTrade.Free ~= nil then
+		inputs.free = CoreTrade.Free(w.tlh == 1, w.ar, w.tar)
+		if not inputs.free then inputs.ko, inputs.kt = w.ko, w.kt end
+		-- Round 2: dn (1: the laning body is offered a deny now) outbids a free or favoured trade.
+		inputs.denyDue = w.dn == 1 or w.dn == true
+	end
 	local a = CoreTrade.Answer(inputs, w.kh, w.gap)
 	local action = (a == "trade" or a == "kill") and { verb = a } or { verb = "respect", target = a }
 	return {

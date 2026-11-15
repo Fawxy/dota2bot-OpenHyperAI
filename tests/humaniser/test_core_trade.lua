@@ -8,6 +8,7 @@ ResetWorld()
 local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true, Cut = false } })
 -- The old refusals (behind, a tower by either hero): slice trade-safe's rule is test_trade_safe.lua.
 package.loaded["bots/FunLib/custom_loader"].Ours.TradeSafe = false
+package.loaded["bots/FunLib/custom_loader"].Ours.TradeFree = false
 local lines = {}
 H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 

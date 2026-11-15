@@ -1,0 +1,38 @@
+id: lane.trade.free-outrange.001
+source: log
+ref: {log: 2026-11-15T19-32-56-tradefreecut_smoke1.log, t: 56.067}
+status: active
+control: {commit: 9b3ef1bd, outcome: fail}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose gap on 8 (hp 0.640 vs 0.807, creeps 0, tower 0) (Ours.TradeFree off); tf added by hand: question 2 asked (slice trade-free).
+# support pid 0 on pid 8: 976 away, reach 973; HP 64% vs 81%; heroes 1 theirs, 2 ours; creeps near 0, on the bot 0; tower 0
+world:
+  t: 56.067
+  pid: 0
+  role: "support"
+  tgt: 8
+  hp: 0.64
+  thp: 0.807
+  en: 1
+  ally: 2
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.25
+  lf: 0
+  d: 976
+  rch: 973
+  tlh: 0
+  gap: 0.178
+  bu: 0.199
+  tm: 0
+  ar: 625
+  tar: 380
+  tme: 0
+  ko: 0.143
+  kt: 0.273
+  tf: 1
+expect:
+  must: ["trade"]
+notes: >
+  A support's `gap` against a shorter-range target (tradefreecut_smoke1, 0:56.1, skywrath pid 0, range 625, on pid 8, range 380): 64% against 81%, safe (burst 0.20), 2 of ours to 1. The target must walk 245 to answer: the hit is free (D18), whatever the gap a lost trade left (0.178).
