@@ -548,6 +548,7 @@ let helpers: LaneHelpers = {};
 
 export function SetHelpers(h: LaneHelpers): void {
     helpers = h;
+    phaseAt = undefined;
 }
 
 export function Helpers(): LaneHelpers {
@@ -558,8 +559,25 @@ export function PositionOf(unit: Unit): number | undefined {
     return helpers.GetPosition !== undefined ? helpers.GetPosition(unit) : undefined;
 }
 
+let phaseAt: number | undefined;
+let phaseBot: Unit | undefined;
+let phaseValue = false;
+
+/**
+ * OHA's answer, asked once per frame and bot: its helper scans every allied unit on each call (J.IsModeTurbo looks for the
+ * courier) and reads the calling bot's net worth after the time floor, and our gates asked about a million times in ten
+ * minutes (perf probe 16/11/2026: the largest single cost in our script).
+ */
 export function InLaningPhase(): boolean {
+    const now = DotaTime();
     // OHA's own check reads raw DotaTime(); a scenario clock offset makes our phase reads use Config.Now() instead.
-    if (Config.Now() !== DotaTime()) return Config.Now() < 600;
-    return helpers.IsInLaningPhase !== undefined ? helpers.IsInLaningPhase() : DotaTime() < 600;
+    const ours = Config.Now();
+    if (ours !== now) return ours < 600;
+    if (helpers.IsInLaningPhase === undefined) return now < 600;
+    const bot = GetBot !== undefined ? GetBot() : undefined;
+    if (now === phaseAt && bot === phaseBot) return phaseValue;
+    phaseValue = helpers.IsInLaningPhase();
+    phaseAt = now;
+    phaseBot = bot;
+    return phaseValue;
 }

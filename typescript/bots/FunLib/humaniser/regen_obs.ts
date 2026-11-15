@@ -182,7 +182,6 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     trackWindow(bot, pid, now);
     const hist = (recent[pid] ??= []);
-    const drop = dropInWindow(pid, now, bot.GetHealth());
     hist.push({ t: now, hp: bot.GetHealth() });
     while (hist.length > 0 && now - hist[0].t > SOURCE_WINDOW) hist.shift();
     for (const t of TRACKED) {
@@ -207,7 +206,7 @@ export function Tick(bot: Unit): void {
             mine[t.modifier] = undefined;
             const elapsed = now - was.startAt;
             const why = !bot.IsAlive() ? "dead" : elapsed < was.dur - EARLY_TOLERANCE ? "early" : "full";
-            emit(bot, t, "end", why, was.dur, Math.max(0, was.dur - elapsed), 0, why === "early" ? sources(bot) : "-", drop);
+            emit(bot, t, "end", why, was.dur, Math.max(0, was.dur - elapsed), 0, why === "early" ? sources(bot) : "-", dropInWindow(pid, now, bot.GetHealth()));
         }
     }
 }

@@ -278,6 +278,7 @@ if (Telemetry.GuardsEnabled()) {
 if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
+Telemetry.PerfDeepInstall();
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 
 export function Tick(bot: Unit): void {

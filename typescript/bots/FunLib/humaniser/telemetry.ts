@@ -47,6 +47,10 @@ export const DEFAULTS = {
     // Perf probe: CPU time per OHA entry point, in our guarded calls and in event printing (ev=perf, ev=perf_top).
     Perf: false,
     PerfInterval: 10,
+    // With Perf: every exported function of every humaniser module is timed too (kind `fn`, inclusive, so rows overlap;
+    // the timers themselves cost time, so read it for ranking and call counts, not for totals). Rows per window: PerfTop.
+    PerfDeep: false,
+    PerfTop: 25,
     // ev=cut: a decision's API inputs beside it, so banked moments replay as fixtures (cut.ts; rework step 8).
     Cut: true,
 };
@@ -229,7 +233,7 @@ function perfProbe(): void {
     ]);
 }
 
-function perfAdd(kind: "entry" | "ours" | "sub" | "step", where: string, t0: number): void {
+function perfAdd(kind: "entry" | "ours" | "sub" | "step" | "fn", where: string, t0: number): void {
     const d = perfClock!() - t0;
     let st = perfStats[where];
     if (st === undefined) {
@@ -263,7 +267,7 @@ function perfFlush(): void {
         const rows: [string, PerfStat][] = [];
         for (const [where, st] of pairs(perfStats)) rows.push([where, st]);
         table.sort(rows, (a, b) => a[1].s > b[1].s);
-        for (let i = 0; i < math.min(rows.length, 25); i++) {
+        for (let i = 0; i < math.min(rows.length, Get().PerfTop); i++) {
             const [where, st] = rows[i];
             Event("perf_top", [
                 ["vm", PERF_VM],
@@ -332,6 +336,30 @@ export function PerfStep<F extends AnyFn>(where: string, fn: F): F {
         return $multi(...res);
     };
     return ((b1: any, b2: any, b3: any, b4: any, b5: any, b6: any) => done(perfClock!(), fn(b1, b2, b3, b4, b5, b6))) as unknown as F;
+}
+
+/**
+ * Telemetry.PerfDeep: wraps every function a loaded humaniser module exports with a timer (kind `fn`). Callers resolve exports
+ * at call time, so calls inside a module are timed too; a function captured by value before this ran is not.
+ */
+export function PerfDeepInstall(): void {
+    perfProbe();
+    if (perfClock === undefined || Get().PerfDeep !== true) return;
+    const done = (where: string, t0: number, ...res: any[]): any => {
+        perfAdd("fn", where, t0);
+        return $multi(...res);
+    };
+    for (const [name, mod] of pairs((_G as any).package.loaded as Record<string, any>)) {
+        if (type(name) !== "string" || type(mod) !== "table" || string.find(name, "humaniser", 1, true)[0] === undefined) continue;
+        const [short] = string.match(name, "([%w_]+)$");
+        if (short === "telemetry" || short === "index") continue;
+        for (const [k, v] of pairs(mod as Record<string, any>)) {
+            if (type(v) !== "function") continue;
+            const where = `${short}.${k}`;
+            const fn = v as AnyFn;
+            mod[k] = (...args: any[]) => done(where, perfClock!(), fn(...args));
+        }
+    }
 }
 
 /** Typed event: the name and every key must be declared in events.ts. The printed line is exactly what EventUntyped prints. */

@@ -507,6 +507,7 @@ if Telemetry.GuardsEnabled() then
         steps[k] = Telemetry.PerfStep("Tick:" .. k, fn)
     end
 end
+Telemetry.PerfDeepInstall()
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)
     guardedTick(bot)

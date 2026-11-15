@@ -167,11 +167,11 @@ end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue140
+            local __continue144
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue140 = true
+                    __continue144 = true
                     break
                 end
                 if select(
@@ -180,9 +180,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue140 = true
+                __continue144 = true
             until true
-            if not __continue140 then
+            if not __continue144 then
                 break
             end
         end
@@ -397,29 +397,30 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
     local function best(u, r)
         local pick
         local key = math.huge
+        local team = u.team
+        local us = u.s
+        local lim = r + REACH
+        local siege = u.kind == "siege"
         for ____, v in ipairs(live) do
-            do
-                local __continue31
-                repeat
-                    if v.team == u.team or not v.alive or not inReach(u, v, r) then
-                        __continue31 = true
-                        break
-                    end
-                    local k = rank(u, v) * 1000000 + math.abs(v.s - u.s)
+            if v.team ~= team and v.alive then
+                local d = v.s - us
+                if d < 0 then
+                    d = -d
+                end
+                if d <= lim then
+                    local ____type = v.building == true and 0 or (v.kind == "siege" and 2 or 1)
+                    local k = (siege and ____type or (____type == 1 and 0 or (____type == 2 and 1 or 2))) * 1000000 + d
                     if k < key then
                         key = k
                         pick = v
                     end
-                    __continue31 = true
-                until true
-                if not __continue31 then
-                    break
                 end
             end
         end
         return pick
     end
     local nextSample = from
+    local walk = speed()
     do
         local t = from
         while t <= ____until + 1e-9 do
@@ -437,56 +438,54 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
                 end
             end
             live = {}
+            local flags = {}
             for ____, u in ipairs(units) do
                 if u.alive then
                     live[#live + 1] = u
+                    if u.aura == true then
+                        flags[#flags + 1] = u
+                    end
                 end
             end
             for ____, u in ipairs(live) do
                 local r = u.regen
                 if u.building ~= true then
-                    for ____, f in ipairs(live) do
-                        if f.aura == true and f.team == u.team and math.abs(f.s - u.s) <= FLAG_RADIUS then
+                    for ____, f in ipairs(flags) do
+                        if f.team == u.team and math.abs(f.s - u.s) <= FLAG_RADIUS then
                             r = r + FLAG_REGEN
                             break
                         end
                     end
                 end
-                u.hp = math.min(u.maxhp, u.hp + r * dt)
+                local hp = u.hp + r * dt
+                u.hp = hp < u.maxhp and hp or u.maxhp
             end
             for ____, u in ipairs(live) do
-                do
-                    local __continue52
-                    repeat
-                        if u.target ~= nil and not u.target.alive then
+                if u.target ~= nil and not u.target.alive then
+                    u.target = nil
+                    u.swingAt = nil
+                end
+                if u.swingAt == nil then
+                    if u.target ~= nil then
+                        local b = best(u, u.range)
+                        if b ~= nil and (rank(u, b) < rank(u, u.target) or not inReach(u, u.target, u.range)) then
+                            u.target = b
+                        elseif not inReach(u, u.target, u.acq) and b == nil then
                             u.target = nil
-                            u.swingAt = nil
                         end
-                        if u.swingAt ~= nil then
-                            __continue52 = true
-                            break
-                        end
-                        if u.target ~= nil then
-                            local b = best(u, u.range)
-                            if b ~= nil and (rank(u, b) < rank(u, u.target) or not inReach(u, u.target, u.range)) then
-                                u.target = b
-                            elseif not inReach(u, u.target, u.acq) and b == nil then
-                                u.target = nil
-                            end
-                        end
-                        if u.target == nil then
-                            u.target = best(u, u.acq)
-                        end
-                        __continue52 = true
-                    until true
-                    if not __continue52 then
-                        break
+                    end
+                    if u.target == nil then
+                        u.target = best(u, u.acq)
                     end
                 end
             end
             for ____, u in ipairs(live) do
                 local v = u.target
-                if v ~= nil and math.abs(v.s - u.s) <= u.range + REACH then
+                local gap = v ~= nil and v.s - u.s or 0
+                if gap < 0 then
+                    gap = -gap
+                end
+                if v ~= nil and gap <= u.range + REACH then
                     if u.swingAt == nil and t >= u.readyAt then
                         u.swingAt = t + u.point
                         u.readyAt = t + u.bat
@@ -495,11 +494,7 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
                         u.swingAt = nil
                         local dmg = damage(u, v)
                         if u.proj > 0 then
-                            projectiles[#projectiles + 1] = {
-                                at = t + math.abs(v.s - u.s) / u.proj,
-                                dst = v,
-                                dmg = dmg
-                            }
+                            projectiles[#projectiles + 1] = {at = t + gap / u.proj, dst = v, dmg = dmg}
                         else
                             hit(v, dmg)
                         end
@@ -507,7 +502,7 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
                 elseif u.building ~= true then
                     u.swingAt = nil
                     local goal = v ~= nil and (v.s > u.s and 1 or (v.s < u.s and -1 or 0)) or dirOf(u.team)
-                    u.s = u.s + goal * speed() * dt
+                    u.s = u.s + goal * walk * dt
                 end
             end
             do
@@ -527,17 +522,17 @@ function ____exports.Run(lane, from, ____until, init, towerHp, skip)
                 local front = {}
                 for ____, u in ipairs(units) do
                     do
-                        local __continue72
+                        local __continue76
                         repeat
                             if not u.alive or u.building == true then
-                                __continue72 = true
+                                __continue76 = true
                                 break
                             end
                             local f = front[u.team]
                             front[u.team] = f == nil and u.s or (u.team == R and math.max(f, u.s) or math.min(f, u.s))
-                            __continue72 = true
+                            __continue76 = true
                         until true
-                        if not __continue72 then
+                        if not __continue76 then
                             break
                         end
                     end
@@ -640,7 +635,7 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
         local ts = math.floor(t0 / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY
         while ts >= t0 - 3 * GameRules.WAVE_EVERY and ts >= 0 do
             do
-                local __continue97
+                local __continue101
                 repeat
                     local pos = spawnE + de * speed() * (t0 - ts)
                     local seen = false
@@ -650,11 +645,11 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                         end
                     end
                     if seen then
-                        __continue97 = true
+                        __continue101 = true
                         break
                     end
                     if lead ~= nil and de * (pos - lead) >= -____exports.SETTINGS.OurVision then
-                        __continue97 = true
+                        __continue101 = true
                         break
                     end
                     for ____, u in ipairs(____exports.WaveAt(e, ts, spawnE)) do
@@ -666,9 +661,9 @@ function ____exports.ViewStart(lane, v, t0, own, enemy)
                             maxhp = u.maxhp
                         }
                     end
-                    __continue97 = true
+                    __continue101 = true
                 until true
-                if not __continue97 then
+                if not __continue101 then
                     break
                 end
             end
@@ -739,11 +734,11 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
     local found = not spawned
     for ____, c in ipairs(init) do
         do
-            local __continue114
+            local __continue118
             repeat
                 if c.team == team and inWave(c) then
                     found = true
-                    __continue114 = true
+                    __continue118 = true
                     break
                 end
                 left[#left + 1] = c
@@ -752,9 +747,9 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
                 elseif not inWave(c) then
                     ep = ep + c.hp
                 end
-                __continue114 = true
+                __continue118 = true
             until true
-            if not __continue114 then
+            if not __continue118 then
                 break
             end
         end
@@ -831,21 +826,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue134
+            local __continue138
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue134 = true
+                    __continue138 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue134 = true
+                    __continue138 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue134 = true
+                    __continue138 = true
                     break
                 end
                 out[#out + 1] = {
@@ -854,9 +849,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue134 = true
+                __continue138 = true
             until true
-            if not __continue134 then
+            if not __continue138 then
                 break
             end
         end
