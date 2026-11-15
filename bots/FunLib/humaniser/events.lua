@@ -1640,7 +1640,8 @@ ____exports.EVENTS = {
         gap = "num",
         d = "num",
         rch = "num",
-        tlh = "num"
+        tlh = "num",
+        did = "str"
     },
     cut_creeps = {pid = "num", kind = "str", ce = "str", ca = "str"},
     cut_towers = {team = "num", tw = "str"}

@@ -434,27 +434,31 @@ const TRADE_CUT_KEEP = 2;
 const TRADE_CUT_UNTIL = 720;
 const cutState: Record<number, { at?: number; dec?: string; cutAt?: number } | undefined> = {};
 
-const round4 = (v: number): number => math.floor(v * 10000 + 0.5) / 10000;
+/** Six places: under heldByGap's 1e-6 margin's scale of concern, so a replay on a border decides as the game did (review). */
+const round6 = (v: number): number => math.floor(v * 1000000 + 0.5) / 1000000;
 
-/** Logs `ev=cut kind=trade`: the fresh decision on `target`, its inputs and answer (driver core_trade). Reads only. */
-function logCut(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boolean, now: number): void {
-    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || now > TRADE_CUT_UNTIL) return;
+/**
+ * The `ev=cut kind=trade` fields of the fresh decision on `target` when a line is due (its inputs and answer, driver
+ * core_trade), read before Desire acts on it; Desire adds `did` once it has. Undefined when no line is due. Reads only.
+ */
+function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boolean, now: number): Telemetry.Fields<"cut"> | undefined {
+    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || now > TRADE_CUT_UNTIL) return undefined;
     const pid = bot.GetPlayerID();
     const st = (cutState[pid] = cutState[pid] ?? {});
-    if (st.at !== undefined && now >= st.at && now - st.at < TRADE_CUT_EVERY) return;
+    if (st.at !== undefined && now >= st.at && now - st.at < TRADE_CUT_EVERY) return undefined;
     st.at = now;
     const gap = recoverTo[pid];
     const dec = Answer(i, killHp, gap);
-    if (dec === st.dec && now - (st.cutAt ?? -math.huge) < TRADE_CUT_KEEP) return;
+    if (dec === st.dec && now - (st.cutAt ?? -math.huge) < TRADE_CUT_KEEP) return undefined;
     st.dec = dec;
     st.cutAt = now;
-    Telemetry.Event("cut", [
+    return [
         ["pid", pid],
         ["kind", "trade"],
         ["role", isSupport(bot) ? "support" : "core"],
         ["tgt", target.GetPlayerID()],
-        ["hp", round4(i.hp)],
-        ["thp", round4(i.targetHp)],
+        ["hp", round6(i.hp)],
+        ["thp", round6(i.targetHp)],
         ["en", i.enemiesNear],
         ["ally", i.alliesNear],
         ["cr", i.enemyCreepsNear],
@@ -462,12 +466,19 @@ function logCut(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boolean,
         ["tw", i.tower ? 1 : 0],
         ["kh", killHp],
         ["lf", lf ? 1 : 0],
-        ["gap", gap !== undefined ? round4(gap) : undefined],
+        ["gap", gap !== undefined ? round6(gap) : undefined],
         ["d", math.floor(GetUnitToUnitDistance(bot, target))],
         ["rch", math.floor(reachOf(bot))],
         ["tlh", lastHitting(target) ? 1 : 0],
         ["dec", dec],
-    ]);
+    ];
+}
+
+/** What the fresh decision opened (the cut's `did`): no episode, or its kind (`fight` joined from a play is `play`, a hit back `hitback`). */
+function didOf(ep: Episode | undefined): string {
+    if (ep === undefined) return "none";
+    if (ep.kind === "fight") return ep.joined === true ? "play" : "fight";
+    return ep.hb === true ? "hitback" : ep.kind;
 }
 
 /**
@@ -510,8 +521,18 @@ export function Desire(bot: Unit): number | undefined {
     const target = nearestTarget(bot);
     const inputs = target !== undefined ? Gather(bot, target) : undefined;
     const killHp = killHpFor(bot);
+    const cut = target !== undefined && inputs !== undefined ? cutFields(bot, target, inputs, killHp, owns, now) : undefined;
+    const desire = freshDecision(bot, pid, now, owns, target, inputs, killHp);
+    if (cut !== undefined) {
+        cut.push(["did", didOf(episodes[pid])]);
+        Telemetry.Event("cut", cut);
+    }
+    return desire;
+}
+
+/** Desire with no episode open: the trade rule on the nearest hero in reach, a lane fight, a hit back, or nothing. */
+function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, target: Unit | undefined, inputs: Inputs | undefined, killHp: number): number {
     const d = inputs !== undefined ? Decide(inputs, false, killHp) : {};
-    if (target !== undefined && inputs !== undefined) logCut(bot, target, inputs, killHp, owns, now);
     if (d.kind !== "kill" && owns) {
         const join = joinable(bot);
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);

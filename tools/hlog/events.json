@@ -1777,7 +1777,8 @@
    "gap": "num",
    "d": "num",
    "rch": "num",
-   "tlh": "num"
+   "tlh": "num",
+   "did": "str"
   },
   "cut_creeps": {
    "pid": "num",
@@ -2370,7 +2371,8 @@
    "vw": "text",
    "po": "text",
    "pt": "text",
-   "dm": "text"
+   "dm": "text",
+   "did": "text"
   },
   "ev_cut_creeps": {
    "kind": "text",

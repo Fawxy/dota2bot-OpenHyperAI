@@ -257,7 +257,7 @@ const DECISIONS = {
             return { same: got === cut.dec, got, want: cut.dec };
         },
         answer: (game, cut) => cut.dec,
-        brief: (game, cut) => `${cut.role} on ${cut.tgt} at ${cut.d}/${cut.rch}, hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, ${cut.en}v${cut.ally}`,
+        brief: (game, cut) => `${cut.role} on ${cut.tgt} at ${cut.d}/${cut.rch}, hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, ${cut.en}v${cut.ally}, did ${cut.did ?? '?'}`,
         id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.dec} on ${cut.tgt} (hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, tower ${cut.tw})`,
     },

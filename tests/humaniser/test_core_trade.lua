@@ -727,11 +727,20 @@ do
 	CoreTrade.Desire(bot)
 	local c = cuts()
 	check("a fresh decision with a hero in reach logs a trade cut", #c == n0 + 1 and c[#c]:find("dec=trade") and c[#c]:find("tgt=6")
-		and c[#c]:find("hp=0.8") and c[#c]:find("thp=0.7") and c[#c]:find("role=core"))
+		and c[#c]:find("hp=0.8") and c[#c]:find("thp=0.7") and c[#c]:find("role=core") and c[#c]:find("did=trade"))
 	-- The trade runs from here: no fresh decision, so no cut.
 	T = 700.6
 	CoreTrade.Desire(bot)
 	check("no cut while a trade is open", #cuts() == n0 + 1)
+	-- The exchange turns (80 to 45 against 70 to 70): the trade ends `losing` and the fresh decision is `low_hp`, a changed
+	-- answer, cut 1.2 s after the last line (inside the 2 s an unchanged answer waits), opening nothing.
+	CoreTrade.Think(bot)
+	bot.hp = 45
+	T = 701.2
+	CoreTrade.Desire(bot)
+	c = cuts()
+	check("a changed answer is cut at once", #c == n0 + 2 and c[#c]:find("dec=low_hp") and c[#c]:find("did=none") and c[#c]:find("gap=0.1"))
+	n0 = #c
 	-- Behind on HP: a respect, logged as soon as the answer changes (0.5 s on).
 	CoreTrade.Reset()
 	bot.hp = 50
@@ -741,16 +750,16 @@ do
 	T = 701.5
 	CoreTrade.Desire(bot)
 	c = cuts()
-	check("a refused trade is cut with its respect, once per 0.5 s", #c == n0 + 2 and c[#c]:find("dec=behind"))
+	check("a refused trade is cut with its respect, once per 0.5 s", #c == n0 + 1 and c[#c]:find("dec=behind"))
 	T = 702.0
 	CoreTrade.Desire(bot)
-	check("an unchanged answer waits 2 s", #cuts() == n0 + 2)
+	check("an unchanged answer waits 2 s", #cuts() == n0 + 1)
 	T = 703.3
 	CoreTrade.Desire(bot)
-	check("then logs again", #cuts() == n0 + 3)
+	check("then logs again", #cuts() == n0 + 2)
 	T = 730
 	CoreTrade.Desire(bot)
-	check("no cut after 12:00", #cuts() == n0 + 3)
+	check("no cut after 12:00", #cuts() == n0 + 2)
 	H.Telemetry.Get().Cut = false
 	CoreTrade.Reset()
 end

@@ -1388,6 +1388,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `gap` num: kind=trade: the HP-share gap a lost trade left (`recoverTo`); absent when none.
 - `d` num: kind=trade: the distance to the target and the trade's reach (attack range, both hulls, the role's walk-in).
 - `tlh` num: kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing).
+- `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
 
 ## cut_creeps
 

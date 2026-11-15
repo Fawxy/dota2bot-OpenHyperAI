@@ -2744,6 +2744,9 @@ export const EVENTS = {
         rch: "num",
         /** kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing). */
         tlh: "num",
+        /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
+         *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
+        did: "str",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
     cut_creeps: {
