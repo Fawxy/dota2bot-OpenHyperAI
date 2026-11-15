@@ -139,6 +139,21 @@ export function Decide(i: Inputs, running = false, killHp = KILL_HP, hitBack = f
     return { kind: "trade" };
 }
 
+/** A trade the HP gap a lost trade left holds: the core has not regained, against the target, what it lost (`recoverTo`). */
+function heldByGap(i: Inputs, gap: number | undefined): boolean {
+    return gap !== undefined && i.hp - i.targetHp < gap - 1e-6;
+}
+
+/**
+ * The fresh decision on a target in reach with no trade running, as one answer (the cut kind `trade`, driver core_trade):
+ * Decide's kind or respect, or `gap` when a trade is held by the gap a lost trade left.
+ */
+export function Answer(i: Inputs, killHp: number, gap: number | undefined): string {
+    const d = Decide(i, false, killHp);
+    if (d.kind === "trade" && heldByGap(i, gap)) return "gap";
+    return d.kind ?? d.respect ?? "none";
+}
+
 /**
  * HP the core lost beyond what the target lost since `hp0`/`thp0`, as a share of the core's max HP (positive: losing).
  * Absolute HP on both sides, so a big hero is not judged against a small one's fractions.
@@ -413,6 +428,48 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     ]);
 }
 
+/** The cut's cadence (cut kind `trade`): a fresh decision at most every TRADE_CUT_EVERY s, an unchanged answer every TRADE_CUT_KEEP s, to TRADE_CUT_UNTIL (the laning stage; PairJoin's). */
+const TRADE_CUT_EVERY = 0.5;
+const TRADE_CUT_KEEP = 2;
+const TRADE_CUT_UNTIL = 720;
+const cutState: Record<number, { at?: number; dec?: string; cutAt?: number } | undefined> = {};
+
+const round4 = (v: number): number => math.floor(v * 10000 + 0.5) / 10000;
+
+/** Logs `ev=cut kind=trade`: the fresh decision on `target`, its inputs and answer (driver core_trade). Reads only. */
+function logCut(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boolean, now: number): void {
+    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || now > TRADE_CUT_UNTIL) return;
+    const pid = bot.GetPlayerID();
+    const st = (cutState[pid] = cutState[pid] ?? {});
+    if (st.at !== undefined && now >= st.at && now - st.at < TRADE_CUT_EVERY) return;
+    st.at = now;
+    const gap = recoverTo[pid];
+    const dec = Answer(i, killHp, gap);
+    if (dec === st.dec && now - (st.cutAt ?? -math.huge) < TRADE_CUT_KEEP) return;
+    st.dec = dec;
+    st.cutAt = now;
+    Telemetry.Event("cut", [
+        ["pid", pid],
+        ["kind", "trade"],
+        ["role", isSupport(bot) ? "support" : "core"],
+        ["tgt", target.GetPlayerID()],
+        ["hp", round4(i.hp)],
+        ["thp", round4(i.targetHp)],
+        ["en", i.enemiesNear],
+        ["ally", i.alliesNear],
+        ["cr", i.enemyCreepsNear],
+        ["hc", i.hitByCreeps],
+        ["tw", i.tower ? 1 : 0],
+        ["kh", killHp],
+        ["lf", lf ? 1 : 0],
+        ["gap", gap !== undefined ? round4(gap) : undefined],
+        ["d", math.floor(GetUnitToUnitDistance(bot, target))],
+        ["rch", math.floor(reachOf(bot))],
+        ["tlh", lastHitting(target) ? 1 : 0],
+        ["dec", dec],
+    ]);
+}
+
 /**
  * The in-lane attack desire, or undefined outside lane (the caller then asks OHA's port). Opens, keeps and ends the
  * bot's trade episode; a window attack mode never took is logged as `lost` with the mode that held the bot.
@@ -452,7 +509,9 @@ export function Desire(bot: Unit): number | undefined {
     if (owns && Plays.Of(bot) !== undefined) return unanswered(bot, now, "play");
     const target = nearestTarget(bot);
     const inputs = target !== undefined ? Gather(bot, target) : undefined;
-    const d = inputs !== undefined ? Decide(inputs, false, killHpFor(bot)) : {};
+    const killHp = killHpFor(bot);
+    const d = inputs !== undefined ? Decide(inputs, false, killHp) : {};
+    if (target !== undefined && inputs !== undefined) logCut(bot, target, inputs, killHp, owns, now);
     if (d.kind !== "kill" && owns) {
         const join = joinable(bot);
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
@@ -463,7 +522,7 @@ export function Desire(bot: Unit): number | undefined {
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
     const gap = recoverTo[pid];
-    const held = d.kind === "trade" && gap !== undefined && inputs.hp - inputs.targetHp < gap - 1e-6;
+    const held = d.kind === "trade" && heldByGap(inputs, gap);
     // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
     // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
     // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
@@ -703,4 +762,5 @@ export function Reset(): void {
     for (const k in ownsFrame) ownsFrame[k as unknown as number] = undefined;
     for (const k in rolledAt) rolledAt[k as unknown as number] = undefined;
     for (const k in lastNo) lastNo[k as unknown as number] = undefined;
+    for (const k in cutState) cutState[k as unknown as number] = undefined;
 }

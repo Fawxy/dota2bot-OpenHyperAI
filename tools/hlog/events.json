@@ -1764,7 +1764,20 @@
    "dm": "str",
    "tgt": "num",
    "ko": "num",
-   "kt": "num"
+   "kt": "num",
+   "hp": "num",
+   "thp": "num",
+   "en": "num",
+   "ally": "num",
+   "cr": "num",
+   "hc": "num",
+   "tw": "num",
+   "kh": "num",
+   "lf": "num",
+   "gap": "num",
+   "d": "num",
+   "rch": "num",
+   "tlh": "num"
   },
   "cut_creeps": {
    "pid": "num",
