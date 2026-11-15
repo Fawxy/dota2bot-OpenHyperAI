@@ -1780,6 +1780,9 @@
    "tlh": "num",
    "bu": "num",
    "tm": "num",
+   "ar": "num",
+   "tar": "num",
+   "tme": "num",
    "did": "str"
   },
   "cut_creeps": {

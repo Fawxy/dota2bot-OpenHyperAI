@@ -8,7 +8,7 @@
  * always wins the frame. Inputs follow EC-045 (creeps in the area, no fighting in a big enemy wave or under their tower)
  * and EC-053 (lane creeps acquire a hero attacker within about 500); every threshold is `judgement`.
  */
-import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, DamageType, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -551,8 +551,21 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["tlh", lastHitting(target) ? 1 : 0],
         ["bu", i.burst !== undefined ? round6(i.burst) : undefined],
         ["tm", i.burst !== undefined ? (i.towerOnMe === true ? 1 : 0) : undefined],
+        ["ar", math.floor(bot.GetAttackRange())],
+        ["tar", math.floor(target.GetAttackRange())],
+        ["tme", target.GetAttackTarget() === bot ? 1 : 0],
+        ["ko", round6(shareOn(bot, target))],
+        ["kt", round6(shareOn(target, bot))],
         ["dec", dec],
     ];
+}
+
+/**
+ * Slice trade-free-cut: `from`'s estimated damage on `on` over PairJoin's Window (GetEstimatedDamageToTarget, as the join cut's
+ * `dm`) over `on`'s HP: one side's kill share in a 1v1 exchange. Logged on the trade cut only; Decide does not read it yet.
+ */
+function shareOn(from: Unit, on: Unit): number {
+    return from.GetEstimatedDamageToTarget(true, on, PairJoin.SETTINGS.Window, DamageType.All) / math.max(1, on.GetHealth());
 }
 
 /** What the fresh decision opened (the cut's `did`): no episode, or its kind (`fight` joined from a play is `play`, a hit back `hitback`). */

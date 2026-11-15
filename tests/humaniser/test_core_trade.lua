@@ -726,10 +726,15 @@ do
 	end
 	local n0 = #cuts()
 	T = 700
+	bot.estDamage, enemy.estDamage, enemy.range = 35, 16, 150
 	CoreTrade.Desire(bot)
+	bot.estDamage, enemy.estDamage, enemy.range = nil, nil, 500
 	local c = cuts()
 	check("a fresh decision with a hero in reach logs a trade cut", #c == n0 + 1 and c[#c]:find("dec=trade") and c[#c]:find("tgt=6")
 		and c[#c]:find("hp=0.8") and c[#c]:find("thp=0.7") and c[#c]:find("role=core") and c[#c]:find("did=trade"))
+	-- Slice trade-free-cut: question 2's inputs, ranges, the target's swing on us, each side's estimated damage over the other's HP.
+	check("the trade cut logs both ranges, the target's swing and both kill shares", c[#c]:find(" ar=500") and c[#c]:find(" tar=150")
+		and c[#c]:find(" tme=0") and c[#c]:find(" ko=0.5") and c[#c]:find(" kt=0.2"), c[#c])
 	-- The trade runs from here: no fresh decision, so no cut.
 	T = 700.6
 	CoreTrade.Desire(bot)

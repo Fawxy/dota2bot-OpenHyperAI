@@ -2715,9 +2715,10 @@ export const EVENTS = {
         dm: "str",
         /** kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none. */
         tgt: "num",
-        /** kind=join: our best kill share, our heroes' damage on `tgt` over its HP. */
+        /** kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the
+         *  bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP. */
         ko: "num",
-        /** kind=join: theirs, their heroes' best kill share on one of ours. */
+        /** kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over its HP. */
         kt: "num",
         /** kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no
          *  trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00.
@@ -2749,6 +2750,10 @@ export const EVENTS = {
          *  answer adds the respect `burst` (their burst at our HP or more). */
         bu: "num",
         tm: "num",
+        /** kind=trade (slice trade-free-cut): the bot's and the target's attack range, and 1 when the target's attack target is the bot. */
+        ar: "num",
+        tar: "num",
+        tme: "num",
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",
