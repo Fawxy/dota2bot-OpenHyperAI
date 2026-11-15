@@ -960,7 +960,7 @@ Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on lat
 
 ## trade_no
 
-An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left), or `hb_<respect>` (the hit back itself refused).
+An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree` `unfavoured` instead: the hit neither free nor favoured), or `hb_<respect>` (the hit back itself refused).
 
 `pid` num, `role` str, `why` str, `d` num, `reach` num, `har` num, `agg` num, `hp` num, `thp` num, `al` num, `cr` num, `hc` num, `mode` num, `md` num
 
@@ -1380,7 +1380,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
 - `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP.
 - `kt` num: kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP.
-- `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds). The bot's and the target's HP share.
+- `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds; with `Ours.TradeFree` `unfavoured`, neither free nor favoured, and `gap` no longer decides). The bot's and the target's HP share.
 - `en` num: kind=trade: enemy heroes in sight, and our heroes (the bot included, at least 1), within 1,200 of the bot.
 - `cr` num: kind=trade: enemy lane creeps within 500 of the bot, and those attacking it (plus 2 per enemy tower attacking it).
 - `tw` num: kind=trade: 1 when the bot or the target is within an enemy tower's reach.
