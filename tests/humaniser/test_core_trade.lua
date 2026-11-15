@@ -6,6 +6,8 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 -- Cuts off: the line counts below are the trade's own events; the cut block at the end turns them on.
 local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true, Cut = false } })
+-- The old refusals (behind, a tower by either hero): slice trade-safe's rule is test_trade_safe.lua.
+package.loaded["bots/FunLib/custom_loader"].Ours.TradeSafe = false
 local lines = {}
 H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 

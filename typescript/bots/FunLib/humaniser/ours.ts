@@ -162,6 +162,10 @@ export const DEFAULTS = {
      *  (CoreTrade kind `join`), and retreat's `threat` leave waits for it (LeaveWhy `join`). Off: the pair's answer is only
      *  logged (`ev=cut kind=join`). */
     PairJoin: true,
+    /** Slice trade-safe (D18): with CoreTrade on, a laner's trade or harass asks "is it safe?" of the threat read (states/core_trade
+     *  decideSafe): not outnumbered, half HP or more, their burst in reach under our HP, our attack point outside their tower's
+     *  reach. Off: the old refusals, `behind` (15 points under the target's HP) and a tower by either hero. */
+    TradeSafe: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

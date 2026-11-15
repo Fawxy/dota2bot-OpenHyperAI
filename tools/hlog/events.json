@@ -1778,6 +1778,8 @@
    "d": "num",
    "rch": "num",
    "tlh": "num",
+   "bu": "num",
+   "tm": "num",
    "did": "str"
   },
   "cut_creeps": {
