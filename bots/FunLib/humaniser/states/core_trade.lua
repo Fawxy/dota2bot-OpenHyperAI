@@ -46,9 +46,10 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local decideSafe, heldByGap, killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, distXY, attackPoint, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local decideSafe, heldByGap, killHpFor, isSupport, reachOf, hitBackTarget, unanswered, inLane, frac, valid, distXY, attackPoint, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local DamageType = ____dota.DamageType
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -403,6 +404,12 @@ function ____exports.Gather(bot, target)
         tower = tower
     }
 end
+function shareOn(from, on)
+    return from:GetEstimatedDamageToTarget(true, on, PairJoin.SETTINGS.Window, DamageType.All) / math.max(
+        1,
+        on:GetHealth()
+    )
+end
 function freshDecision(bot, pid, now, owns, target, inputs, killHp)
     local d = inputs ~= nil and ____exports.Decide(inputs, false, killHp) or ({})
     if d.kind ~= "kill" and owns then
@@ -505,11 +512,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue113
+            local __continue114
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 local g = ____exports.Gather(bot, t)
@@ -519,7 +526,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if g.tower or r == "tower" or r == "outnumbered" then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -528,12 +535,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue113 = true
+                    __continue114 = true
                     break
                 end
                 return p
             until true
-            if not __continue113 then
+            if not __continue114 then
                 break
             end
         end
@@ -654,19 +661,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue157
+            local __continue158
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue157 = true
+                    __continue158 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue157 = true
+                __continue158 = true
             until true
-            if not __continue157 then
+            if not __continue158 then
                 break
             end
         end
@@ -957,6 +964,26 @@ local function cutFields(bot, target, i, killHp, lf, now)
             i.burst ~= nil and round6(i.burst) or nil
         },
         {"tm", i.burst ~= nil and (i.towerOnMe == true and 1 or 0) or nil},
+        {
+            "ar",
+            math.floor(bot:GetAttackRange())
+        },
+        {
+            "tar",
+            math.floor(target:GetAttackRange())
+        },
+        {
+            "tme",
+            target:GetAttackTarget() == bot and 1 or 0
+        },
+        {
+            "ko",
+            round6(shareOn(bot, target))
+        },
+        {
+            "kt",
+            round6(shareOn(target, bot))
+        },
         {"dec", dec}
     }
 end
@@ -1088,19 +1115,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue147
+            local __continue148
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue147 = true
+                    __continue148 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue147 = true
+                __continue148 = true
             until true
-            if not __continue147 then
+            if not __continue148 then
                 break
             end
         end
