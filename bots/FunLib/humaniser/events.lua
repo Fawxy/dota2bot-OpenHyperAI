@@ -1201,6 +1201,14 @@ ____exports.EVENTS = {
         mode = "num",
         md = "num"
     },
+    join_after = {
+        pid = "num",
+        kind = "str",
+        why = "str",
+        tgt = "num",
+        res = "str",
+        s = "str"
+    },
     trade = {
         pid = "num",
         role = "str",

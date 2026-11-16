@@ -581,11 +581,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue123
+            local __continue124
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue123 = true
+                    __continue124 = true
                     break
                 end
                 local g = ____exports.Gather(bot, t)
@@ -595,7 +595,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if g.tower or r == "tower" or r == "outnumbered" then
-                    __continue123 = true
+                    __continue124 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -604,12 +604,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue123 = true
+                    __continue124 = true
                     break
                 end
                 return p
             until true
-            if not __continue123 then
+            if not __continue124 then
                 break
             end
         end
@@ -733,19 +733,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue168
+            local __continue169
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue168 = true
+                    __continue169 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue168 = true
+                __continue169 = true
             until true
-            if not __continue168 then
+            if not __continue169 then
                 break
             end
         end
@@ -962,6 +962,9 @@ local function close(bot, ep, why, now)
         "trade",
         {__TS__SparseArraySpread(____array_3)}
     )
+    if started then
+        PairJoin.After(bot, ep.kind, why, ep.tpid)
+    end
 end
 --- The cut's cadence (cut kind `trade`): a fresh decision at most every TRADE_CUT_EVERY s, an unchanged answer every TRADE_CUT_KEEP s, to TRADE_CUT_UNTIL (the laning stage; PairJoin's).
 local TRADE_CUT_EVERY = 0.5
@@ -1188,24 +1191,25 @@ function ____exports.Think(bot)
     local now = DotaTime()
     if ep.startedAt == nil then
         ep.startedAt = now
+        PairJoin.Reopened(bot)
     end
     local creeps = {}
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue158
+            local __continue159
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue158 = true
+                    __continue159 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue158 = true
+                __continue159 = true
             until true
-            if not __continue158 then
+            if not __continue159 then
                 break
             end
         end

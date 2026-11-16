@@ -38,6 +38,13 @@ export const SETTINGS = {
     Keep: 1.5,
     /** The joiner acts only on a target within this of it: D10's 1,200, about 4 s of walking. judgement. */
     TargetRange: 1200,
+    /**
+     * Slice join-after (shadow): after a taken join or trade of ours ends, the weighing is read with no hit needed for this
+     * long (s): the longest mirror fight bucket the funnel graded (6-10 s) plus a little. judgement.
+     */
+    AfterWindow: 8,
+    /** ... once every this many seconds (the snapshot's cadence, so a sample joins `ev=snap` by second). judgement. */
+    AfterEvery: 1,
 };
 
 /** One hero in the fight: pid, place, HP, in our retreat (ours only). */
@@ -129,6 +136,11 @@ export function Gather(bot: Unit): Rec | undefined {
     if (ally === undefined) return undefined;
     const ours: Unit[] = allies.filter((a) => dist(a, ally!) <= SETTINGS.OursRange);
     if (ours.filter((a) => !RetreatState.Running(a)).length < 2) return undefined;
+    return weigh(ally, ours);
+}
+
+/** The weighing around `ally` with our heroes `ours`: their seen heroes within FoeRange of it, or undefined with none. */
+function weigh(ally: Unit, ours: Unit[]): Rec | undefined {
     const theirs: Unit[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (live(e) && e.CanBeSeen() && dist(e, ally) <= SETTINGS.FoeRange) theirs.push(e);
@@ -207,8 +219,91 @@ function dmgOf(rec: Rec): string {
     return out.join(";");
 }
 
-/** Per frame (index Tick): on each fresh decision in the laning stage, its cut. Reads only. */
+// --- Slice join-after (shadow): the weighing after a fight of ours ends, read without the hit (ev=join_after). ---
+
+interface Watch {
+    kind: string;
+    why: string;
+    tgt: number;
+    start: number;
+    next: number;
+    samples: string[];
+}
+
+const watches: Record<number, Watch | undefined> = {};
+
+const r3 = (v: number): number => math.floor(v * 1000 + 0.5) / 1000;
+const r2 = (v: number): number => math.floor(v * 100 + 0.5) / 100;
+/** A sample's field: whole numbers without a decimal point (Lua prints 1.0), others as rounded. */
+const f = (v: number | string): string => (type(v) !== "number" ? (v as string) : v === math.floor(v as number) ? string.format("%d", v) : string.format("%g", v));
+
+function flush(pid: number, res: string): void {
+    const w = watches[pid];
+    if (w === undefined) return;
+    watches[pid] = undefined;
+    Telemetry.Event("join_after", [
+        ["pid", pid],
+        ["kind", w.kind],
+        ["why", w.why],
+        ["tgt", w.tgt],
+        ["res", res],
+        ["s", w.samples.join(";")],
+    ]);
+}
+
+/**
+ * A taken `join` or `trade` window of `bot` on `tpid` has ended with `why` (states/core_trade close): watch the weighing for
+ * AfterWindow s, while telemetry is on and in the laning stage. A watch still open ends `reopen`. Reads only.
+ */
+export function After(bot: Unit, kind: string, why: string, tpid: number): void {
+    if (!Telemetry.IsEnabled()) return;
+    const pid = bot.GetPlayerID();
+    flush(pid, "reopen");
+    const now = DotaTime();
+    if ((kind !== "join" && kind !== "trade") || now > SETTINGS.Until || !bot.IsAlive()) return;
+    watches[pid] = { kind, why, tgt: tpid, start: now, next: now, samples: [] };
+}
+
+/** Any CoreTrade window of `bot` (trade, join, kill, fight) has started: an open watch ends `reopen` (the fight went on). Reads only. */
+export function Reopened(bot: Unit): void {
+    flush(bot.GetPlayerID(), "reopen");
+}
+
+/** One sample of the watch: the weighing around the bot itself (no hit and no pair needed). */
+function sample(bot: Unit, w: Watch, now: number): string {
+    const allies: Unit[] = [];
+    for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) if (live(a) && dist(a, bot) <= SETTINGS.OursRange) allies.push(a);
+    const t = heroOf(w.tgt);
+    const seen = t !== undefined && t.CanBeSeen();
+    const thp = seen ? r2(t!.GetHealth() / math.max(1, t!.GetMaxHealth())) : -1;
+    const d = seen ? math.floor(dist(t!, bot) + 0.5) : -1;
+    const hp = r2(bot.GetHealth() / math.max(1, bot.GetMaxHealth()));
+    const dt = math.floor((now - w.start) * 10 + 0.5) / 10;
+    const rec = weigh(bot, allies);
+    if (rec === undefined) return [dt, "n", 0, 0, thp, d, hp, allies.filter((a) => !RetreatState.Running(a)).length, 0].map((v) => f(v)).join(":");
+    const a = Decide(rec);
+    const no = rec.ours.filter((m) => m.ret !== 1).length;
+    return [dt, a.dec.substring(0, 1), r3(a.ko), r3(a.kt), thp, d, hp, no, rec.theirs.length].map((v) => f(v)).join(":");
+}
+
+/** Per frame: the open watch's sample when due, and its line at the end. Reads only. */
+function tickAfter(bot: Unit, now: number): void {
+    const pid = bot.GetPlayerID();
+    const w = watches[pid];
+    if (w === undefined) return;
+    // A bot that died is not ticked until it respawns (early respawns fit inside the window): a missed sample died with it.
+    if (!bot.IsAlive() || now > w.next + SETTINGS.AfterEvery) return flush(pid, "dead");
+    if (now > SETTINGS.Until) return flush(pid, "stage");
+    if (now >= w.next) {
+        w.samples.push(sample(bot, w, now));
+        w.next = now + SETTINGS.AfterEvery;
+    }
+    if (now - w.start >= SETTINGS.AfterWindow) flush(pid, "full");
+}
+
+/** Per frame (index Tick): on each fresh decision in the laning stage, its cut; the join-after watch. Reads only. */
 export function Tick(bot: Unit): void {
+    if (Telemetry.IsEnabled()) tickAfter(bot, DotaTime());
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || !bot.IsAlive()) return;
     const now = DotaTime();
     if (now > SETTINGS.Until) return;

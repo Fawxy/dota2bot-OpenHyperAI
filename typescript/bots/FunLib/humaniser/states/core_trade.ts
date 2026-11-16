@@ -556,6 +556,8 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["mode", bot.GetActiveMode()],
         ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
     ]);
+    // Slice join-after (shadow): the weighing after a taken join or trade ends.
+    if (started) PairJoin.After(bot, ep.kind, why, ep.tpid);
 }
 
 /** The cut's cadence (cut kind `trade`): a fresh decision at most every TRADE_CUT_EVERY s, an unchanged answer every TRADE_CUT_KEEP s, to TRADE_CUT_UNTIL (the laning stage; PairJoin's). */
@@ -842,7 +844,10 @@ export function Think(bot: Unit): void {
     const ep = episodes[pid];
     if (ep === undefined || !valid(ep.target)) return;
     const now = DotaTime();
-    if (ep.startedAt === undefined) ep.startedAt = now;
+    if (ep.startedAt === undefined) {
+        ep.startedAt = now;
+        PairJoin.Reopened(bot);
+    }
     const creeps: Unit[] = [];
     let onMe = 0;
     for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) {
