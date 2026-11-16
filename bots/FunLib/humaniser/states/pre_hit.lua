@@ -260,7 +260,10 @@ function ____exports.Plan(hpAt, horizon, towers, first, period, lo, mean, err)
         err
     )
 end
-function decide(bot, me, verbs, tower, target, walk, f, hpAt, towers, horizon, next)
+function decide(bot, me, verbs, tower, target, walk, f, hpAt, towers, horizon, next, freeUntil)
+    if freeUntil == nil then
+        freeUntil = math.huge
+    end
     local creep = target
     local first = walk + verbs.ownHitTime(me, creep)
     local ____this_5
@@ -298,6 +301,9 @@ function decide(bot, me, verbs, tower, target, walk, f, hpAt, towers, horizon, n
         verdict = "kills"
     else
         verdict = "go"
+    end
+    if verdict == "go" and first + period > freeUntil then
+        verdict = "lh"
     end
     if verdict == "go" then
         for ____, o in ipairs(verbs.laneTargets(me, {within = first + period, deny = false})) do
@@ -375,15 +381,15 @@ function notePick(tower, current, next, creeps)
         local natk = 0
         for ____, c in ipairs(creeps) do
             do
-                local __continue99
+                local __continue100
                 repeat
                     if c:IsNull() or not c:IsAlive() then
-                        __continue99 = true
+                        __continue100 = true
                         break
                     end
                     local dc = GetUnitToUnitDistance(tower, c)
                     if dc > reach + (c:GetBoundingRadius() or 0) then
-                        __continue99 = true
+                        __continue100 = true
                         break
                     end
                     n = n + 1
@@ -396,9 +402,9 @@ function notePick(tower, current, next, creeps)
                     if c:GetAttackTarget() == tower then
                         natk = natk + 1
                     end
-                    __continue99 = true
+                    __continue100 = true
                 until true
-                if not __continue99 then
+                if not __continue100 then
                     break
                 end
             end
@@ -453,10 +459,10 @@ function startWatch(bot, verbs, tower, creep, f, lo, next)
     local td = -1
     for ____, h in ipairs(f.hits) do
         do
-            local __continue108
+            local __continue109
             repeat
                 if h.t > 1 then
-                    __continue108 = true
+                    __continue109 = true
                     break
                 end
                 if h.by == "tower" then
@@ -469,9 +475,9 @@ function startWatch(bot, verbs, tower, creep, f, lo, next)
                 else
                     ks = ks + 1
                 end
-                __continue108 = true
+                __continue109 = true
             until true
-            if not __continue108 then
+            if not __continue109 then
                 break
             end
         end
@@ -492,16 +498,16 @@ function startWatch(bot, verbs, tower, creep, f, lo, next)
         tower:GetAttackDamage(),
         DamageType.Physical
     )
-    local ____creep_20 = creep
-    local ____f_21 = f
-    local ____DotaTime_result_22 = DotaTime()
-    local ____temp_23 = -1
-    local ____temp_24 = {}
-    local ____temp_25 = {}
-    local ____GameTime_result_26 = GameTime()
-    local ____temp_27 = {}
+    local ____creep_24 = creep
+    local ____f_25 = f
+    local ____DotaTime_result_26 = DotaTime()
+    local ____temp_27 = -1
     local ____temp_28 = {}
-    local ____array_19 = __TS__SparseArrayNew(
+    local ____temp_29 = {}
+    local ____GameTime_result_30 = GameTime()
+    local ____temp_31 = {}
+    local ____temp_32 = {}
+    local ____array_23 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "hp",
@@ -520,15 +526,15 @@ function startWatch(bot, verbs, tower, creep, f, lo, next)
             math.floor(td)
         }
     )
-    local ____math_floor_17 = math.floor
-    local ____this_16
-    ____this_16 = tower
-    local ____opt_15 = ____this_16.GetSecondsPerAttack
+    local ____math_floor_21 = math.floor
+    local ____this_20
+    ____this_20 = tower
+    local ____opt_19 = ____this_20.GetSecondsPerAttack
     __TS__SparseArrayPush(
-        ____array_19,
+        ____array_23,
         {
             "twp",
-            ____math_floor_17((____opt_15 and ____opt_15(____this_16) or -1) * 100) / 100
+            ____math_floor_21((____opt_19 and ____opt_19(____this_20) or -1) * 100) / 100
         },
         {"kt", kt},
         {"kc", kc},
@@ -542,24 +548,24 @@ function startWatch(bot, verbs, tower, creep, f, lo, next)
         {"ac", ac},
         {"ah", ah}
     )
-    local ____next_18
+    local ____next_22
     if next then
-        ____next_18 = true
+        ____next_22 = true
     else
-        ____next_18 = nil
+        ____next_22 = nil
     end
-    __TS__SparseArrayPush(____array_19, {"nx", ____next_18})
+    __TS__SparseArrayPush(____array_23, {"nx", ____next_22})
     watches[pid] = {
-        creep = ____creep_20,
-        f = ____f_21,
-        t = ____DotaTime_result_22,
-        last = ____temp_23,
-        hs = ____temp_24,
-        fs = ____temp_25,
-        g0 = ____GameTime_result_26,
-        lat = ____temp_27,
-        fire = ____temp_28,
-        fields = {__TS__SparseArraySpread(____array_19)}
+        creep = ____creep_24,
+        f = ____f_25,
+        t = ____DotaTime_result_26,
+        last = ____temp_27,
+        hs = ____temp_28,
+        fs = ____temp_29,
+        g0 = ____GameTime_result_30,
+        lat = ____temp_31,
+        fire = ____temp_32,
+        fields = {__TS__SparseArraySpread(____array_23)}
     }
     sampleWatch(bot, verbs)
 end
@@ -578,17 +584,17 @@ function sampleWatch(bot, verbs)
         end
         w.last = dt
         local r = math.floor(dt * 100) / 100
-        local ____w_hs_29 = w.hs
-        ____w_hs_29[#____w_hs_29 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
-        local ____w_fs_30 = w.fs
-        ____w_fs_30[#____w_fs_30 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
+        local ____w_hs_33 = w.hs
+        ____w_hs_33[#____w_hs_33 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
+        local ____w_fs_34 = w.fs
+        ____w_fs_34[#____w_fs_34 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
         return
     end
     watches[pid] = nil
-    local ____Telemetry_Event_32 = Telemetry.Event
-    local ____array_31 = __TS__SparseArrayNew(__TS__Spread(w.fields))
+    local ____Telemetry_Event_36 = Telemetry.Event
+    local ____array_35 = __TS__SparseArrayNew(__TS__Spread(w.fields))
     __TS__SparseArrayPush(
-        ____array_31,
+        ____array_35,
         {
             "end",
             math.floor(dt * 100) / 100
@@ -611,9 +617,9 @@ function sampleWatch(bot, verbs)
             table.concat(w.fire, ",")
         }
     )
-    ____Telemetry_Event_32(
+    ____Telemetry_Event_36(
         "prehit_fc",
-        {__TS__SparseArraySpread(____array_31)}
+        {__TS__SparseArraySpread(____array_35)}
     )
 end
 function noteFires(bot, w)
@@ -625,8 +631,8 @@ function noteFires(bot, w)
         local before = w.lat[u]
         w.lat[u] = at
         if at > w.g0 and (before == nil or at > before) and #w.fire < WATCH_FIRES then
-            local ____w_fire_33 = w.fire
-            ____w_fire_33[#____w_fire_33 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
+            local ____w_fire_37 = w.fire
+            ____w_fire_37[#____w_fire_37 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
         end
     end
     note(bot, "S")
@@ -903,7 +909,7 @@ end
 --- The verdict on the tower's predicted next target (`NextTarget`) while it is still on `current`: the current one's forecast
 -- gives its death and the tower's last hit on it, `NextTowerHits` the tower's hits on the next from then, added to the next
 -- creep's own forecast (its current attackers, no tower).
-local function considerNext(bot, me, verbs, tower, current, next)
+local function considerNext(bot, me, verbs, tower, current, next, freeUntil)
     if current:IsNull() or not current:IsAlive() or next:IsNull() or not next:IsAlive() then
         return {nil, nil}
     end
@@ -988,7 +994,8 @@ local function considerNext(bot, me, verbs, tower, current, next)
         hpAt,
         towers,
         ____exports.NEXT_HORIZON,
-        true
+        true,
+        freeUntil
     )
 end
 --- The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
@@ -1020,22 +1027,24 @@ function ____exports.Find(bot, verbs)
         end
     end
     local creeps = bot:GetNearbyLaneCreeps(1600, true) or ({})
-    local free = best == nil and (note == nil or note.verdict ~= "go" and note.verdict ~= "kills" and note.verdict ~= "wait" and note.verdict ~= "lh")
+    local v = note and note.verdict
+    local free = best == nil and v ~= "go" and v ~= "kills" and v ~= "lh"
+    local freeUntil = v == "wait" and (note and note.plan) ~= nil and note.plan.swings[1] or math.huge
     for ____, tower in ipairs(towersNear) do
         local target = tower:GetAttackTarget()
         local current = target ~= nil and target ~= nil and not target:IsNull() and target:IsAlive() and target:IsCreep() and target:GetTeam() ~= bot:GetTeam() and target or nil
-        local ____temp_14
+        local ____temp_18
         if current ~= nil then
-            ____temp_14 = ____exports.NextTarget(
+            ____temp_18 = ____exports.NextTarget(
                 tower,
                 current,
                 creeps,
                 WorldFacts.TowerReach(tower, 788)
             )
         else
-            ____temp_14 = nil
+            ____temp_18 = nil
         end
-        local next = ____temp_14
+        local next = ____temp_18
         notePick(tower, current, next, creeps)
         if free and best == nil and current ~= nil and next ~= nil then
             local n, pre = unpack(considerNext(
@@ -1044,7 +1053,8 @@ function ____exports.Find(bot, verbs)
                 verbs,
                 tower,
                 current,
-                next
+                next,
+                freeUntil
             ))
             if n ~= nil and (note == nil or n.verdict ~= "far") then
                 note = n
@@ -1058,7 +1068,7 @@ function ____exports.Find(bot, verbs)
         LanePick.NoteVerdict(
             pid,
             DotaTime(),
-            note.verdict
+            note.next == true and "n" .. note.verdict or note.verdict
         )
     end
     return best

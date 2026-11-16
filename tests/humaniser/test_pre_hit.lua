@@ -309,6 +309,50 @@ do -- Find on the next target: the tower kills its current creep at 0.3 (no plan
 	Unit.GetNearbyLaneCreeps = saved
 end
 
+-- Round 2: the current creep's plan waits for a later swing (360 HP: the kill after the tower's fourth hit, 2.73 s). A
+-- pre-hit on the next creep (230 HP: the tower steps it 150, 70, dead, never in range) whose attack is ready again before
+-- that swing goes; one that would still be busy does not.
+local function waitWorld(period, nextHp)
+	ResetWorld()
+	local cur = MakeUnit({ pid = -2, team = 3, hp = 360, loc = Vector(100, 0) })
+	local nxt = MakeUnit({ pid = -5, team = 3, hp = nextHp, loc = Vector(150, 40) })
+	cur.creep, nxt.creep = true, true
+	local tw = MakeUnit({ pid = -3, team = 2, loc = Vector(-400, 0) })
+	tw.target, tw.damage, tw.range = cur, 80, 700
+	TOWERS = { tw }
+	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(0, 0) })
+	bot.period, bot.range = period, 150
+	local hpAt, lands = tower(360)
+	local hits = {}
+	for _, t in ipairs(lands) do hits[#hits + 1] = { t = t, damage = TOWER, by = "tower" } end
+	local fCur = { hp = 360, regen = 0, hits = hits, unphased = 0, unphasedTower = false, unphasedHits = {}, at = hpAt }
+	local fNext = { hp = nextHp, regen = 0, hits = {}, unphased = 0, unphasedTower = false, unphasedHits = {} }
+	fNext.at = function() return nextHp end
+	local verbs = {
+		hpForecast = function(_, c) return c == cur and fCur or fNext end,
+		forecastHp = function(f, t) return f.at(t) end,
+		ownHitTime = function() return FIRST end,
+		laneTargets = function() return {} end,
+	}
+	return bot, cur, nxt, verbs
+end
+do
+	local saved = Unit.GetNearbyLaneCreeps
+	local bot, cur, nxt, verbs = waitWorld(1.4, 230)
+	function Unit:GetNearbyLaneCreeps(_, enemies) if enemies then return { cur, nxt } end return {} end
+	local nc = nil
+	local ok, pre = pcall(PreHit.Find, bot, verbs)
+	nc = PreHit.NoteOf(1, nxt)
+	check("find next on wait: the current creep's swing comes later, the next pre-hit goes", ok and pre ~= nil and pre.creep == nxt,
+		tostring(ok) .. " " .. tostring(pre) .. " " .. tostring(nc and nc.verdict))
+	bot, cur, nxt, verbs = waitWorld(2.5, 230)
+	ok, pre = pcall(PreHit.Find, bot, verbs)
+	nc = PreHit.NoteOf(1, nxt)
+	check("find next on wait: our attack still busy at the current creep's swing, no pre-hit", ok and pre == nil and nc ~= nil and nc.verdict == "lh",
+		tostring(ok) .. " " .. tostring(pre) .. " " .. tostring(nc and nc.verdict))
+	Unit.GetNearbyLaneCreeps = saved
+end
+
 do -- the switch off: Find offers nothing
 	Customize.Ours.PreHit = false
 	local bot, _, verbs = world(420)

@@ -198,8 +198,9 @@ export function Plan(
 /**
  * Why a pre-hit was or was not chosen, for the snapshot's `lf` (`pr=`): `go` a pre-hit now; `kills` the
  * plan's first swing is the kill now (the last-hit verb's); `wait` the plan's first swing comes after a later tower hit (remade
- * then); `none` no plan ends in a kill; `lh` a last hit on another creep comes due before our attack is ready again; `phase` the
- * tower's hit times unknown; `far` beyond the pick's walk.
+ * then); `none` no plan ends in a kill; `lh` a last hit on another creep, or the planned swing on the tower's current creep,
+ * comes due before our attack is ready again; `phase` the tower's hit times unknown; `far` beyond the pick's walk. A verdict on
+ * the tower's predicted next target is noted with an `n` before it (`pr=ngo`).
  */
 export type Verdict = "go" | "kills" | "wait" | "none" | "lh" | "phase" | "far";
 
@@ -291,7 +292,15 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
  * gives its death and the tower's last hit on it, `NextTowerHits` the tower's hits on the next from then, added to the next
  * creep's own forecast (its current attackers, no tower).
  */
-function considerNext(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: Unit, current: Unit, next: Unit): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
+function considerNext(
+    bot: Unit,
+    me: Lib.TaskUnit,
+    verbs: typeof Lib.Verbs,
+    tower: Unit,
+    current: Unit,
+    next: Unit,
+    freeUntil: number,
+): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
     if (current.IsNull() || !current.IsAlive() || next.IsNull() || !next.IsAlive()) return [undefined, undefined];
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
     const walk = math.max(0, GetUnitToUnitDistance(bot, next) - bot.GetAttackRange()) / speed;
@@ -320,7 +329,7 @@ function considerNext(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, towe
         for (const h of towers) if (h <= t) n++;
         return verbs.forecastHp(f, t) - tw * n;
     };
-    return decide(bot, me, verbs, tower, next, walk, f, hpAt, towers, NEXT_HORIZON, true);
+    return decide(bot, me, verbs, tower, next, walk, f, hpAt, towers, NEXT_HORIZON, true, freeUntil);
 }
 
 /** The plan on `target` and its verdict; on `go` the pre-hit and the probe's watch. */
@@ -336,6 +345,7 @@ function decide(
     towers: number[],
     horizon: number,
     next: boolean,
+    freeUntil = math.huge,
 ): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
     const creep = target as unknown as Lib.TaskCreep;
     const first = walk + verbs.ownHitTime(me, creep);
@@ -350,6 +360,8 @@ function decide(
     else if (plan.swings[0] > first + 1e-6) verdict = "wait";
     else if (plan.swings.length === 1) verdict = "kills";
     else verdict = "go";
+    // A planned swing on the tower's current creep (its wait) comes before our attack is ready again: that swing is kept.
+    if (verdict === "go" && first + period > freeUntil) verdict = "lh";
     if (verdict === "go") {
         // Our attack is busy until first + period: a last hit on another creep due before then would be lost to it.
         for (const o of verbs.laneTargets(me, { within: first + period, deny: false })) {
@@ -385,16 +397,21 @@ export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget |
             best = pre;
         }
     }
-    // The tower's next target, while its current one leaves our swing free: no pre-hit, kill or planned kill on it.
+    // The tower's next target, while its current one leaves our swing free: no pre-hit or kill now on it, and a planned
+    // later swing on it (wait) only after our attack is ready again (`freeUntil`, checked on the next's go). Round 1 (rig
+    // nx1, 17/11/2026) held it off on every wait: the current creep's verdict was wait in 568 snapshots and none in 5,
+    // and 5 pre-hits went on a next target.
     const creeps = bot.GetNearbyLaneCreeps(1600, true) ?? [];
-    const free = best === undefined && (note === undefined || (note.verdict !== "go" && note.verdict !== "kills" && note.verdict !== "wait" && note.verdict !== "lh"));
+    const v = note?.verdict;
+    const free = best === undefined && v !== "go" && v !== "kills" && v !== "lh";
+    const freeUntil = v === "wait" && note?.plan !== undefined ? note.plan.swings[0] : math.huge;
     for (const tower of towersNear) {
         const target = tower.GetAttackTarget();
         const current = target !== undefined && target !== null && !target.IsNull() && target.IsAlive() && target.IsCreep() && target.GetTeam() !== bot.GetTeam() ? target : undefined;
         const next = current !== undefined ? NextTarget(tower, current, creeps, WorldFacts.TowerReach(tower, 788)) : undefined;
         notePick(tower, current, next, creeps);
         if (free && best === undefined && current !== undefined && next !== undefined) {
-            const [n, pre] = considerNext(bot, me, verbs, tower, current, next);
+            const [n, pre] = considerNext(bot, me, verbs, tower, current, next, freeUntil);
             if (n !== undefined && (note === undefined || n.verdict !== "far")) note = n;
             best = pre;
         }
@@ -402,7 +419,7 @@ export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget |
     sampleWatch(bot, verbs);
     if (note !== undefined) {
         notes[pid] = note;
-        LanePick.NoteVerdict(pid, DotaTime(), note.verdict);
+        LanePick.NoteVerdict(pid, DotaTime(), note.next === true ? `n${note.verdict}` : note.verdict);
     }
     return best;
 }
