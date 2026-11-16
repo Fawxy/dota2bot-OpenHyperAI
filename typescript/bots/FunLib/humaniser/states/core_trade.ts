@@ -399,9 +399,17 @@ export function HitBackDecide(i: Inputs, killHp: number, gap: number | undefined
 export function HitBackHolds(bot: Unit): boolean {
     if (!Ours.On("HitBack") || !CoreLastHit.Applies(bot)) return false;
     const ep = episodes[bot.GetPlayerID()];
-    if (ep !== undefined && ep.hb === true && ep.ended !== true) return true;
+    // A running hit back holds only inside its own bars (keepWhy's slack): a hero arriving mid-trade lets D1 decide.
+    if (ep !== undefined && ep.hb === true && ep.ended !== true) return hbKeptWhy(bot, Gather(bot, ep.target)) === undefined;
     const [h, a] = HitBackAnswer(bot);
     return h !== undefined && (a === "trade" || a === "kill");
+}
+
+/** A running hit back's caution bars, kept with KEEP_HP_SLACK: the reason it ends, or undefined while it holds. */
+function hbKeptWhy(bot: Unit, g: Inputs): string | undefined {
+    if (frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK) return "hb_hp";
+    if (g.enemiesNear >= 2 && (g.burst ?? 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK) return "hb_burst";
+    return undefined;
 }
 
 /** Hitters are looked for this far out: past any laning hero's attack range. */
@@ -741,9 +749,11 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
     const held = heldWhy !== undefined;
     if (heldWhy === "deny") return unanswered(bot, now, "deny", inputs);
     if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? heldWhy ?? "gap", inputs);
-    // A trade on a hero that is hitting us, taken at HIT_BACK_HP or more, is a hit back: retreat waits for it and it ends
-    // under that HP (slice high-hit-back).
-    if (Ours.On("HitBack") && CoreLastHit.Applies(bot) && frac(bot) >= HIT_BACK_HP && bot.WasRecentlyDamagedByHero(target, HIT_RECENT)) {
+    // A trade on a hero that is hitting us is a hit back only when HitBackDecide (its HP and two-hero burst bars) says so
+    // too: retreat waits for it and it ends under those bars (slice high-hit-back). Otherwise it opens as a plain trade.
+    const hbAnswer = Ours.On("HitBack") && CoreLastHit.Applies(bot) && bot.WasRecentlyDamagedByHero(target, HIT_RECENT)
+        ? HitBackDecide(inputs, killHp, gap) : undefined;
+    if (hbAnswer === "trade" || hbAnswer === "kill") {
         if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
         return open(bot, d.kind, target, now, undefined, undefined, true);
     }
@@ -857,10 +867,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
     const d = Decide(g, true, killHpFor(bot));
     if (d.kind === undefined) return d.respect;
     // The hit back's caution bars, kept with slack (slice high-hit-back): under them retreat's own rule decides again.
-    if (ep.hb === true) {
-        if (frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK) return "hb_hp";
-        if (g.enemiesNear >= 2 && (g.burst ?? 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK) return "hb_burst";
-    }
+    if (ep.hb === true) return hbKeptWhy(bot, g);
     return undefined;
 }
 

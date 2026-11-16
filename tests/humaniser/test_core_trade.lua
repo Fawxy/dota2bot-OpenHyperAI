@@ -593,6 +593,47 @@ do
 	CoreTrade.Reset()
 end
 
+-- The review's case (smoke game of 5b185e8, pid 0 at 0:50): with the safe rule on, two of theirs near and their burst 0.52 of
+-- our HP, the plain trade path trades (StandBurst is 1), but it must not open as a hit back (PackBurst 0.5 at two heroes), so
+-- retreat is not held. A running hit back whose second hero arrives stops holding retreat.
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	local Threat = package.loaded["bots/FunLib/humaniser/threat"]
+	Ours.CoreLaneFight, Ours.HitBack, Ours.TradeSafe = false, true, true
+	local read, heroes = Threat.Read, Unit.GetNearbyHeroes
+	local burst = 0.52
+	-- Gather reads only the burst off the threat read.
+	Threat.Read = function() return { burst = burst } end
+	local ally = hero(2, 2, -100, 90)
+	local second = hero(7, 3, 500, 85)
+	local pair = true
+	function Unit:GetNearbyHeroes(r, enemies)
+		if not enemies then return pair and { self, ally } or { self } end
+		local out = {}
+		for _, h in ipairs(pair and { enemy, second } or { enemy }) do if GetUnitToUnitDistance(self, h) <= r then table.insert(out, h) end end
+		return out
+	end
+	local alive = IsHeroAlive
+	IsHeroAlive = function(pid) return pid == 7 or alive(pid) end
+	CoreTrade.Reset()
+	T = T + 30
+	bot.loc, enemy.loc, bot.hp, enemy.hp, bot.attacking, bot.hitBy = Vector(0, 0), Vector(400, 0), 90, 85, nil, enemy
+	local d = CoreTrade.Desire(bot)
+	check("two heroes, burst 0.52: the trade may open, but not as a hit back holding retreat",
+		d ~= CoreTrade.DESIRE_TRADE or (not CoreTrade.HitBackHolds(bot) and not last():find("hb=1")), last())
+	burst = 0.3
+	CoreTrade.Reset()
+	T = T + 30
+	check("(setup) two heroes, burst 0.3: a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.HitBackHolds(bot))
+	CoreTrade.Think(bot)
+	burst = 0.6
+	check("its burst rises past the bar with slack: retreat is no longer held", not CoreTrade.HitBackHolds(bot))
+	Threat.Read, Unit.GetNearbyHeroes, IsHeroAlive = read, heroes, alive
+	Ours.CoreLaneFight, Ours.HitBack, Ours.TradeSafe = true, nil, false
+	bot.hitBy, bot.attacking = nil, nil
+	CoreTrade.Reset()
+end
+
 -- Slice pair-join-on (D10): PairJoin's answer opens a committed `join` on its target past the trade's refusals, takes over a
 -- trade on another hero, ends when the answer does, and holds laning's last hit off once taken.
 do

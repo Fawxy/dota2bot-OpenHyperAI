@@ -64,7 +64,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local decideSafe, favoured, heldBy, heldByGap, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local decideSafe, favoured, heldBy, heldByGap, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -258,6 +258,15 @@ function ____exports.HitBackDecide(i, killHp, gap)
     end
     return ____exports.Answer(i, killHp, gap)
 end
+function hbKeptWhy(bot, g)
+    if frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK then
+        return "hb_hp"
+    end
+    if g.enemiesNear >= 2 and (g.burst or 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK then
+        return "hb_burst"
+    end
+    return nil
+end
 function unanswered(bot, now, why, i)
     local pid = bot:GetPlayerID()
     local last = lastNo[pid]
@@ -268,10 +277,10 @@ function unanswered(bot, now, why, i)
     local hd = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) do
         do
-            local __continue55
+            local __continue58
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue55 = true
+                    __continue58 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -279,9 +288,9 @@ function unanswered(bot, now, why, i)
                     hitter = h
                     hd = d
                 end
-                __continue55 = true
+                __continue58 = true
             until true
-            if not __continue55 then
+            if not __continue58 then
                 break
             end
         end
@@ -390,19 +399,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue78
+            local __continue81
             repeat
                 if not c:IsAlive() then
-                    __continue78 = true
+                    __continue81 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue78 = true
+                __continue81 = true
             until true
-            if not __continue78 then
+            if not __continue81 then
                 break
             end
         end
@@ -414,10 +423,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue82
+            local __continue85
             repeat
                 if not t:IsAlive() then
-                    __continue82 = true
+                    __continue85 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -433,9 +442,9 @@ function ____exports.Gather(bot, target)
                 ) <= reach then
                     towerOnMe = true
                 end
-                __continue82 = true
+                __continue85 = true
             until true
-            if not __continue82 then
+            if not __continue85 then
                 break
             end
         end
@@ -547,7 +556,8 @@ function freshDecision(bot, pid, now, owns, target, inputs, killHp)
     if d.kind == nil or held then
         return hitBack(bot, now, d.respect or heldWhy or "gap", inputs)
     end
-    if Ours.On("HitBack") and CoreLastHit.Applies(bot) and frac(bot) >= HIT_BACK_HP and bot:WasRecentlyDamagedByHero(target, HIT_RECENT) then
+    local hbAnswer = Ours.On("HitBack") and CoreLastHit.Applies(bot) and bot:WasRecentlyDamagedByHero(target, HIT_RECENT) and ____exports.HitBackDecide(inputs, killHp, gap) or nil
+    if hbAnswer == "trade" or hbAnswer == "kill" then
         if d.kind == "trade" and gap ~= nil then
             recoverTo[pid] = nil
         end
@@ -624,11 +634,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue133
+            local __continue136
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue133 = true
+                    __continue136 = true
                     break
                 end
                 local g = ____exports.Gather(bot, t)
@@ -638,7 +648,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if g.tower or r == "tower" or r == "outnumbered" then
-                    __continue133 = true
+                    __continue136 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -647,12 +657,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue133 = true
+                    __continue136 = true
                     break
                 end
                 return p
             until true
-            if not __continue133 then
+            if not __continue136 then
                 break
             end
         end
@@ -767,12 +777,7 @@ function keepWhy(bot, ep, now, join)
         return d.respect
     end
     if ep.hb == true then
-        if frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK then
-            return "hb_hp"
-        end
-        if g.enemiesNear >= 2 and (g.burst or 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK then
-            return "hb_burst"
-        end
+        return hbKeptWhy(bot, g)
     end
     return nil
 end
@@ -783,19 +788,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue181
+            local __continue182
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue181 = true
+                    __continue182 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue181 = true
+                __continue182 = true
             until true
-            if not __continue181 then
+            if not __continue182 then
                 break
             end
         end
@@ -907,7 +912,10 @@ function ____exports.HitBackHolds(bot)
     end
     local ep = episodes[bot:GetPlayerID()]
     if ep ~= nil and ep.hb == true and ep.ended ~= true then
-        return true
+        return hbKeptWhy(
+            bot,
+            ____exports.Gather(bot, ep.target)
+        ) == nil
     end
     local h, a = ____exports.HitBackAnswer(bot)
     return h ~= nil and (a == "trade" or a == "kill")
@@ -922,10 +930,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue64
+            local __continue67
             repeat
                 if not valid(h) then
-                    __continue64 = true
+                    __continue67 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -933,9 +941,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue64 = true
+                __continue67 = true
             until true
-            if not __continue64 then
+            if not __continue67 then
                 break
             end
         end
@@ -1245,19 +1253,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue171
+            local __continue172
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue171 = true
+                    __continue172 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue171 = true
+                __continue172 = true
             until true
-            if not __continue171 then
+            if not __continue172 then
                 break
             end
         end
