@@ -5,7 +5,8 @@
 --        kh (kill HP share), gap (HP-share gap a lost trade left; absent none).
 -- world, slice trade-safe: bu (burst over HP), tm (0|1, tower on the bot); with bu the safe rule decides.
 -- world, slice trade-free: tf (1: question 2 asked), tlh, ar, tar, ko, kt, dn; with tf the answer may be unfavoured or deny, never gap.
--- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny>); fact.hp, fact.thp, fact.cr.
+-- world, slice high-hit-back: hb (1: the hit back's decision, CoreTrade.HitBackDecide: hb_hp under 70% HP, hb_burst at two heroes).
+-- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny|hb_hp|hb_burst>); fact.hp, fact.thp, fact.cr.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 return function(fx)
@@ -31,7 +32,8 @@ return function(fx)
 		-- Round 2: dn (1: the laning body is offered a deny now) outbids a free or favoured trade.
 		inputs.denyDue = w.dn == 1 or w.dn == true
 	end
-	local a = CoreTrade.Answer(inputs, w.kh, w.gap)
+	-- Slice high-hit-back: with hb (1: the target is hitting the bot) the hit back's decision, its caution bars before Answer.
+	local a = (w.hb == 1 or w.hb == true) and CoreTrade.HitBackDecide(inputs, w.kh, w.gap) or CoreTrade.Answer(inputs, w.kh, w.gap)
 	local action = (a == "trade" or a == "kill") and { verb = a } or { verb = "respect", target = a }
 	return {
 		actions = { action },

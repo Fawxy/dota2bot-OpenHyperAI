@@ -1,0 +1,40 @@
+id: laning.hitback.control-unfavoured.001
+source: log
+ref: {log: 2026-11-16T03-05-24-h2hhighstand1_A_dire_4.log, t: 373.833}
+status: active
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose unfavoured on 2 (hp 0.890 vs 0.768, creeps 0, tower 0); write the right action, not this.
+# core pid 8 on pid 2: 457 away, reach 528; HP 89% vs 77%; heroes 1 theirs, 1 ours; creeps near 0, on the bot 0; tower 0
+world:
+  t: 373.833
+  pid: 8
+  role: "core"
+  tgt: 2
+  hp: 0.89
+  thp: 0.768
+  en: 1
+  ally: 1
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 457
+  rch: 528
+  tlh: 0
+  gap: -0.166
+  bu: 0.431
+  tm: 0
+  ar: 380
+  tar: 940
+  tme: 1
+  ko: 0.192
+  kt: 0.216
+  tf: 1
+  dn: 0
+  hb: 1
+expect:
+  must: ["respect(unfavoured)"]
+  mustNot: ["trade", "kill"]
+notes: >
+  Control (D1, D18 question 2; h2hhighstand1 A_dire_4, 6:14): our pos3 at 89% is hit by a hero that outranges it by 560; our share 0.19 against theirs 0.22. Hitting back is not favoured, so retreat keeps its leave.

@@ -138,6 +138,38 @@ do
 	check("engaged: the episode does not end safe while he still hits us", H.Retreat.Running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
 end
 
+-- Slice high-hit-back (D24): over budget with a hero hitting us, the `threat` leave waits while CoreTrade.HitBackHolds; it is
+-- asked only then. Lethal still leaves first.
+do
+	local asked = 0
+	local function run(holds, engaged, est)
+		local H, bot = world({ hp = 540 })
+		local e1 = enemy(10, Vector(300, -5000), est or 100)
+		enemy(11, Vector(300, -4900), est or 100)
+		if engaged then bot.hitBy = { [e1] = T - 0.2 } end
+		asked = 0
+		-- The world loads a fresh humaniser: stub the core_trade module retreat now holds.
+		local CT = require("bots/FunLib/humaniser/states/core_trade")
+		CT.HitBackHolds = function() asked = asked + 1 return holds end
+		local out = capture(function()
+			H.Retreat.Desire(bot)
+			T = T + react(bot) + 0.5
+			if engaged then bot.hitBy = { [e1] = T - 0.2 } end
+			H.Retreat.Desire(bot)
+		end)
+		return H.Retreat.Running(bot), out
+	end
+	local on, out = run(true, true)
+	local stay
+	for _, l in ipairs(out) do if l:find("ph=stay", 1, true) then stay = l end end
+	check("hit back: hit at 90% over budget with the hit back holding, no leave", not on and asked > 0, tostring(on) .. " asked=" .. asked)
+	check("hit back: one ph=stay why=hitback line", stay ~= nil and field(stay, "why") == "hitback", stay)
+	check("hit back: the same read with no hit back holding leaves", (run(false, true)))
+	local _, _ = run(true, false)
+	check("hit back: not asked when nobody is hitting us", asked == 0)
+	check("hit back: lethal leaves whatever the hit back says", (run(true, true, 2000)))
+end
+
 -- Lethal leaves at once; an escape item ready (or a faster bot out of their range) is not lethal.
 do
 	local H, bot = world({ hp = 200 })
@@ -591,6 +623,8 @@ do
 		local H, bot = world()
 		if fact ~= nil then package.loaded["bots/FunLib/humaniser/drill"].RigCreepAggro = function() return fact end end
 		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = true
+		-- The hold alone: a hit back (slice high-hit-back) answers this even 2v2 at full HP first.
+		package.loaded["bots/FunLib/custom_loader"].Ours.HitBack = false
 		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
 		ally.maxhp, ally.hp = 600, 600
 		local e1, e2 = enemy(10, Vector(300, -5000), 100), enemy(11, Vector(300, -4900), 100)

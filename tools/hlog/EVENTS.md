@@ -1291,7 +1291,7 @@ Slice support-lane: one sample per started pull per PullJob WatchLogEvery during
 
 ## choice
 
-Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it; pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (the reading's cost to its caller, near 0 when it reused the frame's run); the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (Threat.Gate at the camp, `ev=threat who=pull_job`; Ours.Threat on).
+Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it; pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost); the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (Threat.Gate at the camp, `ev=threat who=pull_job`; Ours.Threat on).
 
 `pid` num, `ap` num, `rule` str
 
@@ -1309,7 +1309,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `own` num: The clash's distance from our T1 along the lane.
 - `tgt` num: The lane's target point (`LanePush.TargetOf`).
 - `tw` num: 1 when the tower rule decided.
-- `ms` num: The reading's real milliseconds to its caller: the runs, or near 0 when it cut the frame's run (slice lane-run).
+- `ms` num: The runs' real milliseconds.
 - `cn` num: The camp as the API returns it: neutrals in its box.
 - `cs` num: Of them, those `CanBeSeen`.
 - `chp` num: Their HP.
@@ -1381,6 +1381,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
 - `pj` num: kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise.
+- `hb` num: kind=leave: 1 when CoreTrade.HitBackHolds held for the bot (`Ours.HitBack`: LeaveWhy stays `hitback`); absent otherwise.
 - `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
 - `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join`, `outnumbered`, `losing`.

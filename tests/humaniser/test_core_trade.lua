@@ -519,141 +519,118 @@ do
 	Plays.ResetCache()
 end
 
--- Slice hit-back (D24): a hero hitting us from inside our creeps' aggro is traded back even beside their wave or with us a
--- little behind on HP, the refusals the trade rule alone keeps; tower, numbers, our HP floor and creeps on us still refuse.
+-- Slice high-hit-back (D24, `Ours.HitBack`): a hero hitting us at 70% HP or more is traded back when CoreTrade's own answer on
+-- it is a trade (here, with TradeSafe and TradeFree off, Decide's old rule); retreat's leave waits on HitBackHolds meanwhile.
+-- Under 70%, behind, inside their wave: no hit back, and retreat decides. A running hit back ends under 65%.
 do
-	check("hit back: a big enemy wave does not refuse it", CoreTrade.Decide(inputs({ enemyCreepsNear = 6 }), false, nil, true).kind == "trade")
-	check("hit back: behind on HP does not refuse it", CoreTrade.Decide(inputs({ hp = 0.6, targetHp = 0.9 }), false, nil, true).kind == "trade")
-	check("hit back: their tower, their numbers, our HP floor and two creeps on us still refuse it",
-		CoreTrade.Decide(inputs({ tower = true }), false, nil, true).respect == "tower"
-		and CoreTrade.Decide(inputs({ enemiesNear = 2 }), false, nil, true).respect == "outnumbered"
-		and CoreTrade.Decide(inputs({ hp = 0.45, targetHp = 0.4 }), false, nil, true).respect == "low_hp"
-		and CoreTrade.Decide(inputs({ hitByCreeps = 2 }), false, nil, true).respect == "creeps")
-
 	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
 	Ours.CoreLaneFight = false
 	Ours.HitBack = true
-	-- Behind on HP inside their wave: the trade rule alone refuses (`behind`, `wave`).
 	local theirs = {}
-	for k = 1, 5 do theirs[k] = MakeUnit({ pid = 30 + k, team = 3, loc = Vector(200, 300) }) end
 	local ourCreep = MakeUnit({ pid = 40, team = 2, loc = Vector(700, 0) })
-	local ourCreeps = { ourCreep }
 	function Unit:GetNearbyLaneCreeps(r, enemies)
 		local out = {}
-		for _, c in ipairs(enemies and theirs or ourCreeps) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end
+		for _, c in ipairs(enemies and theirs or { ourCreep }) do if GetUnitToUnitDistance(self, c) <= r then table.insert(out, c) end end
 		return out
 	end
-	local function fresh()
+	local function fresh(hp, ehp)
 		CoreTrade.Reset()
-		bot.loc, enemy.loc = Vector(0, 0), Vector(400, 0)
-		bot.hp, enemy.hp, bot.attacking, bot.hitBy = 60, 90, nil, nil
+		theirs = {}
+		bot.loc, enemy.loc, ourCreep.loc = Vector(0, 0), Vector(400, 0), Vector(700, 0)
+		bot.hp, enemy.hp, bot.attacking, bot.hitBy = hp, ehp, nil, nil
 		T = T + 30
 	end
-	fresh()
-	check("(setup) behind on HP in their wave and not hit: no trade", CoreTrade.Desire(bot) == 0)
-	fresh()
+	fresh(90, 85)
+	check("not hit: no hit back holds retreat", not CoreTrade.HitBackHolds(bot))
 	bot.hitBy = enemy
-	check("hit by a hero standing 300 from our creep: it is traded back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
-	bot.moves, bot.orders = {}, 0
+	check("hit at 90% with the trade on: retreat holds for the hit back", CoreTrade.HitBackHolds(bot))
+	check("and the trade opens as a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	CoreTrade.Think(bot)
-	check("beside their wave the hit back first steps out of it, as a trade does", bot.orders == 0 and #bot.moves == 1)
-	bot.loc = Vector(-400, 0)
-	T = T + 0.3
-	CoreTrade.Desire(bot)
-	CoreTrade.Think(bot)
-	check("clear of their creeps it attacks the hitter", bot.attacking == enemy and bot.orders == 1)
-	bot.loc = Vector(0, 0)
-	T = T + 0.5
-	check("a running hit back is not ended by the wave or the HP gap", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
-	enemy.dead = true
-	T = T + 0.1
-	CoreTrade.Desire(bot)
-	check("its end line says it was a hit back", last():find("ev=trade") and last():find("hb=1"), last())
-	enemy.dead = false
-	-- drill fix9: a trade lost moments in leaves an HP gap that holds new trades; a hit back does not wait for it.
-	fresh()
-	bot.hitBy = nil
-	bot.hp, enemy.hp = 80, 70
-	theirs = {}
-	CoreTrade.Desire(bot)
-	CoreTrade.Think(bot)
-	bot.hp, enemy.hp = 70, 69
+	check("it attacks the hitter", bot.attacking == enemy)
 	T = T + 0.5
 	CoreTrade.Desire(bot)
-	check("(setup) a plain trade lost by 10 of 100 ends losing", last():find("why=losing") ~= nil, last())
+	check("a running hit back holds retreat", CoreTrade.HitBackHolds(bot))
+	bot.hp, enemy.hp = 64, 55
 	T = T + 0.5
-	check("(setup) with the gap not back, no plain trade", CoreTrade.Desire(bot) == 0)
+	CoreTrade.Desire(bot)
+	check("under 65% the hit back ends, logged as one", last():find("ev=trade") and last():find("hb=1") and last():find("why=hb_hp"), last())
+	check("and no longer holds retreat", not CoreTrade.HitBackHolds(bot))
+
+	fresh(60, 50)
 	bot.hitBy = enemy
-	check("hit back: the lost trade's gap does not hold it", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	check("hit at 60%: the trade rule still trades, but retreat is not held", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and not CoreTrade.HitBackHolds(bot))
+	fresh(75, 100)
+	bot.hitBy = enemy
+	check("hit at 75% and behind the hitter: no hit back, no hold", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+	check("logged with the hit back's refusal", last():find("ev=trade_no") and last():find("why=hb_behind"), last())
+	fresh(90, 85)
 	for k = 1, 5 do theirs[k] = MakeUnit({ pid = 30 + k, team = 3, loc = Vector(200, 300) }) end
-	fresh()
 	bot.hitBy = enemy
-	ourCreep.loc = Vector(1000, 0)
-	check("hit from outside our creeps' aggro (600 from the nearest): no hit back", CoreTrade.Desire(bot) == 0)
-	ourCreep.loc = Vector(700, 0)
-	fresh()
+	check("hit at 90% inside their wave: no hit back (the old exemption is gone)", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+
+	-- The walk-in (user 12/11/2026): reach is 648, so a hitter at 900 is 252 past it.
+	fresh(90, 85)
+	enemy.loc = Vector(900, 0)
+	bot.hitBy = enemy
+	check("a hitter 250 past our reach inside our creeps' aggro: walked to and hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.HitBackHolds(bot))
+	fresh(90, 85)
+	enemy.loc, ourCreep.loc = Vector(900, 0), Vector(-500, 0)
+	bot.hitBy = enemy
+	check("the same hitter outside our creeps' aggro: not walked to (D24 steps out)", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+	fresh(90, 85)
+	enemy.loc = Vector(1000, 0)
+	bot.hitBy = enemy
+	check("a hitter 350 past our reach: not walked to", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+
+	fresh(75, 100)
 	bot.hitBy = enemy
 	Ours.HitBack = false
-	check("switch off: the trade rule alone, so no trade", CoreTrade.Desire(bot) == 0)
-	check("the unanswered hit is logged with the respect that refused it and the hitter inside our creeps' aggro",
-		last():find("ev=trade_no") and last():find("why=behind") and last():find("agg=1") and last():find("tgt=6"), last())
-	local n = #lines
-	T = T + 1
-	CoreTrade.Desire(bot)
-	check("one line per run of unanswered hits, not one a frame", #lines == n)
-	fresh()
-	check("not hit: nothing refused is logged", CoreTrade.Desire(bot) == 0 and #lines == n, last())
-	fresh()
-	bot.hitBy = enemy
-	enemy.loc = Vector(900, 0)
-	check("switch off, a hitter 250 outside our reach: no trade, logged as no_target with its distance",
-		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("d=900") and last():find("agg=1"), last())
-	-- The walk-in (user 12/11/2026): reach is 648 here, so a hitter at 900 is 252 past it and one at 1,000 is 352 past it.
-	Ours.HitBack = true
-	theirs = {}
-	fresh()
-	bot.hitBy = enemy
-	bot.hp, enemy.hp = 95, 100
-	enemy.loc = Vector(900, 0)
-	ourCreep.loc = Vector(700, 0)
-	check("a hitter 250 outside our reach, in our creeps' aggro: the hit back walks in", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
-	bot.moves, bot.orders = {}, 0
-	CoreTrade.Think(bot)
-	check("clear of their creeps the walk-in is the primed attack order", bot.attacking == enemy and bot.orders == 1)
-	T = T + 0.5
-	check("the walk-in is not ended as out of reach", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
-	fresh()
-	bot.hitBy = enemy
-	enemy.loc = Vector(1000, 0)
-	ourCreep.loc = Vector(800, 0)
-	check("a hitter 350 outside our reach is not walked to", CoreTrade.Desire(bot) == 0 and last():find("why=no_target"), last())
-	fresh()
-	bot.hitBy = enemy
-	enemy.loc = Vector(900, 0)
-	ourCreep.loc = Vector(100, 0)
-	check("a hitter outside our reach and outside our creeps' aggro is not walked to (a free hit: D24 steps out)",
-		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("agg=0"), last())
-	-- A drill rig supplies the creep-aggro fact in place of the creep test (slice hit-back's rig, off the lane).
-	local Drill = require("bots/FunLib/humaniser/drill")
-	local fact = Drill.RigCreepAggro
-	Ours.HitBack = true
-	fresh()
-	bot.hitBy = enemy
-	enemy.loc = Vector(900, 0)
-	ourCreep.loc = Vector(-2000, 0)
-	Drill.RigCreepAggro = function() return true end
-	check("rig fact true, no creep of ours near the hitter: it is hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
-	fresh()
-	bot.hitBy = enemy
-	enemy.loc = Vector(900, 0)
-	ourCreep.loc = Vector(700, 0)
-	Drill.RigCreepAggro = function() return false end
-	check("rig fact false, our creep 200 from the hitter: no hit back, logged as outside our creeps' aggro",
-		CoreTrade.Desire(bot) == 0 and last():find("why=no_target") and last():find("agg=0"), last())
-	Drill.RigCreepAggro = fact
+	check("switch off: no hold, and the unanswered hit logs the trade rule's refusal",
+		not CoreTrade.HitBackHolds(bot) and CoreTrade.Desire(bot) == 0 and last():find("why=behind") and last():find("agg=1"), last())
 	Ours.HitBack = nil
 	Ours.CoreLaneFight = true
 	function Unit:GetNearbyLaneCreeps() return {} end
+	CoreTrade.Reset()
+end
+
+-- The review's case (smoke game of 5b185e8, pid 0 at 0:50): with the safe rule on, two of theirs near and their burst 0.52 of
+-- our HP, the plain trade path trades (StandBurst is 1), but it must not open as a hit back (PackBurst 0.5 at two heroes), so
+-- retreat is not held. A running hit back whose second hero arrives stops holding retreat.
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	local Threat = package.loaded["bots/FunLib/humaniser/threat"]
+	Ours.CoreLaneFight, Ours.HitBack, Ours.TradeSafe = false, true, true
+	local read, heroes = Threat.Read, Unit.GetNearbyHeroes
+	local burst = 0.52
+	-- Gather reads only the burst off the threat read.
+	Threat.Read = function() return { burst = burst } end
+	local ally = hero(2, 2, -100, 90)
+	local second = hero(7, 3, 500, 85)
+	local pair = true
+	function Unit:GetNearbyHeroes(r, enemies)
+		if not enemies then return pair and { self, ally } or { self } end
+		local out = {}
+		for _, h in ipairs(pair and { enemy, second } or { enemy }) do if GetUnitToUnitDistance(self, h) <= r then table.insert(out, h) end end
+		return out
+	end
+	local alive = IsHeroAlive
+	IsHeroAlive = function(pid) return pid == 7 or alive(pid) end
+	CoreTrade.Reset()
+	T = T + 30
+	bot.loc, enemy.loc, bot.hp, enemy.hp, bot.attacking, bot.hitBy = Vector(0, 0), Vector(400, 0), 90, 85, nil, enemy
+	local d = CoreTrade.Desire(bot)
+	check("two heroes, burst 0.52: the plain trade opens (StandBurst 1)", d == CoreTrade.DESIRE_TRADE)
+	check("but not as a hit back holding retreat", not CoreTrade.HitBackHolds(bot) and not last():find("hb=1"), last())
+	burst = 0.3
+	CoreTrade.Reset()
+	T = T + 30
+	check("(setup) two heroes, burst 0.3: a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.HitBackHolds(bot))
+	CoreTrade.Think(bot)
+	burst = 0.6
+	check("its burst rises past the bar with slack: retreat is no longer held", not CoreTrade.HitBackHolds(bot))
+	Threat.Read, Unit.GetNearbyHeroes, IsHeroAlive = read, heroes, alive
+	Ours.CoreLaneFight, Ours.HitBack, Ours.TradeSafe = true, nil, false
+	bot.hitBy, bot.attacking = nil, nil
 	CoreTrade.Reset()
 end
 

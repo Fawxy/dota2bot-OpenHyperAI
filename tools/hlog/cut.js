@@ -207,7 +207,7 @@ const DECISIONS = {
         driver: 'retreat_leave',
         world(game, cut) {
             const w = commonWorld(game, cut);
-            Object.assign(w, { budget: Number(cut.bud), over: Number(cut.ov), hold: Number(cut.th), dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0 });
+            Object.assign(w, { budget: Number(cut.bud), over: Number(cut.ov), hold: Number(cut.th), dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0, hb: Number(cut.hb) === 1 ? 1 : 0 });
             return w;
         },
         check(game, cut, obs) {
