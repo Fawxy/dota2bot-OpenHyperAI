@@ -327,17 +327,33 @@ function summarise(bot: Unit, w: Watch, now: number): void {
     w.stats = freshStats(now);
 }
 
-export function Tick(bot: Unit): void {
+/** Whether a cast callback has queued an event this bot has not read yet. */
+export function Pending(bot: Unit): boolean {
+    const w = watches[bot.GetPlayerID()];
+    return w !== undefined && w.pending.length > 0;
+}
+
+/**
+ * Reads the queued cast events. Every frame (LaneFight.Frame): an event counts only while its caster is visible at the
+ * read, so a blink into fog read a few frames late would be dropped.
+ */
+export function Drain(bot: Unit): void {
     const now = DotaTime();
     if (now < 0) return;
     const w = watchFor(bot.GetPlayerID());
-    if (w.pending.length > 0) {
-        const queued = w.pending;
-        w.pending = [];
-        // A cast queued while the observer had no tick (dead) is stale by the time it drains.
-        const gap = Perception.Settings().EventGap;
-        for (const q of queued) if (now - q.at <= gap) onCastEvent(bot, q.enemyPid, q.event, q.at);
-    }
+    if (w.pending.length === 0) return;
+    const queued = w.pending;
+    w.pending = [];
+    // A cast queued while the observer had no tick (dead) is stale by the time it drains.
+    const gap = Perception.Settings().EventGap;
+    for (const q of queued) if (now - q.at <= gap) onCastEvent(bot, q.enemyPid, q.event, q.at);
+}
+
+export function Tick(bot: Unit): void {
+    const now = DotaTime();
+    if (now < 0) return;
+    Drain(bot);
+    const w = watchFor(bot.GetPlayerID());
     if (now < w.nextPoll) return;
     const s = LaneFightConfig.Settings();
     w.nextPoll = now + s.PollInterval - 1e-6;

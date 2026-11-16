@@ -117,6 +117,9 @@ function FreshHumaniser(customHumaniser)
 		if k:find("humaniser") or k:find("Customize") or k:find("custom_loader") then package.loaded[k] = nil end
 	end
 	local Customize = require("bots.Customize.general")
+	-- The suites step Tick a frame at a time and expect every step each call; test_tick_rate.lua covers the frames between.
+	customHumaniser = customHumaniser or {}
+	if customHumaniser.TickEvery == nil then customHumaniser.TickEvery = 1 end
 	Customize.Humaniser = customHumaniser
 	package.loaded["bots/FunLib/custom_loader"] = Customize
 	return require("bots/FunLib/humaniser/index")

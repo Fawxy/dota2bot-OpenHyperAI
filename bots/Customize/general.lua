@@ -133,6 +133,9 @@ Customize.Humaniser = {
     Enable = true,
     -- Draws per-bot debug text on screen and enables HDebug.Log output. Requires sv_cheats 1 to see draws.
     Debug = false,
+    -- Our per-frame Tick runs its steps on every TickEvery-th frame (3 = ten times a game second); the few steps that
+    -- need every frame still run on the others. 1 = every step every frame.
+    TickEvery = 3,
     -- Bot skill in [0, 1] combines Valve lobby difficulty and FretBots difficulty with these weights.
     ValveWeight = 0.5,
     FretWeight = 0.5,

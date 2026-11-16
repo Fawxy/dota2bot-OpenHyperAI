@@ -960,7 +960,7 @@ const TOWER_TIERS: [number, number][] = [
 const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barracks.MidRanged, Barracks.BotMelee, Barracks.BotRanged];
 /** RUNE_RULES power.first (transitions/runes): power spots hold water runes before it. */
 const POWER_FROM = Runes.RUNE_RULES.power.first;
-/** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement. */
+/** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a tick of movement. */
 const RUNE_TAKER_R = 400;
 /**
  * A power spot's unpicked rune despawns on the next 2-minute spawn tick, which read as a pickup by the hero waiting there
@@ -1500,7 +1500,8 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         if (c.attackAt[pid] === undefined || at > c.attackAt[pid]) {
             c.attackAt[pid] = at;
             c.attackOn[pid] = h.GetAttackTarget() ?? undefined;
-            c.attackMode[pid] = stateFor(pid).mode;
+            // Read now, not from the mode tracker: that samples less often than this runs.
+            c.attackMode[pid] = h.IsBot() ? h.GetActiveMode() : undefined;
         }
     }
     for (const u of alive) see(c.creeps, u, laneKindOf);
@@ -1583,8 +1584,12 @@ function snapHumans(bot: Unit, now: number): void {
     }
 }
 
-/** Runs every frame per bot from Humaniser.Tick, whether or not the humaniser is enabled. */
-export function Tick(bot: Unit, provider?: ContextProvider): void {
+/**
+ * From Humaniser.Tick per bot, whether or not the humaniser is enabled. `frameOnly` runs just the creep-death tracker, the
+ * one part that needs every frame: a creep that dies between two samples further apart is dropped as "left vision" when
+ * its last seen health was high, and the swing fields read the attack target on the frame the attack lands.
+ */
+export function Tick(bot: Unit, provider?: ContextProvider, frameOnly?: boolean): void {
     if (!IsEnabled()) return;
     const state = GetGameState();
     if (state !== GameState.GameInProgress && state !== GameState.PreGame && state !== GameState.PostGame) return;
@@ -1596,6 +1601,10 @@ export function Tick(bot: Unit, provider?: ContextProvider): void {
     const s = stateFor(bot.GetPlayerID());
     const now = DotaTime();
     if (s.ended) return;
+    if (frameOnly === true) {
+        guardedCreeps(bot, now);
+        return;
+    }
     maybeProfile(bot, s);
     trackMode(bot, s, now, provider);
     trackCounters(bot, s, false, now);
