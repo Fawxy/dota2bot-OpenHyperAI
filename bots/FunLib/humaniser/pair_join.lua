@@ -51,9 +51,9 @@ end
 local ____exports = {}
 local live, dist, member, weigh, heroOf
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local DamageType = ____dota.DamageType
 local UnitType = ____dota.UnitType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function live(u)
@@ -93,7 +93,7 @@ function weigh(ally, ours)
         for ____, f in ipairs(from) do
             local row = {}
             for ____, o in ipairs(on) do
-                row[o:GetPlayerID()] = math.floor(f:GetEstimatedDamageToTarget(true, o, ____exports.SETTINGS.Window, DamageType.All) + 0.5)
+                row[o:GetPlayerID()] = math.floor(SpellReady.DamageOn(f, o, ____exports.SETTINGS.Window) + 0.5)
             end
             dmg[f:GetPlayerID()] = row
         end

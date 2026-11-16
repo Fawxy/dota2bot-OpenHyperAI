@@ -323,6 +323,34 @@ ____exports.EVENTS = {
         sum = "num"
     },
     apiprobe_dmgshape = {team = "num", args = "str"},
+    apiprobe_abil = {
+        team = "num",
+        pid = "num",
+        own = "num",
+        slot = "num",
+        name = "str",
+        lvl = "num",
+        rdy = "num",
+        fc = "num",
+        mok = "num",
+        rem = "num",
+        cd = "num",
+        scd = "num",
+        dmg = "num",
+        mc = "num",
+        aest = "num"
+    },
+    apiprobe_est = {
+        team = "num",
+        src = "num",
+        dst = "num",
+        own = "num",
+        dist = "num",
+        et = "num",
+        ef = "num",
+        ty = "num",
+        ec = "num"
+    },
     apiprobe_tp = {
         team = "num",
         pid = "num",

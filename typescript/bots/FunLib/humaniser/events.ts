@@ -496,6 +496,41 @@ export const EVENTS = {
         team: "num",
         args: "str",
     },
+    /** Overrides.ApiProbe: one ability handle's reads, `own` 1 for a hero about itself (the truth) and 0 for the team's reporter
+     *  about a visible enemy; written on a change (rem only by its sign) or every 10 s. `aest` is the ability's own 3 s
+     *  estimate on the nearest hero of the other side. */
+    apiprobe_abil: {
+        team: "num",
+        pid: "num",
+        own: "num",
+        slot: "num",
+        name: "str",
+        lvl: "num",
+        rdy: "num",
+        fc: "num",
+        mok: "num",
+        rem: "num",
+        cd: "num",
+        scd: "num",
+        dmg: "num",
+        mc: "num",
+        aest: "num",
+    },
+    /** Overrides.ApiProbe: `src`'s unit GetEstimatedDamageToTarget over 3 s on `dst` (the nearest hero of the other side),
+     *  with bCurrentlyAvailable true (`et`) and false (`ef`); once a second for each own hero and each visible enemy. On an
+     *  enemy row `ec` is SpellReady.DamageOn, the figure our reads use; the enemy team's own row for the pair is its truth.
+     *  `ty` is the damage-type mask of all three (7 with pure; rows without it used 3, no pure). */
+    apiprobe_est: {
+        team: "num",
+        src: "num",
+        dst: "num",
+        own: "num",
+        dist: "num",
+        et: "num",
+        ef: "num",
+        ty: "num",
+        ec: "num",
+    },
     /** Overrides.ApiProbe: one GetIncomingTeleports entry, once a second. */
     apiprobe_tp: {
         team: "num",

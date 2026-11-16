@@ -1,0 +1,417 @@
+{
+ "axe_battle_hunger": {
+  "samples": 166,
+  "counted": 166,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 26,
+  "verdict": "counted"
+ },
+ "bane_brain_sap": {
+  "samples": 90,
+  "counted": 90,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 90,
+  "verdict": "counted"
+ },
+ "bounty_hunter_jinada": {
+  "samples": 66,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "bounty_hunter_wind_walk": {
+  "samples": 52,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "bristleback_quill_spray": {
+  "samples": 30,
+  "counted": 30,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 116,
+  "verdict": "counted"
+ },
+ "dragon_knight_breathe_fire": {
+  "samples": 152,
+  "counted": 152,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 114,
+  "verdict": "counted"
+ },
+ "dragon_knight_dragon_tail": {
+  "samples": 11,
+  "counted": 3,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "earthshaker_enchant_totem": {
+  "samples": 5,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "earthshaker_fissure": {
+  "samples": 90,
+  "counted": 90,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 72,
+  "verdict": "counted"
+ },
+ "jakiro_dual_breath": {
+  "samples": 64,
+  "counted": 64,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 43,
+  "verdict": "counted"
+ },
+ "jakiro_ice_path": {
+  "samples": 2,
+  "counted": 2,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 36,
+  "verdict": "unmeasured"
+ },
+ "lich_frost_nova": {
+  "samples": 92,
+  "counted": 92,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 29,
+  "verdict": "counted"
+ },
+ "lich_frost_shield": {
+  "samples": 164,
+  "counted": 25,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "lion_impale": {
+  "samples": 188,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "lion_mana_drain": {
+  "samples": 11,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "luna_lucent_beam": {
+  "samples": 92,
+  "counted": 92,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 108,
+  "verdict": "counted"
+ },
+ "necrolyte_death_pulse": {
+  "samples": 93,
+  "counted": 93,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 115,
+  "verdict": "counted"
+ },
+ "nevermore_shadowraze2": {
+  "samples": 13,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "nevermore_shadowraze3": {
+  "samples": 71,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "omniknight_hammer_of_purity": {
+  "samples": 16,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "omniknight_purification": {
+  "samples": 21,
+  "counted": 21,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 90,
+  "verdict": "counted"
+ },
+ "oracle_fates_edict": {
+  "samples": 10,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "oracle_fortunes_end": {
+  "samples": 146,
+  "counted": 146,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 71,
+  "verdict": "counted"
+ },
+ "oracle_purifying_flames": {
+  "samples": 2,
+  "counted": 2,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 199,
+  "verdict": "unmeasured"
+ },
+ "pudge_meat_hook": {
+  "samples": 25,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "sandking_burrowstrike": {
+  "samples": 28,
+  "counted": 28,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 57,
+  "verdict": "counted"
+ },
+ "sandking_sand_storm": {
+  "samples": 24,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "sandking_scorpion_strike": {
+  "samples": 17,
+  "counted": 2,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "skeleton_king_bone_guard": {
+  "samples": 36,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "skeleton_king_hellfire_blast": {
+  "samples": 116,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "skeleton_king_mortal_strike": {
+  "samples": 5,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "sniper_take_aim": {
+  "samples": 74,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "sven_storm_bolt": {
+  "samples": 62,
+  "counted": 62,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 58,
+  "verdict": "counted"
+ },
+ "sven_warcry": {
+  "samples": 61,
+  "counted": 1,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "tiny_avalanche": {
+  "samples": 26,
+  "counted": 26,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 65,
+  "verdict": "counted"
+ },
+ "tiny_tree_grab": {
+  "samples": 60,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "warlock_fatal_bonds": {
+  "samples": 69,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "warlock_upheaval": {
+  "samples": 6,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "windrunner_powershot": {
+  "samples": 21,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "windrunner_windrun": {
+  "samples": 76,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "witch_doctor_maledict": {
+  "samples": 89,
+  "counted": 1,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "witch_doctor_paralyzing_cask": {
+  "samples": 82,
+  "counted": 77,
+  "logs": [
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-16T21-41-55-probe_cd8"
+  ],
+  "median": 39,
+  "verdict": "counted"
+ },
+ "zuus_arc_lightning": {
+  "samples": 5,
+  "counted": 5,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 30,
+  "verdict": "counted"
+ },
+ "zuus_heavenly_jump": {
+  "samples": 73,
+  "counted": 26,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "zuus_lightning_bolt": {
+  "samples": 42,
+  "counted": 42,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6"
+  ],
+  "median": 117,
+  "verdict": "counted"
+ }
+}

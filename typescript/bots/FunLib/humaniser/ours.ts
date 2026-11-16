@@ -172,6 +172,10 @@ export const DEFAULTS = {
     /** Slice fight-safe (D19): with CoreLaneFight and TradeSafe on, a lane-fight roll or join asks trade-safe's "is it safe?"
      *  (their burst in reach under our HP) in place of `behind` (15 points under the target's HP). Off, or TradeSafe off: `behind`. */
     FightSafe: true,
+    /** Slice burst-cooldowns (D1, D2, D18): an enemy hero's estimated damage (the threat read's burst, the kill check's incoming
+     *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
+     *  Off: Valve's estimate, which counts every learned enemy spell ready. */
+    BurstReady: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

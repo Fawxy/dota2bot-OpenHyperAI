@@ -67,7 +67,6 @@ local ____exports = {}
 local decideSafe, favoured, heldBy, heldByGap, fightSafe, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
-local DamageType = ____dota.DamageType
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -75,6 +74,7 @@ local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
@@ -543,7 +543,7 @@ function question2(bot, target)
     }
 end
 function shareOn(from, on)
-    return from:GetEstimatedDamageToTarget(true, on, PairJoin.SETTINGS.Window, DamageType.All) / math.max(
+    return SpellReady.DamageOn(from, on, PairJoin.SETTINGS.Window) / math.max(
         1,
         on:GetHealth()
     )

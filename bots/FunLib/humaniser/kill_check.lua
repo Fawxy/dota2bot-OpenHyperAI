@@ -13,6 +13,7 @@ local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_
 local FightRead = require(GetScriptDirectory().."/FunLib/humaniser/fight_read")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 function dist2D(a, b)
     local dx = a.x - b.x
     local dy = a.y - b.y
@@ -170,7 +171,7 @@ local function incomingOn(bot, target, snap)
                     __continue22 = true
                     break
                 end
-                total = total + e.unit:GetEstimatedDamageToTarget(true, bot, window, DamageType.All)
+                total = total + SpellReady.DamageOn(e.unit, bot, window)
                 __continue22 = true
             until true
             if not __continue22 then

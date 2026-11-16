@@ -13,9 +13,10 @@
  * Run it with LaneFight.UseCastCallback off: whether two cast callbacks installed for one player stack is not known.
  * Rows are sampled on the whole game second so the two VMs' rows pair up by `t`.
  */
-import { Team, Unit, UnitType } from "bots/ts_libs/dota";
+import { DamageType, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 const MAX_PLAYER_ID = 23;
 const NIL = -1;
@@ -227,6 +228,12 @@ function teamRows(bot: Unit, st: State): void {
         d.fog = 0;
         d.sum = 0;
     }
+    for (const [epid, h] of pairs(st.handles)) {
+        if (num(h, (u) => u.CanBeSeen()) !== 1 || num(h, (u) => u.IsAlive()) !== 1) continue;
+        abilityRows(team, epid as number, 0, h);
+        const target = nearestOwn(h);
+        if (target !== undefined) estRow(team, epid as number, 0, h, target);
+    }
     const [ok, tps] = pcall(() => GetIncomingTeleports());
     if (!ok || tps === undefined || tps === null) return;
     for (const tp of tps as any[]) {
@@ -239,6 +246,113 @@ function teamRows(bot: Unit, st: State): void {
             ["rem", round(tp.time_remaining)],
         ]);
     }
+}
+
+/** The enemy cooldown reads (slice burst-cooldowns): which of these an enemy ability handle answers, against the owner's own row. */
+interface ProbeAbility {
+    GetName(): string;
+    IsHidden(): boolean;
+    GetLevel(): number;
+    IsCooldownReady(): boolean;
+    IsFullyCastable(): boolean;
+    IsOwnersManaEnough(): boolean;
+    GetCooldownTimeRemaining(): number;
+    GetCooldown(): number;
+    GetSpecialValueFloat(key: string): number;
+    GetAbilityDamage(): number;
+    GetManaCost(): number;
+    GetEstimatedDamageToTarget(target: unknown, duration: number, types: number): number;
+}
+interface EstUnit {
+    GetAbilityInSlot(slot: number): ProbeAbility | null | undefined;
+    GetEstimatedDamageToTarget(available: boolean, target: unknown, duration: number, types: number): number;
+    GetLocation(): { x: number; y: number } | undefined;
+}
+
+const EST_WINDOW = 3;
+// The mask our reads pass (pure included): 3 left pure out, so a pure spell read as never counted.
+const ALL_DAMAGE = DamageType.All;
+// Ability rows repeat only on a change, else this often: per-second rows of static values would swamp the log.
+const ABILITY_REPEAT = 10;
+const lastAbility: Record<string, { sig: string; at: number }> = {};
+
+function abilityRows(team: number, pid: number, own: number, h: Handle): void {
+    const u = h as unknown as EstUnit;
+    const target = own === 1 ? nearestEnemy(h) : nearestOwn(h);
+    const now = DotaTime();
+    for (let slot = 0; slot <= 5; slot++) {
+        const [okA, a] = pcall(() => u.GetAbilityInSlot(slot));
+        if (!okA || a === undefined || a === null) continue;
+        const ab = a as ProbeAbility;
+        const [okN, name] = pcall(() => ab.GetName());
+        if (!okN || type(name) !== "string" || name === "generic_hidden") continue;
+        if (num(h, () => ab.IsHidden()) === 1) continue;
+        const fields: [string, any][] = [
+            ["lvl", num(h, () => ab.GetLevel())],
+            ["rdy", num(h, () => ab.IsCooldownReady())],
+            ["fc", num(h, () => ab.IsFullyCastable())],
+            ["mok", num(h, () => ab.IsOwnersManaEnough())],
+            ["rem", round(num(h, () => ab.GetCooldownTimeRemaining()))],
+            ["cd", round(num(h, () => ab.GetCooldown()))],
+            ["scd", round(num(h, () => ab.GetSpecialValueFloat("AbilityCooldown")))],
+            ["dmg", round(num(h, () => ab.GetAbilityDamage()))],
+            ["mc", round(num(h, () => ab.GetManaCost()))],
+            ["aest", target === undefined ? undefined : round(num(h, () => ab.GetEstimatedDamageToTarget(target, EST_WINDOW, ALL_DAMAGE)))],
+        ];
+        // rem moves every second while cooling; its sign is what a change means, its value rides along.
+        const sig = fields.map(([k, v]) => (k === "rem" ? (v > 0 ? "+" : tostring(v)) : k === "aest" ? "" : tostring(v))).join(",");
+        const key = `${team}:${pid}:${slot}`;
+        const last = lastAbility[key];
+        if (last !== undefined && last.sig === sig && now - last.at < ABILITY_REPEAT) continue;
+        lastAbility[key] = { sig, at: now };
+        Telemetry.Event("apiprobe_abil", [["team", team], ["pid", pid], ["own", own], ["slot", slot], ["name", name as string], ...fields] as Telemetry.Fields<"apiprobe_abil">);
+    }
+}
+
+function estRow(team: number, src: number, own: number, h: Handle, target: Unit): void {
+    const u = h as unknown as EstUnit;
+    const [okL, at] = pcall(() => u.GetLocation());
+    const d = okL && at !== undefined && at !== null ? GetUnitToLocationDistance(target, at as Vector) : -1;
+    Telemetry.Event("apiprobe_est", [
+        ["team", team],
+        ["src", src],
+        ["dst", target.GetPlayerID()],
+        ["own", own],
+        ["dist", math.floor(d)],
+        ["et", round(num(h, () => u.GetEstimatedDamageToTarget(true, target, EST_WINDOW, ALL_DAMAGE)))],
+        ["ef", round(num(h, () => u.GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE)))],
+        ["ty", ALL_DAMAGE],
+        ["ec", own === 1 ? undefined : round(num(h, () => SpellReady.DamageOn(h as unknown as Unit, target, EST_WINDOW)))],
+    ]);
+}
+
+function nearestOf(h: Handle, units: Unit[]): Unit | undefined {
+    const [ok, at] = pcall(() => h.GetLocation());
+    if (!ok || at === undefined || at === null) return undefined;
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const x of units) {
+        if (x.IsNull() || !x.IsAlive() || x.IsIllusion()) continue;
+        const d = GetUnitToLocationDistance(x, at as Vector);
+        if (d < bestD) {
+            bestD = d;
+            best = x;
+        }
+    }
+    return best;
+}
+
+function nearestOwn(h: Handle): Unit | undefined {
+    const own: Unit[] = [];
+    for (let i = 1; i <= 5; i++) {
+        const m = GetTeamMember(i);
+        if (m !== undefined && m !== null) own.push(m);
+    }
+    return nearestOf(h, own);
+}
+
+function nearestEnemy(h: Handle): Unit | undefined {
+    return nearestOf(h, GetUnitList(UnitType.EnemyHeroes));
 }
 
 export function Tick(bot: Unit): void {
@@ -255,5 +369,8 @@ export function Tick(bot: Unit): void {
     if (now < st.nextAt) return;
     st.nextAt = math.floor(now) + 1;
     Telemetry.Event("apiprobe_own", [["team", bot.GetTeam()], ["pid", pid], ["seen", num(bot as unknown as Handle, (u) => u.CanBeSeen())], ...unitFields(bot as unknown as Handle)] as Telemetry.Fields<"apiprobe_own">);
+    abilityRows(bot.GetTeam(), pid, 1, bot as unknown as Handle);
+    const foe = nearestEnemy(bot as unknown as Handle);
+    if (foe !== undefined && foe.CanBeSeen()) estRow(bot.GetTeam(), pid, 1, bot as unknown as Handle, foe);
     if (reporterPid(true) === pid) teamRows(bot, st);
 }

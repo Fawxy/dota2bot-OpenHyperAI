@@ -262,4 +262,51 @@ do
 	check("reader: the walks differ (lethal, then not; nobody in reach on the fourth)", bands[1] == "lethal" and bands[4] == "none" and bands[5] == "lethal", table.concat(bands, " "))
 end
 
+
+-- Slice burst-cooldowns (Ours.BurstReady): Valve's estimate counts every learned enemy spell ready, so the burst takes out the
+-- damage of each spell the enemy cannot cast (IsFullyCastable false), read at its table key, a per-second key over the window,
+-- never under the hero's attack damage over the window (50 * 3 / 1.7 here). Each case moves T: the spent list is per frame.
+do
+	local function spell(name, level, castable, value)
+		return {
+			IsNull = function() return false end,
+			GetName = function() return name end,
+			GetLevel = function() return level end,
+			IsHidden = function() return false end,
+			IsFullyCastable = function() return castable end,
+			GetSpecialValueFloat = function() return value end,
+		}
+	end
+	local _, Threat, bot, e = world()
+	local SpellReady = require("bots/FunLib/humaniser/spell_ready")
+	local ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	e.loc, e.range, e.estDamage = Vector(-1000, -7500), 150, 300
+	local function burst(abilities, off)
+		T = T + 0.1
+		e.abilities = abilities
+		ours.BurstReady = off ~= true
+		return Threat.Read(bot, HERE, CAMP, 4).burst
+	end
+	check("spent: a cooling nuke's 150 comes out of 300", near(burst({ [0] = spell("luna_lucent_beam", 2, false, 150) }), 0.25))
+	check("spent: the same nuke ready stays counted", near(burst({ [0] = spell("luna_lucent_beam", 2, true, 150) }), 0.5))
+	check("spent: a per-second spell over the 3 s window (20 * 3)", near(burst({ [0] = spell("jakiro_dual_breath", 1, false, 20) }), 0.4))
+	local floor = burst({ [0] = spell("luna_lucent_beam", 4, false, 300), [1] = spell("zuus_lightning_bolt", 4, false, 380) })
+	check("spent: never under the attack part", near(floor, (50 * 3 / 1.7) / 600), floor)
+	check("spent: a spell the table lacks stays counted", near(burst({ [0] = spell("luna_lunar_grace", 2, false, 150) }), 0.5))
+	check("spent: an unlearned spell is not taken out", near(burst({ [0] = spell("luna_lucent_beam", 0, false, 150) }), 0.5))
+	check("spent: switch off, Valve's figure", near(burst({ [0] = spell("luna_lucent_beam", 2, false, 150) }, true), 0.5))
+	ours.BurstReady = true
+	T = T + 0.1
+	local ally = MakeUnit({ pid = 2, team = 2, loc = HERE })
+	ally.estDamage, ally.abilities = 300, { [0] = spell("luna_lucent_beam", 2, false, 150) }
+	check("spent: our own hero's estimate already counts its cooldowns", SpellReady.DamageOn(ally, e, 3) == 300)
+	T = T + 0.1
+	local illusion = MakeUnit({ pid = 10, team = 3, loc = e.loc })
+	illusion.estDamage, illusion.abilities = 300, { [0] = spell("luna_lucent_beam", 2, false, 150) }
+	illusion.IsIllusion = function() return true end
+	e.abilities = { [0] = spell("luna_lucent_beam", 2, true, 150) }
+	local illRead = SpellReady.DamageOn(illusion, bot, 3)
+	check("spent: an illusion read first leaves its hero's ready nuke counted", illRead == 300 and SpellReady.DamageOn(e, bot, 3) == 300, illRead)
+end
+
 finish()
