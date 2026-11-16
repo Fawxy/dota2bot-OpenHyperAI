@@ -544,6 +544,9 @@ do
 	check("not hit: no hit back holds retreat", not CoreTrade.Taking(bot))
 	bot.hitBy = enemy
 	check("hit at 90% with the trade on: retreat holds for the hit back", CoreTrade.Taking(bot))
+	Ours.CoreTrade = false
+	check("CoreTrade off: nothing hits back, so retreat is not held", not CoreTrade.Taking(bot))
+	Ours.CoreTrade = nil
 	check("and the trade opens as a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	CoreTrade.Think(bot)
 	check("it attacks the hitter", bot.attacking == enemy)

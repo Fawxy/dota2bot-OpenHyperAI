@@ -919,7 +919,7 @@ end
 -- `hitback` stay). A running hit back inside its bars, or a hitter Exchange takes now (retreat leaves 0.17 s after its read
 -- goes over, before attack mode can open the episode). Lethal, a tower on us and the heal floor still leave first.
 function ____exports.Taking(bot)
-    if not CoreLastHit.Applies(bot) then
+    if not Ours.On("CoreTrade") or not CoreLastHit.Applies(bot) then
         return false
     end
     local ep = episodes[bot:GetPlayerID()]
@@ -1058,11 +1058,13 @@ local function cutFields(bot, target, i, killHp, lf, now)
     end
     st.at = now
     local gap = recoverTo[pid]
+    local xa = i.hitting == true and ____exports.Exchange(i, killHp, gap) or nil
     local dec = ____exports.Answer(i, killHp, gap)
-    if dec == st.dec and now - (st.cutAt or -math.huge) < TRADE_CUT_KEEP then
+    local key = xa ~= nil and (dec .. "/") .. xa or dec
+    if key == st.dec and now - (st.cutAt or -math.huge) < TRADE_CUT_KEEP then
         return nil
     end
-    st.dec = dec
+    st.dec = key
     st.cutAt = now
     return {
         {"pid", pid},
@@ -1135,10 +1137,7 @@ local function cutFields(bot, target, i, killHp, lf, now)
         {"dn", i.free ~= nil and (i.denyDue == true and 1 or 0) or nil},
         {"dec", dec},
         {"hb", i.hitting == true and 1 or nil},
-        {
-            "xa",
-            i.hitting == true and ____exports.Exchange(i, killHp, gap) or nil
-        }
+        {"xa", xa}
     }
 end
 --- What the fresh decision opened (the cut's `did`): no episode, or its kind (`fight` joined from a play is `play`, a hit back `hitback`).

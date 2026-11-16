@@ -409,7 +409,8 @@ function hitterExchange(bot: Unit): LuaMultiReturn<[Unit | undefined, string]> {
  * goes over, before attack mode can open the episode). Lethal, a tower on us and the heal floor still leave first.
  */
 export function Taking(bot: Unit): boolean {
-    if (!CoreLastHit.Applies(bot)) return false;
+    // Off, nothing opens the hit back, so nothing may hold retreat for one (review of hitback-fold: the rig's off arm).
+    if (!Ours.On("CoreTrade") || !CoreLastHit.Applies(bot)) return false;
     const ep = episodes[bot.GetPlayerID()];
     // A running hit back holds only inside its own bars (keepWhy's slack): a hero arriving mid-trade lets D1 decide.
     if (ep !== undefined && ep.hb === true && ep.ended !== true) return hbKeptWhy(bot, Gather(bot, ep.target)) === undefined;
@@ -639,9 +640,12 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
     if (st.at !== undefined && now >= st.at && now - st.at < TRADE_CUT_EVERY) return undefined;
     st.at = now;
     const gap = recoverTo[pid];
+    // A line is kept when the trade rule's answer or, for a hitter, Exchange's changes.
+    const xa = i.hitting === true ? Exchange(i, killHp, gap) : undefined;
     const dec = Answer(i, killHp, gap);
-    if (dec === st.dec && now - (st.cutAt ?? -math.huge) < TRADE_CUT_KEEP) return undefined;
-    st.dec = dec;
+    const key = xa !== undefined ? `${dec}/${xa}` : dec;
+    if (key === st.dec && now - (st.cutAt ?? -math.huge) < TRADE_CUT_KEEP) return undefined;
+    st.dec = key;
     st.cutAt = now;
     return [
         ["pid", pid],
@@ -672,7 +676,7 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["dn", i.free !== undefined ? (i.denyDue === true ? 1 : 0) : undefined],
         ["dec", dec],
         ["hb", i.hitting === true ? 1 : undefined],
-        ["xa", i.hitting === true ? Exchange(i, killHp, gap) : undefined],
+        ["xa", xa],
     ];
 }
 
