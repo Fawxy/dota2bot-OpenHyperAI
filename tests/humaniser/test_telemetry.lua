@@ -273,6 +273,37 @@ do
 	check("nested guard has no row of its own", row("ours", "Test.Inner") == nil)
 end
 
+-- DeepT0/DeepAdd: a span is a `fn` row only with PerfDeep on; with it off DeepT0 is nil.
+do
+	local realClock, C, spin = os.clock, 0, true
+	os.clock = function() if spin then C = C + 0.01 end return C end
+	local row = function(where)
+		for _, l in ipairs(events("perf_top")) do if field(l, "where") == where then return l end end
+	end
+	local function window(H)
+		local entry = H.Telemetry.Entry("mode_test.Think", function()
+			local t0 = H.Telemetry.DeepT0()
+			C = C + 0.003
+			if t0 ~= nil then H.Telemetry.DeepAdd("test.Fn:part", t0) end
+			return t0
+		end)
+		entry()
+		T = T + 10
+		return entry()
+	end
+	local H = fresh({ Enable = true, Perf = true, PerfInterval = 10 })
+	spin = false
+	check("PerfDeep off: DeepT0 is nil", window(H) == nil)
+	check("PerfDeep off: no span row", row("test.Fn:part") == nil)
+	spin = true
+	H = fresh({ Enable = true, Perf = true, PerfDeep = true, PerfInterval = 10 })
+	spin = false
+	check("PerfDeep on: DeepT0 reads the clock", window(H) ~= nil)
+	local r = row("test.Fn:part")
+	check("PerfDeep on: span is a fn row with its time", r ~= nil and field(r, "kind") == "fn" and math.abs(tonumber(field(r, "ms")) - 3) < 0.01, r)
+	os.clock = realClock
+end
+
 -- Entry is a no-op with telemetry off.
 do
 	local H = fresh({ Enable = false })
