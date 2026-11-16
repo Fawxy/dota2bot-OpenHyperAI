@@ -348,6 +348,7 @@ ____exports.EVENTS = {
         dist = "num",
         et = "num",
         ef = "num",
+        ty = "num",
         ec = "num"
     },
     apiprobe_tp = {

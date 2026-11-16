@@ -338,9 +338,9 @@ Overrides.ApiProbe: one ability handle's reads, `own` 1 for a hero about itself 
 
 ## apiprobe_est
 
-Overrides.ApiProbe: `src`'s unit GetEstimatedDamageToTarget over 3 s on `dst` (the nearest hero of the other side), with bCurrentlyAvailable true (`et`) and false (`ef`); once a second for each own hero and each visible enemy. On an enemy row `ec` is SpellReady.DamageOn, the figure our reads use; the enemy team's own row for the pair is its truth.
+Overrides.ApiProbe: `src`'s unit GetEstimatedDamageToTarget over 3 s on `dst` (the nearest hero of the other side), with bCurrentlyAvailable true (`et`) and false (`ef`); once a second for each own hero and each visible enemy. On an enemy row `ec` is SpellReady.DamageOn, the figure our reads use; the enemy team's own row for the pair is its truth. `ty` is the damage-type mask of all three (7 with pure; rows without it used 3, no pure).
 
-`team` num, `src` num, `dst` num, `own` num, `dist` num, `et` num, `ef` num, `ec` num
+`team` num, `src` num, `dst` num, `own` num, `dist` num, `et` num, `ef` num, `ty` num, `ec` num
 
 ## apiprobe_tp
 

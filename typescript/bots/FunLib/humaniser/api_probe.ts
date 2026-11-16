@@ -13,7 +13,7 @@
  * Run it with LaneFight.UseCastCallback off: whether two cast callbacks installed for one player stack is not known.
  * Rows are sampled on the whole game second so the two VMs' rows pair up by `t`.
  */
-import { Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { DamageType, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
@@ -270,7 +270,8 @@ interface EstUnit {
 }
 
 const EST_WINDOW = 3;
-const ALL_DAMAGE = 3;
+// The mask our reads pass (pure included): 3 left pure out, so a pure spell read as never counted.
+const ALL_DAMAGE = DamageType.All;
 // Ability rows repeat only on a change, else this often: per-second rows of static values would swamp the log.
 const ABILITY_REPEAT = 10;
 const lastAbility: Record<string, { sig: string; at: number }> = {};
@@ -320,6 +321,7 @@ function estRow(team: number, src: number, own: number, h: Handle, target: Unit)
         ["dist", math.floor(d)],
         ["et", round(num(h, () => u.GetEstimatedDamageToTarget(true, target, EST_WINDOW, ALL_DAMAGE)))],
         ["ef", round(num(h, () => u.GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE)))],
+        ["ty", ALL_DAMAGE],
         ["ec", own === 1 ? undefined : round(num(h, () => SpellReady.DamageOn(h as unknown as Unit, target, EST_WINDOW)))],
     ]);
 }

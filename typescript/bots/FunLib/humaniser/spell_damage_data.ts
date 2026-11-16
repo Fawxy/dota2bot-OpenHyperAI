@@ -2,11 +2,11 @@
 /** Per ability Valve's estimate is measured to count: the AbilityValues key of its damage, whether it is per second, and its DamageType. */
 export const SPELL_DAMAGE: Record<string, [key: string, perSecond: boolean, damageType: number]> = {
     axe_battle_hunger: ["damage_per_second", true, 4],
+    bane_brain_sap: ["brain_sap_damage", false, 4],
     bristleback_quill_spray: ["quill_base_damage", false, 1],
     dragon_knight_breathe_fire: ["damage", false, 2],
     earthshaker_fissure: ["fissure_damage", false, 2],
     jakiro_dual_breath: ["burn_damage", true, 2],
-    jakiro_ice_path: ["damage", false, 2],
     lich_frost_nova: ["damage", false, 2],
     luna_lucent_beam: ["beam_damage", false, 2],
     necrolyte_death_pulse: ["AbilityDamage", false, 2],

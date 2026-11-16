@@ -8,7 +8,9 @@
  * GetSpecialValueFloat reads its values. So each learned spell an enemy cannot cast takes its damage back out of the
  * estimate: the value at its SPELL_DAMAGE key (a per-second value over the window) through the target's
  * GetActualIncomingDamage, as Valve's own figure is (our side's estimate drops by 58 for Breathe Fire's 80, 108 for Lucent
- * Beam's 150). The result never falls under the hero's attack damage over the window. A spell the table lacks stays counted.
+ * Beam's 150). The result never falls under the hero's attack damage over the window. The table holds only spells Valve's
+ * estimate is measured to count (tools/spell-damage/coverage.js: it leaves out Meat Hook, Earth Spike, Shadowraze and
+ * more), so a spell it lacks, or whose value reads 0 (Battle Hunger in probe_cd8), stays counted: never an under-read.
  */
 import { DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";

@@ -36,6 +36,7 @@ end
 local ____exports = {}
 local num, round, abilityRows, estRow, nearestOf, nearestOwn, nearestEnemy, NIL, ERR, EST_WINDOW, ALL_DAMAGE, ABILITY_REPEAT, lastAbility
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local UnitType = ____dota.UnitType
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
@@ -238,7 +239,8 @@ function estRow(team, src, own, h, target)
                 h,
                 function() return u:GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE) end
             ))
-        }
+        },
+        {"ty", ALL_DAMAGE}
     )
     local ____temp_6
     if own == 1 then
@@ -761,7 +763,7 @@ local function teamRows(bot, st)
     end
 end
 EST_WINDOW = 3
-ALL_DAMAGE = 3
+ALL_DAMAGE = DamageType.All
 ABILITY_REPEAT = 10
 lastAbility = {}
 function ____exports.Tick(bot)

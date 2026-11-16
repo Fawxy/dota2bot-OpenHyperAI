@@ -518,7 +518,8 @@ export const EVENTS = {
     },
     /** Overrides.ApiProbe: `src`'s unit GetEstimatedDamageToTarget over 3 s on `dst` (the nearest hero of the other side),
      *  with bCurrentlyAvailable true (`et`) and false (`ef`); once a second for each own hero and each visible enemy. On an
-     *  enemy row `ec` is SpellReady.DamageOn, the figure our reads use; the enemy team's own row for the pair is its truth. */
+     *  enemy row `ec` is SpellReady.DamageOn, the figure our reads use; the enemy team's own row for the pair is its truth.
+     *  `ty` is the damage-type mask of all three (7 with pure; rows without it used 3, no pure). */
     apiprobe_est: {
         team: "num",
         src: "num",
@@ -527,6 +528,7 @@ export const EVENTS = {
         dist: "num",
         et: "num",
         ef: "num",
+        ty: "num",
         ec: "num",
     },
     /** Overrides.ApiProbe: one GetIncomingTeleports entry, once a second. */

@@ -2,7 +2,8 @@
 // Which spells Valve's GetEstimatedDamageToTarget counts, measured from ApiProbe logs: for a hero about itself the true
 // and false estimates differ by exactly the counted spells it cannot cast, so a second with one spell cooling and every
 // other ability ready gives that spell's share (0: Valve leaves it out; Meat Hook and Sand Storm do). Writes coverage.json
-// beside this file, merged with what it holds, for gen.js:
+// beside this file, merged with what it holds, for gen.js. Only rows with ty=7 count: earlier probes passed a mask without
+// pure damage, under which every pure spell (Meat Hook) read as left out.
 //   node tools/spell-damage/coverage.js <probe log>...
 'use strict';
 const fs = require('fs');
@@ -29,6 +30,7 @@ function measure(file) {
             (abil[k.pid] = abil[k.pid] || []).push({ t: Number(k.t), name: k.name, lvl: Number(k.lvl), rem: Number(k.rem) });
         } else if (line.includes('ev=apiprobe_est ') && line.includes(' own=1 ')) {
             const k = fields(line);
+            if (k.ty !== '7') continue;
             est.push({ t: Number(k.t), pid: k.src, d: Number(k.ef) - Number(k.et) });
         }
     }
