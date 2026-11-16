@@ -36,6 +36,7 @@
 import { Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { On } from "bots/FunLib/humaniser/ours";
 import * as Threat from "bots/FunLib/humaniser/threat";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 
@@ -535,7 +536,9 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
                 if (len(p.x - field.hx[i], p.y - field.hy[i]) < len(here.x - field.hx[i], here.y - field.hy[i])) toward = true;
             }
             reader = reader ?? Threat.Reader(bot, READ_HORIZON, { engagedWindow: LANE_ENGAGED_WINDOW });
+            const t0 = Telemetry.DeepT0();
             r = reader(toward ? here : p, p);
+            if (t0 !== undefined) Telemetry.DeepAdd("lane_spot.Compute:read", t0);
             reads[key] = r;
             readN++;
         }

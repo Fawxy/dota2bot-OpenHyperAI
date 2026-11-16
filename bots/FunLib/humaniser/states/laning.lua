@@ -584,13 +584,20 @@ function ____exports.HitOffered(bot)
     if verbs == nil then
         return false
     end
-    return choose(
+    local t0 = Telemetry.DeepT0()
+    local targets = verbs.laneTargets(
         bot,
-        verbs.laneTargets(
-            bot,
-            {within = ____exports.Settings().LastHitWithin}
-        )
-    ) ~= nil
+        {within = ____exports.Settings().LastHitWithin}
+    )
+    local t1 = Telemetry.DeepT0()
+    if t0 ~= nil then
+        Telemetry.DeepAdd("laning.HitOffered:targets", t0)
+    end
+    local offered = choose(bot, targets) ~= nil
+    if t1 ~= nil then
+        Telemetry.DeepAdd("laning.HitOffered:choose", t1)
+    end
+    return offered
 end
 --- Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
 -- rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a

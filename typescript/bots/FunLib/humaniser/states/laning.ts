@@ -362,7 +362,13 @@ export function HitOffered(bot: Unit): boolean {
     if (spot !== undefined && GetUnitToLocationDistance(bot, spot) > LEASH) return false;
     const verbs = Tasks.Verbs();
     if (verbs === undefined) return false;
-    return choose(bot, verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin })) !== undefined;
+    const t0 = Telemetry.DeepT0();
+    const targets = verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin });
+    const t1 = Telemetry.DeepT0();
+    if (t0 !== undefined) Telemetry.DeepAdd("laning.HitOffered:targets", t0);
+    const offered = choose(bot, targets) !== undefined;
+    if (t1 !== undefined) Telemetry.DeepAdd("laning.HitOffered:choose", t1);
+    return offered;
 }
 
 /**
