@@ -29,9 +29,27 @@ local function __TS__ObjectEntries(obj)
     end
     return result
 end
+
+local function __TS__StringSubstring(self, start, ____end)
+    if ____end ~= ____end then
+        ____end = 0
+    end
+    if ____end ~= nil and start > ____end then
+        start, ____end = ____end, start
+    end
+    if start >= 0 then
+        start = start + 1
+    else
+        start = 1
+    end
+    if ____end ~= nil and ____end < 0 then
+        ____end = 0
+    end
+    return string.sub(self, start, ____end)
+end
 -- End of Lua Library inline imports
 local ____exports = {}
-local live, heroOf
+local live, dist, member, weigh, heroOf
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local UnitType = ____dota.UnitType
@@ -40,6 +58,60 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function live(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil and not u:IsIllusion()
+end
+function dist(a, b)
+    local p = a:GetLocation()
+    local q = b:GetLocation()
+    return math.sqrt((p.x - q.x) ^ 2 + (p.y - q.y) ^ 2)
+end
+function member(u, ours)
+    local l = u:GetLocation()
+    local m = {
+        pid = u:GetPlayerID(),
+        x = math.floor(l.x + 0.5),
+        y = math.floor(l.y + 0.5),
+        hp = math.floor(u:GetHealth() + 0.5),
+        mhp = math.floor(u:GetMaxHealth() + 0.5)
+    }
+    if ours then
+        m.ret = RetreatState.Running(u) and 1 or 0
+    end
+    return m
+end
+function weigh(ally, ours)
+    local theirs = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if live(e) and e:CanBeSeen() and dist(e, ally) <= ____exports.SETTINGS.FoeRange then
+            theirs[#theirs + 1] = e
+        end
+    end
+    if #theirs == 0 then
+        return nil
+    end
+    local dmg = {}
+    local function fill(from, on)
+        for ____, f in ipairs(from) do
+            local row = {}
+            for ____, o in ipairs(on) do
+                row[o:GetPlayerID()] = math.floor(f:GetEstimatedDamageToTarget(true, o, ____exports.SETTINGS.Window, DamageType.All) + 0.5)
+            end
+            dmg[f:GetPlayerID()] = row
+        end
+    end
+    fill(ours, theirs)
+    fill(theirs, ours)
+    return {
+        ally = ally:GetPlayerID(),
+        ours = __TS__ArrayMap(
+            ours,
+            function(____, u) return member(u, true) end
+        ),
+        theirs = __TS__ArrayMap(
+            theirs,
+            function(____, u) return member(u, false) end
+        ),
+        dmg = dmg
+    }
 end
 function heroOf(pid)
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
@@ -59,7 +131,9 @@ ____exports.SETTINGS = {
     Until = 720,
     CutEvery = 2,
     Keep = 1.5,
-    TargetRange = 1200
+    TargetRange = 1200,
+    AfterWindow = 8,
+    AfterEvery = 1
 }
 --- The side `from`'s best kill share on `on` over the window: the target and the share.
 local function best(from, on, dmg)
@@ -91,25 +165,6 @@ function ____exports.Decide(rec)
         return {dec = "outnumbered", tgt = tgt, ko = ko, kt = kt}
     end
     return {dec = ko > kt and "join" or "losing", tgt = tgt, ko = ko, kt = kt}
-end
-local function dist(a, b)
-    local p = a:GetLocation()
-    local q = b:GetLocation()
-    return math.sqrt((p.x - q.x) ^ 2 + (p.y - q.y) ^ 2)
-end
-local function member(u, ours)
-    local l = u:GetLocation()
-    local m = {
-        pid = u:GetPlayerID(),
-        x = math.floor(l.x + 0.5),
-        y = math.floor(l.y + 0.5),
-        hp = math.floor(u:GetHealth() + 0.5),
-        mhp = math.floor(u:GetMaxHealth() + 0.5)
-    }
-    if ours then
-        m.ret = RetreatState.Running(u) and 1 or 0
-    end
-    return m
 end
 --- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
 -- or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
@@ -154,39 +209,7 @@ function ____exports.Gather(bot)
     ) < 2 then
         return nil
     end
-    local theirs = {}
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if live(e) and e:CanBeSeen() and dist(e, ally) <= ____exports.SETTINGS.FoeRange then
-            theirs[#theirs + 1] = e
-        end
-    end
-    if #theirs == 0 then
-        return nil
-    end
-    local dmg = {}
-    local function fill(from, on)
-        for ____, f in ipairs(from) do
-            local row = {}
-            for ____, o in ipairs(on) do
-                row[o:GetPlayerID()] = math.floor(f:GetEstimatedDamageToTarget(true, o, ____exports.SETTINGS.Window, DamageType.All) + 0.5)
-            end
-            dmg[f:GetPlayerID()] = row
-        end
-    end
-    fill(ours, theirs)
-    fill(theirs, ours)
-    return {
-        ally = ally:GetPlayerID(),
-        ours = __TS__ArrayMap(
-            ours,
-            function(____, u) return member(u, true) end
-        ),
-        theirs = __TS__ArrayMap(
-            theirs,
-            function(____, u) return member(u, false) end
-        ),
-        dmg = dmg
-    }
+    return weigh(ally, ours)
 end
 local states = {}
 --- The bot's decision, made afresh at most every Every s (the matrix is 2 x n x m estimates); reads only.
@@ -272,8 +295,162 @@ local function dmgOf(rec)
     end
     return table.concat(out, ";")
 end
---- Per frame (index Tick): on each fresh decision in the laning stage, its cut. Reads only.
+local watches = {}
+local function r3(v)
+    return math.floor(v * 1000 + 0.5) / 1000
+end
+local function r2(v)
+    return math.floor(v * 100 + 0.5) / 100
+end
+--- A sample's field: whole numbers without a decimal point (Lua prints 1.0), others as rounded.
+local function f(v)
+    return type(v) ~= "number" and v or (v == math.floor(v) and string.format("%d", v) or string.format("%g", v))
+end
+local function flush(pid, res)
+    local w = watches[pid]
+    if w == nil then
+        return
+    end
+    watches[pid] = nil
+    Telemetry.Event(
+        "join_after",
+        {
+            {"pid", pid},
+            {"kind", w.kind},
+            {"why", w.why},
+            {"tgt", w.tgt},
+            {"res", res},
+            {
+                "s",
+                table.concat(w.samples, ";")
+            }
+        }
+    )
+end
+--- A taken `join` or `trade` window of `bot` on `tpid` has ended with `why` (states/core_trade close): watch the weighing for
+-- AfterWindow s, while telemetry is on and in the laning stage. A watch still open ends `reopen`. Reads only.
+function ____exports.After(bot, kind, why, tpid)
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    flush(pid, "reopen")
+    local now = DotaTime()
+    if kind ~= "join" and kind ~= "trade" or now > ____exports.SETTINGS.Until or not bot:IsAlive() then
+        return
+    end
+    watches[pid] = {
+        kind = kind,
+        why = why,
+        tgt = tpid,
+        start = now,
+        next = now,
+        samples = {}
+    }
+end
+--- A fight window of `bot` has opened: an open watch ends `reopen` (the fight went on under a new window). Reads only.
+function ____exports.Reopened(bot)
+    flush(
+        bot:GetPlayerID(),
+        "reopen"
+    )
+end
+--- One sample of the watch: the weighing around the bot itself (no hit and no pair needed).
+local function sample(bot, w, now)
+    local allies = {}
+    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+        if live(a) and dist(a, bot) <= ____exports.SETTINGS.OursRange then
+            allies[#allies + 1] = a
+        end
+    end
+    local t = heroOf(w.tgt)
+    local seen = t ~= nil and t:CanBeSeen()
+    local thp = seen and r2(t:GetHealth() / math.max(
+        1,
+        t:GetMaxHealth()
+    )) or -1
+    local d = seen and math.floor(dist(t, bot) + 0.5) or -1
+    local hp = r2(bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    ))
+    local dt = math.floor((now - w.start) * 10 + 0.5) / 10
+    local rec = weigh(bot, allies)
+    if rec == nil then
+        return table.concat(
+            __TS__ArrayMap(
+                {
+                    dt,
+                    "n",
+                    0,
+                    0,
+                    thp,
+                    d,
+                    hp,
+                    #__TS__ArrayFilter(
+                        allies,
+                        function(____, a) return not RetreatState.Running(a) end
+                    ),
+                    0
+                },
+                function(____, v) return f(v) end
+            ),
+            ":"
+        )
+    end
+    local a = ____exports.Decide(rec)
+    local no = #__TS__ArrayFilter(
+        rec.ours,
+        function(____, m) return m.ret ~= 1 end
+    )
+    return table.concat(
+        __TS__ArrayMap(
+            {
+                dt,
+                __TS__StringSubstring(a.dec, 0, 1),
+                r3(a.ko),
+                r3(a.kt),
+                thp,
+                d,
+                hp,
+                no,
+                #rec.theirs
+            },
+            function(____, v) return f(v) end
+        ),
+        ":"
+    )
+end
+--- Per frame: the open watch's sample when due, and its line at the end. Reads only.
+local function tickAfter(bot, now)
+    local pid = bot:GetPlayerID()
+    local w = watches[pid]
+    if w == nil then
+        return
+    end
+    if not bot:IsAlive() or now - w.start > ____exports.SETTINGS.AfterWindow + ____exports.SETTINGS.AfterEvery then
+        return flush(pid, "dead")
+    end
+    if now > ____exports.SETTINGS.Until then
+        return flush(pid, "stage")
+    end
+    if now >= w.next then
+        local ____w_samples_9 = w.samples
+        ____w_samples_9[#____w_samples_9 + 1] = sample(bot, w, now)
+        w.next = now + ____exports.SETTINGS.AfterEvery
+    end
+    if now - w.start >= ____exports.SETTINGS.AfterWindow then
+        flush(pid, "full")
+    end
+end
+--- Per frame (index Tick): on each fresh decision in the laning stage, its cut; the join-after watch. Reads only.
 function ____exports.Tick(bot)
+    if Telemetry.IsEnabled() then
+        tickAfter(
+            bot,
+            DotaTime()
+        )
+    end
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true or not bot:IsAlive() then
         return
     end
@@ -282,10 +459,10 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____exports_For_result_9 = ____exports.For(bot)
-    local rec = ____exports_For_result_9.rec
-    local a = ____exports_For_result_9.ans
-    local fresh = ____exports_For_result_9.fresh
+    local ____exports_For_result_10 = ____exports.For(bot)
+    local rec = ____exports_For_result_10.rec
+    local a = ____exports_For_result_10.ans
+    local fresh = ____exports_For_result_10.fresh
     if not fresh then
         return
     end

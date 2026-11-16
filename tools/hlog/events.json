@@ -1334,6 +1334,14 @@
    "mode": "num",
    "md": "num"
   },
+  "join_after": {
+   "pid": "num",
+   "kind": "str",
+   "why": "str",
+   "tgt": "num",
+   "res": "str",
+   "s": "str"
+  },
   "trade": {
    "pid": "num",
    "role": "str",
@@ -2247,6 +2255,12 @@
   "ev_trade_no": {
    "role": "text",
    "why": "text"
+  },
+  "ev_join_after": {
+   "kind": "text",
+   "why": "text",
+   "res": "text",
+   "s": "text"
   },
   "ev_trade": {
    "role": "text",

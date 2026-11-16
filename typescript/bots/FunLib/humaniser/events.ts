@@ -1884,6 +1884,27 @@ export const EVENTS = {
         mode: "num",
         md: "num",
     },
+    /**
+     * Slice join-after (D19, shadow): after a taken `join` or `trade` window of ours ends, PairJoin's weighing read once a second
+     * for `PairJoin.SETTINGS.AfterWindow` s with no hit needed (the bot as the hit ally), so the banked logs say whether the
+     * fight still favoured us when it ended, and for how long. One line per window, at its end. Reads only.
+     */
+    join_after: {
+        pid: "num",
+        /** The ended window's `ev=trade` kind (`join` or `trade`), end reason (`why`) and target pid. */
+        kind: "str",
+        why: "str",
+        tgt: "num",
+        /** How the watch ended: `full` (the whole window), `reopen` (another join or trade opened), `dead` (the bot died), `stage` (past the laning stage). */
+        res: "str",
+        /**
+         * The samples, `;`-joined, each `dt:dec:ko:kt:thp:d:hp:no:nt`: seconds since the end; PairJoin's answer (`j` join, `l`
+         * losing, `o` outnumbered, `n` no enemy hero seen within FoeRange); our and their best kill share (3 places); the ended
+         * window's target's HP share and distance (-1 when unseen or dead); our HP share; our heroes and theirs in the weighing
+         * (ours not in retreat, the bot included).
+         */
+        s: "str",
+    },
     /** One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`). */
     trade: {
         pid: "num",

@@ -151,4 +151,52 @@ do
 	check("a target past TargetRange is not joined", P2.Joins(bot) == nil)
 end
 
+do
+	-- Slice join-after: after a fight ends, the weighing around the bot once a second for AfterWindow s, no hit needed.
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true } })
+	local P = require("bots/FunLib/humaniser/pair_join")
+	local lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	local function after() local o = {} for _, l in ipairs(lines) do if l:find("ev=join_after", 1, true) then table.insert(o, l) end end return o end
+	local bot = unit({ pid = 0, x = 0, y = 0, hp = 600, dmg = { [6] = 300 } })
+	local partner = unit({ pid = 1, x = 500, y = 0, hp = 600, dmg = { [6] = 100 } })
+	local e = unit({ pid = 6, x = 400, y = 0, hp = 300, dmg = { [0] = 60 } })
+	lists({ bot, partner }, { e })
+	T = 200
+	P.After(bot, "join", "pair_end", 6)
+	for i = 0, 80 do T = 200 + i * 0.1 P.Tick(bot) end
+	local o = after()
+	check("one line at the window's end", #o == 1, #o)
+	local l = o[1] or ""
+	check("the line names the ended window", l:find("kind=join", 1, true) and l:find("why=pair_end", 1, true) and l:find("tgt=6", 1, true) and l:find("res=full", 1, true))
+	local s = l:match(" s=(%S+)") or ""
+	local n = select(2, s:gsub(";", ";")) + 1
+	check("a sample a second over the window", n == 8 or n == 9, n)
+	check("no hit needed: the pair's answer is join, with both shares", s:find("^0:j:1.333:0.1:0.5:400:1:2:1") ~= nil, s)
+	-- A new window that opens ends the watch `reopen`; a fight kind with no watch logs nothing.
+	lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	T = 300
+	P.After(bot, "trade", "losing", 6)
+	P.Tick(bot)
+	P.Reopened(bot)
+	o = after()
+	check("an opened window ends the watch reopen", #o == 1 and o[1]:find("res=reopen", 1, true) ~= nil, o[1])
+	P.After(bot, "kill", "time", 6)
+	for i = 0, 90 do T = 310 + i * 0.1 P.Tick(bot) end
+	check("a kill window is not watched", #after() == 1)
+	-- Unseen enemies: answer `n`; the target unseen reads -1.
+	lists({ bot, partner }, {})
+	T = 400
+	P.After(bot, "join", "target_lost", 6)
+	P.Tick(bot)
+	T = 409.5
+	P.Tick(bot)
+	o = after()
+	local last = o[#o] or ""
+	check("a watch the bot was not ticked through ends dead", last:find("res=dead", 1, true) ~= nil, last)
+	check("no enemy seen: n, target -1", (last:match(" s=(%S+)") or ""):find("^0:n:0:0:%-1:%-1:1:2:0") ~= nil, last)
+end
+
 finish()
