@@ -97,6 +97,16 @@ do
 		for _ = 1, 50 do one(path, 0, 0) end
 	end
 	check("project equals the full scan (" .. n .. " points)", same)
+	-- Across whole seconds the memo clears and still answers the same.
+	local saved, t = DotaTime, 100.2
+	DotaTime = function() return t end
+	local top = paths[1]
+	local a1, b1 = P.Project(top, -6000, 0)
+	t = 101.4
+	local a2, b2 = P.Project(top, -6000, 0)
+	local a3, b3 = P.ProjectScan(top, -6000, 0)
+	DotaTime = saved
+	check("project memo clears on the second and agrees", a1 == a2 and b1 == b2 and a2 == a3 and b2 == b3)
 end
 
 -- Slice pull-gate: the lane with a pulled wave gone. Bot lane at 65 s: our 60 s wave walking out from the spawn, theirs
