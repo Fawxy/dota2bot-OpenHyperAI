@@ -18,8 +18,8 @@ local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fi
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
-local CooldownMemory = require(GetScriptDirectory().."/FunLib/humaniser/cooldown_memory")
 local CastWatch = require(GetScriptDirectory().."/FunLib/humaniser/cast_watch")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local FightRead = require(GetScriptDirectory().."/FunLib/humaniser/fight_read")
 local KillCheck = require(GetScriptDirectory().."/FunLib/humaniser/kill_check")
 local LaneRoles = require(GetScriptDirectory().."/FunLib/humaniser/lane_roles")
@@ -447,10 +447,8 @@ function claim(bot, phase)
     end
     return posted
 end
-function believedDown(bot, target, spell, escapes, now)
+function believedDown(target, spell, escapes)
     local out = {}
-    local pid = bot:GetPlayerID()
-    local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
             local __continue111
@@ -460,19 +458,7 @@ function believedDown(bot, target, spell, escapes, now)
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
-                if not wanted then
-                    __continue111 = true
-                    break
-                end
-                local ready = CooldownMemory.ProbablyReady(
-                    pid,
-                    tpid,
-                    a.name,
-                    true,
-                    now,
-                    skillOf(bot)
-                )
-                if not ready then
+                if wanted and not SpellReady.Ready(target, a.name) then
                     out[a.name] = true
                 end
                 __continue111 = true
@@ -517,13 +503,7 @@ function start(bot, s, phase, target, inst, now, detail, opts)
         s.startEnemies = FightRead.LaneCounts(bot, snap, COUNT_RADIUS).enemies
     end
     if phase ~= "wait_partner" then
-        local abilities = believedDown(
-            bot,
-            target,
-            opts.spell,
-            phase == "commit",
-            now
-        )
+        local abilities = believedDown(target, opts.spell, phase == "commit")
         local old = s.bet
         if old ~= nil and not old.done and old.targetPid == s.targetPid and now - old.at <= MISTAKE_WINDOW then
             for name in pairs(abilities) do
@@ -636,7 +616,7 @@ function checkMistake(bot, s, now)
                     "pid",
                     bot:GetPlayerID()
                 },
-                {"kind", "bad_memory"},
+                {"kind", "came_up"},
                 {"ability", seen.ability},
                 {"target", bet.targetPid},
                 {"after", seen.at - bet.at}
@@ -1332,7 +1312,6 @@ function considerKill(bot, s, snap, read, target, windowKey, now)
 end
 ____exports.Config = LaneFightConfig
 ____exports.AbilityClasses = AbilityClasses
-____exports.CooldownMemory = CooldownMemory
 ____exports.CastWatch = CastWatch
 ____exports.FightRead = FightRead
 ____exports.KillCheck = KillCheck
@@ -1617,14 +1596,11 @@ function ____exports.CurrentPhase(bot)
     local ____opt_28 = fights[bot:GetPlayerID()]
     return ____opt_28 and ____opt_28.phase or "idle"
 end
---- "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line.
+--- "window=<type|none> kill=<margin|-> phase=<p>": the overlay's `fight` line.
 function ____exports.Describe(bot)
     local s = fights[bot:GetPlayerID()]
     local margin = (s and s.lastMargin) ~= nil and string.format("%.2f", s.lastMargin) or "-"
-    return (((((("window=" .. (s and s.lastWindow or "none")) .. " kill=") .. margin) .. " mem=") .. tostring(CooldownMemory.Count(
-        bot:GetPlayerID(),
-        DotaTime()
-    ))) .. " phase=") .. (s and s.phase or "idle")
+    return (((("window=" .. (s and s.lastWindow or "none")) .. " kill=") .. margin) .. " phase=") .. (s and s.phase or "idle")
 end
 function ____exports.RegisterProbes()
     LaneHooks.SetFightProbe(function(bot) return LaneFightConfig.IsActive() and ____exports.CurrentPhase(bot) == "commit" end)

@@ -1345,22 +1345,11 @@ export const EVENTS = {
         what: "str",
         delay: "num",
     },
-    lanefight_mem: {
-        pid: "num",
-        enemy: "num",
-        ability: "str",
-        remembered: "num",
-        reason: "str",
-        cls: "str",
-        cd: "num",
-        src: "str",
-    },
     lanefight_watch: {
         pid: "num",
         polls: "num",
         visible: "num",
         casts: "num",
-        recorded: "num",
         jumps: "num",
     },
     lanefight_window: {

@@ -176,6 +176,9 @@ export const DEFAULTS = {
      *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
      *  Off: Valve's estimate, which counts every learned enemy spell ready. */
     BurstReady: true,
+    /** Slice spells-up (D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill check's
+     *  escape) takes an enemy's spell as up only when it can cast it now (SpellReady.Ready). Off: every learned spell is up. */
+    SpellsUp: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

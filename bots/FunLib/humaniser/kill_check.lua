@@ -7,7 +7,6 @@ local Tower = ____dota.Tower
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
-local CooldownMemory = require(GetScriptDirectory().."/FunLib/humaniser/cooldown_memory")
 local CastWatch = require(GetScriptDirectory().."/FunLib/humaniser/cast_watch")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local FightRead = require(GetScriptDirectory().."/FunLib/humaniser/fight_read")
@@ -22,11 +21,11 @@ end
 function towerCovering(enemyTeam, loc)
     for ____, id in ipairs(TOWER_IDS) do
         do
-            local __continue34
+            local __continue33
             repeat
                 local tower = GetTower(enemyTeam, id)
                 if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue34 = true
+                    __continue33 = true
                     break
                 end
                 if dist2D(
@@ -35,9 +34,9 @@ function towerCovering(enemyTeam, loc)
                 ) <= TOWER_RANGE then
                     return tower
                 end
-                __continue34 = true
+                __continue33 = true
             until true
-            if not __continue34 then
+            if not __continue33 then
                 break
             end
         end
@@ -190,32 +189,10 @@ local function minMarginFor(bot, contributors)
     end
     return min
 end
-local function escapeReady(botPid, target, now, skill)
-    local targetPid = target:GetPlayerID()
+local function escapeReady(target)
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
-        do
-            local __continue28
-            repeat
-                if not a.learned or not AbilityClasses.IsEscape(a.name) then
-                    __continue28 = true
-                    break
-                end
-                local ready = CooldownMemory.ProbablyReady(
-                    botPid,
-                    targetPid,
-                    a.name,
-                    true,
-                    now,
-                    skill
-                )
-                if ready then
-                    return true
-                end
-                __continue28 = true
-            until true
-            if not __continue28 then
-                break
-            end
+        if a.learned and AbilityClasses.IsEscape(a.name) and SpellReady.Ready(target, a.name) then
+            return true
         end
     end
     return false
@@ -241,12 +218,11 @@ local function skipReason(bot, target)
     end
     return nil
 end
-local function compute(bot, contributors, target, snap, now)
+local function compute(bot, contributors, target, snap)
     local skip = skipReason(bot, target)
     if skip ~= nil then
         return {pass = false, margin = 0, overwhelming = false, reason = skip}
     end
-    local pid = bot:GetPlayerID()
     local skill = Profile.Get(bot).skill
     local loc = target:GetLocation()
     local counts = FightRead.LaneCounts(bot, snap, COUNTER_RANGE, loc)
@@ -254,7 +230,7 @@ local function compute(bot, contributors, target, snap, now)
         burst = burstOn(contributors, target),
         hp = target:GetHealth(),
         regen = target.GetHealthRegen ~= nil and target:GetHealthRegen() or 0,
-        escapeReady = escapeReady(pid, target, now, skill),
+        escapeReady = escapeReady(target),
         towerInRange = towerInRange(
             target:GetTeam(),
             loc
@@ -291,17 +267,17 @@ function ____exports.Check(bot, partners, target, now, fresh)
     end
     for ____, p in ipairs(partners) do
         do
-            local __continue50
+            local __continue49
             repeat
                 if p == bot or not contributes(p, loc) then
-                    __continue50 = true
+                    __continue49 = true
                     break
                 end
                 contributors[#contributors + 1] = p
                 partnerPids[#partnerPids + 1] = p:GetPlayerID()
-                __continue50 = true
+                __continue49 = true
             until true
-            if not __continue50 then
+            if not __continue49 then
                 break
             end
         end
@@ -317,13 +293,7 @@ function ____exports.Check(bot, partners, target, now, fresh)
     if fresh ~= true and cached ~= nil and now >= cached.at and now - cached.at < LaneFightConfig.Settings().KillCheckEvery then
         return cached.result
     end
-    local result = compute(
-        bot,
-        contributors,
-        target,
-        snap,
-        now
-    )
+    local result = compute(bot, contributors, target, snap)
     byTarget[key] = {at = now, result = result}
     return result
 end

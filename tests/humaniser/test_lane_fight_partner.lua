@@ -18,7 +18,9 @@ local function ability(name, o)
 		IsNull = function() return false end,
 		IsTrained = function() return (o.level or 1) > 0 end,
 		GetCooldown = function() return o.cd or 12 end,
-		IsFullyCastable = function() return o.ready ~= false end,
+		-- `down` set on the handle: the enemy cannot cast it now.
+		IsFullyCastable = function(self) return o.ready ~= false and self.down ~= true end,
+		GetSpecialValueFloat = function() return 0 end,
 		GetCastRange = function() return o.range or 500 end,
 	}
 end
@@ -752,23 +754,23 @@ end
 local blinkWorld = function(skill)
 	local W = world({ skill = skill, burst = 1000, botPos = 5, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }),
 		[1] = ability("antimage_blink", { cd = 15 }) } })
-	-- The bot remembers the blink as down, so its kill check passes.
-	W.H.LaneFight.CooldownMemory.Record(1, 6, "antimage_blink", "key", 15, 1, T)
+	-- The blink is on cooldown, so the kill check passes.
+	W.enemy.abilities[1].down = true
 	return W
 end
 
 for _, skill in ipairs({ 0, 1 }) do
 	local W = blinkWorld(skill)
 	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 2)
-	check("setup: committed with the blink believed down at skill " .. skill, W.LF.CurrentPhase(W.bot) == "commit")
+	check("setup: committed with the blink down at skill " .. skill, W.LF.CurrentPhase(W.bot) == "commit")
 	play(W, 0.3)
 	local blink = W.enemy.abilities[1]
 	W.enemy.casting = blink
 	playUntil(W, function() return W.LF.CastWatch.LastSeenCast(1) ~= nil end, 1)
 	local seenAt = W.LF.CastWatch.LastSeenCast(1).at
 	W.enemy.casting = nil
-	-- The blink lands 1300 from the bot: out of its burst range.
-	W.enemy.loc = Vector(W.bot.loc.x + W.sign * 1300, BOT_Y)
+	-- The blink lands 1600 from the bot: out of its burst range even after a skill-0 bot chases through its 0.8 s notice.
+	W.enemy.loc = Vector(W.bot.loc.x + W.sign * 1600, BOT_Y)
 	playUntil(W, function() return W.events("lanefight_end") > 0 end, 2)
 	local notice = W.LF.Config.Curve("AbortNotice", skill)
 	local endAt = W.firstAt("lanefight_end")
@@ -777,8 +779,8 @@ for _, skill in ipairs({ 0, 1 }) do
 		and W.events("lanefight_end", "phase=commit reason=escape") == 1 and W.events("lanefight_abort", "reason=escape") == 1
 		and W.events("lanefight_recheck", "pid=1 reason=escape pass=0") == 1,
 		string.format("seen %.3f end %s notice %.2f\n%s", seenAt, tostring(endAt), notice, table.concat(W.lines, "\n")))
-	check("the escape believed down and cast within 2 s is a bad-memory mistake at skill " .. skill,
-		W.events("lanefight_mistake", "pid=1 kind=bad_memory ability=antimage_blink") == 1, table.concat(W.lines, "\n"))
+	check("the escape down at the start and cast within 2 s is a came-up mistake at skill " .. skill,
+		W.events("lanefight_mistake", "pid=1 kind=came_up ability=antimage_blink") == 1, table.concat(W.lines, "\n"))
 end
 
 do
@@ -823,11 +825,11 @@ do
 		and W.events("lanefight_end") == 0, table.concat(W.lines, "\n"))
 end
 
--- ------------------------------------------------------------------------------------------- bad memory
+-- ------------------------------------------------------------------------------------------- a spell back up
 
 local function spellWorld()
 	local W = world({ burst = 0, botPos = 5 })
-	W.H.LaneFight.CooldownMemory.Record(1, 6, "lion_impale", "key", 12, 1, T)
+	W.enemy.abilities[0].down = true
 	return W
 end
 
@@ -838,7 +840,7 @@ do
 	play(W, 1)
 	W.enemy.casting = W.enemy.abilities[0]
 	play(W, 0.3)
-	check("bad memory emits the mistake event", W.events("lanefight_mistake", "pid=1 kind=bad_memory ability=lion_impale") == 1,
+	check("a spell down at the start and cast within 2 s emits the mistake event", W.events("lanefight_mistake", "pid=1 kind=came_up ability=lion_impale") == 1,
 		table.concat(W.lines, "\n"))
 	play(W, 1)
 	check("one mistake per start", W.events("lanefight_mistake") == 1)
@@ -854,19 +856,20 @@ do
 	playUntil(W, function() return W.events("lanefight_start", "phase=trade") > 0 end, 2)
 	W.enemy.casting = W.enemy.abilities[5]
 	play(W, 0.3)
-	check("casting an ability that was not believed down is no mistake", W.events("lanefight_mistake") == 0)
+	check("casting an ability that was not down at the start is no mistake", W.events("lanefight_mistake") == 0)
 end
 
 do
-	-- A spell-window trade (impale and voodoo believed down) upgrades to a commit after voodoo's remembered cooldown
-	-- ran out, so the commit's own read has no spell window. The trade's bet must survive the upgrade.
+	-- A spell-window trade (impale and voodoo down) upgrades to a commit after voodoo came back up, so the commit's own
+	-- read has no spell window. The trade's bet must survive the upgrade.
 	local W = world({ burst = 0, botPos = 5, enemyAbilities = { [0] = ability("lion_impale", { cd = 12 }), [1] = ability("lion_voodoo", { cd = 12 }) } })
-	W.H.LaneFight.CooldownMemory.Record(1, 6, "lion_impale", "key", 12, 1, T)
-	W.H.LaneFight.CooldownMemory.Record(1, 6, "lion_voodoo", "key", 1, 1, T)
+	W.enemy.abilities[0].down = true
+	W.enemy.abilities[1].down = true
 	playUntil(W, function() return W.events("lanefight_start", "phase=trade") > 0 end, 2)
 	local tradeAt = T
 	check("setup: a spell-window trade", W.events("lanefight_start", "phase=trade target=6 window=spell") == 1, table.concat(W.lines, "\n"))
 	play(W, 0.9)
+	W.enemy.abilities[1].down = false
 	W.bot.estDamage = 1000
 	playUntil(W, function() return W.LF.CurrentPhase(W.bot) == "commit" end, 1)
 	W.enemy.casting = W.enemy.abilities[0]
@@ -874,7 +877,7 @@ do
 	check("setup: the upgrade and the cast are within 2 s of the trade", W.LF.CastWatch.LastSeenCast(1) ~= nil
 		and W.LF.CastWatch.LastSeenCast(1).at - tradeAt <= 2 and W.events("lanefight_end", "phase=trade reason=commit") == 1,
 		table.concat(W.lines, "\n"))
-	check("a trade's bad-memory bet survives its upgrade to a commit", W.events("lanefight_mistake", "ability=lion_impale") == 1,
+	check("a trade's bet survives its upgrade to a commit", W.events("lanefight_mistake", "ability=lion_impale") == 1,
 		table.concat(W.lines, "\n"))
 end
 

@@ -12,10 +12,10 @@ do
 	local C = fresh({ Curves = { Notice = { 0, 1 } } })
 	local s = C.Settings()
 	check("override applies", s.Curves.Notice[1] == 0 and s.Curves.Notice[2] == 1)
-	check("missing curves keep defaults", s.Curves.ForgetWindow[1] == 20 and s.Curves.ForgetWindow[2] == 90)
+	check("missing curves keep defaults", s.Curves.AbortNotice[1] == 0.8 and s.Curves.AbortNotice[2] == 0.15)
 	check("missing scalars keep defaults", s.PollInterval == 0.1 and s.StartHP == 0.5)
-	check("curve interpolates low to high", near(C.Curve("ForgetWindow", 0.5), 55) and near(C.Curve("ForgetWindow", 0), 20))
-	check("curve clamps skill", near(C.Curve("ForgetWindow", 2), 90))
+	check("curve interpolates low to high", near(C.Curve("AbortNotice", 0.5), 0.475) and near(C.Curve("AbortNotice", 0), 0.8))
+	check("curve clamps skill", near(C.Curve("AbortNotice", 2), 0.15))
 	check("an array override replaces rather than merges", #C.Settings().Curves.Notice == 2)
 end
 

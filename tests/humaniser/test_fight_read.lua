@@ -12,7 +12,9 @@ local function ability(name, o)
 		IsUltimate = function() return o.ult == true end,
 		IsHidden = function() return false end,
 		IsNull = function() return false end,
-		GetCooldown = function() return o.cd or 12 end,
+		-- `down` set on the handle: the enemy cannot cast it now.
+		IsFullyCastable = function(self) return self.down ~= true end,
+		GetSpecialValueFloat = function() return 0 end,
 	}
 end
 
@@ -53,17 +55,15 @@ local function world(o)
 	local W = {
 		H = H, bot = bot, enemy = enemy, sign = sign, other = other, creep = creep,
 		FR = H.LaneFight.FightRead,
-		M = H.LaneFight.CooldownMemory,
 	}
 	function W.read() return W.FR.ReadFor(bot, T) end
 	function W.at(x) enemy.loc = Vector(sign * x, BOT_Y) end
 	return W
 end
 
-local function rememberStun(W, roll, skill)
-	SetRandomSequence({ roll or 0.1, 0.5 })
-	W.M.Record(1, 6, "lion_impale", "key", 12, skill or 1, T)
-	SetRandomSequence({})
+-- Lion's stun, his one key spell, is on cooldown.
+local function stunDown(W)
+	W.enemy.abilities[0].down = true
 end
 
 local function countRandom()
@@ -75,21 +75,26 @@ end
 
 do
 	local W = world()
-	rememberStun(W)
+	stunDown(W)
 	T = T + 1
 	local r = W.read()
-	check("spell window after the remembered stun", r.window == "spell" and r.target == W.enemy, tostring(r.window))
-	T = T + 12
+	check("spell window while the stun cannot be cast", r.window == "spell" and r.target == W.enemy, tostring(r.window))
+	W.enemy.abilities[0].down = false
+	T = T + 1
 	r = W.read()
-	check("the spell window ends once the stun is remembered as back", r.window == nil, tostring(r.window))
+	check("the spell window ends once the stun can be cast again", r.window == nil and r.target == W.enemy, tostring(r.window))
 end
 
 do
+	-- Ours.SpellsUp off: every learned enemy spell reads as up, as before the slice.
 	local W = world()
-	rememberStun(W, 0.95, 0.5)
+	local ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	ours.SpellsUp = false
+	stunDown(W)
 	T = T + 1
 	local r = W.read()
-	check("no spell window when the stun was forgotten", r.window == nil and r.target == W.enemy, tostring(r.window))
+	ours.SpellsUp = true
+	check("with SpellsUp off a stun on cooldown opens no spell window", r.window == nil and r.target == W.enemy, tostring(r.window))
 end
 
 do
@@ -283,19 +288,17 @@ do
 	local W = world({ enemyLevel = 6 })
 	W.bot.level = 6
 	local r = W.read()
-	check("their learned ult not seen used gives respect at 6", r.respect == "their_ult", tostring(r.respect))
+	check("their ult they can cast gives respect at 6", r.respect == "their_ult", tostring(r.respect))
 	W = world({ enemyLevel = 6 })
 	W.bot.level = 6
-	SetRandomSequence({ 0.1, 0.5 })
-	W.M.Record(1, 6, "lion_finger_of_death", "ult", 100, 1, T)
-	SetRandomSequence({})
+	W.enemy.abilities[5].down = true
 	r = W.read()
-	check("their ult remembered on cooldown is no respect", r.respect == nil, tostring(r.respect))
+	check("their ult on cooldown is no respect", r.respect == nil, tostring(r.respect))
 end
 
 do
 	local W = world()
-	rememberStun(W)
+	stunDown(W)
 	local second = lion(MakeUnit({ pid = 7, team = 3, loc = Vector(1500, BOT_Y) }))
 	T = T + 1
 	local r = W.read()
@@ -319,7 +322,7 @@ do
 	local W = world({ telemetry = { Enable = true } })
 	local lines = {}
 	W.H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
-	rememberStun(W)
+	stunDown(W)
 	W.H.Profile.Get(W.bot)
 	local stop = countRandom()
 	for _ = 1, 10 do
@@ -347,13 +350,13 @@ end
 
 do
 	local W = world({ skill = 0 })
-	rememberStun(W)
+	stunDown(W)
 	SetRandomSequence({ 0.5 })
 	T = T + 1
 	-- Notice at skill 0 is 0.3: a 0.5 roll misses.
 	check("a missed notice roll reads noticed = false", W.read().noticed == false)
 	W = world({ skill = 1 })
-	rememberStun(W)
+	stunDown(W)
 	SetRandomSequence({ 0.5 })
 	T = T + 1
 	check("a notice roll under Curve('Notice') reads noticed = true", W.read().noticed == true)
@@ -361,7 +364,7 @@ end
 
 do
 	local W = world()
-	rememberStun(W)
+	stunDown(W)
 	T = T + 1
 	local first = W.read()
 	W.enemy.loc = Vector(1500, BOT_Y)
@@ -383,7 +386,7 @@ end
 do
 	-- In game a cached target went invalid inside WindowReadEvery and the caller's GetPlayerID threw.
 	local W = world()
-	rememberStun(W)
+	stunDown(W)
 	T = T + 1
 	local first = W.read()
 	W.enemy.removed = true
@@ -393,7 +396,7 @@ end
 
 do
 	local W = world({ laneFight = { Enable = false } })
-	rememberStun(W)
+	stunDown(W)
 	T = T + 1
 	local r = W.read()
 	check("LaneFight off reads nothing", r.window == nil and r.respect == nil and r.target == nil)

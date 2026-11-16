@@ -79,6 +79,18 @@ export function SpentOn(e: Unit, target: Unit, window: number): number {
     return total;
 }
 
+/**
+ * Whether `enemy` can cast its spell `name` now (slice spells-up, `Ours.SpellsUp`): the handle's IsFullyCastable, which
+ * for an enemy follows the owner's cooldown and mana. An item, a name the hero lacks, or the switch off reads as up:
+ * enemy item handles are unprobed, and up is the safe side.
+ */
+export function Ready(enemy: Unit, name: string): boolean {
+    if (!Ours.On("SpellsUp") || string.sub(name, 1, 5) === "item_") return true;
+    const a = enemy.GetAbilityByName(name) as unknown as AbilityHandle | null | undefined;
+    if (a === undefined || a === null || a.IsNull()) return true;
+    return a.IsFullyCastable();
+}
+
 /** `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now); with BurstReady off, Valve's figure. */
 export function DamageOn(e: Unit, target: Unit, window: number): number {
     const est = e.GetEstimatedDamageToTarget(true, target, window, DamageType.All);

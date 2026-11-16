@@ -1,5 +1,5 @@
 /**
- * Lane fight configuration (task 11): trading and kill setups with imperfect cooldown memory.
+ * Lane fight configuration (task 11): trading and kill setups.
  * Every tunable lives in DEFAULTS; Settings() deep-merges Customize.Humaniser.LaneFight over it.
  * Curves are [low, high] pairs read as low + (high - low) * skill.
  */
@@ -8,14 +8,9 @@ import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 
+// Memory: cast watching (an escape cast aborts a commit; lanefight_mistake), not whether a spell is up.
 export type LaneFightFlag = "Memory" | "Trade" | "Kill" | "CallKills";
 export type CurveName =
-    | "RememberUlt"
-    | "RememberKey"
-    | "RememberOther"
-    | "TimingError"
-    | "ForgetWindow"
-    | "ShareLoss"
     | "Notice"
     | "BurstError"
     | "AbortNotice"
@@ -29,9 +24,8 @@ export const DEFAULTS = {
     CallKills: true,
     // 'all' | 'allies' (bots whose team has a human) | 'enemies' (bots whose team has none)
     Teams: "all" as string,
-    ShareMemory: false,
     // Cast callbacks beside the poll: they heard 312 of 317 casts by a visible hero, instant ones included (ApiProbe game
-    // 12/11/2026). An enemy's cooldown remaining is not readable (-1 on every ability), so seen casts are the only source.
+    // 12/11/2026).
     UseCastCallback: true,
     PollInterval: 0.1,
     KillCheckEvery: 0.5,
@@ -90,12 +84,6 @@ export const DEFAULTS = {
     CallCooldown: 30,
     // Skill 1 is no handicap of ours (user 12/11/2026): chances end at 1, errors and delays at 0.
     Curves: {
-        RememberUlt: [0.6, 1],
-        RememberKey: [0.35, 1],
-        RememberOther: [0.1, 1],
-        TimingError: [0.35, 0],
-        ForgetWindow: [20, 90],
-        ShareLoss: [0.3, 0],
         Notice: [0.3, 1],
         BurstError: [0.3, 0],
         // Not only a handicap: the re-check must come after the signal has played out (an escape cast re-checked on its own

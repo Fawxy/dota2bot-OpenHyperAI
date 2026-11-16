@@ -83,6 +83,19 @@ function ____exports.SpentOn(e, target, window)
     end
     return total
 end
+--- Whether `enemy` can cast its spell `name` now (slice spells-up, `Ours.SpellsUp`): the handle's IsFullyCastable, which
+-- for an enemy follows the owner's cooldown and mana. An item, a name the hero lacks, or the switch off reads as up:
+-- enemy item handles are unprobed, and up is the safe side.
+function ____exports.Ready(enemy, name)
+    if not Ours.On("SpellsUp") or string.sub(name, 1, 5) == "item_" then
+        return true
+    end
+    local a = enemy:GetAbilityByName(name)
+    if a == nil or a == nil or a:IsNull() then
+        return true
+    end
+    return a:IsFullyCastable()
+end
 --- `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now); with BurstReady off, Valve's figure.
 function ____exports.DamageOn(e, target, window)
     local est = e:GetEstimatedDamageToTarget(true, target, window, DamageType.All)

@@ -342,7 +342,7 @@ do
 	play(W, 2)
 	check("setup: respect read during the commit", W.LF.ReadFor(W.bot, T).respect ~= nil and W.LF.CurrentPhase(W.bot) == "commit")
 	W.bot.level = 6
-	W.LF.CooldownMemory.Record(1, 6, "lion_finger_of_death", "ult", 100, 1, T)
+	W.enemy.abilities[5].down = true
 	play(W, 7)
 	check("a respect during a commit does not lapse its kill instance", W.events("lanefight_end", "reason=commit-max") == 1
 		and W.events("lanefight_start", "phase=commit") == 1, table.concat(W.lines, "\n"))
@@ -652,14 +652,12 @@ end
 -- ------------------------------------------------------------------------------ overlay, telemetry and regression
 
 do
-	-- Spell window: the stun is remembered as down. Kill margin 112 / 100 = 1.12 fails under their tower (TowerOverride
-	-- 1.3), so the bot keeps trading. Two remembered cooldowns.
+	-- Spell window: the stun is down (and the ult). Kill margin 112 / 100 = 1.12 fails under their tower (TowerOverride
+	-- 1.3), so the bot keeps trading.
 	local W = world({ burst = 112, debug = true })
 	TOWERS_W[3][dota.Tower.Bot1].loc = Vector(1150, BOT_Y)
-	SetRandomSequence({ 0.1, 0.5, 0.1, 0.5 })
-	W.LF.CooldownMemory.Record(1, 6, "lion_impale", "key", 12, 1, T)
-	W.LF.CooldownMemory.Record(1, 6, "lion_finger_of_death", "ult", 100, 1, T)
-	SetRandomSequence({})
+	W.enemy.abilities[0].down = true
+	W.enemy.abilities[5].down = true
 	play(W, 0.7)
 	-- The humaniser tick also takes a telemetry snapshot.
 	function W.bot:GetLastHits() return 0 end
@@ -675,7 +673,7 @@ do
 	DebugDrawText = realDraw
 	local line
 	for _, t in ipairs(drawn) do if t:sub(1, 6) == "fight:" then line = t end end
-	check("overlay shows window, kill margin and remembered count", line == "fight: window=spell kill=0.93 mem=2 phase=trade",
+	check("overlay shows window, kill margin and phase", line == "fight: window=spell kill=0.93 phase=trade",
 		tostring(line) .. " | " .. table.concat(drawn, " | ") .. table.concat(W.lines, "\n"))
 
 	local W2 = world({ burst = 112 })

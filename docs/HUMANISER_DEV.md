@@ -838,7 +838,7 @@ Calibrates the predictor against a bot that last-hits from the trainer's own win
 
 ## Lane fight (11)
 
-Lane trading and kill setups with imperfect cooldown memory. Spec: `handoffs/11-lane-trading-and-kill-setups.md`; plan: `docs/superpowers/plans/2026-10-22-lane-fight.md`. Bots remember the enemy casts they saw (with skill-scaled recall, timing error and forgetting), read trade windows from that memory and the lane, trade short bursts through `team_roam`, and commit to kills that pass a skill-scaled burst check, alone or with their lane partner. Kill switches: `Humaniser.Enable = false` or `LaneFight.Enable = false` restore the previous behaviour (no claims, no scans, no callbacks, `team_roam` returns its raw desire; pinned by the regression test in `test_lane_fight.lua`). `Lane.Enable = false` also turns lane fights off: they read the Lane feature's enemy list.
+Lane trading and kill setups. Spec: `handoffs/11-lane-trading-and-kill-setups.md`; plan: `docs/superpowers/plans/2026-10-22-lane-fight.md`. Bots read whether an enemy's spells are up from its ability handles (`SpellReady.Ready`, `Ours.SpellsUp`), read trade windows from that and the lane, trade short bursts through `team_roam`, and commit to kills that pass a skill-scaled burst check, alone or with their lane partner. Kill switches: `Humaniser.Enable = false` or `LaneFight.Enable = false` restore the previous behaviour (no claims, no scans, no callbacks, `team_roam` returns its raw desire; pinned by the regression test in `test_lane_fight.lua`). `Lane.Enable = false` also turns lane fights off: they read the Lane feature's enemy list.
 
 ### Module map
 All in `typescript/bots/FunLib/humaniser/`, lowest first.
@@ -847,8 +847,7 @@ All in `typescript/bots/FunLib/humaniser/`, lowest first.
 |---|---|
 | `lane_fight_config` | `DEFAULTS`, `Settings()` deep merge of `Customize.Humaniser.LaneFight`, `IsOn(flag)`, `IsActive()`, `Curve(name, skill)`, `AppliesTo(bot)` (`Teams`) |
 | `ability_classes` | Curated KEY (disables, silences, escapes, key items) and ESCAPE sets; `Classify(name, isUlt)`, `IsEscape(name)` |
-| `cooldown_memory` | Per observer and enemy: `Record` (remember roll, timing error, forget time), `Share`, `ProbablyReady`, `KeyThreatsDown`, `Count` |
-| `cast_watch` | Sees enemy casts: poll of `IsCastingAbility`/`GetCurrentActiveAbility` every `PollInterval`, blink-jump inference, optional cast callback; `AbilitiesOf` (5 s cache), `LastSeenCast`, `LevelEstimate`, `CooldownOf` |
+| `cast_watch` | Sees enemy casts: poll of `IsCastingAbility`/`GetCurrentActiveAbility` every `PollInterval`, blink-jump inference, optional cast callback; `AbilitiesOf` (5 s cache), `LastSeenCast`, `LevelEstimate`. Whether a spell is up: `spell_ready` `Ready` (IsFullyCastable on the enemy's handle; an item reads as up) |
 | `fight_read` | The fight read per bot every `WindowReadEvery`: target, window (`spell`, `lasthit`, `level`, `position`), respect (`their_spike`, `their_ult`, `outnumbered`), the notice roll; `LevelSpike`, `LaneCounts` |
 | `kill_check` | Burst margin with skill-scaled error and its fail reasons (`burst`, `escape`, `tower`, `outnumbered`, `counter`, plus `illusion`, `unkillable`, `magic_immune`); cached per (bot, target, contributing partners) for `KillCheckEvery` |
 | `lane_fight` | Facade and executor: `Tick`, `ReadFor`, `CheckKill`, `RoamDesire`, `Think`, `Target`, `CurrentPhase`, `Describe`; phases idle, trade, commit, wait_partner; start gates, partner sync, kill calls, aborts, mistakes |
@@ -862,12 +861,11 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | Flag | Default | Turning it off disables |
 |---|---|---|
 | `Enable` | true | Everything |
-| `Memory` | true | Cast watching and cooldown memory (so the `spell` window, escape aborts and `bad_memory` mistakes) |
+| `Memory` | true | Cast watching (so escape aborts and `came_up` mistakes) |
 | `Trade` | true | Trades (a kill pass still commits) |
 | `Kill` | true | Kill checks, commits, waits and calls |
 | `CallKills` | true | The `go on X` line and ping for a human partner |
 | `Teams` | `'all'` | `'allies'`: only bots on a team with a human; `'enemies'`: only bots on a team without one |
-| `ShareMemory` | false | Passing remembered casts to lane allies (with `ShareLoss`) |
 | `UseCastCallback` | true | `InstallCastCallback` per enemy player; a callback runs outside any bot's think, so casts are queued with their time and drained on the observer's tick (older than `EventGap`: dropped) |
 
 ### Config keys (`lane_fight_config.ts` `DEFAULTS`)
@@ -876,7 +874,7 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | `PollInterval` | 0.1 s | Cast poll per observer |
 | `KillCheckEvery` | 0.5 s | Kill check cache life |
 | `WindowReadEvery` | 0.25 s | Fight read cache life |
-| `KeyThreatsWindow` | 0.5 | `spell` window when more than this share of the target's learned key abilities are remembered down |
+| `KeyThreatsWindow` | 0.5 | `spell` window when more than this share of the target's learned key abilities cannot be cast now |
 | `BlinkJump` | 600 | A move this far between two polls is a blink |
 | `LevelSpikeMin` / `LevelSpikeMax` | 10 / 15 s | Level-spike window length (drawn per spike) |
 | `OutOfPosition` | 400 | `position` window: target this far ahead of its creeps |
@@ -899,10 +897,6 @@ Hand-written Lua: `mode_team_roam_generic.lua` (`LaneFight.RoamDesire` after `Ca
 | `Overwhelming` | 1.5 | Margin for a solo commit beside a human, or a support's forced commit |
 | `SoloSkill` | 0.7 | Overwhelming solo commits only above this skill |
 | `CallCooldown` | 30 s | Kill call line cooldown |
-| `Curves.RememberUlt` / `RememberKey` / `RememberOther` | [0.6, 1] / [0.35, 1] / [0.1, 1] | Remember chance by class (skill 1 remembers every cast it can record) |
-| `Curves.TimingError` | [0.35, 0.05] | Remembered cooldown error (fraction) |
-| `Curves.ForgetWindow` | [20, 90] s | How long a memory lasts |
-| `Curves.ShareLoss` | [0.3, 0.05] | Chance a shared memory is lost |
 | `Curves.Notice` | [0.3, 0.9] | Chance a window is noticed (once per window instance) |
 | `Curves.BurstError` | [0.3, 0.05] | Kill-check burst error |
 | `Curves.AbortNotice` | [0.8, 0.15] s | Delay before an abort signal is re-checked |
@@ -915,17 +909,17 @@ From the plan:
 3. `Teams = 'all'` by default (the spec's tests 1, 3 and 4 are enemy bots punishing a human); independent of 07's `OwnLaningThink`.
 4. Trades are short commits (`TradeDuration`, `TradeHits`); commits run to death, abort or `CommitMax`. 07's harass punish runs first.
 5. Ability classes are a curated table; ultimates come from `IsUltimate()` or slot 5.
-6. Cooldown source: no-arg `GetCooldown()` on the enemy handle with the level estimate fallback; Task 4b (data from `npc_abilities.txt`) only if the probe shows `GetCooldown` is 0 on enemies.
+6. Whether a spell is up: the enemy handle's `IsFullyCastable` (it follows the owner's cooldown and mana; `GetCooldown` reads 0 and the time remaining -1 on enemies).
 7. Instant casts: poll plus a blink-jump heuristic, and the cast callback behind `UseCastCallback`.
 
 Controller rulings:
-- Tasks 1–9 ran without the in-game probe; `UseCastCallback` is on since the API probe (casts by visible enemies fire it); `GetCooldown()` on an enemy ability gives no length, so `lanefight_mem reason=no_cd` is every cast and nothing is recorded until Task 4b (a cooldown table).
+- Tasks 1–9 ran without the in-game probe; `UseCastCallback` is on since the API probe (casts by visible enemies fire it).
 - Partner lookup is `LaneRoles.Partner(bot, LaneState.ForBot(bot))` resolved to its unit.
 - The kill call is a localization key taking the hero name; `Orders.Say` gained a format argument and keeps its 10 s per-bot limit.
 - Starts need HP ≥ `StartHP` (trades) or `CommitStartHP` (commits and waits), retreat < `StartMaxRetreat`, no camp job or cover, no live HUMAN_ORDER/SURVIVAL claim; each blocked start logs `lanefight_gate` once per window instance. The mode gate is checked first, then (trades) the range, measured on the target as the bot sees it at that moment rather than the cached read's handle (`gate=unseen` when it is no longer visible).
 - With Intent off there is no resolved retreat desire: the `StartMaxRetreat` start gate and the commit's `retreat` end are not enforced, and only `StopHP` ends a phase on HP.
-- With Memory off nothing is remembered, so every target with a learned escape fails the kill check (`escape`: unseen means ready).
-- Respect blocks trades only (R1). Kill planning runs before the respect check, and the kill check's own escape, tower, outnumbered and counter rules decide kills: from level 6 an ult never seen cast reads as ready, so respect would otherwise block every kill. A respect read during a commit does not lapse the commit's kill instance (the plan keeps touching it), so the commit is not restarted when it ends.
+- With `Ours.SpellsUp` off every learned enemy spell reads as up: every target with a learned escape fails the kill check (`escape`), and from level 6 every ult gives respect.
+- Respect blocks trades only (R1). Kill planning runs before the respect check, and the kill check's own escape, tower, outnumbered and counter rules decide kills: from level 6 an ult that can be cast gives respect, which would otherwise block every kill. A respect read during a commit does not lapse the commit's kill instance (the plan keeps touching it), so the commit is not restarted when it ends.
 - Partner-abandon abort: a commit whose kill check counted a partner (follower or initiator) raises `partner_abandon` when a counted partner is dead, farther than 1200 from the target, or has not been seen going in for `PartnerLapse` (going in: `IsCommitting` on the target, attacking it from within attack range + both hulls + 50, the engine measuring range edge to edge, an attack on it seen in the last 1.5 s, which covers the gap between attacks and casts, or chasing it: moving towards it at 150/s or more without losing more than 40/s, since the engine reports no attack target while a hero runs after one out of range). The chase is bounded by the bot's own `ChaseMax`. A target that runs under one of its towers mid-commit raises a `tower` signal; the re-check `AbortNotice` later needs margin at least `TowerOverride` (follow commits too, not just `FollowMargin`), else the commit ends as `tower`. A commit that started under the tower (it cleared `TowerOverride`) raises no signal until the target leaves and re-enters. An initiator's partner gets 1.5 s from the start before its absence counts (its react + `SyncDelay` and the walk in). At the re-check `AbortNotice` later the check runs solo (`[]`) and must pass outright; if it does the commit goes on as a solo commit (no partners, no `FollowMargin` re-check); a partner seen going in again by then cancels the signal. While the target is unseen no abandon is raised or re-checked (FogGrace decides) and the partner's clock restarts when it reappears; an escape or outnumbered re-check leaves out a partner that has abandoned by then.
 - A kill check failing with margin ≥ 0.8 logs `lanefight_gate gate=kill:<reason> target=<pid>` once per target instance (not while committing).
 - A support's "ready disable" (initiate, or the core waits on it) is a key-class ability that is not an escape; BKB and Glimmer Cape are key, not escapes (spell immunity, like Blade Fury and Rage).
@@ -935,10 +929,8 @@ Controller rulings:
 - Valve's attack mode (0.95) taking over mid-fight is accepted: it is "going on someone"; any other mode active > 1 s ends the phase (`mode:<m>`).
 - Perception and handle hygiene on every enemy read; team-frame lane reads; pre-horn guards; Hold while waiting; GuardModule registration.
 - Spell immunity (Blade Fury, Rage) is KEY but not ESCAPE.
-- A recast that fails its remember roll deletes the old memory (forgotten = assumed ready); the stored forget time is authoritative and `Share` recomputes it for the recipient; callers gate `Share` on `ShareMemory`.
 - Lane fights need the Lane feature active (perception-filtered enemy list); `IsOn` needs it too.
-- `CooldownOf` uses no-arg `GetCooldown()` (the bot API has no level parameter).
-- Escape aborts use `CastWatch.LastSeenCast` (every visible cast, whatever the remember roll).
+- Escape aborts use `CastWatch.LastSeenCast` (every visible cast).
 - A level-spike window ends early when the other side reaches the same level.
 - Our laners are counted with the same in-lane test as enemies (≤ 1200 from the lane path between the T2s).
 - Kill check adds a crude counter-burst gate (fail `counter` at ≥ 2 enemies near and HP < 0.5); the tower override is a flat 1.3.
@@ -948,11 +940,11 @@ Controller rulings:
 - `wait_partner` holds (`Intent.Hold`, no floor) and times out after 3 s (`partner_timeout`).
 - A key cast "on the target" is inferred from facing within 30° and range + 200.
 - A solo commit beside a human partner uses a solo check that must be overwhelming; a bot stun support beside a human core calls the kill and waits unless overwhelming above `SoloSkill`.
-- Escape aborts and `bad_memory` need Memory on.
+- Escape aborts and `came_up` mistakes need Memory on.
 - A partner is seen going in (for the abandon check) on closing while attacking, or 2 in-range attacks within `InRangeWindow`. Following one needs more: 2 in-range attacks or a key/ult cast at the target, because a laning harass also walks in and hits once; only a bot already in `wait_partner` for that partner and target follows on the walk-in. Re-verified at follow time; committing bots attack-order while closing so partners can see it.
 
 ### Overlay and log formats
-Overlay (Debug on, bots lane fights apply to): `fight: window=<spell|lasthit|level|position|none> kill=<margin|-> mem=<remembered> phase=<idle|trade|commit|wait_partner>`, for example `fight: window=spell kill=1.12 mem=2 phase=trade`. `kill` is the last kill check's margin (burst / HP), shown whether or not it passed.
+Overlay (Debug on, bots lane fights apply to): `fight: window=<spell|lasthit|level|position|none> kill=<margin|-> phase=<idle|trade|commit|wait_partner>`, for example `fight: window=spell kill=1.12 phase=trade`. `kill` is the last kill check's margin (burst / HP), shown whether or not it passed.
 
 Telemetry (`[HEV] ... ev=<name>`; `tools/hlog/analyse.js` lists a per-bot lane-fight table in its summary and runs the `lane_fight` check):
 
@@ -967,13 +959,12 @@ Telemetry (`[HEV] ... ev=<name>`; `tools/hlog/analyse.js` lists a per-bot lane-f
 | `lanefight_recheck` | `pid reason pass margin after` (the abort re-check) |
 | `lanefight_abandon` | `pid why(gone\|far\|unseen) since mode ally amode atk(target\|-\|unit name) dist range lastatk` (the partner as seen when a partner_abandon signal is raised; `lastatk` is `GameTime() - GetLastAttackTime()`, the engine's attack times being on the game clock; the analyser lists them under "partner abandons") |
 | `lanefight_call` | `pid target said pinged` |
-| `lanefight_mistake` | `pid kind=bad_memory ability target after` |
-| `lanefight_mem` | `pid enemy ability cls cd remembered src=<poll|jump|callback>`, or `pid enemy ability remembered=0 reason=no_cd` once per ability when `GetCooldown` reads 0 |
-| `lanefight_watch` | `pid polls visible casts recorded jumps` (every 30 s per observer) |
+| `lanefight_mistake` | `pid kind=came_up ability target after` (a spell down at a start, cast within 2 s of it) |
+| `lanefight_watch` | `pid polls visible casts jumps` (every 30 s per observer) |
 
 Console lines (`[H:lanefight]`, Debug): `start`, `end`, `abort-signal`, `partner-commit`; `[H:fight] hfight ...` from the probe.
 
-`analyse.js` `lane_fight` warns when a bot has 3 or more trades/commits and none took over (fights that never acted, lessons 22/23), and when `lanefight_mem reason=no_cd` is more than half of a bot's memory reads (GetCooldown unusable on enemies: Task 4b needed).
+`analyse.js` `lane_fight` warns when a bot has 3 or more trades/commits and none took over (fights that never acted, lesson 22).
 
 ### In-game probe (task 1)
 `!hfight` (human issuer, `Humaniser.Debug = true`, Lane feature on) logs the nearest visible enemy's ability slots (`[H:fight] hfight <hero> slot=<i> <name> lvl=<n> cd=<n> ult=<bool> behavior=<n>`) and `hfight est=<GetEstimatedDamageToTarget>`, and installs `InstallCastCallback` for every enemy player (once per team). Each cast event logs as `[H:fight] hfight cast pid=<caster> visible=<bool> <key=value ...>`.
@@ -989,21 +980,21 @@ Results (to fill in):
 
 ### Manual test checklist (spec scenarios; compare `SkillOverride = 0.9` with `0.2`)
 - [ ] 1 A visible enemy uses its stun on a creep: a high-skill bot trades within the window most times (`lanefight_window window=spell noticed=1`, then `lanefight_start phase=trade window=spell`); a low-skill bot rarely does.
-- [ ] 2 A cast from fog: no `lanefight_mem` for it and no bot reacts as if it saw it.
+- [ ] 2 A cast from fog: no bot reacts as if it saw it.
 - [ ] 3 Level-2 race: the bot that reaches level 2 first trades for about 10–15 s at high skill (`window=level`); the window ends once the other side levels.
 - [ ] 4 Bot duo vs a human at 40% HP with no escape: they commit together, the support first (`role=initiator`, then `role=follower`). At low skill they are out of sync or misjudge it.
 - [ ] 5 You go in as the bot's lane partner: it follows (`via=follow`). When it sees a kill it says `go on X` and pings (`lanefight_call`), and does not dive alone at low skill.
 - [ ] 6 Regression: with `LaneFight.Enable = false` behaviour matches the branch before 11; no `lanefight_*` events.
 
 ### TODO (in-game)
-- [ ] Probe answers above: `GetCooldown()` non-zero on enemy abilities (else `lanefight_mem reason=no_cd` dominates and `lane_fight` warns: do Task 4b); `GetLevel()` on enemy abilities (else the level estimate is used); the cast callback fires and with which keys (then try `UseCastCallback = true`; check the handle `==` comparison holds).
+- [ ] Probe answers above: `GetLevel()` on enemy abilities (else the level estimate is used); the cast callback fires and with which keys (then try `UseCastCallback = true`; check the handle `==` comparison holds).
 - [ ] `GetHeroLevel` for fogged enemies: if 0, every lane reads an "ours" level spike.
 - [ ] `GetLastAttackTime` semantics on allies (attack start or land, game clock), which the partner in-range count and trade hit count read.
 - [ ] `GetFacing` and `GetCastRange` give a usable "cast at the target" inference; count false follows from casts aimed elsewhere nearby.
 - [ ] `team_roam`'s 0.72 laning-phase cap (`CapForLanePush`) against the FIGHT floors: RoamDesire runs after the cap, so the floor must still win (overlay `intent: team_roam 0.75 by lanefight:trade`).
 - [ ] Whether per-hero spells (`J.IsGoingOnSomeone` branches) fire at the chosen target under `team_roam`, and under Valve's attack mode when it takes over (`lanefight_abort reason=mode:attack` should not appear; attack is allowed).
 - [ ] Commit retreat hold: bots at 50–30% HP during a commit; watch tower dives in that band (the hold has no tower release).
-- [ ] Jump inference false positives (forced movement, TP, Force Staff): `lanefight_mem src=jump` on heroes without a blink.
+- [ ] Jump inference false positives (forced movement, TP, Force Staff): `lanefight_watch jumps` on heroes without a blink.
 - [ ] Trade ends by reason: how often `mode:laning` and `mode:retreat` end trades (laning's 0.9 last hit and retreat's creep branch beat the trade floor), and abort counts by reason (`escape`, `outnumbered`).
 - [ ] `took=0` share per bot from `analyse.js` (fights that start but never act).
 

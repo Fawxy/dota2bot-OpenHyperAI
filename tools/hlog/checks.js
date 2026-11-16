@@ -419,16 +419,14 @@ function trainerSelfTest(game) {
     return result('trainer_selftest', fails, [], line, line);
 }
 
-// lane_fight warns once a bot has this many trades or commits and none took over, or this many cooldown reads.
+// lane_fight warns once a bot has this many trades or commits and none took over.
 const LANE_FIGHT_MIN_STARTS = 3;
-const LANE_FIGHT_MIN_MEM = 4;
-const NO_CD_SHARE = 0.5;
 
-/** Per bot: lane-fight windows by type, starts by phase, ends by reason, took share, gates, aborts, mistakes, memory reads. */
+/** Per bot: lane-fight windows by type, starts by phase, ends by reason, took share, gates, aborts, mistakes. */
 function laneFightStats(game) {
     const bots = {};
     const get = pid =>
-        (bots[pid] = bots[pid] || { pid, windows: new Map(), starts: new Map(), ends: new Map(), gates: new Map(), aborts: new Map(), mistakes: new Map(), fights: 0, took: 0, mem: 0, remembered: 0, noCd: 0 });
+        (bots[pid] = bots[pid] || { pid, windows: new Map(), starts: new Map(), ends: new Map(), gates: new Map(), aborts: new Map(), mistakes: new Map(), fights: 0, took: 0 });
     const add = (m, k) => m.set(k, (m.get(k) || 0) + 1);
     for (const e of game.events) {
         if (typeof e.ev !== 'string' || !e.ev.startsWith('lanefight_')) continue;
@@ -445,16 +443,11 @@ function laneFightStats(game) {
         } else if (e.ev === 'lanefight_gate') add(b.gates, e.gate);
         else if (e.ev === 'lanefight_abort') add(b.aborts, e.reason);
         else if (e.ev === 'lanefight_mistake') add(b.mistakes, e.kind);
-        else if (e.ev === 'lanefight_mem') {
-            b.mem++;
-            if (e.remembered === 1) b.remembered++;
-            if (e.reason === 'no_cd') b.noCd++;
-        }
     }
     return bots;
 }
 
-/** Lesson 22/23: fights that start but never act; and GetCooldown reading 0 on enemies (memory then needs Task 4b). */
+/** Lesson 22: fights that start but never act. */
 function laneFight(game) {
     const stats = Object.values(laneFightStats(game)).sort((a, b) => a.pid - b.pid);
     if (stats.length === 0) return skip('lane_fight', 'no lane-fight events');
@@ -466,8 +459,6 @@ function laneFight(game) {
         took += b.took;
         if (b.fights >= LANE_FIGHT_MIN_STARTS && b.took === 0)
             warns.push(`${name(game, b.pid)}: ${b.fights} trades/commits ended and none took over (ends: ${[...b.ends.entries()].map(([k, n]) => `${k} ${n}`).join(', ')})`);
-        if (b.mem >= LANE_FIGHT_MIN_MEM && b.noCd / b.mem > NO_CD_SHARE)
-            warns.push(`${name(game, b.pid)}: lanefight_mem reason=no_cd ${b.noCd}/${b.mem}: GetCooldown reads 0 on enemies, memory records nothing (Task 4b needed)`);
     }
     return result('lane_fight', [], warns, `${fights} trades/commits, ${took} took over`);
 }

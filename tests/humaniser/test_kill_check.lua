@@ -12,7 +12,9 @@ local function ability(name, o)
 		IsUltimate = function() return o.ult == true end,
 		IsHidden = function() return false end,
 		IsNull = function() return false end,
-		GetCooldown = function() return o.cd or 12 end,
+		-- `down` set on the handle: the enemy cannot cast it now.
+		IsFullyCastable = function(self) return self.down ~= true end,
+		GetSpecialValueFloat = function() return 0 end,
 	}
 end
 
@@ -37,7 +39,7 @@ local function world(o)
 	enemy.lane = Lane.Bot
 	if o.regen then enemy.GetHealthRegen = function() return o.regen end end
 	if o.escape then enemy.abilities = { [0] = ability("antimage_blink", { cd = 12 }) } end
-	local W = { H = H, bot = bot, enemy = enemy, sign = sign, other = other, KC = H.LaneFight.KillCheck, M = H.LaneFight.CooldownMemory }
+	local W = { H = H, bot = bot, enemy = enemy, sign = sign, other = other, KC = H.LaneFight.KillCheck }
 	function W.check(partners) return W.KC.Check(bot, partners or {}, enemy, T) end
 	return W
 end
@@ -118,16 +120,16 @@ end
 do
 	local W = world({ escape = true, burst = 900 })
 	local r = W.check()
-	check("an unseen escape counts as ready", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
-	SetRandomSequence({ 0.1, 0.5 })
-	W.M.Record(1, 6, "antimage_blink", "key", 12, 1, T)
-	SetRandomSequence({})
+	check("an escape the target can cast blocks the kill", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+	local blink = W.enemy.abilities[0]
+	blink.down = true
 	T = T + 1
 	r = W.check()
-	check("a remembered escape on cooldown no longer blocks the kill", r ~= nil and r.pass == true, r and r.reason)
-	T = T + 13
+	check("an escape on cooldown no longer blocks the kill", r ~= nil and r.pass == true, r and r.reason)
+	blink.down = false
+	T = T + 1
 	r = W.check()
-	check("the escape blocks again once remembered back up", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+	check("the escape blocks again once it can be cast", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
 end
 
 do

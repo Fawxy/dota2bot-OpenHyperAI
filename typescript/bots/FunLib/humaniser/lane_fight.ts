@@ -1,5 +1,5 @@
 /**
- * Lane fight facade (task 11): trades and kill setups with imperfect cooldown memory. Tick runs per bot from Humaniser.Tick
+ * Lane fight facade (task 11): trades and kill setups. Tick runs per bot from Humaniser.Tick
  * (every Humaniser.TickEvery-th frame); ReadFor is the fight read (trade and respect windows); CheckKill is the kill check.
  *
  * The executor runs through mode_team_roam_generic: RoamDesire (its GetDesire) starts and ends trades and commits and
@@ -13,8 +13,8 @@ import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
-import * as CooldownMemory from "bots/FunLib/humaniser/cooldown_memory";
 import * as CastWatch from "bots/FunLib/humaniser/cast_watch";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as FightRead from "bots/FunLib/humaniser/fight_read";
 import * as KillCheck from "bots/FunLib/humaniser/kill_check";
 import * as LaneRoles from "bots/FunLib/humaniser/lane_roles";
@@ -28,7 +28,7 @@ import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
-export { LaneFightConfig as Config, AbilityClasses, CooldownMemory, CastWatch, FightRead, KillCheck };
+export { LaneFightConfig as Config, AbilityClasses, CastWatch, FightRead, KillCheck };
 
 export function IsActive(): boolean {
     return LaneFightConfig.IsActive();
@@ -132,7 +132,7 @@ interface FightState {
     // When the commit last had its target within attack range (ChaseMax runs from here).
     reachAt: number;
     countAt: number;
-    // Abilities a start believed down; one cast within MISTAKE_WINDOW of `at` proves the memory wrong.
+    // Abilities down at a start; one cast within MISTAKE_WINDOW of `at` came back up while the start relied on it.
     bet?: { targetPid: number; at: number; abilities: Record<string, boolean>; done: boolean };
 }
 
@@ -179,7 +179,7 @@ const ACTIVE_BOOST = 1.1;
 // A wait for the partner's commit gives up after this.
 const WAIT_TIMEOUT = 3;
 const WAIT_HOLD = "lanefight:wait";
-// A believed-down ability cast this soon after the start proves the memory wrong.
+// An ability down at the start and cast this soon after it came back up while the start relied on it.
 const MISTAKE_WINDOW = 2;
 // A key-class cast counts as on the target when the caster faces within 30 degrees of it, within cast range + 200.
 const FACING_COS = math.cos(math.pi / 6);
@@ -527,19 +527,15 @@ function claim(bot: Unit, phase: Phase): boolean {
 }
 
 /**
- * Abilities of `target` the bot's memory says are down that this start relies on: the key abilities behind a spell
- * window, and for a commit the escapes too (the kill check passed because they were believed down).
+ * Abilities of `target` that are down and that this start relies on: the key abilities behind a spell window, and for a
+ * commit the escapes too (the kill check passed because they were down).
  */
-function believedDown(bot: Unit, target: Unit, spell: boolean, escapes: boolean, now: number): Record<string, boolean> {
+function believedDown(target: Unit, spell: boolean, escapes: boolean): Record<string, boolean> {
     const out: Record<string, boolean> = {};
-    const pid = bot.GetPlayerID();
-    const tpid = target.GetPlayerID();
     for (const a of CastWatch.AbilitiesOf(target)) {
         if (!a.learned) continue;
         const wanted = (spell && AbilityClasses.Classify(a.name, a.ult) === "key") || (escapes && AbilityClasses.IsEscape(a.name));
-        if (!wanted) continue;
-        const [ready] = CooldownMemory.ProbablyReady(pid, tpid, a.name, true, now, skillOf(bot));
-        if (!ready) out[a.name] = true;
+        if (wanted && !SpellReady.Ready(target, a.name)) out[a.name] = true;
     }
     return out;
 }
@@ -581,7 +577,7 @@ function start(bot: Unit, s: FightState, phase: Phase, target: Unit, inst: Insta
     const snap = LaneState.ForBot(bot);
     if (phase === "commit" && snap !== undefined) s.startEnemies = FightRead.LaneCounts(bot, snap, COUNT_RADIUS).enemies;
     if (phase !== "wait_partner") {
-        const abilities = believedDown(bot, target, opts.spell, phase === "commit", now);
+        const abilities = believedDown(target, opts.spell, phase === "commit");
         const old = s.bet;
         // A trade upgraded to a commit within the window keeps the trade's bet (and its start time) and adds to it.
         if (old !== undefined && !old.done && old.targetPid === s.targetPid && now - old.at <= MISTAKE_WINDOW) {
@@ -642,7 +638,7 @@ function end(bot: Unit, s: FightState, reason: string): void {
     HDebug.Log("lanefight", `end pid=${bot.GetPlayerID()} phase=${phase} reason=${reason}`);
 }
 
-/** lanefight_mistake once when an ability the start believed down is cast within MISTAKE_WINDOW of it. */
+/** lanefight_mistake once when an ability down at the start is cast within MISTAKE_WINDOW of it. */
 function checkMistake(bot: Unit, s: FightState, now: number): void {
     const bet = s.bet;
     if (bet === undefined || bet.done) return;
@@ -651,7 +647,7 @@ function checkMistake(bot: Unit, s: FightState, now: number): void {
         bet.done = true;
         Telemetry.Event("lanefight_mistake", [
             ["pid", bot.GetPlayerID()],
-            ["kind", "bad_memory"],
+            ["kind", "came_up"],
             ["ability", seen.ability],
             ["target", bet.targetPid],
             ["after", seen.at - bet.at],
@@ -1233,11 +1229,11 @@ export function CurrentPhase(bot: Unit): Phase {
     return fights[bot.GetPlayerID()]?.phase ?? "idle";
 }
 
-/** "window=<type|none> kill=<margin|-> mem=<n> phase=<p>": the overlay's `fight` line. */
+/** "window=<type|none> kill=<margin|-> phase=<p>": the overlay's `fight` line. */
 export function Describe(bot: Unit): string {
     const s = fights[bot.GetPlayerID()];
     const margin = s?.lastMargin !== undefined ? string.format("%.2f", s.lastMargin) : "-";
-    return `window=${s?.lastWindow ?? "none"} kill=${margin} mem=${CooldownMemory.Count(bot.GetPlayerID(), DotaTime())} phase=${s?.phase ?? "idle"}`;
+    return `window=${s?.lastWindow ?? "none"} kill=${margin} phase=${s?.phase ?? "idle"}`;
 }
 
 export function RegisterProbes(): void {

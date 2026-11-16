@@ -8,8 +8,8 @@ local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fi
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
-local CooldownMemory = require(GetScriptDirectory().."/FunLib/humaniser/cooldown_memory")
 local CastWatch = require(GetScriptDirectory().."/FunLib/humaniser/cast_watch")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local Harass = require(GetScriptDirectory().."/FunLib/humaniser/harass")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -234,43 +234,38 @@ local function inLane(team, lane, loc, bounds)
     local amount = Camps.ToTeamAmount(team, r.amount)
     return amount >= bounds[1] and amount <= bounds[2]
 end
-local function keyAbilities(enemy)
-    local names = {}
+--- The share of `enemy`'s learned key spells it cannot cast now; 0 with none.
+local function keyThreatsDown(enemy)
+    local key = 0
+    local down = 0
     for ____, a in ipairs(CastWatch.AbilitiesOf(enemy)) do
-        if a.learned and AbilityClasses.Classify(a.name, a.ult) == "key" then
-            names[#names + 1] = a.name
+        do
+            local __continue49
+            repeat
+                if not a.learned or AbilityClasses.Classify(a.name, a.ult) ~= "key" then
+                    __continue49 = true
+                    break
+                end
+                key = key + 1
+                if not SpellReady.Ready(enemy, a.name) then
+                    down = down + 1
+                end
+                __continue49 = true
+            until true
+            if not __continue49 then
+                break
+            end
         end
     end
-    return names
+    return key > 0 and down / key or 0
 end
-local function ultReady(pid, enemy, enemyPid, now, skill)
+local function ultReady(enemy, enemyPid)
     if GetHeroLevel(enemyPid) < ULT_LEVEL then
         return false
     end
     for ____, a in ipairs(CastWatch.AbilitiesOf(enemy)) do
-        do
-            local __continue54
-            repeat
-                if not a.ult or a.item or not a.learned then
-                    __continue54 = true
-                    break
-                end
-                local ready = CooldownMemory.ProbablyReady(
-                    pid,
-                    enemyPid,
-                    a.name,
-                    true,
-                    now,
-                    skill
-                )
-                if ready then
-                    return true
-                end
-                __continue54 = true
-            until true
-            if not __continue54 then
-                break
-            end
+        if a.ult and not a.item and a.learned and SpellReady.Ready(enemy, a.name) then
+            return true
         end
     end
     return false
@@ -312,10 +307,8 @@ local function countedEnemy(e)
     return e.timeSinceSeen <= MISSING_COUNTS and ({loc = e.location}) or nil
 end
 local function gather(bot, snap, now)
-    local pid = bot:GetPlayerID()
     local team = bot:GetTeam()
     local lane = snap.lane
-    local skill = Profile.Get(bot).skill
     local botLoc = bot:GetLocation()
     local bounds = laneBounds(team, lane)
     local ourLaners = 0
@@ -356,13 +349,7 @@ local function gather(bot, snap, now)
                     break
                 end
                 local loc = counted.loc
-                if not theirUltReady and ultReady(
-                    pid,
-                    unit,
-                    e.pid,
-                    now,
-                    skill
-                ) then
+                if not theirUltReady and ultReady(unit, e.pid) then
                     theirUltReady = true
                 end
                 local d = dist2D(botLoc, loc)
@@ -399,13 +386,7 @@ local function gather(bot, snap, now)
     }
     if target ~= nil then
         local loc = target:GetLocation()
-        inputs.keyThreatsDown = CooldownMemory.KeyThreatsDown(
-            pid,
-            target:GetPlayerID(),
-            keyAbilities(target),
-            now,
-            skill
-        )
+        inputs.keyThreatsDown = keyThreatsDown(target)
         inputs.lastHit = Harass.IsLastHitAttempt(target, snap.ally.units) ~= nil
         inputs.aheadOfFront = aheadOfFront(team, lane, loc, snap.enemyFront)
         local ours = nearestTower(team, lane)
