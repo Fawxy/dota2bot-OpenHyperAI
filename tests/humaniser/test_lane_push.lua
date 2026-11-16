@@ -151,4 +151,111 @@ do
 	check("skip: our 60 s wave left out, theirs spawns", skipped.front[2] == nil and skipped.front[3] ~= nil and plain.front[2] ~= nil)
 end
 
+-- Random runs (start states, wounded towers, a tower down, a skipped wave), every sample written at full precision: the
+-- checksum is the plain per-step loop's (lane-run's golden, before the loop was rewritten), so the rewrite is bit for bit.
+local function scenarios(n, each)
+	local kinds = { "melee", "melee", "melee", "ranged", "siege", "flag" }
+	math.randomseed(11)
+	for i = 1, n do
+		local path = paths[math.random(1, 3)]
+		local from = math.random(0, 900) + (math.random() < 0.5 and 0 or math.random())
+		local untl = from + math.random(3, 40)
+		local init
+		if math.random() < 0.85 then
+			init = {}
+			local mid = path.towers[1].s + math.random() * (path.towers[2].s - path.towers[1].s)
+			for _ = 1, math.random(0, 22) do
+				local k = kinds[math.random(1, #kinds)]
+				local c = { team = math.random(2, 3), kind = k, s = mid + math.random(-1500, 1500) + math.random(), hp = math.random(1, 950) }
+				if math.random() < 0.5 then c.maxhp = math.random(300, 1000) end
+				table.insert(init, c)
+			end
+		end
+		local th = {}
+		for _, team in ipairs({ 2, 3 }) do
+			local r = math.random()
+			if r < 0.2 then th[team] = false elseif r < 0.5 then th[team] = math.random(1, 1800) end
+		end
+		local skip
+		if math.random() < 0.2 then skip = { team = math.random(2, 3), t = math.floor(from / 30) * 30 + 30 } end
+		each(i, path, from, untl, init, th, skip)
+	end
+end
+local function line(i, smp)
+	local parts = { tostring(i), tostring(#smp) }
+	for _, s in ipairs(smp) do
+		parts[#parts + 1] = string.format("%.17g|%s|%s|%d|%d", s.t,
+			s.front[2] and string.format("%.17g", s.front[2]) or "-", s.front[3] and string.format("%.17g", s.front[3]) or "-",
+			s.dead[2], s.dead[3])
+	end
+	return table.concat(parts, " ")
+end
+do
+	local lines = {}
+	scenarios(40, function(i, path, from, untl, init, th, skip) lines[i] = line(i, P.Run(path, from, untl, init, th, skip)) end)
+	-- Two small moduli: fengari's integers are 32-bit.
+	local s, a, b = table.concat(lines, "\n"), 0, 0
+	for k = 1, #s do
+		local c = s:byte(k)
+		a = (a * 31 + c) % 1000003
+		b = (b * 37 + c) % 999983
+	end
+	check("run: 40 random runs sample for sample as the plain loop", a == 869389 and b == 838495 and #s == 33160, a .. " " .. b .. " " .. #s)
+
+	-- A run cut at an earlier second (Upto, by step time) is the shorter run itself.
+	local same = true
+	scenarios(40, function(i, path, from, untl, init, th, skip)
+		local steps = {}
+		local long = P.Run(path, from, untl + 7, init, th, skip, steps)
+		local cut = untl - (i % 3)
+		if line(i, P.Upto(long, steps, cut)) ~= line(i, P.Run(path, from, cut, init, th, skip)) then same = false end
+	end)
+	check("run: a longer run cut at a second equals the run to that second", same)
+end
+
+-- The frame's view and longest run are shared: a forecast then a reading on one frame read the lane once and answer as on a
+-- frame of their own; the next frame reads the lane again.
+do
+	local saved, savedTeam = T, CURRENT_TEAM
+	CURRENT_TEAM = 2
+	local mid = paths[2]
+	local function put(team, s, hp)
+		local p = P.PointAt(mid, s)
+		MakeCreep({ team = team, x = p[1], y = p[2], hp = hp })
+	end
+	for k = 0, 3 do put(2, 5500 - 20 * k, 500 - 40 * k) end
+	for k = 0, 2 do put(3, 5700 + 20 * k, 450 - 50 * k) end
+	local dota = require("bots/ts_libs/dota/index")
+	local UnitType, Lane = dota.UnitType, dota.Lane
+	T = 137.3
+	local fresh = P.Read(2, Lane.Mid)
+	T = 137.35
+	local fresh48 = P.Forecast(2, Lane.Mid, 48)
+	T = 137.4
+	local calls = GETUNITLIST_CALLS[UnitType.AlliedCreeps] or 0
+	local f48 = P.Forecast(2, Lane.Mid, 48)
+	local r = P.Read(2, Lane.Mid)
+	local f20 = P.Forecast(2, Lane.Mid, 20)
+	local once = (GETUNITLIST_CALLS[UnitType.AlliedCreeps] or 0) == calls + 1
+	T = 137.45
+	local short = P.Forecast(2, Lane.Mid, 20)
+	local again = (GETUNITLIST_CALLS[UnitType.AlliedCreeps] or 0) == calls + 2
+	check("frame: a reading off the frame's forecast equals a reading of its own", fresh ~= nil and r ~= nil and r.clash == fresh.clash
+		and r.move == fresh.move and r.state == fresh.state, tostring(r and r.move) .. " " .. tostring(fresh and fresh.move))
+	check("frame: forecasts off the frame's run equal runs of their own", line(0, f48) == line(0, fresh48) and line(0, f20) == line(0, short))
+	check("frame: the lane is read once a frame, again on the next", once and again)
+	-- A creep speed turning live within the frame rebuilds the view (unseen waves are placed by it) and its run.
+	local live = require("bots/FunLib/humaniser/world_facts").Live()
+	local before = live.lane_creep_speed
+	P.Forecast(2, Lane.Mid, 20)
+	live.lane_creep_speed = 300
+	local f300 = P.Forecast(2, Lane.Mid, 20)
+	local rebuilt = (GETUNITLIST_CALLS[UnitType.AlliedCreeps] or 0) == calls + 3
+	T = 137.5
+	local own300 = P.Forecast(2, Lane.Mid, 20)
+	live.lane_creep_speed = before
+	check("frame: a speed turning live within the frame reads the lane again", rebuilt and line(0, f300) == line(0, own300))
+	T, CURRENT_TEAM = saved, savedTeam
+end
+
 finish()

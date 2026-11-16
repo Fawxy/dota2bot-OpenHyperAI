@@ -292,6 +292,9 @@ function LaneFresh(laneCfg, extra)
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
+	-- lane_push shares one view a frame: a fresh world at a DotaTime already seen must not get the last world's.
+	local lp = package.loaded["bots/FunLib/humaniser/lane_push"]
+	if lp ~= nil then lp.ResetFrames() end
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, TickEvery = extra.tickEvery, Lane = laneCfg,
 		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
 	-- The old camp-job pulls are Ours.SupportPull's OFF arm; this world tests them unless a test asks for the pull job.
