@@ -70,6 +70,8 @@ function attackPart(e: Caster, target: Unit, window: number): number {
 
 /** The damage of `e`'s learned spells it cannot cast now, on `target` over `window`: 0 for a hero of our team (its estimate already counts them). */
 export function SpentOn(e: Unit, target: Unit, window: number): number {
+    // An illusion shares its hero's player id, the cache key, and casts nothing: its estimate stays Valve's.
+    if (e.IsIllusion()) return 0;
     const spent = spentOf(e as Caster);
     if (spent.length === 0 || e.GetTeam() === GetTeam()) return 0;
     let total = 0;

@@ -70,6 +70,9 @@ local function attackPart(e, target, window)
 end
 --- The damage of `e`'s learned spells it cannot cast now, on `target` over `window`: 0 for a hero of our team (its estimate already counts them).
 function ____exports.SpentOn(e, target, window)
+    if e:IsIllusion() then
+        return 0
+    end
     local spent = spentOf(e)
     if #spent == 0 or e:GetTeam() == GetTeam() then
         return 0

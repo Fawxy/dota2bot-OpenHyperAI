@@ -300,6 +300,13 @@ do
 	local ally = MakeUnit({ pid = 2, team = 2, loc = HERE })
 	ally.estDamage, ally.abilities = 300, { [0] = spell("luna_lucent_beam", 2, false, 150) }
 	check("spent: our own hero's estimate already counts its cooldowns", SpellReady.DamageOn(ally, e, 3) == 300)
+	T = T + 0.1
+	local illusion = MakeUnit({ pid = 10, team = 3, loc = e.loc })
+	illusion.estDamage, illusion.abilities = 300, { [0] = spell("luna_lucent_beam", 2, false, 150) }
+	illusion.IsIllusion = function() return true end
+	e.abilities = { [0] = spell("luna_lucent_beam", 2, true, 150) }
+	local illRead = SpellReady.DamageOn(illusion, bot, 3)
+	check("spent: an illusion read first leaves its hero's ready nuke counted", illRead == 300 and SpellReady.DamageOn(e, bot, 3) == 300, illRead)
 end
 
 finish()
