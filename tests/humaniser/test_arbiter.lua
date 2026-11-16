@@ -105,6 +105,14 @@ do
 	check("a camp job with no chooser job is the pick over the base lane", winner(nil, nil) == "job")
 	camp, claiming = nil, true
 	check("the mid's rune claim is the pick over the base lane, hosted in rune", winner(nil, nil) == "mid_rune" and host(nil, nil) == "rune")
+	-- A released rig cast whose rig gates rune (released: laning) keeps the lane; a rig that releases rune keeps the claim.
+	local Drill = require("bots/FunLib/humaniser/drill")
+	local realRig = Drill.RigDesire
+	Drill.RigDesire = function(_, mode) if mode == "laning" then return nil end return 0 end
+	check("a rig cast's gated rune host: the claim does not apply, the lane is the pick", winner(nil, nil) == "lane")
+	Drill.RigDesire = function() return nil end
+	check("a rig that releases rune: the claim stands", winner(nil, nil) == "mid_rune")
+	Drill.RigDesire = realRig
 
 	local threw = 0
 	Fight.CurrentPhase = function() threw = threw + 1; error("boom") end

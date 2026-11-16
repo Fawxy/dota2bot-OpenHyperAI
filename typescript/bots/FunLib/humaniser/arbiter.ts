@@ -118,6 +118,9 @@ export function Candidates(bot: Unit, jobName: string | undefined, lever: string
     // The base: it wins when no interrupt applies, and is group 3 only while a last hit is under way (D11).
     out.push({ name: "lane", group: lastHitNow(bot) ? 3 : BASE_GROUP, host: "laning", applies: true });
     out.push({ name: OHA, group: OHA_GROUP, applies: true });
+    // A released rig cast runs only the rig's released modes: a job whose host the rig gates does not apply (rig
+    // tower-prehit off5: mid_rune took the mid cast at 5:45, its rune host gated to 0, and the cast stood in the idle hold).
+    for (const c of out) if (c.host !== undefined && c.applies && Drill.RigDesire(bot, c.host) !== undefined) c.applies = false;
     return out;
 }
 
