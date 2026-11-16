@@ -96,6 +96,7 @@ ____exports.DEFAULTS = {
     ArbiterDrive = true,
     MidWater = false,
     EvenStand = true,
+    HighStand = true,
     PairJoin = true,
     TradeSafe = true,
     TradeFree = true

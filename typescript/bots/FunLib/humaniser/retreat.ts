@@ -739,12 +739,15 @@ export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: numbe
     }
     // EvenStand (slice mid-stand, D11 against D1): one hero in reach who is not hitting us and cannot kill us is no reason to
     // leave (Threat.LoneStand, the lane spot's rule too, so the spot does not walk us back into a place this rule leaves).
-    if (Ours.On("EvenStand") && Threat.LoneStand(bot, r)) {
+    // HighStand (slice high-stand, D2 against D1): two or more heroes in reach, none hitting us, whose burst is under half our
+    // HP, at 70% HP or more, are no reason to leave either (Threat.HighStand; the lane spot keeps its limits).
+    const lone = Ours.On("EvenStand") && Threat.LoneStand(bot, r);
+    if (lone || (Ours.On("HighStand") && Threat.HighStand(bot, r))) {
         st.overSince = undefined;
         if (st.stayLogged !== true) {
             st.stayLogged = true;
             Telemetry.Event("retreat", [
-                ["ph", "stay"], ["why", "stand"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
+                ["ph", "stay"], ["why", lone ? "stand" : "high"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
                 ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
             ]);
         }

@@ -1,0 +1,34 @@
+id: retreat.leave.pair-not-hitting-pos3.001
+source: log
+ref: {log: 2026-11-16T00-57-01-h2hjoinafter1_A_rad_1.log, t: 36.733}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose threat (threat 0.510, free budget 0.500, over 0.333 s); write the right action, not this.
+# bot pid 1: HP 100% (714 of 714)
+# enemy pid 5: 815 from the bot, HP 736, damage 133 / 283 (short / long window)
+# enemy pid 6: 851 from the bot, HP 610, damage 90 / 214 (short / long window)
+# ally pid 4: 511 from the bot
+world:
+  t: 36.733
+  team: 2
+  pid: 1
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PairJoin":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true,"TradeFree":true,"TradeSafe":true}
+  bot: {"x":-6122,"y":4293,"hp":714,"mhp":714,"range":175,"hull":24,"speed":280,"esc":0}
+  ce: [{"id":21,"x":-5968,"y":5331,"hp":300,"mhp":300,"ranged":1,"tgt":"u5","hull":8},{"id":23,"x":-6156,"y":5061,"hp":532,"mhp":550,"ranged":0,"tgt":"u7","hull":16},{"id":24,"x":-6057,"y":4965,"hp":478,"mhp":550,"ranged":0,"tgt":"u5","hull":16}]
+  ca: [{"id":8,"x":-6208,"y":4547,"hp":300,"mhp":300,"ranged":1,"tgt":"u24","hull":8},{"id":7,"x":-6214,"y":4959,"hp":434,"mhp":550,"ranged":0,"tgt":"u23","hull":16},{"id":6,"x":-6098,"y":4874,"hp":550,"mhp":550,"ranged":0,"tgt":"u24","hull":16},{"id":5,"x":-6147,"y":4929,"hp":71,"mhp":550,"ranged":0,"tgt":"u24","hull":16}]
+  he: [{"pid":5,"x":-6219,"y":5102,"hp":736,"range":150,"hull":24,"speed":310,"atk":0,"eng":0,"e3":133,"e6":283,"ill":0},{"pid":6,"x":-5799,"y":5080,"hp":610,"range":550,"hull":24,"speed":290,"atk":0,"eng":0,"e3":90,"e6":214,"ill":0}]
+  hu: []
+  ha: [{"pid":4,"x":-6522,"y":3975,"range":150,"hull":24,"speed":315,"ret":0}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  budget: 0.5
+  over: 0.333
+  hold: 0.17
+  dt: 0
+  pj: 0
+expect:
+  must: ["stay"]
+  mustNot: ["leave(threat)"]
+notes: >
+  The offlane's start (h2hjoinafter1 A_rad_1, 0:36): our pos3 melee at full HP (714), the enemy safe-lane pair 815 and 850
+  off, neither hitting, burst 223 (0.31), our support 510 away. Read 0.51, over the free budget by 0.01, and the game left.
+  Stay (D2 against D1): neither hits us and their burst leaves us at two thirds.

@@ -84,6 +84,16 @@ export const SETTINGS = {
      */
     StandBurst: 1,
     StandHp: 0.5,
+    /**
+     * The high-HP stand (slice high-stand, D2 read against D1; `Ours.HighStand`, see HighStand): two or more enemy heroes in
+     * reach, none hitting us, is no reason to leave (retreat only: the lane spot still stands back from two) while their burst is under HighBurst of our current HP and our
+     * HP share is HighHp or more. Two heroes landing that burst still leave us over a third of max HP when the engaged read
+     * sends us home. On h2htradefree2 the read left 11.8 a game for our pos1 at these bars (reach 0.25 a hero puts two over the
+     * free budget alone); OHA left the same snapshot situation 0.33 of the time, ours 0.72, with no OHA death within 10 s.
+     * judgement.
+     */
+    HighBurst: 0.5,
+    HighHp: 0.7,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };
@@ -390,6 +400,20 @@ export function LoneStand(bot: Unit, r: Read): boolean {
     if (r.reach.length !== 1 || r.eng.length > 0 || r.tower) return false;
     if (r.burst >= s.StandBurst || r.missing >= s.MissingRefuse) return false;
     return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= s.StandHp;
+}
+
+/**
+ * The high-HP stand (slice high-stand): two or more visible enemy heroes can reach the walk, none has damaged us within
+ * EngagedRecent, their burst is under HighBurst of our HP, our HP share is HighHp or more, no enemy tower covers the place and
+ * the missing belief is under the gates' bar. Retreat does not leave such a place on `threat` (the lone hero is LoneStand's);
+ * the lane spot keeps its own limits, so the hero steps back within the lane instead of walking off. Once one of them hits us
+ * the read and budget decide again.
+ */
+export function HighStand(bot: Unit, r: Read): boolean {
+    const s = SETTINGS;
+    if (r.reach.length < 2 || r.eng.length > 0 || r.tower) return false;
+    if (r.burst >= s.HighBurst || r.missing >= s.MissingRefuse) return false;
+    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= s.HighHp;
 }
 
 let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;

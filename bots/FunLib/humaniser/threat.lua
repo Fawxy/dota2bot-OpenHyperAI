@@ -156,6 +156,8 @@ ____exports.SETTINGS = {
     EngagedRecent = 1,
     StandBurst = 1,
     StandHp = 0.5,
+    HighBurst = 0.5,
+    HighHp = 0.7,
     LogEvery = 5
 }
 local TOWER_IDS = {
@@ -574,6 +576,24 @@ function ____exports.LoneStand(bot, r)
         1,
         bot:GetMaxHealth()
     ) >= s.StandHp
+end
+--- The high-HP stand (slice high-stand): two or more visible enemy heroes can reach the walk, none has damaged us within
+-- EngagedRecent, their burst is under HighBurst of our HP, our HP share is HighHp or more, no enemy tower covers the place and
+-- the missing belief is under the gates' bar. Retreat does not leave such a place on `threat` (the lone hero is LoneStand's);
+-- the lane spot keeps its own limits, so the hero steps back within the lane instead of walking off. Once one of them hits us
+-- the read and budget decide again.
+function ____exports.HighStand(bot, r)
+    local s = ____exports.SETTINGS
+    if #r.reach < 2 or #r.eng > 0 or r.tower then
+        return false
+    end
+    if r.burst >= s.HighBurst or r.missing >= s.MissingRefuse then
+        return false
+    end
+    return bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    ) >= s.HighHp
 end
 local gateCut
 --- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.

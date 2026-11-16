@@ -1,0 +1,35 @@
+id: retreat.leave.pair-not-hitting-pos1.001
+source: log
+ref: {log: 2026-11-16T00-57-01-h2hjoinafter1_A_rad_1.log, t: 41.133}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose threat (threat 0.620, free budget 0.500, over 0.267 s); write the right action, not this.
+# bot pid 0: HP 100% (670 of 670)
+# enemy pid 9: 749 from the bot, HP 653, damage 106 / 204 (short / long window)
+# enemy pid 7: 779 from the bot, HP 632, damage 60 / 182 (short / long window)
+# ally pid 3: 778 from the bot
+world:
+  t: 41.133
+  team: 2
+  pid: 0
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PairJoin":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true,"TradeFree":true,"TradeSafe":true}
+  bot: {"x":5527,"y":-6090,"hp":670,"mhp":670,"range":330,"hull":24,"speed":325,"esc":0}
+  ce: [{"id":19,"x":6070,"y":-5081,"hp":300,"mhp":300,"ranged":1,"tgt":"u10","hull":8},{"id":20,"x":5871,"y":-5330,"hp":464,"mhp":550,"ranged":0,"tgt":"u10","hull":16},{"id":18,"x":5881,"y":-5422,"hp":464,"mhp":550,"ranged":0,"tgt":"u10","hull":16}]
+  ca: [{"id":12,"x":5647,"y":-5648,"hp":300,"mhp":300,"ranged":1,"tgt":"h9","hull":8},{"id":10,"x":5800,"y":-5318,"hp":225,"mhp":550,"ranged":0,"tgt":"h9","hull":16},{"id":11,"x":5782,"y":-5239,"hp":372,"mhp":550,"ranged":0,"tgt":"h9","hull":16}]
+  he: [{"pid":9,"x":5747,"y":-5374,"hp":653,"range":150,"hull":24,"speed":290,"atk":0,"eng":0,"e3":106,"e6":204,"ill":0},{"pid":7,"x":5932,"y":-5425,"hp":632,"range":150,"hull":24,"speed":325,"atk":0,"eng":0,"e3":60,"e6":182,"ill":0}]
+  hu: []
+  ha: [{"pid":3,"x":5806,"y":-5364,"range":400,"hull":24,"speed":252,"ret":1}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  budget: 0.5
+  over: 0.267
+  hold: 0.17
+  dt: 0
+  pj: 0
+expect:
+  must: ["stay"]
+  mustNot: ["leave(threat)"]
+notes: >
+  Slice high-stand's commonest start (h2hjoinafter1 A_rad_1, 0:41): our pos1 ranged carry at full HP (670), two enemy melee
+  laners 750 and 780 off at their wave, neither hitting it, their 3 s burst 166 (0.25 of HP), our support beside them in
+  retreat (no help). The read is 0.62 over the free budget 0.5 for the two heroes alone, and the game left. Two heroes in
+  reach who are not hitting us and cannot burst half our HP are no reason to leave (D2 against D1): stay.
