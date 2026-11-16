@@ -173,6 +173,9 @@ export const DEFAULTS = {
      *  swings at a lane creep, or our attack range is 100 over its) or favoured (our 3 s estimated damage over its HP beats its
      *  over ours, PairJoin's estimate); else `unfavoured`. Off: a lost trade's HP `gap` holds the next one. */
     TradeFree: true,
+    /** Slice fight-safe (D19): with CoreLaneFight and TradeSafe on, a lane-fight roll or join asks trade-safe's "is it safe?"
+     *  (their burst in reach under our HP) in place of `behind` (15 points under the target's HP). Off, or TradeSafe off: `behind`. */
+    FightSafe: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

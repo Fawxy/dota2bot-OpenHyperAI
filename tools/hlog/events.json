@@ -1794,6 +1794,10 @@
    "tme": "num",
    "tf": "num",
    "dn": "num",
+   "fg": "str",
+   "fpo": "num",
+   "fpt": "num",
+   "ftd": "num",
    "did": "str"
   },
   "cut_creeps": {
@@ -2394,6 +2398,7 @@
    "po": "text",
    "pt": "text",
    "dm": "text",
+   "fg": "text",
    "did": "text"
   },
   "ev_cut_creeps": {

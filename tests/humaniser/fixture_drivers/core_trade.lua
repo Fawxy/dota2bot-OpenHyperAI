@@ -7,6 +7,9 @@
 -- world, slice trade-free: tf (1: question 2 asked), tlh, ar, tar, ko, kt, dn; with tf the answer may be unfavoured or deny, never gap.
 -- world, slice high-hit-back: hb (1: the hit back's decision, CoreTrade.HitBackDecide: hb_hp under 70% HP, hb_burst at two heroes).
 -- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny|hb_hp|hb_burst>); fact.hp, fact.thp, fact.cr.
+-- world, slice fight-safe: lf (1: the core's lane fights are ours) adds the lane-fight gate's answer (CoreTrade.FightAnswer) as
+-- a second action, fight(<roll|kill|tower|outnumbered|burst|hp|behind>); fpo, fpt, ftd the roll's inputs as logged (absent: ally,
+-- en and no tower); fs 0 turns Ours.FightSafe off (the old `behind`).
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 return function(fx)
@@ -35,8 +38,26 @@ return function(fx)
 	-- Slice high-hit-back: with hb (1: the target is hitting the bot) the hit back's decision, its caution bars before Answer.
 	local a = (w.hb == 1 or w.hb == true) and CoreTrade.HitBackDecide(inputs, w.kh, w.gap) or CoreTrade.Answer(inputs, w.kh, w.gap)
 	local action = (a == "trade" or a == "kill") and { verb = a } or { verb = "respect", target = a }
+	local actions = { action }
+	if (w.lf == 1 or w.lf == true) and CoreTrade.FightAnswer ~= nil then
+		package.loaded["bots/FunLib/custom_loader"].Ours.FightSafe = w.fs ~= 0 and w.fs ~= false
+		local pi = {
+			kind = CoreTrade.LANE_FIGHT,
+			ourLevel = 1,
+			theirLevel = 1,
+			ours = w.fpo or w.ally,
+			theirs = w.fpt or w.en,
+			hp = w.hp,
+			mana = 1,
+			targetHp = w.thp,
+			rune = false,
+			tower = w.ftd or math.huge,
+			skill = 1,
+		}
+		table.insert(actions, { verb = "fight", target = CoreTrade.FightAnswer(inputs, w.kh, pi) })
+	end
 	return {
-		actions = { action },
+		actions = actions,
 		fact = { hp = w.hp, thp = w.thp, cr = w.cr },
 	}
 end

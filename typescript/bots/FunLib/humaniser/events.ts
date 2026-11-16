@@ -2785,6 +2785,15 @@ export const EVENTS = {
         /** kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which
          *  outbids the trade. */
         dn: "num",
+        /** kind=trade with `lf` 1 (slice fight-safe): the lane-fight gate's answer (CoreTrade.FightAnswer): `roll` (a chance may be
+         *  offered), `kill` (the commit comes first), the core's refusal (`tower`, `outnumbered`, with `Ours.FightSafe` `burst`) or
+         *  the roll's hard zero (`hp`, `outnumbered`, `tower`, `behind` with the switch off). */
+        fg: "str",
+        /** kind=trade with `lf` 1: the roll's own inputs for its hard zeros: our and their heroes within the play radius of the
+         *  target (initiator and target counted), and the target's distance to its nearest tower. */
+        fpo: "num",
+        fpt: "num",
+        ftd: "num",
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",

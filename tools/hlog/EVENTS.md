@@ -1355,7 +1355,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num
+`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num, `fpt` num, `ftd` num
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
@@ -1403,6 +1403,8 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `ar` num: kind=trade (slice trade-free-cut): the bot's and the target's attack range, and 1 when the target's attack target is the bot.
 - `tf` num: kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off.
 - `dn` num: kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which outbids the trade.
+- `fg` str: kind=trade with `lf` 1 (slice fight-safe): the lane-fight gate's answer (CoreTrade.FightAnswer): `roll` (a chance may be offered), `kill` (the commit comes first), the core's refusal (`tower`, `outnumbered`, with `Ours.FightSafe` `burst`) or the roll's hard zero (`hp`, `outnumbered`, `tower`, `behind` with the switch off).
+- `fpo` num: kind=trade with `lf` 1: the roll's own inputs for its hard zeros: our and their heroes within the play radius of the target (initiator and target counted), and the target's distance to its nearest tower.
 - `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
 
 ## cut_creeps
