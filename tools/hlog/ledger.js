@@ -36,7 +36,7 @@ const { Store, DB, LOGS, JOBS } = require('./store');
 const QUERIES = path.join(__dirname, 'queries');
 const sql = (name) => fs.readFileSync(path.join(QUERIES, `${name}.sql`), 'utf8');
 const DEATH_CAUSES = ['tower', 'outnumbered_alone', 'outnumbered', 'duel', 'even_numbers', 'creeps', 'unexplained'];
-const MISS_CAUSES = ['denied', 'off_lane', 'core_dead', 'away_base', 'away_lane', 'away_jungle', 'far_in_lane', 'swing_lost', 'held_back_hero', 'held_back_low_hp', 'held_back', 'idle_in_reach'];
+const MISS_CAUSES = ['denied', 'off_lane', 'core_dead', 'away_base', 'away_lane', 'away_jungle', 'far_in_lane', 'prehit_tower', 'swing_lost', 'held_back_hero', 'held_back_low_hp', 'held_back', 'idle_in_reach'];
 
 function args(argv) {
     const o = { runs: [], null: [], at: 600, until: 720, rows: undefined, json: false, n: 10 };

@@ -53,7 +53,7 @@ test('a death takes one cause: a partner reached only as it died is not in the f
 
 const BOT_LANE = [-360, -6256];
 const creep = (t, o) => line(t, `creep_death team=2 kind=melee x=${BOT_LANE[0]} y=${BOT_LANE[1]} hp=10 by=${o.by ?? 'none'}` +
-    (o.p1d === undefined ? '' : ` p1d=${o.p1d} p1r=150 p1t=0`));
+    (o.p1d === undefined ? '' : ` p1d=${o.p1d} p1r=150 p1t=${o.p1t ?? 0}`) + (o.tw ? ' tw=1' : ''));
 
 test('lane creeps: the other team\'s own deaths fill the pool, causes come from the lane core, and the lines sum to the gap', () => {
     const lines = [];
@@ -66,10 +66,14 @@ test('lane creeps: the other team\'s own deaths fill the pool, causes come from 
     lines.push(creep(101, { p1d: 1000 }));
     // Seen only by Dire, the owner: Radiant's core was at its fountain.
     lines.push(line(110, `own_creep_death team=3 kind=melee x=${BOT_LANE[0]} y=${BOT_LANE[1]} hp=10 by=none`));
+    // Our tower kills two creeps the core was hitting: one it pre-hit 2 s before, one with no pre-hit in the 5 s before.
+    lines.push(line(118, 'prehit pid=1 result=ok reason=ok'));
+    lines.push(creep(120, { p1d: 120, p1t: 1, tw: true }));
+    lines.push(creep(126, { p1d: 120, p1t: 1, tw: true }));
     const s = store({ lane_A_rad_1: lines });
     const r = ledger(s, ['lane']);
     assert.deepStrictEqual(r.rows.creeps.filter((c) => c.side === 'ours').map((c) => [c.src, c.cause]),
-        [['seen', 'taken'], ['seen', 'held_back'], ['unseen', 'away_base']]);
+        [['seen', 'taken'], ['seen', 'held_back'], ['unseen', 'away_base'], ['seen', 'prehit_tower'], ['seen', 'swing_lost']]);
     for (const measure of ['deaths', 'last_hits']) {
         const lines = summary(r).filter((l) => l.measure === measure);
         const total = lines.find((l) => l.line === 'total');
