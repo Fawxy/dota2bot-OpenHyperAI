@@ -363,6 +363,24 @@ export function PerfDeepInstall(): void {
     }
 }
 
+let deepOn: boolean | undefined;
+
+/**
+ * Telemetry.PerfDeep: the clock now, to time a span inside a function (no closure per call, so it fits hot loops); undefined
+ * with PerfDeep off. Pair with DeepAdd(where, t0), which adds the span as a `fn` row named `<module>.<fn>:<part>`.
+ */
+export function DeepT0(): number | undefined {
+    if (deepOn === undefined) {
+        perfProbe();
+        deepOn = perfClock !== undefined && Get().PerfDeep === true && GuardsEnabled();
+    }
+    return deepOn ? perfClock!() : undefined;
+}
+
+export function DeepAdd(where: string, t0: number): void {
+    perfAdd("fn", where, t0);
+}
+
 /** Typed event: the name and every key must be declared in events.ts. The printed line is exactly what EventUntyped prints. */
 export function Event<K extends EventName>(ev: K, fields: Fields<K>): void {
     EventUntyped(ev, fields as [string, any][]);

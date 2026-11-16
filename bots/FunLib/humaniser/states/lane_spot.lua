@@ -5,6 +5,7 @@ local UnitType = ____dota.UnitType
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local On = ____ours.On
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 ____exports.MELEE_RING = 520
 ____exports.RANGED_RING = 620
@@ -658,7 +659,11 @@ function ____exports.Compute(bot, role, fed, hold)
                 end
             end
             reader = reader or Threat.Reader(bot, READ_HORIZON, {engagedWindow = LANE_ENGAGED_WINDOW})
+            local t0 = Telemetry.DeepT0()
             r = reader(toward and here or p, p)
+            if t0 ~= nil then
+                Telemetry.DeepAdd("lane_spot.Compute:read", t0)
+            end
             reads[key] = r
             readN = readN + 1
         end
@@ -753,11 +758,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue125
+                    local __continue126
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue125 = true
+                            __continue126 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -770,9 +775,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue125 = true
+                        __continue126 = true
                     until true
-                    if not __continue125 then
+                    if not __continue126 then
                         break
                     end
                 end

@@ -7,6 +7,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export interface StepCtx {
     /** Whether the laning body runs for this bot now (state current, owned, running). */
@@ -63,7 +64,14 @@ export const STEPS: LaneStep[] = [hit, aggro, hold];
 /** The name of the step that acted, or undefined when none wanted the frame (or the one that did issued nothing). */
 export function Step(bot: Unit, ctx: StepCtx): string | undefined {
     for (const s of STEPS) {
-        if (s.wants(bot, ctx) && s.run(bot, ctx)) return s.name;
+        const t0 = Telemetry.DeepT0();
+        const wants = s.wants(bot, ctx);
+        if (t0 !== undefined) Telemetry.DeepAdd(`support_lane.Step:${s.name}.wants`, t0);
+        if (!wants) continue;
+        const t1 = Telemetry.DeepT0();
+        const ran = s.run(bot, ctx);
+        if (t1 !== undefined) Telemetry.DeepAdd(`support_lane.Step:${s.name}.run`, t1);
+        if (ran) return s.name;
     }
     return undefined;
 }

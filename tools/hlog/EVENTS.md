@@ -275,7 +275,7 @@ The window's largest rows (`PerfTop`, 25). Rows overlap across kinds; sum within
 
 `vm` str, `n` num, `ms` num, `max_ms` num
 
-- `kind` str: `entry` (an OHA entry point), `ours` (an outermost guarded call), `sub` (a guarded call made directly from an outermost one), `step` (an unguarded step of the tick, `Tick:<step>`) or `fn` (`PerfDeep`: an exported function, `<module>.<fn>`).
+- `kind` str: `entry` (an OHA entry point), `ours` (an outermost guarded call), `sub` (a guarded call made directly from an outermost one), `step` (an unguarded step of the tick, `Tick:<step>`) or `fn` (`PerfDeep`: an exported function, `<module>.<fn>`, or a span inside one, `<module>.<fn>:<part>`).
 - `where` str: `oha.<file>.<fn>` for `entry`; for `sub`, `outer>inner` (inclusive).
 
 ## oha_idle

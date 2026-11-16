@@ -395,7 +395,7 @@ export const EVENTS = {
     perf_top: {
         vm: "str",
         /** `entry` (an OHA entry point), `ours` (an outermost guarded call), `sub` (a guarded call made directly from an outermost
-         *  one), `step` (an unguarded step of the tick, `Tick:<step>`) or `fn` (`PerfDeep`: an exported function, `<module>.<fn>`). */
+         *  one), `step` (an unguarded step of the tick, `Tick:<step>`) or `fn` (`PerfDeep`: an exported function, `<module>.<fn>`, or a span inside one, `<module>.<fn>:<part>`). */
         kind: "str",
         /** `oha.<file>.<fn>` for `entry`; for `sub`, `outer>inner` (inclusive). */
         where: "str",
