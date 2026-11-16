@@ -49,9 +49,15 @@
 --    hit_back (in that second or the 3 after, my snapshot's attack target `tgt` is an enemy hero), left (retreat mode in them),
 --    died (within 5 s), none. viol: every cause but hit_back. A leave counts: the hitter is paying our creeps and we are in
 --    no danger, so leaving gives the exchange away as standing does (on h2hskill1 the sides left the same share unanswered
---    and differed only in leaves and hits back, so the count without leaves hid the difference). The snapshot does not say
---    which hero hit me, so a hit back on another enemy hero counts (`judgement`).
--- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths, tgt)
+--    and differed only in leaves and hits back, so the count without leaves hid the difference). A hit back on another
+--    enemy hero counts (`judgement`).
+--    Only a favourable exchange is a case (D24: "the exchange favours me"; slice d24h-favour), judged at the onset against
+--    the hitter: the enemy hero whose snapshot's `tid` is me within 3 s before to 1 s after, else (a spell, or a hit between
+--    snapshots) the nearest enemy hero. Favourable: the hitter stands within my attack range + 300 (HIT_BACK_WALK), one
+--    enemy hero in reach and at most one targeting me (`ah`), my raw HP (`hv`) and level at least the hitter's (`judgement`:
+--    no damage or armour in the log, so at least even on HP and level stands in for "favours me"). A hit by a hero out of
+--    my reach is D24's step-out half, not this one.
+-- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths, tgt, tid, hv, ah)
 -- ensure: ev_bot(pid, team, pos, ours, hero)
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 lr_who AS MATERIALIZED (
@@ -64,7 +70,7 @@ lr_who AS MATERIALIZED (
 -- Every snapshot second, HP 0 ones too (a killed hero logs a few where it fell), for dating deaths.
 lr_s0 AS MATERIALIZED (
     SELECT s.game_id, s.pid, w.team, w.pos, w.side, CAST(round(s.t) AS INTEGER) AS sec, max(s.seq) AS seq, s.x, s.y, s.hp,
-        coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths, s.tgt,
+        coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths, s.tgt, s.tid, s.hv, coalesce(s.ah, 0) AS ah,
         CASE w.team WHEN 2 THEN (s.x + 6700) * (s.x + 6700) + (s.y + 6700) * (s.y + 6700)
                     ELSE (s.x - 6928) * (s.x - 6928) + (s.y - 6372) * (s.y - 6372) END AS fnt2
     FROM ev_snap s JOIN lr_who w ON w.game_id = s.game_id AND w.pid = s.pid
@@ -290,6 +296,22 @@ lr_hb AS (
     FROM lr_hb1 o
     WHERE o.prev IS NULL OR o.t - o.prev > 5
 ),
+-- The hitter (`tid` on me, else the nearest enemy hero) and whether the exchange favours me.
+lr_hbw AS (
+    SELECT o.*, coalesce(
+        (SELECT a.pid FROM lr_s a WHERE a.game_id = o.game_id AND a.team <> o.team AND a.tid = 'h' || o.pid
+            AND a.sec >= o.t - 3 AND a.sec <= o.t + 1 ORDER BY a.sec DESC LIMIT 1),
+        (SELECT b.pid FROM lr_s b WHERE b.game_id = o.game_id AND b.sec = o.t AND b.team <> o.team
+            ORDER BY (b.x - o.x) * (b.x - o.x) + (b.y - o.y) * (b.y - o.y) LIMIT 1)) AS hpid
+    FROM lr_hb o
+),
+lr_hbf AS (
+    SELECT w.* FROM lr_hbw w
+    JOIN lr_s m ON m.game_id = w.game_id AND m.pid = w.pid AND m.sec = w.t
+    JOIN lr_s b ON b.game_id = w.game_id AND b.pid = w.hpid AND b.sec = w.t
+    WHERE (b.x - m.x) * (b.x - m.x) + (b.y - m.y) * (b.y - m.y) <= (m.ar + 300) * (m.ar + 300)
+        AND w.en = 1 AND m.ah <= 1 AND m.hv >= b.hv AND m.lvl >= b.lvl
+),
 lr_case AS (
     SELECT 'D1' AS rule, game_id, pid, team, pos, side, t,
         died IS NOT NULL OR (a_sec IS NOT NULL AND NOT coalesce(went, 0) AND holds) AS viol,
@@ -315,5 +337,5 @@ lr_case AS (
     UNION ALL
     SELECT 'D24h', game_id, pid, team, pos, side, t, NOT hb,
         CASE WHEN hb THEN 'hit_back' WHEN went THEN 'left' WHEN died IS NOT NULL THEN 'died' ELSE 'none' END, hp, en, al, NULL, mode
-    FROM lr_hb
+    FROM lr_hbf
 ),

@@ -19,7 +19,7 @@ function bots(heroes) {
 }
 
 const snap = (t, pid, x, y, o = {}) => line(t, `snap pid=${pid} x=${x} y=${y} alive=1 hp=${o.hp ?? 100} mode=${o.mode ?? 'laning'} ` +
-    `lvl=${o.lvl ?? 3} deaths=${o.deaths ?? 0} ar=${o.ar ?? 550} ld=${o.ld ?? 0} hit=${o.hit ?? 0}`);
+    `lvl=${o.lvl ?? 3} deaths=${o.deaths ?? 0} ar=${o.ar ?? 550} ld=${o.ld ?? 0} hit=${o.hit ?? 0} hv=${o.hv ?? 600}`);
 
 function run(name, lines, params = {}) {
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-lrules-')), 'a.log');
@@ -128,7 +128,7 @@ test('D24: leaving an even fight at high HP inside our creep aggro violates; out
     assert.deepStrictEqual(out, [[1, 200, 1, 'ours_retreat'], [1, 600, 0, 'free_hit']]);
 });
 
-test('D24h: hit by a hero standing in our creep aggro, a hero that stands or leaves violates; a hit back, a free hit or low HP does not', () => {
+test('D24h: hit by a hero standing in our creep aggro in a favourable exchange, a hero that stands or leaves violates; a hit back, a free hit, low HP or an unfavoured exchange does not', () => {
     const lines = bots([[1, 2, 1], [6, 3, 3]]);
     const front = (t, x) => line(t, `front team=2 top=0.5 topx=${x} topy=${PY} mid=0.5 midx=0 midy=0 bot=0.5 botx=5000 boty=-6000`);
     const tgtSnap = (t, o, tgt) => snap(t, 1, PX, PY, o).replace(/$/, tgt ? ` tgt=${tgt}` : '');
@@ -136,12 +136,14 @@ test('D24h: hit by a hero standing in our creep aggro, a hero that stands or lea
         // 200: hit, the hitter beside our front, no attack back (none). 300: hit, and at 302 our target is the enemy hero
         // (hit_back). 400: hit, then retreat mode at 401 (left). 500: hit with our front 1,500 away (a free hit: not this
         // rule). 600: hit at 40% HP (not this rule). 610: 2 s after 600 and still hit: no new onset inside 5 s of the last.
-        const at = [200, 300, 400, 500, 600].find(s => t >= s && t <= s + 3);
+        // Unfavoured, not cases: 650 the hitter has more raw HP; 680 a higher level; 700 it stands out of my reach (ar 300 + 300).
+        const at = [200, 300, 400, 500, 600, 650, 680, 700].find(s => t >= s && t <= s + 3);
         const hit = at !== undefined || (t >= 604 && t <= 612) ? 1 : 0;
         const hp = t >= 600 && t <= 612 ? 40 : 90;
         const mode = at === 400 && t > 400 ? 'retreat' : 'laning';
         const tgt = at === 300 && t === 302 ? 'npc_dota_hero_h6' : t === 202 ? 'npc_dota_creep_goodguys_melee' : undefined;
-        lines.push(tgtSnap(t, { hit, hp, mode }, tgt), snap(t, 6, PX + 400, PY));
+        const ar = at === 700 ? 300 : 550;
+        lines.push(tgtSnap(t, { hit, hp, mode, ar }, tgt), snap(t, 6, at === 700 ? PX + 700 : PX + 400, PY, { hv: at === 650 ? 700 : 600, lvl: at === 680 ? 4 : 3 }));
         lines.push(front(t, at === 500 ? PX - 1500 : PX + 300));
     }
     assert.deepStrictEqual(cases(lines, 'D24h'), [[1, 200, 1, 'none'], [1, 300, 0, 'hit_back'], [1, 400, 1, 'left']]);
