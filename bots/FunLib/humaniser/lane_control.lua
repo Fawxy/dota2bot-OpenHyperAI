@@ -843,6 +843,7 @@ local function decide(team, lane, now, m)
     local started = clock and clock()
     local s = ____exports.SETTINGS
     local path = LanePush.PathOf(lane)
+    local samples = LanePush.Forecast(team, lane, s.Horizon + 3)
     local r = LanePush.Read(team, lane)
     if path == nil or r == nil then
         Telemetry.Event("lane_ctl", {{"team", team}, {"lane", lane}, {"kind", "wave"}, {"why", r == nil and "no_read" or "no_path"}})
@@ -900,7 +901,6 @@ local function decide(team, lane, now, m)
     local reach = WorldFacts.Reach(s.TowerRange)
     local tgt = mode == "shove" and span - reach or LanePush.TargetOf(lane)
     local at = math.floor(now) + s.Horizon
-    local samples = LanePush.Forecast(team, lane, s.Horizon + 3)
     local plain = ownAt(samples, path, team, at)
     local cycle = LaneConfig.Settings().Timing.WaveCycle
     local ts = math.floor(now / cycle) * cycle

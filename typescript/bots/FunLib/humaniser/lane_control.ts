@@ -450,6 +450,8 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const started = clock?.();
     const s = SETTINGS;
     const path = LanePush.PathOf(lane);
+    // The forecast first: it is the frame's longest plain run, and the reading takes its first 32 s (lane_push runOf).
+    const [samples] = LanePush.Forecast(team, lane, s.Horizon + 3);
     const r = LanePush.Read(team, lane);
     if (path === undefined || r === undefined) {
         Telemetry.Event("lane_ctl", [["team", team], ["lane", lane], ["kind", "wave"], ["why", r === undefined ? "no_read" : "no_path"]]);
@@ -484,7 +486,6 @@ function decide(team: number, lane: Lane, now: number, m: LaneMemory): void {
     const tgt = mode === "shove" ? span - reach : LanePush.TargetOf(lane);
     // The plain forecast and the lane with this wave pulled, both to the horizon.
     const at = math.floor(now) + s.Horizon;
-    const [samples] = LanePush.Forecast(team, lane, s.Horizon + 3);
     const plain = ownAt(samples, path, team, at);
     const cycle = LaneConfig.Settings().Timing.WaveCycle;
     const ts = math.floor(now / cycle) * cycle;

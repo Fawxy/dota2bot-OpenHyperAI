@@ -80,6 +80,8 @@ interface SimUnit extends Kind {
     swingAt?: number;
     readyAt: number;
     alive: boolean;
+    /** Target type, fixed by the kind: building 0, unit 1, siege 2 (rank's). */
+    ty: number;
 }
 
 /** One creep at the start of a run: kind (melee, flag, ranged, siege), position along the lane path, HP. */
@@ -120,7 +122,7 @@ function rank(a: SimUnit, b: SimUnit): number {
 
 function makeUnit(team: number, kind: string, s: number, t: number): SimUnit {
     const k = KINDS[kind];
-    return { ...k, team, kind, s, maxhp: k.hp, readyAt: t, alive: true };
+    return { ...k, team, kind, s, maxhp: k.hp, readyAt: t, alive: true, ty: k.building === true ? 0 : kind === "siege" ? 2 : 1 };
 }
 
 function dirOf(team: number): number {
@@ -155,7 +157,8 @@ function round3(x: number): number {
  * `from` itself);
  * `towerHp[team]` starts that team's T1 at a value, undefined leaves it at full, false leaves it out (down).
  * `skip` leaves out one team's wave spawning at second `skip.t` (a wave pulled before it reaches the lane).
- * Returns a sample of both leads every second from `from`.
+ * Returns a sample of both leads every second from `from`. `steps`, when given, receives each sample's step time: a run to
+ * an earlier `until` from the same start is exactly the samples whose step is at or before it (Upto).
  */
 export function Run(
     lane: LanePath,
@@ -164,6 +167,7 @@ export function Run(
     init: StartCreep[] | undefined,
     towerHp: Record<number, number | false | undefined>,
     skip?: { team: number; t: number },
+    steps?: number[],
 ): Sample[] {
     const dt = SETTINGS.Dt;
     const units: SimUnit[] = [];
@@ -191,27 +195,36 @@ export function Run(
         }
     };
     const inReach = (u: SimUnit, v: SimUnit, r: number) => math.abs(v.s - u.s) <= r + REACH;
-    let live: SimUnit[] = [];
-    // The run's inner loop (every unit against every live unit, 20 times a second of forecast): inReach and rank are written
-    // out here, since their calls were most of a run's time. test_lane_push holds the results to the offline model.
+    // The run's inner loop (every unit against every live enemy, 20 times a second of forecast) is written out with numeric
+    // loops over arrays kept across steps; nothing dies between the step's live lists being built and its targets being
+    // picked, so the pick reads no `alive`. Each team's list keeps the units' order, so ties pick the same unit as one scan
+    // of every live unit. test_lane_push holds the results to the offline model and to the plain loop's samples.
+    const live: SimUnit[] = [];
+    let nLive = 0;
+    /** Live units by team (index 0 Radiant, 1 Dire), each in `units` order. */
+    const byTeam: SimUnit[][] = [[], []];
+    const nBy = [0, 0];
+    const flags: SimUnit[] = [];
+    let nFlags = 0;
     const best = (u: SimUnit, r: number): SimUnit | undefined => {
         let pick: SimUnit | undefined;
         let key = math.huge;
-        const team = u.team;
         const us = u.s;
         const lim = r + REACH;
         const siege = u.kind === "siege";
-        for (const v of live) {
-            if (v.team !== team && v.alive) {
-                let d = v.s - us;
-                if (d < 0) d = -d;
-                if (d <= lim) {
-                    const type = v.building === true ? 0 : v.kind === "siege" ? 2 : 1;
-                    const k = (siege ? type : type === 1 ? 0 : type === 2 ? 1 : 2) * 1e6 + d;
-                    if (k < key) {
-                        key = k;
-                        pick = v;
-                    }
+        const e = u.team === R ? 1 : 0;
+        const list = byTeam[e];
+        const n = nBy[e];
+        for (let i = 0; i < n; i++) {
+            const v = list[i];
+            let d = v.s - us;
+            if (d < 0) d = -d;
+            if (d <= lim) {
+                const type = v.ty;
+                const k = (siege ? type : type === 1 ? 0 : type === 2 ? 1 : 2) * 1e6 + d;
+                if (k < key) {
+                    key = k;
+                    pick = v;
                 }
             }
         }
@@ -227,18 +240,25 @@ export function Run(
             if (skip?.team !== R || skip.t !== ts) for (const u of WaveAt(R, ts, lane.spawnR)) units.push(u);
             if (skip?.team !== D || skip.t !== ts) for (const u of WaveAt(D, ts, lane.spawnD)) units.push(u);
         }
-        live = [];
-        const flags: SimUnit[] = [];
-        for (const u of units) {
+        nLive = 0;
+        nFlags = 0;
+        nBy[0] = 0;
+        nBy[1] = 0;
+        for (let i = 0; i < units.length; i++) {
+            const u = units[i];
             if (u.alive) {
-                live.push(u);
-                if (u.aura === true) flags.push(u);
+                live[nLive++] = u;
+                const k = u.team === R ? 0 : 1;
+                byTeam[k][nBy[k]++] = u;
+                if (u.aura === true) flags[nFlags++] = u;
             }
         }
-        for (const u of live) {
+        for (let i = 0; i < nLive; i++) {
+            const u = live[i];
             let r = u.regen;
             if (u.building !== true) {
-                for (const f of flags) {
+                for (let j = 0; j < nFlags; j++) {
+                    const f = flags[j];
                     if (f.team === u.team && math.abs(f.s - u.s) <= FLAG_RADIUS) {
                         r += FLAG_REGEN;
                         break;
@@ -248,7 +268,8 @@ export function Run(
             const hp = u.hp + r * dt;
             u.hp = hp < u.maxhp ? hp : u.maxhp;
         }
-        for (const u of live) {
+        for (let i = 0; i < nLive; i++) {
+            const u = live[i];
             if (u.target !== undefined && !u.target.alive) {
                 u.target = undefined;
                 u.swingAt = undefined;
@@ -262,7 +283,8 @@ export function Run(
                 if (u.target === undefined) u.target = best(u, u.acq);
             }
         }
-        for (const u of live) {
+        for (let i = 0; i < nLive; i++) {
+            const u = live[i];
             const v = u.target;
             let gap = v !== undefined ? v.s - u.s : 0;
             if (gap < 0) gap = -gap;
@@ -284,12 +306,23 @@ export function Run(
                 u.s += goal * walk * dt;
             }
         }
-        for (let i = projectiles.length - 1; i >= 0; i--) {
+        // Landed projectiles hit last-fired first (the order HP is subtracted in); the rest keep their order.
+        const np = projectiles.length;
+        let landed = false;
+        for (let i = np - 1; i >= 0; i--) {
             const p = projectiles[i];
             if (t >= p.at) {
+                landed = true;
                 if (p.dst.alive) hit(p.dst, p.dmg);
-                projectiles.splice(i, 1);
             }
+        }
+        if (landed) {
+            let w = 0;
+            for (let i = 0; i < np; i++) {
+                const p = projectiles[i];
+                if (!(t >= p.at)) projectiles[w++] = p;
+            }
+            for (let i = np - 1; i >= w; i--) projectiles.pop();
         }
         if (t >= nextSample) {
             const front: Record<number, number | undefined> = {};
@@ -299,10 +332,21 @@ export function Run(
                 front[u.team] = f === undefined ? u.s : u.team === R ? math.max(f, u.s) : math.min(f, u.s);
             }
             samples.push({ t: nextSample, front, dead: { [R]: dead[R], [D]: dead[D] } });
+            if (steps !== undefined) steps.push(t);
             nextSample++;
         }
     }
     return samples;
+}
+
+/** The samples a run from the same start to `until` returns, out of a longer run's samples and their `steps`. */
+export function Upto(samples: Sample[], steps: number[], until: number): Sample[] {
+    const out: Sample[] = [];
+    for (let i = 0; i < samples.length; i++) {
+        if (steps[i] > until + 1e-9) break;
+        out.push(samples[i]);
+    }
+    return out;
 }
 
 /** Mean of the two leads' midpoint over t-2..t+2 (each second's first sample at or after it); undefined under 3 seconds. */
@@ -395,15 +439,23 @@ export interface Reading {
 export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCreep[], towerHp: Record<number, number | false | undefined>): Reading | undefined {
     const clock = (RealTime as unknown) !== undefined ? RealTime : undefined;
     const started = clock?.();
+    const reading = readingOf(lane, team, t0, Run(lane, t0, readUntil(t0), init, towerHp));
+    if (reading !== undefined && started !== undefined) reading.ms = math.floor((clock!() - started) * 10000 + 0.5) / 10;
+    return reading;
+}
+
+/** The second a reading's run goes to. */
+function readUntil(t0: number): number {
+    return t0 + SETTINGS.Horizon + 2;
+}
+
+/** The reading from a run to `readUntil(t0)` (or its exact prefix, Upto). */
+function readingOf(lane: LanePath, team: number, t0: number, smp: Sample[]): Reading | undefined {
     const h = SETTINGS.Horizon;
     const dir = dirOf(team);
-    const moveOf = (list: StartCreep[]): [number | undefined, number | undefined] => {
-        const smp = Run(lane, t0, t0 + h + 2, list, towerHp);
-        const c0 = ClashAt(smp, t0);
-        const cH = ClashAt(smp, t0 + h);
-        return [c0, c0 !== undefined && cH !== undefined ? dir * (cH - c0) : undefined];
-    };
-    const [c0, move] = moveOf(init);
+    const c0 = ClashAt(smp, t0);
+    const cH = ClashAt(smp, t0 + h);
+    const move = c0 !== undefined && cH !== undefined ? dir * (cH - c0) : undefined;
     if (c0 === undefined || move === undefined) return undefined;
     const ours = lane.towers.find((tw) => tw.team === team)!;
     const theirs = lane.towers.find((tw) => tw.team !== team)!;
@@ -416,7 +468,6 @@ export function ReadFrom(lane: LanePath, team: number, t0: number, init: StartCr
         own: dir * (c0 - ours.s),
         tower: tower !== undefined,
     };
-    if (started !== undefined) reading.ms = math.floor((clock!() - started) * 10000 + 0.5) / 10;
     return reading;
 }
 
@@ -710,20 +761,68 @@ export function CreepsNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | 
     return $multi(path, t0, creepsOn(path, GetUnitList(UnitType.AlliedCreeps), team, false), creepsOn(path, GetUnitList(UnitType.EnemyCreeps), enemy, true));
 }
 
-/** `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from. */
-function viewNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined, number, StartCreep[], Record<number, number | false | undefined>]> {
+/** One team's view of one lane on one frame, and the longest plain run made from it on that frame. */
+interface FrameView {
+    frame: number;
+    path?: LanePath;
+    t0: number;
+    init: StartCreep[];
+    towerHp: Record<number, number | false | undefined>;
+    walk?: number;
+    until?: number;
+    smp?: Sample[];
+    steps?: number[];
+}
+/** By team * 10 + lane. Callers on one frame (lane_control's decide reads, forecasts and pulls the same view) share it:
+ *  nothing a view reads changes inside a frame, and a plain run is a function of the view and the creep speed. */
+let frameViews = new LuaMap<number, FrameView>();
+
+/** `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from (once a frame). */
+function viewNow(team: number, lane: Lane): FrameView {
+    const frame = DotaTime();
+    const key = team * 10 + lane;
+    const had = frameViews.get(key);
+    // The raw live creep speed, not speed(): reading it here must not count a fallback a run that never walks would not.
+    // ViewStart places unseen waves by the speed, so a speed that turns live within the frame rebuilds the view and its run.
+    const walk = WorldFacts.Live()["lane_creep_speed"];
+    if (had !== undefined && had.frame === frame && had.walk === walk) return had;
     const [path, t0, own, enemyCreeps] = CreepsNow(team, lane);
-    if (path === undefined) return $multi(undefined, t0, [], {});
-    const enemy = team === R ? D : R;
-    const init = ViewStart(path, team, t0, own, enemyCreeps);
-    return $multi(path, t0, init, { [team]: t1Hp(team, lane), [enemy]: t1Hp(enemy, lane) });
+    let v: FrameView;
+    if (path === undefined) v = { frame, walk, t0, init: [], towerHp: {} };
+    else {
+        const enemy = team === R ? D : R;
+        v = { frame, walk, path, t0, init: ViewStart(path, team, t0, own, enemyCreeps), towerHp: { [team]: t1Hp(team, lane), [enemy]: t1Hp(enemy, lane) } };
+    }
+    frameViews.set(key, v);
+    return v;
+}
+
+/** Forgets the frame views (a new game or test world in the same VM, at a DotaTime already seen). */
+export function ResetFrames(): void {
+    frameViews = new LuaMap<number, FrameView>();
+}
+
+/** The plain run of a view to `until`: the frame's longest run cut at `until` when it reaches that far, else a new run
+ *  that becomes the frame's (viewNow has already matched the creep speed). */
+function runOf(v: FrameView, path: LanePath, until: number): Sample[] {
+    if (v.smp === undefined || v.until! < until) {
+        const steps: number[] = [];
+        v.smp = Run(path, v.t0, until, v.init, v.towerHp, undefined, steps);
+        v.steps = steps;
+        v.until = until;
+    }
+    return Upto(v.smp, v.steps!, until);
 }
 
 /** The reading for `team`'s side of `lane` now (the calling script must be `team`'s). */
 export function Read(team: number, lane: Lane): Reading | undefined {
-    const [path, t0, init, towerHp] = viewNow(team, lane);
-    if (path === undefined) return undefined;
-    return ReadFrom(path, team, t0, init, towerHp);
+    const v = viewNow(team, lane);
+    if (v.path === undefined) return undefined;
+    const clock = (RealTime as unknown) !== undefined ? RealTime : undefined;
+    const started = clock?.();
+    const reading = readingOf(v.path, team, v.t0, runOf(v, v.path, readUntil(v.t0)));
+    if (reading !== undefined && started !== undefined) reading.ms = math.floor((clock!() - started) * 10000 + 0.5) / 10;
+    return reading;
 }
 
 /** The lane's target meeting point, as a distance along the lane from our T1. */
@@ -733,16 +832,16 @@ export function TargetOf(lane: Lane): number {
 
 /** `team`'s view of `lane` now with its wave spawned at `ts` pulled away (WaveGoneFrom). */
 export function WaveGoneNow(team: number, lane: Lane, ts: number, at: number): WaveGone | undefined {
-    const [path, t0, init, towerHp] = viewNow(team, lane);
-    if (path === undefined) return undefined;
-    return WaveGoneFrom(path, team, t0, init, towerHp, ts, at);
+    const v = viewNow(team, lane);
+    if (v.path === undefined) return undefined;
+    return WaveGoneFrom(v.path, team, v.t0, v.init, v.towerHp, ts, at);
 }
 
 /** One run of `lane` from `team`'s view now, `horizon` seconds ahead: its samples and the path, or undefined. */
 export function Forecast(team: number, lane: Lane, horizon: number): LuaMultiReturn<[Sample[] | undefined, LanePath | undefined]> {
-    const [path, t0, init, towerHp] = viewNow(team, lane);
-    if (path === undefined) return $multi(undefined, undefined);
-    return $multi(Run(path, t0, t0 + horizon, init, towerHp), path);
+    const v = viewNow(team, lane);
+    if (v.path === undefined) return $multi(undefined, undefined);
+    return $multi(runOf(v, v.path, v.t0 + horizon), v.path);
 }
 
 /** The map point at distance `s` along the lane path. */
