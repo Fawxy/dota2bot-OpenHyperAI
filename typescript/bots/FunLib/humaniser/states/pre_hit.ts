@@ -5,8 +5,8 @@
  * against the tower's known landing times (`Plan`): which of them to spend as pre-hits so that one lands on the creep inside
  * the kill range (0, low roll], choosing the plan most likely to land its kill in range under the forecast's fitted error
  * (`ERROR`; slice prehit-odds, 17/11/2026: the forecast misses creeps joining, so the real HP runs a median 23 below it at 1-2 s
- * ahead and a kill aimed at the range's middle was left to the tower), then the one whose kill HP sits furthest from both
- * edges (prhchk2-5, 04/11/2026). The plan is remade every scan from the creep's real HP, so a hit the forecast missed
+ * ahead and passes through the range before our next attack is ready), counting every landing from when our attack is ready
+ * (`killFrom`), then the one whose kill HP sits furthest from both edges (prhchk2-5, 04/11/2026). The plan is remade every scan from the creep's real HP, so a hit the forecast missed
  * changes the next decision rather than the result. The swing is laneFarm's `prehit` (one `attackAndConfirm`); the kill is the
  * normal last-hit pick's and verb's. A pre-hit never spends the swing a last hit on another creep needs: none may come due
  * before our attack is ready again (user 04/11/2026).
@@ -40,7 +40,7 @@ export interface Plan {
     hpKill: number;
     /** How far `hpKill` sits from the kill range's edges: min(hpKill, lo - hpKill), negative above the range. */
     margin: number;
-    /** The chance the kill lands in range, from the forecast's error at the kill's time ahead (`ERROR`). */
+    /** The chance the creep's real HP is in range at a landing once our kill swing is ready (`killFrom`, `ERROR`). */
     odds: number;
 }
 
@@ -78,8 +78,8 @@ export const FittedError: ErrorCdf = (t: number, x: number): number => {
     return ERROR_P[i] + ((ERROR_P[i + 1] - ERROR_P[i]) * (x - row[i])) / span;
 };
 
-/** No error: the forecast is the creep's HP (the planner before odds). */
-export const NoError: ErrorCdf = (_t: number, x: number): number => (x >= 0 ? 1 : 0);
+/** No error: the forecast is the creep's HP (the planner before odds). A kill on exactly lo counts, on exactly 0 does not. */
+export const NoError: ErrorCdf = (_t: number, x: number): number => (x > 0 ? 1 : 0);
 
 function better(a: Plan, b: Plan | undefined): boolean {
     if (b === undefined) return true;
@@ -89,12 +89,52 @@ function better(a: Plan, b: Plan | undefined): boolean {
     return a.swings[a.swings.length - 1] < b.swings[b.swings.length - 1];
 }
 
+/** Where a swing may land from `earliest`: then, unless a tower hit falls in the AFTER before it, and just after each later tower hit. */
+function landings(towers: number[], earliest: number): number[] {
+    const out: number[] = [];
+    let clear = true;
+    for (const t of towers) if (t > earliest - AFTER && t <= earliest) clear = false;
+    if (clear) out.push(earliest);
+    for (const t of towers) if (t + AFTER > earliest) out.push(t + AFTER);
+    return out;
+}
+
+/**
+ * The kill from an attack ready at `earliest`, with `dealt` HP of ours in the forecast. The last-hit verb swings on the creep's
+ * real HP whenever a hit kills, so the kill is won if the real HP is in (0, lo] at any landing from `earliest` on, and lost to
+ * the tower if it passes through the range before then: the chance sums, over those landings, the chance the forecast's error
+ * puts the HP there in range (the ranges a tower hit apart do not overlap: its hit is over lo). The plan's kill swing is the
+ * likeliest landing.
+ */
+function killFrom(
+    hpAt: (this: void, t: number) => number,
+    horizon: number,
+    towers: number[],
+    earliest: number,
+    dealt: number,
+    lo: number,
+    err: ErrorCdf,
+): Plan | undefined {
+    let odds = 0;
+    let best: Plan | undefined;
+    for (const at of landings(towers, earliest)) {
+        if (at > horizon) break;
+        const hp = hpAt(at) - dealt;
+        const p = err(at, hp) - err(at, hp - lo);
+        if (p <= 0) continue;
+        odds += p;
+        const here: Plan = { swings: [at], hpKill: hp, margin: math.min(hp, lo - hp), odds: p };
+        if (better(here, best)) best = here;
+    }
+    if (best === undefined) return undefined;
+    best.odds = math.min(1, odds);
+    return best;
+}
+
 /**
  * The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
- * spent. A swing lands at `earliest` or just after a later tower hit (`AFTER`); landing where a tower hit falls inside the last
- * AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it may be the kill, at
- * the chance `err` gives the real HP of being in (0, lo], and above lo a pre-hit of `mean` damage followed by the best plan
- * from one attack cycle later.
+ * spent: the kill from there (`killFrom`), or, where the forecast HP is above lo, a pre-hit of `mean` damage at one of the
+ * landings followed by the best plan from one attack cycle later.
  */
 function search(
     hpAt: (this: void, t: number) => number,
@@ -108,25 +148,12 @@ function search(
     mean: number,
     err: ErrorCdf,
 ): Plan | undefined {
-    const candidates: number[] = [];
-    let clear = true;
-    for (const t of towers) if (t > earliest - AFTER && t <= earliest) clear = false;
-    if (clear) candidates.push(earliest);
-    for (const t of towers) if (t + AFTER > earliest) candidates.push(t + AFTER);
-    let best: Plan | undefined;
-    for (const at of candidates) {
+    let best = killFrom(hpAt, horizon, towers, earliest, dealt, lo, err);
+    if (pre >= MAX_PREHITS) return best;
+    for (const at of landings(towers, earliest)) {
         if (at > horizon) break;
         const hp = hpAt(at) - dealt;
-        if (hp <= 0) continue;
-        // The kill: real HP in (0, lo] when the error lies in [hp - lo, hp). A swing landing now is the last-hit verb's, which
-        // swings only on a forecast kill, so above the range it is never the kill.
-        const now = pre === 0 && at === earliest;
-        if (hp <= lo || !now) {
-            const odds = err(at, hp) - err(at, hp - lo);
-            const kill: Plan = { swings: [at], hpKill: hp, margin: math.min(hp, lo - hp), odds };
-            if (odds > 0 && better(kill, best)) best = kill;
-        }
-        if (hp > lo && pre < MAX_PREHITS) {
+        if (hp > lo) {
             const rest = search(hpAt, horizon, towers, at + period, dealt + mean, pre + 1, period, lo, mean, err);
             if (rest !== undefined) {
                 const plan: Plan = { swings: [at, ...rest.swings], hpKill: rest.hpKill, margin: rest.margin, odds: rest.odds };

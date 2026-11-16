@@ -129,10 +129,10 @@ function startWatch(bot, verbs, tower, creep, f, lo)
     local td = -1
     for ____, h in ipairs(f.hits) do
         do
-            local __continue62
+            local __continue68
             repeat
                 if h.t > 1 then
-                    __continue62 = true
+                    __continue68 = true
                     break
                 end
                 if h.by == "tower" then
@@ -145,9 +145,9 @@ function startWatch(bot, verbs, tower, creep, f, lo)
                 else
                     ks = ks + 1
                 end
-                __continue62 = true
+                __continue68 = true
             until true
-            if not __continue62 then
+            if not __continue68 then
                 break
             end
         end
@@ -458,8 +458,8 @@ ____exports.FittedError = function(t, x)
     local span = row[i + 1 + 1] - row[i + 1]
     return ____exports.ERROR_P[i + 1] + (____exports.ERROR_P[i + 1 + 1] - ____exports.ERROR_P[i + 1]) * (x - row[i + 1]) / span
 end
---- No error: the forecast is the creep's HP (the planner before odds).
-____exports.NoError = function(_t, x) return x >= 0 and 1 or 0 end
+--- No error: the forecast is the creep's HP (the planner before odds). A kill on exactly lo counts, on exactly 0 does not.
+____exports.NoError = function(_t, x) return x > 0 and 1 or 0 end
 local function better(a, b)
     if b == nil then
         return true
@@ -475,13 +475,9 @@ local function better(a, b)
     end
     return a.swings[#a.swings] < b.swings[#b.swings]
 end
---- The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
--- spent. A swing lands at `earliest` or just after a later tower hit (`AFTER`); landing where a tower hit falls inside the last
--- AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it may be the kill, at
--- the chance `err` gives the real HP of being in (0, lo], and above lo a pre-hit of `mean` damage followed by the best plan
--- from one attack cycle later.
-local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, mean, err)
-    local candidates = {}
+--- Where a swing may land from `earliest`: then, unless a tower hit falls in the AFTER before it, and just after each later tower hit.
+local function landings(towers, earliest)
+    local out = {}
     local clear = true
     for ____, t in ipairs(towers) do
         if t > earliest - ____exports.AFTER and t <= earliest then
@@ -489,71 +485,106 @@ local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, m
         end
     end
     if clear then
-        candidates[#candidates + 1] = earliest
+        out[#out + 1] = earliest
     end
     for ____, t in ipairs(towers) do
         if t + ____exports.AFTER > earliest then
-            candidates[#candidates + 1] = t + ____exports.AFTER
+            out[#out + 1] = t + ____exports.AFTER
         end
     end
+    return out
+end
+--- The kill from an attack ready at `earliest`, with `dealt` HP of ours in the forecast. The last-hit verb swings on the creep's
+-- real HP whenever a hit kills, so the kill is won if the real HP is in (0, lo] at any landing from `earliest` on, and lost to
+-- the tower if it passes through the range before then: the chance sums, over those landings, the chance the forecast's error
+-- puts the HP there in range (the ranges a tower hit apart do not overlap: its hit is over lo). The plan's kill swing is the
+-- likeliest landing.
+local function killFrom(hpAt, horizon, towers, earliest, dealt, lo, err)
+    local odds = 0
     local best
-    for ____, at in ipairs(candidates) do
+    for ____, at in ipairs(landings(towers, earliest)) do
         do
-            local __continue22
+            local __continue23
             repeat
                 if at > horizon then
                     break
                 end
                 local hp = hpAt(at) - dealt
-                if hp <= 0 then
-                    __continue22 = true
+                local p = err(at, hp) - err(at, hp - lo)
+                if p <= 0 then
+                    __continue23 = true
                     break
                 end
-                local now = pre == 0 and at == earliest
-                if hp <= lo or not now then
-                    local odds = err(at, hp) - err(at, hp - lo)
-                    local kill = {
-                        swings = {at},
-                        hpKill = hp,
-                        margin = math.min(hp, lo - hp),
-                        odds = odds
-                    }
-                    if odds > 0 and better(kill, best) then
-                        best = kill
-                    end
+                odds = odds + p
+                local here = {
+                    swings = {at},
+                    hpKill = hp,
+                    margin = math.min(hp, lo - hp),
+                    odds = p
+                }
+                if better(here, best) then
+                    best = here
                 end
-                if hp > lo and pre < ____exports.MAX_PREHITS then
-                    local rest = search(
-                        hpAt,
-                        horizon,
-                        towers,
-                        at + period,
-                        dealt + mean,
-                        pre + 1,
-                        period,
-                        lo,
-                        mean,
-                        err
-                    )
-                    if rest ~= nil then
-                        local plan = {
-                            swings = {
-                                at,
-                                unpack(rest.swings)
-                            },
-                            hpKill = rest.hpKill,
-                            margin = rest.margin,
-                            odds = rest.odds
-                        }
-                        if better(plan, best) then
-                            best = plan
-                        end
-                    end
-                end
-                __continue22 = true
+                __continue23 = true
             until true
-            if not __continue22 then
+            if not __continue23 then
                 break
+            end
+        end
+    end
+    if best == nil then
+        return nil
+    end
+    best.odds = math.min(1, odds)
+    return best
+end
+--- The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
+-- spent: the kill from there (`killFrom`), or, where the forecast HP is above lo, a pre-hit of `mean` damage at one of the
+-- landings followed by the best plan from one attack cycle later.
+local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, mean, err)
+    local best = killFrom(
+        hpAt,
+        horizon,
+        towers,
+        earliest,
+        dealt,
+        lo,
+        err
+    )
+    if pre >= ____exports.MAX_PREHITS then
+        return best
+    end
+    for ____, at in ipairs(landings(towers, earliest)) do
+        if at > horizon then
+            break
+        end
+        local hp = hpAt(at) - dealt
+        if hp > lo then
+            local rest = search(
+                hpAt,
+                horizon,
+                towers,
+                at + period,
+                dealt + mean,
+                pre + 1,
+                period,
+                lo,
+                mean,
+                err
+            )
+            if rest ~= nil then
+                local plan = {
+                    swings = {
+                        at,
+                        unpack(rest.swings)
+                    },
+                    hpKill = rest.hpKill,
+                    margin = rest.margin,
+                    odds = rest.odds
+                }
+                if better(plan, best) then
+                    best = plan
+                end
             end
         end
     end
