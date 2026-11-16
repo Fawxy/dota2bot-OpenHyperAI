@@ -1483,7 +1483,7 @@ export const EVENTS = {
         kind: "str",
         /** The episode number. */
         ep: "num",
-        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the stand of heroes not hitting us (`Threat.Stand`; `Ours.EvenStand` one, `Ours.HighStand` two or more: `reach` says which), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold. */
+        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the stand of heroes not hitting us (`Threat.Stand`; `Ours.EvenStand` one, `Ours.HighStand` two or more: `reach` says which; logs before slice stand-rule say `high` for two or more), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold. */
         why: "str",
         /** The hero's HP share at the line. */
         hp: "num",

@@ -81,12 +81,15 @@ export const SETTINGS = {
      * hitting us are no reason to leave while their burst over the read's window is under the bar of our current HP and our HP
      * share is at the floor or more. One hero: StandBurst (D1's "their burst can kill me"; retreat's EvenBurst) and StandHp
      * (retreat's EvenHp). Two or more: PackBurst and PackHp, whatever the numbers on our side. h2hstand1 stood two heroes on
-     * D1's own bars (burst under our HP with an ally, HP 50%+): 12 of the 19 deaths within 10 s of a stand came at burst half
-     * our HP or more, 3 at HP 50-70%, against 4 in the 49 stands a game at these bars. judgement.
+     * D1's own bars (burst under our HP with an ally, HP 50%+): of our 19 deaths within 10 s of a stand, 8 came at two heroes
+     * with burst half our HP or more (8 stands a game), 3 at two heroes and HP 50-70% (7.7), 4 at these bars (49) and 4 at
+     * one hero. judgement.
      */
     StandBurst: 1,
     StandHp: 0.5,
+    /** Two or more heroes: the burst bar, whatever the numbers on our side (see StandBurst). */
     PackBurst: 0.5,
+    /** Two or more heroes: the HP floor (see StandBurst). */
     PackHp: 0.7,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
