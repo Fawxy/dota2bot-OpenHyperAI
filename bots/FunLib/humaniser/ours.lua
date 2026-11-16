@@ -98,7 +98,8 @@ ____exports.DEFAULTS = {
     HighStand = true,
     PairJoin = true,
     TradeSafe = true,
-    TradeFree = true
+    TradeFree = true,
+    TradeLanded = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

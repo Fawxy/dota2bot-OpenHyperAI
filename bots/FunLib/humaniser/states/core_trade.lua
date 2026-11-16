@@ -64,7 +64,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local decideSafe, favoured, heldBy, heldByGap, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local decideSafe, favoured, heldBy, heldByGap, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, losing, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, UNLANDED_CAP, LANDED_RECENT, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -766,13 +766,7 @@ function keepWhy(bot, ep, now, join)
         if ep.stepSince == nil and not walkingIn and GetUnitToUnitDistance(bot, ep.target) > reach then
             return "out_of_reach"
         end
-        if ____exports.Deficit(
-            ep.hp0,
-            bot:GetHealth(),
-            ep.thp0,
-            ep.target:GetHealth(),
-            bot:GetMaxHealth()
-        ) > LOSING_BY then
+        if losing(bot, ep, now) then
             return "losing"
         end
     end
@@ -793,6 +787,43 @@ function keepWhy(bot, ep, now, join)
     end
     return nil
 end
+function losing(bot, ep, now)
+    local hp = bot:GetHealth()
+    local thp = ep.target:GetHealth()
+    local max = bot:GetMaxHealth()
+    if not Ours.On("TradeLanded") then
+        return ____exports.Deficit(
+            ep.hp0,
+            hp,
+            ep.thp0,
+            thp,
+            max
+        ) > LOSING_BY
+    end
+    if ep.landedAt == nil and ep.target:WasRecentlyDamagedByHero(bot, LANDED_RECENT) then
+        ep.landedAt = now
+        ep.hpL = ep.hpPrev or ep.hp0
+        ep.thpL = ep.thpPrev or ep.thp0
+    end
+    if ep.landedAt == nil then
+        ep.hpPrev = hp
+        ep.thpPrev = thp
+        return ____exports.Deficit(
+            ep.hp0,
+            hp,
+            ep.thp0,
+            thp,
+            max
+        ) > UNLANDED_CAP
+    end
+    return ____exports.Deficit(
+        ep.hpL,
+        hp,
+        ep.thpL,
+        thp,
+        max
+    ) > LOSING_BY
+end
 function stepOutPoint(bot, creeps)
     local me = bot:GetLocation()
     local x = 0
@@ -800,19 +831,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue183
+            local __continue187
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue183 = true
+                    __continue187 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue183 = true
+                __continue187 = true
             until true
-            if not __continue183 then
+            if not __continue187 then
                 break
             end
         end
@@ -863,6 +894,8 @@ MAX_CREEPS_ON_ME = 2
 KEEP_HP_SLACK = 0.05
 KEEP_WAVE_SLACK = 1
 LOSING_BY = 0.05
+UNLANDED_CAP = 0.15
+LANDED_RECENT = 0.5
 KILL_TIME = 6
 JOIN_TIME = FIGHT_TIME
 REACH = 100
@@ -1003,6 +1036,10 @@ local function close(bot, ep, why, now)
             started and ep.hp0 - bot:GetHealth() or 0
         },
         {"thpd", started and ep.thp0 - thp or 0},
+        {
+            "ld",
+            started and ep.landedAt ~= nil and math.floor((ep.landedAt - ep.startedAt) * 10) / 10 or nil
+        },
         {
             "hp",
             math.floor(i.hp * 100) / 100
@@ -1269,19 +1306,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue173
+            local __continue177
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue173 = true
+                    __continue177 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue173 = true
+                __continue177 = true
             until true
-            if not __continue173 then
+            if not __continue177 then
                 break
             end
         end

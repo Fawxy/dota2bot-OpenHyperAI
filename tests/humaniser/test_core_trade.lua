@@ -99,7 +99,8 @@ do
 	CoreTrade.Desire(bot)
 	CoreTrade.Think(bot)
 	check("Think attacks the window's target", bot.attacking == enemy)
-	-- An even exchange for 10 s: no time limit ends it.
+	-- An even exchange for 10 s: no time limit ends it. Our hits land (slice trade-landed).
+	enemy.hitBy = bot
 	bot.hp, enemy.hp = 72, 60
 	T = 210
 	check("an even trade keeps its desire however long it runs", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
@@ -113,6 +114,49 @@ do
 	check("after a lost trade no new one opens while the core is behind its starting HP gap", CoreTrade.Desire(bot) == 0)
 	bot.hp = 74
 	check("once the gap is back a new trade opens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	enemy.hitBy = nil
+end
+
+-- Slice trade-landed (D24, D18): the exchange is judged from our first landed hit. Before it lands (stepping out, walking in)
+-- only a loss of 15% of max HP ends the trade; from it, the deficit counts from the frame before it, so that hit is ours.
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	local function start()
+		CoreTrade.Reset()
+		bot.attacking, enemy.hitBy = nil, nil
+		bot.hp, enemy.hp = 80, 70
+		T = 300
+		CoreTrade.Desire(bot)
+		CoreTrade.Think(bot)
+	end
+	start()
+	-- The enemy hits first: 80 to 70, nothing back yet (h2hhighhit2's 4 mid cases lost 47-140 HP so, unanswered).
+	bot.hp = 70
+	T = 300.5
+	check("trade-landed: 10 of 100 lost before our hit lands keeps the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- Our hit lands (70 to 64) and the target answers once (70 to 66): from the frame before it we are 4 down, under 5%.
+	enemy.hitBy = bot
+	bot.hp, enemy.hp = 66, 64
+	T = 301
+	check("trade-landed: the exchange from our first hit is even, the trade keeps", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- Then it turns: from the frame before our hit (70 against 70) to 57 against 63, 13 lost against 7.
+	bot.hp, enemy.hp = 57, 63
+	T = 302
+	check("trade-landed: losing by 5% from our first hit ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing") and last():find("ld=1"))
+
+	start()
+	bot.hp = 64
+	T = 300.5
+	check("trade-landed: 16 of 100 lost with no hit landed ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing") and not last():find("ld="))
+
+	Ours.TradeLanded = false
+	start()
+	bot.hp = 70
+	T = 300.5
+	check("trade-landed off: 10 of 100 lost before any hit of ours ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing"))
+	Ours.TradeLanded = nil
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, enemy.hitBy, bot.attacking = 80, 70, nil, nil
 end
 
 -- Slice lane-fight: a core whose lane fights are ours commits on a target at 40% HP or less; with the switch off the trade's 25%

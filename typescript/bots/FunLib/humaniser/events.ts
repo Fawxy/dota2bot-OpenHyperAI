@@ -1930,6 +1930,9 @@ export const EVENTS = {
         /** HP the bot and the target lost from the trade's start to its end. */
         hpd: "num",
         thpd: "num",
+        /** Slice trade-landed: seconds from the start to the bot's first hit on the target (the target WasRecentlyDamagedByHero
+         *  the bot); absent when none landed. */
+        ld: "num",
         /** Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500. */
         hp: "num",
         thp: "num",

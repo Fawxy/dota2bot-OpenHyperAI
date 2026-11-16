@@ -169,6 +169,10 @@ export const DEFAULTS = {
      *  swings at a lane creep, or our attack range is 100 over its) or favoured (our 3 s estimated damage over its HP beats its
      *  over ours, PairJoin's estimate); else `unfavoured`. Off: a lost trade's HP `gap` holds the next one. */
     TradeFree: true,
+    /** Slice trade-landed (D24, D18): with CoreTrade on, a trade's `losing` end is judged from the bot's first landed hit on the
+     *  target (the exchange from then, counting that hit); before it lands only a loss of UNLANDED_CAP of max HP ends it.
+     *  Off: from the trade's start, enemy hits taken while stepping out or walking in included. */
+    TradeLanded: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -993,6 +993,7 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 - `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over.
 - `dur` num: Seconds the window lasted.
 - `hpd` num: HP the bot and the target lost from the trade's start to its end.
+- `ld` num: Slice trade-landed: seconds from the start to the bot's first hit on the target (the target WasRecentlyDamagedByHero the bot); absent when none landed.
 - `hp` num: Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500.
 - `pr` num: Aggro-free attacks (EC-053): attack orders given clear of creeps, steps out of them, most enemy creeps on the core at once.
 - `mode` num: The bot's active mode at the end, and its desire.
