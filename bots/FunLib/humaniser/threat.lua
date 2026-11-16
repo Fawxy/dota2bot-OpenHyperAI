@@ -155,9 +155,8 @@ ____exports.SETTINGS = {
     EscapeMargin = 100,
     EngagedRecent = 1,
     StandBurst = 1,
+    OutBurst = 0.5,
     StandHp = 0.5,
-    HighBurst = 0.5,
-    HighHp = 0.7,
     LogEvery = 5
 }
 local TOWER_IDS = {
@@ -558,18 +557,18 @@ end
 function ____exports.Read(bot, from, place, horizon, opts)
     return ____exports.Reader(bot, horizon, opts)(from, place)
 end
---- The lone-hero stand (slice mid-stand): exactly one visible enemy hero can reach the walk, it has not damaged us within
--- EngagedRecent (the read was made with `opts.engagedWindow`, so `eng` is filled), its burst is under StandBurst of our HP,
--- our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar. The lane
--- spot does not refuse such a place and retreat does not leave it on `threat`: h2harbiter1 and 2, the mid stood about 1,400
--- from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a stand 21 times a game.
--- Once that hero hits us the callers' own rules apply again (the dead end "a hold that never hits back" is the hit case).
-function ____exports.LoneStand(bot, r)
+--- The stand (D2 against D1): visible enemy heroes can reach the walk, none has damaged us within EngagedRecent (the read was
+-- made with `opts.engagedWindow`, so `eng` is filled), their burst is under StandBurst of our HP (OutBurst when they outnumber
+-- us), our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar.
+-- Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own rules apply again (the dead end
+-- "a hold that never hits back" is the hit case).
+function ____exports.Stand(bot, r)
     local s = ____exports.SETTINGS
-    if #r.reach ~= 1 or #r.eng > 0 or r.tower then
+    if #r.reach == 0 or #r.eng > 0 or r.tower then
         return false
     end
-    if r.burst >= s.StandBurst or r.missing >= s.MissingRefuse then
+    local bar = #r.reach > r.allies + 1 and s.OutBurst or s.StandBurst
+    if r.burst >= bar or r.missing >= s.MissingRefuse then
         return false
     end
     return bot:GetHealth() / math.max(
@@ -577,23 +576,11 @@ function ____exports.LoneStand(bot, r)
         bot:GetMaxHealth()
     ) >= s.StandHp
 end
---- The high-HP stand (slice high-stand): two or more visible enemy heroes can reach the walk, none has damaged us within
--- EngagedRecent, their burst is under HighBurst of our HP, our HP share is HighHp or more, no enemy tower covers the place and
--- the missing belief is under the gates' bar. Retreat does not leave such a place on `threat` (the lone hero is LoneStand's);
--- the lane spot keeps its own limits, so the hero steps back within the lane instead of walking off. Once one of them hits us
--- the read and budget decide again.
-function ____exports.HighStand(bot, r)
-    local s = ____exports.SETTINGS
-    if #r.reach < 2 or #r.eng > 0 or r.tower then
-        return false
-    end
-    if r.burst >= s.HighBurst or r.missing >= s.MissingRefuse then
-        return false
-    end
-    return bot:GetHealth() / math.max(
-        1,
-        bot:GetMaxHealth()
-    ) >= s.HighHp
+--- The stand with exactly one enemy hero in reach (slice mid-stand), which the lane spot honours too: h2harbiter1 and 2, the
+-- mid stood about 1,400 from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a
+-- stand 21 times a game. With two or more the spot keeps its own limits and steps back within the lane.
+function ____exports.LoneStand(bot, r)
+    return #r.reach == 1 and ____exports.Stand(bot, r)
 end
 local gateCut
 --- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.

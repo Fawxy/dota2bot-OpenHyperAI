@@ -1,0 +1,35 @@
+id: retreat.leave.pair-even-burst-over-half.001
+source: log
+ref: {log: 2026-11-16T02-55-40-h2hhighstand1_C_rad_3.log, t: 377.767}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose hold (threat 0.640, free budget 0.500, over -1 s); write the right action, not this.
+# bot pid 0: HP 79% (584 of 736)
+# enemy pid 7: 903 from the bot, HP 815, damage 108 / 326 (short / long window)
+# enemy pid 6: 783 from the bot, HP 736, damage 236 / 390 (short / long window)
+# unseen pid 8: 7346 from the bot (where last seen), unseen 2.1 s
+# unseen pid 9: 13965 from the bot (where last seen), unseen 8.6 s
+# ally pid 3: 506 from the bot
+world:
+  t: 377.767
+  team: 2
+  pid: 0
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HighStand":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PairJoin":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true,"TradeFree":true,"TradeSafe":true}
+  bot: {"x":6530,"y":-3191,"hp":584,"mhp":736,"range":600,"hull":24,"speed":290,"esc":0}
+  ce: [{"id":325,"x":6608,"y":-1704,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":326,"x":6588,"y":-1592,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":327,"x":6546,"y":-1461,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16}]
+  ca: [{"id":302,"x":6333,"y":-3328,"hp":415,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":303,"x":6339,"y":-3457,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":304,"x":6318,"y":-3233,"hp":462,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":271,"x":6174,"y":-3477,"hp":935,"mhp":935,"ranged":0,"tgt":"-","hull":16},{"id":274,"x":6689,"y":-2139,"hp":225,"mhp":550,"ranged":0,"tgt":"-","hull":16}]
+  he: [{"pid":7,"x":6777,"y":-2322,"hp":815,"range":150,"hull":24,"speed":360,"atk":0,"eng":0,"e3":108,"e6":326,"ill":0},{"pid":6,"x":6549,"y":-2408,"hp":736,"range":425,"hull":24,"speed":350,"atk":0,"eng":0,"e3":236,"e6":390,"ill":0}]
+  hu: [{"pid":8,"x":-394,"y":-738,"tss":2.1,"sp":310},{"pid":9,"x":-5573,"y":3776,"tss":8.6,"sp":360}]
+  ha: [{"pid":3,"x":6169,"y":-3546,"range":525,"hull":24,"speed":350,"ret":0}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"u274"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":4750,"y0":-5000,"nx":15,"ny":15,"step":250,"hex":"ff81fc00c803bc0d781af027f007f00fe00f800e003f007e007000600"}
+  budget: 0.5
+  over: -1
+  hold: 0.17
+  dt: 0
+  pj: 0
+expect:
+  must: ["stay(stand)"]
+  mustNot: ["leave"]
+notes: >
+  D2 against D1 (h2hhighstand1 C_rad_3, 6:18): our pos1 at 79% with two enemy heroes 800-900 off, neither hitting, our pos3 506 off. Burst over half our HP but under all of it, numbers even: D1 does not apply, stay (HighStand left it).

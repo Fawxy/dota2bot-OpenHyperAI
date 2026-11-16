@@ -16,8 +16,8 @@ local function world(o)
 	FOGGED = function() return false end
 	H.Retreat.ResetCache()
 	require("bots/FunLib/humaniser/threat").ResetCache()
-	-- Most tests here drive the leave with two full-HP heroes in reach who are not hitting us: HighStand's situation, so it is
-	-- off unless a test asks for it (`high`).
+	-- Most tests here drive the leave with two full-HP heroes in reach who are not hitting us: the stand's situation, so its
+	-- two-hero half is off unless a test asks for it (`high`).
 	package.loaded["bots/FunLib/custom_loader"].Ours.HighStand = o.high == true
 	local bot = MakeUnit({ pid = 1, team = 2, loc = o.loc or HERE, level = 3 })
 	bot.lane, bot.pos, bot.maxhp, bot.hp = Lane.Bot, 1, 600, o.hp or 600
@@ -544,12 +544,17 @@ do
 	check("odds: an even 2v2 whose burst kills us still leaves why=lethal", lethalOn and field(lethalLines[1], "why") == "lethal", lethalLines[1])
 end
 
--- Slice high-stand (D2 against D1): two heroes in reach at full HP, nobody hitting us, burst 100 + 100 of our 600 HP (0.33):
--- the read is over the free budget, HighStand keeps the hero in lane and logs `stay why=high` once. A hit on us, a burst at
--- half our HP, HP under 70% or the switch off: the same two are left on `threat`.
+-- Slices high-stand, stand-rule (D2 against D1): two heroes in reach, nobody hitting us, burst 100 + 100 of our 600 HP (0.33):
+-- the read is over the free budget, the stand keeps the hero in lane and logs `stay why=stand` once. A hit on us, a burst at
+-- half our HP while they outnumber us, HP under half or the switch off: the same two are left on `threat`. With an ally
+-- beside us (not outnumbered) a burst over half our HP still stands.
 do
 	local function two(o)
 		local H, bot = world({ high = o.off ~= true, hp = o.hp })
+		if o.ally then
+			local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
+			ally.maxhp, ally.hp = 600, 600
+		end
 		local e1, e2 = enemy(10, Vector(300, -5000), o.est or 100), enemy(11, Vector(300, -4900), o.est or 100)
 		local out = capture(function()
 			for _ = 1, 4 do
@@ -563,16 +568,20 @@ do
 		return H.Retreat.Running(bot), lines(out, "retreat"), stays
 	end
 	local on, _, stays = two({})
-	check("high: two not hitting us at full HP, burst 0.33, start no episode", not on)
-	check("high: the stand is logged once as why=high", #stays == 1 and field(stays[1], "why") == "high" and field(stays[1], "reach") == "2", stays[1])
+	check("stand: two not hitting us at full HP, burst 0.33, start no episode", not on)
+	check("stand: the stand is logged once as why=stand with its reach", #stays == 1 and field(stays[1], "why") == "stand" and field(stays[1], "reach") == "2", stays[1])
 	local offOn, offLines = two({ off = true })
-	check("high off: the same read leaves why=threat (the path replaced)", offOn and field(offLines[1], "why") == "threat", offLines[1])
+	check("stand off: the same read leaves why=threat (the path replaced)", offOn and field(offLines[1], "why") == "threat", offLines[1])
 	local hitOn, hitLines = two({ hit = true })
-	check("high: one of them hitting us leaves why=threat", hitOn and field(hitLines[1], "why") == "threat", hitLines[1])
+	check("stand: one of them hitting us leaves why=threat", hitOn and field(hitLines[1], "why") == "threat", hitLines[1])
 	local burstOn, burstLines = two({ est = 160 })
-	check("high: their burst at half our HP (320 of 600) leaves why=threat", burstOn and field(burstLines[1], "why") == "threat", burstLines[1])
-	local lowOn, lowLines = two({ hp = 400, est = 60 })
-	check("high: under 70% HP (400 of 600) leaves why=threat", lowOn and field(lowLines[1], "why") == "threat", lowLines[1])
+	check("stand: outnumbered, their burst at half our HP (320 of 600) leaves why=threat", burstOn and field(burstLines[1], "why") == "threat", burstLines[1])
+	local evenOn = two({ est = 160, ally = true })
+	check("stand: with an ally beside us the same half-HP burst stands (D1 needs them to outnumber us)", not evenOn)
+	local lowOn, lowLines = two({ hp = 280, est = 40 })
+	check("stand: under half HP (280 of 600) leaves why=threat", lowOn and field(lowLines[1], "why") == "threat", lowLines[1])
+	local midOn = two({ hp = 400, est = 60 })
+	check("stand: at 67% HP (400 of 600) with burst 0.3 stands (the old 70% bar is gone)", not midOn)
 end
 
 -- Even-fight round 2 (D24): the hold stands only while the heroes hitting us pay for it in creep aggro (our lane creeps within

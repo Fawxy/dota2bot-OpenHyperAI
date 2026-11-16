@@ -1363,8 +1363,7 @@ function ____exports.LeaveWhy(bot, st, r, budget, now, joins)
         st.stayLogged = nil
         return nil, "under"
     end
-    local lone = Ours.On("EvenStand") and Threat.LoneStand(bot, r)
-    if lone or Ours.On("HighStand") and Threat.HighStand(bot, r) then
+    if Ours.On(#r.reach == 1 and "EvenStand" or "HighStand") and Threat.Stand(bot, r) then
         st.overSince = nil
         if st.stayLogged ~= true then
             st.stayLogged = true
@@ -1372,7 +1371,7 @@ function ____exports.LeaveWhy(bot, st, r, budget, now, joins)
                 "retreat",
                 {
                     {"ph", "stay"},
-                    {"why", lone and "stand" or "high"},
+                    {"why", "stand"},
                     {
                         "pid",
                         bot:GetPlayerID()
