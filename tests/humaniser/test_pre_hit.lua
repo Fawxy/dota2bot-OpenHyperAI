@@ -236,6 +236,79 @@ do -- a reachable last hit on another creep due before our attack is ready again
 	check("find: a last hit on another creep due first blocks the pre-hit", PreHit.Find(bot, verbs) == nil)
 end
 
+-- Slice prehit-next: the tower's next target and its hits on it.
+do
+	local NT = PreHit.NEXT_TURN
+	-- killed by the tower's hit at 0.3 (fired 0.2 earlier): the next fires once its attack is ready, 0.81 after it fired
+	local h = PreHit.NextTowerHits(0.3, 0.3, 0.2, 0.4, 0.81, 6)
+	check("next hits: the first once the tower's attack is ready, plus the flight", near(h[1], 0.3 - 0.2 + 0.81 + 0.4))
+	check("next hits: then every period", near(h[2] - h[1], 0.81) and h[#h] <= 6)
+	-- killed by someone else long after the tower's last hit: the tower turns at once
+	local h2 = PreHit.NextTowerHits(2, 0.3, 0.2, 0.4, 0.81, 6)
+	check("next hits: a death off the tower's beat turns it at once", near(h2[1], 2 + NT + 0.4))
+end
+
+function Unit:GetBoundingRadius() return 16 end
+do -- NextTarget: the nearest enemy creep to the tower in its reach, not the current one, not a dead one
+	ResetWorld()
+	local tw = MakeUnit({ pid = -3, team = 2, loc = Vector(0, 0) })
+	local cur = MakeUnit({ pid = -2, team = 3, hp = 50, loc = Vector(100, 0) })
+	local a = MakeUnit({ pid = -5, team = 3, hp = 500, loc = Vector(500, 0) })
+	local b = MakeUnit({ pid = -6, team = 3, hp = 500, loc = Vector(300, 0) })
+	local dead = MakeUnit({ pid = -7, team = 3, hp = 500, loc = Vector(200, 0) })
+	dead.alive = false
+	local out = MakeUnit({ pid = -8, team = 3, hp = 500, loc = Vector(900, 0) })
+	for _, c in ipairs({ cur, a, b, dead, out }) do c.creep = true end
+	check("next target: the nearest live creep but the current", PreHit.NextTarget(tw, cur, { cur, a, b, dead, out }, 788) == b)
+	check("next target: none in reach", PreHit.NextTarget(tw, cur, { cur, out }, 788) == nil)
+end
+
+do -- Find on the next target: the tower kills its current creep at 0.3 (no plan of ours can reach it); the next, 420 HP,
+	-- is a go before the tower's first hit on it
+	ResetWorld()
+	local cur = MakeUnit({ pid = -2, team = 3, hp = 40, loc = Vector(100, 0) })
+	local nxt = MakeUnit({ pid = -5, team = 3, hp = 420, loc = Vector(150, 40) })
+	cur.creep, nxt.creep = true, true
+	local tw = MakeUnit({ pid = -3, team = 2, loc = Vector(-400, 0) })
+	tw.target, tw.damage, tw.range = cur, 80, 700
+	TOWERS = { tw }
+	local bot = MakeUnit({ pid = 1, team = 2, loc = Vector(0, 0) })
+	bot.period, bot.range = 1.4, 150
+	local saved = Unit.GetNearbyLaneCreeps
+	function Unit:GetNearbyLaneCreeps(_, enemies) if enemies then return { cur, nxt } end return {} end
+	local fCur = { hp = 40, regen = 0, hits = { { t = 0.3, damage = 80, by = "tower" } }, unphased = 0, unphasedTower = false, unphasedHits = {} }
+	fCur.at = function(t) return t >= 0.3 and -300 or 40 end -- past the fitted error's tail: dead
+	local fNext = { hp = 420, regen = 0, hits = {}, unphased = 0, unphasedTower = false, unphasedHits = {} }
+	fNext.at = function() return 420 end
+	local verbs = {
+		hpForecast = function(_, c) return c == cur and fCur or fNext end,
+		forecastHp = function(f, t) return f.at(t) end,
+		ownHitTime = function() return FIRST end,
+		laneTargets = function() return {} end,
+	}
+	local ok, pre = pcall(PreHit.Find, bot, verbs)
+	check("find next: a pre-hit on the tower's next creep", ok and pre ~= nil and pre.kind == "prehit" and pre.creep == nxt)
+	local n = PreHit.NoteOf(1, nxt)
+	check("find next: noted as the next target", n ~= nil and n.next == true)
+	-- the tower takes the next creep: one tower_pick line, the prediction right
+	local Tel = require("bots/FunLib/humaniser/telemetry")
+	local was = Tel.Get().Enable
+	Tel.Get().Enable = true
+	local lines = {}
+	Tel.SetSink(function(l) lines[#lines + 1] = l end)
+	cur.alive = false
+	tw.target = nxt
+	T = T + 0.1
+	pcall(PreHit.Find, bot, verbs)
+	pcall(PreHit.Find, bot, verbs)
+	local picks = {}
+	for _, l in ipairs(lines) do if l:find("ev=tower_pick", 1, true) then picks[#picks + 1] = l end end
+	check("tower pick: one line once the tower takes the predicted creep, ok=1 rank=1", #picks == 1 and picks[1]:find("ok=1", 1, true) ~= nil and picks[1]:find("rank=1", 1, true) ~= nil, picks[1])
+	Tel.Get().Enable = was
+	Tel.SetSink(nil)
+	Unit.GetNearbyLaneCreeps = saved
+end
+
 do -- the switch off: Find offers nothing
 	Customize.Ours.PreHit = false
 	local bot, _, verbs = world(420)

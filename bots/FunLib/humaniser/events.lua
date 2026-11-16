@@ -1159,6 +1159,7 @@ ____exports.EVENTS = {
         hk = "num",
         mg = "num",
         pk = "num",
+        nx = "bool",
         ol = "num",
         contested = "bool"
     },
@@ -1182,7 +1183,20 @@ ____exports.EVENTS = {
         fdies = "num",
         hs = "str",
         fs = "str",
-        fire = "str"
+        fire = "str",
+        nx = "bool"
+    },
+    tower_pick = {
+        ok = "bool",
+        rank = "num",
+        n = "num",
+        d = "num",
+        dn = "num",
+        atk = "bool",
+        atkh = "bool",
+        natk = "num",
+        rg = "bool",
+        prev = "bool"
     },
     trade_no = {
         pid = "num",

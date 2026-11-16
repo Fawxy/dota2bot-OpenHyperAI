@@ -9,7 +9,9 @@
  * (`killFrom`), then the one whose kill HP sits furthest from both edges (prhchk2-5, 04/11/2026). The plan is remade every scan from the creep's real HP, so a hit the forecast missed
  * changes the next decision rather than the result. The swing is laneFarm's `prehit` (one `attackAndConfirm`); the kill is the
  * normal last-hit pick's and verb's. A pre-hit never spends the swing a last hit on another creep needs: none may come due
- * before our attack is ready again (user 04/11/2026).
+ * before our attack is ready again (user 04/11/2026). While the tower's current target leaves our swing free, the same plan
+ * runs on the creep the tower will take next (`NextTarget`, `NextTowerHits`; slice prehit-next, 17/11/2026), so the pre-hit
+ * can land before the tower's first hit on it.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { DamageType, Unit } from "bots/ts_libs/dota";
@@ -32,6 +34,15 @@ export const AFTER = 0.1;
 export const MAX_PREHITS = 2;
 /** Own towers within this of the bot are read for their attack target (tower range 700 plus the reach of a short walk). */
 const TOWER_RADIUS = 1200;
+/**
+ * Forecast for the tower's predicted next target (slice prehit-next): its tower hits start only once the current target
+ * dies, about 1-2 s out, and a creep takes four or more tower hits, so the plan needs longer than HORIZON. `judgement`.
+ */
+export const NEXT_HORIZON = 6;
+/** Seconds from the current target's death to the tower's attack on the next leaving (acquiring and its wind-up). `judgement`. */
+export const NEXT_TURN = 0.1;
+/** Tower attack projectile speed when the read fails (Dota towers: 750). */
+const TOWER_PROJECTILE = 750;
 
 /** A plan of our swings on one creep: when each lands (seconds from now), the last one the kill. */
 export interface Plan {
@@ -203,6 +214,49 @@ interface Note {
     t0?: number;
     lo?: number;
     plan?: Plan;
+    /** The creep is the tower's predicted next target, not its current one. */
+    next?: boolean;
+}
+
+/**
+ * The tower's next target once `current` dies, as read now: the enemy lane creep in its reach nearest the tower, other than
+ * `current` (the hypothesis ev=tower_pick grades; the published rule could not be read, 17/11/2026). `creeps` the enemy lane
+ * creeps near; `reach` the tower's attack range plus its radius.
+ */
+export function NextTarget(this: void, tower: Unit, current: Unit | undefined, creeps: Unit[], reach: number): Unit | undefined {
+    let best: Unit | undefined;
+    let bestD = math.huge;
+    for (const c of creeps) {
+        if (c === current || c.IsNull() || !c.IsAlive()) continue;
+        const d = GetUnitToUnitDistance(tower, c);
+        if (d <= reach + (c.GetBoundingRadius() ?? 0) && d < bestD) {
+            best = c;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+/**
+ * When the tower's hits land on its next target (seconds from now, up to `horizon`): its current target dies at `dies`; its
+ * last hit on it landed at `last` (undefined if none before the death) after `travelCur` s of flight; the next is `travelNext`
+ * away in flight. The tower fires on the next once its attack is ready (`period` after the last fired) and not before the
+ * death plus NEXT_TURN, then every `period`.
+ */
+export function NextTowerHits(
+    this: void,
+    dies: number,
+    last: number | undefined,
+    travelCur: number,
+    travelNext: number,
+    period: number,
+    horizon: number,
+): number[] {
+    let fire = dies + NEXT_TURN;
+    if (last !== undefined) fire = math.max(fire, last - travelCur + period);
+    const out: number[] = [];
+    for (let t = fire + travelNext; t <= horizon; t += period) out.push(t);
+    return out;
 }
 const notes: Record<number, Note | undefined> = {};
 
@@ -228,14 +282,69 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
     if (f.unphasedTower) return [{ verdict: "phase", creep }, undefined];
     const towers: number[] = [];
     for (const h of f.hits) if (h.by === "tower") towers.push(h.t);
+    const hpAt = (t: number): number => verbs.forecastHp(f, t);
+    return decide(bot, me, verbs, tower, target, walk, f, hpAt, towers, HORIZON, false);
+}
+
+/**
+ * The verdict on the tower's predicted next target (`NextTarget`) while it is still on `current`: the current one's forecast
+ * gives its death and the tower's last hit on it, `NextTowerHits` the tower's hits on the next from then, added to the next
+ * creep's own forecast (its current attackers, no tower).
+ */
+function considerNext(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: Unit, current: Unit, next: Unit): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
+    if (current.IsNull() || !current.IsAlive() || next.IsNull() || !next.IsAlive()) return [undefined, undefined];
+    const speed = math.max(100, bot.GetCurrentMovementSpeed());
+    const walk = math.max(0, GetUnitToUnitDistance(bot, next) - bot.GetAttackRange()) / speed;
+    if (walk > LanePick.MAX_WALK) return [{ verdict: "far", next: true }, undefined];
+    const cur = current as unknown as Lib.TaskCreep;
+    const fc = verbs.hpForecast(me, cur, NEXT_HORIZON);
+    if (fc.unphasedTower) return [{ verdict: "phase", next: true }, undefined];
+    let dies: number | undefined;
+    for (let t = 0; t <= NEXT_HORIZON && dies === undefined; t += STEP) if (verbs.forecastHp(fc, t) <= 0) dies = t;
+    if (dies === undefined) return [{ verdict: "none", next: true }, undefined];
+    let last: number | undefined;
+    for (const h of fc.hits) if (h.by === "tower" && h.t <= dies + STEP) last = last === undefined ? h.t : math.max(last, h.t);
+    const tu = tower as unknown as Lib.TaskUnit;
+    const read = tu.GetSecondsPerAttack?.();
+    const tperiod = read !== undefined && read > 0 ? read : 1;
+    const ps = tu.GetAttackProjectileSpeed?.();
+    const pspeed = ps !== undefined && ps > 0 ? ps : TOWER_PROJECTILE;
+    const towers = NextTowerHits(dies, last, GetUnitToUnitDistance(tower, current) / pspeed, GetUnitToUnitDistance(tower, next) / pspeed, tperiod, NEXT_HORIZON);
+    const creep = next as unknown as Lib.TaskCreep;
+    const f = verbs.hpForecast(me, creep, NEXT_HORIZON);
+    // Another of our towers on it already: the current-target path reads it.
+    for (const h of f.hits) if (h.by === "tower") return [undefined, undefined];
+    const tw = next.GetActualIncomingDamage(tower.GetAttackDamage(), DamageType.Physical);
+    const hpAt = (t: number): number => {
+        let n = 0;
+        for (const h of towers) if (h <= t) n++;
+        return verbs.forecastHp(f, t) - tw * n;
+    };
+    return decide(bot, me, verbs, tower, next, walk, f, hpAt, towers, NEXT_HORIZON, true);
+}
+
+/** The plan on `target` and its verdict; on `go` the pre-hit and the probe's watch. */
+function decide(
+    bot: Unit,
+    me: Lib.TaskUnit,
+    verbs: typeof Lib.Verbs,
+    tower: Unit,
+    target: Unit,
+    walk: number,
+    f: Lib.Verbs.HpForecast,
+    hpAt: (this: void, t: number) => number,
+    towers: number[],
+    horizon: number,
+    next: boolean,
+): [Note | undefined, Lib.Verbs.LaneTarget | undefined] {
+    const creep = target as unknown as Lib.TaskCreep;
     const first = walk + verbs.ownHitTime(me, creep);
     const read = me.GetSecondsPerAttack?.();
     const period = read !== undefined && read > 0 ? read : WorldFacts.Fallback("attack_period", 1.7);
     const variance = me.GetBaseDamageVariance?.() ?? 0;
     const lo = target.GetActualIncomingDamage(bot.GetAttackDamage() - variance, DamageType.Physical);
     const mean = target.GetActualIncomingDamage(bot.GetAttackDamage(), DamageType.Physical);
-    const hpAt = (t: number): number => verbs.forecastHp(f, t);
-    const plan = Plan(hpAt, HORIZON, towers, first, period, lo, mean);
+    const plan = Plan(hpAt, horizon, towers, first, period, lo, mean);
     let verdict: Verdict;
     if (plan === undefined) verdict = "none";
     else if (plan.swings[0] > first + 1e-6) verdict = "wait";
@@ -247,17 +356,18 @@ function consider(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs, tower: U
             if (o.creep !== creep && LanePick.Reachable(o) && o.eta <= first + period) verdict = "lh";
         }
     }
-    const note: Note = { verdict, creep, hp: f.hp, t0: first, lo, plan };
+    const note: Note = { verdict, creep, hp: f.hp, t0: first, lo, plan, next: next ? true : undefined };
     if (verdict !== "go") return [note, undefined];
-    startWatch(bot, verbs, tower, target, f, lo);
+    startWatch(bot, verbs, tower, target, f, lo, next);
     let dies = math.huge;
-    for (let t = 0; t <= HORIZON && dies === math.huge; t += STEP) if (hpAt(t) <= 0) dies = t;
+    for (let t = 0; t <= horizon && dies === math.huge; t += STEP) if (hpAt(t) <= 0) dies = t;
     return [note, { creep, kind: "prehit", eta: walk, due: 0, walk, dies, ranged: LanePick.IsRanged(creep) }];
 }
 
 /**
  * The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
- * attacking, within a MAX_WALK walk. `verbs` is the engine bundle's Verbs (hpForecast, ownHitTime, laneTargets).
+ * attacking, within a MAX_WALK walk, then each tower's predicted next target. `verbs` is the engine bundle's Verbs
+ * (hpForecast, forecastHp, ownHitTime, laneTargets).
  */
 export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget | undefined {
     if (!Applies(bot)) return undefined;
@@ -265,11 +375,26 @@ export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget |
     const me = bot as unknown as Lib.TaskUnit;
     let best: Lib.Verbs.LaneTarget | undefined;
     let note: Note | undefined;
-    for (const tower of bot.GetNearbyTowers(TOWER_RADIUS, false) ?? []) {
+    const towersNear = bot.GetNearbyTowers(TOWER_RADIUS, false) ?? [];
+    for (const tower of towersNear) {
         const target = tower.GetAttackTarget();
         if (best === undefined && target !== undefined && target !== null) {
             const [n, pre] = consider(bot, me, verbs, tower, target);
             // A far creep's verdict never hides a nearer one's.
+            if (n !== undefined && (note === undefined || n.verdict !== "far")) note = n;
+            best = pre;
+        }
+    }
+    // The tower's next target, while its current one leaves our swing free: no pre-hit, kill or planned kill on it.
+    const creeps = bot.GetNearbyLaneCreeps(1600, true) ?? [];
+    const free = best === undefined && (note === undefined || (note.verdict !== "go" && note.verdict !== "kills" && note.verdict !== "wait" && note.verdict !== "lh"));
+    for (const tower of towersNear) {
+        const target = tower.GetAttackTarget();
+        const current = target !== undefined && target !== null && !target.IsNull() && target.IsAlive() && target.IsCreep() && target.GetTeam() !== bot.GetTeam() ? target : undefined;
+        const next = current !== undefined ? NextTarget(tower, current, creeps, WorldFacts.TowerReach(tower, 788)) : undefined;
+        notePick(tower, current, next, creeps);
+        if (free && best === undefined && current !== undefined && next !== undefined) {
+            const [n, pre] = considerNext(bot, me, verbs, tower, current, next);
             if (n !== undefined && (note === undefined || n.verdict !== "far")) note = n;
             best = pre;
         }
@@ -280,6 +405,55 @@ export function Find(bot: Unit, verbs: typeof Lib.Verbs): Lib.Verbs.LaneTarget |
         LanePick.NoteVerdict(pid, DotaTime(), note.verdict);
     }
     return best;
+}
+
+/**
+ * The next-target read's probe (ev=tower_pick): per own tower, its creep target and the creep `NextTarget` predicted on the
+ * last scan; when the tower's target moves from one enemy creep to another, one line grades the prediction and says where
+ * the taken creep stood. Shared by every core scanning the tower (one module table per team), so one line per switch.
+ */
+interface PickState {
+    target: Unit;
+    predicted?: Unit;
+    /** DotaTime the tower was last seen on `target`. */
+    at: number;
+}
+const picks = new LuaTable<Unit, PickState>();
+/** A switch counts when the old target was seen this recently (scans skipped, a frame on no target). `judgement`. */
+const PICK_GAP = 1;
+
+function notePick(tower: Unit, current: Unit | undefined, next: Unit | undefined, creeps: Unit[]): void {
+    const prev = picks.get(tower);
+    // An idle tower, or one on a hero: kept; a creep taken more than PICK_GAP later was not chosen after one.
+    if (current === undefined) return;
+    if (prev !== undefined && prev.target !== current && DotaTime() - prev.at <= PICK_GAP) {
+        const reach = WorldFacts.TowerReach(tower, 788);
+        const d = GetUnitToUnitDistance(tower, current);
+        let rank = 1, n = 0, dn = math.huge, natk = 0;
+        for (const c of creeps) {
+            if (c.IsNull() || !c.IsAlive()) continue;
+            const dc = GetUnitToUnitDistance(tower, c);
+            if (dc > reach + (c.GetBoundingRadius() ?? 0)) continue;
+            n++;
+            if (c !== current && dc < d) rank++;
+            if (dc < dn) dn = dc;
+            if (c.GetAttackTarget() === tower) natk++;
+        }
+        const ct = current.GetAttackTarget();
+        Telemetry.Event("tower_pick", [
+            ["ok", prev.predicted === current],
+            ["rank", rank],
+            ["n", n],
+            ["d", math.floor(d)],
+            ["dn", dn === math.huge ? -1 : math.floor(dn)],
+            ["atk", ct === tower],
+            ["atkh", ct !== undefined && ct !== null && !ct.IsNull() && ct.IsHero()],
+            ["natk", natk],
+            ["rg", LanePick.IsRanged(current as unknown as Lib.TaskCreep)],
+            ["prev", !prev.target.IsNull() && prev.target.IsAlive()],
+        ]);
+    }
+    picks.set(tower, { target: current, predicted: next, at: DotaTime() });
 }
 
 /**
@@ -307,7 +481,7 @@ interface Watch {
 const WATCH_FIRES = 30;
 const watches: Record<number, Watch | undefined> = {};
 
-function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit, f: Lib.Verbs.HpForecast, lo: number): void {
+function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit, f: Lib.Verbs.HpForecast, lo: number, next: boolean): void {
     const pid = bot.GetPlayerID();
     if (watches[pid] !== undefined) return;
     let kt = 0, kc = 0, kh = 0, ks = 0, td = -1;
@@ -333,6 +507,7 @@ function startWatch(bot: Unit, verbs: typeof Lib.Verbs, tower: Unit, creep: Unit
             ["ud", math.floor(f.unphased)],
             ["ac", ac],
             ["ah", ah],
+            ["nx", next ? true : undefined],
         ],
     };
     sampleWatch(bot, verbs);

@@ -510,6 +510,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                     ["hk", n?.plan !== undefined ? math.floor(n.plan.hpKill) : undefined],
                     ["mg", n?.plan !== undefined ? math.floor(n.plan.margin) : undefined],
                     ["pk", n?.plan !== undefined ? math.floor(n.plan.odds * 100) / 100 : undefined],
+                    ["nx", n?.next === true ? true : undefined],
                     ["ol", ol],
                     ["contested", contested],
                 ]);

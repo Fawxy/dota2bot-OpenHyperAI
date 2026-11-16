@@ -109,7 +109,7 @@ local function __TS__Spread(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local startWatch, sampleWatch, noteFires, forecastDeath, WATCH_FOR, WATCH_EVERY, WATCH_SAMPLES, WATCH_FIRES, watches
+local better, landings, killFrom, search, decide, notePick, startWatch, sampleWatch, noteFires, forecastDeath, picks, PICK_GAP, WATCH_FOR, WATCH_EVERY, WATCH_SAMPLES, WATCH_FIRES, watches
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -117,7 +117,331 @@ local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
-function startWatch(bot, verbs, tower, creep, f, lo)
+function better(a, b)
+    if b == nil then
+        return true
+    end
+    if math.abs(a.odds - b.odds) > 1e-9 then
+        return a.odds > b.odds
+    end
+    if a.margin ~= b.margin then
+        return a.margin > b.margin
+    end
+    if #a.swings ~= #b.swings then
+        return #a.swings < #b.swings
+    end
+    return a.swings[#a.swings] < b.swings[#b.swings]
+end
+function landings(towers, earliest)
+    local out = {}
+    local clear = true
+    for ____, t in ipairs(towers) do
+        if t > earliest - ____exports.AFTER and t <= earliest then
+            clear = false
+        end
+    end
+    if clear then
+        out[#out + 1] = earliest
+    end
+    for ____, t in ipairs(towers) do
+        if t + ____exports.AFTER > earliest then
+            out[#out + 1] = t + ____exports.AFTER
+        end
+    end
+    return out
+end
+function killFrom(hpAt, horizon, towers, earliest, dealt, lo, err)
+    local odds = 0
+    local best
+    for ____, at in ipairs(landings(towers, earliest)) do
+        do
+            local __continue23
+            repeat
+                if at > horizon then
+                    break
+                end
+                local hp = hpAt(at) - dealt
+                local p = err(at, hp) - err(at, hp - lo)
+                if p <= 0 then
+                    __continue23 = true
+                    break
+                end
+                odds = odds + p
+                local here = {
+                    swings = {at},
+                    hpKill = hp,
+                    margin = math.min(hp, lo - hp),
+                    odds = p
+                }
+                if better(here, best) then
+                    best = here
+                end
+                __continue23 = true
+            until true
+            if not __continue23 then
+                break
+            end
+        end
+    end
+    if best == nil then
+        return nil
+    end
+    best.odds = math.min(1, odds)
+    return best
+end
+function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, mean, err)
+    local best = killFrom(
+        hpAt,
+        horizon,
+        towers,
+        earliest,
+        dealt,
+        lo,
+        err
+    )
+    if pre >= ____exports.MAX_PREHITS then
+        return best
+    end
+    for ____, at in ipairs(landings(towers, earliest)) do
+        if at > horizon then
+            break
+        end
+        local hp = hpAt(at) - dealt
+        if hp > lo then
+            local rest = search(
+                hpAt,
+                horizon,
+                towers,
+                at + period,
+                dealt + mean,
+                pre + 1,
+                period,
+                lo,
+                mean,
+                err
+            )
+            if rest ~= nil then
+                local plan = {
+                    swings = {
+                        at,
+                        unpack(rest.swings)
+                    },
+                    hpKill = rest.hpKill,
+                    margin = rest.margin,
+                    odds = rest.odds
+                }
+                if better(plan, best) then
+                    best = plan
+                end
+            end
+        end
+    end
+    return best
+end
+--- The plan for a creep whose forecast HP without our hits is `hpAt` and whose tower hits land at `towers` (seconds from now,
+-- sorted): our first swing can land at `first` (the walk plus our hit time) and every `period` after one, our low-roll damage
+-- after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes);
+-- `err` the forecast's error (default the fitted one). Undefined when no plan within the horizon has a chance of a kill.
+-- A plan of our swings on one creep: when each lands (seconds from now), the last one the kill.
+function ____exports.Plan(hpAt, horizon, towers, first, period, lo, mean, err)
+    if err == nil then
+        err = ____exports.FittedError
+    end
+    return search(
+        hpAt,
+        horizon,
+        towers,
+        first,
+        0,
+        0,
+        period,
+        lo,
+        mean,
+        err
+    )
+end
+function decide(bot, me, verbs, tower, target, walk, f, hpAt, towers, horizon, next)
+    local creep = target
+    local first = walk + verbs.ownHitTime(me, creep)
+    local ____this_5
+    ____this_5 = me
+    local ____opt_4 = ____this_5.GetSecondsPerAttack
+    local read = ____opt_4 and ____opt_4(____this_5)
+    local period = read ~= nil and read > 0 and read or WorldFacts.Fallback("attack_period", 1.7)
+    local ____this_7
+    ____this_7 = me
+    local ____opt_6 = ____this_7.GetBaseDamageVariance
+    local variance = ____opt_6 and ____opt_6(____this_7) or 0
+    local lo = target:GetActualIncomingDamage(
+        bot:GetAttackDamage() - variance,
+        DamageType.Physical
+    )
+    local mean = target:GetActualIncomingDamage(
+        bot:GetAttackDamage(),
+        DamageType.Physical
+    )
+    local plan = ____exports.Plan(
+        hpAt,
+        horizon,
+        towers,
+        first,
+        period,
+        lo,
+        mean
+    )
+    local verdict
+    if plan == nil then
+        verdict = "none"
+    elseif plan.swings[1] > first + 0.000001 then
+        verdict = "wait"
+    elseif #plan.swings == 1 then
+        verdict = "kills"
+    else
+        verdict = "go"
+    end
+    if verdict == "go" then
+        for ____, o in ipairs(verbs.laneTargets(me, {within = first + period, deny = false})) do
+            if o.creep ~= creep and LanePick.Reachable(o) and o.eta <= first + period then
+                verdict = "lh"
+            end
+        end
+    end
+    local ____verdict_9 = verdict
+    local ____creep_10 = creep
+    local ____f_hp_11 = f.hp
+    local ____lo_12 = lo
+    local ____plan_13 = plan
+    local ____next_8
+    if next then
+        ____next_8 = true
+    else
+        ____next_8 = nil
+    end
+    local note = {
+        verdict = ____verdict_9,
+        creep = ____creep_10,
+        hp = ____f_hp_11,
+        t0 = first,
+        lo = ____lo_12,
+        plan = ____plan_13,
+        next = ____next_8
+    }
+    if verdict ~= "go" then
+        return {note, nil}
+    end
+    startWatch(
+        bot,
+        verbs,
+        tower,
+        target,
+        f,
+        lo,
+        next
+    )
+    local dies = math.huge
+    do
+        local t = 0
+        while t <= horizon and dies == math.huge do
+            if hpAt(t) <= 0 then
+                dies = t
+            end
+            t = t + ____exports.STEP
+        end
+    end
+    return {
+        note,
+        {
+            creep = creep,
+            kind = "prehit",
+            eta = walk,
+            due = 0,
+            walk = walk,
+            dies = dies,
+            ranged = LanePick.IsRanged(creep)
+        }
+    }
+end
+function notePick(tower, current, next, creeps)
+    local prev = picks[tower]
+    if current == nil then
+        return
+    end
+    if prev ~= nil and prev.target ~= current and DotaTime() - prev.at <= PICK_GAP then
+        local reach = WorldFacts.TowerReach(tower, 788)
+        local d = GetUnitToUnitDistance(tower, current)
+        local rank = 1
+        local n = 0
+        local dn = math.huge
+        local natk = 0
+        for ____, c in ipairs(creeps) do
+            do
+                local __continue99
+                repeat
+                    if c:IsNull() or not c:IsAlive() then
+                        __continue99 = true
+                        break
+                    end
+                    local dc = GetUnitToUnitDistance(tower, c)
+                    if dc > reach + (c:GetBoundingRadius() or 0) then
+                        __continue99 = true
+                        break
+                    end
+                    n = n + 1
+                    if c ~= current and dc < d then
+                        rank = rank + 1
+                    end
+                    if dc < dn then
+                        dn = dc
+                    end
+                    if c:GetAttackTarget() == tower then
+                        natk = natk + 1
+                    end
+                    __continue99 = true
+                until true
+                if not __continue99 then
+                    break
+                end
+            end
+        end
+        local ct = current:GetAttackTarget()
+        Telemetry.Event(
+            "tower_pick",
+            {
+                {"ok", prev.predicted == current},
+                {"rank", rank},
+                {"n", n},
+                {
+                    "d",
+                    math.floor(d)
+                },
+                {
+                    "dn",
+                    dn == math.huge and -1 or math.floor(dn)
+                },
+                {"atk", ct == tower},
+                {
+                    "atkh",
+                    ct ~= nil and ct ~= nil and not ct:IsNull() and ct:IsHero()
+                },
+                {"natk", natk},
+                {
+                    "rg",
+                    LanePick.IsRanged(current)
+                },
+                {
+                    "prev",
+                    not prev.target:IsNull() and prev.target:IsAlive()
+                }
+            }
+        )
+    end
+    picks[tower] = {
+        target = current,
+        predicted = next,
+        at = DotaTime()
+    }
+end
+function startWatch(bot, verbs, tower, creep, f, lo, next)
     local pid = bot:GetPlayerID()
     if watches[pid] ~= nil then
         return
@@ -129,10 +453,10 @@ function startWatch(bot, verbs, tower, creep, f, lo)
     local td = -1
     for ____, h in ipairs(f.hits) do
         do
-            local __continue68
+            local __continue108
             repeat
                 if h.t > 1 then
-                    __continue68 = true
+                    __continue108 = true
                     break
                 end
                 if h.by == "tower" then
@@ -145,9 +469,9 @@ function startWatch(bot, verbs, tower, creep, f, lo)
                 else
                     ks = ks + 1
                 end
-                __continue68 = true
+                __continue108 = true
             until true
-            if not __continue68 then
+            if not __continue108 then
                 break
             end
         end
@@ -168,16 +492,16 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         tower:GetAttackDamage(),
         DamageType.Physical
     )
-    local ____creep_8 = creep
-    local ____f_9 = f
-    local ____DotaTime_result_10 = DotaTime()
-    local ____temp_11 = -1
-    local ____temp_12 = {}
-    local ____temp_13 = {}
-    local ____GameTime_result_14 = GameTime()
-    local ____temp_15 = {}
-    local ____temp_16 = {}
-    local ____array_7 = __TS__SparseArrayNew(
+    local ____creep_20 = creep
+    local ____f_21 = f
+    local ____DotaTime_result_22 = DotaTime()
+    local ____temp_23 = -1
+    local ____temp_24 = {}
+    local ____temp_25 = {}
+    local ____GameTime_result_26 = GameTime()
+    local ____temp_27 = {}
+    local ____temp_28 = {}
+    local ____array_19 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "hp",
@@ -196,15 +520,15 @@ function startWatch(bot, verbs, tower, creep, f, lo)
             math.floor(td)
         }
     )
-    local ____math_floor_6 = math.floor
-    local ____this_5
-    ____this_5 = tower
-    local ____opt_4 = ____this_5.GetSecondsPerAttack
+    local ____math_floor_17 = math.floor
+    local ____this_16
+    ____this_16 = tower
+    local ____opt_15 = ____this_16.GetSecondsPerAttack
     __TS__SparseArrayPush(
-        ____array_7,
+        ____array_19,
         {
             "twp",
-            ____math_floor_6((____opt_4 and ____opt_4(____this_5) or -1) * 100) / 100
+            ____math_floor_17((____opt_15 and ____opt_15(____this_16) or -1) * 100) / 100
         },
         {"kt", kt},
         {"kc", kc},
@@ -218,17 +542,24 @@ function startWatch(bot, verbs, tower, creep, f, lo)
         {"ac", ac},
         {"ah", ah}
     )
+    local ____next_18
+    if next then
+        ____next_18 = true
+    else
+        ____next_18 = nil
+    end
+    __TS__SparseArrayPush(____array_19, {"nx", ____next_18})
     watches[pid] = {
-        creep = ____creep_8,
-        f = ____f_9,
-        t = ____DotaTime_result_10,
-        last = ____temp_11,
-        hs = ____temp_12,
-        fs = ____temp_13,
-        g0 = ____GameTime_result_14,
-        lat = ____temp_15,
-        fire = ____temp_16,
-        fields = {__TS__SparseArraySpread(____array_7)}
+        creep = ____creep_20,
+        f = ____f_21,
+        t = ____DotaTime_result_22,
+        last = ____temp_23,
+        hs = ____temp_24,
+        fs = ____temp_25,
+        g0 = ____GameTime_result_26,
+        lat = ____temp_27,
+        fire = ____temp_28,
+        fields = {__TS__SparseArraySpread(____array_19)}
     }
     sampleWatch(bot, verbs)
 end
@@ -247,17 +578,17 @@ function sampleWatch(bot, verbs)
         end
         w.last = dt
         local r = math.floor(dt * 100) / 100
-        local ____w_hs_17 = w.hs
-        ____w_hs_17[#____w_hs_17 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
-        local ____w_fs_18 = w.fs
-        ____w_fs_18[#____w_fs_18 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
+        local ____w_hs_29 = w.hs
+        ____w_hs_29[#____w_hs_29 + 1] = (tostring(r) .. ":") .. tostring(math.floor(w.creep:GetHealth()))
+        local ____w_fs_30 = w.fs
+        ____w_fs_30[#____w_fs_30 + 1] = tostring(math.floor(verbs.forecastHp(w.f, dt)))
         return
     end
     watches[pid] = nil
-    local ____Telemetry_Event_20 = Telemetry.Event
-    local ____array_19 = __TS__SparseArrayNew(__TS__Spread(w.fields))
+    local ____Telemetry_Event_32 = Telemetry.Event
+    local ____array_31 = __TS__SparseArrayNew(__TS__Spread(w.fields))
     __TS__SparseArrayPush(
-        ____array_19,
+        ____array_31,
         {
             "end",
             math.floor(dt * 100) / 100
@@ -280,9 +611,9 @@ function sampleWatch(bot, verbs)
             table.concat(w.fire, ",")
         }
     )
-    ____Telemetry_Event_20(
+    ____Telemetry_Event_32(
         "prehit_fc",
-        {__TS__SparseArraySpread(____array_19)}
+        {__TS__SparseArraySpread(____array_31)}
     )
 end
 function noteFires(bot, w)
@@ -294,8 +625,8 @@ function noteFires(bot, w)
         local before = w.lat[u]
         w.lat[u] = at
         if at > w.g0 and (before == nil or at > before) and #w.fire < WATCH_FIRES then
-            local ____w_fire_21 = w.fire
-            ____w_fire_21[#____w_fire_21 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
+            local ____w_fire_33 = w.fire
+            ____w_fire_33[#____w_fire_33 + 1] = (kind .. ":") .. tostring(math.floor((at - w.g0) * 100) / 100)
         end
     end
     note(bot, "S")
@@ -343,6 +674,13 @@ ____exports.AFTER = 0.1
 ____exports.MAX_PREHITS = 2
 --- Own towers within this of the bot are read for their attack target (tower range 700 plus the reach of a short walk).
 local TOWER_RADIUS = 1200
+--- Forecast for the tower's predicted next target (slice prehit-next): its tower hits start only once the current target
+-- dies, about 1-2 s out, and a creep takes four or more tower hits, so the plan needs longer than HORIZON. `judgement`.
+____exports.NEXT_HORIZON = 6
+--- Seconds from the current target's death to the tower's attack on the next leaving (acquiring and its wind-up). `judgement`.
+____exports.NEXT_TURN = 0.1
+--- Tower attack projectile speed when the read fails (Dota towers: 750).
+local TOWER_PROJECTILE = 750
 --- The forecast's error on a creep our tower is hitting: real HP below the forecast's, our own hits removed, at a time ahead
 -- (`ev=prehit_fc`, 353 probes from h2hhighstand1 and rig tower-prehit on1, 17/11/2026; `fitted`). It is 0 in about 40% of
 -- samples and 20-120 HP in most of the rest: our creeps join that the forecast, which counts current attackers, cannot see;
@@ -460,160 +798,55 @@ ____exports.FittedError = function(t, x)
 end
 --- No error: the forecast is the creep's HP (the planner before odds). A kill on exactly lo counts, on exactly 0 does not.
 ____exports.NoError = function(_t, x) return x > 0 and 1 or 0 end
-local function better(a, b)
-    if b == nil then
-        return true
-    end
-    if math.abs(a.odds - b.odds) > 1e-9 then
-        return a.odds > b.odds
-    end
-    if a.margin ~= b.margin then
-        return a.margin > b.margin
-    end
-    if #a.swings ~= #b.swings then
-        return #a.swings < #b.swings
-    end
-    return a.swings[#a.swings] < b.swings[#b.swings]
+function ____exports.Applies(bot)
+    return Ours.On("PreHit") and CoreLastHit.Applies(bot)
 end
---- Where a swing may land from `earliest`: then, unless a tower hit falls in the AFTER before it, and just after each later tower hit.
-local function landings(towers, earliest)
-    local out = {}
-    local clear = true
-    for ____, t in ipairs(towers) do
-        if t > earliest - ____exports.AFTER and t <= earliest then
-            clear = false
-        end
-    end
-    if clear then
-        out[#out + 1] = earliest
-    end
-    for ____, t in ipairs(towers) do
-        if t + ____exports.AFTER > earliest then
-            out[#out + 1] = t + ____exports.AFTER
-        end
-    end
-    return out
-end
---- The kill from an attack ready at `earliest`, with `dealt` HP of ours in the forecast. The last-hit verb swings on the creep's
--- real HP whenever a hit kills, so the kill is won if the real HP is in (0, lo] at any landing from `earliest` on, and lost to
--- the tower if it passes through the range before then: the chance sums, over those landings, the chance the forecast's error
--- puts the HP there in range (the ranges a tower hit apart do not overlap: its hit is over lo). The plan's kill swing is the
--- likeliest landing.
-local function killFrom(hpAt, horizon, towers, earliest, dealt, lo, err)
-    local odds = 0
+--- The tower's next target once `current` dies, as read now: the enemy lane creep in its reach nearest the tower, other than
+-- `current` (the hypothesis ev=tower_pick grades; the published rule could not be read, 17/11/2026). `creeps` the enemy lane
+-- creeps near; `reach` the tower's attack range plus its radius.
+function ____exports.NextTarget(tower, current, creeps, reach)
     local best
-    for ____, at in ipairs(landings(towers, earliest)) do
+    local bestD = math.huge
+    for ____, c in ipairs(creeps) do
         do
-            local __continue23
+            local __continue40
             repeat
-                if at > horizon then
+                if c == current or c:IsNull() or not c:IsAlive() then
+                    __continue40 = true
                     break
                 end
-                local hp = hpAt(at) - dealt
-                local p = err(at, hp) - err(at, hp - lo)
-                if p <= 0 then
-                    __continue23 = true
-                    break
+                local d = GetUnitToUnitDistance(tower, c)
+                if d <= reach + (c:GetBoundingRadius() or 0) and d < bestD then
+                    best = c
+                    bestD = d
                 end
-                odds = odds + p
-                local here = {
-                    swings = {at},
-                    hpKill = hp,
-                    margin = math.min(hp, lo - hp),
-                    odds = p
-                }
-                if better(here, best) then
-                    best = here
-                end
-                __continue23 = true
+                __continue40 = true
             until true
-            if not __continue23 then
+            if not __continue40 then
                 break
             end
         end
     end
-    if best == nil then
-        return nil
-    end
-    best.odds = math.min(1, odds)
     return best
 end
---- The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
--- spent: the kill from there (`killFrom`), or, where the forecast HP is above lo, a pre-hit of `mean` damage at one of the
--- landings followed by the best plan from one attack cycle later.
-local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, mean, err)
-    local best = killFrom(
-        hpAt,
-        horizon,
-        towers,
-        earliest,
-        dealt,
-        lo,
-        err
-    )
-    if pre >= ____exports.MAX_PREHITS then
-        return best
+--- When the tower's hits land on its next target (seconds from now, up to `horizon`): its current target dies at `dies`; its
+-- last hit on it landed at `last` (undefined if none before the death) after `travelCur` s of flight; the next is `travelNext`
+-- away in flight. The tower fires on the next once its attack is ready (`period` after the last fired) and not before the
+-- death plus NEXT_TURN, then every `period`.
+function ____exports.NextTowerHits(dies, last, travelCur, travelNext, period, horizon)
+    local fire = dies + ____exports.NEXT_TURN
+    if last ~= nil then
+        fire = math.max(fire, last - travelCur + period)
     end
-    for ____, at in ipairs(landings(towers, earliest)) do
-        if at > horizon then
-            break
-        end
-        local hp = hpAt(at) - dealt
-        if hp > lo then
-            local rest = search(
-                hpAt,
-                horizon,
-                towers,
-                at + period,
-                dealt + mean,
-                pre + 1,
-                period,
-                lo,
-                mean,
-                err
-            )
-            if rest ~= nil then
-                local plan = {
-                    swings = {
-                        at,
-                        unpack(rest.swings)
-                    },
-                    hpKill = rest.hpKill,
-                    margin = rest.margin,
-                    odds = rest.odds
-                }
-                if better(plan, best) then
-                    best = plan
-                end
-            end
+    local out = {}
+    do
+        local t = fire + travelNext
+        while t <= horizon do
+            out[#out + 1] = t
+            t = t + period
         end
     end
-    return best
-end
---- The plan for a creep whose forecast HP without our hits is `hpAt` and whose tower hits land at `towers` (seconds from now,
--- sorted): our first swing can land at `first` (the walk plus our hit time) and every `period` after one, our low-roll damage
--- after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes);
--- `err` the forecast's error (default the fitted one). Undefined when no plan within the horizon has a chance of a kill.
--- A plan of our swings on one creep: when each lands (seconds from now), the last one the kill.
-function ____exports.Plan(hpAt, horizon, towers, first, period, lo, mean, err)
-    if err == nil then
-        err = ____exports.FittedError
-    end
-    return search(
-        hpAt,
-        horizon,
-        towers,
-        first,
-        0,
-        0,
-        period,
-        lo,
-        mean,
-        err
-    )
-end
-function ____exports.Applies(bot)
-    return Ours.On("PreHit") and CoreLastHit.Applies(bot)
+    return out
 end
 local notes = {}
 --- The decision's numbers for the ev=prehit of the pre-hit on `creep`, if it was this bot's last one.
@@ -650,97 +883,117 @@ local function consider(bot, me, verbs, tower, target)
             towers[#towers + 1] = h.t
         end
     end
-    local first = walk + verbs.ownHitTime(me, creep)
-    local ____this_1
-    ____this_1 = me
-    local ____opt_0 = ____this_1.GetSecondsPerAttack
-    local read = ____opt_0 and ____opt_0(____this_1)
-    local period = read ~= nil and read > 0 and read or WorldFacts.Fallback("attack_period", 1.7)
-    local ____this_3
-    ____this_3 = me
-    local ____opt_2 = ____this_3.GetBaseDamageVariance
-    local variance = ____opt_2 and ____opt_2(____this_3) or 0
-    local lo = target:GetActualIncomingDamage(
-        bot:GetAttackDamage() - variance,
-        DamageType.Physical
-    )
-    local mean = target:GetActualIncomingDamage(
-        bot:GetAttackDamage(),
-        DamageType.Physical
-    )
     local function hpAt(t)
         return verbs.forecastHp(f, t)
     end
-    local plan = ____exports.Plan(
-        hpAt,
-        ____exports.HORIZON,
-        towers,
-        first,
-        period,
-        lo,
-        mean
-    )
-    local verdict
-    if plan == nil then
-        verdict = "none"
-    elseif plan.swings[1] > first + 0.000001 then
-        verdict = "wait"
-    elseif #plan.swings == 1 then
-        verdict = "kills"
-    else
-        verdict = "go"
-    end
-    if verdict == "go" then
-        for ____, o in ipairs(verbs.laneTargets(me, {within = first + period, deny = false})) do
-            if o.creep ~= creep and LanePick.Reachable(o) and o.eta <= first + period then
-                verdict = "lh"
-            end
-        end
-    end
-    local note = {
-        verdict = verdict,
-        creep = creep,
-        hp = f.hp,
-        t0 = first,
-        lo = lo,
-        plan = plan
-    }
-    if verdict ~= "go" then
-        return {note, nil}
-    end
-    startWatch(
+    return decide(
         bot,
+        me,
         verbs,
         tower,
         target,
+        walk,
         f,
-        lo
+        hpAt,
+        towers,
+        ____exports.HORIZON,
+        false
     )
-    local dies = math.huge
+end
+--- The verdict on the tower's predicted next target (`NextTarget`) while it is still on `current`: the current one's forecast
+-- gives its death and the tower's last hit on it, `NextTowerHits` the tower's hits on the next from then, added to the next
+-- creep's own forecast (its current attackers, no tower).
+local function considerNext(bot, me, verbs, tower, current, next)
+    if current:IsNull() or not current:IsAlive() or next:IsNull() or not next:IsAlive() then
+        return {nil, nil}
+    end
+    local speed = math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+    local walk = math.max(
+        0,
+        GetUnitToUnitDistance(bot, next) - bot:GetAttackRange()
+    ) / speed
+    if walk > LanePick.MAX_WALK then
+        return {{verdict = "far", next = true}, nil}
+    end
+    local cur = current
+    local fc = verbs.hpForecast(me, cur, ____exports.NEXT_HORIZON)
+    if fc.unphasedTower then
+        return {{verdict = "phase", next = true}, nil}
+    end
+    local dies
     do
         local t = 0
-        while t <= ____exports.HORIZON and dies == math.huge do
-            if hpAt(t) <= 0 then
+        while t <= ____exports.NEXT_HORIZON and dies == nil do
+            if verbs.forecastHp(fc, t) <= 0 then
                 dies = t
             end
             t = t + ____exports.STEP
         end
     end
-    return {
-        note,
-        {
-            creep = creep,
-            kind = "prehit",
-            eta = walk,
-            due = 0,
-            walk = walk,
-            dies = dies,
-            ranged = LanePick.IsRanged(creep)
-        }
-    }
+    if dies == nil then
+        return {{verdict = "none", next = true}, nil}
+    end
+    local last
+    for ____, h in ipairs(fc.hits) do
+        if h.by == "tower" and h.t <= dies + ____exports.STEP then
+            last = last == nil and h.t or math.max(last, h.t)
+        end
+    end
+    local tu = tower
+    local ____opt_0 = tu.GetSecondsPerAttack
+    local read = ____opt_0 and ____opt_0(tu)
+    local tperiod = read ~= nil and read > 0 and read or 1
+    local ____opt_2 = tu.GetAttackProjectileSpeed
+    local ps = ____opt_2 and ____opt_2(tu)
+    local pspeed = ps ~= nil and ps > 0 and ps or TOWER_PROJECTILE
+    local towers = ____exports.NextTowerHits(
+        dies,
+        last,
+        GetUnitToUnitDistance(tower, current) / pspeed,
+        GetUnitToUnitDistance(tower, next) / pspeed,
+        tperiod,
+        ____exports.NEXT_HORIZON
+    )
+    local creep = next
+    local f = verbs.hpForecast(me, creep, ____exports.NEXT_HORIZON)
+    for ____, h in ipairs(f.hits) do
+        if h.by == "tower" then
+            return {nil, nil}
+        end
+    end
+    local tw = next:GetActualIncomingDamage(
+        tower:GetAttackDamage(),
+        DamageType.Physical
+    )
+    local function hpAt(t)
+        local n = 0
+        for ____, h in ipairs(towers) do
+            if h <= t then
+                n = n + 1
+            end
+        end
+        return verbs.forecastHp(f, t) - tw * n
+    end
+    return decide(
+        bot,
+        me,
+        verbs,
+        tower,
+        next,
+        walk,
+        f,
+        hpAt,
+        towers,
+        ____exports.NEXT_HORIZON,
+        true
+    )
 end
 --- The pre-hit this core would make now, as a `prehit` LaneTarget, or undefined. Candidates: enemy lane creeps an own tower is
--- attacking, within a MAX_WALK walk. `verbs` is the engine bundle's Verbs (hpForecast, ownHitTime, laneTargets).
+-- attacking, within a MAX_WALK walk, then each tower's predicted next target. `verbs` is the engine bundle's Verbs
+-- (hpForecast, forecastHp, ownHitTime, laneTargets).
 function ____exports.Find(bot, verbs)
     if not ____exports.Applies(bot) then
         return nil
@@ -749,7 +1002,8 @@ function ____exports.Find(bot, verbs)
     local me = bot
     local best
     local note
-    for ____, tower in ipairs(bot:GetNearbyTowers(TOWER_RADIUS, false) or ({})) do
+    local towersNear = bot:GetNearbyTowers(TOWER_RADIUS, false) or ({})
+    for ____, tower in ipairs(towersNear) do
         local target = tower:GetAttackTarget()
         if best == nil and target ~= nil and target ~= nil then
             local n, pre = unpack(consider(
@@ -758,6 +1012,39 @@ function ____exports.Find(bot, verbs)
                 verbs,
                 tower,
                 target
+            ))
+            if n ~= nil and (note == nil or n.verdict ~= "far") then
+                note = n
+            end
+            best = pre
+        end
+    end
+    local creeps = bot:GetNearbyLaneCreeps(1600, true) or ({})
+    local free = best == nil and (note == nil or note.verdict ~= "go" and note.verdict ~= "kills" and note.verdict ~= "wait" and note.verdict ~= "lh")
+    for ____, tower in ipairs(towersNear) do
+        local target = tower:GetAttackTarget()
+        local current = target ~= nil and target ~= nil and not target:IsNull() and target:IsAlive() and target:IsCreep() and target:GetTeam() ~= bot:GetTeam() and target or nil
+        local ____temp_14
+        if current ~= nil then
+            ____temp_14 = ____exports.NextTarget(
+                tower,
+                current,
+                creeps,
+                WorldFacts.TowerReach(tower, 788)
+            )
+        else
+            ____temp_14 = nil
+        end
+        local next = ____temp_14
+        notePick(tower, current, next, creeps)
+        if free and best == nil and current ~= nil and next ~= nil then
+            local n, pre = unpack(considerNext(
+                bot,
+                me,
+                verbs,
+                tower,
+                current,
+                next
             ))
             if n ~= nil and (note == nil or n.verdict ~= "far") then
                 note = n
@@ -776,6 +1063,8 @@ function ____exports.Find(bot, verbs)
     end
     return best
 end
+picks = {}
+PICK_GAP = 1
 WATCH_FOR = 2.5
 WATCH_EVERY = 0.1
 WATCH_SAMPLES = 20
