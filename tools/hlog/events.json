@@ -1794,6 +1794,11 @@
    "tme": "num",
    "tf": "num",
    "dn": "num",
+   "fg": "str",
+   "fpo": "num",
+   "fpt": "num",
+   "ftd": "num",
+   "fs": "num",
    "did": "str",
    "xa": "str"
   },
@@ -2395,6 +2400,7 @@
    "po": "text",
    "pt": "text",
    "dm": "text",
+   "fg": "text",
    "did": "text",
    "xa": "text"
   },

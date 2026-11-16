@@ -30,7 +30,7 @@ const VERBS = {
     retreat_leave: ['leave', 'stay'],
     threat_gate: ['go', 'hold'],
     pair_join: ['join', 'out'],
-    core_trade: ['trade', 'kill', 'respect'],
+    core_trade: ['trade', 'kill', 'respect', 'fight'],
 };
 
 function listFixtures(dir) {

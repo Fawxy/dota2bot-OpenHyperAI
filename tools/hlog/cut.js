@@ -252,13 +252,21 @@ const DECISIONS = {
             if (cut.bu !== undefined) { w.bu = n('bu'); w.tm = n('tm'); }
             // Slice trade-free-cut / trade-free: question 2's inputs; with tf the driver asks it in place of gap.
             for (const k of ['ar', 'tar', 'tme', 'ko', 'kt', 'tf', 'dn', 'hb']) if (cut[k] !== undefined) w[k] = n(k);
+            // Slice fight-safe: the lane-fight gate's inputs; the driver adds its answer as a second action.
+            for (const k of ['fpo', 'fpt', 'ftd', 'fs']) if (cut[k] !== undefined) w[k] = n(k);
             return w;
         },
         // Slice hitback-fold: with `hb` (the target is hitting the core) the driver answers Exchange, logged as `xa`.
         check(game, cut, obs) {
             const a = obs.actions[0] || {};
-            const got = a.verb === 'respect' ? a.target : a.verb;
-            const want = tradeAnswer(cut);
+            let got = a.verb === 'respect' ? a.target : a.verb;
+            let want = tradeAnswer(cut);
+            // With fg logged the lane-fight gate's answer must replay too: `<answer>/<fg>`.
+            if (cut.fg !== undefined) {
+                const f = obs.actions.find(x => x.verb === 'fight');
+                got = `${got}/${f ? f.target : '?'}`;
+                want = `${want}/${cut.fg}`;
+            }
             return { same: got === want, got, want };
         },
         answer: (game, cut) => tradeAnswer(cut),

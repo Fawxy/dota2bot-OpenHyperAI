@@ -312,13 +312,48 @@ const primedAt: Record<number, number | undefined> = {};
 const rolledAt: Record<number, Record<number, number> | undefined> = {};
 
 /**
+ * Slice fight-safe (D19): the lane fight asks trade-safe's "is it safe?" in place of `behind`. It needs that slice's burst read
+ * (Gather fills `burst` only with TradeSafe on), so with TradeSafe off `behind` stays.
+ */
+function fightSafe(): boolean {
+    return Ours.On("FightSafe") && Ours.On("TradeSafe");
+}
+
+/**
  * The lane fight's own hard zeros on top of the library's (HP floor, two down, a target by its tower): the decline rule (the
- * other side more near the place) and the trade's `behind` (the hero well under the target's HP).
+ * other side more near the place) and, without `fightSafe`, the trade's `behind` (the hero well under the target's HP).
  */
 export function FightZero(i: Plays.Inputs): string | undefined {
     if (i.theirs > i.ours) return "outnumbered";
-    if (i.targetHp !== undefined && i.hp < i.targetHp - BEHIND_BY) return "behind";
+    if (!fightSafe() && i.targetHp !== undefined && i.hp < i.targetHp - BEHIND_BY) return "behind";
     return undefined;
+}
+
+/**
+ * Why this core may not roll or join a lane fight on a target with these inputs, before the roll's own zeros: the target by
+ * its tower (a fight chases, so the test harass dropped stays), more of them than us, and with `fightSafe` their burst in
+ * reach at Threat StandBurst of our HP or more, PackBurst with two or more of them near (trade-safe's `burst` on the stand's
+ * bars: a fight commits and chases, so it is never looser than a stand or a hit back; banked fights opened up to 15 points
+ * behind on HP dealt about twice what they took, so the HP gap is not the danger, the burst is). Undefined: a chance may be
+ * offered.
+ */
+export function FightRefusal(i: Inputs, killHp: number): Respect | undefined {
+    const r = Decide(i, false, killHp).respect;
+    if (i.tower || r === "tower") return "tower";
+    if (r === "outnumbered") return r;
+    if (!fightSafe() || i.burst === undefined) return undefined;
+    const bar = i.enemiesNear >= 2 ? Threat.SETTINGS.PackBurst : Threat.SETTINGS.StandBurst;
+    if (i.burst >= bar) return "burst";
+    return undefined;
+}
+
+/**
+ * The lane-fight gate as one answer (the cut's `fg`, the cut kind `trade`'s `fight` action): `kill` when the commit comes
+ * first, the core's refusal, the roll's hard zero on `pi`, else `roll`. The roll's weighted draw is not part of it.
+ */
+export function FightAnswer(i: Inputs, killHp: number, pi: Plays.Inputs): string {
+    if (Decide(i, false, killHp).kind === "kill") return "kill";
+    return FightRefusal(i, killHp) ?? Plays.Weigh(pi).zero ?? "roll";
 }
 
 Plays.Define(LANE_FIGHT, { base: FIGHT_BASE, timeout: FIGHT_TIME + 2, chases: true, zero: FightZero });
@@ -647,6 +682,7 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
     if (key === st.dec && now - (st.cutAt ?? -math.huge) < TRADE_CUT_KEEP) return undefined;
     st.dec = key;
     st.cutAt = now;
+    const pi = lf ? Plays.InputsOf({ kind: LANE_FIGHT, by: bot, target, at: target.GetLocation() }) : undefined;
     return [
         ["pid", pid],
         ["kind", "trade"],
@@ -677,6 +713,11 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["dec", dec],
         ["hb", i.hitting === true ? 1 : undefined],
         ["xa", xa],
+        ["fg", pi !== undefined ? FightAnswer(i, killHp, pi) : undefined],
+        ["fpo", pi?.ours],
+        ["fpt", pi?.theirs],
+        ["ftd", pi !== undefined ? math.floor(math.min(pi.tower, 99999)) : undefined],
+        ["fs", pi !== undefined ? (fightSafe() ? 1 : 0) : undefined],
     ];
 }
 
@@ -760,8 +801,7 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
     }
     if (target === undefined || inputs === undefined) return hitBack(bot, now, "no_target");
-    // A lane fight keeps the target-by-tower test the safe rule dropped for harass (a fight chases; D19, not this rule).
-    if (owns && d.kind !== "kill" && !inputs.tower && d.respect !== "tower" && d.respect !== "outnumbered") {
+    if (owns && d.kind !== "kill" && FightRefusal(inputs, killHp) === undefined) {
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
@@ -815,7 +855,7 @@ function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Pla
 /**
  * A running play this hero may join: its place near, its target visible and within reach + JOIN_WALK, and the library's hard
  * zeros clear for this hero against that target (HP floor, two down, the target by its tower for a chasing kind) as well as
- * the trade's tower and decline respects. Deterministic: joining is the hero's judgement, the roll was the initiator's.
+ * its own FightRefusal. Deterministic: joining is the hero's judgement, the roll was the initiator's.
  */
 function joinable(bot: Unit): Plays.Play | undefined {
     if (Plays.Of(bot) !== undefined) return undefined;
@@ -823,9 +863,7 @@ function joinable(bot: Unit): Plays.Play | undefined {
     for (const p of Plays.Near(bot.GetLocation(), JOIN_NEAR)) {
         const t = p.target;
         if (p.by === bot || !valid(t) || GetUnitToUnitDistance(bot, t) > reach) continue;
-        const g = Gather(bot, t);
-        const r = Decide(g, false, killHpFor(bot)).respect;
-        if (g.tower || r === "tower" || r === "outnumbered") continue;
+        if (FightRefusal(Gather(bot, t), killHpFor(bot)) !== undefined) continue;
         if (Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero !== undefined) continue;
         return p;
     }

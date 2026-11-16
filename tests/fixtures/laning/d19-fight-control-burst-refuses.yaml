@@ -1,0 +1,41 @@
+id: lane.fight.control-burst.001
+source: log
+ref: {log: 2026-11-16T00-47-09-h2htick1_B_dire_2.log, t: 309.833}
+status: active
+control: {commit: 9fc6f42e, outcome: pass}
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose burst on 4 (hp 0.601 vs 0.955, creeps 3, tower 0); its lane-fight chance was zeroed `behind`.
+# core pid 9 on pid 4: 658 away, reach 773; HP 60% vs 96%; heroes 1 theirs, 1 ours; creeps near 3, on the bot 1; tower 0
+world:
+  t: 309.833
+  pid: 9
+  role: "core"
+  tgt: 4
+  hp: 0.601
+  thp: 0.955
+  en: 1
+  ally: 1
+  cr: 3
+  hc: 1
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 658
+  rch: 773
+  tlh: 0
+  bu: 1.094
+  tm: 0
+  ar: 625
+  tar: 600
+  tme: 0
+  ko: 0.369
+  kt: 1.19
+  tf: 1
+  dn: 0
+expect:
+  mustNot: ["fight(roll)"]
+  acceptable: ["fight(burst)"]
+notes: >
+  Control, the opposite rule D1 (h2htick1 B_dire_2, 5:09.8, our mid pid 9): 60% HP against 96%, one hero each, three creeps,
+  one on us; their burst in reach is 1.09 of our HP. Their hits can kill us, so no lane fight is offered (`burst`), as harass
+  refuses it. Same HP gap as lane.fight.safe-behind.001, which rolls on a low burst.

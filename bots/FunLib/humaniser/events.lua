@@ -1657,6 +1657,11 @@ ____exports.EVENTS = {
         tme = "num",
         tf = "num",
         dn = "num",
+        fg = "str",
+        fpo = "num",
+        fpt = "num",
+        ftd = "num",
+        fs = "num",
         did = "str",
         xa = "str"
     },

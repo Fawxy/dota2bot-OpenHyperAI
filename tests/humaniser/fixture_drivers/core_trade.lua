@@ -8,6 +8,9 @@
 -- world, slice hitback-fold: hb (1: the target is hitting the bot; CoreTrade.Exchange then answers whether the exchange is taken
 --        as a hit back: hb_hp under 70% HP, hb_burst at two heroes, else Answer's).
 -- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny|hb_hp|hb_burst>); fact.hp, fact.thp, fact.cr.
+-- world, slice fight-safe: lf (1: the core's lane fights are ours) adds the lane-fight gate's answer (CoreTrade.FightAnswer) as
+-- a second action, fight(<roll|kill|tower|outnumbered|burst|hp|behind>); fpo, fpt, ftd the roll's inputs as logged (absent: ally,
+-- en and no tower); fs as logged, 0 turning Ours.FightSafe off (the old `behind`; absent: on).
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 return function(fx)
@@ -37,8 +40,26 @@ return function(fx)
 	if w.hb == 1 or w.hb == true then inputs.hitting = true end
 	local a = CoreTrade.Exchange(inputs, w.kh, w.gap)
 	local action = (a == "trade" or a == "kill") and { verb = a } or { verb = "respect", target = a }
+	local actions = { action }
+	if (w.lf == 1 or w.lf == true) and CoreTrade.FightAnswer ~= nil then
+		package.loaded["bots/FunLib/custom_loader"].Ours.FightSafe = w.fs ~= 0 and w.fs ~= false
+		local pi = {
+			kind = CoreTrade.LANE_FIGHT,
+			ourLevel = 1,
+			theirLevel = 1,
+			ours = w.fpo or w.ally,
+			theirs = w.fpt or w.en,
+			hp = w.hp,
+			mana = 1,
+			targetHp = w.thp,
+			rune = false,
+			tower = w.ftd or math.huge,
+			skill = 1,
+		}
+		table.insert(actions, { verb = "fight", target = CoreTrade.FightAnswer(inputs, w.kh, pi) })
+	end
 	return {
-		actions = { action },
+		actions = actions,
 		fact = { hp = w.hp, thp = w.thp, cr = w.cr },
 	}
 end
