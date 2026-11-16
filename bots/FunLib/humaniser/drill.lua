@@ -1344,23 +1344,23 @@ end
 function ____exports.TowerOnCreep(bot, d)
     for ____, tower in ipairs(bot:GetNearbyTowers(1200, false) or ({})) do
         do
-            local __continue267
+            local __continue269
             repeat
                 local t = tower:GetAttackTarget()
                 if t == nil or t == nil or t:IsNull() or not t:IsAlive() then
-                    __continue267 = true
+                    __continue269 = true
                     break
                 end
                 if t:GetTeam() == bot:GetTeam() or not t:IsCreep() or t:IsHero() then
-                    __continue267 = true
+                    __continue269 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= d then
                     return true
                 end
-                __continue267 = true
+                __continue269 = true
             until true
-            if not __continue267 then
+            if not __continue269 then
                 break
             end
         end
@@ -1378,18 +1378,18 @@ function pairFacts(bot, ally, foe)
     local hit
     for ____, a in ipairs(allies) do
         do
-            local __continue275
+            local __continue277
             repeat
                 if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
-                    __continue275 = true
+                    __continue277 = true
                     break
                 end
                 if hit == nil or hpShare(a) < hpShare(hit) then
                     hit = a
                 end
-                __continue275 = true
+                __continue277 = true
             until true
-            if not __continue275 then
+            if not __continue277 then
                 break
             end
         end
@@ -1526,7 +1526,7 @@ ____exports.TABLE = {
             timeout = 28,
             keeps = {"levelup"},
             release = {modes = {"laning", "idle"}},
-            idle = 0.44,
+            idle = 0.3,
             reps = {{name = "tower", setup = {r1 = {"stand bot"}, r2 = {"stand mid"}, r3 = {"stand top"}}, ready = {towerCreep = 700, clear = 2000}}}
         }
     },
@@ -2323,8 +2323,13 @@ local function failingCheck(bot, st, rr)
             return "ahead"
         end
     end
-    if r.towerCreep ~= nil and not ____exports.TowerOnCreep(bot, r.towerCreep) then
-        return "towercreep"
+    if r.towerCreep ~= nil then
+        if #(bot:GetNearbyTowers(1200, false) or ({})) == 0 then
+            return "notower"
+        end
+        if not ____exports.TowerOnCreep(bot, r.towerCreep) then
+            return "towercreep"
+        end
     end
     return nil
 end

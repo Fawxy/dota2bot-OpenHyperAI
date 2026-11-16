@@ -811,8 +811,16 @@ do
 	local ready = {}
 	for _, l in ipairs(lines) do if field(l, "ph") == "ready" then ready[tonumber(field(l, "pid"))] = field(l, "ok") end end
 	check("tower-prehit: the placed cast is ready while the other casts walk; they are not", ready[0] == "1" and ready[1] == nil and ready[2] == nil, ready)
-	check("tower-prehit: released, laning is free and idle holds at the rig's 0.44, under laning's 0.446",
-		H3.Drill.RigDesire(c1, "laning") == nil and H3.Drill.RigDesire(c1, "farm") == 0.44)
+	check("tower-prehit: released, laning is free and idle holds at the rig's 0.3, under laning's 0.369 at level 8 to 11",
+		H3.Drill.RigDesire(c1, "laning") == nil and H3.Drill.RigDesire(c1, "farm") == 0.3)
+	-- Next rep with the lane's tower dead: the cast waits on `notower`, not `towercreep`.
+	c1.GetNearbyTowers = function() return {} end
+	T = 61
+	local fails = {}
+	for _, l in ipairs(capture(function() tick3(c1, c2, c3) T = 61.5 tick3(c1, c2, c3) end)) do
+		if field(l, "pid") == "0" and field(l, "fail") ~= nil then fails[#fails + 1] = field(l, "fail") end
+	end
+	check("tower-prehit: a dead tower fails notower", fails[#fails] == "notower", fails)
 
 	local t = H.Drill.TABLE["tower-prehit"].rig
 	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)

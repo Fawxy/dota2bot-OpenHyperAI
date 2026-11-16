@@ -146,7 +146,8 @@ export const TABLE: Record<string, Entry> = {
     // The tower pre-hit (K1, `Ours.PreHit`). half: execution. One cast per lane: the Radiant pos1, pos2 and pos3 under their
     // own T1s (seed 30: Luna bot and Sniper mid ranged, Pudge top melee), read apart by lane. Facts the pre-hit reads: our tower
     // attacking an enemy lane creep (forced: at +1 s of each rep the recipe clears both teams' lane creeps within 1,100 of each
-    // Radiant T1 and heals the casts, at +2 s makes three melee and one ranged Dire creep 580 up the lane from each T1, the side
+    // Radiant T1 and heals the casts and those T1s (off4: unhealed, the top T1 fell at 5:21; a dead one fails `notower`),
+    // at +2 s makes three melee and one ranged Dire creep 580 up the lane from each T1, the side
     // the Dire waves come from, so a small wave is held under each tower with only the tower on it before the natural waves
     // arrive (off1: a lane-wide kill of our creeps let the Dire waves pile up and take the bot T1 by 4:00; off2: a clear at
     // +10 s met the natural Dire wave at +3 to +7 s with the cast still a statue); the creep within the cast's walk (forced:
@@ -167,7 +168,7 @@ export const TABLE: Record<string, Entry> = {
             timeout: 28,
             keeps: ["levelup"],
             release: { modes: ["laning", "idle"] },
-            idle: 0.44,
+            idle: 0.3,
             reps: [{ name: "tower", setup: { r1: ["stand bot"], r2: ["stand mid"], r3: ["stand top"] }, ready: { towerCreep: 700, clear: 2000 } }],
         },
     },
@@ -1167,9 +1168,10 @@ export interface Rig {
     keeps?: HeldKind[];
     release: { modes: string[]; items?: boolean; abilities?: boolean; also?: HeldKind[] };
     /**
-     * The `idle` hold's desire for this rig (default RIG_IDLE_DESIRE). tower-prehit 0.44: laning bids 0.446 between due last
-     * hits (level 7 or under, before 9:00), so the default 0.5 stood the cast still beside creeps it could take (off3: the
-     * mid's 54 lost tower creeps in reach with no attempt).
+     * The `idle` hold's desire for this rig (default RIG_IDLE_DESIRE). tower-prehit 0.3: laning bids 0.446 between due last
+     * hits at level 7 or under before 9:00 and 0.369 at level 8 to 11 before 12:00, so the default 0.5 stood the cast still
+     * beside creeps it could take (off3: the mid's 54 lost tower creeps in reach with no attempt), and 0.44 did from level 8
+     * (off4: Sniper from 5:45, Luna from 8:18).
      */
     idle?: number;
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
@@ -1749,7 +1751,11 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (typeof f === "string") return f;
         if (r.ahead === true && !(f.ko > f.kt)) return "ahead";
     }
-    if (r.towerCreep !== undefined && !TowerOnCreep(bot, r.towerCreep)) return "towercreep";
+    if (r.towerCreep !== undefined) {
+        // off4: the top T1 fell at 5:21 and every later rep failed `towercreep`; a dead tower is its own fault.
+        if ((bot.GetNearbyTowers(1200, false) ?? []).length === 0) return "notower";
+        if (!TowerOnCreep(bot, r.towerCreep)) return "towercreep";
+    }
     return undefined;
 }
 
