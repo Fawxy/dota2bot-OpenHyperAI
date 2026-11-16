@@ -619,8 +619,8 @@ do
 	T = T + 30
 	bot.loc, enemy.loc, bot.hp, enemy.hp, bot.attacking, bot.hitBy = Vector(0, 0), Vector(400, 0), 90, 85, nil, enemy
 	local d = CoreTrade.Desire(bot)
-	check("two heroes, burst 0.52: the trade may open, but not as a hit back holding retreat",
-		d ~= CoreTrade.DESIRE_TRADE or (not CoreTrade.HitBackHolds(bot) and not last():find("hb=1")), last())
+	check("two heroes, burst 0.52: the plain trade opens (StandBurst 1)", d == CoreTrade.DESIRE_TRADE)
+	check("but not as a hit back holding retreat", not CoreTrade.HitBackHolds(bot) and not last():find("hb=1"), last())
 	burst = 0.3
 	CoreTrade.Reset()
 	T = T + 30

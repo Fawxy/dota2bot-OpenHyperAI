@@ -37,6 +37,7 @@ expect:
   must: ["respect(hb_burst)"]
   mustNot: ["trade", "kill"]
 notes: >
-  Control (D1 caution at two heroes, no deny due; the reviewer's case, smoke game of build 5b185e8, 0:50): our pos1 at 87%
-  is hit with two of theirs near and their burst 0.54 of our HP, over the two-hero bar (Threat PackBurst 0.5). Build 5b185e8
-  opened this as a hit back through the plain trade path, held retreat, and lost it in 0.4 s; it must refuse, retreat decides.
+  HitBackDecide control (D1 caution at two heroes, no deny due; the reviewer's case, smoke game of build 5b185e8, 0:50): our
+  pos1 at 87% is hit with two of theirs near and their burst 0.54 of our HP, over the two-hero bar (Threat PackBurst 0.5):
+  no hit back, so retreat is not held. The plain trade rule may still open a trade here (StandBurst 1); Build 5b185e8 had
+  marked it a hit back (lost in 0.4 s). That path is graded by test_core_trade's Desire case, not by this fixture.
