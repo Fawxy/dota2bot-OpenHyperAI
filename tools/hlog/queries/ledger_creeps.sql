@@ -12,6 +12,8 @@
 --   away_lane         ... in another lane
 --   away_jungle       ... in no lane and no base (jungle, river, camps, runes)
 --   far_in_lane       in its lane but over 1,500 from it (walking back up the lane, or the creep died far ahead)
+--   prehit_tower      the core was attacking it, or its last attack was on it, our tower was hitting it as it died and the core
+--                     logged a pre-hit (ev=prehit ok) in the 5 s before: a pre-hit the tower then took
 --   swing_lost        the core was attacking it, or its last attack was on it
 --   held_back_hero    the core stood in its lane beyond attack range + 300 with an enemy hero within 800 or a hero's hit in the last 3 s
 --   held_back_low_hp  beyond that reach, under half HP
@@ -19,8 +21,9 @@
 --   idle_in_reach     within attack range + 300 and not attacking it
 -- Distance is the creep_death `p<pos>d` when seen, else from the core's snapshot (an unseen creep has no attack fields).
 -- Constants: reach 300 and default attack range 150 as @lasthit_cores; 800 and 3 s `judgement`; the pairing radius and window as
--- view creep_fate. Params: like, at (default 600).
--- ensure: ev_creep_death(team, kind, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
+-- view creep_fate; the pre-hit window 5 s `judgement` (two pre-hits and the kill swing). Params: like, at (default 600).
+-- ensure: ev_prehit(pid, result)
+-- ensure: ev_creep_death(team, kind, x, y, by, tw, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
 -- ensure: ev_own_creep_death(team, kind, x, y, by)
 -- ensure: ev_snap(pid, t, x, y, alive, hp, hit, ed, ln, ld)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -28,7 +31,7 @@ cores AS MATERIALIZED (
     SELECT l.game_id, l.team, l.pos, l.pid FROM lineup l JOIN gm ON gm.game_id = l.game_id WHERE l.pos BETWEEN 1 AND 3
 ),
 seen AS MATERIALIZED (
-    SELECT c.game_id, c.seq, c.t, c.team, c.x, c.y, 'seen' AS src, c."by" AS killer, f.fate,
+    SELECT c.game_id, c.seq, c.t, c.team, c.x, c.y, 'seen' AS src, c."by" AS killer, f.fate, c.tw,
         c.p1d, c.p1r, c.p1t, c.p1a, c.p2d, c.p2r, c.p2t, c.p2a, c.p3d, c.p3r, c.p3t, c.p3a
     FROM ev_creep_death c JOIN gm ON gm.game_id = c.game_id
     LEFT JOIN creep_fate f ON f.game_id = c.game_id AND f.seq = c.seq AND f.side = 'enemy'
@@ -36,7 +39,7 @@ seen AS MATERIALIZED (
 ),
 unseen AS MATERIALIZED (
     SELECT o.game_id, o.seq, o.t, 5 - o.team AS team, o.x, o.y, 'unseen' AS src, NULL AS killer,
-        CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN 'enemy_deny' END AS fate,
+        CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN 'enemy_deny' END AS fate, NULL AS tw,
         NULL AS p1d, NULL AS p1r, NULL AS p1t, NULL AS p1a, NULL AS p2d, NULL AS p2r, NULL AS p2t, NULL AS p2a,
         NULL AS p3d, NULL AS p3r, NULL AS p3t, NULL AS p3a
     FROM ev_own_creep_death o JOIN gm ON gm.game_id = o.game_id
@@ -85,7 +88,9 @@ dx AS (
     SELECT dc.*, s.hp, s.ed, cl.lane AS clane,
         coalesce(dc.pd, sqrt((s.x - dc.x) * (s.x - dc.x) + (s.y - dc.y) * (s.y - dc.y))) AS dist,
         EXISTS (SELECT 1 FROM csnap h WHERE h.game_id = dc.game_id AND h.pid = dc.cpid AND h.t BETWEEN dc.t - 3 AND dc.t + 0.5
-            AND coalesce(h.hit, 0) > 0) AS hit3
+            AND coalesce(h.hit, 0) > 0) AS hit3,
+        dc.tw = 1 AND EXISTS (SELECT 1 FROM ev_prehit p WHERE p.game_id = dc.game_id AND p.pid = dc.cpid AND p.result = 'ok'
+            AND p.t BETWEEN dc.t - 5 AND dc.t) AS ph
     FROM dc LEFT JOIN csnap s ON s.game_id = dc.game_id AND s.seq = dc.sseq
     LEFT JOIN labs cl ON cl.k = 'snap:' || dc.sseq
 )
@@ -97,6 +102,7 @@ SELECT gm.file, dx.game_id, dx.team, dx.t, dx.src, dx.lane, dx.cpos AS pos, dx.c
          WHEN dx.sseq IS NULL THEN 'core_dead'
          WHEN dx.dist > 1500 AND coalesce(dx.clane, '') <> dx.lane THEN CASE WHEN dx.clane = 'base' THEN 'away_base' WHEN dx.clane = 'other' THEN 'away_jungle' ELSE 'away_lane' END
          WHEN dx.dist > 1500 THEN 'far_in_lane'
+         WHEN (dx.pt = 1 OR (typeof(dx.pa) IN ('integer', 'real') AND dx.pa >= 0)) AND dx.ph THEN 'prehit_tower'
          WHEN dx.pt = 1 OR (typeof(dx.pa) IN ('integer', 'real') AND dx.pa >= 0) THEN 'swing_lost'
          WHEN dx.dist > coalesce(dx.pr, 150) + 300 THEN
              CASE WHEN dx.hit3 OR coalesce(dx.ed, 9999) <= 800 THEN 'held_back_hero'
