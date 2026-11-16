@@ -143,6 +143,28 @@ export const TABLE: Record<string, Entry> = {
             reps: [{ name: "lone", setup: { r2: ["stand home"], d2: ["stand foe"] }, ready: { lone: [1700, 0.35, 1], hpAtLeast: 0.5 } }],
         },
     },
+    // The tower pre-hit (K1, `Ours.PreHit`). half: execution. Facts the pre-hit reads: our tower attacking an enemy lane creep
+    // (forced: the recipe kills our bot-lane creeps west of the T1 every 2 s, so each natural Dire wave walks into our T1 with
+    // only the tower on it, the common pushed-in start); the creep within the cast's walk (forced: the cast stands beside the
+    // T1 in setup; checked `towerCreep`); the cast in laning mode in its lane, no enemy hero near (everyone else benched;
+    // checked `clear`). Read after release: per rep, the tower-hit creeps the cast took, its pre-hits and the ledger's
+    // `prehit_tower` (scratch readout until a view exists).
+    "tower-prehit": {
+        note: "rig: Radiant pos1 beside its bot T1; our bot-lane creeps killed before the T1, so each Dire wave walks into the tower alone; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
+        cast: SAFE_CORE,
+        others: "bench",
+        rep: { every: 30, from: 30 },
+        rig: {
+            half: "execution",
+            switch: "PreHit",
+            window: 600,
+            spots: { home: ["r:bot1", -300, 0] },
+            timeout: 28,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "idle"] },
+            reps: [{ name: "tower", setup: { r1: ["stand home"] }, ready: { towerCreep: 700, clear: 2000 } }],
+        },
+    },
     // Slice retreat (master slices/retreat.md "Drill"): the forced retreat from fixed points. Each rep the Radiant pos1 walks
     // to the rep's start spot and our retreat starts there (why=forced) and runs to its anchor; the Dire offlane pair stand in
     // their lane as statues, so the route's tower, wave and hero costs are all there but nothing acts. 60 s reps (rtwalk1: 45 s
@@ -1087,6 +1109,11 @@ export interface RigReady {
      * theirs on ours: the rule's weighing, kept in step with PairJoin.Decide by hand. Fails `ahead`.
      */
     ahead?: boolean;
+    /**
+     * The tower pre-hit's situation (K1, `Ours.PreHit`): an own tower within 1,200 of the cast attacking an enemy lane creep
+     * within this distance of the cast (the pre-hit's TOWER_RADIUS and its walk). Fails `towercreep`.
+     */
+    towerCreep?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1709,7 +1736,19 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (typeof f === "string") return f;
         if (r.ahead === true && !(f.ko > f.kt)) return "ahead";
     }
+    if (r.towerCreep !== undefined && !TowerOnCreep(bot, r.towerCreep)) return "towercreep";
     return undefined;
+}
+
+/** An own tower within 1,200 of the bot is attacking an enemy lane creep within `d` of it (RigReady `towerCreep`). */
+export function TowerOnCreep(bot: Unit, d: number): boolean {
+    for (const tower of bot.GetNearbyTowers(1200, false) ?? []) {
+        const t = tower.GetAttackTarget();
+        if (t === undefined || t === null || t.IsNull() || !t.IsAlive()) continue;
+        if (t.GetTeam() === bot.GetTeam() || !t.IsCreep() || t.IsHero()) continue;
+        if (GetUnitToUnitDistance(bot, t) <= d) return true;
+    }
+    return false;
 }
 
 /**

@@ -764,4 +764,34 @@ do
 	check("no drill: no creep-aggro fact, the game decides", Hn.Drill.RigCreepAggro() == nil)
 end
 
+-- tower-prehit's ready check: an own tower near the cast attacking an enemy lane creep within the distance.
+do
+	local H = world("tower-prehit")
+	local bot = hero(0, RAD, 1, 3)
+	local function unit(team, x, o)
+		local u = { team = team, loc = Vector(x, 0, 0), alive = true }
+		function u:GetTeam() return self.team end
+		function u:GetLocation() return self.loc end
+		function u:IsAlive() return self.alive end
+		function u:IsNull() return false end
+		function u:IsCreep() return o.creep end
+		function u:IsHero() return o.hero end
+		return u
+	end
+	local creep = unit(DIRE, 600, { creep = true, hero = false })
+	local tower = { target = creep }
+	function tower:GetAttackTarget() return self.target end
+	bot.GetNearbyTowers = function() return { tower } end
+	check("towerCreep: our tower on an enemy creep 600 off: holds at 700", H.Drill.TowerOnCreep(bot, 700))
+	check("towerCreep: not at 500", not H.Drill.TowerOnCreep(bot, 500))
+	tower.target = unit(DIRE, 300, { creep = false, hero = true })
+	check("towerCreep: a hero is not a creep", not H.Drill.TowerOnCreep(bot, 700))
+	tower.target = unit(RAD, 300, { creep = true, hero = false })
+	check("towerCreep: our own creep does not count", not H.Drill.TowerOnCreep(bot, 700))
+	tower.target = nil
+	check("towerCreep: a tower attacking nothing", not H.Drill.TowerOnCreep(bot, 700))
+	local t = H.Drill.TABLE["tower-prehit"].rig
+	check("tower-prehit: execution rig on PreHit with the towerCreep check", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700)
+end
+
 finish()

@@ -1340,6 +1340,33 @@ function rigHold(bot)
     end
     return true
 end
+--- An own tower within 1,200 of the bot is attacking an enemy lane creep within `d` of it (RigReady `towerCreep`).
+function ____exports.TowerOnCreep(bot, d)
+    for ____, tower in ipairs(bot:GetNearbyTowers(1200, false) or ({})) do
+        do
+            local __continue267
+            repeat
+                local t = tower:GetAttackTarget()
+                if t == nil or t == nil or t:IsNull() or not t:IsAlive() then
+                    __continue267 = true
+                    break
+                end
+                if t:GetTeam() == bot:GetTeam() or not t:IsCreep() or t:IsHero() then
+                    __continue267 = true
+                    break
+                end
+                if GetUnitToUnitDistance(bot, t) <= d then
+                    return true
+                end
+                __continue267 = true
+            until true
+            if not __continue267 then
+                break
+            end
+        end
+    end
+    return false
+end
 function pairFacts(bot, ally, foe)
     local function live(u)
         return not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil and not u:IsIllusion()
@@ -1351,18 +1378,18 @@ function pairFacts(bot, ally, foe)
     local hit
     for ____, a in ipairs(allies) do
         do
-            local __continue268
+            local __continue275
             repeat
                 if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
-                    __continue268 = true
+                    __continue275 = true
                     break
                 end
                 if hit == nil or hpShare(a) < hpShare(hit) then
                     hit = a
                 end
-                __continue268 = true
+                __continue275 = true
             until true
-            if not __continue268 then
+            if not __continue275 then
                 break
             end
         end
@@ -1484,6 +1511,22 @@ ____exports.TABLE = {
             keeps = {"levelup"},
             release = {modes = {"laning", "retreat", "idle"}},
             reps = {{name = "lone", setup = {r2 = {"stand home"}, d2 = {"stand foe"}}, ready = {lone = {1700, 0.35, 1}, hpAtLeast = 0.5}}}
+        }
+    },
+    ["tower-prehit"] = {
+        note = "rig: Radiant pos1 beside its bot T1; our bot-lane creeps killed before the T1, so each Dire wave walks into the tower alone; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
+        cast = SAFE_CORE,
+        others = "bench",
+        rep = {every = 30, from = 30},
+        rig = {
+            half = "execution",
+            switch = "PreHit",
+            window = 600,
+            spots = {home = {"r:bot1", -300, 0}},
+            timeout = 28,
+            keeps = {"levelup"},
+            release = {modes = {"laning", "idle"}},
+            reps = {{name = "tower", setup = {r1 = {"stand home"}}, ready = {towerCreep = 700, clear = 2000}}}
         }
     },
     ["retreat-walk"] = {
@@ -2271,6 +2314,9 @@ local function failingCheck(bot, st, rr)
         if r.ahead == true and not (f.ko > f.kt) then
             return "ahead"
         end
+    end
+    if r.towerCreep ~= nil and not ____exports.TowerOnCreep(bot, r.towerCreep) then
+        return "towercreep"
     end
     return nil
 end
