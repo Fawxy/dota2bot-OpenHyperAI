@@ -75,6 +75,8 @@ end
 function Unit:GetNearbyLaneCreeps() return {} end
 function Unit:GetNearbyTowers(_, enemies) return enemies and { tower } or {} end
 function Unit:GetAttackTarget() return self.attacking end
+-- Gather asks whether the target is hitting the core (slice hitback-fold): here it never is.
+function Unit:WasRecentlyDamagedByHero() return false end
 function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
 
 do

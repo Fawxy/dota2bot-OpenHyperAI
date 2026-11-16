@@ -212,3 +212,17 @@ test('--list shows whether an enemy hero in the cut is hitting and the burst ove
     assert.match(list('--engaged', '0'), /hitting 0/);
     assert.strictEqual(list('--engaged', '1'), '');
 });
+
+// kind=trade (slice hitback-fold): with hb=1 the driver answers CoreTrade.Exchange, which the game logged as xa.
+const tradeOf = (extra) => {
+    const line = 't=200.000 ev=cut pid=1 kind=trade role=core tgt=6 hp=0.6 thp=0.5 en=1 ally=1 cr=0 hc=0 tw=0 kh=0.4 lf=1 d=400 rch=648 tlh=0 dec=trade';
+    const g = readGames([hev('t=-90.000 ev=bot pid=1 team=2 ours=CoreTrade:1'), hev(`${line} ${extra}`)].join('\n')).pop();
+    return checkOne(g, g.cuts[0]);
+};
+
+test('trade: a cut of a hitter replays Exchange (xa), one of a non-hitter the trade rule (dec)', () => {
+    const plain = tradeOf('');
+    const hit = tradeOf('hb=1 xa=hb_hp');
+    assert.deepStrictEqual([plain.got, plain.want, hit.got, hit.want], ['trade', 'trade', 'hb_hp', 'hb_hp']);
+    assert.ok(plain.same && hit.same);
+});

@@ -240,7 +240,7 @@ export interface LeaveInputs {
     unp: number;
     /** PairJoin.Joins held for the bot (D10's join: LeaveWhy stays `join`). */
     pj: boolean;
-    /** CoreTrade.HitBackHolds held for the bot (D24's hit back: LeaveWhy stays `hitback`). */
+    /** CoreTrade.Taking held for the bot (D24's hit back: LeaveWhy stays `hitback`). */
     hb: boolean;
     /** The damage windows of the read: `he`'s e3 and e6. */
     short: number;

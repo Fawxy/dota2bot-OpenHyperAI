@@ -987,7 +987,7 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 - `lf` num: 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%.
 - `kind` str: `trade`, `kill` (a commit), `fight` (a lane fight from the play roll: rolled here or joined) or `join` (D10's pair join, `Ours.PairJoin`).
 - `tgt` num: The target hero's pid.
-- `hb` num: 1 for a hit back (slice hit-back, `Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro.
+- `hb` num: 1 for a hit back (CoreTrade.Exchange took it): opened on a hero hitting us inside our creeps' aggro.
 - `play` num: A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own.
 - `result` str: `done` (taken), `kill` (the game says the target died, `IsHeroAlive`) or `lost` (offered, not taken within 1 s; `mode`/`md` is the mode that held the core).
 - `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over.
@@ -1381,7 +1381,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
 - `pj` num: kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise.
-- `hb` num: kind=leave: 1 when CoreTrade.HitBackHolds held for the bot (`Ours.HitBack`: LeaveWhy stays `hitback`); absent otherwise.
+- `hb` num: kind=leave: 1 when CoreTrade.Taking held for the bot (LeaveWhy stays `hitback`); absent otherwise. kind=trade (slice hitback-fold): 1 when the target is hitting the core (Inputs.hitting); absent otherwise.
 - `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
 - `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join`, `outnumbered`, `losing`.
@@ -1404,6 +1404,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `tf` num: kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off.
 - `dn` num: kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which outbids the trade.
 - `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
+- `xa` str: kind=trade (slice hitback-fold), with `hb`: CoreTrade.Exchange's answer, whether the exchange is taken as a hit back retreat waits for (`trade`, `kill`) or why not (`hb_hp`, `hb_burst` or Answer's refusal).
 
 ## cut_creeps
 

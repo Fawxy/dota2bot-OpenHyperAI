@@ -1916,7 +1916,7 @@ export const EVENTS = {
         kind: "str",
         /** The target hero's pid. */
         tgt: "num",
-        /** 1 for a hit back (slice hit-back, `Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro. */
+        /** 1 for a hit back (CoreTrade.Exchange took it): opened on a hero hitting us inside our creeps' aggro. */
         hb: "num",
         /** A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own. */
         play: "num",
@@ -2723,7 +2723,8 @@ export const EVENTS = {
         dt: "num",
         /** kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise. */
         pj: "num",
-        /** kind=leave: 1 when CoreTrade.HitBackHolds held for the bot (`Ours.HitBack`: LeaveWhy stays `hitback`); absent otherwise. */
+        /** kind=leave: 1 when CoreTrade.Taking held for the bot (LeaveWhy stays `hitback`); absent otherwise. kind=trade (slice
+         *  hitback-fold): 1 when the target is hitting the core (Inputs.hitting); absent otherwise. */
         hb: "num",
         /** kind=leave: the read's threat and band, for reading a line without replaying it. */
         thr: "num",
@@ -2788,6 +2789,9 @@ export const EVENTS = {
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",
+        /** kind=trade (slice hitback-fold), with `hb`: CoreTrade.Exchange's answer, whether the exchange is taken as a hit back
+         *  retreat waits for (`trade`, `kill`) or why not (`hb_hp`, `hb_burst` or Answer's refusal). */
+        xa: "str",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
     cut_creeps: {

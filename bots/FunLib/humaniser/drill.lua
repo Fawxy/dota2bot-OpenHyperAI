@@ -1549,7 +1549,7 @@ ____exports.TABLE = {
         rep = {every = 120, from = 0},
         rig = {
             half = "decision",
-            switch = "HitBack",
+            switch = "CoreTrade",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, sidenear = {"r:bot1", -2250, 700}, beside = {"r:bot1", -2600, 700}},
             timeout = 100,
