@@ -26,7 +26,7 @@ world:
   dt: 0
   pj: 0
 expect:
-  must: ["stay(stand)"]
-  mustNot: ["leave"]
+  must: ["stay(hold)"]
+  mustNot: ["stay(stand)", "leave"]
 notes: >
-  Commonest new start (D2 against D1; h2hhighstand1 C_dire_3, 1:06): our pos5 at 61% with two enemy heroes about 1,000 off, neither hitting, an ally 512 off, so not outnumbered; their 3 s burst is under our HP. D1 does not apply: stay.
+  Commonest new start (D2 against D1; h2hhighstand1 C_dire_3, 1:06): our pos5 at 61% with two enemy heroes about 1,000 off, neither hitting, an ally 512 off, so not outnumbered; their 3 s burst is under our HP. D1 alone says stay, but h2hstand1 stood such reads at two heroes and died within 10 s of 3 in 77 stands at HP 50-70%: the stand does not hold it (PackHp 0.7), only the threat hold until the read has held over budget.

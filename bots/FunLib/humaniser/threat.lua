@@ -155,8 +155,9 @@ ____exports.SETTINGS = {
     EscapeMargin = 100,
     EngagedRecent = 1,
     StandBurst = 1,
-    OutBurst = 0.5,
     StandHp = 0.5,
+    PackBurst = 0.5,
+    PackHp = 0.7,
     LogEvery = 5
 }
 local TOWER_IDS = {
@@ -558,23 +559,23 @@ function ____exports.Read(bot, from, place, horizon, opts)
     return ____exports.Reader(bot, horizon, opts)(from, place)
 end
 --- The stand (D2 against D1): visible enemy heroes can reach the walk, none has damaged us within EngagedRecent (the read was
--- made with `opts.engagedWindow`, so `eng` is filled), their burst is under StandBurst of our HP (OutBurst when they outnumber
--- us), our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar.
--- Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own rules apply again (the dead end
--- "a hold that never hits back" is the hit case).
+-- made with `opts.engagedWindow`, so `eng` is filled), their burst is under the bar of our HP and our HP share at the floor or
+-- more (one hero StandBurst and StandHp, two or more PackBurst and PackHp), no enemy tower covers the place and the missing
+-- belief is under the gates' bar. Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own
+-- rules apply again (the dead end "a hold that never hits back" is the hit case).
 function ____exports.Stand(bot, r)
     local s = ____exports.SETTINGS
     if #r.reach == 0 or #r.eng > 0 or r.tower then
         return false
     end
-    local bar = #r.reach > r.allies + 1 and s.OutBurst or s.StandBurst
-    if r.burst >= bar or r.missing >= s.MissingRefuse then
+    local one = #r.reach == 1
+    if r.burst >= (one and s.StandBurst or s.PackBurst) or r.missing >= s.MissingRefuse then
         return false
     end
     return bot:GetHealth() / math.max(
         1,
         bot:GetMaxHealth()
-    ) >= s.StandHp
+    ) >= (one and s.StandHp or s.PackHp)
 end
 --- The stand with exactly one enemy hero in reach (slice mid-stand), which the lane spot honours too: h2harbiter1 and 2, the
 -- mid stood about 1,400 from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a

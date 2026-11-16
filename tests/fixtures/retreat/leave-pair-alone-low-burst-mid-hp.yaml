@@ -25,7 +25,7 @@ world:
   dt: 0
   pj: 0
 expect:
-  must: ["stay(stand)"]
-  mustNot: ["leave"]
+  must: ["leave(threat)"]
+  mustNot: ["stay"]
 notes: >
-  D2 against D1 (h2hhighstand1 A_dire_1, 8:55): our pos1 at 61% alone against two enemy heroes 650-800 off, neither hitting; their 3 s burst about a sixth of our HP. Outnumbered, but the burst cannot kill: stay while it is under half our HP.
+  D2 against D1 (h2hhighstand1 A_dire_1, 8:55): our pos1 at 61% alone against two enemy heroes 650-800 off, neither hitting; their 3 s burst about a sixth of our HP. The burst cannot kill, but at 61% with two heroes h2hstand1 died within 10 s of 3 in 77 such stands: leave (PackHp 0.7).

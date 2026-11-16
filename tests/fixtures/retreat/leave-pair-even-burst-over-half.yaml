@@ -29,7 +29,7 @@ world:
   dt: 0
   pj: 0
 expect:
-  must: ["stay(stand)"]
-  mustNot: ["leave"]
+  must: ["stay(hold)"]
+  mustNot: ["stay(stand)", "leave"]
 notes: >
-  D2 against D1 (h2hhighstand1 C_rad_3, 6:18): our pos1 at 79% with two enemy heroes 800-900 off, neither hitting, our pos3 506 off. Burst over half our HP but under all of it, numbers even: D1 does not apply, stay (HighStand left it).
+  D2 against D1 (h2hhighstand1 C_rad_3, 6:18): our pos1 at 79% with two enemy heroes 800-900 off, neither hitting, our pos3 506 off. Burst over half our HP but under all of it, numbers even: D1 alone says stay, but h2hstand1 stood burst half our HP or more and 12 of its 19 stand-preceded deaths came there: the stand does not hold it (PackBurst 0.5, whatever the numbers), only the threat hold until the read has held over budget.

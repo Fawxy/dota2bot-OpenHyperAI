@@ -546,8 +546,7 @@ end
 
 -- Slices high-stand, stand-rule (D2 against D1): two heroes in reach, nobody hitting us, burst 100 + 100 of our 600 HP (0.33):
 -- the read is over the free budget, the stand keeps the hero in lane and logs `stay why=stand` once. A hit on us, a burst at
--- half our HP while they outnumber us, HP under half or the switch off: the same two are left on `threat`. With an ally
--- beside us (not outnumbered) a burst over half our HP still stands.
+-- half our HP (PackBurst, with or without an ally), HP under 70% (PackHp) or the switch off: the stand does not hold them.
 do
 	local function two(o)
 		local H, bot = world({ high = o.off ~= true, hp = o.hp })
@@ -576,12 +575,13 @@ do
 	check("stand: one of them hitting us leaves why=threat", hitOn and field(hitLines[1], "why") == "threat", hitLines[1])
 	local burstOn, burstLines = two({ est = 160 })
 	check("stand: outnumbered, their burst at half our HP (320 of 600) leaves why=threat", burstOn and field(burstLines[1], "why") == "threat", burstLines[1])
-	local evenOn = two({ est = 160, ally = true })
-	check("stand: with an ally beside us the same half-HP burst stands (D1 needs them to outnumber us)", not evenOn)
-	local lowOn, lowLines = two({ hp = 280, est = 40 })
-	check("stand: under half HP (280 of 600) leaves why=threat", lowOn and field(lowLines[1], "why") == "threat", lowLines[1])
-	local midOn = two({ hp = 400, est = 60 })
-	check("stand: at 67% HP (400 of 600) with burst 0.3 stands (the old 70% bar is gone)", not midOn)
+	local function stood(st) for _, l in ipairs(st) do if field(l, "why") == "stand" then return true end end return false end
+	local _, _, evenStays = two({ est = 160, ally = true })
+	check("stand: with an ally beside us the same half-HP burst does not stand (PackBurst whatever the numbers)", not stood(evenStays), evenStays[1])
+	local midOn, midLines, midStays = two({ hp = 400, est = 60 })
+	check("stand: at 67% HP (400 of 600) with burst 0.3 leaves why=threat (PackHp 0.7)", midOn and not stood(midStays) and field(midLines[1], "why") == "threat", midLines[1])
+	local hiOn, _, hiStays = two({ hp = 450, est = 60 })
+	check("stand: at 75% HP (450 of 600) with burst 0.27 stands, logged once as why=stand", not hiOn and #hiStays == 1 and field(hiStays[1], "why") == "stand", hiStays[1])
 end
 
 -- Even-fight round 2 (D24): the hold stands only while the heroes hitting us pay for it in creep aggro (our lane creeps within

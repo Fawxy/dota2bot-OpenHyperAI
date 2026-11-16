@@ -78,15 +78,16 @@ export const SETTINGS = {
     EngagedRecent: 1,
     /**
      * The stand (slices mid-stand, high-stand, stand-rule; D2 read against D1; see Stand): enemy heroes in reach who are not
-     * hitting us are no reason to leave unless D1 holds, more of them than us with a burst that can kill. Their burst over the
-     * read's window is under StandBurst of our current HP (D1's "their burst can kill me"; retreat's EvenBurst), under OutBurst
-     * when they outnumber us (reach over allies + 1: two landing it still leave us half our HP when the engaged read sends us
-     * home), and our HP share is StandHp or more (retreat's EvenHp). On h2hhighstand1 the budget left 9.9 such starts a game
-     * beyond the old stands, with 1 death within 10 s in 10 games. judgement.
+     * hitting us are no reason to leave while their burst over the read's window is under the bar of our current HP and our HP
+     * share is at the floor or more. One hero: StandBurst (D1's "their burst can kill me"; retreat's EvenBurst) and StandHp
+     * (retreat's EvenHp). Two or more: PackBurst and PackHp, whatever the numbers on our side. h2hstand1 stood two heroes on
+     * D1's own bars (burst under our HP with an ally, HP 50%+): 12 of the 19 deaths within 10 s of a stand came at burst half
+     * our HP or more, 3 at HP 50-70%, against 4 in the 49 stands a game at these bars. judgement.
      */
     StandBurst: 1,
-    OutBurst: 0.5,
     StandHp: 0.5,
+    PackBurst: 0.5,
+    PackHp: 0.7,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };
@@ -382,17 +383,17 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, op
 
 /**
  * The stand (D2 against D1): visible enemy heroes can reach the walk, none has damaged us within EngagedRecent (the read was
- * made with `opts.engagedWindow`, so `eng` is filled), their burst is under StandBurst of our HP (OutBurst when they outnumber
- * us), our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar.
- * Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own rules apply again (the dead end
- * "a hold that never hits back" is the hit case).
+ * made with `opts.engagedWindow`, so `eng` is filled), their burst is under the bar of our HP and our HP share at the floor or
+ * more (one hero StandBurst and StandHp, two or more PackBurst and PackHp), no enemy tower covers the place and the missing
+ * belief is under the gates' bar. Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own
+ * rules apply again (the dead end "a hold that never hits back" is the hit case).
  */
 export function Stand(bot: Unit, r: Read): boolean {
     const s = SETTINGS;
     if (r.reach.length === 0 || r.eng.length > 0 || r.tower) return false;
-    const bar = r.reach.length > r.allies + 1 ? s.OutBurst : s.StandBurst;
-    if (r.burst >= bar || r.missing >= s.MissingRefuse) return false;
-    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= s.StandHp;
+    const one = r.reach.length === 1;
+    if (r.burst >= (one ? s.StandBurst : s.PackBurst) || r.missing >= s.MissingRefuse) return false;
+    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= (one ? s.StandHp : s.PackHp);
 }
 
 /**

@@ -297,8 +297,8 @@ Customize.Humaniser = {
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- EvenStand (slice mid-stand): with LaneSpotThreat and Retreat on, one enemy hero in reach who is not hitting us, whose burst is
 -- under our HP, at half HP or more, refuses no lane spot and starts no threat leave. Off: the burst bar, the band and the budget.
--- HighStand (slices high-stand, stand-rule): with Retreat on, two or more enemy heroes in reach, none hitting us, burst under our
--- HP (under half when they outnumber us), at half HP or more, start no threat leave; the lane spot is unchanged. Off: the budget.
+-- HighStand (slices high-stand, stand-rule): with Retreat on, two or more enemy heroes in reach, none hitting us, burst under half
+-- our HP, at 70% HP or more, start no threat leave (Threat.Stand); the lane spot is unchanged. Off: the budget.
 -- RetreatOdds (slice even-fight, missed): with Retreat on, an even fight with the hitters inside our creep aggro is held, left
 -- only on lethal, a tower or the heal floor. Off by default: the hold does not hit back, so it costs deaths (user 11/11/2026:
 -- on again after leave-together and hit-back). Off: the budget alone.
