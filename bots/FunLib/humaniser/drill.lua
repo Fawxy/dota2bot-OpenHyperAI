@@ -1514,19 +1514,19 @@ ____exports.TABLE = {
         }
     },
     ["tower-prehit"] = {
-        note = "rig: Radiant pos1 beside its bot T1, level 3; each rep a small Dire wave made under the T1 (both sides' creeps there cleared first), only the tower on it; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
-        cast = SAFE_CORE,
+        note = "rig: Radiant pos1, pos2 and pos3 each at the front of a small Dire wave made under its own T1 each rep (both sides' creeps there cleared first), only the tower on it, level 3; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
+        cast = {r = {1, 2, 3}},
         others = "bench",
         rep = {every = 30, from = 30},
         rig = {
             half = "execution",
             switch = "PreHit",
             window = 600,
-            spots = {home = {"r:bot1", -300, 0}},
+            spots = {bot = {"r:bot1", 200, 0}, mid = {"r:mid1", 140, 140}, top = {"r:top1", 0, 200}},
             timeout = 28,
             keeps = {"levelup"},
             release = {modes = {"laning", "idle"}},
-            reps = {{name = "tower", setup = {r1 = {"stand home"}}, ready = {towerCreep = 700, clear = 2000}}}
+            reps = {{name = "tower", setup = {r1 = {"stand bot"}, r2 = {"stand mid"}, r3 = {"stand top"}}, ready = {towerCreep = 700, clear = 2000}}}
         }
     },
     ["retreat-walk"] = {
@@ -2221,7 +2221,7 @@ end
 local function failingCheck(bot, st, rr)
     for ____, k in ipairs(__TS__ObjectKeys(rr.setup)) do
         local u = heroOf(bot, k)
-        if u ~= nil and st.placed[u:GetPlayerID()] ~= true then
+        if u ~= nil and st.placed[u:GetPlayerID()] ~= true and (u:GetPlayerID() == bot:GetPlayerID() or ____exports.RoleOf(u) ~= "cast") then
             return "setup"
         end
     end

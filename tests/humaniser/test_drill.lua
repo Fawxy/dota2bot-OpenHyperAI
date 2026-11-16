@@ -790,8 +790,30 @@ do
 	check("towerCreep: our own creep does not count", not H.Drill.TowerOnCreep(bot, 700))
 	tower.target = nil
 	check("towerCreep: a tower attacking nothing", not H.Drill.TowerOnCreep(bot, 700))
+	-- One cast per lane: a cast standing at its spot is ready though the other two casts are still walking.
+	local H3 = world("tower-prehit")
+	local c1, c2, c3 = hero(0, RAD, 1, 3), hero(1, RAD, 2, 2), hero(2, RAD, 3, 1)
+	for _, c in ipairs({ c1, c2, c3 }) do
+		c.maxhp, c.hp = 100, 100
+		c.GetNearbyTowers = function() return { tower } end
+	end
+	tower.target = unit(DIRE, 300, { creep = true, hero = false })
+	ACTIONS = {}
+	T = 31
+	local function tick3(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H3.Drill.Tick(u) if H3.Drill.Held(u) then H3.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	tick3(c1, c2, c3)
+	local mv = ActionsOf(0, "MoveToLocation")
+	local spot = mv[#mv] and mv[#mv].args[1]
+	check("tower-prehit: each cast walks to its own spot", spot ~= nil and ActionsOf(1, "MoveToLocation")[1] ~= nil)
+	c1.loc = Vector(spot.x, spot.y, 0)
+	tower.target.loc = Vector(spot.x + 300, spot.y, 0)
+	local lines = capture(function() tick3(c1, c2, c3) tick3(c1, c2, c3) end)
+	local ready = {}
+	for _, l in ipairs(lines) do if field(l, "ph") == "ready" then ready[tonumber(field(l, "pid"))] = field(l, "ok") end end
+	check("tower-prehit: the placed cast is ready while the other casts walk; they are not", ready[0] == "1" and ready[1] == nil and ready[2] == nil, ready)
+
 	local t = H.Drill.TABLE["tower-prehit"].rig
-	check("tower-prehit: execution rig on PreHit with the towerCreep check", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700)
+	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)
 end
 
 finish()

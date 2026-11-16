@@ -143,27 +143,31 @@ export const TABLE: Record<string, Entry> = {
             reps: [{ name: "lone", setup: { r2: ["stand home"], d2: ["stand foe"] }, ready: { lone: [1700, 0.35, 1], hpAtLeast: 0.5 } }],
         },
     },
-    // The tower pre-hit (K1, `Ours.PreHit`). half: execution. Facts the pre-hit reads: our tower attacking an enemy lane creep
-    // (forced: each rep the recipe clears both teams' creeps within 1,100 of our bot T1, heals the cast and makes three melee
-    // and one ranged Dire creep 580 north of it, a small wave held under the tower with only the tower on it; a first design
-    // that killed our lane-wide creeps let the Dire waves pile up and take the T1 by 4:00, off1); the creep within the cast's
-    // walk (forced: the cast stands beside the T1 in setup; checked `towerCreep`); the cast in laning mode in its lane, no
-    // enemy hero near (everyone else benched; checked `clear`); every hero level 3 (recipe), so it is not one-shot. Read after release: per rep, the tower-hit creeps the cast took, its pre-hits and the ledger's
+    // The tower pre-hit (K1, `Ours.PreHit`). half: execution. One cast per lane: the Radiant pos1, pos2 and pos3 under their
+    // own T1s (seed 30: Luna bot and Sniper mid ranged, Pudge top melee), read apart by lane. Facts the pre-hit reads: our tower
+    // attacking an enemy lane creep (forced: at +1 s of each rep the recipe clears both teams' lane creeps within 1,100 of each
+    // Radiant T1 and heals the casts, at +2 s makes three melee and one ranged Dire creep 580 up the lane from each T1, the side
+    // the Dire waves come from, so a small wave is held under each tower with only the tower on it before the natural waves
+    // arrive (off1: a lane-wide kill of our creeps let the Dire waves pile up and take the bot T1 by 4:00; off2: a clear at
+    // +10 s met the natural Dire wave at +3 to +7 s with the cast still a statue); the creep within the cast's walk (forced:
+    // each cast stands at its wave's front, 200 up the lane from its T1, in setup; checked `towerCreep`); the cast in laning
+    // mode in its lane, no enemy hero near (everyone else benched; checked `clear`); every hero level 3 (recipe), so it is
+    // not one-shot. Read after release: per rep and lane, the tower-hit creeps the cast took, its pre-hits and the ledger's
     // `prehit_tower` (scratch readout until a view exists).
     "tower-prehit": {
-        note: "rig: Radiant pos1 beside its bot T1, level 3; each rep a small Dire wave made under the T1 (both sides' creeps there cleared first), only the tower on it; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
-        cast: SAFE_CORE,
+        note: "rig: Radiant pos1, pos2 and pos3 each at the front of a small Dire wave made under its own T1 each rep (both sides' creeps there cleared first), only the tower on it, level 3; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
+        cast: { r: [1, 2, 3] },
         others: "bench",
         rep: { every: 30, from: 30 },
         rig: {
             half: "execution",
             switch: "PreHit",
             window: 600,
-            spots: { home: ["r:bot1", -300, 0] },
+            spots: { bot: ["r:bot1", 200, 0], mid: ["r:mid1", 140, 140], top: ["r:top1", 0, 200] },
             timeout: 28,
             keeps: ["levelup"],
             release: { modes: ["laning", "idle"] },
-            reps: [{ name: "tower", setup: { r1: ["stand home"] }, ready: { towerCreep: 700, clear: 2000 } }],
+            reps: [{ name: "tower", setup: { r1: ["stand bot"], r2: ["stand mid"], r3: ["stand top"] }, ready: { towerCreep: 700, clear: 2000 } }],
         },
     },
     // Slice retreat (master slices/retreat.md "Drill"): the forced retreat from fixed points. Each rep the Radiant pos1 walks
@@ -1695,7 +1699,8 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
     // Only the cast's own team's setup is read here (no state is shared across teams); the facts below read the rest.
     for (const k of Object.keys(rr.setup)) {
         const u = heroOf(bot, k);
-        if (u !== undefined && st.placed[u.GetPlayerID()] !== true) return "setup";
+        // Each cast waits for itself and the rig's actors, never for another cast (tower-prehit: one cast per lane).
+        if (u !== undefined && st.placed[u.GetPlayerID()] !== true && (u.GetPlayerID() === bot.GetPlayerID() || RoleOf(u) !== "cast")) return "setup";
     }
     const r = rr.ready;
     // Latched: once at or under the bar this rep it stays met, so regen while the attacker walks off cannot race it (fix5).
