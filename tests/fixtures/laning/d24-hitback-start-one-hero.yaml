@@ -1,0 +1,39 @@
+id: laning.hitback.start-one-hero.001
+source: log
+ref: {log: 2026-11-16T03-20-06-h2hhighstand1_B_dire_5.log, t: 160.500}
+status: active
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose trade on 4 (hp 0.776 vs 0.972, creeps 1, tower 0); write the right action, not this.
+# core pid 9 on pid 4: 725 away, reach 773; HP 78% vs 97%; heroes 1 theirs, 1 ours; creeps near 1, on the bot 1; tower 0
+world:
+  t: 160.5
+  pid: 9
+  role: "core"
+  tgt: 4
+  hp: 0.776
+  thp: 0.972
+  en: 1
+  ally: 1
+  cr: 1
+  hc: 1
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 725
+  rch: 773
+  tlh: 0
+  bu: 0.469
+  tm: 0
+  ar: 625
+  tar: 600
+  tme: 1
+  ko: 0.611
+  kt: 0.235
+  tf: 1
+  dn: 0
+  hb: 1
+expect:
+  must: ["trade"]
+  mustNot: ["respect"]
+notes: >
+  D24 start (h2hhighstand1 B_dire_5, 2:40): our pos1 at 78% is hit by the enemy mid it can reach (725 off). Not outnumbered, their burst 0.47 of our HP, our 3 s share 0.61 against theirs 0.24: safe and favoured, so the hit back is right. The game left on threat 1.6 s later.

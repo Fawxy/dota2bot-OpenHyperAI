@@ -152,6 +152,12 @@ const HIT_RECENT = 1;
  * unanswered hitters out of reach stood within 300 of it; the support's HARASS_REACH is the same walk. `judgement`.
  */
 const HIT_BACK_WALK = 300;
+/**
+ * Slice high-hit-back (D24, `Ours.HitBack`): a hit back opens, and retreat's threat leave waits for it, only at this HP share or
+ * more; a running one ends under it less KEEP_HP_SLACK. Threat PackHp's bar (h2hstand1: stands beside two heroes at 50-70% HP
+ * cost lives; h2hhitback1's hit back from 50% HP had a hit back in the last 12 s of 14 deaths). `judgement`.
+ */
+const HIT_BACK_HP = 0.7;
 /** A window Desire offered that attack mode did not take within this is logged as lost. */
 const LOST_AFTER = 1;
 
@@ -159,16 +165,16 @@ const LOST_AFTER = 1;
  * Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
  * the borders get their slack.
  */
-export function Decide(i: Inputs, running = false, killHp = KILL_HP, hitBack = false): { kind?: Kind; respect?: Respect } {
+export function Decide(i: Inputs, running = false, killHp = KILL_HP): { kind?: Kind; respect?: Respect } {
     const slack = running ? KEEP_HP_SLACK : 0;
-    if (i.burst !== undefined) return decideSafe(i, i.burst, running, killHp, hitBack);
+    if (i.burst !== undefined) return decideSafe(i, i.burst, running, killHp);
     if (i.tower) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
     if (i.targetHp <= killHp && i.hp >= i.targetHp) return { kind: "kill" };
     if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
-    if (!hitBack && i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
+    if (i.hp < i.targetHp - BEHIND_BY - slack) return { respect: "behind" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
-    if (!hitBack && i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
+    if (i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
     return { kind: "trade" };
 }
 
@@ -179,7 +185,7 @@ export function Decide(i: Inputs, running = false, killHp = KILL_HP, hitBack = f
  * target alone by its tower are no longer refusals: on the h2h trades HP gap did not predict a lost exchange. The kill keeps
  * the old tower test (a commit chases). Creeps and wave are unchanged.
  */
-function decideSafe(i: Inputs, burst: number, running: boolean, killHp: number, hitBack: boolean): { kind?: Kind; respect?: Respect } {
+function decideSafe(i: Inputs, burst: number, running: boolean, killHp: number): { kind?: Kind; respect?: Respect } {
     const slack = running ? KEEP_HP_SLACK : 0;
     if (i.towerOnMe === true) return { respect: "tower" };
     if (i.enemiesNear > i.alliesNear) return { respect: "outnumbered" };
@@ -187,7 +193,7 @@ function decideSafe(i: Inputs, burst: number, running: boolean, killHp: number, 
     if (i.hp < MIN_HP - slack) return { respect: "low_hp" };
     if (burst >= Threat.SETTINGS.StandBurst + slack) return { respect: "burst" };
     if (i.hitByCreeps >= MAX_CREEPS_ON_ME) return { respect: "creeps" };
-    if (!hitBack && i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
+    if (i.enemyCreepsNear > MAX_WAVE + (running ? KEEP_WAVE_SLACK : 0)) return { respect: "wave" };
     return { kind: "trade" };
 }
 
@@ -348,24 +354,54 @@ function lastHitting(h: Unit): boolean {
 }
 
 /**
- * Slice hit-back (D24, `Ours.HitBack`): the enemy hero within reach plus HIT_BACK_WALK that hit us within HIT_RECENT while one of our lane creeps
- * stands within creep aggro of it. It pays our creeps for every hit, so hitting back is the exchange D24 says to take even
- * beside their wave or a little behind on HP; the respects that remain are the trade's tower, numbers, HP floor and creeps on us.
+ * The nearest enemy hero that hit us within HIT_RECENT: in reach, or up to HIT_BACK_WALK past it while it stands inside our
+ * creeps' aggro (user 12/11/2026: answer a paying hitter just out of reach; D24: one hitting from outside it is stepped away from).
  */
 function hitBackTarget(bot: Unit): Unit | undefined {
-    if (!Ours.On("HitBack")) return undefined;
+    const reach = reachOf(bot);
     let best: Unit | undefined;
     let bestD = math.huge;
-    for (const h of bot.GetNearbyHeroes(reachOf(bot) + HIT_BACK_WALK, true, BotMode.None)) {
+    for (const h of bot.GetNearbyHeroes(reach + HIT_BACK_WALK, true, BotMode.None)) {
         if (!valid(h) || !bot.WasRecentlyDamagedByHero(h, HIT_RECENT)) continue;
-        if (!CreepAggro.Paid(bot, h)) continue;
         const d = GetUnitToUnitDistance(bot, h);
-        if (d < bestD) {
-            best = h;
-            bestD = d;
-        }
+        if (d >= bestD || (d > reach && !CreepAggro.Paid(bot, h))) continue;
+        best = h;
+        bestD = d;
     }
     return best;
+}
+
+/**
+ * Slice high-hit-back (D24, `Ours.HitBack`): the hero hitting us, and CoreTrade's fresh answer on it (Answer: safe, free or
+ * favoured, no due deny), with two caution bars on top: our HP at HIT_BACK_HP or more, and with two or more enemy heroes near
+ * their burst under Threat PackBurst of our HP (the two-hero stand's bar; D1's own bars there cost lives, h2hstand1). The
+ * answer is `trade` or `kill` when it is taken, else the refusal (`hb_hp`, `hb_burst` or Answer's). No hitter: undefined.
+ */
+export function HitBackAnswer(bot: Unit): LuaMultiReturn<[Unit | undefined, string]> {
+    const h = hitBackTarget(bot);
+    if (h === undefined) return $multi(undefined, "no_hitter");
+    if (frac(bot) < HIT_BACK_HP) return $multi(h, "hb_hp");
+    return $multi(h, HitBackDecide(Gather(bot, h), killHpFor(bot), recoverTo[bot.GetPlayerID()]));
+}
+
+/** HitBackAnswer's decision on the hitter's inputs (pure; the cut kind `trade`'s driver with `hb`): the caution bars, then Answer. */
+export function HitBackDecide(i: Inputs, killHp: number, gap: number | undefined): string {
+    if (i.hp < HIT_BACK_HP) return "hb_hp";
+    if (i.enemiesNear >= 2 && (i.burst ?? 0) >= Threat.SETTINGS.PackBurst) return "hb_burst";
+    return Answer(i, killHp, gap);
+}
+
+/**
+ * Retreat's threat leave waits while this holds (`Ours.HitBack`; retreat LeaveWhy's `hitback` stay): a running hit back, or a
+ * hitter CoreTrade answers `trade` or `kill` on now (retreat leaves 0.17 s after its read goes over, before attack mode can
+ * open the episode). Lethal, a tower on us and the heal floor still leave first.
+ */
+export function HitBackHolds(bot: Unit): boolean {
+    if (!Ours.On("HitBack") || !CoreLastHit.Applies(bot)) return false;
+    const ep = episodes[bot.GetPlayerID()];
+    if (ep !== undefined && ep.hb === true && ep.ended !== true) return true;
+    const [h, a] = HitBackAnswer(bot);
+    return h !== undefined && (a === "trade" || a === "kill");
 }
 
 /** Hitters are looked for this far out: past any laning hero's attack range. */
@@ -703,24 +739,25 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
     const gap = recoverTo[pid];
     const heldWhy = d.kind === "trade" ? heldBy(inputs, gap) : undefined;
     const held = heldWhy !== undefined;
-    // No wait for the HP gap a lost trade left (`recoverTo`): the hitter goes on hitting us whether we answer or not, so
-    // standing passive gives the exchange away (drill retreat-hitback fix9 rep 1: a trade lost in its first 0.2 s, then
-    // no answer from 65% to 30%). A losing hit back ends and the next frame answers again from fresh HP.
     if (heldWhy === "deny") return unanswered(bot, now, "deny", inputs);
     if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? heldWhy ?? "gap", inputs);
+    // A trade on a hero that is hitting us, taken at HIT_BACK_HP or more, is a hit back: retreat waits for it and it ends
+    // under that HP (slice high-hit-back).
+    if (Ours.On("HitBack") && CoreLastHit.Applies(bot) && frac(bot) >= HIT_BACK_HP && bot.WasRecentlyDamagedByHero(target, HIT_RECENT)) {
+        if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
+        return open(bot, d.kind, target, now, undefined, undefined, true);
+    }
     if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
     return open(bot, d.kind, target, now);
 }
 
 /** The trade rule opened nothing (`why`): a hit back if there is a hitter to answer, else the unanswered hit is logged. */
 function hitBack(bot: Unit, now: number, why: string, inputs?: Inputs): number {
-    const hb = hitBackTarget(bot);
+    if (!Ours.On("HitBack") || !CoreLastHit.Applies(bot)) return unanswered(bot, now, why, inputs);
+    const [hb, a] = HitBackAnswer(bot);
     if (hb === undefined) return unanswered(bot, now, why, inputs);
-    // A hit back is a trade too: a due deny outbids it (slice trade-free round 2).
-    if (Ours.On("TradeFree") && Laning.DenyDue(bot)) return unanswered(bot, now, "hb_deny", inputs);
-    const hd = Decide(Gather(bot, hb), false, killHpFor(bot), true);
-    if (hd.kind === undefined) return unanswered(bot, now, `hb_${hd.respect}`);
-    return open(bot, hd.kind, hb, now, undefined, undefined, true);
+    if (a !== "trade" && a !== "kill") return unanswered(bot, now, a.startsWith("hb_") ? a : `hb_${a}`);
+    return open(bot, a, hb, now, undefined, undefined, true);
 }
 
 function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Play, joined?: boolean, hb?: boolean): number {
@@ -817,8 +854,13 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
     const g = Gather(bot, ep.target);
     // A running kill ends by the target's tower, as at its open (the safe rule's harass would keep it as a trade).
     if (ep.kind === "kill" && g.tower) return "tower";
-    const d = Decide(g, true, killHpFor(bot), ep.hb === true);
+    const d = Decide(g, true, killHpFor(bot));
     if (d.kind === undefined) return d.respect;
+    // The hit back's caution bars, kept with slack (slice high-hit-back): under them retreat's own rule decides again.
+    if (ep.hb === true) {
+        if (frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK) return "hb_hp";
+        if (g.enemiesNear >= 2 && (g.burst ?? 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK) return "hb_burst";
+    }
     return undefined;
 }
 

@@ -2723,6 +2723,8 @@ export const EVENTS = {
         dt: "num",
         /** kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise. */
         pj: "num",
+        /** kind=leave: 1 when CoreTrade.HitBackHolds held for the bot (`Ours.HitBack`: LeaveWhy stays `hitback`); absent otherwise. */
+        hb: "num",
         /** kind=leave: the read's threat and band, for reading a line without replaying it. */
         thr: "num",
         band: "str",

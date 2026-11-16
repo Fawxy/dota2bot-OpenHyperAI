@@ -1,0 +1,39 @@
+id: laning.hitback.start-two-heroes-low-burst.001
+source: log
+ref: {log: 2026-11-16T03-15-14-h2hhighstand1_B_rad_5.log, t: 462.100}
+status: active
+decision: core_trade
+# Cut by tools/hlog/cut.js. The game chose trade on 7 (hp 0.739 vs 0.511, creeps 2, tower 0); write the right action, not this.
+# core pid 3 on pid 7: 141 away, reach 298; HP 74% vs 51%; heroes 2 theirs, 2 ours; creeps near 2, on the bot 0; tower 0
+world:
+  t: 462.1
+  pid: 3
+  role: "core"
+  tgt: 7
+  hp: 0.739
+  thp: 0.511
+  en: 2
+  ally: 2
+  cr: 2
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 141
+  rch: 298
+  tlh: 0
+  bu: 0.376
+  tm: 0
+  ar: 150
+  tar: 150
+  tme: 1
+  ko: 0.725
+  kt: 0.161
+  tf: 1
+  dn: 0
+  hb: 1
+expect:
+  must: ["trade"]
+  mustNot: ["respect"]
+notes: >
+  D24 start, two heroes (h2hhighstand1 B_rad_5, 7:42): our pos3 at 74% is hit with two of theirs and two of ours near; their burst 0.38 of our HP is under the two-hero bar (0.5) and our share 0.73 beats theirs 0.16: hit back. The game left on threat 1.1 s later.

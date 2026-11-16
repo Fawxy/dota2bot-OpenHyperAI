@@ -36,6 +36,13 @@ local function __TS__SparseArraySpread(sparseArray)
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
 
+local function __TS__StringStartsWith(self, searchString, position)
+    if position == nil or position < 0 then
+        position = 0
+    end
+    return string.sub(self, position + 1, #searchString + position) == searchString
+end
+
 local function __TS__ArrayIncludes(self, searchElement, fromIndex)
     if fromIndex == nil then
         fromIndex = 0
@@ -57,7 +64,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local decideSafe, favoured, heldBy, heldByGap, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local decideSafe, favoured, heldBy, heldByGap, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -75,25 +82,16 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 --- Whether a trade (or kill) is on against a target with these inputs, or why not. `running`: the trade is already under way, so
 -- the borders get their slack.
-function ____exports.Decide(i, running, killHp, hitBack)
+function ____exports.Decide(i, running, killHp)
     if running == nil then
         running = false
     end
     if killHp == nil then
         killHp = KILL_HP
     end
-    if hitBack == nil then
-        hitBack = false
-    end
     local slack = running and KEEP_HP_SLACK or 0
     if i.burst ~= nil then
-        return decideSafe(
-            i,
-            i.burst,
-            running,
-            killHp,
-            hitBack
-        )
+        return decideSafe(i, i.burst, running, killHp)
     end
     if i.tower then
         return {respect = "tower"}
@@ -107,18 +105,18 @@ function ____exports.Decide(i, running, killHp, hitBack)
     if i.hp < MIN_HP - slack then
         return {respect = "low_hp"}
     end
-    if not hitBack and i.hp < i.targetHp - BEHIND_BY - slack then
+    if i.hp < i.targetHp - BEHIND_BY - slack then
         return {respect = "behind"}
     end
     if i.hitByCreeps >= MAX_CREEPS_ON_ME then
         return {respect = "creeps"}
     end
-    if not hitBack and i.enemyCreepsNear > MAX_WAVE + (running and KEEP_WAVE_SLACK or 0) then
+    if i.enemyCreepsNear > MAX_WAVE + (running and KEEP_WAVE_SLACK or 0) then
         return {respect = "wave"}
     end
     return {kind = "trade"}
 end
-function decideSafe(i, burst, running, killHp, hitBack)
+function decideSafe(i, burst, running, killHp)
     local slack = running and KEEP_HP_SLACK or 0
     if i.towerOnMe == true then
         return {respect = "tower"}
@@ -138,7 +136,7 @@ function decideSafe(i, burst, running, killHp, hitBack)
     if i.hitByCreeps >= MAX_CREEPS_ON_ME then
         return {respect = "creeps"}
     end
-    if not hitBack and i.enemyCreepsNear > MAX_WAVE + (running and KEEP_WAVE_SLACK or 0) then
+    if i.enemyCreepsNear > MAX_WAVE + (running and KEEP_WAVE_SLACK or 0) then
         return {respect = "wave"}
     end
     return {kind = "trade"}
@@ -161,6 +159,23 @@ function heldBy(i, gap)
 end
 function heldByGap(i, gap)
     return gap ~= nil and i.hp - i.targetHp < gap - 0.000001
+end
+--- The fresh decision on a target in reach with no trade running, as one answer (the cut kind `trade`, driver core_trade):
+-- Decide's kind or respect, or `gap` when a trade is held by the gap a lost trade left (with `Ours.TradeFree`, `unfavoured`
+-- when the hit is neither free nor favoured, `deny` when a due deny outbids it).
+function ____exports.Answer(i, killHp, gap)
+    local d = ____exports.Decide(i, false, killHp)
+    local ____temp_0
+    if d.kind == "trade" then
+        ____temp_0 = heldBy(i, gap)
+    else
+        ____temp_0 = nil
+    end
+    local held = ____temp_0
+    if held ~= nil then
+        return held
+    end
+    return d.kind or d.respect or "none"
 end
 --- HP the core lost beyond what the target lost since `hp0`/`thp0`, as a share of the core's max HP (positive: losing).
 -- Absolute HP on both sides, so a big hero is not judged against a small one's fractions.
@@ -188,40 +203,60 @@ function lastHitting(h)
     return t ~= nil and t ~= nil and not t:IsNull() and t:IsCreep() and not t:IsHero()
 end
 function hitBackTarget(bot)
-    if not Ours.On("HitBack") then
-        return nil
-    end
+    local reach = reachOf(bot)
     local best
     local bestD = math.huge
-    for ____, h in ipairs(bot:GetNearbyHeroes(
-        reachOf(bot) + HIT_BACK_WALK,
-        true,
-        BotMode.None
-    )) do
+    for ____, h in ipairs(bot:GetNearbyHeroes(reach + HIT_BACK_WALK, true, BotMode.None)) do
         do
-            local __continue41
+            local __continue40
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue41 = true
-                    break
-                end
-                if not CreepAggro.Paid(bot, h) then
-                    __continue41 = true
+                    __continue40 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
-                if d < bestD then
-                    best = h
-                    bestD = d
+                if d >= bestD or d > reach and not CreepAggro.Paid(bot, h) then
+                    __continue40 = true
+                    break
                 end
-                __continue41 = true
+                best = h
+                bestD = d
+                __continue40 = true
             until true
-            if not __continue41 then
+            if not __continue40 then
                 break
             end
         end
     end
     return best
+end
+--- Slice high-hit-back (D24, `Ours.HitBack`): the hero hitting us, and CoreTrade's fresh answer on it (Answer: safe, free or
+-- favoured, no due deny), with two caution bars on top: our HP at HIT_BACK_HP or more, and with two or more enemy heroes near
+-- their burst under Threat PackBurst of our HP (the two-hero stand's bar; D1's own bars there cost lives, h2hstand1). The
+-- answer is `trade` or `kill` when it is taken, else the refusal (`hb_hp`, `hb_burst` or Answer's). No hitter: undefined.
+function ____exports.HitBackAnswer(bot)
+    local h = hitBackTarget(bot)
+    if h == nil then
+        return nil, "no_hitter"
+    end
+    if frac(bot) < HIT_BACK_HP then
+        return h, "hb_hp"
+    end
+    return h, ____exports.HitBackDecide(
+        ____exports.Gather(bot, h),
+        killHpFor(bot),
+        recoverTo[bot:GetPlayerID()]
+    )
+end
+--- HitBackAnswer's decision on the hitter's inputs (pure; the cut kind `trade`'s driver with `hb`): the caution bars, then Answer.
+function ____exports.HitBackDecide(i, killHp, gap)
+    if i.hp < HIT_BACK_HP then
+        return "hb_hp"
+    end
+    if i.enemiesNear >= 2 and (i.burst or 0) >= Threat.SETTINGS.PackBurst then
+        return "hb_burst"
+    end
+    return ____exports.Answer(i, killHp, gap)
 end
 function unanswered(bot, now, why, i)
     local pid = bot:GetPlayerID()
@@ -233,10 +268,10 @@ function unanswered(bot, now, why, i)
     local hd = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) do
         do
-            local __continue48
+            local __continue55
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue48 = true
+                    __continue55 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -244,9 +279,9 @@ function unanswered(bot, now, why, i)
                     hitter = h
                     hd = d
                 end
-                __continue48 = true
+                __continue55 = true
             until true
-            if not __continue48 then
+            if not __continue55 then
                 break
             end
         end
@@ -355,19 +390,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue71
+            local __continue78
             repeat
                 if not c:IsAlive() then
-                    __continue71 = true
+                    __continue78 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue71 = true
+                __continue78 = true
             until true
-            if not __continue71 then
+            if not __continue78 then
                 break
             end
         end
@@ -379,10 +414,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue75
+            local __continue82
             repeat
                 if not t:IsAlive() then
-                    __continue75 = true
+                    __continue82 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -398,9 +433,9 @@ function ____exports.Gather(bot, target)
                 ) <= reach then
                     towerOnMe = true
                 end
-                __continue75 = true
+                __continue82 = true
             until true
-            if not __continue75 then
+            if not __continue82 then
                 break
             end
         end
@@ -512,35 +547,43 @@ function freshDecision(bot, pid, now, owns, target, inputs, killHp)
     if d.kind == nil or held then
         return hitBack(bot, now, d.respect or heldWhy or "gap", inputs)
     end
+    if Ours.On("HitBack") and CoreLastHit.Applies(bot) and frac(bot) >= HIT_BACK_HP and bot:WasRecentlyDamagedByHero(target, HIT_RECENT) then
+        if d.kind == "trade" and gap ~= nil then
+            recoverTo[pid] = nil
+        end
+        return open(
+            bot,
+            d.kind,
+            target,
+            now,
+            nil,
+            nil,
+            true
+        )
+    end
     if d.kind == "trade" and gap ~= nil then
         recoverTo[pid] = nil
     end
     return open(bot, d.kind, target, now)
 end
 function hitBack(bot, now, why, inputs)
-    local hb = hitBackTarget(bot)
+    if not Ours.On("HitBack") or not CoreLastHit.Applies(bot) then
+        return unanswered(bot, now, why, inputs)
+    end
+    local hb, a = ____exports.HitBackAnswer(bot)
     if hb == nil then
         return unanswered(bot, now, why, inputs)
     end
-    if Ours.On("TradeFree") and Laning.DenyDue(bot) then
-        return unanswered(bot, now, "hb_deny", inputs)
-    end
-    local hd = ____exports.Decide(
-        ____exports.Gather(bot, hb),
-        false,
-        killHpFor(bot),
-        true
-    )
-    if hd.kind == nil then
+    if a ~= "trade" and a ~= "kill" then
         return unanswered(
             bot,
             now,
-            "hb_" .. tostring(hd.respect)
+            __TS__StringStartsWith(a, "hb_") and a or "hb_" .. a
         )
     end
     return open(
         bot,
-        hd.kind,
+        a,
         hb,
         now,
         nil,
@@ -581,11 +624,11 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue124
+            local __continue133
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue124 = true
+                    __continue133 = true
                     break
                 end
                 local g = ____exports.Gather(bot, t)
@@ -595,7 +638,7 @@ function joinable(bot)
                     killHpFor(bot)
                 ).respect
                 if g.tower or r == "tower" or r == "outnumbered" then
-                    __continue124 = true
+                    __continue133 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -604,12 +647,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue124 = true
+                    __continue133 = true
                     break
                 end
                 return p
             until true
-            if not __continue124 then
+            if not __continue133 then
                 break
             end
         end
@@ -718,11 +761,18 @@ function keepWhy(bot, ep, now, join)
     local d = ____exports.Decide(
         g,
         true,
-        killHpFor(bot),
-        ep.hb == true
+        killHpFor(bot)
     )
     if d.kind == nil then
         return d.respect
+    end
+    if ep.hb == true then
+        if frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK then
+            return "hb_hp"
+        end
+        if g.enemiesNear >= 2 and (g.burst or 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK then
+            return "hb_burst"
+        end
     end
     return nil
 end
@@ -733,19 +783,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue169
+            local __continue181
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue169 = true
+                    __continue181 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue169 = true
+                __continue181 = true
             until true
-            if not __continue169 then
+            if not __continue181 then
                 break
             end
         end
@@ -814,25 +864,9 @@ COOLDOWN_LEFT = 0.3
 STEP_OUT_LIMIT = 2
 HIT_RECENT = 1
 HIT_BACK_WALK = 300
+HIT_BACK_HP = 0.7
 LOST_AFTER = 1
 OUTRANGE = 100
---- The fresh decision on a target in reach with no trade running, as one answer (the cut kind `trade`, driver core_trade):
--- Decide's kind or respect, or `gap` when a trade is held by the gap a lost trade left (with `Ours.TradeFree`, `unfavoured`
--- when the hit is neither free nor favoured, `deny` when a due deny outbids it).
-function ____exports.Answer(i, killHp, gap)
-    local d = ____exports.Decide(i, false, killHp)
-    local ____temp_0
-    if d.kind == "trade" then
-        ____temp_0 = heldBy(i, gap)
-    else
-        ____temp_0 = nil
-    end
-    local held = ____temp_0
-    if held ~= nil then
-        return held
-    end
-    return d.kind or d.respect or "none"
-end
 --- The aggro-free attack, for core trades and support harass alike (one plan, so not an engine verb: a lane technique is bot code,
 -- CLAUDE.md rule 3; slice support-spot). What a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
 -- order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
@@ -864,6 +898,20 @@ Plays.Define(____exports.LANE_FIGHT, {base = FIGHT_BASE, timeout = FIGHT_TIME + 
 function ____exports.Owns(bot)
     return Ours.On("CoreTrade") and CoreLastHit.Applies(bot) or isSupport(bot)
 end
+--- Retreat's threat leave waits while this holds (`Ours.HitBack`; retreat LeaveWhy's `hitback` stay): a running hit back, or a
+-- hitter CoreTrade answers `trade` or `kill` on now (retreat leaves 0.17 s after its read goes over, before attack mode can
+-- open the episode). Lethal, a tower on us and the heal floor still leave first.
+function ____exports.HitBackHolds(bot)
+    if not Ours.On("HitBack") or not CoreLastHit.Applies(bot) then
+        return false
+    end
+    local ep = episodes[bot:GetPlayerID()]
+    if ep ~= nil and ep.hb == true and ep.ended ~= true then
+        return true
+    end
+    local h, a = ____exports.HitBackAnswer(bot)
+    return h ~= nil and (a == "trade" or a == "kill")
+end
 HITTER_RADIUS = 1600
 NO_EVERY = 5
 lastNo = {}
@@ -874,10 +922,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue57
+            local __continue64
             repeat
                 if not valid(h) then
-                    __continue57 = true
+                    __continue64 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -885,9 +933,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue57 = true
+                __continue64 = true
             until true
-            if not __continue57 then
+            if not __continue64 then
                 break
             end
         end
@@ -1197,19 +1245,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue159
+            local __continue171
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue159 = true
+                    __continue171 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue159 = true
+                __continue171 = true
             until true
-            if not __continue159 then
+            if not __continue171 then
                 break
             end
         end

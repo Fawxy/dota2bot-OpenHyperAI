@@ -563,6 +563,7 @@ function ____exports.Leave(bot, i)
             },
             {"unp", i.unp},
             {"pj", i.pj and 1 or nil},
+            {"hb", i.hb and 1 or nil},
             {
                 "dt",
                 bot:WasRecentlyDamagedByTower(0.5) and 1 or 0
