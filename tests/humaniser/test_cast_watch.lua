@@ -327,4 +327,15 @@ do
 		and first:find("casts=2", 1, true) and first:find("recorded=2", 1, true) and first:find("jumps=1", 1, true), first)
 end
 
+-- Between full ticks the frame step reads the queue, so a caster who blinks into fog before the next Tick is not lost.
+do
+	local H, bot, enemy, records = world({ laneFight = { UseCastCallback = true } })
+	poll(H, bot, 1)
+	CAST_CALLBACKS[6][1]({ player_id = 6, ability = enemy.impale, unit = enemy })
+	H.LaneFight.Frame(bot)
+	enemy.CanBeSeen = function() return false end
+	H.LaneFight.Tick(bot)
+	check("a cast read on the frame it was seen survives the caster going into fog", recordsOf(records, "lion_impale") == 1, #records)
+end
+
 finish()

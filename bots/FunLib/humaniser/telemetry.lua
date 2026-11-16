@@ -2366,7 +2366,7 @@ local function trackCreepDeaths(bot, now)
         if c.attackAt[pid] == nil or at > c.attackAt[pid] then
             c.attackAt[pid] = at
             c.attackOn[pid] = h:GetAttackTarget() or nil
-            c.attackMode[pid] = stateFor(pid).mode
+            c.attackMode[pid] = h:IsBot() and h:GetActiveMode() or nil
         end
     end
     for ____, u in ipairs(alive) do
@@ -2532,8 +2532,10 @@ local function snapHumans(bot, now)
         end
     end
 end
---- Runs every frame per bot from Humaniser.Tick, whether or not the humaniser is enabled.
-function ____exports.Tick(bot, provider)
+--- From Humaniser.Tick per bot, whether or not the humaniser is enabled. `frameOnly` runs just the creep-death tracker, the
+-- one part that needs every frame: a creep that dies between two samples further apart is dropped as "left vision" when
+-- its last seen health was high, and the swing fields read the attack target on the frame the attack lands.
+function ____exports.Tick(bot, provider, frameOnly)
     if not ____exports.IsEnabled() then
         return
     end
@@ -2552,6 +2554,10 @@ function ____exports.Tick(bot, provider)
     local s = stateFor(bot:GetPlayerID())
     local now = DotaTime()
     if s.ended then
+        return
+    end
+    if frameOnly == true then
+        guardedCreeps(bot, now)
         return
     end
     maybeProfile(bot, s)

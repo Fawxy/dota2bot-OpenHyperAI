@@ -34,6 +34,14 @@ export function IsActive(): boolean {
     return LaneFightConfig.IsActive();
 }
 
+/** The frames between Tick's: reads a queued cast event under Tick's own gates (CastWatch.Drain says why it cannot wait). */
+export function Frame(bot: Unit): void {
+    if (!CastWatch.Pending(bot)) return;
+    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
+    if (!LaneFightConfig.IsOn("Memory") || LaneState.ForBot(bot) === undefined) return;
+    CastWatch.Drain(bot);
+}
+
 export function Tick(bot: Unit): void {
     if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
     if (!LaneFightConfig.IsOn("Memory") && !gatesOpen(bot)) return;

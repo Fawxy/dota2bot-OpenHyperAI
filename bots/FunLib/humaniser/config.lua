@@ -16,6 +16,7 @@ local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.DEFAULTS = {
     Enable = true,
     Debug = false,
+    TickEvery = 3,
     ValveWeight = 0.5,
     FretWeight = 0.5,
     SkillOverride = nil,

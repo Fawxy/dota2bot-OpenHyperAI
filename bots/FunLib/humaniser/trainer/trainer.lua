@@ -1229,6 +1229,9 @@ local function run(bot, team, s, now)
         end
     end
 end
+function ____exports.IsEnabled()
+    return Settings.IsEnabled()
+end
 function ____exports.Tick(bot)
     if not Settings.IsEnabled() then
         return

@@ -459,22 +459,38 @@ local function summarise(bot, w, now)
     )
     w.stats = freshStats(now)
 end
-function ____exports.Tick(bot)
+--- Whether a cast callback has queued an event this bot has not read yet.
+function ____exports.Pending(bot)
+    local w = watches[bot:GetPlayerID()]
+    return w ~= nil and #w.pending > 0
+end
+--- Reads the queued cast events. Every frame (LaneFight.Frame): an event counts only while its caster is visible at the
+-- read, so a blink into fog read a few frames late would be dropped.
+function ____exports.Drain(bot)
     local now = DotaTime()
     if now < 0 then
         return
     end
     local w = watchFor(bot:GetPlayerID())
-    if #w.pending > 0 then
-        local queued = w.pending
-        w.pending = {}
-        local gap = Perception.Settings().EventGap
-        for ____, q in ipairs(queued) do
-            if now - q.at <= gap then
-                onCastEvent(bot, q.enemyPid, q.event, q.at)
-            end
+    if #w.pending == 0 then
+        return
+    end
+    local queued = w.pending
+    w.pending = {}
+    local gap = Perception.Settings().EventGap
+    for ____, q in ipairs(queued) do
+        if now - q.at <= gap then
+            onCastEvent(bot, q.enemyPid, q.event, q.at)
         end
     end
+end
+function ____exports.Tick(bot)
+    local now = DotaTime()
+    if now < 0 then
+        return
+    end
+    ____exports.Drain(bot)
+    local w = watchFor(bot:GetPlayerID())
     if now < w.nextPoll then
         return
     end
@@ -489,10 +505,10 @@ function ____exports.Tick(bot)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue91
+            local __continue94
             repeat
                 if e == nil or not e.visible or not usable(e.unit) then
-                    __continue91 = true
+                    __continue94 = true
                     break
                 end
                 visible[e.pid] = true
@@ -512,9 +528,9 @@ function ____exports.Tick(bot)
                     e.pid,
                     now
                 )
-                __continue91 = true
+                __continue94 = true
             until true
-            if not __continue91 then
+            if not __continue94 then
                 break
             end
         end
