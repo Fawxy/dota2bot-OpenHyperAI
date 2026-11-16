@@ -1,14 +1,46 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
+    end
+    return result
+end
+-- End of Lua Library inline imports
 local ____exports = {}
+local num, round, abilityRows, estRow, nearestOf, nearestOwn, nearestEnemy, NIL, ERR, EST_WINDOW, ALL_DAMAGE, ABILITY_REPEAT, lastAbility
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local UnitType = ____dota.UnitType
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local MAX_PLAYER_ID = 23
-local NIL = -1
-local ERR = -2
-local function num(u, read)
+function num(u, read)
     local ok, v = pcall(read, u)
     if not ok then
         return ERR
@@ -21,9 +53,247 @@ local function num(u, read)
     end
     return type(v) == "number" and v or NIL
 end
-local function round(v)
+function round(v)
     return v < 0 and v or math.floor(v * 10 + 0.5) / 10
 end
+function abilityRows(team, pid, own, h)
+    local u = h
+    local ____temp_3
+    if own == 1 then
+        ____temp_3 = nearestEnemy(h)
+    else
+        ____temp_3 = nearestOwn(h)
+    end
+    local target = ____temp_3
+    local now = DotaTime()
+    do
+        local slot = 0
+        while slot <= 5 do
+            do
+                local __continue76
+                repeat
+                    local okA, a = pcall(function() return u:GetAbilityInSlot(slot) end)
+                    if not okA or a == nil or a == nil then
+                        __continue76 = true
+                        break
+                    end
+                    local ab = a
+                    local okN, name = pcall(function() return ab:GetName() end)
+                    if not okN or type(name) ~= "string" or name == "generic_hidden" then
+                        __continue76 = true
+                        break
+                    end
+                    if num(
+                        h,
+                        function() return ab:IsHidden() end
+                    ) == 1 then
+                        __continue76 = true
+                        break
+                    end
+                    local ____array_5 = __TS__SparseArrayNew(
+                        {
+                            "lvl",
+                            num(
+                                h,
+                                function() return ab:GetLevel() end
+                            )
+                        },
+                        {
+                            "rdy",
+                            num(
+                                h,
+                                function() return ab:IsCooldownReady() end
+                            )
+                        },
+                        {
+                            "fc",
+                            num(
+                                h,
+                                function() return ab:IsFullyCastable() end
+                            )
+                        },
+                        {
+                            "mok",
+                            num(
+                                h,
+                                function() return ab:IsOwnersManaEnough() end
+                            )
+                        },
+                        {
+                            "rem",
+                            round(num(
+                                h,
+                                function() return ab:GetCooldownTimeRemaining() end
+                            ))
+                        },
+                        {
+                            "cd",
+                            round(num(
+                                h,
+                                function() return ab:GetCooldown() end
+                            ))
+                        },
+                        {
+                            "scd",
+                            round(num(
+                                h,
+                                function() return ab:GetSpecialValueFloat("AbilityCooldown") end
+                            ))
+                        },
+                        {
+                            "dmg",
+                            round(num(
+                                h,
+                                function() return ab:GetAbilityDamage() end
+                            ))
+                        },
+                        {
+                            "mc",
+                            round(num(
+                                h,
+                                function() return ab:GetManaCost() end
+                            ))
+                        }
+                    )
+                    local ____temp_4
+                    if target == nil then
+                        ____temp_4 = nil
+                    else
+                        ____temp_4 = round(num(
+                            h,
+                            function() return ab:GetEstimatedDamageToTarget(target, EST_WINDOW, ALL_DAMAGE) end
+                        ))
+                    end
+                    __TS__SparseArrayPush(____array_5, {"aest", ____temp_4})
+                    local fields = {__TS__SparseArraySpread(____array_5)}
+                    local sig = table.concat(
+                        __TS__ArrayMap(
+                            fields,
+                            function(____, ____bindingPattern0)
+                                local v
+                                local k
+                                k = ____bindingPattern0[1]
+                                v = ____bindingPattern0[2]
+                                return k == "rem" and (v > 0 and "+" or tostring(v)) or (k == "aest" and "" or tostring(v))
+                            end
+                        ),
+                        ","
+                    )
+                    local key = (((tostring(team) .. ":") .. tostring(pid)) .. ":") .. tostring(slot)
+                    local last = lastAbility[key]
+                    if last ~= nil and last.sig == sig and now - last.at < ABILITY_REPEAT then
+                        __continue76 = true
+                        break
+                    end
+                    lastAbility[key] = {sig = sig, at = now}
+                    Telemetry.Event(
+                        "apiprobe_abil",
+                        {
+                            {"team", team},
+                            {"pid", pid},
+                            {"own", own},
+                            {"slot", slot},
+                            {"name", name},
+                            unpack(fields)
+                        }
+                    )
+                    __continue76 = true
+                until true
+                if not __continue76 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+end
+function estRow(team, src, own, h, target)
+    local u = h
+    local okL, at = pcall(function() return u:GetLocation() end)
+    local d = okL and at ~= nil and at ~= nil and GetUnitToLocationDistance(target, at) or -1
+    Telemetry.Event(
+        "apiprobe_est",
+        {
+            {"team", team},
+            {"src", src},
+            {
+                "dst",
+                target:GetPlayerID()
+            },
+            {"own", own},
+            {
+                "dist",
+                math.floor(d)
+            },
+            {
+                "et",
+                round(num(
+                    h,
+                    function() return u:GetEstimatedDamageToTarget(true, target, EST_WINDOW, ALL_DAMAGE) end
+                ))
+            },
+            {
+                "ef",
+                round(num(
+                    h,
+                    function() return u:GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE) end
+                ))
+            }
+        }
+    )
+end
+function nearestOf(h, units)
+    local ok, at = pcall(function() return h:GetLocation() end)
+    if not ok or at == nil or at == nil then
+        return nil
+    end
+    local best
+    local bestD = math.huge
+    for ____, x in ipairs(units) do
+        do
+            local __continue102
+            repeat
+                if x:IsNull() or not x:IsAlive() or x:IsIllusion() then
+                    __continue102 = true
+                    break
+                end
+                local d = GetUnitToLocationDistance(x, at)
+                if d < bestD then
+                    bestD = d
+                    best = x
+                end
+                __continue102 = true
+            until true
+            if not __continue102 then
+                break
+            end
+        end
+    end
+    return best
+end
+function nearestOwn(h)
+    local own = {}
+    do
+        local i = 1
+        while i <= 5 do
+            local m = GetTeamMember(i)
+            if m ~= nil and m ~= nil then
+                own[#own + 1] = m
+            end
+            i = i + 1
+        end
+    end
+    return nearestOf(h, own)
+end
+function nearestEnemy(h)
+    return nearestOf(
+        h,
+        GetUnitList(UnitType.EnemyHeroes)
+    )
+end
+local MAX_PLAYER_ID = 23
+NIL = -1
+ERR = -2
 local function cooldownSum(u)
     local sum = 0
     do
@@ -415,6 +685,38 @@ local function teamRows(bot, st)
             end
         end
     end
+    for epid, h in pairs(st.handles) do
+        do
+            local __continue66
+            repeat
+                if num(
+                    h,
+                    function(u) return u:CanBeSeen() end
+                ) ~= 1 or num(
+                    h,
+                    function(u) return u:IsAlive() end
+                ) ~= 1 then
+                    __continue66 = true
+                    break
+                end
+                abilityRows(team, epid, 0, h)
+                local target = nearestOwn(h)
+                if target ~= nil then
+                    estRow(
+                        team,
+                        epid,
+                        0,
+                        h,
+                        target
+                    )
+                end
+                __continue66 = true
+            until true
+            if not __continue66 then
+                break
+            end
+        end
+    end
     local ok, tps = pcall(function() return GetIncomingTeleports() end)
     if not ok or tps == nil or tps == nil then
         return
@@ -445,6 +747,10 @@ local function teamRows(bot, st)
         )
     end
 end
+EST_WINDOW = 3
+ALL_DAMAGE = 3
+ABILITY_REPEAT = 10
+lastAbility = {}
 function ____exports.Tick(bot)
     if Overrides.Get("ApiProbe") ~= true then
         return
@@ -455,16 +761,16 @@ function ____exports.Tick(bot)
     states[pid] = st
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue72
+            local __continue112
             repeat
                 if u:IsIllusion() then
-                    __continue72 = true
+                    __continue112 = true
                     break
                 end
                 st.handles[u:GetPlayerID()] = u
-                __continue72 = true
+                __continue112 = true
             until true
-            if not __continue72 then
+            if not __continue112 then
                 break
             end
         end
@@ -494,6 +800,22 @@ function ____exports.Tick(bot)
             unpack(unitFields(bot))
         }
     )
+    abilityRows(
+        bot:GetTeam(),
+        pid,
+        1,
+        bot
+    )
+    local foe = nearestEnemy(bot)
+    if foe ~= nil and foe:CanBeSeen() then
+        estRow(
+            bot:GetTeam(),
+            pid,
+            1,
+            bot,
+            foe
+        )
+    end
     if reporterPid(true) == pid then
         teamRows(bot, st)
     end
