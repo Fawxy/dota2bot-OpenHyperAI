@@ -473,8 +473,152 @@ export function WaveGoneFrom(
 
 // ------------------------------------------------------------------------------------------------- the game's view
 
+/** A path's segments read once (`Project`'s arithmetic, unchanged), in chunks of CHUNK with each chunk's bounding box. */
+interface Segs {
+    ax: number[];
+    ay: number[];
+    vx: number[];
+    vy: number[];
+    len2: number[];
+    len: number[];
+    s0: number[];
+    /** Per chunk: its first and last segment index, and its points' bounding box. */
+    lo: number[];
+    hi: number[];
+    x0: number[];
+    x1: number[];
+    y0: number[];
+    y1: number[];
+}
+
+const CHUNK = 8;
+/** A chunk is skipped only when its box is this much further than a segment already measured (rounding slack). */
+const SLACK = 1e-6;
+const segsOf = new LuaMap<LanePath, Segs>();
+
+function segs(lane: LanePath): Segs {
+    let g = segsOf.get(lane);
+    if (g !== undefined) return g;
+    g = { ax: [], ay: [], vx: [], vy: [], len2: [], len: [], s0: [], lo: [], hi: [], x0: [], x1: [], y0: [], y1: [] };
+    const n = lane.pts.length - 1;
+    for (let i = 1; i <= n; i++) {
+        const ax = lane.pts[i - 1][0];
+        const ay = lane.pts[i - 1][1];
+        const vx = lane.pts[i][0] - ax;
+        const vy = lane.pts[i][1] - ay;
+        const len2 = vx * vx + vy * vy;
+        g.ax.push(ax);
+        g.ay.push(ay);
+        g.vx.push(vx);
+        g.vy.push(vy);
+        g.len2.push(len2);
+        g.len.push(math.sqrt(len2));
+        g.s0.push(lane.s[i - 1]);
+    }
+    for (let lo = 0; lo < n; lo += CHUNK) {
+        const hi = math.min(n, lo + CHUNK) - 1;
+        let x0 = math.huge;
+        let x1 = -math.huge;
+        let y0 = math.huge;
+        let y1 = -math.huge;
+        for (let p = lo; p <= hi + 1; p++) {
+            x0 = math.min(x0, lane.pts[p][0]);
+            x1 = math.max(x1, lane.pts[p][0]);
+            y0 = math.min(y0, lane.pts[p][1]);
+            y1 = math.max(y1, lane.pts[p][1]);
+        }
+        g.lo.push(lo);
+        g.hi.push(hi);
+        g.x0.push(x0);
+        g.x1.push(x1);
+        g.y0.push(y0);
+        g.y1.push(y1);
+    }
+    segsOf.set(lane, g);
+    return g;
+}
+
+/** Projections already made this whole second, per path, by x then y: a creep that stands still, or is read by several
+ *  callers in one frame, is projected once. Pure in (path, x, y), so a hit is the same answer. */
+let memoAt: number | undefined;
+let memoS = new LuaMap<LanePath, LuaMap<number, LuaMap<number, number>>>();
+let memoD = new LuaMap<LanePath, LuaMap<number, LuaMap<number, number>>>();
+
+function projectAll(lane: LanePath, x: number, y: number): LuaMultiReturn<[number, number]> {
+    const g = segs(lane);
+    // Box distances; the nearest box's segments give a bound no skipped segment can beat.
+    const box: number[] = [];
+    let nearest = 0;
+    for (let c = 0; c < g.lo.length; c++) {
+        const ex = x < g.x0[c] ? g.x0[c] - x : x > g.x1[c] ? x - g.x1[c] : 0;
+        const ey = y < g.y0[c] ? g.y0[c] - y : y > g.y1[c] ? y - g.y1[c] : 0;
+        box.push(math.sqrt(ex * ex + ey * ey));
+        if (box[c] < box[nearest]) nearest = c;
+    }
+    const at = (i: number): LuaMultiReturn<[number, number]> => {
+        const ax = g.ax[i];
+        const ay = g.ay[i];
+        const vx = g.vx[i];
+        const vy = g.vy[i];
+        const len2 = g.len2[i];
+        const u = math.max(0, math.min(1, len2 > 0 ? ((x - ax) * vx + (y - ay) * vy) / len2 : 0));
+        return $multi(math.sqrt((x - (ax + u * vx)) ** 2 + (y - (ay + u * vy)) ** 2), u);
+    };
+    let bound = math.huge;
+    for (let i = g.lo[nearest]; i <= g.hi[nearest]; i++) bound = math.min(bound, at(i)[0]);
+    // In path order, as the full scan: the first segment at the least distance wins.
+    let bestD = math.huge;
+    let bestS = 0;
+    for (let c = 0; c < g.lo.length; c++) {
+        if (box[c] > bound + SLACK) continue;
+        for (let i = g.lo[c]; i <= g.hi[c]; i++) {
+            const [d, u] = at(i);
+            if (d < bestD) {
+                bestD = d;
+                bestS = g.s0[i] + u * g.len[i];
+            }
+        }
+    }
+    return $multi(bestS, bestD);
+}
+
 /** Distance along the lane path of the point nearest `(x, y)`, and how far the point is from the path. */
 export function Project(lane: LanePath, x: number, y: number): LuaMultiReturn<[number, number]> {
+    // A NaN cannot be a table key.
+    if (x !== x || y !== y) return projectAll(lane, x, y);
+    const clock = (DotaTime as unknown) !== undefined ? math.floor(DotaTime()) : undefined;
+    if (clock !== memoAt) {
+        memoAt = clock;
+        memoS = new LuaMap();
+        memoD = new LuaMap();
+    }
+    let bx = memoS.get(lane);
+    let dx = memoD.get(lane);
+    if (bx === undefined || dx === undefined) {
+        bx = new LuaMap();
+        dx = new LuaMap();
+        memoS.set(lane, bx);
+        memoD.set(lane, dx);
+    }
+    let by = bx.get(x);
+    let dy = dx.get(x);
+    if (by === undefined || dy === undefined) {
+        by = new LuaMap();
+        dy = new LuaMap();
+        bx.set(x, by);
+        dx.set(x, dy);
+    }
+    const s = by.get(y);
+    const d = dy.get(y);
+    if (s !== undefined && d !== undefined) return $multi(s, d);
+    const [ps, pd] = projectAll(lane, x, y);
+    by.set(y, ps);
+    dy.set(y, pd);
+    return $multi(ps, pd);
+}
+
+/** The full scan `Project` replaced, kept for the test that holds the two equal. */
+export function ProjectScan(lane: LanePath, x: number, y: number): LuaMultiReturn<[number, number]> {
     let bestD = math.huge;
     let bestS = 0;
     for (let i = 1; i < lane.pts.length; i++) {

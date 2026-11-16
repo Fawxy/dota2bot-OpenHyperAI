@@ -77,6 +77,38 @@ do
 	check("project a path vertex", math.abs(s - top.s[5]) < 1 and d < 1, s .. " " .. d)
 end
 
+-- The chunked, memoised Project gives exactly the full scan's answer: points over the whole map, near and far from each lane,
+-- on vertices and repeated (memo hits).
+do
+	local same, n = true, 0
+	local function one(path, x, y)
+		local s1, d1 = P.Project(path, x, y)
+		local s2, d2 = P.ProjectScan(path, x, y)
+		n = n + 1
+		if s1 ~= s2 or d1 ~= d2 then
+			same = false
+			print("  differs at", x, y, s1, s2, d1, d2)
+		end
+	end
+	math.randomseed(7)
+	for _, path in pairs(paths) do
+		for _ = 1, 2000 do one(path, math.random(-8000, 8000) + math.random(), math.random(-8000, 8000) + math.random()) end
+		for i = 1, #path.pts do one(path, path.pts[i][1], path.pts[i][2]) end
+		for _ = 1, 50 do one(path, 0, 0) end
+	end
+	check("project equals the full scan (" .. n .. " points)", same)
+	-- Across whole seconds the memo clears and still answers the same.
+	local saved, t = DotaTime, 100.2
+	DotaTime = function() return t end
+	local top = paths[1]
+	local a1, b1 = P.Project(top, -6000, 0)
+	t = 101.4
+	local a2, b2 = P.Project(top, -6000, 0)
+	local a3, b3 = P.ProjectScan(top, -6000, 0)
+	DotaTime = saved
+	check("project memo clears on the second and agrees", a1 == a2 and b1 == b2 and a2 == a3 and b2 == b3)
+end
+
 -- Slice pull-gate: the lane with a pulled wave gone. Bot lane at 65 s: our 60 s wave walking out from the spawn, theirs
 -- walking in. With ours, the two meet mid-way; with it pulled, theirs walks unopposed to our T1 and meets our 90 s wave there.
 do
