@@ -77,6 +77,28 @@ do
 	check("project a path vertex", math.abs(s - top.s[5]) < 1 and d < 1, s .. " " .. d)
 end
 
+-- The chunked, memoised Project gives exactly the full scan's answer: points over the whole map, near and far from each lane,
+-- on vertices and repeated (memo hits).
+do
+	local same, n = true, 0
+	local function one(path, x, y)
+		local s1, d1 = P.Project(path, x, y)
+		local s2, d2 = P.ProjectScan(path, x, y)
+		n = n + 1
+		if s1 ~= s2 or d1 ~= d2 then
+			same = false
+			print("  differs at", x, y, s1, s2, d1, d2)
+		end
+	end
+	math.randomseed(7)
+	for _, path in pairs(paths) do
+		for _ = 1, 2000 do one(path, math.random(-8000, 8000) + math.random(), math.random(-8000, 8000) + math.random()) end
+		for i = 1, #path.pts do one(path, path.pts[i][1], path.pts[i][2]) end
+		for _ = 1, 50 do one(path, 0, 0) end
+	end
+	check("project equals the full scan (" .. n .. " points)", same)
+end
+
 -- Slice pull-gate: the lane with a pulled wave gone. Bot lane at 65 s: our 60 s wave walking out from the spawn, theirs
 -- walking in. With ours, the two meet mid-way; with it pulled, theirs walks unopposed to our T1 and meets our 90 s wave there.
 do

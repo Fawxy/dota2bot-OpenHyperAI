@@ -129,7 +129,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local nearerLane
+local segs, projectAll, nearerLane, CHUNK, SLACK, segsOf, memoAt, memoS, memoD
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
@@ -139,39 +139,203 @@ local UnitType = ____dota.UnitType
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local ____lane_push_data = require(GetScriptDirectory().."/FunLib/humaniser/lane_push_data")
 local LANE_PATHS = ____lane_push_data.LANE_PATHS
---- Distance along the lane path of the point nearest `(x, y)`, and how far the point is from the path.
-function ____exports.Project(lane, x, y)
-    local bestD = math.huge
-    local bestS = 0
+function segs(lane)
+    local g = segsOf[lane]
+    if g ~= nil then
+        return g
+    end
+    g = {
+        ax = {},
+        ay = {},
+        vx = {},
+        vy = {},
+        len2 = {},
+        len = {},
+        s0 = {},
+        lo = {},
+        hi = {},
+        x0 = {},
+        x1 = {},
+        y0 = {},
+        y1 = {}
+    }
+    local n = #lane.pts - 1
     do
         local i = 1
-        while i < #lane.pts do
-            local ax, ay = lane.pts[i][1], lane.pts[i][2]
+        while i <= n do
+            local ax = lane.pts[i][1]
+            local ay = lane.pts[i][2]
             local vx = lane.pts[i + 1][1] - ax
             local vy = lane.pts[i + 1][2] - ay
             local len2 = vx * vx + vy * vy
-            local u = math.max(
-                0,
-                math.min(1, len2 > 0 and ((x - ax) * vx + (y - ay) * vy) / len2 or 0)
-            )
-            local d = math.sqrt((x - (ax + u * vx)) ^ 2 + (y - (ay + u * vy)) ^ 2)
-            if d < bestD then
-                bestD = d
-                bestS = lane.s[i] + u * math.sqrt(len2)
-            end
+            local ____g_ax_15 = g.ax
+            ____g_ax_15[#____g_ax_15 + 1] = ax
+            local ____g_ay_16 = g.ay
+            ____g_ay_16[#____g_ay_16 + 1] = ay
+            local ____g_vx_17 = g.vx
+            ____g_vx_17[#____g_vx_17 + 1] = vx
+            local ____g_vy_18 = g.vy
+            ____g_vy_18[#____g_vy_18 + 1] = vy
+            local ____g_len2_19 = g.len2
+            ____g_len2_19[#____g_len2_19 + 1] = len2
+            local ____g_len_20 = g.len
+            ____g_len_20[#____g_len_20 + 1] = math.sqrt(len2)
+            local ____g_s0_21 = g.s0
+            ____g_s0_21[#____g_s0_21 + 1] = lane.s[i]
             i = i + 1
+        end
+    end
+    do
+        local lo = 0
+        while lo < n do
+            local hi = math.min(n, lo + CHUNK) - 1
+            local x0 = math.huge
+            local x1 = -math.huge
+            local y0 = math.huge
+            local y1 = -math.huge
+            do
+                local p = lo
+                while p <= hi + 1 do
+                    x0 = math.min(x0, lane.pts[p + 1][1])
+                    x1 = math.max(x1, lane.pts[p + 1][1])
+                    y0 = math.min(y0, lane.pts[p + 1][2])
+                    y1 = math.max(y1, lane.pts[p + 1][2])
+                    p = p + 1
+                end
+            end
+            local ____g_lo_22 = g.lo
+            ____g_lo_22[#____g_lo_22 + 1] = lo
+            local ____g_hi_23 = g.hi
+            ____g_hi_23[#____g_hi_23 + 1] = hi
+            local ____g_x0_24 = g.x0
+            ____g_x0_24[#____g_x0_24 + 1] = x0
+            local ____g_x1_25 = g.x1
+            ____g_x1_25[#____g_x1_25 + 1] = x1
+            local ____g_y0_26 = g.y0
+            ____g_y0_26[#____g_y0_26 + 1] = y0
+            local ____g_y1_27 = g.y1
+            ____g_y1_27[#____g_y1_27 + 1] = y1
+            lo = lo + CHUNK
+        end
+    end
+    segsOf[lane] = g
+    return g
+end
+function projectAll(lane, x, y)
+    local g = segs(lane)
+    local box = {}
+    local nearest = 0
+    do
+        local c = 0
+        while c < #g.lo do
+            local ex = x < g.x0[c + 1] and g.x0[c + 1] - x or (x > g.x1[c + 1] and x - g.x1[c + 1] or 0)
+            local ey = y < g.y0[c + 1] and g.y0[c + 1] - y or (y > g.y1[c + 1] and y - g.y1[c + 1] or 0)
+            box[#box + 1] = math.sqrt(ex * ex + ey * ey)
+            if box[c + 1] < box[nearest + 1] then
+                nearest = c
+            end
+            c = c + 1
+        end
+    end
+    local function at(i)
+        local ax = g.ax[i + 1]
+        local ay = g.ay[i + 1]
+        local vx = g.vx[i + 1]
+        local vy = g.vy[i + 1]
+        local len2 = g.len2[i + 1]
+        local u = math.max(
+            0,
+            math.min(1, len2 > 0 and ((x - ax) * vx + (y - ay) * vy) / len2 or 0)
+        )
+        return math.sqrt((x - (ax + u * vx)) ^ 2 + (y - (ay + u * vy)) ^ 2), u
+    end
+    local bound = math.huge
+    do
+        local i = g.lo[nearest + 1]
+        while i <= g.hi[nearest + 1] do
+            bound = math.min(bound, (at(i)))
+            i = i + 1
+        end
+    end
+    local bestD = math.huge
+    local bestS = 0
+    do
+        local c = 0
+        while c < #g.lo do
+            do
+                local __continue135
+                repeat
+                    if box[c + 1] > bound + SLACK then
+                        __continue135 = true
+                        break
+                    end
+                    do
+                        local i = g.lo[c + 1]
+                        while i <= g.hi[c + 1] do
+                            local d, u = at(i)
+                            if d < bestD then
+                                bestD = d
+                                bestS = g.s0[i + 1] + u * g.len[i + 1]
+                            end
+                            i = i + 1
+                        end
+                    end
+                    __continue135 = true
+                until true
+                if not __continue135 then
+                    break
+                end
+            end
+            c = c + 1
         end
     end
     return bestS, bestD
 end
+--- Distance along the lane path of the point nearest `(x, y)`, and how far the point is from the path.
+function ____exports.Project(lane, x, y)
+    if x ~= x or y ~= y then
+        return projectAll(lane, x, y)
+    end
+    local clock = DotaTime ~= nil and math.floor(DotaTime()) or nil
+    if clock ~= memoAt then
+        memoAt = clock
+        memoS = {}
+        memoD = {}
+    end
+    local bx = memoS[lane]
+    local dx = memoD[lane]
+    if bx == nil or dx == nil then
+        bx = {}
+        dx = {}
+        memoS[lane] = bx
+        memoD[lane] = dx
+    end
+    local by = bx[x]
+    local dy = dx[x]
+    if by == nil or dy == nil then
+        by = {}
+        dy = {}
+        bx[x] = by
+        dx[x] = dy
+    end
+    local s = by[y]
+    local d = dy[y]
+    if s ~= nil and d ~= nil then
+        return s, d
+    end
+    local ps, pd = projectAll(lane, x, y)
+    by[y] = ps
+    dy[y] = pd
+    return ps, pd
+end
 function nearerLane(lane, loc, d)
     for ____, k in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         do
-            local __continue145
+            local __continue165
             repeat
                 local other = LANE_PATHS[k]
                 if other == lane then
-                    __continue145 = true
+                    __continue165 = true
                     break
                 end
                 if select(
@@ -180,9 +344,9 @@ function nearerLane(lane, loc, d)
                 ) < d then
                     return true
                 end
-                __continue145 = true
+                __continue165 = true
             until true
-            if not __continue145 then
+            if not __continue165 then
                 break
             end
         end
@@ -785,6 +949,36 @@ function ____exports.WaveGoneFrom(lane, team, t0, init, towerHp, ts, at)
         pw = found and 1 or 0
     }
 end
+CHUNK = 8
+SLACK = 0.000001
+segsOf = {}
+memoS = {}
+memoD = {}
+--- The full scan `Project` replaced, kept for the test that holds the two equal.
+function ____exports.ProjectScan(lane, x, y)
+    local bestD = math.huge
+    local bestS = 0
+    do
+        local i = 1
+        while i < #lane.pts do
+            local ax, ay = lane.pts[i][1], lane.pts[i][2]
+            local vx = lane.pts[i + 1][1] - ax
+            local vy = lane.pts[i + 1][2] - ay
+            local len2 = vx * vx + vy * vy
+            local u = math.max(
+                0,
+                math.min(1, len2 > 0 and ((x - ax) * vx + (y - ay) * vy) / len2 or 0)
+            )
+            local d = math.sqrt((x - (ax + u * vx)) ^ 2 + (y - (ay + u * vy)) ^ 2)
+            if d < bestD then
+                bestD = d
+                bestS = lane.s[i] + u * math.sqrt(len2)
+            end
+            i = i + 1
+        end
+    end
+    return bestS, bestD
+end
 function ____exports.PathOf(lane)
     return LANE_PATHS[lane]
 end
@@ -829,21 +1023,21 @@ local function creepsOn(lane, units, team, visibleOnly)
     local out = {}
     for ____, u in ipairs(units) do
         do
-            local __continue139
+            local __continue159
             repeat
                 if not u:IsAlive() or visibleOnly and not u:CanBeSeen() then
-                    __continue139 = true
+                    __continue159 = true
                     break
                 end
                 local kind = kindOf(u:GetUnitName())
                 if kind == nil then
-                    __continue139 = true
+                    __continue159 = true
                     break
                 end
                 local loc = u:GetLocation()
                 local s, d = ____exports.Project(lane, loc.x, loc.y)
                 if d > ____exports.SETTINGS.Assign or nearerLane(lane, loc, d) then
-                    __continue139 = true
+                    __continue159 = true
                     break
                 end
                 out[#out + 1] = {
@@ -852,9 +1046,9 @@ local function creepsOn(lane, units, team, visibleOnly)
                     s = s,
                     hp = u:GetHealth()
                 }
-                __continue139 = true
+                __continue159 = true
             until true
-            if not __continue139 then
+            if not __continue159 then
                 break
             end
         end
@@ -864,13 +1058,13 @@ end
 local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 local function t1Hp(team, lane)
     local t = GetTower(team, T1[lane])
-    local ____temp_15
+    local ____temp_28
     if t == nil or t == nil or not t:IsAlive() then
-        ____temp_15 = false
+        ____temp_28 = false
     else
-        ____temp_15 = t:GetHealth()
+        ____temp_28 = t:GetHealth()
     end
-    return ____temp_15
+    return ____temp_28
 end
 --- The lane creeps `team`'s view of `lane` starts from at the whole second now: the path, the second, its own creeps and
 -- the visible enemy creeps on the path (the enemy wave tracker reads the same).
