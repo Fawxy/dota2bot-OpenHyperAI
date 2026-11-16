@@ -764,4 +764,66 @@ do
 	check("no drill: no creep-aggro fact, the game decides", Hn.Drill.RigCreepAggro() == nil)
 end
 
+-- tower-prehit's ready check: an own tower near the cast attacking an enemy lane creep within the distance.
+do
+	local H = world("tower-prehit")
+	local bot = hero(0, RAD, 1, 3)
+	local function unit(team, x, o)
+		local u = { team = team, loc = Vector(x, 0, 0), alive = true }
+		function u:GetTeam() return self.team end
+		function u:GetLocation() return self.loc end
+		function u:IsAlive() return self.alive end
+		function u:IsNull() return false end
+		function u:IsCreep() return o.creep end
+		function u:IsHero() return o.hero end
+		return u
+	end
+	local creep = unit(DIRE, 600, { creep = true, hero = false })
+	local tower = { target = creep }
+	function tower:GetAttackTarget() return self.target end
+	bot.GetNearbyTowers = function() return { tower } end
+	check("towerCreep: our tower on an enemy creep 600 off: holds at 700", H.Drill.TowerOnCreep(bot, 700))
+	check("towerCreep: not at 500", not H.Drill.TowerOnCreep(bot, 500))
+	tower.target = unit(DIRE, 300, { creep = false, hero = true })
+	check("towerCreep: a hero is not a creep", not H.Drill.TowerOnCreep(bot, 700))
+	tower.target = unit(RAD, 300, { creep = true, hero = false })
+	check("towerCreep: our own creep does not count", not H.Drill.TowerOnCreep(bot, 700))
+	tower.target = nil
+	check("towerCreep: a tower attacking nothing", not H.Drill.TowerOnCreep(bot, 700))
+	-- One cast per lane: a cast standing at its spot is ready though the other two casts are still walking.
+	local H3 = world("tower-prehit")
+	local c1, c2, c3 = hero(0, RAD, 1, 3), hero(1, RAD, 2, 2), hero(2, RAD, 3, 1)
+	for _, c in ipairs({ c1, c2, c3 }) do
+		c.maxhp, c.hp = 100, 100
+		c.GetNearbyTowers = function() return { tower } end
+	end
+	tower.target = unit(DIRE, 300, { creep = true, hero = false })
+	ACTIONS = {}
+	T = 31
+	local function tick3(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H3.Drill.Tick(u) if H3.Drill.Held(u) then H3.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	tick3(c1, c2, c3)
+	local mv = ActionsOf(0, "MoveToLocation")
+	local spot = mv[#mv] and mv[#mv].args[1]
+	check("tower-prehit: each cast walks to its own spot", spot ~= nil and ActionsOf(1, "MoveToLocation")[1] ~= nil)
+	c1.loc = Vector(spot.x, spot.y, 0)
+	tower.target.loc = Vector(spot.x + 300, spot.y, 0)
+	local lines = capture(function() tick3(c1, c2, c3) tick3(c1, c2, c3) end)
+	local ready = {}
+	for _, l in ipairs(lines) do if field(l, "ph") == "ready" then ready[tonumber(field(l, "pid"))] = field(l, "ok") end end
+	check("tower-prehit: the placed cast is ready while the other casts walk; they are not", ready[0] == "1" and ready[1] == nil and ready[2] == nil, ready)
+	check("tower-prehit: released, laning is free and idle holds at the rig's 0.3, under laning's 0.369 at level 8 to 11",
+		H3.Drill.RigDesire(c1, "laning") == nil and H3.Drill.RigDesire(c1, "farm") == 0.3)
+	-- Next rep with the lane's tower dead: the cast waits on `notower`, not `towercreep`.
+	c1.GetNearbyTowers = function() return {} end
+	T = 61
+	local fails = {}
+	for _, l in ipairs(capture(function() tick3(c1, c2, c3) T = 61.5 tick3(c1, c2, c3) end)) do
+		if field(l, "pid") == "0" and field(l, "fail") ~= nil then fails[#fails + 1] = field(l, "fail") end
+	end
+	check("tower-prehit: a dead tower fails notower", fails[#fails] == "notower", fails)
+
+	local t = H.Drill.TABLE["tower-prehit"].rig
+	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)
+end
+
 finish()

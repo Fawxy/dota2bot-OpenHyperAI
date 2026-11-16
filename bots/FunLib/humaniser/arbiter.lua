@@ -184,6 +184,11 @@ function ____exports.Candidates(bot, jobName, lever)
         applies = true
     }
     out[#out + 1] = {name = ____exports.OHA, group = OHA_GROUP, applies = true}
+    for ____, c in ipairs(out) do
+        if c.host ~= nil and c.applies and Drill.RigDesire(bot, c.host) ~= nil then
+            c.applies = false
+        end
+    end
     return out
 end
 --- The candidate the gate enforces now, if any: the hero's modes other than its host and the modes the gate admits for it

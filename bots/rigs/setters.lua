@@ -6,6 +6,7 @@
 --   rig_pos <pid> <x> <y>           place a hero (nearest clear ground) and stop its current order
 --   rig_creep <team 2|3> <melee|ranged> <x> <y> [n]   create n lane creeps of that team
 --   rig_kill_creeps <team 2|3> <x> <y> <radius>       kill that team's lane creeps in the circle
+--   rig_tower_hp <team 2|3> <x> <y> <radius>          heal that team's live towers in the circle to full
 -- Bot pids are PlayerResource ids; heroes are found through HeroList (GetSelectedHeroEntity can be nil for bots).
 local function hero(pid)
 	pid = tonumber(pid)
@@ -48,6 +49,18 @@ Convars:RegisterCommand("rig_creep", function(_, team, kind, x, y, n)
 	end
 	say(string.format("creep %s n=%d", name, made))
 end, "rig: create lane creeps", FCVAR_CHEAT)
+
+Convars:RegisterCommand("rig_tower_hp", function(_, team, x, y, r)
+	local n = 0
+	for _, u in ipairs(FindUnitsInRadius(tonumber(team), Vector(tonumber(x), tonumber(y), 0), nil, tonumber(r), DOTA_UNIT_TARGET_TEAM_FRIENDLY,
+		DOTA_UNIT_TARGET_BUILDING, 0, 0, false)) do
+		if u:IsTower() and u:IsAlive() then
+			u:SetHealth(u:GetMaxHealth())
+			n = n + 1
+		end
+	end
+	say(string.format("tower_hp team=%s n=%d", team, n))
+end, "rig: heal that team's towers in a circle to full", FCVAR_CHEAT)
 
 Convars:RegisterCommand("rig_kill_creeps", function(_, team, x, y, r)
 	local n = 0
