@@ -1514,7 +1514,7 @@ ____exports.TABLE = {
         }
     },
     ["tower-prehit"] = {
-        note = "rig: Radiant pos1 beside its bot T1; our bot-lane creeps killed before the T1, so each Dire wave walks into the tower alone; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
+        note = "rig: Radiant pos1 beside its bot T1, level 3; each rep a small Dire wave made under the T1 (both sides' creeps there cleared first), only the tower on it; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
         cast = SAFE_CORE,
         others = "bench",
         rep = {every = 30, from = 30},

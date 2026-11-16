@@ -144,13 +144,14 @@ export const TABLE: Record<string, Entry> = {
         },
     },
     // The tower pre-hit (K1, `Ours.PreHit`). half: execution. Facts the pre-hit reads: our tower attacking an enemy lane creep
-    // (forced: the recipe kills our bot-lane creeps west of the T1 every 2 s, so each natural Dire wave walks into our T1 with
-    // only the tower on it, the common pushed-in start); the creep within the cast's walk (forced: the cast stands beside the
-    // T1 in setup; checked `towerCreep`); the cast in laning mode in its lane, no enemy hero near (everyone else benched;
-    // checked `clear`). Read after release: per rep, the tower-hit creeps the cast took, its pre-hits and the ledger's
+    // (forced: each rep the recipe clears both teams' creeps within 1,100 of our bot T1, heals the cast and makes three melee
+    // and one ranged Dire creep 580 north of it, a small wave held under the tower with only the tower on it; a first design
+    // that killed our lane-wide creeps let the Dire waves pile up and take the T1 by 4:00, off1); the creep within the cast's
+    // walk (forced: the cast stands beside the T1 in setup; checked `towerCreep`); the cast in laning mode in its lane, no
+    // enemy hero near (everyone else benched; checked `clear`); every hero level 3 (recipe), so it is not one-shot. Read after release: per rep, the tower-hit creeps the cast took, its pre-hits and the ledger's
     // `prehit_tower` (scratch readout until a view exists).
     "tower-prehit": {
-        note: "rig: Radiant pos1 beside its bot T1; our bot-lane creeps killed before the T1, so each Dire wave walks into the tower alone; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
+        note: "rig: Radiant pos1 beside its bot T1, level 3; each rep a small Dire wave made under the T1 (both sides' creeps there cleared first), only the tower on it; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 30, from: 30 },
