@@ -1,6 +1,6 @@
 -- The games line for D1, D2, D3, D7, D9, D24 and D24h (D24's hit-back half; DOCTRINE.md "Games"): per game and side, the situations found (`_n`) and the
 -- violations (`_v`) of each rule, and the side's deaths to :until (fragment lane_rules has the rules; @rule_cases lists the
--- cases with causes). D24h also carries its answers: `d24h_hb` (hit back, the right action) and `d24h_left` (left, a
+-- cases with causes). D24h also carries its answers: `d24h_hb` (answered: the hitter took hero damage within 4 s, the right action) and `d24h_left` (left, a
 -- violation) of `d24h_n`. Params: like, until (default 720).
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: lane_rules

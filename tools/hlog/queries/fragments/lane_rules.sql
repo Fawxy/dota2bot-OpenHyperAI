@@ -2,7 +2,8 @@
 -- what happened (every hero's own ev=snap: position, HP, the `hit` flag, mode, level, lane distance; deaths), never from our
 -- threat read, so it runs on games from before the rules were built. The including query defines `gm(game_id, file)` first.
 -- Params: until (default 720, the head-to-head's 12:00). Ends with a comma. Final CTEs:
---   lr_case(rule, game_id, pid, team, pos, side, t, viol, cause, hp, en, al, secs, mode);  lr_death(game_id, pid, esec, dsec)
+--   lr_case(rule, game_id, pid, team, pos, side, t, viol, cause, hp, en, al, secs, mode);  lr_death(game_id, pid, esec, dsec);
+--   lr_hbj (D24h's cases: hpid, hb, my_lost, h_lost, my_died, h_died)
 --   side `ours` when the hero's last ev=bot line has any Ours switch on (`ours` field with a `:1`), else `oha`.
 -- Each second of each hero is its latest snapshot in that whole second, alive with HP above 0. Reach (`judgement`): an enemy
 -- can reach me within its attack range + 600 (about 2 s of walking); allies and enemies "near" within 1,200; an enemy tower's
@@ -46,19 +47,18 @@
 -- D24h (the hit-back half, slice hit-back): a second from 1:30 in which I am hit by a hero (`hit`), at 50% HP or more, not in
 --    retreat mode, outside an enemy tower's reach, not outnumbered (as D24), with an enemy hero in reach standing within creep
 --    aggro (500) of our lane front (as D24's test); one case per onset (no such second in the 5 before). Cause, first match:
---    hit_back (in that second or the 3 after, my snapshot's attack target `tgt` is an enemy hero), left (retreat mode in them),
---    died (within 5 s), none. viol: every cause but hit_back. A leave counts: the hitter is paying our creeps and we are in
---    no danger, so leaving gives the exchange away as standing does (on h2hskill1 the sides left the same share unanswered
---    and differed only in leaves and hits back, so the count without leaves hid the difference). A hit back on another
---    enemy hero counts (`judgement`).
---    Only a favourable exchange is a case (D24: "the exchange favours me"; slice d24h-favour), judged at the onset against
---    the hitter: the enemy hero whose snapshot's `tid` is me within 3 s before to 1 s after, else (a spell, or a hit between
---    snapshots) the nearest enemy hero. Favourable: the hitter stands within my attack range + 300 (HIT_BACK_WALK), one
---    enemy hero in reach and at most one targeting me (`ah`), my raw HP (`hv`) and level at least the hitter's (`judgement`:
---    no damage or armour in the log, so at least even on HP and level stands in for "favours me"). A hit by a hero out of
---    my reach is D24's step-out half, not this one.
--- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths, tgt, tid, hv, ah)
--- ensure: ev_bot(pid, team, pos, ours, hero)
+--    hit_back (the hitter's `hit` flag, hero damage in the last second, in that second or the 4 after: my answer, or my
+--    partner's), left (retreat mode in the 3 after), died (within 5 s), none. viol: every cause but hit_back. A leave counts:
+--    the hitter is paying our creeps and we are in no danger, so leaving gives the exchange away as standing does.
+--    The hitter: the enemy hero whose snapshot's `tid` is me within 3 s before to 1 s after, else (a spell, or a hit between
+--    snapshots) the nearest enemy hero. A case only when the hitter stands within my attack range + 300 (HIT_BACK_WALK; out
+--    of it is D24's step-out half), one enemy hero is in reach and at most one targets me (`ah`; two is D1's), and the hit
+--    is unprovoked: the hitter took no hero damage in the 3 s before (else it is answering us; slice d24h-unprovoked).
+--    No HP or level test: on h2hhighhit2 OHA hit back on worse terms and gained as much as on even ones. The judge is
+--    lr_hbj's raw HP each side lost over 8 s (`my_lost`, `h_lost`) and deaths within 20 s (`my_died`, `h_died`); query
+--    hit_back reads it.
+-- ensure: ev_snap(pid, x, y, alive, hp, hit, mode, lvl, ar, ld, deaths, tid, hv, ah)
+-- ensure: ev_bot(pid, team, pos, ours)
 -- ensure: ev_front(team, topx, topy, midx, midy, botx, boty)
 lr_who AS MATERIALIZED (
     SELECT game_id, pid, team, pos, CASE WHEN instr(coalesce(ours, ''), ':1') > 0 THEN 'ours' ELSE 'oha' END AS side
@@ -70,7 +70,7 @@ lr_who AS MATERIALIZED (
 -- Every snapshot second, HP 0 ones too (a killed hero logs a few where it fell), for dating deaths.
 lr_s0 AS MATERIALIZED (
     SELECT s.game_id, s.pid, w.team, w.pos, w.side, CAST(round(s.t) AS INTEGER) AS sec, max(s.seq) AS seq, s.x, s.y, s.hp,
-        coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths, s.tgt, s.tid, s.hv, coalesce(s.ah, 0) AS ah,
+        coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths, s.tid, s.hv, coalesce(s.ah, 0) AS ah,
         CASE w.team WHEN 2 THEN (s.x + 6700) * (s.x + 6700) + (s.y + 6700) * (s.y + 6700)
                     ELSE (s.x - 6928) * (s.x - 6928) + (s.y - 6372) * (s.y - 6372) END AS fnt2
     FROM ev_snap s JOIN lr_who w ON w.game_id = s.game_id AND w.pid = s.pid
@@ -266,10 +266,6 @@ lr_d24 AS (
         ) AS free_n
     FROM lr_d24o o
 ),
-lr_hn AS MATERIALIZED (
-    SELECT DISTINCT b.game_id, b.team, 'npc_dota_hero_' || b.hero AS unit FROM ev_bot b JOIN gm ON gm.game_id = b.game_id
-    WHERE b.team IS NOT NULL AND b.hero IS NOT NULL
-),
 lr_hb0 AS MATERIALIZED (
     SELECT o.game_id, o.pid, o.team, o.pos, o.side, o.sec AS t, o.x, o.y, o.hp, o.en_r AS en, o.al12 AS al, o.mode,
         (SELECT f.seq FROM ev_front f WHERE f.game_id = o.game_id AND f.team = o.team AND f.t <= o.sec + 0.5 ORDER BY f.t DESC LIMIT 1) AS fseq
@@ -289,14 +285,12 @@ lr_hb1 AS (
 ),
 lr_hb AS (
     SELECT o.*,
-        EXISTS (SELECT 1 FROM lr_s a JOIN lr_hn n ON n.game_id = a.game_id AND n.team <> o.team AND n.unit = a.tgt
-            WHERE a.game_id = o.game_id AND a.pid = o.pid AND a.sec >= o.t AND a.sec <= o.t + 3) AS hb,
         EXISTS (SELECT 1 FROM lr_s a WHERE a.game_id = o.game_id AND a.pid = o.pid AND a.sec > o.t AND a.sec <= o.t + 3 AND a.mode = 'retreat') AS went,
         (SELECT min(d.dsec) FROM lr_death d WHERE d.game_id = o.game_id AND d.pid = o.pid AND d.dsec >= o.t AND d.dsec <= o.t + 5) AS died
     FROM lr_hb1 o
     WHERE o.prev IS NULL OR o.t - o.prev > 5
 ),
--- The hitter (`tid` on me, else the nearest enemy hero) and whether the exchange favours me.
+-- The hitter (`tid` on me, else the nearest enemy hero).
 lr_hbw AS (
     SELECT o.*, coalesce(
         (SELECT a.pid FROM lr_s a WHERE a.game_id = o.game_id AND a.team <> o.team AND a.tid = 'h' || o.pid
@@ -305,12 +299,20 @@ lr_hbw AS (
             ORDER BY (b.x - o.x) * (b.x - o.x) + (b.y - o.y) * (b.y - o.y) LIMIT 1)) AS hpid
     FROM lr_hb o
 ),
-lr_hbf AS (
-    SELECT w.* FROM lr_hbw w
+-- The cases (hitter in my reach, unprovoked), whether it was answered, and the judge: the raw HP each side lost over 8 s and
+-- who died within 20 s.
+lr_hbj AS MATERIALIZED (
+    SELECT w.*, m.hv AS my_hv, b.hv AS h_hv,
+        EXISTS (SELECT 1 FROM lr_s a WHERE a.game_id = w.game_id AND a.pid = w.hpid AND a.sec >= w.t AND a.sec <= w.t + 4 AND a.hit > 0) AS hb,
+        m.hv - (SELECT a.hv FROM lr_s a WHERE a.game_id = w.game_id AND a.pid = w.pid AND a.sec > w.t AND a.sec <= w.t + 8 ORDER BY a.sec DESC LIMIT 1) AS my_lost,
+        b.hv - (SELECT a.hv FROM lr_s a WHERE a.game_id = w.game_id AND a.pid = w.hpid AND a.sec > w.t AND a.sec <= w.t + 8 ORDER BY a.sec DESC LIMIT 1) AS h_lost,
+        EXISTS (SELECT 1 FROM lr_death d WHERE d.game_id = w.game_id AND d.pid = w.pid AND d.dsec >= w.t AND d.dsec <= w.t + 20) AS my_died,
+        EXISTS (SELECT 1 FROM lr_death d WHERE d.game_id = w.game_id AND d.pid = w.hpid AND d.dsec >= w.t AND d.dsec <= w.t + 20) AS h_died
+    FROM lr_hbw w
     JOIN lr_s m ON m.game_id = w.game_id AND m.pid = w.pid AND m.sec = w.t
     JOIN lr_s b ON b.game_id = w.game_id AND b.pid = w.hpid AND b.sec = w.t
-    WHERE (b.x - m.x) * (b.x - m.x) + (b.y - m.y) * (b.y - m.y) <= (m.ar + 300) * (m.ar + 300)
-        AND w.en = 1 AND m.ah <= 1 AND m.hv >= b.hv AND m.lvl >= b.lvl
+    WHERE (b.x - m.x) * (b.x - m.x) + (b.y - m.y) * (b.y - m.y) <= (m.ar + 300) * (m.ar + 300) AND w.en = 1 AND m.ah <= 1
+        AND NOT EXISTS (SELECT 1 FROM lr_s a WHERE a.game_id = w.game_id AND a.pid = w.hpid AND a.sec >= w.t - 3 AND a.sec < w.t AND a.hit > 0)
 ),
 lr_case AS (
     SELECT 'D1' AS rule, game_id, pid, team, pos, side, t,
@@ -337,5 +339,5 @@ lr_case AS (
     UNION ALL
     SELECT 'D24h', game_id, pid, team, pos, side, t, NOT hb,
         CASE WHEN hb THEN 'hit_back' WHEN went THEN 'left' WHEN died IS NOT NULL THEN 'died' ELSE 'none' END, hp, en, al, NULL, mode
-    FROM lr_hbf
+    FROM lr_hbj
 ),

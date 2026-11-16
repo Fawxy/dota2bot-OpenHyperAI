@@ -128,27 +128,33 @@ test('D24: leaving an even fight at high HP inside our creep aggro violates; out
     assert.deepStrictEqual(out, [[1, 200, 1, 'ours_retreat'], [1, 600, 0, 'free_hit']]);
 });
 
-test('D24h: hit by a hero standing in our creep aggro in a favourable exchange, a hero that stands or leaves violates; a hit back, a free hit, low HP or an unfavoured exchange does not', () => {
+test('D24h: an unprovoked hit by a hero in my reach, standing in our creep aggro: one that stands or leaves violates; an answer (the hitter takes hero damage within 4 s) does not; a free hit, low HP, a provoked hit or one out of reach is no case', () => {
     const lines = bots([[1, 2, 1], [6, 3, 3]]);
     const front = (t, x) => line(t, `front team=2 top=0.5 topx=${x} topy=${PY} mid=0.5 midx=0 midy=0 bot=0.5 botx=5000 boty=-6000`);
-    const tgtSnap = (t, o, tgt) => snap(t, 1, PX, PY, o).replace(/$/, tgt ? ` tgt=${tgt}` : '');
-    for (let t = 190; t <= 720; t++) {
-        // 200: hit, the hitter beside our front, no attack back (none). 300: hit, and at 302 our target is the enemy hero
-        // (hit_back). 400: hit, then retreat mode at 401 (left). 500: hit with our front 1,500 away (a free hit: not this
-        // rule). 600: hit at 40% HP (not this rule). 610: 2 s after 600 and still hit: no new onset inside 5 s of the last.
-        // Unfavoured, not cases: 650 the hitter has more raw HP; 680 a higher level; 700 it stands out of my reach (ar 300 + 300).
+    for (let t = 190; t <= 740; t++) {
+        // 200: hit, the hitter beside our front, never damaged (none). 300: hit, the hitter damaged at 302 (hit_back). 400:
+        // hit, then retreat mode at 401 (left). 500: hit with our front 1,500 away (a free hit: not this rule). 600: hit at
+        // 40% HP (not this rule). 610: 2 s after 600 and still hit: no new onset inside 5 s of the last. 650: the hitter was
+        // damaged at 649, so it answers us (provoked: no case). 680: the hitter has more raw HP and a higher level, and is
+        // answered (a case: HP and level are not the test). 700: it stands out of my reach (ar 300 + 300; no case).
         const at = [200, 300, 400, 500, 600, 650, 680, 700].find(s => t >= s && t <= s + 3);
         const hit = at !== undefined || (t >= 604 && t <= 612) ? 1 : 0;
         const hp = t >= 600 && t <= 612 ? 40 : 90;
         const mode = at === 400 && t > 400 ? 'retreat' : 'laning';
-        const tgt = at === 300 && t === 302 ? 'npc_dota_hero_h6' : t === 202 ? 'npc_dota_creep_goodguys_melee' : undefined;
         const ar = at === 700 ? 300 : 550;
-        lines.push(tgtSnap(t, { hit, hp, mode, ar }, tgt), snap(t, 6, at === 700 ? PX + 700 : PX + 400, PY, { hv: at === 650 ? 700 : 600, lvl: at === 680 ? 4 : 3 }));
+        const hHit = t === 302 || t === 649 || t === 682 ? 1 : 0;
+        // The judge: at 300 I lose 50 and the hitter 150 by 308.
+        const myHv = t >= 300 && t <= 320 ? 600 - (t >= 301 ? 50 : 0) : 600;
+        const hHv = t >= 675 && t <= 700 ? 700 : t >= 300 && t <= 320 ? 600 - (t >= 302 ? 150 : 0) : 600;
+        lines.push(snap(t, 1, PX, PY, { hit, hp, mode, ar, hv: myHv }));
+        lines.push(snap(t, 6, at === 700 ? PX + 700 : PX + 400, PY, { hv: hHv, lvl: at === 680 ? 4 : 3, hit: hHit }));
         lines.push(front(t, at === 500 ? PX - 1500 : PX + 300));
     }
-    assert.deepStrictEqual(cases(lines, 'D24h'), [[1, 200, 1, 'none'], [1, 300, 0, 'hit_back'], [1, 400, 1, 'left']]);
+    assert.deepStrictEqual(cases(lines, 'D24h'), [[1, 200, 1, 'none'], [1, 300, 0, 'hit_back'], [1, 400, 1, 'left'], [1, 680, 0, 'hit_back']]);
     const ours = run('rule_counts', lines).find(r => r.team === 2);
-    assert.deepStrictEqual([ours.d24h_n, ours.d24h_v, ours.d24h_hb, ours.d24h_left], [3, 2, 1, 1]);
+    assert.deepStrictEqual([ours.d24h_n, ours.d24h_v, ours.d24h_hb, ours.d24h_left], [4, 2, 2, 1]);
+    const j = run('hit_back', lines).find(r => r.side === 'ours');
+    assert.deepStrictEqual([j.games, j.role, j.n, j.answered, j.swing_answered, j.swing_not, j.died, j.hitter_died], [1, 'side', 4, 2, -50, 0, 0, 0]);
 });
 
 test('D3: a retreat that walks on after the threat ends, or into an enemy tower, violates; a short one does not', () => {
