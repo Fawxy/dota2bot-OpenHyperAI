@@ -1,0 +1,36 @@
+id: retreat.leave.pair-one-hitting-high-hp.001
+source: log
+ref: {log: 2026-11-16T00-57-01-h2hjoinafter1_A_rad_1.log, t: 113.633}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose threat (threat 0.740, free budget 0.500, over 0.233 s); write the right action, not this.
+# bot pid 0: HP 88% (625 of 714)
+# enemy pid 9: 756 from the bot, HP 570, damage 110 / 217 (short / long window)
+# enemy pid 7: 277 from the bot, HP 572, damage 65 / 196 (short / long window), attacking the bot, hit it recently
+# unseen pid 6: 15010 from the bot (where last seen), unseen 4.9 s
+# ally pid 3: 1999 from the bot
+world:
+  t: 113.633
+  team: 2
+  pid: 0
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PairJoin":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true,"TradeFree":true,"TradeSafe":true}
+  bot: {"x":6008,"y":-5964,"hp":625,"mhp":714,"range":330,"hull":24,"speed":282,"esc":0}
+  ce: []
+  ca: [{"id":77,"x":3931,"y":-6006,"hp":550,"mhp":550,"ranged":0,"tgt":"u87","hull":16},{"id":60,"x":5909,"y":-5154,"hp":300,"mhp":300,"ranged":1,"tgt":"h9","hull":8},{"id":61,"x":6081,"y":-5060,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":57,"x":6126,"y":-4871,"hp":429,"mhp":550,"ranged":0,"tgt":"h9","hull":16},{"id":58,"x":5970,"y":-5576,"hp":238,"mhp":550,"ranged":0,"tgt":"h7","hull":16},{"id":81,"x":3655,"y":-6144,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8},{"id":78,"x":4017,"y":-6034,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":79,"x":3995,"y":-5962,"hp":497,"mhp":550,"ranged":0,"tgt":"u87","hull":16}]
+  he: [{"pid":9,"x":6097,"y":-5213,"hp":570,"range":150,"hull":24,"speed":290,"atk":0,"eng":0,"e3":110,"e6":217,"ill":0},{"pid":7,"x":5922,"y":-5701,"hp":572,"range":150,"hull":24,"speed":325,"atk":1,"eng":1,"e3":65,"e6":196,"ill":0}]
+  hu: [{"pid":6,"x":-4921,"y":4325,"tss":4.9,"sp":290}]
+  ha: [{"pid":3,"x":4026,"y":-6223,"range":400,"hull":24,"speed":290,"ret":0}]
+  towers: [{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"}]
+  vis: {"x0":4250,"y0":-7750,"nx":15,"ny":15,"step":250,"hex":"00000000000020008c1f1cbffc7fc0bf819f833f023f06f8007000300"}
+  budget: 0.5
+  over: 0.233
+  hold: 0.17
+  dt: 0
+  pj: 0
+expect:
+  must: ["leave(threat)"]
+  mustNot: ["stay"]
+notes: >
+  Control (D1, the opposite rule; h2hjoinafter1 A_rad_1, 1:53): our pos1 at 88% with two enemy heroes in reach, one 277 off
+  attacking it and hit it recently, the ally 2,000 away. A hero hitting us ends the stand: the read counts that hero over
+  6 s (0.74, over budget) and leaving is right.

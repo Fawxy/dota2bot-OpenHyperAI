@@ -1,7 +1,7 @@
 id: retreat.leave.pair-full-hp-ally-near.001
 source: log
 ref: {log: 2026-11-13T03-23-41-cut-leave_smoke_1.log, t: 34.367}
-status: quarantined
+status: active
 decision: retreat_leave
 # Cut by tools/hlog/cut.js; the game left (why=threat) at 0.52 against the 0.50 budget after the 0.17 s hold.
 world:
@@ -30,5 +30,5 @@ notes: >
   more enemy heroes than allies can reach us and their burst can kill: two against one ally holds as D1 is written (the code also
   counts the bot itself), but the burst is 0.33 of HP over 2 s and cannot kill, so staying is the right action. RetreatOdds is off
   in this world; with it on, LeaveWhy holds this as even (reach 2 against the bot and its ally, burst under EvenBurst 1, HP over
-  EvenHp 0.5, nobody hitting). Quarantined: it fails today (the card's fault "Retreat leaves at full HP"); not an active guard
-  until a fix. Its control is lethal-pair-half-hp, which must leave.
+  EvenHp 0.5, nobody hitting). Active since slice high-stand (Ours.HighStand: two in reach, none hitting, burst under half our HP,
+  HP 70%+). Its controls are lethal-pair-half-hp, pair-one-hitting-high-hp and pair-burst-half-high-hp, which must leave.
