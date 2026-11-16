@@ -1,0 +1,31 @@
+id: retreat.leave.pair-alone-low-burst-mid-hp.001
+source: log
+ref: {log: 2026-11-16T02-33-59-h2hhighstand1_A_dire_1.log, t: 534.633}
+status: active
+decision: retreat_leave
+# Cut by tools/hlog/cut.js. The game chose threat (threat 0.630, free budget 0.500, over 0.300 s); write the right action, not this.
+# bot pid 5: HP 61% (788 of 1292)
+# enemy pid 1: 656 from the bot, HP 968, damage 75 / 227 (short / long window)
+# enemy pid 4: 780 from the bot, HP 471, damage 126 / 236 (short / long window)
+world:
+  t: 534.633
+  team: 3
+  pid: 5
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLaneFight":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"CoreTrade":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HighStand":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PairJoin":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportHarass":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true,"TradeFree":true,"TradeSafe":true}
+  bot: {"x":-5950,"y":5307,"hp":788,"mhp":1292,"range":150,"hull":24,"speed":355,"esc":0}
+  ce: [{"id":457,"x":-6286,"y":3723,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":435,"x":-6030,"y":4683,"hp":166,"mhp":312,"ranged":1,"tgt":"u431","hull":8}]
+  ca: [{"id":449,"x":-4388,"y":5884,"hp":312,"mhp":312,"ranged":1,"tgt":"-","hull":8},{"id":450,"x":-4563,"y":5846,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":402,"x":-5926,"y":5183,"hp":300,"mhp":300,"ranged":1,"tgt":"u435","hull":8},{"id":448,"x":-4786,"y":5794,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":451,"x":-4666,"y":5823,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":431,"x":-5964,"y":5151,"hp":200,"mhp":312,"ranged":1,"tgt":"u435","hull":8}]
+  he: [{"pid":1,"x":-6010,"y":4654,"hp":968,"range":175,"hull":24,"speed":325,"atk":0,"eng":0,"e3":75,"e6":227,"ill":0},{"pid":4,"x":-6424,"y":4687,"hp":471,"range":150,"hull":24,"speed":360,"atk":0,"eng":0,"e3":126,"e6":236,"ill":0}]
+  hu: []
+  ha: []
+  towers: [{"team":3,"i":0,"x":-5275,"y":6036,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":1,"x":-128,"y":6016,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":2,"x":3552,"y":5776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":3,"x":524,"y":652,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":4,"x":2496,"y":2112,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":5,"x":4272,"y":3759,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":6,"x":6269,"y":-2240,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":7,"x":6400,"y":384,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":8,"x":6336,"y":3032,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":9,"x":4944,"y":4776,"range":700,"hull":144,"tgt":"-"},{"team":3,"i":10,"x":5280,"y":4432,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":0,"x":-6336,"y":1856,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":1,"x":-6501,"y":-872,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":2,"x":-6592,"y":-3408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":3,"x":-1544,"y":-1408,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":4,"x":-3190,"y":-2926,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":5,"x":-4640,"y":-4144,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":6,"x":4860,"y":-6379,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":7,"x":-360,"y":-6256,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":8,"x":-3952,"y":-6112,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":9,"x":-5712,"y":-4864,"range":700,"hull":144,"tgt":"-"},{"team":2,"i":10,"x":-5392,"y":-5192,"range":700,"hull":144,"tgt":"-"}]
+  budget: 0.5
+  over: 0.3
+  hold: 0.17
+  dt: 0
+  pj: 0
+expect:
+  must: ["leave(threat)"]
+  mustNot: ["stay"]
+notes: >
+  D2 against D1 (h2hhighstand1 A_dire_1, 8:55): our pos1 at 61% alone against two enemy heroes 650-800 off, neither hitting; their 3 s burst about a sixth of our HP. The burst cannot kill, but at 61% with two heroes h2hstand1 died within 10 s of 3 in 77 such stands: leave (PackHp 0.7).

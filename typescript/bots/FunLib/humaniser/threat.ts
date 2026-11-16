@@ -77,23 +77,20 @@ export const SETTINGS = {
      */
     EngagedRecent: 1,
     /**
-     * The lone-hero stand (slice mid-stand, D11 read against D1; `Ours.EvenStand`, see LoneStand): one enemy hero in reach who
-     * is not hitting us is no reason to stand back or leave while its burst over the read's window is under StandBurst of our
-     * current HP (D1's "their burst can kill me") and our HP share is StandHp or more (under it the old limits stand; the same
-     * bars as retreat's EvenBurst and EvenHp). judgement.
+     * The stand (slices mid-stand, high-stand, stand-rule; D2 read against D1; see Stand): enemy heroes in reach who are not
+     * hitting us are no reason to leave while their burst over the read's window is under the bar of our current HP and our HP
+     * share is at the floor or more. One hero: StandBurst (D1's "their burst can kill me"; retreat's EvenBurst) and StandHp
+     * (retreat's EvenHp). Two or more: PackBurst and PackHp, whatever the numbers on our side. h2hstand1 stood two heroes on
+     * D1's own bars (burst under our HP with an ally, HP 50%+): of our 19 deaths within 10 s of a stand, 8 came at two heroes
+     * with burst half our HP or more (8 stands a game), 3 at two heroes and HP 50-70% (7.7), 4 at these bars (49) and 4 at
+     * one hero. judgement.
      */
     StandBurst: 1,
     StandHp: 0.5,
-    /**
-     * The high-HP stand (slice high-stand, D2 read against D1; `Ours.HighStand`, see HighStand): two or more enemy heroes in
-     * reach, none hitting us, is no reason to leave (retreat only: the lane spot still stands back from two) while their burst is under HighBurst of our current HP and our
-     * HP share is HighHp or more. Two heroes landing that burst still leave us over a third of max HP when the engaged read
-     * sends us home. On h2htradefree2 the read left 11.8 a game for our pos1 at these bars (reach 0.25 a hero puts two over the
-     * free budget alone); OHA left the same snapshot situation 0.33 of the time, ours 0.72, with no OHA death within 10 s.
-     * judgement.
-     */
-    HighBurst: 0.5,
-    HighHp: 0.7,
+    /** Two or more heroes: the burst bar, whatever the numbers on our side (see StandBurst). */
+    PackBurst: 0.5,
+    /** Two or more heroes: the HP floor (see StandBurst). */
+    PackHp: 0.7,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };
@@ -388,32 +385,27 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, op
 }
 
 /**
- * The lone-hero stand (slice mid-stand): exactly one visible enemy hero can reach the walk, it has not damaged us within
- * EngagedRecent (the read was made with `opts.engagedWindow`, so `eng` is filled), its burst is under StandBurst of our HP,
- * our HP share is StandHp or more, no enemy tower covers the place and the missing belief is under the gates' bar. The lane
- * spot does not refuse such a place and retreat does not leave it on `threat`: h2harbiter1 and 2, the mid stood about 1,400
- * from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a stand 21 times a game.
- * Once that hero hits us the callers' own rules apply again (the dead end "a hold that never hits back" is the hit case).
+ * The stand (D2 against D1): visible enemy heroes can reach the walk, none has damaged us within EngagedRecent (the read was
+ * made with `opts.engagedWindow`, so `eng` is filled), their burst is under the bar of our HP and our HP share at the floor or
+ * more (one hero StandBurst and StandHp, two or more PackBurst and PackHp), no enemy tower covers the place and the missing
+ * belief is under the gates' bar. Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own
+ * rules apply again (the dead end "a hold that never hits back" is the hit case).
  */
-export function LoneStand(bot: Unit, r: Read): boolean {
+export function Stand(bot: Unit, r: Read): boolean {
     const s = SETTINGS;
-    if (r.reach.length !== 1 || r.eng.length > 0 || r.tower) return false;
-    if (r.burst >= s.StandBurst || r.missing >= s.MissingRefuse) return false;
-    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= s.StandHp;
+    if (r.reach.length === 0 || r.eng.length > 0 || r.tower) return false;
+    const one = r.reach.length === 1;
+    if (r.burst >= (one ? s.StandBurst : s.PackBurst) || r.missing >= s.MissingRefuse) return false;
+    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= (one ? s.StandHp : s.PackHp);
 }
 
 /**
- * The high-HP stand (slice high-stand): two or more visible enemy heroes can reach the walk, none has damaged us within
- * EngagedRecent, their burst is under HighBurst of our HP, our HP share is HighHp or more, no enemy tower covers the place and
- * the missing belief is under the gates' bar. Retreat does not leave such a place on `threat` (the lone hero is LoneStand's);
- * the lane spot keeps its own limits, so the hero steps back within the lane instead of walking off. Once one of them hits us
- * the read and budget decide again.
+ * The stand with exactly one enemy hero in reach (slice mid-stand), which the lane spot honours too: h2harbiter1 and 2, the
+ * mid stood about 1,400 from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a
+ * stand 21 times a game. With two or more the spot keeps its own limits and steps back within the lane.
  */
-export function HighStand(bot: Unit, r: Read): boolean {
-    const s = SETTINGS;
-    if (r.reach.length < 2 || r.eng.length > 0 || r.tower) return false;
-    if (r.burst >= s.HighBurst || r.missing >= s.MissingRefuse) return false;
-    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= s.HighHp;
+export function LoneStand(bot: Unit, r: Read): boolean {
+    return r.reach.length === 1 && Stand(bot, r);
 }
 
 let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;

@@ -157,9 +157,9 @@ export const DEFAULTS = {
      *  us, whose burst is under our HP, at half HP or more, refuses no lane spot and starts no `threat` leave
      *  (Threat.LoneStand). Off: the spot's burst bar and band, and the budget, whatever the numbers. */
     EvenStand: true,
-    /** Slice high-stand (D2 read against D1): with Retreat on, two or more enemy heroes in reach, none hitting us, whose
-     *  burst is under half our HP, at 70% HP or more, start no `threat` leave (Threat.HighStand); the lane spot is unchanged.
-     *  Off: the budget. */
+    /** Slices high-stand, stand-rule (D2 read against D1): with Retreat on, two or more enemy heroes in reach, none hitting
+     *  us, whose burst is under half our HP, at 70% HP or more, start no `threat` leave
+     *  (Threat.Stand); the lane spot is unchanged. Off: the budget. */
     HighStand: true,
     /** Slice pair-join-on (D10): a laner of ours in a fight where an ally of ours (or itself) is hit by an enemy hero, not
      *  outnumbered, whose side's best 3 s kill share beats theirs (PairJoin.Joins) commits an attack on the pair's target

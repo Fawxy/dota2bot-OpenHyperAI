@@ -1,4 +1,5 @@
--- The high-HP stand's situation (slice high-stand, D2 against D1; bot Threat.HighStand), found from snapshots (fragment
+-- The two-hero stand's situation (slices high-stand, stand-rule; D2 against D1; bot Threat.Stand with two or more heroes in
+-- reach, PackHp and PackBurst), found from snapshots (fragment
 -- lane_rules), so it runs on games from before the rule: one row per onset (no such second in the 5 before) of a second from
 -- 1:30 in which the hero, not in retreat mode, is at 70% HP or more, hit by no hero (`hit` 0), with 2 or more enemy heroes in
 -- reach (their attack range + 600), outside an enemy tower's reach (750) and 1,500 of our fountain. The snapshot has no burst,

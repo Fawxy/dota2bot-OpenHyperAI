@@ -721,7 +721,7 @@ function unpaid(bot: Unit, r: Threat.Read): number {
     return n;
 }
 
-/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, it is a lone hero who is not hitting us and cannot kill us (EvenStand), or our pair is joining the fight (PairJoin). */
+/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, heroes in reach are not hitting us and D1 does not hold (Threat.Stand; the ev=retreat stay line's `reach` tells one from more), or our pair is joining the fight (PairJoin). */
 export type Stay = "under" | "even" | "hold" | "stand" | "join";
 
 /**
@@ -737,17 +737,15 @@ export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: numbe
         st.stayLogged = undefined;
         return $multi(undefined, "under");
     }
-    // EvenStand (slice mid-stand, D11 against D1): one hero in reach who is not hitting us and cannot kill us is no reason to
-    // leave (Threat.LoneStand, the lane spot's rule too, so the spot does not walk us back into a place this rule leaves).
-    // HighStand (slice high-stand, D2 against D1): two or more heroes in reach, none hitting us, whose burst is under half our
-    // HP, at 70% HP or more, are no reason to leave either (Threat.HighStand; the lane spot keeps its limits).
-    const lone = Ours.On("EvenStand") && Threat.LoneStand(bot, r);
-    if (lone || (Ours.On("HighStand") && Threat.HighStand(bot, r))) {
+    // The stand (D2 against D1; Threat.Stand): heroes in reach who are not hitting us are no reason to leave unless D1 holds,
+    // more of them than us with a burst that can kill. One hero is EvenStand's (the lane spot honours it too, so the spot does
+    // not walk us back into a place this rule leaves), two or more HighStand's (the lane spot keeps its limits).
+    if (Ours.On(r.reach.length === 1 ? "EvenStand" : "HighStand") && Threat.Stand(bot, r)) {
         st.overSince = undefined;
         if (st.stayLogged !== true) {
             st.stayLogged = true;
             Telemetry.Event("retreat", [
-                ["ph", "stay"], ["why", lone ? "stand" : "high"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
+                ["ph", "stay"], ["why", "stand"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
                 ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
             ]);
         }
