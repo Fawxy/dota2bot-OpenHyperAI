@@ -926,8 +926,8 @@ function rigIdle(bot)
     return true
 end
 function rawSpot(name)
-    local ____opt_55 = rigOf(____exports.Active())
-    local s = ____opt_55 and ____opt_55.spots[name]
+    local ____opt_58 = rigOf(____exports.Active())
+    local s = ____opt_58 and ____opt_58.spots[name]
     if s == nil then
         return nil
     end
@@ -1012,22 +1012,22 @@ function rigPoint(bot, name)
     end
     local known = rigSpots[name]
     if known ~= nil then
-        local ____temp_57
+        local ____temp_60
         if known == false then
-            ____temp_57 = nil
+            ____temp_60 = nil
         else
-            ____temp_57 = known
+            ____temp_60 = known
         end
-        return ____temp_57
+        return ____temp_60
     end
     local raw = rawSpot(name)
-    local ____temp_58
+    local ____temp_61
     if raw ~= nil then
-        ____temp_58 = passableNear(raw)
+        ____temp_61 = passableNear(raw)
     else
-        ____temp_58 = nil
+        ____temp_61 = nil
     end
-    local p = ____temp_58
+    local p = ____temp_61
     rigSpots[name] = p or false
     logSpot(
         name,
@@ -1074,8 +1074,8 @@ function heroOf(bot, key)
     return rigUnits[key]
 end
 function lastPoint(st, key, bot)
-    local ____opt_59 = ____exports.RigRepOf(st.rep)
-    local steps = ____opt_59 and ____opt_59.setup[key]
+    local ____opt_62 = ____exports.RigRepOf(st.rep)
+    local steps = ____opt_62 and ____opt_62.setup[key]
     if steps == nil or #steps == 0 then
         return nil
     end
@@ -1161,13 +1161,13 @@ function rigStep(bot, st, step, last)
         if p == nil then
             return false
         end
-        local ____temp_61
+        local ____temp_64
         if verb == "stand" and words[3] == "until" then
-            ____temp_61 = tonumber(words[5])
+            ____temp_64 = tonumber(words[5])
         else
-            ____temp_61 = nil
+            ____temp_64 = nil
         end
-        local ____until = ____temp_61
+        local ____until = ____temp_64
         if ____until ~= nil then
             standAt(bot, p)
             return hpShare(bot) <= ____until
@@ -1254,13 +1254,13 @@ function rigStep(bot, st, step, last)
         if share == nil then
             return false
         end
-        local ____temp_62
+        local ____temp_65
         if words[3] == "from" then
-            ____temp_62 = tonumber(words[4])
+            ____temp_65 = tonumber(words[4])
         else
-            ____temp_62 = nil
+            ____temp_65 = nil
         end
-        local from = ____temp_62
+        local from = ____temp_65
         local kept = st.atk[pid]
         local target = kept ~= nil and not kept:IsNull() and kept:IsAlive() and kept:CanBeSeen() and kept or attackTarget(bot, st, words[2])
         if target ~= nil then
@@ -1526,6 +1526,7 @@ ____exports.TABLE = {
             timeout = 28,
             keeps = {"levelup"},
             release = {modes = {"laning", "idle"}},
+            idle = 0.44,
             reps = {{name = "tower", setup = {r1 = {"stand bot"}, r2 = {"stand mid"}, r3 = {"stand top"}}, ready = {towerCreep = 700, clear = 2000}}}
         }
     },
@@ -2096,7 +2097,14 @@ function ____exports.RigDesire(bot, mode)
     if m == nil or m[mode] == true then
         return nil
     end
-    return mode == "farm" and m.idle == true and RIG_IDLE_DESIRE or 0
+    local ____temp_57
+    if mode == "farm" and m.idle == true then
+        local ____opt_55 = rigOf(____exports.Active())
+        ____temp_57 = ____opt_55 and ____opt_55.idle or RIG_IDLE_DESIRE
+    else
+        ____temp_57 = 0
+    end
+    return ____temp_57
 end
 --- A released cast's desire for `idle` (farm mode, standing where it was released). Over the Valve built-in mode that took a
 -- released cast nothing else wanted (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates), under the 0.95 at which
@@ -2326,13 +2334,13 @@ local function burstField(bot, rr)
         return nil
     end
     local b = loneBurst(bot, rr.ready.lone[1])
-    local ____temp_65
+    local ____temp_68
     if b == nil then
-        ____temp_65 = nil
+        ____temp_68 = nil
     else
-        ____temp_65 = math.floor(b * 100 + 0.5) / 100
+        ____temp_68 = math.floor(b * 100 + 0.5) / 100
     end
-    return ____temp_65
+    return ____temp_68
 end
 --- Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout).
 local function rigTick(bot)
@@ -2472,8 +2480,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_66 = overrides()
-            local v = ____opt_66 and ____opt_66[k]
+            local ____opt_69 = overrides()
+            local v = ____opt_69 and ____opt_69[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -2487,8 +2495,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_68 = overrides()
-        local asked = ____opt_68 and ____opt_68.Drill
+        local ____opt_71 = overrides()
+        local asked = ____opt_71 and ____opt_71.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -2528,8 +2536,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_73 = Telemetry.Event
-    local ____array_72 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_76 = Telemetry.Event
+    local ____array_75 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -2541,11 +2549,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_70 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_72, {"var", ____opt_70 and ____opt_70.name})
-    ____Telemetry_Event_73(
+    local ____opt_73 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_75, {"var", ____opt_73 and ____opt_73.name})
+    ____Telemetry_Event_76(
         "drill",
-        {__TS__SparseArraySpread(____array_72)}
+        {__TS__SparseArraySpread(____array_75)}
     )
     rigTick(bot)
 end

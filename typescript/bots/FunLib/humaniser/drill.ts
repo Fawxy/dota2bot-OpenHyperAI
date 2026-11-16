@@ -167,6 +167,7 @@ export const TABLE: Record<string, Entry> = {
             timeout: 28,
             keeps: ["levelup"],
             release: { modes: ["laning", "idle"] },
+            idle: 0.44,
             reps: [{ name: "tower", setup: { r1: ["stand bot"], r2: ["stand mid"], r3: ["stand top"] }, ready: { towerCreep: 700, clear: 2000 } }],
         },
     },
@@ -1165,6 +1166,12 @@ export interface Rig {
     /** Kinds OHA keeps for every hero of the rig, in every phase (the rig's situation depends on them). */
     keeps?: HeldKind[];
     release: { modes: string[]; items?: boolean; abilities?: boolean; also?: HeldKind[] };
+    /**
+     * The `idle` hold's desire for this rig (default RIG_IDLE_DESIRE). tower-prehit 0.44: laning bids 0.446 between due last
+     * hits (level 7 or under, before 9:00), so the default 0.5 stood the cast still beside creeps it could take (off3: the
+     * mid's 54 lost tower creeps in reach with no attempt).
+     */
+    idle?: number;
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
     /** DotaTime seconds the rule's stage ends (a laning rule: 600). A rep ending after it is logged `rend` past `win` and the
@@ -1295,7 +1302,7 @@ export function RigDesire(bot: Unit, mode: string): number | undefined {
     const m = releasedModes(bot);
     if (m === undefined || m[mode] === true) return undefined;
     // `idle` listed: farm (the bench's host) holds the cast standing, under the released modes' holds.
-    return mode === "farm" && m["idle"] === true ? RIG_IDLE_DESIRE : 0;
+    return mode === "farm" && m["idle"] === true ? rigOf(Active())?.idle ?? RIG_IDLE_DESIRE : 0;
 }
 
 /**

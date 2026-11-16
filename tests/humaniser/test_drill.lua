@@ -811,6 +811,8 @@ do
 	local ready = {}
 	for _, l in ipairs(lines) do if field(l, "ph") == "ready" then ready[tonumber(field(l, "pid"))] = field(l, "ok") end end
 	check("tower-prehit: the placed cast is ready while the other casts walk; they are not", ready[0] == "1" and ready[1] == nil and ready[2] == nil, ready)
+	check("tower-prehit: released, laning is free and idle holds at the rig's 0.44, under laning's 0.446",
+		H3.Drill.RigDesire(c1, "laning") == nil and H3.Drill.RigDesire(c1, "farm") == 0.44)
 
 	local t = H.Drill.TABLE["tower-prehit"].rig
 	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)
