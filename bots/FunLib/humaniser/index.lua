@@ -257,15 +257,50 @@ local steps = {
     tasks = Tasks.Tick,
     overlay = drawOverlay
 }
+local frameAt
+local frameNo = 0
+local allSteps = true
+--- Whether this frame runs every step (each Config TickEvery-th frame) or only the frame steps.
+local function stepsDue()
+    local now = GameTime()
+    if now ~= frameAt then
+        frameAt = now
+        frameNo = frameNo + 1
+        local every = Config.Get().TickEvery
+        allSteps = every <= 1 or frameNo % every == 0
+    end
+    return allSteps
+end
+--- The steps that run on the frames between: each names what a lower rate would lose. Every other step reads the world
+-- ten times a second: the modes that act on them run 3 to 6 times a second, and a step that counts time in tenths
+-- (the lane fight's enemy count, the cast poll, a teleport's settle) may be read a tick late.
+local function frameSteps(bot)
+    if Drill.Active() ~= nil then
+        Drill.Tick(bot)
+    end
+    LaneFight.Frame(bot)
+    if Trainer.IsEnabled() then
+        steps.trainer(bot)
+    end
+    steps.telemetry(bot, telemetryContext, true)
+    steps.overlay(bot)
+end
 local function tick(bot)
+    local all = stepsDue()
     if not Config.IsEnabled() then
         if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
-            Telemetry.Tick(bot)
-            pcall(RegenObs.Tick, bot)
+            Telemetry.Tick(bot, nil, not all)
+            if all then
+                pcall(RegenObs.Tick, bot)
+            end
         end
         return
     end
     if not bot:IsHero() or bot:IsIllusion() then
+        return
+    end
+    if not all then
+        frameSteps(bot)
         return
     end
     steps.feed(bot)
@@ -342,6 +377,7 @@ if Telemetry.GuardsEnabled() then
         LaneFight,
         {
             Tick = none,
+            Frame = none,
             ReadFor = function() return {noticed = false} end,
             CheckKill = none,
             RoamDesire = arg2,

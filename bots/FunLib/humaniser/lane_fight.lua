@@ -190,11 +190,11 @@ function holdsReadyKey(u)
         local i = 0
         while i < 6 do
             do
-                local __continue48
+                local __continue52
                 repeat
                     local a = u:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:GetLevel() < 1 then
-                        __continue48 = true
+                        __continue52 = true
                         break
                     end
                     local name = a:GetName()
@@ -204,9 +204,9 @@ function holdsReadyKey(u)
                     ) == "key" and not AbilityClasses.IsEscape(name) and a:IsFullyCastable() then
                         return true
                     end
-                    __continue48 = true
+                    __continue52 = true
                 until true
-                if not __continue48 then
+                if not __continue52 then
                     break
                 end
             end
@@ -346,10 +346,10 @@ function partnerCommitTarget(bot, s, ally, now)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue81
+            local __continue85
             repeat
                 if e == nil or not e.visible or not usableUnit(e.unit) then
-                    __continue81 = true
+                    __continue85 = true
                     break
                 end
                 local prev = sampleDistance(bot, ally, e.unit, now)
@@ -363,9 +363,9 @@ function partnerCommitTarget(bot, s, ally, now)
                         s.partnerSeen[ally:GetPlayerID()] = now
                     end
                 end
-                __continue81 = true
+                __continue85 = true
             until true
-            if not __continue81 then
+            if not __continue85 then
                 break
             end
         end
@@ -453,15 +453,15 @@ function believedDown(bot, target, spell, escapes, now)
     local tpid = target:GetPlayerID()
     for ____, a in ipairs(CastWatch.AbilitiesOf(target)) do
         do
-            local __continue107
+            local __continue111
             repeat
                 if not a.learned then
-                    __continue107 = true
+                    __continue111 = true
                     break
                 end
                 local wanted = spell and AbilityClasses.Classify(a.name, a.ult) == "key" or escapes and AbilityClasses.IsEscape(a.name)
                 if not wanted then
-                    __continue107 = true
+                    __continue111 = true
                     break
                 end
                 local ready = CooldownMemory.ProbablyReady(
@@ -475,9 +475,9 @@ function believedDown(bot, target, spell, escapes, now)
                 if not ready then
                     out[a.name] = true
                 end
-                __continue107 = true
+                __continue111 = true
             until true
-            if not __continue107 then
+            if not __continue111 then
                 break
             end
         end
@@ -1338,6 +1338,19 @@ ____exports.FightRead = FightRead
 ____exports.KillCheck = KillCheck
 function ____exports.IsActive()
     return LaneFightConfig.IsActive()
+end
+--- The frames between Tick's: reads a queued cast event under Tick's own gates (CastWatch.Drain says why it cannot wait).
+function ____exports.Frame(bot)
+    if not CastWatch.Pending(bot) then
+        return
+    end
+    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
+        return
+    end
+    if not LaneFightConfig.IsOn("Memory") or LaneState.ForBot(bot) == nil then
+        return
+    end
+    CastWatch.Drain(bot)
 end
 function ____exports.Tick(bot)
     if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then

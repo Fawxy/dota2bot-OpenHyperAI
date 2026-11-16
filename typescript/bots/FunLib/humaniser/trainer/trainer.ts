@@ -663,6 +663,10 @@ function run(bot: Unit, team: number, s: TeamState, now: number): void {
     }
 }
 
+export function IsEnabled(): boolean {
+    return Settings.IsEnabled();
+}
+
 export function Tick(bot: Unit): void {
     if (!Settings.IsEnabled()) return;
     const team = bot.GetTeam();

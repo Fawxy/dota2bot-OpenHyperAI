@@ -1,9 +1,9 @@
 /**
- * Lane fight facade (task 11): trades and kill setups with imperfect cooldown memory. Tick runs per bot per frame
- * from Humaniser.Tick; ReadFor is the fight read (trade and respect windows); CheckKill is the kill check.
+ * Lane fight facade (task 11): trades and kill setups with imperfect cooldown memory. Tick runs per bot from Humaniser.Tick
+ * (every Humaniser.TickEvery-th frame); ReadFor is the fight read (trade and respect windows); CheckKill is the kill check.
  *
  * The executor runs through mode_team_roam_generic: RoamDesire (its GetDesire) starts and ends trades and commits and
- * posts a FIGHT floor claim on team_roam while one runs; Think (its Think) attacks the target. Tick (every frame)
+ * posts a FIGHT floor claim on team_roam while one runs; Think (its Think) attacks the target. Tick
  * watches the lane partner: a partner's visible commit is the only coordination channel, for bot partners too, since
  * modules may not be shared between a team's bots. A core waits (wait_partner) for its support's commit, a bot calls
  * kills for a human partner, and a commit aborts on a real signal after a skill-scaled re-check.
@@ -34,6 +34,14 @@ export function IsActive(): boolean {
     return LaneFightConfig.IsActive();
 }
 
+/** The frames between Tick's: reads a queued cast event under Tick's own gates (CastWatch.Drain says why it cannot wait). */
+export function Frame(bot: Unit): void {
+    if (!CastWatch.Pending(bot)) return;
+    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
+    if (!LaneFightConfig.IsOn("Memory") || LaneState.ForBot(bot) === undefined) return;
+    CastWatch.Drain(bot);
+}
+
 export function Tick(bot: Unit): void {
     if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
     if (!LaneFightConfig.IsOn("Memory") && !gatesOpen(bot)) return;
@@ -44,7 +52,8 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     if (now < 0 || !gatesOpen(bot)) return;
     const s = stateFor(bot);
-    // Frame precision for the partner's commit, the follow time, the wait timeout and abort re-checks.
+    // Ten times a second is enough: the follow, the wait timeout and the abort re-checks are acted on by RoamDesire,
+    // which runs 3 to 4 times a second and calls coordinate itself.
     coordinate(bot, s, snap, now);
     checkEnd(bot, s, now);
 }
@@ -972,7 +981,7 @@ function visibleEnemy(bot: Unit, pid: number): Unit | undefined {
 }
 
 /**
- * Every frame (Tick) and every round (RoamDesire): the wait's Hold, the bad-memory check, and the follow. The
+ * Every Tick and every round (RoamDesire): the wait's Hold, the bad-memory check, and the follow. The
  * partner's visible commit, first seen at `seenAt`, is followed at seenAt + react + SyncDelay if the bot's own margin
  * with the partner is at least FollowMargin; bot and human partners alike.
  */

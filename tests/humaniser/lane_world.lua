@@ -292,7 +292,7 @@ function LaneFresh(laneCfg, extra)
 	LANING, STRONGER, NEXT_RUNE, OBSERVER = nil, nil, nil, nil
 	IMPASSABLE, TREES = nil, nil
 	clearRandom()
-	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, Lane = laneCfg,
+	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, TickEvery = extra.tickEvery, Lane = laneCfg,
 		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
 	-- The old camp-job pulls are Ours.SupportPull's OFF arm; this world tests them unless a test asks for the pull job.
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPull = extra.supportPull == true

@@ -162,16 +162,55 @@ const steps = {
     overlay: drawOverlay,
 };
 
+// One Lua VM per team, so a team's bots share this clock and run their steps on the same frames: a "first caller this
+// frame" step still runs once, and lane partners read each other's state from the same frame.
+let frameAt: number | undefined;
+let frameNo = 0;
+let allSteps = true;
+
+/** Whether this frame runs every step (each Config TickEvery-th frame) or only the frame steps. */
+function stepsDue(): boolean {
+    const now = GameTime();
+    if (now !== frameAt) {
+        frameAt = now;
+        frameNo++;
+        const every = Config.Get().TickEvery;
+        allSteps = every <= 1 || frameNo % every === 0;
+    }
+    return allSteps;
+}
+
+/**
+ * The steps that run on the frames between: each names what a lower rate would lose. Every other step reads the world
+ * ten times a second: the modes that act on them run 3 to 6 times a second, and a step that counts time in tenths
+ * (the lane fight's enemy count, the cast poll, a teleport's settle) may be read a tick late.
+ */
+function frameSteps(this: void, bot: Unit): void {
+    // A rig places and releases units to the frame; no drill, no step.
+    if (Drill.Active() !== undefined) Drill.Tick(bot);
+    LaneFight.Frame(bot);
+    // The trainer times a human's swings; off unless Trainer.Enable.
+    if (Trainer.IsEnabled()) steps.trainer(bot);
+    steps.telemetry(bot, telemetryContext, true);
+    // Debug text lasts one frame.
+    steps.overlay(bot);
+}
+
 function tick(this: void, bot: Unit): void {
+    const all = stepsDue();
     if (!Config.IsEnabled()) {
         // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
         if (Telemetry.IsEnabled() && bot.IsHero() && !bot.IsIllusion()) {
-            Telemetry.Tick(bot);
-            pcall(RegenObs.Tick, bot);
+            Telemetry.Tick(bot, undefined, !all);
+            if (all) pcall(RegenObs.Tick, bot);
         }
         return;
     }
     if (!bot.IsHero() || bot.IsIllusion()) return;
+    if (!all) {
+        frameSteps(bot);
+        return;
+    }
     steps.feed(bot);
     Chat.EnsureInstalled(bot);
     Chat.FlushDeferred((tag, line) => HDebug.Log(tag, line));
@@ -234,6 +273,7 @@ if (Telemetry.GuardsEnabled()) {
     });
     Telemetry.GuardModule("LaneFight", LaneFight, {
         Tick: none,
+        Frame: none,
         ReadFor: () => ({ noticed: false }),
         CheckKill: none,
         RoamDesire: arg2,

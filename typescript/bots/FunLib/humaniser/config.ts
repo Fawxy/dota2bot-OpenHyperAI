@@ -10,6 +10,11 @@ import Customize = require("bots/FunLib/custom_loader");
 export const DEFAULTS = {
     Enable: true,
     Debug: false,
+    /**
+     * Humaniser.Tick runs its steps on every TickEvery-th frame (3 = ten times a game second); only the steps index.ts
+     * names as frame steps run on the others. 1 runs every step every frame.
+     */
+    TickEvery: 3,
     ValveWeight: 0.5,
     FretWeight: 0.5,
     SkillOverride: undefined as number | undefined,
