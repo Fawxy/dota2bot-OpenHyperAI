@@ -509,6 +509,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
                     ["tk", n?.plan !== undefined ? math.floor(n.plan.swings[n.plan.swings.length - 1] * 100) / 100 : undefined],
                     ["hk", n?.plan !== undefined ? math.floor(n.plan.hpKill) : undefined],
                     ["mg", n?.plan !== undefined ? math.floor(n.plan.margin) : undefined],
+                    ["pk", n?.plan !== undefined ? math.floor(n.plan.odds * 100) / 100 : undefined],
                     ["ol", ol],
                     ["contested", contested],
                 ]);

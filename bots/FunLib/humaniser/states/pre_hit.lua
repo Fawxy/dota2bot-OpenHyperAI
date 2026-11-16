@@ -129,10 +129,10 @@ function startWatch(bot, verbs, tower, creep, f, lo)
     local td = -1
     for ____, h in ipairs(f.hits) do
         do
-            local __continue53
+            local __continue62
             repeat
                 if h.t > 1 then
-                    __continue53 = true
+                    __continue62 = true
                     break
                 end
                 if h.by == "tower" then
@@ -145,9 +145,9 @@ function startWatch(bot, verbs, tower, creep, f, lo)
                 else
                     ks = ks + 1
                 end
-                __continue53 = true
+                __continue62 = true
             until true
-            if not __continue53 then
+            if not __continue62 then
                 break
             end
         end
@@ -343,9 +343,129 @@ ____exports.AFTER = 0.1
 ____exports.MAX_PREHITS = 2
 --- Own towers within this of the bot are read for their attack target (tower range 700 plus the reach of a short walk).
 local TOWER_RADIUS = 1200
+--- The forecast's error on a creep our tower is hitting: real HP below the forecast's, our own hits removed, at a time ahead
+-- (`ev=prehit_fc`, 353 probes from h2hhighstand1 and rig tower-prehit on1, 17/11/2026; `fitted`). It is 0 in about 40% of
+-- samples and 20-120 HP in most of the rest: our creeps join that the forecast, which counts current attackers, cannot see;
+-- the negative tail is a forecast tower hit landing late. One row per half second ahead (the last for 2 s and beyond): the
+-- error at the probabilities `ERROR_P`.
+____exports.ERROR_P = {
+    0.02,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    0.98
+}
+____exports.ERROR = {
+    {
+        -80,
+        -12,
+        -1,
+        0,
+        0,
+        0,
+        2,
+        7,
+        17,
+        64,
+        107
+    },
+    {
+        -75,
+        -41,
+        -1,
+        1,
+        4,
+        9,
+        25,
+        49,
+        72,
+        90,
+        133
+    },
+    {
+        -78,
+        -3,
+        1,
+        4,
+        7,
+        18,
+        28,
+        41,
+        65,
+        87,
+        133
+    },
+    {
+        -72,
+        -3,
+        2,
+        5,
+        10,
+        21,
+        34,
+        50,
+        64,
+        92,
+        173
+    },
+    {
+        -72,
+        -1,
+        3,
+        6,
+        11,
+        26,
+        40,
+        61,
+        84,
+        110,
+        176
+    }
+}
+--- HP beyond the table's end points over which the chance runs out to 0 and to 1. `judgement`.
+local ERROR_TAIL = 20
+____exports.FittedError = function(t, x)
+    local row = ____exports.ERROR[math.min(
+        #____exports.ERROR - 1,
+        math.max(
+            0,
+            math.floor(t / 0.5)
+        )
+    ) + 1]
+    local n = #row
+    if x < row[1] - ERROR_TAIL then
+        return 0
+    end
+    if x < row[1] then
+        return ____exports.ERROR_P[1] * (x - (row[1] - ERROR_TAIL)) / ERROR_TAIL
+    end
+    if x >= row[n] + ERROR_TAIL then
+        return 1
+    end
+    if x >= row[n] then
+        return ____exports.ERROR_P[n] + (1 - ____exports.ERROR_P[n]) * (x - row[n]) / ERROR_TAIL
+    end
+    local i = 0
+    while i + 1 < n and row[i + 1 + 1] <= x do
+        i = i + 1
+    end
+    local span = row[i + 1 + 1] - row[i + 1]
+    return ____exports.ERROR_P[i + 1] + (____exports.ERROR_P[i + 1 + 1] - ____exports.ERROR_P[i + 1]) * (x - row[i + 1]) / span
+end
+--- No error: the forecast is the creep's HP (the planner before odds).
+____exports.NoError = function(_t, x) return x >= 0 and 1 or 0 end
 local function better(a, b)
     if b == nil then
         return true
+    end
+    if math.abs(a.odds - b.odds) > 1e-9 then
+        return a.odds > b.odds
     end
     if a.margin ~= b.margin then
         return a.margin > b.margin
@@ -357,9 +477,10 @@ local function better(a, b)
 end
 --- The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
 -- spent. A swing lands at `earliest` or just after a later tower hit (`AFTER`); landing where a tower hit falls inside the last
--- AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it is the kill when inside
--- (0, lo], else a pre-hit of `mean` damage followed by the best plan from one attack cycle later.
-local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, mean)
+-- AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it may be the kill, at
+-- the chance `err` gives the real HP of being in (0, lo], and above lo a pre-hit of `mean` damage followed by the best plan
+-- from one attack cycle later.
+local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, mean, err)
     local candidates = {}
     local clear = true
     for ____, t in ipairs(towers) do
@@ -378,24 +499,30 @@ local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, m
     local best
     for ____, at in ipairs(candidates) do
         do
-            local __continue14
+            local __continue22
             repeat
                 if at > horizon then
                     break
                 end
                 local hp = hpAt(at) - dealt
                 if hp <= 0 then
-                    __continue14 = true
+                    __continue22 = true
                     break
                 end
-                local plan
-                if hp <= lo then
-                    plan = {
+                local now = pre == 0 and at == earliest
+                if hp <= lo or not now then
+                    local odds = err(at, hp) - err(at, hp - lo)
+                    local kill = {
                         swings = {at},
                         hpKill = hp,
-                        margin = math.min(hp, lo - hp)
+                        margin = math.min(hp, lo - hp),
+                        odds = odds
                     }
-                elseif pre < ____exports.MAX_PREHITS then
+                    if odds > 0 and better(kill, best) then
+                        best = kill
+                    end
+                end
+                if hp > lo and pre < ____exports.MAX_PREHITS then
                     local rest = search(
                         hpAt,
                         horizon,
@@ -405,25 +532,27 @@ local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, m
                         pre + 1,
                         period,
                         lo,
-                        mean
+                        mean,
+                        err
                     )
                     if rest ~= nil then
-                        plan = {
+                        local plan = {
                             swings = {
                                 at,
                                 unpack(rest.swings)
                             },
                             hpKill = rest.hpKill,
-                            margin = rest.margin
+                            margin = rest.margin,
+                            odds = rest.odds
                         }
+                        if better(plan, best) then
+                            best = plan
+                        end
                     end
                 end
-                if plan ~= nil and better(plan, best) then
-                    best = plan
-                end
-                __continue14 = true
+                __continue22 = true
             until true
-            if not __continue14 then
+            if not __continue22 then
                 break
             end
         end
@@ -432,10 +561,13 @@ local function search(hpAt, horizon, towers, earliest, dealt, pre, period, lo, m
 end
 --- The plan for a creep whose forecast HP without our hits is `hpAt` and whose tower hits land at `towers` (seconds from now,
 -- sorted): our first swing can land at `first` (the walk plus our hit time) and every `period` after one, our low-roll damage
--- after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes).
--- Undefined when no plan within the horizon ends in a kill.
+-- after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes);
+-- `err` the forecast's error (default the fitted one). Undefined when no plan within the horizon has a chance of a kill.
 -- A plan of our swings on one creep: when each lands (seconds from now), the last one the kill.
-function ____exports.Plan(hpAt, horizon, towers, first, period, lo, mean)
+function ____exports.Plan(hpAt, horizon, towers, first, period, lo, mean, err)
+    if err == nil then
+        err = ____exports.FittedError
+    end
     return search(
         hpAt,
         horizon,
@@ -445,7 +577,8 @@ function ____exports.Plan(hpAt, horizon, towers, first, period, lo, mean)
         0,
         period,
         lo,
-        mean
+        mean,
+        err
     )
 end
 function ____exports.Applies(bot)

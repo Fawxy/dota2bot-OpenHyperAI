@@ -3,9 +3,10 @@
  * attacking so that the tower then leaves it in the core's kill range. Under a tower the one-swing `lastHit` verb cannot win a
  * creep whose HP steps from above our hit to below zero in one tower hit. On each scan the core plans its next few swings
  * against the tower's known landing times (`Plan`): which of them to spend as pre-hits so that one lands on the creep inside
- * the kill range (0, low roll], choosing the plan whose kill HP sits furthest from both edges of that range (prhchk2-5, 04/11/2026:
- * one hit aimed at any window at all landed the kill on 2-15 HP, which one high roll or one creep hit undid; two hits aimed at
- * the middle of the range leave about 25). The plan is remade every scan from the creep's real HP, so a hit the forecast missed
+ * the kill range (0, low roll], choosing the plan most likely to land its kill in range under the forecast's fitted error
+ * (`ERROR`; slice prehit-odds, 17/11/2026: the forecast misses creeps joining, so the real HP runs a median 23 below it at 1-2 s
+ * ahead and a kill aimed at the range's middle was left to the tower), then the one whose kill HP sits furthest from both
+ * edges (prhchk2-5, 04/11/2026). The plan is remade every scan from the creep's real HP, so a hit the forecast missed
  * changes the next decision rather than the result. The swing is laneFarm's `prehit` (one `attackAndConfirm`); the kill is the
  * normal last-hit pick's and verb's. A pre-hit never spends the swing a last hit on another creep needs: none may come due
  * before our attack is ready again (user 04/11/2026).
@@ -35,14 +36,54 @@ const TOWER_RADIUS = 1200;
 /** A plan of our swings on one creep: when each lands (seconds from now), the last one the kill. */
 export interface Plan {
     swings: number[];
-    /** The creep's HP as the kill lands, before our hit. */
+    /** The creep's forecast HP as the kill lands, before our hit. */
     hpKill: number;
-    /** How far `hpKill` sits from the kill range's edges: min(hpKill, lo - hpKill). Higher survives more forecast error. */
+    /** How far `hpKill` sits from the kill range's edges: min(hpKill, lo - hpKill), negative above the range. */
     margin: number;
+    /** The chance the kill lands in range, from the forecast's error at the kill's time ahead (`ERROR`). */
+    odds: number;
 }
+
+/**
+ * The forecast's error on a creep our tower is hitting: real HP below the forecast's, our own hits removed, at a time ahead
+ * (`ev=prehit_fc`, 353 probes from h2hhighstand1 and rig tower-prehit on1, 17/11/2026; `fitted`). It is 0 in about 40% of
+ * samples and 20-120 HP in most of the rest: our creeps join that the forecast, which counts current attackers, cannot see;
+ * the negative tail is a forecast tower hit landing late. One row per half second ahead (the last for 2 s and beyond): the
+ * error at the probabilities `ERROR_P`.
+ */
+export const ERROR_P = [0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.98];
+export const ERROR: number[][] = [
+    [-80, -12, -1, 0, 0, 0, 2, 7, 17, 64, 107],
+    [-75, -41, -1, 1, 4, 9, 25, 49, 72, 90, 133],
+    [-78, -3, 1, 4, 7, 18, 28, 41, 65, 87, 133],
+    [-72, -3, 2, 5, 10, 21, 34, 50, 64, 92, 173],
+    [-72, -1, 3, 6, 11, 26, 40, 61, 84, 110, 176],
+];
+/** HP beyond the table's end points over which the chance runs out to 0 and to 1. `judgement`. */
+const ERROR_TAIL = 20;
+
+/** The chance the forecast's error at `t` seconds ahead is at most `x` HP: P(real HP >= forecast - x). */
+export type ErrorCdf = (this: void, t: number, x: number) => number;
+
+export const FittedError: ErrorCdf = (t: number, x: number): number => {
+    const row = ERROR[math.min(ERROR.length - 1, math.max(0, math.floor(t / 0.5)))];
+    const n = row.length;
+    if (x < row[0] - ERROR_TAIL) return 0;
+    if (x < row[0]) return (ERROR_P[0] * (x - (row[0] - ERROR_TAIL))) / ERROR_TAIL;
+    if (x >= row[n - 1] + ERROR_TAIL) return 1;
+    if (x >= row[n - 1]) return ERROR_P[n - 1] + ((1 - ERROR_P[n - 1]) * (x - row[n - 1])) / ERROR_TAIL;
+    let i = 0;
+    while (i + 1 < n && row[i + 1] <= x) i++;
+    const span = row[i + 1] - row[i];
+    return ERROR_P[i] + ((ERROR_P[i + 1] - ERROR_P[i]) * (x - row[i])) / span;
+};
+
+/** No error: the forecast is the creep's HP (the planner before odds). */
+export const NoError: ErrorCdf = (_t: number, x: number): number => (x >= 0 ? 1 : 0);
 
 function better(a: Plan, b: Plan | undefined): boolean {
     if (b === undefined) return true;
+    if (math.abs(a.odds - b.odds) > 1e-9) return a.odds > b.odds;
     if (a.margin !== b.margin) return a.margin > b.margin;
     if (a.swings.length !== b.swings.length) return a.swings.length < b.swings.length;
     return a.swings[a.swings.length - 1] < b.swings[b.swings.length - 1];
@@ -51,8 +92,9 @@ function better(a: Plan, b: Plan | undefined): boolean {
 /**
  * The best plan from a swing that can land at `earliest` with `dealt` HP of ours already in the forecast and `pre` pre-hits
  * spent. A swing lands at `earliest` or just after a later tower hit (`AFTER`); landing where a tower hit falls inside the last
- * AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it is the kill when inside
- * (0, lo], else a pre-hit of `mean` damage followed by the best plan from one attack cycle later.
+ * AFTER before it is not relied on. On the creep's HP there (`hpAt` is the forecast without our hits) it may be the kill, at
+ * the chance `err` gives the real HP of being in (0, lo], and above lo a pre-hit of `mean` damage followed by the best plan
+ * from one attack cycle later.
  */
 function search(
     hpAt: (this: void, t: number) => number,
@@ -64,6 +106,7 @@ function search(
     period: number,
     lo: number,
     mean: number,
+    err: ErrorCdf,
 ): Plan | undefined {
     const candidates: number[] = [];
     let clear = true;
@@ -75,13 +118,21 @@ function search(
         if (at > horizon) break;
         const hp = hpAt(at) - dealt;
         if (hp <= 0) continue;
-        let plan: Plan | undefined;
-        if (hp <= lo) plan = { swings: [at], hpKill: hp, margin: math.min(hp, lo - hp) };
-        else if (pre < MAX_PREHITS) {
-            const rest = search(hpAt, horizon, towers, at + period, dealt + mean, pre + 1, period, lo, mean);
-            if (rest !== undefined) plan = { swings: [at, ...rest.swings], hpKill: rest.hpKill, margin: rest.margin };
+        // The kill: real HP in (0, lo] when the error lies in [hp - lo, hp). A swing landing now is the last-hit verb's, which
+        // swings only on a forecast kill, so above the range it is never the kill.
+        const now = pre === 0 && at === earliest;
+        if (hp <= lo || !now) {
+            const odds = err(at, hp) - err(at, hp - lo);
+            const kill: Plan = { swings: [at], hpKill: hp, margin: math.min(hp, lo - hp), odds };
+            if (odds > 0 && better(kill, best)) best = kill;
         }
-        if (plan !== undefined && better(plan, best)) best = plan;
+        if (hp > lo && pre < MAX_PREHITS) {
+            const rest = search(hpAt, horizon, towers, at + period, dealt + mean, pre + 1, period, lo, mean, err);
+            if (rest !== undefined) {
+                const plan: Plan = { swings: [at, ...rest.swings], hpKill: rest.hpKill, margin: rest.margin, odds: rest.odds };
+                if (better(plan, best)) best = plan;
+            }
+        }
     }
     return best;
 }
@@ -89,8 +140,8 @@ function search(
 /**
  * The plan for a creep whose forecast HP without our hits is `hpAt` and whose tower hits land at `towers` (seconds from now,
  * sorted): our first swing can land at `first` (the walk plus our hit time) and every `period` after one, our low-roll damage
- * after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes).
- * Undefined when no plan within the horizon ends in a kill.
+ * after armour is `lo` (the kill range's top, as the last-hit verb's `mine`) and our mean damage `mean` (what a pre-hit takes);
+ * `err` the forecast's error (default the fitted one). Undefined when no plan within the horizon has a chance of a kill.
  */
 export function Plan(
     this: void,
@@ -101,8 +152,9 @@ export function Plan(
     period: number,
     lo: number,
     mean: number,
+    err: ErrorCdf = FittedError,
 ): Plan | undefined {
-    return search(hpAt, horizon, towers, first, 0, 0, period, lo, mean);
+    return search(hpAt, horizon, towers, first, 0, 0, period, lo, mean, err);
 }
 
 /**

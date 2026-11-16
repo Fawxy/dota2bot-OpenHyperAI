@@ -945,11 +945,11 @@ An owned laner's idle swing (states/idle_swing): one attack when the picker had 
 
 A core's pre-hit on an enemy creep our tower is attacking (states/pre_hit): one per attempt.
 
-`pid` num, `reason` str, `ranged` bool, `dies` num, `hp` num, `t0` num, `lo` num, `tk` num, `hk` num, `mg` num, `contested` bool
+`pid` num, `reason` str, `ranged` bool, `dies` num, `hp` num, `t0` num, `lo` num, `tk` num, `hk` num, `mg` num, `pk` num, `contested` bool
 
 - `result` str: ok once our attack fired (attackAndConfirm), fail missed / no_target (the creep died first) / interrupted / dead.
 - `walk` num: At the decision: walk into range (s), when the forecast has the creep dead (s), its HP, our earliest landing t0 (s), our low-roll damage.
-- `np` num: The plan (states/pre_hit Plan): pre-hits before the kill, the kill's landing (s), the HP it lands on and its margin from the kill range's edges.
+- `np` num: The plan (states/pre_hit Plan): pre-hits before the kill, the kill's landing (s), the HP it lands on, its margin from the kill range's edges and the chance (0-1) it lands in range under the forecast's fitted error.
 - `ol` num: Reachable last hits offered at the pick.
 
 ## prehit_fc
