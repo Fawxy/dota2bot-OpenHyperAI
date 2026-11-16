@@ -117,8 +117,6 @@ const LOSING_BY = 0.05;
  * ends had lost under 120 HP). `judgement`.
  */
 const UNLANDED_CAP = 0.15;
-/** Our hit counts as landed when the target was damaged by us within this (s); Desire runs every frame. `judgement`. */
-const LANDED_RECENT = 0.5;
 /** A kill window commits and ignores the exchange, so it keeps a time limit. */
 const KILL_TIME = 6;
 /** A pair join commits like a fight and keeps its limit; it reopens at once while PairJoin still answers join. */
@@ -911,14 +909,17 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
 /**
  * Whether a running trade or hit back has turned against the core. Off (`Ours.TradeLanded`): Deficit from the start over
  * LOSING_BY. On: before our first hit lands, Deficit from the start over UNLANDED_CAP; from the landing, Deficit from the frame
- * before it over LOSING_BY.
+ * before it over LOSING_BY. A ranged hit counts from its firing, its projectile still in the air.
  */
 function losing(bot: Unit, ep: Episode, now: number): boolean {
     const hp = bot.GetHealth();
     const thp = ep.target.GetHealth();
     const max = bot.GetMaxHealth();
     if (!Ours.On("TradeLanded")) return Deficit(ep.hp0, hp, ep.thp0, thp, max) > LOSING_BY;
-    if (ep.landedAt === undefined && ep.target.WasRecentlyDamagedByHero(bot, LANDED_RECENT)) {
+    // Our first hit: an attack fired at the target since the start (GetLastAttackTime rises when it fires). The enemy's
+    // WasRecentlyDamagedByHero(bot) read false on every landed hit in the rig (drill retreat-hitback tl1).
+    const at = bot.GetAttackTarget();
+    if (ep.landedAt === undefined && bot.GetLastAttackTime() >= ep.startedAt! && at !== null && at.IsHero() && at.GetPlayerID() === ep.tpid) {
         ep.landedAt = now;
         ep.hpL = ep.hpPrev ?? ep.hp0;
         ep.thpL = ep.thpPrev ?? ep.thp0;
