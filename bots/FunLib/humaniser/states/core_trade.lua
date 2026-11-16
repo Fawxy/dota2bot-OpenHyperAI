@@ -800,8 +800,13 @@ function losing(bot, ep, now)
             max
         ) > LOSING_BY
     end
+    local fired = bot:GetLastAttackTime()
+    local rose = ep.atkSeen ~= nil and fired > ep.atkSeen
+    if rose then
+        ep.atkSeen = fired
+    end
     local at = bot:GetAttackTarget()
-    if ep.landedAt == nil and bot:GetLastAttackTime() >= ep.startedAt and at ~= nil and at:IsHero() and at:GetPlayerID() == ep.tpid then
+    if ep.landedAt == nil and rose and at ~= nil and at:IsHero() and at:GetPlayerID() == ep.tpid then
         ep.landedAt = now
         ep.hpL = ep.hpPrev or ep.hp0
         ep.thpL = ep.thpPrev or ep.thp0
@@ -832,19 +837,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue187
+            local __continue188
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue187 = true
+                    __continue188 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue187 = true
+                __continue188 = true
             until true
-            if not __continue187 then
+            if not __continue188 then
                 break
             end
         end
@@ -1300,25 +1305,26 @@ function ____exports.Think(bot)
     local now = DotaTime()
     if ep.startedAt == nil then
         ep.startedAt = now
+        ep.atkSeen = bot:GetLastAttackTime()
         PairJoin.Reopened(bot)
     end
     local creeps = {}
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue177
+            local __continue178
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue177 = true
+                    __continue178 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue177 = true
+                __continue178 = true
             until true
-            if not __continue177 then
+            if not __continue178 then
                 break
             end
         end

@@ -102,7 +102,8 @@ do
 	CoreTrade.Think(bot)
 	check("Think attacks the window's target", bot.attacking == enemy)
 	-- An even exchange for 10 s: no time limit ends it. Our hits land (slice trade-landed).
-	bot.lastAttack = 205
+	-- GetLastAttackTime runs on GameTime, here 90 s ahead of DotaTime (T).
+	bot.lastAttack = 295
 	bot.hp, enemy.hp = 72, 60
 	T = 210
 	check("an even trade keeps its desire however long it runs", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
@@ -125,7 +126,8 @@ do
 	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
 	local function start()
 		CoreTrade.Reset()
-		bot.attacking, bot.lastAttack = nil, nil
+		-- A last hit fired before the trade, on GameTime (90 s ahead of T): later than the start's DotaTime, yet not ours.
+		bot.attacking, bot.lastAttack = nil, 380
 		bot.hp, enemy.hp = 80, 70
 		T = 300
 		CoreTrade.Desire(bot)
@@ -137,7 +139,7 @@ do
 	T = 300.5
 	check("trade-landed: 10 of 100 lost before our hit lands keeps the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	-- Our hit lands (70 to 64) and the target answers once (70 to 66): from the frame before it we are 4 down, under 5%.
-	bot.lastAttack = 300.8
+	bot.lastAttack = 390.8
 	bot.hp, enemy.hp = 66, 64
 	T = 301
 	check("trade-landed: the exchange from our first hit is even, the trade keeps", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
@@ -147,6 +149,11 @@ do
 	check("trade-landed: losing by 5% from our first hit ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing") and last():find("ld=1"))
 
 	start()
+	-- An attack fired after the start, at a creep: not a hit on the target.
+	bot.attacking, bot.lastAttack = { IsHero = function() return false end }, 390.2
+	bot.hp = 70
+	T = 300.2
+	check("trade-landed: an attack at a creep is not our hit; 10 lost keeps", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	bot.hp = 64
 	T = 300.5
 	check("trade-landed: 16 of 100 lost with no hit landed ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing") and not last():find("ld="))

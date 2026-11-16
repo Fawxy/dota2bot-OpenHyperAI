@@ -296,6 +296,8 @@ interface Episode {
     thpPrev?: number;
     hpL?: number;
     thpL?: number;
+    /** The bot's GetLastAttackTime when the trade started (GameTime, not DotaTime): an attack fired since raises it. */
+    atkSeen?: number;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
 }
@@ -916,10 +918,14 @@ function losing(bot: Unit, ep: Episode, now: number): boolean {
     const thp = ep.target.GetHealth();
     const max = bot.GetMaxHealth();
     if (!Ours.On("TradeLanded")) return Deficit(ep.hp0, hp, ep.thp0, thp, max) > LOSING_BY;
-    // Our first hit: an attack fired at the target since the start (GetLastAttackTime rises when it fires). The enemy's
-    // WasRecentlyDamagedByHero(bot) read false on every landed hit in the rig (drill retreat-hitback tl1).
+    // Our first hit: an attack fired at the target since the start (GetLastAttackTime rises when it fires, on GameTime's
+    // clock, so it is compared with its own value at the start). The enemy's WasRecentlyDamagedByHero(bot) read false on
+    // every landed hit in the rig (drill retreat-hitback tl1).
+    const fired = bot.GetLastAttackTime();
+    const rose = ep.atkSeen !== undefined && fired > ep.atkSeen;
+    if (rose) ep.atkSeen = fired;
     const at = bot.GetAttackTarget();
-    if (ep.landedAt === undefined && bot.GetLastAttackTime() >= ep.startedAt! && at !== null && at.IsHero() && at.GetPlayerID() === ep.tpid) {
+    if (ep.landedAt === undefined && rose && at !== null && at.IsHero() && at.GetPlayerID() === ep.tpid) {
         ep.landedAt = now;
         ep.hpL = ep.hpPrev ?? ep.hp0;
         ep.thpL = ep.thpPrev ?? ep.thp0;
@@ -956,6 +962,7 @@ export function Think(bot: Unit): void {
     const now = DotaTime();
     if (ep.startedAt === undefined) {
         ep.startedAt = now;
+        ep.atkSeen = bot.GetLastAttackTime();
         PairJoin.Reopened(bot);
     }
     const creeps: Unit[] = [];
