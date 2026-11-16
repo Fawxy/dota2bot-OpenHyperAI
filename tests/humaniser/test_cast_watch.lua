@@ -20,7 +20,7 @@ end
 -- Radiant support (pid 1) in the bottom lane with an enemy laner (pid 6) 500 away holding Lion's stun and ult.
 local function world(o)
 	o = o or {}
-	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = o.laneFight, telemetry = o.telemetry })
+	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = o.laneFight, telemetry = o.telemetry, tickEvery = o.tickEvery })
 	T = 100
 	CURRENT_TEAM = 2
 	local bot = MakeUnit({ pid = 1, loc = Vector(-3000, BOT_Y) })
@@ -336,6 +336,25 @@ do
 	enemy.CanBeSeen = function() return false end
 	H.LaneFight.Tick(bot)
 	check("a cast read on the frame it was seen survives the caster going into fog", recordsOf(records, "lion_impale") == 1, #records)
+end
+
+-- Through Humaniser.Tick at the shipped rate: every third frame runs the steps; the two between read the cast queue
+-- (the caster may be in fog by the next full tick) and nothing else of the cast watch.
+do
+	local H, bot, enemy, records = world({ laneFight = { UseCastCallback = true }, tickEvery = 3 })
+	local function frame()
+		H.Tick(bot)
+		T = T + 0.034
+	end
+	frame() frame() frame()
+	CAST_CALLBACKS[6][1]({ player_id = 6, ability = enemy.impale, unit = enemy })
+	frame()
+	check("a between-frame reads a queued cast", recordsOf(records, "lion_impale") == 1, #records)
+	enemy.casting = ability("lion_voodoo", { cd = 15 })
+	frame()
+	check("a between-frame does not poll", recordsOf(records, "lion_voodoo") == 0, #records)
+	frame()
+	check("the next full tick polls", recordsOf(records, "lion_voodoo") == 1, #records)
 end
 
 finish()

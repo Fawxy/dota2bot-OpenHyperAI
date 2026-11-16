@@ -960,7 +960,7 @@ const TOWER_TIERS: [number, number][] = [
 const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barracks.MidRanged, Barracks.BotMelee, Barracks.BotRanged];
 /** RUNE_RULES power.first (transitions/runes): power spots hold water runes before it. */
 const POWER_FROM = Runes.RUNE_RULES.power.first;
-/** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement. */
+/** judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a tick of movement. */
 const RUNE_TAKER_R = 400;
 /**
  * A power spot's unpicked rune despawns on the next 2-minute spawn tick, which read as a pickup by the hero waiting there

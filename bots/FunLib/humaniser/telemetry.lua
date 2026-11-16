@@ -1538,7 +1538,7 @@ local BARRACKS = {
 }
 --- RUNE_RULES power.first (transitions/runes): power spots hold water runes before it.
 local POWER_FROM = Runes.RUNE_RULES.power.first
---- judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a frame of movement.
+--- judgement: the own hero nearest a rune when it vanishes took it if within pickup range plus a tick of movement.
 local RUNE_TAKER_R = 400
 --- A power spot's unpicked rune despawns on the next 2-minute spawn tick, which read as a pickup by the hero waiting there
 -- (rspchk2: every 6:00 "pickup" at t=360.067 was a 4:00 water rune left on the spot). judgement: under the 0.27 s of the

@@ -182,7 +182,8 @@ function stepsDue(): boolean {
 
 /**
  * The steps that run on the frames between: each names what a lower rate would lose. Every other step reads the world
- * ten times a second, under the shortest time any of them counts (0.15 s).
+ * ten times a second: the modes that act on them run 3 to 6 times a second, and a step that counts time in tenths
+ * (the lane fight's enemy count, the cast poll, a teleport's settle) may be read a tick late.
  */
 function frameSteps(this: void, bot: Unit): void {
     // A rig places and releases units to the frame; no drill, no step.
