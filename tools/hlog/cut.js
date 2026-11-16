@@ -253,7 +253,7 @@ const DECISIONS = {
             // Slice trade-free-cut / trade-free: question 2's inputs; with tf the driver asks it in place of gap.
             for (const k of ['ar', 'tar', 'tme', 'ko', 'kt', 'tf', 'dn']) if (cut[k] !== undefined) w[k] = n(k);
             // Slice fight-safe: the lane-fight gate's inputs; the driver adds its answer as a second action.
-            for (const k of ['fpo', 'fpt', 'ftd']) if (cut[k] !== undefined) w[k] = n(k);
+            for (const k of ['fpo', 'fpt', 'ftd', 'fs']) if (cut[k] !== undefined) w[k] = n(k);
             return w;
         },
         check(game, cut, obs) {

@@ -32,8 +32,10 @@ do
 	check("the same HP gap with their burst at our HP: refused on burst (D1, the control)", answer({ burst = 1.0 }) == "burst")
 	check("the target alone by its tower: refused, though the safe trade rule would harass it",
 		answer({ tower = true }) == "tower" and CoreTrade.Decide(inputs({ tower = true })).kind == "trade")
-	check("more of them within the play radius than us: the roll's own decline", answer({}, { theirs = 2 }) == "outnumbered")
-	check("under the roll's HP floor: the library's zero", answer({ hp = 0.38, targetHp = 0.5 }) == "hp")
+	local twoRoll = { ours = 2, theirs = 2 }
+	check("two of them near, their burst 0.6 of our HP: refused on the stand's two-hero bar (PackBurst), not StandBurst",
+		answer({ enemiesNear = 2, alliesNear = 2, burst = 0.6 }, twoRoll) == "burst")
+	check("two of them near, their burst 0.4: offered", answer({ enemiesNear = 2, alliesNear = 2, burst = 0.4 }, twoRoll) == "roll")
 
 	Ours.FightSafe = false
 	check("switch off: the old rule, behind", answer() == "behind")

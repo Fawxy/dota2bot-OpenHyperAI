@@ -327,14 +327,18 @@ export function FightZero(i: Plays.Inputs): string | undefined {
 /**
  * Why this core may not roll or join a lane fight on a target with these inputs, before the roll's own zeros: the target by
  * its tower (a fight chases, so the test harass dropped stays), more of them than us, and with `fightSafe` their burst in
- * reach at Threat StandBurst of our HP or more (trade-safe's `burst`; banked fights opened up to 15 points behind on HP
- * dealt about twice what they took, so the HP gap is not the danger, the burst is). Undefined: a chance may be offered.
+ * reach at Threat StandBurst of our HP or more, PackBurst with two or more of them near (trade-safe's `burst` on the stand's
+ * bars: a fight commits and chases, so it is never looser than a stand or a hit back; banked fights opened up to 15 points
+ * behind on HP dealt about twice what they took, so the HP gap is not the danger, the burst is). Undefined: a chance may be
+ * offered.
  */
 export function FightRefusal(i: Inputs, killHp: number): Respect | undefined {
     const r = Decide(i, false, killHp).respect;
     if (i.tower || r === "tower") return "tower";
     if (r === "outnumbered") return r;
-    if (fightSafe() && i.burst !== undefined && i.burst >= Threat.SETTINGS.StandBurst) return "burst";
+    if (!fightSafe() || i.burst === undefined) return undefined;
+    const bar = i.enemiesNear >= 2 ? Threat.SETTINGS.PackBurst : Threat.SETTINGS.StandBurst;
+    if (i.burst >= bar) return "burst";
     return undefined;
 }
 
@@ -692,6 +696,7 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["fpo", pi?.ours],
         ["fpt", pi?.theirs],
         ["ftd", pi !== undefined ? math.floor(math.min(pi.tower, 99999)) : undefined],
+        ["fs", pi !== undefined ? (fightSafe() ? 1 : 0) : undefined],
     ];
 }
 

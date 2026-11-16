@@ -1661,6 +1661,7 @@ ____exports.EVENTS = {
         fpo = "num",
         fpt = "num",
         ftd = "num",
+        fs = "num",
         did = "str"
     },
     cut_creeps = {pid = "num", kind = "str", ce = "str", ca = "str"},

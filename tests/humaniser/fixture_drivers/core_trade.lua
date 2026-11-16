@@ -9,7 +9,7 @@
 -- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny|hb_hp|hb_burst>); fact.hp, fact.thp, fact.cr.
 -- world, slice fight-safe: lf (1: the core's lane fights are ours) adds the lane-fight gate's answer (CoreTrade.FightAnswer) as
 -- a second action, fight(<roll|kill|tower|outnumbered|burst|hp|behind>); fpo, fpt, ftd the roll's inputs as logged (absent: ally,
--- en and no tower); fs 0 turns Ours.FightSafe off (the old `behind`).
+-- en and no tower); fs as logged, 0 turning Ours.FightSafe off (the old `behind`; absent: on).
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 return function(fx)

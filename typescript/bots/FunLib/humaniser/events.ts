@@ -2794,6 +2794,8 @@ export const EVENTS = {
         fpo: "num",
         fpt: "num",
         ftd: "num",
+        /** kind=trade with `lf` 1: 1 when the fight gate asked the burst in place of `behind` (`Ours.FightSafe` and TradeSafe on), 0 off. */
+        fs: "num",
         /** kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight`
          *  (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`. */
         did: "str",

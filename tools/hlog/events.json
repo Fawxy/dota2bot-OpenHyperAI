@@ -1798,6 +1798,7 @@
    "fpo": "num",
    "fpt": "num",
    "ftd": "num",
+   "fs": "num",
    "did": "str"
   },
   "cut_creeps": {
