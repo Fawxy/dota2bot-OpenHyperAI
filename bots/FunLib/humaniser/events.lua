@@ -347,7 +347,8 @@ ____exports.EVENTS = {
         own = "num",
         dist = "num",
         et = "num",
-        ef = "num"
+        ef = "num",
+        ec = "num"
     },
     apiprobe_tp = {
         team = "num",

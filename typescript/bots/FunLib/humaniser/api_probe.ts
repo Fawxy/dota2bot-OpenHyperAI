@@ -16,6 +16,7 @@
 import { Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 const MAX_PLAYER_ID = 23;
 const NIL = -1;
@@ -319,6 +320,7 @@ function estRow(team: number, src: number, own: number, h: Handle, target: Unit)
         ["dist", math.floor(d)],
         ["et", round(num(h, () => u.GetEstimatedDamageToTarget(true, target, EST_WINDOW, ALL_DAMAGE)))],
         ["ef", round(num(h, () => u.GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE)))],
+        ["ec", own === 1 ? undefined : round(num(h, () => SpellReady.DamageOn(h as unknown as Unit, target, EST_WINDOW)))],
     ]);
 }
 

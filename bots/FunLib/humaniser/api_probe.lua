@@ -40,6 +40,7 @@ local Team = ____dota.Team
 local UnitType = ____dota.UnitType
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 function num(u, read)
     local ok, v = pcall(read, u)
     if not ok then
@@ -211,35 +212,47 @@ function estRow(team, src, own, h, target)
     local u = h
     local okL, at = pcall(function() return u:GetLocation() end)
     local d = okL and at ~= nil and at ~= nil and GetUnitToLocationDistance(target, at) or -1
-    Telemetry.Event(
-        "apiprobe_est",
+    local ____Telemetry_Event_8 = Telemetry.Event
+    local ____array_7 = __TS__SparseArrayNew(
+        {"team", team},
+        {"src", src},
         {
-            {"team", team},
-            {"src", src},
-            {
-                "dst",
-                target:GetPlayerID()
-            },
-            {"own", own},
-            {
-                "dist",
-                math.floor(d)
-            },
-            {
-                "et",
-                round(num(
-                    h,
-                    function() return u:GetEstimatedDamageToTarget(true, target, EST_WINDOW, ALL_DAMAGE) end
-                ))
-            },
-            {
-                "ef",
-                round(num(
-                    h,
-                    function() return u:GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE) end
-                ))
-            }
+            "dst",
+            target:GetPlayerID()
+        },
+        {"own", own},
+        {
+            "dist",
+            math.floor(d)
+        },
+        {
+            "et",
+            round(num(
+                h,
+                function() return u:GetEstimatedDamageToTarget(true, target, EST_WINDOW, ALL_DAMAGE) end
+            ))
+        },
+        {
+            "ef",
+            round(num(
+                h,
+                function() return u:GetEstimatedDamageToTarget(false, target, EST_WINDOW, ALL_DAMAGE) end
+            ))
         }
+    )
+    local ____temp_6
+    if own == 1 then
+        ____temp_6 = nil
+    else
+        ____temp_6 = round(num(
+            h,
+            function() return SpellReady.DamageOn(h, target, EST_WINDOW) end
+        ))
+    end
+    __TS__SparseArrayPush(____array_7, {"ec", ____temp_6})
+    ____Telemetry_Event_8(
+        "apiprobe_est",
+        {__TS__SparseArraySpread(____array_7)}
     )
 end
 function nearestOf(h, units)
@@ -251,10 +264,10 @@ function nearestOf(h, units)
     local bestD = math.huge
     for ____, x in ipairs(units) do
         do
-            local __continue102
+            local __continue103
             repeat
                 if x:IsNull() or not x:IsAlive() or x:IsIllusion() then
-                    __continue102 = true
+                    __continue103 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(x, at)
@@ -262,9 +275,9 @@ function nearestOf(h, units)
                     bestD = d
                     best = x
                 end
-                __continue102 = true
+                __continue103 = true
             until true
-            if not __continue102 then
+            if not __continue103 then
                 break
             end
         end
@@ -761,16 +774,16 @@ function ____exports.Tick(bot)
     states[pid] = st
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue112
+            local __continue113
             repeat
                 if u:IsIllusion() then
-                    __continue112 = true
+                    __continue113 = true
                     break
                 end
                 st.handles[u:GetPlayerID()] = u
-                __continue112 = true
+                __continue113 = true
             until true
-            if not __continue112 then
+            if not __continue113 then
                 break
             end
         end

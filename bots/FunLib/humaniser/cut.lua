@@ -1,12 +1,12 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
@@ -240,7 +240,7 @@ local function towersNow(team, bot, at, front, out)
     return string.format("%x", mask)
 end
 --- The enemy heroes in sight and our other heroes at the places `keep` takes (the decision's own area), and every unseen enemy
--- with a sighting. `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the windows the
+-- with a sighting. `he`'s two damage figures are SpellReady.DamageOn over `short` and `long` seconds, the windows the
 -- decision's Threat.Read counts a hero over (3 and 6 for the spot and the gate, 2 and 6 for the leave).
 local function units(bot, keep, short, long)
     local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
@@ -263,8 +263,8 @@ local function units(bot, keep, short, long)
                     __continue33 = true
                     break
                 end
-                local e3 = e:GetEstimatedDamageToTarget(true, bot, short, DamageType.All)
-                local e6 = e:GetEstimatedDamageToTarget(true, bot, long, DamageType.All)
+                local e3 = SpellReady.DamageOn(e, bot, short)
+                local e6 = SpellReady.DamageOn(e, bot, long)
                 local atk = e:GetAttackTarget() == bot and 1 or 0
                 local eng = bot:WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) and 1 or 0
                 he[#he + 1] = table.concat(

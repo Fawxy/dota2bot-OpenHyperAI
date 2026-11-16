@@ -9,8 +9,9 @@
  * over that target's HP, the target the side does best on. We join on theirs (`tgt`) when our share is the larger; numbers
  * against us leave it out at once (D1 is retreat's).
  */
-import { DamageType, Unit, UnitType } from "bots/ts_libs/dota";
+import { Unit, UnitType } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
@@ -150,7 +151,7 @@ function weigh(ally: Unit, ours: Unit[]): Rec | undefined {
     const fill = (from: Unit[], on: Unit[]) => {
         for (const f of from) {
             const row: Record<number, number> = {};
-            for (const o of on) row[o.GetPlayerID()] = math.floor(f.GetEstimatedDamageToTarget(true, o, SETTINGS.Window, DamageType.All) + 0.5);
+            for (const o of on) row[o.GetPlayerID()] = math.floor(SpellReady.DamageOn(f, o, SETTINGS.Window) + 0.5);
             dmg[f.GetPlayerID()] = row;
         }
     };

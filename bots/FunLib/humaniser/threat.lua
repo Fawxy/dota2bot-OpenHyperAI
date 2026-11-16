@@ -36,13 +36,13 @@ end
 local ____exports = {}
 local logged, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 --- ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
 -- consumer (gates run every think; the design's "once per decision" would flood). Returns whether it logged.
 function ____exports.Log(bot, consumer, r, decision)
@@ -432,7 +432,7 @@ function ____exports.Reader(bot, horizon, opts)
                                 w = opts.engagedWindow
                             end
                         end
-                        e.dmg = e.u:GetEstimatedDamageToTarget(true, bot, w, DamageType.All)
+                        e.dmg = SpellReady.DamageOn(e.u, bot, w)
                     end
                     if e.att == true then
                         att[#att + 1] = e.pid

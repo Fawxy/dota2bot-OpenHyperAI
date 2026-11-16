@@ -8,7 +8,7 @@
  * always wins the frame. Inputs follow EC-045 (creeps in the area, no fighting in a big enemy wave or under their tower)
  * and EC-053 (lane creeps acquire a hero attacker within about 500); every threshold is `judgement`.
  */
-import { BotMode, DamageType, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -16,6 +16,7 @@ import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
@@ -672,7 +673,7 @@ function question2(bot: Unit, target: Unit): { free?: boolean; ko?: number; kt?:
  * `dm`) over `on`'s HP: one side's kill share in a 1v1 exchange. Logged on the trade cut only; Decide does not read it yet.
  */
 function shareOn(from: Unit, on: Unit): number {
-    return from.GetEstimatedDamageToTarget(true, on, PairJoin.SETTINGS.Window, DamageType.All) / math.max(1, on.GetHealth());
+    return SpellReady.DamageOn(from, on, PairJoin.SETTINGS.Window) / math.max(1, on.GetHealth());
 }
 
 /** What the fresh decision opened (the cut's `did`): no episode, or its kind (`fight` joined from a play is `play`, a hit back `hitback`). */

@@ -20,9 +20,10 @@
  * beside the gate's own ev=threat line, which is what the replay is compared with. `he`, `hu`, `ha`, `ta` and `b` keep the
  * spot's record formats.
  */
-import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
@@ -147,7 +148,7 @@ interface Units {
 
 /**
  * The enemy heroes in sight and our other heroes at the places `keep` takes (the decision's own area), and every unseen enemy
- * with a sighting. `he`'s two damage figures are GetEstimatedDamageToTarget over `short` and `long` seconds, the windows the
+ * with a sighting. `he`'s two damage figures are SpellReady.DamageOn over `short` and `long` seconds, the windows the
  * decision's Threat.Read counts a hero over (3 and 6 for the spot and the gate, 2 and 6 for the leave).
  */
 function units(bot: Unit, keep: (this: void, l: Vector) => boolean, short: number, long: number): Units {
@@ -160,8 +161,8 @@ function units(bot: Unit, keep: (this: void, l: Vector) => boolean, short: numbe
         const ill = e.IsIllusion();
         if (!ill) visible[e.GetPlayerID()] = true;
         if (!keep(l)) continue;
-        const e3 = e.GetEstimatedDamageToTarget(true, bot, short, DamageType.All);
-        const e6 = e.GetEstimatedDamageToTarget(true, bot, long, DamageType.All);
+        const e3 = SpellReady.DamageOn(e, bot, short);
+        const e6 = SpellReady.DamageOn(e, bot, long);
         const atk = e.GetAttackTarget() === bot ? 1 : 0;
         const eng = bot.WasRecentlyDamagedByHero(e, Threat.SETTINGS.EngagedRecent) ? 1 : 0;
         // pid,x,y,hp,range,hull,speed,atk,eng,e3,e6,illusion

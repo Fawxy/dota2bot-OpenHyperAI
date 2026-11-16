@@ -173,6 +173,10 @@ export const DEFAULTS = {
      *  swings at a lane creep, or our attack range is 100 over its) or favoured (our 3 s estimated damage over its HP beats its
      *  over ours, PairJoin's estimate); else `unfavoured`. Off: a lost trade's HP `gap` holds the next one. */
     TradeFree: true,
+    /** Slice burst-cooldowns (D1, D2, D18): an enemy hero's estimated damage (the threat read's burst, the kill check's incoming
+     *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
+     *  Off: Valve's estimate, which counts every learned enemy spell ready. */
+    BurstReady: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

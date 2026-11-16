@@ -13,6 +13,7 @@ import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import * as FightRead from "bots/FunLib/humaniser/fight_read";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 export interface KillInputs {
     burst: number;
@@ -130,7 +131,7 @@ function incomingOn(bot: Unit, target: Unit, snap: LaneState.LaneSnapshot): numb
     const botLoc = bot.GetLocation();
     for (const e of LaneState.Enemies(bot, snap.lane)) {
         if (!e.visible || !located(e.unit) || dist2D(e.unit.GetLocation(), botLoc) > COUNTER_RANGE) continue;
-        total += e.unit.GetEstimatedDamageToTarget(true, bot, window, DamageType.All);
+        total += SpellReady.DamageOn(e.unit, bot, window);
     }
     return total;
 }

@@ -5,10 +5,11 @@
  * sum); `threat` and `band` are logged for the budget slices to come. One table of weights, all `judgement` unless a row in
  * docs/team/slices/threat.md says otherwise.
  */
-import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 export const SETTINGS = {
     /** An unseen enemy counts in the belief only after this many seconds unseen (the old MissingAfter, kept so the graded rows hold). */
@@ -310,7 +311,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
                     e.eng = bot.WasRecentlyDamagedByHero(e.u, s.EngagedRecent);
                     if (e.eng) w = opts.engagedWindow;
                 }
-                e.dmg = e.u.GetEstimatedDamageToTarget(true, bot, w, DamageType.All);
+                e.dmg = SpellReady.DamageOn(e.u, bot, w);
             }
             if (e.att === true) att.push(e.pid);
             if (e.eng === true) eng.push(e.pid);
