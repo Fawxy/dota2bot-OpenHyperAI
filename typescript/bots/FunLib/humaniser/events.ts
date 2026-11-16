@@ -1895,7 +1895,7 @@ export const EVENTS = {
         kind: "str",
         why: "str",
         tgt: "num",
-        /** How the watch ended: `full` (the whole window), `reopen` (another join or trade opened), `dead` (the bot died), `stage` (past the laning stage). */
+        /** How the watch ended: `full` (the whole window), `reopen` (any CoreTrade window started: trade, join, kill or fight), `dead` (the bot died, or a missed sample showed it had), `stage` (past the laning stage). */
         res: "str",
         /**
          * The samples, `;`-joined, each `dt:dec:ko:kt:thp:d:hp:no:nt`: seconds since the end; PairJoin's answer (`j` join, `l`

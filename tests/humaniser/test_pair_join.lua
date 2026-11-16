@@ -197,6 +197,22 @@ do
 	local last = o[#o] or ""
 	check("a watch the bot was not ticked through ends dead", last:find("res=dead", 1, true) ~= nil, last)
 	check("no enemy seen: n, target -1", (last:match(" s=(%S+)") or ""):find("^0:n:0:0:%-1:%-1:1:2:0") ~= nil, last)
+	-- A respawn inside the window (not ticked while dead, back after 5 s): the missed samples end it dead, not full.
+	T = 500
+	P.After(bot, "join", "pair_end", 6)
+	P.Tick(bot)
+	T = 505
+	P.Tick(bot)
+	o = after()
+	check("a respawn inside the window ends dead", (o[#o] or ""):find("res=dead", 1, true) ~= nil, o[#o])
+	-- Past the laning stage: the watch ends `stage`.
+	T = 719.5
+	P.After(bot, "trade", "deny", 6)
+	P.Tick(bot)
+	T = 720.5
+	P.Tick(bot)
+	o = after()
+	check("past the laning stage it ends stage", (o[#o] or ""):find("res=stage", 1, true) ~= nil, o[#o])
 end
 
 finish()

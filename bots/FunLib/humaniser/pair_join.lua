@@ -348,7 +348,7 @@ function ____exports.After(bot, kind, why, tpid)
         samples = {}
     }
 end
---- A fight window of `bot` has opened: an open watch ends `reopen` (the fight went on under a new window). Reads only.
+--- Any CoreTrade window of `bot` (trade, join, kill, fight) has started: an open watch ends `reopen` (the fight went on). Reads only.
 function ____exports.Reopened(bot)
     flush(
         bot:GetPlayerID(),
@@ -428,7 +428,7 @@ local function tickAfter(bot, now)
     if w == nil then
         return
     end
-    if not bot:IsAlive() or now - w.start > ____exports.SETTINGS.AfterWindow + ____exports.SETTINGS.AfterEvery then
+    if not bot:IsAlive() or now > w.next + ____exports.SETTINGS.AfterEvery then
         return flush(pid, "dead")
     end
     if now > ____exports.SETTINGS.Until then

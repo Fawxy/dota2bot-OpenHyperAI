@@ -264,7 +264,7 @@ export function After(bot: Unit, kind: string, why: string, tpid: number): void 
     watches[pid] = { kind, why, tgt: tpid, start: now, next: now, samples: [] };
 }
 
-/** A fight window of `bot` has opened: an open watch ends `reopen` (the fight went on under a new window). Reads only. */
+/** Any CoreTrade window of `bot` (trade, join, kill, fight) has started: an open watch ends `reopen` (the fight went on). Reads only. */
 export function Reopened(bot: Unit): void {
     flush(bot.GetPlayerID(), "reopen");
 }
@@ -291,8 +291,8 @@ function tickAfter(bot: Unit, now: number): void {
     const pid = bot.GetPlayerID();
     const w = watches[pid];
     if (w === undefined) return;
-    // A bot that died is not ticked until it respawns: a watch past its window by more than a sample died with it.
-    if (!bot.IsAlive() || now - w.start > SETTINGS.AfterWindow + SETTINGS.AfterEvery) return flush(pid, "dead");
+    // A bot that died is not ticked until it respawns (early respawns fit inside the window): a missed sample died with it.
+    if (!bot.IsAlive() || now > w.next + SETTINGS.AfterEvery) return flush(pid, "dead");
     if (now > SETTINGS.Until) return flush(pid, "stage");
     if (now >= w.next) {
         w.samples.push(sample(bot, w, now));

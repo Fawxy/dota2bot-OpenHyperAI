@@ -974,7 +974,7 @@ Slice join-after (D19, shadow): after a taken `join` or `trade` window of ours e
 `pid` num, `why` str, `tgt` num
 
 - `kind` str: The ended window's `ev=trade` kind (`join` or `trade`), end reason (`why`) and target pid.
-- `res` str: How the watch ended: `full` (the whole window), `reopen` (another join or trade opened), `dead` (the bot died), `stage` (past the laning stage).
+- `res` str: How the watch ended: `full` (the whole window), `reopen` (any CoreTrade window started: trade, join, kill or fight), `dead` (the bot died, or a missed sample showed it had), `stage` (past the laning stage).
 - `s` str: The samples, `;`-joined, each `dt:dec:ko:kt:thp:d:hp:no:nt`: seconds since the end; PairJoin's answer (`j` join, `l` losing, `o` outnumbered, `n` no enemy hero seen within FoeRange); our and their best kill share (3 places); the ended window's target's HP share and distance (-1 when unseen or dead); our HP share; our heroes and theirs in the weighing (ours not in retreat, the bot included).
 
 ## trade
