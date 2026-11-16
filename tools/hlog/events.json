@@ -1794,7 +1794,8 @@
    "tme": "num",
    "tf": "num",
    "dn": "num",
-   "did": "str"
+   "did": "str",
+   "xa": "str"
   },
   "cut_creeps": {
    "pid": "num",
@@ -2394,7 +2395,8 @@
    "po": "text",
    "pt": "text",
    "dm": "text",
-   "did": "text"
+   "did": "text",
+   "xa": "text"
   },
   "ev_cut_creeps": {
    "kind": "text",

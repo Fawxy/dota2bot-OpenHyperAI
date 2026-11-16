@@ -722,7 +722,7 @@ function unpaid(bot: Unit, r: Threat.Read): number {
     return n;
 }
 
-/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, heroes in reach are not hitting us and D1 does not hold (Threat.Stand; the ev=retreat stay line's `reach` tells one from more), or our pair is joining the fight (PairJoin), or we are hitting back (CoreTrade.HitBackHolds). */
+/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, heroes in reach are not hitting us and D1 does not hold (Threat.Stand; the ev=retreat stay line's `reach` tells one from more), or our pair is joining the fight (PairJoin), or we are hitting back (CoreTrade.Taking). */
 export type Stay = "under" | "even" | "hold" | "stand" | "join" | "hitback";
 
 /**
@@ -765,8 +765,8 @@ export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: numbe
         }
         return $multi(undefined, "join");
     }
-    // D24 (slice high-hit-back, `Ours.HitBack`): a hero hits us at high HP and CoreTrade calls hitting back safe and favoured,
-    // or the hit back runs: the `threat` leave waits for it (`hits`, CoreTrade.HitBackHolds); lethal, a tower and the heal floor
+    // D24 (slice high-hit-back; one decision since hitback-fold): a hero hits us at high HP and CoreTrade calls hitting back safe and favoured,
+    // or the hit back runs: the `threat` leave waits for it (`hits`, CoreTrade.Taking); lethal, a tower and the heal floor
     // still leave first.
     if (hits) {
         st.overSince = undefined;
@@ -890,7 +890,7 @@ export function Desire(bot: Unit): number | undefined {
     const overBefore = st.overSince;
     const joins = PairJoin.Joins(bot) !== undefined;
     // Asked only when it can matter (over budget, a hero hitting us): it gathers CoreTrade's inputs.
-    const hits = r.threat > budget && r.eng.length > 0 && CoreTrade.HitBackHolds(bot);
+    const hits = r.threat > budget && r.eng.length > 0 && CoreTrade.Taking(bot);
     const [why, stay] = LeaveWhy(bot, st, r, budget, now, joins, hits);
     if (readAtBefore !== st.readAt) cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins, hits);
     if (why === undefined) return 0;

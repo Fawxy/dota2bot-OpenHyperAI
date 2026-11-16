@@ -237,7 +237,7 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 120, from: 0 },
         rig: {
             half: "decision",
-            switch: "HitBack",
+            switch: "CoreTrade",
             window: 600,
             spots: {
                 // The heal rig's spots: off the lane and clear of camps.

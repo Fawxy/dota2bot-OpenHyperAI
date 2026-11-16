@@ -138,7 +138,7 @@ do
 	check("engaged: the episode does not end safe while he still hits us", H.Retreat.Running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
 end
 
--- Slice high-hit-back (D24): over budget with a hero hitting us, the `threat` leave waits while CoreTrade.HitBackHolds; it is
+-- Slice high-hit-back (D24): over budget with a hero hitting us, the `threat` leave waits while CoreTrade.Taking; it is
 -- asked only then. Lethal still leaves first.
 do
 	local asked = 0
@@ -150,7 +150,7 @@ do
 		asked = 0
 		-- The world loads a fresh humaniser: stub the core_trade module retreat now holds.
 		local CT = require("bots/FunLib/humaniser/states/core_trade")
-		CT.HitBackHolds = function() asked = asked + 1 return holds end
+		CT.Taking = function() asked = asked + 1 return holds end
 		local out = capture(function()
 			H.Retreat.Desire(bot)
 			T = T + react(bot) + 0.5
@@ -624,7 +624,7 @@ do
 		if fact ~= nil then package.loaded["bots/FunLib/humaniser/drill"].RigCreepAggro = function() return fact end end
 		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = true
 		-- The hold alone: a hit back (slice high-hit-back) answers this even 2v2 at full HP first.
-		package.loaded["bots/FunLib/custom_loader"].Ours.HitBack = false
+		require("bots/FunLib/humaniser/states/core_trade").Taking = function() return false end
 		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
 		ally.maxhp, ally.hp = 600, 600
 		local e1, e2 = enemy(10, Vector(300, -5000), 100), enemy(11, Vector(300, -4900), 100)

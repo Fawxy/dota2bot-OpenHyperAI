@@ -3,7 +3,7 @@
 -- and Profile.ThreatHold are the logged ones.
 -- world: as cut_world.lua (no lane or front), plus budget (the read's budget), over (seconds the read had been over it, -1 not
 --        over), hold (Profile.ThreatHold), dt (1: an enemy tower damaged the bot within 0.5 s), pj (1: PairJoin.Joins held),
---        hb (1: CoreTrade.HitBackHolds held).
+--        hb (1: CoreTrade.Taking held).
 -- Observation: leave(<lethal|tower|heal|threat>) or stay(<under|even|hold|stand|join|hitback>); fact.threat, fact.burst, fact.reach, fact.eng,
 -- fact.budget, fact.over, fact.hp (HP share).
 local cutWorld = dofile(HARNESS_DIR .. "/fixture_drivers/cut_world.lua")

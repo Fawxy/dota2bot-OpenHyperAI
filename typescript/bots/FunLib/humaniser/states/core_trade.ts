@@ -62,6 +62,11 @@ export interface Inputs {
      * low is the kill's and the lane fight's, which it does not touch).
      */
     denyDue?: boolean;
+    /**
+     * Slice hitback-fold (D24): the target damaged this core within HIT_RECENT (unset for a support). Decide does not read it;
+     * Exchange does: with it, the hit back's caution bars decide whether the exchange is taken so that retreat waits for it.
+     */
+    hitting?: boolean;
 }
 
 export const DESIRE_TRADE = 0.6;
@@ -153,7 +158,7 @@ const HIT_RECENT = 1;
  */
 const HIT_BACK_WALK = 300;
 /**
- * Slice high-hit-back (D24, `Ours.HitBack`): a hit back opens, and retreat's threat leave waits for it, only at this HP share or
+ * Slice high-hit-back (D24; slice hitback-fold dropped its switch): a hit back opens, and retreat's threat leave waits for it, only at this HP share or
  * more; a running one ends under it less KEEP_HP_SLACK. Threat PackHp's bar (h2hstand1: stands beside two heroes at 50-70% HP
  * cost lives; h2hhitback1's hit back from 50% HP had a hit back in the last 12 s of 14 deaths). `judgement`.
  */
@@ -275,7 +280,7 @@ interface Episode {
     /** The play a `fight` runs in, and whether the hero joined it (another hero's play) rather than rolled it. */
     play?: Plays.Play;
     joined?: boolean;
-    /** A hit back (`Ours.HitBack`): opened on a hero hitting us inside our creeps' aggro, so `wave` and `behind` do not end it. */
+    /** A hit back (Exchange took it): opened on a hero hitting us inside our creeps' aggro, so `wave` and `behind` do not end it. */
     hb?: boolean;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
@@ -372,36 +377,43 @@ function hitBackTarget(bot: Unit): Unit | undefined {
 }
 
 /**
- * Slice high-hit-back (D24, `Ours.HitBack`): the hero hitting us, and CoreTrade's fresh answer on it (Answer: safe, free or
- * favoured, no due deny), with two caution bars on top: our HP at HIT_BACK_HP or more, and with two or more enemy heroes near
- * their burst under Threat PackBurst of our HP (the two-hero stand's bar; D1's own bars there cost lives, h2hstand1). The
- * answer is `trade` or `kill` when it is taken, else the refusal (`hb_hp`, `hb_burst` or Answer's). No hitter: undefined.
+ * The one trade decision on a target (slice hitback-fold, D24 in D18; the cut kind `trade`'s driver): Answer (safe, free or
+ * favoured, no due deny). When the target is hitting us (`hitting`), whether we take the exchange as a hit back, the one
+ * retreat's threat leave waits for: two caution bars first, our HP at HIT_BACK_HP or more and, with two or more enemy heroes
+ * near, their burst under Threat PackBurst of our HP (the two-hero stand's bar; D1's own bars there cost lives, h2hstand1).
+ * `trade` or `kill` when taken, else the refusal (`hb_hp`, `hb_burst` or Answer's). A hitter in reach that only the bars
+ * refuse still gets Answer's plain trade, which retreat does not wait for.
  */
-export function HitBackAnswer(bot: Unit): LuaMultiReturn<[Unit | undefined, string]> {
-    const h = hitBackTarget(bot);
-    if (h === undefined) return $multi(undefined, "no_hitter");
-    if (frac(bot) < HIT_BACK_HP) return $multi(h, "hb_hp");
-    return $multi(h, HitBackDecide(Gather(bot, h), killHpFor(bot), recoverTo[bot.GetPlayerID()]));
-}
-
-/** HitBackAnswer's decision on the hitter's inputs (pure; the cut kind `trade`'s driver with `hb`): the caution bars, then Answer. */
-export function HitBackDecide(i: Inputs, killHp: number, gap: number | undefined): string {
-    if (i.hp < HIT_BACK_HP) return "hb_hp";
-    if (i.enemiesNear >= 2 && (i.burst ?? 0) >= Threat.SETTINGS.PackBurst) return "hb_burst";
+export function Exchange(i: Inputs, killHp: number, gap: number | undefined): string {
+    if (i.hitting === true) {
+        if (i.hp < HIT_BACK_HP) return "hb_hp";
+        if (i.enemiesNear >= 2 && (i.burst ?? 0) >= Threat.SETTINGS.PackBurst) return "hb_burst";
+    }
     return Answer(i, killHp, gap);
 }
 
 /**
- * Retreat's threat leave waits while this holds (`Ours.HitBack`; retreat LeaveWhy's `hitback` stay): a running hit back, or a
- * hitter CoreTrade answers `trade` or `kill` on now (retreat leaves 0.17 s after its read goes over, before attack mode can
- * open the episode). Lethal, a tower on us and the heal floor still leave first.
+ * The hero hitting this core (hitBackTarget, up to HIT_BACK_WALK past reach) and Exchange on it. No hitter: undefined.
  */
-export function HitBackHolds(bot: Unit): boolean {
-    if (!Ours.On("HitBack") || !CoreLastHit.Applies(bot)) return false;
+function hitterExchange(bot: Unit): LuaMultiReturn<[Unit | undefined, string]> {
+    const h = hitBackTarget(bot);
+    if (h === undefined) return $multi(undefined, "no_hitter");
+    // The HP bar before Gather, which reads the threat.
+    if (frac(bot) < HIT_BACK_HP) return $multi(h, "hb_hp");
+    return $multi(h, Exchange(Gather(bot, h), killHpFor(bot), recoverTo[bot.GetPlayerID()]));
+}
+
+/**
+ * Whether this core is taking an exchange with a hero hitting it: retreat's threat leave waits while it holds (LeaveWhy's
+ * `hitback` stay). A running hit back inside its bars, or a hitter Exchange takes now (retreat leaves 0.17 s after its read
+ * goes over, before attack mode can open the episode). Lethal, a tower on us and the heal floor still leave first.
+ */
+export function Taking(bot: Unit): boolean {
+    if (!CoreLastHit.Applies(bot)) return false;
     const ep = episodes[bot.GetPlayerID()];
     // A running hit back holds only inside its own bars (keepWhy's slack): a hero arriving mid-trade lets D1 decide.
     if (ep !== undefined && ep.hb === true && ep.ended !== true) return hbKeptWhy(bot, Gather(bot, ep.target)) === undefined;
-    const [h, a] = HitBackAnswer(bot);
+    const [h, a] = hitterExchange(bot);
     return h !== undefined && (a === "trade" || a === "kill");
 }
 
@@ -537,6 +549,7 @@ export function Gather(bot: Unit, target: Unit): Inputs {
         if (stand !== undefined && distXY(stand, t.GetLocation()) <= reach) towerOnMe = true;
     }
     const q2 = Ours.On("TradeFree") ? question2(bot, target) : {};
+    const hitting = CoreLastHit.Applies(bot) && bot.WasRecentlyDamagedByHero(target, HIT_RECENT) ? true : undefined;
     if (safe) {
         const here = bot.GetLocation();
         const burst = Threat.Read(bot, here, here, SAFE_HORIZON, { engagedWindow: SAFE_ENGAGED }).burst;
@@ -551,6 +564,7 @@ export function Gather(bot: Unit, target: Unit): Inputs {
             burst,
             towerOnMe,
             ...q2,
+            hitting,
         };
     }
     return {
@@ -563,6 +577,7 @@ export function Gather(bot: Unit, target: Unit): Inputs {
         hitByCreeps,
         tower,
         ...q2,
+        hitting,
     };
 }
 
@@ -656,6 +671,8 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["tf", i.free !== undefined ? 1 : undefined],
         ["dn", i.free !== undefined ? (i.denyDue === true ? 1 : 0) : undefined],
         ["dec", dec],
+        ["hb", i.hitting === true ? 1 : undefined],
+        ["xa", i.hitting === true ? Exchange(i, killHp, gap) : undefined],
     ];
 }
 
@@ -749,11 +766,10 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
     const held = heldWhy !== undefined;
     if (heldWhy === "deny") return unanswered(bot, now, "deny", inputs);
     if (d.kind === undefined || held) return hitBack(bot, now, d.respect ?? heldWhy ?? "gap", inputs);
-    // A trade on a hero that is hitting us is a hit back only when HitBackDecide (its HP and two-hero burst bars) says so
-    // too: retreat waits for it and it ends under those bars (slice high-hit-back). Otherwise it opens as a plain trade.
-    const hbAnswer = Ours.On("HitBack") && CoreLastHit.Applies(bot) && bot.WasRecentlyDamagedByHero(target, HIT_RECENT)
-        ? HitBackDecide(inputs, killHp, gap) : undefined;
-    if (hbAnswer === "trade" || hbAnswer === "kill") {
+    // A trade on a hero that is hitting us is a hit back only when Exchange (its HP and two-hero burst bars) takes it too:
+    // retreat waits for it and it ends under those bars. Otherwise it opens as a plain trade.
+    const ex = inputs.hitting === true ? Exchange(inputs, killHp, gap) : undefined;
+    if (ex === "trade" || ex === "kill") {
         if (d.kind === "trade" && gap !== undefined) recoverTo[pid] = undefined;
         return open(bot, d.kind, target, now, undefined, undefined, true);
     }
@@ -763,8 +779,8 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
 
 /** The trade rule opened nothing (`why`): a hit back if there is a hitter to answer, else the unanswered hit is logged. */
 function hitBack(bot: Unit, now: number, why: string, inputs?: Inputs): number {
-    if (!Ours.On("HitBack") || !CoreLastHit.Applies(bot)) return unanswered(bot, now, why, inputs);
-    const [hb, a] = HitBackAnswer(bot);
+    if (!CoreLastHit.Applies(bot)) return unanswered(bot, now, why, inputs);
+    const [hb, a] = hitterExchange(bot);
     if (hb === undefined) return unanswered(bot, now, why, inputs);
     if (a !== "trade" && a !== "kill") return unanswered(bot, now, a.startsWith("hb_") ? a : `hb_${a}`);
     return open(bot, a, hb, now, undefined, undefined, true);

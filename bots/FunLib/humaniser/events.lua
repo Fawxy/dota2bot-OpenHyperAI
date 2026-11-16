@@ -1657,7 +1657,8 @@ ____exports.EVENTS = {
         tme = "num",
         tf = "num",
         dn = "num",
-        did = "str"
+        did = "str",
+        xa = "str"
     },
     cut_creeps = {pid = "num", kind = "str", ce = "str", ca = "str"},
     cut_towers = {team = "num", tw = "str"}

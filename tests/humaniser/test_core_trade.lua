@@ -519,13 +519,13 @@ do
 	Plays.ResetCache()
 end
 
--- Slice high-hit-back (D24, `Ours.HitBack`): a hero hitting us at 70% HP or more is traded back when CoreTrade's own answer on
--- it is a trade (here, with TradeSafe and TradeFree off, Decide's old rule); retreat's leave waits on HitBackHolds meanwhile.
+-- Slice high-hit-back (D24; one decision, Exchange, since hitback-fold): a hero hitting us at 70% HP or more is traded back when
+-- CoreTrade's own answer on it is a trade (here, with TradeSafe and TradeFree off, Decide's old rule); retreat's leave waits on
+-- CoreTrade.Taking meanwhile.
 -- Under 70%, behind, inside their wave: no hit back, and retreat decides. A running hit back ends under 65%.
 do
 	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
 	Ours.CoreLaneFight = false
-	Ours.HitBack = true
 	local theirs = {}
 	local ourCreep = MakeUnit({ pid = 40, team = 2, loc = Vector(700, 0) })
 	function Unit:GetNearbyLaneCreeps(r, enemies)
@@ -541,53 +541,52 @@ do
 		T = T + 30
 	end
 	fresh(90, 85)
-	check("not hit: no hit back holds retreat", not CoreTrade.HitBackHolds(bot))
+	check("not hit: no hit back holds retreat", not CoreTrade.Taking(bot))
 	bot.hitBy = enemy
-	check("hit at 90% with the trade on: retreat holds for the hit back", CoreTrade.HitBackHolds(bot))
+	check("hit at 90% with the trade on: retreat holds for the hit back", CoreTrade.Taking(bot))
 	check("and the trade opens as a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
 	CoreTrade.Think(bot)
 	check("it attacks the hitter", bot.attacking == enemy)
 	T = T + 0.5
 	CoreTrade.Desire(bot)
-	check("a running hit back holds retreat", CoreTrade.HitBackHolds(bot))
+	check("a running hit back holds retreat", CoreTrade.Taking(bot))
 	bot.hp, enemy.hp = 64, 55
 	T = T + 0.5
 	CoreTrade.Desire(bot)
 	check("under 65% the hit back ends, logged as one", last():find("ev=trade") and last():find("hb=1") and last():find("why=hb_hp"), last())
-	check("and no longer holds retreat", not CoreTrade.HitBackHolds(bot))
+	check("and no longer holds retreat", not CoreTrade.Taking(bot))
 
 	fresh(60, 50)
 	bot.hitBy = enemy
-	check("hit at 60%: the trade rule still trades, but retreat is not held", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and not CoreTrade.HitBackHolds(bot))
+	check("hit at 60%: the trade rule still trades, but retreat is not held", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and not CoreTrade.Taking(bot))
 	fresh(75, 100)
 	bot.hitBy = enemy
-	check("hit at 75% and behind the hitter: no hit back, no hold", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+	check("hit at 75% and behind the hitter: no hit back, no hold", CoreTrade.Desire(bot) == 0 and not CoreTrade.Taking(bot))
 	check("logged with the hit back's refusal", last():find("ev=trade_no") and last():find("why=hb_behind"), last())
 	fresh(90, 85)
 	for k = 1, 5 do theirs[k] = MakeUnit({ pid = 30 + k, team = 3, loc = Vector(200, 300) }) end
 	bot.hitBy = enemy
-	check("hit at 90% inside their wave: no hit back (the old exemption is gone)", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+	check("hit at 90% inside their wave: no hit back (the old exemption is gone)", CoreTrade.Desire(bot) == 0 and not CoreTrade.Taking(bot))
 
 	-- The walk-in (user 12/11/2026): reach is 648, so a hitter at 900 is 252 past it.
 	fresh(90, 85)
 	enemy.loc = Vector(900, 0)
 	bot.hitBy = enemy
-	check("a hitter 250 past our reach inside our creeps' aggro: walked to and hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.HitBackHolds(bot))
+	check("a hitter 250 past our reach inside our creeps' aggro: walked to and hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.Taking(bot))
 	fresh(90, 85)
 	enemy.loc, ourCreep.loc = Vector(900, 0), Vector(-500, 0)
 	bot.hitBy = enemy
-	check("the same hitter outside our creeps' aggro: not walked to (D24 steps out)", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+	check("the same hitter outside our creeps' aggro: not walked to (D24 steps out)", CoreTrade.Desire(bot) == 0 and not CoreTrade.Taking(bot))
 	fresh(90, 85)
 	enemy.loc = Vector(1000, 0)
 	bot.hitBy = enemy
-	check("a hitter 350 past our reach: not walked to", CoreTrade.Desire(bot) == 0 and not CoreTrade.HitBackHolds(bot))
+	check("a hitter 350 past our reach: not walked to", CoreTrade.Desire(bot) == 0 and not CoreTrade.Taking(bot))
 
-	fresh(75, 100)
-	bot.hitBy = enemy
-	Ours.HitBack = false
-	check("switch off: no hold, and the unanswered hit logs the trade rule's refusal",
-		not CoreTrade.HitBackHolds(bot) and CoreTrade.Desire(bot) == 0 and last():find("why=behind") and last():find("agg=1"), last())
-	Ours.HitBack = nil
+	-- Slice hitback-fold: Exchange is Answer unless the target is hitting us; then the bars come first.
+	local i = { hp = 0.6, targetHp = 0.5, enemiesNear = 1, alliesNear = 1, enemyCreepsNear = 0, hitByCreeps = 0, tower = false }
+	check("Exchange, not hit: the trade rule's answer", CoreTrade.Exchange(i, 0.4, nil) == CoreTrade.Answer(i, 0.4, nil))
+	i.hitting = true
+	check("Exchange, hit at 60%: under the hit back's HP bar", CoreTrade.Exchange(i, 0.4, nil) == "hb_hp")
 	Ours.CoreLaneFight = true
 	function Unit:GetNearbyLaneCreeps() return {} end
 	CoreTrade.Reset()
@@ -599,7 +598,7 @@ end
 do
 	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
 	local Threat = package.loaded["bots/FunLib/humaniser/threat"]
-	Ours.CoreLaneFight, Ours.HitBack, Ours.TradeSafe = false, true, true
+	Ours.CoreLaneFight, Ours.TradeSafe = false, true
 	local read, heroes = Threat.Read, Unit.GetNearbyHeroes
 	local burst = 0.52
 	-- Gather reads only the burst off the threat read.
@@ -620,16 +619,16 @@ do
 	bot.loc, enemy.loc, bot.hp, enemy.hp, bot.attacking, bot.hitBy = Vector(0, 0), Vector(400, 0), 90, 85, nil, enemy
 	local d = CoreTrade.Desire(bot)
 	check("two heroes, burst 0.52: the plain trade opens (StandBurst 1)", d == CoreTrade.DESIRE_TRADE)
-	check("but not as a hit back holding retreat", not CoreTrade.HitBackHolds(bot) and not last():find("hb=1"), last())
+	check("but not as a hit back holding retreat", not CoreTrade.Taking(bot) and not last():find("hb=1"), last())
 	burst = 0.3
 	CoreTrade.Reset()
 	T = T + 30
-	check("(setup) two heroes, burst 0.3: a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.HitBackHolds(bot))
+	check("(setup) two heroes, burst 0.3: a hit back", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE and CoreTrade.Taking(bot))
 	CoreTrade.Think(bot)
 	burst = 0.6
-	check("its burst rises past the bar with slack: retreat is no longer held", not CoreTrade.HitBackHolds(bot))
+	check("its burst rises past the bar with slack: retreat is no longer held", not CoreTrade.Taking(bot))
 	Threat.Read, Unit.GetNearbyHeroes, IsHeroAlive = read, heroes, alive
-	Ours.CoreLaneFight, Ours.HitBack, Ours.TradeSafe = true, nil, false
+	Ours.CoreLaneFight, Ours.TradeSafe = true, false
 	bot.hitBy, bot.attacking = nil, nil
 	CoreTrade.Reset()
 end

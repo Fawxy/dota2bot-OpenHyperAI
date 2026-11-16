@@ -251,20 +251,27 @@ const DECISIONS = {
             if (cut.gap !== undefined) w.gap = n('gap');
             if (cut.bu !== undefined) { w.bu = n('bu'); w.tm = n('tm'); }
             // Slice trade-free-cut / trade-free: question 2's inputs; with tf the driver asks it in place of gap.
-            for (const k of ['ar', 'tar', 'tme', 'ko', 'kt', 'tf', 'dn']) if (cut[k] !== undefined) w[k] = n(k);
+            for (const k of ['ar', 'tar', 'tme', 'ko', 'kt', 'tf', 'dn', 'hb']) if (cut[k] !== undefined) w[k] = n(k);
             return w;
         },
+        // Slice hitback-fold: with `hb` (the target is hitting the core) the driver answers Exchange, logged as `xa`.
         check(game, cut, obs) {
             const a = obs.actions[0] || {};
             const got = a.verb === 'respect' ? a.target : a.verb;
-            return { same: got === cut.dec, got, want: cut.dec };
+            const want = tradeAnswer(cut);
+            return { same: got === want, got, want };
         },
-        answer: (game, cut) => cut.dec,
+        answer: (game, cut) => tradeAnswer(cut),
         brief: (game, cut) => `${cut.role} on ${cut.tgt} at ${cut.d}/${cut.rch}, hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, ${cut.en}v${cut.ally}, did ${cut.did ?? '?'}`,
         id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${cut.dec} on ${cut.tgt} (hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, tower ${cut.tw})`,
+        note: (game, cut) => `The game chose ${tradeAnswer(cut)} on ${cut.tgt}${Number(cut.hb) === 1 ? " (hitting us)" : ""} (hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, tower ${cut.tw})`,
     },
 };
+
+/** A trade cut's answer: Exchange's (`xa`) when the target was hitting the core, else the trade rule's (`dec`). */
+function tradeAnswer(cut) {
+    return Number(cut.hb) === 1 && cut.xa !== undefined ? cut.xa : cut.dec;
+}
 
 /** The fixture world for one ev=cut line, or throws naming what the log lacks. */
 function worldOf(game, cut) {

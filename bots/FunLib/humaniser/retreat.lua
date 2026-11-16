@@ -1702,7 +1702,7 @@ function ____exports.Desire(bot)
     end
     local overBefore = st.overSince
     local joins = PairJoin.Joins(bot) ~= nil
-    local hits = r.threat > budget and #r.eng > 0 and CoreTrade.HitBackHolds(bot)
+    local hits = r.threat > budget and #r.eng > 0 and CoreTrade.Taking(bot)
     local why, stay = ____exports.LeaveWhy(
         bot,
         st,
