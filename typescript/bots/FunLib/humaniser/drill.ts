@@ -467,7 +467,12 @@ export const TABLE: Record<string, Entry> = {
     // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
     // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
     // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
-    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand east of the Lich, 350 to 450 from it and 250 apart: off the Radiant creeps' path (fix1: creeps killed a statue on it), within 600 of Sven for night sight (fix2, fix6: at 790 and 810 Bristleback was fogged) and past RIG_PLACED of each other's spot (fix5: with the Lich dead the Warlock took Bristleback, 124 off, for it). Bristleback stands nearer our heroes than the Lich (judgement: the rig grades the Lich).
+    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand north-east of the Lich, off the Radiant creeps' path (fix1: creeps killed a statue on it) and nearer Sven for
+    // night sight (fix2, fix6: at 790 and 810 Bristleback was fogged). Snapped to passable ground (rig7 `ph=spot`) they stand
+    // 216 (foe) and 291 (foe2) from the Lich's spot, 101 apart and 607 and 666 from Sven: foe is only just past RIG_PLACED
+    // of the Lich's (fix5: with the Lich dead the Warlock took Bristleback, 124 off, for it), and the two foes are inside it
+    // of each other's, so `wait d3` and `wait d5` can each end on the other statue. Bristleback stands nearer our heroes
+    // than the Lich (judgement: the rig grades the Lich).
     // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
     // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
     // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
