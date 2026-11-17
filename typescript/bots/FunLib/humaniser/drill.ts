@@ -369,6 +369,53 @@ export const TABLE: Record<string, Entry> = {
     // every rep ends by 10:00 (rigB: from 14:40 OHA's retreat took the cast and `idle` outbid it): four 135 s reps from 1:00,
     // one of each kind a game; rigB before 10:00 was ready in 46 to 71 s and walked home in 37 to 40 s, and the 95 s timeout
     // leaves a ready rep that walk. Acceptance takes three games on one seed.
+    // Slice trade-reach (D19's commit, `Ours.KillReach`). half: execution. The commit's facts (CoreTrade commitTarget, Decide's
+    // kill): an enemy hero at the commit bar (40%; forced: the Radiant pos5 actor hits it to 25%, then walks 2,500 off so the
+    // cast is alone) standing 100-550 past the cast's trade reach (forced: a statue 650 north of the cast; Sven's reach is
+    // about 298), the cast in lane in the laning stage with HP over the target's (hit-back's side spot, 763 off our bot lane;
+    // healed each rep), numbers not against us. Read after release: the cast's `ev=trade kind=kill` on the low hero, taken
+    // (result done or kill), and its snapshot `tid` on it within 3 s. The banked start: the low hero in retreat in 8 of 13 and
+    // ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control (`outnum`): the
+    // Dire pos3 stands 1,000 north of the cast too, two against one, so no commit. Seed 8 (lineup B): Sven and Witch Doctor
+    // against Lich and Bristleback. 100 s reps from 0:00, six inside 10:00 (a killed Lich respawns and walks back). Release:
+    // laning, attack (the kill), retreat, idle.
+    "kill-reach": {
+        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 650 north of it hit to 25% HP by the Radiant pos5, which then walks 2,500 off; control: the Dire pos3 also stands 1,000 north (outnumbered); then laning, attack, retreat; six 100 s reps from 0:00; seed 8",
+        cast: SAFE_CORE,
+        others: "bench",
+        rep: { every: 100, from: 0 },
+        rig: {
+            half: "execution",
+            switch: "KillReach",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                low: ["r:bot1", -2750, 1350],
+                foe: ["r:bot1", -2750, 1700],
+                away: ["r:bot1", -2750, 3200],
+            },
+            timeout: 80,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "reach",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["heal", "stand low"] },
+                    ready: { low: [0.35, 100, 550], hpAtLeast: 0.5 },
+                },
+                {
+                    name: "reach",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["heal", "stand low"] },
+                    ready: { low: [0.35, 100, 550], hpAtLeast: 0.5 },
+                },
+                {
+                    name: "outnum",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["heal", "stand low"], d3: ["heal", "stand foe"] },
+                    ready: { low: [0.35, 100, 550], foes: 2, hpAtLeast: 0.5 },
+                },
+            ],
+        },
+    },
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast: { r: [5] },
@@ -1121,6 +1168,13 @@ export interface RigReady {
      * within this distance of the cast (the pre-hit's TOWER_RADIUS and its walk). Fails `towercreep`.
      */
     towerCreep?: number;
+    /**
+     * The commit's reach (slice trade-reach, D19), [hp, min, max]: a live enemy hero in sight at this HP share or under stands
+     * min to max past the cast's trade reach (`pastReach`). Fails `low`.
+     */
+    low?: [number, number, number];
+    /** At least this many live enemy heroes in sight within 1,200 of the cast (CoreTrade's NEAR). Fails `foes`. */
+    foes?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1756,7 +1810,29 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if ((bot.GetNearbyTowers(1200, false) ?? []).length === 0) return "notower";
         if (!TowerOnCreep(bot, r.towerCreep)) return "towercreep";
     }
+    if (r.low !== undefined || r.foes !== undefined) {
+        const [low, foes] = LowFacts(bot, r.low);
+        if (r.low !== undefined && !low) return "low";
+        if (r.foes !== undefined && foes < r.foes) return "foes";
+    }
     return undefined;
+}
+
+/**
+ * RigReady `low` and `foes` (slice trade-reach): whether a live enemy hero in sight at `low[0]` HP share or under stands
+ * `low[1]` to `low[2]` past the cast's trade reach, and how many live enemy heroes in sight stand within 1,200 of it.
+ */
+export function LowFacts(bot: Unit, low: [number, number, number] | undefined): LuaMultiReturn<[boolean, number]> {
+    let found = false;
+    let foes = 0;
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (!h.IsAlive() || h.GetLocation() === undefined || !h.CanBeSeen() || h.IsIllusion()) continue;
+        if (GetUnitToUnitDistance(bot, h) <= 1200) foes += 1;
+        if (low === undefined || hpShare(h) > low[0]) continue;
+        const p = pastReach(bot, h);
+        if (p >= low[1] && p <= low[2]) found = true;
+    }
+    return $multi(found, foes);
 }
 
 /** An own tower within 1,200 of the bot is attacking an enemy lane creep within `d` of it (RigReady `towerCreep`). */

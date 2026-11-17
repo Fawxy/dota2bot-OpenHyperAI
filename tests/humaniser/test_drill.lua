@@ -826,4 +826,32 @@ do
 	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)
 end
 
+-- kill-reach's ready checks (slice trade-reach): a low enemy hero past the cast's trade reach (298 for a 150-range hero with
+-- 24 hulls), and the enemy heroes within 1,200.
+do
+	local H = world("kill-reach")
+	local bot = hero(0, RAD, 1, 3)
+	bot.range = 150
+	local low = hero(8, DIRE, 4, 3)
+	local other = hero(7, DIRE, 3, 3)
+	low.hp, low.maxhp, low.loc = 25, 100, Vector(650, 0, 0)
+	other.hp, other.maxhp, other.loc = 100, 100, Vector(5000, 0, 0)
+	local old = GetUnitList
+	GetUnitList = function() return { low, other } end
+	local ok, n = H.Drill.LowFacts(bot, { 0.35, 100, 550 })
+	check("kill-reach: a 25% hero 352 past reach is low; one foe within 1,200", ok == true and n == 1, tostring(ok) .. " " .. tostring(n))
+	low.hp = 50
+	ok = H.Drill.LowFacts(bot, { 0.35, 100, 550 })
+	check("kill-reach: at 50% it is not", ok == false)
+	low.hp, low.loc = 25, Vector(1100, 0, 0)
+	ok = H.Drill.LowFacts(bot, { 0.35, 100, 550 })
+	check("kill-reach: 802 past reach it is not", ok == false)
+	low.loc, other.loc = Vector(650, 0, 0), Vector(1000, 0, 0)
+	ok, n = H.Drill.LowFacts(bot, nil)
+	check("kill-reach: two foes within 1,200", n == 2, n)
+	GetUnitList = old
+	local t = H.Drill.TABLE["kill-reach"].rig
+	check("kill-reach: execution rig on KillReach, two reach reps to one outnumbered control", t.half == "execution" and t.switch == "KillReach" and #t.reps == 3 and t.reps[3].ready.foes == 2)
+end
+
 finish()
