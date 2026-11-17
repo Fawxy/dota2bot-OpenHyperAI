@@ -378,13 +378,13 @@ export const TABLE: Record<string, Entry> = {
     // the cast's `ev=trade kind=kill` on the low hero, taken (result done or kill), and its snapshot `tid` on it within 3 s;
     // the cast's `ed` (nearest visible enemy) says whether the statue was in sight. The banked start: the low hero in retreat
     // in 8 of 13 and ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control
-    // (`outnum`): the Dire pos3 stands 1,000 west of the cast too, two against one, so no commit. Seed 8 (lineup B): Sven and Witch Doctor
+    // (`outnum`): the Dire pos3 stands 800 west of the cast too, two against one, so no commit (fix3: at 1,000 it sat on the 1,200 edge). Every rep needs no other hero of ours within 1,200 (`alliesAtMost`; fix3: the pos5 walking off counted, ally 2). Seed 8 (lineup B): Sven and Witch Doctor
     // against Lich and Bristleback. The Lich takes no `heal` step (its HP is the pos5's attack each rep; healed, a Lich that
     // lived through a rep walks to its fountain and back, about 110 s); a killed one respawns and walks in, about 60 s, then
     // the attack and the walk off, so 120 s reps with a 95 s timeout, five inside 10:00. Reach reps need the low hero alone
     // within 1,200 (`foesAtMost`: the control's pos3 walks home through it). Release: laning, attack (the kill), retreat, idle.
     "kill-reach": {
-        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 1,000 west (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 800 west (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 120, from: 0 },
@@ -395,7 +395,7 @@ export const TABLE: Record<string, Entry> = {
             spots: {
                 side: ["r:bot1", -2750, 700],
                 low: ["r:bot1", -3350, 700],
-                foe: ["r:bot1", -3750, 700],
+                foe: ["r:bot1", -3550, 700],
                 away: ["r:bot1", -4150, 700],
             },
             timeout: 95,
@@ -405,17 +405,17 @@ export const TABLE: Record<string, Entry> = {
                 {
                     name: "reach",
                     setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"] },
-                    ready: { low: [0.35, 100, 550], foesAtMost: 1, hpAtLeast: 0.5 },
+                    ready: { low: [0.35, 100, 550], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
                 },
                 {
                     name: "reach",
                     setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"] },
-                    ready: { low: [0.35, 100, 550], foesAtMost: 1, hpAtLeast: 0.5 },
+                    ready: { low: [0.35, 100, 550], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
                 },
                 {
                     name: "outnum",
                     setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
-                    ready: { low: [0.35, 100, 550], foes: 2, hpAtLeast: 0.5 },
+                    ready: { low: [0.35, 100, 550], foes: 2, alliesAtMost: 0, hpAtLeast: 0.5 },
                 },
             ],
         },
@@ -1181,6 +1181,8 @@ export interface RigReady {
     foes?: number;
     /** At most this many live enemy heroes in sight within 1,200 of the cast. Fails `foesmax`. */
     foesAtMost?: number;
+    /** At most this many other live heroes of the cast's team within 1,200 of it. Fails `allies`. */
+    alliesAtMost?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1816,22 +1818,29 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if ((bot.GetNearbyTowers(1200, false) ?? []).length === 0) return "notower";
         if (!TowerOnCreep(bot, r.towerCreep)) return "towercreep";
     }
-    if (r.low !== undefined || r.foes !== undefined || r.foesAtMost !== undefined) {
-        const [low, foes] = LowFacts(bot, r.low);
+    if (r.low !== undefined || r.foes !== undefined || r.foesAtMost !== undefined || r.alliesAtMost !== undefined) {
+        const [low, foes, allies] = LowFacts(bot, r.low);
         if (r.low !== undefined && !low) return "low";
         if (r.foes !== undefined && foes < r.foes) return "foes";
         if (r.foesAtMost !== undefined && foes > r.foesAtMost) return "foesmax";
+        if (r.alliesAtMost !== undefined && allies > r.alliesAtMost) return "allies";
     }
     return undefined;
 }
 
 /**
  * RigReady `low` and `foes` (slice trade-reach): whether a live enemy hero in sight at `low[0]` HP share or under stands
- * `low[1]` to `low[2]` past the cast's trade reach, and how many live enemy heroes in sight stand within 1,200 of it.
+ * `low[1]` to `low[2]` past the cast's trade reach, how many live enemy heroes in sight stand within 1,200 of it, and how many
+ * other live heroes of its own team do.
  */
-export function LowFacts(bot: Unit, low: [number, number, number] | undefined): LuaMultiReturn<[boolean, number]> {
+export function LowFacts(bot: Unit, low: [number, number, number] | undefined): LuaMultiReturn<[boolean, number, number]> {
     let found = false;
     let foes = 0;
+    let allies = 0;
+    for (const h of GetUnitList(UnitType.AlliedHeroes) ?? []) {
+        if (h.GetPlayerID() === bot.GetPlayerID() || !h.IsAlive() || h.GetLocation() === undefined || h.IsIllusion()) continue;
+        if (GetUnitToUnitDistance(bot, h) <= 1200) allies += 1;
+    }
     for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!h.IsAlive() || h.GetLocation() === undefined || !h.CanBeSeen() || h.IsIllusion()) continue;
         if (GetUnitToUnitDistance(bot, h) <= 1200) foes += 1;
@@ -1839,7 +1848,7 @@ export function LowFacts(bot: Unit, low: [number, number, number] | undefined): 
         const p = pastReach(bot, h);
         if (p >= low[1] && p <= low[2]) found = true;
     }
-    return $multi(found, foes);
+    return $multi(found, foes, allies);
 }
 
 /** An own tower within 1,200 of the bot is attacking an enemy lane creep within `d` of it (RigReady `towerCreep`). */
