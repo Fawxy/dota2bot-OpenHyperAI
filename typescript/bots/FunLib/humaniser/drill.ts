@@ -426,8 +426,9 @@ export const TABLE: Record<string, Entry> = {
     // the Lich at 25-38% inside the support's reach (off: the trade's 25% cut, so no commit); `reach`, the Lich 200-500 past
     // the core's reach, past the support's own (off: no walk); control `outnum`, the Dire pos3 beside it. The hit stops at 33%
     // so the off arm's 25% cut is not met by the actor (Sven's hit is about a tenth of the Lich's HP). Spots on kill-reach's
-    // strip: low 800 west of side, far 1,200 (200 short of away). foe 500 west, between the cast and the Lich (rig1: 1,100 west
-    // resolved onto far, 200 from low, where the actor's target pick reaches); the actor hits only once the pos3 stands there
+    // strip: low 800 west of side, far 1,200 (200 short of away). foe 250 east of the cast (rig1: 1,100 west resolved onto far,
+    // 200 from low, where the actor's target pick reaches; rig3: 500 west, 587 from the cast, was out of its sight behind trees
+    // most frames, so `foes` flickered); the actor hits only once the pos3 stands there
     // (`after d3`; rig1-2: the control was never ready, the Lich regenerating past 38% while the pos3 walked in).
     "support-kill-reach": {
         note: "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
@@ -442,7 +443,7 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 low: ["r:bot1", -3550, 700],
                 far: ["r:bot1", -3950, 700],
-                foe: ["r:bot1", -3250, 700],
+                foe: ["r:bot1", -2500, 700],
                 away: ["r:bot1", -4150, 700],
             },
             timeout: 95,
