@@ -1424,10 +1424,10 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 
 Slice chase-log: a cast by a hero on this script's team (InstallCastCallback, logged on the hero's next tick).
 
-`pid` num, `y` num, `tgt` num, `etg` num, `es` num, `ed` num
+`pid` num, `y` num, `el` num, `etg` num, `es` num, `ed` num
 
 - `ab` str: The ability's name.
-- `x` num: The callback's location, and a hero unit it names other than the caster (its pid).
+- `x` num: The callback's location (absent at 0,0: a no-target cast), and its distance to the episode's target when seen (the callback names no target unit: its `unit` is the caster).
 - `ek` str: The hero's CoreTrade episode at the log: its kind, target pid, the target seen (1/0) and its distance when seen.
 - `lag` num: Seconds from the callback to this line.
 - `ks` str: The first cast per hero only: the callback table's keys as key:type, `|`-joined (its shape is unprobed).

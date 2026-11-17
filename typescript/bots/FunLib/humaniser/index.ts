@@ -238,7 +238,7 @@ function tick(this: void, bot: Unit): void {
     LaneControl.Tick(bot);
     steps.telemetry(bot, telemetryContext);
     // Slice chase-log: our casts (ev=cast), logged a tick after the callback queues them.
-    CastLog.Tick(bot);
+    pcall(CastLog.Tick, bot);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
     pcall(steps.regen, bot);
     pcall(steps.probe, bot);

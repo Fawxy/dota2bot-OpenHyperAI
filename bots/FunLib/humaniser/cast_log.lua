@@ -86,41 +86,23 @@ local PENDING_MAX = 16
 local installed = {}
 local keysLogged = {}
 local pending = {}
-local function handle(v)
-    local h = v
-    return type(v) == "table" and type(h.IsNull) == "function" and not h:IsNull()
-end
+--- The ability's name: a string, or a handle's GetName (smoke chase-log: 48 of 457 handles gave none through an IsNull test).
 local function nameOf(a)
     if type(a) == "string" then
         return a
     end
-    if handle(a) and a.GetName ~= nil then
-        return a:GetName()
+    if type(a) ~= "table" then
+        return nil
     end
-    return nil
-end
---- A hero unit under any key of the event other than the caster: its pid.
-local function heroTarget(event, caster)
-    for ____, v in pairs(event) do
-        do
-            local __continue7
-            repeat
-                if not handle(v) or type(v.IsHero) ~= "function" or v == caster then
-                    __continue7 = true
-                    break
-                end
-                local u = v
-                if u:IsHero() and not u:IsIllusion() then
-                    return u:GetPlayerID()
-                end
-                __continue7 = true
-            until true
-            if not __continue7 then
-                break
-            end
-        end
+    local h = a
+    if type(h.IsNull) == "function" and h:IsNull() then
+        return nil
     end
-    return nil
+    if type(h.GetName) ~= "function" then
+        return nil
+    end
+    local n = h:GetName()
+    return type(n) == "string" and n ~= "" and n or nil
 end
 local function keysOf(event)
     local ks = {}
@@ -137,11 +119,17 @@ local function log(bot, p)
     end
     local pid = bot:GetPlayerID()
     local loc = e.location
+    local hasLoc = loc ~= nil and loc ~= nil and type(loc.x) == "number" and type(loc.y) == "number" and (loc.x ~= 0 or loc.y ~= 0)
     local ep = CoreTrade.EpisodeOf(pid)
     local t = ep and ep.target
     local seen = t ~= nil and not t:IsNull() and t:CanBeSeen()
     local first = keysLogged[pid] ~= true
     keysLogged[pid] = true
+    local el
+    if hasLoc and seen then
+        local tl = t:GetLocation()
+        el = math.floor(math.sqrt((tl.x - loc.x) * (tl.x - loc.x) + (tl.y - loc.y) * (tl.y - loc.y)))
+    end
     Telemetry.Event(
         "cast",
         {
@@ -152,16 +140,13 @@ local function log(bot, p)
             },
             {
                 "x",
-                loc ~= nil and loc ~= nil and type(loc.x) == "number" and math.floor(loc.x) or nil
+                hasLoc and math.floor(loc.x) or nil
             },
             {
                 "y",
-                loc ~= nil and loc ~= nil and type(loc.y) == "number" and math.floor(loc.y) or nil
+                hasLoc and math.floor(loc.y) or nil
             },
-            {
-                "tgt",
-                heroTarget(e, bot)
-            },
+            {"el", el},
             {"ek", ep and ep.kind},
             {"etg", ep and ep.tpid},
             {"es", ep ~= nil and (seen and 1 or 0) or nil},

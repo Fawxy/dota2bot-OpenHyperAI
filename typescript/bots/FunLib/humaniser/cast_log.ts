@@ -25,25 +25,15 @@ interface Handle {
     GetName?(): string;
 }
 
-function handle(v: any): v is Handle {
-    const h = v as Handle;
-    return type(v) === "table" && type(h.IsNull) === "function" && !h.IsNull();
-}
-
+/** The ability's name: a string, or a handle's GetName (smoke chase-log: 48 of 457 handles gave none through an IsNull test). */
 function nameOf(a: any): string | undefined {
     if (type(a) === "string") return a as string;
-    if (handle(a) && a.GetName !== undefined) return a.GetName();
-    return undefined;
-}
-
-/** A hero unit under any key of the event other than the caster: its pid. */
-function heroTarget(event: any, caster: Unit): number | undefined {
-    for (const [, v] of pairs(event as Record<string, any>)) {
-        if (!handle(v) || type((v as any).IsHero) !== "function" || v === caster) continue;
-        const u = v as unknown as Unit;
-        if (u.IsHero() && !u.IsIllusion()) return u.GetPlayerID();
-    }
-    return undefined;
+    if (type(a) !== "table") return undefined;
+    const h = a as Handle;
+    if (type(h.IsNull) === "function" && h.IsNull()) return undefined;
+    if (type(h.GetName) !== "function") return undefined;
+    const n = h.GetName!();
+    return type(n) === "string" && n !== "" ? n : undefined;
 }
 
 function keysOf(event: any): string {
@@ -58,17 +48,23 @@ function log(bot: Unit, p: Pending): void {
     if (type(e) !== "table") return;
     const pid = bot.GetPlayerID();
     const loc = e.location;
+    const hasLoc = loc !== undefined && loc !== null && type(loc.x) === "number" && type(loc.y) === "number" && (loc.x !== 0 || loc.y !== 0);
     const ep = CoreTrade.EpisodeOf(pid);
     const t = ep?.target;
     const seen = t !== undefined && !t.IsNull() && t.CanBeSeen();
     const first = keysLogged[pid] !== true;
     keysLogged[pid] = true;
+    let el: number | undefined;
+    if (hasLoc && seen) {
+        const tl = t!.GetLocation();
+        el = math.floor(math.sqrt((tl.x - loc.x) * (tl.x - loc.x) + (tl.y - loc.y) * (tl.y - loc.y)));
+    }
     Telemetry.Event("cast", [
         ["pid", pid],
         ["ab", nameOf(e.ability)],
-        ["x", loc !== undefined && loc !== null && type(loc.x) === "number" ? math.floor(loc.x) : undefined],
-        ["y", loc !== undefined && loc !== null && type(loc.y) === "number" ? math.floor(loc.y) : undefined],
-        ["tgt", heroTarget(e, bot)],
+        ["x", hasLoc ? math.floor(loc.x) : undefined],
+        ["y", hasLoc ? math.floor(loc.y) : undefined],
+        ["el", el],
         ["ek", ep?.kind],
         ["etg", ep?.tpid],
         ["es", ep !== undefined ? (seen ? 1 : 0) : undefined],

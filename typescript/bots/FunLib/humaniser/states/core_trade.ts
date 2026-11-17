@@ -8,7 +8,7 @@
  * always wins the frame. Inputs follow EC-045 (creeps in the area, no fighting in a big enemy wave or under their tower)
  * and EC-053 (lane creeps acquire a hero attacker within about 500); every threshold is `judgement`.
  */
-import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -282,6 +282,9 @@ interface Episode {
     startedAt?: number;
     hp0: number;
     thp0: number;
+    /** Slice chase-log: the target's max HP and hull at the offer (its handle reads null once unseen). */
+    tmax: number;
+    thull: number;
     /** The target's HP when last seen: an unseen target's handle reads as dead (cil3: 61 of 69 `kill` lines had no death). */
     thpSeen: number;
     inputs: Inputs;
@@ -328,20 +331,30 @@ const CHASE_WATCH = 12;
 interface Chase {
     kind: Kind;
     tpid: number;
-    target: Unit;
     at: number;
 }
 const chases: Record<number, Chase | undefined> = {};
 
+/**
+ * The enemy hero `pid` if our team sees it now. A hero's handle reads null once it leaves sight (smoke chase-log: every
+ * `ph=lost` target's handle was null) and a new one comes back with it, so it is found again by pid.
+ */
+function seenHero(pid: number): Unit | undefined {
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (h !== undefined && h !== null && !h.IsNull() && !h.IsIllusion() && h.GetPlayerID() === pid && h.IsAlive() && h.CanBeSeen()) return h;
+    }
+    return undefined;
+}
+
 /** The `ev=chase ph=lost` line at a loss of sight, and the watch it opens. */
 function chaseLost(bot: Unit, ep: Episode, now: number): void {
     const pid = bot.GetPlayerID();
-    if (chases[pid] !== undefined) chaseEnd(bot, chases[pid]!, now, "next");
-    chases[pid] = { kind: ep.kind, tpid: ep.tpid, target: ep.target, at: now };
+    if (chases[pid] !== undefined) chaseEnd(bot, chases[pid]!, now, "next", undefined);
+    chases[pid] = { kind: ep.kind, tpid: ep.tpid, at: now };
     const info = GetHeroLastSeenInfo(ep.tpid)[0];
     const me = bot.GetLocation();
     const d = info !== undefined ? distXY(me, info.location) : undefined;
-    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + (ep.target.IsNull() ? 0 : ep.target.GetBoundingRadius());
+    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + ep.thull;
     const a = ep.seen0;
     const b = ep.seenLast;
     const span = a !== undefined && b !== undefined ? b.at - a.at : 0;
@@ -355,7 +368,7 @@ function chaseLost(bot: Unit, ep: Episode, now: number): void {
         ["tgt", ep.tpid],
         ["dur", ep.startedAt !== undefined ? math.floor((now - ep.startedAt) * 10) / 10 : undefined],
         ["hp", math.floor(frac(bot) * 100) / 100],
-        ["thp", math.floor((ep.thpSeen / math.max(1, ep.target.IsNull() ? 1 : ep.target.GetMaxHealth())) * 100) / 100],
+        ["thp", math.floor((ep.thpSeen / math.max(1, ep.tmax)) * 100) / 100],
         ["kh", killHpFor(bot)],
         ["x", math.floor(me.x)],
         ["y", math.floor(me.y)],
@@ -378,18 +391,17 @@ function chaseTick(bot: Unit, now: number): void {
     const c = chases[pid];
     if (c === undefined) return;
     const dead = !IsHeroAlive(c.tpid);
-    const seen = !dead && !c.target.IsNull() && c.target.CanBeSeen();
+    const seen = dead ? undefined : seenHero(c.tpid);
     const out = now - c.at > CHASE_WATCH;
-    if (!dead && !seen && !out) return;
-    chaseEnd(bot, c, now, dead ? "dead" : seen ? "seen" : "gone");
+    if (!dead && seen === undefined && !out) return;
+    chaseEnd(bot, c, now, dead ? "dead" : seen !== undefined ? "seen" : "gone", seen);
 }
 
-/** The watch's end line: `seen`, `dead`, `gone`, or `next` (a new loss of sight replaced it). */
-function chaseEnd(bot: Unit, c: Chase, now: number, ph: string): void {
+/** The watch's end line: `seen` (with the hero's new handle), `dead`, `gone`, or `next` (a new loss of sight replaced it). */
+function chaseEnd(bot: Unit, c: Chase, now: number, ph: string, seen: Unit | undefined): void {
     const pid = bot.GetPlayerID();
     chases[pid] = undefined;
     const ep = episodes[pid];
-    const seen = ph === "seen";
     Telemetry.Event("chase", [
         ["pid", pid],
         ["ph", ph],
@@ -397,8 +409,8 @@ function chaseEnd(bot: Unit, c: Chase, now: number, ph: string): void {
         ["tgt", c.tpid],
         ["dt", math.floor((now - c.at) * 10) / 10],
         ["alive", bot.IsAlive() ? 1 : 0],
-        ["d", seen && bot.IsAlive() ? math.floor(GetUnitToUnitDistance(bot, c.target)) : undefined],
-        ["thp", seen ? math.floor(frac(c.target) * 100) / 100 : undefined],
+        ["d", seen !== undefined && bot.IsAlive() ? math.floor(GetUnitToUnitDistance(bot, seen)) : undefined],
+        ["thp", seen !== undefined ? math.floor(frac(seen) * 100) / 100 : undefined],
         ["hp", bot.IsAlive() ? math.floor(frac(bot) * 100) / 100 : undefined],
         ["mode", bot.GetActiveMode()],
         ["onk", ep !== undefined && ep.tpid === c.tpid ? ep.kind : undefined],
@@ -988,6 +1000,8 @@ function open(bot: Unit, kind: Kind, target: Unit, now: number, play?: Plays.Pla
         lf: OwnsLaneFights(bot),
         hp0: bot.GetHealth(),
         thp0: target.GetHealth(),
+        tmax: target.GetMaxHealth(),
+        thull: target.GetBoundingRadius(),
         thpSeen: target.GetHealth(),
         inputs: Gather(bot, target),
         primes: 0,

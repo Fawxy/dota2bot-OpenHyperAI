@@ -2857,10 +2857,11 @@ export const EVENTS = {
         pid: "num",
         /** The ability's name. */
         ab: "str",
-        /** The callback's location, and a hero unit it names other than the caster (its pid). */
+        /** The callback's location (absent at 0,0: a no-target cast), and its distance to the episode's target when seen
+         *  (the callback names no target unit: its `unit` is the caster). */
         x: "num",
         y: "num",
-        tgt: "num",
+        el: "num",
         /** The hero's CoreTrade episode at the log: its kind, target pid, the target seen (1/0) and its distance when seen. */
         ek: "str",
         etg: "num",
