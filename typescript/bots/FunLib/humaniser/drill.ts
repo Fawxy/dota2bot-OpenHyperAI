@@ -459,6 +459,75 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // Slice pair-kill-rig (fighting-together "Tools"; D10, D19): the two-hero kill rig, the graded lines for kill-chances S2
+    // (commit and join as plays) and S3 (release and abort). half: execution. Two of ours near one enemy hero: do both attack
+    // it within a short gap, does it die, and when it lives do both stop together (view pair_rig.js). The banked start
+    // (pair_episodes.js rows on 50 games, fights of 3 s+): a support hitting first with a core partner, 5.1 a game, the partner
+    // hitting 42% (OHA 72%); a target fallen to 40%, 2.2, both hitting 83% but killing 30% (OHA 47%); 2v2 4.8 (54%, OHA 78%).
+    // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
+    // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
+    // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
+    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand north-east of the Lich, off the Radiant creeps' path (fix1: creeps killed a statue on it) and nearer Sven for
+    // night sight (fix2, fix6: at 790 and 810 Bristleback was fogged). Snapped to passable ground (rig7 `ph=spot`) they stand
+    // 216 (foe) and 291 (foe2) from the Lich's spot, 101 apart and 607 and 666 from Sven: foe is only just past RIG_PLACED
+    // of the Lich's (fix5: with the Lich dead the Warlock took Bristleback, 124 off, for it), and the two foes are inside it
+    // of each other's, so `wait d3` and `wait d5` can each end on the other statue. Bristleback stands nearer our heroes
+    // than the Lich (judgement: the rig grades the Lich).
+    // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
+    // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
+    // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
+    // lane_fight while `Ours.SupportLaneFight` is off, so the rig sees what games see. Abilities and items stay held
+    // (execution first; the cast read decides whether casting is graded). The switch is S2's, which nothing reads yet: the
+    // off arm is today's code.
+    "pair-kill": {
+        note: "rig: Radiant pos1 and pos5 off our bot lane, the Dire pos4 hit to 30% by the Radiant pos4 (which walks off) standing 600 west (low), running at 20% (flee), or attacking our pos5 (hitback); 2v2 with the Dire pos3 beside it (two); control: the Dire pos5 too (outnum); then laning, attack, team_roam, retreat; five 120 s reps from 0:00; seed 8",
+        cast: { r: [1, 5] },
+        others: "bench",
+        rep: { every: 120, from: 0 },
+        rig: {
+            half: "execution",
+            switch: "PairPlay",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                behind: ["r:bot1", -2750, 300],
+                low: ["r:bot1", -3350, 700],
+                foe: ["r:bot1", -3130, 860],
+                foe2: ["r:bot1", -3280, 1060],
+                away: ["r:bot1", -4150, 700],
+            },
+            timeout: 95,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "team_roam", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "low",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
+                    ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "flee",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
+                    ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "hitback",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["leave"], d4: ["attack r5 until hp 0.05", "stand low"] },
+                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "two",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "wait d3", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
+                    ready: { low: [0.35, -2000, 550], foes: 2, foesAtMost: 2, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "outnum",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "wait d3", "wait d5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
+                    ready: { low: [0.35, -2000, 550], foes: 3, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+            ],
+        },
+    },
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast: { r: [5] },
@@ -1233,6 +1302,7 @@ export interface RigRep {
      * that is not cast is an actor (held, it only takes these steps). Steps:
      * - `stand <spot>`: walk there and stay, swaying so it never auto-attacks (a statue); never ends.
      * - `walk <spot>`: walk there; ends on arrival.
+     * - `wait <hero>`: hold until that hero of ours is placed, or an enemy hero is seen at that hero's stand; ends then.
      * - `heal`: its fountain until full HP and mana (95%); ends at once when already full.
      * - `burst <hero> for <secs> using <spell>...`: cast the listed unit-target spells on the hero as they come up, else
      *   attack it, for `secs` from the first order (`burstStep`); ends then.
@@ -1561,6 +1631,12 @@ const RIG_APPROACH = 400;
 function lastPoint(st: RigState, key: string, bot: Unit): Vector | undefined {
     const steps = RigRepOf(st.rep)?.setup[key];
     if (steps === undefined || steps.length === 0) return undefined;
+    // Where an attacker finds the hero: its last `stand` step's spot, else its last step's (pair-kill fix1: the flee Lich's
+    // `stand low until hp 0.2, leave` sent the Warlock to its own fountain looking for it).
+    for (let i = steps.length - 1; i >= 0; i--) {
+        const w = steps[i].split(" ");
+        if (w[0] === "stand" && w[1] !== undefined) return rigPoint(bot, w[1]);
+    }
     return rigPoint(bot, steps[steps.length - 1].split(" ")[1] ?? "fountain");
 }
 
@@ -1709,6 +1785,14 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         // Within RIG_PLACED, not standAt's 100: lane creeps can shove a statue past 100 (hit-back fix1).
         st.placed[pid] = last && GetUnitToLocationDistance(bot, p) <= RIG_PLACED;
         return false;
+    }
+    if (verb === "wait") {
+        // pair-kill fix3: the Warlock hit the Lich low before Witch Doctor was back from healing or Omniknight had walked
+        // in, and the Lich regenerated past the ready bar while they came.
+        const own = heroOf(bot, words[1]);
+        const done = own !== undefined ? st.placed[own.GetPlayerID()] === true : attackTarget(bot, st, words[1]) !== undefined;
+        if (!done) bot.Action_MoveToLocation(bot.GetLocation());
+        return done;
     }
     if (verb === "walk") {
         const p = rigPoint(bot, words[1]);
