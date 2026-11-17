@@ -377,13 +377,15 @@ export const TABLE: Record<string, Entry> = {
     // (result done or kill), and its snapshot `tid` on it within 3 s. The banked start: the low hero in retreat in 8 of 13 and
     // ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control (`outnum`): the
     // Dire pos3 stands 1,000 north of the cast too, two against one, so no commit. Seed 8 (lineup B): Sven and Witch Doctor
-    // against Lich and Bristleback. 100 s reps from 0:00, six inside 10:00 (a killed Lich respawns and walks back). Release:
-    // laning, attack (the kill), retreat, idle.
+    // against Lich and Bristleback. The Lich takes no `heal` step (its HP is the pos5's attack each rep; healed, a Lich that
+    // lived through a rep walks to its fountain and back, about 110 s); a killed one respawns and walks in, about 60 s, then
+    // the attack and the walk off, so 120 s reps with a 95 s timeout, five inside 10:00. Reach reps need the low hero alone
+    // within 1,200 (`foesAtMost`: the control's pos3 walks home through it). Release: laning, attack (the kill), retreat, idle.
     "kill-reach": {
-        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 650 north of it hit to 25% HP by the Radiant pos5, which then walks 2,500 off; control: the Dire pos3 also stands 1,000 north (outnumbered); then laning, attack, retreat; six 100 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 650 north of it hit to 25% HP by the Radiant pos5, which then walks 2,500 off; control: the Dire pos3 also stands 1,000 north (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
-        rep: { every: 100, from: 0 },
+        rep: { every: 120, from: 0 },
         rig: {
             half: "execution",
             switch: "KillReach",
@@ -394,23 +396,23 @@ export const TABLE: Record<string, Entry> = {
                 foe: ["r:bot1", -2750, 1700],
                 away: ["r:bot1", -2750, 3200],
             },
-            timeout: 80,
+            timeout: 95,
             keeps: ["levelup"],
             release: { modes: ["laning", "attack", "retreat", "idle"] },
             reps: [
                 {
                     name: "reach",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["heal", "stand low"] },
-                    ready: { low: [0.35, 100, 550], hpAtLeast: 0.5 },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"] },
+                    ready: { low: [0.35, 100, 550], foesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
                     name: "reach",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["heal", "stand low"] },
-                    ready: { low: [0.35, 100, 550], hpAtLeast: 0.5 },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"] },
+                    ready: { low: [0.35, 100, 550], foesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
                     name: "outnum",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["heal", "stand low"], d3: ["heal", "stand foe"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
                     ready: { low: [0.35, 100, 550], foes: 2, hpAtLeast: 0.5 },
                 },
             ],
@@ -1175,6 +1177,8 @@ export interface RigReady {
     low?: [number, number, number];
     /** At least this many live enemy heroes in sight within 1,200 of the cast (CoreTrade's NEAR). Fails `foes`. */
     foes?: number;
+    /** At most this many live enemy heroes in sight within 1,200 of the cast. Fails `foesmax`. */
+    foesAtMost?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1810,10 +1814,11 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if ((bot.GetNearbyTowers(1200, false) ?? []).length === 0) return "notower";
         if (!TowerOnCreep(bot, r.towerCreep)) return "towercreep";
     }
-    if (r.low !== undefined || r.foes !== undefined) {
+    if (r.low !== undefined || r.foes !== undefined || r.foesAtMost !== undefined) {
         const [low, foes] = LowFacts(bot, r.low);
         if (r.low !== undefined && !low) return "low";
         if (r.foes !== undefined && foes < r.foes) return "foes";
+        if (r.foesAtMost !== undefined && foes > r.foesAtMost) return "foesmax";
     }
     return undefined;
 }

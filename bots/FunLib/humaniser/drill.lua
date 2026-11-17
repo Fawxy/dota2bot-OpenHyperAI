@@ -1350,26 +1350,26 @@ function ____exports.LowFacts(bot, low)
     local foes = 0
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue272
+            local __continue273
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or h:IsIllusion() then
-                    __continue272 = true
+                    __continue273 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     foes = foes + 1
                 end
                 if low == nil or hpShare(h) > low[1] then
-                    __continue272 = true
+                    __continue273 = true
                     break
                 end
                 local p = pastReach(bot, h)
                 if p >= low[2] and p <= low[3] then
                     found = true
                 end
-                __continue272 = true
+                __continue273 = true
             until true
-            if not __continue272 then
+            if not __continue273 then
                 break
             end
         end
@@ -1380,23 +1380,23 @@ end
 function ____exports.TowerOnCreep(bot, d)
     for ____, tower in ipairs(bot:GetNearbyTowers(1200, false) or ({})) do
         do
-            local __continue279
+            local __continue280
             repeat
                 local t = tower:GetAttackTarget()
                 if t == nil or t == nil or t:IsNull() or not t:IsAlive() then
-                    __continue279 = true
+                    __continue280 = true
                     break
                 end
                 if t:GetTeam() == bot:GetTeam() or not t:IsCreep() or t:IsHero() then
-                    __continue279 = true
+                    __continue280 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= d then
                     return true
                 end
-                __continue279 = true
+                __continue280 = true
             until true
-            if not __continue279 then
+            if not __continue280 then
                 break
             end
         end
@@ -1414,18 +1414,18 @@ function pairFacts(bot, ally, foe)
     local hit
     for ____, a in ipairs(allies) do
         do
-            local __continue287
+            local __continue288
             repeat
                 if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
-                    __continue287 = true
+                    __continue288 = true
                     break
                 end
                 if hit == nil or hpShare(a) < hpShare(hit) then
                     hit = a
                 end
-                __continue287 = true
+                __continue288 = true
             until true
-            if not __continue287 then
+            if not __continue288 then
                 break
             end
         end
@@ -1661,19 +1661,19 @@ ____exports.TABLE = {
         }
     },
     ["kill-reach"] = {
-        note = "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 650 north of it hit to 25% HP by the Radiant pos5, which then walks 2,500 off; control: the Dire pos3 also stands 1,000 north (outnumbered); then laning, attack, retreat; six 100 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 650 north of it hit to 25% HP by the Radiant pos5, which then walks 2,500 off; control: the Dire pos3 also stands 1,000 north (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast = SAFE_CORE,
         others = "bench",
-        rep = {every = 100, from = 0},
+        rep = {every = 120, from = 0},
         rig = {
             half = "execution",
             switch = "KillReach",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, low = {"r:bot1", -2750, 1350}, foe = {"r:bot1", -2750, 1700}, away = {"r:bot1", -2750, 3200}},
-            timeout = 80,
+            timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "reach", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"heal", "stand low"}}, ready = {low = {0.35, 100, 550}, hpAtLeast = 0.5}}, {name = "reach", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"heal", "stand low"}}, ready = {low = {0.35, 100, 550}, hpAtLeast = 0.5}}, {name = "outnum", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"heal", "stand low"}, d3 = {"heal", "stand foe"}}, ready = {low = {0.35, 100, 550}, foes = 2, hpAtLeast = 0.5}}}
+            reps = {{name = "reach", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.35, 100, 550}, foesAtMost = 1, hpAtLeast = 0.5}}, {name = "reach", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.35, 100, 550}, foesAtMost = 1, hpAtLeast = 0.5}}, {name = "outnum", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"stand low"}, d3 = {"heal", "stand foe"}}, ready = {low = {0.35, 100, 550}, foes = 2, hpAtLeast = 0.5}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2378,13 +2378,16 @@ local function failingCheck(bot, st, rr)
             return "towercreep"
         end
     end
-    if r.low ~= nil or r.foes ~= nil then
+    if r.low ~= nil or r.foes ~= nil or r.foesAtMost ~= nil then
         local low, foes = ____exports.LowFacts(bot, r.low)
         if r.low ~= nil and not low then
             return "low"
         end
         if r.foes ~= nil and foes < r.foes then
             return "foes"
+        end
+        if r.foesAtMost ~= nil and foes > r.foesAtMost then
+            return "foesmax"
         end
     end
     return nil
