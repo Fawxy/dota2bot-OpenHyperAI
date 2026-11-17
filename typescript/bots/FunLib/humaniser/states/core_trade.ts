@@ -111,6 +111,13 @@ const KEEP_WAVE_SLACK = 1;
  * its max HP more than the target lost since the trade began, or on any other end below.
  */
 const LOSING_BY = 0.05;
+/**
+ * Slice trade-landed (`Ours.TradeLanded`): an exchange starts at our first landed hit, so `losing` is judged from just before it
+ * (the HP both heroes had on the last frame before it landed, so that hit counts). Until it lands, hits taken while stepping out
+ * or walking in end the trade only past this share of max HP (BEHIND_BY's share; h2hhighhit2: 42 of the 50 no-damage `losing`
+ * ends had lost under 120 HP). `judgement`.
+ */
+const UNLANDED_CAP = 0.15;
 /** A kill window commits and ignores the exchange, so it keeps a time limit. */
 const KILL_TIME = 6;
 /** A pair join commits like a fight and keeps its limit; it reopens at once while PairJoin still answers join. */
@@ -283,6 +290,15 @@ interface Episode {
     joined?: boolean;
     /** A hit back (Exchange took it): opened on a hero hitting us inside our creeps' aggro, so `wave` and `behind` do not end it. */
     hb?: boolean;
+    /** Slice trade-landed: when our first hit on the target landed, and both heroes' HP on the last keep frame before it (the
+     *  exchange's baseline from then); `hpPrev`/`thpPrev` track that frame until it lands. */
+    landedAt?: number;
+    hpPrev?: number;
+    thpPrev?: number;
+    hpL?: number;
+    thpL?: number;
+    /** The bot's GetLastAttackTime when the trade started (GameTime, not DotaTime): an attack fired since raises it. */
+    atkSeen?: number;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
 }
@@ -641,6 +657,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["dur", started ? math.floor((now - ep.startedAt!) * 10) / 10 : 0],
         ["hpd", started ? ep.hp0 - bot.GetHealth() : 0],
         ["thpd", started ? ep.thp0 - thp : 0],
+        ["ld", started && ep.landedAt !== undefined ? math.floor((ep.landedAt - ep.startedAt!) * 10) / 10 : undefined],
         ["hp", math.floor(i.hp * 100) / 100],
         ["thp", math.floor(i.targetHp * 100) / 100],
         ["en", i.enemiesNear],
@@ -918,7 +935,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         const primed = primedAt[bot.GetPlayerID()];
         const walkingIn = primed !== undefined && now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT;
         if (ep.stepSince === undefined && !walkingIn && GetUnitToUnitDistance(bot, ep.target) > reach) return "out_of_reach";
-        if (Deficit(ep.hp0, bot.GetHealth(), ep.thp0, ep.target.GetHealth(), bot.GetMaxHealth()) > LOSING_BY) return "losing";
+        if (losing(bot, ep, now)) return "losing";
     }
     const g = Gather(bot, ep.target);
     // A running kill ends by the target's tower, as at its open (the safe rule's harass would keep it as a trade).
@@ -928,6 +945,36 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
     // The hit back's caution bars, kept with slack (slice high-hit-back): under them retreat's own rule decides again.
     if (ep.hb === true) return hbKeptWhy(bot, g);
     return undefined;
+}
+
+/**
+ * Whether a running trade or hit back has turned against the core. Off (`Ours.TradeLanded`): Deficit from the start over
+ * LOSING_BY. On: before our first hit lands, Deficit from the start over UNLANDED_CAP; from the landing, Deficit from the frame
+ * before it over LOSING_BY. A ranged hit counts from its firing, its projectile still in the air.
+ */
+function losing(bot: Unit, ep: Episode, now: number): boolean {
+    const hp = bot.GetHealth();
+    const thp = ep.target.GetHealth();
+    const max = bot.GetMaxHealth();
+    if (!Ours.On("TradeLanded")) return Deficit(ep.hp0, hp, ep.thp0, thp, max) > LOSING_BY;
+    // Our first hit: an attack fired at the target since the start (GetLastAttackTime rises when it fires, on GameTime's
+    // clock, so it is compared with its own value at the start). The enemy's WasRecentlyDamagedByHero(bot) read false on
+    // every landed hit in the rig (drill retreat-hitback tl1).
+    const fired = bot.GetLastAttackTime();
+    const rose = ep.atkSeen !== undefined && fired > ep.atkSeen;
+    if (rose) ep.atkSeen = fired;
+    const at = bot.GetAttackTarget();
+    if (ep.landedAt === undefined && rose && at !== null && at.IsHero() && at.GetPlayerID() === ep.tpid) {
+        ep.landedAt = now;
+        ep.hpL = ep.hpPrev ?? ep.hp0;
+        ep.thpL = ep.thpPrev ?? ep.thp0;
+    }
+    if (ep.landedAt === undefined) {
+        ep.hpPrev = hp;
+        ep.thpPrev = thp;
+        return Deficit(ep.hp0, hp, ep.thp0, thp, max) > UNLANDED_CAP;
+    }
+    return Deficit(ep.hpL!, hp, ep.thpL!, thp, max) > LOSING_BY;
 }
 
 /** A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only. */
@@ -954,6 +1001,7 @@ export function Think(bot: Unit): void {
     const now = DotaTime();
     if (ep.startedAt === undefined) {
         ep.startedAt = now;
+        ep.atkSeen = bot.GetLastAttackTime();
         PairJoin.Reopened(bot);
     }
     const creeps: Unit[] = [];

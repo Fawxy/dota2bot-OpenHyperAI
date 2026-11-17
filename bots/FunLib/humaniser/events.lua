@@ -1251,6 +1251,7 @@ ____exports.EVENTS = {
         dur = "num",
         hpd = "num",
         thpd = "num",
+        ld = "num",
         hp = "num",
         thp = "num",
         en = "num",

@@ -176,6 +176,10 @@ export const DEFAULTS = {
      *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
      *  Off: Valve's estimate, which counts every learned enemy spell ready. */
     BurstReady: true,
+    /** Slice trade-landed (D24, D18): with CoreTrade on, a trade's `losing` end is judged from the bot's first landed hit on the
+     *  target (the exchange from then, counting that hit); before it lands only a loss of UNLANDED_CAP of max HP ends it.
+     *  Off: from the trade's start, enemy hits taken while stepping out or walking in included. */
+    TradeLanded: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -61,6 +61,8 @@ function Unit:GetNearbyLaneCreeps() return {} end
 function Unit:WasRecentlyDamagedByHero(h) return self.hitBy == h end
 function Unit:GetNearbyTowers() return {} end
 function Unit:GetAttackTarget() return self.attacking end
+-- When our last attack fired (slice trade-landed); never by default.
+function Unit:GetLastAttackTime() return self.lastAttack or -1000 end
 function Unit:Action_AttackUnit(u) self.attacking = u self.orders = (self.orders or 0) + 1 end
 function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
 -- The game's per-player answer; a unit handle out of sight reads as dead (below).
@@ -99,7 +101,9 @@ do
 	CoreTrade.Desire(bot)
 	CoreTrade.Think(bot)
 	check("Think attacks the window's target", bot.attacking == enemy)
-	-- An even exchange for 10 s: no time limit ends it.
+	-- An even exchange for 10 s: no time limit ends it. Our hits land (slice trade-landed).
+	-- GetLastAttackTime runs on GameTime, here 90 s ahead of DotaTime (T).
+	bot.lastAttack = 295
 	bot.hp, enemy.hp = 72, 60
 	T = 210
 	check("an even trade keeps its desire however long it runs", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
@@ -113,6 +117,55 @@ do
 	check("after a lost trade no new one opens while the core is behind its starting HP gap", CoreTrade.Desire(bot) == 0)
 	bot.hp = 74
 	check("once the gap is back a new trade opens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	bot.lastAttack = nil
+end
+
+-- Slice trade-landed (D24, D18): the exchange is judged from our first landed hit. Before it lands (stepping out, walking in)
+-- only a loss of 15% of max HP ends the trade; from it, the deficit counts from the frame before it, so that hit is ours.
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	local function start()
+		CoreTrade.Reset()
+		-- A last hit fired before the trade, on GameTime (90 s ahead of T): later than the start's DotaTime, yet not ours.
+		bot.attacking, bot.lastAttack = nil, 380
+		bot.hp, enemy.hp = 80, 70
+		T = 300
+		CoreTrade.Desire(bot)
+		CoreTrade.Think(bot)
+	end
+	start()
+	-- The enemy hits first: 80 to 70, nothing back yet (h2hhighhit2's 4 mid cases lost 47-140 HP so, unanswered).
+	bot.hp = 70
+	T = 300.5
+	check("trade-landed: 10 of 100 lost before our hit lands keeps the trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- Our hit lands (70 to 64) and the target answers once (70 to 66): from the frame before it we are 4 down, under 5%.
+	bot.lastAttack = 390.8
+	bot.hp, enemy.hp = 66, 64
+	T = 301
+	check("trade-landed: the exchange from our first hit is even, the trade keeps", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	-- Then it turns: from the frame before our hit (70 against 70) to 57 against 63, 13 lost against 7.
+	bot.hp, enemy.hp = 57, 63
+	T = 302
+	check("trade-landed: losing by 5% from our first hit ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing") and last():find("ld=1"))
+
+	start()
+	-- An attack fired after the start, at a creep: not a hit on the target.
+	bot.attacking, bot.lastAttack = { IsHero = function() return false end }, 390.2
+	bot.hp = 70
+	T = 300.2
+	check("trade-landed: an attack at a creep is not our hit; 10 lost keeps", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	bot.hp = 64
+	T = 300.5
+	check("trade-landed: 16 of 100 lost with no hit landed ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing") and not last():find("ld="))
+
+	Ours.TradeLanded = false
+	start()
+	bot.hp = 70
+	T = 300.5
+	check("trade-landed off: 10 of 100 lost before any hit of ours ends it", CoreTrade.Desire(bot) == 0 and last():find("why=losing"))
+	Ours.TradeLanded = nil
+	CoreTrade.Reset()
+	bot.hp, enemy.hp, bot.lastAttack, bot.attacking = 80, 70, nil, nil
 end
 
 -- Slice lane-fight: a core whose lane fights are ours commits on a target at 40% HP or less; with the switch off the trade's 25%
