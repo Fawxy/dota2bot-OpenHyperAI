@@ -467,7 +467,7 @@ export const TABLE: Record<string, Entry> = {
     // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
     // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
     // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
-    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit).
+    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand 500 north of the lane, off the Radiant creeps' path (fix1: creeps killed a statue on it).
     // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
     // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
     // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
@@ -487,8 +487,8 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 behind: ["r:bot1", -2750, 300],
                 low: ["r:bot1", -3350, 700],
-                foe: ["r:bot1", -3700, 700],
-                foe2: ["r:bot1", -3700, 400],
+                foe: ["r:bot1", -3430, 1110],
+                foe2: ["r:bot1", -3130, 1160],
                 away: ["r:bot1", -4150, 700],
             },
             timeout: 95,
@@ -507,7 +507,7 @@ export const TABLE: Record<string, Entry> = {
                 },
                 {
                     name: "hitback",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["leave"], d4: ["attack r5 from 500 until hp 0.05", "stand low"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["leave"], d4: ["attack r5 until hp 0.05", "stand low"] },
                     ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
                 },
                 {
@@ -1625,6 +1625,12 @@ const RIG_APPROACH = 400;
 function lastPoint(st: RigState, key: string, bot: Unit): Vector | undefined {
     const steps = RigRepOf(st.rep)?.setup[key];
     if (steps === undefined || steps.length === 0) return undefined;
+    // Where an attacker finds the hero: its last `stand` step's spot, else its last step's (pair-kill fix1: the flee Lich's
+    // `stand low until hp 0.2, leave` sent the Warlock to its own fountain looking for it).
+    for (let i = steps.length - 1; i >= 0; i--) {
+        const w = steps[i].split(" ");
+        if (w[0] === "stand" && w[1] !== undefined) return rigPoint(bot, w[1]);
+    }
     return rigPoint(bot, steps[steps.length - 1].split(" ")[1] ?? "fountain");
 }
 
