@@ -42,7 +42,8 @@ test('pair_rig: first hits and their gap, the kill, stops together, and the cont
     for (let t = 50; t <= 119; t++) {
         l.push(snap(t, 0, { tgt: t >= 52 && t <= 56 ? 'h8' : '' }));
         l.push(snap(t, 4, { tgt: t >= 53 && t <= 56 ? 'h8' : '' }));
-        l.push(snap(t, 8, { hp: t >= 56 ? 0 : 30, alive: t >= 56 ? 0 : 1, deaths: t >= 56 ? 1 : 0 }));
+        // A dead hero writes no snapshots: the Lich's last alive one is at 55, it respawns at 70 with deaths 1 (kt 4).
+        if (t <= 55 || t >= 70) l.push(snap(t, 8, { hp: t >= 70 ? 100 : 30, deaths: t >= 70 ? 1 : 0 }));
     }
     for (let t = 170; t <= 239; t++) {
         l.push(snap(t, 0, { tgt: t >= 171 && t <= 178 ? 'h8' : '' }));
@@ -61,7 +62,7 @@ test('pair_rig: first hits and their gap, the kill, stops together, and the cont
     s.db.close();
     assert.deepStrictEqual(rs.map((r) => [r.rep, r.var]), [[1, 'low'], [2, 'flee'], [3, 'outnum']]);
     const [a, b, c] = rs;
-    assert.deepStrictEqual([a.target, a.released, a.hit1, a.hit2, a.gap, a.both, a.killed, a.kt, a.together], ['h8', 51, 1, 2, 1, 1, 1, 5, null]);
+    assert.deepStrictEqual([a.target, a.released, a.hit1, a.hit2, a.gap, a.both, a.killed, a.kt, a.together], ['h8', 51, 1, 2, 1, 1, 1, 4, null]);
     assert.deepStrictEqual([b.hit1, b.hit2, b.gap, b.both, b.killed, b.last1, b.last2, b.ret1, b.ret2, b.together], [1, 6, 5, 0, 0, 8, 7, null, 9, 0]);
     assert.deepStrictEqual([c.control, c.attacked, c.target], [1, 0, null]);
     const sum = summary(rs);

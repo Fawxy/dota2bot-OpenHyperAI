@@ -69,7 +69,8 @@ function read(store, v, a, b) {
         for (let i = 1; i < ts.length; i++) {
             if (ts[i].alive === 0 || ts[i].deaths > ts[i - 1].deaths) {
                 row.killed = 1;
-                row.kt = round1(ts[i].t - t0);
+                // A dead hero writes no snapshots: the first one after a death is its respawn, so the kill is its last alive one.
+                row.kt = round1((ts[i].alive === 0 ? ts[i].t : ts[i - 1].t) - t0);
                 break;
             }
         }
