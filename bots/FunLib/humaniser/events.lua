@@ -56,7 +56,8 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     an = "num",
     at = "num",
     by = "str",
-    order = "str"
+    order = "str",
+    rdy = "str"
 })
 ____exports.EVENTS = {
     lua_error = {
@@ -1699,6 +1700,7 @@ ____exports.EVENTS = {
     cast = {
         pid = "num",
         ab = "str",
+        cl = "str",
         x = "num",
         y = "num",
         el = "num",

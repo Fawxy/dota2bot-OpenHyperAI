@@ -22,6 +22,7 @@ import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 export const SCHEMA = 2;
 
@@ -777,6 +778,8 @@ function damageFields(bot: Unit): BotPair[] {
 }
 
 const guardedDamageFields = Guard("Telemetry.Damage", damageFields, () => []);
+// Slice cast-read: the cast read's "ready and unused" (ev=snap rdy).
+const guardedReady = Guard("Telemetry.Ready", SpellReady.ReadyList, () => undefined);
 
 function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     const fields: BotPair[] = unitFields(bot);
@@ -789,6 +792,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     for (const f of guardedOptionFields(bot)) fields.push(f);
     for (const f of guardedDamageFields(bot)) fields.push(f);
+    fields.push(["rdy", guardedReady(bot)]);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);

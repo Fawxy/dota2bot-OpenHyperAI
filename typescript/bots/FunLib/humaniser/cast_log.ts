@@ -8,6 +8,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 /** A dead hero has no tick to drain its queue; casts past this many are dropped. */
 const PENDING_MAX = 16;
@@ -52,6 +53,7 @@ function log(bot: Unit, p: Pending): void {
     const ep = CoreTrade.EpisodeOf(pid);
     const t = ep?.target;
     const seen = t !== undefined && !t.IsNull() && t.CanBeSeen();
+    const name = nameOf(e.ability);
     const first = keysLogged[pid] !== true;
     keysLogged[pid] = true;
     let el: number | undefined;
@@ -61,7 +63,8 @@ function log(bot: Unit, p: Pending): void {
     }
     Telemetry.Event("cast", [
         ["pid", pid],
-        ["ab", nameOf(e.ability)],
+        ["ab", name],
+        ["cl", SpellReady.ClassByName(bot, name)],
         ["x", hasLoc ? math.floor(loc.x) : undefined],
         ["y", hasLoc ? math.floor(loc.y) : undefined],
         ["el", el],

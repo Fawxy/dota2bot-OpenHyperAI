@@ -81,6 +81,7 @@ end
 local ____exports = {}
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 --- A dead hero has no tick to drain its queue; casts past this many are dropped.
 local PENDING_MAX = 16
 local installed = {}
@@ -123,6 +124,7 @@ local function log(bot, p)
     local ep = CoreTrade.EpisodeOf(pid)
     local t = ep and ep.target
     local seen = t ~= nil and not t:IsNull() and t:CanBeSeen()
+    local name = nameOf(e.ability)
     local first = keysLogged[pid] ~= true
     keysLogged[pid] = true
     local el
@@ -134,9 +136,10 @@ local function log(bot, p)
         "cast",
         {
             {"pid", pid},
+            {"ab", name},
             {
-                "ab",
-                nameOf(e.ability)
+                "cl",
+                SpellReady.ClassByName(bot, name)
             },
             {
                 "x",

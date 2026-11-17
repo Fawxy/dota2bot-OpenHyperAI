@@ -14,6 +14,7 @@
  */
 import { DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import { SPELL_DAMAGE } from "bots/FunLib/humaniser/spell_damage_data";
 
 const SLOTS = 6;
@@ -127,4 +128,45 @@ export function DamageOn(e: Unit, target: Unit, window: number): number {
     const spent = SpentOn(e, target, window);
     if (spent <= 0) return est;
     return math.max(math.min(est, attackPart(e as Caster, target, window)), est - spent);
+}
+
+interface ClassHandle extends AbilityHandle {
+    IsPassive(): boolean;
+    IsUltimate(): boolean;
+    GetAbilityDamage(): number;
+}
+
+/**
+ * Slice cast-read: an ability's class for the cast read: `u` ultimate, `k` key (a hard disable or spell immunity,
+ * AbilityClasses), `d` damage (a SPELL_DAMAGE row or GetAbilityDamage over 0), else `o`. Logged only.
+ */
+function classOf(a: ClassHandle): string {
+    if (a.IsUltimate()) return "u";
+    if (AbilityClasses.Classify(a.GetName(), false) === "key") return "k";
+    if (SPELL_DAMAGE[a.GetName()] !== undefined) return "d";
+    const dmg = a.GetAbilityDamage();
+    return type(dmg) === "number" && dmg > 0 ? "d" : "o";
+}
+
+/** Slice cast-read: the class (as `rdy`) of `bot`'s ability `name`; undefined for an item or a name the hero lacks. */
+export function ClassByName(bot: Unit, name: string | undefined): string | undefined {
+    if (name === undefined || string.sub(name, 1, 5) === "item_") return undefined;
+    const a = bot.GetAbilityByName(name) as unknown as ClassHandle | null | undefined;
+    if (a === undefined || a === null || a.IsNull()) return undefined;
+    return classOf(a);
+}
+
+/**
+ * Slice cast-read: the spells `bot` can cast now (learned, shown, not passive, IsFullyCastable) as `;`-joined
+ * `name:class`. Abilities only: lane items are left out. Logged only (ev=snap `rdy`).
+ */
+export function ReadyList(bot: Unit): string | undefined {
+    const out: string[] = [];
+    for (let slot = 0; slot < SLOTS; slot++) {
+        const a = bot.GetAbilityInSlot(slot) as unknown as ClassHandle | null | undefined;
+        if (a === undefined || a === null || a.IsNull()) continue;
+        if (a.GetLevel() <= 0 || a.IsHidden() || a.IsPassive() || !a.IsFullyCastable()) continue;
+        out.push(`${a.GetName()}:${classOf(a)}`);
+    }
+    return out.length > 0 ? out.join(";") : undefined;
 }
