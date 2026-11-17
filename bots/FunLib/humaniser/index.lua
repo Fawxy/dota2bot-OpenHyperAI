@@ -45,6 +45,7 @@ local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_t
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
+local CastLog = require(GetScriptDirectory().."/FunLib/humaniser/cast_log")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
@@ -329,6 +330,7 @@ local function tick(bot)
     steps.intent(bot)
     LaneControl.Tick(bot)
     steps.telemetry(bot, telemetryContext)
+    pcall(CastLog.Tick, bot)
     pcall(steps.regen, bot)
     pcall(steps.probe, bot)
     States.Tick(bot)

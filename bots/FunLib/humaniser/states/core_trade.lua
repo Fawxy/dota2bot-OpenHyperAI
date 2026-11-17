@@ -64,9 +64,10 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local decideSafe, favoured, heldBy, heldByGap, fightSafe, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, losing, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, UNLANDED_CAP, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo
+local decideSafe, favoured, heldBy, heldByGap, chaseEnd, fightSafe, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, keepKill, noteSeen, chaseDistance, keepCut, losing, stepOutPoint, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, UNLANDED_CAP, KILL_TIME, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, chases, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo, TRADE_CUT_UNTIL, round6, HEADING_SPAN, KEEP_CUT_EVERY, keepCutAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local UnitType = ____dota.UnitType
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -182,6 +183,45 @@ end
 function ____exports.Deficit(hp0, hp, thp0, thp, maxHp)
     return (hp0 - hp - (thp0 - thp)) / math.max(1, maxHp)
 end
+function chaseEnd(bot, c, now, ph, seen)
+    local pid = bot:GetPlayerID()
+    chases[pid] = nil
+    local ep = episodes[pid]
+    Telemetry.Event(
+        "chase",
+        {
+            {"pid", pid},
+            {"ph", ph},
+            {"ek", c.kind},
+            {"tgt", c.tpid},
+            {
+                "dt",
+                math.floor((now - c.at) * 10) / 10
+            },
+            {
+                "alive",
+                bot:IsAlive() and 1 or 0
+            },
+            {
+                "d",
+                seen ~= nil and bot:IsAlive() and math.floor(GetUnitToUnitDistance(bot, seen)) or nil
+            },
+            {
+                "thp",
+                seen ~= nil and math.floor(frac(seen) * 100) / 100 or nil
+            },
+            {
+                "hp",
+                bot:IsAlive() and math.floor(frac(bot) * 100) / 100 or nil
+            },
+            {
+                "mode",
+                bot:GetActiveMode()
+            },
+            {"onk", ep ~= nil and ep.tpid == c.tpid and ep.kind or nil}
+        }
+    )
+end
 function fightSafe()
     return Ours.On("FightSafe") and Ours.On("TradeSafe")
 end
@@ -234,22 +274,22 @@ function hitBackTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach + HIT_BACK_WALK, true, BotMode.None)) do
         do
-            local __continue48
+            local __continue58
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue48 = true
+                    __continue58 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
                 if d >= bestD or d > reach and not CreepAggro.Paid(bot, h) then
-                    __continue48 = true
+                    __continue58 = true
                     break
                 end
                 best = h
                 bestD = d
-                __continue48 = true
+                __continue58 = true
             until true
-            if not __continue48 then
+            if not __continue58 then
                 break
             end
         end
@@ -287,8 +327,8 @@ function hitterExchange(bot)
         recoverTo[bot:GetPlayerID()]
     )
 end
-function hbKeptWhy(bot, g)
-    if frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK then
+function hbKeptWhy(g)
+    if g.hp < HIT_BACK_HP - KEEP_HP_SLACK then
         return "hb_hp"
     end
     if g.enemiesNear >= 2 and (g.burst or 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK then
@@ -306,10 +346,10 @@ function unanswered(bot, now, why, i)
     local hd = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(HITTER_RADIUS, true, BotMode.None)) do
         do
-            local __continue67
+            local __continue77
             repeat
                 if not valid(h) or not bot:WasRecentlyDamagedByHero(h, HIT_RECENT) then
-                    __continue67 = true
+                    __continue77 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -317,9 +357,9 @@ function unanswered(bot, now, why, i)
                     hitter = h
                     hd = d
                 end
-                __continue67 = true
+                __continue77 = true
             until true
-            if not __continue67 then
+            if not __continue77 then
                 break
             end
         end
@@ -428,19 +468,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue97
+            local __continue107
             repeat
                 if not c:IsAlive() then
-                    __continue97 = true
+                    __continue107 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue97 = true
+                __continue107 = true
             until true
-            if not __continue97 then
+            if not __continue107 then
                 break
             end
         end
@@ -452,10 +492,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue101
+            local __continue111
             repeat
                 if not t:IsAlive() then
-                    __continue101 = true
+                    __continue111 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -471,21 +511,21 @@ function ____exports.Gather(bot, target)
                 ) <= reach then
                     towerOnMe = true
                 end
-                __continue101 = true
+                __continue111 = true
             until true
-            if not __continue101 then
+            if not __continue111 then
                 break
             end
         end
     end
     local q2 = Ours.On("TradeFree") and question2(bot, target) or ({})
-    local ____temp_1
+    local ____temp_2
     if CoreLastHit.Applies(bot) and bot:WasRecentlyDamagedByHero(target, HIT_RECENT) then
-        ____temp_1 = true
+        ____temp_2 = true
     else
-        ____temp_1 = nil
+        ____temp_2 = nil
     end
-    local hitting = ____temp_1
+    local hitting = ____temp_2
     if safe then
         local here = bot:GetLocation()
         local burst = Threat.Read(
@@ -580,13 +620,13 @@ function freshDecision(bot, pid, now, owns, target, inputs, killHp)
         end
     end
     local gap = recoverTo[pid]
-    local ____temp_13
+    local ____temp_14
     if d.kind == "trade" then
-        ____temp_13 = heldBy(inputs, gap)
+        ____temp_14 = heldBy(inputs, gap)
     else
-        ____temp_13 = nil
+        ____temp_14 = nil
     end
-    local heldWhy = ____temp_13
+    local heldWhy = ____temp_14
     local held = heldWhy ~= nil
     if heldWhy == "deny" then
         return unanswered(bot, now, "deny", inputs)
@@ -651,6 +691,8 @@ function open(bot, kind, target, now, play, joined, hb)
         lf = ____exports.OwnsLaneFights(bot),
         hp0 = bot:GetHealth(),
         thp0 = target:GetHealth(),
+        tmax = target:GetMaxHealth(),
+        thull = target:GetBoundingRadius(),
         thpSeen = target:GetHealth(),
         inputs = ____exports.Gather(bot, target),
         primes = 0,
@@ -672,18 +714,18 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue152
+            local __continue164
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue152 = true
+                    __continue164 = true
                     break
                 end
                 if ____exports.FightRefusal(
                     ____exports.Gather(bot, t),
                     killHpFor(bot)
                 ) ~= nil then
-                    __continue152 = true
+                    __continue164 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -692,12 +734,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue152 = true
+                    __continue164 = true
                     break
                 end
                 return p
             until true
-            if not __continue152 then
+            if not __continue164 then
                 break
             end
         end
@@ -706,9 +748,9 @@ function joinable(bot)
 end
 function rollFight(bot, target, now)
     local pid = bot:GetPlayerID()
-    local ____temp_14 = rolledAt[pid] or ({})
-    rolledAt[pid] = ____temp_14
-    local seen = ____temp_14
+    local ____temp_15 = rolledAt[pid] or ({})
+    rolledAt[pid] = ____temp_15
+    local seen = ____temp_15
     local tpid = target:GetPlayerID()
     local last = seen[tpid]
     if last ~= nil and now - last < FIGHT_ROLL_EVERY then
@@ -726,6 +768,9 @@ function rollFight(bot, target, now)
     )
 end
 function keepWhy(bot, ep, now, join)
+    if ep.kind == "kill" or ep.kind == "join" then
+        return keepKill(bot, ep, now, join)
+    end
     local t = ep.target
     if not IsHeroAlive(ep.tpid) then
         return "target_dead"
@@ -733,30 +778,14 @@ function keepWhy(bot, ep, now, join)
     if not valid(t) then
         return "target_lost"
     end
-    ep.thpSeen = t:GetHealth()
-    if ep.kind == "join" then
-        if join == nil then
-            return "pair_end"
-        end
-        if join ~= t then
-            return "retarget"
-        end
-        if ep.startedAt == nil then
-            return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
-        end
-        return now - ep.startedAt > JOIN_TIME and "time" or nil
-    end
+    noteSeen(ep, now)
     if ep.kind == "trade" and Ours.On("TradeFree") and Laning.DenyDue(bot) then
         return "deny"
     end
     if ep.startedAt == nil then
         return now - ep.offeredAt > LOST_AFTER and "not_taken" or nil
     end
-    if ep.kind == "kill" then
-        if now - ep.startedAt > KILL_TIME then
-            return "time"
-        end
-    elseif ep.kind == "fight" then
+    if ep.kind == "fight" then
         if now - ep.startedAt > FIGHT_TIME then
             return "time"
         end
@@ -802,9 +831,6 @@ function keepWhy(bot, ep, now, join)
         end
     end
     local g = ____exports.Gather(bot, ep.target)
-    if ep.kind == "kill" and g.tower then
-        return "tower"
-    end
     local d = ____exports.Decide(
         g,
         true,
@@ -814,9 +840,198 @@ function keepWhy(bot, ep, now, join)
         return d.respect
     end
     if ep.hb == true then
-        return hbKeptWhy(bot, g)
+        return hbKeptWhy(g)
     end
     return nil
+end
+--- Why a running kill or join ends now, or undefined to keep it: keepWhy's answer for those kinds, pure over its inputs.
+function ____exports.KeepAnswer(k)
+    if not k.alive then
+        return "target_dead"
+    end
+    if not k.seen then
+        return "target_lost"
+    end
+    if k.kind == "join" then
+        if k.join == "none" then
+            return "pair_end"
+        end
+        if k.join == "other" then
+            return "retarget"
+        end
+        if k.started == nil then
+            return k.offered > LOST_AFTER and "not_taken" or nil
+        end
+        return k.started > JOIN_TIME and "time" or nil
+    end
+    if k.started == nil then
+        return k.offered > LOST_AFTER and "not_taken" or nil
+    end
+    if k.started > KILL_TIME then
+        return "time"
+    end
+    local g = k.g
+    if g.tower then
+        return "tower"
+    end
+    local d = ____exports.Decide(g, true, k.killHp)
+    if d.kind == nil then
+        return d.respect
+    end
+    if k.hb then
+        return hbKeptWhy(g)
+    end
+    return nil
+end
+function keepKill(bot, ep, now, join)
+    local alive = IsHeroAlive(ep.tpid)
+    local seen = alive and valid(ep.target)
+    if seen then
+        noteSeen(ep, now)
+    end
+    local k = {
+        kind = ep.kind,
+        alive = alive,
+        seen = seen,
+        offered = now - ep.offeredAt,
+        started = ep.startedAt ~= nil and now - ep.startedAt or nil,
+        join = ep.kind == "join" and (join == nil and "none" or (join == ep.target and "same" or "other")) or nil,
+        killHp = killHpFor(bot),
+        hb = ep.hb == true
+    }
+    if ep.kind == "kill" and seen and k.started ~= nil and k.started <= KILL_TIME then
+        k.g = ____exports.Gather(bot, ep.target)
+    end
+    local why = ____exports.KeepAnswer(k)
+    keepCut(
+        bot,
+        ep,
+        k,
+        why,
+        now
+    )
+    return why
+end
+function noteSeen(ep, now)
+    local t = ep.target
+    ep.thpSeen = t:GetHealth()
+    local l = t:GetLocation()
+    if ep.seen == nil or now - ep.seen.at >= HEADING_SPAN then
+        ep.seen0 = ep.seen
+        ep.seen = {x = l.x, y = l.y, at = now}
+    end
+    ep.seenLast = {x = l.x, y = l.y, at = now}
+end
+function chaseDistance(bot, ep, seen)
+    if seen then
+        return GetUnitToUnitDistance(bot, ep.target)
+    end
+    local info = GetHeroLastSeenInfo(ep.tpid)[1]
+    return info ~= nil and distXY(
+        bot:GetLocation(),
+        info.location
+    ) or nil
+end
+function keepCut(bot, ep, k, why, now)
+    if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true or now > TRADE_CUT_UNTIL then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local last = keepCutAt[pid]
+    if why == nil and last ~= nil and now >= last and now - last < KEEP_CUT_EVERY then
+        return
+    end
+    keepCutAt[pid] = now
+    local g = k.g
+    local info = not k.seen and k.alive and GetHeroLastSeenInfo(ep.tpid)[1] or nil
+    local ____k_alive_16
+    if k.alive then
+        ____k_alive_16 = chaseDistance(bot, ep, k.seen)
+    else
+        ____k_alive_16 = nil
+    end
+    local d = ____k_alive_16
+    Telemetry.Event(
+        "cut",
+        {
+            {"pid", pid},
+            {"kind", "keep"},
+            {
+                "role",
+                isSupport(bot) and "support" or "core"
+            },
+            {"tgt", ep.tpid},
+            {"ek", k.kind},
+            {"alv", k.alive and 1 or 0},
+            {"sn", k.seen and 1 or 0},
+            {
+                "oa",
+                round6(k.offered)
+            },
+            {
+                "sa",
+                k.started ~= nil and round6(k.started) or nil
+            },
+            {"jn", k.join},
+            {"kh", k.killHp},
+            {"hb", k.hb and 1 or nil},
+            {
+                "hp",
+                g ~= nil and round6(g.hp) or nil
+            },
+            {
+                "thp",
+                g ~= nil and round6(g.targetHp) or nil
+            },
+            {"en", g and g.enemiesNear},
+            {"ally", g and g.alliesNear},
+            {"cr", g and g.enemyCreepsNear},
+            {"hc", g and g.hitByCreeps},
+            {"tw", g ~= nil and (g.tower and 1 or 0) or nil},
+            {
+                "bu",
+                (g and g.burst) ~= nil and round6(g.burst) or nil
+            },
+            {"tm", (g and g.burst) ~= nil and (g.towerOnMe == true and 1 or 0) or nil},
+            {"dec", why or "keep"},
+            {
+                "d",
+                d ~= nil and math.floor(d) or nil
+            },
+            {
+                "ar",
+                math.floor(bot:GetAttackRange())
+            },
+            {
+                "hl",
+                math.floor(bot:GetBoundingRadius() + (k.seen and ep.target:GetBoundingRadius() or 0))
+            },
+            {
+                "ms",
+                math.floor(bot:GetCurrentMovementSpeed())
+            },
+            {
+                "tms",
+                k.seen and math.floor(ep.target:GetCurrentMovementSpeed()) or math.floor(Threat.SeenSpeed(ep.tpid) or -1)
+            },
+            {
+                "sp",
+                SpellReady.ReadyDamage(bot)
+            },
+            {
+                "lx",
+                info ~= nil and math.floor(info.location.x) or nil
+            },
+            {
+                "ly",
+                info ~= nil and math.floor(info.location.y) or nil
+            },
+            {
+                "tss",
+                info ~= nil and math.floor(info.time_since_seen * 10 + 0.5) / 10 or nil
+            }
+        }
+    )
 end
 function losing(bot, ep, now)
     local hp = bot:GetHealth()
@@ -868,19 +1083,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue204
+            local __continue233
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue204 = true
+                    __continue233 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue204 = true
+                __continue233 = true
             until true
-            if not __continue204 then
+            if not __continue233 then
                 break
             end
         end
@@ -957,6 +1172,147 @@ HIT_BACK_WALK = 300
 HIT_BACK_HP = 0.7
 LOST_AFTER = 1
 OUTRANGE = 100
+--- Slice chase-log: after an episode loses sight of its target (`target_lost`), what follows within CHASE_WATCH s: the first
+-- frame the target is seen again (`ph=seen`), its death (`dead`), or neither (`gone`). One `ev=chase ph=lost` line at the loss.
+local CHASE_WATCH = 12
+chases = {}
+--- The enemy hero `pid` if our team sees it now. A hero's handle reads null once it leaves sight (smoke chase-log: every
+-- `ph=lost` target's handle was null) and a new one comes back with it, so it is found again by pid.
+local function seenHero(pid)
+    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if h ~= nil and h ~= nil and not h:IsNull() and not h:IsIllusion() and h:GetPlayerID() == pid and h:IsAlive() and h:CanBeSeen() then
+            return h
+        end
+    end
+    return nil
+end
+--- The `ev=chase ph=lost` line at a loss of sight, and the watch it opens.
+local function chaseLost(bot, ep, now)
+    local pid = bot:GetPlayerID()
+    if chases[pid] ~= nil then
+        chaseEnd(
+            bot,
+            chases[pid],
+            now,
+            "next",
+            nil
+        )
+    end
+    chases[pid] = {kind = ep.kind, tpid = ep.tpid, at = now}
+    local info = GetHeroLastSeenInfo(ep.tpid)[1]
+    local me = bot:GetLocation()
+    local d = info ~= nil and distXY(me, info.location) or nil
+    local reach = bot:GetAttackRange() + bot:GetBoundingRadius() + ep.thull
+    local a = ep.seen0
+    local b = ep.seenLast
+    local span = a ~= nil and b ~= nil and b.at - a.at or 0
+    local hv = span > 0 and distXY(
+        Vector(a.x, a.y, 0),
+        Vector(b.x, b.y, 0)
+    ) / span or nil
+    local hd = span > 0 and math.floor(math.deg(math.atan2(b.y - a.y, b.x - a.x)) + 0.5) or nil
+    Telemetry.Event(
+        "chase",
+        {
+            {"pid", pid},
+            {"ph", "lost"},
+            {
+                "role",
+                isSupport(bot) and "support" or "core"
+            },
+            {"ek", ep.kind},
+            {"tgt", ep.tpid},
+            {
+                "dur",
+                ep.startedAt ~= nil and math.floor((now - ep.startedAt) * 10) / 10 or nil
+            },
+            {
+                "hp",
+                math.floor(frac(bot) * 100) / 100
+            },
+            {
+                "thp",
+                math.floor(ep.thpSeen / math.max(1, ep.tmax) * 100) / 100
+            },
+            {
+                "kh",
+                killHpFor(bot)
+            },
+            {
+                "x",
+                math.floor(me.x)
+            },
+            {
+                "y",
+                math.floor(me.y)
+            },
+            {
+                "lx",
+                info ~= nil and math.floor(info.location.x) or nil
+            },
+            {
+                "ly",
+                info ~= nil and math.floor(info.location.y) or nil
+            },
+            {
+                "tss",
+                info ~= nil and math.floor(info.time_since_seen * 10 + 0.5) / 10 or nil
+            },
+            {
+                "d",
+                d ~= nil and math.floor(d) or nil
+            },
+            {
+                "gap",
+                d ~= nil and math.floor(d - reach) or nil
+            },
+            {
+                "ms",
+                math.floor(bot:GetCurrentMovementSpeed())
+            },
+            {
+                "tms",
+                math.floor(Threat.SeenSpeed(ep.tpid) or -1)
+            },
+            {
+                "hv",
+                hv ~= nil and math.floor(hv) or nil
+            },
+            {"hd", hd},
+            {
+                "sp",
+                SpellReady.ReadyDamage(bot)
+            }
+        }
+    )
+end
+--- A running watch's end, if this frame has one: the target seen again, dead, or the watch out of time.
+local function chaseTick(bot, now)
+    local pid = bot:GetPlayerID()
+    local c = chases[pid]
+    if c == nil then
+        return
+    end
+    local dead = not IsHeroAlive(c.tpid)
+    local ____dead_1
+    if dead then
+        ____dead_1 = nil
+    else
+        ____dead_1 = seenHero(c.tpid)
+    end
+    local seen = ____dead_1
+    local out = now - c.at > CHASE_WATCH
+    if not dead and seen == nil and not out then
+        return
+    end
+    chaseEnd(
+        bot,
+        c,
+        now,
+        dead and "dead" or (seen ~= nil and "seen" or "gone"),
+        seen
+    )
+end
 --- The aggro-free attack, for core trades and support harass alike (one plan, so not an engine verb: a lane technique is bot code,
 -- CLAUDE.md rule 3; slice support-spot). What a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack order's cooldown covers it; `prime` (a fresh attack
 -- order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out` of the creeps first.
@@ -1005,10 +1361,7 @@ function ____exports.Taking(bot)
     end
     local ep = episodes[bot:GetPlayerID()]
     if ep ~= nil and ep.hb == true and ep.ended ~= true then
-        return hbKeptWhy(
-            bot,
-            ____exports.Gather(bot, ep.target)
-        ) == nil
+        return hbKeptWhy(____exports.Gather(bot, ep.target)) == nil
     end
     local h, a = hitterExchange(bot)
     return h ~= nil and (a == "trade" or a == "kill")
@@ -1023,10 +1376,10 @@ local function nearestTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(reach, true, BotMode.None)) do
         do
-            local __continue76
+            local __continue86
             repeat
                 if not valid(h) then
-                    __continue76 = true
+                    __continue86 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - (support and lastHitting(h) and PUNISH_BONUS or 0)
@@ -1034,9 +1387,9 @@ local function nearestTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue76 = true
+                __continue86 = true
             until true
-            if not __continue76 then
+            if not __continue86 then
                 break
             end
         end
@@ -1059,28 +1412,28 @@ local function commitTarget(bot, killHp)
         BotMode.None
     )) do
         do
-            local __continue82
+            local __continue92
             repeat
                 if not valid(h) then
-                    __continue82 = true
+                    __continue92 = true
                     break
                 end
                 local f = frac(h)
                 if f > killHp or f >= bestHp then
-                    __continue82 = true
+                    __continue92 = true
                     break
                 end
                 local i = ____exports.Gather(bot, h)
                 if ____exports.Decide(i, false, killHp).kind ~= "kill" then
-                    __continue82 = true
+                    __continue92 = true
                     break
                 end
                 best = h
                 bestI = i
                 bestHp = f
-                __continue82 = true
+                __continue92 = true
             until true
-            if not __continue82 then
+            if not __continue92 then
                 break
             end
         end
@@ -1100,8 +1453,11 @@ local function close(bot, ep, why, now)
     local killed = started and not IsHeroAlive(ep.tpid)
     local thp = killed and 0 or (valid(ep.target) and ep.target:GetHealth() or ep.thpSeen)
     local i = ep.inputs
-    local ____Telemetry_Event_5 = Telemetry.Event
-    local ____array_4 = __TS__SparseArrayNew(
+    if why == "target_lost" and Telemetry.IsEnabled() then
+        chaseLost(bot, ep, now)
+    end
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
         {"pid", pid},
         {
             "role",
@@ -1111,10 +1467,10 @@ local function close(bot, ep, why, now)
         {"kind", ep.kind},
         {"tgt", ep.tpid}
     )
-    local ____opt_2 = ep.play
+    local ____opt_3 = ep.play
     __TS__SparseArrayPush(
-        ____array_4,
-        {"play", ____opt_2 and ____opt_2.id},
+        ____array_5,
+        {"play", ____opt_3 and ____opt_3.id},
         {"join", ep.play ~= nil and (ep.joined and 1 or 0) or nil},
         {"hb", ep.hb == true and 1 or nil},
         {"result", started and (killed and "kill" or "done") or "lost"},
@@ -1155,9 +1511,9 @@ local function close(bot, ep, why, now)
             math.floor(bot:GetActiveModeDesire() * 100) / 100
         }
     )
-    ____Telemetry_Event_5(
+    ____Telemetry_Event_6(
         "trade",
-        {__TS__SparseArraySpread(____array_4)}
+        {__TS__SparseArraySpread(____array_5)}
     )
     if started then
         PairJoin.After(bot, ep.kind, why, ep.tpid)
@@ -1166,12 +1522,9 @@ end
 --- The cut's cadence (cut kind `trade`): a fresh decision at most every TRADE_CUT_EVERY s, an unchanged answer every TRADE_CUT_KEEP s, to TRADE_CUT_UNTIL (the laning stage; PairJoin's).
 local TRADE_CUT_EVERY = 0.5
 local TRADE_CUT_KEEP = 2
-local TRADE_CUT_UNTIL = 720
+TRADE_CUT_UNTIL = 720
 local cutState = {}
---- Six places: under heldByGap's 1e-6 margin's scale of concern, so a replay on a border decides as the game did (review).
-local function round6(v)
-    return math.floor(v * 1000000 + 0.5) / 1000000
-end
+round6 = function(v) return math.floor(v * 1000000 + 0.5) / 1000000 end
 --- The `ev=cut kind=trade` fields of the fresh decision on `target` when a line is due (its inputs and answer, driver
 -- core_trade), read before Desire acts on it; Desire adds `did` once it has. Undefined when no line is due. Reads only.
 local function cutFields(bot, target, i, killHp, lf, now)
@@ -1179,9 +1532,9 @@ local function cutFields(bot, target, i, killHp, lf, now)
         return nil
     end
     local pid = bot:GetPlayerID()
-    local ____temp_6 = cutState[pid] or ({})
-    cutState[pid] = ____temp_6
-    local st = ____temp_6
+    local ____temp_7 = cutState[pid] or ({})
+    cutState[pid] = ____temp_7
+    local st = ____temp_7
     if st.at ~= nil and now >= st.at and now - st.at < TRADE_CUT_EVERY then
         return nil
     end
@@ -1305,6 +1658,9 @@ function ____exports.Desire(bot)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local ep = episodes[pid]
+    if Telemetry.IsEnabled() then
+        chaseTick(bot, now)
+    end
     if not bot:IsAlive() or not inLane(bot) then
         if ep ~= nil then
             close(
@@ -1315,13 +1671,13 @@ function ____exports.Desire(bot)
             )
         end
         ownsFrame[pid] = false
-        local ____bot_IsAlive_result_11
+        local ____bot_IsAlive_result_12
         if bot:IsAlive() then
-            ____bot_IsAlive_result_11 = nil
+            ____bot_IsAlive_result_12 = nil
         else
-            ____bot_IsAlive_result_11 = 0
+            ____bot_IsAlive_result_12 = 0
         end
-        return ____bot_IsAlive_result_11
+        return ____bot_IsAlive_result_12
     end
     ownsFrame[pid] = true
     Plays.Tick(now)
@@ -1358,9 +1714,9 @@ function ____exports.Desire(bot)
     local committed, ci = commitTarget(bot, killHp)
     local target = committed or nearestTarget(bot)
     local inputs = ci or (target ~= nil and ____exports.Gather(bot, target) or nil)
-    local ____temp_12
+    local ____temp_13
     if target ~= nil and inputs ~= nil then
-        ____temp_12 = cutFields(
+        ____temp_13 = cutFields(
             bot,
             target,
             inputs,
@@ -1369,9 +1725,9 @@ function ____exports.Desire(bot)
             now
         )
     else
-        ____temp_12 = nil
+        ____temp_13 = nil
     end
-    local cut = ____temp_12
+    local cut = ____temp_13
     local desire = freshDecision(
         bot,
         pid,
@@ -1389,6 +1745,20 @@ function ____exports.Desire(bot)
         Telemetry.Event("cut", cut)
     end
     return desire
+end
+HEADING_SPAN = 0.5
+KEEP_CUT_EVERY = 0.5
+keepCutAt = {}
+--- Slice chase-log (ev=cast): the hero's running episode, its kind and target. Reads only.
+function ____exports.EpisodeOf(pid)
+    local ep = episodes[pid]
+    local ____temp_29
+    if ep == nil or ep.ended == true then
+        ____temp_29 = nil
+    else
+        ____temp_29 = {kind = ep.kind, tpid = ep.tpid, target = ep.target}
+    end
+    return ____temp_29
 end
 --- A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only.
 function ____exports.Joining(bot)
@@ -1420,19 +1790,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue194
+            local __continue223
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue194 = true
+                    __continue223 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue194 = true
+                __continue223 = true
             until true
-            if not __continue194 then
+            if not __continue223 then
                 break
             end
         end
@@ -1518,6 +1888,12 @@ function ____exports.Reset()
     end
     for k in pairs(cutState) do
         cutState[k] = nil
+    end
+    for k in pairs(chases) do
+        chases[k] = nil
+    end
+    for k in pairs(keepCutAt) do
+        keepCutAt[k] = nil
     end
 end
 return ____exports

@@ -2,7 +2,7 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade] [--who CONSUMER] [--game N] [--id ID]   print a fixture
+//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|keep] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
@@ -274,6 +274,27 @@ const DECISIONS = {
         id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${tradeAnswer(cut)} on ${cut.tgt}${Number(cut.hb) === 1 ? " (hitting us)" : ""} (hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, tower ${cut.tw})`,
     },
+    // Slice chase-log: CoreTrade.KeepAnswer on a kill or join's frame; `dec` is its answer, `keep` for none.
+    keep: {
+        driver: 'core_keep',
+        world(game, cut) {
+            const n = k => Number(cut[k]);
+            const w = { t: n('t'), pid: n('pid'), role: cut.role, tgt: n('tgt'), ek: cut.ek, alv: n('alv'), sn: n('sn'), oa: n('oa'), kh: n('kh') };
+            if (cut.sa !== undefined) w.sa = n('sa');
+            if (cut.jn !== undefined) w.jn = cut.jn;
+            for (const k of ['hb', 'hp', 'thp', 'en', 'ally', 'cr', 'hc', 'tw', 'bu', 'tm', 'd']) if (cut[k] !== undefined) w[k] = n(k);
+            return w;
+        },
+        check(game, cut, obs) {
+            const a = obs.actions[0] || {};
+            const got = a.verb === 'end' ? a.target : 'keep';
+            return { same: got === cut.dec, got, want: cut.dec };
+        },
+        answer: (game, cut) => cut.dec,
+        brief: (game, cut) => `${cut.role} ${cut.ek} on ${cut.tgt}, seen ${cut.sn}, started ${cut.sa ?? '-'} s, d ${cut.d ?? '-'}, hp ${cut.hp ?? '-'} vs ${cut.thp ?? '-'}`,
+        id: (cut) => `fights.keep.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
+        note: (game, cut) => `The game chose ${cut.dec} for the ${cut.ek} on ${cut.tgt} (seen ${cut.sn}, started ${cut.sa ?? '-'} s ago)`,
+    },
 };
 
 /** A trade cut's answer: Exchange's (`xa`) when the target was hitting the core, else the trade rule's (`dec`). */
@@ -383,6 +404,10 @@ function factsOf(w) {
         return [...w.ours.map(m => `# ours pid ${m.pid}${m.pid === w.ally ? ' (the hit ally)' : ''}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally${m.ret === 1 ? ', retreating' : ''}`),
             ...w.theirs.map(m => `# theirs pid ${m.pid}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally`)];
     }
+    // A keep world is KeepAnswer's inputs.
+    if (b === undefined && w.ek !== undefined) return [`# ${w.role} pid ${w.pid}, ${w.ek} on pid ${w.tgt}: ${w.alv ? 'alive' : 'dead'}, ${w.sn ? 'seen' : 'unseen'}`
+        + `, offered ${w.oa} s ago, ${w.sa !== undefined ? `started ${w.sa} s ago` : 'not started'}${w.jn ? `, pair join ${w.jn}` : ''}`
+        + `${w.hp !== undefined ? `; HP ${Math.round(100 * w.hp)}% vs ${Math.round(100 * w.thp)}%, heroes ${w.en} theirs, ${w.ally} ours, tower ${w.tw}` : ''}`];
     // A trade world is Decide's inputs: the numbers themselves.
     if (b === undefined) return [`# ${w.role} pid ${w.pid} on pid ${w.tgt}: ${w.d} away, reach ${w.rch}; HP ${Math.round(100 * w.hp)}% vs ${Math.round(100 * w.thp)}%`
         + `; heroes ${w.en} theirs, ${w.ally} ours; creeps near ${w.cr}, on the bot ${w.hc}; tower ${w.tw}${w.tlh ? '; the target is last hitting' : ''}`];

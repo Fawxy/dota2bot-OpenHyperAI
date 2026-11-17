@@ -19,6 +19,8 @@ function InstallChatCallback(fn) table.insert(CHAT_CALLBACKS, fn) end
 CAST_CALLBACKS = {}
 function InstallCastCallback(pid, fn) CAST_CALLBACKS[pid] = CAST_CALLBACKS[pid] or {} table.insert(CAST_CALLBACKS[pid], fn) end
 function Vector(x, y, z) return { x = x, y = y, z = z or 0 } end
+-- No sightings unless a world sets them (lane_world.lua's LAST_SEEN).
+function GetHeroLastSeenInfo() return {} end
 
 UNITS = { [2] = {}, [3] = {} }
 CURRENT_TEAM = 2
@@ -83,6 +85,7 @@ function Unit:DistanceFromFountain() return self.fountainDist or 8000 end
 function Unit:GetLastHits() return self.lastHits or 0 end
 function Unit:GetAttackRange() return self.range or 150 end
 function Unit:GetBoundingRadius() return self.hull or 24 end
+function Unit:GetCurrentMovementSpeed() return self.speed or 300 end
 -- A tower for world_facts when a test loads no lane model: 7.41 attack range 700, radius 144.
 if GetTower == nil then
 	local STUB_TOWER = setmetatable({ pid = -1, team = 2, range = 700, hull = 144 }, Unit)
