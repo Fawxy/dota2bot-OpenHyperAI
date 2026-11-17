@@ -370,19 +370,21 @@ export const TABLE: Record<string, Entry> = {
     // one of each kind a game; rigB before 10:00 was ready in 46 to 71 s and walked home in 37 to 40 s, and the 95 s timeout
     // leaves a ready rep that walk. Acceptance takes three games on one seed.
     // Slice trade-reach (D19's commit, `Ours.KillReach`). half: execution. The commit's facts (CoreTrade commitTarget, Decide's
-    // kill): an enemy hero at the commit bar (40%; forced: the Radiant pos5 actor hits it to 25%, then walks 2,500 off so the
-    // cast is alone) standing 100-550 past the cast's trade reach (forced: a statue 650 north of the cast; Sven's reach is
-    // about 298), the cast in lane in the laning stage with HP over the target's (hit-back's side spot, 763 off our bot lane;
-    // healed each rep), numbers not against us. Read after release: the cast's `ev=trade kind=kill` on the low hero, taken
-    // (result done or kill), and its snapshot `tid` on it within 3 s. The banked start: the low hero in retreat in 8 of 13 and
-    // ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control (`outnum`): the
-    // Dire pos3 stands 1,000 north of the cast too, two against one, so no commit. Seed 8 (lineup B): Sven and Witch Doctor
+    // kill): an enemy hero at the commit bar (40%; forced: the Radiant pos5 actor hits it to 25%, then walks 1,850 west past
+    // it, out of the cast's 1,200 and seeing along the strip) standing 100-550 past the cast's trade reach (forced: a statue
+    // 600 west of the cast on its strip 700 off the lane; Sven's reach is about 298), in sight (on1: a statue 650 north stood
+    // behind trees, seen 138 of 530 s, and every commit ended `target_lost`), the cast in lane in the laning stage with HP over
+    // the target's (hit-back's side spot, 763 off our bot lane; healed each rep), numbers not against us. Read after release:
+    // the cast's `ev=trade kind=kill` on the low hero, taken (result done or kill), and its snapshot `tid` on it within 3 s;
+    // the cast's `ed` (nearest visible enemy) says whether the statue was in sight. The banked start: the low hero in retreat
+    // in 8 of 13 and ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control
+    // (`outnum`): the Dire pos3 stands 1,000 west of the cast too, two against one, so no commit. Seed 8 (lineup B): Sven and Witch Doctor
     // against Lich and Bristleback. The Lich takes no `heal` step (its HP is the pos5's attack each rep; healed, a Lich that
     // lived through a rep walks to its fountain and back, about 110 s); a killed one respawns and walks in, about 60 s, then
     // the attack and the walk off, so 120 s reps with a 95 s timeout, five inside 10:00. Reach reps need the low hero alone
     // within 1,200 (`foesAtMost`: the control's pos3 walks home through it). Release: laning, attack (the kill), retreat, idle.
     "kill-reach": {
-        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 650 north of it hit to 25% HP by the Radiant pos5, which then walks 2,500 off; control: the Dire pos3 also stands 1,000 north (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,850 west; control: the Dire pos3 also stands 1,000 west (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 120, from: 0 },
@@ -392,9 +394,9 @@ export const TABLE: Record<string, Entry> = {
             window: 600,
             spots: {
                 side: ["r:bot1", -2750, 700],
-                low: ["r:bot1", -2750, 1350],
-                foe: ["r:bot1", -2750, 1700],
-                away: ["r:bot1", -2750, 3200],
+                low: ["r:bot1", -3350, 700],
+                foe: ["r:bot1", -3750, 700],
+                away: ["r:bot1", -4600, 700],
             },
             timeout: 95,
             keeps: ["levelup"],
