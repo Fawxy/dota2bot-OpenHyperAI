@@ -459,6 +459,70 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // Slice pair-kill-rig (fighting-together "Tools"; D10, D19): the two-hero kill rig, the graded lines for kill-chances S2
+    // (commit and join as plays) and S3 (release and abort). half: execution. Two of ours near one enemy hero: do both attack
+    // it within a short gap, does it die, and when it lives do both stop together (view pair_rig.js). The banked start
+    // (pair_episodes.js rows on 50 games, fights of 3 s+): a support hitting first with a core partner, 5.1 a game, the partner
+    // hitting 42% (OHA 72%); a target fallen to 40%, 2.2, both hitting 83% but killing 30% (OHA 47%); 2v2 4.8 (54%, OHA 78%).
+    // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
+    // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
+    // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
+    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit).
+    // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
+    // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
+    // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
+    // lane_fight while `Ours.SupportLaneFight` is off, so the rig sees what games see. Abilities and items stay held
+    // (execution first; the cast read decides whether casting is graded). The switch is S2's, which nothing reads yet: the
+    // off arm is today's code.
+    "pair-kill": {
+        note: "rig: Radiant pos1 and pos5 off our bot lane, the Dire pos4 hit to 30% by the Radiant pos4 (which walks off) standing 600 west (low), running at 20% (flee), or attacking our pos5 (hitback); 2v2 with the Dire pos3 beside it (two); control: the Dire pos5 too (outnum); then laning, attack, team_roam, retreat; five 120 s reps from 0:00; seed 8",
+        cast: { r: [1, 5] },
+        others: "bench",
+        rep: { every: 120, from: 0 },
+        rig: {
+            half: "execution",
+            switch: "PairPlay",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                behind: ["r:bot1", -2750, 300],
+                low: ["r:bot1", -3350, 700],
+                foe: ["r:bot1", -3700, 700],
+                foe2: ["r:bot1", -3700, 400],
+                away: ["r:bot1", -4150, 700],
+            },
+            timeout: 95,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "team_roam", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "low",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
+                    ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "flee",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
+                    ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "hitback",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["leave"], d4: ["attack r5 from 500 until hp 0.05", "stand low"] },
+                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "two",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
+                    ready: { low: [0.35, -2000, 550], foes: 2, foesAtMost: 2, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "outnum",
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
+                    ready: { low: [0.35, -2000, 550], foes: 3, alliesAtMost: 1, hpAtLeast: 0.5 },
+                },
+            ],
+        },
+    },
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast: { r: [5] },

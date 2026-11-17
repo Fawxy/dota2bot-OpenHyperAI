@@ -1841,6 +1841,60 @@ ____exports.TABLE = {
             reps = {{name = "burst", setup = {r2 = {"heal", "stand side"}, d2 = {"heal", "walk foe", "burst r2 for 6 using oracle_purifying_flames oracle_fortunes_end zuus_arc_lightning zuus_lightning_bolt", "leave"}}, ready = {near = 1000, hpAtLeast = 0.9}}}
         }
     },
+    ["pair-kill"] = {
+        note = "rig: Radiant pos1 and pos5 off our bot lane, the Dire pos4 hit to 30% by the Radiant pos4 (which walks off) standing 600 west (low), running at 20% (flee), or attacking our pos5 (hitback); 2v2 with the Dire pos3 beside it (two); control: the Dire pos5 too (outnum); then laning, attack, team_roam, retreat; five 120 s reps from 0:00; seed 8",
+        cast = {r = {1, 5}},
+        others = "bench",
+        rep = {every = 120, from = 0},
+        rig = {
+            half = "execution",
+            switch = "PairPlay",
+            window = 600,
+            spots = {
+                side = {"r:bot1", -2750, 700},
+                behind = {"r:bot1", -2750, 300},
+                low = {"r:bot1", -3350, 700},
+                foe = {"r:bot1", -3700, 700},
+                foe2 = {"r:bot1", -3700, 400},
+                away = {"r:bot1", -4150, 700}
+            },
+            timeout = 95,
+            keeps = {"levelup"},
+            release = {modes = {
+                "laning",
+                "attack",
+                "team_roam",
+                "retreat",
+                "idle"
+            }},
+            reps = {
+                {name = "low", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, r4 = {"heal", "attack d4 until hp 0.3", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.35, -2000, 550}, foesAtMost = 1, alliesAtMost = 1, hpAtLeast = 0.5}},
+                {name = "flee", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, r4 = {"heal", "attack d4 until hp 0.3", "leave away"}, d4 = {"stand low until hp 0.2", "leave"}}, ready = {low = {0.35, -2000, 550}, foesAtMost = 1, alliesAtMost = 1, hpAtLeast = 0.5}},
+                {name = "hitback", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, r4 = {"leave"}, d4 = {"attack r5 from 500 until hp 0.05", "stand low"}}, ready = {pair = {1200, 1000}, ahead = true, hpAtLeast = 0.5}},
+                {name = "two", setup = {
+                    r1 = {"heal", "stand side"},
+                    r5 = {"heal", "stand behind"},
+                    r4 = {"heal", "attack d4 until hp 0.3", "leave away"},
+                    d4 = {"stand low"},
+                    d3 = {"heal", "stand foe"}
+                }, ready = {
+                    low = {0.35, -2000, 550},
+                    foes = 2,
+                    foesAtMost = 2,
+                    alliesAtMost = 1,
+                    hpAtLeast = 0.5
+                }},
+                {name = "outnum", setup = {
+                    r1 = {"heal", "stand side"},
+                    r5 = {"heal", "stand behind"},
+                    r4 = {"heal", "attack d4 until hp 0.3", "leave away"},
+                    d4 = {"stand low"},
+                    d3 = {"heal", "stand foe"},
+                    d5 = {"heal", "stand foe2"}
+                }, ready = {low = {0.35, -2000, 550}, foes = 3, alliesAtMost = 1, hpAtLeast = 0.5}}
+            }
+        }
+    },
     ["retreat-heal-items"] = {
         note = "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast = {r = {5}},
