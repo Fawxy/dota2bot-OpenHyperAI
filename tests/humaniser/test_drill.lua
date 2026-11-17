@@ -431,6 +431,8 @@ do
 							check(name .. "/" .. rr.name .. ": spot " .. a .. " defined", r.spots[a] ~= nil)
 						elseif verb == "attack" then
 							check(name .. "/" .. rr.name .. ": attack target listed", rr.setup[a] ~= nil and tonumber(s:match("until hp ([%d%.]+)$")) ~= nil, s)
+						elseif verb == "after" then
+							check(name .. "/" .. rr.name .. ": the hero waited for is listed", rr.setup[a] ~= nil, s)
 						else
 							check(name .. "/" .. rr.name .. ": known step " .. s, verb == "heal" or verb == "buy" or verb == "sell" or verb == "leave")
 						end
