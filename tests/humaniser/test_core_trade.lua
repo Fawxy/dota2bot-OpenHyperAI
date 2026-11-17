@@ -864,4 +864,27 @@ do
 	enemy.hp, enemy.loc = 70, Vector(400, 0)
 end
 
+-- Slice chase-log: KeepAnswer is keepWhy's answer for a kill or join, pure over its inputs (cut kind `keep`).
+do
+	local function keep(o)
+		local k = { kind = "kill", alive = true, seen = true, offered = 2, started = 1, killHp = 0.4, hb = false, g = inputs({ targetHp = 0.3 }) }
+		for key, v in pairs(o or {}) do k[key] = v end
+		-- A nil in a table literal is no key: `unstarted` clears the start.
+		if k.unstarted then k.started = nil end
+		return CoreTrade.KeepAnswer(k)
+	end
+	check("keep: a running kill on a seen low target is kept", keep() == nil)
+	check("keep: a dead target ends it first", keep({ alive = false, seen = false }) == "target_dead")
+	check("keep: an unseen target ends it (the fog line 3b reads past)", keep({ seen = false, g = nil }) == "target_lost")
+	check("keep: a kill not taken within 1 s of its offer", keep({ unstarted = true, offered = 1.2 }) == "not_taken")
+	check("keep: a kill past its 6 s", keep({ started = 6.1, g = nil }) == "time")
+	check("keep: a kill by their tower", keep({ g = inputs({ targetHp = 0.3, tower = true }) }) == "tower")
+	check("keep: outnumbered ends a kill", keep({ g = inputs({ targetHp = 0.3, enemiesNear = 2 }) }) == "outnumbered")
+	check("keep: a hit back under its HP bar", keep({ hb = true, g = inputs({ hp = 0.5, targetHp = 0.3 }) }) == "hb_hp")
+	check("keep: a join PairJoin no longer answers", keep({ kind = "join", join = "none", g = nil }) == "pair_end")
+	check("keep: a join PairJoin turns to another hero", keep({ kind = "join", join = "other", g = nil }) == "retarget")
+	check("keep: a running join on its target", keep({ kind = "join", join = "same", g = nil }) == nil)
+	check("keep: a join past its time", keep({ kind = "join", join = "same", started = 8.1, g = nil }) == "time")
+end
+
 finish()

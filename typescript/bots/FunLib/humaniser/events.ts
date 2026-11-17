@@ -2830,6 +2830,84 @@ export const EVENTS = {
         /** kind=trade (slice hitback-fold), with `hb`: CoreTrade.Exchange's answer, whether the exchange is taken as a hit back
          *  retreat waits for (`trade`, `kill`) or why not (`hb_hp`, `hb_burst` or Answer's refusal). */
         xa: "str",
+        /** kind=keep (slice chase-log, CoreTrade.KeepAnswer; `dec` its answer, `keep` for none, every end and a keep at most
+         *  each 0.5 s): the episode's kind (`kill` or `join`), the target alive (IsHeroAlive) and seen (1/0), seconds since the
+         *  offer and since the start (absent: not started), and for a join PairJoin's answer this frame (`none`, `same`,
+         *  `other`). `hp` to `tm` are Gather's on the target with trade's names, present only where the answer reads them. */
+        ek: "str",
+        alv: "num",
+        sn: "num",
+        oa: "num",
+        sa: "num",
+        jn: "str",
+        /** kind=keep, the chase's terms (read by nothing yet): our hull plus the target's when seen, our and the target's move
+         *  speed (unseen: Threat's last read, -1 none), our ready damage spells (SpellReady.ReadyDamage: name,cast range,cast
+         *  point,behaviour,damage records), and while unseen our team's last sighting x, y and its age (s). `d` is to the
+         *  target, or to that sighting. */
+        hl: "num",
+        ms: "num",
+        tms: "num",
+        sp: "str",
+        lx: "num",
+        ly: "num",
+        tss: "num",
+    },
+    /** Slice chase-log: a cast by a hero on this script's team (InstallCastCallback, logged on the hero's next tick). */
+    cast: {
+        pid: "num",
+        /** The ability's name. */
+        ab: "str",
+        /** The callback's location, and a hero unit it names other than the caster (its pid). */
+        x: "num",
+        y: "num",
+        tgt: "num",
+        /** The hero's CoreTrade episode at the log: its kind, target pid, the target seen (1/0) and its distance when seen. */
+        ek: "str",
+        etg: "num",
+        es: "num",
+        ed: "num",
+        /** Seconds from the callback to this line. */
+        lag: "num",
+        /** The first cast per hero only: the callback table's keys as key:type, `|`-joined (its shape is unprobed). */
+        ks: "str",
+    },
+    /** Slice chase-log: a CoreTrade episode that lost sight of its target (`ph=lost`), then what followed within 12 s. */
+    chase: {
+        pid: "num",
+        /** `lost`; then `seen` (the target visible again), `dead`, `gone` (neither in 12 s) or `next` (a new loss replaced it). */
+        ph: "str",
+        role: "str",
+        /** The episode's kind and target. */
+        ek: "str",
+        tgt: "num",
+        /** lost: seconds since the episode started; our HP share, the target's when last seen, the kill bar. */
+        dur: "num",
+        hp: "num",
+        thp: "num",
+        kh: "num",
+        /** lost: our place, our team's last sighting of the target and its age (s), our distance to it and that distance past
+         *  our attack range and both hulls. */
+        x: "num",
+        y: "num",
+        lx: "num",
+        ly: "num",
+        tss: "num",
+        d: "num",
+        gap: "num",
+        /** lost: our move speed, the target's last read (Threat.SeenSpeed, -1 none), and its heading over its last seen
+         *  0.5 to 1 s: speed and direction (degrees, atan2 of dy, dx). */
+        ms: "num",
+        tms: "num",
+        hv: "num",
+        hd: "num",
+        /** lost: our ready damage spells (as ev=cut kind=keep `sp`). */
+        sp: "str",
+        /** After: seconds since the loss; our hero alive; when seen, our distance to it and its HP share; our HP share; our
+         *  mode; the kind of our episode on the same target then, if any. */
+        dt: "num",
+        alive: "num",
+        mode: "num",
+        onk: "str",
     },
     /** The lane creeps of an ev=cut, the same frame and pid (cut.ts). */
     cut_creeps: {

@@ -307,6 +307,102 @@ interface Episode {
     atkSeen?: number;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
+    /** Slice chase-log: the target's place on its last seen frame, the place it was at about HEADING_SPAN before that
+     *  (`seen0`), and the sample `seen` that moves on every HEADING_SPAN. */
+    seenLast?: Place;
+    seen?: Place;
+    seen0?: Place;
+}
+
+interface Place {
+    x: number;
+    y: number;
+    at: number;
+}
+
+/**
+ * Slice chase-log: after an episode loses sight of its target (`target_lost`), what follows within CHASE_WATCH s: the first
+ * frame the target is seen again (`ph=seen`), its death (`dead`), or neither (`gone`). One `ev=chase ph=lost` line at the loss.
+ */
+const CHASE_WATCH = 12;
+interface Chase {
+    kind: Kind;
+    tpid: number;
+    target: Unit;
+    at: number;
+}
+const chases: Record<number, Chase | undefined> = {};
+
+/** The `ev=chase ph=lost` line at a loss of sight, and the watch it opens. */
+function chaseLost(bot: Unit, ep: Episode, now: number): void {
+    const pid = bot.GetPlayerID();
+    if (chases[pid] !== undefined) chaseEnd(bot, chases[pid]!, now, "next");
+    chases[pid] = { kind: ep.kind, tpid: ep.tpid, target: ep.target, at: now };
+    const info = GetHeroLastSeenInfo(ep.tpid)[0];
+    const me = bot.GetLocation();
+    const d = info !== undefined ? distXY(me, info.location) : undefined;
+    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + (ep.target.IsNull() ? 0 : ep.target.GetBoundingRadius());
+    const a = ep.seen0;
+    const b = ep.seenLast;
+    const span = a !== undefined && b !== undefined ? b.at - a.at : 0;
+    const hv = span > 0 ? distXY(Vector(a!.x, a!.y, 0), Vector(b!.x, b!.y, 0)) / span : undefined;
+    const hd = span > 0 ? math.floor(math.deg(math.atan2(b!.y - a!.y, b!.x - a!.x)) + 0.5) : undefined;
+    Telemetry.Event("chase", [
+        ["pid", pid],
+        ["ph", "lost"],
+        ["role", isSupport(bot) ? "support" : "core"],
+        ["ek", ep.kind],
+        ["tgt", ep.tpid],
+        ["dur", ep.startedAt !== undefined ? math.floor((now - ep.startedAt) * 10) / 10 : undefined],
+        ["hp", math.floor(frac(bot) * 100) / 100],
+        ["thp", math.floor((ep.thpSeen / math.max(1, ep.target.IsNull() ? 1 : ep.target.GetMaxHealth())) * 100) / 100],
+        ["kh", killHpFor(bot)],
+        ["x", math.floor(me.x)],
+        ["y", math.floor(me.y)],
+        ["lx", info !== undefined ? math.floor(info.location.x) : undefined],
+        ["ly", info !== undefined ? math.floor(info.location.y) : undefined],
+        ["tss", info !== undefined ? math.floor(info.time_since_seen * 10 + 0.5) / 10 : undefined],
+        ["d", d !== undefined ? math.floor(d) : undefined],
+        ["gap", d !== undefined ? math.floor(d - reach) : undefined],
+        ["ms", math.floor(bot.GetCurrentMovementSpeed())],
+        ["tms", math.floor(Threat.SeenSpeed(ep.tpid) ?? -1)],
+        ["hv", hv !== undefined ? math.floor(hv) : undefined],
+        ["hd", hd],
+        ["sp", SpellReady.ReadyDamage(bot)],
+    ]);
+}
+
+/** A running watch's end, if this frame has one: the target seen again, dead, or the watch out of time. */
+function chaseTick(bot: Unit, now: number): void {
+    const pid = bot.GetPlayerID();
+    const c = chases[pid];
+    if (c === undefined) return;
+    const dead = !IsHeroAlive(c.tpid);
+    const seen = !dead && !c.target.IsNull() && c.target.CanBeSeen();
+    const out = now - c.at > CHASE_WATCH;
+    if (!dead && !seen && !out) return;
+    chaseEnd(bot, c, now, dead ? "dead" : seen ? "seen" : "gone");
+}
+
+/** The watch's end line: `seen`, `dead`, `gone`, or `next` (a new loss of sight replaced it). */
+function chaseEnd(bot: Unit, c: Chase, now: number, ph: string): void {
+    const pid = bot.GetPlayerID();
+    chases[pid] = undefined;
+    const ep = episodes[pid];
+    const seen = ph === "seen";
+    Telemetry.Event("chase", [
+        ["pid", pid],
+        ["ph", ph],
+        ["ek", c.kind],
+        ["tgt", c.tpid],
+        ["dt", math.floor((now - c.at) * 10) / 10],
+        ["alive", bot.IsAlive() ? 1 : 0],
+        ["d", seen && bot.IsAlive() ? math.floor(GetUnitToUnitDistance(bot, c.target)) : undefined],
+        ["thp", seen ? math.floor(frac(c.target) * 100) / 100 : undefined],
+        ["hp", bot.IsAlive() ? math.floor(frac(bot) * 100) / 100 : undefined],
+        ["mode", bot.GetActiveMode()],
+        ["onk", ep !== undefined && ep.tpid === c.tpid ? ep.kind : undefined],
+    ]);
 }
 
 export type AggroAction = "attack" | "prime" | "step_out";
@@ -471,14 +567,14 @@ export function Taking(bot: Unit): boolean {
     if (!Ours.On("CoreTrade") || !CoreLastHit.Applies(bot)) return false;
     const ep = episodes[bot.GetPlayerID()];
     // A running hit back holds only inside its own bars (keepWhy's slack): a hero arriving mid-trade lets D1 decide.
-    if (ep !== undefined && ep.hb === true && ep.ended !== true) return hbKeptWhy(bot, Gather(bot, ep.target)) === undefined;
+    if (ep !== undefined && ep.hb === true && ep.ended !== true) return hbKeptWhy(Gather(bot, ep.target)) === undefined;
     const [h, a] = hitterExchange(bot);
     return h !== undefined && (a === "trade" || a === "kill");
 }
 
 /** A running hit back's caution bars, kept with KEEP_HP_SLACK: the reason it ends, or undefined while it holds. */
-function hbKeptWhy(bot: Unit, g: Inputs): string | undefined {
-    if (frac(bot) < HIT_BACK_HP - KEEP_HP_SLACK) return "hb_hp";
+function hbKeptWhy(g: Inputs): string | undefined {
+    if (g.hp < HIT_BACK_HP - KEEP_HP_SLACK) return "hb_hp";
     if (g.enemiesNear >= 2 && (g.burst ?? 0) >= Threat.SETTINGS.PackBurst + KEEP_HP_SLACK) return "hb_burst";
     return undefined;
 }
@@ -672,6 +768,8 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
     const killed = started && !IsHeroAlive(ep.tpid);
     const thp = killed ? 0 : valid(ep.target) ? ep.target.GetHealth() : ep.thpSeen;
     const i = ep.inputs;
+    // Slice chase-log: the loss of sight and its watch, before the episode's own end line.
+    if (why === "target_lost" && Telemetry.IsEnabled()) chaseLost(bot, ep, now);
     Telemetry.Event("trade", [
         ["pid", pid],
         ["role", isSupport(bot) ? "support" : "core"],
@@ -799,6 +897,7 @@ export function Desire(bot: Unit): number | undefined {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     let ep = episodes[pid];
+    if (Telemetry.IsEnabled()) chaseTick(bot, now);
     if (!bot.IsAlive() || !inLane(bot)) {
         if (ep !== undefined) close(bot, ep, bot.IsAlive() ? "lane_end" : "dead", now);
         ownsFrame[pid] = false;
@@ -932,25 +1031,16 @@ function rollFight(bot: Unit, target: Unit, now: number): Plays.Play | undefined
 
 /** Why a running episode ends now, or undefined to keep it. `join` is this frame's PairJoin.Joins. */
 function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): string | undefined {
+    if (ep.kind === "kill" || ep.kind === "join") return keepKill(bot, ep, now, join);
     const t: Unit = ep.target;
     if (!IsHeroAlive(ep.tpid)) return "target_dead";
     if (!valid(t)) return "target_lost";
-    ep.thpSeen = t.GetHealth();
-    if (ep.kind === "join") {
-        // The pair's answer, not the trade's inputs, holds a join: it ends when that answer does (losing, outnumbered, no
-        // ally hit within Keep) or names another target, which the same frame opens.
-        if (join === undefined) return "pair_end";
-        if (join !== t) return "retarget";
-        if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
-        return now - ep.startedAt > JOIN_TIME ? "time" : undefined;
-    }
+    noteSeen(ep, now);
     // Harass's third question, asked every frame of a trade or hit back: a due deny ends it (slice trade-free round 2). A kill
     // or fight keeps going: an enemy caught low is worth more than the deny.
     if (ep.kind === "trade" && Ours.On("TradeFree") && Laning.DenyDue(bot)) return "deny";
     if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
-    if (ep.kind === "kill") {
-        if (now - ep.startedAt > KILL_TIME) return "time";
-    } else if (ep.kind === "fight") {
+    if (ep.kind === "fight") {
         if (now - ep.startedAt > FIGHT_TIME) return "time";
         if (ep.play !== undefined && !Plays.Active().includes(ep.play)) return "play_end";
         if (FR.HpFraction(bot) < Plays.SETTINGS.HpFloor) return "hp";
@@ -973,13 +1063,148 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         if (losing(bot, ep, now)) return "losing";
     }
     const g = Gather(bot, ep.target);
-    // A running kill ends by the target's tower, as at its open (the safe rule's harass would keep it as a trade).
-    if (ep.kind === "kill" && g.tower) return "tower";
     const d = Decide(g, true, killHpFor(bot));
     if (d.kind === undefined) return d.respect;
     // The hit back's caution bars, kept with slack (slice high-hit-back): under them retreat's own rule decides again.
-    if (ep.hb === true) return hbKeptWhy(bot, g);
+    if (ep.hb === true) return hbKeptWhy(g);
     return undefined;
+}
+
+/**
+ * Slice chase-log: what the keep decision of a kill or join episode reads (cut kind `keep`). `offered` and `started` are
+ * seconds since the offer and the start (absent: not started); `join` is this frame's PairJoin answer against the episode's
+ * target; `g` is Gather's on the target, present only where the answer reads it (a seen kill, started, inside its time).
+ */
+export interface KeepInputs {
+    kind: "kill" | "join";
+    alive: boolean;
+    seen: boolean;
+    offered: number;
+    started?: number;
+    join?: "none" | "same" | "other";
+    killHp: number;
+    hb: boolean;
+    g?: Inputs;
+}
+
+/** Why a running kill or join ends now, or undefined to keep it: keepWhy's answer for those kinds, pure over its inputs. */
+export function KeepAnswer(k: KeepInputs): string | undefined {
+    if (!k.alive) return "target_dead";
+    if (!k.seen) return "target_lost";
+    if (k.kind === "join") {
+        // The pair's answer, not the trade's inputs, holds a join: it ends when that answer does (losing, outnumbered, no
+        // ally hit within Keep) or names another target, which the same frame opens.
+        if (k.join === "none") return "pair_end";
+        if (k.join === "other") return "retarget";
+        if (k.started === undefined) return k.offered > LOST_AFTER ? "not_taken" : undefined;
+        return k.started > JOIN_TIME ? "time" : undefined;
+    }
+    if (k.started === undefined) return k.offered > LOST_AFTER ? "not_taken" : undefined;
+    if (k.started > KILL_TIME) return "time";
+    const g = k.g!;
+    // A running kill ends by the target's tower, as at its open (the safe rule's harass would keep it as a trade).
+    if (g.tower) return "tower";
+    const d = Decide(g, true, k.killHp);
+    if (d.kind === undefined) return d.respect;
+    // The hit back's caution bars, kept with slack (slice high-hit-back): under them retreat's own rule decides again.
+    if (k.hb) return hbKeptWhy(g);
+    return undefined;
+}
+
+/** keepWhy for a kill or join: KeepAnswer on this frame's reads, the keep cut beside it. */
+function keepKill(bot: Unit, ep: Episode, now: number, join: Unit | undefined): string | undefined {
+    const alive = IsHeroAlive(ep.tpid);
+    const seen = alive && valid(ep.target);
+    if (seen) noteSeen(ep, now);
+    const k: KeepInputs = {
+        kind: ep.kind as "kill" | "join",
+        alive,
+        seen,
+        offered: now - ep.offeredAt,
+        started: ep.startedAt !== undefined ? now - ep.startedAt : undefined,
+        join: ep.kind === "join" ? (join === undefined ? "none" : join === ep.target ? "same" : "other") : undefined,
+        killHp: killHpFor(bot),
+        hb: ep.hb === true,
+    };
+    if (ep.kind === "kill" && seen && k.started !== undefined && k.started <= KILL_TIME) k.g = Gather(bot, ep.target);
+    const why = KeepAnswer(k);
+    keepCut(bot, ep, k, why, now);
+    return why;
+}
+
+/** Seconds between the two places a seen target's heading is read from (`hv`, `hd` on ev=chase). */
+const HEADING_SPAN = 0.5;
+
+/** A seen frame of the episode's target: its HP, place and the place HEADING_SPAN or more before (its heading at a loss). */
+function noteSeen(ep: Episode, now: number): void {
+    const t = ep.target;
+    ep.thpSeen = t.GetHealth();
+    const l = t.GetLocation();
+    if (ep.seen === undefined || now - ep.seen.at >= HEADING_SPAN) {
+        ep.seen0 = ep.seen;
+        ep.seen = { x: l.x, y: l.y, at: now };
+    }
+    ep.seenLast = { x: l.x, y: l.y, at: now };
+}
+
+/** The keep cut's cadence: a keep at most every KEEP_CUT_EVERY s per hero; every end. */
+const KEEP_CUT_EVERY = 0.5;
+const keepCutAt: Record<number, number | undefined> = {};
+
+/** Our hero's distance to the target's place: seen, its place; unseen, our team's last sighting. Undefined when neither reads. */
+function chaseDistance(bot: Unit, ep: Episode, seen: boolean): number | undefined {
+    if (seen) return GetUnitToUnitDistance(bot, ep.target);
+    const info = GetHeroLastSeenInfo(ep.tpid)[0];
+    return info !== undefined ? distXY(bot.GetLocation(), info.location) : undefined;
+}
+
+/**
+ * `ev=cut kind=keep`: KeepAnswer's inputs and answer (`dec`, `keep` for none) for a kill or join, driver core_keep; beside them
+ * the chase's terms that nothing reads yet (kill-chances step 3b): distance, both speeds, our attack range and hulls, our
+ * ready damage spells, and while unseen the last sighting. Reads only.
+ */
+function keepCut(bot: Unit, ep: Episode, k: KeepInputs, why: string | undefined, now: number): void {
+    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || now > TRADE_CUT_UNTIL) return;
+    const pid = bot.GetPlayerID();
+    const last = keepCutAt[pid];
+    if (why === undefined && last !== undefined && now >= last && now - last < KEEP_CUT_EVERY) return;
+    keepCutAt[pid] = now;
+    const g = k.g;
+    const info = !k.seen && k.alive ? GetHeroLastSeenInfo(ep.tpid)[0] : undefined;
+    const d = k.alive ? chaseDistance(bot, ep, k.seen) : undefined;
+    Telemetry.Event("cut", [
+        ["pid", pid],
+        ["kind", "keep"],
+        ["role", isSupport(bot) ? "support" : "core"],
+        ["tgt", ep.tpid],
+        ["ek", k.kind],
+        ["alv", k.alive ? 1 : 0],
+        ["sn", k.seen ? 1 : 0],
+        ["oa", round6(k.offered)],
+        ["sa", k.started !== undefined ? round6(k.started) : undefined],
+        ["jn", k.join],
+        ["kh", k.killHp],
+        ["hb", k.hb ? 1 : undefined],
+        ["hp", g !== undefined ? round6(g.hp) : undefined],
+        ["thp", g !== undefined ? round6(g.targetHp) : undefined],
+        ["en", g?.enemiesNear],
+        ["ally", g?.alliesNear],
+        ["cr", g?.enemyCreepsNear],
+        ["hc", g?.hitByCreeps],
+        ["tw", g !== undefined ? (g.tower ? 1 : 0) : undefined],
+        ["bu", g?.burst !== undefined ? round6(g.burst) : undefined],
+        ["tm", g?.burst !== undefined ? (g.towerOnMe === true ? 1 : 0) : undefined],
+        ["dec", why ?? "keep"],
+        ["d", d !== undefined ? math.floor(d) : undefined],
+        ["ar", math.floor(bot.GetAttackRange())],
+        ["hl", math.floor(bot.GetBoundingRadius() + (k.seen ? ep.target.GetBoundingRadius() : 0))],
+        ["ms", math.floor(bot.GetCurrentMovementSpeed())],
+        ["tms", k.seen ? math.floor(ep.target.GetCurrentMovementSpeed()) : math.floor(Threat.SeenSpeed(ep.tpid) ?? -1)],
+        ["sp", SpellReady.ReadyDamage(bot)],
+        ["lx", info !== undefined ? math.floor(info.location.x) : undefined],
+        ["ly", info !== undefined ? math.floor(info.location.y) : undefined],
+        ["tss", info !== undefined ? math.floor(info.time_since_seen * 10 + 0.5) / 10 : undefined],
+    ]);
 }
 
 /**
@@ -1010,6 +1235,12 @@ function losing(bot: Unit, ep: Episode, now: number): boolean {
         return Deficit(ep.hp0, hp, ep.thp0, thp, max) > UNLANDED_CAP;
     }
     return Deficit(ep.hpL!, hp, ep.thpL!, thp, max) > LOSING_BY;
+}
+
+/** Slice chase-log (ev=cast): the hero's running episode, its kind and target. Reads only. */
+export function EpisodeOf(pid: number): { kind: Kind; tpid: number; target: Unit } | undefined {
+    const ep = episodes[pid];
+    return ep === undefined || ep.ended === true ? undefined : { kind: ep.kind, tpid: ep.tpid, target: ep.target };
 }
 
 /** A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only. */
@@ -1149,4 +1380,6 @@ export function Reset(): void {
     for (const k in rolledAt) rolledAt[k as unknown as number] = undefined;
     for (const k in lastNo) lastNo[k as unknown as number] = undefined;
     for (const k in cutState) cutState[k as unknown as number] = undefined;
+    for (const k in chases) chases[k as unknown as number] = undefined;
+    for (const k in keepCutAt) keepCutAt[k as unknown as number] = undefined;
 }

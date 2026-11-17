@@ -31,6 +31,7 @@ const VERBS = {
     threat_gate: ['go', 'hold'],
     pair_join: ['join', 'out'],
     core_trade: ['trade', 'kill', 'respect', 'fight'],
+    core_keep: ['keep', 'end'],
 };
 
 function listFixtures(dir) {

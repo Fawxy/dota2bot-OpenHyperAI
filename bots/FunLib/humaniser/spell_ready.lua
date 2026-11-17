@@ -96,6 +96,56 @@ function ____exports.Ready(enemy, name)
     end
     return a:IsFullyCastable()
 end
+--- Slice chase-log: the damage spells `bot` can cast now (learned, shown, IsFullyCastable), as `;`-joined records of
+-- name,cast range,cast point (s, two places),behaviour bits (GetBehavior),damage. Damage is the SPELL_DAMAGE key's value
+-- (per second for a per-second row), else GetAbilityDamage; a spell with neither over 0 is left out. Logged only: the
+-- chase's catch read (kill-chances step 3b) is to read the same spells.
+function ____exports.ReadyDamage(bot)
+    local out = {}
+    do
+        local slot = 0
+        while slot < SLOTS do
+            do
+                local __continue21
+                repeat
+                    local a = bot:GetAbilityInSlot(slot)
+                    if a == nil or a == nil or a:IsNull() then
+                        __continue21 = true
+                        break
+                    end
+                    if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
+                        __continue21 = true
+                        break
+                    end
+                    local name = a:GetName()
+                    local row = SPELL_DAMAGE[name]
+                    local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
+                    if type(dmg) ~= "number" or not (dmg > 0) then
+                        __continue21 = true
+                        break
+                    end
+                    local cp = math.floor(a:GetCastPoint() * 100 + 0.5) / 100
+                    out[#out + 1] = table.concat(
+                        {
+                            name,
+                            math.floor(a:GetCastRange()),
+                            cp,
+                            a:GetBehavior(),
+                            math.floor(dmg + 0.5)
+                        },
+                        ","
+                    )
+                    __continue21 = true
+                until true
+                if not __continue21 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+    return #out > 0 and table.concat(out, ";") or nil
+end
 --- `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now); with BurstReady off, Valve's figure.
 function ____exports.DamageOn(e, target, window)
     local est = e:GetEstimatedDamageToTarget(true, target, window, DamageType.All)

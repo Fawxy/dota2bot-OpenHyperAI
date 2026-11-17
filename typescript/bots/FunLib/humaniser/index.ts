@@ -55,6 +55,7 @@ export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";
 export { Retreat };
 import * as PairJoin from "bots/FunLib/humaniser/pair_join";
+import * as CastLog from "bots/FunLib/humaniser/cast_log";
 
 const OVERLAY_REFRESH = 0.25;
 const startLogged: Record<number, boolean> = {};
@@ -236,6 +237,8 @@ function tick(this: void, bot: Unit): void {
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
     steps.telemetry(bot, telemetryContext);
+    // Slice chase-log: our casts (ev=cast), logged a tick after the callback queues them.
+    CastLog.Tick(bot);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
     pcall(steps.regen, bot);
     pcall(steps.probe, bot);

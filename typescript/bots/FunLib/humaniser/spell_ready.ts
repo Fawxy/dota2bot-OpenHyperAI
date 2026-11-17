@@ -91,6 +91,35 @@ export function Ready(enemy: Unit, name: string): boolean {
     return a.IsFullyCastable();
 }
 
+interface CastHandle extends AbilityHandle {
+    GetCastRange(): number;
+    GetCastPoint(): number;
+    GetBehavior(): number;
+    GetAbilityDamage(): number;
+}
+
+/**
+ * Slice chase-log: the damage spells `bot` can cast now (learned, shown, IsFullyCastable), as `;`-joined records of
+ * name,cast range,cast point (s, two places),behaviour bits (GetBehavior),damage. Damage is the SPELL_DAMAGE key's value
+ * (per second for a per-second row), else GetAbilityDamage; a spell with neither over 0 is left out. Logged only: the
+ * chase's catch read (kill-chances step 3b) is to read the same spells.
+ */
+export function ReadyDamage(bot: Unit): string | undefined {
+    const out: string[] = [];
+    for (let slot = 0; slot < SLOTS; slot++) {
+        const a = bot.GetAbilityInSlot(slot) as unknown as CastHandle | null | undefined;
+        if (a === undefined || a === null || a.IsNull()) continue;
+        if (a.GetLevel() <= 0 || a.IsHidden() || !a.IsFullyCastable()) continue;
+        const name = a.GetName();
+        const row = SPELL_DAMAGE[name];
+        const dmg = row !== undefined ? a.GetSpecialValueFloat(row[0]) : a.GetAbilityDamage();
+        if (type(dmg) !== "number" || !(dmg > 0)) continue;
+        const cp = math.floor(a.GetCastPoint() * 100 + 0.5) / 100;
+        out.push([name, math.floor(a.GetCastRange()), cp, a.GetBehavior(), math.floor(dmg + 0.5)].join(","));
+    }
+    return out.length > 0 ? out.join(";") : undefined;
+}
+
 /** `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now); with BurstReady off, Valve's figure. */
 export function DamageOn(e: Unit, target: Unit, window: number): number {
     const est = e.GetEstimatedDamageToTarget(true, target, window, DamageType.All);
