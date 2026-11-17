@@ -1637,9 +1637,9 @@ function atFountain(bot: Unit): boolean {
 }
 
 /**
- * A channelled spell is let go after this long, so the next order can land inside the 3 s. `judgement`: Fortune's End
- * releases its bolt whenever the channel ends (its root, not its damage, grows with the channel); the trace's `root`
- * shows whether it landed.
+ * A channelled spell is meant to be let go after this long, so the next order lands inside the 3 s. `judgement`. It did not
+ * work in burst-read oracle2: Fortune's End's root landed 2.9 to 3.5 s after its order in every rep and no attack landed
+ * during the channel, so the burst measured is a lower bound of what the hero can deal.
  */
 const RIG_CHANNEL_SECS = 0.3;
 /** A spell order is not repeated (nor logged) within this while its cast point runs. */
