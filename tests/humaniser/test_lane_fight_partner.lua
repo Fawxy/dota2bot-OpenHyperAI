@@ -42,6 +42,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true } })
 	-- LaneFight's own mechanics, so the cores' in-lane fights stay LaneFight's (slice lane-fight's switch off).
 	package.loaded["bots/FunLib/custom_loader"].Ours.CoreLaneFight = o.coreLaneFight == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportLaneFight = false
 	T = 100
 	CURRENT_TEAM = team
 	PINGS = {}

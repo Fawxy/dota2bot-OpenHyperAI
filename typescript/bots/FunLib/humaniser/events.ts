@@ -1955,7 +1955,7 @@ export const EVENTS = {
         pid: "num",
         /** `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot). */
         role: "str",
-        /** 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%. */
+        /** 1 when the laner's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`; a support's, `Ours.SupportLaneFight`): its kill cut is the commit's 40%. */
         lf: "num",
         /** `trade`, `kill` (a commit), `fight` (a lane fight from the play roll: rolled here or joined) or `join` (D10's pair join, `Ours.PairJoin`). */
         kind: "str",

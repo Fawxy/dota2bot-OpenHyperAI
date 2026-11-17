@@ -35,6 +35,8 @@ function LaneFightWorld(o)
 	if laneFight.Enable == nil then laneFight.Enable = true end
 	local H = LaneFresh({ Enable = true }, { skill = o.skill or 1, laneFight = laneFight, telemetry = { Enable = true },
 		intent = o.intent, enable = o.enable, debug = o.debug })
+	-- LaneFight's own mechanics: this pos5's in-lane fights stay LaneFight's (slice support-lane-fight's switch off).
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportLaneFight = false
 	T = 100
 	CURRENT_TEAM = team
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5
