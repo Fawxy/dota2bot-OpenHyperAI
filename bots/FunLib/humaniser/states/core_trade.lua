@@ -428,19 +428,19 @@ function ____exports.Gather(bot, target)
     local hitByCreeps = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(CREEP_AGGRO, true)) do
         do
-            local __continue90
+            local __continue97
             repeat
                 if not c:IsAlive() then
-                    __continue90 = true
+                    __continue97 = true
                     break
                 end
                 enemyCreepsNear = enemyCreepsNear + 1
                 if c:GetAttackTarget() == bot then
                     hitByCreeps = hitByCreeps + 1
                 end
-                __continue90 = true
+                __continue97 = true
             until true
-            if not __continue90 then
+            if not __continue97 then
                 break
             end
         end
@@ -452,10 +452,10 @@ function ____exports.Gather(bot, target)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(reach + 1000, true)) do
         do
-            local __continue94
+            local __continue101
             repeat
                 if not t:IsAlive() then
-                    __continue94 = true
+                    __continue101 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= reach or GetUnitToUnitDistance(target, t) <= reach then
@@ -471,9 +471,9 @@ function ____exports.Gather(bot, target)
                 ) <= reach then
                     towerOnMe = true
                 end
-                __continue94 = true
+                __continue101 = true
             until true
-            if not __continue94 then
+            if not __continue101 then
                 break
             end
         end
@@ -672,18 +672,18 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue145
+            local __continue152
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue145 = true
+                    __continue152 = true
                     break
                 end
                 if ____exports.FightRefusal(
                     ____exports.Gather(bot, t),
                     killHpFor(bot)
                 ) ~= nil then
-                    __continue145 = true
+                    __continue152 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -692,12 +692,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue145 = true
+                    __continue152 = true
                     break
                 end
                 return p
             until true
-            if not __continue145 then
+            if not __continue152 then
                 break
             end
         end
@@ -780,6 +780,14 @@ function keepWhy(bot, ep, now, join)
         ).respect
         return (r == "tower" or r == "outnumbered") and r or nil
     else
+        local kh = killHpFor(bot)
+        if ep.kind == "trade" and frac(t) <= kh and Ours.On("KillReach") and CoreLastHit.Applies(bot) and ____exports.Decide(
+            ____exports.Gather(bot, t),
+            false,
+            kh
+        ).kind == "kill" then
+            return "kill_up"
+        end
         if ep.stepSince ~= nil and now - ep.stepSince > STEP_OUT_LIMIT then
             return "no_clear"
         end
@@ -860,19 +868,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue196
+            local __continue204
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue196 = true
+                    __continue204 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue196 = true
+                __continue204 = true
             until true
-            if not __continue196 then
+            if not __continue204 then
                 break
             end
         end
@@ -925,6 +933,10 @@ KEEP_WAVE_SLACK = 1
 LOSING_BY = 0.05
 UNLANDED_CAP = 0.15
 KILL_TIME = 6
+--- Slice trade-reach (`Ours.KillReach`, D19): a core's commit looks this far past the trade's reach for a hero at the commit bar,
+-- JOIN_WALK's "about 2 s of walking" (`judgement`). h2hcurrent1: 13 of 62 side-core hunter-chances never had the low hero in
+-- reach and none attacked; 10 were within reach + 400, all within reach + 700.
+local KILL_WALK = JOIN_WALK
 JOIN_TIME = FIGHT_TIME
 REACH = 100
 SAFE_HORIZON = 2
@@ -1030,6 +1042,50 @@ local function nearestTarget(bot)
         end
     end
     return best
+end
+--- Slice trade-reach: the commit's target for a core, an enemy hero at `killHp` or less within reach + KILL_WALK that Decide
+-- calls `kill` on (so not outnumbered, not by its tower, not over our HP), the lowest HP first. Undefined: the trade rule's
+-- nearest hero in reach decides as before.
+local function commitTarget(bot, killHp)
+    if not Ours.On("KillReach") or not CoreLastHit.Applies(bot) then
+        return nil, nil
+    end
+    local best
+    local bestI
+    local bestHp = math.huge
+    for ____, h in ipairs(bot:GetNearbyHeroes(
+        reachOf(bot) + KILL_WALK,
+        true,
+        BotMode.None
+    )) do
+        do
+            local __continue82
+            repeat
+                if not valid(h) then
+                    __continue82 = true
+                    break
+                end
+                local f = frac(h)
+                if f > killHp or f >= bestHp then
+                    __continue82 = true
+                    break
+                end
+                local i = ____exports.Gather(bot, h)
+                if ____exports.Decide(i, false, killHp).kind ~= "kill" then
+                    __continue82 = true
+                    break
+                end
+                best = h
+                bestI = i
+                bestHp = f
+                __continue82 = true
+            until true
+            if not __continue82 then
+                break
+            end
+        end
+    end
+    return best, bestI
 end
 local function close(bot, ep, why, now)
     local pid = bot:GetPlayerID()
@@ -1298,9 +1354,10 @@ function ____exports.Desire(bot)
     if owns and Plays.Of(bot) ~= nil then
         return unanswered(bot, now, "play")
     end
-    local target = nearestTarget(bot)
-    local inputs = target ~= nil and ____exports.Gather(bot, target) or nil
     local killHp = killHpFor(bot)
+    local committed, ci = commitTarget(bot, killHp)
+    local target = committed or nearestTarget(bot)
+    local inputs = ci or (target ~= nil and ____exports.Gather(bot, target) or nil)
     local ____temp_12
     if target ~= nil and inputs ~= nil then
         ____temp_12 = cutFields(
@@ -1363,19 +1420,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue186
+            local __continue194
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue186 = true
+                    __continue194 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue186 = true
+                __continue194 = true
             until true
-            if not __continue186 then
+            if not __continue194 then
                 break
             end
         end

@@ -826,4 +826,45 @@ do
 	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)
 end
 
+-- kill-reach's ready checks (slice trade-reach): a low enemy hero past the cast's trade reach (298 for a 150-range hero with
+-- 24 hulls), and the enemy heroes within 1,200.
+do
+	local H = world("kill-reach")
+	local bot = hero(0, RAD, 1, 3)
+	bot.range = 150
+	local low = hero(8, DIRE, 4, 3)
+	local other = hero(7, DIRE, 3, 3)
+	low.hp, low.maxhp, low.loc = 25, 100, Vector(650, 0, 0)
+	other.hp, other.maxhp, other.loc = 100, 100, Vector(5000, 0, 0)
+	local old = GetUnitList
+	local mate = hero(4, RAD, 5, 3)
+	mate.loc = Vector(1400, 0, 0)
+	-- UnitType EnemyHeroes is 8, AlliedHeroes 2 (their enum fallbacks); the cast is in its own list.
+	GetUnitList = function(k) if k == 2 then return { bot, mate } end return { low, other } end
+	local ok, n = H.Drill.LowFacts(bot, { 0.35, 100, 550 })
+	check("kill-reach: a 25% hero 352 past reach is low; one foe within 1,200", ok == true and n == 1, tostring(ok) .. " " .. tostring(n))
+	low.hp = 50
+	ok = H.Drill.LowFacts(bot, { 0.35, 100, 550 })
+	check("kill-reach: at 50% it is not", ok == false)
+	low.hp, low.loc = 25, Vector(1100, 0, 0)
+	ok = H.Drill.LowFacts(bot, { 0.35, 100, 550 })
+	check("kill-reach: 802 past reach it is not", ok == false)
+	low.loc, other.loc = Vector(650, 0, 0), Vector(1000, 0, 0)
+	local a
+	ok, n, a = H.Drill.LowFacts(bot, nil)
+	check("kill-reach: two foes within 1,200; the pos5 1,400 off and the cast itself are no ally near", n == 2 and a == 0, tostring(n) .. " " .. tostring(a))
+	mate.loc = Vector(1100, 0, 0)
+	ok, n, a = H.Drill.LowFacts(bot, nil)
+	check("kill-reach: the pos5 1,100 off is an ally near", a == 1, a)
+	GetUnitList = old
+	local t = H.Drill.TABLE["kill-reach"].rig
+	check("kill-reach: execution rig on KillReach, two reach reps to one outnumbered control", t.half == "execution" and t.switch == "KillReach" and #t.reps == 3 and t.reps[3].ready.foes == 2)
+	-- The spots' offsets on one anchor (they resolve within 100 of these, ph=spot, except where marked in the rig's comment):
+	-- the control's pos3 over 200 from the Lich's spot (the pos5's attack takes the enemy nearest it) with a margin, and
+	-- within 1,200 of the cast with a margin.
+	local sp = t.spots
+	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
+	check("kill-reach: the pos3 300+ from the Lich's spot, under 1,100 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") <= 1100, tostring(dx("foe", "low")) .. " " .. tostring(dx("foe", "side")))
+end
+
 finish()

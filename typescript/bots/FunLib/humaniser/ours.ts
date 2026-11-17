@@ -183,6 +183,10 @@ export const DEFAULTS = {
     /** Slice spells-up (D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill check's
      *  escape) takes an enemy's spell as up only when it can cast it now (SpellReady.Ready). Off: every learned spell is up. */
     SpellsUp: true,
+    /** Slice trade-reach (D19): with CoreTrade on, a core's kill commit looks for an enemy hero at the commit bar up to
+     *  KILL_WALK past the trade's reach (lowest HP first), and a running trade whose target Decide now calls `kill` reopens as
+     *  the kill (`kill_up`). Off: the commit sees only the nearest hero in reach, and a trade stays a trade. */
+    KillReach: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
