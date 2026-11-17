@@ -133,6 +133,28 @@ do
 end
 
 do
+	-- Ours.SpellsUp off: every learned escape reads as up, as before the slice.
+	local W = world({ escape = true, burst = 900 })
+	package.loaded["bots/FunLib/custom_loader"].Ours.SpellsUp = false
+	W.enemy.abilities[0].down = true
+	local r = W.check()
+	package.loaded["bots/FunLib/custom_loader"].Ours.SpellsUp = true
+	check("with SpellsUp off an escape on cooldown still blocks the kill", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+end
+
+do
+	-- An escape item reads as up whatever its handle answers: enemy item handles are unprobed. The handle here would say
+	-- not castable, and the unit finds it by name, so only the item rule keeps it up.
+	local W = world({ burst = 900 })
+	local force = { GetName = function() return "item_force_staff" end, IsNull = function() return false end,
+		IsFullyCastable = function() return false end }
+	W.enemy.GetItemInSlot = function(_, slot) if slot == 0 then return force end return nil end
+	W.enemy.GetAbilityByName = function(_, name) if name == "item_force_staff" then return force end return nil end
+	local r = W.check()
+	check("an escape item reads as up", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+end
+
+do
 	local W = world({ burst = 300, hp = 500 })
 	local partner = MakeUnit({ pid = 2, team = 2, loc = Vector(-700, BOT_Y) })
 	partner.lane, partner.range = Lane.Bot, 1200

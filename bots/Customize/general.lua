@@ -162,12 +162,12 @@ Customize.Humaniser = {
         Mid = true, CounterPlay = true, Telegraph = true,
         CampBlock = false, -- stretch: verify in-game that wards still block spawns first
     },
-    -- Lane fights (task 11): lane trades and kill setups with imperfect memory of enemy cooldowns.
+    -- Lane fights (task 11): lane trades and kill setups; an enemy spell is up when it can be cast now (Ours.SpellsUp).
     -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
     -- Needs the Lane feature: with Lane.Enable = false (or every Lane flag off) lane fights are off too.
     LaneFight = {
         Enable = true,
-        Memory = true, -- remember which enemy abilities were cast, with skill-dependent accuracy
+        Memory = true, -- watch visible enemy casts (an escape cast aborts a commit)
         Trade = true, -- trade hits when the enemy's cooldowns are down
         Kill = true, -- commit to kill setups
         CallKills = true, -- ping a kill setup for human allies

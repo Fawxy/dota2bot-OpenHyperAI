@@ -294,6 +294,13 @@ do
 	W.enemy.abilities[5].down = true
 	r = W.read()
 	check("their ult on cooldown is no respect", r.respect == nil, tostring(r.respect))
+	W = world({ enemyLevel = 6 })
+	W.bot.level = 6
+	W.enemy.abilities[5].down = true
+	package.loaded["bots/FunLib/custom_loader"].Ours.SpellsUp = false
+	r = W.read()
+	package.loaded["bots/FunLib/custom_loader"].Ours.SpellsUp = true
+	check("with SpellsUp off their ult on cooldown still gives respect", r.respect == "their_ult", tostring(r.respect))
 end
 
 do
