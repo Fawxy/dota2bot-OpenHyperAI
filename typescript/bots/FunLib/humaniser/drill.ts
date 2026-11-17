@@ -378,13 +378,13 @@ export const TABLE: Record<string, Entry> = {
     // the cast's `ev=trade kind=kill` on the low hero, taken (result done or kill), and its snapshot `tid` on it within 3 s;
     // the cast's `ed` (nearest visible enemy) says whether the statue was in sight. The banked start: the low hero in retreat
     // in 8 of 13 and ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control
-    // (`outnum`): the Dire pos3 stands 800 west of the cast too, two against one, so no commit (fix3: at 1,000 it sat on the 1,200 edge). Every rep needs no other hero of ours within 1,200 (`alliesAtMost`; fix3: the pos5 walking off counted, ally 2). Seed 8 (lineup B): Sven and Witch Doctor
+    // (`outnum`): the Dire pos3 stands 300 west of the cast too, two against one, so no commit (fix3: at 1,000 it sat on the 1,200 edge; rig3: at 800 it stood 200 from the Lich's spot and the pos5's attack, which takes the visible enemy nearest that spot, hit it instead). Every rep needs no other hero of ours within 1,200 (`alliesAtMost`; fix3: the pos5 walking off counted, ally 2). Seed 8 (lineup B): Sven and Witch Doctor
     // against Lich and Bristleback. The Lich takes no `heal` step (its HP is the pos5's attack each rep; healed, a Lich that
     // lived through a rep walks to its fountain and back, about 110 s); a killed one respawns and walks in, about 60 s, then
     // the attack and the walk off, so 120 s reps with a 95 s timeout, five inside 10:00. Reach reps need the low hero alone
     // within 1,200 (`foesAtMost`: the control's pos3 walks home through it). Release: laning, attack (the kill), retreat, idle.
     "kill-reach": {
-        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 800 west (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 300 west (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 120, from: 0 },
@@ -395,7 +395,7 @@ export const TABLE: Record<string, Entry> = {
             spots: {
                 side: ["r:bot1", -2750, 700],
                 low: ["r:bot1", -3350, 700],
-                foe: ["r:bot1", -3550, 700],
+                foe: ["r:bot1", -3050, 700],
                 away: ["r:bot1", -4150, 700],
             },
             timeout: 95,
