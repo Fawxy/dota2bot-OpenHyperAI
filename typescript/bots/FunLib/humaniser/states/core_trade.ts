@@ -55,6 +55,8 @@ export interface Inputs {
      * free). Present only with the switch on; Answer then asks "free or favoured?" in place of `gap`.
      */
     free?: boolean;
+    /** Slice lone-mid-exchange: the target outranges us by OUTRANGE or more; `Ours.TradeEven` does not apply. */
+    outranged?: boolean;
     ko?: number;
     kt?: number;
     /**
@@ -227,6 +229,11 @@ export function Free(targetLastHitting: boolean, range: number, targetRange: num
     return targetLastHitting || range >= targetRange + OUTRANGE;
 }
 
+/** Slice lone-mid-exchange: the target outranges us by OUTRANGE or more, so our hit must chase it (D24: step out of range, not an even exchange). */
+export function Outranged(range: number, targetRange: number): boolean {
+    return targetRange >= range + OUTRANGE;
+}
+
 /**
  * Harass's second question (slice trade-free, D18): a trade the safe rule allows is taken when the hit is free or the exchange
  * favours us, our kill share over the window beating theirs (PairJoin's estimate). Undefined when the inputs carry no answer
@@ -234,7 +241,17 @@ export function Free(targetLastHitting: boolean, range: number, targetRange: num
  */
 function favoured(i: Inputs): boolean | undefined {
     if (i.free === undefined) return undefined;
-    return i.free || (i.ko ?? 0) > (i.kt ?? 0);
+    return i.free || (i.ko ?? 0) > (i.kt ?? 0) || even(i);
+}
+
+/**
+ * Slice lone-mid-exchange (`Ours.TradeEven`, D24, D18): a core alone against one hero (no ally of ours within 1,200) at HIT_BACK_HP
+ * or more takes the even exchange: no kill-share test. Nobody else's hit answers for it and a refused trade is still hit (h2h
+ * cut kind=trade, 126 games, `@lone_exchange`: refused `unfavoured` episodes lost net 68 to 94 HP in 8 s in every kill-share
+ * band, 77-85% hit anyway; taken ones net -26 to +1). The caution bars (safe, HP, burst, wave) are Decide's and stay.
+ */
+function even(i: Inputs): boolean {
+    return Ours.On("TradeEven") && i.outranged !== true && i.enemiesNear === 1 && i.alliesNear <= 1 && i.hp >= HIT_BACK_HP;
 }
 
 /**
@@ -879,11 +896,12 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
 }
 
 /** Slice trade-free: question 2's inputs; the two estimates only when the hit is not free. */
-function question2(bot: Unit, target: Unit): { free?: boolean; ko?: number; kt?: number; denyDue?: boolean } {
+function question2(bot: Unit, target: Unit): { free?: boolean; outranged?: boolean; ko?: number; kt?: number; denyDue?: boolean } {
     const free = Free(lastHitting(target), bot.GetAttackRange(), target.GetAttackRange());
     const denyDue = Laning.DenyDue(bot);
     if (free) return { free, denyDue };
-    return { free, ko: shareOn(bot, target), kt: shareOn(target, bot), denyDue };
+    const outranged = Outranged(bot.GetAttackRange(), target.GetAttackRange());
+    return { free, outranged, ko: shareOn(bot, target), kt: shareOn(target, bot), denyDue };
 }
 
 /**

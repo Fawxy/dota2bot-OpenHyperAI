@@ -1,0 +1,36 @@
+id: lane.trade.even-lone.001
+source: log
+ref: {log: 2026-11-17T01-33-40-h2hcurrent1_B_rad_2.log, t: 37.1}
+status: active
+decision: core_trade
+# Written from the cut's logged inputs (hlog q on ev_cut; creeps filled by hand). core pid 4 on pid 9: HP 85% vs 97%; heroes 1 theirs, 1 ours; tower 0
+world:
+  t: 37.1
+  pid: 4
+  role: "core"
+  tgt: 9
+  hp: 0.848
+  thp: 0.969
+  en: 1
+  ally: 1
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 744
+  rch: 748
+  tlh: 0
+  bu: 0.3
+  tm: 0
+  ar: 600
+  tar: 625
+  tme: 0
+  ko: 0.153
+  kt: 0.168
+  tf: 1
+  dn: 0
+expect:
+  must: ["trade"]
+notes: >
+  The lone mid's even exchange (h2hcurrent1 B_rad_2, 0:37, lion pid 4 on oracle pid 9, ranges 600 and 625): safe (burst 0.3), 85% HP, one hero in reach and no ally, ours 0.153 against theirs 0.168 of HP. Not free (25 over), not favoured: it was refused `unfavoured` (D24, D18 question 2) and hit anyway. Alone, nobody else answers for it, so it takes the exchange (`Ours.TradeEven`). Controls: lane.trade.even-lone.control-hp.001, .control-ally.001, laning.hitback.control-unfavoured.001 (outranged).

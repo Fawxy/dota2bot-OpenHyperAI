@@ -5,6 +5,7 @@
 --        kh (kill HP share), gap (HP-share gap a lost trade left; absent none).
 -- world, slice trade-safe: bu (burst over HP), tm (0|1, tower on the bot); with bu the safe rule decides.
 -- world, slice trade-free: tf (1: question 2 asked), tlh, ar, tar, ko, kt, dn; with tf the answer may be unfavoured or deny, never gap.
+-- world, slice lone-mid-exchange: te (0 turns Ours.TradeEven off: a lone core at 70% HP or more is held `unfavoured` again; absent: on).
 -- world, slice hitback-fold: hb (1: the target is hitting the bot; CoreTrade.Exchange then answers whether the exchange is taken
 --        as a hit back: hb_hp under 70% HP, hb_burst at two heroes, else Answer's).
 -- Observation: trade, kill or respect(<tower|outnumbered|low_hp|behind|burst|creeps|wave|gap|unfavoured|deny|hb_hp|hb_burst>); fact.hp, fact.thp, fact.cr.
@@ -32,12 +33,17 @@ return function(fx)
 	-- Slice trade-free: with tf (a cut made with Ours.TradeFree on, or a hand world) question 2 replaces gap.
 	if (w.tf == 1 or w.tf == true) and CoreTrade.Free ~= nil then
 		inputs.free = CoreTrade.Free(w.tlh == 1, w.ar, w.tar)
-		if not inputs.free then inputs.ko, inputs.kt = w.ko, w.kt end
+		if not inputs.free then
+			inputs.ko, inputs.kt = w.ko, w.kt
+			inputs.outranged = CoreTrade.Outranged ~= nil and CoreTrade.Outranged(w.ar, w.tar) or nil
+		end
 		-- Round 2: dn (1: the laning body is offered a deny now) outbids a free or favoured trade.
 		inputs.denyDue = w.dn == 1 or w.dn == true
 	end
 	-- Slice hitback-fold: hb (1: the target is hitting the bot) is an input of the one decision, Exchange.
 	if w.hb == 1 or w.hb == true then inputs.hitting = true end
+	-- Slice lone-mid-exchange: te 0 turns Ours.TradeEven off (question 2 holds a lone core's even exchange; absent: on).
+	package.loaded["bots/FunLib/custom_loader"].Ours.TradeEven = w.te ~= 0 and w.te ~= false
 	local a = CoreTrade.Exchange(inputs, w.kh, w.gap)
 	local action = (a == "trade" or a == "kill") and { verb = a } or { verb = "respect", target = a }
 	local actions = { action }

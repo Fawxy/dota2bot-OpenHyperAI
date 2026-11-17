@@ -180,6 +180,10 @@ export const DEFAULTS = {
      *  target (the exchange from then, counting that hit); before it lands only a loss of UNLANDED_CAP of max HP ends it.
      *  Off: from the trade's start, enemy hits taken while stepping out or walking in included. */
     TradeLanded: true,
+    /** Slice lone-mid-exchange (D24, D18): with TradeFree on, a core alone (no ally within 1,200) against one enemy hero at 70% HP
+     *  or more takes the even exchange: question 2 ("free or favoured") no longer holds it `unfavoured`; Decide's bars stay. Off:
+     *  question 2 holds it. */
+    TradeEven: true,
     /** Slice spells-up (D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill check's
      *  escape) takes an enemy's spell as up only when it can cast it now (SpellReady.Ready). Off: every learned spell is up. */
     SpellsUp: true,

@@ -1,0 +1,37 @@
+id: lane.trade.even-lone.control-hp.001
+source: log
+ref: {log: 2026-11-17T01-33-40-h2hcurrent1_B_rad_2.log, t: 37.1}
+status: active
+decision: core_trade
+# As lane.trade.even-lone.001 with HP 62%.
+world:
+  t: 37.1
+  pid: 4
+  role: "core"
+  tgt: 9
+  hp: 0.62
+  thp: 0.969
+  en: 1
+  ally: 1
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 744
+  rch: 748
+  tlh: 0
+  bu: 0.3
+  tm: 0
+  ar: 600
+  tar: 625
+  tme: 0
+  ko: 0.153
+  kt: 0.168
+  tf: 1
+  dn: 0
+expect:
+  must: ["respect(unfavoured)"]
+  mustNot: ["trade"]
+notes: >
+  Control for lane.trade.even-lone.001: the same lone exchange at 62% HP, under the 70% bar (HIT_BACK_HP), stays `unfavoured`.

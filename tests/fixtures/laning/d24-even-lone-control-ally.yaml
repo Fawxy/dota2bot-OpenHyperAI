@@ -1,0 +1,37 @@
+id: lane.trade.even-lone.control-ally.001
+source: log
+ref: {log: 2026-11-17T01-33-40-h2hcurrent1_B_rad_2.log, t: 37.1}
+status: active
+decision: core_trade
+# As lane.trade.even-lone.001 with an ally of ours within 1,200 (2 to 1).
+world:
+  t: 37.1
+  pid: 4
+  role: "core"
+  tgt: 9
+  hp: 0.848
+  thp: 0.969
+  en: 1
+  ally: 2
+  cr: 0
+  hc: 0
+  tw: 0
+  kh: 0.4
+  lf: 1
+  d: 744
+  rch: 748
+  tlh: 0
+  bu: 0.3
+  tm: 0
+  ar: 600
+  tar: 625
+  tme: 0
+  ko: 0.153
+  kt: 0.168
+  tf: 1
+  dn: 0
+expect:
+  must: ["respect(unfavoured)"]
+  mustNot: ["trade"]
+notes: >
+  Control for lane.trade.even-lone.001: with an ally within 1,200 the partner's hits answer for it, so question 2 still holds the exchange `unfavoured` (a pair's exchange is ROADMAP row 1's).

@@ -32,6 +32,6 @@ world:
   kt: 0.373
   tf: 1
 expect:
-  mustNot: ["trade"]
+  must: ["trade"]
 notes: >
-  The mid's unfavoured open (tradefreecut_smoke1, 2:02.8, dazzle pid 9 on necrolyte pid 3, ranges 575 and 500): 82% against 94%, safe, no gap. Not free (75 over, the target not on a creep), and its 3 s estimate on us (kt 0.373 of our HP) beats ours on it (ko 0.251): the exchange loses, so no trade (D18 "harass that lands"). In this game such opens dealt 4 HP and lost 12 on average. Positive control: lane.trade.favoured.001.
+  The mid's unfavoured open (tradefreecut_smoke1, 2:02.8, dazzle pid 9 on necrolyte pid 3, ranges 575 and 500): 82% against 94%, safe, no gap. Not free (75 over, the target not on a creep), and its 3 s estimate on us (kt 0.373 of our HP) beats ours on it (ko 0.251): the exchange loses on shares. Flipped by slice lone-mid-exchange (`Ours.TradeEven`, 18/11/2026): alone against one hero at 70% HP or more the core takes it (refused episodes lost net 68 to 94 HP in every share band, `@lone_exchange`). Was: no trade (D18 "harass that lands"). Controls: lane.trade.even-lone.control-hp.001 and .control-ally.001.

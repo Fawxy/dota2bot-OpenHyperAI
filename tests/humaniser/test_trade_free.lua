@@ -17,6 +17,9 @@ package.loaded["bots/FunLib/humaniser/threat"] = {
 package.loaded["bots/FunLib/humaniser/states/core_trade"] = nil
 local CoreTrade = require("bots/FunLib/humaniser/states/core_trade")
 
+-- Question 2 as slice trade-free built it: slice lone-mid-exchange's rule is tested in its own block at the end.
+package.loaded["bots/FunLib/custom_loader"].Ours.TradeEven = false
+
 local function inputs(o)
 	local i = { hp = 0.8, targetHp = 0.7, enemiesNear = 1, alliesNear = 1, enemyCreepsNear = 1, hitByCreeps = 0, tower = false,
 		burst = 0.3, towerOnMe = false, free = false, ko = 0.3, kt = 0.2 }
@@ -135,5 +138,25 @@ do
 	Laning.OwnsLastHit = owns
 	Ours.CoreDenyYield = yield
 	enemy.range = 500
+end
+
+-- Slice lone-mid-exchange (D24, D18, `Ours.TradeEven`): a core alone against one hero at 70% HP or more takes the exchange
+-- question 2 would hold `unfavoured`; not at lower HP, with an ally near, against a hero that outranges it, or with the switch off.
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	Ours.TradeEven = true
+	local theirs = { ko = 0.2, kt = 0.37 }
+	local function ans(o) return CoreTrade.Answer(inputs(o), 0.25, nil) end
+	local function with(o) for k, v in pairs(theirs) do if o[k] == nil then o[k] = v end end return o end
+	check("trade-even: alone, one hero, 80% HP, theirs over ours: trades", ans(with({})) == "trade")
+	check("trade-even: 70% is the bar", ans(with({ hp = 0.7 })) == "trade" and ans(with({ hp = 0.69 })) == "unfavoured")
+	check("trade-even: an ally near: still unfavoured", ans(with({ alliesNear = 2 })) == "unfavoured")
+	check("trade-even: two enemy heroes in sight: outnumbered, not a trade", ans(with({ enemiesNear = 2 })) == "outnumbered")
+	check("trade-even: a hero outranging us by 100: still unfavoured", ans(with({ outranged = true })) == "unfavoured")
+	check("trade-even: Decide's bars stay (burst 1)", ans(with({ burst = 1 })) == "burst")
+	check("trade-even: a due deny outbids it", ans(with({ denyDue = true })) == "deny")
+	check("Outranged: 100 over, not 99", CoreTrade.Outranged(500, 600) and not CoreTrade.Outranged(500, 599))
+	Ours.TradeEven = false
+	check("trade-even off: unfavoured as before", ans(with({})) == "unfavoured")
 end
 finish()

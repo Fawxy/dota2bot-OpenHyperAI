@@ -102,6 +102,7 @@ ____exports.DEFAULTS = {
     FightSafe = true,
     BurstReady = true,
     TradeLanded = true,
+    TradeEven = true,
     SpellsUp = true,
     KillReach = true
 }
