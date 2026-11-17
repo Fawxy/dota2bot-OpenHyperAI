@@ -420,6 +420,51 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // Slice support-lane-fight (kill-chances S1, `Ours.SupportLaneFight`). half: execution. kill-reach with the roles swapped:
+    // the cast is the Radiant pos5 (Witch Doctor on seed 8, range 600, so its harass reach is about 948 and its commit's walk
+    // about 1,548; `low` measures past the core's reach, about 748), the Radiant pos1 hits the Lich and walks off. Kinds: `bar`,
+    // the Lich at 25-38% inside the support's reach (off: the trade's 25% cut, so no commit); `reach`, the Lich 200-500 past
+    // the core's reach, past the support's own (off: no walk); control `outnum`, the Dire pos3 beside it. The hit stops at 33%
+    // so the off arm's 25% cut is not met by the actor (Sven's hit is about a tenth of the Lich's HP). Spots on kill-reach's
+    // strip: low 800 west of side, far 1,200 (200 short of away), foe 1,100 (300 past low, under 1,200 from side).
+    "support-kill-reach": {
+        note: "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        cast: { r: [5] },
+        others: "bench",
+        rep: { every: 120, from: 0 },
+        rig: {
+            half: "execution",
+            switch: "SupportLaneFight",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                low: ["r:bot1", -3550, 700],
+                far: ["r:bot1", -3950, 700],
+                foe: ["r:bot1", -3850, 700],
+                away: ["r:bot1", -4150, 700],
+            },
+            timeout: 95,
+            keeps: ["levelup"],
+            release: { modes: ["laning", "attack", "retreat", "idle"] },
+            reps: [
+                {
+                    name: "bar",
+                    setup: { r5: ["heal", "stand side"], r1: ["heal", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"] },
+                    ready: { low: [0.38, -400, 200], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "reach",
+                    setup: { r5: ["heal", "stand side"], r1: ["heal", "attack d4 until hp 0.33", "leave away"], d4: ["stand far"] },
+                    ready: { low: [0.38, 200, 500], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
+                },
+                {
+                    name: "outnum",
+                    setup: { r5: ["heal", "stand side"], r1: ["heal", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
+                    ready: { low: [0.38, -400, 200], foes: 2, alliesAtMost: 0, hpAtLeast: 0.5 },
+                },
+            ],
+        },
+    },
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast: { r: [5] },

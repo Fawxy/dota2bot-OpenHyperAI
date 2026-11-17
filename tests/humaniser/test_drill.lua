@@ -867,4 +867,23 @@ do
 	check("kill-reach: the pos3 300+ from the Lich's spot, under 1,100 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") <= 1100, tostring(dx("foe", "low")) .. " " .. tostring(dx("foe", "side")))
 end
 
+-- support-kill-reach (slice support-lane-fight): the spots against a 600-range support's reaches. `low`'s bands are past the
+-- core's reach (600 + 48 + 100 = 748): the bar rep's Lich stands inside the support's harass reach (948, so under 200 past),
+-- the reach rep's past it and inside its commit's walk (1,548, so 200 to 800 past).
+do
+	local H = world("support-kill-reach")
+	local t = H.Drill.TABLE["support-kill-reach"].rig
+	check("support-kill-reach: execution rig on SupportLaneFight, cast the Radiant pos5", t.half == "execution" and t.switch == "SupportLaneFight"
+		and H.Drill.TABLE["support-kill-reach"].cast.r[1] == 5 and #t.reps == 3 and t.reps[3].ready.foes == 2)
+	local sp = t.spots
+	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
+	local past = function(d) return d - 748 end
+	check("support-kill-reach: the bar rep's Lich inside the harass reach, inside its band", past(dx("low", "side")) <= 200 and past(dx("low", "side")) >= t.reps[1].ready.low[2])
+	check("support-kill-reach: the reach rep's Lich past the harass reach, inside the walk and its band",
+		past(dx("far", "side")) > 200 and dx("far", "side") <= 1548 and past(dx("far", "side")) <= t.reps[2].ready.low[3])
+	check("support-kill-reach: the actor's away spot over 1,200 from the cast", dx("away", "side") > 1200)
+	check("support-kill-reach: the pos3 300+ from the Lich's spot, under 1,200 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") < 1200)
+	check("support-kill-reach: the actor stops over the trade's 25% cut", t.reps[1].setup.r1[2] == "attack d4 until hp 0.33")
+end
+
 finish()
