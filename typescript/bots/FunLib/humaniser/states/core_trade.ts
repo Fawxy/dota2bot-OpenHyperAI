@@ -498,10 +498,17 @@ export function Owns(bot: Unit): boolean {
  * Slice lane-fight (`Ours.CoreLaneFight`, OWNERSHIP H9): every fight of this in-lane core beyond a trade is this module's. Team
  * roam keeps only its non-fight branches for it and LaneFight makes no claim (its gates close), so a commit is `kill` here.
  * Beyond the commit, in Desire's order: join a running play near it (`fight`, joined), else roll a `lane_fight` play when no
- * clear window decides (`fight`, rolled), else the trade rule. Supports keep OHA's team roam until `Ours.SupportLaneFight` is built.
+ * clear window decides (`fight`, rolled), else the trade rule. Slice support-lane-fight (`Ours.SupportLaneFight`, kill-chances
+ * S1): a support whose harass is ours too, on the same bars, the role an input (reach, the last-hitting preference).
  */
 export function OwnsLaneFights(bot: Unit): boolean {
-    return Ours.On("CoreLaneFight") && Ours.On("CoreTrade") && CoreLastHit.Applies(bot) && bot.IsAlive() && inLane(bot);
+    const role = CoreLastHit.Applies(bot) ? Ours.On("CoreLaneFight") && Ours.On("CoreTrade") : Ours.On("SupportLaneFight") && isSupport(bot);
+    return role && bot.IsAlive() && inLane(bot);
+}
+
+/** Whose commit looks past reach (`KillReach`): a core's, and a support's whose lane fights are ours. */
+function commitReaches(bot: Unit): boolean {
+    return Ours.On("KillReach") && (CoreLastHit.Applies(bot) || OwnsLaneFights(bot));
 }
 
 function killHpFor(bot: Unit): number {
@@ -675,7 +682,7 @@ function nearestTarget(bot: Unit): Unit | undefined {
  * nearest hero in reach decides as before.
  */
 function commitTarget(bot: Unit, killHp: number): LuaMultiReturn<[Unit | undefined, Inputs | undefined]> {
-    if (!Ours.On("KillReach") || !CoreLastHit.Applies(bot)) return $multi(undefined, undefined);
+    if (!commitReaches(bot)) return $multi(undefined, undefined);
     let best: Unit | undefined;
     let bestI: Inputs | undefined;
     let bestHp = math.huge;
@@ -1066,7 +1073,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         // Slice trade-reach: a trade whose target has fallen to the commit bar gives way to the kill, which the same frame's
         // fresh decision opens (a trade does not chase; a kill does).
         const kh = killHpFor(bot);
-        if (ep.kind === "trade" && frac(t) <= kh && Ours.On("KillReach") && CoreLastHit.Applies(bot) && Decide(Gather(bot, t), false, kh).kind === "kill") return "kill_up";
+        if (ep.kind === "trade" && frac(t) <= kh && commitReaches(bot) && Decide(Gather(bot, t), false, kh).kind === "kill") return "kill_up";
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
         const reach = reachOf(bot) + (ep.hb === true ? HIT_BACK_WALK : 0);
         // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
@@ -1366,12 +1373,18 @@ export function TradeOwnsLaneRun(bot: Unit): boolean {
  * Laning's 0.9 last-hit desire must not cut a retreat this context's core is already in (core-time-diagnosis s2: a death
  * within 15 s of such a cut was 4 times as likely), nor a kill or fight this context's lane fights committed to (lfpchk1:
  * 2 of 8 fights ended in a last hit at 4.9 s, t=154 and t=236; kills by the same reasoning, `judgement`). Trades still
- * give way to it, as does a commit with Ours.CoreLaneFight off. A predicate on the laning GetDesire (OWNERSHIP H2).
+ * give way to it, as does a commit with Ours.CoreLaneFight off. A predicate on the laning GetDesire (OWNERSHIP H2). Slice
+ * support-lane-fight: a support whose lane fights are ours is held by its kill, fight or join the same way (D18: a due last
+ * hit or deny never outbids a kill); its retreat is left as it was.
  */
 export function LastHitYields(bot: Unit): boolean {
-    if (!CoreLastHit.Applies(bot)) return false;
+    if (!CoreLastHit.Applies(bot)) return OwnsLaneFights(bot) && episodeHolds(episodes[bot.GetPlayerID()]);
     if (bot.GetActiveMode() === BotMode.Retreat) return true;
-    const ep = episodes[bot.GetPlayerID()];
+    return episodeHolds(episodes[bot.GetPlayerID()]);
+}
+
+/** A started kill, fight or join that is not ending: above the last hit. */
+function episodeHolds(ep: Episode | undefined): boolean {
     // A pair join (D10, group 2) is above the last hit (D11, group 3) whoever owns the lane fights.
     return ep !== undefined && (ep.lf || ep.kind === "join") && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
 }

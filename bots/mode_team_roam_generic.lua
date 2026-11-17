@@ -47,7 +47,7 @@ local IsAvoidingAbilityZone = false
 local hTargetCreep = nil
 
 -- Slice lane-fight (Ours.CoreLaneFight, OWNERSHIP H9): set at the top of GetDesire, before anything reads it. True while this
--- core's in-lane fights are our attack mode's: the fight branches below (help a targeted core, help an ally, the target finders)
+-- core's (or, Ours.SupportLaneFight, this support's) in-lane fights are our attack mode's: the fight branches below (help a targeted core, help an ally, the target finders)
 -- are skipped and their targets cleared; the item, avoid-zone, special-unit, tower-creep and last-hit branches stay.
 local bLaneFightsOurs = false
 

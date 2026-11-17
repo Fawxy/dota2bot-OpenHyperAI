@@ -992,7 +992,7 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 `pid` num, `join` num, `thpd` num, `thp` num, `en` num, `al` num, `cr` num, `so` num, `ag` num, `md` num
 
 - `role` str: `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot).
-- `lf` num: 1 when the core's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`): its kill cut is the commit's 40%.
+- `lf` num: 1 when the laner's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`; a support's, `Ours.SupportLaneFight`): its kill cut is the commit's 40%.
 - `kind` str: `trade`, `kill` (a commit), `fight` (a lane fight from the play roll: rolled here or joined) or `join` (D10's pair join, `Ours.PairJoin`).
 - `tgt` num: The target hero's pid.
 - `hb` num: 1 for a hit back (CoreTrade.Exchange took it): opened on a hero hitting us inside our creeps' aggro.

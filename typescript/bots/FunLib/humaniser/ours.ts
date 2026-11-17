@@ -187,6 +187,11 @@ export const DEFAULTS = {
      *  KILL_WALK past the trade's reach (lowest HP first), and a running trade whose target Decide now calls `kill` reopens as
      *  the kill (`kill_up`). Off: the commit sees only the nearest hero in reach, and a trade stays a trade. */
     KillReach: true,
+    /** Slice support-lane-fight (kill-chances S1, D19): an in-lane pos4-5 whose harass is ours (SupportHarass) has its lane
+     *  fights ours as a core's are (states/core_trade OwnsLaneFights): the commit at 40% with KillReach's walk, the play join and
+     *  roll; OHA's team roam keeps only its non-fight branches for it and LaneFight makes no claim. Off: team roam's fight
+     *  branches, LaneFight's claims and the trade's 25% kill cut. */
+    SupportLaneFight: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

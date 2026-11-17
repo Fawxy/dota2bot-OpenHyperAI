@@ -202,6 +202,43 @@ do
 	CoreTrade.Reset()
 end
 
+-- Slice support-lane-fight (kill-chances S1): a support whose harass is ours fights on the cores' bars under
+-- Ours.SupportLaneFight: the 35% target is a commit, the commit walks past reach (KillReach), and a started commit holds
+-- laning's last hit off. Off: the trade's 25% cut, no walk, the last hit free, as before.
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	world.applies, world.support = false, true
+	local function open(on, x)
+		Ours.SupportLaneFight = on
+		CoreTrade.Reset()
+		bot.attacking, enemy.dead = nil, false
+		bot.hp, enemy.hp = 80, 35
+		enemy.loc = Vector(x or 400, 0)
+		T = T + 50
+		return CoreTrade.Desire(bot)
+	end
+	check("support lane fights ours: a 35% target is a commit", open(true) == CoreTrade.DESIRE_KILL and CoreTrade.OwnsLaneFights(bot))
+	check("support: the commit's line carries lf=1", (function()
+		CoreTrade.Think(bot)
+		T = T + 0.5
+		local holds = CoreTrade.LastHitYields(bot)
+		enemy.dead = true
+		CoreTrade.Desire(bot)
+		return holds and last():find("kind=kill") and last():find("lf=1") and last():find("role=support")
+	end)(), last())
+	-- Support reach is range 500 + hulls 48 + 300 = 848; 1,200 is past it and within its + 600.
+	check("support: the commit walks past reach to a hero at the bar (KillReach)", open(true, 1200) == CoreTrade.DESIRE_KILL)
+	check("support switch off: the same 35% target is a trade", open(false) == CoreTrade.DESIRE_TRADE and not CoreTrade.OwnsLaneFights(bot))
+	CoreTrade.Think(bot)
+	check("support switch off: a running trade leaves the last hit free", not CoreTrade.LastHitYields(bot))
+	check("support switch off: no walk past reach", open(false, 1200) == 0)
+	world.support = false
+	check("a pos4-5 whose harass is not ours: its fights are not ours", not CoreTrade.OwnsLaneFights((function() Ours.SupportLaneFight = true return bot end)()))
+	world.applies, Ours.SupportLaneFight = true, nil
+	enemy.loc = Vector(400, 0)
+	CoreTrade.Reset()
+end
+
 do
 	check("aggro: inside its own order's cooldown the core just attacks", CoreTrade.AggroPlan(10, 8, 3) == "attack")
 	check("aggro: cooldown over and no creep within 550: a fresh order primes it", CoreTrade.AggroPlan(10, 7, 0) == "prime")
