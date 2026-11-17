@@ -21,13 +21,12 @@ local function tower(hp, first)
 	return hpAt, lands
 end
 
--- The plans below to "Choose" read the forecast as exact (NoError): the search itself. The fitted error's checks follow them.
 -- Our core: 54 at the low roll, 60 mean, first landing at 0.6 s, 1.4 s between attacks (an early-game ranged core).
 local LO, MEAN, FIRST, PERIOD = 54, 60, 0.6, 1.4
 local function plan(hp, opts)
 	opts = opts or {}
 	local hpAt, lands = tower(hp, opts.towerFirst)
-	return PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, opts.period or PERIOD, LO, MEAN, opts.err or PreHit.NoError)
+	return PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, opts.period or PERIOD, LO, MEAN)
 end
 local function near(a, b) return math.abs(a - b) < 1e-6 end
 
@@ -80,42 +79,8 @@ end
 -- (review 2026-11-05-prehit-0f91d73 L3: the earlier check also passed on nil).
 do
 	local hpAt, lands = tower(1000)
-	local p = PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, 0.5, LO, MEAN, PreHit.NoError)
+	local p = PreHit.Plan(hpAt, PreHit.HORIZON, lands, FIRST, 0.5, LO, MEAN)
 	check("plan: a kill needing more than MAX_PREHITS pre-hits is no plan", p == nil)
-end
-
--- The fitted error (ERROR, slice prehit-odds): the real HP runs below the forecast, so the plan aims its kill higher.
-do
-	local F = PreHit.FittedError
-	check("error: no chance far below the table, all far above", F(1, -500) == 0 and F(1, 500) == 1)
-	local rising = true
-	for x = -120, 220, 5 do if F(1.2, x + 5) < F(1.2, x) then rising = false end end
-	check("error: the chance rises with the error allowed", rising)
-	check("error: at 1-1.5 s ahead the real HP is at or above the forecast about 1 time in 5", F(1.2, 0) > 0.1 and F(1.2, 0) < 0.3)
-	check("error: beyond the table's last row, its last row", F(4, 30) == F(2.2, 30))
-end
-
--- The kill is won if the real HP is in range at any landing once our attack is ready (killFrom): the verb swings on real HP.
--- 420 HP: exactly, the tower alone leaves 20 at 3.64 s (wait); with the error the HP may pass through the range before or
--- skip it, and a pre-hit now that readies our kill for the 120 and 40 the tower leaves at 2.02 and 2.83 s is the better bet.
-do
-	local p = plan(420, { err = PreHit.FittedError })
-	check("plan fitted 420: a pre-hit now then the kill, likeliest on 40", p ~= nil and #p.swings == 2 and near(p.swings[1], FIRST) and near(p.hpKill, 40))
-	check("plan exact 420: the wait for 20", #plan(420).swings == 1)
-end
-
--- 300 HP: no exact plan (above), but the third tower hit leaves 60, six above our range, and the creep is likely lower.
-do
-	local p = plan(300, { err = PreHit.FittedError })
-	check("plan fitted 300: no pre-hit, the kill likeliest on 60 forecast", p ~= nil and #p.swings == 1 and near(p.hpKill, 60) and p.odds > 0.2)
-end
-
--- The chance sums the landings from the ready attack: waiting on 360 HP counts the 40 at 2.83 s and the 120 at 2.02 s (likely
--- lower), more than the one landing alone.
-do
-	local p = plan(360, { err = PreHit.FittedError })
-	local one = PreHit.FittedError(p.swings[1], 40) - PreHit.FittedError(p.swings[1], 40 - LO)
-	check("plan fitted 360: wait, the odds over more than the likeliest landing", p ~= nil and #p.swings == 1 and p.odds > one + 0.05)
 end
 
 -- Choose: the pre-hit ranks below a reachable last hit on another creep, whatever its eta (a pre-hit spends our attack cycle;
@@ -198,10 +163,10 @@ local function world(hp, o)
 	return bot, creep, verbs
 end
 
-do -- 420 HP (the fitted plan test above): go, a prehit LaneTarget on the tower's creep; the tower's period was read with self
-	local bot, creep, verbs = world(420)
+do -- 388 HP (the plan test above): go, a prehit LaneTarget on the tower's creep; the tower's period was read with self
+	local bot, creep, verbs = world(388)
 	local ok, pre = pcall(PreHit.Find, bot, verbs)
-	check("find: a go on 420 HP under the tower is a prehit pick on that creep", ok and pre ~= nil and pre.kind == "prehit" and pre.creep == creep)
+	check("find: a go on 388 HP under the tower is a prehit pick on that creep", ok and pre ~= nil and pre.kind == "prehit" and pre.creep == creep)
 	-- the probe's watch is running from the go; the creep is removed before the next look (prhfc3 fixture): first while the
 	-- tower still names it (consider's guard), then with the tower on nothing (sampleWatch's guard)
 	T = T + 0.2
@@ -220,25 +185,25 @@ do -- 130 HP: the first swing kills (kills), no pre-hit
 end
 
 do -- the tower's phase unknown: no pre-hit
-	local bot, _, verbs = world(420, { unphasedTower = true })
+	local bot, _, verbs = world(388, { unphasedTower = true })
 	check("find: an unphased tower blocks the pre-hit", PreHit.Find(bot, verbs) == nil)
 end
 
 do -- the core more than MAX_WALK from the creep: far
-	local bot, _, verbs = world(420, { creepX = 150 + 300 * (Pick.MAX_WALK + 0.5) })
+	local bot, _, verbs = world(388, { creepX = 150 + 300 * (Pick.MAX_WALK + 0.5) })
 	check("find: a creep beyond MAX_WALK is far", PreHit.Find(bot, verbs) == nil)
 end
 
 do -- a reachable last hit on another creep due before our attack is ready again: lh, no pre-hit
 	local other = MakeUnit({ pid = -4, team = 3, hp = 40, loc = Vector(120, 50) })
 	other.creep = true
-	local bot, _, verbs = world(420, { offers = { { creep = other, kind = "lasthit", eta = 0.5, due = 0.5, walk = 0, dies = 1.0, ranged = false } } })
+	local bot, _, verbs = world(388, { offers = { { creep = other, kind = "lasthit", eta = 0.5, due = 0.5, walk = 0, dies = 1.0, ranged = false } } })
 	check("find: a last hit on another creep due first blocks the pre-hit", PreHit.Find(bot, verbs) == nil)
 end
 
 do -- the switch off: Find offers nothing
 	Customize.Ours.PreHit = false
-	local bot, _, verbs = world(420)
+	local bot, _, verbs = world(388)
 	check("find: Ours.PreHit off offers no pre-hit", PreHit.Find(bot, verbs) == nil)
 	Customize.Ours.PreHit = true
 end
