@@ -101,7 +101,8 @@ ____exports.DEFAULTS = {
     TradeFree = true,
     FightSafe = true,
     BurstReady = true,
-    TradeLanded = true
+    TradeLanded = true,
+    SpellsUp = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

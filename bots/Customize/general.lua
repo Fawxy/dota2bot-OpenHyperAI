@@ -162,12 +162,12 @@ Customize.Humaniser = {
         Mid = true, CounterPlay = true, Telegraph = true,
         CampBlock = false, -- stretch: verify in-game that wards still block spawns first
     },
-    -- Lane fights (task 11): lane trades and kill setups with imperfect memory of enemy cooldowns.
+    -- Lane fights (task 11): lane trades and kill setups; an enemy spell is up when it can be cast now (Ours.SpellsUp).
     -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
     -- Needs the Lane feature: with Lane.Enable = false (or every Lane flag off) lane fights are off too.
     LaneFight = {
         Enable = true,
-        Memory = true, -- remember which enemy abilities were cast, with skill-dependent accuracy
+        Memory = true, -- watch visible enemy casts (an escape cast aborts a commit)
         Trade = true, -- trade hits when the enemy's cooldowns are down
         Kill = true, -- commit to kill setups
         CallKills = true, -- ping a kill setup for human allies
@@ -320,10 +320,12 @@ Customize.Humaniser = {
 -- safe?" (their burst in reach under our HP) in place of behind. Off, or TradeSafe off: behind (15 points under the target's HP).
 -- TradeLanded (slice trade-landed, D24/D18): with CoreTrade on, a trade ends `losing` judged from our first landed hit on the
 -- target; before it lands only a loss of 15% of max HP ends it. Off: judged from the trade's start.
+-- SpellsUp (slice spells-up, D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill
+-- check's escape) takes an enemy's spell as up only when it can cast it now. Off: every learned enemy spell is up.
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, PairJoin = true, TradeSafe = true, TradeFree = true, FightSafe = true, BurstReady = true, TradeLanded = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, PairJoin = true, TradeSafe = true, TradeFree = true, FightSafe = true, BurstReady = true, TradeLanded = true, SpellsUp = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

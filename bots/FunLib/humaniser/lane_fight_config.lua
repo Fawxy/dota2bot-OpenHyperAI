@@ -10,7 +10,6 @@ ____exports.DEFAULTS = {
     Kill = true,
     CallKills = true,
     Teams = "all",
-    ShareMemory = false,
     UseCastCallback = true,
     PollInterval = 0.1,
     KillCheckEvery = 0.5,
@@ -49,18 +48,7 @@ ____exports.DEFAULTS = {
     MissingMargin = 1.5,
     SoloSkill = 0.7,
     CallCooldown = 30,
-    Curves = {
-        RememberUlt = {0.6, 1},
-        RememberKey = {0.35, 1},
-        RememberOther = {0.1, 1},
-        TimingError = {0.35, 0},
-        ForgetWindow = {20, 90},
-        ShareLoss = {0.3, 0},
-        Notice = {0.3, 1},
-        BurstError = {0.3, 0},
-        AbortNotice = {0.8, 0.15},
-        SyncDelay = {0.6, 0}
-    }
+    Curves = {Notice = {0.3, 1}, BurstError = {0.3, 0}, AbortNotice = {0.8, 0.15}, SyncDelay = {0.6, 0}}
 }
 local function isArray(t)
     return t[1] ~= nil

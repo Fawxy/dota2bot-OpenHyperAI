@@ -959,22 +959,11 @@
    "what": "str",
    "delay": "num"
   },
-  "lanefight_mem": {
-   "pid": "num",
-   "enemy": "num",
-   "ability": "str",
-   "remembered": "num",
-   "reason": "str",
-   "cls": "str",
-   "cd": "num",
-   "src": "str"
-  },
   "lanefight_watch": {
    "pid": "num",
    "polls": "num",
    "visible": "num",
    "casts": "num",
-   "recorded": "num",
    "jumps": "num"
   },
   "lanefight_window": {
@@ -2154,12 +2143,6 @@
   "ev_react": {
    "who": "text",
    "what": "text"
-  },
-  "ev_lanefight_mem": {
-   "ability": "text",
-   "reason": "text",
-   "cls": "text",
-   "src": "text"
   },
   "ev_lanefight_window": {
    "window": "text"

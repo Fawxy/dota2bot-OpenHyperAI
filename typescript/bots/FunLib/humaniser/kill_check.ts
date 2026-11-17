@@ -1,13 +1,12 @@
 /**
  * Kill check (task 11): whether our laners' combined burst can kill a lane enemy. Evaluate() holds the rules over
- * plain inputs; Check gathers them from the units, the cooldown memory and the lane counts, cached per
+ * plain inputs; Check gathers them from the units, the enemy's castable spells and the lane counts, cached per
  * (bot, target) for KillCheckEvery with one burst-error roll per fresh check.
  */
 import { DamageType, Tower, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
-import * as CooldownMemory from "bots/FunLib/humaniser/cooldown_memory";
 import * as CastWatch from "bots/FunLib/humaniser/cast_watch";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import * as FightRead from "bots/FunLib/humaniser/fight_read";
@@ -144,12 +143,9 @@ function minMarginFor(bot: Unit, contributors: Unit[]): number {
     return min;
 }
 
-function escapeReady(botPid: number, target: Unit, now: number, skill: number): boolean {
-    const targetPid = target.GetPlayerID();
+function escapeReady(target: Unit): boolean {
     for (const a of CastWatch.AbilitiesOf(target)) {
-        if (!a.learned || !AbilityClasses.IsEscape(a.name)) continue;
-        const [ready] = CooldownMemory.ProbablyReady(botPid, targetPid, a.name, true, now, skill);
-        if (ready) return true;
+        if (a.learned && AbilityClasses.IsEscape(a.name) && SpellReady.Ready(target, a.name)) return true;
     }
     return false;
 }
@@ -185,10 +181,9 @@ function skipReason(bot: Unit, target: Unit): FailReason | undefined {
     return undefined;
 }
 
-function compute(bot: Unit, contributors: Unit[], target: Unit, snap: LaneState.LaneSnapshot, now: number): KillResult {
+function compute(bot: Unit, contributors: Unit[], target: Unit, snap: LaneState.LaneSnapshot): KillResult {
     const skip = skipReason(bot, target);
     if (skip !== undefined) return { pass: false, margin: 0, overwhelming: false, reason: skip };
-    const pid = bot.GetPlayerID();
     const skill = Profile.Get(bot).skill;
     const loc = target.GetLocation();
     const counts = FightRead.LaneCounts(bot, snap, COUNTER_RANGE, loc);
@@ -196,7 +191,7 @@ function compute(bot: Unit, contributors: Unit[], target: Unit, snap: LaneState.
         burst: burstOn(contributors, target),
         hp: target.GetHealth(),
         regen: target.GetHealthRegen !== undefined ? target.GetHealthRegen() : 0,
-        escapeReady: escapeReady(pid, target, now, skill),
+        escapeReady: escapeReady(target),
         towerInRange: towerInRange(target.GetTeam(), loc),
         enemiesNear: counts.enemies,
         alliesNear: counts.allies,
@@ -239,7 +234,7 @@ export function Check(bot: Unit, partners: (Unit | undefined)[], target: Unit, n
     }
     const cached = byTarget[key];
     if (fresh !== true && cached !== undefined && now >= cached.at && now - cached.at < LaneFightConfig.Settings().KillCheckEvery) return cached.result;
-    const result = compute(bot, contributors, target, snap, now);
+    const result = compute(bot, contributors, target, snap);
     byTarget[key] = { at: now, result };
     return result;
 }

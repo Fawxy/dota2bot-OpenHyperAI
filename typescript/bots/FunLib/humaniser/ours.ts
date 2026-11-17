@@ -180,6 +180,9 @@ export const DEFAULTS = {
      *  target (the exchange from then, counting that hit); before it lands only a loss of UNLANDED_CAP of max HP ends it.
      *  Off: from the trade's start, enemy hits taken while stepping out or walking in included. */
     TradeLanded: true,
+    /** Slice spells-up (D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill check's
+     *  escape) takes an enemy's spell as up only when it can cast it now (SpellReady.Ready). Off: every learned spell is up. */
+    SpellsUp: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

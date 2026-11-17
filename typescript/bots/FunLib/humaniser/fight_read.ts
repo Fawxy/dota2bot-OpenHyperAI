@@ -1,6 +1,6 @@
 /**
  * Fight read (task 11): per bot, whether there is a trade window on a lane enemy, a reason to respect the enemy, and
- * whether the bot noticed. Decide() holds the rules over plain inputs; ReadFor gathers them from the cooldown memory,
+ * whether the bot noticed. Decide() holds the rules over plain inputs; ReadFor gathers them from the enemy's castable spells,
  * the lane snapshot and the perception-filtered lane enemy list (no unit scans here).
  */
 import { Lane, Team, Tower, Unit, Vector } from "bots/ts_libs/dota";
@@ -8,8 +8,8 @@ import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Camps from "bots/FunLib/humaniser/camps";
-import * as CooldownMemory from "bots/FunLib/humaniser/cooldown_memory";
 import * as CastWatch from "bots/FunLib/humaniser/cast_watch";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import * as Harass from "bots/FunLib/humaniser/harass";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -217,20 +217,22 @@ function inLane(team: number, lane: Lane, loc: Vector, bounds: [number, number])
     return amount >= bounds[0] && amount <= bounds[1];
 }
 
-function keyAbilities(enemy: Unit): string[] {
-    const names: string[] = [];
+/** The share of `enemy`'s learned key spells it cannot cast now; 0 with none. */
+function keyThreatsDown(enemy: Unit): number {
+    let key = 0;
+    let down = 0;
     for (const a of CastWatch.AbilitiesOf(enemy)) {
-        if (a.learned && AbilityClasses.Classify(a.name, a.ult) === "key") names.push(a.name);
+        if (!a.learned || AbilityClasses.Classify(a.name, a.ult) !== "key") continue;
+        key++;
+        if (!SpellReady.Ready(enemy, a.name)) down++;
     }
-    return names;
+    return key > 0 ? down / key : 0;
 }
 
-function ultReady(pid: number, enemy: Unit, enemyPid: number, now: number, skill: number): boolean {
+function ultReady(enemy: Unit, enemyPid: number): boolean {
     if (GetHeroLevel(enemyPid) < ULT_LEVEL) return false;
     for (const a of CastWatch.AbilitiesOf(enemy)) {
-        if (!a.ult || a.item || !a.learned) continue;
-        const [ready] = CooldownMemory.ProbablyReady(pid, enemyPid, a.name, true, now, skill);
-        if (ready) return true;
+        if (a.ult && !a.item && a.learned && SpellReady.Ready(enemy, a.name)) return true;
     }
     return false;
 }
@@ -265,10 +267,8 @@ function countedEnemy(e: LaneState.LaneEnemy | undefined): { unit?: Unit; loc: V
 }
 
 function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs: Inputs; target?: Unit } {
-    const pid = bot.GetPlayerID();
     const team = bot.GetTeam();
     const lane = snap.lane;
-    const skill = Profile.Get(bot).skill;
     const botLoc = bot.GetLocation();
 
     const bounds = laneBounds(team, lane);
@@ -294,7 +294,7 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
         const unit = counted.unit;
         if (unit === undefined) continue;
         const loc = counted.loc;
-        if (!theirUltReady && ultReady(pid, unit, e.pid, now, skill)) theirUltReady = true;
+        if (!theirUltReady && ultReady(unit, e.pid)) theirUltReady = true;
         const d = dist2D(botLoc, loc);
         if (d <= TARGET_RANGE && d < targetDist) {
             target = unit;
@@ -318,7 +318,7 @@ function gather(bot: Unit, snap: LaneState.LaneSnapshot, now: number): { inputs:
     };
     if (target !== undefined) {
         const loc = target.GetLocation();
-        inputs.keyThreatsDown = CooldownMemory.KeyThreatsDown(pid, target.GetPlayerID(), keyAbilities(target), now, skill);
+        inputs.keyThreatsDown = keyThreatsDown(target);
         inputs.lastHit = Harass.IsLastHitAttempt(target, snap.ally.units) !== undefined;
         inputs.aheadOfFront = aheadOfFront(team, lane, loc, snap.enemyFront);
         const ours = nearestTower(team, lane);

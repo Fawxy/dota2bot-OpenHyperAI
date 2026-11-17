@@ -17,7 +17,9 @@ function LaneFightAbility(name, o)
 		IsUltimate = function() return o.ult == true end,
 		IsHidden = function() return false end,
 		IsNull = function() return false end,
-		GetCooldown = function() return o.cd or 12 end,
+		-- An enemy's spell handle answers castable or not; a test sets `down` on it to put it on cooldown.
+		IsFullyCastable = function(self) return self.down ~= true end,
+		GetSpecialValueFloat = function() return 0 end,
 	}
 end
 

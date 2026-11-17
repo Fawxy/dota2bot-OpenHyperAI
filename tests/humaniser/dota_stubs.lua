@@ -63,6 +63,10 @@ function Unit:GetMaxMana() return self.maxmana or 100 end
 function Unit:GetRespawnTime() return self.respawn or 0 end
 function Unit:GetItemInSlot() return nil end
 function Unit:GetAbilityInSlot(i) return self.abilities and self.abilities[i] or nil end
+function Unit:GetAbilityByName(name)
+	for _, a in pairs(self.abilities or {}) do if a:GetName() == name then return a end end
+	return nil
+end
 function Unit:GetEstimatedDamageToTarget(current, target, duration, dtype) return self.estDamage or 0 end
 function Unit:WasRecentlyDamagedByAnyHero(t) return self.hitByHero == true end
 function Unit:GetLastHits() return self.lh or 0 end

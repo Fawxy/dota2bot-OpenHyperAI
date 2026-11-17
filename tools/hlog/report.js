@@ -90,10 +90,10 @@ function mapCounts(m) {
 function laneFightSection(game) {
     const stats = Object.values(laneFightStats(game)).sort((a, b) => a.pid - b.pid);
     if (stats.length === 0) return [];
-    const rows = [['player', 'windows', 'starts', 'took', 'ends', 'gates', 'aborts', 'mistakes', 'mem']];
+    const rows = [['player', 'windows', 'starts', 'took', 'ends', 'gates', 'aborts', 'mistakes']];
     for (const b of stats)
-        rows.push([who(game, b.pid), mapCounts(b.windows), mapCounts(b.starts), `${b.took}/${b.fights} took`, mapCounts(b.ends), mapCounts(b.gates), mapCounts(b.aborts), mapCounts(b.mistakes), `mem ${b.remembered}/${b.mem}${b.noCd > 0 ? ` no_cd ${b.noCd}` : ''}`]);
-    const out = ['', 'lane fights (took = trades/commits where team_roam or attack took over; mem = remembered/cooldown reads):', table(rows)];
+        rows.push([who(game, b.pid), mapCounts(b.windows), mapCounts(b.starts), `${b.took}/${b.fights} took`, mapCounts(b.ends), mapCounts(b.gates), mapCounts(b.aborts), mapCounts(b.mistakes)]);
+    const out = ['', 'lane fights (took = trades/commits where team_roam or attack took over):', table(rows)];
     const abandons = game.events.filter(e => e.ev === 'lanefight_abandon');
     if (abandons.length > 0) {
         const arows = [['t', 'player', 'why', 'since', 'mode', 'ally', 'ally mode', 'ally atk', 'dist', 'range', 'last atk']];

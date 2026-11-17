@@ -140,7 +140,7 @@ function schema(store, ev) {
 }
 
 // Per-frame or per-second lines that drown a window; `events --all` keeps them, `--ev` names any of them back in.
-const NOISY = ['lane_pos', 'lane_read', 'notice', 'inv', 'lanefight_mem', 'lanefight_watch', 'intent_cadence'];
+const NOISY = ['lane_pos', 'lane_read', 'notice', 'inv', 'lanefight_watch', 'intent_cadence'];
 // A snapshot in `events` prints these fields only (`@hero_at` gives the whole one).
 const SNAP_SHORT = ['hp', 'mp', 'x', 'y', 'mode', 'by', 'act', 'tid', 'lh', 'deaths'];
 

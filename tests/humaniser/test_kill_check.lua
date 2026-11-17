@@ -12,7 +12,9 @@ local function ability(name, o)
 		IsUltimate = function() return o.ult == true end,
 		IsHidden = function() return false end,
 		IsNull = function() return false end,
-		GetCooldown = function() return o.cd or 12 end,
+		-- `down` set on the handle: the enemy cannot cast it now.
+		IsFullyCastable = function(self) return self.down ~= true end,
+		GetSpecialValueFloat = function() return 0 end,
 	}
 end
 
@@ -37,7 +39,7 @@ local function world(o)
 	enemy.lane = Lane.Bot
 	if o.regen then enemy.GetHealthRegen = function() return o.regen end end
 	if o.escape then enemy.abilities = { [0] = ability("antimage_blink", { cd = 12 }) } end
-	local W = { H = H, bot = bot, enemy = enemy, sign = sign, other = other, KC = H.LaneFight.KillCheck, M = H.LaneFight.CooldownMemory }
+	local W = { H = H, bot = bot, enemy = enemy, sign = sign, other = other, KC = H.LaneFight.KillCheck }
 	function W.check(partners) return W.KC.Check(bot, partners or {}, enemy, T) end
 	return W
 end
@@ -118,16 +120,38 @@ end
 do
 	local W = world({ escape = true, burst = 900 })
 	local r = W.check()
-	check("an unseen escape counts as ready", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
-	SetRandomSequence({ 0.1, 0.5 })
-	W.M.Record(1, 6, "antimage_blink", "key", 12, 1, T)
-	SetRandomSequence({})
+	check("an escape the target can cast blocks the kill", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+	local blink = W.enemy.abilities[0]
+	blink.down = true
 	T = T + 1
 	r = W.check()
-	check("a remembered escape on cooldown no longer blocks the kill", r ~= nil and r.pass == true, r and r.reason)
-	T = T + 13
+	check("an escape on cooldown no longer blocks the kill", r ~= nil and r.pass == true, r and r.reason)
+	blink.down = false
+	T = T + 1
 	r = W.check()
-	check("the escape blocks again once remembered back up", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+	check("the escape blocks again once it can be cast", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+end
+
+do
+	-- Ours.SpellsUp off: every learned escape reads as up, as before the slice.
+	local W = world({ escape = true, burst = 900 })
+	package.loaded["bots/FunLib/custom_loader"].Ours.SpellsUp = false
+	W.enemy.abilities[0].down = true
+	local r = W.check()
+	package.loaded["bots/FunLib/custom_loader"].Ours.SpellsUp = true
+	check("with SpellsUp off an escape on cooldown still blocks the kill", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
+end
+
+do
+	-- An escape item reads as up whatever its handle answers: enemy item handles are unprobed. The handle here would say
+	-- not castable, and the unit finds it by name, so only the item rule keeps it up.
+	local W = world({ burst = 900 })
+	local force = { GetName = function() return "item_force_staff" end, IsNull = function() return false end,
+		IsFullyCastable = function() return false end }
+	W.enemy.GetItemInSlot = function(_, slot) if slot == 0 then return force end return nil end
+	W.enemy.GetAbilityByName = function(_, name) if name == "item_force_staff" then return force end return nil end
+	local r = W.check()
+	check("an escape item reads as up", r ~= nil and r.pass == false and r.reason == "escape", r and r.reason)
 end
 
 do
