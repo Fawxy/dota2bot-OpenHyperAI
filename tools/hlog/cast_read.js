@@ -5,11 +5,11 @@
 // Usage: node cast_read.js <run> [<run> ...] [--null <run> ...] [--until 720] [--json] [--no-ingest]
 //   --null <runs>  OHA against OHA runs: a `mirror` column, both seats per game
 // Lines, per side: `two+` fights with two or more members, `one` with one; per game, and the share where the target died
-// in 12 s. Then per fight, the members' casts in [t - 3, t + 12] by class (k hard disable or immunity, u ultimate, d
-// damage, o other) and the share of k, u and d casts aimed at the target (the cast's location within 300 of its
-// snapshot that second; a no-target cast has no location: `none`); the fights where a member had a k ready at t, and of
-// those the share where a member cast a k at the target; per fight, the k, u and d spells a member had ready at t and
-// did not cast in the window.
+// in 12 s. Then per fight, the members' spell casts in [t - 3, t + 12] (items left out) by class (k hard disable or
+// immunity, u ultimate, s any other spell) and the share aimed at the target (the cast's location within 300 of its
+// snapshot that second; a no-target cast has no location: `none`); the fights where a member had a k ready at the
+// window's start, and of those the share where a member cast a k at the target; per fight, the spells a member had
+// ready at the window's start and did not cast in it.
 'use strict';
 const fs = require('fs');
 const { Store, DB, LOGS, JOBS } = require('./store');
@@ -18,7 +18,10 @@ const { rows: chanceRows } = require('./kill_chances');
 const BEFORE = 3;
 const AFTER = 12;
 const AT = 300;
-const CLASSES = ['k', 'u', 'd', 'o'];
+// The logged class grouped: k and u as logged; d and o as `s`, any other spell (the logged d misses most nukes: Arcane
+// Bolt, Carrion Swarm and Shrapnel log o, neither SPELL_DAMAGE nor GetAbilityDamage covering them; smoke cast-read).
+const CLASSES = ['k', 'u', 's'];
+const group = (cl) => (cl === 'k' || cl === 'u' ? cl : 's');
 
 function args(argv) {
     const o = { runs: [], null: [], until: 720 };
@@ -80,11 +83,14 @@ function readGame(chances, casts, snaps) {
     for (const f of byChance.values()) {
         if (!f.members.length) continue;
         for (const m of f.members) {
-            m.ready = readyAt(m.pid, f.t);
-            m.casts = casts.filter((c) => c.pid === m.pid && c.t >= f.t - BEFORE && c.t <= f.t + AFTER)
-                .map((c) => ({ ab: c.ab, cl: c.cl || 'o', at: aim(c, f.tpid) }));
+            // Read at the window's start: a spell cast between t - 3 and t was ready, not spent (smoke cast-read: a Nightmare
+            // at the target 2 s before t read as not ready at t).
+            m.ready = readyAt(m.pid, f.t - BEFORE).map((s) => ({ n: s.n, c: group(s.c) }));
+            // Items carry no class (cl absent): left out.
+            m.casts = casts.filter((c) => c.pid === m.pid && c.cl && c.t >= f.t - BEFORE && c.t <= f.t + AFTER)
+                .map((c) => ({ ab: c.ab, cl: group(c.cl), at: aim(c, f.tpid) }));
             const cast = new Set(m.casts.map((c) => c.ab));
-            m.unused = m.ready.filter((s) => s.c !== 'o' && !cast.has(s.n));
+            m.unused = m.ready.filter((s) => !cast.has(s.n));
         }
         out.push(f);
     }
@@ -99,13 +105,13 @@ function tally(fights, n) {
     for (const [kind, keep] of [['two', (f) => f.members.length >= 2], ['one', (f) => f.members.length === 1]]) {
         const fs_ = fights.filter(keep);
         const casts = fs_.flatMap((f) => f.members.flatMap((m) => m.casts));
-        const aimed = casts.filter((c) => c.cl !== 'o');
+        const aimed = casts;
         const kReady = fs_.filter((f) => f.members.some((m) => m.ready.some((s) => s.c === 'k')));
         const unused = fs_.flatMap((f) => f.members.flatMap((m) => m.unused));
         const per = {};
         for (const c of CLASSES) per[c] = share(casts.filter((x) => x.cl === c).length, fs_.length);
         const unusedPer = {};
-        for (const c of ['k', 'u', 'd']) unusedPer[c] = share(unused.filter((x) => x.c === c).length, fs_.length);
+        for (const c of CLASSES) unusedPer[c] = share(unused.filter((x) => x.c === c).length, fs_.length);
         out[kind] = {
             fights: fs_.length / n,
             n: fs_.length,
@@ -154,12 +160,12 @@ function print(cols, ns) {
         const k = (c) => c[kind];
         console.log(kind === 'two' ? 'two+ members' : 'one member');
         line('  per game, died', (c) => `${num(k(c).fights)}, ${pct(k(c).died)}`);
-        line('  casts k/u/d/o', (c) => CLASSES.map((x) => num(k(c).casts[x])).join('/'));
-        line('  k+u+d at target', (c) => pct(k(c).atTarget));
+        line('  casts k/u/s', (c) => CLASSES.map((x) => num(k(c).casts[x])).join('/'));
+        line('  casts at target', (c) => pct(k(c).atTarget));
         line('    no location', (c) => pct(k(c).aimedNone));
-        line('  k ready at t', (c) => pct(k(c).kReady));
+        line('  k ready at t - 3', (c) => pct(k(c).kReady));
         line('    k cast at target', (c) => pct(k(c).kUsed));
-        line('  ready unused k/u/d', (c) => ['k', 'u', 'd'].map((x) => num(k(c).unused[x])).join('/'));
+        line('  ready unused k/u/s', (c) => CLASSES.map((x) => num(k(c).unused[x])).join('/'));
     }
 }
 
