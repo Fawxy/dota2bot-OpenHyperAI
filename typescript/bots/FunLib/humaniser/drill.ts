@@ -497,12 +497,12 @@ export const TABLE: Record<string, Entry> = {
             reps: [
                 {
                     name: "low",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
                     ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
                     name: "flee",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
                     ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
@@ -512,12 +512,12 @@ export const TABLE: Record<string, Entry> = {
                 },
                 {
                     name: "two",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "wait d3", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "wait d3", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
                     ready: { low: [0.35, -2000, 550], foes: 2, foesAtMost: 2, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
                     name: "outnum",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "wait d3", "wait d5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "wait d3", "wait d5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
                     ready: { low: [0.35, -2000, 550], foes: 3, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
             ],

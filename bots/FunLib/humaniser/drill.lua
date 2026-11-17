@@ -1894,6 +1894,7 @@ ____exports.TABLE = {
             reps = {
                 {name = "low", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, r4 = {
                     "heal",
+                    "walk away",
                     "wait r1",
                     "wait r5",
                     "attack d4 until hp 0.3",
@@ -1901,6 +1902,7 @@ ____exports.TABLE = {
                 }, d4 = {"stand low"}}, ready = {low = {0.35, -2000, 550}, foesAtMost = 1, alliesAtMost = 1, hpAtLeast = 0.5}},
                 {name = "flee", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "stand behind"}, r4 = {
                     "heal",
+                    "walk away",
                     "wait r1",
                     "wait r5",
                     "attack d4 until hp 0.3",
@@ -1912,6 +1914,7 @@ ____exports.TABLE = {
                     r5 = {"heal", "stand behind"},
                     r4 = {
                         "heal",
+                        "walk away",
                         "wait r1",
                         "wait r5",
                         "wait d3",
@@ -1932,6 +1935,7 @@ ____exports.TABLE = {
                     r5 = {"heal", "stand behind"},
                     r4 = {
                         "heal",
+                        "walk away",
                         "wait r1",
                         "wait r5",
                         "wait d3",
