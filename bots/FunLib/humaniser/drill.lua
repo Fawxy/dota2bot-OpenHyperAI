@@ -1864,8 +1864,8 @@ ____exports.TABLE = {
                 side = {"r:bot1", -2750, 700},
                 behind = {"r:bot1", -2750, 300},
                 low = {"r:bot1", -3350, 700},
-                foe = {"r:bot1", -3430, 1110},
-                foe2 = {"r:bot1", -3130, 1160},
+                foe = {"r:bot1", -3380, 860},
+                foe2 = {"r:bot1", -3130, 910},
                 away = {"r:bot1", -4150, 700}
             },
             timeout = 95,

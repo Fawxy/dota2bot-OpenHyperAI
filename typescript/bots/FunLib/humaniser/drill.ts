@@ -467,7 +467,7 @@ export const TABLE: Record<string, Entry> = {
     // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
     // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
     // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
-    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand 500 north of the lane, off the Radiant creeps' path (fix1: creeps killed a statue on it).
+    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand 250 north of the Lich, off the Radiant creeps' path (fix1: creeps killed a statue on it) and inside our night sight (fix2: 790 off, Bristleback was fogged).
     // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
     // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
     // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
@@ -487,8 +487,8 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 behind: ["r:bot1", -2750, 300],
                 low: ["r:bot1", -3350, 700],
-                foe: ["r:bot1", -3430, 1110],
-                foe2: ["r:bot1", -3130, 1160],
+                foe: ["r:bot1", -3380, 860],
+                foe2: ["r:bot1", -3130, 910],
                 away: ["r:bot1", -4150, 700],
             },
             timeout: 95,
