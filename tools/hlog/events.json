@@ -804,7 +804,20 @@
    "hp": "num",
    "rt": "num",
    "dt": "num",
-   "gold": "num"
+   "gold": "num",
+   "spell": "str",
+   "lvl": "num",
+   "s": "num",
+   "mana": "num",
+   "tgt": "num",
+   "mhp": "num",
+   "est": "num",
+   "n": "num",
+   "foe": "str",
+   "fmana": "num",
+   "flvl": "num",
+   "root": "num",
+   "alive": "num"
   },
   "job": {
    "pid": "num",
@@ -2138,7 +2151,9 @@
    "var": "text",
    "rel": "text",
    "step": "text",
-   "fail": "text"
+   "fail": "text",
+   "spell": "text",
+   "foe": "text"
   },
   "ev_job": {
    "job": "text",

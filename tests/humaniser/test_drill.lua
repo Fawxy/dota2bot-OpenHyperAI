@@ -431,6 +431,8 @@ do
 							check(name .. "/" .. rr.name .. ": spot " .. a .. " defined", r.spots[a] ~= nil)
 						elseif verb == "attack" then
 							check(name .. "/" .. rr.name .. ": attack target listed", rr.setup[a] ~= nil and tonumber(s:match("until hp ([%d%.]+)$")) ~= nil, s)
+						elseif verb == "burst" then
+							check(name .. "/" .. rr.name .. ": burst target listed, seconds and spells given", rr.setup[a] ~= nil and s:match("^burst %S+ for [%d%.]+ using %S") ~= nil, s)
 						else
 							check(name .. "/" .. rr.name .. ": known step " .. s, verb == "heal" or verb == "buy" or verb == "sell" or verb == "leave")
 						end
@@ -865,6 +867,81 @@ do
 	local sp = t.spots
 	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
 	check("kill-reach: the pos3 300+ from the Lich's spot, under 1,100 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") <= 1100, tostring(dx("foe", "low")) .. " " .. tostring(dx("foe", "side")))
+end
+
+-- burst-read (slice burst-truth): the actor refills mana before it walks in, casts its listed spells as they come up (in
+-- list order, never one it cannot cast), lets a channel run 0.3 s, attacks between casts, and stops after 6 s; the cast,
+-- released to idle, traces the read and its HP for 12 s from ready. The truth the rig gives is only as good as this order.
+do
+	local H = world("burst-read")
+	local cast = hero(2, RAD, 2, 2)
+	local actor = hero(7, DIRE, 2, 2)
+	cast.maxhp, cast.hp = 600, 600
+	actor.maxhp, actor.hp, actor.maxmana, actor.maxMana, actor.mana = 500, 500, 400, 400, 120
+	actor.estDamage = 548
+	cast.loc = Vector(-6619, -6336, 0)
+	actor.loc = Vector(6928, 6372, 0)
+	local function spell(name) return { name = name, down = false, IsNull = function() return false end, GetName = function(self) return self.name end, GetLevel = function() return 2 end, IsFullyCastable = function(self) return not self.down end } end
+	local flames, fe, other = spell("oracle_purifying_flames"), spell("oracle_fortunes_end"), spell("oracle_fates_edict")
+	actor.abilities = { [0] = fe, [1] = flames, [2] = other }
+	ACTIONS = {}
+	local function tick(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	local function lastMove(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
+	local function lines(ph, ls) local r = {} for _, l in ipairs(ls) do if field(l, "ph") == ph then table.insert(r, l) end end return r end
+	T = 31
+	tick(cast, actor)
+	tick(cast, actor)
+	local m = lastMove(7)
+	check("burst-read: an unhurt actor at 30% mana stays at its fountain (heal waits for mana)", m == nil or (math.abs(m.x - 6928) < 1 and math.abs(m.y - 6372) < 1))
+	actor.mana = 400
+	tick(actor)
+	tick(actor)
+	local foe = lastMove(7)
+	check("burst-read: at full mana it walks off toward the cast's side", foe ~= nil and foe.x < 0)
+	local side = lastMove(2)
+	cast.loc = Vector(side.x, side.y, 0)
+	actor.loc = Vector(foe.x, foe.y, 0)
+	T = 40
+	local ls = capture(function() tick(cast, actor) tick(cast, actor) end)
+	local e = ActionsOf(7, "UseAbilityOnEntity")
+	check("burst-read: in place, it casts the first listed spell it holds on the cast, Fortune's End not first", #e == 1 and e[1].args[1] == flames and e[1].args[2] == cast, #e)
+	check("burst-read: the cast is released, and the cast line names the spell", #lines("ready", ls) == 1 and field(lines("ready", ls)[1], "ok") == "1" and field(lines("cast", ls)[1], "spell") == "oracle_purifying_flames")
+	actor.casting = true
+	T = 40.6
+	tick(actor)
+	check("burst-read: no new order while its cast point runs", #ActionsOf(7, "UseAbilityOnEntity") == 1 and #ActionsOf(7, "AttackUnit") == 0)
+	actor.casting, flames.down = nil, true
+	tick(actor)
+	e = ActionsOf(7, "UseAbilityOnEntity")
+	check("burst-read: Flames cooling, the next listed spell (Fortune's End), never the unlisted Fate's Edict", #e == 2 and e[2].args[1] == fe)
+	fe.down, actor.channeling = true, true
+	T = 40.8
+	tick(actor)
+	T = 41.0
+	tick(actor)
+	check("burst-read: a channel runs 0.3 s with no new order", #ActionsOf(7, "AttackUnit") == 0)
+	T = 41.2
+	tick(actor)
+	check("burst-read: after 0.3 s the next order lands; nothing castable, so an attack", #ActionsOf(7, "AttackUnit") == 1 and ActionsOf(7, "AttackUnit")[1].args[1] == cast)
+	actor.channeling = nil
+	flames.down = false
+	T = 42
+	tick(actor)
+	check("burst-read: Flames up again is cast again", #ActionsOf(7, "UseAbilityOnEntity") == 3)
+	T = 46.1
+	ACTIONS = {}
+	tick(actor)
+	tick(actor)
+	local home = lastMove(7)
+	check("burst-read: 6 s after its first order it stops and leaves", #ActionsOf(7, "UseAbilityOnEntity") == 0 and #ActionsOf(7, "AttackUnit") == 0 and home ~= nil and home.x > 6000)
+	-- The trace: from ready (T 40) every 0.25 s for 12 s.
+	cast.hp = 410
+	local tr = {}
+	for t = 47, 51.9, 0.05 do T = t for _, l in ipairs(lines("trace", capture(function() tick(cast) end))) do table.insert(tr, l) end end
+	check("burst-read: trace carries the read and HP", #tr > 0 and field(tr[1], "est") == "548" and field(tr[1], "hp") == "410" and field(tr[1], "foe") ~= nil)
+	check("burst-read: trace every 0.25 s (a 0.05 s frame: every 0.3 s)", #tr >= 16 and #tr <= 20, #tr)
+	T = 52.5
+	check("burst-read: none 12 s after ready", #lines("trace", capture(function() tick(cast) end)) == 0)
 end
 
 finish()
