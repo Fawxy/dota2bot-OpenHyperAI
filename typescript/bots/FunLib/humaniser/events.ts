@@ -1825,8 +1825,6 @@ export const EVENTS = {
         hk: "num",
         mg: "num",
         pk: "num",
-        /** 1 when the creep is the tower's predicted next target (`PreHit.NextTarget`), not its current one. */
-        nx: "bool",
         /** Reachable last hits offered at the pick. */
         ol: "num",
         contested: "bool",
@@ -1859,28 +1857,6 @@ export const EVENTS = {
         hs: "str",
         fs: "str",
         fire: "str",
-        /** 1 when the watched creep was the tower's predicted next target: its forecast `fs` then has no tower hits. */
-        nx: "bool",
-    },
-    /**
-     * An own tower took a new enemy lane creep as its target after one (states/pre_hit, read while a core under
-     * Ours.PreHit scans; one per switch): the read `PreHit.NextTarget` graded. `ok` 1 when the creep predicted on the
-     * scan before was the one taken; `rank` the taken creep's rank by distance to the tower among enemy lane creeps in
-     * its reach (1 nearest), `n` their count; `d` its distance, `dn` the nearest's; `atk` 1 when it was attacking the
-     * tower, `atkh` an own hero, `natk` creeps in reach attacking the tower; `rg` 1 ranged; `prev` 1 when the old target
-     * was still alive (a switch, not a death).
-     */
-    tower_pick: {
-        ok: "bool",
-        rank: "num",
-        n: "num",
-        d: "num",
-        dn: "num",
-        atk: "bool",
-        atkh: "bool",
-        natk: "num",
-        rg: "bool",
-        prev: "bool",
     },
     /**
      * An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s.

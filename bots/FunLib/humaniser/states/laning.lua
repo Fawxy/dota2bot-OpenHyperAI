@@ -844,76 +844,69 @@ local body = __TS__Generator(function(bot, ctx)
                             t.creep
                         )
                     end
-                    local ____Telemetry_Event_48 = Telemetry.Event
-                    local ____array_47 = __TS__SparseArrayNew(
-                        {
-                            "pid",
-                            bot:GetPlayerID()
-                        },
-                        {"result", res.success and "ok" or "fail"},
-                        {"reason", res.reason},
-                        {"ranged", t.ranged},
-                        {
-                            "walk",
-                            math.floor(t.walk * 100) / 100
-                        },
-                        {
-                            "dies",
-                            t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
-                        },
-                        {
-                            "hp",
-                            (n and n.hp) ~= nil and math.floor(n.hp) or nil
-                        },
-                        {
-                            "t0",
-                            (n and n.t0) ~= nil and math.floor(n.t0 * 100) / 100 or nil
-                        },
-                        {
-                            "lo",
-                            (n and n.lo) ~= nil and math.floor(n.lo) or nil
-                        },
-                        {"np", (n and n.plan) ~= nil and #n.plan.swings - 1 or nil},
-                        {
-                            "tk",
-                            (n and n.plan) ~= nil and math.floor(n.plan.swings[#n.plan.swings] * 100) / 100 or nil
-                        },
-                        {
-                            "hk",
-                            (n and n.plan) ~= nil and math.floor(n.plan.hpKill) or nil
-                        },
-                        {
-                            "mg",
-                            (n and n.plan) ~= nil and math.floor(n.plan.margin) or nil
-                        },
-                        {
-                            "pk",
-                            (n and n.plan) ~= nil and math.floor(n.plan.odds * 100) / 100 or nil
-                        }
-                    )
-                    local ____temp_46
-                    if (n and n.next) == true then
-                        ____temp_46 = true
-                    else
-                        ____temp_46 = nil
-                    end
-                    __TS__SparseArrayPush(____array_47, {"nx", ____temp_46}, {"ol", ol}, {"contested", contested})
-                    ____Telemetry_Event_48(
+                    Telemetry.Event(
                         "prehit",
-                        {__TS__SparseArraySpread(____array_47)}
+                        {
+                            {
+                                "pid",
+                                bot:GetPlayerID()
+                            },
+                            {"result", res.success and "ok" or "fail"},
+                            {"reason", res.reason},
+                            {"ranged", t.ranged},
+                            {
+                                "walk",
+                                math.floor(t.walk * 100) / 100
+                            },
+                            {
+                                "dies",
+                                t.dies == math.huge and -1 or math.floor(t.dies * 100) / 100
+                            },
+                            {
+                                "hp",
+                                (n and n.hp) ~= nil and math.floor(n.hp) or nil
+                            },
+                            {
+                                "t0",
+                                (n and n.t0) ~= nil and math.floor(n.t0 * 100) / 100 or nil
+                            },
+                            {
+                                "lo",
+                                (n and n.lo) ~= nil and math.floor(n.lo) or nil
+                            },
+                            {"np", (n and n.plan) ~= nil and #n.plan.swings - 1 or nil},
+                            {
+                                "tk",
+                                (n and n.plan) ~= nil and math.floor(n.plan.swings[#n.plan.swings] * 100) / 100 or nil
+                            },
+                            {
+                                "hk",
+                                (n and n.plan) ~= nil and math.floor(n.plan.hpKill) or nil
+                            },
+                            {
+                                "mg",
+                                (n and n.plan) ~= nil and math.floor(n.plan.margin) or nil
+                            },
+                            {
+                                "pk",
+                                (n and n.plan) ~= nil and math.floor(n.plan.odds * 100) / 100 or nil
+                            },
+                            {"ol", ol},
+                            {"contested", contested}
+                        }
                     )
                     return
                 end
-                local ____OwnsSupportHits_result_49
+                local ____OwnsSupportHits_result_44
                 if ____exports.OwnsSupportHits(bot) then
-                    ____OwnsSupportHits_result_49 = claimOf(
+                    ____OwnsSupportHits_result_44 = claimOf(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____OwnsSupportHits_result_49 = nil
+                    ____OwnsSupportHits_result_44 = nil
                 end
-                local claim = ____OwnsSupportHits_result_49
+                local claim = ____OwnsSupportHits_result_44
                 local cx, cy, ca = unpack(placeOf(
                     bot:GetPlayerID(),
                     t.creep
@@ -926,8 +919,8 @@ local body = __TS__Generator(function(bot, ctx)
                     bot:GetMaxHealth(),
                     1
                 )
-                local ____Telemetry_Event_56 = Telemetry.Event
-                local ____array_55 = __TS__SparseArrayNew(
+                local ____Telemetry_Event_51 = Telemetry.Event
+                local ____array_50 = __TS__SparseArrayNew(
                     {
                         "pid",
                         bot:GetPlayerID()
@@ -957,42 +950,42 @@ local body = __TS__Generator(function(bot, ctx)
                     {"cy", cy},
                     {"ca", ca}
                 )
-                local ____temp_50
+                local ____temp_45
                 if t.kind == "lasthit" and wasPreHit(
                     bot:GetPlayerID(),
                     t.creep
                 ) then
-                    ____temp_50 = true
+                    ____temp_45 = true
                 else
-                    ____temp_50 = nil
+                    ____temp_45 = nil
                 end
-                __TS__SparseArrayPush(____array_55, {"ph", ____temp_50})
-                local ____temp_51
+                __TS__SparseArrayPush(____array_50, {"ph", ____temp_45})
+                local ____temp_46
                 if t.kind == "deny" then
-                    ____temp_51 = IdleSwing.SpentOn(
+                    ____temp_46 = IdleSwing.SpentOn(
                         bot:GetPlayerID(),
                         t.creep
                     )
                 else
-                    ____temp_51 = nil
+                    ____temp_46 = nil
                 end
                 __TS__SparseArrayPush(
-                    ____array_55,
-                    {"pre", ____temp_51},
+                    ____array_50,
+                    {"pre", ____temp_46},
                     {
                         "yd",
                         yieldOf(bot:GetPlayerID())
                     }
                 )
-                local ____temp_52
+                local ____temp_47
                 if walkIn ~= nil then
-                    ____temp_52 = true
+                    ____temp_47 = true
                 else
-                    ____temp_52 = nil
+                    ____temp_47 = nil
                 end
                 __TS__SparseArrayPush(
-                    ____array_55,
-                    {"cw", ____temp_52},
+                    ____array_50,
+                    {"cw", ____temp_47},
                     {
                         "cc",
                         walkIn ~= nil and math.floor(walkIn.price.cost * 1000) / 10 or nil
@@ -1004,9 +997,9 @@ local body = __TS__Generator(function(bot, ctx)
                     },
                     {"msg", res.message}
                 )
-                ____Telemetry_Event_56(
+                ____Telemetry_Event_51(
                     "lh",
-                    {__TS__SparseArraySpread(____array_55)}
+                    {__TS__SparseArraySpread(____array_50)}
                 )
             end
         }
