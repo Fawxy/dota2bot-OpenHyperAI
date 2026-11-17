@@ -1087,6 +1087,24 @@ export const EVENTS = {
         rt: "num",
         dt: "num",
         gold: "num",
+        /** burst-read: ph=cast per spell order of a `burst` actor `pid` (`spell`, its `lvl`, `s` seconds from the burst's first
+         *  order, the actor's `mana`, the target `tgt`); ph=trace every 0.25 s for the rig's `trace` seconds after ready (`s` from
+         *  ready, the cast's `hp` and `mhp`, `est` the summed GetEstimatedDamageToTarget(true, cast, 3, all) of the `n` enemy
+         *  heroes in sight within 1,700, the nearest one's unit name `foe`, mana share `fmana`, level `flvl` and distance `d`,
+         *  `root` 1 when the cast is rooted, `alive`). */
+        spell: "str",
+        lvl: "num",
+        s: "num",
+        mana: "num",
+        tgt: "num",
+        mhp: "num",
+        est: "num",
+        n: "num",
+        foe: "str",
+        fmana: "num",
+        flvl: "num",
+        root: "num",
+        alive: "num",
     },
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {

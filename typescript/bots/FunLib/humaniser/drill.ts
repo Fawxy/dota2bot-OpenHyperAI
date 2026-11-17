@@ -420,6 +420,42 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // Slice burst-truth (D1, D2: the burst read's truth). half: decision, a model graded on facts: what a lone enemy hero with
+    // its spells ready deals in 3 s against the read (GetEstimatedDamageToTarget, `Threat.Read`'s burst; with every spell
+    // castable the read's own figure). Our pos2 stands at hit-back's side spot off the bot lane at full HP (the burst is not cut
+    // short by its death) and is released to `idle` only, so it neither leaves nor trades; the Dire pos2 heals (HP and
+    // mana), walks to 500 north and casts its listed unit-target spells and attacks for 6 s (`burst`). Our pos2 logs the read
+    // and its HP every 0.25 s from ready (`trace`). Truth: the most HP lost in any 3 s. Seed 8 (lion against oracle), seed 30
+    // (sniper against zuus, the control: in games zuus' read met its best burst). Both mids level 4 by the recipe.
+    "burst-read": {
+        note: "rig: Radiant pos2 at a side spot off our bot lane at full HP, the Dire pos2 bursts it from 500 north for 6 s with its unit-target spells and attacks; the read and HP traced; 90 s reps from 0:30; seeds 8 and 30",
+        cast: { r: [2] },
+        others: "bench",
+        rep: { every: 90, from: 30 },
+        rig: {
+            half: "decision",
+            switch: "BurstReady",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                foe: ["r:bot1", -2750, 1200],
+            },
+            timeout: 75,
+            keeps: ["levelup"],
+            release: { modes: ["idle"] },
+            trace: 12,
+            reps: [
+                {
+                    name: "burst",
+                    setup: {
+                        r2: ["heal", "stand side"],
+                        d2: ["heal", "walk foe", "burst r2 for 6 using oracle_purifying_flames oracle_fortunes_end zuus_arc_lightning zuus_lightning_bolt", "leave"],
+                    },
+                    ready: { near: 1000, hpAtLeast: 0.9 },
+                },
+            ],
+        },
+    },
     "retreat-heal-items": {
         note: "rig: Radiant pos5 healed and handed a salve or a tango at its fountain, stood west of our bot T1 off the lane and away from camps, hit by the healed Dire pos3 to 25% (60% control); the attacker leaves for its fountain (or stays near); then only our retreat runs for it; four 135 s reps from 1:00, all inside the laning stage",
         cast: { r: [5] },
@@ -1194,7 +1230,9 @@ export interface RigRep {
      * that is not cast is an actor (held, it only takes these steps). Steps:
      * - `stand <spot>`: walk there and stay, swaying so it never auto-attacks (a statue); never ends.
      * - `walk <spot>`: walk there; ends on arrival.
-     * - `heal`: its fountain until full HP (95%); ends at once when already full.
+     * - `heal`: its fountain until full HP and mana (95%); ends at once when already full.
+     * - `burst <hero> for <secs> using <spell>...`: cast the listed unit-target spells on the hero as they come up, else
+     *   attack it, for `secs` from the first order (`burstStep`); ends then.
      * - `buy <item>` / `sell <item>`: at its fountain (walks there first); ends when done.
      * - `attack <hero> until hp <share>`: once that hero stands on its last step, attack it until its HP share is at or
      *   under the share (or it dies); ends then. `attack <hero> from <d> until hp <share>`: first walk to `d` from it on
@@ -1236,6 +1274,8 @@ export interface Rig {
      * (off4: Sniper from 5:45, Luna from 8:18).
      */
     idle?: number;
+    /** Seconds from ready the cast logs `ph=trace` (its HP and the read of the enemy heroes in sight) every RIG_TRACE_EVERY. */
+    trace?: number;
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
     /** DotaTime seconds the rule's stage ends (a laning rule: 600). A rep ending after it is logged `rend` past `win` and the
@@ -1264,6 +1304,11 @@ interface RigState {
     atk: Record<number, Unit>;
     /** Per attacker pid: an `attack ... from <d>` step reached its distance this rep. */
     inPlace: Record<number, boolean>;
+    /** Per burst actor pid: its first order this rep, the start of its current channel, each spell's last order. */
+    burst: Record<number, { start: number; chan?: number; ordered: Record<string, number> }>;
+    /** Per cast pid: when it was released, and its last trace line. */
+    readyAt: Record<number, number>;
+    tracedAt: Record<number, number>;
 }
 
 let rig: RigState | undefined;
@@ -1294,7 +1339,7 @@ function rigState(): RigState | undefined {
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
     if (rig === undefined || rig.rep !== n) {
-        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, atk: {}, inPlace: {} };
+        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, atk: {}, inPlace: {}, burst: {}, readyAt: {}, tracedAt: {} };
     }
     return rig;
 }
@@ -1591,6 +1636,58 @@ function atFountain(bot: Unit): boolean {
     return false;
 }
 
+/**
+ * A channelled spell is let go after this long, so the next order can land inside the 3 s. `judgement`: Fortune's End
+ * releases its bolt whenever the channel ends (its root, not its damage, grows with the channel); the trace's `root`
+ * shows whether it landed.
+ */
+const RIG_CHANNEL_SECS = 0.3;
+/** A spell order is not repeated (nor logged) within this while its cast point runs. */
+const RIG_REORDER_SECS = 0.5;
+
+/**
+ * `burst <hero> for <secs> using <spell>...`: from its first order, for `secs`, cast the first listed spell it holds that is
+ * castable now on the hero (each a unit-target spell), else attack it; a channel runs RIG_CHANNEL_SECS before the next order.
+ * Each spell order logs `ph=cast`. Ends after `secs`; before the hero is seen at its spot it walks there.
+ */
+function burstStep(bot: Unit, st: RigState, words: string[]): boolean {
+    const pid = bot.GetPlayerID();
+    const secs = tonumber(words[3]) ?? 0;
+    const spells = words.slice(5);
+    const now = DotaTime();
+    const b = st.burst[pid];
+    if (b !== undefined && now - b.start >= secs) return true;
+    const kept = st.atk[pid];
+    const target = kept !== undefined && !kept.IsNull() && kept.IsAlive() && kept.CanBeSeen() ? kept : attackTarget(bot, st, words[1]);
+    if (target === undefined) {
+        const p = lastPoint(st, words[1], bot);
+        if (p !== undefined && GetUnitToLocationDistance(bot, p) > RIG_APPROACH) bot.Action_MoveToLocation(p);
+        return false;
+    }
+    st.atk[pid] = target;
+    const cur = b ?? { start: now, ordered: {} };
+    st.burst[pid] = cur;
+    if (bot.IsChanneling()) {
+        cur.chan = cur.chan ?? now;
+        if (now - cur.chan < RIG_CHANNEL_SECS) return false;
+    } else {
+        cur.chan = undefined;
+        if (bot.IsCastingAbility()) return false;
+    }
+    for (const name of spells) {
+        const a = bot.GetAbilityByName(name);
+        if (a === undefined || a === null || a.IsNull() || a.GetLevel() <= 0 || !a.IsFullyCastable()) continue;
+        const last = cur.ordered[name];
+        if (last !== undefined && now - last < RIG_REORDER_SECS) return false;
+        cur.ordered[name] = now;
+        bot.Action_UseAbilityOnEntity(a, target);
+        Telemetry.Event("drill", [["ph", "cast"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["spell", name], ["lvl", a.GetLevel()], ["s", math.floor((now - cur.start) * 100 + 0.5) / 100], ["mana", math.floor(bot.GetMana())], ["tgt", target.GetPlayerID()]]);
+        return false;
+    }
+    bot.Action_AttackUnit(target, true);
+    return false;
+}
+
 /** One step's order this frame; true when the step has ended (the next one starts). */
 function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean {
     const pid = bot.GetPlayerID();
@@ -1618,7 +1715,8 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         return false;
     }
     if (verb === "heal") {
-        if (hpShare(bot) >= RIG_FULL_HP) return true;
+        // Mana too (burst-truth: a burst actor's spells cost the rep before's mana, and an unhurt actor ended `heal` at once).
+        if (hpShare(bot) >= RIG_FULL_HP && bot.GetMana() >= RIG_FULL_HP * bot.GetMaxMana()) return true;
         atFountain(bot);
         return false;
     }
@@ -1647,6 +1745,7 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         }
         return true;
     }
+    if (verb === "burst") return burstStep(bot, st, words);
     if (verb === "attack") {
         // attack <hero> [from <d>] until hp <share>
         const share = tonumber(words[words.length - 1]);
@@ -1899,15 +1998,63 @@ function burstField(bot: Unit, rr: RigRep): number | undefined {
     return b === undefined ? undefined : math.floor(b * 100 + 0.5) / 100;
 }
 
+const RIG_TRACE_EVERY = 0.25;
+/** The trace's enemy heroes: in sight within this of the cast (the lone stand's reach). */
+const RIG_TRACE_REACH = 1700;
+
+type TracedUnit = Unit & { IsRooted?(): boolean };
+
+/**
+ * After ready, for `secs`, every RIG_TRACE_EVERY: the cast's HP and the read of the enemy heroes in sight within
+ * RIG_TRACE_REACH, each one's GetEstimatedDamageToTarget(true, cast, 3, all) summed (`est`, HP), as the threat read calls
+ * it; the nearest one's mana share; whether the cast is rooted (a bolt landed).
+ */
+function rigTrace(bot: Unit, st: RigState, secs: number): void {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const from = st.readyAt[pid];
+    if (from === undefined || now - from > secs) return;
+    const last = st.tracedAt[pid];
+    if (last !== undefined && now - last < RIG_TRACE_EVERY) return;
+    st.tracedAt[pid] = now;
+    let est = 0;
+    let n = 0;
+    let near: Unit | undefined;
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (!h.IsAlive() || h.GetLocation() === undefined || !h.CanBeSeen() || GetUnitToUnitDistance(bot, h) > RIG_TRACE_REACH) continue;
+        n += 1;
+        est += h.GetEstimatedDamageToTarget(true, bot, 3, DamageType.All);
+        if (near === undefined || GetUnitToUnitDistance(bot, h) < GetUnitToUnitDistance(bot, near)) near = h;
+    }
+    Telemetry.Event("drill", [
+        ["ph", "trace"],
+        ["name", Name()],
+        ["pid", pid],
+        ["rep", st.rep],
+        ["s", math.floor((now - from) * 100 + 0.5) / 100],
+        ["hp", bot.GetHealth()],
+        ["mhp", bot.GetMaxHealth()],
+        ["est", math.floor(est + 0.5)],
+        ["n", n],
+        ["foe", near?.GetUnitName()],
+        ["fmana", near === undefined ? undefined : math.floor((near.GetMana() / math.max(1, near.GetMaxMana())) * 100 + 0.5) / 100],
+        ["flvl", near?.GetLevel()],
+        ["d", near === undefined ? undefined : math.floor(GetUnitToUnitDistance(bot, near))],
+        ["root", (bot as TracedUnit).IsRooted?.() === true ? 1 : 0],
+        ["alive", bot.IsAlive() ? 1 : 0],
+    ]);
+}
+
 /** Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout). */
 function rigTick(bot: Unit): void {
     const st = rigState();
     if (st === undefined) return;
     const pid = bot.GetPlayerID();
     if (st.phase[pid] === undefined) st.phase[pid] = "setup";
+    const r = rigOf(Active());
+    if (st.phase[pid] === "released" && r?.trace !== undefined) rigTrace(bot, st, r.trace);
     if (st.phase[pid] !== "setup") return;
     const rr = RigRepOf(st.rep);
-    const r = rigOf(Active());
     if (rr === undefined || r === undefined) return;
     const fail = failingCheck(bot, st, rr);
     const secs = DotaTime() - st.start;
@@ -1918,6 +2065,7 @@ function rigTick(bot: Unit): void {
     }
     if (fail !== undefined && secs < r.timeout) return;
     st.phase[pid] = fail === undefined ? "released" : "invalid";
+    st.readyAt[pid] = DotaTime();
     Telemetry.Event("drill", [
         ["ph", "ready"],
         ["name", Name()],

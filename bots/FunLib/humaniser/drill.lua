@@ -237,6 +237,42 @@ do
     end
 end
 
+local function __TS__ArraySlice(self, first, last)
+    local len = #self
+    first = first or 0
+    if first < 0 then
+        first = len + first
+        if first < 0 then
+            first = 0
+        end
+    else
+        if first > len then
+            first = len
+        end
+    end
+    last = last or len
+    if last < 0 then
+        last = len + last
+        if last < 0 then
+            last = 0
+        end
+    else
+        if last > len then
+            last = len
+        end
+    end
+    local out = {}
+    first = first + 1
+    last = last + 1
+    local n = 1
+    while first < last do
+        out[n] = self[first]
+        first = first + 1
+        n = n + 1
+    end
+    return out
+end
+
 local function __TS__ArrayFilter(self, callbackfn, thisArg)
     local result = {}
     local len = 0
@@ -275,7 +311,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, rigStep, rigHold, pastReach, pairFacts, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK
+local overrides, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, burstStep, rigStep, rigHold, pastReach, pairFacts, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK, RIG_CHANNEL_SECS, RIG_REORDER_SECS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -859,7 +895,10 @@ function rigState()
             idleAt = {},
             hpMet = {},
             atk = {},
-            inPlace = {}
+            inPlace = {},
+            burst = {},
+            readyAt = {},
+            tracedAt = {}
         }
     end
     return rig
@@ -1152,6 +1191,92 @@ function atFountain(bot)
     bot:Action_MoveToLocation(f)
     return false
 end
+function burstStep(bot, st, words)
+    local pid = bot:GetPlayerID()
+    local secs = tonumber(words[4]) or 0
+    local spells = __TS__ArraySlice(words, 5)
+    local now = DotaTime()
+    local b = st.burst[pid]
+    if b ~= nil and now - b.start >= secs then
+        return true
+    end
+    local kept = st.atk[pid]
+    local target = kept ~= nil and not kept:IsNull() and kept:IsAlive() and kept:CanBeSeen() and kept or attackTarget(bot, st, words[2])
+    if target == nil then
+        local p = lastPoint(st, words[2], bot)
+        if p ~= nil and GetUnitToLocationDistance(bot, p) > RIG_APPROACH then
+            bot:Action_MoveToLocation(p)
+        end
+        return false
+    end
+    st.atk[pid] = target
+    local cur = b or ({start = now, ordered = {}})
+    st.burst[pid] = cur
+    if bot:IsChanneling() then
+        cur.chan = cur.chan or now
+        if now - cur.chan < RIG_CHANNEL_SECS then
+            return false
+        end
+    else
+        cur.chan = nil
+        if bot:IsCastingAbility() then
+            return false
+        end
+    end
+    for ____, name in ipairs(spells) do
+        do
+            local __continue191
+            repeat
+                local a = bot:GetAbilityByName(name)
+                if a == nil or a == nil or a:IsNull() or a:GetLevel() <= 0 or not a:IsFullyCastable() then
+                    __continue191 = true
+                    break
+                end
+                local last = cur.ordered[name]
+                if last ~= nil and now - last < RIG_REORDER_SECS then
+                    return false
+                end
+                cur.ordered[name] = now
+                bot:Action_UseAbilityOnEntity(a, target)
+                Telemetry.Event(
+                    "drill",
+                    {
+                        {"ph", "cast"},
+                        {
+                            "name",
+                            ____exports.Name()
+                        },
+                        {"pid", pid},
+                        {"rep", st.rep},
+                        {"spell", name},
+                        {
+                            "lvl",
+                            a:GetLevel()
+                        },
+                        {
+                            "s",
+                            math.floor((now - cur.start) * 100 + 0.5) / 100
+                        },
+                        {
+                            "mana",
+                            math.floor(bot:GetMana())
+                        },
+                        {
+                            "tgt",
+                            target:GetPlayerID()
+                        }
+                    }
+                )
+                return false
+            until true
+            if not __continue191 then
+                break
+            end
+        end
+    end
+    bot:Action_AttackUnit(target, true)
+    return false
+end
 function rigStep(bot, st, step, last)
     local pid = bot:GetPlayerID()
     local words = __TS__StringSplit(step, " ")
@@ -1188,7 +1313,7 @@ function rigStep(bot, st, step, last)
         return false
     end
     if verb == "heal" then
-        if hpShare(bot) >= RIG_FULL_HP then
+        if hpShare(bot) >= RIG_FULL_HP and bot:GetMana() >= RIG_FULL_HP * bot:GetMaxMana() then
             return true
         end
         atFountain(bot)
@@ -1248,6 +1373,9 @@ function rigStep(bot, st, step, last)
             end
         end
         return true
+    end
+    if verb == "burst" then
+        return burstStep(bot, st, words)
     end
     if verb == "attack" then
         local share = tonumber(words[#words])
@@ -1352,44 +1480,44 @@ function ____exports.LowFacts(bot, low)
     local allies = 0
     for ____, h in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue274
+            local __continue287
             repeat
                 if h:GetPlayerID() == bot:GetPlayerID() or not h:IsAlive() or h:GetLocation() == nil or h:IsIllusion() then
-                    __continue274 = true
+                    __continue287 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     allies = allies + 1
                 end
-                __continue274 = true
+                __continue287 = true
             until true
-            if not __continue274 then
+            if not __continue287 then
                 break
             end
         end
     end
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue278
+            local __continue291
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or h:IsIllusion() then
-                    __continue278 = true
+                    __continue291 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     foes = foes + 1
                 end
                 if low == nil or hpShare(h) > low[1] then
-                    __continue278 = true
+                    __continue291 = true
                     break
                 end
                 local p = pastReach(bot, h)
                 if p >= low[2] and p <= low[3] then
                     found = true
                 end
-                __continue278 = true
+                __continue291 = true
             until true
-            if not __continue278 then
+            if not __continue291 then
                 break
             end
         end
@@ -1400,23 +1528,23 @@ end
 function ____exports.TowerOnCreep(bot, d)
     for ____, tower in ipairs(bot:GetNearbyTowers(1200, false) or ({})) do
         do
-            local __continue285
+            local __continue298
             repeat
                 local t = tower:GetAttackTarget()
                 if t == nil or t == nil or t:IsNull() or not t:IsAlive() then
-                    __continue285 = true
+                    __continue298 = true
                     break
                 end
                 if t:GetTeam() == bot:GetTeam() or not t:IsCreep() or t:IsHero() then
-                    __continue285 = true
+                    __continue298 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= d then
                     return true
                 end
-                __continue285 = true
+                __continue298 = true
             until true
-            if not __continue285 then
+            if not __continue298 then
                 break
             end
         end
@@ -1434,18 +1562,18 @@ function pairFacts(bot, ally, foe)
     local hit
     for ____, a in ipairs(allies) do
         do
-            local __continue293
+            local __continue306
             repeat
                 if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
-                    __continue293 = true
+                    __continue306 = true
                     break
                 end
                 if hit == nil or hpShare(a) < hpShare(hit) then
                     hit = a
                 end
-                __continue293 = true
+                __continue306 = true
             until true
-            if not __continue293 then
+            if not __continue306 then
                 break
             end
         end
@@ -1694,6 +1822,23 @@ ____exports.TABLE = {
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
             reps = {{name = "reach", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.35, 100, 550}, foesAtMost = 1, alliesAtMost = 0, hpAtLeast = 0.5}}, {name = "reach", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.35, 100, 550}, foesAtMost = 1, alliesAtMost = 0, hpAtLeast = 0.5}}, {name = "outnum", setup = {r1 = {"heal", "stand side"}, r5 = {"heal", "attack d4 until hp 0.25", "leave away"}, d4 = {"stand low"}, d3 = {"heal", "stand foe"}}, ready = {low = {0.35, 100, 550}, foes = 2, alliesAtMost = 0, hpAtLeast = 0.5}}}
+        }
+    },
+    ["burst-read"] = {
+        note = "rig: Radiant pos2 at a side spot off our bot lane at full HP, the Dire pos2 bursts it from 500 north for 6 s with its unit-target spells and attacks; the read and HP traced; 90 s reps from 0:30; seeds 8 and 30",
+        cast = {r = {2}},
+        others = "bench",
+        rep = {every = 90, from = 30},
+        rig = {
+            half = "decision",
+            switch = "BurstReady",
+            window = 600,
+            spots = {side = {"r:bot1", -2750, 700}, foe = {"r:bot1", -2750, 1200}},
+            timeout = 75,
+            keeps = {"levelup"},
+            release = {modes = {"idle"}},
+            trace = 12,
+            reps = {{name = "burst", setup = {r2 = {"heal", "stand side"}, d2 = {"heal", "walk foe", "burst r2 for 6 using oracle_purifying_flames oracle_fortunes_end zuus_arc_lightning zuus_lightning_bolt", "leave"}}, ready = {near = 1000, hpAtLeast = 0.9}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2212,6 +2357,8 @@ RIG_BUY_SECS = 10
 RIG_FULL_HP = 0.95
 RIG_AT = 100
 RIG_FROM_SLACK = 50
+RIG_CHANNEL_SECS = 0.3
+RIG_REORDER_SECS = 0.5
 --- Enemy heroes that damaged the cast within the last second.
 local function hitters(bot)
     return __TS__ArrayFilter(
@@ -2240,24 +2387,24 @@ local function foggedWithin(bot, r)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue222
+                local __continue235
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == bot:GetTeam() or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue222 = true
+                        __continue235 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen >= RIG_FOG_CLEAR then
-                        __continue222 = true
+                        __continue235 = true
                         break
                     end
                     if GetUnitToLocationDistance(bot, info.location) <= r then
                         return true
                     end
-                    __continue222 = true
+                    __continue235 = true
                 until true
-                if not __continue222 then
+                if not __continue235 then
                     break
                 end
             end
@@ -2272,17 +2419,17 @@ local function loneBurst(bot, r)
     local dmg = 0
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue227
+            local __continue240
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > r then
-                    __continue227 = true
+                    __continue240 = true
                     break
                 end
                 n = n + 1
                 dmg = dmg + h:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
-                __continue227 = true
+                __continue240 = true
             until true
-            if not __continue227 then
+            if not __continue240 then
                 break
             end
         end
@@ -2325,19 +2472,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue245
+                local __continue258
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue245 = true
+                        __continue258 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue245 = true
+                    __continue258 = true
                 until true
-                if not __continue245 then
+                if not __continue258 then
                     break
                 end
             end
@@ -2429,6 +2576,121 @@ local function burstField(bot, rr)
     end
     return ____temp_68
 end
+local RIG_TRACE_EVERY = 0.25
+--- The trace's enemy heroes: in sight within this of the cast (the lone stand's reach).
+local RIG_TRACE_REACH = 1700
+--- After ready, for `secs`, every RIG_TRACE_EVERY: the cast's HP and the read of the enemy heroes in sight within
+-- RIG_TRACE_REACH, each one's GetEstimatedDamageToTarget(true, cast, 3, all) summed (`est`, HP), as the threat read calls
+-- it; the nearest one's mana share; whether the cast is rooted (a bolt landed).
+local function rigTrace(bot, st, secs)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local from = st.readyAt[pid]
+    if from == nil or now - from > secs then
+        return
+    end
+    local last = st.tracedAt[pid]
+    if last ~= nil and now - last < RIG_TRACE_EVERY then
+        return
+    end
+    st.tracedAt[pid] = now
+    local est = 0
+    local n = 0
+    local near
+    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue326
+            repeat
+                if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > RIG_TRACE_REACH then
+                    __continue326 = true
+                    break
+                end
+                n = n + 1
+                est = est + h:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
+                if near == nil or GetUnitToUnitDistance(bot, h) < GetUnitToUnitDistance(bot, near) then
+                    near = h
+                end
+                __continue326 = true
+            until true
+            if not __continue326 then
+                break
+            end
+        end
+    end
+    local ____Telemetry_Event_78 = Telemetry.Event
+    local ____array_77 = __TS__SparseArrayNew(
+        {"ph", "trace"},
+        {
+            "name",
+            ____exports.Name()
+        },
+        {"pid", pid},
+        {"rep", st.rep},
+        {
+            "s",
+            math.floor((now - from) * 100 + 0.5) / 100
+        },
+        {
+            "hp",
+            bot:GetHealth()
+        },
+        {
+            "mhp",
+            bot:GetMaxHealth()
+        },
+        {
+            "est",
+            math.floor(est + 0.5)
+        },
+        {"n", n},
+        {
+            "foe",
+            near and near:GetUnitName()
+        }
+    )
+    local ____temp_71
+    if near == nil then
+        ____temp_71 = nil
+    else
+        ____temp_71 = math.floor(near:GetMana() / math.max(
+            1,
+            near:GetMaxMana()
+        ) * 100 + 0.5) / 100
+    end
+    __TS__SparseArrayPush(
+        ____array_77,
+        {"fmana", ____temp_71},
+        {
+            "flvl",
+            near and near:GetLevel()
+        }
+    )
+    local ____temp_74
+    if near == nil then
+        ____temp_74 = nil
+    else
+        ____temp_74 = math.floor(GetUnitToUnitDistance(bot, near))
+    end
+    __TS__SparseArrayPush(____array_77, {"d", ____temp_74})
+    local ____this_76
+    ____this_76 = bot
+    local ____opt_75 = ____this_76.IsRooted
+    __TS__SparseArrayPush(
+        ____array_77,
+        {
+            "root",
+            (____opt_75 and ____opt_75(____this_76)) == true and 1 or 0
+        },
+        {
+            "alive",
+            bot:IsAlive() and 1 or 0
+        }
+    )
+    ____Telemetry_Event_78(
+        "drill",
+        {__TS__SparseArraySpread(____array_77)}
+    )
+end
 --- Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout).
 local function rigTick(bot)
     local st = rigState()
@@ -2439,11 +2701,14 @@ local function rigTick(bot)
     if st.phase[pid] == nil then
         st.phase[pid] = "setup"
     end
+    local r = rigOf(____exports.Active())
+    if st.phase[pid] == "released" and (r and r.trace) ~= nil then
+        rigTrace(bot, st, r.trace)
+    end
     if st.phase[pid] ~= "setup" then
         return
     end
     local rr = ____exports.RigRepOf(st.rep)
-    local r = rigOf(____exports.Active())
     if rr == nil or r == nil then
         return
     end
@@ -2485,6 +2750,7 @@ local function rigTick(bot)
         return
     end
     st.phase[pid] = fail == nil and "released" or "invalid"
+    st.readyAt[pid] = DotaTime()
     Telemetry.Event(
         "drill",
         {
@@ -2567,8 +2833,8 @@ function ____exports.Tick(bot)
     if not removedLogged then
         removedLogged = true
         for ____, k in ipairs(REMOVED) do
-            local ____opt_69 = overrides()
-            local v = ____opt_69 and ____opt_69[k]
+            local ____opt_81 = overrides()
+            local v = ____opt_81 and ____opt_81[k]
             if v ~= nil and v ~= false and v ~= -1 then
                 Telemetry.Event("drill", {{"ph", "removed"}, {"name", k}})
             end
@@ -2582,8 +2848,8 @@ function ____exports.Tick(bot)
         end
     end
     if name == nil then
-        local ____opt_71 = overrides()
-        local asked = ____opt_71 and ____opt_71.Drill
+        local ____opt_83 = overrides()
+        local asked = ____opt_83 and ____opt_83.Drill
         if type(asked) == "string" and asked ~= "" and lastRole[-1] ~= asked then
             lastRole[-1] = asked
             Telemetry.Event("drill", {{"ph", "unknown"}, {"name", asked}})
@@ -2623,8 +2889,8 @@ function ____exports.Tick(bot)
     end
     lastRep[team] = rep
     local start = d.rep.from + (rep - 1) * d.rep.every
-    local ____Telemetry_Event_76 = Telemetry.Event
-    local ____array_75 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_88 = Telemetry.Event
+    local ____array_87 = __TS__SparseArrayNew(
         {"ph", "rep"},
         {"name", name},
         {"team", team},
@@ -2636,11 +2902,11 @@ function ____exports.Tick(bot)
         {"start", start},
         {"forces", d.forces}
     )
-    local ____opt_73 = ____exports.RigRepOf(rep)
-    __TS__SparseArrayPush(____array_75, {"var", ____opt_73 and ____opt_73.name})
-    ____Telemetry_Event_76(
+    local ____opt_85 = ____exports.RigRepOf(rep)
+    __TS__SparseArrayPush(____array_87, {"var", ____opt_85 and ____opt_85.name})
+    ____Telemetry_Event_88(
         "drill",
-        {__TS__SparseArraySpread(____array_75)}
+        {__TS__SparseArraySpread(____array_87)}
     )
     rigTick(bot)
 end
