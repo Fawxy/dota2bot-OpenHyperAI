@@ -93,5 +93,6 @@ export function Tick(bot: Unit): void {
     const q = pending[pid];
     if (q.length === 0) return;
     const items = q.splice(0, q.length);
-    for (const p of items) log(bot, p);
+    // One cast's error drops that line only, not the rest of the drained queue (review cast-read).
+    for (const p of items) pcall(log, bot, p);
 }

@@ -197,7 +197,7 @@ function ____exports.Tick(bot)
     end
     local items = __TS__ArraySplice(q, 0, #q)
     for ____, p in ipairs(items) do
-        log(bot, p)
+        pcall(log, bot, p)
     end
 end
 return ____exports

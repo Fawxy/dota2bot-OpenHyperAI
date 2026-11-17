@@ -5,11 +5,12 @@
 // Usage: node cast_read.js <run> [<run> ...] [--null <run> ...] [--until 720] [--json] [--no-ingest]
 //   --null <runs>  OHA against OHA runs: a `mirror` column, both seats per game
 // Lines, per side: `two+` fights with two or more members, `one` with one; per game, and the share where the target died
-// in 12 s. Then per fight, the members' spell casts in [t - 3, t + 12] (items left out) by class (k hard disable or
-// immunity, u ultimate, s any other spell) and the share aimed at the target (the cast's location within 300 of its
-// snapshot that second; a no-target cast has no location: `none`); the fights where a member had a k ready at the
-// window's start, and of those the share where a member cast a k at the target; per fight, the spells a member had
-// ready at the window's start and did not cast in it.
+// in 12 s. Then per fight, the members' spell casts in [t - 3, t + 12] (items left out; a cast's time is the callback's,
+// the line's t - lag) by class (k hard disable or immunity, u ultimate, which wins over k, s any other spell) and the
+// share aimed at the target (the hero nearest the cast's location that second, within 300, is the target; a no-target
+// cast has no location: `none`); the fights where a member had a k ready at the window's start (its snapshot, else one
+// of the two seconds before), and of those the share where a member cast a k at the target; per fight, the spells a
+// member had ready at the window's start and did not cast in it.
 'use strict';
 const fs = require('fs');
 const { Store, DB, LOGS, JOBS } = require('./store');
@@ -105,7 +106,6 @@ function tally(fights, n) {
     for (const [kind, keep] of [['two', (f) => f.members.length >= 2], ['one', (f) => f.members.length === 1]]) {
         const fs_ = fights.filter(keep);
         const casts = fs_.flatMap((f) => f.members.flatMap((m) => m.casts));
-        const aimed = casts;
         const kReady = fs_.filter((f) => f.members.some((m) => m.ready.some((s) => s.c === 'k')));
         const unused = fs_.flatMap((f) => f.members.flatMap((m) => m.unused));
         const per = {};
@@ -117,8 +117,8 @@ function tally(fights, n) {
             n: fs_.length,
             died: share(fs_.filter((f) => f.died).length, fs_.length),
             casts: per,
-            atTarget: share(aimed.filter((c) => c.at === 'target').length, aimed.length),
-            aimedNone: share(aimed.filter((c) => c.at === 'none').length, aimed.length),
+            atTarget: share(casts.filter((c) => c.at === 'target').length, casts.length),
+            aimedNone: share(casts.filter((c) => c.at === 'none').length, casts.length),
             kReady: share(kReady.length, fs_.length),
             kUsed: share(kReady.filter((f) => f.members.some((m) => m.casts.some((c) => c.cl === 'k' && c.at === 'target'))).length, kReady.length),
             unused: unusedPer,
@@ -134,17 +134,18 @@ function collect(store, runs, until) {
     const used = [];
     const skipped = [];
     for (const g of games) {
-        const id = store.query('SELECT game_id FROM games WHERE file = ?', g.file)[0]?.game_id;
-        const has = id !== undefined && store.query('SELECT 1 FROM ev_snap WHERE game_id = ? AND rdy IS NOT NULL LIMIT 1', id).length > 0;
+        // A log can hold more than one game (a short one before the game proper): ledger's games() picks the game.
+        const id = g.game_id;
+        const has =store.query('SELECT 1 FROM ev_snap WHERE game_id = ? AND rdy IS NOT NULL LIMIT 1', id).length > 0;
         if (!has) { skipped.push(g.label); continue; }
         used.push(g);
-        const casts = store.query('SELECT pid, t, ab, cl, x, y FROM ev_cast WHERE game_id = ? AND t <= ?', id, until + AFTER);
+        const casts = store.query('SELECT pid, t - coalesce(lag, 0) AS t, ab, cl, x, y FROM ev_cast WHERE game_id = ? AND t <= ?', id, until + AFTER);
         const snaps = store.query(`SELECT s.pid, l.team, s.sec, s.x, s.y, s.alive, s.rdy FROM (
                 SELECT pid, CAST(round(t) AS INTEGER) AS sec, x, y, alive, rdy,
                     row_number() OVER (PARTITION BY pid, CAST(round(t) AS INTEGER) ORDER BY seq DESC) AS rn
                 FROM ev_snap WHERE game_id = ? AND t <= ?) s
             JOIN lineup l ON l.game_id = ? AND l.pid = s.pid WHERE s.rn = 1`, id, until + AFTER + 1, id);
-        fights.push(...readGame(rows.filter((r) => r.file === g.file), casts, snaps));
+        fights.push(...readGame(rows.filter((r) => r.game_id === id), casts, snaps));
     }
     return { games: used, fights, skipped };
 }
