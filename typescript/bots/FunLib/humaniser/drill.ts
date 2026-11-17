@@ -426,7 +426,9 @@ export const TABLE: Record<string, Entry> = {
     // the Lich at 25-38% inside the support's reach (off: the trade's 25% cut, so no commit); `reach`, the Lich 200-500 past
     // the core's reach, past the support's own (off: no walk); control `outnum`, the Dire pos3 beside it. The hit stops at 33%
     // so the off arm's 25% cut is not met by the actor (Sven's hit is about a tenth of the Lich's HP). Spots on kill-reach's
-    // strip: low 800 west of side, far 1,200 (200 short of away), foe 1,100 (300 past low, under 1,200 from side).
+    // strip: low 800 west of side, far 1,200 (200 short of away). foe 500 west, between the cast and the Lich (rig1: 1,100 west
+    // resolved onto far, 200 from low, where the actor's target pick reaches); the actor hits only once the pos3 stands there
+    // (`after d3`; rig1-2: the control was never ready, the Lich regenerating past 38% while the pos3 walked in).
     "support-kill-reach": {
         note: "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: { r: [5] },
@@ -440,7 +442,7 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 low: ["r:bot1", -3550, 700],
                 far: ["r:bot1", -3950, 700],
-                foe: ["r:bot1", -3850, 700],
+                foe: ["r:bot1", -3250, 700],
                 away: ["r:bot1", -4150, 700],
             },
             timeout: 95,
@@ -459,7 +461,7 @@ export const TABLE: Record<string, Entry> = {
                 },
                 {
                     name: "outnum",
-                    setup: { r5: ["heal", "stand side"], r1: ["heal", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
+                    setup: { r5: ["heal", "stand side"], r1: ["heal", "after d3", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
                     ready: { low: [0.38, -400, 200], foes: 2, alliesAtMost: 0, hpAtLeast: 0.5 },
                 },
             ],
@@ -1660,6 +1662,13 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         if (p === undefined) return false;
         if (GetUnitToLocationDistance(bot, p) <= RIG_AT) return true;
         bot.Action_MoveToLocation(p);
+        return false;
+    }
+    // `after <hero>`: stand until that hero stands at its last step's point (support-kill-reach rig1: the actor's hit set the
+    // Lich's HP before the pos3 walked in from its bench, about 30 s, and the Lich regenerated past the ready bar).
+    if (verb === "after") {
+        if (attackTarget(bot, st, words[1]) !== undefined) return true;
+        bot.Action_MoveToLocation(bot.GetLocation());
         return false;
     }
     if (verb === "heal") {

@@ -1187,6 +1187,13 @@ function rigStep(bot, st, step, last)
         bot:Action_MoveToLocation(p)
         return false
     end
+    if verb == "after" then
+        if attackTarget(bot, st, words[2]) ~= nil then
+            return true
+        end
+        bot:Action_MoveToLocation(bot:GetLocation())
+        return false
+    end
     if verb == "heal" then
         if hpShare(bot) >= RIG_FULL_HP then
             return true
@@ -1352,44 +1359,44 @@ function ____exports.LowFacts(bot, low)
     local allies = 0
     for ____, h in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue274
+            local __continue276
             repeat
                 if h:GetPlayerID() == bot:GetPlayerID() or not h:IsAlive() or h:GetLocation() == nil or h:IsIllusion() then
-                    __continue274 = true
+                    __continue276 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     allies = allies + 1
                 end
-                __continue274 = true
+                __continue276 = true
             until true
-            if not __continue274 then
+            if not __continue276 then
                 break
             end
         end
     end
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue278
+            local __continue280
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or h:IsIllusion() then
-                    __continue278 = true
+                    __continue280 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     foes = foes + 1
                 end
                 if low == nil or hpShare(h) > low[1] then
-                    __continue278 = true
+                    __continue280 = true
                     break
                 end
                 local p = pastReach(bot, h)
                 if p >= low[2] and p <= low[3] then
                     found = true
                 end
-                __continue278 = true
+                __continue280 = true
             until true
-            if not __continue278 then
+            if not __continue280 then
                 break
             end
         end
@@ -1400,23 +1407,23 @@ end
 function ____exports.TowerOnCreep(bot, d)
     for ____, tower in ipairs(bot:GetNearbyTowers(1200, false) or ({})) do
         do
-            local __continue285
+            local __continue287
             repeat
                 local t = tower:GetAttackTarget()
                 if t == nil or t == nil or t:IsNull() or not t:IsAlive() then
-                    __continue285 = true
+                    __continue287 = true
                     break
                 end
                 if t:GetTeam() == bot:GetTeam() or not t:IsCreep() or t:IsHero() then
-                    __continue285 = true
+                    __continue287 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= d then
                     return true
                 end
-                __continue285 = true
+                __continue287 = true
             until true
-            if not __continue285 then
+            if not __continue287 then
                 break
             end
         end
@@ -1434,18 +1441,18 @@ function pairFacts(bot, ally, foe)
     local hit
     for ____, a in ipairs(allies) do
         do
-            local __continue293
+            local __continue295
             repeat
                 if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
-                    __continue293 = true
+                    __continue295 = true
                     break
                 end
                 if hit == nil or hpShare(a) < hpShare(hit) then
                     hit = a
                 end
-                __continue293 = true
+                __continue295 = true
             until true
-            if not __continue293 then
+            if not __continue295 then
                 break
             end
         end
@@ -1709,13 +1716,13 @@ ____exports.TABLE = {
                 side = {"r:bot1", -2750, 700},
                 low = {"r:bot1", -3550, 700},
                 far = {"r:bot1", -3950, 700},
-                foe = {"r:bot1", -3850, 700},
+                foe = {"r:bot1", -3250, 700},
                 away = {"r:bot1", -4150, 700}
             },
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
-            reps = {{name = "bar", setup = {r5 = {"heal", "stand side"}, r1 = {"heal", "attack d4 until hp 0.33", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.38, -400, 200}, foesAtMost = 1, alliesAtMost = 0, hpAtLeast = 0.5}}, {name = "reach", setup = {r5 = {"heal", "stand side"}, r1 = {"heal", "attack d4 until hp 0.33", "leave away"}, d4 = {"stand far"}}, ready = {low = {0.38, 200, 500}, foesAtMost = 1, alliesAtMost = 0, hpAtLeast = 0.5}}, {name = "outnum", setup = {r5 = {"heal", "stand side"}, r1 = {"heal", "attack d4 until hp 0.33", "leave away"}, d4 = {"stand low"}, d3 = {"heal", "stand foe"}}, ready = {low = {0.38, -400, 200}, foes = 2, alliesAtMost = 0, hpAtLeast = 0.5}}}
+            reps = {{name = "bar", setup = {r5 = {"heal", "stand side"}, r1 = {"heal", "attack d4 until hp 0.33", "leave away"}, d4 = {"stand low"}}, ready = {low = {0.38, -400, 200}, foesAtMost = 1, alliesAtMost = 0, hpAtLeast = 0.5}}, {name = "reach", setup = {r5 = {"heal", "stand side"}, r1 = {"heal", "attack d4 until hp 0.33", "leave away"}, d4 = {"stand far"}}, ready = {low = {0.38, 200, 500}, foesAtMost = 1, alliesAtMost = 0, hpAtLeast = 0.5}}, {name = "outnum", setup = {r5 = {"heal", "stand side"}, r1 = {"heal", "after d3", "attack d4 until hp 0.33", "leave away"}, d4 = {"stand low"}, d3 = {"heal", "stand foe"}}, ready = {low = {0.38, -400, 200}, foes = 2, alliesAtMost = 0, hpAtLeast = 0.5}}}
         }
     },
     ["retreat-heal-items"] = {
@@ -2262,24 +2269,24 @@ local function foggedWithin(bot, r)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue222
+                local __continue224
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == bot:GetTeam() or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue222 = true
+                        __continue224 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen >= RIG_FOG_CLEAR then
-                        __continue222 = true
+                        __continue224 = true
                         break
                     end
                     if GetUnitToLocationDistance(bot, info.location) <= r then
                         return true
                     end
-                    __continue222 = true
+                    __continue224 = true
                 until true
-                if not __continue222 then
+                if not __continue224 then
                     break
                 end
             end
@@ -2294,17 +2301,17 @@ local function loneBurst(bot, r)
     local dmg = 0
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue227
+            local __continue229
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > r then
-                    __continue227 = true
+                    __continue229 = true
                     break
                 end
                 n = n + 1
                 dmg = dmg + h:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
-                __continue227 = true
+                __continue229 = true
             until true
-            if not __continue227 then
+            if not __continue229 then
                 break
             end
         end
@@ -2347,19 +2354,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue245
+                local __continue247
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue245 = true
+                        __continue247 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue245 = true
+                    __continue247 = true
                 until true
-                if not __continue245 then
+                if not __continue247 then
                     break
                 end
             end

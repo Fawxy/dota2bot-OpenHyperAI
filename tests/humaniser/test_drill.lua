@@ -884,6 +884,8 @@ do
 	check("support-kill-reach: the actor's away spot over 1,200 from the cast", dx("away", "side") > 1200)
 	check("support-kill-reach: the pos3 300+ from the Lich's spot, under 1,200 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") < 1200)
 	check("support-kill-reach: the actor stops over the trade's 25% cut", t.reps[1].setup.r1[2] == "attack d4 until hp 0.33")
+	check("support-kill-reach: in the control the actor waits for the pos3 before it hits", t.reps[3].setup.r1[2] == "after d3" and t.reps[3].setup.r1[3] == "attack d4 until hp 0.33")
+	check("support-kill-reach: the pos3 beyond the actor's 200 target pick from the Lich", dx("foe", "low") > 250)
 end
 
 finish()
