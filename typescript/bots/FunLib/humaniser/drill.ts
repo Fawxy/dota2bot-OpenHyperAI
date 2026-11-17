@@ -497,12 +497,12 @@ export const TABLE: Record<string, Entry> = {
             reps: [
                 {
                     name: "low",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
                     ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
                     name: "flee",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
                     ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
@@ -512,12 +512,12 @@ export const TABLE: Record<string, Entry> = {
                 },
                 {
                     name: "two",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "wait d3", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
                     ready: { low: [0.35, -2000, 550], foes: 2, foesAtMost: 2, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
                 {
                     name: "outnum",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
+                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "wait r1", "wait r5", "wait d3", "wait d5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
                     ready: { low: [0.35, -2000, 550], foes: 3, alliesAtMost: 1, hpAtLeast: 0.5 },
                 },
             ],
@@ -1297,6 +1297,7 @@ export interface RigRep {
      * that is not cast is an actor (held, it only takes these steps). Steps:
      * - `stand <spot>`: walk there and stay, swaying so it never auto-attacks (a statue); never ends.
      * - `walk <spot>`: walk there; ends on arrival.
+     * - `wait <hero>`: hold until that hero of ours is placed, or an enemy hero is seen at that hero's stand; ends then.
      * - `heal`: its fountain until full HP and mana (95%); ends at once when already full.
      * - `burst <hero> for <secs> using <spell>...`: cast the listed unit-target spells on the hero as they come up, else
      *   attack it, for `secs` from the first order (`burstStep`); ends then.
@@ -1779,6 +1780,14 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
         // Within RIG_PLACED, not standAt's 100: lane creeps can shove a statue past 100 (hit-back fix1).
         st.placed[pid] = last && GetUnitToLocationDistance(bot, p) <= RIG_PLACED;
         return false;
+    }
+    if (verb === "wait") {
+        // pair-kill fix3: the Warlock hit the Lich low before Witch Doctor was back from healing or Omniknight had walked
+        // in, and the Lich regenerated past the ready bar while they came.
+        const own = heroOf(bot, words[1]);
+        const done = own !== undefined ? st.placed[own.GetPlayerID()] === true : attackTarget(bot, st, words[1]) !== undefined;
+        if (!done) bot.Action_MoveToLocation(bot.GetLocation());
+        return done;
     }
     if (verb === "walk") {
         const p = rigPoint(bot, words[1]);
