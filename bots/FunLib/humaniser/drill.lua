@@ -1825,16 +1825,16 @@ ____exports.TABLE = {
         }
     },
     ["burst-read"] = {
-        note = "rig: Radiant pos2 at a side spot off our bot lane at full HP, the Dire pos2 bursts it from 500 north for 6 s with its unit-target spells and attacks; the read and HP traced; 90 s reps from 0:30; seeds 8 and 30",
+        note = "rig: Radiant pos2 at a side spot off our bot lane at full HP, the Dire pos2 bursts it from about 430 north for 6 s with its unit-target spells and attacks; the read and HP traced; 120 s reps from 0:30; seed 8",
         cast = {r = {2}},
         others = "bench",
-        rep = {every = 90, from = 30},
+        rep = {every = 120, from = 30},
         rig = {
             half = "decision",
             switch = "BurstReady",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, foe = {"r:bot1", -2750, 1200}},
-            timeout = 75,
+            timeout = 100,
             keeps = {"levelup"},
             release = {modes = {"idle"}},
             trace = 12,

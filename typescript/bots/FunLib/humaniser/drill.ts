@@ -422,16 +422,19 @@ export const TABLE: Record<string, Entry> = {
     },
     // Slice burst-truth (D1, D2: the burst read's truth). half: decision, a model graded on facts: what a lone enemy hero with
     // its spells ready deals in 3 s against the read (GetEstimatedDamageToTarget, `Threat.Read`'s burst; with every spell
-    // castable the read's own figure). Our pos2 stands at hit-back's side spot off the bot lane at full HP (the burst is not cut
-    // short by its death) and is released to `idle` only, so it neither leaves nor trades; the Dire pos2 heals (HP and
-    // mana), walks to 500 north and casts its listed unit-target spells and attacks for 6 s (`burst`). Our pos2 logs the read
-    // and its HP every 0.25 s from ready (`trace`). Truth: the most HP lost in any 3 s. Seed 8 (lion against oracle), seed 30
-    // (sniper against zuus, the control: in games zuus' read met its best burst). Both mids level 4 by the recipe.
+    // castable the read's own figure; for an enemy the raw figure ignores cooldown and mana, so only the ready case is
+    // checked). Our pos2 stands at hit-back's side spot off the bot lane at full HP (the burst is not cut short by its death)
+    // and is released to `idle` only, so it neither leaves nor trades; the Dire pos2 heals (HP and mana), walks to its spot
+    // (about 430 from the cast) and casts its listed unit-target spells and attacks for 6 s (`burst`). Our pos2 logs the read
+    // and its HP every 0.25 s from ready (`trace`). Truth: the most HP lost in any 3 s. Seed 8 (lion against oracle); a seed
+    // 30 control (sniper against zuus) is possible but was not run. Both mids level 4 (`--at "-1:00 dota_bot_give_level 3"`).
+    // 120 s reps: one oracle cycle (walk in, burst, walk home, refill) took about 102 s, so 90 s reps (oracle2) drifted and
+    // timed out reps 4 and 5.
     "burst-read": {
-        note: "rig: Radiant pos2 at a side spot off our bot lane at full HP, the Dire pos2 bursts it from 500 north for 6 s with its unit-target spells and attacks; the read and HP traced; 90 s reps from 0:30; seeds 8 and 30",
+        note: "rig: Radiant pos2 at a side spot off our bot lane at full HP, the Dire pos2 bursts it from about 430 north for 6 s with its unit-target spells and attacks; the read and HP traced; 120 s reps from 0:30; seed 8",
         cast: { r: [2] },
         others: "bench",
-        rep: { every: 90, from: 30 },
+        rep: { every: 120, from: 30 },
         rig: {
             half: "decision",
             switch: "BurstReady",
@@ -440,7 +443,7 @@ export const TABLE: Record<string, Entry> = {
                 side: ["r:bot1", -2750, 700],
                 foe: ["r:bot1", -2750, 1200],
             },
-            timeout: 75,
+            timeout: 100,
             keeps: ["levelup"],
             release: { modes: ["idle"] },
             trace: 12,
