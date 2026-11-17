@@ -859,6 +859,12 @@ do
 	GetUnitList = old
 	local t = H.Drill.TABLE["kill-reach"].rig
 	check("kill-reach: execution rig on KillReach, two reach reps to one outnumbered control", t.half == "execution" and t.switch == "KillReach" and #t.reps == 3 and t.reps[3].ready.foes == 2)
+	-- The spots' offsets on one anchor (they resolve within 100 of these, ph=spot, except where marked in the rig's comment):
+	-- the control's pos3 over 200 from the Lich's spot (the pos5's attack takes the enemy nearest it) with a margin, and
+	-- within 1,200 of the cast with a margin.
+	local sp = t.spots
+	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
+	check("kill-reach: the pos3 300+ from the Lich's spot, under 1,100 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") <= 1100, tostring(dx("foe", "low")) .. " " .. tostring(dx("foe", "side")))
 end
 
 finish()

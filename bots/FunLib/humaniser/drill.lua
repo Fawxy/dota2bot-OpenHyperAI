@@ -1681,7 +1681,7 @@ ____exports.TABLE = {
         }
     },
     ["kill-reach"] = {
-        note = "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 300 west (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 950 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast = SAFE_CORE,
         others = "bench",
         rep = {every = 120, from = 0},
@@ -1689,7 +1689,7 @@ ____exports.TABLE = {
             half = "execution",
             switch = "KillReach",
             window = 600,
-            spots = {side = {"r:bot1", -2750, 700}, low = {"r:bot1", -3350, 700}, foe = {"r:bot1", -3050, 700}, away = {"r:bot1", -4150, 700}},
+            spots = {side = {"r:bot1", -2750, 700}, low = {"r:bot1", -3350, 700}, foe = {"r:bot1", -3700, 700}, away = {"r:bot1", -4150, 700}},
             timeout = 95,
             keeps = {"levelup"},
             release = {modes = {"laning", "attack", "retreat", "idle"}},
