@@ -804,4 +804,64 @@ do
 	CoreTrade.Reset()
 end
 
+-- Slice trade-reach (D19, Ours.KillReach): a hero at the commit bar a short walk past the trade's reach (648 here) is the commit's
+-- target; a running trade on a hero that falls to the bar becomes the kill; more of them near is not chased (the control).
+do
+	local Ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	CoreTrade.Reset()
+	bot.hp, bot.attacking, bot.hitBy, bot.lastAttack = 80, nil, nil, nil
+	enemy.hp, enemy.dead = 20, nil
+	enemy.loc = Vector(900, 0)
+	T = 800
+	Ours.KillReach = false
+	check("trade-reach off: a low hero past reach is no target", CoreTrade.Desire(bot) == 0)
+	Ours.KillReach = nil
+	CoreTrade.Reset()
+	check("trade-reach: a low hero 252 past reach is the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	CoreTrade.Think(bot)
+	check("trade-reach: Think attacks it (the order walks in)", bot.attacking == enemy)
+	CoreTrade.Reset()
+	bot.attacking = nil
+	enemy.loc = Vector(1300, 0)
+	check("trade-reach: past reach + 600 it is not", CoreTrade.Desire(bot) == 0)
+	-- The control: a second enemy hero within 1,200 makes it two against one.
+	CoreTrade.Reset()
+	enemy.loc = Vector(900, 0)
+	local other = hero(7, 3, -1000, 90)
+	local near = Unit.GetNearbyHeroes
+	function Unit:GetNearbyHeroes(r, enemies)
+		if not enemies then return { self } end
+		local out = {}
+		for _, u in ipairs({ enemy, other }) do if GetUnitToUnitDistance(self, u) <= r then table.insert(out, u) end end
+		return out
+	end
+	check("trade-reach control: outnumbered, the low hero is not chased", CoreTrade.Desire(bot) == 0)
+	Unit.GetNearbyHeroes = near
+	other.alive = false
+	-- A running trade whose target falls to the bar: kill_up, and the same frame opens the kill.
+	CoreTrade.Reset()
+	enemy.hp, enemy.loc = 70, Vector(400, 0)
+	T = 810
+	check("trade-reach: a trade opens on a healthy hero in reach", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	CoreTrade.Think(bot)
+	enemy.hp = 20
+	T = 810.5
+	local n = #lines
+	check("trade-reach: the target at the bar turns the trade into the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	local up = false
+	for k = n + 1, #lines do if lines[k]:find("ev=trade") and lines[k]:find("kind=trade") and lines[k]:find("why=kill_up") then up = true end end
+	check("trade-reach: the trade's end line names kill_up", up)
+	Ours.KillReach = false
+	CoreTrade.Reset()
+	enemy.hp = 70
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	enemy.hp = 20
+	T = 811
+	check("trade-reach off: the trade stays a trade", CoreTrade.Desire(bot) == CoreTrade.DESIRE_TRADE)
+	Ours.KillReach = nil
+	CoreTrade.Reset()
+	enemy.hp, enemy.loc = 70, Vector(400, 0)
+end
+
 finish()

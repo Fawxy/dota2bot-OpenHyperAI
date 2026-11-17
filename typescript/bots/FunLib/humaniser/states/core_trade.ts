@@ -120,6 +120,12 @@ const LOSING_BY = 0.05;
 const UNLANDED_CAP = 0.15;
 /** A kill window commits and ignores the exchange, so it keeps a time limit. */
 const KILL_TIME = 6;
+/**
+ * Slice trade-reach (`Ours.KillReach`, D19): a core's commit looks this far past the trade's reach for a hero at the commit bar,
+ * JOIN_WALK's "about 2 s of walking" (`judgement`). h2hcurrent1: 13 of 62 side-core hunter-chances never had the low hero in
+ * reach and none attacked; 10 were within reach + 400, all within reach + 700.
+ */
+const KILL_WALK = JOIN_WALK;
 /** A pair join commits like a fight and keeps its limit; it reopens at once while PairJoin still answers join. */
 const JOIN_TIME = FIGHT_TIME;
 /** Reach beyond the bot's attack range (plus both bounding radii) within which a hero is a target. */
@@ -555,6 +561,29 @@ function nearestTarget(bot: Unit): Unit | undefined {
     return best;
 }
 
+/**
+ * Slice trade-reach: the commit's target for a core, an enemy hero at `killHp` or less within reach + KILL_WALK that Decide
+ * calls `kill` on (so not outnumbered, not by its tower, not over our HP), the lowest HP first. Undefined: the trade rule's
+ * nearest hero in reach decides as before.
+ */
+function commitTarget(bot: Unit, killHp: number): LuaMultiReturn<[Unit | undefined, Inputs | undefined]> {
+    if (!Ours.On("KillReach") || !CoreLastHit.Applies(bot)) return $multi(undefined, undefined);
+    let best: Unit | undefined;
+    let bestI: Inputs | undefined;
+    let bestHp = math.huge;
+    for (const h of bot.GetNearbyHeroes(reachOf(bot) + KILL_WALK, true, BotMode.None)) {
+        if (!valid(h)) continue;
+        const f = frac(h);
+        if (f > killHp || f >= bestHp) continue;
+        const i = Gather(bot, h);
+        if (Decide(i, false, killHp).kind !== "kill") continue;
+        best = h;
+        bestI = i;
+        bestHp = f;
+    }
+    return $multi(best, bestI);
+}
+
 function distXY(a: Vector, b: Vector): number {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
@@ -799,9 +828,11 @@ export function Desire(bot: Unit): number | undefined {
     // joined whose fight already ended) is driven by that play until it ends (OWNERSHIP H24).
     const owns = OwnsLaneFights(bot);
     if (owns && Plays.Of(bot) !== undefined) return unanswered(bot, now, "play");
-    const target = nearestTarget(bot);
-    const inputs = target !== undefined ? Gather(bot, target) : undefined;
     const killHp = killHpFor(bot);
+    // Slice trade-reach: a hero at the commit bar a short walk away is the target before the nearest one in reach.
+    const [committed, ci] = commitTarget(bot, killHp);
+    const target = committed ?? nearestTarget(bot);
+    const inputs = ci ?? (target !== undefined ? Gather(bot, target) : undefined);
     const cut = target !== undefined && inputs !== undefined ? cutFields(bot, target, inputs, killHp, owns, now) : undefined;
     const desire = freshDecision(bot, pid, now, owns, target, inputs, killHp);
     if (cut !== undefined) {
@@ -928,6 +959,10 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         const r = Decide(g, true, killHpFor(bot)).respect;
         return r === "tower" || r === "outnumbered" ? r : undefined;
     } else {
+        // Slice trade-reach: a trade whose target has fallen to the commit bar gives way to the kill, which the same frame's
+        // fresh decision opens (a trade does not chase; a kill does).
+        const kh = killHpFor(bot);
+        if (ep.kind === "trade" && frac(t) <= kh && Ours.On("KillReach") && CoreLastHit.Applies(bot) && Decide(Gather(bot, t), false, kh).kind === "kill") return "kill_up";
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
         const reach = reachOf(bot) + (ep.hb === true ? HIT_BACK_WALK : 0);
         // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
