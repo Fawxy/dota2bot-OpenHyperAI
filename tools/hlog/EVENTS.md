@@ -94,6 +94,7 @@ Team-wide: written once per module instance, de-duplicated by `parse.js` within 
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
 - `hv` num: Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
 - `by` str: Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`.
+- `rdy` str: Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other.
 
 ## rune_pickup
 
@@ -232,6 +233,7 @@ A hero's snapshot, about once a second, for bots and humans. Read by `hero_minut
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
 - `hv` num: Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
 - `by` str: Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`.
+- `rdy` str: Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other.
 
 ## inv
 
@@ -1428,6 +1430,7 @@ Slice chase-log: a cast by a hero on this script's team (InstallCastCallback, lo
 `pid` num, `y` num, `el` num, `etg` num, `es` num, `ed` num
 
 - `ab` str: The ability's name.
+- `cl` str: Slice cast-read: its class, as ev=snap `rdy` (absent for an item or no name).
 - `x` num: The callback's location (absent at 0,0: a no-target cast), and its distance to the episode's target when seen (the callback names no target unit: its `unit` is the caster).
 - `ek` str: The hero's CoreTrade episode at the log: its kind, target pid, the target seen (1/0) and its distance when seen.
 - `lag` num: Seconds from the callback to this line.

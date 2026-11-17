@@ -123,7 +123,8 @@
    "an": "num",
    "at": "num",
    "by": "str",
-   "order": "str"
+   "order": "str",
+   "rdy": "str"
   },
   "rune_pickup": {
    "pid": "num",
@@ -263,7 +264,8 @@
    "an": "num",
    "at": "num",
    "by": "str",
-   "order": "str"
+   "order": "str",
+   "rdy": "str"
   },
   "inv": {
    "pid": "num",
@@ -1849,6 +1851,7 @@
   "cast": {
    "pid": "num",
    "ab": "str",
+   "cl": "str",
    "x": "num",
    "y": "num",
    "el": "num",
@@ -1939,7 +1942,8 @@
    "mode": "text",
    "lf": "text",
    "by": "text",
-   "order": "text"
+   "order": "text",
+   "rdy": "text"
   },
   "ev_rune_pickup": {
    "kind": "text"
@@ -1973,7 +1977,8 @@
    "mode": "text",
    "lf": "text",
    "by": "text",
-   "order": "text"
+   "order": "text",
+   "rdy": "text"
   },
   "ev_inv": {
    "items": "text"
@@ -2492,6 +2497,7 @@
   },
   "ev_cast": {
    "ab": "text",
+   "cl": "text",
    "ek": "text",
    "ks": "text"
   },

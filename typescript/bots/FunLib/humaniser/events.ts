@@ -69,6 +69,9 @@ export const BOT = {
     /** Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`. */
     by: "str",
     order: "str",
+    /** Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as
+     *  `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other. */
+    rdy: "str",
 } as const;
 
 export const EVENTS = {
@@ -2875,6 +2878,8 @@ export const EVENTS = {
         pid: "num",
         /** The ability's name. */
         ab: "str",
+        /** Slice cast-read: its class, as ev=snap `rdy` (absent for an item or no name). */
+        cl: "str",
         /** The callback's location (absent at 0,0: a no-target cast), and its distance to the episode's target when seen
          *  (the callback names no target unit: its `unit` is the caster). */
         x: "num",

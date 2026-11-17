@@ -3,6 +3,7 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local ____spell_damage_data = require(GetScriptDirectory().."/FunLib/humaniser/spell_damage_data")
 local SPELL_DAMAGE = ____spell_damage_data.SPELL_DAMAGE
 local SLOTS = 6
@@ -163,5 +164,65 @@ function ____exports.DamageOn(e, target, window)
         ),
         est - spent
     )
+end
+--- Slice cast-read: an ability's class for the cast read: `u` ultimate, `k` key (a hard disable or spell immunity,
+-- AbilityClasses), `d` damage (a SPELL_DAMAGE row or GetAbilityDamage over 0), else `o`. Logged only.
+local function classOf(a)
+    if a:IsUltimate() then
+        return "u"
+    end
+    if AbilityClasses.Classify(
+        a:GetName(),
+        false
+    ) == "key" then
+        return "k"
+    end
+    if SPELL_DAMAGE[a:GetName()] ~= nil then
+        return "d"
+    end
+    local dmg = a:GetAbilityDamage()
+    return type(dmg) == "number" and dmg > 0 and "d" or "o"
+end
+--- Slice cast-read: the class (as `rdy`) of `bot`'s ability `name`; undefined for an item or a name the hero lacks.
+function ____exports.ClassByName(bot, name)
+    if name == nil or string.sub(name, 1, 5) == "item_" then
+        return nil
+    end
+    local a = bot:GetAbilityByName(name)
+    if a == nil or a == nil or a:IsNull() then
+        return nil
+    end
+    return classOf(a)
+end
+--- Slice cast-read: the spells `bot` can cast now (learned, shown, not passive, IsFullyCastable) as `;`-joined
+-- `name:class`. Abilities only: lane items are left out. Logged only (ev=snap `rdy`).
+function ____exports.ReadyList(bot)
+    local out = {}
+    do
+        local slot = 0
+        while slot < SLOTS do
+            do
+                local __continue36
+                repeat
+                    local a = bot:GetAbilityInSlot(slot)
+                    if a == nil or a == nil or a:IsNull() then
+                        __continue36 = true
+                        break
+                    end
+                    if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
+                        __continue36 = true
+                        break
+                    end
+                    out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
+                    __continue36 = true
+                until true
+                if not __continue36 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+    return #out > 0 and table.concat(out, ";") or nil
 end
 return ____exports
