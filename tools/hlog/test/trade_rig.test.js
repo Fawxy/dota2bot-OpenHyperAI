@@ -21,7 +21,7 @@ function store(lines) {
     return s;
 }
 
-const snap = (t, pid, hv) => line(t, `snap pid=${pid} x=0 y=0 alive=1 hp=${Math.round(hv / 6)} hv=${hv} ar=550 mode=laning lh=0 dn=0 d=0.3 deaths=0 hit=0`);
+const snap = (t, pid, hv, hc = 0, hit = 0) => line(t, `snap pid=${pid} x=0 y=0 alive=1 hp=${Math.round(hv / 6)} hv=${hv} ar=550 mode=laning lh=0 dn=0 d=0.3 deaths=0 hit=${hit} hc=${hc}`);
 const trade = (t, f) => line(t, `trade pid=1 role=core lf=1 kind=trade tgt=7 ${f}`);
 const atk = (t) => line(t, `drill ph=atk name=${N} pid=1 rep=1 tpid=7 d=500`);
 const chit = (t, dmg = 9) => line(t, `drill ph=chit name=${N} pid=1 rep=1 dmg=${dmg}`);
@@ -52,7 +52,8 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
     ];
     for (let t = 59; t <= 130; t++) {
         // The cast loses 20 at 66 and 20 at 68; the target loses 50 at 71.
-        l.push(snap(t, 1, t < 66 ? 600 : t < 68 ? 580 : 560));
+        // The drop at 66 under a creep's flag, the one at 68 under a hero's.
+        l.push(snap(t, 1, t < 66 ? 600 : t < 68 ? 580 : 560, t === 66 ? 1 : 0, t === 68 ? 1 : 0));
         l.push(snap(t, 7, t < 71 ? 500 : 450));
     }
     const s = store(l);
@@ -67,6 +68,7 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
     assert.deepStrictEqual([a.hpc, a.hph, b.hpc, b.hph, b.hpo], [9, 0, 9, 40, -9]);
     // The first began with its step-out (so=1, no order: no fa in that line); the second with an order. Only the second saw deaths.
     assert.deepStrictEqual([a.sf, b.sf, a.ulh, a.udn, b.ulh, b.udn], [1, 0, 0, 0, 1, 1]);
+    assert.deepStrictEqual(a.s5, { creeps: 20, hero: 20, both: 0, other: 0 });
     assert.strictEqual(c.late, 1);
     const sum = summary(r);
     assert.deepStrictEqual([sum['sniper stand'].ready, sum['sniper stand'].withTrade, sum['sniper stand'].trades, sum['sniper stand'].fired, sum['sniper stand'].lost], [1, 1, 2, 1, 1]);
