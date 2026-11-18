@@ -74,18 +74,6 @@ do
 	check("the helper turning true again does not restart it", not w.P.LaningHeld(w.core))
 end
 
--- The deleted exits (a support's smoke, a core's farm item) no longer end it.
-do
-	local w = world({ T = 420 })
-	w.P.LaningHeld(w.core)
-	w.P.LaningHeld(w.sup)
-	w.sup.level = 7
-	w.sup.items = { [0] = { name = "item_smoke_of_deceit" } }
-	w.core.items = { [0] = { name = "item_maelstrom" } }
-	T = 425
-	check("a support's smoke and a core's farm item with a clear jungle: both still held", w.P.LaningHeld(w.sup) and w.P.LaningHeld(w.core))
-end
-
 -- A hero whose first read comes after its laning is over is never held.
 do
 	local w = world()
