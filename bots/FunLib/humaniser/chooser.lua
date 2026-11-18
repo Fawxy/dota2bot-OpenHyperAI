@@ -274,6 +274,9 @@ local ADMITTED = {retreat = EPISODE_MODES, job = ____exports.EXCEPTIONS}
 -- host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
 -- not take it either.
 function ____exports.Decide(bot, mode)
+    if Drill.InLaneDenies(bot, mode) then
+        return 0
+    end
     local rig = Drill.RigDesire(bot, mode)
     if rig ~= nil then
         return rig

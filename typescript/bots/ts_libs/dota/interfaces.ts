@@ -145,6 +145,8 @@ export interface Unit {
 
     Action_UseAbility(ability: Ability): void;
     Action_MoveToLocation(location: Vector): void;
+    /** Clears the action queue; `stop` also stops the current action (Valve bot API). */
+    Action_ClearActions(stop: boolean): void;
     Action_PickUpItem(item: Item): void;
     Action_AttackUnit(unit: Unit, once: boolean): void;
 

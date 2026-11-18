@@ -1131,4 +1131,45 @@ do
 	CURRENT_TEAM = 2
 end
 
+-- The lane ladder's in-lane hold: the cast plays everything (not held, not lane-only), but no mode that leaves its lane,
+-- no teleport and no global spell. `sided` entries swap r and d when Ours.Team scopes Dire.
+do
+	local H, C = world("ladder-solo")
+	local mid = hero(1, RAD, 2, 2)
+	local sup = hero(4, RAD, 5, 3)
+	local dmid = hero(6, DIRE, 2, 2)
+	check("ladder-solo: our mid in-lane, not held", H.Drill.RoleOf(mid) == "cast" and H.Drill.InLane(mid) and not H.Drill.Held(mid) and not H.Drill.LaneOnly(mid))
+	check("ladder-solo: our support and their mid benched", H.Drill.RoleOf(sup) == "bench" and H.Drill.RoleOf(dmid) == "bench")
+	for _, m in ipairs({ "rune", "roam", "team_roam", "ward", "secret_shop", "roshan", "push_tower_top", "defend_tower_bot" }) do
+		check("in-lane: " .. m .. " held at 0", H.Drill.InLaneDenies(mid, m) and H.Chooser.Decide(mid, m) == 0)
+	end
+	for _, m in ipairs({ "laning", "attack", "retreat", "farm", "push_tower_mid", "defend_tower_mid" }) do
+		check("in-lane: " .. m .. " runs", not H.Drill.InLaneDenies(mid, m))
+	end
+	check("in-lane: a benched hero is not in-lane", not H.Drill.InLaneDenies(sup, "rune"))
+	check("in-lane: no teleport, other items run", H.Drill.ForbidsItem(mid, "item_tpscroll") and H.Drill.ForbidsItem(mid, "item_travel_boots") and not H.Drill.ForbidsItem(mid, "item_flask") and not H.Drill.ForbidsItem(sup, "item_tpscroll"))
+	GAME_STATE = 8
+	local cleared = 0
+	mid.Action_ClearActions = function() cleared = cleared + 1 end
+	mid.casting = { GetName = function() return "zuus_thundergods_wrath" end }
+	local ls = capture(function() H.Drill.Tick(mid) H.Drill.Tick(mid) end)
+	local forbid = {}
+	for _, l in ipairs(ls) do if field(l, "ph") == "forbid" then table.insert(forbid, l) end end
+	check("in-lane: a global spell's cast is cleared each tick, logged once", cleared == 2 and #forbid == 1 and field(forbid[1], "ability") == "zuus_thundergods_wrath", table.concat(ls, " / "))
+	mid.casting = { GetName = function() return "zuus_arc_lightning" end }
+	capture(function() H.Drill.Tick(mid) end)
+	check("in-lane: another spell runs", cleared == 2)
+	C.Ours = { Team = "dire" }
+	check("sided under Ours.Team dire: their mid is the cast, ours benched", H.Drill.RoleOf(dmid) == "cast" and H.Drill.RoleOf(mid) == "bench")
+	C.Ours = nil
+end
+do
+	local H, C = world("ladder-duel")
+	C.Ours = { Team = "dire" }
+	check("ladder-duel: both mids cast whatever the scope", H.Drill.RoleOf(hero(1, RAD, 2, 2)) == "cast" and H.Drill.RoleOf(hero(6, DIRE, 2, 2)) == "cast")
+	C.Ours = nil
+	local H2 = world(nil)
+	check("no drill: nothing held", not H2.Drill.InLaneDenies(hero(1, RAD, 2, 2), "rune") and not H2.Drill.ForbidsItem(hero(1, RAD, 2, 2), "item_tpscroll"))
+end
+
 finish()
