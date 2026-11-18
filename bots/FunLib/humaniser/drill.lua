@@ -1375,9 +1375,10 @@ end
 function answerStep(bot, st, place)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
+    local leash = bot:GetAttackRange() + ANSWER_LEASH
     local hitter = __TS__ArrayFind(
         bot:GetNearbyHeroes(1600, true, BotMode.None) or ({}),
-        function(____, h) return h:IsAlive() and not h:IsIllusion() and bot:WasRecentlyDamagedByHero(h, ANSWER_HIT) end
+        function(____, h) return h:IsAlive() and not h:IsIllusion() and bot:WasRecentlyDamagedByHero(h, ANSWER_HIT) and GetUnitToLocationDistance(h, place) <= leash end
     )
     if hitter ~= nil then
         if st.answer[pid] == nil then
@@ -1409,7 +1410,7 @@ function answerStep(bot, st, place)
         return false
     end
     local h = a.h
-    if now - a.at > ANSWER_KEEP or h:IsNull() or not h:IsAlive() or not h:CanBeSeen() or GetUnitToLocationDistance(h, place) > bot:GetAttackRange() + ANSWER_LEASH then
+    if now - a.at > ANSWER_KEEP or h:IsNull() or not h:IsAlive() or not h:CanBeSeen() or GetUnitToLocationDistance(h, place) > leash then
         __TS__Delete(st.answer, pid)
         return false
     end
@@ -2994,8 +2995,8 @@ end
 --- Enemy lane creeps within this of a watched cast are read for attacks on it (a ranged creep's reach and its walk).
 local WATCH_CREEPS = 900
 --- Rig `watch`, per frame of a released cast: `ph=atk` when its GetLastAttackTime rose with an enemy hero its attack target;
--- `ph=chit` for each enemy lane creep attacking it whose GetLastAttackTime falls since the last frame (both on GameTime's
--- clock, so no creep handle need be kept between frames).
+-- `ph=chit` for each enemy lane creep attacking it whose GetLastAttackTime falls since the last frame, `ph=hhit` the same for an
+-- enemy hero (all on GameTime's clock, so no creep handle need be kept between frames).
 local function rigWatch(bot, st)
     local pid = bot:GetPlayerID()
     local now = GameTime()
@@ -3030,34 +3031,45 @@ local function rigWatch(bot, st)
             )
         end
     end
+    local function hitOn(u, ph, tpid)
+        if u:IsNull() or not u:IsAlive() or u:GetAttackTarget() ~= bot then
+            return
+        end
+        local at = u:GetLastAttackTime()
+        if at <= prev[1] or at > now then
+            return
+        end
+        Telemetry.Event(
+            "drill",
+            {
+                {"ph", ph},
+                {
+                    "name",
+                    ____exports.Name()
+                },
+                {"pid", pid},
+                {"rep", st.rep},
+                {"tpid", tpid},
+                {
+                    "dmg",
+                    math.floor(bot:GetActualIncomingDamage(
+                        u:GetAttackDamage(),
+                        DamageType.Physical
+                    ) + 0.5)
+                }
+            }
+        )
+    end
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(WATCH_CREEPS, true) or ({})) do
-        do
-            local __continue359
-            repeat
-                if c:IsNull() or not c:IsAlive() or c:GetAttackTarget() ~= bot then
-                    __continue359 = true
-                    break
-                end
-                local at = c:GetLastAttackTime()
-                if at > prev[1] and at <= now then
-                    Telemetry.Event(
-                        "drill",
-                        {
-                            {"ph", "chit"},
-                            {
-                                "name",
-                                ____exports.Name()
-                            },
-                            {"pid", pid},
-                            {"rep", st.rep}
-                        }
-                    )
-                end
-                __continue359 = true
-            until true
-            if not __continue359 then
-                break
-            end
+        hitOn(c, "chit")
+    end
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
+        if not h:IsIllusion() then
+            hitOn(
+                h,
+                "hhit",
+                h:GetPlayerID()
+            )
         end
     end
 end

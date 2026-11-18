@@ -3,6 +3,7 @@
 -- `--at`/`--every` steps call for the rest of the game. Each prints one `[RIG]` line saying what it did.
 --   rig_hp <pid> <hp>               set a hero's health (clamped to 1..max)
 --   rig_hp_share <pid> <share>      set a hero's health to a share of its maximum (0..1)
+--   rig_hp_all <share>              set every live hero's health to a share of its maximum
 --   rig_pos <pid> <x> <y>           place a hero (nearest clear ground) and stop its current order
 --   rig_creep <team 2|3> <melee|ranged> <x> <y> [n]   create n lane creeps of that team
 --   rig_kill_creeps <team 2|3> <x> <y> <radius>       kill that team's lane creeps in the circle
@@ -30,6 +31,19 @@ Convars:RegisterCommand("rig_hp_share", function(_, pid, share)
 	h:SetHealth(math.max(1, math.floor(h:GetMaxHealth() * math.max(0, math.min(1, tonumber(share) or 1)))))
 	say(string.format("hp_share pid=%s hp=%d max=%d", pid, h:GetHealth(), h:GetMaxHealth()))
 end, "rig: set a hero's health to a share of its maximum", FCVAR_CHEAT)
+
+-- One command for every hero: at 8x each console step costs about a game second (lane-trade probe1: ten rig_hp_share lines
+-- meant for 0:59 ran from 1:01 to 1:35).
+Convars:RegisterCommand("rig_hp_all", function(_, share)
+	local n = 0
+	for _, h in ipairs(HeroList:GetAllHeroes()) do
+		if not h:IsIllusion() and h:IsAlive() then
+			h:SetHealth(math.max(1, math.floor(h:GetMaxHealth() * math.max(0, math.min(1, tonumber(share) or 1)))))
+			n = n + 1
+		end
+	end
+	say(string.format("hp_all share=%s n=%d", tostring(share), n))
+end, "rig: set every live hero's health to a share of its maximum", FCVAR_CHEAT)
 
 Convars:RegisterCommand("rig_pos", function(_, pid, x, y)
 	local h = hero(pid)

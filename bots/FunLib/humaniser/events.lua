@@ -706,6 +706,7 @@ ____exports.EVENTS = {
         rend = "num",
         var = "str",
         bu = "num",
+        dmg = "num",
         win = "num",
         rel = "str",
         i = "num",

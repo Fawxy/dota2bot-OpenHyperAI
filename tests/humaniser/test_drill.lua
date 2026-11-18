@@ -1039,8 +1039,8 @@ do
 	T = 124
 	cast.loc = Vector(place.x - 900, place.y, 0)
 	actor.hitBy = { [cast] = T }
-	tick(actor)
-	check("lane-trade hitback: a hitter 900 off its place (past 780) is not chased", #attacks(7) == n + 1)
+	ls = capture(function() tick(actor) tick(actor) end)
+	check("lane-trade hitback: a hitter 900 off its place (past 780) is not chased, nor its answer logged", #attacks(7) == n + 1 and #lines("answer", ls) == 0)
 
 	-- The cast's watch, once released: ready needs the cast at its own place and the actor in sight within 1,500.
 	actor.hitBy = nil

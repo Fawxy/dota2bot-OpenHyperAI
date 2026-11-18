@@ -24,7 +24,8 @@ function store(lines) {
 const snap = (t, pid, hv) => line(t, `snap pid=${pid} x=0 y=0 alive=1 hp=${Math.round(hv / 6)} hv=${hv} mode=laning lh=0 dn=0 d=0.3 deaths=0 hit=0`);
 const trade = (t, f) => line(t, `trade pid=1 role=core lf=1 kind=trade tgt=7 ${f}`);
 const atk = (t) => line(t, `drill ph=atk name=${N} pid=1 rep=1 tpid=7 d=500`);
-const chit = (t) => line(t, `drill ph=chit name=${N} pid=1 rep=1`);
+const chit = (t, dmg = 9) => line(t, `drill ph=chit name=${N} pid=1 rep=1 dmg=${dmg}`);
+const hhit = (t, dmg) => line(t, `drill ph=hhit name=${N} pid=1 rep=1 tpid=7 dmg=${dmg}`);
 
 test('trade_rig: a trade is graded from its open on the rig truth; a late one and an untaken offer are apart', () => {
     const l = [
@@ -39,7 +40,8 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
         // two creep hits at 66 and 67 and one at 71 (past 5 s). Then a second trade 70-73 that fires at 70.6.
         trade(66.5, 'result=done why=no_clear dur=1.5 hpd=20 thpd=0 pr=0 so=1 ag=2'),
         atk(68), atk(69), chit(66), chit(67), chit(71),
-        trade(73, 'result=done why=losing dur=3 hpd=40 thpd=60 ld=0.6 pr=1 so=0 ag=1'), atk(70.6),
+        // In it the cast takes one creep attack (71, 9) and two of Zuus's (20 each, at 71.5 and 72.5); the hpd of 40 leaves -9 to the rest.
+        trade(73, 'result=done why=creeps dur=3 hpd=40 thpd=60 ld=0.6 pr=1 so=0 ag=1'), atk(70.6), hhit(71.5, 20), hhit(72.5, 20),
         // An offer not taken inside rep 1.
         trade(80, 'result=lost why=lost dur=0 pr=0 so=0'),
         // Rep 2: a trade opening at 117, within 5 s of the rep's end (120): late. Rep 3 never ready: no row.
@@ -58,8 +60,11 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
     assert.deepStrictEqual([a.hero, a.n, a.open, a.ordered, a.fired, a.first, a.a5, a.ch5, a.hp5, a.thp5, a.why, a.late],
         ['sniper', 1, 65, 0, 0, 3, 2, 2, 40, 0, 'no_clear', 0]);
     assert.deepStrictEqual([b.n, b.open, b.ordered, b.fired, b.first, b.a5, b.ch5, b.thp5], [2, 70, 1, 1, 0.6, 1, 1, 50]);
+    // The first trade (65-66.5) holds the creep attack at 66 only; the second the one at 71 and both of Zuus's.
+    assert.deepStrictEqual([a.hpc, a.hph, b.hpc, b.hph, b.hpo], [9, 0, 9, 40, -9]);
     assert.strictEqual(c.late, 1);
     const sum = summary(r);
     assert.deepStrictEqual([sum['sniper stand'].ready, sum['sniper stand'].withTrade, sum['sniper stand'].trades, sum['sniper stand'].fired, sum['sniper stand'].lost], [1, 1, 2, 1, 1]);
+    assert.deepStrictEqual([sum['sniper stand'].split.creeps, sum['sniper stand'].split.hero, sum['sniper stand'].creepsEnd], [18, 40, 50]);
     assert.deepStrictEqual([sum['sniper lasthit'].trades, sum['sniper lasthit'].late], [0, 1]);
 });

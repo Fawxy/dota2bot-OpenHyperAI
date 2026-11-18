@@ -10,10 +10,14 @@
 //   hpd, thpd  HP lost by the cast and the target over the trade (its own fields); hp5, thp5 the same over WINDOW s, the sum of
 //              drops between 1 s snapshots (`hv`)
 //   ch5        enemy creep attacks fired at the cast within WINDOW s; ag the trade's most creeps on it at once
-//   why, dur   how and when the trade ended; so the step-outs
+//   hpc, hph   HP the cast lost during the trade (open to end) to enemy lane creeps and to the target's attacks: the sum of
+//              the `dmg` on its `ph=chit` and `ph=hhit` lines (each attack's mean damage after armour, counted when fired);
+//              hpo the rest of `hpd` (spells, a tower, less regen; can be negative)
+//   why, dur   how and when the trade ended (`creeps`: two creeps hitting us); so the step-outs
 // A trade opening within WINDOW s of its rep's end is cut by the next rep's setup (the cast is held again): listed `late`, left
 // out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
-// trade, trades, ordered, fired, mean first, a5, HP each way and ch5, and the ends.
+// trade, trades, ordered, fired, mean first, a5, HP each way and ch5, the HP split summed and per trade, the ends and the
+// share ending `creeps`.
 // Usage: node trade_rig.js <file fragment> [...] [--rows] [--json] [--no-ingest]
 'use strict';
 const fs = require('fs');
@@ -26,7 +30,7 @@ const WINDOW = 5;
 
 const TRADES = `SELECT t, kind, result, why, dur, hpd, thpd, ld, pr, so, ag, tgt FROM ev_trade
     WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
-const LINES = `SELECT t, ph, tpid FROM ev_drill WHERE game_id = :g AND pid = :p AND ph IN ('atk', 'chit') AND t >= :a AND t <= :b ORDER BY t`;
+const LINES = `SELECT t, ph, tpid, dmg FROM ev_drill WHERE game_id = :g AND pid = :p AND ph IN ('atk', 'chit', 'hhit') AND t >= :a AND t <= :b ORDER BY t`;
 const SNAPS = `SELECT t, hv FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
 const HERO = `SELECT hero FROM ev_bot WHERE game_id = :g AND pid = :p AND hero IS NOT NULL LIMIT 1`;
 
@@ -69,6 +73,9 @@ function reps(store, like) {
             const in5 = atk.filter((l) => l.t >= x.open && l.t <= x.open + WINDOW);
             const tsnaps = store.query(SNAPS, { g: r.game_id, p: x.tgt, a: x.open - 1, b: x.open + WINDOW });
             const fired = atk.some((l) => l.t >= x.open && l.t <= x.t);
+            const during = (ph, who) => lines.filter((l) => l.ph === ph && l.t >= x.open && l.t <= x.t && (who == null || l.tpid === who)).reduce((s, l) => s + (l.dmg ?? 0), 0);
+            const hpc = during('chit');
+            const hph = during('hhit', x.tgt);
             trades.push({
                 file: path.basename(r.file), rep: r.rep, var: r.var, hero, n: i + 1, open: round1(x.open), tgt: x.tgt,
                 late: x.open + WINDOW > r.stop ? 1 : 0,
@@ -76,7 +83,7 @@ function reps(store, like) {
                 fired: fired ? 1 : 0, ld: x.ld,
                 first: in5.length ? round1(in5[0].t - x.open) : null,
                 a5: in5.length,
-                hpd: x.hpd, thpd: x.thpd,
+                hpd: x.hpd, thpd: x.thpd, hpc, hph, hpo: (x.hpd ?? 0) - hpc - hph,
                 hp5: lost(own, x.open, x.open + WINDOW), thp5: lost(tsnaps, x.open, x.open + WINDOW),
                 ch5: lines.filter((l) => l.ph === 'chit' && l.t >= x.open && l.t <= x.open + WINDOW).length,
                 ag: x.ag, why: x.why, dur: x.dur,
@@ -114,8 +121,11 @@ function summary({ trades, reps: rs }) {
         s.hp5 = mean(ts.map((t) => t.hp5));
         s.thp5 = mean(ts.map((t) => t.thp5));
         s.ch5 = mean(ts.map((t) => t.ch5));
+        const sum = (f) => ts.reduce((a, t) => a + (t[f] ?? 0), 0);
+        s.split = { creeps: sum('hpc'), hero: sum('hph'), other: sum('hpo'), creepsPer: mean(ts.map((t) => t.hpc)), heroPer: mean(ts.map((t) => t.hph)) };
         s.why = {};
         for (const t of ts) s.why[t.why] = (s.why[t.why] ?? 0) + 1;
+        s.creepsEnd = ts.length ? Math.round((100 * (s.why.creeps ?? 0)) / ts.length) : null;
     }
     return out;
 }
@@ -141,7 +151,7 @@ if (require.main === module) {
         console.log(`lane-trade: ${all.reps.length} ready reps, ${all.trades.length} taken trades; graded within ${WINDOW} s of the open (late: opened within ${WINDOW} s of the rep's end)`);
         for (const [k, s] of Object.entries(summary(all))) {
             const why = Object.entries(s.why ?? {}).map(([w, n]) => `${w} ${n}`).join(', ');
-            console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  ends: ${why}`);
+            console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  lost to creeps/hero/other ${s.split ? `${s.split.creeps}/${s.split.hero}/${s.split.other}` : '-'}  creeps end ${s.creepsEnd ?? '-'}%  ends: ${why}`);
         }
     }
 }

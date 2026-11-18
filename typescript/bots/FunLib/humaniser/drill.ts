@@ -534,7 +534,7 @@ export const TABLE: Record<string, Entry> = {
     // the Dire pos3 (seed 30: Sniper, ranged, against Zeus; Luna against Sand King. Seed 8: Sven, melee, against Bristleback;
     // Lion against Oracle. The lineups hold no melee Radiant mid, so the melee core lanes in its own lane). Facts a trade reads,
     // each forced or checked: one enemy hero near and none of ours (benched; `near`, `foesAtMost`, `alliesAtMost`); both at full
-    // HP each rep (recipe: rig_hp_share on every hero 1 s before each rep; `hpAtLeast`); the cast in its lane (setup `front`, its
+    // HP each rep (recipe: rig_hp_all 1 s before each rep; `hpAtLeast`); the cast in its lane (setup `front`, its
     // last-hit place behind its own creeps; released into laning, attack and retreat as in games, OHA's ability use too, so step
     // 3d can read OHA's casts at the target). The enemy hero by rep kind: `stand` holds its last-hit place; `lasthit` walks up to
     // each of our lane creeps near it that its next hits kill, swings and walks back; `hitback`, as lasthit, and attacks the
@@ -1436,9 +1436,9 @@ export interface Rig {
     /** Seconds from ready the cast logs `ph=trace` (its HP and the read of the enemy heroes in sight) every RIG_TRACE_EVERY. */
     trace?: number;
     /**
-     * From release to the rep's end the cast logs `ph=atk` for each of its attacks fired at an enemy hero (`tpid`) and `ph=chit`
-     * for each attack an enemy lane creep fires at it (lane-trade: the view's truth of what a trade did, read apart from the
-     * trade's own fields).
+     * From release to the rep's end the cast logs `ph=atk` for each of its attacks fired at an enemy hero (`tpid`), and `ph=chit`
+     * and `ph=hhit` for each attack an enemy lane creep or hero fires at it, with its damage (lane-trade: the view's truth of
+     * what a trade did, read apart from the trade's own fields).
      */
     watch?: boolean;
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
@@ -1926,7 +1926,11 @@ function swingStep(bot: Unit, st: RigState, place: Vector): boolean {
 function answerStep(bot: Unit, st: RigState, place: Vector): boolean {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
-    const hitter = (bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []).find((h) => h.IsAlive() && !h.IsIllusion() && bot.WasRecentlyDamagedByHero(h, ANSWER_HIT));
+    const leash = bot.GetAttackRange() + ANSWER_LEASH;
+    // A hitter past the leash is never answered, so its line is not logged frame after frame while its hit is recent.
+    const hitter = (bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []).find(
+        (h) => h.IsAlive() && !h.IsIllusion() && bot.WasRecentlyDamagedByHero(h, ANSWER_HIT) && GetUnitToLocationDistance(h, place) <= leash,
+    );
     if (hitter !== undefined) {
         if (st.answer[pid] === undefined) Telemetry.Event("drill", [["ph", "answer"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["tpid", hitter.GetPlayerID()], ["d", math.floor(GetUnitToUnitDistance(bot, hitter))]]);
         st.answer[pid] = { h: hitter, at: now };
@@ -1934,7 +1938,7 @@ function answerStep(bot: Unit, st: RigState, place: Vector): boolean {
     const a = st.answer[pid];
     if (a === undefined) return false;
     const h = a.h;
-    if (now - a.at > ANSWER_KEEP || h.IsNull() || !h.IsAlive() || !h.CanBeSeen() || GetUnitToLocationDistance(h, place) > bot.GetAttackRange() + ANSWER_LEASH) {
+    if (now - a.at > ANSWER_KEEP || h.IsNull() || !h.IsAlive() || !h.CanBeSeen() || GetUnitToLocationDistance(h, place) > leash) {
         delete st.answer[pid];
         return false;
     }
@@ -2322,8 +2326,8 @@ const WATCH_CREEPS = 900;
 
 /**
  * Rig `watch`, per frame of a released cast: `ph=atk` when its GetLastAttackTime rose with an enemy hero its attack target;
- * `ph=chit` for each enemy lane creep attacking it whose GetLastAttackTime falls since the last frame (both on GameTime's
- * clock, so no creep handle need be kept between frames).
+ * `ph=chit` for each enemy lane creep attacking it whose GetLastAttackTime falls since the last frame, `ph=hhit` the same for an
+ * enemy hero (all on GameTime's clock, so no creep handle need be kept between frames).
  */
 function rigWatch(bot: Unit, st: RigState): void {
     const pid = bot.GetPlayerID();
@@ -2338,11 +2342,16 @@ function rigWatch(bot: Unit, st: RigState): void {
             Telemetry.Event("drill", [["ph", "atk"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["tpid", t.GetPlayerID()], ["d", math.floor(GetUnitToUnitDistance(bot, t))]]);
         }
     }
-    for (const c of bot.GetNearbyLaneCreeps(WATCH_CREEPS, true) ?? []) {
-        if (c.IsNull() || !c.IsAlive() || c.GetAttackTarget() !== bot) continue;
-        const at = c.GetLastAttackTime();
-        if (at > prev[0] && at <= now) Telemetry.Event("drill", [["ph", "chit"], ["name", Name()], ["pid", pid], ["rep", st.rep]]);
-    }
+    // `dmg`: the attack's damage after the cast's armour (GetAttackDamage is the attacker's mean), so the view can split the HP a
+    // trade cost between creeps and the hero; an enemy hero's spells are not attacks and stay in the remainder.
+    const hitOn = (u: Unit, ph: string, tpid?: number) => {
+        if (u.IsNull() || !u.IsAlive() || u.GetAttackTarget() !== bot) return;
+        const at = u.GetLastAttackTime();
+        if (at <= prev[0] || at > now) return;
+        Telemetry.Event("drill", [["ph", ph], ["name", Name()], ["pid", pid], ["rep", st.rep], ["tpid", tpid], ["dmg", math.floor(bot.GetActualIncomingDamage(u.GetAttackDamage(), DamageType.Physical) + 0.5)]]);
+    };
+    for (const c of bot.GetNearbyLaneCreeps(WATCH_CREEPS, true) ?? []) hitOn(c, "chit");
+    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) if (!h.IsIllusion()) hitOn(h, "hhit", h.GetPlayerID());
 }
 
 /** Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout). */
