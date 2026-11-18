@@ -908,6 +908,8 @@ export const EVENTS = {
         cov: "num",
         /** On `still_hit`: unlocked attackers still on us. */
         left: "num",
+        /** Unlocked attackers that died or left sight before the result (off us, but not by a switch). */
+        dead: "num",
         /** Seconds from the order to the result. */
         dt: "num",
         /** Our HP fraction at the order and lost by the result. */

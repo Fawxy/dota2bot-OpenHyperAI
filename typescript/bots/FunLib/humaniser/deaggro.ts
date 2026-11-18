@@ -3,7 +3,8 @@
  * target this hero, by one attack order on a lane creep of ours they would switch to. The order alone sheds it; the attack
  * need not land (user 18/11/2026), so a full-HP creep we cannot hit is a valid target. A lane technique with no caller yet:
  * it decides how, never when (the caller owns that, its doctrine rule and its switch), and never walks (stepping out of a
- * reach is positioning or retreat). Hands the hero back the frame after the order.
+ * reach is positioning or retreat): only our creeps inside the hero's own attack range are order targets, so the order
+ * never moves the hero (as lane_tech's tower drop). Hands the hero back the frame after the order.
  *
  * What it knows (ref `theory/creep-aggro`): a creep keeps a target inside its attack range, so a creep with us inside its
  * reach is `locked` and no order moves it; a creep chasing us switches to a unit of ours within its acquisition range. A tower
@@ -13,7 +14,7 @@
  *   Read(bot)            who targets the hero now
  *   Plan(attackers, ours) pure: the order target the most attackers would switch to, or why there is none
  *   Shed(bot)            Read + Plan + the order; opens an attempt that Watch closes
- *   Watch(bot)           the open attempt: `pending`, then `ok` / `still_hit` / `gone`, logged once as ev=deaggro
+ *   Watch(bot)           the open attempt: `pending`, then `ok` / `still_hit` / `stale` / `gone`, logged once as ev=deaggro
  */
 import { Unit } from "bots/ts_libs/dota";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
@@ -36,7 +37,8 @@ export interface AttackerFact {
     kind: Kind;
     x: number;
     y: number;
-    /** Tower: its attack range plus radii. Lane creep: its acquisition range (where it looks for a new target). */
+    /** Tower: its attack range plus its radius. Lane creep: its acquisition range plus its radius (where it looks for a new
+     *  target). Plan adds our creep's radius. */
     reach: number;
     /** A creep with us inside its attack range: it will not switch. Never true for a tower. */
     locked: boolean;
@@ -47,6 +49,8 @@ export interface OwnFact {
     y: number;
     /** Distance from the hero, for the tie-break. */
     d: number;
+    /** Its bounding radius (an attacker's reach is to its edge). */
+    r: number;
 }
 
 export interface PlanResult {
@@ -84,7 +88,7 @@ export function Plan(attackers: AttackerFact[], ours: OwnFact[]): PlanResult {
     for (let i = 0; i < ours.length; i++) {
         const o = ours[i];
         let n = 0;
-        for (const a of attackers) if (!a.locked && dist(a.x, a.y, o.x, o.y) <= a.reach) n++;
+        for (const a of attackers) if (!a.locked && dist(a.x, a.y, o.x, o.y) <= a.reach + o.r) n++;
         if (n > bestN || (n === bestN && n > 0 && best !== undefined && o.d < ours[best].d)) {
             best = i;
             bestN = n;
@@ -114,11 +118,14 @@ export function Read(bot: Unit): Attacker[] {
     return out;
 }
 
+/** Our lane creeps inside the hero's attack range (to their edge): an order on one never walks the hero. */
 function ownCreeps(bot: Unit): Unit[] {
     const out: Unit[] = [];
     const team = bot.GetTeam();
-    for (const c of bot.GetNearbyLaneCreeps(SETTINGS.ScanR, false) ?? []) {
-        if (usable(c) && c.GetTeam() === team && LaneState.IsLaneCreepName(c.GetUnitName())) out.push(c);
+    const reach = bot.GetAttackRange() + bot.GetBoundingRadius();
+    for (const c of bot.GetNearbyLaneCreeps(reach + 100, false) ?? []) {
+        if (!usable(c) || c.GetTeam() !== team || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        if (GetUnitToUnitDistance(bot, c) <= reach + c.GetBoundingRadius()) out.push(c);
     }
     return out;
 }
@@ -152,9 +159,9 @@ function kindsOf(attackers: Attacker[]): string {
 
 /**
  * Read, plan and give the order (`Action_AttackUnit` with bOnce, as lane_tech's tower drop; it replaces the hero's current
- * order this frame). One attempt per hero at a
- * time: while one is open Shed refuses (`open`); Watch closes it. A `locked` or `no_unit` answer tells the caller an order
- * would do nothing now (a locked creep needs us out of its attack range first, which is the caller's move).
+ * order this frame). One attempt per hero at a time: while one is open Shed refuses (`open`); Watch closes it. A `locked` or
+ * `no_unit` answer tells the caller an order would do nothing now (a locked creep needs us out of its attack range first;
+ * `no_unit` may mean our creep is out of our attack range: both are the caller's move).
  */
 export function Shed(bot: Unit): ShedResult {
     const pid = bot.GetPlayerID();
@@ -165,7 +172,7 @@ export function Shed(bot: Unit): ShedResult {
     const ownFacts: OwnFact[] = [];
     for (const c of ours) {
         const at = c.GetLocation();
-        ownFacts.push({ x: at.x, y: at.y, d: dist(at.x, at.y, here.x, here.y) });
+        ownFacts.push({ x: at.x, y: at.y, d: dist(at.x, at.y, here.x, here.y), r: c.GetBoundingRadius() });
     }
     const attackerFacts: AttackerFact[] = [];
     for (const a of attackers) attackerFacts.push(a.fact);
@@ -191,6 +198,9 @@ export type WatchResult = "pending" | "ok" | "still_hit" | "gone" | "stale" | un
 
 function close(bot: Unit, o: Open, result: Exclude<WatchResult, "pending" | undefined>, now: number, onUs: number): WatchResult {
     delete open[bot.GetPlayerID()];
+    // Unlocked attackers that died or left our sight: off us, but not by a switch.
+    let dead = 0;
+    for (const a of o.attackers) if (!a.fact.locked && !usable(a.unit)) dead++;
     Telemetry.Event("deaggro", [
         ["pid", bot.GetPlayerID()],
         ["kind", o.kinds],
@@ -199,6 +209,7 @@ function close(bot: Unit, o: Open, result: Exclude<WatchResult, "pending" | unde
         ["lk", o.locked],
         ["cov", o.covers],
         ["left", onUs],
+        ["dead", dead],
         ["dt", math.floor((now - o.orderedAt) * 100) / 100],
         ["hp", math.floor(o.hp * 100) / 100],
         ["dhp", math.floor((o.hp - bot.GetHealth() / math.max(1, bot.GetMaxHealth())) * 100) / 100],
@@ -208,7 +219,7 @@ function close(bot: Unit, o: Open, result: Exclude<WatchResult, "pending" | unde
 
 /**
  * The open attempt, read each frame by the caller (undefined: none open). `ok` once no unlocked attacker that was on us at the
- * order still targets us (dead or gone counts as off); `still_hit` if some still do after ConfirmFor; `gone` when the hero died;
+ * order still targets us (dead or gone counts as off, logged apart as `dead`); `still_hit` if some still do after ConfirmFor; `gone` when the hero died;
  * `stale` when the caller has not watched for StaleAfter.
  */
 export function Watch(bot: Unit): WatchResult {

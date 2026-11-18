@@ -7,7 +7,7 @@ local Telemetry = require("bots/FunLib/humaniser/telemetry")
 
 local function tower(x, y) return { kind = "tower", x = x, y = y, reach = 800, locked = false } end
 local function creep(x, y, locked) return { kind = "lane", x = x, y = y, reach = 500, locked = locked == true } end
-local function own(x, y, d) return { x = x, y = y, d = d } end
+local function own(x, y, d) return { x = x, y = y, d = d, r = 16 } end
 
 -- Plan (target is the TS index into `ours`, 0-based)
 local p = D.Plan({}, { own(0, 0, 10) })
@@ -25,7 +25,7 @@ check("plan: a locked creep is not counted, the chaser is", p.target == 0 and p.
 
 -- Shed and Watch, against hand-made units.
 local function unit(t)
-	local u = { team = t.team or 2, hp = t.hp or 500, alive = true, target = nil }
+	local u = { team = t.team or 2, hp = t.hp or 500, alive = true, target = nil, loc = Vector(t.x, t.y) }
 	u.IsNull = function() return false end
 	u.IsAlive = function() return u.alive end
 	u.GetLocation = function() return Vector(t.x, t.y) end
@@ -82,6 +82,25 @@ T = 120
 D.Shed(bot)
 T = 121
 check("watch: the caller stopped watching: stale", D.Watch(bot) == "stale")
+
+-- Review F1: an order on a creep outside our attack range would walk us to it (often into the tower): it is not a target.
+local far = unit({ x = 590, y = 300 })
+bot.GetNearbyLaneCreeps = function(_, _, enemy) return enemy and {} or { far } end
+local before = #orders
+T = 125
+r = D.Shed(bot)
+check("shed: our only creep beyond our attack range: no_unit, no order", not r.ordered and r.why == "no_unit" and #orders == before, r.why)
+bot.GetNearbyLaneCreeps = function(_, _, enemy) return enemy and {} or { ours } end
+
+-- Review F2: an attacker that died in the window is off us but did not switch: ok, logged as dead.
+lines = {}
+T = 127
+D.Shed(bot)
+enemyTower.alive = false
+T = 127.2
+check("watch: the attacker died: ok", D.Watch(bot) == "ok")
+check("log: the death is counted apart (dead=1)", #lines == 1 and lines[1]:find("dead=1", 1, true), lines[1])
+enemyTower.alive = true
 
 -- A creep with us inside its attack range will not switch: no order is given for it alone.
 enemyTower.target = nil

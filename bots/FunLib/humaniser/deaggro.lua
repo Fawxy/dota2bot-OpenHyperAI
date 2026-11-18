@@ -168,6 +168,12 @@ function close(bot, o, result, now, onUs)
         open,
         bot:GetPlayerID()
     )
+    local dead = 0
+    for ____, a in ipairs(o.attackers) do
+        if not a.fact.locked and not usable(a.unit) then
+            dead = dead + 1
+        end
+    end
     Telemetry.Event(
         "deaggro",
         {
@@ -181,6 +187,7 @@ function close(bot, o, result, now, onUs)
             {"lk", o.locked},
             {"cov", o.covers},
             {"left", onUs},
+            {"dead", dead},
             {
                 "dt",
                 math.floor((now - o.orderedAt) * 100) / 100
@@ -201,7 +208,7 @@ function close(bot, o, result, now, onUs)
     return result
 end
 --- The open attempt, read each frame by the caller (undefined: none open). `ok` once no unlocked attacker that was on us at the
--- order still targets us (dead or gone counts as off); `still_hit` if some still do after ConfirmFor; `gone` when the hero died;
+-- order still targets us (dead or gone counts as off, logged apart as `dead`); `still_hit` if some still do after ConfirmFor; `gone` when the hero died;
 -- `stale` when the caller has not watched for StaleAfter.
 function ____exports.Watch(bot)
     local o = open[bot:GetPlayerID()]
@@ -282,7 +289,7 @@ function ____exports.Plan(attackers, ours)
             local o = ours[i + 1]
             local n = 0
             for ____, a in ipairs(attackers) do
-                if not a.locked and dist(a.x, a.y, o.x, o.y) <= a.reach then
+                if not a.locked and dist(a.x, a.y, o.x, o.y) <= a.reach + o.r then
                     n = n + 1
                 end
             end
@@ -359,12 +366,27 @@ function ____exports.Read(bot)
     end
     return out
 end
+--- Our lane creeps inside the hero's attack range (to their edge): an order on one never walks the hero.
 local function ownCreeps(bot)
     local out = {}
     local team = bot:GetTeam()
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(____exports.SETTINGS.ScanR, false) or ({})) do
-        if usable(c) and c:GetTeam() == team and LaneState.IsLaneCreepName(c:GetUnitName()) then
-            out[#out + 1] = c
+    local reach = bot:GetAttackRange() + bot:GetBoundingRadius()
+    for ____, c in ipairs(bot:GetNearbyLaneCreeps(reach + 100, false) or ({})) do
+        do
+            local __continue24
+            repeat
+                if not usable(c) or c:GetTeam() ~= team or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue24 = true
+                    break
+                end
+                if GetUnitToUnitDistance(bot, c) <= reach + c:GetBoundingRadius() then
+                    out[#out + 1] = c
+                end
+                __continue24 = true
+            until true
+            if not __continue24 then
+                break
+            end
         end
     end
     return out
@@ -388,9 +410,9 @@ local function kindsOf(attackers)
     return t > 0 and l > 0 and "mixed" or (t > 0 and "tower" or "lane")
 end
 --- Read, plan and give the order (`Action_AttackUnit` with bOnce, as lane_tech's tower drop; it replaces the hero's current
--- order this frame). One attempt per hero at a
--- time: while one is open Shed refuses (`open`); Watch closes it. A `locked` or `no_unit` answer tells the caller an order
--- would do nothing now (a locked creep needs us out of its attack range first, which is the caller's move).
+-- order this frame). One attempt per hero at a time: while one is open Shed refuses (`open`); Watch closes it. A `locked` or
+-- `no_unit` answer tells the caller an order would do nothing now (a locked creep needs us out of its attack range first;
+-- `no_unit` may mean our creep is out of our attack range: both are the caller's move).
 function ____exports.Shed(bot)
     local pid = bot:GetPlayerID()
     if open[pid] ~= nil and ____exports.Watch(bot) == "pending" then
@@ -405,7 +427,8 @@ function ____exports.Shed(bot)
         ownFacts[#ownFacts + 1] = {
             x = at.x,
             y = at.y,
-            d = dist(at.x, at.y, here.x, here.y)
+            d = dist(at.x, at.y, here.x, here.y),
+            r = c:GetBoundingRadius()
         }
     end
     local attackerFacts = {}

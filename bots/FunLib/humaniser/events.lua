@@ -560,6 +560,7 @@ ____exports.EVENTS = {
         lk = "num",
         cov = "num",
         left = "num",
+        dead = "num",
         dt = "num",
         hp = "num",
         dhp = "num"
