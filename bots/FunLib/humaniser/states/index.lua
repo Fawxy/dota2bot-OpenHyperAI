@@ -123,6 +123,35 @@ function ____exports.Step(bot, mode)
     local l = lib()
     return l ~= nil and l.States.Step(bot, mode)
 end
+--- True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own.
+function ____exports.BodyLastHits(bot)
+    if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
+        return false
+    end
+    local ____opt_40 = Tasks.Loaded()
+    local cur = ____opt_40 and ____opt_40.States.Current(bot)
+    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
+end
+--- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
+-- skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
+-- that never landed, `missed` with the creep alive seconds later).
+function ____exports.BodyBusy(bot)
+    if not ____exports.BodyLastHits(bot) then
+        return false
+    end
+    local ____opt_42 = Tasks.Current(bot)
+    local label = ____opt_42 and ____opt_42.label
+    return label == "lasthit" or label == "deny"
+end
+--- Whether the wave hold's read runs for this core (slice hold-through-swing): where one of the two steps above would step it,
+-- the laning body running (outside a drill, CoreAggroStep; a lane-only drill core, only with `laneHold`). Swing frames count:
+-- the read gives no order.
+function ____exports.HoldHosted(bot)
+    if not ____exports.BodyLastHits(bot) then
+        return false
+    end
+    return not Drill.LaneOnly(bot) or Drill.LaneHold(bot)
+end
 local LANE_POS_EVERY = 1
 local function shadowTeam(bot)
     return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
@@ -334,6 +363,11 @@ function ____exports.Tick(bot)
     end
     l.States.Tick(bot)
     LaneMetrics.Tick(bot)
+    WaveHold.Watch(
+        bot,
+        ____exports.HoldHosted(bot),
+        ____exports.BodyBusy(bot)
+    )
     WaveHold.Tick(bot)
     lanePos(bot, l)
 end
@@ -370,26 +404,6 @@ function ____exports.WisdomOwned(bot)
         return false
     end
     return ____exports.Owns(bot, Rotate.NAME) and Rotate.OnTrip(bot) or Rotate.ShrineTaken(bot:GetTeam())
-end
---- True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own.
-function ____exports.BodyLastHits(bot)
-    if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
-        return false
-    end
-    local ____opt_40 = Tasks.Loaded()
-    local cur = ____opt_40 and ____opt_40.States.Current(bot)
-    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
-end
---- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
--- skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
--- that never landed, `missed` with the creep alive seconds later).
-function ____exports.BodyBusy(bot)
-    if not ____exports.BodyLastHits(bot) then
-        return false
-    end
-    local ____opt_42 = Tasks.Current(bot)
-    local label = ____opt_42 and ____opt_42.label
-    return label == "lasthit" or label == "deny"
 end
 local function laningRunning(bot)
     local ____opt_44 = Tasks.Loaded()
@@ -441,16 +455,16 @@ function ____exports.CoreAggroStep(bot)
     if not ____exports.BodyLastHits(bot) then
         return CoreLastHit.Applies(bot) and LaneAggro.StepOpen(bot)
     end
-    WaveHold.Step(bot)
+    WaveHold.Act(bot)
     return LaneAggro.Step(bot)
 end
---- A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started, stepped by
+--- A drill's lane-only core with the wave hold (drill entry `laneHold`): the draw the hold wants and its open draw, stepped by
 -- mode_laning_generic's lane-only branch; no other lane aggro draw starts (StepOpen steps only an open one).
 function ____exports.LaneOnlyHoldStep(bot)
     if not ____exports.IsEnabled() or not Drill.LaneHold(bot) or not ____exports.BodyLastHits(bot) then
         return false
     end
-    WaveHold.Step(bot)
+    WaveHold.Act(bot)
     return LaneAggro.StepOpen(bot)
 end
 --- A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, stepped by mode_laning_generic's
