@@ -140,7 +140,6 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 | `tr_tp_react` | A bot's response to an enemy TP to its lane locked in, or was downgraded from `setup` to `back` | `pid enemy mode lane until` |
 | `tr_ward` | The early lane-ward pick's outcome changed for a bot (inside `WardFrom`–`WardTo`, for the lane's support) | `pid lane result dist` (`roll`, `no-anchor`, `planted`, `covered` with the covering ward's distance, `far` with the nearest spot's distance, `picked`) |
 | `tr_ward_go` | The ward mode accepted a lane-ward pick after its own safety checks | `pid key x y` |
-| `tr_laning` | A bot's own laning state changed (not reported at the start, when it is laning) | `pid laning why` (`phase`, `tower`, `smoke`, `farm`) |
 | `game_end` | An ancient fell or post-game started | |
 | `lua_error` | A guarded humaniser entry point threw (`Telemetry.LuaErrors`) | `pid where n msg tb` (`where` e.g. `Intent.Resolve`, `Perception.FilterNearbyEnemies`, `Tick`; `n` running count; `tb` up to six `file.lua:line(fn)` frames, absent for a stack overflow) |
 
@@ -1059,7 +1058,7 @@ Lane safety and laning-phase transitions. Spec: `handoffs/12-lane-safety-and-pha
 | `caution` | Alone-core and missing-enemy caution level, `AdjustPosition`, `SuppressTrades`, `ss <lane>` callout, retreat/attack scale claims (`transitions:caution`) |
 | `teleports` | Reads `GetIncomingTeleports` once per team per 0.25 s; backs off through `Caution.ForceLevel` (a `setup` response is logged, with no position effect) |
 | `lane_ward` | Early lane ward: `GANK_ANCHORS` (`lane_ward.ts:16`), `Pick`, `Confirm`, ward floor claim (`transitions:ward`) |
-| `phase` | Per-bot laning end (`IsLaningFor`), the laning gate for caution, TPs and rotations (`LaningTransitions`), the arbiter's hold (`LaningHeld`, ended by `clock` or `tower`), `FarmAllowedInLaning`, the Laning cap (`transitions:phase`), chat |
+| `phase` | The laning hold (`LaningHeld`): the one per-hero laning read of every laning behaviour (caution, TPs, rotations, lane fights, the arbiter, our retreat, the laning states); from the hero's first read to `clock` (OHA's `J.IsInLaningPhase`) or a fallen tier-1 of its lane (`tower`) |
 | `transitions` | Facade the hand-written Lua calls (`transitions.ts`; skips the trainer self-test bot), overlay |
 
 Imports point down this table. A lane module that needs an answer from a transitions module reads it through a probe registered in `lane_hooks.ts`; each module registers its probes at load (`RegisterProbes`: `caution.ts:265`, `rotation.ts:257`, `teleports.ts:176`), so a test that calls `Hooks.ResetHooks()` must re-register them (`LaneFresh` does).
@@ -1077,7 +1076,6 @@ Imports point down this table. A lane module that needs an answer from a transit
 | `Caution` | true | Alone-core and missing-enemy caution: position offset, retreat/attack scale, trade suppression, plan `FREEZE`/`HOLD`, `ss <lane>` callout |
 | `Teleports` | true | Enemy-TP reaction (back off or set up on the TP) and the `GetIncomingTeleports` read. Independent of `Caution`: a TP still raises the level with `Caution = false`, and caution still works with `Teleports = false` |
 | `LaneWard` | true | The early lane ward pick and its floor |
-| `Phase` | true | Per-bot laning end (a core with a farm item farms, a support past level 6 leaves) and its Laning cap |
 
 ### Hooks
 | Hook (facade, `transitions.ts`) | Called from | Upstream value | Implementation |
@@ -1089,19 +1087,18 @@ Imports point down this table. A lane module that needs an answer from a transit
 | `RotationYield` (`:87`) | `mode_rune_generic.lua:231` | none | `rotation.ts:253` |
 | `PickLaneWard` (`:98`) | `mode_ward_generic.lua:60` (tried first; upstream's closest spot is tried when the ward mode rejects it) | `nil` | `lane_ward.ts:92` |
 | `ConfirmLaneWard` (`:103`) | `mode_ward_generic.lua:71` | none | `lane_ward.ts:133` |
-| `FarmAllowedInLaning` (`:108`) | `mode_farm_generic.lua:135` | `false` | `phase.ts` `FarmAllowedInLaning` |
 | trade probe | `LaneFight` (`lane_fight.ts`) | `false` | `caution.ts:205`, registered `:268` |
 | caution probe | `LanePlan` core pick (`lane_plan.ts:297`): a cautious core never picks `SHOVE` | `false` | `caution.ts:266` |
 | rotation probe | `LanePlan` core pick (`lane_plan.ts:297`), `lane_planner.ts:167` (shove before rotating) | `false` | `rotation.ts:258` |
 | TP busy probe | `Busy.LaneCanSpare` (`enemyTpIncoming`, `busy.ts:177`) | `false` | `teleports.ts:177` |
 | busy probe (11) | `Busy.IsBusy` (`busy.ts:120`) | `false` | `lane_hooks.ts:34`; nothing registers yet |
 
-Claims (all `tier: "TRANSITION"`, re-posted each `Tick` while they apply): `transitions:mid_rune` and `transitions:rotate` (Rune floors), `transitions:ward` (Ward floor), `transitions:caution` (Retreat scale up to 1.3, Attack scale down to 0.7), `transitions:phase` (Laning cap at `LaningCap` 0.3). Chat goes through `Orders.Say` and only for allies of humans; the four localization blocks carry `say_rune_coming_mid`, `say_rune_lost`, `say_ss_<lane>`, `say_going_jungle`.
+Claims (all `tier: "TRANSITION"`, re-posted each `Tick` while they apply): `transitions:mid_rune` and `transitions:rotate` (Rune floors), `transitions:ward` (Ward floor), `transitions:caution` (Retreat scale up to 1.3, Attack scale down to 0.7). Chat goes through `Orders.Say` and only for allies of humans; the four localization blocks carry `say_rune_coming_mid`, `say_rune_lost`, `say_ss_<lane>`.
 
 ### Plan calls (see `.superpowers/sdd/.../plan-calls.md`)
 1. **Rotation route:** a Rune-mode floor claim plus a rune-target override in `mode_rune_generic.lua`, not an internal GATHER order, so the support keeps the rune mode's pickup logic. The power-rune gate (`J.IsCore(bot) or not J.IsThereCoreNearby(1200)`) already gives our mid priority.
 2. **No TP for rotations:** reachability is walking time only (`PathFactor` 1.2).
-3. **Lane swap is out of scope:** OHA has no assigned-lane setter. A core whose laning ends goes to the jungle and says `going jungle`, never `swapping`.
+3. **Lane swap is out of scope:** OHA has no assigned-lane setter.
 4. **Dependencies not yet merged** are reached through probes or placeholders: 11's fights and commits through `SetBusyProbe`; 11's trade windows by suppressing the shared harass tool; 10's expected last-hit rate is not used; 08's rotation mistakes by a local skill roll (`MistakeChance`, `rotation.ts:114`).
 5. **Ward anchors are new data:** six hand-placed points (team x lane) in `GANK_ANCHORS`; the lane ward picks the available early-game observer spot nearest the anchor. Calibrated in game.
 6. **The alone-core position offset only applies where OHA owns laning** (`Lane.OwnsLaning`); Valve's C++ laning cannot be moved. The claim-based parts apply to every bot.
@@ -1111,14 +1108,13 @@ Claims (all `tier: "TRANSITION"`, re-posted each `Tick` while they apply): `tran
 - **Rotation probe:** true only once the support has left, so the lane plan (keyed on the core) does not see "rotating" for the support's lane; the spec's shove-before-rune (07 B3) already covers the mid.
 - **"Spare" scope:** `SpareLaneRadius 3500` limits "spare" to the lane's opponents; `LaneState.Enemies` skips a hero never seen (no `GetHeroLastSeenInfo`), so an enemy unseen all game does not block a rotation. "Seen within 5 s" means visible, or unseen for at most 5 s.
 - **Missing duration cap:** an enemy unseen longer than `MissingMaxAge` 60 s no longer counts as missing (the spec gives no cap), so an enemy support farming elsewhere does not pin a core at caution 1 for the rest of laning.
-- **Laning-only transitions:** caution (level, claims, `ss <lane>` callout), the TP reaction and support rotations apply only while `Phase.LaningTransitions` holds: `IsLaningFor` with the `Phase` flag on, the global laning phase otherwise. Laning ending releases `transitions:caution` / `transitions:rotate` and the forced TP state at once. The mid-rune floor is deliberately all game.
+- **Laning-only transitions:** caution (level, claims, `ss <lane>` callout), the TP reaction and support rotations apply only while `Phase.LaningHeld` holds. Laning ending releases `transitions:caution` / `transitions:rotate` and the forced TP state at once. The mid-rune floor is deliberately all game.
 - **Rotation and the mid's rune:** the forced rotation target yields once the rune is up and an allied core stands within 1,200 of the spot; the normal pick's closest-ally and core gates then give the core the rune. Before that, a support on its spawned rune holds it for our mid (`Rotation.HoldsRune`, called from the rune mode's `Think`: it stands on the spot without picking up) while the mid is within `ContestMidRadius` (2,500) of the spot. It takes the rune with an enemy hero within `RuneHoldEnemyRadius` (1,200, visible or seen within 5 s), with the mid still not coming `RuneHoldGrace` (3 s) after the spawn, or at `RuneHoldMax` (15 s). The rotation, its floor and the mid's contest desire stay active up to `RuneHoldMax` while the rune lies there (`Rotation.Active`). A rotating partner only leaves the core "alone" once it is more than `CoreAbsentDist` from it.
 - **Spawn-instant rune reads:** a `MISSING` read within `MidRuneSpawnGrace` 1 s of a power spawn is ignored, and `AVAILABLE` clears a spot's empty mark, so a MISSING frame at the spawn instant no longer ends the mid's spawn.
 - **Bounty runes** spawn every 240 s (since 7.38; `RUNE_RULES` in `runes.ts`).
 - **Trainer self-test bot:** skipped by `Transitions.Tick` and every mode hook, as the lane steps were (2bf9a81).
 - **Setup is position-only:** TP setup posts no caution claim and no trade suppression, and is gated by `OwnsLaning` like the offset. The setup point is clamped to at least `TpTowerClear` 850 from a live enemy T1 (the spec's 600 would put the bot under the tower). "Our lane T1" in the brief means the enemy T1 of this lane, the only TP target that matters. The TP response is locked when the notice delay ends and only moves one way, setup to back.
 - **Lane ward:** the claim goes live only after the ward mode accepts the spot, and the spot must be within `WardAnchorRadius` 1500 of the anchor, else upstream's choice stands. Dire anchors come from `DIRE_LANE_PHASE` spots, not a mirror of Radiant's.
-- **Going jungle:** `say_going_jungle` is said once whenever `FarmAllowedInLaning` first turns true.
 - **Caution flags in 07 fixtures:** `Caution = false` in `test_lane_harass` / `test_lane_stacking` fixtures, whose geometry legitimately trips `IsAlone`.
 
 ### Placeholders for later tasks

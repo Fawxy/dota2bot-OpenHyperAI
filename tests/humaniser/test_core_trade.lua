@@ -13,7 +13,7 @@ local lines = {}
 H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 
 local world = { laning = true, applies = true }
-package.loaded["bots/FunLib/humaniser/transitions/phase"] = { IsLaningFor = function() return world.laning end }
+package.loaded["bots/FunLib/humaniser/transitions/phase"] = { LaningHeld = function() return world.laning end }
 package.loaded["bots/FunLib/humaniser/states/core_last_hit"] = { Applies = function() return world.applies end }
 package.loaded["bots/FunLib/humaniser/states/support_deny"] = { Harass = function() return world.support == true end }
 package.loaded["bots/FunLib/humaniser/states/core_trade"] = nil

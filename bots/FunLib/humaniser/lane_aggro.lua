@@ -530,7 +530,7 @@ local function coreAway(bot)
 end
 --- Whether this module may act for the bot now (the switch, laning phase, a core, or a support whose core is away).
 function ____exports.Owns(bot)
-    if not Ours.On("LaneAggro") or not bot:IsAlive() or not Phase.IsLaningFor(bot) then
+    if not Ours.On("LaneAggro") or not bot:IsAlive() or not Phase.LaningHeld(bot) then
         return false
     end
     local role = roleOf(bot)

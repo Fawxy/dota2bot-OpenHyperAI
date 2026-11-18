@@ -59,7 +59,6 @@ function ____exports.Tick(bot)
     Teleports.Tick(bot)
     Caution.Tick(bot)
     LaneWard.Tick(bot)
-    Phase.Tick(bot)
 end
 --- Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on.
 function ____exports.MidRunesOn(bot)
@@ -107,7 +106,7 @@ function ____exports.RotationYield(bot)
     Rotation.Yield(bot)
 end
 function ____exports.Overlay(bot)
-    return (((((((("phase: " .. (Phase.IsLaningFor(bot) and "laning" or "post")) .. " busy=") .. tostring(providers.Busy(bot))) .. " spare=") .. tostring(providers.Spare(bot))) .. " alone=") .. tostring(providers.Alone(bot))) .. " rot=") .. (providers.Rotation(bot) or "-")
+    return (((((((("phase: " .. (Phase.LaningHeld(bot) and "laning" or "post")) .. " busy=") .. tostring(providers.Busy(bot))) .. " spare=") .. tostring(providers.Spare(bot))) .. " alone=") .. tostring(providers.Alone(bot))) .. " rot=") .. (providers.Rotation(bot) or "-")
 end
 --- Ward-mode hook: the spot (from `spots`) on our lane's gank path to ward early, or undefined for the upstream choice.
 function ____exports.PickLaneWard(bot, spots)
@@ -122,9 +121,5 @@ end
 --- Ward-mode hook: the ward mode accepted `spot` (a PickLaneWard result) as its target, so the lane-ward floor may apply.
 function ____exports.ConfirmLaneWard(bot, spot)
     LaneWard.Confirm(bot, spot)
-end
---- Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended).
-function ____exports.FarmAllowedInLaning(bot)
-    return not Trainer.IsSelfTestBot(bot) and Phase.FarmAllowedInLaning(bot)
 end
 return ____exports

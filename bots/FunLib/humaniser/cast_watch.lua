@@ -4,6 +4,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
@@ -271,7 +272,7 @@ local function onCastEvent(bot, enemyPid, event, now)
     if not LaneFightConfig.IsOn("Memory") or not LaneFightConfig.Settings().UseCastCallback then
         return
     end
-    if now < 0 or not LaneConfig.InLaningPhase() or isNullHandle(bot) then
+    if now < 0 or not Phase.LaningHeld(bot) or isNullHandle(bot) then
         return
     end
     local caster = visibleEnemy(bot, enemyPid)

@@ -70,7 +70,7 @@ local function Fresh(states, o)
 		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot, SupportHarass = o.supportHarass,
 		LaneSpotTower = o.laneSpotTower, LaneSpotThreat = o.threat == true, EvenStand = o.evenStand }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
-	Phase.IsLaningFor = function() return true end
+	Phase.LaningHeld = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
 	local positions = {}
 	LaneConfig.SetHelpers({ GetPosition = function(u) return positions[u.pid] end })

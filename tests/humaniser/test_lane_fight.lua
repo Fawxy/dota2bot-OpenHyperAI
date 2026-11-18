@@ -420,8 +420,11 @@ local function offCase(name, o, setup)
 	end
 	local scans = 0
 	for _, n in pairs(GETUNITLIST_CALLS) do scans = scans + n end
+	-- The laning hold's own start line (ev=arb ph=own) is not this module's.
+	local lines = 0
+	for _, l in ipairs(W.lines) do if not l:find("ev=arb ", 1, true) then lines = lines + 1 end end
 	check("with " .. name .. " RoamDesire returns raw and posts no claim", same and W.age("trade") == nil and W.age("commit") == nil
-		and not acted and #W.lines == 0)
+		and not acted and lines == 0)
 	check("with " .. name .. " nothing scans units", scans == 0, scans)
 end
 offCase("LaneFight off", { burst = 1000, laneFight = { Enable = false } })

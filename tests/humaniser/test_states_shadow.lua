@@ -17,7 +17,7 @@ local function Fresh(states, o)
 	-- These cases test the States settings on OHA's path: slice 5's Ours.CoreLastHit (pos1-3 own laning) is off here.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = false }
 	W = { laning = true }
-	require("bots/FunLib/humaniser/transitions/phase").IsLaningFor = function() return W.laning end
+	require("bots/FunLib/humaniser/transitions/phase").LaningHeld = function() return W.laning end
 	local CampJobs = require("bots/FunLib/humaniser/camp_jobs")
 	CampJobs.Active = function() return W.job ~= nil end
 	CampJobs.Current = function() return W.job end

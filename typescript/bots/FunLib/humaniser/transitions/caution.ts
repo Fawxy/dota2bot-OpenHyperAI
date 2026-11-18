@@ -137,7 +137,7 @@ function update(bot: Unit, now: number): State {
     const st = stateOf(bot);
     if (now >= st.checkAt) {
         st.checkAt = now + Settings.Get().Refresh;
-        const laning = Phase.LaningTransitions(bot);
+        const laning = Phase.LaningHeld(bot);
         const s = laning ? LaneState.ForBot(bot) : undefined;
         let target = 0;
         st.missing = 0;
@@ -180,7 +180,7 @@ function update(bot: Unit, now: number): State {
 
 /** Lane enemies missing for the bot right now (0 when caution is off or the bot is not laning); `maxAge` keeps only those unseen at most that long. */
 export function MissingNow(bot: Unit, maxAge?: number): number {
-    if (!Settings.IsOn("Caution") || !Phase.LaningTransitions(bot)) return 0;
+    if (!Settings.IsOn("Caution") || !Phase.LaningHeld(bot)) return 0;
     const st = update(bot, DotaTime());
     if (st.missing === 0 || maxAge === undefined) return st.missing;
     const s = LaneState.ForBot(bot);
@@ -200,7 +200,7 @@ export function Threatened(bot: Unit): boolean {
 }
 
 export function Level(bot: Unit): number {
-    if (!Phase.LaningTransitions(bot)) return 0;
+    if (!Phase.LaningHeld(bot)) return 0;
     const now = DotaTime();
     const applied = Settings.IsOn("Caution") ? update(bot, now).applied : 0;
     const f = forced[bot.GetPlayerID()];
@@ -247,7 +247,7 @@ function callout(bot: Unit, st: State, now: number): void {
 
 export function Tick(bot: Unit): void {
     if (!Settings.IsOn("Caution") && !Settings.IsOn("Teleports")) return;
-    if (!Phase.LaningTransitions(bot)) {
+    if (!Phase.LaningHeld(bot)) {
         if (Settings.IsOn("Caution")) update(bot, DotaTime());
         delete forced[bot.GetPlayerID()];
         Intent.ReleaseSource(bot, SOURCE);

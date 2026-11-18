@@ -103,17 +103,17 @@ function ____exports.LeverOf(bot)
     end
     return nil
 end
---- A hero of ours the arbiter reasons about, one no drill holds: with `Ours.ArbiterDrive`, from its first laning read to an
--- end event (Phase.LaningHeld), and never a drill's lane-only hero (its laning holds it at 1.2, only the thing under test
--- acts); off, a bot in its laning phase as last read by its own callers (no cache clock moves).
+--- A hero of ours the arbiter reasons about, one no drill holds: from its first laning read to an end event
+-- (Phase.LaningHeld); with `Ours.ArbiterDrive`, never a drill's lane-only hero (its laning holds it at 1.2, only the thing
+-- under test acts).
 function ____exports.Owned(bot)
     if Drill.Held(bot) then
         return false
     end
-    if Ours.On("ArbiterDrive") then
-        return not Overrides.LaneOnly(bot) and Phase.LaningHeld(bot)
+    if Ours.On("ArbiterDrive") and Overrides.LaneOnly(bot) then
+        return false
     end
-    return Phase.LaningTransitionsSeen(bot) == true
+    return Phase.LaningHeld(bot)
 end
 local owned = ____exports.Owned
 --- The lane picker's body is in a last-hit attempt right now: its stored phase label, fresh within a second of its last scan.

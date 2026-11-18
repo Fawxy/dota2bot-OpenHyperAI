@@ -2,7 +2,7 @@
  * Lane safety and laning-phase transitions facade (task 12).
  * Imports every transitions module so their load-time registrations run, and is the one entry point for Tick and
  * the mode-file hooks. The trainer self-test bot is left alone (as the lane steps skip it): its drill must not be
- * moved by a rune floor, a ward pick or a farm release.
+ * moved by a rune floor or a ward pick.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
 import * as Settings from "bots/FunLib/humaniser/transitions/settings";
@@ -52,7 +52,6 @@ export function Tick(bot: Unit): void {
     Teleports.Tick(bot);
     Caution.Tick(bot);
     LaneWard.Tick(bot);
-    Phase.Tick(bot);
 }
 
 /** Rune-mode hooks (3b). True for our pos 2 while the MidRunes sub-feature is on. */
@@ -94,7 +93,7 @@ export function RotationYield(bot: Unit): void {
 }
 
 export function Overlay(bot: Unit): string {
-    return `phase: ${Phase.IsLaningFor(bot) ? "laning" : "post"} busy=${tostring(providers.Busy(bot))} spare=${tostring(providers.Spare(bot))} alone=${tostring(
+    return `phase: ${Phase.LaningHeld(bot) ? "laning" : "post"} busy=${tostring(providers.Busy(bot))} spare=${tostring(providers.Spare(bot))} alone=${tostring(
         providers.Alone(bot)
     )} rot=${providers.Rotation(bot) ?? "-"}`;
 }
@@ -109,7 +108,3 @@ export function ConfirmLaneWard(bot: Unit, spot: { location: Vector }): void {
     LaneWard.Confirm(bot, spot);
 }
 
-/** Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended). */
-export function FarmAllowedInLaning(bot: Unit): boolean {
-    return !Trainer.IsSelfTestBot(bot) && Phase.FarmAllowedInLaning(bot);
-}
