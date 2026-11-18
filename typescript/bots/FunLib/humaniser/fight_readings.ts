@@ -1,7 +1,7 @@
 /**
  * Fight readings (slice rune-spawn; shared with row "Core in lane"'s fight combiner, which asked for them as a module of
  * their own, 04/11/2026): plain readings of a place and its heroes from the API, with no judgement in them. Positional,
- * not lane-bound (fight_read's LaneCounts reads the lane snapshot instead).
+ * not lane-bound.
  */
 import { Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 

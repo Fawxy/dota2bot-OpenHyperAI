@@ -1,37 +1,29 @@
 id: lane.trade.unfavoured.001
 source: log
-ref: {log: 2026-11-15T19-32-56-tradefreecut_smoke1.log, t: 122.767}
+ref:
+  log: 2026-11-15T19-32-56-tradefreecut_smoke1.log
+  t: 122.767
 status: active
-control: {commit: 9b3ef1bd, outcome: fail}
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose trade on 3 (hp 0.815 vs 0.941, creeps 3, tower 0) (Ours.TradeFree off); tf added by hand: question 2 asked (slice trade-free).
-# core pid 9 on pid 3: 712 away, reach 723; HP 82% vs 94%; heroes 1 theirs, 1 ours; creeps near 3, on the bot 0; tower 0
+decision: trade
 world:
   t: 122.767
   pid: 9
-  role: "core"
-  tgt: 3
+  role: core
   hp: 0.815
-  thp: 0.941
-  en: 1
-  ally: 1
-  cr: 3
-  hc: 0
-  tw: 0
-  kh: 0.4
-  lf: 1
-  d: 712
-  rch: 723
-  tlh: 0
   bu: 0.313
+  n: 1
+  mi: 0
   tm: 0
-  ar: 575
-  tar: 500
-  tme: 0
-  ko: 0.251
-  kt: 0.373
-  tf: 1
+  hc: 0
+  cr: 3
+  dn: 0
+  cd: 3,0.941,-,712,-11,0,1,0,0,0.251,0.373,0,0,-,-,-,-,-,-,0
 expect:
-  mustNot: ["trade"]
-notes: >
+  must:
+    - none(unfavoured)
+  mustNot:
+    - hit
+notes: |-
   The mid's unfavoured open (tradefreecut_smoke1, 2:02.8, dazzle pid 9 on necrolyte pid 3, ranges 575 and 500): 82% against 94%, safe, no gap. Not free (75 over, the target not on a creep), and its 3 s estimate on us (kt 0.373 of our HP) beats ours on it (ko 0.251): the exchange loses, so no trade (D18 "harass that lands"). In this game such opens dealt 4 HP and lost 12 on average. Positive control: lane.trade.favoured.001.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 3's HP, distance, gap past our reach 723, hitting 0, free 0, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: none(unfavoured): not free (75 over), ko 0.251 under kt 0.373. Old expectation: mustNot trade: same.

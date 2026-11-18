@@ -13,7 +13,6 @@ local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_h
 local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
 local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
-local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
 local Transitions = require(GetScriptDirectory().."/FunLib/humaniser/transitions/transitions")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
@@ -57,7 +56,6 @@ ____exports.AllyLastHit = AllyLastHit
 ____exports.Pings = Pings
 ____exports.Commands = Commands
 ____exports.Lane = Lane
-____exports.LaneFight = LaneFight
 ____exports.Transitions = Transitions
 ____exports.Intent = Intent
 ____exports.LastHitSkill = LastHitSkill
@@ -207,13 +205,6 @@ local function drawOverlay(bot)
                 )
             )
         end
-        if LaneFight.IsActive() and LaneFight.Config.AppliesTo(bot) then
-            HDebug.Text(
-                bot,
-                "fight",
-                LaneFight.Describe(bot)
-            )
-        end
         if LastHitSkill.IsActiveFor(bot) then
             local cs = LastHitSkill.Counts(bot)
             HDebug.Text(
@@ -275,12 +266,11 @@ local function stepsDue()
 end
 --- The steps that run on the frames between: each names what a lower rate would lose. Every other step reads the world
 -- ten times a second: the modes that act on them run 3 to 6 times a second, and a step that counts time in tenths
--- (the lane fight's enemy count, the cast poll, a teleport's settle) may be read a tick late.
+-- (a teleport's settle) may be read a tick late.
 local function frameSteps(bot)
     if Drill.Active() ~= nil then
         Drill.Tick(bot)
     end
-    LaneFight.Frame(bot)
     if Trainer.IsEnabled() then
         steps.trainer(bot)
     end
@@ -323,7 +313,6 @@ local function tick(bot)
     steps.pings(bot)
     steps.commands(bot)
     steps.lane(bot)
-    LaneFight.Tick(bot)
     Transitions.Tick(bot)
     steps.trainer(bot)
     steps.lastHit(bot)
@@ -372,19 +361,6 @@ if Telemetry.GuardsEnabled() then
         RuneContestDesire = zero,
         PreferStackedCamp = none
     })
-    Telemetry.GuardModule(
-        "LaneFight",
-        LaneFight,
-        {
-            Tick = none,
-            Frame = none,
-            ReadFor = function() return {noticed = false} end,
-            CheckKill = none,
-            RoamDesire = arg2,
-            Think = no,
-            Target = none
-        }
-    )
     Telemetry.GuardModule(
         "Transitions",
         Transitions,

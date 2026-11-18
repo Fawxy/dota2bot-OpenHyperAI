@@ -20,15 +20,10 @@ export const DEFAULTS = {
      */
     CoreLastHit: true,
     /**
-     * Slice core-in-lane: with CoreLastHit on, the core's attack mode is ours in lane (trades, states/core_trade) and OHA's Lua
-     * port outside it; false leaves Valve's attack mode (sub-switch for debugging).
-     */
-    CoreTrade: true,
-    /**
      * Slice oha-trade (design 2026-11-19-trade-decision-design.md): the hero-on-hero exchange in lane is one decision (states/trade):
      * hit, hit back, kill and join for every laner our laning body holds (CoreLastHit or SupportDeny), the attack mode's desire and
      * Think in lane, team roam's fight branches, farm's ShouldRun and retreat's hold. Off: OHA's attack port, team roam's own fights,
-     * farm's ShouldRun and no retreat hold. It replaces CoreTrade and the switches that hung on it, which nothing reads once it is on.
+     * farm's ShouldRun and no retreat hold.
      */
     Trade: true,
     /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
@@ -59,15 +54,9 @@ export const DEFAULTS = {
     /**
      * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
      * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with
-     * SupportDeny and SupportHarass on, a pos4-5 too, instead of OHA's PositionThink.
+     * SupportDeny on, a pos4-5 too, instead of OHA's PositionThink.
      */
     LaneSpot: true,
-    /**
-     * Slice support-spot: with SupportDeny on, a pos4-5's attack mode is ours in lane (harass through states/core_trade, the
-     * aggro-free plan) and OHA's Lua port outside it, and with LaneSpot on the support stands on our lane spot (a support_lane
-     * step) instead of OHA's PositionThink; false leaves both OHA's and Valve's.
-     */
-    SupportHarass: true,
     /** With LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (states/lane_spot Cover): enemy
      *  creeps attacking something else there keep a small ring, enemy heroes our tower would punish a short reach. Supports,
      *  and off: the open-lane limits. */
@@ -75,12 +64,6 @@ export const DEFAULTS = {
     /** Slice retreat: with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 3 s (states/lane_spot
      *  READ_HORIZON) instead of the hero reach and the HP margin on it; off: the old hero limits. */
     LaneSpotThreat: true,
-    /**
-     * Slice lane-fight: with CoreLastHit and CoreTrade on, an in-lane pos1-3's fights are ours (states/core_trade): it commits on
-     * a target at 40% HP or less with even numbers or more, OHA's team roam keeps only its non-fight branches for it and
-     * LaneFight makes no claim. Off: team roam's fight branches and LaneFight's claims, and the trade's 25% kill cut.
-     */
-    CoreLaneFight: true,
     /**
      * Slice lane-aggro: an in-lane core (and a support whose lane core is away) draws enemy lane creeps on purpose
      * (lane_aggro): `feed` walks the enemy wave onto our ranged creep for our deny, `drag` walks a creep about to die away
@@ -163,52 +146,10 @@ export const DEFAULTS = {
      *  us, whose burst is under half our HP, at 70% HP or more, start no `threat` leave
      *  (Threat.Stand); the lane spot is unchanged. Off: the budget. */
     HighStand: true,
-    /** Slice pair-join-on (D10): a laner of ours in a fight where an ally of ours (or itself) is hit by an enemy hero, not
-     *  outnumbered, whose side's best 3 s kill share beats theirs (PairJoin.Joins) commits an attack on the pair's target
-     *  (CoreTrade kind `join`), and retreat's `threat` leave waits for it (LeaveWhy `join`). Off: the pair's answer is only
-     *  logged (`ev=cut kind=join`). */
-    PairJoin: true,
-    /** Slice trade-safe (D18): with CoreTrade on, a laner's trade or harass asks "is it safe?" of the threat read (states/core_trade
-     *  decideSafe): not outnumbered, half HP or more, their burst in reach under our HP, our attack point outside their tower's
-     *  reach. Off: the old refusals, `behind` (15 points under the target's HP) and a tower by either hero. */
-    TradeSafe: true,
-    /** Slice trade-free (D18): with CoreTrade on, a trade the safe rule allows is taken only when the hit is free (the target
-     *  swings at a lane creep, or our attack range is 100 over its) or favoured (our 3 s estimated damage over its HP beats its
-     *  over ours, PairJoin's estimate); else `unfavoured`. Off: a lost trade's HP `gap` holds the next one. */
-    TradeFree: true,
-    /** Slice fight-safe (D19): with CoreLaneFight and TradeSafe on, a lane-fight roll or join asks trade-safe's "is it safe?"
-     *  (their burst in reach under our HP) in place of `behind` (15 points under the target's HP). Off, or TradeSafe off: `behind`. */
-    FightSafe: true,
     /** Slice burst-cooldowns (D1, D2, D18): an enemy hero's estimated damage (the threat read's burst, the kill check's incoming
      *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
      *  Off: Valve's estimate, which counts every learned enemy spell ready. */
     BurstReady: true,
-    /** Slice trade-landed (D24, D18): with CoreTrade on, a trade's `losing` end is judged from the bot's first landed hit on the
-     *  target (the exchange from then, counting that hit); before it lands only a loss of UNLANDED_CAP of max HP ends it.
-     *  Off: from the trade's start, enemy hits taken while stepping out or walking in included. */
-    TradeLanded: true,
-    /** Slice spells-up (D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill check's
-     *  escape) takes an enemy's spell as up only when it can cast it now (SpellReady.Ready). Off: every learned spell is up. */
-    SpellsUp: true,
-    /** Slice trade-reach (D19): with CoreTrade on, a core's kill commit looks for an enemy hero at the commit bar up to
-     *  KILL_WALK past the trade's reach (lowest HP first), and a running trade whose target Decide now calls `kill` reopens as
-     *  the kill (`kill_up`). Off: the commit sees only the nearest hero in reach, and a trade stays a trade. */
-    KillReach: true,
-    /** Slice support-lane-fight (kill-chances S1, D19): an in-lane pos4-5 whose harass is ours (SupportHarass) has its lane
-     *  fights ours as a core's are (states/core_trade OwnsLaneFights): the commit at 40% with KillReach's walk, the play join and
-     *  roll; OHA's team roam keeps only its non-fight branches for it and LaneFight makes no claim. Off: team roam's fight
-     *  branches, LaneFight's claims and the trade's 25% kill cut. */
-    SupportLaneFight: true,
-    /** Slice trade-lands (D18, kill-chances T1): with CoreTrade on, a trade outside attack range opens only if the hero can reach
-     *  that range within WALK_IN (states/core_trade reachRead), and a taken trade is not ended by a due deny or a pair join on
-     *  another hero until its first attack has fired (while the read still says it can reach; 4 s backstop `hold_time`).
-     *  Off: the trade opens whatever the gap, and a deny or join ends it at once. */
-    TradeLands: false,
-    /** Slice join-hits (kill-chances J1, D10): with PairJoin on, the pair join also weighs a fight when no ally is hit but an
-     *  ally other than the bot has a fight of its own open on an enemy hero (a CoreTrade episode of kind trade, kill or fight;
-     *  PairJoin.Gather `on=ours`): the join's target and our share are that hero, and the join holds while the episode runs.
-     *  It acts only for a hero in no play that CoreTrade.FightRefusal does not hold. Off: such a record is only logged. */
-    JoinOnHit: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

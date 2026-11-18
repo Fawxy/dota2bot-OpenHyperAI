@@ -1,32 +1,32 @@
 id: fights.chase.kept-unseen.001
 source: log
-ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 385.733}
+ref:
+  log: 2026-11-18T03-45-56-kill-chase_smoke3.log
+  t: 385.733
 status: active
-decision: core_keep
-# Cut by tools/hlog/cut.js. The game chose keep for the kill on 6 (seen 0, started 3.600 s ago); write the right action, not this.
-# core pid 0, kill on pid 6: alive, unseen, offered 3.733 s ago, started 3.6 s ago
+decision: trade
 world:
   t: 385.733
   pid: 0
-  role: "core"
-  tgt: 6
-  ek: "kill"
-  alv: 1
-  sn: 0
-  oa: 3.733
-  kh: 0.4
-  sa: 3.6
-  d: 188
-  chu: "163.2,623,329.5,45.1,"
-  cth: 338
-  csf: 30
+  role: core
+  hp: 1
+  bu: 0
+  n: 0
+  mi: 0
+  tm: 0
+  hc: 0
+  cr: 0
+  dn: 0
+  run: kill:6:-:1:3.733:3.6:0:0:0:-:-:-:-:1
   uat: 0
   utw: 0
-  uou: 0
   uth: 0
 expect:
-  must: ["keep"]
-notes: >
-  The commonest start (smoke3, 6:25): our ranged core's kill target left sight 3.6 s into the kill, yet its predicted place
-  is 163 away, inside our attack range, and we close on it; it is not heading for its tower. Before 3b this ended
-  `target_lost` at the fog line (0 of 136 such low targets died, plan "Step 3 read"); now the chase walks on.
+  must:
+    - kill(hero#6)
+  mustNot:
+    - end(spot_clear)
+notes: |-
+  The commonest start (smoke3, 6:25): our ranged core's kill target left sight 3.6 s into the kill, yet its predicted place is 163 away, inside our attack range, and we close on it; it is not heading for its tower. Before 3b this ended `target_lost` at the fog line (0 of 136 such low targets died, plan "Step 3 read"); now the chase walks on.
+
+  Rewritten for the one trade decision (oha-trade step 5): the run is the kill at "kill:6:-:1:3.733:3.6:0:0:0:-:-:-:-:1" (level:target:source:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:catchOk), the catch read replayed from the old hunters (163.2,623,329.5,45.1,) over 338 HP and a 30 s window: passes (damage 1353); the hero is unseen, so there is no candidate and hp, bu and the like are placeholders the kill gates do not read. Answer now: kill(hero#6), kept: unseen, the predicted place is not cleared, no tower and no threat read, and the catch read on its last HP passes. Old expectation: keep: same.

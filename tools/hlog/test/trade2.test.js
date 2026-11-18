@@ -10,11 +10,11 @@ const cutOf = (line) => {
     return { g, cut: g.cuts[0] };
 };
 
-// kind=trade2: the cut carries every input of Trade.Decide, and the driver replays it through the built Lua.
-const BASE = 't=200.000 ev=cut pid=1 kind=trade2 role=core hp=1 bu=0.2 n=1 mi=0 tm=0 hc=0 cr=1 dn=0';
+// kind=trade (named trade2 on logs from before the old decision went): the cut carries every input of Trade.Decide, and the driver replays it through the built Lua.
+const BASE = 't=200.000 ev=cut pid=1 kind=trade role=core hp=1 bu=0.2 n=1 mi=0 tm=0 hc=0 cr=1 dn=0';
 const FAVOURED = 'cd="7,0.7,420,300,100,0,1,0,0,0.3,0.2,0,0,-,-,-,-,-,-"';
 
-test('trade2: a cut replays the answer the game logged, and an end beside it', () => {
+test('trade: a cut replays the answer the game logged, and an end beside it', () => {
     const hit = cutOf(`${BASE} ${FAVOURED} lv=hit tgt=7 how=attack:free why=hit`);
     assert.deepStrictEqual([checkOne(hit.g, hit.cut).same, checkOne(hit.g, hit.cut).got], [true, 'hit(hero#7)']);
     const burst = cutOf(`${BASE.replace('bu=0.2', 'bu=1.2')} ${FAVOURED} lv=none why=burst`);
@@ -27,7 +27,7 @@ test('trade2: a cut replays the answer the game logged, and an end beside it', (
     assert.strictEqual(checkOne(wrong.g, wrong.cut).same, false);
 });
 
-test('trade2: the pair, a candidate walk read and a catch read ride on the line', () => {
+test('trade: the pair, a candidate walk read and a catch read ride on the line', () => {
     const cd = 'cd="7,0.2,120,300,100,0,1,0,0,0.2,0.3,0,0,0.1,1,0.6,1,500,30"';
     const missing = cutOf(`${BASE} ${cd} lv=none why=missing`);
     assert.strictEqual(checkOne(missing.g, missing.cut).got, 'none(missing)');
@@ -36,7 +36,7 @@ test('trade2: the pair, a candidate walk read and a catch read ride on the line'
     assert.match(factsOf(worldOf(join.g, join.cut)).join('\n'), /candidate pid 7: HP 70%/);
 });
 
-// trade_diff: an old line mapped into Inputs and the new Decide's answer against the old one.
+// trade_diff: an old line (kind=trade with no `lv`, which readGames names trade_old) mapped into Inputs and the new Decide's answer against the old one.
 const oldTrade = (extra) => fromTrade(readGames([hev(`t=200.000 ev=cut pid=1 kind=trade role=core tgt=6 hp=1 thp=0.7 en=2 ally=1 cr=1 hc=0 tw=0 kh=0.4 lf=1 d=300 rch=698 hl=48 ms=300 tms=300 aw=0 lw=1 tlh=0 bu=0.2 tm=0 ar=150 tar=150 ko=0.3 kt=0.2 tf=1 dn=0 ${extra}`)].join('\n')).pop().cuts[0]);
 
 test('trade_diff: outnumbered is no longer a refusal; a lost trade with the same answer is not a difference', () => {

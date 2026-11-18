@@ -305,7 +305,7 @@ local Telemetry = J.Humaniser.Telemetry
 Telemetry.NoteLaneThink(bot, bOwnsThink)
 
 -- A support whose body owns its lane hits but not its harass keeps OHA's positioning: the body's hold would cancel its
--- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With Ours.SupportHarass its hold is a support_lane
+-- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With SupportDeny and LaneSpot its hold is a support_lane
 -- step, which Think runs first, so this runs for it only on a frame the body is not running or its task is guarded.
 local function BodyOrPositionThink()
 	if not States.BodySupportHits(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body' end

@@ -1,31 +1,27 @@
 id: lane.trade.safe-behind.001
 source: log
-ref: {log: 2026-11-15T01-33-05-h2htradecut1_B_dire_2.log, t: 91.800}
+ref:
+  log: 2026-11-15T01-33-05-h2htradecut1_B_dire_2.log
+  t: 91.8
 status: active
-control: {commit: 7d07d1a0, outcome: fail}
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose behind on 4 (hp 0.623 vs 0.910, creeps 3, tower 0); bu and tm from the retreat leave cut at the same moment (slice trade-safe).
-# core pid 9 on pid 4: 634 away, reach 773; HP 62% vs 91%; heroes 1 theirs, 1 ours; creeps near 3, on the bot 0; tower 0
+decision: trade
 world:
   t: 91.8
   pid: 9
-  role: "core"
-  tgt: 4
+  role: core
   hp: 0.623
-  thp: 0.91
-  en: 1
-  ally: 1
-  cr: 3
-  hc: 0
-  tw: 0
-  kh: 0.4
-  lf: 1
-  d: 634
-  rch: 773
-  tlh: 0
   bu: 0.54
+  n: 1
+  mi: 0
   tm: 0
+  hc: 0
+  cr: 3
+  dn: 0
+  cd: 4,0.91,-,634,-139,0,1,0,0,1,0,0,0,-,-,-,-,-,-,0
 expect:
-  must: ["trade"]
-notes: >
+  must:
+    - hit(hero#4)
+notes: |-
   The commonest start (h2htradecut1 B_dire_2, 1:31.8, our mid pid 9): 62% HP against the enemy mid at 91%, one hero each, 3 creeps near and none on us, no tower, no gap. Their burst in reach (retreat's stay read from the leave cut 0 s away) is 0.54 of our HP: safe. The old rule refused on `behind` (29 points under); being behind does not predict a lost exchange on the h2h trades, so the safe rule trades (D18).
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 4's HP, distance, gap past our reach 773, hitting 0, free 0, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those); the old cut logged no ko, kt or free (it asked no favour), so ko 1 kt 0 is set by hand to pass the favour gate and the fixture asks only tower, burst, HP and wave. Answer now: hit(hero#4): burst 0.54 under the bar, HP 62% over the 0.5 bar; favour set to pass by hand. Old expectation: trade: same.

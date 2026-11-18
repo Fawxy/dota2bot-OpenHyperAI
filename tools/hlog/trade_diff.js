@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Trade replay diff (design 2026-11-19-trade-decision-design.md s7): the OLD decision's cut lines (ev=cut kind=trade, core_trade.ts's
+// Trade replay diff (design 2026-11-19-trade-decision-design.md s7): the OLD decision's cut lines (ev=cut kind=trade with no `lv`, core_trade.ts's
 // fresh decision, and kind=keep, its kill and join kept or ended each frame) mapped into the new decision's Inputs, the new Decide run
 // on them (the built states/trade.lua, in the fixture harness), and a table of where its answer differs from what the game decided,
 // by old answer, new answer and the new deciding gate. A diff to attribute a batch by, not a bar.
@@ -27,6 +27,8 @@ const COMMIT_HP = 0.4;
 const CATCH_WINDOW = 30;
 const OUTRANGE = 100;
 const CHUNK = 400;
+/** Old lines carry no movement speed: a typical hero's (the new decision reads `ms`, and `lw` 0 on a trade line means it could not reach). */
+const DEFAULT_MS = 300;
 
 /** The new Free (states/trade.ts): the target swings at a creep, or our range is OUTRANGE over its. */
 const free = (tlh, ar, tar) => tlh || (ar !== undefined && tar !== undefined && ar >= tar + OUTRANGE);
@@ -70,11 +72,11 @@ function fromTrade(cut) {
     if (cut.bu === undefined) return { skip: 'no burst read (the old decision ran without Ours.TradeSafe)' };
     const n = (k) => Number(cut[k]);
     const base = (nn, c) => ({
-        now: n('t'), hp: n('hp'), burst: n('bu'), n: nn, missing: 0, towerOnMe: n('tm') === 1, creepsOnMe: n('hc'), wave: n('cr'),
+        now: n('t'), hp: n('hp'), burst: n('bu'), n: nn, missing: 0, ms: num(cut, 'lw') === 0 ? 0 : DEFAULT_MS, towerOnMe: n('tm') === 1, creepsOnMe: n('hc'), wave: n('cr'),
         denyDue: num(cut, 'dn') === 1,
         cands: [{
             pid: n('tgt'), thp: n('thp'), thpAbs: n('thp') * 600, d: n('d'), gap: n('d') - nonDefault(num(cut, 'ar'), 0) - nonDefault(num(cut, 'hl'), 0),
-            away: nonDefault(num(cut, 'aw'), 0), arrives: num(cut, 'lw') !== 0, hitting: num(cut, 'hb') === 1,
+            away: nonDefault(num(cut, 'aw'), 0), hitting: num(cut, 'hb') === 1,
             free: free(num(cut, 'tlh') === 1, num(cut, 'ar'), num(cut, 'tar')), ko: nonDefault(num(cut, 'ko'), 0), kt: nonDefault(num(cut, 'kt'), 0),
             paid: false, tw: false, ...(c ? { catch: c } : {}),
         }],
@@ -109,11 +111,11 @@ function fromKeep(cut) {
         if (kind === 'kill' && hunters !== undefined) run.catch = cs;
     }
     const base = (nn) => ({
-        now: n('t'), hp: hasHere ? n('hp') : 1, burst: hasHere && cut.bu !== undefined ? n('bu') : 0, n: nn, missing: 0, towerOnMe: num(cut, 'tm') === 1,
+        now: n('t'), hp: hasHere ? n('hp') : 1, burst: hasHere && cut.bu !== undefined ? n('bu') : 0, n: nn, missing: 0, ms: DEFAULT_MS, towerOnMe: num(cut, 'tm') === 1,
         creepsOnMe: nonDefault(num(cut, 'hc'), 0), wave: nonDefault(num(cut, 'cr'), 0), denyDue: false,
         pair: cut.jn === 'same' ? { tgt, ko: 1, kt: 0, dec: 'join' } : cut.jn === 'other' ? { tgt: -1, ko: 1, kt: 0, dec: 'join' } : undefined,
         cands: seen ? [{
-            pid: tgt, thp, thpAbs: hunters !== undefined ? n('cth') : thp * 600, d, gap, away: 0, arrives: true, hitting: num(cut, 'hb') === 1,
+            pid: tgt, thp, thpAbs: hunters !== undefined ? n('cth') : thp * 600, d, gap, away: 0, hitting: num(cut, 'hb') === 1,
             free: false, ko: cut.jn === 'same' ? 1 : 0.3, kt: cut.jn === 'same' ? 0 : 0.2, paid: false, tw: false, catch: kind === 'kill' ? cs : undefined,
         }] : [],
         run,
@@ -203,7 +205,9 @@ function rowsOfLog(log, gameNo) {
     const rows = [];
     for (const cut of g ? g.cuts : []) {
         let r;
-        if (cut.kind === 'trade') r = fromTrade(cut);
+        // cut.js's readGames names the retired decision's trade line `trade_old` (it has no `lv`; today's `trade` and the earlier
+        // `trade2` lines have it), so old and new lines are told apart there, by that field.
+        if (cut.kind === 'trade_old') r = fromTrade(cut);
         else if (cut.kind === 'keep') r = fromKeep(cut);
         else continue;
         rows.push({ ...r, pid: cut.pid, t: Number(cut.t), file: path.basename(log) });

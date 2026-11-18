@@ -10,7 +10,7 @@
  *   `apiprobe_tp`     GetIncomingTeleports once a second, own and enemy.
  * A read that fails prints -2, one that returns nil -1. Reads and logs only; it changes no order.
  * The tick runs under pcall: a probe error is silent, so a run is judged by its row counts, not by `lua_error`.
- * Run it with LaneFight.UseCastCallback off: whether two cast callbacks installed for one player stack is not known.
+ * Whether two cast callbacks installed for one player stack is not known.
  * Rows are sampled on the whole game second so the two VMs' rows pair up by `t`.
  */
 import { DamageType, Team, Unit, UnitType, Vector } from "bots/ts_libs/dota";

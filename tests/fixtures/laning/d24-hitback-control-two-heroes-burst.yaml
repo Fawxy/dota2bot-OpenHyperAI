@@ -1,39 +1,31 @@
 id: laning.hitback.control-two-heroes-burst.001
 source: log
-ref: {log: 2026-11-16T02-50-46-h2hhighstand1_B_rad_2.log, t: 611.667}
+ref:
+  log: 2026-11-16T02-50-46-h2hhighstand1_B_rad_2.log
+  t: 611.667
 status: active
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose deny on 6 (hp 0.875 vs 0.855, creeps 1, tower 1); write the right action, not this.
-# core pid 3 on pid 6: 248 away, reach 448; HP 88% vs 86%; heroes 2 theirs, 2 ours; creeps near 1, on the bot 0; tower 1
+decision: trade
 world:
   t: 611.667
   pid: 3
-  role: "core"
-  tgt: 6
+  role: core
   hp: 0.875
-  thp: 0.855
-  en: 2
-  ally: 2
-  cr: 1
-  hc: 0
-  tw: 1
-  kh: 0.4
-  lf: 1
-  d: 248
-  rch: 448
-  tlh: 0
   bu: 0.527
+  n: 2
+  mi: 0
   tm: 0
-  ar: 300
-  tar: 150
-  tme: 1
-  ko: 0.415
-  kt: 0.221
-  tf: 1
+  hc: 0
+  cr: 1
   dn: 1
-  hb: 1
+  cd: 6,0.855,-,248,-200,0,1,1,1,0.415,0.221,0,0,-,-,-,-,-,-,0
 expect:
-  must: ["respect(hb_burst)"]
-  mustNot: ["trade", "kill"]
-notes: >
+  must:
+    - none(burst)
+  mustNot:
+    - hit
+    - hitback
+    - kill
+notes: |-
   Control (D1 caution at two heroes; h2hhighstand1 B_rad_2, 10:12): our pos3 at 88% is hit with two of theirs near and their burst 0.53 of our HP, over the two-hero bar (Threat PackBurst 0.5): no hit back, retreat decides.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 6's HP, distance, gap past our reach 448, hitting 1, free 1, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: none(burst): burst 0.527 over the 0.5 pack bar. Old expectation: respect(hb_burst): same.

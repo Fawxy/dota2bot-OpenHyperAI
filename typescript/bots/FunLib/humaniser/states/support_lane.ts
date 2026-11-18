@@ -40,7 +40,7 @@ const hit: LaneStep = {
 
 /**
  * Slice support-spot: with no lane hit to take, the body holds the support on our lane spot (states/lane_spot, role support)
- * instead of OHA's harass and PositionThink. Harass is not a lane step: it runs in our attack mode (states/core_trade), which
+ * instead of OHA's harass and PositionThink. Harass is not a lane step: it runs in our attack mode (states/trade), which
  * outbids laning while a harass is on.
  */
 const hold: LaneStep = {

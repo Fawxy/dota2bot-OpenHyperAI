@@ -28,7 +28,6 @@ package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() r
 package.loaded["bots/FunLib/humaniser/pair_join"] = {
 	SETTINGS = { Window = 3, Keep = 1.5 },
 	For = function() return world.pair or {} end,
-	SetReaders = function() end,
 }
 package.loaded["bots/FunLib/humaniser/spell_ready"] = {
 	DamageOn = function(from, on) return (world.share[from:GetPlayerID() .. ">" .. on:GetPlayerID()] or 0) end,
@@ -68,11 +67,11 @@ do
 	check("the read here is Threat's stay read: 2 s, a hitter over 6 s, burst and heroes from it",
 		#world.reads == 1 and r.horizon == 2 and r.engaged == 6 and i.burst == 0.3 and i.n == 0 and i.hp == 0.8)
 	local c = i.cands[1]
-	check("a candidate carries its distance, the gap past our range and both hulls, and whether we reach it in time",
-		c.pid == 6 and c.d == 900 and c.gap == 900 - (150 + 24 + 24) and c.arrives == false and c.thp == 0.7 and c.thpAbs == 70)
+	check("a candidate carries its distance, the gap past our range and both hulls, ",
+		c.pid == 6 and c.d == 900 and c.gap == 900 - (150 + 24 + 24) and c.thp == 0.7 and c.thpAbs == 70)
 	check("a hero at 0.7 HP is no kill candidate: no walk read, no catch read", c.walk == nil and c.catch == nil and #world.walks == 0)
 	check("our attack point is the stop at attack range, outside a tower 5,000 away", c.tw == false and i.towerOnMe == false)
-	check("Decide on what was gathered: it is out of reach in 1.5 s, so no hit",
+	check("Decide on what was gathered: it is out of reach in 0.5 s, so no hit",
 		Trade.Decide(i).level == "none" and Trade.Decide(i).reason == "no_reach")
 end
 
@@ -116,13 +115,10 @@ do
 end
 
 do
-	world.pair = { ans = { dec = "outnumbered", tgt = 6, ko = 0.5, kt = 0.2 }, rec = { on = "hit" } }
+	world.pair = { ans = { dec = "losing", tgt = 6, ko = 0.5, kt = 0.2 }, rec = {} }
 	local joined = Trade.Gather(bot).pair
-	T = T + 5 -- past the Keep window of the answer above
-	world.pair = { ans = { dec = "join", tgt = 6, ko = 0.5, kt = 0.2 }, rec = { on = "ours" } }
-	local ours = Trade.Gather(bot).pair
-	check("the pair answer is read as its target and kill shares whatever its label; an `ours` record is no pair answer",
-		joined ~= nil and joined.tgt == 6 and joined.dec == "outnumbered" and ours == nil)
+	check("the pair answer is read as its target and kill shares whatever its label",
+		joined ~= nil and joined.tgt == 6 and joined.ko == 0.5 and joined.kt == 0.2 and joined.dec == "losing")
 	world.pair = nil
 end
 

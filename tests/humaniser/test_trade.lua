@@ -14,11 +14,11 @@ local function merge(base, o)
 end
 -- A favoured hit on a hero in reach, nothing else in the way.
 local function cand(o)
-	return merge({ pid = 7, thp = 0.7, thpAbs = 420, d = 300, gap = 100, away = 0, arrives = true, hitting = false, free = false,
+	return merge({ pid = 7, thp = 0.7, thpAbs = 420, d = 300, gap = 100, away = 0, hitting = false, free = false,
 		ko = 0.3, kt = 0.2, paid = false, tw = false }, o)
 end
 local function inputs(o)
-	return merge({ now = 100, hp = 1, burst = 0.2, n = 1, missing = 0, towerOnMe = false, creepsOnMe = 0, wave = 1, denyDue = false,
+	return merge({ now = 100, hp = 1, burst = 0.2, n = 1, missing = 0, ms = 300, towerOnMe = false, creepsOnMe = 0, wave = 1, denyDue = false,
 		cands = { cand() } }, o)
 end
 -- started = false: attack mode has not taken the offer (a nil would leave the default).
@@ -118,12 +118,20 @@ check("creeps on us 2 (a tower counts 2): none creeps; 1: hit",
 		and decide(inputs({ creepsOnMe = 2, cands = { cand({ thp = 0.2, catch = CATCH }) } })).level == "kill")
 
 do
-	local fleeing = T.Arrives(300, 300, 250, 1.5)
-	local still = T.Arrives(300, 300, 0, 1.5)
-	check("gap 300, our speed 300, the target fleeing at 250: none no_reach; not fleeing: hit; already in range counts",
-		not fleeing and still and T.Arrives(-20, 100, 400, 1.5)
-			and none(decide(inputs({ cands = { cand({ gap = 300, away = 250, arrives = fleeing }) } })), "no_reach")
-			and decide(inputs({ cands = { cand({ gap = 300, arrives = still }) } })).level == "hit")
+	check("Arrives: gap 300 at speed 300 is reached in 1.5 s and not in 0.5 s; a target fleeing at 250 is not caught; in range always counts",
+		T.Arrives(300, 300, 0, 1.5) and not T.Arrives(300, 300, 0, 0.5) and not T.Arrives(300, 300, 250, 1.5) and T.Arrives(-20, 100, 400, 1.5))
+	-- A hit pays for 0.5 s of walking (150 units at speed 300), and the target's approach is not credited; only its retreat counts.
+	check("a hit and a hit back are refused beyond 0.5 s of walking even with the target coming towards us; opened inside it; a retreat counts against us",
+		none(decide(inputs({ cands = { cand({ gap = 200, away = -71 }) } })), "no_reach")
+			and none(decide(inputs({ cands = { cand({ gap = 200, away = -71, hitting = true }) } })), "no_reach")
+			and decide(inputs({ cands = { cand({ gap = 140, away = -71 }) } })).level == "hit"
+			and decide(inputs({ cands = { cand({ gap = 140, away = -71, hitting = true }) } })).level == "hitback"
+			and none(decide(inputs({ cands = { cand({ gap = 140, away = 250 }) } })), "no_reach"))
+	-- A running one is judged on 1 s (walkHit + slackWalk): 300 units at speed 300; a step out of the creeps is our own move.
+	local function hitAt(gap, r) return decide(inputs({ cands = { cand({ gap = gap }) }, run = run(r) })) end
+	check("a running hit is kept at the slack horizon and ended `no_reach` beyond it, but not while it steps out of the creeps",
+		hitAt(250).level == "hit" and hitAt(250).ended == nil and none(hitAt(350), "no_reach") and hitAt(350).ended == "no_reach"
+			and hitAt(350, { stepFor = 0.5 }).level == "hit" and hitAt(350, { stepFor = 0.5 }).ended == nil)
 end
 
 do
@@ -272,7 +280,7 @@ do
 		first == 1 and steady == 1 and idle == 2 and changed == 3)
 	local line = lines[1]
 	check("the line names the kind, the answer and a candidate record the driver reads",
-		line:find("kind=trade2", 1, true) ~= nil and line:find("lv=kill", 1, true) ~= nil and line:find("why=kill", 1, true) ~= nil
+		line:find("kind=trade", 1, true) ~= nil and line:find("lv=kill", 1, true) ~= nil and line:find("why=kill", 1, true) ~= nil
 			and line:find("cd=", 1, true) ~= nil)
 	local running = inputs({ cands = { cand() }, run = run(), now = 110 })
 	local before = #lines

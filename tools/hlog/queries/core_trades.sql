@@ -1,5 +1,5 @@
 -- Core in lane, trading (slice core-in-lane, L.2c): one row per game and lineup core (pos 1-3) to :until (default 600).
--- From ev=trade (states/core_trade): taken (result done or kill), kills, won (a taken trade where the target lost more HP than the
+-- From ev=trade (states/trade; kinds hit, hitback, kill, join; older logs trade, kill, fight, join): taken (result done or kill), kills, won (a taken trade where the target lost more HP than the
 -- core), lost (a window attack mode never took, held by anything but a due last hit or retreat: the coverage number), yielded
 -- (windows a due last hit, laning at desire 0.85 or more, or retreat held: intended priority), hpd and thpd summed over taken trades, aggroed (taken trades
 -- with an enemy lane creep on the core at any point, `ag` > 0; NULL-safe on builds before the field). From lane_activity

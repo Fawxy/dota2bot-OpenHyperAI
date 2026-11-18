@@ -1,43 +1,31 @@
 id: laning.hitback.control-two-heroes-burst-no-deny.001
 source: log
-ref: {log: 2026-11-16T16-21-38-smoke_high-hit-back.log, t: 50.400}
+ref:
+  log: 2026-11-16T16-21-38-smoke_high-hit-back.log
+  t: 50.4
 status: active
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose trade on 7 (hp 0.867 vs 0.858, creeps 2, tower 0); write the right action, not this.
-# core pid 0 on pid 7: 371 away, reach 478; HP 87% vs 86%; heroes 2 theirs, 2 ours; creeps near 2, on the bot 1; tower 0
+decision: trade
 world:
   t: 50.4
   pid: 0
-  role: "core"
-  tgt: 7
+  role: core
   hp: 0.867
-  thp: 0.858
-  en: 2
-  ally: 2
-  cr: 2
-  hc: 1
-  tw: 0
-  kh: 0.4
-  lf: 1
-  d: 371
-  rch: 478
-  tlh: 0
-  gap: 0.147
   bu: 0.537
+  n: 2
+  mi: 0
   tm: 0
-  ar: 330
-  tar: 150
-  tme: 1
-  ko: 0.17
-  kt: 0.172
-  tf: 1
+  hc: 1
+  cr: 2
   dn: 0
-  hb: 1
+  cd: 7,0.858,-,371,-107,0,1,1,1,0.17,0.172,0,0,-,-,-,-,-,-,0
 expect:
-  must: ["respect(hb_burst)"]
-  mustNot: ["trade", "kill"]
-notes: >
-  HitBackDecide control (D1 caution at two heroes, no deny due; the reviewer's case, smoke game of build 5b185e8, 0:50): our
-  pos1 at 87% is hit with two of theirs near and their burst 0.54 of our HP, over the two-hero bar (Threat PackBurst 0.5):
-  no hit back, so retreat is not held. The plain trade rule may still open a trade here (StandBurst 1); Build 5b185e8 had
-  marked it a hit back (lost in 0.4 s). That path is graded by test_core_trade's Desire case, not by this fixture.
+  must:
+    - none(burst)
+  mustNot:
+    - hit
+    - hitback
+    - kill
+notes: |-
+  HitBackDecide control (D1 caution at two heroes, no deny due; the reviewer's case, smoke game of build 5b185e8, 0:50): our pos1 at 87% is hit with two of theirs near and their burst 0.54 of our HP, over the two-hero bar (Threat PackBurst 0.5): no hit back, so retreat is not held. The plain trade rule may still open a trade here (StandBurst 1); Build 5b185e8 had marked it a hit back (lost in 0.4 s). That path is graded by test_core_trade's Desire case, not by this fixture.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 7's HP, distance, gap past our reach 478, hitting 1, free 1, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: none(burst): two heroes reach us, so the 0.5 pack bar applies to every level and their burst 0.537 is over it. The old note that the plain trade could still open here no longer holds. Old expectation: respect(hb_burst): same refusal, now for the hit too.

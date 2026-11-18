@@ -84,19 +84,6 @@ function ____exports.SpentOn(e, target, window)
     end
     return total
 end
---- Whether `enemy` can cast its spell `name` now (slice spells-up, `Ours.SpellsUp`): the handle's IsFullyCastable, which
--- for an enemy follows the owner's cooldown and mana. An item, a name the hero lacks, or the switch off reads as up:
--- enemy item handles are unprobed, and up is the safe side.
-function ____exports.Ready(enemy, name)
-    if not Ours.On("SpellsUp") or string.sub(name, 1, 5) == "item_" then
-        return true
-    end
-    local a = enemy:GetAbilityByName(name)
-    if a == nil or a == nil or a:IsNull() then
-        return true
-    end
-    return a:IsFullyCastable()
-end
 --- The damage spells `bot` can cast now (learned, shown, IsFullyCastable) with what the chase's catch read needs (kill-chances
 -- step 3b): cast range, cast point and damage. A spell with no damage over 0 is left out.
 function ____exports.ReadySpells(bot)
@@ -105,22 +92,22 @@ function ____exports.ReadySpells(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue21
+                local __continue18
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue21 = true
+                        __continue18 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
-                        __continue21 = true
+                        __continue18 = true
                         break
                     end
                     local name = a:GetName()
                     local row = SPELL_DAMAGE[name]
                     local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
                     if type(dmg) ~= "number" or not (dmg > 0) then
-                        __continue21 = true
+                        __continue18 = true
                         break
                     end
                     local range = a:GetCastRange()
@@ -137,9 +124,9 @@ function ____exports.ReadySpells(bot)
                         dmg = dmg,
                         dtype = dt > 0 and dt or DamageType.Magical
                     }
-                    __continue21 = true
+                    __continue18 = true
                 until true
-                if not __continue21 then
+                if not __continue18 then
                     break
                 end
             end
@@ -222,21 +209,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue40
+                local __continue37
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue40 = true
+                        __continue37 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue40 = true
+                        __continue37 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue40 = true
+                    __continue37 = true
                 until true
-                if not __continue40 then
+                if not __continue37 then
                     break
                 end
             end

@@ -173,17 +173,6 @@ do
 	w.C.Level(w.core)
 	T = 300.6
 	check("level 0.6 at skill 0.2 with a missing enemy", near(w.C.Level(w.core), 0.6), w.C.Level(w.core))
-	STRONGER = false
-	check("trades suppressed when not stronger", w.H.Lane.Hooks.TradesSuppressed(w.core))
-	STRONGER = true
-	check("trades allowed when stronger", not w.C.SuppressTrades(w.core))
-	STRONGER = false
-	w = world({ skill = 0 })
-	w.sup.alive = false
-	w.C.Level(w.core)
-	T = 300.6
-	check("level below 0.5 never suppresses (precondition)", w.C.Level(w.core) > 0 and w.C.Level(w.core) < 0.5, w.C.Level(w.core))
-	check("level below 0.5 never suppresses", not w.C.SuppressTrades(w.core))
 end
 
 do
@@ -239,7 +228,6 @@ for _, tcfg in ipairs({ { Enable = false }, { Enable = true, Caution = false } }
 	w.H.Transitions.Tick(w.core)
 	STRONGER = false
 	check(label .. ": no level", w.C.Level(w.core) == 0)
-	check(label .. ": trades not suppressed", not w.H.Lane.Hooks.TradesSuppressed(w.core))
 	check(label .. ": no claims", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	check(label .. ": no callout", #w.said == 0, #w.said)
 end

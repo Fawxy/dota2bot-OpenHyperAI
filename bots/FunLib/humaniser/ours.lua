@@ -62,7 +62,6 @@ ____exports.DEFAULTS = {
     DoubleStack = true,
     JobChooser = true,
     CoreLastHit = true,
-    CoreTrade = true,
     Trade = true,
     CoreLastHitDire = true,
     SupportDeny = true,
@@ -74,10 +73,8 @@ ____exports.DEFAULTS = {
     RuneSpawn = true,
     SupportPull = true,
     LaneSpot = true,
-    SupportHarass = true,
     LaneSpotTower = true,
     LaneSpotThreat = true,
-    CoreLaneFight = true,
     LaneAggro = true,
     CoreContest = true,
     CoreHold = true,
@@ -97,17 +94,7 @@ ____exports.DEFAULTS = {
     MidWater = false,
     EvenStand = true,
     HighStand = true,
-    PairJoin = true,
-    TradeSafe = true,
-    TradeFree = true,
-    FightSafe = true,
-    BurstReady = true,
-    TradeLanded = true,
-    SpellsUp = true,
-    KillReach = true,
-    SupportLaneFight = true,
-    TradeLands = false,
-    JoinOnHit = false
+    BurstReady = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

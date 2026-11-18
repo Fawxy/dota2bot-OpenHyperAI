@@ -213,16 +213,14 @@ test('--list shows whether an enemy hero in the cut is hitting and the burst ove
     assert.strictEqual(list('--engaged', '1'), '');
 });
 
-// kind=trade (slice hitback-fold): with hb=1 the driver answers CoreTrade.Exchange, which the game logged as xa.
-const tradeOf = (extra) => {
-    const line = 't=200.000 ev=cut pid=1 kind=trade role=core tgt=6 hp=0.6 thp=0.5 en=1 ally=1 cr=0 hc=0 tw=0 kh=0.4 lf=1 d=400 rch=648 tlh=0 dec=trade';
-    const g = readGames([hev('t=-90.000 ev=bot pid=1 team=2 ours=CoreTrade:1'), hev(`${line} ${extra}`)].join('\n')).pop();
-    return checkOne(g, g.cuts[0]);
-};
-
-test('trade: a cut of a hitter replays Exchange (xa), one of a non-hitter the trade rule (dec)', () => {
-    const plain = tradeOf('');
-    const hit = tradeOf('hb=1 xa=hb_hp');
-    assert.deepStrictEqual([plain.got, plain.want, hit.got, hit.want], ['trade', 'trade', 'hb_hp', 'hb_hp']);
-    assert.ok(plain.same && hit.same);
+// kind=trade: today's line has `lv`; a `trade2` line is the same decision under its earlier name; the retired decision's line (no `lv`) is
+// set apart as `trade_old` and does not replay.
+test('trade: a trade2 line reads as trade and replays; the retired decision\'s line is set apart', () => {
+    const now = 't=200.000 ev=cut pid=1 kind=trade2 role=core hp=1 bu=0.2 n=1 mi=0 tm=0 hc=0 cr=1 dn=0 cd=7,0.7,420,300,100,0,1,0,0,0.3,0.2,0,0,-,-,-,-,-,-,0 lv=hit tgt=7 why=hit';
+    const old = 't=201.000 ev=cut pid=1 kind=trade role=core tgt=6 hp=0.6 thp=0.5 en=1 ally=1 cr=0 hc=0 tw=0 kh=0.4 lf=1 d=400 rch=648 tlh=0 dec=trade';
+    const g = readGames([hev(now), hev(old)].join('\n')).pop();
+    assert.deepStrictEqual(g.cuts.map(c => c.kind), ['trade', 'trade_old']);
+    const r = checkOne(g, g.cuts[0]);
+    assert.ok(r.same, JSON.stringify(r));
+    assert.ok(checkOne(g, g.cuts[1]).error);
 });

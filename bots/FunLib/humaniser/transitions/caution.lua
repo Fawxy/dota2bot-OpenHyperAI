@@ -385,16 +385,6 @@ function ____exports.Level(bot)
     local f = forced[bot:GetPlayerID()]
     return f ~= nil and Settings.IsOn("Teleports") and now < f.levelUntil and math.max(applied, f.level) or applied
 end
-function ____exports.SuppressTrades(bot)
-    if ____exports.Level(bot) < Settings.Get().SuppressLevel then
-        return false
-    end
-    local stronger = LaneConfig.Helpers().WeAreStronger
-    return stronger == nil or not stronger(
-        bot,
-        Settings.Get().CautionStrongerRadius
-    )
-end
 local LANE_NAMES = {[Lane.Top] = "top", [Lane.Mid] = "mid", [Lane.Bot] = "bot"}
 local function midAlreadyCalled(bot, now)
     local window = Settings.Get().MidMissingSignalWindow
@@ -486,7 +476,6 @@ function ____exports.Tick(bot)
 end
 function ____exports.RegisterProbes()
     LaneHooks.SetCautionProbe(function(bot) return ____exports.Level(bot) > 0 end)
-    LaneHooks.SetTradeProbe(____exports.SuppressTrades)
     LaneHooks.SetMissingProbe(____exports.MissingNow)
 end
 ____exports.RegisterProbes()

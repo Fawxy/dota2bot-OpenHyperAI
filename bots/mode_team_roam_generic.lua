@@ -85,7 +85,6 @@ function GetDesire()
     end
     local res = GetDesireHelper()
     res = CapForLanePush(res)
-    res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)
 
     -- J.Utils.SetCachedVars(cacheKey, res)
     return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)
@@ -323,7 +322,6 @@ function Think()
     -- if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "team_roam") then return end
 
     ItemOpsThink()
-    if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end
 
 	-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled.
 	if J.Humaniser.Etiquette.LeavesTarget(bot) then

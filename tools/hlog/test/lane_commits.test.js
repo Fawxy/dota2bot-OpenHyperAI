@@ -20,7 +20,7 @@ test('lane commits: taken, kills and lost per game and role; a death inside a ta
     lines.push(snap(170, 1, 1));
     for (let t = 171; t <= 260; t++) lines.push(snap(t, 1, 1));
     lines.push(trade(200, { result: 'lost', why: 'not_taken' }));
-    // A trade, and a commit outside lane fights (lf=0): neither is read by the default lf=1.
+    // A trade (another kind), and a commit logged with lf=0: the commit is read by default and not by lf=1.
     lines.push(trade(210, { kind: 'trade', result: 'done' }), trade(220, { result: 'kill', lf: 0, dur: 1 }));
     // Two lane fights from the play roll: one the core rolled, one it joined; neither is a commit.
     lines.push(trade(230, { kind: 'fight', result: 'done', why: 'hp', join: 0, dur: 2 }), trade(240, { kind: 'fight', result: 'kill', join: 1, dur: 3 }));
@@ -36,7 +36,8 @@ test('lane commits: taken, kills and lost per game and role; a death inside a ta
     s.refreshViews();
     const sql = fs.readFileSync(path.join(__dirname, '..', 'queries', 'lane_commits.sql'), 'utf8');
     const rows = p => s.query(sql, p).map(r => [r.role, r.offers, r.taken, r.kills, r.lost, r.deaths, r.joins]);
-    assert.deepStrictEqual(rows({}), [['core', 4, 3, 1, 1, 1, 0]]);
+    assert.deepStrictEqual(rows({}), [['core', 5, 4, 2, 1, 1, 0]]);
+    assert.deepStrictEqual(rows({ lf: 1 }), [['core', 4, 3, 1, 1, 1, 0]]);
     assert.deepStrictEqual(rows({ lf: 0 }), [['core', 1, 1, 1, 0, 0, 0]]);
     assert.deepStrictEqual(rows({ kind: 'fight' }), [['core', 2, 2, 1, 0, 0, 1]]);
     s.db.close();

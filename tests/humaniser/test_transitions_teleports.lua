@@ -108,16 +108,12 @@ do
 	check("setup posts no retreat claim", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	STRONGER = true
 	STRONGER = false
-	check("setup does not suppress trades even when not stronger", not w.C.SuppressTrades(w.core))
-	STRONGER = true
-	check("setup keeps the lane trade hook clear", not w.H.Lane.Hooks.TradesSuppressed(w.core))
 
 	STRONGER = false
 	T = 300.6
 	TELEPORTS[1].time_remaining = 4.4
 	w.TP.Tick(w.core)
 	check("no longer stronger: switches to backing off", near(w.C.Level(w.core), 1))
-	check("backing off suppresses trades when not stronger", w.C.SuppressTrades(w.core))
 end
 
 do

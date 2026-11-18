@@ -1,7 +1,6 @@
 /**
  * Lane safety and laning-phase transitions (task 12, Task 5): caution for a laner left alone or facing
- * missing enemies. The level steps the lane position back toward our tower (where OHA owns laning), suppresses trades
- * unless we are stronger, keeps a cautious core from shoving, and makes a threatened bot readier to retreat. It does
+ * missing enemies. The level steps the lane position back toward our tower (where OHA owns laning), keeps a cautious core from shoving, and makes a threatened bot readier to retreat. It does
  * not scale retreat for an untouched bot: a laner wary of a missing enemy stands back but keeps last-hitting.
  */
 import { BotMode, Lane, Unit, Vector } from "bots/ts_libs/dota";
@@ -207,12 +206,6 @@ export function Level(bot: Unit): number {
     return f !== undefined && Settings.IsOn("Teleports") && now < f.levelUntil ? math.max(applied, f.level) : applied;
 }
 
-export function SuppressTrades(bot: Unit): boolean {
-    if (Level(bot) < Settings.Get().SuppressLevel) return false;
-    const stronger = LaneConfig.Helpers().WeAreStronger;
-    return stronger === undefined || !stronger(bot, Settings.Get().CautionStrongerRadius);
-}
-
 const LANE_NAMES: Partial<Record<Lane, string>> = { [Lane.Top]: "top", [Lane.Mid]: "mid", [Lane.Bot]: "bot" };
 
 function midAlreadyCalled(bot: Unit, now: number): boolean {
@@ -275,7 +268,6 @@ export function Tick(bot: Unit): void {
 
 export function RegisterProbes(): void {
     LaneHooks.SetCautionProbe(bot => Level(bot) > 0);
-    LaneHooks.SetTradeProbe(SuppressTrades);
     LaneHooks.SetMissingProbe(MissingNow);
 }
 

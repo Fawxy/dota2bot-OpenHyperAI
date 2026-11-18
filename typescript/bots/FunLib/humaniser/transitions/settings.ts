@@ -99,12 +99,8 @@ export const DEFAULTS = {
     // An alone laner's caution: AloneLevel against one enemy laner, plus AloneLevelPerEnemy per extra one (capped at 1).
     AloneLevel: 0.5,
     AloneLevelPerEnemy: 0.25,
-    // Trades are suppressed from this caution level up.
-    SuppressLevel: 0.5,
     // An enemy unseen longer than this is no longer counted as missing (it has left the lane, not hidden near it).
     MissingMaxAge: 60,
-    // SuppressTrades lets trades through when WeAreStronger within this radius.
-    CautionStrongerRadius: 1200,
     // A mid callout is skipped when the counterplay already noticed mid_missing this recently.
     MidMissingSignalWindow: 30,
     TpRadius: 1600,

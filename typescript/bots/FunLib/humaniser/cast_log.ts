@@ -1,7 +1,7 @@
 /**
  * Slice chase-log (kill-chances step 3a): one `ev=cast` line per cast of a hero on this script's team, from
- * InstallCastCallback on the hero's own player. A callback runs outside any bot's think (cast_watch.ts: host helpers that
- * read GetBot fail there), so casts are queued and logged on the hero's next tick, beside the CoreTrade episode it runs.
+ * InstallCastCallback on the hero's own player. A callback runs outside any bot's think (host helpers that
+ * read GetBot fail in a callback), so casts are queued and logged on the hero's next tick, beside the trade exchange it runs.
  * The callback's table is logged as found: its key names once per hero (`ks`), the ability's name, the location and a hero
  * target where it holds them. Reads only.
  */

@@ -267,7 +267,7 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 120, from: 0 },
         rig: {
             half: "decision",
-            switch: "CoreTrade",
+            switch: "Trade",
             window: 600,
             spots: {
                 // The heal rig's spots: off the lane and clear of camps.
@@ -308,7 +308,7 @@ export const TABLE: Record<string, Entry> = {
     },
     // Slice pair-join-on (D10's join). half: execution. The join's facts (PairJoin.Decide): one of ours hit by an enemy hero
     // within 1 s (forced: the Dire pos4 actor attacks the Radiant pos1 from 500 north); another of ours within 1,200 of it (forced:
-    // the pos5 stands 400 south of it); not outnumbered, enemy heroes in sight within 1,000 of the hit hero no more than ours within 1,200
+    // the pos5 stands 400 south of it); enemy heroes in sight within 1,000 of the hit hero (the head count is no part of the rule: the kill shares carry the numbers)
     // (forced: the rest bench); our best 3 s kill share over theirs (forced by numbers: two healed heroes against one healed
     // hero; checked with the same estimate the rule reads). Ready: `pair` and `ahead` for both casts, HP at half or more.
     // Read after release: each cast's `ev=trade kind=join` taken (`result` done or kill) and the pos1 starts no `threat`
@@ -318,7 +318,7 @@ export const TABLE: Record<string, Entry> = {
     // where the trade rule already fights (both casts traded in every ready pair rep with the switch off), so the hitter is a
     // ranged one 500 north of the pos1 (its 550 range hits from there; rig2: `attack ... from 500` east of the side spot never
     // settled, the terrain snaps points there, so it never hit) and the pos5 400 south of the pos1, about 900 from it. Spots: hit-back's side spot off our bot lane (763
-    // from the lane: CoreTrade's in lane). Seed 8 (lineup B): Sven and Witch Doctor against Lich (range 550). 120 s reps from 0:00 (heal walk and back), five inside 10:00. Release: laning,
+    // from the lane: in lane for the trade). Seed 8 (lineup B): Sven and Witch Doctor against Lich (range 550). 120 s reps from 0:00 (heal walk and back), five inside 10:00. Release: laning,
     // attack (the join), retreat, idle.
     "pair-join": {
         note: "rig: Radiant pos1 off our bot lane with the pos5 400 south of it, the Dire pos4 attacks the pos1 from 500 north to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
@@ -327,7 +327,7 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 120, from: 0 },
         rig: {
             half: "execution",
-            switch: "PairJoin",
+            switch: "Trade",
             window: 600,
             spots: {
                 side: ["r:bot1", -2750, 700],
@@ -370,28 +370,28 @@ export const TABLE: Record<string, Entry> = {
     // every rep ends by 10:00 (rigB: from 14:40 OHA's retreat took the cast and `idle` outbid it): four 135 s reps from 1:00,
     // one of each kind a game; rigB before 10:00 was ready in 46 to 71 s and walked home in 37 to 40 s, and the 95 s timeout
     // leaves a ready rep that walk. Acceptance takes three games on one seed.
-    // Slice trade-reach (D19's commit, `Ours.KillReach`). half: execution. The commit's facts (CoreTrade commitTarget, Decide's
+    // Slice trade-reach (D19's commit, now `Ours.Trade`). half: execution. The commit's facts (the kill level of states/trade Decide: its
     // kill): an enemy hero at the commit bar (40%; forced: the Radiant pos5 actor hits it to 25%, then walks 1,400 west past
     // it, out of the cast's 1,200 and seeing along the strip) standing 100-550 past the cast's trade reach (forced: a statue
     // 600 west of the cast on its strip 700 off the lane; Sven's reach is about 298), in sight (on1: a statue 650 north stood
     // behind trees, seen 138 of 530 s, and every commit ended `target_lost`; fix2: an away spot 1,850 west was out of reach, the pos5 stopped 410 short and no rep was ready), the cast in lane in the laning stage with HP over
-    // the target's (hit-back's side spot, 763 off our bot lane; healed each rep), numbers not against us. Read after release:
+    // the target's (hit-back's side spot, 763 off our bot lane; healed each rep), burst on the walk under the bar. Read after release:
     // the cast's `ev=trade kind=kill` on the low hero, taken (result done or kill), and its snapshot `tid` on it within 3 s;
     // the cast's `ed` (nearest visible enemy) says whether the statue was in sight. The banked start: the low hero in retreat
     // in 8 of 13 and ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control
-    // (`outnum`): the Dire pos3 stands 950 west of the cast too, beyond the Lich, two against one, so no commit. Spots resolve passable (`ph=spot`): side (2180, -5609), low (1474, -5644); the pos3 must stand over 200 from low, since the pos5's attack takes the visible enemy nearest that spot (rig3: at 1309 it hit the pos3; on2: 300 west snapped 249 to 1578, beside the Lich), and within 1,200 of side (1160 resolves unmoved, about 1,020 off). Every rep needs no other hero of ours within 1,200 (`alliesAtMost`; fix3: the pos5 walking off counted, ally 2). Seed 8 (lineup B): Sven and Witch Doctor
+    // (`outnum`): the Dire pos3 stands 950 west of the cast too, beyond the Lich, two against one. The old rule refused on the head count, which no longer exists: the answer is the walk read's burst and the unseen weight, so this rep may commit. Spots resolve passable (`ph=spot`): side (2180, -5609), low (1474, -5644); the pos3 must stand over 200 from low, since the pos5's attack takes the visible enemy nearest that spot (rig3: at 1309 it hit the pos3; on2: 300 west snapped 249 to 1578, beside the Lich), and within 1,200 of side (1160 resolves unmoved, about 1,020 off). Every rep needs no other hero of ours within 1,200 (`alliesAtMost`; fix3: the pos5 walking off counted, ally 2). Seed 8 (lineup B): Sven and Witch Doctor
     // against Lich and Bristleback. The Lich takes no `heal` step (its HP is the pos5's attack each rep; healed, a Lich that
     // lived through a rep walks to its fountain and back, about 110 s); a killed one respawns and walks in, about 60 s, then
     // the attack and the walk off, so 120 s reps with a 95 s timeout, five inside 10:00. Reach reps need the low hero alone
     // within 1,200 (`foesAtMost`: the control's pos3 walks home through it). Release: laning, attack (the kill), retreat, idle.
     "kill-reach": {
-        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 950 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 950 west, beyond the Lich (two against one; the head count is gone, so the walk's burst decides); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 120, from: 0 },
         rig: {
             half: "execution",
-            switch: "KillReach",
+            switch: "Trade",
             window: 600,
             spots: {
                 side: ["r:bot1", -2750, 700],
@@ -468,7 +468,7 @@ export const TABLE: Record<string, Entry> = {
     // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
     // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
     // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
-    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two: no commit); the foes stand north-east of the Lich, off the Radiant creeps' path (fix1: creeps killed a statue on it) and nearer Sven for
+    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two; the head count is gone, so the burst decides); the foes stand north-east of the Lich, off the Radiant creeps' path (fix1: creeps killed a statue on it) and nearer Sven for
     // night sight (fix2, fix6: at 790 and 810 Bristleback was fogged). Snapped to passable ground (rig7 `ph=spot`) they stand
     // 216 (foe) and 291 (foe2) from the Lich's spot, 101 apart and 607 and 666 from Sven: foe is only just past RIG_PLACED
     // of the Lich's (fix5: with the Lich dead the Warlock took Bristleback, 124 off, for it), and the two foes are inside it
@@ -477,7 +477,7 @@ export const TABLE: Record<string, Entry> = {
     // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
     // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
     // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
-    // lane_fight while `Ours.SupportLaneFight` is off, so the rig sees what games see. Abilities and items stay held
+    // lane_fight while the older layer existed, so the rig saw what games saw. Abilities and items stay held
     // (execution first; the cast read decides whether casting is graded). The switch is S2's, which nothing reads yet: the
     // off arm is today's code.
     "pair-kill": {
@@ -563,24 +563,24 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
-    // Slice support-lane-fight (kill-chances S1, `Ours.SupportLaneFight`). half: execution. kill-reach with the roles swapped:
+    // Slice support-lane-fight (kill-chances S1, now `Ours.Trade`). half: execution. kill-reach with the roles swapped:
     // the cast is the Radiant pos5 (Witch Doctor on seed 8, range 600, so its harass reach is about 948 and its commit's walk
     // about 1,548; `low` measures past the core's reach, about 748), the Radiant pos1 hits the Lich and walks off. Kinds: `bar`,
     // the Lich at 25-38% inside the support's reach (off: the trade's 25% cut, so no commit); `reach`, the Lich 200-500 past
-    // the core's reach, past the support's own (off: no walk); control `outnum`, the Dire pos3 beside it. The hit stops at 33%
+    // the core's reach, past the support's own (off: no walk); control `outnum`, the Dire pos3 beside it (the head count is gone, so the burst decides). The hit stops at 33%
     // so the off arm's 25% cut is not met by the actor (Sven's hit is about a tenth of the Lich's HP). Spots on kill-reach's
     // strip: low 800 west of side, far 1,200 (200 short of away). foe 250 east of the cast (rig1: 1,100 west resolved onto far,
     // 200 from low, where the actor's target pick reaches; rig3: 500 west, 587 from the cast, was out of its sight behind trees
     // most frames, so `foes` flickered); the actor hits only once the pos3 stands there
     // (`wait d3`, pair-kill's step; rig1-2: the control was never ready, the Lich regenerating past 38% while the pos3 walked in).
     "support-kill-reach": {
-        note: "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (two against one; the head count is gone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: { r: [5] },
         others: "bench",
         rep: { every: 120, from: 0 },
         rig: {
             half: "execution",
-            switch: "SupportLaneFight",
+            switch: "Trade",
             window: 600,
             spots: {
                 side: ["r:bot1", -2750, 700],
@@ -1386,7 +1386,7 @@ export interface RigReady {
     /**
      * The pair join's situation (D10), [ally, foe]: a hero of the cast's team within `ally` of the cast (the cast included)
      * damaged by an enemy hero within the last second, with another live one of ours within `ally` of it, and the enemy heroes
-     * in sight within `foe` of it no more than ours within `ally` of it. Fails `pairhit`, `pairnone` or `outnum`.
+     * in sight within `foe` of it. Fails `pairhit` or `pairnone`.
      */
     pair?: [number, number];
     /**
@@ -1404,7 +1404,7 @@ export interface RigReady {
      * min to max past the cast's trade reach (`pastReach`). Fails `low`.
      */
     low?: [number, number, number];
-    /** At least this many live enemy heroes in sight within 1,200 of the cast (CoreTrade's NEAR). Fails `foes`. */
+    /** At least this many live enemy heroes in sight within 1,200 of the cast (the old trade's NEAR). Fails `foes`. */
     foes?: number;
     /** At most this many live enemy heroes in sight within 1,200 of the cast. Fails `foesmax`. */
     foesAtMost?: number;
@@ -2151,7 +2151,7 @@ function hitters(bot: Unit): Unit[] {
 }
 
 /**
- * How far `h` stands past the cast's trade reach: core_trade's reachOf for a core (attack range, both bounding radii, its
+ * How far `h` stands past the cast's trade reach: the old trade's reachOf for a core (attack range, both bounding radii, its
  * REACH of 100). Kept in step with it by hand: the drill does not import the behaviour it tests.
  */
 function pastReach(bot: Unit, h: Unit): number {
@@ -2360,7 +2360,6 @@ function pairFacts(bot: Unit, ally: number, foe: number): { ko: number; kt: numb
     if (ours.length < 2) return "pairnone";
     const theirs = (GetUnitList(UnitType.EnemyHeroes) ?? []).filter((e) => live(e) && e.CanBeSeen() && GetUnitToUnitDistance(e, hit!) <= foe);
     if (theirs.length === 0) return "pairhit";
-    if (theirs.length > ours.length) return "outnum";
     const share = (from: Unit[], on: Unit[]) => {
         let best = 0;
         for (const o of on) {

@@ -106,8 +106,6 @@ function LaningLoad(opts)
 			NoteAttempt = function(_, c) table.insert(attempts, c) end,
 		},
 		Etiquette = Etiquette,
-		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
-		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
 		-- bot.step: the step name the last Think reported (ev=snap step=).
 		Telemetry = { NoteLaneThink = function() end, NoteLaneStep = function(_, s) bot.step = s end },

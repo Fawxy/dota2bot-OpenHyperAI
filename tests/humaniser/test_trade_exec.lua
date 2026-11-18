@@ -10,7 +10,10 @@ local RealThreat = require("bots/FunLib/humaniser/threat")
 package.loaded["bots/FunLib/humaniser/threat"] = {
 	SETTINGS = RealThreat.SETTINGS,
 	SeenSpeed = function() return 300 end,
-	Read = function() return { burst = world.burst, reach = world.reach, missing = 0, mpids = {} } end,
+	Read = function(_, _, _, horizon)
+		if horizon == RealThreat.SETTINGS.GateHorizon then world.gateReads = (world.gateReads or 0) + 1 end
+		return { burst = world.burst, reach = world.reach, missing = 0, mpids = {} }
+	end,
 	Reader = function()
 		return function() return { burst = world.walkBurst, reach = {}, missing = 0, mpids = {} } end
 	end,
@@ -22,7 +25,6 @@ package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() r
 package.loaded["bots/FunLib/humaniser/pair_join"] = {
 	SETTINGS = { Window = 3, Keep = 1.5 },
 	For = function() return world.pair or {} end,
-	SetReaders = function() end,
 	After = function() end,
 	Reopened = function() end,
 }
@@ -195,6 +197,46 @@ do
 	Trade.Think(bot)
 	check("the chase goes on past the loss of sight and moves to the predicted place", d == Trade.DESIRE_COMMIT and bot.moves ~= nil and bot.moves[#bot.moves].x >= 499)
 	function GetHeroLastSeenInfo() return {} end
+end
+
+do
+	-- The lane-fight chance reads the walk's threat at most once per target per 15 s, however many frames ask.
+	reset()
+	world.share["1>6"], world.share["6>1"] = 10, 30 -- unfavoured: no hit opens, so the chance is asked every frame
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local roll = Plays.Roll
+	Plays.Roll = function() return nil end
+	world.gateReads = 0
+	T = 100
+	Trade.Desire(bot)
+	T = 100.5
+	Trade.Desire(bot)
+	T = 110
+	Trade.Desire(bot)
+	local early = world.gateReads
+	T = 116
+	Trade.Desire(bot)
+	check("the walk read for a chance is taken once per target per 15 s (frames at 100, 100.5, 110: one read; 116: a second)",
+		early == 1 and world.gateReads == 2, tostring(early) .. "/" .. tostring(world.gateReads))
+	Plays.Roll = roll
+	world.share["1>6"], world.share["6>1"] = 30, 10
+end
+
+do
+	-- A lane-fight play that fires but is not answered with a join on it ends at once, not at its timeout.
+	reset()
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local roll, finish_ = Plays.Roll, Plays.End
+	local ended = {}
+	Plays.Roll = function(c)
+		return { id = 90, kind = "lane_fight", by = c.by, target = c.target, tgt = c.target:GetPlayerID(), at = c.at, started = T, joiners = {} }
+	end
+	Plays.End = function(p, why) table.insert(ended, { p.id, why }) end
+	T = 200
+	Trade.Desire(bot)
+	check("a fired play whose answer is a hit, not a join on it, is ended `refused` at once",
+		#ended == 1 and ended[1][1] == 90 and ended[1][2] == "refused")
+	Plays.Roll, Plays.End = roll, finish_
 end
 
 finish()

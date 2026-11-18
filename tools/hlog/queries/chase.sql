@@ -1,5 +1,5 @@
--- The chase after a loss of sight (slice chase-log, kill-chances step 3a; bot states/core_trade): one row per ev=chase
--- ph=lost (a CoreTrade episode whose target left sight), with what its watch logged next for the same hero: `seen` (the target
+-- The chase after a loss of sight (slice chase-log, kill-chances step 3a; bot states/trade): one row per ev=chase
+-- ph=lost (a trade exchange whose target left sight), with what its watch logged next for the same hero: `seen` (the target
 -- visible again), `dead`, `gone` (neither within 12 s) or `next` (a new loss replaced it); NULL when the game ended first.
 --   side, pos   ours or oha (ev=bot `ours`), the chaser's lineup position
 --   ek, tgt     the episode's kind and target; thp the target's HP share when last seen, hp ours, kh the kill bar

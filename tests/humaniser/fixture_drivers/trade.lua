@@ -1,12 +1,15 @@
 -- Driver: Trade.Decide (D18 hit, D24 hit back, D19 kill, D10 join: the one hero-on-hero exchange decision), on a world cut from a game
--- (ev=cut kind=trade2, tools/hlog/cut.js) or written by hand. Decide is pure over Inputs: the world is its record, in the cut's fields.
--- world: hp, bu, n, mi (the threat read here: our HP share, their burst over it, heroes that reach us, unseen weight), tm (1: a tower
+-- (ev=cut kind=trade, tools/hlog/cut.js) or written by hand. Decide is pure over Inputs: the world is its record, in the cut's fields.
+-- world: hp, bu, n, mi (the threat read here: our HP share, their burst over it, heroes that reach us, unseen weight), ms (our speed;
+--        absent on older lines: 300), tm (1: a tower
 --        attacks us), hc (creeps attacking us), cr (creeps within 500), dn (1: a deny is due), t (the clock), role (logged only);
 --        pjr "dec:tgt:ko:kt" (the pair answer), pl "id:kind:tgt:zero" (a running play; `-` no zero);
---        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr,hit,free,ko,kt,paid,tw,wb,wn,wm,cok,cdm,csf,lo" (`-` absent; lo: lost, absent on older lines);
+--        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr (read for the eye, unused),hit,free,ko,kt,paid,tw,wb,wn,wm,cok,cdm,csf,lo" (`-` absent; lo: lost, absent on older lines);
 --        run: "level:tgt:src:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:unseenCatchOk" with uat, utw, uth.
 -- Observation: none(<first failed gate or end>), hit(hero#P), hitback(hero#P), kill(hero#P) or join(hero#P); end(<why>) when a running
--- exchange ended this frame (`higher`: another candidate won); hold(<hitback|join>) when Holds says retreat waits; fact.hp, fact.burst, fact.n.
+-- exchange ended this frame (`higher`: another candidate won); hold(<hitback|join>) when Holds says retreat waits; chance(<roll|tower|burst|wave>)
+-- when the answer is a hit or none and a lane-fight chance would be offered (`roll`) or what zeroes it (Trade.FightZero), on the hit's target,
+-- else the nearest candidate; fact.hp, fact.burst, fact.n.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 
 local function split(s, sep)
@@ -42,6 +45,7 @@ return function(fx)
 		burst = w.bu,
 		n = w.n,
 		missing = w.mi or 0,
+		ms = w.ms or 300,
 		towerOnMe = bit(w.tm),
 		creepsOnMe = w.hc,
 		wave = w.cr,
@@ -60,7 +64,7 @@ return function(fx)
 		if rec ~= "" then
 			local f = split(rec, ",")
 			local c = { pid = num(f[1]), thp = num(f[2]), thpAbs = num(f[3]), d = num(f[4]), gap = num(f[5]), away = num(f[6]),
-				arrives = bit(num(f[7])), hitting = bit(num(f[8])), free = bit(num(f[9])), ko = num(f[10]), kt = num(f[11]),
+				hitting = bit(num(f[8])), free = bit(num(f[9])), ko = num(f[10]), kt = num(f[11]),
 				paid = bit(num(f[12])), tw = bit(num(f[13])), lost = bit(num(f[20])) }
 			if num(f[14]) ~= nil then c.walk = { burst = num(f[14]), n = num(f[15]), missing = num(f[16]) } end
 			if num(f[17]) ~= nil then c.catch = { ok = bit(num(f[17])), dmg = num(f[18]) or 0, first = 0, safe = num(f[19]) or 0 } end
@@ -85,6 +89,13 @@ return function(fx)
 		table.insert(actions, { verb = a.level, target = "hero#" .. tostring(a.target) })
 	end
 	if a.ended ~= nil then table.insert(actions, { verb = "end", target = a.ended }) end
+	if a.level == "hit" or a.level == "none" then
+		local c
+		for _, x in ipairs(i.cands) do
+			if (a.level == "hit" and x.pid == a.target) or (a.level == "none" and (c == nil or x.d < c.d)) then c = x end
+		end
+		if c ~= nil then table.insert(actions, { verb = "chance", target = Trade.FightZero(i, c) or "roll" }) end
+	end
 	local held = Trade.HoldsOf(i)
 	if held ~= nil then table.insert(actions, { verb = "hold", target = held }) end
 	return { actions = actions, fact = { hp = w.hp, burst = w.bu, n = w.n } }

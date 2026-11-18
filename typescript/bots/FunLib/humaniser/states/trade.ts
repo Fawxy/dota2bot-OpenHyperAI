@@ -30,7 +30,7 @@ export type Source = "pair" | "play";
  * 0.5 and StandHp 0.5 / PackHp 0.7, banked h2hstand1) and the unseen bar is its `MissingRefuse` (0.5, the 425 graded rows):
  * read at call time, not copied.
  */
-export const BARS = {
+const BARS = {
     /** A target at this HP share or less is a kill candidate. Banked `@lane_encounters` on cil5, lposchk3, sspotchk1: 11 kills and no deaths per 100 encounters with the lowest enemy at 40% or less, 1.8 and 1.8 at 41-70%. */
     commitHp: 0.4,
     /** Enemy lane creeps within 500 above which a hit or hit back is vetoed (EC-045, `judgement`), and for a kill the more than one full wave of D19's "a big enemy wave" (`judgement`). */
@@ -38,7 +38,7 @@ export const BARS = {
     waveKill: 5,
     /** Enemy creeps attacking us (a tower counts 2) at which a hit or hit back is vetoed: already tanking (`judgement`). */
     creeps: 2,
-    /** A running exchange's slack on its own bars: HP share, burst, and one more creep in the wave (KEEP_HP_SLACK and KEEP_WAVE_SLACK of core_trade, `judgement`). */
+    /** A running exchange's slack on its own bars: HP share, burst, and one more creep in the wave (`judgement`). */
     slackHp: 0.05,
     slackBurst: 0.05,
     slackWave: 1,
@@ -50,9 +50,18 @@ export const BARS = {
     catchGap: 0.5,
     /** The window the catch read sums our damage over when the target is not heading for its tower (CATCH_WINDOW, `judgement`: a fitted 5.7 s window ended 94 of 124 kills in the smoke game within 0.3 s). */
     catchWindow: 30,
-    /** A hit or hit back opens only if we reach attack range within this (s): 1 s of walking plus an attack point (WALK_IN, `judgement`). */
+    /** The default horizon of `Arrives` (s): 1 s of walking plus an attack point (WALK_IN, `judgement`). A kill and a join do not ask it: the catch read and the pair or play reach decide their walk. */
     walkIn: 1.5,
-    /** The pair join acts on a target within this of us (PairJoin TargetRange, D10: about 4 s of walking), and a play's target within our reach plus this (JOIN_WALK: about 2 s, `judgement`). */
+    /**
+     * The walk a hit or hit back pays for follows its value (coordinator, 19/11/2026; the step-4 smoke game: 267 of 579 hits ended
+     * `no_reach`, 195 of them after 0.1 s, opened at a gap of 474 on a target walking towards us that then turned): a hit opens only
+     * if we reach attack range within `walkHit` s with the target's approach not credited (only its retreat counts against us), and
+     * a running one is judged on `walkHit + slackWalk` so it does not end on the frame the target takes a step. While it steps out
+     * of the creeps, `no_clear` bounds it.
+     */
+    walkHit: 0.5,
+    slackWalk: 0.5,
+    /** The pair join acts on a target within this of us (D10: about 4 s of walking), and a play's target within our reach plus this (JOIN_WALK: about 2 s, `judgement`). */
     pairReach: 1200,
     playWalk: 600,
     /** Our range this far over the target's makes a hit free (OUTRANGE; necrolyte on dragon knight 400 and sniper on zeus 170 are free, oracle on lion 20 and dazzle on necrolyte 75 are not; `judgement`). */
@@ -83,7 +92,7 @@ export interface Hunter {
     spells: { range: number; cp: number; dmg: number }[];
 }
 
-export interface Catch {
+interface Catch {
     ok: boolean;
     /** Damage the hunters land within the window. */
     dmg: number;
@@ -135,7 +144,7 @@ export function Deficit(hp0: number, hp: number, thp0: number, thp: number, maxH
     return (hp0 - hp - (thp0 - thp)) / math.max(1, maxHp);
 }
 
-export interface Cand {
+interface Cand {
     pid: number;
     /** Its HP share and HP. */
     thp: number;
@@ -143,9 +152,8 @@ export interface Cand {
     /** Distance to us, and past our attack range plus both hulls (0 or less in range). */
     d: number;
     gap: number;
-    /** Its speed away from us along the line between us (negative: towards), and whether we reach attack range within `walkIn`. */
+    /** Its speed away from us along the line between us (negative: towards). */
     away: number;
-    arrives: boolean;
     /** It damaged us in the last second. */
     hitting: boolean;
     /** It swings at a lane creep, or our range is `outrange` over its. */
@@ -194,6 +202,8 @@ export interface Inputs {
     now: number;
     /** Our HP share. */
     hp: number;
+    /** Our movement speed. */
+    ms: number;
     /** The threat read here over `StayHorizon` (a hitter over `StayEngaged`): their damage on us over our HP, the enemy heroes that reach us, the unseen weight. */
     burst: number;
     n: number;
@@ -285,7 +295,7 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         return undefined;
     }
     if (!(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
-    if (!c.arrives) return "no_reach";
+    if (run?.stepFor === undefined && !Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0))) return "no_reach";
     if (i.denyDue) return "deny";
     if (i.creepsOnMe >= BARS.creeps) return "creeps";
     if (i.wave > BARS.waveHit + wave) return "wave";
@@ -451,7 +461,7 @@ export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     return undefined;
 }
 
-/** Enemy heroes within this of us are candidates: past any laning hero's attack range and its walk-in (core_trade's HITTER_RADIUS). */
+/** Enemy heroes within this of us are candidates: past any laning hero's attack range and its walk-in. */
 const CAND_RADIUS = 1600;
 /** Enemy lane creeps within this of us count as the wave and turn on a hero attacker (EC-053: lane creeps acquire a hero attacker within about 500). */
 const CREEP_RADIUS = 500;
@@ -523,7 +533,7 @@ function lostFor(bot: Unit, h: Unit): boolean {
 /** The hero's running exchange as the catch read counts its hunters: only the executor writes it (`NoteRun`). */
 const runs: Record<number, { level: Level; target: number } | undefined> = {};
 
-export function NoteRun(pid: number, level: Level, target: number | undefined): void {
+function NoteRun(pid: number, level: Level, target: number | undefined): void {
     runs[pid] = target !== undefined && (level === "kill" || level === "join") ? { level, target } : undefined;
 }
 
@@ -660,7 +670,7 @@ function towerCovers(bot: Unit, a: Vector, b: Vector): boolean {
  * `offered`, `started` are seconds since the offer and the start; `soFar` is `Deficit` from the landing baseline (from the start
  * before it); `stepFor` the seconds of the current step out of the creeps.
  */
-export type RunState = Omit<Run, "alive" | "chaseAt" | "unseen" | "catch">;
+type RunState = Omit<Run, "alive" | "chaseAt" | "unseen" | "catch">;
 
 /** The inputs of one frame, read from the game once. `rs` is the executor's running exchange, if any. Reads only (it writes the heading samples and the last-seen record). */
 export function Gather(bot: Unit, rs?: RunState): Inputs {
@@ -688,7 +698,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const walkOf = Threat.Reader(bot, Threat.SETTINGS.GateHorizon);
     const bpid = bot.GetPlayerID();
     const pairRead = PairJoin.For(bot);
-    let pair: Inputs["pair"] = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.rec.on !== "ours" && pairRead.ans.tgt !== -1
+    let pair: Inputs["pair"] = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.ans.tgt !== -1
         ? { tgt: pairRead.ans.tgt, ko: pairRead.ans.ko, kt: pairRead.ans.kt, dec: pairRead.ans.dec }
         : undefined;
     // The ally's last hit leaves a gap between two swings (PairJoin HitRecent is 1 s): a join answer stands for Keep s after the situation lapses.
@@ -727,7 +737,6 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             d,
             gap,
             away,
-            arrives: Arrives(gap, ms, away, BARS.walkIn),
             hitting,
             free,
             ko: free ? 0 : shareOn(bot, h),
@@ -764,6 +773,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         burst: stay.burst,
         n: stay.reach.length,
         missing: stay.missing,
+        ms,
         towerOnMe,
         creepsOnMe,
         wave,
@@ -851,7 +861,8 @@ const r1 = (v: number): number => math.floor(v * 10 + 0.5) / 10;
 const bit = (b: boolean | undefined): number | undefined => (b === undefined ? undefined : b ? 1 : 0);
 const or = (v: number | string | undefined): string | number => (v === undefined ? "-" : v);
 
-function candText(c: Cand): string {
+/** `arr` (the seventh field) is the opening read for a reader of the line: we reach attack range within `walkHit`. Decide recomputes it from gap, away and `ms`. */
+function candText(c: Cand, ms: number): string {
     const w = c.walk;
     const k = c.catch;
     return [
@@ -861,7 +872,7 @@ function candText(c: Cand): string {
         math.floor(c.d),
         math.floor(c.gap),
         math.floor(c.away),
-        c.arrives ? 1 : 0,
+        Arrives(c.gap, ms, math.max(0, c.away), BARS.walkHit) ? 1 : 0,
         c.hitting ? 1 : 0,
         c.free ? 1 : 0,
         round6(c.ko),
@@ -913,8 +924,7 @@ function howText(h: How | undefined): string | undefined {
 }
 
 /**
- * The `ev=cut kind=trade2` line for this frame's inputs and answer, when one is due (see the cut's cadence). Not called from any
- * game path yet: the executor (step 4) calls it after Decide. Reads only.
+ * The `ev=cut kind=trade` line for this frame's inputs and answer, when one is due (see the cut's cadence). Reads only.
  */
 export function Cut(bot: Unit, i: Inputs, a: Answer): void {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || i.now > CUT_UNTIL) return;
@@ -930,16 +940,17 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
     for (const c of i.cands) if (c.hunters !== undefined && (lowest === undefined || c.thp < lowest.thp)) lowest = c;
     const pos = LaneConfig.PositionOf(bot);
     const cds: string[] = [];
-    for (const c of i.cands) cds.push(candText(c));
+    for (const c of i.cands) cds.push(candText(c, i.ms));
     const u = i.run?.unseen;
     Telemetry.Event("cut", [
         ["pid", pid],
-        ["kind", "trade2"],
+        ["kind", "trade"],
         ["role", pos !== undefined && pos >= 4 ? "support" : "core"],
         ["hp", round6(i.hp)],
         ["bu", round6(i.burst)],
         ["n", i.n],
         ["mi", round6(i.missing)],
+        ["ms", math.floor(i.ms)],
         ["tm", i.towerOnMe ? 1 : 0],
         ["hc", i.creepsOnMe],
         ["cr", i.wave],
@@ -972,7 +983,7 @@ export const DESIRE_COMMIT = 0.75;
 
 /**
  * The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll):
- * the base weight is core_trade's (before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at
+ * the base weight is the older core trade's (before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at
  * even numbers with the enemy over 40%, about 110 such encounters a game; lfpchk1 at 0.05 fired 1.6 a game, so 0.1 for about 4;
  * `judgement`), a chance per target at most every FIGHT_ROLL_EVERY s so standing beside a hero is not a roll a frame. A fired play
  * is fought as a join by its roller and by whoever joins it; the play ends with the roller's exchange or at its timeout.
@@ -983,7 +994,7 @@ const FIGHT_ROLL_EVERY = 15;
 const FIGHT_TIMEOUT = 10;
 Plays.Define(LANE_FIGHT, { base: FIGHT_BASE, timeout: FIGHT_TIMEOUT, chases: true });
 
-/** Within this of its assigned lane's path the hero is in lane (fight_read's LANE_WIDTH). */
+/** Within this of its assigned lane's path the hero is in lane. */
 const LANE_WIDTH = 1200;
 /**
  * Creep aggro (EC-053, Liquipedia Lane_Creeps 7.41f): an attack order on an enemy hero draws enemy lane creeps within 500 of the
@@ -1061,7 +1072,7 @@ function inLane(bot: Unit): boolean {
     return Phase.LaningHeld(bot) && GetAmountAlongLane(bot.GetAssignedLane(), bot.GetLocation()).distance <= LANE_WIDTH;
 }
 
-/** Every fight of this in-lane hero beyond a hit is this module's: team roam keeps only its non-fight branches for it and LaneFight makes no claim. */
+/** Every fight of this in-lane hero beyond a hit is this module's: team roam keeps only its non-fight branches for it. */
 export function OwnsFights(bot: Unit): boolean {
     return Owns(bot) && bot.IsAlive() && inLane(bot);
 }
@@ -1105,7 +1116,7 @@ function soFarOf(bot: Unit, ep: Episode, now: number): { landed: boolean; soFar:
 }
 
 /** The executor's numbers for Decide: what `Gather` takes as the running exchange. */
-export function RunStateOf(bot: Unit, ep: Episode, now: number): RunState {
+function RunStateOf(bot: Unit, ep: Episode, now: number): RunState {
     const sf = soFarOf(bot, ep, now);
     return {
         level: ep.level,
@@ -1324,7 +1335,7 @@ function apply(bot: Unit, ep: Episode | undefined, i: Inputs, a: Answer, now: nu
             }
             return desireOf(ep.level);
         }
-        close(bot, ep, a.ended ?? a.reason, now);
+        close(bot, ep, a.ended ?? (a.level !== "none" && a.target !== ep.tpid ? "switch" : a.reason), now);
     }
     if (a.level === "none") {
         unanswered(bot, now, a.reason, i);
@@ -1362,28 +1373,27 @@ function unanswered(bot: Unit, now: number, why: string, i: Inputs): void {
     ]);
 }
 
-/** One lane-fight chance on `target`, at most every FIGHT_ROLL_EVERY seconds; the fired play, if any. */
-function rollFight(bot: Unit, target: Unit, now: number): Plays.Play | undefined {
+/** Whether a lane-fight chance on `tpid` is due (at most every FIGHT_ROLL_EVERY seconds); asking claims it. */
+function rollDue(bot: Unit, tpid: number, now: number): boolean {
     const pid = bot.GetPlayerID();
     const seen = (rolledAt[pid] = rolledAt[pid] ?? {});
-    const tpid = target.GetPlayerID();
     const last = seen[tpid];
-    if (last !== undefined && now - last < FIGHT_ROLL_EVERY) return undefined;
+    if (last !== undefined && now - last < FIGHT_ROLL_EVERY) return false;
     seen[tpid] = now;
-    return Plays.Roll({ kind: LANE_FIGHT, by: bot, target, at: target.GetLocation() }, now);
+    return true;
 }
 
 /**
  * The lane-fight chance (design section 4): offered once per target per FIGHT_ROLL_EVERY s when the frame's answer is a hit or
  * nothing and tower, burst (the walk read) and wave pass. The target is the hit's, else the nearest hero.
  */
-function chanceTarget(bot: Unit, i: Inputs, a: Answer): Unit | undefined {
+function chanceTarget(bot: Unit, i: Inputs, a: Answer, now: number): Unit | undefined {
     if (a.level !== "hit" && a.level !== "none") return undefined;
     let c: Cand | undefined;
     if (a.level === "hit") c = i.cands.find((x) => x.pid === a.target);
     else for (const x of i.cands) if (c === undefined || x.d < c.d) c = x;
     const t = c !== undefined ? lastHandles[c.pid] : undefined;
-    if (c === undefined || t === undefined) return undefined;
+    if (c === undefined || t === undefined || !rollDue(bot, c.pid, now)) return undefined;
     if (c.walk === undefined) {
         const r = Threat.Read(bot, bot.GetLocation(), t.GetLocation(), Threat.SETTINGS.GateHorizon);
         c.walk = { burst: r.burst, n: r.reach.length, missing: r.missing };
@@ -1422,10 +1432,12 @@ export function Desire(bot: Unit): number | undefined {
     if (ep !== undefined) noteSight(bot, ep, now);
     let a = Decide(i);
     if (ep === undefined && OwnsFights(bot)) {
-        const t = chanceTarget(bot, i, a);
-        if (t !== undefined && rollFight(bot, t, now) !== undefined) {
+        const t = chanceTarget(bot, i, a, now);
+        const play = t !== undefined ? Plays.Roll({ kind: LANE_FIGHT, by: bot, target: t, at: t.GetLocation() }, now) : undefined;
+        if (play !== undefined) {
             i = Gather(bot);
             a = Decide(i);
+            if (a.level !== "join" || a.source !== "play" || a.target !== play.tgt) Plays.End(play, "refused");
         }
     }
     Cut(bot, i, a);
@@ -1445,7 +1457,7 @@ function noteSight(bot: Unit, ep: Episode, now: number): void {
     }
 }
 
-export type AggroAction = "attack" | "prime" | "step_out";
+type AggroAction = "attack" | "prime" | "step_out";
 
 /**
  * The aggro-free attack: what a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack
@@ -1592,27 +1604,6 @@ export function PrimedAt(pid: number): number | undefined {
 export function NotePrimed(pid: number, t: number): void {
     primedAt[pid] = t;
 }
-
-/** Why `bot` may not fight `target` with a partner: its tower, or their burst along the walk there (what PairJoin asks before an `ours` join). */
-function refusalOf(bot: Unit, target: Unit): string | undefined {
-    const stand = attackPoint(bot, target);
-    const reach = LaneConfig.TowerReach();
-    for (const t of bot.GetNearbyTowers(reach + 1000, true)) {
-        if (!t.IsAlive()) continue;
-        if (t.GetAttackTarget() === bot || distXY(stand, t.GetLocation()) <= reach) return "tower";
-    }
-    const r = Threat.Read(bot, bot.GetLocation(), target.GetLocation(), Threat.SETTINGS.GateHorizon);
-    return r.burst >= burstBar(r.reach.length) ? "burst" : undefined;
-}
-
-// PairJoin reads a partner's open exchange and this module's refusal; it cannot import this module.
-PairJoin.SetReaders({
-    episodeOf: (pid) => {
-        const ep = episodes[pid];
-        return ep === undefined || ep.ended === true ? undefined : { kind: kindOf(ep.level), tpid: ep.tpid, target: ep.target, at: ep.offeredAt };
-    },
-    refusal: refusalOf,
-});
 
 export function Reset(): void {
     for (const k in heads) heads[k as unknown as number] = undefined;

@@ -862,7 +862,7 @@ do
 	check("kill-reach: the pos5 1,100 off is an ally near", a == 1, a)
 	GetUnitList = old
 	local t = H.Drill.TABLE["kill-reach"].rig
-	check("kill-reach: execution rig on KillReach, two reach reps to one outnumbered control", t.half == "execution" and t.switch == "KillReach" and #t.reps == 3 and t.reps[3].ready.foes == 2)
+	check("kill-reach: execution rig on Trade, two reach reps to one two-against-one control", t.half == "execution" and t.switch == "Trade" and #t.reps == 3 and t.reps[3].ready.foes == 2)
 	-- The spots' offsets on one anchor (they resolve within 100 of these, ph=spot, except where marked in the rig's comment):
 	-- the control's pos3 over 200 from the Lich's spot (the pos5's attack takes the enemy nearest it) with a margin, and
 	-- within 1,200 of the cast with a margin.
@@ -1010,7 +1010,7 @@ end
 do
 	local H = world("support-kill-reach")
 	local t = H.Drill.TABLE["support-kill-reach"].rig
-	check("support-kill-reach: execution rig on SupportLaneFight, cast the Radiant pos5", t.half == "execution" and t.switch == "SupportLaneFight"
+	check("support-kill-reach: execution rig on Trade, cast the Radiant pos5", t.half == "execution" and t.switch == "Trade"
 		and H.Drill.TABLE["support-kill-reach"].cast.r[1] == 5 and #t.reps == 3 and t.reps[3].ready.foes == 2)
 	local sp = t.spots
 	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
