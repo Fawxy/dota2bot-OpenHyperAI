@@ -76,6 +76,15 @@ export const BOT = {
     co: "num",
     ced: "num",
     cod: "num",
+    /**
+     * Which step of mode_laning_generic's Think acted most recently since the previous snapshot (slice step-telemetry): `body_hit`
+     * the laning body's running last-hit or deny swing, `support` a support's lane steps (states/support_lane), `aggro` lane
+     * aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `lane_pre` / `lane_think` / `harass`
+     * the older humaniser Lane paths, `oha_lh` / `oha_deny` / `oha_hold` OHA's last hit, deny and hold-for-the-hit, `body` the
+     * laning body's step, `oha_pos` OHA's PositionThink; `none` when the Lua Think did not run since the previous snapshot,
+     * `valve` for a bot whose laning is Valve's C++ one (no Lua Think). Bots only.
+     */
+    step: "str",
     /** Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`. */
     by: "str",
     order: "str",
@@ -422,6 +431,8 @@ export const EVENTS = {
         mode: "num",
         /** 1 when a running job of ours kept the bot, 0 when OHA relocated it. */
         held: "num",
+        /** Distance from the hero to where OHA sends it (its assigned lane's own front, `GetLaneFrontLocation` amount 0), as it fires. */
+        d: "num",
     },
     /** Each neutral camp's spawn box once per game, from the first stack job (replay grading, hlog stacktruth.js). */
     camp: {

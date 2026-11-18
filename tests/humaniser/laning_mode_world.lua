@@ -117,6 +117,8 @@ function LaningLoad(opts)
 		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
 		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
+		-- bot.step: the step name the last Think reported (ev=snap step=).
+		Telemetry = { NoteLaneThink = function() end, NoteLaneStep = function(_, s) bot.step = s end },
 		-- Slice lane-last-hits: opts.laneOnly makes the bot lane-only, as a drill does (humaniser/drill.ts); the bot is required.
 		Overrides = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end },
 		Retreat = { Running = function() return opts.retreatRunning == true end },

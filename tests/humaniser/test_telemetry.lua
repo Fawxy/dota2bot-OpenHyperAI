@@ -493,6 +493,34 @@ do
 	for _, n in ipairs(names) do U[n] = saved[n] end
 end
 
+-- Slice step-telemetry: snap step= is the laning Think's last step since the previous snapshot, none once it stops running.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1, mode = BotMode.Laning })
+	local function snapStep()
+		lines = {}
+		H.Telemetry.Tick(b)
+		local snap = events("snap")[1]
+		return snap and field(snap, "step")
+	end
+	H.Telemetry.NoteLaneThink(b, true)
+	T = 10
+	check("step: none before the Think has run", snapStep() == "none")
+	T = 10.5
+	H.Telemetry.NoteLaneStep(b, "oha_lh")
+	T = 10.7
+	H.Telemetry.NoteLaneStep(b, "body")
+	T = 11
+	check("step: the most recent step of the second", snapStep() == "body")
+	T = 12
+	check("step: a step from before the previous snapshot is none", snapStep() == "none")
+	local v = MakeUnit({ pid = 2, mode = BotMode.Laning })
+	H.Telemetry.NoteLaneThink(v, false)
+	lines = {}
+	H.Telemetry.Tick(v)
+	check("step: a bot on Valve's C++ laning", field(events("snap")[1], "step") == "valve")
+end
+
 -- ev=inv: the item layout, once at the first snapshot and then only when a slot, an item or a charge count differs.
 do
 	local H = fresh()

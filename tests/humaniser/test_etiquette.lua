@@ -123,7 +123,7 @@ do
 	check('team roam: predicate replaces AllyLastHit', has(roam, '(bEtiquette and Etiquette.MayLastHit(bot, creep) or not bEtiquette and J.Humaniser.AllyLastHit.MayLastHit(bot, creep))'))
 	check('team roam: cancels a swing on a core creep before its own last hit', has(roam, 'if J.Humaniser.Etiquette.LeavesTarget(bot) then\n\t\tbot:Action_MoveToLocation(bot:GetLocation())'))
 	local laning = source('bots/mode_laning_generic.lua')
-	check('laning: cancels a swing on a core creep first in Think, not the support body\'s own claimed last hit', has(laning, 'if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return end'))
+	check('laning: cancels a swing on a core creep first in Think, not the support body\'s own claimed last hit', has(laning, 'if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return \'etiquette\' end'))
 	check('laning: predicate is the filter', has(laning, 'if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end'))
 	local general = source('bots/Customize/general.lua')
 	check('Customize: LeaveCoreCreep on by default', has(general, 'Customize.Ours = { LeaveCoreCreep = true,'))
