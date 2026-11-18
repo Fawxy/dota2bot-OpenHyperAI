@@ -122,6 +122,11 @@
    "ac": "num",
    "an": "num",
    "at": "num",
+   "ce": "num",
+   "cr": "num",
+   "co": "num",
+   "ced": "num",
+   "cod": "num",
    "by": "str",
    "order": "str",
    "rdy": "str"
@@ -263,6 +268,11 @@
    "ac": "num",
    "an": "num",
    "at": "num",
+   "ce": "num",
+   "cr": "num",
+   "co": "num",
+   "ced": "num",
+   "cod": "num",
    "by": "str",
    "order": "str",
    "rdy": "str"

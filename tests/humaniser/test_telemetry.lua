@@ -452,6 +452,47 @@ do
 	for _, n in ipairs(names) do U[n] = saved[n] end
 end
 
+-- Slice snap-creeps: creep counts by the aggro radius (inclusive) and attack range, nearest of each side, live creeps only.
+do
+	local H = fresh()
+	local b = MakeUnit({ pid = 1, team = 2, mode = BotMode.Laning, range = 500 })
+	local function creep(dist, alive) local u = MakeUnit({ team = 3 }) u.dist = dist u.alive = alive ~= false return u end
+	local U = getmetatable(b).__index
+	for name, fn in pairs(UnitMeta) do if U[name] == nil then U[name] = fn end end
+	local names = { "GetNearbyHeroes", "GetNearbyLaneCreeps", "GetNearbyNeutralCreeps", "GetNearbyTowers", "WasRecentlyDamagedByAnyHero", "WasRecentlyDamagedByCreep", "WasRecentlyDamagedByTower", "GetHealth" }
+	local saved = {}
+	for _, n in ipairs(names) do saved[n] = rawget(U, n) end
+	local function none() return {} end
+	local function no() return false end
+	U.GetNearbyHeroes, U.GetNearbyNeutralCreeps, U.GetNearbyTowers = none, none, none
+	U.WasRecentlyDamagedByAnyHero, U.WasRecentlyDamagedByCreep, U.WasRecentlyDamagedByTower = no, no, no
+	function U:GetHealth() return 500 end
+	local enemy = { creep(500), creep(100), creep(501), creep(50, false), creep(900) }
+	local own = {}
+	function U:GetNearbyLaneCreeps(_, enemies) return enemies and enemy or own end
+	local dist = GetUnitToUnitDistance
+	GetUnitToUnitDistance = function(_, u) return u.dist end
+	T = 300
+	H.Telemetry.Tick(b)
+	local snap = events("snap")[1]
+	check("creeps near: 500 is inside the aggro radius, ar + 48 the range, a dead creep is not nearest",
+		snap ~= nil and field(snap, "ce") == "2" and field(snap, "cr") == "3" and field(snap, "ced") == "100", snap)
+	check("creeps near: no own creep gives 0 and no distance", snap ~= nil and field(snap, "co") == "0" and field(snap, "cod") == nil, snap)
+	own = { creep(499.6), creep(700) }
+	lines = {}
+	T = 302
+	H.Telemetry.Tick(b)
+	snap = events("snap")[1]
+	check("creeps near: own creeps counted and the nearest floored", snap ~= nil and field(snap, "co") == "1" and field(snap, "cod") == "499", snap)
+	lines = {}
+	T = 721
+	H.Telemetry.Tick(b)
+	snap = events("snap")[1]
+	check("creeps near: none past 12:00", snap ~= nil and field(snap, "ce") == nil and field(snap, "co") == nil, snap)
+	GetUnitToUnitDistance = dist
+	for _, n in ipairs(names) do U[n] = saved[n] end
+end
+
 -- ev=inv: the item layout, once at the first snapshot and then only when a slot, an item or a charge count differs.
 do
 	local H = fresh()

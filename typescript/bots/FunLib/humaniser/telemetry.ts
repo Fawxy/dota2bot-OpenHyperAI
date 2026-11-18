@@ -760,21 +760,69 @@ function targeting(bot: Unit, units: Unit[] | undefined): number {
 }
 
 /**
+ * Protective aggro: an attack order or attack on an enemy hero draws that hero's lane creeps within 500 of the attacker,
+ * whatever the target's distance (docs/reference/specifics/creep-aggro-numbers.md; LaneFightConfig CreepAggroRadius).
+ */
+const CREEP_AGGRO_RADIUS = 500;
+/** Centre-to-centre slack on attack range for two hulls, as the step 3 read's hero-in-range test. */
+const RANGE_SLACK = 48;
+
+/**
+ * Where the bot stands against the lane creeps, to 12:00 (slice snap-creeps): enemy lane creeps within the aggro radius and
+ * within attack range, own lane creeps within the aggro radius, and the distance to the nearest of each side within 1,600
+ * (absent if none). `enemy` is the list `damageFields` already fetched. Reads facts only.
+ */
+function creepFields(bot: Unit, enemy: Unit[] | undefined): BotPair[] {
+    if (DotaTime() > OPTIONS_UNTIL) return [];
+    const reach = bot.GetAttackRange() + RANGE_SLACK;
+    let ce = 0;
+    let cr = 0;
+    let ced: number | undefined;
+    for (const c of enemy ?? []) {
+        if (!c.IsAlive()) continue;
+        const d = GetUnitToUnitDistance(bot, c);
+        if (d <= CREEP_AGGRO_RADIUS) ce++;
+        if (d <= reach) cr++;
+        if (ced === undefined || d < ced) ced = d;
+    }
+    let co = 0;
+    let cod: number | undefined;
+    for (const c of bot.GetNearbyLaneCreeps(ATTACKER_RADIUS, false) ?? []) {
+        if (!c.IsAlive()) continue;
+        const d = GetUnitToUnitDistance(bot, c);
+        if (d <= CREEP_AGGRO_RADIUS) co++;
+        if (cod === undefined || d < cod) cod = d;
+    }
+    return [
+        ["ce", ce],
+        ["cr", cr],
+        ["co", co],
+        ["ced", ced !== undefined ? math.floor(ced) : undefined],
+        ["cod", cod !== undefined ? math.floor(cod) : undefined],
+    ];
+}
+
+const guardedCreepFields = Guard("Telemetry.CreepsNear", creepFields, () => []);
+
+/**
  * Who is hurting the bot this second, all game (view `hp_loss`): raw HP, the API's damaged-in-the-last-second flags by source
  * and the units whose attack target is the bot, by kind. Reads facts only.
  */
 function damageFields(bot: Unit): BotPair[] {
     if (!bot.IsAlive()) return [];
-    return [
+    const enemyCreeps = bot.GetNearbyLaneCreeps(ATTACKER_RADIUS, true);
+    const fields: BotPair[] = [
         ["hv", math.floor(bot.GetHealth())],
         ["hit", bot.WasRecentlyDamagedByAnyHero(1)],
         ["hc", bot.WasRecentlyDamagedByCreep(1)],
         ["ht", bot.WasRecentlyDamagedByTower(1)],
         ["ah", targeting(bot, bot.GetNearbyHeroes(ATTACKER_RADIUS, true, BotMode.None))],
-        ["ac", targeting(bot, bot.GetNearbyLaneCreeps(ATTACKER_RADIUS, true))],
+        ["ac", targeting(bot, enemyCreeps)],
         ["an", targeting(bot, bot.GetNearbyNeutralCreeps(ATTACKER_RADIUS, true))],
         ["at", targeting(bot, bot.GetNearbyTowers(ATTACKER_RADIUS, true))],
     ];
+    for (const f of guardedCreepFields(bot, enemyCreeps)) fields.push(f);
+    return fields;
 }
 
 const guardedDamageFields = Guard("Telemetry.Damage", damageFields, () => []);
