@@ -137,6 +137,8 @@ function GetRuneStatus(r) return RUNE_STATUS_MISSING end
 function GetRuneType(r) return -1 end
 -- FOGGED(v) true marks a location the team cannot see; nil means everything is visible.
 function IsLocationVisible(v) return FOGGED == nil or not FOGGED(v) end
+-- HEIGHT(v) gives a location's terrain height level; nil means level 1 everywhere.
+function GetHeightLevel(v) return HEIGHT ~= nil and HEIGHT(v) or 1 end
 function GetHeroLastSeenInfo(pid) return LAST_SEEN[pid] and { LAST_SEEN[pid] } or {} end
 
 local UnitMeta = getmetatable(MakeUnit({ pid = 99, team = 3 })).__index

@@ -15,6 +15,7 @@ import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
+import * as Sight from "bots/FunLib/humaniser/sight";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
 /** `actor`: a hero a rig's setup scripts (it takes only those steps). */
@@ -573,6 +574,37 @@ export const TABLE: Record<string, Entry> = {
                     setup: { r5: ["heal", "stand side"], r1: ["heal", "wait d3", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
                     ready: { low: [0.38, -400, 200], foes: 2, alliesAtMost: 0, hpAtLeast: 0.5 },
                 },
+            ],
+        },
+    },
+    // Slice rig-sight (proposal 2026-11-18-vision-tool step R): the harness's sight checks against the game, and calibration
+    // data for a sight model (step M). No rule and no switch: the cast stands, released to `idle` only. The Dire pos4 stands
+    // at one spot a rep: `open` (kill-reach's low, 600 west on the strip, seen there), `trees` (650 north of the cast: kill-reach
+    // on1 saw a statue there 138 of 530 s, behind trees), `far` (2,200 north in our jungle, past day sight). Read: each rep's
+    // ph=ready (ok, fail, `sight`) against the actor's ph=step, and ph=grid (the team's sight around the cast, 100 apart).
+    // 60 s reps from 0:00 to 10:00 hold day (to 5:00) and night; seed 8.
+    "sight-probe": {
+        note: "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 600 west (open, seen), 650 north behind trees (unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
+        cast: SAFE_CORE,
+        others: "bench",
+        rep: { every: 60, from: 0 },
+        rig: {
+            half: "execution",
+            switch: "none",
+            window: 600,
+            spots: {
+                side: ["r:bot1", -2750, 700],
+                open: ["r:bot1", -3350, 700],
+                trees: ["r:bot1", -2750, 1350],
+                far: ["r:bot1", -2750, 2900],
+            },
+            timeout: 50,
+            release: { modes: ["idle"] },
+            grid: [1600, 100],
+            reps: [
+                { name: "open", setup: { r1: ["stand side"], d4: ["stand open"] }, ready: { sees: ["d4"], after: 20 } },
+                { name: "trees", setup: { r1: ["stand side"], d4: ["stand trees"] }, ready: { unseen: ["d4"], after: 20 } },
+                { name: "far", setup: { r1: ["stand side"], d4: ["stand far"] }, ready: { unseen: ["d4"], after: 20 } },
             ],
         },
     },
@@ -1339,6 +1371,22 @@ export interface RigReady {
     foesAtMost?: number;
     /** At most this many other live heroes of the cast's team within 1,200 of it. Fails `allies`. */
     alliesAtMost?: number;
+    /**
+     * Enemy hero keys (`d4`) the cast's team sees at their stand point: an enemy hero in sight within RIG_PLACED of it
+     * (`rigSight` 1). Fails `sees`. A key of the cast's own team, or with no `stand` step, fails `sightkey`.
+     */
+    sees?: string[];
+    /**
+     * Enemy hero keys whose stand point is out of the cast's team's sight with no enemy hero seen within RIG_PLACED of it
+     * (`rigSight` 0). The other team's placement is not read (no state crosses teams): the actor's own `ph=step` lines say
+     * whether it stood there. Fails `unseen`, or `sightkey` as `sees`.
+     */
+    unseen?: string[];
+    /**
+     * At least this many seconds from the rep's start: the time the other team's actors take to reach their spots, which the
+     * cast cannot read when they are meant to be out of sight (`unseen`). Fails `early`.
+     */
+    after?: number;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1397,6 +1445,11 @@ export interface Rig {
     idle?: number;
     /** Seconds from ready the cast logs `ph=trace` (its HP and the read of the enemy heroes in sight) every RIG_TRACE_EVERY. */
     trace?: number;
+    /**
+     * [half-width, step]: at ready (ok or not) the cast logs `ph=grid`, IsLocationVisible over the square of that half-width
+     * around it at that step (`Sight.VisionGridBox`'s `x0,y0,nx,ny,step,hex`): its team's sight, for fitting a sight model.
+     */
+    grid?: [number, number];
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
     /** DotaTime seconds the rule's stage ends (a laning rule: 600). A rep ending after it is logged `rend` past `win` and the
@@ -1653,6 +1706,7 @@ function logSpot(name: string, p: Vector | undefined, moved: number | undefined)
         ["d", moved],
         ["rt", p !== undefined ? math.floor(nearestTower(Team.Radiant, p)) : undefined],
         ["dt", p !== undefined ? math.floor(nearestTower(Team.Dire, p)) : undefined],
+        ["hl", p !== undefined ? GetHeightLevel(p) : undefined],
     ]);
 }
 
@@ -1987,6 +2041,42 @@ function foggedWithin(bot: Unit, r: number): boolean {
     return false;
 }
 
+/** The spot of hero `key`'s last `stand` step this rep, or undefined when it has none (a `leave` names no point we can read). */
+function standPoint(st: RigState, key: string, bot: Unit): Vector | undefined {
+    const steps = RigRepOf(st.rep)?.setup[key] ?? [];
+    for (let i = steps.length - 1; i >= 0; i--) {
+        const w = steps[i].split(" ");
+        if (w[0] === "stand" && w[1] !== undefined) return rigPoint(bot, w[1]);
+    }
+    return undefined;
+}
+
+/**
+ * What the cast's team sees of enemy hero `key` at its stand point: 1 an enemy hero in sight within RIG_PLACED of it, 0 the
+ * point out of sight (IsLocationVisible) and no enemy hero seen there, 2 the point in sight and nobody there (not placed yet,
+ * or gone); undefined for a key of the cast's own team or one with no `stand` step.
+ */
+function rigSight(bot: Unit, st: RigState, key: string): number | undefined {
+    const [side] = string.match(key, "^([rd])%d$");
+    if (side === undefined || (side === "r" ? Team.Radiant : Team.Dire) === bot.GetTeam()) return undefined;
+    const p = standPoint(st, key, bot);
+    if (p === undefined) return undefined;
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (h.IsAlive() && h.GetLocation() !== undefined && h.CanBeSeen() && !h.IsIllusion() && GetUnitToLocationDistance(h, p) <= RIG_PLACED) return 1;
+    }
+    return IsLocationVisible(p) ? 2 : 0;
+}
+
+/** The ph=wait and ph=ready `sight` field: `key:rigSight` for each enemy key of the rep with a stand point, comma-separated. */
+function sightField(bot: Unit, st: RigState, rr: RigRep): string | undefined {
+    const out: string[] = [];
+    for (const k of Object.keys(rr.setup).sort()) {
+        const s = rigSight(bot, st, k);
+        if (s !== undefined) out.push(`${k}:${s}`);
+    }
+    return out.length > 0 ? out.join(",") : undefined;
+}
+
 /** With exactly one live enemy hero in sight within `r` of the cast: its estimated damage over 3 s as a share of the cast's HP. */
 function loneBurst(bot: Unit, r: number): number | undefined {
     let n = 0;
@@ -2008,6 +2098,17 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (u !== undefined && st.placed[u.GetPlayerID()] !== true && (u.GetPlayerID() === bot.GetPlayerID() || RoleOf(u) !== "cast")) return "setup";
     }
     const r = rr.ready;
+    if (r.after !== undefined && DotaTime() - st.start < r.after) return "early";
+    for (const k of r.sees ?? []) {
+        const s = rigSight(bot, st, k);
+        if (s === undefined) return "sightkey";
+        if (s !== 1) return "sees";
+    }
+    for (const k of r.unseen ?? []) {
+        const s = rigSight(bot, st, k);
+        if (s === undefined) return "sightkey";
+        if (s !== 0) return "unseen";
+    }
     // Latched: once at or under the bar this rep it stays met, so regen while the attacker walks off cannot race it (fix5).
     if (r.hpAtMost !== undefined) {
         if (hpShare(bot) <= r.hpAtMost) st.hpMet[bot.GetPlayerID()] = true;
@@ -2196,7 +2297,7 @@ function rigTick(bot: Unit): void {
     // Each change of the first failing check is logged, so a rep that times out shows what held it and when.
     if (fail !== undefined && st.waiting[pid] !== fail) {
         st.waiting[pid] = fail;
-        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100], ["d", nearestPast(bot)], ["bu", burstField(bot, rr)]]);
+        Telemetry.Event("drill", [["ph", "wait"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["fail", fail], ["secs", math.floor(secs * 10 + 0.5) / 10], ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100], ["d", nearestPast(bot)], ["bu", burstField(bot, rr)], ["sight", sightField(bot, st, rr)]]);
     }
     if (fail !== undefined && secs < r.timeout) return;
     st.phase[pid] = fail === undefined ? "released" : "invalid";
@@ -2216,7 +2317,23 @@ function rigTick(bot: Unit): void {
         ["rend", st.start + Active()!.rep.every],
         ["win", r.window],
         ["rel", r.release.modes.filter((m) => m !== "idle").join(",")],
+        ["sight", sightField(bot, st, rr)],
+        ["hl", GetHeightLevel(bot.GetLocation())],
     ]);
+    if (r.grid !== undefined) {
+        const at = bot.GetLocation();
+        const [half, step] = r.grid;
+        Telemetry.Event("drill", [
+            ["ph", "grid"],
+            ["name", Name()],
+            ["pid", pid],
+            ["rep", st.rep],
+            ["var", rr.name],
+            ["x", math.floor(at.x)],
+            ["y", math.floor(at.y)],
+            ["vg", Sight.VisionGridBox(at.x - half, at.y - half, at.x + half, at.y + half, step, at.z)],
+        ]);
+    }
 }
 
 /** The active drill's rep start times for a forced context (DotaTime seconds, up to 60:00), input-on reps only. */

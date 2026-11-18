@@ -946,6 +946,64 @@ do
 	check("burst-read: none 12 s after ready", #lines("trace", capture(function() tick(cast) end)) == 0)
 end
 
+-- sight-probe (slice rig-sight): `sees` and `unseen` read the cast team's sight of an enemy key at its stand point, `after`
+-- holds ready until the actor has had time to walk there, and ph=wait / ph=ready carry `sight` and `hl`; ph=grid at ready.
+do
+	local H = world("sight-probe")
+	local cast = hero(0, RAD, 1, 3)
+	local actor = hero(8, DIRE, 4, 1)
+	cast.loc = Vector(-6619, -6336, 0)
+	actor.loc = Vector(6928, 6372, 0)
+	ACTIONS = {}
+	local function tick(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	local function lastMove(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
+	local function lines(ph, ls) local r = {} for _, l in ipairs(ls) do if field(l, "ph") == ph then table.insert(r, l) end end return r end
+	local function place(u) local m = lastMove(u.pid) u.loc = Vector(m.x, m.y, 0) end
+	local t = H.Drill.TABLE["sight-probe"].rig
+	check("sight-probe: three reps, open sees d4, trees and far want it unseen, each after 20 s", #t.reps == 3 and t.reps[1].ready.sees[1] == "d4"
+		and t.reps[2].ready.unseen[1] == "d4" and t.reps[3].ready.unseen[1] == "d4" and t.reps[1].ready.after == 20)
+	HEIGHT = function() return 3 end
+	T = 1
+	local ls = capture(function() tick(cast, actor) tick(cast, actor) place(cast) place(actor) tick(cast, actor) tick(cast, actor) end)
+	local w = lines("wait", ls)
+	check("sight-probe: before 20 s the cast waits `early`, the actor seen at its spot", field(w[#w], "fail") == "early" and field(w[#w], "sight") == "d4:1", w[#w])
+	T = 21
+	ls = capture(function() tick(cast, actor) end)
+	local rd, gr = lines("ready", ls)[1], lines("grid", ls)[1]
+	check("sight-probe: open, seen: ready, sight d4:1, the cast's height level", field(rd, "ok") == "1" and field(rd, "sight") == "d4:1" and field(rd, "hl") == "3", rd)
+	check("sight-probe: the grid line at ready, 33 or 34 cells a side, 100 apart", gr ~= nil and field(gr, "vg"):match("^%-?%d+,%-?%d+,3[34],3[34],100,") ~= nil, gr)
+	-- Rep 2 (trees): the actor out of sight there.
+	T = 61
+	tick(cast, actor)
+	tick(cast, actor)
+	place(actor)
+	local trees = Vector(actor.loc.x, actor.loc.y, 0)
+	actor.hiddenFrom = setmetatable({}, { __index = function() return true end })
+	FOGGED = function(v) return math.abs(v.x - trees.x) < 300 and math.abs(v.y - trees.y) < 300 end
+	T = 82
+	ls = capture(function() tick(cast, actor) end)
+	rd = lines("ready", ls)[1]
+	check("sight-probe: trees, fogged: ready, sight d4:0", field(rd, "ok") == "1" and field(rd, "sight") == "d4:0", rd)
+	-- Rep 3 (far): the actor stands in sight, so `unseen` fails until the timeout.
+	T = 121
+	tick(cast, actor)
+	tick(cast, actor)
+	place(actor)
+	actor.hiddenFrom = nil
+	T = 142
+	ls = capture(function() tick(cast, actor) end)
+	check("sight-probe: far but seen: waits `unseen`", field(lines("wait", ls)[1], "fail") == "unseen" and field(lines("wait", ls)[1], "sight") == "d4:1", ls[1])
+	actor.loc = Vector(6928, 6372, 0)
+	FOGGED = nil
+	T = 150
+	tick(cast, actor)
+	T = 171.5
+	ls = capture(function() tick(cast) end)
+	rd = lines("ready", ls)[1]
+	check("sight-probe: its spot in sight and nobody there (sight 2): invalid at the timeout", field(rd, "ok") == "0" and field(rd, "fail") == "unseen" and field(rd, "sight") == "d4:2", rd)
+	HEIGHT, FOGGED = nil, nil
+end
+
 -- support-kill-reach (slice support-lane-fight): the spots against a 600-range support's reaches. `low`'s bands are past the
 -- core's reach (600 + 48 + 100 = 748): the bar rep's Lich stands inside the support's harass reach (948, so under 200 past),
 -- the reach rep's past it and inside its commit's walk (1,548, so 200 to 800 past).

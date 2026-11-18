@@ -16,7 +16,6 @@ import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function GetRuneStatus(this: void, rune: number): number;
-declare function GetHeightLevel(this: void, loc: Vector): number;
 declare function IsLocationPassable(this: void, loc: Vector): boolean;
 declare function GetAncient(this: void, team: number): Unit;
 declare const RUNE_STATUS_AVAILABLE: number;

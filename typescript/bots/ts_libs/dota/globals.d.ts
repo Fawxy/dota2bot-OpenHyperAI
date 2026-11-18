@@ -35,6 +35,8 @@ declare global {
     /** Valve: the location of a shop (SHOP_HOME is the team's fountain shop). */
     function GetShopLocation(team: Team, shop: Shop): Vector;
     function IsLocationVisible(loc: Vector): boolean;
+    /** Valve: the terrain height level at a location (1 to 5). */
+    function GetHeightLevel(loc: Vector): number;
 
     function IsPlayerBot(playerId: number): boolean;
 

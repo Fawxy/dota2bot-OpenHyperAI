@@ -27,6 +27,7 @@ import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as Sight from "bots/FunLib/humaniser/sight";
 
 /**
  * Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
@@ -89,26 +90,14 @@ function escapeReady(bot: Unit): boolean {
  * bit i of the hex is cell (i % nx, floor(i / nx)) from the south-west corner (x0, y0).
  */
 function visionGrid(at: Vector, front: Vector): string {
-    const x0 = math.floor((math.min(at.x, front.x) - GRID_PAD) / GRID_STEP) * GRID_STEP;
-    const y0 = math.floor((math.min(at.y, front.y) - GRID_PAD) / GRID_STEP) * GRID_STEP;
-    const nx = math.ceil((math.max(at.x, front.x) + GRID_PAD - x0) / GRID_STEP) + 1;
-    const ny = math.ceil((math.max(at.y, front.y) + GRID_PAD - y0) / GRID_STEP) + 1;
-    let hex = "";
-    let nib = 0;
-    let bits = 0;
-    for (let j = 0; j < ny; j++) {
-        for (let i = 0; i < nx; i++) {
-            nib = nib * 2 + (IsLocationVisible(Vector(x0 + i * GRID_STEP, y0 + j * GRID_STEP, at.z)) ? 1 : 0);
-            bits++;
-            if (bits === 4) {
-                hex += string.format("%x", nib);
-                nib = 0;
-                bits = 0;
-            }
-        }
-    }
-    if (bits > 0) hex += string.format("%x", nib * 2 ** (4 - bits));
-    return `${x0},${y0},${nx},${ny},${GRID_STEP},${hex}`;
+    return Sight.VisionGridBox(
+        math.min(at.x, front.x) - GRID_PAD,
+        math.min(at.y, front.y) - GRID_PAD,
+        math.max(at.x, front.x) + GRID_PAD,
+        math.max(at.y, front.y) + GRID_PAD,
+        GRID_STEP,
+        at.z,
+    );
 }
 
 function logTowers(team: number): void {
