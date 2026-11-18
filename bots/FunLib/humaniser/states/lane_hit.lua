@@ -75,6 +75,10 @@ end
 -- idle hold (drill RIG_IDLE_DESIRE 0.5) and the Valve built-in mode the arbiter's LaneDesire was set over (0.475), so a yield
 -- leaves the hero to the attack mode and to nothing else. `judgement`.
 ____exports.YIELD_DESIRE = 0.52
+--- Laning's last-hit bid (mode_laning_generic's 0.9, OWNERSHIP H2). Under the yield it follows our own read both ways: a creep the
+-- pick would take bids it, so the hero comes back from whatever mode took it (lhrig1_g_s30: on OHA's read alone, creeps within 800,
+-- Sniper never left the rig's idle hold after a yield and took no last hit in 17 reps).
+____exports.LAST_HIT_DESIRE = 0.9
 --- Whether laning yields (`yield`), or what the lane has due.
 function ____exports.YieldAnswer(f)
     if f.hold then

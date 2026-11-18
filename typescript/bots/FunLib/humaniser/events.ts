@@ -1940,7 +1940,8 @@ export const EVENTS = {
     },
     /**
      * Ours.LaneYield (plan trade-from-the-stand step 3g, states/laning YieldLevel): each change of laning's answer for a laner whose
-     * last hits the body takes. `why` yield (laning bids `v`, lane_hit YIELD_DESIRE), or what is due: hold, walk_in, offered.
+     * last hits the body takes. `why` yield (laning bids `v`, lane_hit YIELD_DESIRE), or what is due: offered (`v` the last-hit
+     * 0.9, our read in place of the mode file's), hold, walk_in (no `v`: laning bids as without the switch).
      * `mode` and `md` the active mode and its desire (GetActiveModeDesire, the only mode desire the API reads); `hero` an enemy
      * hero in our attack range.
      */

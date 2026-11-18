@@ -540,7 +540,8 @@ function laneHit(
 
 /**
  * Ours.LaneYield (plan step 3g): the laning desire while nothing of the lane is due for a laner whose last hits the body takes,
- * states/lane_hit YIELD_DESIRE; undefined otherwise (laning bids as before). Nothing due: no wave hold, no walk-in, and the pick
+ * states/lane_hit YIELD_DESIRE; LAST_HIT_DESIRE while the pick would take a creep (the Lua caller drops it where its own 0.9
+ * would be held back); undefined with a wave hold or a walk-in (laning bids as before). Nothing due: no wave hold, no walk-in, and the pick
  * would take nothing now (lane_pick Choose on laneTargets within the body's horizon, with its claims and the reach rule). A
  * running camp job is the Lua caller's check. Not read: a due pre-hit (PreHit.Find keeps the pick's notes, so it is asked only
  * by the body; a pre-hit comes only by our own tower). Logged on each change of answer. Reads facts only, so it is right in
@@ -563,7 +564,7 @@ export function YieldLevel(bot: Unit): number | undefined {
         offered = LanePick.Choose(targets, undefined, mine) !== undefined;
     }
     const why = LaneHit.YieldAnswer({ hold: holdPoint[pid] !== undefined, walkIn: Contest.RunningAny(pid), offered });
-    const v = why === "yield" ? LaneHit.YIELD_DESIRE : undefined;
+    const v = why === "yield" ? LaneHit.YIELD_DESIRE : why === "offered" ? LaneHit.LAST_HIT_DESIRE : undefined;
     yieldAt[pid] = { t: now, v };
     if (yieldWhy[pid] !== why) {
         yieldWhy[pid] = why;

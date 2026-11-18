@@ -208,7 +208,8 @@ export const DEFAULTS = {
      *  scan. Off: the body hits no hero. */
     LaneHit: false,
     /** Plan trade-from-the-stand probe 3g: with nothing of the lane due (states/laning YieldLevel), that core's laning desire is
-     *  lane_hit YIELD_DESIRE (0.52), under the 0.9 last-hit bid and the arbiter's lane floor, so an attack mode can take the hero.
+     *  lane_hit YIELD_DESIRE (0.52), under the 0.9 last-hit bid and the arbiter's lane floor, so an attack mode can take the hero,
+     *  and the 0.9 goes by our own read (a creep the pick would take), not the mode file's 800-radius one.
      *  Valve's attack mode runs for the hero only with CoreTrade off. Off: laning bids as before. */
     LaneYield: false,
 };

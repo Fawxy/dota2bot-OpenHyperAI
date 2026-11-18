@@ -826,7 +826,8 @@ local function laneHit(bot, chosen, current, pre)
     }
 end
 --- Ours.LaneYield (plan step 3g): the laning desire while nothing of the lane is due for a laner whose last hits the body takes,
--- states/lane_hit YIELD_DESIRE; undefined otherwise (laning bids as before). Nothing due: no wave hold, no walk-in, and the pick
+-- states/lane_hit YIELD_DESIRE; LAST_HIT_DESIRE while the pick would take a creep (the Lua caller drops it where its own 0.9
+-- would be held back); undefined with a wave hold or a walk-in (laning bids as before). Nothing due: no wave hold, no walk-in, and the pick
 -- would take nothing now (lane_pick Choose on laneTargets within the body's horizon, with its claims and the reach rule). A
 -- running camp job is the Lua caller's check. Not read: a due pre-hit (PreHit.Find keeps the pick's notes, so it is asked only
 -- by the body; a pre-hit comes only by our own tower). Logged on each change of answer. Reads facts only, so it is right in
@@ -861,7 +862,7 @@ function ____exports.YieldLevel(bot)
         walkIn = Contest.RunningAny(pid),
         offered = offered
     })
-    local v = why == "yield" and LaneHit.YIELD_DESIRE or nil
+    local v = why == "yield" and LaneHit.YIELD_DESIRE or (why == "offered" and LaneHit.LAST_HIT_DESIRE or nil)
     yieldAt[pid] = {t = now, v = v}
     if yieldWhy[pid] ~= why then
         yieldWhy[pid] = why

@@ -88,6 +88,13 @@ export function Due(
  */
 export const YIELD_DESIRE = 0.52;
 
+/**
+ * Laning's last-hit bid (mode_laning_generic's 0.9, OWNERSHIP H2). Under the yield it follows our own read both ways: a creep the
+ * pick would take bids it, so the hero comes back from whatever mode took it (lhrig1_g_s30: on OHA's read alone, creeps within 800,
+ * Sniper never left the rig's idle hold after a yield and took no last hit in 17 reps).
+ */
+export const LAST_HIT_DESIRE = 0.9;
+
 export interface YieldFacts {
     /** Our wave hold runs (states/wave_hold's hold point is set). */
     hold: boolean;
