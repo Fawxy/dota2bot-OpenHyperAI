@@ -432,6 +432,25 @@ export const EVENTS = {
         /** Spawn box, second y edge. */
         y1: "num",
     },
+    /** Overrides.VisionMap (probe games only, `vision_map.ts`): the map's height grid and trees for a sight model. `kind`
+     *  start (the box and `step`, `src` api | fallback), h (a row: `y`, `x0`, `n` cells, `hex` one digit a cell, the
+     *  height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`). */
+    vmap: {
+        kind: "str",
+        bx0: "num",
+        by0: "num",
+        bx1: "num",
+        by1: "num",
+        step: "num",
+        src: "str",
+        y: "num",
+        x0: "num",
+        n: "num",
+        hex: "str",
+        xy: "str",
+        rows: "num",
+        trees: "num",
+    },
     /** Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once a second, the truth for the other team's
      *  `apiprobe_enemy` row of the same second. -1 is a nil read, -2 a failed one. */
     apiprobe_own: {

@@ -266,6 +266,22 @@ ____exports.EVENTS = {
         x1 = "num",
         y1 = "num"
     },
+    vmap = {
+        kind = "str",
+        bx0 = "num",
+        by0 = "num",
+        bx1 = "num",
+        by1 = "num",
+        step = "num",
+        src = "str",
+        y = "num",
+        x0 = "num",
+        n = "num",
+        hex = "str",
+        xy = "str",
+        rows = "num",
+        trees = "num"
+    },
     apiprobe_own = {
         team = "num",
         pid = "num",
