@@ -2,7 +2,7 @@
  * Lane management facade (task 07). Imports every lane module so their load-time registrations run;
  * later tasks add behaviour to Tick.
  */
-import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
@@ -44,83 +44,6 @@ export function Tick(bot: Unit): void {
         const state = LaneState.Describe(snapshot, LaneState.ScoreFor(bot, snapshot));
         HDebug.Text(bot, "lane", `${state} ${LanePlan.Describe(LanePlan.View(bot, snapshot))}`);
     }
-}
-
-/** Whether this bot's laning Think() is OHA's (decided once at mode-file load, like AllyLastHit.OwnsLaning). */
-export function OwnsLaning(bot: Unit): boolean {
-    return LaneTech.OwnsLaning(bot);
-}
-
-function mayTouchAny(bot: Unit, creeps: Unit[]): boolean {
-    for (const creep of creeps) if (!LaneMid.MayTouchWave(bot, creep)) return false;
-    return true;
-}
-
-/** False when any of these creeps is a human mid's wave this bot must leave alone (deny included). */
-export function MayDeny(bot: Unit, allyCreeps: Unit[]): boolean {
-    return mayTouchAny(bot, allyCreeps);
-}
-
-/** Runs before last hits; true means this frame's action is issued. */
-export function PreThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], lastHit?: LaneTech.LastHit): boolean {
-    if (!mayTouchAny(bot, enemyCreeps)) {
-        // Shedding tower aggro is safety, not a touch of the human's wave, but it may only hit creeps the bot may touch.
-        const touchable: Unit[] = [];
-        for (const c of allyCreeps) if (LaneMid.MayTouchWave(bot, c)) touchable.push(c);
-        return LaneTech.TowerDropThink(bot, touchable);
-    }
-    return LaneTech.PreThink(bot, allyCreeps, enemyCreeps, enemies, lastHit);
-}
-
-/** Runs after last hit and deny; true means this frame's action is issued. */
-export function Think(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[]): boolean {
-    if (!mayTouchAny(bot, enemyCreeps)) return false;
-    if (LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies)) return true;
-    return Counter.Think(bot, enemies);
-}
-
-/** Lane position override for the final move; returns `loc` itself when nothing applies. */
-export function AdjustPosition(bot: Unit, loc: Vector): Vector {
-    const override = LaneHooks.PositionOverride(bot, loc);
-    if (override !== loc) return override;
-    let adjusted = LaneTech.AdjustPosition(bot, loc);
-    if (adjusted === loc) adjusted = Counter.AdjustPosition(bot, loc);
-    if (adjusted !== loc || !LaneConfig.IsOn("Harass") || CampJobs.Covering(bot)) return adjusted;
-    const s = LaneState.ForBot(bot);
-    if (s === undefined || LanePlan.View(bot, s).handsOff) return loc;
-    const enemy = nearestVisibleEnemy(bot, s);
-    if (enemy === undefined) return loc;
-    return Harass.StandPoint(bot, enemy, s.ally.units) ?? loc;
-}
-
-function nearestVisibleEnemy(bot: Unit, s: LaneState.LaneSnapshot): Unit | undefined {
-    let best: Unit | undefined;
-    let bestDist = LaneConfig.Settings().Radii.LaneCreep;
-    for (const e of LaneState.Enemies(bot, s.lane)) {
-        if (!e.visible || e.unit === undefined) continue;
-        const d = GetUnitToLocationDistance(bot, e.location);
-        if (d < bestDist) {
-            best = e.unit;
-            bestDist = d;
-        }
-    }
-    return best;
-}
-
-export function PickDeny(bot: Unit, allyCreeps: Unit[]): Unit | undefined {
-    return LaneMid.PickDeny(bot, allyCreeps);
-}
-
-/** With Lane.Harass on, every bot whose laning Think() 04 or 07 owns uses the shared harass tool instead of 04's. */
-export function SupersedesHarass(_bot: Unit): boolean {
-    return LaneConfig.IsActive() && LaneConfig.IsOn("Harass");
-}
-
-/** 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human). */
-export function HarassThink(bot: Unit, allyCreeps: Unit[], enemyCreeps: Unit[], enemies: Unit[], etiquette: boolean): boolean {
-    // No trades while the support is away on a camp (CampJobs.CoverTick) or while caution suppresses them (task 12).
-    if (CampJobs.Covering(bot) || LaneHooks.TradesSuppressed(bot)) return false;
-    return Harass.Think(bot, allyCreeps, enemyCreeps, enemies, etiquette);
 }
 
 /** mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off). */

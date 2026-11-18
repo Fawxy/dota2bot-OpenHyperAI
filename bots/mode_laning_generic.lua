@@ -33,9 +33,6 @@ if Utils.BuggyHeroesDueToValveTooLazy[botName] then local_mode_laning_generic = 
 -- Think() below for the whole game. Decided once at load: Think() cannot hand control back to Valve later.
 local AllyLastHit = J.Humaniser.AllyLastHit
 local bHumaniserLaning = AllyLastHit.OwnsLaning(bot)
-local harassTarget = nil
-local harassStartTime = -90
-local lastHarassTime = -90
 
 -- An allied core (not this bot) that can take this creep itself: judged from the creep, so a core 800 away but in
 -- range of it keeps it, and one beside the bot but far from the creep does not.
@@ -58,17 +55,13 @@ local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
 local Etiquette = J.Humaniser.Etiquette
 local bEtiquette = Etiquette.Applies(bot)
 if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end
--- The humaniser's own changes to this Think() (the hold, reach judged from the creep) apply only where it owns the
--- laning; upstream's own cases keep upstream's behaviour with the humaniser off.
--- Humaniser lane management (task 07): in-lane techniques run inside this Think(); also decided once at load.
 local Lane = J.Humaniser.Lane
-local bLaneLaning = Lane.OwnsLaning(bot)
 -- Task 14 self-test: this bot times its last hits from the trainer's own start window.
 local Trainer = J.Humaniser.Trainer
 local bTrainerSelfTest = Trainer.IsSelfTestBot(bot)
 -- Humaniser last-hit accuracy (task 10) only acts where OHA owns this Think(); Valve's C++ laning cannot be changed.
 local LastHitSkill = J.Humaniser.LastHitSkill
-local bHumaniserOwned = bHumaniserLaning or bLaneLaning
+local bHumaniserOwned = bHumaniserLaning
 -- A creep no allied core will take: judged from the creep where the humaniser owns laning, else upstream's 700 radius.
 local function CoreLeaves(creep)
 	if bHumaniserOwned then return not CoreCanTake(creep) end
@@ -76,7 +69,7 @@ local function CoreLeaves(creep)
 end
 -- Behaviour states (team slice 1): the `laning` state's SDK body can replace PositionThink() below.
 local States = J.Humaniser.States
-local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette
+local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette
 LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
 function GetDesire()
@@ -239,55 +232,12 @@ function GetBestDenyCreep(hCreepList)
 	return nil
 end
 
--- Supports holding back for a human: one right-click on the nearest enemy laner every HarassInterval.
-local function HarassThink()
-	local s = AllyLastHit.Settings()
-	local now = GameTime()
-	if J.IsValidHero(harassTarget) and now - harassStartTime < s.HarassWindow and bot:GetLastAttackTime() < harassStartTime then
-		bot:Action_AttackUnit(harassTarget, true)
-		return true
-	end
-	harassTarget = nil
-	if now - lastHarassTime < s.HarassInterval or J.GetHP(bot) < s.HarassMinHP then return false end
-	if AllyLastHit.GetProtectedHuman(bot, bot:GetLocation()) == nil or not J.WeAreStronger(bot, 1200) then return false end
-
-	local nTowers = bot:GetNearbyTowers(1600, true)
-	local target, nTargetDist = nil, botAttackRange + s.HarassExtraRange
-	for _, enemy in pairs(nInRangeEnemy or {}) do
-		if J.IsValidHero(enemy) and not J.IsSuspiciousIllusion(enemy) and GetUnitToUnitDistance(bot, enemy) <= nTargetDist then
-			local bUnderTower = false
-			for _, tower in pairs(nTowers) do
-				if J.IsValidBuilding(tower) and (GetUnitToUnitDistance(tower, bot) < s.TowerAvoidRange or GetUnitToUnitDistance(tower, enemy) < s.TowerAvoidRange) then
-					bUnderTower = true
-				end
-			end
-			if not bUnderTower then
-				target, nTargetDist = enemy, GetUnitToUnitDistance(bot, enemy)
-			end
-		end
-	end
-	if target == nil then return false end
-
-	harassTarget, harassStartTime, lastHarassTime = target, now, now
-	bot:Action_AttackUnit(target, true)
-	return true
-end
-
 local bHoldingForLastHit = false
 local HOLD_MAX = 1.5
 local holdCreep, holdSince = nil, 0
 local function HoldingFor(creep)
 	if holdCreep ~= creep then holdCreep, holdSince = creep, DotaTime() end
 	return DotaTime() - holdSince < HOLD_MAX
-end
-
--- The last-hit state the in-lane techniques wait for, gated as LastHitThink gates the hit: 'kill' for a killable
--- creep in attack range, 'soon' for one about to be killable or still out of range, nil when none is ours.
-local function LastHitState()
-	local hc, bMoveTo = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
-	if not J.IsValid(hc) or not (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hc)) then return nil end
-	if bMoveTo or GetUnitToUnitDistance(bot, hc) > botAttackRange then return 'soon' end
-	return 'kill'
 end
 
 -- Laning Think() steps, each returning true when it issued an action. Kept separate so later humaniser work
@@ -322,8 +272,7 @@ end
 
 local function DenyThink()
 	if bTrainerSelfTest then return false end
-	if bLaneLaning and not Lane.MayDeny(bot, nAllyCreeps) then return false end
-	local denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)
+	local denyCreep = GetBestDenyCreep(nAllyCreeps)
 	if not J.IsValid(denyCreep) then return false end
 	bot:SetTarget(denyCreep)
 	bot:Action_AttackUnit(denyCreep, true)
@@ -343,7 +292,6 @@ local function PositionTarget()
 		target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
 	end
 
-	if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end
 	return target_loc
 end
 
@@ -388,13 +336,7 @@ if bOwnsThink then
 		if States.CoreAggroStep(bot) then return 'aggro' end
 		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
 		if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return 'etiquette' end
-		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
-		if bLaneLaning and not bTrainerSelfTest then
-			-- Aggro draws wait for a creep that is dying or about to be.
-			local sLastHit = LastHitState()
-			if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return 'lane_pre' end
-		end
 		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
 		-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
 		-- slice 4), it takes them and the denies itself in its Step below.
@@ -407,12 +349,6 @@ if bOwnsThink then
 				return 'oha_hold'
 			end
 		end
-		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return 'lane_think' end
-
-		if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
-			if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return 'harass' end
-		elseif bHumaniserLaning and HarassThink() then return 'harass' end
-
 		if local_mode_laning_generic then
 			local_mode_laning_generic.Think()
 		end

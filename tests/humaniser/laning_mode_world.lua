@@ -45,7 +45,7 @@ function LaningHero(o)
 	return h
 end
 
--- opts: pos, owned (Lane owns laning), ours (Ours.LeaveCoreCreep), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg,
+-- opts: pos, owned (the state layer may own the bot), humanTeam (a team with a human: AllyLastHit owns the laning), ours (Ours.LeaveCoreCreep), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg,
 -- modeFile (default bots/mode_laning_generic.lua).
 function LaningLoad(opts)
 	DotaTime = function() return opts.t or 120 end
@@ -89,21 +89,13 @@ function LaningLoad(opts)
 	local attempts = {}
 	local humaniser = {
 		AllyLastHit = {
-			OwnsLaning = function() return opts.etiquette == true end,
+			OwnsLaning = function() return opts.etiquette == true or opts.humanTeam == true end,
 			MayLastHit = function() return true, "free:test" end,
 			Settings = function() return {} end,
 			CoreCanReach = function(core, c) return dist(core:GetLocation(), c:GetLocation()) <= core:GetAttackRange() + 150 end,
 		},
 		Lane = {
-			OwnsLaning = function() return opts.owned == true end,
 			CampJobActive = function() return false end,
-			PreThink = function(_, _, _, _, lastHit) bot.preThinkLastHit = lastHit return false end,
-			Think = function() return false end,
-			MayDeny = function() return true end,
-			PickDeny = function() return nil end,
-			SupersedesHarass = function() return false end,
-			HarassThink = function() return false end,
-			AdjustPosition = function(_, loc) return loc end,
 		},
 		Trainer = { IsSelfTestBot = function() return false end },
 		LastHitSkill = {
@@ -125,7 +117,7 @@ function LaningLoad(opts)
 		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
 		CoreTrade = { LastHitYields = function() return opts.retreating == true end },
 		States = {
-			MayOwn = function() return false end, SetLaneSpot = function() end,
+			MayOwn = function() return opts.owned == true end, SetLaneSpot = function() end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
 			BodyBusy = function() return false end,
 			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the support's

@@ -355,11 +355,6 @@ export function Owns(bot: Unit): boolean {
     return role === "support" && coreAway(bot);
 }
 
-/** Whether the bot owns the move in principle (switch and role), so OHA's aggro pull stays off for it (lane_tech). */
-export function OwnsTechnique(bot: Unit): boolean {
-    return Ours.On("LaneAggro") && roleOf(bot) !== undefined;
-}
-
 function enemyHeroes(bot: Unit, r: number): Unit[] {
     const out: Unit[] = [];
     for (const h of bot.GetNearbyHeroes(r, true, BotMode.None)) if (valid(h) && !h.IsIllusion()) out.push(h);

@@ -6,7 +6,6 @@ local busyProbes = {}
 local override
 local fightProbes = {}
 local cautionProbe
-local positionProbe
 local tradeProbe
 local missingProbe
 local rotationDecidedProbe
@@ -75,13 +74,6 @@ end
 function ____exports.IsCautious(bot)
     return cautionProbe ~= nil and cautionProbe(bot)
 end
-function ____exports.SetPositionProbe(fn)
-    positionProbe = fn
-end
---- The final lane move point; `loc` itself when no probe applies.
-function ____exports.PositionOverride(bot, loc)
-    return positionProbe ~= nil and positionProbe(bot, loc) or loc
-end
 function ____exports.SetTradeProbe(fn)
     tradeProbe = fn
 end
@@ -109,7 +101,6 @@ function ____exports.ResetHooks()
     override = nil
     fightProbes = {}
     cautionProbe = nil
-    positionProbe = nil
     tradeProbe = nil
     missingProbe = nil
     rotationDecidedProbe = nil

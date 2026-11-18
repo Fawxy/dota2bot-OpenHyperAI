@@ -166,8 +166,6 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local LanePlan = require(GetScriptDirectory().."/FunLib/humaniser/lane_plan")
-local LaneMain = require(GetScriptDirectory().."/FunLib/humaniser/lane")
-local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Counter = require(GetScriptDirectory().."/FunLib/humaniser/counterplay")
 local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
@@ -213,7 +211,7 @@ local function forcedOf(bot)
     local pid = bot:GetPlayerID()
     local f = forced[pid]
     if f == nil then
-        f = {level = 0, levelUntil = -math.huge, pointUntil = -math.huge}
+        f = {level = 0, levelUntil = -math.huge}
         forced[pid] = f
     end
     return f
@@ -223,12 +221,6 @@ function ____exports.ForceLevel(bot, level, ____until)
     local f = forcedOf(bot)
     f.level = level
     f.levelUntil = ____until
-end
---- Holds the lane position at `point` (where OHA owns laning) until `until`; an undefined point clears it.
-function ____exports.ForceSetup(bot, point, ____until)
-    local f = forcedOf(bot)
-    f.point = point
-    f.pointUntil = ____until
 end
 function ____exports.IsAlone(bot, s)
     local pid = bot:GetPlayerID()
@@ -393,41 +385,6 @@ function ____exports.Level(bot)
     local f = forced[bot:GetPlayerID()]
     return f ~= nil and Settings.IsOn("Teleports") and now < f.levelUntil and math.max(applied, f.level) or applied
 end
-local function clamp01(v)
-    return v < 0 and 0 or (v > 1 and 1 or v)
-end
-local function towardTower(bot, loc, level)
-    local s = LaneState.ForBot(bot)
-    if s == nil then
-        return loc
-    end
-    local cfg = Settings.Get()
-    local tower = GetLocationAlongLane(
-        s.lane,
-        clamp01(Camps.ToAbsAmount(s.team, s.ourTowerAmount))
-    )
-    local d = dist2D(loc, tower)
-    if d <= 0 then
-        return loc
-    end
-    local step = math.min(d, cfg.OffsetMin + (cfg.OffsetMax - cfg.OffsetMin) * level)
-    return Vector(loc.x + (tower.x - loc.x) / d * step, loc.y + (tower.y - loc.y) / d * step, loc.z)
-end
---- Lane position override (plan call 6); returns `loc` itself when caution does not apply.
-function ____exports.AdjustPosition(bot, loc)
-    local f = forced[bot:GetPlayerID()]
-    if f ~= nil and f.point ~= nil and Settings.IsOn("Teleports") and DotaTime() < f.pointUntil and Phase.LaningHeld(bot) then
-        return LaneMain.OwnsLaning(bot) and f.point or loc
-    end
-    if not Settings.IsOn("Caution") then
-        return loc
-    end
-    local level = ____exports.Level(bot)
-    if level <= 0 or not LaneMain.OwnsLaning(bot) then
-        return loc
-    end
-    return towardTower(bot, loc, level)
-end
 function ____exports.SuppressTrades(bot)
     if ____exports.Level(bot) < Settings.Get().SuppressLevel then
         return false
@@ -529,7 +486,6 @@ function ____exports.Tick(bot)
 end
 function ____exports.RegisterProbes()
     LaneHooks.SetCautionProbe(function(bot) return ____exports.Level(bot) > 0 end)
-    LaneHooks.SetPositionProbe(____exports.AdjustPosition)
     LaneHooks.SetTradeProbe(____exports.SuppressTrades)
     LaneHooks.SetMissingProbe(____exports.MissingNow)
 end

@@ -215,8 +215,6 @@ do
 	check("laning deny pin", has(laning, "LastHitSkill.WillKill(bot, creep, attackDamage, 0, true)"))
 	check("laning owner noted at load", has(laning, "LastHitSkill.NoteLaningOwner(bot, bOwnsThink)"))
 	check("laning bare kill checks gone", not has(laning, "J.WillKillTarget(creep, attackDamage"))
-	local mid = source("bots/FunLib/humaniser/lane_mid.lua")
-	check("mid ranged deny pin", has(mid, "LastHitSkill.WillKill("))
 end
 
 do

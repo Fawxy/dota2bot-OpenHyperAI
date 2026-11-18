@@ -79,8 +79,8 @@ export const BOT = {
     /**
      * Which step of mode_laning_generic's Think acted most recently since the previous snapshot (slice step-telemetry): `body_hit`
      * the laning body's running last-hit or deny swing, `support` a support's lane steps (states/support_lane), `aggro` lane
-     * aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `lane_pre` / `lane_think` / `harass`
-     * the older humaniser Lane paths, `oha_lh` / `oha_deny` / `oha_hold` OHA's last hit, deny and hold-for-the-hit, `body` the
+     * aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `oha_lh` / `oha_deny` / `oha_hold` OHA's
+     * last hit, deny and hold-for-the-hit, `body` the
      * laning body's step, `oha_pos` OHA's PositionThink; `none` when the Lua Think did not run since the previous snapshot,
      * `valve` for a bot whose laning is Valve's C++ one (no Lua Think). Bots only.
      */

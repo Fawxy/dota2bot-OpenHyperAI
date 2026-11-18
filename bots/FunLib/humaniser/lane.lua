@@ -1,6 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local nearestVisibleEnemy
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -23,31 +22,6 @@ local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local ____commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
 local teamMembers = ____commands.teamMembers
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
-function nearestVisibleEnemy(bot, s)
-    local best
-    local bestDist = LaneConfig.Settings().Radii.LaneCreep
-    for ____, e in ipairs(LaneState.Enemies(bot, s.lane)) do
-        do
-            local __continue28
-            repeat
-                if not e.visible or e.unit == nil then
-                    __continue28 = true
-                    break
-                end
-                local d = GetUnitToLocationDistance(bot, e.location)
-                if d < bestDist then
-                    best = e.unit
-                    bestDist = d
-                end
-                __continue28 = true
-            until true
-            if not __continue28 then
-                break
-            end
-        end
-    end
-    return best
-end
 ____exports.Config = LaneConfig
 ____exports.Hooks = LaneHooks
 ____exports.Camps = Camps
@@ -88,94 +62,6 @@ function ____exports.Tick(bot)
             (state .. " ") .. LanePlan.Describe(LanePlan.View(bot, snapshot))
         )
     end
-end
---- Whether this bot's laning Think() is OHA's (decided once at mode-file load, like AllyLastHit.OwnsLaning).
-function ____exports.OwnsLaning(bot)
-    return LaneTech.OwnsLaning(bot)
-end
-local function mayTouchAny(bot, creeps)
-    for ____, creep in ipairs(creeps) do
-        if not LaneMid.MayTouchWave(bot, creep) then
-            return false
-        end
-    end
-    return true
-end
---- False when any of these creeps is a human mid's wave this bot must leave alone (deny included).
-function ____exports.MayDeny(bot, allyCreeps)
-    return mayTouchAny(bot, allyCreeps)
-end
---- Runs before last hits; true means this frame's action is issued.
-function ____exports.PreThink(bot, allyCreeps, enemyCreeps, enemies, lastHit)
-    if not mayTouchAny(bot, enemyCreeps) then
-        local touchable = {}
-        for ____, c in ipairs(allyCreeps) do
-            if LaneMid.MayTouchWave(bot, c) then
-                touchable[#touchable + 1] = c
-            end
-        end
-        return LaneTech.TowerDropThink(bot, touchable)
-    end
-    return LaneTech.PreThink(
-        bot,
-        allyCreeps,
-        enemyCreeps,
-        enemies,
-        lastHit
-    )
-end
---- Runs after last hit and deny; true means this frame's action is issued.
-function ____exports.Think(bot, allyCreeps, enemyCreeps, enemies)
-    if not mayTouchAny(bot, enemyCreeps) then
-        return false
-    end
-    if LaneTech.Think(bot, allyCreeps, enemyCreeps, enemies) then
-        return true
-    end
-    return Counter.Think(bot, enemies)
-end
---- Lane position override for the final move; returns `loc` itself when nothing applies.
-function ____exports.AdjustPosition(bot, loc)
-    local override = LaneHooks.PositionOverride(bot, loc)
-    if override ~= loc then
-        return override
-    end
-    local adjusted = LaneTech.AdjustPosition(bot, loc)
-    if adjusted == loc then
-        adjusted = Counter.AdjustPosition(bot, loc)
-    end
-    if adjusted ~= loc or not LaneConfig.IsOn("Harass") or CampJobs.Covering(bot) then
-        return adjusted
-    end
-    local s = LaneState.ForBot(bot)
-    if s == nil or LanePlan.View(bot, s).handsOff then
-        return loc
-    end
-    local enemy = nearestVisibleEnemy(bot, s)
-    if enemy == nil then
-        return loc
-    end
-    return Harass.StandPoint(bot, enemy, s.ally.units) or loc
-end
-function ____exports.PickDeny(bot, allyCreeps)
-    return LaneMid.PickDeny(bot, allyCreeps)
-end
---- With Lane.Harass on, every bot whose laning Think() 04 or 07 owns uses the shared harass tool instead of 04's.
-function ____exports.SupersedesHarass(_bot)
-    return LaneConfig.IsActive() and LaneConfig.IsOn("Harass")
-end
---- 04's Harass step for a superseded bot; `etiquette` is true when 04 owns the bot (an ally of a human).
-function ____exports.HarassThink(bot, allyCreeps, enemyCreeps, enemies, etiquette)
-    if CampJobs.Covering(bot) or LaneHooks.TradesSuppressed(bot) then
-        return false
-    end
-    return Harass.Think(
-        bot,
-        allyCreeps,
-        enemyCreeps,
-        enemies,
-        etiquette
-    )
 end
 --- mode_farm_generic GetDesire: a camp job's desire, 0 when no job runs (and before any engine call when off).
 function ____exports.CampJobDesire(bot)
@@ -261,10 +147,10 @@ local function nearestBot(team, issuer)
     local bestDist = math.huge
     for ____, member in ipairs(teamMembers(team)) do
         do
-            local __continue54
+            local __continue25
             repeat
                 if not member:IsBot() or not member:IsAlive() then
-                    __continue54 = true
+                    __continue25 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -275,9 +161,9 @@ local function nearestBot(team, issuer)
                     best = member
                     bestDist = d
                 end
-                __continue54 = true
+                __continue25 = true
             until true
-            if not __continue54 then
+            if not __continue25 then
                 break
             end
         end

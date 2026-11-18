@@ -10,8 +10,6 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as LanePlan from "bots/FunLib/humaniser/lane_plan";
-import * as LaneMain from "bots/FunLib/humaniser/lane";
-import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Counter from "bots/FunLib/humaniser/counterplay";
 import * as Orders from "bots/FunLib/humaniser/orders";
@@ -59,8 +57,6 @@ interface Episode {
 interface Forced {
     level: number;
     levelUntil: number;
-    point?: Vector;
-    pointUntil: number;
 }
 
 let states: Record<number, State> = {};
@@ -77,7 +73,7 @@ function forcedOf(bot: Unit): Forced {
     const pid = bot.GetPlayerID();
     let f = forced[pid];
     if (f === undefined) {
-        f = { level: 0, levelUntil: -math.huge, pointUntil: -math.huge };
+        f = { level: 0, levelUntil: -math.huge };
         forced[pid] = f;
     }
     return f;
@@ -88,13 +84,6 @@ export function ForceLevel(bot: Unit, level: number, until: number): void {
     const f = forcedOf(bot);
     f.level = level;
     f.levelUntil = until;
-}
-
-/** Holds the lane position at `point` (where OHA owns laning) until `until`; an undefined point clears it. */
-export function ForceSetup(bot: Unit, point: Vector | undefined, until: number): void {
-    const f = forcedOf(bot);
-    f.point = point;
-    f.pointUntil = until;
 }
 
 function dist2D(a: Vector, b: Vector): number {
@@ -218,31 +207,6 @@ export function Level(bot: Unit): number {
     return f !== undefined && Settings.IsOn("Teleports") && now < f.levelUntil ? math.max(applied, f.level) : applied;
 }
 
-function clamp01(v: number): number {
-    return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
-function towardTower(bot: Unit, loc: Vector, level: number): Vector {
-    const s = LaneState.ForBot(bot);
-    if (s === undefined) return loc;
-    const cfg = Settings.Get();
-    const tower = GetLocationAlongLane(s.lane, clamp01(Camps.ToAbsAmount(s.team, s.ourTowerAmount)));
-    const d = dist2D(loc, tower);
-    if (d <= 0) return loc;
-    const step = math.min(d, cfg.OffsetMin + (cfg.OffsetMax - cfg.OffsetMin) * level);
-    return Vector(loc.x + ((tower.x - loc.x) / d) * step, loc.y + ((tower.y - loc.y) / d) * step, loc.z);
-}
-
-/** Lane position override (plan call 6); returns `loc` itself when caution does not apply. */
-export function AdjustPosition(bot: Unit, loc: Vector): Vector {
-    const f = forced[bot.GetPlayerID()];
-    if (f !== undefined && f.point !== undefined && Settings.IsOn("Teleports") && DotaTime() < f.pointUntil && Phase.LaningHeld(bot)) return LaneMain.OwnsLaning(bot) ? f.point : loc;
-    if (!Settings.IsOn("Caution")) return loc;
-    const level = Level(bot);
-    if (level <= 0 || !LaneMain.OwnsLaning(bot)) return loc;
-    return towardTower(bot, loc, level);
-}
-
 export function SuppressTrades(bot: Unit): boolean {
     if (Level(bot) < Settings.Get().SuppressLevel) return false;
     const stronger = LaneConfig.Helpers().WeAreStronger;
@@ -311,7 +275,6 @@ export function Tick(bot: Unit): void {
 
 export function RegisterProbes(): void {
     LaneHooks.SetCautionProbe(bot => Level(bot) > 0);
-    LaneHooks.SetPositionProbe(AdjustPosition);
     LaneHooks.SetTradeProbe(SuppressTrades);
     LaneHooks.SetMissingProbe(MissingNow);
 }

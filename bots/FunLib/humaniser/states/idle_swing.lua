@@ -13,6 +13,7 @@ local Team = ____dota.Team
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
+local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 --- Dota lets a hero attack its own creep below half HP (the deny rule).
 ____exports.DENY_FRACTION = 0.5
@@ -519,7 +520,6 @@ local function findSetup(bot, me, verbs)
     return {bestNote, best}
 end
 local function findShove(bot)
-    local LaneTech = require(GetScriptDirectory().."/FunLib/humaniser/lane_tech")
     local near = {}
     local speed = math.max(
         100,

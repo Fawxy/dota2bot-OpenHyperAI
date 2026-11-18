@@ -230,19 +230,19 @@ function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue132
+            local __continue131
             repeat
                 if not valid(c) then
-                    __continue132 = true
+                    __continue131 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue132 = true
+                __continue131 = true
             until true
-            if not __continue132 then
+            if not __continue131 then
                 break
             end
         end
@@ -539,10 +539,6 @@ function ____exports.Owns(bot)
     end
     return role == "support" and coreAway(bot)
 end
---- Whether the bot owns the move in principle (switch and role), so OHA's aggro pull stays off for it (lane_tech).
-function ____exports.OwnsTechnique(bot)
-    return Ours.On("LaneAggro") and roleOf(bot) ~= nil
-end
 local function enemyHeroes(bot, r)
     local out = {}
     for ____, h in ipairs(bot:GetNearbyHeroes(r, true, BotMode.None)) do
@@ -581,11 +577,11 @@ local function towerNear(at, team, r)
     local bestD = r
     for ____, id in ipairs(TOWERS) do
         do
-            local __continue54
+            local __continue53
             repeat
                 local t = GetTower(team, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue54 = true
+                    __continue53 = true
                     break
                 end
                 local d = d2(
@@ -596,9 +592,9 @@ local function towerNear(at, team, r)
                     best = t
                     bestD = d
                 end
-                __continue54 = true
+                __continue53 = true
             until true
-            if not __continue54 then
+            if not __continue53 then
                 break
             end
         end
@@ -621,10 +617,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue61
+            local __continue60
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue61 = true
+                    __continue60 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -632,9 +628,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue61 = true
+                __continue60 = true
             until true
-            if not __continue61 then
+            if not __continue60 then
                 break
             end
         end
@@ -647,19 +643,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue66
+                local __continue65
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue66 = true
+                        __continue65 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue66 = true
+                    __continue65 = true
                 until true
-                if not __continue66 then
+                if not __continue65 then
                     break
                 end
             end
@@ -816,10 +812,10 @@ local function tryFeed(bot, heroes, now)
     local none = "none"
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, false)) do
         do
-            local __continue98
+            local __continue97
             repeat
                 if not valid(c) or not isLaneCreep(c) or not isRanged(c) then
-                    __continue98 = true
+                    __continue97 = true
                     break
                 end
                 if fed[c] == true then
@@ -829,9 +825,9 @@ local function tryFeed(bot, heroes, now)
                 else
                     ranged = c
                 end
-                __continue98 = true
+                __continue97 = true
             until true
-            if not __continue98 then
+            if not __continue97 then
                 break
             end
         end
@@ -1132,7 +1128,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue180
+                    local __continue179
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1140,16 +1136,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue180 = true
+                            __continue179 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue180 = true
+                        __continue179 = true
                     until true
-                    if not __continue180 then
+                    if not __continue179 then
                         break
                     end
                 end
