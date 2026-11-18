@@ -705,6 +705,20 @@ local function laneHit(bot, chosen, current, pre)
         return nil
     end
     local pid = bot:GetPlayerID()
+    local stale = heroHits[pid]
+    if stale ~= nil then
+        heroHits[pid] = nil
+        laneHitEvent(
+            bot,
+            "end",
+            "dropped",
+            stale.hero,
+            {{
+                "dt",
+                math.floor((DotaTime() - stale.t) * 100) / 100
+            }}
+        )
+    end
     local hero = heroInRange(bot)
     if hero == nil then
         lastHitWhy[pid] = nil

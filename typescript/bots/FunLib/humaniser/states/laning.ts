@@ -480,6 +480,12 @@ function laneHit(
 ): Lib.Verbs.LaneTarget | undefined {
     if (!Ours.On("LaneHit") || !OwnsLastHit(bot)) return undefined;
     const pid = bot.GetPlayerID();
+    // A hit whose attempt never reported: another mode took the hero (lhchk1 t=144.3, the trade reopened) and the body was dropped.
+    const stale = heroHits[pid];
+    if (stale !== undefined) {
+        heroHits[pid] = undefined;
+        laneHitEvent(bot, "end", "dropped", stale.hero, [["dt", math.floor((DotaTime() - stale.t) * 100) / 100]]);
+    }
     const hero = heroInRange(bot);
     if (hero === undefined) {
         lastHitWhy[pid] = undefined;
