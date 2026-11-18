@@ -349,7 +349,7 @@ function roleOf(bot: Unit): "core" | "support" | undefined {
 
 /** Whether this module may act for the bot now (the switch, laning phase, a core, or a support whose core is away). */
 export function Owns(bot: Unit): boolean {
-    if (!Ours.On("LaneAggro") || !bot.IsAlive() || !Phase.IsLaningFor(bot)) return false;
+    if (!Ours.On("LaneAggro") || !bot.IsAlive() || !Phase.LaningHeld(bot)) return false;
     const role = roleOf(bot);
     if (role === "core") return true;
     return role === "support" && coreAway(bot);

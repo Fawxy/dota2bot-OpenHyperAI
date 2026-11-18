@@ -39,11 +39,10 @@ end
 do
 	local H, bot = world(true)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
-	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	local arb = capture(function()
 		check("drive: the first laning read owns the hero", Arb.Owned(bot) == true)
 		T = T + 5
-		check("drive: no read for 5 s, still owned (no stale blank)", Arb.Owned(bot) == true and Phase.LaningTransitionsSeen(bot) ~= false)
+		check("drive: no read for 5 s, still owned (no stale blank)", Arb.Owned(bot) == true)
 		LANING = false
 		T = T + 1
 		check("drive: the clock exit ends ownership", Arb.Owned(bot) == false)
@@ -55,11 +54,11 @@ do
 		and arb[2]:find("why=clock", 1, true), table.concat(arb, "\n"))
 end
 
--- Switch off: ownership is the stored laning read, as the shadow had it.
+-- Switch off: the hold still names the hero (the shadow reasons about it), but every mode is OHA's.
 do
 	local H, bot = world(false)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
-	check("drive off: a hero whose laning read nobody made is not owned", Arb.Owned(bot) == false)
+	check("drive off: owned by the laning hold", Arb.Owned(bot) == true)
 	local v, called = gated(H, bot, "roam")
 	check("drive off: roam runs OHA's code", v == 0.5 and called)
 	check("drive off: the complete-items TP is OHA's", Arb.DeniesItemsTp(bot) == false)

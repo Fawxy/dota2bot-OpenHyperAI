@@ -312,7 +312,7 @@ local function frac(u)
 end
 --- Whether the hold may act for this bot: the switches, an in-lane core under CoreLastHit with our spot.
 function ____exports.Owns(bot)
-    return Ours.On("CoreHold") and Ours.On("LaneSpot") and CoreLastHit.Applies(bot) and bot:IsAlive() and Phase.IsLaningFor(bot)
+    return Ours.On("CoreHold") and Ours.On("LaneSpot") and CoreLastHit.Applies(bot) and bot:IsAlive() and Phase.LaningHeld(bot)
 end
 local T1_OF = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
 --- Our T1's reach on this lane from the API, with a creep of theirs (when one is in view) for the creep hull.

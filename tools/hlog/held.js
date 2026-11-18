@@ -1,6 +1,7 @@
 // How much of the first ten minutes our side's heroes were held by our code, and what happened under each driver (master
-// ARCHITECTURE.md, Measures). Our code holds a hero from its `ev=arb ph=own` until `ev=arb ph=end why=<clock|tower|lost>`
-// (Phase.LaningHeld); outside that OHA's own modes play it. Ours is the label's seat (_rad_ / _dire_), as ledger.js.
+// ARCHITECTURE.md, Measures). Our code holds a hero from its `ev=arb ph=own` until `ev=arb ph=end why=<clock|tower>`
+// (Phase.LaningHeld); outside that OHA's own modes play it. `why=lost` appears only in logs from before 19/11/2026 (slice
+// oha-no-lost-lane) and is still read from them. Ours is the label's seat (_rad_ / _dire_), as ledger.js.
 // Usage: node held.js <run> [<run> ...] [--at 600] [--json] [--no-ingest]
 //   Held share   hero-seconds under the hold out of hero-seconds from 0:00 to --at (default 10:00), the team and by position.
 //                A hero with no ph=own line is never held. Dead time counts as held while the hold has not ended.

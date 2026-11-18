@@ -1008,7 +1008,7 @@ function ____exports.Spec(bot)
         host = BotMode.Laning,
         floor = 0,
         preemptAfter = 3,
-        score = function() return Phase.IsLaningFor(bot) and 0.5 or nil end,
+        score = function() return Phase.LaningHeld(bot) and 0.5 or nil end,
         body = function(ctx) return body(bot, ctx) end
     }
 end

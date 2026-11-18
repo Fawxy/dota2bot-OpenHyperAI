@@ -240,12 +240,13 @@ do
 	w.H.Transitions.Tick(w.core)
 	check("precondition: backing off", near(w.C.Level(w.core), 1))
 	LANING = false
-	T = 300.6
+	-- The hold's next check (one a second).
+	T = 301.1
 	w.H.Transitions.Tick(w.core)
 	check("laning ends: the caution claim is released", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	-- Only the cleared forced state can tell here: the window would still be open had it been left.
 	LANING = nil
-	T = 301.2
+	T = 301.7
 	check("laning ends: the forced level is cleared", w.C.Level(w.core) == 0, w.C.Level(w.core))
 end
 

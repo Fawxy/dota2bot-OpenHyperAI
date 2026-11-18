@@ -69,7 +69,7 @@ export function RotateScore(bot: Unit): number | undefined {
 export function FarmScore(bot: Unit): number | undefined {
     if (!FarmPattern.IsActive()) return undefined;
     if (FarmPattern.Current(bot) !== undefined) return TRIP;
-    if (Phase.IsLaningFor(bot)) return undefined;
+    if (Phase.LaningHeld(bot)) return undefined;
     return FarmPattern.Eligible(bot) === undefined ? FARM : undefined;
 }
 

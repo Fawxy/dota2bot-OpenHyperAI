@@ -303,7 +303,7 @@ function ____exports.Tick(bot)
         return
     end
     checkAt[pid] = now + Settings.Get().Refresh
-    if not Phase.LaningTransitions(bot) then
+    if not Phase.LaningHeld(bot) then
         if reactions[pid] ~= nil then
             __TS__Delete(reactions, pid)
             Caution.ForceLevel(bot, 0, -math.huge)
