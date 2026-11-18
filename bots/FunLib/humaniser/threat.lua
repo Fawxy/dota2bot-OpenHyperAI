@@ -158,6 +158,8 @@ ____exports.SETTINGS = {
     StandHp = 0.5,
     PackBurst = 0.5,
     PackHp = 0.7,
+    StayHorizon = 2,
+    StayEngaged = 6,
     LogEvery = 5
 }
 local TOWER_IDS = {

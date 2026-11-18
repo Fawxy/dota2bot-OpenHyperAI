@@ -150,7 +150,7 @@ function GetDesire()
 			if J.IsValid(hitCreep) then
 				if (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
-				and not J.Humaniser.CoreTrade.LastHitYields(bot) -- nor a retreat, kill or fight our core is already in (Ours.CoreLastHit), or a support's running kill, fight or join (Ours.SupportLaneFight)
+				and not J.Humaniser.Trade.LastHitYields(bot) -- nor a retreat, kill or join our laner is already in (Ours.Trade)
 				then
 					return 0.9
 				end
@@ -305,7 +305,7 @@ local Telemetry = J.Humaniser.Telemetry
 Telemetry.NoteLaneThink(bot, bOwnsThink)
 
 -- A support whose body owns its lane hits but not its harass keeps OHA's positioning: the body's hold would cancel its
--- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With Ours.SupportHarass its hold is a support_lane
+-- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With SupportDeny and LaneSpot its hold is a support_lane
 -- step, which Think runs first, so this runs for it only on a frame the body is not running or its task is guarded.
 local function BodyOrPositionThink()
 	if not States.BodySupportHits(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body' end

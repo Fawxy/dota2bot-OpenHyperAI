@@ -1,5 +1,5 @@
 /**
- * The enemy last-hit attempt read: which of our creeps an enemy hero is about to kill (fight_read's `lastHit` input).
+ * The enemy last-hit attempt read: which of our creeps an enemy hero is about to kill.
  */
 import { DamageType, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";

@@ -1781,9 +1781,6 @@ function pairFacts(bot, ally, foe)
     if #theirs == 0 then
         return "pairhit"
     end
-    if #theirs > #ours then
-        return "outnum"
-    end
     local function share(from, on)
         local best = 0
         for ____, o in ipairs(on) do
@@ -1963,7 +1960,7 @@ ____exports.TABLE = {
         rep = {every = 120, from = 0},
         rig = {
             half = "decision",
-            switch = "CoreTrade",
+            switch = "Trade",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, sidenear = {"r:bot1", -2250, 700}, beside = {"r:bot1", -2600, 700}},
             timeout = 100,
@@ -1985,7 +1982,7 @@ ____exports.TABLE = {
         rep = {every = 120, from = 0},
         rig = {
             half = "execution",
-            switch = "PairJoin",
+            switch = "Trade",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, behind = {"r:bot1", -2750, 300}, foe = {"r:bot1", -2750, 1200}, away = {"r:bot1", -2750, 3200}},
             timeout = 90,
@@ -1995,13 +1992,13 @@ ____exports.TABLE = {
         }
     },
     ["kill-reach"] = {
-        note = "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 950 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 950 west, beyond the Lich (two against one; the head count is gone, so the walk's burst decides); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast = SAFE_CORE,
         others = "bench",
         rep = {every = 120, from = 0},
         rig = {
             half = "execution",
-            switch = "KillReach",
+            switch = "Trade",
             window = 600,
             spots = {side = {"r:bot1", -2750, 700}, low = {"r:bot1", -3350, 700}, foe = {"r:bot1", -3700, 700}, away = {"r:bot1", -4150, 700}},
             timeout = 95,
@@ -2130,13 +2127,13 @@ ____exports.TABLE = {
         }
     },
     ["support-kill-reach"] = {
-        note = "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (outnumbered); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (two against one; the head count is gone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast = {r = {5}},
         others = "bench",
         rep = {every = 120, from = 0},
         rig = {
             half = "execution",
-            switch = "SupportLaneFight",
+            switch = "Trade",
             window = 600,
             spots = {
                 side = {"r:bot1", -2750, 700},
@@ -3006,10 +3003,10 @@ local function rigTrace(bot, st, secs)
     local near
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue373
+            local __continue372
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > RIG_TRACE_REACH then
-                    __continue373 = true
+                    __continue372 = true
                     break
                 end
                 n = n + 1
@@ -3017,9 +3014,9 @@ local function rigTrace(bot, st, secs)
                 if near == nil or GetUnitToUnitDistance(bot, h) < GetUnitToUnitDistance(bot, near) then
                     near = h
                 end
-                __continue373 = true
+                __continue372 = true
             until true
-            if not __continue373 then
+            if not __continue372 then
                 break
             end
         end

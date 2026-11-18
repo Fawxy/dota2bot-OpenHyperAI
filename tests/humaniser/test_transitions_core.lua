@@ -160,7 +160,6 @@ local function cautionScenario(tcfg)
 	T = 300.6
 	H.Transitions.Tick(core)
 	local r = {
-		suppressed = H.Lane.Hooks.TradesSuppressed(core),
 		cautious = H.Lane.Hooks.IsCautious(core),
 		claim = claimed(H, core, "transitions:caution", BotMode.Retreat),
 		scans = scans(),
@@ -235,10 +234,10 @@ end
 
 do
 	local on, off = cautionScenario({ Enable = true }), cautionScenario({ Enable = false })
-	check("caution (enabled): trades suppressed, plan cautious, retreat claim", on.suppressed and on.cautious and on.claim and on.scans)
-	check("caution (disabled): same table back, trades allowed, not cautious, no claim, no scans", not off.suppressed and not off.cautious and not off.claim and not off.scans, tostring(off.moved)..tostring(off.suppressed)..tostring(off.cautious)..tostring(off.claim)..tostring(off.scans))
+	check("caution (enabled): plan cautious, retreat claim", on.cautious and on.claim and on.scans)
+	check("caution (disabled): same table back, not cautious, no claim, no scans", not off.cautious and not off.claim and not off.scans, tostring(off.moved)..tostring(off.cautious)..tostring(off.claim)..tostring(off.scans))
 	local flagOff = cautionScenario({ Enable = true, Caution = false })
-	check("Caution off: upstream", not flagOff.suppressed and not flagOff.cautious and not flagOff.claim)
+	check("Caution off: upstream", not flagOff.cautious and not flagOff.claim)
 end
 
 do
@@ -264,7 +263,7 @@ do
 	check("self-test pos 5: no lane ward pick or claim", not wardScenario({ Enable = true }).picked)
 	SELF_TEST = 1
 	local c = cautionScenario({ Enable = true })
-	check("self-test core: no trade suppression or claim", not c.suppressed and not c.cautious and not c.claim)
+	check("self-test core: no caution or claim", not c.cautious and not c.claim)
 	local tp = teleportScenario({ Enable = true })
 	check("self-test core: no TP back-off", tp.level == 0 and not tp.claim, tp.level)
 	SELF_TEST = nil

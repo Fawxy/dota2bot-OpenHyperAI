@@ -69,11 +69,9 @@ end
 do
 	local H, bot = world(true)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
-	local Fight = require("bots/FunLib/humaniser/lane_fight")
+	local Trade = require("bots/FunLib/humaniser/states/trade")
 	local trading = false
 	Trade.Running = function() return trading end
-	Fight.CurrentPhase = function() return "idle" end
 	capture(function()
 		check("lane pick", Arb.Drive(bot, nil).name == "lane")
 		for _, m in ipairs(DENIED) do
@@ -96,10 +94,7 @@ do
 		v = gated(H, bot, "attack")
 		check("lane pick, borrowed attack keeps its desire once its GetDesire opened a trade", v == 0.5, tostring(v))
 		v, called = gated(H, bot, "team_roam")
-		check("lane pick, team roam held at 0 with no fight", v == 0 and called, tostring(v))
-		Fight.CurrentPhase = function() return "commit" end
-		v = gated(H, bot, "team_roam")
-		check("team roam keeps its desire while our fight commits", v == 0.5, tostring(v))
+		check("lane pick, team roam's own code runs and its desire is held at 0", v == 0 and called, tostring(v))
 		check("the complete-items TP is denied for an owned hero", Arb.DeniesItemsTp(bot) == true)
 		check("OHA's own river-rune and shrine reasons are denied for an owned hero", Arb.DeniesOhaRune(bot) == true)
 	end)
@@ -111,9 +106,7 @@ do
 	local H, bot = world(true)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
 	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
-	local Fight = require("bots/FunLib/humaniser/lane_fight")
-	Fight.CurrentPhase = function() return "idle" end
+	local Trade = require("bots/FunLib/humaniser/states/trade")
 	Trade.Running = function() return false end
 	capture(function()
 		Arb.Owned(bot)
@@ -150,22 +143,6 @@ do
 	local rune = { name = "job", group = 6, host = "rune", applies = true }
 	check("job hosted in rune: rune runs, farm 0", Arb.DriveDecide(bot, "rune", rune, farm) == nil
 		and Arb.DriveDecide(bot, "farm", rune, function() return 0.92 end) == 0)
-end
--- A core waiting for its partner's commit keeps laning (lane_fight: a wait posts no floor): the lane stays the pick.
-do
-	local H, bot = world(true)
-	local Arb = require("bots/FunLib/humaniser/arbiter")
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
-	local Fight = require("bots/FunLib/humaniser/lane_fight")
-	Trade.Running = function() return false end
-	Fight.CurrentPhase = function() return "wait_partner" end
-	capture(function()
-		check("wait for the partner: the lane is the pick", Arb.Drive(bot, nil).name == "lane")
-		local v, called = gated(H, bot, "laning", 0.2)
-		check("wait for the partner: laning holds at the lane desire", v == Arb.SETTINGS.LaneDesire and called, tostring(v))
-		v = gated(H, bot, "team_roam")
-		check("wait for the partner: team roam 0", v == 0, tostring(v))
-	end)
 end
 -- A drill's lane-only hero is not driven: its laning holds it (only the thing under test acts).
 do

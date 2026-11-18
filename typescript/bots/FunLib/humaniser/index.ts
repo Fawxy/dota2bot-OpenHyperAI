@@ -14,7 +14,6 @@ import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
 import * as Pings from "bots/FunLib/humaniser/pings";
 import * as Commands from "bots/FunLib/humaniser/commands";
 import * as Lane from "bots/FunLib/humaniser/lane";
-import * as LaneFight from "bots/FunLib/humaniser/lane_fight";
 import * as Transitions from "bots/FunLib/humaniser/transitions/transitions";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
@@ -42,15 +41,15 @@ import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, LaneFight, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, CampClaims, Chooser, Overrides, Drill, CoreCamp, Arbiter };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, CampClaims, Chooser, Overrides, Drill, CoreCamp, Arbiter };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
 export { Tasks };
 import * as States from "bots/FunLib/humaniser/states/index";
 export { States };
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
-export { CoreTrade };
+import * as Trade from "bots/FunLib/humaniser/states/trade";
+export { Trade };
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";
@@ -134,7 +133,6 @@ function drawOverlay(bot: Unit): void {
         HDebug.Text(bot, "avoid", avoid !== undefined ? Orders.Describe(avoid) : "-");
         if (Transitions.IsActive()) HDebug.Text(bot, "phase", Transitions.Overlay(bot));
         if (Intent.IsActive()) HDebug.Text(bot, "intent", Intent.Explain(bot, bot.GetActiveMode()));
-        if (LaneFight.IsActive() && LaneFight.Config.AppliesTo(bot)) HDebug.Text(bot, "fight", LaneFight.Describe(bot));
         if (LastHitSkill.IsActiveFor(bot)) {
             const cs = LastHitSkill.Counts(bot);
             HDebug.Text(bot, "cs", string.format("e=%.3f attempts=%d misses=%d", LastHitSkill.ErrorWidth(bot), cs.attempts, cs.misses));
@@ -185,12 +183,11 @@ function stepsDue(): boolean {
 /**
  * The steps that run on the frames between: each names what a lower rate would lose. Every other step reads the world
  * ten times a second: the modes that act on them run 3 to 6 times a second, and a step that counts time in tenths
- * (the lane fight's enemy count, the cast poll, a teleport's settle) may be read a tick late.
+ * (a teleport's settle) may be read a tick late.
  */
 function frameSteps(this: void, bot: Unit): void {
     // A rig places and releases units to the frame; no drill, no step.
     if (Drill.Active() !== undefined) Drill.Tick(bot);
-    LaneFight.Frame(bot);
     // The trainer times a human's swings; off unless Trainer.Enable.
     if (Trainer.IsEnabled()) steps.trainer(bot);
     steps.telemetry(bot, telemetryContext, true);
@@ -228,7 +225,6 @@ function tick(this: void, bot: Unit): void {
     steps.pings(bot);
     steps.commands(bot);
     steps.lane(bot);
-    LaneFight.Tick(bot);
     Transitions.Tick(bot);
     steps.trainer(bot);
     steps.lastHit(bot);
@@ -273,19 +269,10 @@ if (Telemetry.GuardsEnabled()) {
         RuneContestDesire: zero,
         PreferStackedCamp: none,
     });
-    Telemetry.GuardModule("LaneFight", LaneFight, {
-        Tick: none,
-        Frame: none,
-        ReadFor: () => ({ noticed: false }),
-        CheckKill: none,
-        RoamDesire: arg2,
-        Think: no,
-        Target: none,
-    });
     Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none });
     Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, BodyBusy: no, BodySupportHits: no, BodySupportLastHits: no, SupportOwnsAttack: no, SupportStep: no });
     // An error hands the attack mode to OHA's port (undefined desire, port Think) and leaves laning's 0.9 as it was.
-    Telemetry.GuardModule("CoreTrade", CoreTrade, { Owns: no, Desire: none, OwnsFrame: no, Think: none, OnEnd: none, LastHitYields: no, TradeOwnsLaneRun: no, OwnsLaneFights: no });
+    Telemetry.GuardModule("Trade", Trade, { Owns: no, Desire: none, OwnsFrame: no, Think: none, OnEnd: none, LastHitYields: no, OwnsLaneRun: no, OwnsFights: no, Holds: none });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
     Telemetry.GuardModule("PairJoin", PairJoin, { Tick: none });
     // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.

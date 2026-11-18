@@ -1,32 +1,31 @@
 id: lane.trade.control-burst.001
 source: log
-ref: {log: 2026-11-15T02-09-50-h2htradecut1_B_rad_5.log, t: 68.300}
+ref:
+  log: 2026-11-15T02-09-50-h2htradecut1_B_rad_5.log
+  t: 68.3
 status: active
-control: {commit: 7d07d1a0, outcome: pass}
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose behind on 9 (hp 0.637 vs 0.838, creeps 2, tower 0); bu and tm from the retreat leave cut at the same moment (slice trade-safe).
-# core pid 4 on pid 9: 411 away, reach 748; HP 64% vs 84%; heroes 1 theirs, 1 ours; creeps near 2, on the bot 1; tower 0
+decision: trade
 world:
   t: 68.3
   pid: 4
-  role: "core"
-  tgt: 9
+  role: core
   hp: 0.637
-  thp: 0.838
-  en: 1
-  ally: 1
-  cr: 2
-  hc: 1
-  tw: 0
-  kh: 0.4
-  lf: 1
-  d: 411
-  rch: 748
-  tlh: 0
   bu: 1.17
+  n: 1
+  mi: 0
   tm: 0
+  hc: 1
+  cr: 2
+  dn: 0
+  cd: 9,0.838,-,411,-337,0,1,0,0,1,0,0,0,-,-,-,-,-,-,0
 expect:
-  mustNot: ["trade", "kill"]
-  acceptable: ["respect(burst)"]
-notes: >
+  must:
+    - none(burst)
+  mustNot:
+    - hit
+    - hitback
+    - kill
+notes: |-
   Control, the opposite rule D1 (h2htradecut1 B_rad_5, 1:08.3, our mid pid 4): 64% HP against 84%, one hero each, no tower, no gap, one creep on us. Their burst in reach is 1.17 of our current HP (retreat's stay read, the leave cut 0 s away): their hits can kill us, so the safe rule refuses on `burst`. Sibling of the safe-behind fixture: the same HP gap with a low burst trades.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 9's HP, distance, gap past our reach 748, hitting 0, free 0, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those); the old cut logged no ko, kt or free (it asked no favour), so ko 1 kt 0 is set by hand to pass the favour gate and the fixture asks only tower, burst, HP and wave. Answer now: none(burst): their burst 1.17 of our HP is over the one-hero bar (1.0), checked before favour. Old expectation: respect(burst), mustNot trade and kill: same.

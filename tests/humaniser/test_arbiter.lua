@@ -27,7 +27,7 @@ do
 		pick(Arb, { c("lever", 4, true), c("trade", 5, true), c("job", 6, false), oha }, "job") == "lever")
 	check("oha wins when nothing else applies", pick(Arb, { c("retreat", 1, false), lane, c("job", 6, false), oha }, "retreat") == "oha")
 	local base = c("lane", Arb.BASE_GROUP, true)
-	check("base lane loses to an applying group-5 candidate", pick(Arb, { base, c("lane_fight", 5, true), oha }, "lane") == "lane_fight")
+	check("base lane loses to an applying group-5 candidate", pick(Arb, { base, c("trade", 5, true), oha }, "lane") == "trade")
 	check("base lane loses to an applying group-6 candidate", pick(Arb, { base, job, oha }, "lane") == "job")
 	check("base lane wins when no interrupt applies", pick(Arb, { c("retreat", 1, false), base, c("job", 6, false), oha }, "job") == "lane")
 	check("a last hit under way lifts the lane to group 3 and it interrupts a running job",
@@ -73,18 +73,16 @@ do
 	check("running retreat against laning: pick retreat, disagree", arb[2] and arb[2]:find("pick=retreat", 1, true) and arb[2]:find("act=laning", 1, true) and arb[2]:find("agree=0", 1, true) and arb[2]:find("prev=lane", 1, true), arb[2])
 	check("the mode following the pick: agree", arb[3] and arb[3]:find("act=retreat", 1, true) and arb[3]:find("agree=1", 1, true), arb[3])
 
-	local Fight = require("bots/FunLib/humaniser/lane_fight")
-	Fight.CurrentPhase = function() return "trade" end
+	local Trade = require("bots/FunLib/humaniser/states/trade")
+	Trade.Running = function() return true end
 	local function winner(job, lever) return Arb.Pick(Arb.Candidates(bot, job, lever), nil).name end
 	RetreatState.SetRunning(bot, false)
-	check("a lane fight outranks a job out of lane", winner("stack", nil) == "lane_fight")
-	check("the controller's pull lever lifts the running pull over a lane fight", winner("pull", "pull") == "job")
-	check("a pull the controller did not ask for stays a group-6 job", winner("pull", nil) == "lane_fight")
-	check("a pull lever with another job running lifts nothing", winner("stack", "pull") == "lane_fight")
+	check("a running trade outranks a job out of lane", winner("stack", nil) == "trade")
+	check("the controller's pull lever lifts the running pull over a trade", winner("pull", "pull") == "job")
+	check("a pull the controller did not ask for stays a group-6 job", winner("pull", nil) == "trade")
+	check("a pull lever with another job running lifts nothing", winner("stack", "pull") == "trade")
 
 	-- Activities that run outside the chooser: a core's trade (attack mode), a camp job of the older path, the mid's rune claim.
-	Fight.CurrentPhase = function() return "idle" end
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
 	local CampJobs = require("bots/FunLib/humaniser/camp_jobs")
 	local MidRunes = require("bots/FunLib/humaniser/transitions/mid_runes")
 	local trading, camp, claiming = true, nil, false
@@ -112,7 +110,7 @@ do
 	Drill.RigDesire = realRig
 
 	local threw = 0
-	Fight.CurrentPhase = function() threw = threw + 1; error("boom") end
+	Trade.Running = function() threw = threw + 1; error("boom") end
 	T = T + 1
 	check("an error inside the shadow does not reach the caller", pcall(Arb.Shadow, bot, function() return nil end) and threw == 1, threw)
 	Arb.Shadow(bot, function() return nil end)

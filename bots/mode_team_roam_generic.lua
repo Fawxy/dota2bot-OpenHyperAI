@@ -46,8 +46,8 @@ local IsAvoidingAbilityZone = false
 
 local hTargetCreep = nil
 
--- Slice lane-fight (Ours.CoreLaneFight, OWNERSHIP H9): set at the top of GetDesire, before anything reads it. True while this
--- core's (or, Ours.SupportLaneFight, this support's) in-lane fights are our attack mode's: the fight branches below (help a targeted core, help an ally, the target finders)
+-- Slice lane-fight (Ours.Trade, OWNERSHIP H9): set at the top of GetDesire, before anything reads it. True while this
+-- laner's in-lane fights are our attack mode's: the fight branches below (help a targeted core, help an ally, the target finders)
 -- are skipped and their targets cleared; the item, avoid-zone, special-unit, tower-creep and last-hit branches stay.
 local bLaneFightsOurs = false
 
@@ -79,13 +79,12 @@ function GetDesire()
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 
-    bLaneFightsOurs = J.Humaniser.CoreTrade.OwnsLaneFights(bot)
+    bLaneFightsOurs = J.Humaniser.Trade.OwnsFights(bot)
     if bLaneFightsOurs then
         targetUnit, ShouldHelpAlly, ShouldHelpWhenCoreIsTargeted = nil, false, false
     end
     local res = GetDesireHelper()
     res = CapForLanePush(res)
-    res = J.Humaniser.LaneFight.RoamDesire(bot, res, IsAvoidingAbilityZone)
 
     -- J.Utils.SetCachedVars(cacheKey, res)
     return J.Humaniser.Intent.Resolve(bot, BOT_MODE_TEAM_ROAM, res)
@@ -323,7 +322,6 @@ function Think()
     -- if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "team_roam") then return end
 
     ItemOpsThink()
-    if not IsAvoidingAbilityZone and J.Humaniser.LaneFight.Think(bot) then return end
 
 	-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled.
 	if J.Humaniser.Etiquette.LeavesTarget(bot) then

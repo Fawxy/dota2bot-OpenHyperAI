@@ -15,7 +15,7 @@ world:
   dmg: [{"from":0,"to":8,"d":70},{"from":1,"to":8,"d":99},{"from":8,"to":0,"d":166},{"from":8,"to":1,"d":128}]
 expect:
   must: ["join(hero#8)"]
-  mustNot: ["out(losing)", "out(outnumbered)"]
+  mustNot: ["out(losing)"]
 notes: >
   D10's commonest start (smoke pairjoin smoke2, 0:47): our hit ally at 65% (506 of 780) with its partner 202 away at 87%, one
   enemy hero 768 off. Over 3 s the pair's estimated damage takes 0.32 of the enemy's HP; the enemy's takes 0.28 of our

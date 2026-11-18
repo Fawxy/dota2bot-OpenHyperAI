@@ -788,7 +788,7 @@ function targeting(bot: Unit, units: Unit[] | undefined): number {
 
 /**
  * Protective aggro: an attack order or attack on an enemy hero draws that hero's lane creeps within 500 of the attacker,
- * whatever the target's distance (docs/reference/specifics/creep-aggro-numbers.md; LaneFightConfig CreepAggroRadius).
+ * whatever the target's distance (docs/reference/specifics/creep-aggro-numbers.md).
  */
 const CREEP_AGGRO_RADIUS = 500;
 /** Centre-to-centre slack on attack range for two hulls, as the step 3 read's hero-in-range test. */

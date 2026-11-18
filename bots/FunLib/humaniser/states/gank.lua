@@ -355,7 +355,7 @@ function ____exports.Gate(bot, now)
     if Orders.GetFor(bot) ~= nil then
         return "order"
     end
-    if CampJobs.Active(bot) or LaneHooks.RotationDecided(bot) or LaneHooks.IsFightCommitting(bot) then
+    if CampJobs.Active(bot) or LaneHooks.RotationDecided(bot) then
         return "busy"
     end
     if (Busy.IsBusy(bot, now + s.MaxEta)) then

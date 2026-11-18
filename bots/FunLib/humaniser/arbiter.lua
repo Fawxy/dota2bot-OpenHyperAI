@@ -15,17 +15,15 @@ local function __TS__StringEndsWith(self, searchString, endPosition)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local BORROWED
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
-local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
@@ -156,15 +154,9 @@ function ____exports.Candidates(bot, jobName, lever)
     out[#out + 1] = retreatCandidate(bot)
     out[#out + 1] = {
         name = "trade",
-        group = CoreTrade.Joining(bot) and 2 or 5,
+        group = Trade.Joining(bot) and 2 or 5,
         host = "attack",
-        applies = CoreTrade.Running(bot)
-    }
-    out[#out + 1] = {
-        name = "lane_fight",
-        group = 5,
-        host = "team_roam",
-        applies = BORROWED.team_roam(bot)
+        applies = Trade.Running(bot)
     }
     out[#out + 1] = jobCandidate(
         bot,
@@ -226,19 +218,16 @@ function ____exports.Drive(bot, chooserJob)
     return p
 end
 --- The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
--- hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+-- hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
 -- trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
 -- scan, which goes stale once attack holds the hero.
 local function laneAndTrade(p)
     return p.name == "lane" or p.name == "trade"
 end
---- Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit).
-BORROWED = {
-    attack = function(bot) return CoreTrade.Running(bot) end,
-    team_roam = function(bot)
-        local p = LaneFight.CurrentPhase(bot)
-        return p == "trade" or p == "commit"
-    end
+--- Modes borrowed from OHA: their own code runs, and their desire stands only while this says our fight wants them (the attack mode's trade). Team roam's code (item use, last-hit grab) runs, its desire never stands.
+local BORROWED = {
+    attack = function(bot) return Trade.Running(bot) end,
+    team_roam = function() return false end
 }
 --- OHA's modes that run their own desire beside the lane base (the inventory's admitted rows); each is a job-group activity.
 -- Of the rune mode only OHA's bounty and pre-game branches and our own rune reads (DeniesOhaRune).

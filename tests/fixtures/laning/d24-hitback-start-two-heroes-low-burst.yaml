@@ -1,39 +1,27 @@
 id: laning.hitback.start-two-heroes-low-burst.001
 source: log
-ref: {log: 2026-11-16T03-15-14-h2hhighstand1_B_rad_5.log, t: 462.100}
+ref:
+  log: 2026-11-16T03-15-14-h2hhighstand1_B_rad_5.log
+  t: 462.1
 status: active
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose trade on 7 (hp 0.739 vs 0.511, creeps 2, tower 0); write the right action, not this.
-# core pid 3 on pid 7: 141 away, reach 298; HP 74% vs 51%; heroes 2 theirs, 2 ours; creeps near 2, on the bot 0; tower 0
+decision: trade
 world:
   t: 462.1
   pid: 3
-  role: "core"
-  tgt: 7
+  role: core
   hp: 0.739
-  thp: 0.511
-  en: 2
-  ally: 2
-  cr: 2
-  hc: 0
-  tw: 0
-  kh: 0.4
-  lf: 1
-  d: 141
-  rch: 298
-  tlh: 0
   bu: 0.376
+  n: 2
+  mi: 0
   tm: 0
-  ar: 150
-  tar: 150
-  tme: 1
-  ko: 0.725
-  kt: 0.161
-  tf: 1
+  hc: 0
+  cr: 2
   dn: 0
-  hb: 1
+  cd: 7,0.511,-,141,-157,0,1,1,0,0.725,0.161,0,0,-,-,-,-,-,-,0
 expect:
-  must: ["trade"]
-  mustNot: ["respect"]
-notes: >
+  must:
+    - hitback(hero#7)
+notes: |-
   D24 start, two heroes (h2hhighstand1 B_rad_5, 7:42): our pos3 at 74% is hit with two of theirs and two of ours near; their burst 0.38 of our HP is under the two-hero bar (0.5) and our share 0.73 beats theirs 0.16: hit back. The game left on threat 1.1 s later.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 7's HP, distance, gap past our reach 298, hitting 1, free 0, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: hitback(hero#7): two heroes, burst 0.376 under the 0.5 pack bar, HP 74% over 0.7, favoured (ko 0.725 over kt 0.161). Old expectation: trade, mustNot respect: same.

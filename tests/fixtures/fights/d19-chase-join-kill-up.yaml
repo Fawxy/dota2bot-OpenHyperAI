@@ -1,26 +1,31 @@
 id: fights.chase.join-kill-up.001
 source: log
-ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 291.100}
+ref:
+  log: 2026-11-18T03-45-56-kill-chase_smoke3.log
+  t: 291.1
 status: active
-decision: core_keep
-# Cut by tools/hlog/cut.js. The game chose kill_up for the join on 5 (seen 1, started 1.733 s ago); write the right action, not this.
-# core pid 4, join on pid 5: alive, seen, offered 1.767 s ago, started 1.733 s ago, pair join same
+decision: trade
 world:
   t: 291.1
   pid: 4
-  role: "core"
-  tgt: 5
-  ek: "join"
-  alv: 1
-  sn: 1
-  oa: 1.767
-  kh: 0.4
-  sa: 1.733
-  jn: "same"
-  d: 1038
-  kup: 1
+  role: core
+  hp: 0.8
+  bu: 0.2
+  n: 1
+  mi: 0
+  tm: 0
+  hc: 0
+  cr: 0
+  dn: 0
+  pjr: join:5:0.8:0.3
+  cd: 5,0.38,190,1038,840,0,0,0,0,0.8,0.3,0,0,-,-,-,1,900,30,0
+  run: join:5:pair:1:1.767:1.733:1:0:0:-:-:-:-:-
 expect:
-  must: ["end(kill_up)"]
-notes: >
-  The hand-over (smoke3, 4:51): a pair join whose target has fallen to the kill bar becomes the kill, which chases; the join
-  itself lapses Keep (1.5 s) after the hit on us stops and ends at the fog line.
+  must:
+    - kill(hero#5)
+  mustNot:
+    - end(kill_up)
+notes: |-
+  The hand-over (smoke3, 4:51): a pair join whose target has fallen to the kill bar becomes the kill, which chases; the join itself lapses Keep (1.5 s) after the hit on us stops and ends at the fog line.
+
+  Rewritten for the one trade decision (oha-trade step 5). The old record carried only the flag, so the world is set by hand: a running pair join on hero 5 (source pair, landed), the target at 38% HP (under the 0.4 kill bar) with the catch read passing, the pair answer still join on it (ko 0.8 over kt 0.3), 1,038 away (inside the 1,200 pair reach), our HP 80% and burst 0.2. Answer now: kill(hero#5) with source pair: the same target and a higher level is changed in place, with no end line (Decide ranks kill 3 under join 4, so no kill_up reason is given here; that reason is given for a hit or hit back that becomes the kill). Old expectation: end(kill_up).

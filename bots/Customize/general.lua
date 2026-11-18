@@ -159,17 +159,6 @@ Customize.Humaniser = {
         AggroPull = true, Freeze = true, Shove = true, Stack = true,
         Mid = true, CounterPlay = true, Telegraph = true,
     },
-    -- Lane fights (task 11): lane trades and kill setups; an enemy spell is up when it can be cast now (Ours.SpellsUp).
-    -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
-    -- Needs the Lane feature: with Lane.Enable = false (or every Lane flag off) lane fights are off too.
-    LaneFight = {
-        Enable = true,
-        Memory = true, -- watch visible enemy casts (an escape cast aborts a commit)
-        Trade = true, -- trade hits when the enemy's cooldowns are down
-        Kill = true, -- commit to kill setups
-        CallKills = true, -- ping a kill setup for human allies
-        Teams = 'all', -- 'all' | 'allies' (bots whose team has a human) | 'enemies'
-    },
     -- Lane safety and laning-phase transitions (task 12). Enable = false restores upstream behaviour for all of it.
     Transitions = {
         Enable = true,
@@ -238,8 +227,9 @@ Customize.Humaniser = {
 -- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body. On by user
 -- decision 02/11/2026 although worse than OHA on the creep-economy bar (ER-008, ER-009, ER-010 FAIL: share flat, more deaths):
 -- our code ends up enabled; the row stays open for fixes (set false for OHA's laning).
--- CoreTrade (slice core-in-lane): with CoreLastHit on, the cores' attack mode is ours in lane (trades on enemy heroes) and
--- OHA's Lua port of the attack mode outside lane; false leaves Valve's attack mode.
+-- Trade (slice oha-trade, design 2026-11-19-trade-decision-design.md): the hero-on-hero exchange in lane is one decision (states/trade) for
+-- every laner our laning body holds (CoreLastHit or SupportDeny): the attack mode's desire and Think in lane, team roam's fight branches,
+-- farm's ShouldRun skip and retreat's hold. Off: OHA's attack port, team roam's own fights, farm's ShouldRun and no hold.
 -- CoreLastHitDire (slice 5 re-run): false keeps the Dire cores on Valve's laning when CoreLastHit is on (Radiant only).
 -- SupportDeny (slice l1-support-deny): pos4-5 go for every own creep they can deny, before anything else in lane, whatever the
 -- core is doing. SupportDenyDire: false keeps the Dire supports on OHA's deny when SupportDeny is on (Radiant only).
@@ -254,20 +244,13 @@ Customize.Humaniser = {
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
 -- (hosted by the job chooser, needs JobChooser). Off: the old camp-job pulls (task 07 lane planner).
 -- LaneSpot (slice lane-positioning): with CoreLastHit on, pos1-3 stand on our lane spot (states/lane_spot: enemy heroes' reach and creep
--- rings widened below half HP, every enemy tower's range, the XP limit), and with SupportDeny and SupportHarass on pos4-5 too.
+-- rings widened below half HP, every enemy tower's range, the XP limit), and with SupportDeny on pos4-5 too.
 -- Off: OHA's PositionTarget (cores) and PositionThink (supports).
--- SupportHarass (slice support-spot): with SupportDeny on, pos4-5 harass enemy heroes in lane through our attack mode (the
--- trade rule with a support's reach, hits that draw no creep aggro) and, with LaneSpot on, stand on our lane spot instead of
--- OHA's PositionThink. Off: Valve's attack mode and OHA's positioning and harass for supports.
 -- LaneSpotTower (slice tower-spot): with LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (enemy
 -- creeps attacking something else keep a 200 ring, enemy heroes our tower would punish a short reach). Supports, and off: the
 -- open-lane limits everywhere.
 -- LaneSpotThreat (slice retreat): with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 3 s (burst
 -- under 0.35 of our HP, missing under 0.5, not `pressured`) instead of the hero reach and the HP margin on it. Off: the old hero limits.
--- CoreLaneFight (slice lane-fight): with CoreLastHit and CoreTrade on, an in-lane pos1-3's fights are ours: it commits on a target at
--- 40% HP or less with even numbers or more (our attack mode), joins an ally's running play near it (hum/plays), and rolls a
--- lane_fight play when no clear window decides; team roam keeps only its non-fight branches for it and LaneFight makes no claim.
--- Off: team roam's fight branches, LaneFight's claims and the trade's 25% kill cut.
 -- LaneAggro (slice lane-aggro): an in-lane pos1-3, and a pos4-5 whose lane core is away, draws enemy lane creeps on purpose: `feed`
 -- walks the enemy wave onto our ranged creep for our deny (tilting the clash toward our tower), `drag` walks a creep about to die
 -- away from an enemy hero for a safe last hit. Off: no draws; OHA-era lane_tech keeps its aggro pull.
@@ -299,39 +282,13 @@ Customize.Humaniser = {
 -- on again after leave-together and hit-back). Off: the budget alone.
 -- HealStop (slice heal-stop, D3): with Retreat on, a heal walk ends where HP is back over half, nobody is in reach and our
 -- lane front is nearer than our fountain. Off: on to the fountain and 0.8 HP.
--- PairJoin (slice pair-join-on, D10): a laner in a fight where an ally (or itself) is hit by an enemy hero, not outnumbered,
--- whose side's best 3 s kill share beats theirs commits an attack on the pair's target, and the threat leave waits for it.
--- Off: the pair's answer is only logged (ev=cut kind=join).
 -- HealItems (slice heal-items, D6 stop-gap): with Retreat and HealStop on, a heal start uses the held items that restore HP to
 -- half (one tango, a salve, salve and tango; never two tangoes) and waits at our tower. Off: the walk home. Off by default: in
 -- games the plan skipped nearly every start (a hero within reach) while holding the items from OHA (slice heal-items, missed).
--- TradeSafe (slice trade-safe, D18): with CoreTrade on, a trade or harass asks "is it safe?" of the threat read: not
--- outnumbered, half HP or more, their burst in reach under our HP, our attack point outside their tower. Off: behind and a
--- tower by either hero refuse.
--- TradeFree (slice trade-free, D18): with CoreTrade on, a trade the safe rule allows is taken when the hit is free (the target
--- swings at a lane creep, or we outrange it by 100) or favoured (our 3 s estimated damage over its HP beats its over ours).
--- Off: a lost trade's HP gap holds the next one.
--- FightSafe (slice fight-safe, D19): with CoreLaneFight and TradeSafe on, a lane-fight roll or join asks the trade's "is it
--- safe?" (their burst in reach under our HP) in place of behind. Off, or TradeSafe off: behind (15 points under the target's HP).
--- TradeLanded (slice trade-landed, D24/D18): with CoreTrade on, a trade ends `losing` judged from our first landed hit on the
--- target; before it lands only a loss of 15% of max HP ends it. Off: judged from the trade's start.
--- SpellsUp (slice spells-up, D19): the lane-fight read (an ult that makes a trade respect, the key-spell window, the kill
--- check's escape) takes an enemy's spell as up only when it can cast it now. Off: every learned enemy spell is up.
--- KillReach (slice trade-reach, D19): with CoreTrade on, a core's kill commit looks for an enemy at the commit bar up to 600
--- past the trade's reach, and a running trade on a hero that falls to the bar becomes the kill. Off: reach only, trades stay.
--- SupportLaneFight (slice support-lane-fight, kill-chances S1, D19): an in-lane pos4-5 whose harass is ours fights as a core's
--- lane fights do (the 40% commit with KillReach's walk, the play join and roll); team roam's fight branches and LaneFight's
--- claims stand aside for it. Off: those, and the trade's 25% kill cut.
--- JoinOnHit (slice join-hits, kill-chances J1, D10): with PairJoin on, the pair join also weighs a fight when an ally other
--- than the bot has a fight of its own open on an enemy hero (a trade, kill or fight) and no ally is hit, on that hero; a hero
--- in a play, or held by the lane fight's refusal (their tower, outnumbered, burst), does not act on it. Off: that record is only logged.
--- TradeLands (slice trade-lands, D18, kill-chances T1): with CoreTrade on, a trade outside attack range opens only if the hero
--- can reach it within 1.5 s, and a taken trade is not ended by a due deny or a pair join on another hero until its first attack
--- has fired (while the same read holds; a 4 s backstop ends it as hold_time). Off by default: the trade opens whatever the gap.
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, PairJoin = true, TradeSafe = true, TradeFree = true, FightSafe = true, BurstReady = true, TradeLanded = true, SpellsUp = true, KillReach = true, SupportLaneFight = true, JoinOnHit = false, TradeLands = false }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, BurstReady = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

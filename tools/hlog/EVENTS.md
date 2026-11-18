@@ -993,7 +993,7 @@ Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on lat
 
 ## trade_no
 
-An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree` `unfavoured` instead: the hit neither free nor favoured; `deny`: a due deny outbids it), or `hb_<respect>` (the hit back itself refused; `hb_deny` a due deny outbid it). With `Ours.TradeLands` `no_reach` or `hb_no_reach`: the trade or hit back's target cannot be reached within 1.5 s.
+An enemy hero hit this in-lane hero within 1 s and no exchange opened (states/trade): at most one per hero per 5 s. `why` is the answer's reason: the first gate that failed (`tower`, `burst`, `hp`, `lost`, `unfavoured`, `no_reach`, `deny`, `creeps`, `wave`, `missing`, `catch`) or `no_target`. Logs of builds before the one trade decision carry the older respects (`outnumbered`, `low_hp`, `behind`, `gap`, `hb_<respect>`).
 
 `pid` num, `role` str, `why` str, `d` num, `reach` num, `har` num, `agg` num, `hp` num, `thp` num, `al` num, `cr` num, `hc` num, `mode` num, `md` num
 
@@ -1007,20 +1007,20 @@ Slice join-after (D19, shadow): after a taken `join` or `trade` window of ours e
 `pid` num, `why` str, `tgt` num
 
 - `kind` str: The ended window's `ev=trade` kind (`join` or `trade`), end reason (`why`) and target pid.
-- `res` str: How the watch ended: `full` (the whole window), `reopen` (any CoreTrade window started: trade, join, kill or fight), `dead` (the bot died, or a missed sample showed it had), `stage` (past the laning stage).
-- `s` str: The samples, `;`-joined, each `dt:dec:ko:kt:thp:d:hp:no:nt`: seconds since the end; PairJoin's answer (`j` join, `l` losing, `o` outnumbered, `n` no enemy hero seen within FoeRange); our and their best kill share (3 places); the ended window's target's HP share and distance (-1 when unseen or dead); our HP share; our heroes and theirs in the weighing (ours not in retreat, the bot included).
+- `res` str: How the watch ended: `full` (the whole window), `reopen` (any trade window started: hit, hit back, kill or join), `dead` (the bot died, or a missed sample showed it had), `stage` (past the laning stage).
+- `s` str: The samples, `;`-joined, each `dt:dec:ko:kt:thp:d:hp:no:nt`: seconds since the end; PairJoin's answer (`j` join, `l` losing, `o` outnumbered (older logs only), `n` no enemy hero seen within FoeRange); our and their best kill share (3 places); the ended window's target's HP share and distance (-1 when unseen or dead); our HP share; our heroes and theirs in the weighing (ours not in retreat, the bot included).
 
 ## trade
 
-One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offered and not taken (`lost`).
+One per in-lane exchange (states/trade): taken (`done`, `kill`) or offered and not taken (`lost`).
 
 `pid` num, `join` num, `thpd` num, `thp` num, `en` num, `al` num, `cr` num, `so` num, `ag` num, `md` num
 
-- `role` str: `core` (Core in lane's trade) or `support` (Support in lane's harass, slice support-spot).
-- `lf` num: 1 when the laner's lane fights are ours (slice lane-fight, `Ours.CoreLaneFight`; a support's, `Ours.SupportLaneFight`): its kill cut is the commit's 40%.
-- `kind` str: `trade`, `kill` (a commit), `fight` (a lane fight from the play roll: rolled here or joined) or `join` (D10's pair join, `Ours.PairJoin`).
+- `role` str: `core` or `support` by position, logged and never read.
+- `lf` num: Older logs only (the lane-fight switches): 1 when the laner's lane fights were ours.
+- `kind` str: `hit`, `hitback`, `kill` or `join` (a lane fight from the play roll is a join on its play). Older logs: `trade`, `kill`, `fight` or `join`.
 - `tgt` num: The target hero's pid.
-- `hb` num: 1 for a hit back (CoreTrade.Exchange took it): opened on a hero hitting us inside our creeps' aggro.
+- `hb` num: 1 for a hit back (the level `hitback`); older logs: a hit back taken as a trade.
 - `play` num: A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own.
 - `result` str: `done` (taken), `kill` (the game says the target died, `IsHeroAlive`) or `lost` (offered, not taken within 1 s; `mode`/`md` is the mode that held the core).
 - `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over. A `trade`'s adds `hold_time` (slice trade-lands: a deny or join on another hero waited for the first attack and 4 s since the start ran out; a fault).
@@ -1390,13 +1390,13 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `lw` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num, `cth` num, `cdm` num, `cft` num, `csf` num, `utw` num, `uou` num, `uth` num
+`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `lw` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num, `mi` num, `src` str, `how` str, `why` str, `ed` str, `cth` num, `cdm` num, `cft` num, `csf` num, `utw` num, `uou` num, `uth` num
 
-- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
+- `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (states/trade.ts Decide; `lv`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer.
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
 - `who` str: `gate`: the consumer that asked (ev=threat `who`).
 - `fm` str: `gate`: the walk's start, x,y (Threat.Gate's `from`).
-- `pl` str: `gate`: the walk's end, x,y (the camp or place the trip goes to).
+- `pl` str: `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none.
 - `lane` num: The bot's assigned lane.
 - `b` str: The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready.
 - `fr` str: GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y.
@@ -1415,20 +1415,20 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `th` num: kind=leave: Profile.ThreatHold, the seconds the read must stay over budget.
 - `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
-- `pj` num: kind=leave: 1 when PairJoin.Joins held for the bot (`Ours.PairJoin`: LeaveWhy stays `join`); absent otherwise.
-- `hb` num: kind=leave: 1 when CoreTrade.Taking held for the bot (LeaveWhy stays `hitback`); absent otherwise. kind=trade (slice hitback-fold): 1 when the target is hitting the core (Inputs.hitting); absent otherwise.
+- `pj` num: kind=leave: 1 when Trade.Holds held a join for the bot (LeaveWhy stays `join`); absent otherwise.
+- `hb` num: kind=leave: 1 when Trade.Holds held a hit back for the bot (LeaveWhy stays `hitback`); absent otherwise. Older kind=trade lines: 1 when the target is hitting the core.
 - `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
-- `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join`, `outnumbered`, `losing`.
+- `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join` or `losing` (older logs also `outnumbered`).
 - `po` str: kind=join: our heroes within OursRange of the ally, the bot and the ally included: pid, x, y, HP, max HP, in our retreat.
 - `pt` str: kind=join: enemy heroes in sight within FoeRange of the ally: pid, x, y, HP, max HP.
 - `dm` str: kind=join: GetEstimatedDamageToTarget over PairJoin Window between the two sides, both ways: from pid, to pid, damage.
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
 - `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP.
 - `kt` num: kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP.
-- `on` str: kind=join (slice join-hits): what made the record: `hit` (an ally hit by a hero, `al` that ally) or `ours` (no ally hit; an ally other than the bot, not retreating, with a CoreTrade episode of kind trade, kill or fight open on a seen enemy hero: `al` that ally, `fo` the hero). Logged whether or not `Ours.JoinOnHit` acts on an `ours` record. An `ours` cut is also logged when `aa` changes.
-- `fo` num: kind=join, on=ours: the enemy hero the ally's episode is on; `tgt` and `ko` are on it. With it: `ek` the ally's episode kind (`trade`, `kill`, `fight`), `oa` seconds since that episode was offered, `aa` whether the ally's GetAttackTarget names the hero (1/0), and `free`, whether the bot could act on a join: `yes`, or what holds it (`ret` its retreat, `play` a play it is in, or CoreTrade.FightRefusal on the hero: `tower`, `outnumbered`, `burst`).
-- `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds; with `Ours.TradeFree` `unfavoured`, neither free nor favoured, or `deny`, a due deny outbids it, and `gap` no longer decides). The bot's and the target's HP share.
+- `on` str: Older kind=join lines only (the `ours` record is retired): `hit` (an ally hit by a hero) or `ours` (an ally with a fight of its own open).
+- `fo` num: Older kind=join lines only, on=ours: the enemy hero the ally's episode was on, its kind `ek`, age `oa`, whether the ally was attacking it `aa`, and `free`.
+- `hp` num: Older kind=trade lines (the retired core_trade.ts, D18/D19; no `lv`): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running. `tgt` the target; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`, `burst`, `unfavoured`, `deny`) or `gap`. The bot's and the target's HP share. In today's kind=trade `hp` is our HP share and `thp` is absent (the candidates carry it).
 - `en` num: kind=trade: enemy heroes in sight, and our heroes (the bot included, at least 1), within 1,200 of the bot.
 - `cr` num: kind=trade: enemy lane creeps within 500 of the bot, and those attacking it (plus 2 per enemy tower attacking it).
 - `tw` num: kind=trade: 1 when the bot or the target is within an enemy tower's reach.
@@ -1436,19 +1436,24 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `gap` num: kind=trade: the HP-share gap a lost trade left (`recoverTo`); absent when none.
 - `d` num: kind=trade: the distance to the target and the trade's reach (attack range, both hulls, the role's walk-in).
 - `tlh` num: kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing).
-- `bu` num: kind=trade, with `Ours.TradeSafe` (slice trade-safe; absent off): the threat read's burst in reach over the bot's HP (retreat's stay read), and 1 when the bot's attack point is in an enemy tower's reach or a tower attacks it. The answer adds the respect `burst` (their burst at our HP or more).
-- `aw` num: kind=trade (slice trade-lands): the read behind `Ours.TradeLands`, logged with it off too. `aw` the target's speed away from the bot along the line between them (negative: towards; 0 when unknown or in range), from its movement over the last 0.5 to 1 s; `lw` 1 when the bot can reach attack range within 1.5 s (in range already counts). With `d`, `ar`, `hl` (both hulls) and `ms`: `d - ar - hl` over `ms - aw` is the walk-in time. `hl`, `ms`, `tms` as kind=keep's.
+- `bu` num: Today's kind=trade: `bu` and `tm` as the cut's threat read and tower on us. Older kind=trade lines (retired `Ours.TradeSafe`): the threat read's burst in reach over the bot's HP (retreat's stay read), and 1 when the bot's attack point is in an enemy tower's reach or a tower attacks it. The answer adds the respect `burst` (their burst at our HP or more).
+- `aw` num: Older kind=trade lines (retired `Ours.TradeLands`): `aw` the target's speed away from the bot along the line between them (negative: towards; 0 when unknown or in range), from its movement over the last 0.5 to 1 s; `lw` 1 when the bot can reach attack range within 1.5 s (in range already counts). With `d`, `ar`, `hl` (both hulls) and `ms`: `d - ar - hl` over `ms - aw` is the walk-in time. `hl`, `ms`, `tms` as kind=keep's.
 - `ar` num: kind=trade (slice trade-free-cut): the bot's and the target's attack range, and 1 when the target's attack target is the bot.
-- `tf` num: kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off.
+- `tf` num: Older kind=trade lines (retired `Ours.TradeFree`): 1 when it asked question 2 (free or favoured) in place of `gap`; absent off.
 - `dn` num: kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which outbids the trade.
-- `fg` str: kind=trade with `lf` 1 (slice fight-safe): the lane-fight gate's answer (CoreTrade.FightAnswer): `roll` (a chance may be offered), `kill` (the commit comes first), the core's refusal (`tower`, `outnumbered`, with `Ours.FightSafe` `burst`) or the roll's hard zero (`hp`, `outnumbered`, `tower`, `behind` with the switch off).
+- `fg` str: Older kind=trade lines with `lf` 1 (retired fight-safe): the lane-fight gate's answer (CoreTrade.FightAnswer): `roll` (a chance may be offered), `kill` (the commit comes first), the core's refusal (`tower`, `outnumbered`, with `Ours.FightSafe` `burst`) or the roll's hard zero (`hp`, `outnumbered`, `tower`, `behind` with the switch off).
 - `fpo` num: kind=trade with `lf` 1: the roll's own inputs for its hard zeros: our and their heroes within the play radius of the target (initiator and target counted), and the target's distance to its nearest tower.
-- `fs` num: kind=trade with `lf` 1: 1 when the fight gate asked the burst in place of `behind` (`Ours.FightSafe` and TradeSafe on), 0 off.
+- `fs` num: Older kind=trade lines with `lf` 1: 1 when the fight gate asked the burst in place of `behind` (retired FightSafe), 0 off.
 - `did` str: kind=trade: what Desire opened on this decision, since `dec` is the trade rule's answer only: `trade`, `kill`, `fight` (a lane fight rolled), `play` (a running play joined), `hitback` (a hit back on a hitter) or `none`.
-- `xa` str: kind=trade (slice hitback-fold), with `hb`: CoreTrade.Exchange's answer, whether the exchange is taken as a hit back retreat waits for (`trade`, `kill`) or why not (`hb_hp`, `hb_burst` or Answer's refusal).
-- `ek` str: kind=keep (slice chase-log, CoreTrade.KeepAnswer; `dec` its answer, `keep` for none, every end and a keep at most each 0.5 s): the episode's kind (`kill` or `join`), the target alive (IsHeroAlive) and seen (1/0), seconds since the offer and since the start (absent: not started), and for a join PairJoin's answer this frame (`none`, `same`, `other`). `hp` to `tm` are Gather's on the target with trade's names, present only where the answer reads them.
+- `xa` str: Older kind=trade lines (retired), with `hb`: CoreTrade.Exchange's answer, whether the exchange is taken as a hit back retreat waits for (`trade`, `kill`) or why not (`hb_hp`, `hb_burst` or Answer's refusal).
+- `ek` str: Older kind=keep lines (retired CoreTrade.KeepAnswer; `dec` its answer, `keep` for none, every end and a keep at most each 0.5 s): the episode's kind (`kill` or `join`), the target alive (IsHeroAlive) and seen (1/0), seconds since the offer and since the start (absent: not started), and for a join PairJoin's answer this frame (`none`, `same`, `other`). `hp` to `tm` are Gather's on the target with trade's names, present only where the answer reads them.
 - `hl` num: kind=keep, the chase's terms (read by nothing yet): our hull plus the target's when seen, our and the target's move speed (unseen: Threat's last read, -1 none), our ready damage spells (SpellReady.ReadyDamage: name,cast range,cast point,behaviour,damage records), and while unseen our team's last sighting x, y and its age (s). `d` is to the target, or to that sighting.
-- `chu` str: kind=keep (slice kill-chase, a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records (spells `/`-joined `range:cp:dmg`, damage after the target's resistances), the target's HP (seen, or as last seen), and the read's damage within the window and seconds to its first (-1 none); `csf` the window, the seconds until the target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there).
+- `n` num: kind=trade (states/trade.ts, the one trade decision: D18, D19, D24, D10; driver `trade`; named `trade2` on logs from before the old one went): every decision's inputs and answer, logged when the answer changes, every 0.5 s while an exchange runs, else every 2 s, to 12:00. `role` is `core` or `support` by position, logged and never read. `hp` our HP share, `bu` `n` `mi` the threat read here (their damage on us over our HP, the enemy heroes that reach us, the unseen weight), `tm` 1 when a tower attacks us, `hc` enemy creeps attacking us (a tower counts 2), `cr` enemy lane creeps within 500, `dn` 1 when a deny is due, `ms` our movement speed (absent on older lines: Decide reads 300).
+- `pjr` str: kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer.
+- `cd` str: kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated: pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk read wb, wn, wm (burst, heroes, unseen weight; `-` when not asked), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
+- `run` str: kind=trade: the running exchange, `:`-joined: level, target, source (`-` none), alive, offered, started, landed, soFar, catchFails, seconds since the last failed catch read, seconds of the step out, chase x, chase y, the unseen catch read ok (`-` where absent). Absent: no exchange running. Its unseen reads are `uat`, `utw`, `uth`.
+- `lv` str: kind=trade: the answer: level (`none`, `hit`, `hitback`, `kill`, `join`), target pid (absent for none), source (`pair`, `play`), how (`verb:aggro`, with `@x,y` for a move) and why (the rule, or for none the first gate that failed); `ed` is why a running exchange ended this frame, `higher` when another candidate won the order.
+- `chu` str: kind=trade: the hunters of the lowest-HP kill candidate, as below. Older kind=keep lines (a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records (spells `/`-joined `range:cp:dmg`, damage after the target's resistances), the target's HP (seen, or as last seen), and the read's damage within the window and seconds to its first (-1 none); `csf` the window, the seconds until the target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there).
 - `uat` num: kind=keep, a started kill on an unseen target (1/0): we stand at its predicted place, that place or we inside an enemy tower's reach, more enemy heroes near than ours, unseen enemies other than the target weighing on the walk.
 - `kup` num: kind=keep, a join on a seen target: 1 when it is at the kill bar and Decide calls `kill` (it becomes the kill).
 
@@ -1461,13 +1466,13 @@ Slice chase-log: a cast by a hero on this script's team (InstallCastCallback, lo
 - `ab` str: The ability's name.
 - `cl` str: Slice cast-read: its class, as ev=snap `rdy` (absent for an item or no name).
 - `x` num: The callback's location (absent at 0,0: a no-target cast), and its distance to the episode's target when seen (the callback names no target unit: its `unit` is the caster).
-- `ek` str: The hero's CoreTrade episode at the log: its kind, target pid, the target seen (1/0) and its distance when seen.
+- `ek` str: The hero's trade exchange at the log: its kind, target pid, the target seen (1/0) and its distance when seen.
 - `lag` num: Seconds from the callback to this line.
 - `ks` str: The first cast per hero only: the callback table's keys as key:type, `|`-joined (its shape is unprobed).
 
 ## chase
 
-Slice chase-log: a CoreTrade episode that lost sight of its target (`ph=lost`), then what followed within 12 s.
+Slice chase-log: a trade exchange that lost sight of its target (`ph=lost`), then what followed within 12 s.
 
 `pid` num, `role` str, `tgt` num, `hp` num, `thp` num, `kh` num, `y` num, `lx` num, `ly` num, `tss` num, `d` num, `gap` num, `tms` num, `hv` num, `hd` num, `alive` num, `mode` num, `onk` str
 

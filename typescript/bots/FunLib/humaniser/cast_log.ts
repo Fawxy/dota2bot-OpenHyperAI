@@ -1,13 +1,13 @@
 /**
  * Slice chase-log (kill-chances step 3a): one `ev=cast` line per cast of a hero on this script's team, from
- * InstallCastCallback on the hero's own player. A callback runs outside any bot's think (cast_watch.ts: host helpers that
- * read GetBot fail there), so casts are queued and logged on the hero's next tick, beside the CoreTrade episode it runs.
+ * InstallCastCallback on the hero's own player. A callback runs outside any bot's think (host helpers that
+ * read GetBot fail in a callback), so casts are queued and logged on the hero's next tick, beside the trade exchange it runs.
  * The callback's table is logged as found: its key names once per hero (`ks`), the ability's name, the location and a hero
  * target where it holds them. Reads only.
  */
 import { Unit } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 /** A dead hero has no tick to drain its queue; casts past this many are dropped. */
@@ -50,7 +50,7 @@ function log(bot: Unit, p: Pending): void {
     const pid = bot.GetPlayerID();
     const loc = e.location;
     const hasLoc = loc !== undefined && loc !== null && type(loc.x) === "number" && type(loc.y) === "number" && (loc.x !== 0 || loc.y !== 0);
-    const ep = CoreTrade.EpisodeOf(pid);
+    const ep = Trade.EpisodeOf(pid);
     const t = ep?.target;
     const seen = t !== undefined && !t.IsNull() && t.CanBeSeen();
     const name = nameOf(e.ability);

@@ -1,36 +1,30 @@
 id: fights.chase.kept-in-contact.001
 source: log
-ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 293.633}
+ref:
+  log: 2026-11-18T03-45-56-kill-chase_smoke3.log
+  t: 293.633
 status: active
-decision: core_keep
-# Cut by tools/hlog/cut.js. The game chose keep for the kill on 5 (seen 1, started 2.433 s ago); write the right action, not this.
-# core pid 4, kill on pid 5: alive, seen, offered 2.533 s ago, started 2.433 s ago; HP 71% vs 36%, heroes 1 theirs, 2 ours, tower 0
+decision: trade
 world:
   t: 293.633
   pid: 4
-  role: "core"
-  tgt: 5
-  ek: "kill"
-  alv: 1
-  sn: 1
-  oa: 2.533
-  kh: 0.4
-  sa: 2.433
+  role: core
   hp: 0.708
-  thp: 0.363
-  en: 1
-  ally: 2
-  cr: 0
-  hc: 0
-  tw: 0
   bu: 0.176
+  n: 1
+  mi: 0
   tm: 0
-  d: 54
-  chu: "54.2,198,265.7,83.9,"
-  cth: 259
-  csf: 30
+  hc: 0
+  cr: 0
+  dn: 0
+  cd: 5,0.363,259,54,-144,0,0,0,0,-,-,0,0,-,-,-,1,2517,30,0
+  run: kill:5:-:1:2.533:2.433:0:0:0:-:-:-:-:1
 expect:
-  must: ["keep"]
-notes: >
-  A kill in contact (smoke3, 4:53): our melee core 54 from a 36% target that is not heading home, 2.4 s in. Before 3b
-  KILL_TIME would end it at 6 s whatever the fight; now it runs while we can land on it.
+  must:
+    - kill(hero#5)
+  mustNot:
+    - end(cannot_catch)
+notes: |-
+  A kill in contact (smoke3, 4:53): our melee core 54 from a 36% target that is not heading home, 2.4 s in. Before 3b KILL_TIME would end it at 6 s whatever the fight; now it runs while we can land on it.
+
+  Rewritten for the one trade decision (oha-trade step 5): the run is the kill at "kill:5:-:1:2.533:2.433:0:0:0:-:-:-:-:1" (level:target:source:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:catchOk), the catch read replayed from the old hunters (54.2,198,265.7,83.9,) over 259 HP and a 30 s window: passes (damage 2517). Answer now: kill(hero#5), kept: the catch read passes (hunters in range land 2,517 over the window on its 259). Old expectation: keep: same.

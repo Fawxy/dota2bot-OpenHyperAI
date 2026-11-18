@@ -256,17 +256,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue238
+            local __continue236
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue238 = true
+                    __continue236 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue238 = true
+                    __continue236 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -277,9 +277,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue238 = true
+                __continue236 = true
             until true
-            if not __continue238 then
+            if not __continue236 then
                 break
             end
         end
@@ -693,9 +693,6 @@ function ____exports.StartBlocked(bot, at, who)
     if retreat ~= nil and retreat >= settings().Timing.JobDesire then
         return "retreat"
     end
-    if LaneHooks.IsFightCommitting(bot) then
-        return "lanefight"
-    end
     if (not Ours.On("Threat") or at == nil) and LaneHooks.EnemiesMissing(
         bot,
         settings().Thresholds.JobMissingFresh
@@ -828,9 +825,6 @@ local function startStack(bot, req)
     return true
 end
 function ____exports.Start(bot, req)
-    if req.forced ~= true and LaneHooks.IsFightCommitting(bot) then
-        return false
-    end
     if req.kind == "stack" then
         return startStack(bot, req)
     end
@@ -1964,10 +1958,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue266
+            local __continue264
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue266 = true
+                    __continue264 = true
                     break
                 end
                 if dist2D(
@@ -1976,9 +1970,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue266 = true
+                __continue264 = true
             until true
-            if not __continue266 then
+            if not __continue264 then
                 break
             end
         end

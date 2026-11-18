@@ -1,5 +1,5 @@
 // The lane trade rig's reps (drill `lane-trade`, humaniser/drill.ts; master docs/proposals/2026-11-18-trade-from-the-stand.md
-// step 2): one row per trade a cast opened (`ev=trade` kind `trade`, taken: result done or kill) inside a ready rig rep, from its
+// step 2): one row per trade a cast opened (`ev=trade` kind `hit` or `hitback`; `trade` on older logs; taken: result done or kill) inside a ready rig rep, from its
 // release to the next rep's start. The trade's open is its end line's time less `dur`. The rig's own truth, the cast's `watch`
 // lines: `ph=atk` (an attack fired at an enemy hero) and `ph=chit` (an enemy lane creep's attack fired at the cast). Per trade:
 //   hero, var  the cast's hero and the rep kind (stand, lasthit, hitback); n its order among the rep's trades (1 = first)
@@ -113,7 +113,7 @@ function rangeSeconds(own, foes, a, b, episodes = []) {
             k = step > MOVE_STEP ? 'toward' : step < -MOVE_STEP ? 'away' : 'idle';
         }
         out[k] += 1;
-        // `mode` never names our states; an open trade episode is core_trade's hold whatever OHA mode carries it.
+        // `mode` never names our states; an open exchange is states/trade's hold whatever OHA mode carries it.
         const inTrade = episodes.some(([o, c]) => s.t >= o && s.t <= c);
         const m = inTrade ? `${s.mode} (trade)` : s.mode;
         const tally = k === 'hero' ? out.heroModes : out.modes;
@@ -191,7 +191,7 @@ function reps(store, like) {
         const hpSet = resets.get(r.game_id);
         // A trade ending after the rep's stop may still have opened inside it.
         const ts = store.query(TRADES, { g: r.game_id, p: r.pid, a: r.released, b: r.stop + 30 });
-        const opened = ts.map((x) => ({ ...x, open: x.t - (x.dur ?? 0) })).filter((x) => x.kind === 'trade' && x.open >= r.released && x.open < r.stop);
+        const opened = ts.map((x) => ({ ...x, open: x.t - (x.dur ?? 0) })).filter((x) => (x.kind === 'hit' || x.kind === 'hitback' || x.kind === 'trade') && x.open >= r.released && x.open < r.stop);
         const taken = opened.filter((x) => x.result !== 'lost');
         const lines = store.query(LINES, { g: r.game_id, p: r.pid, a: r.released, b: r.stop + 30 });
         const own = store.query(SNAPS, { g: r.game_id, p: r.pid, a: r.released - 1, b: r.stop + 30 });

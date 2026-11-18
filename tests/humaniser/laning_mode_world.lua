@@ -106,8 +106,6 @@ function LaningLoad(opts)
 			NoteAttempt = function(_, c) table.insert(attempts, c) end,
 		},
 		Etiquette = Etiquette,
-		-- team_roam's Think asks LaneFight first; no lane fight in these worlds.
-		LaneFight = { Think = function() return false end },
 		Intent = { Resolve = function(_, _, d) return d end },
 		-- bot.step: the step name the last Think reported (ev=snap step=).
 		Telemetry = { NoteLaneThink = function() end, NoteLaneStep = function(_, s) bot.step = s end },
@@ -115,7 +113,7 @@ function LaningLoad(opts)
 		Overrides = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end },
 		Retreat = { Running = function() return opts.retreatRunning == true end },
 		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
-		CoreTrade = { LastHitYields = function() return opts.retreating == true end },
+		Trade = { LastHitYields = function() return opts.retreating == true end },
 		States = {
 			MayOwn = function() return opts.owned == true end, SetLaneSpot = function() end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,

@@ -299,7 +299,7 @@ function LaneFresh(laneCfg, extra)
 	local lp = package.loaded["bots/FunLib/humaniser/lane_push"]
 	if lp ~= nil then lp.ResetFrames() end
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, TickEvery = extra.tickEvery, Lane = laneCfg,
-		Telemetry = extra.telemetry, LaneFight = extra.laneFight, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
+		Telemetry = extra.telemetry, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
 	-- The old camp-job pulls are Ours.SupportPull's OFF arm; this world tests them unless a test asks for the pull job.
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPull = extra.supportPull == true
 	-- PullFarm follows every ok pull and takes the hero to the camp, so worlds that test the pull alone leave it off.
@@ -337,7 +337,6 @@ function LaneFresh(laneCfg, extra)
 	H.Lane.Stacking.RegisterProbes()
 	H.Lane.LaneMid.RegisterProbes()
 	H.Lane.Counter.RegisterProbes()
-	H.LaneFight.RegisterProbes()
 	H.Transitions.Rotation.RegisterProbes()
 	H.Transitions.Caution.ResetCache()
 	H.Transitions.Caution.RegisterProbes()

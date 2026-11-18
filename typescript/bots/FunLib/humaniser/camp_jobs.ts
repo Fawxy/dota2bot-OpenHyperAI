@@ -318,7 +318,6 @@ export function StartBlocked(bot: Unit, at?: Vector, who = "sup_job"): string | 
     // A job farm could only win in retreat's dip ends as mode-end the next round (console.9055994510, mirana 4:49).
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
     if (retreat !== undefined && retreat >= settings().Timing.JobDesire) return "retreat";
-    if (LaneHooks.IsFightCommitting(bot)) return "lanefight";
     if ((!Ours.On("Threat") || at === undefined) && LaneHooks.EnemiesMissing(bot, settings().Thresholds.JobMissingFresh) > 0) return "enemy-missing";
     // The rotation was decided first (20-25 s before the spawn); a job now would make it late or cancel it.
     if (LaneHooks.RotationDecided(bot)) return "rotation";
@@ -428,8 +427,6 @@ function startStack(bot: Unit, req: JobRequest): boolean {
 }
 
 export function Start(bot: Unit, req: JobRequest): boolean {
-    // A forced start is a human's order, which also ends the lane fight (priority).
-    if (req.forced !== true && LaneHooks.IsFightCommitting(bot)) return false;
     if (req.kind === "stack") return startStack(bot, req);
     if (!hpOk(bot)) return false;
     if (PULL_KINDS[req.kind] !== true) return false;

@@ -12,15 +12,6 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
     return result
 end
 
-local function __TS__ArraySome(self, callbackfn, thisArg)
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            return true
-        end
-    end
-    return false
-end
-
 local function __TS__ArrayMap(self, callbackfn, thisArg)
     local result = {}
     for i = 1, #self do
@@ -56,23 +47,11 @@ local function __TS__StringSubstring(self, start, ____end)
     end
     return string.sub(self, start, ____end)
 end
-
-local function __TS__ArrayPush(self, ...)
-    local items = {...}
-    local len = #self
-    for i = 1, #items do
-        len = len + 1
-        self[len] = items[i]
-    end
-    return len
-end
 -- End of Lua Library inline imports
 local ____exports = {}
-local live, dist, member, weigh, heroOf, freeOf, freeFor, readers
+local live, dist, member, weigh
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
-local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
@@ -133,39 +112,6 @@ function weigh(ally, ours)
         dmg = dmg
     }
 end
-function heroOf(pid)
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if live(e) and e:GetPlayerID() == pid then
-            return e
-        end
-    end
-    return nil
-end
-function freeOf(bot, focus)
-    if RetreatState.Running(bot) then
-        return "ret"
-    end
-    if Plays.Of(bot) ~= nil then
-        return "play"
-    end
-    local t = heroOf(focus)
-    local ____temp_14
-    if t ~= nil then
-        ____temp_14 = readers and readers.refusal(bot, t)
-    else
-        ____temp_14 = nil
-    end
-    return ____temp_14 or "yes"
-end
-function freeFor(bot, rec)
-    local ____exports_WithAttack_18 = ____exports.WithAttack
-    local ____freeOf_result_17 = freeOf(bot, rec.focus)
-    local ____opt_15 = rec.open
-    return ____exports_WithAttack_18(____freeOf_result_17, (____opt_15 and ____opt_15.attacking) == true)
-end
-function ____exports.WithAttack(free, attacking)
-    return free == "yes" and not attacking and "noatk" or free
-end
 ____exports.SETTINGS = {
     AllyRange = 1200,
     FoeRange = 1000,
@@ -176,7 +122,6 @@ ____exports.SETTINGS = {
     Until = 720,
     CutEvery = 2,
     Keep = 1.5,
-    TargetRange = 1200,
     AfterWindow = 8,
     AfterEvery = 1
 }
@@ -198,36 +143,15 @@ local function best(from, on, dmg)
     end
     return tgt, share
 end
---- The rule: outnumbered stays out; else join when our best kill share beats theirs (on `focus` when the record has one: the
--- hero our ally's fight is on). Ours in retreat (`ret` 1) are leaving: they count on neither side.
+--- The rule: join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side.
 function ____exports.Decide(rec)
     local ours = __TS__ArrayFilter(
         rec.ours,
         function(____, m) return m.ret ~= 1 end
     )
-    local on = rec.focus ~= nil and __TS__ArrayFilter(
-        rec.theirs,
-        function(____, m) return m.pid == rec.focus end
-    ) or rec.theirs
-    local tgt, ko = best(ours, #on > 0 and on or rec.theirs, rec.dmg)
+    local tgt, ko = best(ours, rec.theirs, rec.dmg)
     local ____, kt = best(rec.theirs, ours, rec.dmg)
-    if #rec.theirs > #ours then
-        return {dec = "outnumbered", tgt = tgt, ko = ko, kt = kt}
-    end
     return {dec = ko > kt and "join" or "losing", tgt = tgt, ko = ko, kt = kt}
-end
-function ____exports.SetReaders(r)
-    readers = r
-end
-local OPENS = {trade = true, kill = true, fight = true}
---- Whether a partner's episode of this kind is a fight it opened: an `ours` trigger. A `join` is not (two joins would hold each other up).
-function ____exports.Opens(kind)
-    return OPENS[kind] == true
-end
---- Whether a record's answer is acted on: a `hit` record always; an `ours` record only with `Ours.JoinOnHit` and a hero
--- free to fight the hero (`free`, freeOf's answer), else it is only logged.
-function ____exports.Acts(on, switchOn, free)
-    return on ~= "ours" or switchOn and free == "yes"
 end
 --- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
 -- or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
@@ -235,20 +159,18 @@ end
 -- the one at the lowest HP share.
 function ____exports.Gather(bot)
     local ally
-    local opener
-    local opened
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue20
+            local __continue15
             repeat
                 if not live(a) then
-                    __continue20 = true
+                    __continue15 = true
                     break
                 end
                 allies[#allies + 1] = a
                 if dist(a, bot) > ____exports.SETTINGS.AllyRange then
-                    __continue20 = true
+                    __continue15 = true
                     break
                 end
                 local share = a:GetHealth() / a:GetMaxHealth()
@@ -256,31 +178,14 @@ function ____exports.Gather(bot)
                     if ally == nil or share < ally:GetHealth() / ally:GetMaxHealth() then
                         ally = a
                     end
-                    __continue20 = true
-                    break
                 end
-                if a == bot or readers == nil or RetreatState.Running(a) then
-                    __continue20 = true
-                    break
-                end
-                local ep = readers.episodeOf(a:GetPlayerID())
-                if ep == nil or not ____exports.Opens(ep.kind) or not live(ep.target) or not ep.target:CanBeSeen() then
-                    __continue20 = true
-                    break
-                end
-                if opener == nil or share < opener:GetHealth() / opener:GetMaxHealth() then
-                    opener = a
-                    opened = ep
-                end
-                __continue20 = true
+                __continue15 = true
             until true
-            if not __continue20 then
+            if not __continue15 then
                 break
             end
         end
     end
-    local on = ally ~= nil and "hit" or "ours"
-    ally = ally or opener
     if ally == nil then
         return nil
     end
@@ -294,27 +199,7 @@ function ____exports.Gather(bot)
     ) < 2 then
         return nil
     end
-    local rec = weigh(ally, ours)
-    if rec == nil then
-        return nil
-    end
-    rec.on = on
-    if on == "ours" then
-        local ep = opened
-        if not __TS__ArraySome(
-            rec.theirs,
-            function(____, m) return m.pid == ep.tpid end
-        ) then
-            return nil
-        end
-        rec.focus = ep.tpid
-        rec.open = {
-            kind = ep.kind,
-            age = DotaTime() - ep.at,
-            attacking = ally:GetAttackTarget() == ep.target
-        }
-    end
-    return rec
+    return weigh(ally, ours)
 end
 local states = {}
 --- The bot's decision, made afresh at most every Every s (the matrix is 2 x n x m estimates); reads only.
@@ -336,48 +221,15 @@ function ____exports.For(bot)
     end
     st.rec = ____temp_3
     st.ans = st.rec ~= nil and ____exports.Decide(st.rec) or nil
-    local ____opt_4 = st.rec
-    if (____opt_4 and ____opt_4.on) == "ours" then
-        local sw = Ours.On("JoinOnHit")
-        if not ____exports.Acts(
-            "ours",
-            sw,
-            sw and freeFor(bot, st.rec) or ""
-        ) then
-            return {rec = st.rec, ans = st.ans, fresh = true}
-        end
-    end
-    local ____opt_6 = st.ans
-    if (____opt_6 and ____opt_6.dec) == "join" then
-        st.joinAt = now
-        st.joinTgt = st.ans.tgt
-    elseif st.ans ~= nil then
-        st.joinAt = nil
-    end
     return {rec = st.rec, ans = st.ans, fresh = true}
 end
---- With `Ours.PairJoin`: the enemy hero this bot joins the fight on (D10), or undefined. The last answer was `join` within
--- Keep s with no other answer since, the bot is not retreating, and the target is alive, seen and within TargetRange of it.
-function ____exports.Joins(bot)
-    if not Ours.On("PairJoin") or not bot:IsAlive() or RetreatState.Running(bot) then
-        return nil
+local function heroOf(pid)
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        if live(e) and e:GetPlayerID() == pid then
+            return e
+        end
     end
-    ____exports.For(bot)
-    local st = states[bot:GetPlayerID()]
-    if (st and st.joinAt) == nil or DotaTime() - st.joinAt > ____exports.SETTINGS.Keep then
-        return nil
-    end
-    local ____temp_10
-    if st.joinTgt ~= nil then
-        ____temp_10 = heroOf(st.joinTgt)
-    else
-        ____temp_10 = nil
-    end
-    local t = ____temp_10
-    if t == nil or not t:CanBeSeen() or dist(t, bot) > ____exports.SETTINGS.TargetRange then
-        return nil
-    end
-    return t
+    return nil
 end
 local function members(ms)
     return table.concat(
@@ -443,7 +295,7 @@ local function flush(pid, res)
         }
     )
 end
---- A taken `join` or `trade` window of `bot` on `tpid` has ended with `why` (states/core_trade close): watch the weighing for
+--- A taken `join` or `trade` window of `bot` on `tpid` has ended with `why` (states/trade close): watch the weighing for
 -- AfterWindow s, while telemetry is on and in the laning stage. A watch still open ends `reopen`. Reads only.
 function ____exports.After(bot, kind, why, tpid)
     if not Telemetry.IsEnabled() then
@@ -464,7 +316,7 @@ function ____exports.After(bot, kind, why, tpid)
         samples = {}
     }
 end
---- Any CoreTrade window of `bot` (trade, join, kill, fight) has started: an open watch ends `reopen` (the fight went on). Reads only.
+--- Any trade window of `bot` (hit, hit back, kill, join) has started: an open watch ends `reopen` (the fight went on). Reads only.
 function ____exports.Reopened(bot)
     flush(
         bot:GetPlayerID(),
@@ -551,8 +403,8 @@ local function tickAfter(bot, now)
         return flush(pid, "stage")
     end
     if now >= w.next then
-        local ____w_samples_11 = w.samples
-        ____w_samples_11[#____w_samples_11 + 1] = sample(bot, w, now)
+        local ____w_samples_4 = w.samples
+        ____w_samples_4[#____w_samples_4 + 1] = sample(bot, w, now)
         w.next = now + ____exports.SETTINGS.AfterEvery
     end
     if now - w.start >= ____exports.SETTINGS.AfterWindow then
@@ -575,10 +427,10 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____exports_For_result_19 = ____exports.For(bot)
-    local rec = ____exports_For_result_19.rec
-    local a = ____exports_For_result_19.ans
-    local fresh = ____exports_For_result_19.fresh
+    local ____exports_For_result_5 = ____exports.For(bot)
+    local rec = ____exports_For_result_5.rec
+    local a = ____exports_For_result_5.ans
+    local fresh = ____exports_For_result_5.fresh
     if not fresh then
         return
     end
@@ -587,13 +439,10 @@ function ____exports.Tick(bot)
         st.dec = nil
         return
     end
-    local ____opt_20 = rec.open
-    local att = ____opt_20 and ____opt_20.attacking
-    if a.dec == st.dec and att == st.att and now - (st.cutAt or -math.huge) < ____exports.SETTINGS.CutEvery then
+    if a.dec == st.dec and now - (st.cutAt or -math.huge) < ____exports.SETTINGS.CutEvery then
         return
     end
     st.dec = a.dec
-    st.att = att
     st.cutAt = now
     local fields = {
         {"pid", pid},
@@ -620,25 +469,8 @@ function ____exports.Tick(bot)
         {
             "kt",
             math.floor(a.kt * 1000 + 0.5) / 1000
-        },
-        {"on", rec.on or "hit"}
+        }
     }
-    if rec.focus ~= nil and rec.open ~= nil then
-        __TS__ArrayPush(
-            fields,
-            {"fo", rec.focus},
-            {"ek", rec.open.kind},
-            {
-                "oa",
-                math.floor(rec.open.age * 10 + 0.5) / 10
-            },
-            {"aa", rec.open.attacking and 1 or 0},
-            {
-                "free",
-                freeFor(bot, rec)
-            }
-        )
-    end
     Telemetry.Event("cut", fields)
 end
 return ____exports

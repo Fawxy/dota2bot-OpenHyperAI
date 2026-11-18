@@ -1,10 +1,11 @@
--- Lane fight commits (slice lane-fight): one row per game and role from `ev=trade kind=kill` (states/core_trade's commit), to
+-- Lane fight commits: one row per game and role from `ev=trade kind=kill` (states/trade's kill), to
 -- :until (default 600). offers (every kill line), taken (result kill or done), kills (result kill), lost (offered, never taken by
 -- attack mode: the mode that held the hero is in `why`), deaths (the hero's death, dated at the snapshot before the dead gap,
 -- between the commit's start, its line's t less dur, and 5 s after its line). Per commit: kill_rate = kills / taken,
--- death_rate = deaths / taken. :lf 1 (default) reads only commits under `Ours.CoreLaneFight` (`lf=1`), 0 only the others
--- (builds before the field read as 0). :kind `kill` (default) the commits, `fight` the lane fights from the play roll, where
--- joins counts the lines with `join=1` (the hero joined another hero's play) and the rest are rolled by the hero itself.
+-- death_rate = deaths / taken. :lf (default: any) reads only the lines with that `lf` (older logs: 1 under the retired lane-fight
+-- switches, 0 without; today's builds log none, which reads as 0). :kind `kill` (default) the commits, `join` the joins (today's lane
+-- fights from the play roll are joins on their play), `fight` the lane fights of older logs; joins counts the lines with `join=1`
+-- (the hero joined another hero's play) and the rest are rolled by the hero itself.
 -- Params: like (LIKE pattern on games.file), until, lf, kind.
 -- ensure: ev_trade(pid, kind, result, dur, role, lf, join)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -12,7 +13,7 @@ k AS (
     SELECT tr.game_id, tr.t, tr.pid, tr.role, tr.result, tr.dur, tr."join" AS joined
     FROM ev_trade tr JOIN gm ON gm.game_id = tr.game_id
     WHERE tr.kind = coalesce(:kind, 'kill') AND tr.t < coalesce(:until, 600)
-      AND coalesce(tr.lf, 0) = coalesce(:lf, 1)
+      AND (:lf IS NULL OR coalesce(tr.lf, 0) = :lf)
 ),
 sn AS MATERIALIZED (
     SELECT s.game_id, s.pid, s.t, s.deaths FROM ev_snap s JOIN gm ON gm.game_id = s.game_id

@@ -80,18 +80,6 @@ export function SpentOn(e: Unit, target: Unit, window: number): number {
     return total;
 }
 
-/**
- * Whether `enemy` can cast its spell `name` now (slice spells-up, `Ours.SpellsUp`): the handle's IsFullyCastable, which
- * for an enemy follows the owner's cooldown and mana. An item, a name the hero lacks, or the switch off reads as up:
- * enemy item handles are unprobed, and up is the safe side.
- */
-export function Ready(enemy: Unit, name: string): boolean {
-    if (!Ours.On("SpellsUp") || string.sub(name, 1, 5) === "item_") return true;
-    const a = enemy.GetAbilityByName(name) as unknown as AbilityHandle | null | undefined;
-    if (a === undefined || a === null || a.IsNull()) return true;
-    return a.IsFullyCastable();
-}
-
 interface CastHandle extends AbilityHandle {
     GetCastRange(): number;
     GetCastPoint(): number;

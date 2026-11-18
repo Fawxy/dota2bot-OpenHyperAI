@@ -183,7 +183,7 @@ export function Gate(bot: Unit, now: number): string | undefined {
     if (!bot.IsAlive() || bot.GetHealth() / math.max(1, bot.GetMaxHealth()) < s.MinHP) return "hp";
     if (bot.GetMana() / math.max(1, bot.GetMaxMana()) < s.MinMana) return "mana";
     if (Orders.GetFor(bot) !== undefined) return "order";
-    if (CampJobs.Active(bot) || LaneHooks.RotationDecided(bot) || LaneHooks.IsFightCommitting(bot)) return "busy";
+    if (CampJobs.Active(bot) || LaneHooks.RotationDecided(bot)) return "busy";
     if (Busy.IsBusy(bot, now + s.MaxEta)[0]) return "busy";
     // knowledge.md 3.2 wave filter: a support needs a lane that can spare it; the mid shoves first.
     if (pos === 4 && !Busy.LaneCanSpare(bot, false)[0]) return "lane";

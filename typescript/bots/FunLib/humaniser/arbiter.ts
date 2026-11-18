@@ -5,13 +5,12 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
-import * as LaneFight from "bots/FunLib/humaniser/lane_fight";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
@@ -110,9 +109,7 @@ export function Candidates(bot: Unit, jobName: string | undefined, lever: string
     const out: Candidate[] = [];
     out.push(retreatCandidate(bot));
     // A pair join (D10) is the pair group's; every other trade, kill or fight is pressure.
-    out.push({ name: "trade", group: CoreTrade.Joining(bot) ? 2 : 5, host: "attack", applies: CoreTrade.Running(bot) });
-    // Only a trade or a commit: a core waiting for its partner (wait_partner) posts no floor and keeps laning (lane_fight.ts).
-    out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: BORROWED.team_roam(bot) });
+    out.push({ name: "trade", group: Trade.Joining(bot) ? 2 : 5, host: "attack", applies: Trade.Running(bot) });
     out.push(jobCandidate(bot, jobName ?? CampJobs.LiveKind(bot), lever));
     out.push({ name: "mid_rune", group: 6, host: "rune", applies: MidRunes.Claiming(bot) });
     // The base: it wins when no interrupt applies, and is group 3 only while a last hit is under way (D11).
@@ -139,8 +136,8 @@ export function Hold(bot: Unit, chooserJob: string | undefined): Candidate | und
 export const SETTINGS = {
     /**
      * The laning mode's desire while the lane is the pick. Over the Valve built-in mode that took a hero no file wanted
-     * (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates); under a trade's opening desire (core_trade
-     * DESIRE_TRADE 0.6), so a trade the borrowed attack mode opens takes the hero; an admitted mode (wards, runes no plan of
+     * (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates); under a trade's opening desire (states/trade
+     * DESIRE_HIT 0.6), so a trade the borrowed attack mode opens takes the hero; an admitted mode (wards, runes no plan of
      * ours covers) wins when OHA's own desire for it is higher. Laning's own last-hit desire (0.9, our body's branch under
      * bOwnsThink, OWNERSHIP H2) stands when higher. `judgement`.
      */
@@ -175,7 +172,7 @@ export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
 
 /**
  * The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
- * hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+ * hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
  * trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
  * scan, which goes stale once attack holds the hero.
  */
@@ -183,13 +180,10 @@ function laneAndTrade(p: Candidate): boolean {
     return p.name === "lane" || p.name === "trade";
 }
 
-/** Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit). */
+/** Modes borrowed from OHA: their own code runs, and their desire stands only while this says our fight wants them (the attack mode's trade). Team roam's code (item use, last-hit grab) runs, its desire never stands. */
 const BORROWED: Record<string, (this: void, bot: Unit) => boolean> = {
-    attack: (bot) => CoreTrade.Running(bot),
-    team_roam: (bot) => {
-        const p = LaneFight.CurrentPhase(bot);
-        return p === "trade" || p === "commit";
-    },
+    attack: (bot) => Trade.Running(bot),
+    team_roam: () => false,
 };
 
 /**

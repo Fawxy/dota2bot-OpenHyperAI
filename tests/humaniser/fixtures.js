@@ -21,16 +21,13 @@ const VERBS = {
     laning_mode: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
     team_roam: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
     retreat_desire: [],
-    kill_check: ['kill', 'noKill'],
-    lane_fight: ['commitEnd', 'committing'],
     core_trip: ['noTrip', 'trip'],
     support_claim: ['claim', 'noClaim'],
     lane_spot: ['stand', 'anchor', 'read'],
     retreat_leave: ['leave', 'stay'],
     threat_gate: ['go', 'hold'],
     pair_join: ['join', 'out', 'act', 'hold', 'none'],
-    core_trade: ['trade', 'kill', 'respect', 'fight'],
-    core_keep: ['keep', 'end'],
+    trade: ['none', 'hit', 'hitback', 'kill', 'join', 'end', 'hold', 'chance'],
 };
 
 function listFixtures(dir) {

@@ -4,9 +4,7 @@ local rotationProbes = {}
 local stackedProbes = {}
 local busyProbes = {}
 local override
-local fightProbes = {}
 local cautionProbe
-local tradeProbe
 local missingProbe
 local rotationDecidedProbe
 function ____exports.SetRotationProbe(fn)
@@ -55,30 +53,12 @@ function ____exports.TechniqueOverride(bot)
     end
     return ____temp_0
 end
---- lane_fight registers this: camp jobs must not start while the bot is committed to a lane kill.
-function ____exports.SetFightProbe(fn)
-    fightProbes[#fightProbes + 1] = fn
-end
-function ____exports.IsFightCommitting(bot)
-    for ____, probe in ipairs(fightProbes) do
-        if probe(bot) then
-            return true
-        end
-    end
-    return false
-end
 --- Registered by the transitions caution (task 12): a cautious core never picks SHOVE.
 function ____exports.SetCautionProbe(fn)
     cautionProbe = fn
 end
 function ____exports.IsCautious(bot)
     return cautionProbe ~= nil and cautionProbe(bot)
-end
-function ____exports.SetTradeProbe(fn)
-    tradeProbe = fn
-end
-function ____exports.TradesSuppressed(bot)
-    return tradeProbe ~= nil and tradeProbe(bot)
 end
 function ____exports.SetMissingProbe(fn)
     missingProbe = fn
@@ -99,9 +79,7 @@ function ____exports.ResetHooks()
     stackedProbes = {}
     busyProbes = {}
     override = nil
-    fightProbes = {}
     cautionProbe = nil
-    tradeProbe = nil
     missingProbe = nil
     rotationDecidedProbe = nil
 end

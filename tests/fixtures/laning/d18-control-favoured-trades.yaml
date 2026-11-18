@@ -1,37 +1,27 @@
 id: lane.trade.favoured.001
 source: log
-ref: {log: 2026-11-15T19-32-56-tradefreecut_smoke1.log, t: 243.967}
+ref:
+  log: 2026-11-15T19-32-56-tradefreecut_smoke1.log
+  t: 243.967
 status: active
-control: {commit: 9b3ef1bd, outcome: pass}
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose trade on 9 (hp 1 vs 0.710, creeps 1, tower 1) (Ours.TradeFree off); tf added by hand: question 2 asked (slice trade-free).
-# core pid 3 on pid 9: 686 away, reach 648; HP 100% vs 71%; heroes 1 theirs, 1 ours; creeps near 1, on the bot 0; tower 1
+decision: trade
 world:
   t: 243.967
   pid: 3
-  role: "core"
-  tgt: 9
+  role: core
   hp: 1
-  thp: 0.71
-  en: 1
-  ally: 1
-  cr: 1
-  hc: 0
-  tw: 1
-  kh: 0.4
-  lf: 1
-  d: 686
-  rch: 648
-  tlh: 0
   bu: 0.205
+  n: 1
+  mi: 0
   tm: 0
-  ar: 500
-  tar: 575
-  tme: 0
-  ko: 0.383
-  kt: 0.271
-  tf: 1
+  hc: 0
+  cr: 1
+  dn: 0
+  cd: 9,0.71,-,686,38,0,1,0,0,0.383,0.271,0,0,-,-,-,-,-,-,0
 expect:
-  must: ["trade"]
-notes: >
+  must:
+    - hit(hero#9)
+notes: |-
   The control (tradefreecut_smoke1, 4:04.0, necrolyte pid 3 on dazzle pid 9, ranges 500 and 575): full HP against 71%, safe. Not free, but our estimate on it (ko 0.383) beats its on us (kt 0.271): a favoured exchange trades, as before. Question 2 must not refuse a trade that pays.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 9's HP, distance, gap past our reach 648, hitting 0, free 0, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: hit(hero#9): safe, one hero, favoured (ko 0.383 over kt 0.271). Old expectation: trade: same (a hit is the old trade).

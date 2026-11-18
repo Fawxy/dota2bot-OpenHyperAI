@@ -349,8 +349,7 @@ local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro"
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
-local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
@@ -424,8 +423,8 @@ function unpaid(bot, r)
     return n
 end
 ____exports.SETTINGS = {
-    Horizon = 2,
-    EngagedWindow = 6,
+    Horizon = Threat.SETTINGS.StayHorizon,
+    EngagedWindow = Threat.SETTINGS.StayEngaged,
     EvenBurst = 1,
     EvenHp = 0.5,
     BudgetFree = 0.5,
@@ -1348,7 +1347,7 @@ end
 -- leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
 function ____exports.LeaveWhy(bot, st, r, budget, now, joins, hits)
     if joins == nil then
-        joins = PairJoin.Joins(bot) ~= nil
+        joins = false
     end
     if hits == nil then
         hits = false
@@ -1701,8 +1700,15 @@ function ____exports.Desire(bot)
         return 0
     end
     local overBefore = st.overSince
-    local joins = PairJoin.Joins(bot) ~= nil
-    local hits = r.threat > budget and #r.eng > 0 and CoreTrade.Taking(bot)
+    local ____temp_9
+    if r.threat > budget then
+        ____temp_9 = Trade.Holds(bot)
+    else
+        ____temp_9 = nil
+    end
+    local hold = ____temp_9
+    local joins = hold == "join"
+    local hits = hold == "hitback"
     local why, stay = ____exports.LeaveWhy(
         bot,
         st,

@@ -1,38 +1,27 @@
 id: lane.trade.deny-due.002
 source: log
-ref: {log: 2026-11-15T20-19-56-h2htradefree1_A_rad_1.log, t: 394.833}
+ref:
+  log: 2026-11-15T20-19-56-h2htradefree1_A_rad_1.log
+  t: 394.833
 status: active
-control: {commit: b695a0b6, outcome: fail}
-decision: core_trade
-# Cut by tools/hlog/cut.js. The game chose trade on 8 (hp 0.894 vs 0.914, creeps 1, tower 0); dn added by hand: the deny the laning body was offered (slice trade-free round 2).
-# core pid 2 on pid 8: 627 away, reach 938; HP 89% vs 91%; heroes 1 theirs, 1 ours; creeps near 1, on the bot 0; tower 0
+decision: trade
 world:
   t: 394.833
   pid: 2
-  role: "core"
-  tgt: 8
+  role: core
   hp: 0.894
-  thp: 0.914
-  en: 1
-  ally: 1
-  cr: 1
-  hc: 0
-  tw: 0
-  kh: 0.4
-  lf: 1
-  d: 627
-  rch: 938
-  tlh: 0
   bu: 0.287
+  n: 1
+  mi: 0
   tm: 0
-  ar: 790
-  tar: 380
-  tme: 0
-  ko: 0.195
-  kt: 0.327
-  tf: 1
+  hc: 0
+  cr: 1
   dn: 1
+  cd: 8,0.914,-,627,-311,0,1,0,1,0.195,0.327,0,0,-,-,-,-,-,-,0
 expect:
-  must: ["respect(deny)"]
-notes: >
+  must:
+    - none(deny)
+notes: |-
   Even HP, a deny due (h2htradefree1_A_rad_1, 6:34.8, pid 2 on pid 8): 89% against 91%, free by range. Our melee creep at 10% died undenied at 6:34.9 as the 6.5 s trade began. Deny wins over harass whatever the HP, short of a kill (D18 question 3). dn added by hand.
+
+  Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 8's HP, distance, gap past our reach 938, hitting 0, free 1, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: none(deny): a due deny outbids the hit. Old expectation: respect(deny): same.

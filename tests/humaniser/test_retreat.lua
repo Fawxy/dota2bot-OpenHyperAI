@@ -138,8 +138,8 @@ do
 	check("engaged: the episode does not end safe while he still hits us", H.Retreat.Running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
 end
 
--- Slice high-hit-back (D24): over budget with a hero hitting us, the `threat` leave waits while CoreTrade.Taking; it is
--- asked only then. Lethal still leaves first.
+-- Slice high-hit-back (D24): over budget with a hero hitting us, the `threat` leave waits while Trade.Holds; it is
+-- asked only over budget. Lethal still leaves first.
 do
 	local asked = 0
 	local function run(holds, engaged, est)
@@ -148,9 +148,9 @@ do
 		enemy(11, Vector(300, -4900), est or 100)
 		if engaged then bot.hitBy = { [e1] = T - 0.2 } end
 		asked = 0
-		-- The world loads a fresh humaniser: stub the core_trade module retreat now holds.
-		local CT = require("bots/FunLib/humaniser/states/core_trade")
-		CT.Taking = function() asked = asked + 1 return holds end
+		-- The world loads a fresh humaniser: stub the trade module retreat now holds.
+		local CT = require("bots/FunLib/humaniser/states/trade")
+		CT.Holds = function() asked = asked + 1 return holds and "hitback" or nil end
 		local out = capture(function()
 			H.Retreat.Desire(bot)
 			T = T + react(bot) + 0.5
@@ -165,9 +165,29 @@ do
 	check("hit back: hit at 90% over budget with the hit back holding, no leave", not on and asked > 0, tostring(on) .. " asked=" .. asked)
 	check("hit back: one ph=stay why=hitback line", stay ~= nil and field(stay, "why") == "hitback", stay)
 	check("hit back: the same read with no hit back holding leaves", (run(false, true)))
-	local _, _ = run(true, false)
-	check("hit back: not asked when nobody is hitting us", asked == 0)
+	local _, _ = run(true, false, 0)
+	check("hit back: not asked while the read is within budget", asked == 0)
 	check("hit back: lethal leaves whatever the hit back says", (run(true, true, 2000)))
+	-- The join hold (D10): Trade.Holds answers `join`, and the leave waits, logged why=join.
+	local function joinRun(holds)
+		local H, bot = world({ hp = 540 })
+		local e1 = enemy(10, Vector(300, -5000), 100)
+		enemy(11, Vector(300, -4900), 100)
+		bot.hitBy = { [e1] = T - 0.2 }
+		require("bots/FunLib/humaniser/states/trade").Holds = function() return holds end
+		local out = capture(function()
+			H.Retreat.Desire(bot)
+			T = T + react(bot) + 0.5
+			bot.hitBy = { [e1] = T - 0.2 }
+			H.Retreat.Desire(bot)
+		end)
+		local stay
+		for _, l in ipairs(out) do if l:find("ph=stay", 1, true) then stay = l end end
+		return H.Retreat.Running(bot), stay
+	end
+	local joinOn, joinStay = joinRun("join")
+	check("join hold: no leave, one ph=stay why=join line", not joinOn and joinStay ~= nil and field(joinStay, "why") == "join", joinStay)
+	check("join hold: the same read with Holds empty leaves", (joinRun(nil)))
 end
 
 -- Lethal leaves at once; an escape item ready (or a faster bot out of their range) is not lethal.
@@ -582,6 +602,8 @@ end
 do
 	local function two(o)
 		local H, bot = world({ high = o.off ~= true, hp = o.hp })
+		-- The stand alone: a hit back (D24, Trade.Holds) would answer the hitter first.
+		require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end
 		if o.ally then
 			local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
 			ally.maxhp, ally.hp = 600, 600
@@ -624,7 +646,7 @@ do
 		if fact ~= nil then package.loaded["bots/FunLib/humaniser/drill"].RigCreepAggro = function() return fact end end
 		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = true
 		-- The hold alone: a hit back (slice high-hit-back) answers this even 2v2 at full HP first.
-		require("bots/FunLib/humaniser/states/core_trade").Taking = function() return false end
+		require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end
 		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
 		ally.maxhp, ally.hp = 600, 600
 		local e1, e2 = enemy(10, Vector(300, -5000), 100), enemy(11, Vector(300, -4900), 100)

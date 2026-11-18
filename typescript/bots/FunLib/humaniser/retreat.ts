@@ -19,19 +19,18 @@ import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 import * as Cut from "bots/FunLib/humaniser/cut";
-import * as PairJoin from "bots/FunLib/humaniser/pair_join";
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as Trade from "bots/FunLib/humaniser/states/trade";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
-    Horizon: 2,
+    Horizon: Threat.SETTINGS.StayHorizon,
     /**
      * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`), the same value and reason as the lane
      * spot's LANE_ENGAGED_WINDOW: he keeps hitting while we stay. The exit read is the same call, so an episode does not end `safe`
      * while he still hits us. At 2.6% of max HP a second one engaged melee hero reads 0.25 + 0.078 / HP: over the free budget 0.5
      * from about 31% HP, and 0.33 at full HP (a lone harasser at full HP starts nothing). judgement.
      */
-    EngagedWindow: 6,
+    EngagedWindow: Threat.SETTINGS.StayEngaged,
     /**
      * RetreatOdds: a fight the heroes in reach do not outnumber is held (no `threat` leave) only while their burst, as the read
      * counts it (an engaged hero over EngagedWindow), is under this share of our current HP: D1's "their burst can kill me".
@@ -722,14 +721,14 @@ function unpaid(bot: Unit, r: Threat.Read): number {
     return n;
 }
 
-/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, heroes in reach are not hitting us and D1 does not hold (Threat.Stand; the ev=retreat stay line's `reach` tells one from more), or our pair is joining the fight (PairJoin), or we are hitting back (CoreTrade.Taking). */
+/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, heroes in reach are not hitting us and D1 does not hold (Threat.Stand; the ev=retreat stay line's `reach` tells one from more), or our pair is joining the fight (PairJoin), or we are hitting back (Trade.Holds). */
 export type Stay = "under" | "even" | "hold" | "stand" | "join" | "hitback";
 
 /**
  * The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
  * leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
  */
-export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number, joins: boolean = PairJoin.Joins(bot) !== undefined, hits = false): LuaMultiReturn<[Why | undefined, Stay | undefined]> {
+export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number, joins = false, hits = false): LuaMultiReturn<[Why | undefined, Stay | undefined]> {
     if (r.band === "lethal") return $multi("lethal", undefined);
     if (TowerOnUs(bot) !== undefined) return $multi("tower", undefined);
     if (hpShare(bot) < SETTINGS.HealFloor && r.reach.length === 0) return $multi("heal", undefined);
@@ -765,8 +764,8 @@ export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: numbe
         }
         return $multi(undefined, "join");
     }
-    // D24 (slice high-hit-back; one decision since hitback-fold): a hero hits us at high HP and CoreTrade calls hitting back safe and favoured,
-    // or the hit back runs: the `threat` leave waits for it (`hits`, CoreTrade.Taking); lethal, a tower and the heal floor
+    // D24 (slice high-hit-back; one decision since hitback-fold): a hero hits us at high HP and Trade calls hitting back safe and favoured,
+    // or the hit back runs: the `threat` leave waits for it (`hits`, Trade.Holds); lethal, a tower and the heal floor
     // still leave first.
     if (hits) {
         st.overSince = undefined;
@@ -888,9 +887,10 @@ export function Desire(bot: Unit): number | undefined {
     // retreat-heal: the chase drops the cast to the drill's HP before any leave, so the heal walk is forced.
     if (Drill.RetreatHeld(bot, hpShare(bot))) return 0;
     const overBefore = st.overSince;
-    const joins = PairJoin.Joins(bot) !== undefined;
-    // Asked only when it can matter (over budget, a hero hitting us): it gathers CoreTrade's inputs.
-    const hits = r.threat > budget && r.eng.length > 0 && CoreTrade.Taking(bot);
+    // Asked only when it can matter (over budget): it gathers the trade decision's inputs.
+    const hold = r.threat > budget ? Trade.Holds(bot) : undefined;
+    const joins = hold === "join";
+    const hits = hold === "hitback";
     const [why, stay] = LeaveWhy(bot, st, r, budget, now, joins, hits);
     if (readAtBefore !== st.readAt) cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins, hits);
     if (why === undefined) return 0;
