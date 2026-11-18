@@ -8,6 +8,7 @@ conditions: {phase: laning, role: pos1}
 world:
   t: 120
   owned: true
+  humanTeam: true
   bot: {pos: 1, x: 0, y: 0, range: 150, dmg: 50}
   # Creep 1 is nearly killable (60 HP against 50 damage, inside 1.7x) and in range; allied creep 2 can be denied.
   creeps: [{id: 1, team: enemy, hp: 60, x: 100, y: 0}, {id: 2, team: ally, hp: 40, x: -100, y: 0}]

@@ -1,7 +1,7 @@
 /**
  * Lane safety and laning-phase transitions facade (task 12).
  * Imports every transitions module so their load-time registrations run, and is the one entry point for Tick and
- * the mode-file hooks. The trainer self-test bot is left alone (as Lane.PreThink skips it): its drill must not be
+ * the mode-file hooks. The trainer self-test bot is left alone (as the lane steps skip it): its drill must not be
  * moved by a rune floor, a ward pick or a farm release.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";

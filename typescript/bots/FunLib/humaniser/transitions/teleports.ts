@@ -1,12 +1,11 @@
 /**
  * Lane safety and laning-phase transitions (task 12, Task 6): reaction to enemy teleports landing on our lane.
- * A low-skill bot backs off (caution level 1); a skilled bot that is stronger sets up where the TP lands.
+ * A low-skill bot backs off (caution level 1); a skilled bot that is stronger does not (`setup`, logged).
  * GetIncomingTeleports only lists TPs the team can see, so what it returns is all a bot may know.
  */
 import { Lane, Tower, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
-import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -55,10 +54,6 @@ function dist2D(a: Vector, b: Vector): number {
     return math.sqrt(dx * dx + dy * dy);
 }
 
-function clamp01(v: number): number {
-    return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
 /** Enemy TPs for `team`, read from the game at most once per TpRefresh. */
 export function EnemyTps(team: number): EnemyTp[] {
     const now = DotaTime();
@@ -92,10 +87,6 @@ export function EnemyTps(team: number): EnemyTp[] {
     return list;
 }
 
-function ourTower(s: LaneState.LaneSnapshot): Vector {
-    return GetLocationAlongLane(s.lane, clamp01(Camps.ToAbsAmount(s.team, s.ourTowerAmount)));
-}
-
 /** Where the enemy's T1 in this lane stands, if it still does. Towers are always visible. */
 function enemyT1(bot: Unit, s: LaneState.LaneSnapshot): Vector | undefined {
     const id = ENEMY_T1[s.lane];
@@ -123,26 +114,6 @@ export function Response(bot: Unit, _tp: EnemyTp): "back" | "setup" {
     return stronger !== undefined && stronger(bot, cfg.TpStrongerRadius) ? "setup" : "back";
 }
 
-function setupPoint(bot: Unit, s: LaneState.LaneSnapshot, tp: EnemyTp): Vector {
-    const cfg = Settings.Get();
-    const tower = ourTower(s);
-    const d = dist2D(tp.location, tower);
-    if (d <= 0) return tp.location;
-    const ux = (tower.x - tp.location.x) / d;
-    const uy = (tower.y - tp.location.y) / d;
-    let step = math.min(d, cfg.TpSetupDistance);
-    const foe = enemyT1(bot, s);
-    if (foe !== undefined) {
-        const wx = tp.location.x - foe.x;
-        const wy = tp.location.y - foe.y;
-        const b = wx * ux + wy * uy;
-        const disc = b * b - (wx * wx + wy * wy) + cfg.TpTowerClear * cfg.TpTowerClear;
-        // The line from the TP toward our tower leaves the tower's clearance circle at the larger root.
-        if (disc >= 0) step = math.max(step, math.min(d, -b + math.sqrt(disc)));
-    }
-    return Vector(tp.location.x + ux * step, tp.location.y + uy * step, tp.location.z);
-}
-
 export function Tick(bot: Unit): void {
     if (!Settings.IsOn("Teleports")) return;
     const now = DotaTime();
@@ -153,7 +124,6 @@ export function Tick(bot: Unit): void {
         if (reactions[pid] !== undefined) {
             delete reactions[pid];
             Caution.ForceLevel(bot, 0, -math.huge);
-            Caution.ForceSetup(bot, undefined, -math.huge);
         }
         return;
     }
@@ -183,9 +153,7 @@ export function Tick(bot: Unit): void {
     }
     if (r.mode === "setup") {
         Caution.ForceLevel(bot, 0, -math.huge);
-        Caution.ForceSetup(bot, setupPoint(bot, s, tp), until);
     } else {
-        Caution.ForceSetup(bot, undefined, -math.huge);
         Caution.ForceLevel(bot, 1, until);
     }
 }

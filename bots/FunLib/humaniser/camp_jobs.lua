@@ -283,17 +283,17 @@ function campNeutral(bot, job)
         false
     ) or ({})) do
         do
-            local __continue272
+            local __continue270
             repeat
                 if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue272 = true
+                    __continue270 = true
                     break
                 end
                 if not Camps.InBox(
                     job.activeCamp,
                     n:GetLocation()
                 ) then
-                    __continue272 = true
+                    __continue270 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(
@@ -304,9 +304,9 @@ function campNeutral(bot, job)
                     best = n
                     bestDist = d
                 end
-                __continue272 = true
+                __continue270 = true
             until true
-            if not __continue272 then
+            if not __continue270 then
                 break
             end
         end
@@ -576,8 +576,6 @@ local skipped = {}
 local planNoted = {}
 --- The core's view of its support leaving for a camp: when it started, and how it was known.
 local covering = {}
---- Until when a bot starts no pre-contest in that lane: the last one found the enemy not pulling.
-local preContestRest = {}
 pendingModeEnd = {}
 function ____exports.ResetCache()
     jobs = {}
@@ -586,7 +584,6 @@ function ____exports.ResetCache()
     skipped = {}
     planNoted = {}
     covering = {}
-    preContestRest = {}
     pendingModeEnd = {}
 end
 local function dist2D(a, b)
@@ -1064,11 +1061,6 @@ function ____exports.LiveKind(bot)
     local job = jobs[bot:GetPlayerID()]
     return isLive(job) and job.kind or nil
 end
---- Cheap: a config read, then a table lookup; false before any engine call when the lane system is off.
-function ____exports.PreContestResting(bot, lane)
-    local r = preContestRest[bot:GetPlayerID()]
-    return r ~= nil and r.lane == lane and DotaTime() < r["until"]
-end
 function ____exports.Active(bot)
     if not LaneConfig.IsActive() then
         return false
@@ -1330,12 +1322,6 @@ local function endContest(bot, job, reason)
     end
     doneCycle[bot:GetPlayerID()] = cycleOf(DotaTime())
     local pre = job.preAggroAt ~= nil and 1 or 0
-    if pre == 1 and (reason == "enemy-in-lane" or reason == "no-pull") then
-        preContestRest[bot:GetPlayerID()] = {
-            lane = bot:GetAssignedLane(),
-            ["until"] = DotaTime() + settings().Timing.PreContestCooldown
-        }
-    end
     local fields = {
         {
             "pid",
@@ -2196,10 +2182,10 @@ local function laneCreepsNear(bot, center, radius)
         false
     ) or ({})) do
         do
-            local __continue300
+            local __continue298
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue300 = true
+                    __continue298 = true
                     break
                 end
                 if dist2D(
@@ -2208,9 +2194,9 @@ local function laneCreepsNear(bot, center, radius)
                 ) <= radius then
                     result[#result + 1] = c
                 end
-                __continue300 = true
+                __continue298 = true
             until true
-            if not __continue300 then
+            if not __continue298 then
                 break
             end
         end
@@ -2249,10 +2235,10 @@ local function contestTarget(bot, job)
         bot:GetAssignedLane()
     )) do
         do
-            local __continue309
+            local __continue307
             repeat
                 if not e.visible or e.unit == nil then
-                    __continue309 = true
+                    __continue307 = true
                     break
                 end
                 local d = dist2D(e.location, center)
@@ -2262,9 +2248,9 @@ local function contestTarget(bot, job)
                 if best == nil and d <= radii.EnemyNearCamp then
                     best = e.unit
                 end
-                __continue309 = true
+                __continue307 = true
             until true
-            if not __continue309 then
+            if not __continue307 then
                 break
             end
         end
@@ -2305,19 +2291,19 @@ local function pulledCreeps(bot, job)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(radii.LaneCreepScan, true) or ({})) do
         do
-            local __continue324
+            local __continue322
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() then
-                    __continue324 = true
+                    __continue322 = true
                     break
                 end
                 local loc = c:GetLocation()
                 if loc ~= nil and dist2D(loc, job.stand) <= radii.TakePullCreeps then
                     out[#out + 1] = c
                 end
-                __continue324 = true
+                __continue322 = true
             until true
-            if not __continue324 then
+            if not __continue322 then
                 break
             end
         end

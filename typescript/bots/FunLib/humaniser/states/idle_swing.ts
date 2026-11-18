@@ -22,6 +22,7 @@ import { DamageType, Lane, Team, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as LaneTech from "bots/FunLib/humaniser/lane_tech";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 export type Kind = "predeny" | "setup" | "shove";
@@ -353,11 +354,7 @@ function findSetup(bot: Unit, me: Lib.TaskUnit, verbs: typeof Lib.Verbs): [Note 
     return [bestNote, best];
 }
 
-type LaneTechModule = typeof import("bots/FunLib/humaniser/lane_tech");
-
 function findShove(bot: Unit): [Note | undefined, Unit | undefined] {
-    // Required at the call, not imported: lane_tech's imports reach states/laning, which imports this module.
-    const LaneTech = require("bots/FunLib/humaniser/lane_tech") as LaneTechModule;
     const near: Unit[] = [];
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
     for (const c of bot.GetNearbyLaneCreeps(creepRadius(bot), true) ?? []) {

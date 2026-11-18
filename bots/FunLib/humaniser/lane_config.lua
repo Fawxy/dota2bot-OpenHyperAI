@@ -40,7 +40,6 @@ function ____exports.Settings()
 end
 ____exports.DEFAULTS = {
     Enable = true,
-    OwnLaningThink = "allies",
     Plan = true,
     Block = true,
     FullPull = true,
@@ -49,11 +48,9 @@ ____exports.DEFAULTS = {
     Freeze = true,
     Shove = true,
     Stack = true,
-    Harass = true,
     Mid = true,
     CounterPlay = true,
     Telegraph = true,
-    CampBlock = false,
     Forecast = true,
     PreContest = false,
     TakePull = true,
@@ -67,22 +64,16 @@ ____exports.DEFAULTS = {
         Shove = 0.4,
         SoloCampJob = 0.6,
         MultiStackAncients = 0.7,
-        CampBlock = 0.6,
-        HarassPosition = 0.6,
-        RandomHarass = 0.5,
-        PreContest = 0.7,
-        TakePull = 0.5
+        PreContest = 0.7
     },
     Curves = {
         JitterSigma = {1.5, 0},
         AttemptRate = {0.15, 1},
         PathNoise = {150, 0},
         StackAttempt = {0.2, 1},
-        HarassCapitalise = {0.25, 1},
         CounterNotice = {0.2, 1},
         PlanMisread = {0.3, 0},
         CoverAbsentCore = {0.3, 1},
-        DoubleDraw = {0.2, 0},
         Foresight = {0, 1},
         SureCommit = {0.5, 1}
     },
@@ -97,11 +88,7 @@ ____exports.DEFAULTS = {
     Timing = {
         SnapshotRefresh = 0.5,
         WaveCycle = GameRules.WAVE_EVERY,
-        AggroWindow = 3,
-        AggroCooldown = 2.3,
-        WalkBack = 1.5,
         BlockEnd = 30,
-        BlockLostSec = 2,
         StackMoveFrom = 45,
         StackExitUntil = 1,
         StackOutcomeAt = 2,
@@ -131,7 +118,6 @@ ____exports.DEFAULTS = {
         MaxTravel = 12,
         PreContestLead = 2,
         PreContestWait = 4,
-        PreContestCooldown = 60,
         LanerSeenMin = 10,
         LanerSeenGap = 1,
         TakePullMax = 15,
@@ -150,51 +136,33 @@ ____exports.DEFAULTS = {
         DoublePullHitGap = 1,
         DoublePullMaxGap = 6,
         DoublePullJoin = 3,
-        ShoveMaxSec = 8,
         PingHandsOff = 30,
         PlanSustain = 5,
         PlanMinDwell = 15,
-        CoreYieldStagger = 1.5,
         HumanPullWindow = 6,
         CounterUnseen = 4,
         CounterPullWindow = 3,
-        CounterRespondFresh = 4,
         CounterWaveLate = 5,
         CounterSignalTTL = 20,
-        PunishGap = 2,
-        PunishFor = 6,
-        PathSafeSeen = 5,
         MidRuneShoveLookahead = 25,
         RuneContestAfter = 10,
-        DropRangedDenyFor = 20,
         RuneContestDesire = 0.6,
         MarkedStackFor = 120,
         StackWatchFrom = 50,
         StackWatchTo = 58,
         StackOutsideUntil = 3,
-        CampBlockFrom = 50,
-        CampBlockTo = 58,
         StackedCampSeen = 5,
         CounterForgetAfter = 120,
         PreRuneMin = 15,
         PreRuneMax = 20,
-        RandomHarassMin = 4,
-        RandomHarassMax = 8,
-        LowSkillHarassExtra = 1.5,
-        AggroDanceBack = 1,
-        BlockNoiseEvery = 1,
-        CampBlockCooldown = 180,
         PullTelegraphLead = 5,
         PullTelegraphCooldown = 60,
         StackTelegraphCooldown = 120,
         CounterTelegraphCooldown = 60,
-        ShoveTelegraphCooldown = 60,
         ExposureSeen = 3
     },
     Thresholds = {
         CoreAbsentDist = 1200,
-        CoreBusyHP = 0.6,
-        CoreBusyDamageMult = 1.3,
         PartnerMinHP = 0.4,
         JobMinHP = 0.4,
         JobHoldMinHP = 0.5,
@@ -213,19 +181,11 @@ ____exports.DEFAULTS = {
         StableSeenWithin = 3,
         StableMinHP = 0.5,
         FullPullMin = 0.8,
-        HarassExtraRange = 100,
-        AggroDanceCreeps = 3,
-        AggroDanceRadius = 500,
-        HarassTowerLevel = 6,
-        HarassTowerTargetHP = 0.3,
         EnemyTowerRange = 844,
         HeroRadius = 24,
         TakePullLaneCreeps = 1,
         TakePullDangerEnemies = 2,
         ShoveMinHP = 0.5,
-        ShoveDoneCreeps = 1,
-        TowerSwapAllyHP = 0.6,
-        TowerSwapBotHP = 0.6,
         FreezeDriftMargin = 0.2,
         MidTowerEq = 0.8,
         FreezeCoreEqMax = -0.3,
@@ -244,22 +204,7 @@ ____exports.DEFAULTS = {
         Exposure = 1500,
         LaneFrontPing = 600,
         HumanPullRadius = 800,
-        AggroDrawExtra = 200,
-        AggroWalkBack = 300,
-        AggroWalkMax = 400,
-        BlockAhead = 120,
-        BlockSide = 50,
-        BlockStart = 1500,
-        BlockLost = 400,
-        BlockContact = 700,
-        TowerAggroMargin = 56,
         PreContestStand = 400,
-        TowerExitMargin = 100,
-        Zone = 900,
-        ZoneOffset = 150,
-        HoldMinBack = 250,
-        HarassStandBack = 50,
-        LowHpCreep = 700,
         StepBackCreeps = 700,
         StepBackEps = 50,
         NeutralSearch = 700,
@@ -284,18 +229,13 @@ ____exports.DEFAULTS = {
         NeutralOutsideMargin = 200,
         PullCampLastSeen = 800,
         PullerNear = 300,
-        PathSafe = 1500,
         StackedCampSafe = 1500,
         ContestReach = 1200,
         TakePullCreeps = 800,
         TakePullDanger = 1200,
         CounterNeutralScan = 1600,
-        MidFront = 1200,
-        MidHuman = 1500,
-        LaneActive = 2500,
         PullPathEdge = 150,
         BoxMargin = 300,
-        AggroDanceStep = 250,
         Stronger = 1200,
         ApproachExtrapolate = 0.5
     },
@@ -324,8 +264,7 @@ ____exports.DEFAULTS = {
         FullPast = 100,
         LanePaths = {}
     },
-    Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60},
-    HarassIdle = {IdleWindow = 1.2, IdleExtraRange = 300, IdleMinHP = 0.5}
+    Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60}
 }
 local FLAG_OF = {
     block = "Block",
@@ -354,10 +293,8 @@ local CONSUMER_FLAGS = {
     "Freeze",
     "Shove",
     "Stack",
-    "Harass",
     "Mid",
-    "CounterPlay",
-    "CampBlock"
+    "CounterPlay"
 }
 --- How far from an enemy tower a hero's centre can be attacked: the tower's attack range and radius plus the hero's radius
 -- (the edges meet; 868 in 7.41), read from the game (world_facts), the Thresholds constants when a read fails.
@@ -441,10 +378,6 @@ function ____exports.Roll(chance)
 end
 function ____exports.SkillOf(bot)
     return Profile.Get(bot).skill
-end
-function ____exports.OwnLaningMode()
-    local mode = ____exports.Settings().OwnLaningThink
-    return (mode == "allies" or mode == "all") and mode or "off"
 end
 local helpers = {}
 function ____exports.SetHelpers(h)

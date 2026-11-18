@@ -179,8 +179,6 @@ let skipped: Record<number, number> = {};
 let planNoted: Record<number, { cycle: number; gates: Record<string, boolean> }> = {};
 /** The core's view of its support leaving for a camp: when it started, and how it was known. */
 let covering: Record<number, { since: number; via: string; partner: number; kind: string }> = {};
-/** Until when a bot starts no pre-contest in that lane: the last one found the enemy not pulling. */
-let preContestRest: Record<number, { lane: number; until: number }> = {};
 /** A mode-end abort waiting to be logged: farm's OnEnd runs while farm is still the active mode, so the mode that took over is read on a later tick. */
 let pendingModeEnd: Record<number, { fields: Telemetry.Fields<"lane_job_abort">; at: number }> = {};
 
@@ -191,7 +189,6 @@ export function ResetCache(): void {
     skipped = {};
     planNoted = {};
     covering = {};
-    preContestRest = {};
     pendingModeEnd = {};
 }
 
@@ -581,12 +578,6 @@ export function LiveKind(bot: Unit): JobKind | undefined {
     return isLive(job) ? job.kind : undefined;
 }
 
-/** Cheap: a config read, then a table lookup; false before any engine call when the lane system is off. */
-export function PreContestResting(bot: Unit, lane: number): boolean {
-    const r = preContestRest[bot.GetPlayerID()];
-    return r !== undefined && r.lane === lane && DotaTime() < r.until;
-}
-
 export function Active(bot: Unit): boolean {
     if (!LaneConfig.IsActive()) return false;
     return isLive(jobs[bot.GetPlayerID()]);
@@ -788,9 +779,6 @@ function endContest(bot: Unit, job: Job, reason: string): void {
     if (job.take === true) LanePlanner.Release(bot, "contest");
     doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
     const pre = job.preAggroAt !== undefined ? 1 : 0;
-    if (pre === 1 && (reason === "enemy-in-lane" || reason === "no-pull")) {
-        preContestRest[bot.GetPlayerID()] = { lane: bot.GetAssignedLane(), until: DotaTime() + settings().Timing.PreContestCooldown };
-    }
     const fields: Telemetry.Fields<"lane_job_end"> = [
         ["pid", bot.GetPlayerID()],
         ["kind", LOG_KIND[job.kind]],

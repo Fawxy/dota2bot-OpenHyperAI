@@ -60,7 +60,7 @@ function ____exports.NoteLaningOwner(bot, owned)
         return
     end
     warned[pid] = true
-    print(((("[Humaniser] LastHitSkill: pid=" .. tostring(pid)) .. " ") .. bot:GetUnitName()) .. " is on Valve laning; no effect (set Lane.OwnLaningThink='all')")
+    print(((("[Humaniser] LastHitSkill: pid=" .. tostring(pid)) .. " ") .. bot:GetUnitName()) .. " is on Valve laning; no effect")
 end
 function ____exports.IsActiveFor(bot)
     if not Config.IsFeatureEnabled("LastHitSkill") then

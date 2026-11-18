@@ -370,11 +370,7 @@ if Telemetry.GuardsEnabled() then
         CampJobHoldsRetreat = no,
         CampJobHoldsCasts = no,
         RuneContestDesire = zero,
-        PreferStackedCamp = none,
-        PreThink = no,
-        Think = no,
-        HarassThink = no,
-        AdjustPosition = arg2
+        PreferStackedCamp = none
     })
     Telemetry.GuardModule(
         "LaneFight",

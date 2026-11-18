@@ -34,12 +34,7 @@ ____exports.DEFAULTS = {
     MissRules = {polite = {AwayBuffer = 400, IdleSeconds = 6, DenyRace = false, Busy = false}, helpful = {AwayBuffer = 150, IdleSeconds = 3, DenyRace = true, Busy = false}, teammate = {AwayBuffer = 75, IdleSeconds = 1.5, DenyRace = true, Busy = true}},
     ApproachLookahead = 0.5,
     ApproachEpsilon = 25,
-    DeniableHealth = 0.5,
-    HarassInterval = 2.5,
-    HarassWindow = 1.2,
-    HarassExtraRange = 300,
-    HarassMinHP = 0.5,
-    TowerAvoidRange = 850
+    DeniableHealth = 0.5
 }
 local helpers = {}
 local settings

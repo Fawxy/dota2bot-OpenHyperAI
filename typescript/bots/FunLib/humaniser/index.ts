@@ -272,10 +272,6 @@ if (Telemetry.GuardsEnabled()) {
         CampJobHoldsCasts: no,
         RuneContestDesire: zero,
         PreferStackedCamp: none,
-        PreThink: no,
-        Think: no,
-        HarassThink: no,
-        AdjustPosition: arg2,
     });
     Telemetry.GuardModule("LaneFight", LaneFight, {
         Tick: none,

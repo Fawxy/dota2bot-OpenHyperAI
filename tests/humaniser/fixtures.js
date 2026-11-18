@@ -21,7 +21,6 @@ const VERBS = {
     laning_mode: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
     team_roam: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
     retreat_desire: [],
-    lane_prethink: ['attack', 'move', 'commit'],
     kill_check: ['kill', 'noKill'],
     lane_fight: ['commitEnd', 'committing'],
     core_trip: ['noTrip', 'trip'],

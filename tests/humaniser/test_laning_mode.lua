@@ -48,7 +48,7 @@ do
 	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
 	local allyCreep = creep({ hp = 40, loc = Vector(-100, 0) })
 	allyCreep.GetHealth = function() return 40 end
-	local bot, attempts = load({ pos = 1, owned = true, enemyCreeps = { enemyCreep }, allyCreeps = { allyCreep } })
+	local bot, attempts = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { enemyCreep }, allyCreeps = { allyCreep } })
 	GetDesire()
 	Think()
 	local a = last(bot)
@@ -65,7 +65,7 @@ end
 
 do
 	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
-	local bot = load({ pos = 1, owned = true, enemyCreeps = { enemyCreep } })
+	local bot = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { enemyCreep } })
 	GetDesire()
 	Think()
 	local a = last(bot)
@@ -76,7 +76,7 @@ do
 	-- A bot support (pos 5) at x=0; a bot core 800 away at x=800 but within its range + 150 of a creep at x=700.
 	local c = creep({ hp = 40, loc = Vector(100, 0) })
 	local core = hero({ pos = 1, pid = 2, loc = Vector(800, 0), range = 600 })
-	local bot = load({ pos = 5, owned = true, enemyCreeps = { c }, allies = { core } })
+	local bot = load({ pos = 5, owned = true, humanTeam = true, enemyCreeps = { c }, allies = { core } })
 	GetDesire()
 	Think()
 	local hit = false
@@ -94,7 +94,7 @@ end
 do
 	-- Final review fix: the hold is capped. A creep nobody is hitting never turns killable; after HoldMax the bot swings.
 	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
-	local bot = load({ pos = 1, owned = true, enemyCreeps = { enemyCreep } })
+	local bot = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { enemyCreep } })
 	GetDesire()
 	Think()
 	check("hold: the first frame holds", last(bot).name == "MoveToLocation")
@@ -115,21 +115,6 @@ do
 	Think()
 	local a = last(bot)
 	check("humaniser off: upstream's early swing is kept", a ~= nil and a.name == "AttackUnit" and a.args[1] == enemyCreep, a and a.name)
-end
-
-do
-	-- Final review fix: the last-hit state handed to PreThink is gated like LastHitThink and reads 'kill' only in range.
-	local c = creep({ hp = 40, loc = Vector(100, 0) })
-	local core = hero({ pos = 1, pid = 2, loc = Vector(200, 0), range = 600 })
-	local bot = load({ pos = 5, owned = true, enemyCreeps = { c }, allies = { core } })
-	GetDesire()
-	Think()
-	check("a support's core's creep is no last hit for PreThink", bot.preThinkLastHit == nil, tostring(bot.preThinkLastHit))
-	local far = creep({ hp = 40, loc = Vector(700, 0) })
-	bot = load({ pos = 1, owned = true, enemyCreeps = { far } })
-	GetDesire()
-	Think()
-	check("a killable creep out of attack range reads as soon, not kill", bot.preThinkLastHit == "soon", tostring(bot.preThinkLastHit))
 end
 
 -- Ours.SupportDeny (slice l1-support-deny): the support's own lane steps run before every OHA step, and while the laning
@@ -191,8 +176,8 @@ do
 	local own = creep({ hp = 40, loc = Vector(-100, 0) })
 	check("step: the support's lane steps", stepOf({ pos = 5, owned = true, ours = true, enemyCreeps = { killable }, supportStep = true }) == "support")
 	check("step: OHA's last hit", stepOf({ pos = 1, owned = true, enemyCreeps = { killable } }) == "oha_lh")
-	check("step: OHA's deny while the enemy creep is not killable yet", stepOf({ pos = 1, owned = true, enemyCreeps = { nearly }, allyCreeps = { own } }) == "oha_deny")
-	check("step: OHA's hold for the hit", stepOf({ pos = 1, owned = true, enemyCreeps = { nearly } }) == "oha_hold")
+	check("step: OHA's deny while the enemy creep is not killable yet", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly }, allyCreeps = { own } }) == "oha_deny")
+	check("step: OHA's hold for the hit", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly } }) == "oha_hold")
 	check("step: the body's step", stepOf({ pos = 1, owned = true, stepActs = true }) == "body")
 	check("step: the body acting nothing leaves OHA's position", stepOf({ pos = 1, owned = true }) == "oha_pos")
 	local s, bot = stepOf({ pos = 5, owned = true, ours = true, bodyDenies = true, stepActs = true })
@@ -211,13 +196,12 @@ do
 end
 
 -- Lane-only (slice lane-last-hits; drill `lane-only`): the lane-only harness holds every bot in laning above every other mode and runs
--- only the last-hit steps and the position, never the techniques, etiquette or harass.
+-- only the last-hit steps and the position, never etiquette.
 do
 	local c = creep({ hp = 400, loc = Vector(100, 0) })
 	local bot = load({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { c } })
 	check("lane-only: laning bids above absolute with nothing killable", GetDesire() > 1, GetDesire())
 	Think()
-	check("lane-only: the techniques' PreThink is skipped", bot.preThinkLastHit == nil)
 	check("lane-only: the body is stepped and, acting nothing, OHA's position moves the bot", bot.bodySteps == 1 and last(bot) ~= nil and last(bot).name == "MoveToLocation", bot.bodySteps)
 	bot = load({ pos = 3, owned = true, laneOnly = true, stepActs = true, enemyCreeps = { c } })
 	GetDesire()

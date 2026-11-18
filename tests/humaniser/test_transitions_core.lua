@@ -159,16 +159,12 @@ local function cautionScenario(tcfg)
 	H.Transitions.Tick(core)
 	T = 300.6
 	H.Transitions.Tick(core)
-	local loc = Vector(0, -5000)
 	local r = {
-		override = H.Lane.Hooks.PositionOverride(core, loc) ~= loc,
 		suppressed = H.Lane.Hooks.TradesSuppressed(core),
 		cautious = H.Lane.Hooks.IsCautious(core),
 		claim = claimed(H, core, "transitions:caution", BotMode.Retreat),
 		scans = scans(),
 	}
-	-- 07's own position step may scan for its techniques, so it comes after the scan reading.
-	r.moved = H.Lane.AdjustPosition(core, loc) ~= loc
 	return r
 end
 
@@ -261,10 +257,10 @@ end
 
 do
 	local on, off = cautionScenario({ Enable = true }), cautionScenario({ Enable = false })
-	check("caution (enabled): position moved, trades suppressed, plan cautious, retreat claim", on.override and on.moved and on.suppressed and on.cautious and on.claim and on.scans)
-	check("caution (disabled): same table back, trades allowed, not cautious, no claim, no scans", not off.override and not off.moved and not off.suppressed and not off.cautious and not off.claim and not off.scans, tostring(off.moved)..tostring(off.suppressed)..tostring(off.cautious)..tostring(off.claim)..tostring(off.scans))
+	check("caution (enabled): trades suppressed, plan cautious, retreat claim", on.suppressed and on.cautious and on.claim and on.scans)
+	check("caution (disabled): same table back, trades allowed, not cautious, no claim, no scans", not off.suppressed and not off.cautious and not off.claim and not off.scans, tostring(off.moved)..tostring(off.suppressed)..tostring(off.cautious)..tostring(off.claim)..tostring(off.scans))
 	local flagOff = cautionScenario({ Enable = true, Caution = false })
-	check("Caution off: upstream", not flagOff.override and not flagOff.moved and not flagOff.suppressed and not flagOff.cautious and not flagOff.claim)
+	check("Caution off: upstream", not flagOff.suppressed and not flagOff.cautious and not flagOff.claim)
 end
 
 do
@@ -283,7 +279,7 @@ do
 	check("Phase off: a Maelstrom core does not farm", phaseScenario({ Enable = true, Phase = false }).allowed == false)
 end
 
--- The trainer self-test bot (2bf9a81 skips Lane.PreThink for it) gets none of the transitions: every hook upstream,
+-- The trainer self-test bot (2bf9a81 kept it out of the lane techniques) gets none of the transitions: every hook upstream,
 -- no claims, no forced levels. The enabled scenarios above are the contrast.
 do
 	SELF_TEST = 4
@@ -296,7 +292,7 @@ do
 	check("self-test pos 5: no lane ward pick or claim", not wardScenario({ Enable = true }).picked)
 	SELF_TEST = 1
 	local c = cautionScenario({ Enable = true })
-	check("self-test core: no caution offset, trade suppression or claim", not c.override and not c.moved and not c.suppressed and not c.cautious and not c.claim)
+	check("self-test core: no trade suppression or claim", not c.suppressed and not c.cautious and not c.claim)
 	local tp = teleportScenario({ Enable = true })
 	check("self-test core: no TP back-off", tp.level == 0 and not tp.claim, tp.level)
 	check("self-test core: the phase does not release it to farm", phaseScenario({ Enable = true }, true).allowed == false)
