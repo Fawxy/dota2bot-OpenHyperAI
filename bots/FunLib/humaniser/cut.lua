@@ -10,6 +10,7 @@ local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready"
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local Sight = require(GetScriptDirectory().."/FunLib/humaniser/sight")
 --- Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
 -- walking back to lane reads its walk to a spot by the front (smoke 1: 5 of 60 cuts lost a hero 3,500 from the bot).
 local CUT_R = 3000
@@ -123,36 +124,14 @@ end
 --- IsLocationVisible on a grid over the box around the bot and its lane front (GRID_PAD past both), as `x0,y0,nx,ny,step,hex`:
 -- bit i of the hex is cell (i % nx, floor(i / nx)) from the south-west corner (x0, y0).
 local function visionGrid(at, front)
-    local x0 = math.floor((math.min(at.x, front.x) - GRID_PAD) / GRID_STEP) * GRID_STEP
-    local y0 = math.floor((math.min(at.y, front.y) - GRID_PAD) / GRID_STEP) * GRID_STEP
-    local nx = math.ceil((math.max(at.x, front.x) + GRID_PAD - x0) / GRID_STEP) + 1
-    local ny = math.ceil((math.max(at.y, front.y) + GRID_PAD - y0) / GRID_STEP) + 1
-    local hex = ""
-    local nib = 0
-    local bits = 0
-    do
-        local j = 0
-        while j < ny do
-            do
-                local i = 0
-                while i < nx do
-                    nib = nib * 2 + (IsLocationVisible(Vector(x0 + i * GRID_STEP, y0 + j * GRID_STEP, at.z)) and 1 or 0)
-                    bits = bits + 1
-                    if bits == 4 then
-                        hex = hex .. string.format("%x", nib)
-                        nib = 0
-                        bits = 0
-                    end
-                    i = i + 1
-                end
-            end
-            j = j + 1
-        end
-    end
-    if bits > 0 then
-        hex = hex .. string.format("%x", nib * 2 ^ (4 - bits))
-    end
-    return (((((((((tostring(x0) .. ",") .. tostring(y0)) .. ",") .. tostring(nx)) .. ",") .. tostring(ny)) .. ",") .. tostring(GRID_STEP)) .. ",") .. hex
+    return Sight.VisionGridBox(
+        math.min(at.x, front.x) - GRID_PAD,
+        math.min(at.y, front.y) - GRID_PAD,
+        math.max(at.x, front.x) + GRID_PAD,
+        math.max(at.y, front.y) + GRID_PAD,
+        GRID_STEP,
+        at.z
+    )
 end
 local function logTowers(team)
     if towersLogged[team] then
@@ -164,11 +143,11 @@ local function logTowers(team)
         local i = 0
         while i < #____exports.TOWER_IDS do
             do
-                local __continue26
+                local __continue22
                 repeat
                     local tw = GetTower(team, ____exports.TOWER_IDS[i + 1])
                     if not live(tw) then
-                        __continue26 = true
+                        __continue22 = true
                         break
                     end
                     local l = tw:GetLocation()
@@ -182,9 +161,9 @@ local function logTowers(team)
                         },
                         ","
                     )
-                    __continue26 = true
+                    __continue22 = true
                 until true
-                if not __continue26 then
+                if not __continue22 then
                     break
                 end
             end
@@ -209,11 +188,11 @@ local function towersNow(team, bot, at, front, out)
         local i = 0
         while i < #____exports.TOWER_IDS do
             do
-                local __continue29
+                local __continue25
                 repeat
                     local tw = GetTower(team, ____exports.TOWER_IDS[i + 1])
                     if not live(tw) then
-                        __continue29 = true
+                        __continue25 = true
                         break
                     end
                     mask = mask + 2 ^ i
@@ -228,9 +207,9 @@ local function towersNow(team, bot, at, front, out)
                             ","
                         )
                     end
-                    __continue29 = true
+                    __continue25 = true
                 until true
-                if not __continue29 then
+                if not __continue25 then
                     break
                 end
             end
@@ -248,10 +227,10 @@ local function units(bot, keep, short, long)
     local he = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue33
+            local __continue29
             repeat
                 if not live(e) or not e:CanBeSeen() then
-                    __continue33 = true
+                    __continue29 = true
                     break
                 end
                 local l = e:GetLocation()
@@ -260,7 +239,7 @@ local function units(bot, keep, short, long)
                     visible[e:GetPlayerID()] = true
                 end
                 if not keep(l) then
-                    __continue33 = true
+                    __continue29 = true
                     break
                 end
                 local e3 = SpellReady.DamageOn(e, bot, short)
@@ -284,9 +263,9 @@ local function units(bot, keep, short, long)
                     },
                     ","
                 )
-                __continue33 = true
+                __continue29 = true
             until true
-            if not __continue33 then
+            if not __continue29 then
                 break
             end
         end
@@ -296,15 +275,15 @@ local function units(bot, keep, short, long)
         local p = 0
         while p <= MAX_PLAYER_ID do
             do
-                local __continue38
+                local __continue34
                 repeat
                     if GetTeamForPlayer(p) ~= enemyTeam or visible[p] == true or not IsHeroAlive(p) then
-                        __continue38 = true
+                        __continue34 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(p)[1]
                     if info == nil then
-                        __continue38 = true
+                        __continue34 = true
                         break
                     end
                     hu[#hu + 1] = table.concat(
@@ -317,9 +296,9 @@ local function units(bot, keep, short, long)
                         },
                         ","
                     )
-                    __continue38 = true
+                    __continue34 = true
                 until true
-                if not __continue38 then
+                if not __continue34 then
                     break
                 end
             end
@@ -329,14 +308,14 @@ local function units(bot, keep, short, long)
     local ha = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue41
+            local __continue37
             repeat
                 if not live(a) or a == bot or a:IsIllusion() then
-                    __continue41 = true
+                    __continue37 = true
                     break
                 end
                 if not keep(a:GetLocation()) then
-                    __continue41 = true
+                    __continue37 = true
                     break
                 end
                 local l = a:GetLocation()
@@ -352,9 +331,9 @@ local function units(bot, keep, short, long)
                     },
                     ","
                 )
-                __continue41 = true
+                __continue37 = true
             until true
-            if not __continue41 then
+            if not __continue37 then
                 break
             end
         end

@@ -820,6 +820,9 @@
    "rt": "num",
    "dt": "num",
    "gold": "num",
+   "sight": "str",
+   "hl": "num",
+   "vg": "str",
    "spell": "str",
    "lvl": "num",
    "s": "num",
@@ -2190,6 +2193,8 @@
    "rel": "text",
    "step": "text",
    "fail": "text",
+   "sight": "text",
+   "vg": "text",
    "spell": "text",
    "foe": "text"
   },

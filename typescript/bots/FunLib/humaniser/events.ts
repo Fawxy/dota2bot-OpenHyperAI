@@ -1091,7 +1091,7 @@ export const EVENTS = {
         rend: "num",
         /** Rigs (an entry with `rig`): ph=rep and ph=ready carry the rep's kind `var`; ph=step when a rig hero `pid` moves to
          *  step `i` (0-based) `step` of its setup; ph=ready once per rep and cast hero: `ok` 1 when every ready check held (the
-         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|hp|hplow|holds|lacks|clear|near|hit|past|behind|lone|lonehit|burst: the rep is
+         *  cast is released), 0 at the timeout with the first failing check `fail` (setup|early|sightkey|sees|unseen|hp|hplow|holds|lacks|clear|near|hit|past|behind|lone|lonehit|burst: the rep is
          *  invalid), `secs` from the rep's start, the cast's HP share `hp`; ph=spot once per rig spot: its point `x`, `y`, how
          *  far it moved to be passable `d`, the nearest Radiant and Dire tower `rt`, `dt`; ph=wait when the cast's first
          *  failing ready check `fail` changes; ph=buy per purchase try (`step` the item, `res` the API's result, `gold`); ph=ready
@@ -1112,6 +1112,16 @@ export const EVENTS = {
         rt: "num",
         dt: "num",
         gold: "num",
+        /** Rig sight (slice rig-sight): on ph=wait and ph=ready, per enemy hero key of the rep with a `stand` step, `key:s`
+         *  comma-separated, s 1 an enemy hero in the cast team's sight within 200 of its stand point, 0 the point fogged and
+         *  none seen there, 2 the point in sight and nobody there. Ready checks `sees` and `unseen` fail `sees`, `unseen` or
+         *  `sightkey` (an own-team key or one with no stand step). */
+        sight: "str",
+        /** GetHeightLevel: of the cast's place on ph=ready, of the spot on ph=spot. */
+        hl: "num",
+        /** ph=grid (a rig with `grid`), at ready: IsLocationVisible around the cast at `x`, `y`, as `x0,y0,nx,ny,step,hex`
+         *  (sight.ts VisionGridBox: bit i is cell (i % nx, floor(i / nx)) from the south-west corner). */
+        vg: "str",
         /** burst-read: ph=cast per spell order of a `burst` actor `pid` (`spell`, its `lvl`, `s` seconds from the burst's first
          *  order, the actor's `mana`, the target `tgt`); ph=trace every 0.25 s for the rig's `trace` seconds after ready (`s` from
          *  ready, the cast's `hp` and `mhp`, `est` the summed GetEstimatedDamageToTarget(true, cast, 3, all) of the `n` enemy
