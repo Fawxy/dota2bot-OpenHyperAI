@@ -291,7 +291,7 @@ Customize.Humaniser = {
 -- CorePull (slice lane-control 4a): the offlane pos3 pulls its hard camp when the lane controller names it. Off: supports only.
 -- ArbiterShadow (slice arbiter-shadow): per owned hero, the arbiter's pick beside Valve's active mode as ev=arb. Logging only.
 -- ArbiterDrive (rework step 7): the arbiter's pick holds every owned laner from its first laning read to an end event (our or
--- their tier-1 lost, the lane lost, the clock); OHA's modes per the inventory. Off: only the retreat episode and a running job hold.
+-- their tier-1 lost, the clock); OHA's modes per the inventory. Off: only the retreat episode and a running job hold.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- EvenStand (slice mid-stand): with LaneSpotThreat and Retreat on, one enemy hero in reach who is not hitting us, whose burst is

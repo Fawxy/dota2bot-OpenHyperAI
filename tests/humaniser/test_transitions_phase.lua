@@ -5,7 +5,6 @@ local Lane, BotMode, Tower = dota.Lane, dota.BotMode, dota.Tower
 
 local FRONT = Vector(0, -5000)
 local CAMP = Vector(-1600, -6200)
-local FAR = Vector(0, 5000)
 local PHASE = "transitions:phase"
 
 local function hero(o)
@@ -17,7 +16,6 @@ end
 local function hide(u) u.hiddenFrom = setmetatable({}, { __index = function() return true end }) end
 
 -- Radiant bottom lane: core pid 1, support pid 5, a human mid so the team counts as an ally of a human.
--- opts.humanCore / opts.humanSupport make that laner a human.
 local function world(opts)
 	opts = opts or {}
 	local H = LaneFresh({ Enable = true }, { skill = opts.skill or 0.5, transitions = opts.transitions or { Enable = true }, telemetry = opts.telemetry })
@@ -28,8 +26,8 @@ local function world(opts)
 	H.Lane.Camps.ResetCache()
 	local w = { H = H, P = H.Transitions.Phase, said = {} }
 	w.mid = hero({ pid = 2, bot = false, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
-	w.core = hero({ pid = 1, bot = not opts.humanCore, pos = 1, lane = Lane.Bot })
-	w.sup = hero({ pid = 5, bot = not opts.humanSupport, pos = 5, lane = Lane.Bot })
+	w.core = hero({ pid = 1, pos = 1, lane = Lane.Bot })
+	w.sup = hero({ pid = 5, pos = 5, lane = Lane.Bot })
 	w.sup.ActionImmediate_Ping = function() end
 	w.core.ActionImmediate_Ping = function() end
 	H.Orders.SetAnnouncer(function(_, key) table.insert(w.said, key) end)
