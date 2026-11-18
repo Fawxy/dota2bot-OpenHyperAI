@@ -579,14 +579,15 @@ export const TABLE: Record<string, Entry> = {
     },
     // Slice rig-sight (proposal 2026-11-18-vision-tool step R): the harness's sight checks against the game, and calibration
     // data for a sight model (step M). No rule and no switch: the cast stands, released to `idle` only. The Dire pos4 stands
-    // at one spot a rep: `open` (kill-reach's low, 600 west on the strip, seen there), `trees` (650 north of the cast: kill-reach
-    // on1 saw a statue there 138 of 530 s, behind trees), `far` (2,200 north in our jungle, past day sight). Read: each rep's
-    // ph=ready (ok, fail, `sight`) against the actor's ph=step, and ph=grid (the team's sight around the cast, 100 apart).
-    // 60 s reps from 0:00 to 10:00 hold day (to 5:00) and night; seed 8. Spots from rig1's grids (18/11/2026): `open` in the
-    // lane corridor the cast sees, `trees` a walked point 800 north-west in fog by day and night, `high` up one height step
-    // (level 4 to the cast's 2) and fogged 650 west although open ground, `far` past the grid.
+    // at one spot a rep, chosen from rig1's grids (18/11/2026): `open` in the lane corridor the cast sees, 500 north; `trees` a
+    // walked point 800 north-west, in fog by day and night; `high` up one height step (level 4 to the cast's 2), fogged 700
+    // west although open ground (rig1's first `open`); `far` 2,200 north, past the grid and also at level 4, so it mixes
+    // distance with a height step. Rep 1 stays a `sees` rep: the actor walks from its fountain (seen at 47 s in rig2), past
+    // `after`, which an `unseen` rep would pass with the actor still crossing the map. Read: each rep's ph=ready (ok, fail,
+    // `sight`) against the actor's `ev=snap` position, and ph=grid (the team's sight around the cast, 100 apart). 60 s reps
+    // from 0:00 to 10:00 hold day (to 5:00) and night; seed 8.
     "sight-probe": {
-        note: "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 500 north in the lane corridor (open, seen), 800 north-west behind trees (unseen), 650 west up a height step (high, unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 500 north in the lane corridor (open, seen), 800 north-west behind trees (unseen), 700 west up a height step (high, unseen) or 2,200 north, also up a step (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 60, from: 0 },
@@ -1382,8 +1383,8 @@ export interface RigReady {
     sees?: string[];
     /**
      * Enemy hero keys whose stand point is out of the cast's team's sight with no enemy hero seen within RIG_PLACED of it
-     * (`rigSight` 0). The other team's placement is not read (no state crosses teams): the actor's own `ph=step` lines say
-     * whether it stood there. Fails `unseen`, or `sightkey` as `sees`.
+     * (`rigSight` 0). The other team's placement is not read (no state crosses teams): the actor's `ev=snap` positions say
+     * whether it stood there (`after` gives it time to walk). Fails `unseen`, or `sightkey` as `sees`.
      */
     unseen?: string[];
     /**

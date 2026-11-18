@@ -1990,7 +1990,7 @@ ____exports.TABLE = {
         }
     },
     ["sight-probe"] = {
-        note = "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 500 north in the lane corridor (open, seen), 800 north-west behind trees (unseen), 650 west up a height step (high, unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 500 north in the lane corridor (open, seen), 800 north-west behind trees (unseen), 700 west up a height step (high, unseen) or 2,200 north, also up a step (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
         cast = SAFE_CORE,
         others = "bench",
         rep = {every = 60, from = 0},
