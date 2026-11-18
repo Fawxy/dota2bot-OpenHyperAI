@@ -334,6 +334,22 @@
    "x1": "num",
    "y1": "num"
   },
+  "vmap": {
+   "kind": "str",
+   "bx0": "num",
+   "by0": "num",
+   "bx1": "num",
+   "by1": "num",
+   "step": "num",
+   "src": "str",
+   "y": "num",
+   "x0": "num",
+   "n": "num",
+   "hex": "str",
+   "xy": "str",
+   "rows": "num",
+   "trees": "num"
+  },
   "apiprobe_own": {
    "team": "num",
    "pid": "num",
@@ -824,6 +840,8 @@
    "sight": "str",
    "hl": "num",
    "vg": "str",
+   "vu": "str",
+   "vr": "num",
    "spell": "str",
    "lvl": "num",
    "s": "num",
@@ -2041,6 +2059,12 @@
   "ev_camp": {
    "type": "text"
   },
+  "ev_vmap": {
+   "kind": "text",
+   "src": "text",
+   "hex": "text",
+   "xy": "text"
+  },
   "ev_apiprobe_own": {
    "it0": "text"
   },
@@ -2197,6 +2221,7 @@
    "fail": "text",
    "sight": "text",
    "vg": "text",
+   "vu": "text",
    "spell": "text",
    "foe": "text"
   },

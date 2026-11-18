@@ -3334,6 +3334,14 @@ local function rigTick(bot)
                         step,
                         at.z
                     )
+                },
+                {
+                    "vu",
+                    Sight.Viewers(at.x, at.y, half + 2000, bot)
+                },
+                {
+                    "vr",
+                    math.floor(bot:GetCurrentVisionRange())
                 }
             }
         )

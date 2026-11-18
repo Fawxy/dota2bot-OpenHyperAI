@@ -37,6 +37,8 @@ declare global {
     function IsLocationVisible(loc: Vector): boolean;
     /** Valve: the terrain height level at a location (1 to 5). */
     function GetHeightLevel(loc: Vector): number;
+    /** Valve: a tree's location by its index; an index with no tree answers (0, 0), not nil (visionmap1 18/11/2026). */
+    function GetTreeLocation(tree: number): Vector | undefined;
 
     function IsPlayerBot(playerId: number): boolean;
 

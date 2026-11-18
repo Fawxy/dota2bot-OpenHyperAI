@@ -432,6 +432,25 @@ export const EVENTS = {
         /** Spawn box, second y edge. */
         y1: "num",
     },
+    /** Overrides.VisionMap (probe games only, `vision_map.ts`): the map's height grid and trees for a sight model. `kind`
+     *  start (the box and `step`, `src` api | fallback), h (a row: `y`, `x0`, `n` cells, `hex` one digit a cell, the
+     *  height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`). */
+    vmap: {
+        kind: "str",
+        bx0: "num",
+        by0: "num",
+        bx1: "num",
+        by1: "num",
+        step: "num",
+        src: "str",
+        y: "num",
+        x0: "num",
+        n: "num",
+        hex: "str",
+        xy: "str",
+        rows: "num",
+        trees: "num",
+    },
     /** Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once a second, the truth for the other team's
      *  `apiprobe_enemy` row of the same second. -1 is a nil read, -2 a failed one. */
     apiprobe_own: {
@@ -1127,6 +1146,10 @@ export const EVENTS = {
         /** ph=grid (a rig with `grid`), at ready: IsLocationVisible around the cast at `x`, `y`, as `x0,y0,nx,ny,step,hex`
          *  (sight.ts VisionGridBox: bit i is cell (i % nx, floor(i / nx)) from the south-west corner). */
         vg: "str",
+        /** ph=grid: the team's other sight sources (allied heroes but the cast, creeps, wards, buildings) within the box plus
+         *  2,000, `x:y:range` joined by ";" (sight.ts Viewers), and `vr` the cast's own GetCurrentVisionRange. */
+        vu: "str",
+        vr: "num",
         /** burst-read: ph=cast per spell order of a `burst` actor `pid` (`spell`, its `lvl`, `s` seconds from the burst's first
          *  order, the actor's `mana`, the target `tgt`); ph=trace every 0.25 s for the rig's `trace` seconds after ready (`s` from
          *  ready, the cast's `hp` and `mhp`, `est` the summed GetEstimatedDamageToTarget(true, cast, 3, all) of the `n` enemy

@@ -1,5 +1,36 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local UnitType = ____dota.UnitType
+--- The team's other sight sources near a point, for a model fitted against a grid: every allied hero but `skip`, creep,
+-- ward and building within `within` of (x, y), as `x:y:range` joined by ";" (range GetCurrentVisionRange, floored).
+function ____exports.Viewers(x, y, within, skip)
+    local parts = {}
+    for ____, list in ipairs({UnitType.AlliedHeroes, UnitType.AlliedCreeps, UnitType.AlliedWards, UnitType.AlliedBuildings}) do
+        for ____, u in ipairs(GetUnitList(list)) do
+            do
+                local __continue4
+                repeat
+                    if u == skip or not u:IsAlive() then
+                        __continue4 = true
+                        break
+                    end
+                    local p = u:GetLocation()
+                    if math.abs(p.x - x) > within or math.abs(p.y - y) > within then
+                        __continue4 = true
+                        break
+                    end
+                    parts[#parts + 1] = (((tostring(math.floor(p.x)) .. ":") .. tostring(math.floor(p.y))) .. ":") .. tostring(math.floor(u:GetCurrentVisionRange()))
+                    __continue4 = true
+                until true
+                if not __continue4 then
+                    break
+                end
+            end
+        end
+    end
+    return table.concat(parts, ";")
+end
 --- IsLocationVisible on a grid over the box (x0r, y0r) to (x1r, y1r), its corner snapped down to `step`, as
 -- `x0,y0,nx,ny,step,hex`: bit i of the hex (from the high bit of the first digit) is cell (i % nx, floor(i / nx)) from the
 -- south-west corner (x0, y0); the last digit is padded with zeros.

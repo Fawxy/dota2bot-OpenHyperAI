@@ -2512,6 +2512,9 @@ function rigTick(bot: Unit): void {
             ["x", math.floor(at.x)],
             ["y", math.floor(at.y)],
             ["vg", Sight.VisionGridBox(at.x - half, at.y - half, at.x + half, at.y + half, step, at.z)],
+            // The grid is the team's sight: the other sources a model of the cast's own must add (2,000 covers a tower's).
+            ["vu", Sight.Viewers(at.x, at.y, half + 2000, bot)],
+            ["vr", math.floor(bot.GetCurrentVisionRange())],
         ]);
     }
 }

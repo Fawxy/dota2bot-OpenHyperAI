@@ -971,7 +971,7 @@ do
 	ls = capture(function() tick(cast, actor) end)
 	local rd, gr = lines("ready", ls)[1], lines("grid", ls)[1]
 	check("sight-probe: open, seen: ready, sight d4:1, the cast's height level", field(rd, "ok") == "1" and field(rd, "sight") == "d4:1" and field(rd, "hl") == "3", rd)
-	check("sight-probe: the grid line at ready, 33 or 34 cells a side, 100 apart", gr ~= nil and field(gr, "vg"):match("^%-?%d+,%-?%d+,3[34],3[34],100,") ~= nil, gr)
+	check("sight-probe: the grid line at ready, 33 or 34 cells a side, 100 apart", gr ~= nil and field(gr, "vg"):match("^%-?%d+,%-?%d+,3[34],3[34],100,") ~= nil and field(gr, "vr") == "1800" and field(gr, "vu") ~= nil, gr)
 	-- Rep 2 (trees): the actor out of sight there.
 	T = 61
 	tick(cast, actor)

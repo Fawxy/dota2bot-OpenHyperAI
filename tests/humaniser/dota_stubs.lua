@@ -48,6 +48,7 @@ function Unit:IsAlive() return self.alive end
 function Unit:CanBeSeen() return true end
 function Unit:IsNull() return self.removed == true end
 function Unit:GetLocation() return self.loc end
+function Unit:GetCurrentVisionRange() return self.vision or 1800 end
 function Unit:GetUnitName() return self.name or ("npc_dota_hero_" .. self.pid) end
 function Unit:GetAcquisitionRange() return self.acq or 500 end
 function Unit:GetDifficulty() return self.difficulty end
