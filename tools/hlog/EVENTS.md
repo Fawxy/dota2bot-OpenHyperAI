@@ -598,6 +598,7 @@ Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran. D
 - `sight` str: Rig sight (slice rig-sight): on ph=wait and ph=ready, per enemy hero key of the rep with a `stand` step, `key:s` comma-separated, s 1 an enemy hero in the cast team's sight within 200 of its stand point, 0 the point fogged and none seen there, 2 the point in sight and nobody there. Ready checks `sees` and `unseen` fail `sees`, `unseen` or `sightkey` (an own-team key or one with no stand step).
 - `hl` num: GetHeightLevel: of the cast's place on ph=ready, of the spot on ph=spot.
 - `vg` str: ph=grid (a rig with `grid`), at ready: IsLocationVisible around the cast at `x`, `y`, as `x0,y0,nx,ny,step,hex` (sight.ts VisionGridBox: bit i is cell (i % nx, floor(i / nx)) from the south-west corner).
+- `dmg` num: lane-trade (rig `watch`, released cast `pid`): ph=atk per attack it fired at enemy hero `tpid` (`d` the distance), ph=chit per attack an enemy lane creep fired at it and ph=hhit per attack enemy hero `tpid` fired at it, each with `dmg` (the attacker's mean attack damage after the cast's armour). Its actors: ph=swing when a `lasthit` actor `pid` walks up to one of our creeps (`d` the distance), ph=answer when a `hitback` actor starts attacking hero `tpid` that hit it.
 - `spell` str: burst-read: ph=cast per spell order of a `burst` actor `pid` (`spell`, its `lvl`, `s` seconds from the burst's first order, the actor's `mana`, the target `tgt`); ph=trace every 0.25 s for the rig's `trace` seconds after ready (`s` from ready, the cast's `hp` and `mhp`, `est` the summed GetEstimatedDamageToTarget(true, cast, 3, all) of the `n` enemy heroes in sight within 1,700, the nearest one's unit name `foe`, mana share `fmana`, level `flvl` and distance `d`, `root` 1 when the cast is rooted, `alive`).
 
 ## job
@@ -1024,6 +1025,7 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 - `ld` num: Slice trade-landed: seconds from the start to the bot's first hit on the target (an attack fired at it, by GetLastAttackTime); absent when none did.
 - `hp` num: Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500.
 - `pr` num: Aggro-free attacks (EC-053): attack orders given clear of creeps, steps out of them, most enemy creeps on the core at once.
+- `fa` str: The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order first); absent when Think never acted (the target unseen, or not taken).
 - `mode` num: The bot's active mode at the end, and its desire.
 
 ## job_exec

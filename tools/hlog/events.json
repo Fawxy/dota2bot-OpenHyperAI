@@ -810,6 +810,7 @@
    "rend": "num",
    "var": "str",
    "bu": "num",
+   "dmg": "num",
    "win": "num",
    "rel": "str",
    "i": "num",
@@ -1413,6 +1414,7 @@
    "pr": "num",
    "so": "num",
    "ag": "num",
+   "fa": "str",
    "mode": "num",
    "md": "num"
   },
@@ -2399,7 +2401,8 @@
    "role": "text",
    "kind": "text",
    "result": "text",
-   "why": "text"
+   "why": "text",
+   "fa": "text"
   },
   "ev_job_exec": {
    "kind": "text",

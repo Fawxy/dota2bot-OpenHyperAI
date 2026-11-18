@@ -2014,6 +2014,7 @@ local function close(bot, ep, why, now)
         {"cr", i.enemyCreepsNear},
         {"pr", ep.primes},
         {"so", ep.stepOuts},
+        {"fa", ep.first},
         {"ag", ep.aggro},
         {
             "mode",
@@ -2415,10 +2416,12 @@ function ____exports.Think(bot)
             ep.stepSince = now
             ep.stepOuts = ep.stepOuts + 1
         end
+        ep.first = ep.first or "step"
         bot:Action_MoveToLocation(stepOutPoint(bot, creeps))
         return
     end
     ep.stepSince = nil
+    ep.first = ep.first or "order"
     if plan == "prime" then
         primedAt[pid] = now
         ep.primes = ep.primes + 1

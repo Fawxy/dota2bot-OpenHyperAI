@@ -719,6 +719,7 @@ ____exports.EVENTS = {
         rend = "num",
         var = "str",
         bu = "num",
+        dmg = "num",
         win = "num",
         rel = "str",
         i = "num",
@@ -1279,6 +1280,7 @@ ____exports.EVENTS = {
         pr = "num",
         so = "num",
         ag = "num",
+        fa = "str",
         mode = "num",
         md = "num"
     },
