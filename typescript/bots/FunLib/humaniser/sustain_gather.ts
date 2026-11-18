@@ -9,7 +9,7 @@
  * What a purchase restores comes from the same reads (an item no hero of ours has held yet is not offered); its price from
  * GetItemCost.
  *
- * Also the step's other telemetry: `ev=sustain_buy` (OHA's lane regen purchases with their rule, `Bought`), `ev=courier` (a
+ * Also the step's other telemetry: `ev=sustain_buy` (OHA's lane regen purchases with their rule, `Bought`), `ev=sustain_courier` (a
  * courier state change). Who started a regen buff is item_use.ts's `Used` (regen_obs `by`).
  */
 import { Item, Unit, UnitType, Vector } from "bots/ts_libs/dota";
@@ -379,7 +379,7 @@ export function Tick(bot: Unit): void {
 
 const courierSeen: Record<number, number | undefined> = {};
 
-/** `ev=courier` when the hero's courier changes state (an order shows as its effect: moving, delivering, back at base). */
+/** `ev=sustain_courier` when the hero's courier changes state (an order shows as its effect: moving, delivering, back at base). */
 function noteCourier(bot: Unit): void {
     const c = courierOf(bot);
     if (c === undefined) return;
@@ -387,7 +387,7 @@ function noteCourier(bot: Unit): void {
     const pid = bot.GetPlayerID();
     if (courierSeen[pid] === st) return;
     courierSeen[pid] = st;
-    Telemetry.Event("courier", [
+    Telemetry.Event("sustain_courier", [
         ["pid", pid],
         ["st", st],
         ["dead", st === COURIER_STATE_DEAD ? 1 : 0],

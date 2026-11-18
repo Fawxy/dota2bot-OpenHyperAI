@@ -34,7 +34,7 @@ function noteCourier(bot)
     end
     courierSeen[pid] = st
     Telemetry.Event(
-        "courier",
+        "sustain_courier",
         {
             {"pid", pid},
             {"st", st},

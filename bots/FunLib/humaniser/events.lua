@@ -1813,7 +1813,7 @@ ____exports.EVENTS = {
         hp = "num",
         mp = "num"
     },
-    courier = {pid = "num", st = "num", dead = "num", d = "num"},
+    sustain_courier = {pid = "num", st = "num", dead = "num", d = "num"},
     cast = {
         pid = "num",
         ab = "str",

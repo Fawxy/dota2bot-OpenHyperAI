@@ -3064,7 +3064,7 @@ export const EVENTS = {
         mp: "num",
     },
     /** Sustain (step 2): the hero's courier changed state (`st`: GetCourierState's raw COURIER_STATE_* value; the first smoke game maps them), at distance `d` from the hero. */
-    courier: {
+    sustain_courier: {
         pid: "num",
         st: "num",
         dead: "num",

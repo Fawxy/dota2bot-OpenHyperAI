@@ -1486,7 +1486,7 @@ Sustain (step 2): a lane regen purchase by OHA's rules (item_purchase_generic.lu
 
 `pid` num, `item` str, `why` str, `gold` num, `hp` num, `mp` num
 
-## courier
+## sustain_courier
 
 Sustain (step 2): the hero's courier changed state (`st`: GetCourierState's raw COURIER_STATE_* value; the first smoke game maps them), at distance `d` from the hero.
 
