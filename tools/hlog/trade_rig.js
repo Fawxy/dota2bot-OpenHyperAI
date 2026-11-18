@@ -23,8 +23,8 @@
 //              (`ev=own_creep_death`, logged at 50% HP or under) that died from open to end within the cast's attack range +
 //              REACH_SLACK of it, not credited to it (`by`); the cast's place is its nearest snapshot
 //   why, dur   how and when the trade ended (`creeps`: two creeps hitting us); so the step-outs
-// A trade whose window or episode runs into the last RESET_BEFORE s of its rep meets the HP reset (recipe rig_hp_all at :55,
-// landing up to :59) or the next rep's setup (the cast is held again): listed `late`, left out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
+// A trade whose window or episode holds an HP reset (the recipe's rig_hp_all, sent for :55 and run 1 to 6 s late at 8x: its
+// [DOTACTL] cmd line's time) or runs past its rep's end (the cast is held again) is listed `late`, left out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
 // trade, trades, ordered, fired, mean first, a5, HP each way and ch5, the HP split summed and per trade, the ends and the
 // share ending `creeps`.
 // Usage: node trade_rig.js <file fragment> [...] [--rows] [--json] [--no-ingest]
@@ -38,8 +38,6 @@ const NAME = 'lane-trade';
 const WINDOW = 5;
 /** Two hulls (hero 24, creep 16) and a little: a creep at this past attack range is still in reach. `judgement`. */
 const REACH_SLACK = 50;
-/** The recipe's HP reset is sent 5 s before each rep's end; a second of margin. */
-const RESET_BEFORE = 6;
 
 const TRADES = `-- ensure: ev_trade(fa)
 SELECT t, kind, result, why, dur, hpd, thpd, ld, pr, so, ag, tgt, fa FROM ev_trade
@@ -90,6 +88,16 @@ function stepFirst(x) {
     return null;
 }
 const HERO = `SELECT hero FROM ev_bot WHERE game_id = :g AND pid = :p AND hero IS NOT NULL LIMIT 1`;
+const RESETS = `SELECT d.t FROM dx_cmd d JOIN games g ON g.log_id = d.log_id WHERE g.game_id = :g AND d.cmd LIKE 'rig_hp_all%' ORDER BY d.t`;
+
+/** When the HP resets ran in the game (none when the log holds no console steps). */
+function resetsOf(store, g) {
+    try {
+        return store.query(RESETS, { g }).map((r) => r.t);
+    } catch {
+        return [];
+    }
+}
 
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
 
@@ -116,8 +124,11 @@ function reps(store, like) {
         if (!heroes.has(k)) heroes.set(k, store.query(HERO, { g, p })[0]?.hero ?? `pid${p}`);
         return heroes.get(k);
     };
+    const resets = new Map();
     for (const r of rows) {
         const hero = heroOf(r.game_id, r.pid);
+        if (!resets.has(r.game_id)) resets.set(r.game_id, resetsOf(store, r.game_id));
+        const hpSet = resets.get(r.game_id);
         // A trade ending after the rep's stop may still have opened inside it.
         const ts = store.query(TRADES, { g: r.game_id, p: r.pid, a: r.released, b: r.stop + 30 });
         const opened = ts.map((x) => ({ ...x, open: x.t - (x.dur ?? 0) })).filter((x) => x.kind === 'trade' && x.open >= r.released && x.open < r.stop);
@@ -135,7 +146,7 @@ function reps(store, like) {
             const hph = during('hhit', x.tgt);
             trades.push({
                 file: path.basename(r.file), rep: r.rep, var: r.var, hero, n: i + 1, open: round1(x.open), tgt: x.tgt,
-                late: Math.max(x.open + WINDOW, x.t) > r.stop - RESET_BEFORE ? 1 : 0,
+                late: Math.max(x.open + WINDOW, x.t) > r.stop || hpSet.some((t) => t >= x.open && t <= Math.max(x.open + WINDOW, x.t)) ? 1 : 0,
                 ordered: (x.pr ?? 0) > 0 || fired ? 1 : 0, pr: x.pr, so: x.so,
                 fired: fired ? 1 : 0, ld: x.ld,
                 first: in5.length ? round1(in5[0].t - x.open) : null,

@@ -49,6 +49,9 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
         trade(80, 'result=lost why=lost dur=0 pr=0 so=0'),
         // Rep 2: a trade opening at 117, within 5 s of the rep's end (120): late. Rep 3 never ready: no row.
         trade(118, 'result=done why=done dur=1 hpd=0 thpd=0 pr=1 so=0 ag=0'),
+        // And one 95-96 whose 5 s window holds the HP reset run at 98 (sent for 85, late): late too.
+        trade(96, 'result=done why=deny dur=1 hpd=0 thpd=0 pr=1 so=0 ag=0'),
+        `11/18 19:59:51 [DOTACTL] t=98 ev=cmd src=drill at=85 cmd="rig_hp_all 1" out="[RIG] hp_all share=1 n=10"`,
     ];
     for (let t = 59; t <= 130; t++) {
         // The cast loses 20 at 66 and 20 at 68; the target loses 50 at 71.
@@ -59,8 +62,9 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
     const s = store(l);
     const r = reps(s, 'drill_lane-trade');
     s.db.close();
-    assert.deepStrictEqual(r.reps.map((x) => [x.rep, x.var, x.trades, x.lost]), [[1, 'stand', 2, 1], [2, 'lasthit', 1, 0]]);
-    const [a, b, c] = r.trades;
+    assert.deepStrictEqual(r.reps.map((x) => [x.rep, x.var, x.trades, x.lost]), [[1, 'stand', 2, 1], [2, 'lasthit', 2, 0]]);
+    const [a, b, d, c] = r.trades;
+    assert.strictEqual(d.late, 1);
     assert.deepStrictEqual([a.hero, a.n, a.open, a.ordered, a.fired, a.first, a.a5, a.ch5, a.hp5, a.thp5, a.why, a.late],
         ['sniper', 1, 65, 0, 0, 3, 2, 2, 40, 0, 'no_clear', 0]);
     assert.deepStrictEqual([b.n, b.open, b.ordered, b.fired, b.first, b.a5, b.ch5, b.thp5], [2, 70, 1, 1, 0.6, 1, 1, 50]);
@@ -73,5 +77,5 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
     const sum = summary(r);
     assert.deepStrictEqual([sum['sniper stand'].ready, sum['sniper stand'].withTrade, sum['sniper stand'].trades, sum['sniper stand'].fired, sum['sniper stand'].lost], [1, 1, 2, 1, 1]);
     assert.deepStrictEqual([sum['sniper stand'].split.creeps, sum['sniper stand'].split.hero, sum['sniper stand'].creepsEnd], [18, 40, 50]);
-    assert.deepStrictEqual([sum['sniper lasthit'].trades, sum['sniper lasthit'].late], [0, 1]);
+    assert.deepStrictEqual([sum['sniper lasthit'].trades, sum['sniper lasthit'].late], [0, 2]);
 });
