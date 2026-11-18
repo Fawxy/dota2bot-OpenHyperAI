@@ -1097,7 +1097,9 @@ export const EVENTS = {
     /** Drills (humaniser/drill.ts): `ph=role` per hero when its role is known or changes (`role` cast, bench, statue,
      *  laneonly, play); `ph=rep` once per rep per team with a cast (`input` on or off: off is a control rep; `start` the rep's
      *  clock; `forces` the forced context, absent for natural reps); `ph=unknown` once when Overrides.Drill names no entry; `ph=removed` once per knob drills replaced (Solo,
-     *  StackEvery, LaneOnly; `name` the key) still set, which now does nothing. */
+     *  StackEvery, LaneOnly; `name` the key) still set, which now does nothing. `role` may also be `inlane` (the lane
+     *  ladder's hold); ph=forbid when an in-lane hero `pid` began a global spell `ability` and its order was cleared (at
+     *  most once per 5 s per hero). */
     drill: {
         ph: "str",
         name: "str",
@@ -1147,6 +1149,8 @@ export const EVENTS = {
          *  attacker's mean attack damage after the cast's armour). Its actors: ph=swing when a `lasthit` actor `pid` walks up to
          *  one of our creeps (`d` the distance), ph=answer when a `hitback` actor starts attacking hero `tpid` that hit it. */
         dmg: "num",
+        /** ph=forbid: the global spell's ability name. */
+        ability: "str",
         win: "num",
         rel: "str",
         i: "num",

@@ -16,10 +16,12 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as Sight from "bots/FunLib/humaniser/sight";
+import * as Ours from "bots/FunLib/humaniser/ours";
 
 /** What a hero does in a drill. `play`: everything, as in a normal game. */
 /** `actor`: a hero a rig's setup scripts (it takes only those steps). */
-export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "actor" | "play";
+/** `inlane`: plays everything, ours or OHA's, but nothing that leaves its lane (`InLaneDenies`, `ForbidsItem`, `forbidCast`). */
+export type Role = "cast" | "bench" | "statue" | "sentry" | "chaser" | "laneonly" | "inlane" | "actor" | "play";
 
 /** Positions (1-5) per team: `r` Radiant, `d` Dire. */
 export interface Sides {
@@ -67,8 +69,17 @@ export interface Entry {
     /** Lane-only cores also run lane aggro's draws (the feed under the lane controller's word, tower), as a
      *  lane-only core otherwise does not. */
     laneAggro?: boolean;
+    /** Heroes that play in-lane: everything as in a game, ours or OHA's, but no mode, item or spell that leaves the lane (the
+     *  lane ladder, master `docs/proposals/2026-11-19-lane-ladder.md`). A cast with `castInLane` is held the same way. */
+    inLane?: Sides;
+    /** The cast plays in-lane (as `inLane`). */
+    castInLane?: boolean;
+    /** The entry's `r` lists name our side and `d` theirs: swapped when `Ours.Team` scopes Dire, so one entry is played from
+     *  both sides of the map (the ladder's rule: a rung is two games, sides swapped). Unscoped: as written. Only the role
+     *  lists swap (cast, statue, sentry, chaser, laneOnly, inLane): `spots`, `castSpots` and rig sides stay as written. */
+    sided?: boolean;
     /** Everyone not in `cast` or `statue`. */
-    others: "bench" | "statue" | "laneonly" | "play";
+    others: "bench" | "statue" | "laneonly" | "inlane" | "play";
     /** The cast plays lane-only (hold its spot, last-hit, deny; no techniques, harass, trades, spells or items). */
     castLaneOnly?: boolean;
     /** `statue`: the cast stands as a statue whenever its forced job (`forces`) does not run, so nothing but that job touches
@@ -688,6 +699,17 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // The lane ladder (master docs/proposals/2026-11-19-lane-ladder.md, step C): one hero per lane, per side, playing its
+    // full decision (ours or OHA's) in-lane: no mode, teleport or global spell that leaves the lane. `sided`: `r` is our
+    // side (Ours.Team), so each rung is one entry played from both sides. Natural reps (each wave); 10:00 recipes.
+    // Rungs 1 to 3 (last hits, denies, the wave and the camps): our pos 1-3, enemy creeps only.
+    "ladder-solo": { note: "lane ladder rungs 1-3: our pos 1-3 in-lane, one per lane, everyone else benched", cast: { r: [1, 2, 3] }, others: "bench", castInLane: true, sided: true, rep: { every: 30, from: 0 } },
+    // Rung 4: our side-lane supports alone (pos 5 safe, pos 4 off).
+    "ladder-support": { note: "lane ladder rung 4: our pos 4 and 5 in-lane, alone in their side lanes, everyone else benched", cast: { r: [4, 5] }, others: "bench", castInLane: true, sided: true, rep: { every: 30, from: 0 } },
+    // Rung 5: one against one per lane (our safe pos1 against their pos3, mid against mid, our pos3 against their pos1).
+    // Symmetric, so `sided` does nothing; Ours.Team says which side is ours. The isolation check is this drill with every
+    // Ours switch off on both sides.
+    "ladder-duel": { note: "lane ladder rung 5: pos 1-3 of both sides in-lane, one against one per lane, everyone else benched", cast: { r: [1, 2, 3], d: [1, 2, 3] }, others: "bench", castInLane: true, rep: { every: 30, from: 0 } },
     // The old Overrides.LaneOnly harness (slice lane-last-hits): every hero lane-only.
     "lane-only": { note: "every hero lane-only (the last-hit harness)", cast: ALL, others: "play", castLaneOnly: true, rep: { every: 30, from: 0 } },
     // The old Overrides.Solo + StackEvery = 3 harness (slice 4, double-stack): the Radiant pos5 alone stacks every third
@@ -879,9 +901,15 @@ export function Active(): Entry | undefined {
     return n === undefined ? undefined : TABLE[n];
 }
 
+/** For a `sided` entry under `Ours.Team` = Dire, the `r` lists are Dire's and the `d` lists Radiant's. */
+function swapped(): boolean {
+    return Active()?.sided === true && Ours.ScopedTeam() === Team.Dire;
+}
+
 function listed(s: Sides | undefined, team: Team, pos: number | undefined): boolean {
     if (s === undefined || pos === undefined) return false;
-    const list = team === Team.Radiant ? s.r : s.d;
+    const radiant = (team === Team.Radiant) !== swapped();
+    const list = radiant ? s.r : s.d;
     return list !== undefined && list.indexOf(pos) >= 0;
 }
 
@@ -897,6 +925,7 @@ export function RoleOf(bot: Unit): Role {
     if (listed(d.sentry, bot.GetTeam(), pos)) return "sentry";
     if (listed(d.chaser, bot.GetTeam(), pos)) return "chaser";
     if (listed(d.laneOnly, bot.GetTeam(), pos)) return "laneonly";
+    if (listed(d.inLane, bot.GetTeam(), pos)) return "inlane";
     return d.others;
 }
 
@@ -946,6 +975,77 @@ export function LaneOnly(bot: Unit): boolean {
     const r = RoleOf(bot);
     const d = Active();
     return d !== undefined && ((r === "cast" && d.castLaneOnly === true) || r === "laneonly");
+}
+
+/** In-lane: the cast of an entry with `castInLane`, or a hero listed in `inLane` or under `others: "inlane"`. */
+export function InLane(bot: Unit): boolean {
+    const r = RoleOf(bot);
+    return r === "inlane" || (r === "cast" && Active()?.castInLane === true);
+}
+
+/**
+ * Modes an in-lane hero may not take (Chooser.Gate's name): each takes a laner out of its lane or across the map (a rune
+ * walk, a shop trip, a ward walk, Roshan, the team's gather). Push and defend of another lane are held too; of its own
+ * lane they run (the wave is the hero's job). `roam` and `team_roam` run: in this fork they carry in-lane play (team
+ * roam's last hits, lane fights and help within 2,200; roam's salve guard, tango and hero specials); roam's gank of
+ * another lane is held at its choice (mode_roam_generic CheckLaneToGank asks `InLane`). `judgement`: the ladder's list
+ * (proposal section 3, "Blocked across lanes"); the isolation view reads what still leaves.
+ */
+const OUT_OF_LANE: Record<string, true> = {
+    rune: true,
+    assemble: true,
+    assemble_with_humans: true,
+    roshan: true,
+    outpost: true,
+    secret_shop: true,
+    side_shop: true,
+    ward: true,
+};
+const LANE_SUFFIX: Record<string, Lane> = { top: Lane.Top, mid: Lane.Mid, bot: Lane.Bot };
+
+/** Whether an in-lane hero's desire for `mode` (Chooser.Gate's name) is held at 0. */
+export function InLaneDenies(bot: Unit, mode: string): boolean {
+    if (Active() === undefined || !InLane(bot)) return false;
+    if (OUT_OF_LANE[mode] === true) return true;
+    const [kind, suffix] = string.match(mode, "^(%a+)_tower_(%a+)$");
+    if (kind !== "push" && kind !== "defend") return false;
+    const lane = LANE_SUFFIX[suffix as string];
+    return lane !== undefined && lane !== (bot.GetAssignedLane() as Lane);
+}
+
+/** Items an in-lane hero never uses: a teleport leaves the lane. API item names. */
+const TELEPORTS: Record<string, true> = { item_tpscroll: true, item_travel_boots: true, item_travel_boots_2: true };
+
+/** Whether an in-lane hero's item use (OHA's ConsiderItemDesire loop) skips `item`. */
+export function ForbidsItem(bot: Unit, item: string): boolean {
+    return TELEPORTS[item] === true && Active() !== undefined && InLane(bot);
+}
+
+/**
+ * Spells that reach other lanes, which no placement isolates; the drill forbids the cast and keeps the hero (user,
+ * 19/11/2026). Ability names (API); the lineups' only global is Zeus's (lineup A). A hero with another global adds it here.
+ */
+const GLOBAL_SPELLS: Record<string, true> = { zuus_thundergods_wrath: true };
+
+/** Whether an in-lane hero's cast of `ability` is refused at its desire (a hero file's hook: hero_zuus ConsiderR). */
+export function ForbidsCast(bot: Unit, ability: string): boolean {
+    return GLOBAL_SPELLS[ability] === true && Active() !== undefined && InLane(bot);
+}
+
+/** The backstop for a global spell no hero file's hook refuses: an in-lane hero in its cast point has its order cleared
+ *  (each frame, from Tick) and logs `ph=forbid` at most once per 5 s (an episode, not a cast). A hero file that re-queues
+ *  the spell every frame would loop here: a `forbid` line means that hero needs its own `ForbidsCast` hook. */
+const forbidLogged: Record<number, number> = {};
+function forbidCast(bot: Unit): void {
+    if (!InLane(bot)) return;
+    const a = bot.GetCurrentActiveAbility();
+    if (a === null || GLOBAL_SPELLS[a.GetName()] !== true) return;
+    bot.Action_ClearActions(true);
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    if (forbidLogged[pid] !== undefined && now - forbidLogged[pid] < 5) return;
+    forbidLogged[pid] = now;
+    Telemetry.Event("drill", [["ph", "forbid"], ["name", Name()], ["pid", pid], ["ability", a.GetName()]]);
 }
 
 /** A lane-only hero of an entry with `laneHold`: the wave hold may act for it. */
@@ -2584,6 +2684,7 @@ export function Tick(bot: Unit): void {
         lastRole[pid] = role;
         Telemetry.Event("drill", [["ph", "role"], ["name", name], ["pid", pid], ["team", bot.GetTeam()], ["pos", pos], ["role", role]]);
     }
+    forbidCast(bot);
     if (role !== "cast") return;
     const now = DotaTime();
     const rep = RepAt(now);

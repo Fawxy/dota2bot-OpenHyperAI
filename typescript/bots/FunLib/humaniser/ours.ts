@@ -168,7 +168,7 @@ export function Describe(): string {
  * Customize.Humaniser still run on both teams, so the other side is OHA as hosted with those on (eval-run, "Stage-close
  * head-to-head"). Unset or any other value: both teams. The two teams run in separate VMs, each knowing its own GetTeam().
  */
-function ScopedTeam(): number | undefined {
+export function ScopedTeam(): number | undefined {
     const scope = (Customize.Ours as unknown as { Team?: unknown } | undefined)?.Team;
     if (scope === 2 || scope === 3) return scope;
     if (typeof scope !== "string") return undefined;

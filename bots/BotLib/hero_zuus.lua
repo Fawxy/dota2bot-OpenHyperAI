@@ -569,6 +569,11 @@ end
 
 function X.ConsiderR()
 
+	-- Lane ladder: a drill's in-lane hero never casts a global spell (humaniser/drill.ts ForbidsCast).
+	if J.Humaniser.Drill.ForbidsCast( bot, abilityR:GetName() ) then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
 	if not abilityR:IsFullyCastable() then
 		return BOT_ACTION_DESIRE_NONE
 	end

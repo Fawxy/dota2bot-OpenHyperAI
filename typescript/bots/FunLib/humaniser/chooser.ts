@@ -205,6 +205,8 @@ const ADMITTED: Record<string, Record<string, unknown>> = { retreat: EPISODE_MOD
  * not take it either.
  */
 export function Decide(bot: Unit, mode: string): number | undefined {
+    // A drill's in-lane hero (ours or OHA's) takes no mode that leaves its lane (humaniser/drill.ts InLaneDenies).
+    if (Drill.InLaneDenies(bot, mode)) return 0;
     // A drill rig's cast after ready runs only the modes its release lists.
     const rig = Drill.RigDesire(bot, mode);
     if (rig !== undefined) return rig;

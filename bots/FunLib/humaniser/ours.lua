@@ -21,8 +21,12 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ScopedTeam, OtherTeamScoped, Customize
-function ScopedTeam()
+local OtherTeamScoped, Customize
+--- Customize.Ours.Team (head-to-head scope): "radiant" or "dire" (any case) or 2 or 3 turns every Ours switch off on the other
+-- team, whose contexts then run OHA's path. It scopes the Ours switches only: the older humaniser features under
+-- Customize.Humaniser still run on both teams, so the other side is OHA as hosted with those on (eval-run, "Stage-close
+-- head-to-head"). Unset or any other value: both teams. The two teams run in separate VMs, each knowing its own GetTeam().
+function ____exports.ScopedTeam()
     local ____opt_0 = Customize.Ours
     local scope = ____opt_0 and ____opt_0.Team
     if scope == 2 or scope == 3 then
@@ -35,7 +39,7 @@ function ScopedTeam()
     return name == "radiant" and 2 or (name == "dire" and 3 or nil)
 end
 function OtherTeamScoped()
-    local team = ScopedTeam()
+    local team = ____exports.ScopedTeam()
     return team ~= nil and GetTeam() ~= team
 end
 function ____exports.On(feature)

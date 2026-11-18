@@ -1012,6 +1012,8 @@ local function ItemUsageComplement()
 			if	X.ConsiderItemDesire[sItemName] ~= nil
 				and not X.IsItemInStash( sItemName )
 				and not ( J.Humaniser.IsEnabled() and J.Humaniser.Retreat.HoldsItem( bot, sItemName ) )
+				-- Lane ladder: a drill's in-lane hero never teleports (humaniser/drill.ts ForbidsItem).
+				and not J.Humaniser.Drill.ForbidsItem( bot, sItemName )
 			then
 				local nItemDesire, hItemTarget, sCastType, sMotive = X.ConsiderItemDesire[sItemName]( hItem )
 
