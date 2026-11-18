@@ -8,6 +8,7 @@
 //   node gate.js --noise <run> [<run> ...] [--rate 0.1] [--games 10]   OHA against OHA: the side effect, the within-cell
 //       spread, and the tolerances at which a row of --games games that changes nothing fails --rate of the time against a
 //       reference row of the same size, the three measures together (their correlation simulated, one-sided each)
+//   Beneath the row: the held share, hold ends and outcomes by who was driving for the row's games (held.js).
 //   Options: --at 600, --until 720, --json, --no-ingest.
 // A cell is a lineup and seat (A_rad, A_dire, ...); the label's lineup is the letter after the run name.
 'use strict';
@@ -15,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { Store, DB, LOGS, JOBS } = require('./store');
 const { games } = require('./ledger');
+const held = require('./held');
 
 // Experience to go from level L to L+1, 7.41 (index L-1). The batch's largest `xpn` per level checks it: one over the span
 // means the table is wrong for the build's patch.
@@ -182,13 +184,15 @@ if (require.main === module) {
     } else {
         const ref = o.ref.length ? rowOf(store, o.ref, o) : undefined;
         const j = judge(row, ref, o.tol);
-        if (o.json) console.log(JSON.stringify({ games: row, judge: j }));
+        const hs = held.heldShare(store, o.runs, o);
+        if (o.json) console.log(JSON.stringify({ games: row, judge: j, held: hs }));
         else {
             for (const r of row) console.log(`${r.label.padEnd(24)} ${MEASURES.map((k) => `${k} ${r0(r.d[k], k)}`).join('  ')}`);
             for (const k of MEASURES) {
                 const e = j[k];
                 console.log(`${k.padEnd(7)} row ${r0(e.row, k)}` + (ref ? `  ref ${r0(e.ref, k)}  diff ${r0(e.diff, k)}` : '') + (e.fails === undefined ? '' : e.fails ? '  FAILS' : '  passes'));
             }
+            console.log(`\n${held.format(hs, o.at)}`);
         }
     }
 }
