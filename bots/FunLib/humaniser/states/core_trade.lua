@@ -64,7 +64,7 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local arrive, decideSafe, favoured, heldBy, heldByGap, seenHero, chaseLost, chaseEnd, fightSafe, commitReaches, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, safeTime, rawDps, factorFor, awaySpeed, hunterOf, huntersOf, noteChase, predictedPlace, towerCovers, unseenReads, keepKill, noteSeen, chaseDistance, keepCut, huntersText, losing, stepOutPoint, episodeHolds, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, UNLANDED_CAP, CHASE_BACKSTOP, AT_PLACE, VELOCITY_SPAN, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, chases, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo, TRADE_CUT_UNTIL, round6, TOWER_IDS, HEADING_SPAN, KEEP_CUT_EVERY, keepCutAt, bit, r1
+local arrive, decideSafe, favoured, heldBy, heldByGap, seenHero, chaseLost, chaseEnd, fightSafe, commitReaches, killHpFor, isSupport, reachOf, lastHitting, hitBackTarget, hitterExchange, hbKeptWhy, unanswered, inLane, frac, valid, distXY, attackPoint, heldUncatchable, question2, shareOn, freshDecision, hitBack, open, joinable, rollFight, keepWhy, safeTime, rawDps, factorFor, awaySpeed, hunterOf, huntersOf, noteChase, predictedPlace, towerCovers, unseenReads, keepKill, noteSeen, chaseDistance, keepCut, huntersText, losing, stepOutPoint, episodeHolds, MIN_HP, BEHIND_BY, KILL_HP, COMMIT_HP, FIGHT_ROLL_EVERY, FIGHT_TIME, JOIN_NEAR, JOIN_WALK, MAX_WAVE, MAX_CREEPS_ON_ME, KEEP_HP_SLACK, KEEP_WAVE_SLACK, LOSING_BY, UNLANDED_CAP, CHASE_BACKSTOP, AT_PLACE, VELOCITY_SPAN, JOIN_TIME, REACH, SAFE_HORIZON, SAFE_ENGAGED, HARASS_REACH, NEAR, CREEP_AGGRO, LANE_WIDTH, AGGRO_CLEAR, AGGRO_COOLDOWN, COOLDOWN_LEFT, STEP_OUT_LIMIT, HIT_RECENT, HIT_BACK_WALK, HIT_BACK_HP, LOST_AFTER, OUTRANGE, chases, episodes, recoverTo, primedAt, rolledAt, HITTER_RADIUS, NO_EVERY, lastNo, uncatchable, TRADE_CUT_UNTIL, round6, TOWER_IDS, HEADING_SPAN, KEEP_CUT_EVERY, keepCutAt, bit, r1
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -727,6 +727,39 @@ function ____exports.Gather(bot, target)
         {hitting = hitting}
     )
 end
+function heldUncatchable(bot, target)
+    local pid = bot:GetPlayerID()
+    if uncatchable[pid] ~= target:GetPlayerID() then
+        return false
+    end
+    local ep = {
+        kind = "kill",
+        target = target,
+        tpid = target:GetPlayerID(),
+        offeredAt = DotaTime(),
+        lf = false,
+        hp0 = 0,
+        thp0 = 0,
+        tmax = target:GetMaxHealth(),
+        thull = target:GetBoundingRadius(),
+        thpSeen = target:GetHealth(),
+        inputs = nil,
+        primes = 0,
+        stepOuts = 0,
+        aggro = 0
+    }
+    noteChase(ep)
+    local place = target:GetLocation()
+    if ____exports.CatchRead(
+        huntersOf(bot, ep, place, true),
+        target:GetHealth(),
+        safeTime(bot, ep, place)
+    ).ok then
+        uncatchable[pid] = nil
+        return false
+    end
+    return true
+end
 function question2(bot, target)
     local free = ____exports.Free(
         lastHitting(target),
@@ -752,6 +785,9 @@ function shareOn(from, on)
 end
 function freshDecision(bot, pid, now, owns, target, inputs, killHp)
     local d = inputs ~= nil and ____exports.Decide(inputs, false, killHp) or ({})
+    if d.kind == "kill" and target ~= nil and heldUncatchable(bot, target) then
+        return hitBack(bot, now, "cannot_catch", inputs)
+    end
     if d.kind ~= "kill" and owns then
         local join = joinable(bot)
         if join ~= nil then
@@ -876,18 +912,18 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue175
+            local __continue180
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue175 = true
+                    __continue180 = true
                     break
                 end
                 if ____exports.FightRefusal(
                     ____exports.Gather(bot, t),
                     killHpFor(bot)
                 ) ~= nil then
-                    __continue175 = true
+                    __continue180 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -896,12 +932,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue175 = true
+                    __continue180 = true
                     break
                 end
                 return p
             until true
-            if not __continue175 then
+            if not __continue180 then
                 break
             end
         end
@@ -976,7 +1012,7 @@ function keepWhy(bot, ep, now, join)
             ____exports.Gather(bot, t),
             false,
             kh
-        ).kind == "kill" then
+        ).kind == "kill" and not heldUncatchable(bot, t) then
             return "kill_up"
         end
         if ep.stepSince ~= nil and now - ep.stepSince > STEP_OUT_LIMIT then
@@ -1078,11 +1114,11 @@ function safeTime(bot, ep, place)
     local bestD = math.huge
     for ____, id in ipairs(TOWER_IDS) do
         do
-            local __continue223
+            local __continue228
             repeat
                 local t = GetTower(theirs, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue223 = true
+                    __continue228 = true
                     break
                 end
                 local d = distXY(
@@ -1093,9 +1129,9 @@ function safeTime(bot, ep, place)
                     bestD = d
                     best = t:GetLocation()
                 end
-                __continue223 = true
+                __continue228 = true
             until true
-            if not __continue223 then
+            if not __continue228 then
                 break
             end
         end
@@ -1166,21 +1202,21 @@ function huntersOf(bot, ep, place, seen)
     local me = bot:GetPlayerID()
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue241
+            local __continue246
             repeat
                 if a == nil or a == nil or a:IsNull() or not a:IsAlive() or a:IsIllusion() or a:GetPlayerID() == me then
-                    __continue241 = true
+                    __continue246 = true
                     break
                 end
                 local o = episodes[a:GetPlayerID()]
                 if o == nil or o.ended == true or o.tpid ~= ep.tpid or o.kind ~= "kill" and o.kind ~= "join" then
-                    __continue241 = true
+                    __continue246 = true
                     break
                 end
                 out[#out + 1] = hunterOf(ep, a, place, seen)
-                __continue241 = true
+                __continue246 = true
             until true
-            if not __continue241 then
+            if not __continue246 then
                 break
             end
         end
@@ -1214,19 +1250,19 @@ function towerCovers(bot, a, b)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(1600, true)) do
         do
-            local __continue249
+            local __continue254
             repeat
                 if not t:IsAlive() then
-                    __continue249 = true
+                    __continue254 = true
                     break
                 end
                 local tl = t:GetLocation()
                 if distXY(tl, a) <= reach or distXY(tl, b) <= reach then
                     return true
                 end
-                __continue249 = true
+                __continue254 = true
             until true
-            if not __continue249 then
+            if not __continue254 then
                 break
             end
         end
@@ -1297,7 +1333,7 @@ function keepKill(bot, ep, now, join)
             ____exports.Gather(bot, ep.target),
             false,
             kh
-        ).kind == "kill"
+        ).kind == "kill" and not heldUncatchable(bot, ep.target)
     end
     if ep.kind == "kill" and alive and k.started ~= nil and k.started <= CHASE_BACKSTOP then
         local place = seen and ep.target:GetLocation() or predictedPlace(ep)
@@ -1558,19 +1594,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue315
+            local __continue320
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue315 = true
+                    __continue320 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue315 = true
+                __continue320 = true
             until true
-            if not __continue315 then
+            if not __continue320 then
                 break
             end
         end
@@ -1817,9 +1853,13 @@ local function commitTarget(bot, killHp)
     end
     return best, bestI
 end
+uncatchable = {}
 local function close(bot, ep, why, now)
     local pid = bot:GetPlayerID()
     episodes[pid] = nil
+    if ep.kind == "kill" then
+        uncatchable[pid] = why == "cannot_catch" and ep.tpid or nil
+    end
     local started = ep.startedAt ~= nil
     if ep.play ~= nil and not ep.joined then
         Plays.End(ep.play, why)
@@ -2203,19 +2243,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue305
+            local __continue310
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue305 = true
+                    __continue310 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue305 = true
+                __continue310 = true
             until true
-            if not __continue305 then
+            if not __continue310 then
                 break
             end
         end
@@ -2308,6 +2348,9 @@ function ____exports.Reset()
     end
     for k in pairs(keepCutAt) do
         keepCutAt[k] = nil
+    end
+    for k in pairs(uncatchable) do
+        uncatchable[k] = nil
     end
 end
 return ____exports

@@ -1004,7 +1004,26 @@ do
 	check("kill-chase: the end names the cold trail", ended)
 	GetHeroLastSeenInfo = oldInfo
 	Unit.CanBeSeen = oldSeen
-	bot.loc, bot.atk, bot.spa, bot.target = Vector(0, 0), nil, nil, nil
+	-- A low target out of attack range running away faster than we walk: the kill ends cannot_catch, and does not reopen
+	-- on the next frame while the read still says so.
+	CoreTrade.Reset()
+	bot.loc, bot.attacking = Vector(0, 0), nil
+	enemy.hp, enemy.loc, enemy.vel = 30, Vector(600, 0), Vector(400, 0)
+	T = 950
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	T = 950.3
+	local n2 = #lines
+	CoreTrade.Desire(bot)
+	local why2
+	for i = n2 + 1, #lines do if lines[i]:find("ev=trade") then why2 = lines[i]:match("why=(%S+)") end end
+	check("kill-chase: a target pulling away out of reach ends cannot_catch", why2 == "cannot_catch")
+	T = 950.6
+	check("kill-chase: the uncatchable kill does not reopen", CoreTrade.Desire(bot) ~= CoreTrade.DESIRE_KILL)
+	enemy.vel = Vector(0, 0)
+	T = 950.9
+	check("kill-chase: once it stops, the read clears and the kill reopens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	bot.loc, bot.atk, bot.spa, bot.target, bot.attacking = Vector(0, 0), nil, nil, nil, nil
 	enemy.hp, enemy.loc, enemy.vel = 70, Vector(400, 0), nil
 	CoreTrade.Reset()
 end

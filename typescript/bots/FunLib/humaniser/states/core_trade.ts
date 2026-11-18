@@ -854,9 +854,45 @@ export function Gather(bot: Unit, target: Unit): Inputs {
     };
 }
 
+/**
+ * Slice kill-chase: the target a kill of this bot last ended `cannot_catch` on. A kill on it reopens only once the catch
+ * read says it lands again (smoke2: without this a kill reopened on the next frame, 76 ends at 0.5 s each).
+ */
+const uncatchable: Record<number, number | undefined> = {};
+
+/** Whether a fresh kill on `target` is held: its last kill ended `cannot_catch` and the read still says so. */
+function heldUncatchable(bot: Unit, target: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    if (uncatchable[pid] !== target.GetPlayerID()) return false;
+    const ep: Episode = {
+        kind: "kill",
+        target,
+        tpid: target.GetPlayerID(),
+        offeredAt: DotaTime(),
+        lf: false,
+        hp0: 0,
+        thp0: 0,
+        tmax: target.GetMaxHealth(),
+        thull: target.GetBoundingRadius(),
+        thpSeen: target.GetHealth(),
+        inputs: undefined as unknown as Inputs,
+        primes: 0,
+        stepOuts: 0,
+        aggro: 0,
+    };
+    noteChase(ep);
+    const place = target.GetLocation();
+    if (CatchRead(huntersOf(bot, ep, place, true), target.GetHealth(), safeTime(bot, ep, place)).ok) {
+        uncatchable[pid] = undefined;
+        return false;
+    }
+    return true;
+}
+
 function close(bot: Unit, ep: Episode, why: string, now: number): void {
     const pid = bot.GetPlayerID();
     episodes[pid] = undefined;
+    if (ep.kind === "kill") uncatchable[pid] = why === "cannot_catch" ? ep.tpid : undefined;
     const started = ep.startedAt !== undefined;
     if (ep.play !== undefined && !ep.joined) Plays.End(ep.play, why);
     if (started && why === "losing") recoverTo[pid] = ep.inputs.hp - ep.inputs.targetHp;
@@ -1044,6 +1080,8 @@ export function Desire(bot: Unit): number | undefined {
 /** Desire with no episode open: the trade rule on the nearest hero in reach, a lane fight, a hit back, or nothing. */
 function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, target: Unit | undefined, inputs: Inputs | undefined, killHp: number): number {
     const d = inputs !== undefined ? Decide(inputs, false, killHp) : {};
+    // Slice kill-chase: a kill the catch read just ended does not reopen on the same target until the read says it lands.
+    if (d.kind === "kill" && target !== undefined && heldUncatchable(bot, target)) return hitBack(bot, now, "cannot_catch", inputs);
     if (d.kind !== "kill" && owns) {
         const join = joinable(bot);
         if (join !== undefined) return open(bot, "fight", join.target!, now, join, true);
@@ -1154,7 +1192,7 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
         // Slice trade-reach: a trade whose target has fallen to the commit bar gives way to the kill, which the same frame's
         // fresh decision opens (a trade does not chase; a kill does).
         const kh = killHpFor(bot);
-        if (ep.kind === "trade" && frac(t) <= kh && commitReaches(bot) && Decide(Gather(bot, t), false, kh).kind === "kill") return "kill_up";
+        if (ep.kind === "trade" && frac(t) <= kh && commitReaches(bot) && Decide(Gather(bot, t), false, kh).kind === "kill" && !heldUncatchable(bot, t)) return "kill_up";
         if (ep.stepSince !== undefined && now - ep.stepSince > STEP_OUT_LIMIT) return "no_clear";
         const reach = reachOf(bot) + (ep.hb === true ? HIT_BACK_WALK : 0);
         // A step out moves away from the target on purpose, and the order primed from clear ground walks back in while its
@@ -1410,7 +1448,7 @@ function keepKill(bot: Unit, ep: Episode, now: number, join: Unit | undefined): 
     ep.chaseAt = undefined;
     if (ep.kind === "join" && seen) {
         const kh = k.killHp;
-        k.killUp = frac(ep.target) <= kh && Decide(Gather(bot, ep.target), false, kh).kind === "kill";
+        k.killUp = frac(ep.target) <= kh && Decide(Gather(bot, ep.target), false, kh).kind === "kill" && !heldUncatchable(bot, ep.target);
     }
     if (ep.kind === "kill" && alive && k.started !== undefined && k.started <= CHASE_BACKSTOP) {
         const place = seen ? ep.target.GetLocation() : predictedPlace(ep);
@@ -1722,4 +1760,5 @@ export function Reset(): void {
     for (const k in cutState) cutState[k as unknown as number] = undefined;
     for (const k in chases) chases[k as unknown as number] = undefined;
     for (const k in keepCutAt) keepCutAt[k as unknown as number] = undefined;
+    for (const k in uncatchable) uncatchable[k as unknown as number] = undefined;
 }
