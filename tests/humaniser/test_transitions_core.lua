@@ -36,7 +36,7 @@ do
 	local H = LaneFresh({ Enable = true }, { transitions = { Rotation = false } })
 	local S = H.Transitions.Settings
 	check("flag off", not S.IsOn("Rotation"))
-	check("other flags keep defaults", S.IsOn("MidRunes") and S.IsOn("LostLane"))
+	check("other flags keep defaults", S.IsOn("MidRunes") and S.IsOn("Phase"))
 	check("untouched values keep defaults", near(S.Get().Refresh, 0.5) and near(S.Get().RotateChance.Low, 0.3))
 	H = LaneFresh({ Enable = true }, { transitions = { RotateChance = { High = 0.8 } } })
 	S = H.Transitions.Settings
@@ -187,19 +187,9 @@ local function teleportScenario(tcfg)
 	return { level = H.Transitions.Caution.Level(core), claim = claimed(H, core, "transitions:caution", BotMode.Retreat), reads = TELEPORT_READS }
 end
 
-local function dies(H, u, at)
-	T = at - 1
-	H.Transitions.Tick(u)
-	T = at
-	u.alive = false
-	H.Transitions.Tick(u)
-	T = at + 1
-	u.alive = true
-	H.Transitions.Tick(u)
-end
 
--- A core that died twice in lane, and another with a Maelstrom and a clear jungle.
-local function phaseScenario(tcfg, lost)
+-- A core with a Maelstrom and a clear jungle.
+local function phaseScenario(tcfg)
 	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = tcfg })
 	selfTest(H)
 	T, CURRENT_TEAM, LANING = 100, 2, true
@@ -212,12 +202,7 @@ local function phaseScenario(tcfg, lost)
 	core.ActionImmediate_Ping = function() end
 	H.Orders.SetAnnouncer(function() end)
 	H.Profile.SampleDelay = function() return 0 end
-	if lost then
-		dies(H, core, 30)
-		dies(H, core, 60)
-	else
-		core.items = { [0] = { name = "item_maelstrom" } }
-	end
+	core.items = { [0] = { name = "item_maelstrom" } }
 	T = 100
 	H.Transitions.Tick(core)
 	local r = { allowed = H.Transitions.FarmAllowedInLaning(core) }
@@ -293,13 +278,9 @@ do
 end
 
 do
-	check("phase: a lost core farms (enabled)", phaseScenario({ Enable = true }, true).allowed == true)
-	check("phase: a lost core does not farm (disabled)", phaseScenario({ Enable = false }, true).allowed == false)
-	check("LostLane off: a lost core does not farm", phaseScenario({ Enable = true, LostLane = false }, true).allowed == false)
-	check("phase: a Maelstrom core farms (enabled)", phaseScenario({ Enable = true }, false).allowed == true)
-	check("phase: a Maelstrom core does not farm (disabled)", phaseScenario({ Enable = false }, false).allowed == false)
-	check("Phase off: a Maelstrom core does not farm", phaseScenario({ Enable = true, Phase = false }, false).allowed == false)
-	check("LostLane off leaves the phase end alone", phaseScenario({ Enable = true, LostLane = false }, false).allowed == true)
+	check("phase: a Maelstrom core farms (enabled)", phaseScenario({ Enable = true }).allowed == true)
+	check("phase: a Maelstrom core does not farm (disabled)", phaseScenario({ Enable = false }).allowed == false)
+	check("Phase off: a Maelstrom core does not farm", phaseScenario({ Enable = true, Phase = false }).allowed == false)
 end
 
 -- The trainer self-test bot (2bf9a81 skips Lane.PreThink for it) gets none of the transitions: every hook upstream,

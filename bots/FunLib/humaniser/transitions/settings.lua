@@ -10,7 +10,6 @@ ____exports.DEFAULTS = {
     Teleports = true,
     LaneWard = true,
     Phase = true,
-    LostLane = true,
     Refresh = 0.5,
     MidRuneFloor = 0.6,
     MidRuneFocus = 20,
@@ -92,14 +91,9 @@ ____exports.DEFAULTS = {
     SupportLevel = 6,
     SupportFrom = 360,
     SupportTo = 480,
-    LostWindow = 240,
-    LostDeaths = 2,
-    LostLevelGap = 2,
     SuggestCooldown = 60,
     JungleSeenWindow = 3,
     JungleCampRadius = 2500,
-    LostPingRadius = 1500,
-    AbsentHold = 10,
     LaningCap = 0.3
 }
 local function merge(defaults, overrides)

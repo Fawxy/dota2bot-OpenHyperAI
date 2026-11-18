@@ -987,13 +987,6 @@ ____exports.EVENTS = {
         gate = "str"
     },
     tr_laning = {pid = "num", laning = "bool", why = "str"},
-    tr_lost = {
-        pid = "num",
-        lost = "bool",
-        reason = "str",
-        deaths = "num",
-        levelGap = "num"
-    },
     tr_rotate = {
         pid = "num",
         spawn = "num",

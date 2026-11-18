@@ -6,7 +6,7 @@
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 
-export type TransitionFlag = "MidRunes" | "Rotation" | "Caution" | "Teleports" | "LaneWard" | "Phase" | "LostLane";
+export type TransitionFlag = "MidRunes" | "Rotation" | "Caution" | "Teleports" | "LaneWard" | "Phase";
 export interface LerpPair {
     Low: number;
     High: number;
@@ -20,7 +20,6 @@ export const DEFAULTS = {
     Teleports: true,
     LaneWard: true,
     Phase: true,
-    LostLane: true,
     Refresh: 0.5,
     MidRuneFloor: 0.6,
     // Seconds before a power spawn: only power spots count for the mid / the floor claim starts.
@@ -137,17 +136,10 @@ export const DEFAULTS = {
     SupportLevel: 6,
     SupportFrom: 360,
     SupportTo: 480,
-    LostWindow: 240,
-    LostDeaths: 2,
-    LostLevelGap: 2,
     SuggestCooldown: 60,
     // Enemy hero seen within this long counts as present near our jungle camp.
     JungleSeenWindow: 3,
     JungleCampRadius: 2500,
-    // A human ping this close to the bot after a lost-lane suggestion is taken as an answer.
-    LostPingRadius: 1500,
-    // The human partner must be away from the lane this long after a suggestion before the bot leaves.
-    AbsentHold: 10,
     // Laning mode cap once a bot's laning has ended.
     LaningCap: 0.3,
 };
