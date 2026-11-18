@@ -16,6 +16,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local LaneFightConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight_config")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LaningPhase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local CastWatch = require(GetScriptDirectory().."/FunLib/humaniser/cast_watch")
@@ -60,7 +61,7 @@ function stateFor(bot)
     return s
 end
 function gatesOpen(bot)
-    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
+    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaningPhase.LaningHeld(bot) then
         return false
     end
     if CoreTrade.OwnsLaneFights(bot) then
@@ -1323,7 +1324,7 @@ function ____exports.Frame(bot)
     if not CastWatch.Pending(bot) then
         return
     end
-    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
+    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaningPhase.LaningHeld(bot) then
         return
     end
     if not LaneFightConfig.IsOn("Memory") or LaneState.ForBot(bot) == nil then
@@ -1332,7 +1333,7 @@ function ____exports.Frame(bot)
     CastWatch.Drain(bot)
 end
 function ____exports.Tick(bot)
-    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
+    if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaningPhase.LaningHeld(bot) then
         return
     end
     if not LaneFightConfig.IsOn("Memory") and not gatesOpen(bot) then

@@ -9,7 +9,6 @@ ____exports.DEFAULTS = {
     Caution = true,
     Teleports = true,
     LaneWard = true,
-    Phase = true,
     Refresh = 0.5,
     MidRuneFloor = 0.6,
     MidRuneFocus = 20,
@@ -87,14 +86,7 @@ ____exports.DEFAULTS = {
     WardScanPeriod = 5,
     WardFloor = 0.6,
     WardLive = 1,
-    WardLifetime = 360,
-    SupportLevel = 6,
-    SupportFrom = 360,
-    SupportTo = 480,
-    SuggestCooldown = 60,
-    JungleSeenWindow = 3,
-    JungleCampRadius = 2500,
-    LaningCap = 0.3
+    WardLifetime = 360
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then

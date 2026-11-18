@@ -36,7 +36,7 @@ do
 	local H = LaneFresh({ Enable = true }, { transitions = { Rotation = false } })
 	local S = H.Transitions.Settings
 	check("flag off", not S.IsOn("Rotation"))
-	check("other flags keep defaults", S.IsOn("MidRunes") and S.IsOn("Phase"))
+	check("other flags keep defaults", S.IsOn("MidRunes") and S.IsOn("LaneWard"))
 	check("untouched values keep defaults", near(S.Get().Refresh, 0.5) and near(S.Get().RotateChance.Low, 0.3))
 	H = LaneFresh({ Enable = true }, { transitions = { RotateChance = { High = 0.8 } } })
 	S = H.Transitions.Settings
@@ -188,28 +188,6 @@ local function teleportScenario(tcfg)
 end
 
 
--- A core with a Maelstrom and a clear jungle.
-local function phaseScenario(tcfg)
-	local H = LaneFresh({ Enable = true }, { skill = 0.5, transitions = tcfg })
-	selfTest(H)
-	T, CURRENT_TEAM, LANING = 100, 2, true
-	local CAMP = Vector(-1600, -6200)
-	SPAWNERS = { { team = 2, type = "small", location = CAMP, min = Vector(CAMP.x - 150, CAMP.y - 150, 0), max = Vector(CAMP.x + 150, CAMP.y + 150, 0), speed = 0 } }
-	H.Lane.Camps.ResetCache()
-	unit({ pid = 2, bot = false, pos = 2, lane = Lane.Mid, loc = Vector(0, 0) })
-	local core = unit({ pid = 1, pos = 1, lane = Lane.Bot, loc = Vector(0, -5000) })
-	unit({ pid = 5, pos = 5, lane = Lane.Bot, loc = Vector(0, -5000) })
-	core.ActionImmediate_Ping = function() end
-	H.Orders.SetAnnouncer(function() end)
-	H.Profile.SampleDelay = function() return 0 end
-	core.items = { [0] = { name = "item_maelstrom" } }
-	T = 100
-	H.Transitions.Tick(core)
-	local r = { allowed = H.Transitions.FarmAllowedInLaning(core) }
-	LANING = nil
-	return r
-end
-
 local function eq(a, b) return a == b end
 
 do
@@ -277,12 +255,6 @@ do
 	check("Caution off: a TP still backs the core off (independent flags)", near(noCaution.level, 1) and noCaution.reads > 0)
 end
 
-do
-	check("phase: a Maelstrom core farms (enabled)", phaseScenario({ Enable = true }).allowed == true)
-	check("phase: a Maelstrom core does not farm (disabled)", phaseScenario({ Enable = false }).allowed == false)
-	check("Phase off: a Maelstrom core does not farm", phaseScenario({ Enable = true, Phase = false }).allowed == false)
-end
-
 -- The trainer self-test bot (2bf9a81 skips Lane.PreThink for it) gets none of the transitions: every hook upstream,
 -- no claims, no forced levels. The enabled scenarios above are the contrast.
 do
@@ -299,7 +271,6 @@ do
 	check("self-test core: no caution offset, trade suppression or claim", not c.override and not c.moved and not c.suppressed and not c.cautious and not c.claim)
 	local tp = teleportScenario({ Enable = true })
 	check("self-test core: no TP back-off", tp.level == 0 and not tp.claim, tp.level)
-	check("self-test core: the phase does not release it to farm", phaseScenario({ Enable = true }, true).allowed == false)
 	SELF_TEST = nil
 end
 

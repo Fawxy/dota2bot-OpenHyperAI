@@ -107,11 +107,6 @@ do
 	unseen.unseen = true
 	ok, err = pcall(M.MayTouchWave, support, unseen)
 	check("a creep with no location does not throw", ok, err)
-	T = 700
-	LANING = false
-	check("after laning anyone may touch it", M.MayTouchWave(support, creep) == true)
-	LANING = nil
-	T = 100
 	human.loc = Vector(0, 3000)
 	H.Lane.LaneState.ResetCache()
 	check("human away from the wave", M.MayTouchWave(support, creep) == true)
@@ -123,6 +118,13 @@ do
 	human.bot = true
 	H.Lane.LaneState.ResetCache()
 	check("a bot mid is not protected", M.MayTouchWave(support, creep) == true)
+	human.bot = false
+	H.Lane.LaneState.ResetCache()
+	T = 700
+	LANING = false
+	check("after laning anyone may touch it", M.MayTouchWave(support, creep) == true)
+	LANING = nil
+	T = 100
 end
 
 -- Hands-off: a bot-lane bot whose own lane is active, with a creep of a human mid's wave among the creeps it was handed.

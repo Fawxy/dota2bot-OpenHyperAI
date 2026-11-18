@@ -284,7 +284,7 @@ function ____exports.FarmScore(bot)
     if FarmPattern.Current(bot) ~= nil then
         return ____exports.TRIP
     end
-    if Phase.IsLaningFor(bot) then
+    if Phase.LaningHeld(bot) then
         return nil
     end
     return FarmPattern.Eligible(bot) == nil and ____exports.FARM or nil

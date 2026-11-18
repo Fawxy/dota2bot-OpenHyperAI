@@ -113,7 +113,7 @@ export function Decide(bot: Unit, now: number): RotationDecision {
     if (spawn < Runes.RUNE_RULES.power.first || now < spawn - cfg.DecideFrom || now > spawn - cfg.DecideTo) {
         return { spawn, go: false, reason: "window" };
     }
-    if (!Phase.LaningTransitions(bot)) {
+    if (!Phase.LaningHeld(bot)) {
         const off: RotationDecision = { spawn, go: false, reason: "phase" };
         entries[pid] = { decision: off, arriveAt: -math.huge, announced: true, checkAt: math.huge };
         log(bot, off);
@@ -270,7 +270,7 @@ export function Tick(bot: Unit): void {
     const now = DotaTime();
     Decide(bot, now);
     const e = entries[bot.GetPlayerID()];
-    if (e !== undefined && e.decision.go && !Phase.LaningTransitions(bot)) {
+    if (e !== undefined && e.decision.go && !Phase.LaningHeld(bot)) {
         e.decision.go = false;
         e.decision.reason = "phase";
         Intent.Release(bot, SOURCE, BotMode.Rune);

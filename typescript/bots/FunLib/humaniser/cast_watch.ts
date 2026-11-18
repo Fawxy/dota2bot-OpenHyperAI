@@ -8,6 +8,7 @@
 import { Team, Unit } from "bots/ts_libs/dota";
 import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import * as Perception from "bots/FunLib/humaniser/perception";
@@ -221,7 +222,7 @@ function visibleEnemy(bot: Unit, enemyPid: number): Unit | undefined {
 
 function onCastEvent(bot: Unit, enemyPid: number, event: any, now: number): void {
     if (!LaneFightConfig.IsOn("Memory") || !LaneFightConfig.Settings().UseCastCallback) return;
-    if (now < 0 || !LaneConfig.InLaningPhase() || isNullHandle(bot)) return;
+    if (now < 0 || !Phase.LaningHeld(bot) || isNullHandle(bot)) return;
     const caster = visibleEnemy(bot, enemyPid);
     if (caster === undefined || type(event) !== "table") return;
     // The player's summons and controlled units cast under the same player ID; only the hero's own casts count.

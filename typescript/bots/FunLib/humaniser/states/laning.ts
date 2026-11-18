@@ -557,7 +557,7 @@ export function Spec(bot: Unit): Lib.StateSpec {
         floor: 0,
         // OHA's last-hit blips into other modes (about 2/min per bot) must not restart the body.
         preemptAfter: 3,
-        score: () => (Phase.IsLaningFor(bot) ? 0.5 : undefined),
+        score: () => (Phase.LaningHeld(bot) ? 0.5 : undefined),
         body: (ctx) => body(bot, ctx),
     };
 }

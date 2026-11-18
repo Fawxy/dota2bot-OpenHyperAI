@@ -149,7 +149,7 @@ export function Tick(bot: Unit): void {
     const pid = bot.GetPlayerID();
     if (now < (checkAt[pid] ?? -math.huge)) return;
     checkAt[pid] = now + Settings.Get().Refresh;
-    if (!Phase.LaningTransitions(bot)) {
+    if (!Phase.LaningHeld(bot)) {
         if (reactions[pid] !== undefined) {
             delete reactions[pid];
             Caution.ForceLevel(bot, 0, -math.huge);

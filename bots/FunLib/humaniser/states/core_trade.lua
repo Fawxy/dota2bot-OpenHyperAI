@@ -648,7 +648,7 @@ function unanswered(bot, now, why, i)
     return 0
 end
 function inLane(bot)
-    return Phase.IsLaningFor(bot) and GetAmountAlongLane(
+    return Phase.LaningHeld(bot) and GetAmountAlongLane(
         bot:GetAssignedLane(),
         bot:GetLocation()
     ).distance <= LANE_WIDTH

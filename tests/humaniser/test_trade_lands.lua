@@ -9,7 +9,7 @@ Ours.TradeFree = false
 local lines = {}
 H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 
-package.loaded["bots/FunLib/humaniser/transitions/phase"] = { IsLaningFor = function() return true end }
+package.loaded["bots/FunLib/humaniser/transitions/phase"] = { LaningHeld = function() return true end }
 package.loaded["bots/FunLib/humaniser/states/core_last_hit"] = { Applies = function() return true end }
 package.loaded["bots/FunLib/humaniser/states/support_deny"] = { Harass = function() return false end }
 package.loaded["bots/FunLib/humaniser/states/core_trade"] = nil

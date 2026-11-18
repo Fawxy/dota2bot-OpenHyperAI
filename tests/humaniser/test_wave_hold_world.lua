@@ -11,7 +11,8 @@ local function world(laneAggro)
 	-- Our T1's API values as in game: range 700, tower hull 144; lane creeps' hull 16 (reach 860, floor 910).
 	for _, t in pairs(TOWERS_W[2]) do t.range, t.hull = 700, 144 end
 	local lines = {}
-	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	-- The laning hold's own start line (ev=arb ph=own) is not the hold's.
+	H.Telemetry.SetSink(function(l) if not l:find("ev=arb ", 1, true) then table.insert(lines, l) end end)
 	local W = require("bots/FunLib/humaniser/states/wave_hold")
 	local P = require("bots/FunLib/humaniser/lane_push")
 	local path = require("bots/FunLib/humaniser/lane_push_data").LANE_PATHS[Lane.Bot]

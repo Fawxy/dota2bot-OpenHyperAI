@@ -3,6 +3,7 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
@@ -77,7 +78,7 @@ function ____exports.PickDeny(bot, allyCreeps)
 end
 --- False for a non-mid bot near the wave of a human mid, so it does not shove, pull or deny there.
 function ____exports.MayTouchWave(bot, creep)
-    if creep:IsNull() or not LaneConfig.IsOn("Mid") or not LaneConfig.InLaningPhase() or bot:GetAssignedLane() == Lane.Mid then
+    if creep:IsNull() or not LaneConfig.IsOn("Mid") or not Phase.LaningHeld(bot) or bot:GetAssignedLane() == Lane.Mid then
         return true
     end
     local loc = creep:GetLocation()

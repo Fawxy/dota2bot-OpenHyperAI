@@ -50,12 +50,8 @@ do
 	bot.lane, bot.pos, bot.mode = Lane.Bot, 1, BotMode.Laning
 	local printed, old = {}, print
 	print = function(s) table.insert(printed, tostring(s)) end
-	local Phase = require("bots/FunLib/humaniser/transitions/phase")
-	check("a hero whose laning read nobody has made is OHA's", Arb.Candidates(bot, nil)[1].name == "oha")
-	-- The retreat desire reads the laning phase every frame in a game; the shadow only looks at what was stored.
 	local function frame(dt)
 		T = T + dt
-		Phase.LaningTransitions(bot)
 		Arb.Shadow(bot, function() return nil end)
 	end
 	local ok, err = pcall(function()
@@ -70,7 +66,8 @@ do
 	print = old
 	if not ok then error(err, 0) end
 	local arb = {}
-	for _, l in ipairs(printed) do if l:find("ev=arb ", 1, true) then arb[#arb + 1] = l end end
+	-- The hold's own start line (ph=own) is not a pick.
+	for _, l in ipairs(printed) do if l:find("ev=arb ", 1, true) and not l:find("ph=", 1, true) then arb[#arb + 1] = l end end
 	check("one line per change of pick or mode, none between", #arb == 3, #arb .. "\n" .. table.concat(arb, "\n"))
 	check("the lane as base logs grp=base and agrees with laning", arb[1] and arb[1]:find("grp=base", 1, true) and arb[1]:find("agree=1", 1, true), arb[1])
 	check("running retreat against laning: pick retreat, disagree", arb[2] and arb[2]:find("pick=retreat", 1, true) and arb[2]:find("act=laning", 1, true) and arb[2]:find("agree=0", 1, true) and arb[2]:find("prev=lane", 1, true), arb[2])

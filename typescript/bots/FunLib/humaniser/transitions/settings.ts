@@ -6,7 +6,7 @@
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 
-export type TransitionFlag = "MidRunes" | "Rotation" | "Caution" | "Teleports" | "LaneWard" | "Phase";
+export type TransitionFlag = "MidRunes" | "Rotation" | "Caution" | "Teleports" | "LaneWard";
 export interface LerpPair {
     Low: number;
     High: number;
@@ -19,7 +19,6 @@ export const DEFAULTS = {
     Caution: true,
     Teleports: true,
     LaneWard: true,
-    Phase: true,
     Refresh: 0.5,
     MidRuneFloor: 0.6,
     // Seconds before a power spawn: only power spots count for the mid / the floor claim starts.
@@ -133,15 +132,6 @@ export const DEFAULTS = {
     WardLive: 1,
     // A planted lane ward covers the lane this long (the observer ward's lifetime).
     WardLifetime: 360,
-    SupportLevel: 6,
-    SupportFrom: 360,
-    SupportTo: 480,
-    SuggestCooldown: 60,
-    // Enemy hero seen within this long counts as present near our jungle camp.
-    JungleSeenWindow: 3,
-    JungleCampRadius: 2500,
-    // Laning mode cap once a bot's laning has ended.
-    LaningCap: 0.3,
 };
 
 export type TransitionSettings = typeof DEFAULTS;

@@ -4,6 +4,7 @@
  */
 import { Lane, Unit } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
@@ -49,7 +50,7 @@ export function PickDeny(bot: Unit, allyCreeps: Unit[]): Unit | undefined {
 
 /** False for a non-mid bot near the wave of a human mid, so it does not shove, pull or deny there. */
 export function MayTouchWave(bot: Unit, creep: Unit): boolean {
-    if (creep.IsNull() || !LaneConfig.IsOn("Mid") || !LaneConfig.InLaningPhase() || bot.GetAssignedLane() === Lane.Mid) return true;
+    if (creep.IsNull() || !LaneConfig.IsOn("Mid") || !Phase.LaningHeld(bot) || bot.GetAssignedLane() === Lane.Mid) return true;
     // Removed handles and creeps out of sight have no location: nobody's wave, and callers filter them before acting.
     const loc = creep.GetLocation();
     if (loc === undefined) return true;

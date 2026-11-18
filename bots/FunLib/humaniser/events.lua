@@ -986,7 +986,6 @@ ____exports.EVENTS = {
         laning = "str",
         gate = "str"
     },
-    tr_laning = {pid = "num", laning = "bool", why = "str"},
     tr_rotate = {
         pid = "num",
         spawn = "num",

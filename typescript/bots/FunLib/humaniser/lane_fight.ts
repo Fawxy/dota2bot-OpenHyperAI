@@ -11,6 +11,7 @@
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneFightConfig from "bots/FunLib/humaniser/lane_fight_config";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as LaningPhase from "bots/FunLib/humaniser/transitions/phase";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import * as CastWatch from "bots/FunLib/humaniser/cast_watch";
@@ -37,13 +38,13 @@ export function IsActive(): boolean {
 /** The frames between Tick's: reads a queued cast event under Tick's own gates (CastWatch.Drain says why it cannot wait). */
 export function Frame(bot: Unit): void {
     if (!CastWatch.Pending(bot)) return;
-    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
+    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaningPhase.LaningHeld(bot)) return;
     if (!LaneFightConfig.IsOn("Memory") || LaneState.ForBot(bot) === undefined) return;
     CastWatch.Drain(bot);
 }
 
 export function Tick(bot: Unit): void {
-    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return;
+    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaningPhase.LaningHeld(bot)) return;
     if (!LaneFightConfig.IsOn("Memory") && !gatesOpen(bot)) return;
     // A bot with no assigned lane (no lane snapshot) has no lane enemies to watch.
     const snap = LaneState.ForBot(bot);
@@ -253,7 +254,7 @@ function stateFor(bot: Unit): FightState {
 }
 
 function gatesOpen(bot: Unit): boolean {
-    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return false;
+    if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaningPhase.LaningHeld(bot)) return false;
     // Slice lane-fight: an in-lane core whose fights are ours gets no trade or commit claim from here.
     if (CoreTrade.OwnsLaneFights(bot)) return false;
     return LaneFightConfig.IsOn("Trade") || LaneFightConfig.IsOn("Kill");

@@ -14,7 +14,7 @@ local function Fresh(states, o)
 	-- These cases test the States settings on OHA's path: slice 5's Ours.CoreLastHit (pos1-3 own laning) is off here.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = false }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
-	Phase.IsLaningFor = function() return true end
+	Phase.LaningHeld = function() return true end
 	local LaneConfig = require("bots/FunLib/humaniser/lane_config")
 	local positions = {}
 	LaneConfig.SetHelpers({ GetPosition = function(u) return positions[u.pid] end })

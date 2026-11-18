@@ -289,7 +289,7 @@ local function update(bot, now)
     local st = stateOf(bot)
     if now >= st.checkAt then
         st.checkAt = now + Settings.Get().Refresh
-        local laning = Phase.LaningTransitions(bot)
+        local laning = Phase.LaningHeld(bot)
         local ____laning_0
         if laning then
             ____laning_0 = LaneState.ForBot(bot)
@@ -350,7 +350,7 @@ local function update(bot, now)
 end
 --- Lane enemies missing for the bot right now (0 when caution is off or the bot is not laning); `maxAge` keeps only those unseen at most that long.
 function ____exports.MissingNow(bot, maxAge)
-    if not Settings.IsOn("Caution") or not Phase.LaningTransitions(bot) then
+    if not Settings.IsOn("Caution") or not Phase.LaningHeld(bot) then
         return 0
     end
     local st = update(
@@ -385,7 +385,7 @@ function ____exports.Threatened(bot)
     return LaneState.EnemyTowerTargeting(bot)
 end
 function ____exports.Level(bot)
-    if not Phase.LaningTransitions(bot) then
+    if not Phase.LaningHeld(bot) then
         return 0
     end
     local now = DotaTime()
@@ -416,7 +416,7 @@ end
 --- Lane position override (plan call 6); returns `loc` itself when caution does not apply.
 function ____exports.AdjustPosition(bot, loc)
     local f = forced[bot:GetPlayerID()]
-    if f ~= nil and f.point ~= nil and Settings.IsOn("Teleports") and DotaTime() < f.pointUntil and Phase.LaningTransitions(bot) then
+    if f ~= nil and f.point ~= nil and Settings.IsOn("Teleports") and DotaTime() < f.pointUntil and Phase.LaningHeld(bot) then
         return LaneMain.OwnsLaning(bot) and f.point or loc
     end
     if not Settings.IsOn("Caution") then
@@ -484,7 +484,7 @@ function ____exports.Tick(bot)
     if not Settings.IsOn("Caution") and not Settings.IsOn("Teleports") then
         return
     end
-    if not Phase.LaningTransitions(bot) then
+    if not Phase.LaningHeld(bot) then
         if Settings.IsOn("Caution") then
             update(
                 bot,

@@ -5,7 +5,7 @@ ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
 
 local world = { laning = true, applies = true, burst = 0.3, reads = 0 }
-package.loaded["bots/FunLib/humaniser/transitions/phase"] = { IsLaningFor = function() return world.laning end }
+package.loaded["bots/FunLib/humaniser/transitions/phase"] = { LaningHeld = function() return world.laning end }
 package.loaded["bots/FunLib/humaniser/states/core_last_hit"] = { Applies = function() return world.applies end }
 package.loaded["bots/FunLib/humaniser/states/support_deny"] = { Harass = function() return false end }
 local RealThreat = require("bots/FunLib/humaniser/threat")

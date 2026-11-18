@@ -358,7 +358,8 @@ do
 	w.C.Tick(w.core)
 	check("precondition: cautious with a claim", w.C.Level(w.core) > 0 and w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil)
 	LANING = false
-	T = 301.7
+	-- The hold's next check (one a second).
+	T = 302.2
 	w.C.Tick(w.core)
 	check("laning ends: level 0 at once", w.C.Level(w.core) == 0, w.C.Level(w.core))
 	check("laning ends: the claim is released at once", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)

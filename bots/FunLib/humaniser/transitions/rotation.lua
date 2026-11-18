@@ -285,7 +285,7 @@ function ____exports.Decide(bot, now)
     if spawn < Runes.RUNE_RULES.power.first or now < spawn - cfg.DecideFrom or now > spawn - cfg.DecideTo then
         return {spawn = spawn, go = false, reason = "window"}
     end
-    if not Phase.LaningTransitions(bot) then
+    if not Phase.LaningHeld(bot) then
         local off = {spawn = spawn, go = false, reason = "phase"}
         entries[pid] = {decision = off, arriveAt = -math.huge, announced = true, checkAt = math.huge}
         log(bot, off)
@@ -552,7 +552,7 @@ function ____exports.Tick(bot)
     local now = DotaTime()
     ____exports.Decide(bot, now)
     local e = entries[bot:GetPlayerID()]
-    if e ~= nil and e.decision.go and not Phase.LaningTransitions(bot) then
+    if e ~= nil and e.decision.go and not Phase.LaningHeld(bot) then
         e.decision.go = false
         e.decision.reason = "phase"
         Intent.Release(bot, ____exports.SOURCE, BotMode.Rune)

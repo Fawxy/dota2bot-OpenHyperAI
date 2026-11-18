@@ -353,7 +353,7 @@ function frac(u: Unit): number {
 
 /** Whether the hold may act for this bot: the switches, an in-lane core under CoreLastHit with our spot. */
 export function Owns(bot: Unit): boolean {
-    return Ours.On("CoreHold") && Ours.On("LaneSpot") && CoreLastHit.Applies(bot) && bot.IsAlive() && Phase.IsLaningFor(bot);
+    return Ours.On("CoreHold") && Ours.On("LaneSpot") && CoreLastHit.Applies(bot) && bot.IsAlive() && Phase.LaningHeld(bot);
 }
 
 const T1_OF: Record<number, Tower> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };

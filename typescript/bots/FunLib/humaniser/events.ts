@@ -189,7 +189,7 @@ export const EVENTS = {
         lever: "str",
         prev: "str",
         dwell: "num",
-        /** Rework step 7: `own` when the drive starts holding the hero, `end` when it hands it to OHA (`why`). */
+        /** The laning hold (Phase.LaningHeld): `own` at the hero's first laning read, `end` when it hands the hero to OHA (`why`: `clock` or `tower`; `lost` only before 19/11/2026). */
         ph: "str",
         why: "str",
     },
@@ -1537,11 +1537,6 @@ export const EVENTS = {
         desire: "num",
         laning: "str",
         gate: "str",
-    },
-    tr_laning: {
-        pid: "num",
-        laning: "bool",
-        why: "str",
     },
     tr_rotate: {
         pid: "num",

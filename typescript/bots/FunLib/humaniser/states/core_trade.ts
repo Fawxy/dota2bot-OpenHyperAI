@@ -806,7 +806,7 @@ function unanswered(bot: Unit, now: number, why: string, i?: Inputs): number {
 
 /** The core lanes: laning phase for it (transitions/phase) and standing by its own lane; elsewhere OHA's port fights. */
 function inLane(bot: Unit): boolean {
-    return Phase.IsLaningFor(bot) && GetAmountAlongLane(bot.GetAssignedLane(), bot.GetLocation()).distance <= LANE_WIDTH;
+    return Phase.LaningHeld(bot) && GetAmountAlongLane(bot.GetAssignedLane(), bot.GetLocation()).distance <= LANE_WIDTH;
 }
 
 function frac(u: Unit): number {
