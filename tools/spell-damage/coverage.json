@@ -286,6 +286,15 @@
   "median": 0,
   "verdict": "left_out"
  },
+ "sniper_assassinate": {
+  "samples": 20,
+  "counted": 0,
+  "logs": [
+   "2026-11-18T21-36-29-drill_assassinate-probe_1"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
  "sniper_take_aim": {
   "samples": 74,
   "counted": 0,
