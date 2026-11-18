@@ -29,7 +29,7 @@ const VERBS = {
     lane_spot: ['stand', 'anchor', 'read'],
     retreat_leave: ['leave', 'stay'],
     threat_gate: ['go', 'hold'],
-    pair_join: ['join', 'out'],
+    pair_join: ['join', 'out', 'act', 'hold', 'none'],
     core_trade: ['trade', 'kill', 'respect', 'fight'],
     core_keep: ['keep', 'end'],
 };

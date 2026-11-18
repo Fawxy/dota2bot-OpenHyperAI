@@ -105,7 +105,8 @@ ____exports.DEFAULTS = {
     SpellsUp = true,
     KillReach = true,
     SupportLaneFight = true,
-    TradeLands = false
+    TradeLands = false,
+    JoinOnHit = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

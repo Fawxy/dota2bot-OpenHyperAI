@@ -197,6 +197,11 @@ export const DEFAULTS = {
      *  another hero until its first attack has fired (while the read still says it can reach; 4 s backstop `hold_time`).
      *  Off: the trade opens whatever the gap, and a deny or join ends it at once. */
     TradeLands: false,
+    /** Slice join-hits (kill-chances J1, D10): with PairJoin on, the pair join also weighs a fight when no ally is hit but an
+     *  ally other than the bot has a fight of its own open on an enemy hero (a CoreTrade episode of kind trade, kill or fight;
+     *  PairJoin.Gather `on=ours`): the join's target and our share are that hero, and the join holds while the episode runs.
+     *  It acts only for a hero in no play that CoreTrade.FightRefusal does not hold. Off: such a record is only logged. */
+    JoinOnHit: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -8,9 +8,15 @@
  * The weighing: over `Window` s, each side's best kill share, GetEstimatedDamageToTarget summed over its heroes on one target
  * over that target's HP, the target the side does best on. We join on theirs (`tgt`) when our share is the larger; numbers
  * against us leave it out at once (D1 is retreat's).
+ *
+ * Slice join-hits (`Ours.JoinOnHit`): with no ally hit, an ally (not the bot) with a fight of its own open on an enemy hero
+ * (a CoreTrade episode of kind trade, kill or fight: its decision, known before its first attack) makes the record too,
+ * weighed around it with our share on that hero; off, such a record is only logged (`on=ours`). CoreTrade imports this
+ * module, so it hands its reads in at load (`SetReaders`).
  */
 import { Unit, UnitType } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
@@ -58,9 +64,17 @@ export interface Member {
     ret?: number;
 }
 
-/** What one decision reads: the hit ally, both sides, and `dmg[a][b]`, hero a's estimated damage to hero b over Window. */
+/**
+ * What one decision reads: the ally the fight is around, both sides, and `dmg[a][b]`, hero a's estimated damage to hero b
+ * over Window. `focus` (slice join-hits): the enemy hero that ally's open fight is on when no ally is hit (`on` = `ours`);
+ * our share and target are then on it alone. `open` is that fight for the cut only (Decide does not read it): its kind,
+ * seconds since it was offered, and whether the ally's attack target already names the hero.
+ */
 export interface Rec {
     ally: number;
+    on?: "hit" | "ours";
+    focus?: number;
+    open?: { kind: string; age: number; attacking: boolean };
     ours: Member[];
     theirs: Member[];
     dmg: Record<number, Record<number, number>>;
@@ -93,10 +107,14 @@ function best(from: Member[], on: Member[], dmg: Record<number, Record<number, n
     return $multi(tgt, share);
 }
 
-/** The rule: outnumbered stays out; else join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side. */
+/**
+ * The rule: outnumbered stays out; else join when our best kill share beats theirs (on `focus` when the record has one: the
+ * hero our ally's fight is on). Ours in retreat (`ret` 1) are leaving: they count on neither side.
+ */
 export function Decide(rec: Rec): Answer {
     const ours = rec.ours.filter((m) => m.ret !== 1);
-    const [tgt, ko] = best(ours, rec.theirs, rec.dmg);
+    const on = rec.focus !== undefined ? rec.theirs.filter((m) => m.pid === rec.focus) : rec.theirs;
+    const [tgt, ko] = best(ours, on.length > 0 ? on : rec.theirs, rec.dmg);
     const [, kt] = best(rec.theirs, ours, rec.dmg);
     if (rec.theirs.length > ours.length) return { dec: "outnumbered", tgt, ko, kt };
     return { dec: ko > kt ? "join" : "losing", tgt, ko, kt };
@@ -119,6 +137,43 @@ function member(u: Unit, ours: boolean): Member {
     return m;
 }
 
+/** A hero's running CoreTrade episode: its kind, target and when it was offered. */
+export interface Episode {
+    kind: string;
+    tpid: number;
+    target: Unit;
+    at: number;
+}
+
+/**
+ * CoreTrade's reads, handed in at its load: a hero's running episode, and why `bot` may not fight `target` (FightRefusal).
+ */
+export interface Readers {
+    episodeOf: (this: void, pid: number) => Episode | undefined;
+    refusal: (this: void, bot: Unit, target: Unit) => string | undefined;
+}
+
+let readers: Readers | undefined;
+
+export function SetReaders(r: Readers | undefined): void {
+    readers = r;
+}
+
+const OPENS: Record<string, boolean> = { trade: true, kill: true, fight: true };
+
+/** Whether a partner's episode of this kind is a fight it opened: an `ours` trigger. A `join` is not (two joins would hold each other up). */
+export function Opens(kind: string): boolean {
+    return OPENS[kind] === true;
+}
+
+/**
+ * Whether a record's answer is acted on: a `hit` record always; an `ours` record only with `Ours.JoinOnHit` and a hero
+ * free to fight the hero (`free`, freeOf's answer), else it is only logged.
+ */
+export function Acts(on: Rec["on"], switchOn: boolean, free: string): boolean {
+    return on !== "ours" || (switchOn && free === "yes");
+}
+
 /**
  * The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
  * or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
@@ -127,17 +182,44 @@ function member(u: Unit, ours: boolean): Member {
  */
 export function Gather(bot: Unit): Rec | undefined {
     let ally: Unit | undefined;
+    // Slice join-hits: with no ally hit, an ally other than the bot with a fight of its own open on a seen enemy hero (lowest
+    // HP share first). The bot is left out so its own trade does not turn into a join, and an ally's `join` episode is no
+    // trigger: two joins would hold each other up after the fight that drew them ended.
+    let opener: Unit | undefined;
+    let opened: Episode | undefined;
     const allies: Unit[] = [];
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
         if (!live(a)) continue;
         allies.push(a);
-        if (dist(a, bot) > SETTINGS.AllyRange || !a.WasRecentlyDamagedByAnyHero(SETTINGS.HitRecent)) continue;
-        if (ally === undefined || a.GetHealth() / a.GetMaxHealth() < ally.GetHealth() / ally.GetMaxHealth()) ally = a;
+        if (dist(a, bot) > SETTINGS.AllyRange) continue;
+        const share = a.GetHealth() / a.GetMaxHealth();
+        if (a.WasRecentlyDamagedByAnyHero(SETTINGS.HitRecent)) {
+            if (ally === undefined || share < ally.GetHealth() / ally.GetMaxHealth()) ally = a;
+            continue;
+        }
+        if (a === bot || readers === undefined || RetreatState.Running(a)) continue;
+        const ep = readers.episodeOf(a.GetPlayerID());
+        if (ep === undefined || !Opens(ep.kind) || !live(ep.target) || !ep.target.CanBeSeen()) continue;
+        if (opener === undefined || share < opener.GetHealth() / opener.GetMaxHealth()) {
+            opener = a;
+            opened = ep;
+        }
     }
+    const on = ally !== undefined ? "hit" : "ours";
+    ally = ally ?? opener;
     if (ally === undefined) return undefined;
     const ours: Unit[] = allies.filter((a) => dist(a, ally!) <= SETTINGS.OursRange);
     if (ours.filter((a) => !RetreatState.Running(a)).length < 2) return undefined;
-    return weigh(ally, ours);
+    const rec = weigh(ally, ours);
+    if (rec === undefined) return undefined;
+    rec.on = on;
+    if (on === "ours") {
+        const ep = opened!;
+        if (!rec.theirs.some((m) => m.pid === ep.tpid)) return undefined;
+        rec.focus = ep.tpid;
+        rec.open = { kind: ep.kind, age: DotaTime() - ep.at, attacking: ally.GetAttackTarget() === ep.target };
+    }
+    return rec;
 }
 
 /** The weighing around `ally` with our heroes `ours`: their seen heroes within FoeRange of it, or undefined with none. */
@@ -168,8 +250,9 @@ interface State {
     /** The last `join` answer: when, and its target. */
     joinAt?: number;
     joinTgt?: number;
-    /** The cut's last logged answer and when. */
+    /** The cut's last logged answer (and, for an `ours` record, whether the ally was attacking the hero) and when. */
     dec?: Dec;
+    att?: boolean;
     cutAt?: number;
 }
 
@@ -184,6 +267,16 @@ export function For(bot: Unit): { rec?: Rec; ans?: Answer; fresh: boolean } {
     st.at = now;
     st.rec = bot.IsAlive() && now <= SETTINGS.Until ? Gather(bot) : undefined;
     st.ans = st.rec !== undefined ? Decide(st.rec) : undefined;
+    // An `ours` record (slice join-hits) is only logged unless `Ours.JoinOnHit`: off, the join state is left as it was
+    // with no record, so off is today's behaviour. On, it acts only for a hero free to fight the hero (the cut's `free`):
+    // one in a play is left to it (CoreTrade puts a join before the play, and a roller drawn out by the partner that joined
+    // its play would end that play for both), and CoreTrade's FightRefusal (their tower, outnumbered, burst) holds a join
+    // we start as it holds a fight we start (user 18/11/2026). It also waits for the ally's attack on the hero (`noatk`): most
+    // opened episodes never fire one. The hit trigger asks none of these.
+    if (st.rec?.on === "ours") {
+        const sw = Ours.On("JoinOnHit");
+        if (!Acts("ours", sw, sw ? freeFor(bot, st.rec) : "")) return { rec: st.rec, ans: st.ans, fresh: true };
+    }
     if (st.ans?.dec === "join") {
         st.joinAt = now;
         st.joinTgt = st.ans.tgt;
@@ -302,6 +395,23 @@ function tickAfter(bot: Unit, now: number): void {
     if (now - w.start >= SETTINGS.AfterWindow) flush(pid, "full");
 }
 
+/** Whether `bot` may act on an `ours` record's join on `focus` (For's gate and the cut's `free`): `yes`, or what holds it: its retreat, a play, CoreTrade's FightRefusal. */
+function freeOf(bot: Unit, focus: number): string {
+    if (RetreatState.Running(bot)) return "ret";
+    if (Plays.Of(bot) !== undefined) return "play";
+    const t = heroOf(focus);
+    return (t !== undefined ? readers?.refusal(bot, t) : undefined) ?? "yes";
+}
+
+/** An `ours` record's `free`: freeOf's answer, or `noatk` while the ally's open fight has not fired an attack at the hero (the trigger is a hit, not an offer). */
+function freeFor(bot: Unit, rec: Rec): string {
+    return WithAttack(freeOf(bot, rec.focus!), rec.open?.attacking === true);
+}
+
+export function WithAttack(free: string, attacking: boolean): string {
+    return free === "yes" && !attacking ? "noatk" : free;
+}
+
 /** Per frame (index Tick): on each fresh decision in the laning stage, its cut; the join-after watch. Reads only. */
 export function Tick(bot: Unit): void {
     if (Telemetry.IsEnabled()) tickAfter(bot, DotaTime());
@@ -316,10 +426,13 @@ export function Tick(bot: Unit): void {
         st.dec = undefined;
         return;
     }
-    if (a.dec === st.dec && now - (st.cutAt ?? -math.huge) < SETTINGS.CutEvery) return;
+    // The ally's first attack on the hero is logged when it happens: the cut measures the decision's lead on it.
+    const att = rec.open?.attacking;
+    if (a.dec === st.dec && att === st.att && now - (st.cutAt ?? -math.huge) < SETTINGS.CutEvery) return;
     st.dec = a.dec;
+    st.att = att;
     st.cutAt = now;
-    Telemetry.Event("cut", [
+    const fields: Telemetry.Fields<"cut"> = [
         ["pid", pid],
         ["kind", "join"],
         ["al", rec.ally],
@@ -330,6 +443,11 @@ export function Tick(bot: Unit): void {
         ["tgt", a.tgt],
         ["ko", math.floor(a.ko * 1000 + 0.5) / 1000],
         ["kt", math.floor(a.kt * 1000 + 0.5) / 1000],
-    ]);
+        ["on", rec.on ?? "hit"],
+    ];
+    if (rec.focus !== undefined && rec.open !== undefined) {
+        fields.push(["fo", rec.focus], ["ek", rec.open.kind], ["oa", math.floor(rec.open.age * 10 + 0.5) / 10], ["aa", rec.open.attacking ? 1 : 0], ["free", freeFor(bot, rec)]);
+    }
+    Telemetry.Event("cut", fields);
 }
 

@@ -229,7 +229,15 @@ const DECISIONS = {
                 return ours ? { pid, x, y, hp, mhp, ret } : { pid, x, y, hp, mhp };
             });
             const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
-            return { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            const w = { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            // Slice join-hits: an `on=ours` record weighs our share on the hero the ally's open episode is on.
+            if (cut.on === 'ours' && cut.fo !== undefined && cut.fo !== null) {
+                w.focus = Number(cut.fo);
+                if (cut.ek) w.ek = cut.ek;
+                if (cut.free) w.free = cut.free;
+                if (cut.aa !== undefined && cut.aa !== null) w.aa = Number(cut.aa);
+            }
+            return w;
         },
         check(game, cut, obs) {
             const a = obs.actions[0] || {};
@@ -238,7 +246,7 @@ const DECISIONS = {
             return { same: got === want, got, want };
         },
         answer: (game, cut) => cut.dec,
-        brief: (game, cut) => `ally ${cut.al}, ${cut.po.split(';').length}v${cut.pt.split(';').length}, ours ${cut.ko} theirs ${cut.kt}`,
+        brief: (game, cut) => `${cut.on === 'ours' ? `ally ${cut.al} ${cut.ek} on ${cut.fo}${Number(cut.aa) === 1 ? " (hitting)" : ""}, free ${cut.free}` : `ally ${cut.al}`}, ${cut.po.split(';').length}v${cut.pt.split(';').length}, ours ${cut.ko} theirs ${cut.kt}`,
         id: (cut) => `fights.join.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.dec} on ${cut.tgt} (ours ${cut.ko}, theirs ${cut.kt})`,
     },
@@ -283,6 +291,9 @@ const DECISIONS = {
             if (cut.sa !== undefined) w.sa = n('sa');
             if (cut.jn !== undefined) w.jn = cut.jn;
             for (const k of ['hb', 'hp', 'thp', 'en', 'ally', 'cr', 'hc', 'tw', 'bu', 'tm', 'd']) if (cut[k] !== undefined) w[k] = n(k);
+            // Slice kill-chase: the catch read's hunters and target HP, the unseen reads and a join's hand-over.
+            if (cut.chu !== undefined) w.chu = String(cut.chu);
+            for (const k of ['cth', 'csf', 'uat', 'utw', 'uou', 'uth', 'kup']) if (cut[k] !== undefined) w[k] = n(k);
             return w;
         },
         check(game, cut, obs) {

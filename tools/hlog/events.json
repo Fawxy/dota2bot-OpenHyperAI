@@ -1807,6 +1807,10 @@
    "tgt": "num",
    "ko": "num",
    "kt": "num",
+   "on": "str",
+   "fo": "num",
+   "aa": "num",
+   "free": "str",
    "hp": "num",
    "thp": "num",
    "en": "num",
@@ -1848,7 +1852,17 @@
    "sp": "str",
    "lx": "num",
    "ly": "num",
-   "tss": "num"
+   "tss": "num",
+   "chu": "str",
+   "cth": "num",
+   "cdm": "num",
+   "cft": "num",
+   "csf": "num",
+   "uat": "num",
+   "utw": "num",
+   "uou": "num",
+   "uth": "num",
+   "kup": "num"
   },
   "cast": {
    "pid": "num",
@@ -2490,12 +2504,15 @@
    "po": "text",
    "pt": "text",
    "dm": "text",
+   "on": "text",
+   "free": "text",
    "fg": "text",
    "did": "text",
    "xa": "text",
    "ek": "text",
    "jn": "text",
-   "sp": "text"
+   "sp": "text",
+   "chu": "text"
   },
   "ev_cast": {
    "ab": "text",

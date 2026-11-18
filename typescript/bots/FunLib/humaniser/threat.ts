@@ -219,6 +219,8 @@ export function BandOf(threat: number, lethal: boolean): Band {
 /** `engagedWindow`: seconds a reaching hero that is hitting us now is counted over (instead of the burst window). */
 export interface ReadOpts {
     engagedWindow?: number;
+    /** An unseen hero left out of `missing` (slice kill-chase: the chased target, whose place is the walk's end). */
+    exclude?: number;
 }
 
 /** A hero as one set of reads sees it: where it is and how far it gets within the horizon (its run plus its attack range and both hulls). */
@@ -286,6 +288,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
     for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
         const t = GetTeamForPlayer(pid);
         if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
+        if (pid === opts?.exclude) continue;
         const info = GetHeroLastSeenInfo(pid)[0];
         if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
         unseen.push({ pid, at: info.location, tss: info.time_since_seen, r: math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin });

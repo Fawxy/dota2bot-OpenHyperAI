@@ -1,0 +1,26 @@
+id: fights.join.ours-control-losing.001
+source: log
+ref: {log: 2026-11-18T00-30-18-join-hits_smoke_off.log, t: 202.133}
+status: active
+decision: pair_join
+# ours pid 5: HP 865 of 868, 619 from the ally
+# ours pid 6 (the ally whose episode is open): HP 576 of 654, 0 from the ally
+# theirs pid 1: HP 802 of 802, 931 from the ally
+# theirs pid 4: HP 714 of 714, 593 from the ally
+world:
+  t: 202.133
+  pid: 5
+  ally: 6
+  ours: [{"pid":5,"x":-6356,"y":4816,"hp":865,"mhp":868,"ret":0},{"pid":6,"x":-6972,"y":4756,"hp":576,"mhp":654,"ret":0}]
+  theirs: [{"pid":1,"x":-6159,"y":4303,"hp":802,"mhp":802},{"pid":4,"x":-6432,"y":4512,"hp":714,"mhp":714}]
+  dmg: [{"from":5,"to":1,"d":181},{"from":5,"to":4,"d":183},{"from":6,"to":1,"d":127},{"from":6,"to":4,"d":127},{"from":1,"to":5,"d":113},{"from":1,"to":6,"d":145},{"from":4,"to":5,"d":155},{"from":4,"to":6,"d":176}]
+  focus: 4
+  ek: "trade"
+  free: "yes"
+expect:
+  must: ["out(losing)"]
+  mustNot: ["join(hero#4)", "join(hero#1)", "act(hero#4)", "act(hero#1)"]
+notes: >
+  Control (join-hits smoke, 3:22): our pos5's trade is open on their pos4 (pid 4) with nobody of ours hit, but their two
+  do more to our weakest (0.56 of its HP in 3 s) than our two do to the trade's target (0.43). The partner's decision is
+  not a reason by itself: the second hero stays out.

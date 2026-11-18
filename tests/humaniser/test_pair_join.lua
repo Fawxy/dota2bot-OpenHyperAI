@@ -53,6 +53,9 @@ local function unit(o)
 	function u:GetMaxHealth() return o.mhp or 600 end
 	function u:WasRecentlyDamagedByAnyHero() return o.hit == true end
 	function u:GetEstimatedDamageToTarget(_, t) return (o.dmg or {})[t:GetPlayerID()] or 0 end
+	function u:IsHero() return true end
+	function u:GetTeam() return o.pid < 5 and 2 or 3 end
+	function u:GetAttackTarget() return o.att end
 	return u
 end
 
@@ -213,6 +216,124 @@ do
 	P.Tick(bot)
 	o = after()
 	check("past the laning stage it ends stage", (o[#o] or ""):find("res=stage", 1, true) ~= nil, o[#o])
+end
+
+do
+	-- Slice join-hits: no ally hit, an ally other than the bot with a fight of its own open on an enemy hero (CoreTrade's
+	-- episode, read through SetReaders) makes an `ours` record on that hero.
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true, Cut = true } })
+	local P = require("bots/FunLib/humaniser/pair_join")
+	local Customize = require("bots.Customize.general")
+	local lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	local e6 = unit({ pid = 6, x = 700, y = 0, hp = 500, dmg = { [1] = 50, [0] = 50 } })
+	local e7 = unit({ pid = 7, x = 900, y = 0, hp = 100, dmg = { [1] = 20, [0] = 20 } })
+	local bot = unit({ pid = 0, x = 0, y = 0, hp = 600, dmg = { [6] = 300, [7] = 300 } })
+	-- The opener's attack target is the softer hero 7: the record follows its episode, not its attack.
+	local opener = unit({ pid = 1, x = 500, y = 0, hp = 500, att = e7, dmg = { [6] = 100, [7] = 100 } })
+	local episodes = {}
+	local function readers(refusal)
+		P.SetReaders({ episodeOf = function(pid) return episodes[pid] end, refusal = function() return refusal end })
+	end
+	readers()
+	lists({ bot, opener }, { e6, e7 })
+	T = 600
+	check("no episode open: an ally's attack alone makes no record", P.Gather(bot) == nil)
+	episodes[1] = { kind = "trade", tpid = 6, target = e6, at = 597.5 }
+	local rec = P.Gather(bot)
+	check("an ally's open trade makes an ours record around it", rec ~= nil and rec.on == "ours" and rec.ally == 1 and rec.focus == 6)
+	check("the record carries the episode's kind, its age and that the ally is not yet attacking the hero",
+		rec ~= nil and rec.open.kind == "trade" and math.abs(rec.open.age - 2.5) < 1e-9 and rec.open.attacking == false)
+	local a = rec and P.Decide(rec)
+	check("our share and target are on the episode's hero, not the softer one", a ~= nil and a.tgt == 6 and math.abs(a.ko - 400 / 500) < 1e-9, a and a.tgt)
+	for _, kind in ipairs({ "kill", "fight" }) do
+		episodes[1] = { kind = kind, tpid = 6, target = e6, at = 599 }
+		local r = P.Gather(bot)
+		check("an ally's open " .. kind .. " is a trigger too", r ~= nil and r.focus == 6 and r.open.kind == kind)
+	end
+	-- Control: a partner's join would hold this bot's join up after the fight that drew both ended.
+	episodes[1] = { kind = "join", tpid = 6, target = e6, at = 599 }
+	check("a partner's join episode makes no record", P.Gather(bot) == nil)
+	-- The bot's own episode makes no record for itself.
+	episodes[1] = nil
+	episodes[0] = { kind = "trade", tpid = 6, target = e6, at = 599 }
+	check("the bot's own episode is not its trigger", P.Gather(bot) == nil)
+	episodes[0] = nil
+	-- An episode on a hero out of sight, or far from the opener (not in the weighing), makes none.
+	local hidden = unit({ pid = 8, x = 700, y = 0, hp = 500 })
+	function hidden:CanBeSeen() return false end
+	episodes[1] = { kind = "trade", tpid = 8, target = hidden, at = 599 }
+	lists({ bot, opener }, { e6, hidden })
+	check("an episode on an unseen hero is no trigger", P.Gather(bot) == nil)
+	local farFoe = unit({ pid = 9, x = 2500, y = 0, hp = 500 })
+	episodes[1] = { kind = "trade", tpid = 9, target = farFoe, at = 599 }
+	lists({ bot, opener }, { e6, farFoe })
+	check("an episode on a hero outside the weighing is no trigger", P.Gather(bot) == nil)
+	-- A hit ally still comes first: the old record, on=hit, no focus.
+	episodes[1] = { kind = "trade", tpid = 6, target = e6, at = 597.5 }
+	lists({ bot, opener, unit({ pid = 2, x = 300, y = 0, hp = 400, hit = true }) }, { e6, e7 })
+	local h = P.Gather(bot)
+	check("a hit ally is the record, on=hit", h ~= nil and h.on == "hit" and h.ally == 2 and h.focus == nil and h.open == nil)
+	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
+	RetreatState.SetRunning(opener, true)
+	lists({ bot, opener }, { e6 })
+	check("a retreating opener is no trigger", P.Gather(bot) == nil)
+	RetreatState.SetRunning(opener, false)
+
+	-- The cut: the episode's fields, and a fresh line the moment the ally starts attacking the hero.
+	lists({ bot, opener }, { e6, e7 })
+	local function cuts()
+		local o = {}
+		for _, l in ipairs(lines) do
+			if l:find("ev=cut", 1, true) and l:find("kind=join", 1, true) then o[#o + 1] = l end
+		end
+		return o
+	end
+	Customize.Ours.JoinOnHit = false
+	readers("burst")
+	T = 620
+	P.Tick(bot)
+	local o = cuts()
+	check("the ours cut names the episode, its age, the ally not attacking and the refusal",
+		#o == 1 and o[1]:find("on=ours", 1, true) and o[1]:find("fo=6", 1, true) and o[1]:find("ek=trade", 1, true)
+			and o[1]:find("oa=22.5", 1, true) and o[1]:find("aa=0", 1, true) and o[1]:find("free=burst", 1, true), o[1])
+	function opener:GetAttackTarget() return e6 end
+	T = 620.6
+	P.Tick(bot)
+	o = cuts()
+	check("the ally's first attack on the hero is cut at once, inside CutEvery", #o == 2 and o[2]:find("aa=1", 1, true) ~= nil, o[2])
+	function opener:GetAttackTarget() return e7 end
+
+	-- Joins: off, the ours record is logged only; on, it joins on the episode's hero; a hero in a play is left to it.
+	readers()
+	Customize.Ours.JoinOnHit = false
+	T = 630
+	check("switch off: an ours record draws no join", P.Joins(bot) == nil)
+	Customize.Ours.JoinOnHit = true
+	-- The ally's attack target is the other hero (7): its episode has fired nothing at the hero, so the record is not acted on.
+	T = 632
+	check("switch on: an ally that has not attacked the hero is not joined", P.Joins(bot) == nil)
+	T = 634
+	local before = #cuts()
+	P.Tick(bot)
+	check("the not-attacking record is still cut, free=noatk", #cuts() == before + 1 and cuts()[before + 1]:find("free=noatk", 1, true) ~= nil, cuts()[before + 1])
+	function opener:GetAttackTarget() return e6 end
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local of = Plays.Of
+	Plays.Of = function(u) return u == bot and {} or nil end
+	T = 640
+	check("switch on: a hero in a play is not drawn out of it", P.Joins(bot) == nil)
+	Plays.Of = of
+	-- FightRefusal holds a join we start, as it holds a fight we start: the same world joins below once it clears.
+	readers("tower")
+	T = 645
+	check("switch on: a hero the lane fight's refusal holds does not join", P.Joins(bot) == nil)
+	readers()
+	T = 650
+	local t = P.Joins(bot)
+	check("switch on: the bot joins on the hero its ally's fight is on", t ~= nil and t:GetPlayerID() == 6)
+	Customize.Ours.JoinOnHit = false
 end
 
 finish()

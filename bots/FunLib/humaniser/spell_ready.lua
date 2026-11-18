@@ -97,11 +97,9 @@ function ____exports.Ready(enemy, name)
     end
     return a:IsFullyCastable()
 end
---- Slice chase-log: the damage spells `bot` can cast now (learned, shown, IsFullyCastable), as `;`-joined records of
--- name,cast range,cast point (s, two places),behaviour bits (GetBehavior),damage. Damage is the SPELL_DAMAGE key's value
--- (per second for a per-second row), else GetAbilityDamage; a spell with neither over 0 is left out. Logged only: the
--- chase's catch read (kill-chances step 3b) is to read the same spells.
-function ____exports.ReadyDamage(bot)
+--- The damage spells `bot` can cast now (learned, shown, IsFullyCastable) with what the chase's catch read needs (kill-chances
+-- step 3b): cast range, cast point and damage. A spell with no damage over 0 is left out.
+function ____exports.ReadySpells(bot)
     local out = {}
     do
         local slot = 0
@@ -125,17 +123,20 @@ function ____exports.ReadyDamage(bot)
                         __continue21 = true
                         break
                     end
-                    local cp = math.floor(a:GetCastPoint() * 100 + 0.5) / 100
-                    out[#out + 1] = table.concat(
-                        {
-                            name,
-                            math.floor(a:GetCastRange()),
-                            cp,
-                            a:GetBehavior(),
-                            math.floor(dmg + 0.5)
-                        },
-                        ","
-                    )
+                    local range = a:GetCastRange()
+                    if not (range > 0) then
+                        local r = a:GetSpecialValueFloat("radius")
+                        range = type(r) == "number" and r > 0 and r or 0
+                    end
+                    local dt = row ~= nil and row[3] or (a.GetDamageType ~= nil and a:GetDamageType() or DamageType.Magical)
+                    out[#out + 1] = {
+                        name = name,
+                        range = range,
+                        cp = a:GetCastPoint(),
+                        behavior = a:GetBehavior(),
+                        dmg = dmg,
+                        dtype = dt > 0 and dt or DamageType.Magical
+                    }
                     __continue21 = true
                 until true
                 if not __continue21 then
@@ -144,6 +145,25 @@ function ____exports.ReadyDamage(bot)
             end
             slot = slot + 1
         end
+    end
+    return out
+end
+--- Slice chase-log: the damage spells `bot` can cast now (ReadySpells), as `;`-joined records of name,cast range,cast point
+-- (s, two places),behaviour bits (GetBehavior),damage. Logged; the catch read reads the same list.
+function ____exports.ReadyDamage(bot)
+    local out = {}
+    for ____, s in ipairs(____exports.ReadySpells(bot)) do
+        local cp = math.floor(s.cp * 100 + 0.5) / 100
+        out[#out + 1] = table.concat(
+            {
+                s.name,
+                math.floor(s.range),
+                cp,
+                s.behavior,
+                math.floor(s.dmg + 0.5)
+            },
+            ","
+        )
     end
     return #out > 0 and table.concat(out, ";") or nil
 end
@@ -202,21 +222,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue36
+                local __continue40
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue36 = true
+                        __continue40 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue36 = true
+                        __continue40 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue36 = true
+                    __continue40 = true
                 until true
-                if not __continue36 then
+                if not __continue40 then
                     break
                 end
             end

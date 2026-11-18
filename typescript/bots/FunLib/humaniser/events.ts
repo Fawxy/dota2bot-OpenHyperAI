@@ -2794,6 +2794,18 @@ export const EVENTS = {
         ko: "num",
         /** kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP. */
         kt: "num",
+        /** kind=join (slice join-hits): what made the record: `hit` (an ally hit by a hero, `al` that ally) or `ours` (no ally
+         *  hit; an ally other than the bot, not retreating, with a CoreTrade episode of kind trade, kill or fight open on a seen
+         *  enemy hero: `al` that ally, `fo` the hero). Logged whether or not `Ours.JoinOnHit` acts on an `ours` record. An
+         *  `ours` cut is also logged when `aa` changes. */
+        on: "str",
+        /** kind=join, on=ours: the enemy hero the ally's episode is on; `tgt` and `ko` are on it. With it: `ek` the ally's
+         *  episode kind (`trade`, `kill`, `fight`), `oa` seconds since that episode was offered, `aa` whether the ally's
+         *  GetAttackTarget names the hero (1/0), and `free`, whether the bot could act on a join: `yes`, or what holds it
+         *  (`ret` its retreat, `play` a play it is in, or CoreTrade.FightRefusal on the hero: `tower`, `outnumbered`, `burst`). */
+        fo: "num",
+        aa: "num",
+        free: "str",
         /** kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no
          *  trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00.
          *  `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`,
@@ -2878,6 +2890,23 @@ export const EVENTS = {
         lx: "num",
         ly: "num",
         tss: "num",
+        /** kind=keep (slice kill-chase, a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records
+         *  (spells `/`-joined `range:cp:dmg`, damage after the target's resistances), the target's HP (seen, or as last seen),
+         *  and the read's damage within the window and seconds to its first (-1 none); `csf` the window, the seconds until the
+         *  target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there). */
+        chu: "str",
+        cth: "num",
+        cdm: "num",
+        cft: "num",
+        csf: "num",
+        /** kind=keep, a started kill on an unseen target (1/0): we stand at its predicted place, that place or we inside an
+         *  enemy tower's reach, more enemy heroes near than ours, unseen enemies other than the target weighing on the walk. */
+        uat: "num",
+        utw: "num",
+        uou: "num",
+        uth: "num",
+        /** kind=keep, a join on a seen target: 1 when it is at the kill bar and Decide calls `kill` (it becomes the kill). */
+        kup: "num",
     },
     /** Slice chase-log: a cast by a hero on this script's team (InstallCastCallback, logged on the hero's next tick). */
     cast: {
