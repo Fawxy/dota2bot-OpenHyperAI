@@ -20,18 +20,18 @@ function log({ set, states = 0, stop = 1200.4, swap = false, ours }) {
 
 test('a valid game of each arm passes', () => {
     assert.deepStrictEqual(checkGame(log({ set: 'Humaniser.Enable=false,Humaniser.States.Enable=false' }), { lineup: 'A', arm: 'off', build: 'abc1234' }), []);
-    assert.deepStrictEqual(checkGame(log({ set: 'Humaniser.States.Teams=all,Humaniser.Lane.OwnLaningThink=all', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' }), []);
+    assert.deepStrictEqual(checkGame(log({ set: 'Humaniser.States.Teams=all', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' }), []);
 });
 
 test('every --set key of the arm is required (ER-001 review finding 10)', () => {
     const off = checkGame(log({ set: 'Humaniser.Enable=false' }), { lineup: 'A', arm: 'off', build: 'abc1234' });
     assert.match(off.join('; '), /lacks Humaniser\.States\.Enable=false/);
-    const on = checkGame(log({ set: 'Humaniser.States.Teams=all', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' });
-    assert.match(on.join('; '), /lacks Humaniser\.Lane\.OwnLaningThink=all/);
+    const on = checkGame(log({ set: 'Humaniser.Enable=true', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' });
+    assert.match(on.join('; '), /lacks Humaniser\.States\.Teams=all/);
 });
 
 test('a wrong position, build, missing state layer or early stop is reported', () => {
-    const p = checkGame(log({ set: 'Humaniser.States.Teams=all,Humaniser.Lane.OwnLaningThink=all', swap: true, stop: 900 }), { lineup: 'A', arm: 'on', build: 'fff0000' });
+    const p = checkGame(log({ set: 'Humaniser.States.Teams=all', swap: true, stop: 900 }), { lineup: 'A', arm: 'on', build: 'fff0000' });
     const s = p.join('; ');
     assert.match(s, /luna team 2 pos 2/);
     assert.match(s, /build abc1234\+dirty/);
@@ -40,7 +40,7 @@ test('a wrong position, build, missing state layer or early stop is reported', (
 });
 
 test('an extra --set key fails the arm (an Enable=false on ON is a different arm)', () => {
-    const p = checkGame(log({ set: 'Humaniser.States.Teams=all,Humaniser.Lane.OwnLaningThink=all,Humaniser.Enable=false', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' });
+    const p = checkGame(log({ set: 'Humaniser.States.Teams=all,Humaniser.Enable=false', states: 3 }), { lineup: 'A', arm: 'on', build: 'abc1234' });
     assert.match(p.join('; '), /has extra Humaniser\.Enable=false/);
 });
 

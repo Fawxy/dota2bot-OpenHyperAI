@@ -112,11 +112,8 @@ local Exec = CampJobs.Exec
 local STATE_OF = {stack = ____exports.STACK, full_pull = ____exports.PULL, stack_pull = ____exports.PULL, double_pull = ____exports.PULL}
 --- Above laning's 0.5 + stickiness; below the job break (0.9), so a running job is never switched for another.
 local SCORE = 0.8
---- The state a job runs as, or undefined for jobs that stay on step() (contests, takes).
+--- The state a job runs as, or undefined for a job kind that stays on step().
 function ____exports.StateOf(job)
-    if job.take == true then
-        return nil
-    end
     return STATE_OF[job.kind]
 end
 local function liveJob(bot, state)

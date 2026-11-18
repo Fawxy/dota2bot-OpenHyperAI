@@ -39,7 +39,7 @@ end
 do
 	local off = { Enable = true }
 	for _, f in ipairs({ "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
-		"Harass", "Mid", "CounterPlay", "CampBlock" }) do off[f] = false end
+		"Mid", "CounterPlay" }) do off[f] = false end
 	off.Telegraph = true
 	check("telegraph alone is not active", not LaneFresh(off).Lane.Config.IsActive())
 	off.Stack = true
@@ -83,13 +83,6 @@ do
 	check("freeze unknown at 0.8 after override", not C.Knows("freeze", 0.8))
 	check("curve array replaced whole", near(C.Curve("AttemptRate", 1), 0.6))
 	check("other curve kept", near(C.Curve("JitterSigma", 0), 1.5))
-end
-
-do
-	for _, m in ipairs({ "all", "allies", "off" }) do
-		check("mode " .. m, LaneFresh({ OwnLaningThink = m }).Lane.Config.OwnLaningMode() == m)
-	end
-	check("bogus mode is off", LaneFresh({ OwnLaningThink = "bogus" }).Lane.Config.OwnLaningMode() == "off")
 end
 
 do

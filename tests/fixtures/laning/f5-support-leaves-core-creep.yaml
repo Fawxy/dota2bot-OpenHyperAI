@@ -8,6 +8,7 @@ conditions: {phase: laning, role: pos5}
 world:
   t: 120
   owned: true
+  humanTeam: true
   bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50}
   creeps: [{id: 1, team: enemy, hp: 40, x: 100, y: 0}]
   # A bot core 800 from the support but within its attack range + buffer of the creep.

@@ -39,12 +39,6 @@ export const DEFAULTS = {
     ApproachEpsilon: 25,
     // Lane creeps can only be denied below half health.
     DeniableHealth: 0.5,
-    HarassInterval: 2.5,
-    HarassWindow: 1.2,
-    HarassExtraRange: 300,
-    HarassMinHP: 0.5,
-    /** OHA's mode_laning_generic HarassThink reads this (OFF arm); our harass reads the live tower reach instead. */
-    TowerAvoidRange: 850,
 };
 
 export type AllyLastHitSettings = typeof DEFAULTS;

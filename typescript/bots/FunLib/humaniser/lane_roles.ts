@@ -7,36 +7,22 @@
 import { Unit, Vector } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
-import * as HDebug from "bots/FunLib/humaniser/debug";
 
 export type LaneRole = "core" | "support" | "solo";
-
-interface Claim {
-    pid: number;
-    at: number;
-}
 
 interface Cover {
     absent: boolean;
     cover: boolean;
 }
 
-let claims: Record<string, Claim> = {};
-let lastDraw: Record<number, number> = {};
-let needSince: Record<number, number> = {};
 let covers: Record<number, Cover> = {};
-let doubleDraws: Record<number, { stamp: number; ok: boolean }> = {};
 /** Partner HP over the last Timing.PartnerHPWindow, by partner pid, sampled whenever a support reads its partner. */
 let hpSamples: Record<number, { at: number; hp: number }[]> = {};
 /** When the dive condition began, by the reading support's pid. */
 let diveSince: Record<number, number> = {};
 
 export function ResetCache(): void {
-    claims = {};
-    lastDraw = {};
-    needSince = {};
     covers = {};
-    doubleDraws = {};
     hpSamples = {};
     diveSince = {};
 }
@@ -92,81 +78,6 @@ export function Partner(bot: Unit, s: LaneState.LaneSnapshot): LaneState.LaneHer
         if (best === undefined || positionOf(h) > positionOf(best) || (positionOf(h) === positionOf(best) && h.pid < best.pid)) best = h;
     }
     return best;
-}
-
-function isEnemyLaneCreep(target: Unit | null | undefined, ownTeam: number): target is Unit {
-    return target !== null && target !== undefined && target.GetTeam() !== ownTeam && LaneState.IsLaneCreepName(target.GetUnitName());
-}
-
-export function CoreBusy(core: LaneState.LaneHero, _now: number): boolean {
-    if (!core.alive) return false;
-    const cfg = LaneConfig.Settings().Thresholds;
-    if (core.hp < cfg.CoreBusyHP) return true;
-    const target = core.unit.GetAttackTarget();
-    return isEnemyLaneCreep(target, core.unit.GetTeam()) && target.GetHealth() <= core.unit.GetAttackDamage() * cfg.CoreBusyDamageMult;
-}
-
-/** Records when this bot's need for an aggro draw began; keeps the first stamp until ClearNeed. */
-export function NoteNeed(bot: Unit, now: number): void {
-    const pid = bot.GetPlayerID();
-    if (needSince[pid] === undefined) needSince[pid] = now;
-}
-
-export function ClearNeed(bot: Unit): void {
-    delete needSince[bot.GetPlayerID()];
-}
-
-function claimKey(s: LaneState.LaneSnapshot): string {
-    return `${s.team}:${s.lane}`;
-}
-
-export function MayDrawAggro(bot: Unit, s: LaneState.LaneSnapshot): LuaMultiReturn<[boolean, string]> {
-    const cfg = LaneConfig.Settings();
-    const pid = bot.GetPlayerID();
-    const now = DotaTime();
-    const window = cfg.Timing.AggroWindow;
-
-    // The double-draw mistake is rolled once per ally draw, not per call. Creeps chasing the ally keep refreshing
-    // its stamp, so stamps closer together than the window count as the same draw.
-    let stamp: number | undefined;
-    for (const [other, at] of pairs(s.lastAllyAggroAt)) {
-        if (other !== pid && now - (at as number) < window && (stamp === undefined || (at as number) > stamp)) stamp = at as number;
-    }
-    const claim = claims[claimKey(s)];
-    if (claim !== undefined && claim.pid !== pid && now - claim.at < window && (stamp === undefined || claim.at > stamp)) stamp = claim.at;
-    if (stamp !== undefined) {
-        let dd = doubleDraws[pid];
-        if (dd === undefined || stamp - dd.stamp >= window) {
-            dd = { stamp, ok: LaneConfig.Roll(LaneConfig.Curve("DoubleDraw", LaneConfig.SkillOf(bot))) };
-            doubleDraws[pid] = dd;
-            if (dd.ok) HDebug.Log("lane", `pid=${pid} mistake: double-draw`);
-        } else if (stamp > dd.stamp) {
-            dd.stamp = stamp;
-        }
-        if (dd.ok) return $multi(true, "mistake: double-draw");
-        return $multi(false, "wait: ally-aggro");
-    }
-
-    const own = lastDraw[pid];
-    if (own !== undefined && now - own < cfg.Timing.AggroCooldown) return $multi(false, "wait: cooldown");
-
-    const self = selfIn(bot, s);
-    if (RoleIn(bot, s) === "core" && self !== undefined) {
-        const partner = Partner(bot, s);
-        if (partner !== undefined && partner.isBot && partner.alive && partner.distToFront <= cfg.Thresholds.SupportNearFront) {
-            if (CoreBusy(self, now)) return $multi(false, "yield: support");
-            if (needSince[pid] === undefined) needSince[pid] = now;
-            if (now - needSince[pid] < cfg.Timing.CoreYieldStagger) return $multi(false, "yield: stagger");
-        }
-    }
-    return $multi(true, "ok");
-}
-
-export function NoteAggroDraw(bot: Unit, s: LaneState.LaneSnapshot): void {
-    const pid = bot.GetPlayerID();
-    const now = DotaTime();
-    claims[claimKey(s)] = { pid, at: now };
-    lastDraw[pid] = now;
 }
 
 export function CampJobOwner(s: LaneState.LaneSnapshot): number | undefined {

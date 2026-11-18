@@ -268,7 +268,7 @@ do
 end
 
 do
-	local flags = { "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack", "Harass", "Mid", "CounterPlay", "CampBlock" }
+	local flags = { "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack", "Mid", "CounterPlay" }
 	local allOff = { Enable = true }
 	for _, f in ipairs(flags) do allOff[f] = false end
 	for name, cfg in pairs({ disabled = { Enable = false }, ["no consumers"] = allOff }) do

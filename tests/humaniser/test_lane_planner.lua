@@ -246,40 +246,6 @@ do
 	check("the ordered pull itself skips the roll", c.tech == "full_pull", desc(c))
 end
 
--- PF9: the core's own aggro stagger counts from when the planner first chose aggro_pull.
-local function mayDraw(H, bot)
-	local ok, why = H.Lane.LaneRoles.MayDrawAggro(bot, H.Lane.LaneState.ForBot(bot))
-	return why
-end
-
-do
-	local H, core = planWorld(0.9)
-	T = 96.6
-	check("control: without a plan the stagger starts now", mayDraw(H, core) == "yield: stagger", mayDraw(H, core))
-end
-
-do
-	local H, core, _, P = planWorld(0.9)
-	local c = plan(H, P, core)
-	check("precondition: core aggro-pulls", c.tech == "aggro_pull", desc(c))
-	T = 96.6
-	check("need noted when aggro pull was chosen", mayDraw(H, core) == "ok", mayDraw(H, core))
-end
-
-do
-	local H, core, _, P = planWorld(0.9)
-	plan(H, P, core)
-	T = 96.6
-	ROTATING = true
-	check("precondition: choice changes to shove", plan(H, P, core).tech == "shove")
-	T = 97
-	ROTATING = false
-	check("precondition: back to aggro pull", plan(H, P, core).tech == "aggro_pull")
-	T = 97.5
-	check("changed choice restarts the need", mayDraw(H, core) == "yield: stagger", mayDraw(H, core))
-	check("Current mirrors the last plan", P.Current(core).tech == "aggro_pull")
-end
-
 do
 	check("forecast score drives the full pull", choose({ laneScore = -0.4, forecastScore = -0.62 }).tech == "full_pull")
 	check("forecast score can hold back a full pull", choose({ laneScore = -0.6, forecastScore = -0.38 }).tech == "aggro_pull")

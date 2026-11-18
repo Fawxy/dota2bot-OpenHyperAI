@@ -12,21 +12,21 @@ local BOT_Y = LANE_Y[Lane.Bot]
 local SMALL = Vector(-1600, -6200)
 
 local ALL_FLAGS = { "Plan", "Block", "FullPull", "StackPull", "AggroPull", "Freeze", "Shove", "Stack",
-	"Harass", "Mid", "CounterPlay", "Telegraph", "CampBlock" }
+	"Mid", "CounterPlay", "Telegraph" }
 local function flags(on, keep)
-	local cfg = { Enable = true, OwnLaningThink = "all" }
+	local cfg = { Enable = true }
 	for _, f in ipairs(ALL_FLAGS) do cfg[f] = on end
 	for _, f in ipairs(keep or {}) do cfg[f] = true end
 	return cfg
 end
 
 local OFF = {
-	{ name = "humaniser disabled", cfg = { Enable = true, OwnLaningThink = "all" }, humaniser = false },
-	{ name = "Lane.Enable = false", cfg = { Enable = false, OwnLaningThink = "all" } },
+	{ name = "humaniser disabled", cfg = { Enable = true }, humaniser = false },
+	{ name = "Lane.Enable = false", cfg = { Enable = false } },
 	{ name = "every flag false", cfg = flags(false) },
 	{ name = "only Telegraph on", cfg = flags(false, { "Telegraph" }) },
 }
-local ON = { name = "defaults (control)", cfg = { Enable = true, OwnLaningThink = "all" } }
+local ON = { name = "defaults (control)", cfg = { Enable = true } }
 
 local function fresh(entry, skill)
 	local H = LaneFresh(entry.cfg, { enable = entry.humaniser ~= false, skill = skill or 0.9, debug = true })
@@ -80,15 +80,11 @@ local function probeJobs(entry)
 	r.lines = count(function()
 		local H, core, support, enemy = jobWorld(entry)
 		r.active = H.Lane.Config.IsActive()
-		r.ownsAlly = H.Lane.OwnsLaning(support)
-		r.ownsEnemy = H.Lane.OwnsLaning(enemy)
 		r.desire = H.Lane.CampJobDesire(support)
 		r.think = H.Lane.CampJobThink(support)
 		r.thinkCore = H.Lane.CampJobThink(core)
 		r.runeDesire = H.Lane.RuneContestDesire(support)
 		r.stacked = H.Lane.PreferStackedCamp(core, { { idx = 1 } })
-		r.supersedes = H.Lane.SupersedesHarass(support)
-		r.deny = H.Lane.PickDeny(support, {})
 		r.jobScans = scans()
 		r.jobActions = #ACTIONS
 		H.Lane.CampJobAbort(support, "run")
@@ -101,67 +97,6 @@ local function probeJobs(entry)
 			for t = 103, 113, 0.5 do T = t H.Lane.Tick(bot) end
 		end
 		r.tickScans, r.tickActions = scans(), #ACTIONS
-	end)
-	return r
-end
-
--- Laning Think hooks as mode_laning_generic.lua calls them, in four worlds that each produce an action when the flags are on.
-local function probeLaning(entry)
-	local r = {}
-	r.lines = count(function()
-		-- 0:05 block
-		local H = fresh(entry, 0.8)
-		T = 5
-		CURRENT_TEAM = 2
-		LANE_FRONT[2][Lane.Bot] = 4000 / 14000
-		local bot = unit({ pid = 1, pos = 1, x = -2800 })
-		MakeCreep({ team = 2, x = -3000, y = BOT_Y })
-		MakeCreep({ team = 2, x = -3100, y = BOT_Y })
-		MakeCreep({ team = 3, x = 3000, y = BOT_Y })
-		r.pre = H.Lane.PreThink(bot, {}, {}, {})
-		r.preActions = #ACTIONS
-
-		-- Shove before rotating? no: plan shove on a lone safe-lane bot, no enemy laner, wave at the default front
-		H = fresh(entry, 0.8)
-		T = 95
-		CURRENT_TEAM = 2
-		STRONGER = true
-		unit({ pid = 0, bot = false, lane = Lane.Top, y = 5000 })
-		bot = unit({ pid = 1, pos = 1, x = -200 })
-		local creeps = {
-			MakeCreep({ team = 3, x = 100, y = BOT_Y, hp = 300 }),
-			MakeCreep({ team = 3, x = 2300, y = BOT_Y, hp = 100 }),
-			MakeCreep({ team = 3, x = 200, y = BOT_Y, hp = 400 }),
-		}
-		ACTIONS = {}
-		r.think = H.Lane.Think(bot, {}, creeps, {})
-		r.thinkActions = #ACTIONS
-
-		-- Freeze posture: our front far up the lane, the wave pushed to us
-		H = fresh(entry, 0.8)
-		T = 95
-		CURRENT_TEAM = 2
-		STRONGER = true
-		LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.36, 0.64
-		bot = unit({ pid = 1, pos = 1, x = -2000 })
-		local hero = unit({ pid = 6, team = 3, pos = 3, x = -1700 })
-		local enemyCreeps = { MakeCreep({ team = 3, x = -1800, y = BOT_Y }), MakeCreep({ team = 3, x = -1850, y = BOT_Y }) }
-		local allies = { MakeCreep({ team = 2, x = -2050, y = BOT_Y }) }
-		H.Lane.PreThink(bot, allies, enemyCreeps, { hero })
-		H.Lane.Think(bot, allies, enemyCreeps, { hero })
-		r.input = Vector(-1960, BOT_Y)
-		r.adjusted = H.Lane.AdjustPosition(bot, r.input)
-
-		-- Mid deny control: a deniable ranged creep before a deniable melee one
-		H = fresh(entry, 0.9)
-		T = 100
-		CURRENT_TEAM = 2
-		NEXT_RUNE = 240
-		local mid = unit({ pid = 2, pos = 2, lane = Lane.Mid, x = 0, y = 0, dmg = 400 })
-		unit({ pid = 7, team = 3, pos = 2, lane = Lane.Mid, x = 0, y = 0 })
-		local melee = MakeCreep({ team = 2, x = 50, y = 0, hp = 20 })
-		local ranged = MakeCreep({ team = 2, x = 60, y = 0, hp = 25, name = "npc_dota_creep_goodguys_ranged" })
-		r.ranged, r.denied = ranged, H.Lane.PickDeny(mid, { melee, ranged })
 	end)
 	return r
 end
@@ -213,29 +148,23 @@ local function probeChatAndPing(entry)
 	return r
 end
 
-local jobs, laning, chat = {}, {}, {}
+local jobs, chat = {}, {}
 for i, entry in ipairs(OFF) do
-	jobs[i], laning[i], chat[i] = probeJobs(entry), probeLaning(entry), probeChatAndPing(entry)
+	jobs[i], chat[i] = probeJobs(entry), probeChatAndPing(entry)
 end
-local jobsOn, laningOn, chatOn = probeJobs(ON), probeLaning(ON), probeChatAndPing(ON)
+local jobsOn, chatOn = probeJobs(ON), probeChatAndPing(ON)
 
 for i, entry in ipairs(OFF) do
-	local j, l, c = jobs[i], laning[i], chat[i]
+	local j, c = jobs[i], chat[i]
 	local n = entry.name .. ": "
 	check(n .. "lane system inactive", j.active == false)
-	check(n .. "OwnsLaning false for an ally of a human", j.ownsAlly == false)
-	check(n .. "OwnsLaning false for an enemy bot under 'all'", j.ownsEnemy == false)
 	check(n .. "no camp-job desire or think", j.desire == 0 and j.think == false and j.thinkCore == false, tostring(j.desire))
 	check(n .. "no rune contest desire", j.runeDesire == 0)
 	check(n .. "no stacked-camp preference", j.stacked == nil)
-	check(n .. "04's harass keeps running", j.supersedes == false)
-	check(n .. "no deny pick", j.deny == nil and l.denied == nil)
 	check(n .. "hooks scan nothing and act on nothing", j.jobScans == 0 and j.jobActions == 0, j.jobScans .. "/" .. j.jobActions)
 	check(n .. "run abort scans nothing and acts on nothing", j.abortScans == 0 and j.abortActions == 0 and not j.runAborted)
 	check(n .. "10 s of ticks scan nothing and act on nothing", j.tickScans == 0 and j.tickActions == 0, j.tickScans .. "/" .. j.tickActions)
-	check(n .. "PreThink and Think return false without acting", l.pre == false and l.preActions == 0 and l.think == false and l.thinkActions == 0)
-	check(n .. "AdjustPosition returns the same vector", rawequal(l.adjusted, l.input))
-	check(n .. "no [H:lane] output", laneLines(j.lines) + laneLines(l.lines) + laneLines(c.lines) == 0)
+	check(n .. "no [H:lane] output", laneLines(j.lines) + laneLines(c.lines) == 0)
 	check(n .. "lane commands post no order and no action", c.orders == "" and c.chatActions == 0, c.orders)
 	check(n .. "lane-front ping is not a hands-off", c.pingType == nil or c.pingType == "GATHER", c.pingType)
 	if entry.humaniser ~= false then
@@ -245,18 +174,12 @@ end
 
 -- Positive controls: the same worlds and calls do something with the flags on.
 check("control: lane system active", jobsOn.active == true)
-check("control: OwnsLaning for an ally of a human and an enemy bot", jobsOn.ownsAlly == true and jobsOn.ownsEnemy == true)
 check("control: camp-job desire 0.7 in the pull window", near(jobsOn.desire, 0.7), jobsOn.desire)
 check("control: the job owns the frame", jobsOn.think == true and jobsOn.thinkCore == false)
 check("control: hooks scan units", jobsOn.jobScans > 0, jobsOn.jobScans)
 check("control: a run aborts the job", jobsOn.runAborted == true)
 check("control: ticking scans units", jobsOn.tickScans > 0, jobsOn.tickScans)
-check("control: 04's harass is superseded", jobsOn.supersedes == true)
 check("control: [H:lane] output", laneLines(jobsOn.lines) > 0)
-check("control: PreThink blocks", laningOn.pre == true and laningOn.preActions == 1)
-check("control: Think shoves", laningOn.think == true and laningOn.thinkActions == 1)
-check("control: AdjustPosition holds the freeze posture", not rawequal(laningOn.adjusted, laningOn.input) and laningOn.adjusted.x < laningOn.input.x)
-check("control: mid deny control picks the ranged creep", laningOn.denied == laningOn.ranged)
 check("control: !freeze bot posts LANE_FREEZE", chatOn.freezeOrder ~= nil and chatOn.freezeOrder.lane == Lane.Bot, chatOn.orders)
 check("control: lane commands act", chatOn.orders:find("LANE_STACK", 1, true) ~= nil, chatOn.orders)
 check("control: lane-front ping posts LANE_HANDSOFF", chatOn.pingType == "LANE_HANDSOFF", chatOn.pingType)
@@ -269,19 +192,11 @@ local function source(path)
 	return text
 end
 local laningSrc, farmSrc = source("mode_laning_generic.lua"), source("mode_farm_generic.lua")
-for _, line in ipairs({
-	"if bLaneLaning and not bTrainerSelfTest then",
-	"if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return 'lane_pre' end",
-	"if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return 'lane_think' end",
-	"if bLaneLaning and not Lane.MayDeny(bot, nAllyCreeps) then return false end",
-	"denyCreep = (bLaneLaning and Lane.PickDeny(bot, nAllyCreeps)) or GetBestDenyCreep(nAllyCreeps)",
-	"if bLaneLaning then target_loc = Lane.AdjustPosition(bot, target_loc) end",
-	"if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then",
-	"local bLaneLaning = Lane.OwnsLaning(bot)",
-}) do
-	check("laning mode guard: " .. line, laningSrc:find(line, 1, true) ~= nil)
+for _, gone in ipairs({ "bLaneLaning", "Lane.PreThink", "Lane.Think", "Lane.MayDeny", "Lane.PickDeny", "Lane.AdjustPosition",
+	"Lane.SupersedesHarass", "Lane.HarassThink", "Lane.OwnsLaning" }) do
+	check("laning mode has no human-team lane path: " .. gone, laningSrc:find(gone, 1, true) == nil)
 end
-check("laning mode: Think() is defined only when 04, 07, the 14 self-test, the state layer or Ours.LeaveCoreCreep (slice 3) owns the bot or upstream already did", laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bLaneLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette\n", 1, true) ~= nil and laningSrc:find("if bOwnsThink then\n\tStates.SetLaneSpot(bot, PositionTarget)\n\tlocal function ThinkSteps()", 1, true) ~= nil and laningSrc:find("\tfunction Think()\n\t\tTelemetry.NoteLaneStep(bot, ThinkSteps())\n\tend\nend\n", 1, true) ~= nil)
+check("laning mode: Think() is defined only when 04, 07, the 14 self-test, the state layer or Ours.LeaveCoreCreep (slice 3) owns the bot or upstream already did", laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette\n", 1, true) ~= nil and laningSrc:find("if bOwnsThink then\n\tStates.SetLaneSpot(bot, PositionTarget)\n\tlocal function ThinkSteps()", 1, true) ~= nil and laningSrc:find("\tfunction Think()\n\t\tTelemetry.NoteLaneStep(bot, ThinkSteps())\n\tend\nend\n", 1, true) ~= nil)
 check("laning mode: the state layer replaces only PositionThink, except for a support whose body owns its lane hits", laningSrc:find("\tif not States.BodySupportHits(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body' end\n\tPositionThink()\n", 1, true) ~= nil)
 for _, call in ipairs({ "J.Humaniser.Lane.CampJobDesire(bot)", "J.Humaniser.Lane.CampJobOnEnd(bot)",
 	"if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.CampJobAbort(bot, \"run\")", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do

@@ -31,9 +31,8 @@ const STATE_OF: Partial<Record<CampJobs.JobKind, string>> = {
 /** Above laning's 0.5 + stickiness; below the job break (0.9), so a running job is never switched for another. */
 const SCORE = 0.8;
 
-/** The state a job runs as, or undefined for jobs that stay on step() (contests, takes). */
-export function StateOf(job: Pick<Job, "kind" | "take">): string | undefined {
-    if (job.take === true) return undefined;
+/** The state a job runs as, or undefined for a job kind that stays on step(). */
+export function StateOf(job: Pick<Job, "kind">): string | undefined {
     return STATE_OF[job.kind];
 }
 

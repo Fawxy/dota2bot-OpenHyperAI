@@ -8,6 +8,7 @@ conditions: {phase: laning, role: pos1}
 world:
   t: 120
   owned: true
+  humanTeam: true
   bot: {pos: 1, x: 0, y: 0, range: 150, dmg: 50}
   creeps: [{id: 1, team: enemy, hp: 60, x: 100, y: 0}]
 expect:

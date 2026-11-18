@@ -375,18 +375,7 @@ asDireCaller(function(H)
 	local C = H.Lane.Camps
 	check("dire caller: own amounts already in dire frame", near(C.ToTeamAmount(DIRE, 0.3), 0.3) and near(C.ToAbsAmount(DIRE, 0.3), 0.3))
 	check("dire caller: radiant amounts mirrored", near(C.ToTeamAmount(RAD, 0.3), 0.7))
-	-- Team-frame tower amounts as lane_state stores them for Dire: own T1 0.3, enemy T1 0.7 (world x 2800 / -2800).
-	local hold = H.Lane.LaneTech.HoldPoint(DIRE, Lane.Bot, -1, 0.3, 0.7, 0)
-	check("dire caller: hold at eq -1 is at dire's own T1", math.abs(hold.x - 2800) < 1, hold.x)
-	local back = H.Lane.LaneTech.HoldPoint(DIRE, Lane.Bot, 0, 0.3, 0.7, 300)
-	check("dire caller: hold walk-back goes toward dire's base (+x)", math.abs(back.x - 300) < 1, back.x)
 end)
-
-do
-	local H = LaneFresh({ Enable = true })
-	local back = H.Lane.LaneTech.HoldPoint(RAD, Lane.Bot, 0, 0.3, 0.7, 300)
-	check("radiant caller: hold walk-back goes toward radiant's base (-x)", math.abs(back.x + 300) < 1, back.x)
-end
 
 -- !hpt / !hcamp through the chat hub
 local function chatTest(debug)

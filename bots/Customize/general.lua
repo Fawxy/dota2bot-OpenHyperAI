@@ -155,12 +155,9 @@ Customize.Humaniser = {
     -- Lane management (task 07). Each flag switches one behaviour; Enable = false restores upstream laning.
     Lane = {
         Enable = true,
-        -- Who gets OHA's laning Think() for in-lane techniques: 'allies' (allies of humans), 'all' (every bot), 'off'.
-        OwnLaningThink = 'allies',
         Plan = true, Block = true, FullPull = true, StackPull = true,
-        AggroPull = true, Freeze = true, Shove = true, Stack = true, Harass = true,
+        AggroPull = true, Freeze = true, Shove = true, Stack = true,
         Mid = true, CounterPlay = true, Telegraph = true,
-        CampBlock = false, -- stretch: verify in-game that wards still block spawns first
     },
     -- Lane fights (task 11): lane trades and kill setups; an enemy spell is up when it can be cast now (Ours.SpellsUp).
     -- Enable = false restores the previous behaviour. Every tunable lives in FunLib/humaniser/lane_fight_config.
@@ -179,7 +176,7 @@ Customize.Humaniser = {
         MidRunes = true,  -- the mid laner walks to and takes power runes
         Rotation = true,  -- a spare pos 4/5 rotates to the power rune beside our mid
         Caution = true,   -- an alone core or a lane with a missing enemy plays safer (independent of Teleports)
-        Teleports = true, -- bots back off from, or set up on, an enemy TP into their lane (independent of Caution)
+        Teleports = true, -- bots back off from an enemy TP into their lane (independent of Caution)
         LaneWard = true,  -- the lane support wards the gank path between about 2:30 and 4:30
         Phase = true,     -- per-bot end of laning: cores with a farm item and a safe jungle farm; supports above level 6 leave between 6:00 and 8:00 with a smoke or an attack order
     },
@@ -187,7 +184,7 @@ Customize.Humaniser = {
     -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
     Intent = { Enable = true },
     -- Last-hit accuracy (task 10): low-skill bots misjudge last hits and try fewer denies. Skill 1.0 is upstream.
-    -- Only acts where OHA owns laning Think(); enemy bots need Lane.OwnLaningThink = 'all' for an effect.
+    -- Only acts where OHA owns laning Think().
     -- RequireOwnedLaning = false also applies it to team roam's last-hit grab for bots on Valve laning.
     LastHitSkill = { Enable = true, RequireOwnedLaning = true },
     -- Core farm pattern: pos 1-3 take a camp between waves (or stack one), back for the next wave; 5:00-20:00.

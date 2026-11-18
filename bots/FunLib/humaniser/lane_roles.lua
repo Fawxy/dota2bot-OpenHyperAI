@@ -158,23 +158,13 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
-local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
-local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
-local claims = {}
-local lastDraw = {}
-local needSince = {}
 local covers = {}
-local doubleDraws = {}
 --- Partner HP over the last Timing.PartnerHPWindow, by partner pid, sampled whenever a support reads its partner.
 local hpSamples = {}
 --- When the dive condition began, by the reading support's pid.
 local diveSince = {}
 function ____exports.ResetCache()
-    claims = {}
-    lastDraw = {}
-    needSince = {}
     covers = {}
-    doubleDraws = {}
     hpSamples = {}
     diveSince = {}
 end
@@ -274,133 +264,33 @@ function ____exports.Partner(bot, s)
     end
     return best
 end
-local function isEnemyLaneCreep(target, ownTeam)
-    return target ~= nil and target ~= nil and target:GetTeam() ~= ownTeam and LaneState.IsLaneCreepName(target:GetUnitName())
-end
-function ____exports.CoreBusy(core, _now)
-    if not core.alive then
-        return false
-    end
-    local cfg = LaneConfig.Settings().Thresholds
-    if core.hp < cfg.CoreBusyHP then
-        return true
-    end
-    local target = core.unit:GetAttackTarget()
-    return isEnemyLaneCreep(
-        target,
-        core.unit:GetTeam()
-    ) and target:GetHealth() <= core.unit:GetAttackDamage() * cfg.CoreBusyDamageMult
-end
---- Records when this bot's need for an aggro draw began; keeps the first stamp until ClearNeed.
-function ____exports.NoteNeed(bot, now)
-    local pid = bot:GetPlayerID()
-    if needSince[pid] == nil then
-        needSince[pid] = now
-    end
-end
-function ____exports.ClearNeed(bot)
-    __TS__Delete(
-        needSince,
-        bot:GetPlayerID()
-    )
-end
-local function claimKey(s)
-    return (tostring(s.team) .. ":") .. tostring(s.lane)
-end
-function ____exports.MayDrawAggro(bot, s)
-    local cfg = LaneConfig.Settings()
-    local pid = bot:GetPlayerID()
-    local now = DotaTime()
-    local window = cfg.Timing.AggroWindow
-    local stamp
-    for other, at in pairs(s.lastAllyAggroAt) do
-        if other ~= pid and now - at < window and (stamp == nil or at > stamp) then
-            stamp = at
-        end
-    end
-    local claim = claims[claimKey(s)]
-    if claim ~= nil and claim.pid ~= pid and now - claim.at < window and (stamp == nil or claim.at > stamp) then
-        stamp = claim.at
-    end
-    if stamp ~= nil then
-        local dd = doubleDraws[pid]
-        if dd == nil or stamp - dd.stamp >= window then
-            dd = {
-                stamp = stamp,
-                ok = LaneConfig.Roll(LaneConfig.Curve(
-                    "DoubleDraw",
-                    LaneConfig.SkillOf(bot)
-                ))
-            }
-            doubleDraws[pid] = dd
-            if dd.ok then
-                HDebug.Log(
-                    "lane",
-                    ("pid=" .. tostring(pid)) .. " mistake: double-draw"
-                )
-            end
-        elseif stamp > dd.stamp then
-            dd.stamp = stamp
-        end
-        if dd.ok then
-            return true, "mistake: double-draw"
-        end
-        return false, "wait: ally-aggro"
-    end
-    local own = lastDraw[pid]
-    if own ~= nil and now - own < cfg.Timing.AggroCooldown then
-        return false, "wait: cooldown"
-    end
-    local ____self = selfIn(bot, s)
-    if ____exports.RoleIn(bot, s) == "core" and ____self ~= nil then
-        local partner = ____exports.Partner(bot, s)
-        if partner ~= nil and partner.isBot and partner.alive and partner.distToFront <= cfg.Thresholds.SupportNearFront then
-            if ____exports.CoreBusy(____self, now) then
-                return false, "yield: support"
-            end
-            if needSince[pid] == nil then
-                needSince[pid] = now
-            end
-            if now - needSince[pid] < cfg.Timing.CoreYieldStagger then
-                return false, "yield: stagger"
-            end
-        end
-    end
-    return true, "ok"
-end
-function ____exports.NoteAggroDraw(bot, s)
-    local pid = bot:GetPlayerID()
-    local now = DotaTime()
-    claims[claimKey(s)] = {pid = pid, at = now}
-    lastDraw[pid] = now
-end
 function ____exports.CampJobOwner(s)
     local best
     for ____, h in ipairs(s.allies) do
         do
-            local __continue53
+            local __continue29
             repeat
                 if not h.alive then
-                    __continue53 = true
+                    __continue29 = true
                     break
                 end
                 if not h.isBot then
                     if positionOf(h) >= 4 then
                         return nil
                     end
-                    __continue53 = true
+                    __continue29 = true
                     break
                 end
                 if not h.assigned then
-                    __continue53 = true
+                    __continue29 = true
                     break
                 end
                 if best == nil or positionOf(h) > positionOf(best) or positionOf(h) == positionOf(best) and h.pid < best.pid then
                     best = h
                 end
-                __continue53 = true
+                __continue29 = true
             until true
-            if not __continue53 then
+            if not __continue29 then
                 break
             end
         end
@@ -446,19 +336,19 @@ function ____exports.ReadPartner(bot, s, enemies)
     local peak = hp
     for ____, sample in ipairs(hpSamples[partner.pid] or ({})) do
         do
-            local __continue69
+            local __continue45
             repeat
                 if now - sample.at > cfg.Timing.PartnerHPWindow or sample.at > now then
-                    __continue69 = true
+                    __continue45 = true
                     break
                 end
                 kept[#kept + 1] = sample
                 if sample.hp > peak then
                     peak = sample.hp
                 end
-                __continue69 = true
+                __continue45 = true
             until true
-            if not __continue69 then
+            if not __continue45 then
                 break
             end
         end
@@ -510,18 +400,18 @@ function ____exports.LaneStable(bot, enemies)
     local loc = bot:GetLocation()
     for ____, e in ipairs(enemies) do
         do
-            local __continue80
+            local __continue56
             repeat
                 if not e.visible and e.timeSinceSeen > cfg.StableSeenWithin then
-                    __continue80 = true
+                    __continue56 = true
                     break
                 end
                 if dist2D(e.location, loc) <= cfg.StableEnemyRadius then
                     return false
                 end
-                __continue80 = true
+                __continue56 = true
             until true
-            if not __continue80 then
+            if not __continue56 then
                 break
             end
         end
