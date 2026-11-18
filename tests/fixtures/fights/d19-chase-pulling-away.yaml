@@ -1,0 +1,38 @@
+id: fights.chase.pulling-away.001
+source: log
+ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 146.400}
+status: active
+decision: core_keep
+# Cut by tools/hlog/cut.js. The game chose cannot_catch for the kill on 2 (seen 1, started 0.400 s ago); write the right action, not this.
+# support pid 9, kill on pid 2: alive, seen, offered 0.4 s ago, started 0.4 s ago; HP 87% vs 29%, heroes 1 theirs, 2 ours, tower 0
+world:
+  t: 146.4
+  pid: 9
+  role: "support"
+  tgt: 2
+  ek: "kill"
+  alv: 1
+  sn: 1
+  oa: 0.4
+  kh: 0.4
+  sa: 0.4
+  hp: 0.867
+  thp: 0.293
+  en: 1
+  ally: 2
+  cr: 0
+  hc: 0
+  tw: 0
+  bu: 0
+  tm: 0
+  d: 1087
+  chu: "1087.2,198,133.6,31.2,"
+  cth: 190
+  csf: 8.109
+expect:
+  must: ["end(cannot_catch)"]
+  mustNot: ["keep"]
+notes: >
+  Control: out of reach and not catching up in time (smoke3, 2:26). Our melee support 1,087 from a 29% target with 190 HP,
+  closing at 134 a second: 6.7 s to attack range, the target 8.1 s from its tower, so about 45 damage lands of 190. The
+  walk would cost its lane work for nothing (D11, the opposite rule).

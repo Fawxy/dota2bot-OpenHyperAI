@@ -97,16 +97,29 @@ interface CastHandle extends AbilityHandle {
     GetCastPoint(): number;
     GetBehavior(): number;
     GetAbilityDamage(): number;
+    GetDamageType?(): number;
+}
+
+/** One damage spell a hero can cast now (ReadySpells). */
+export interface ReadySpell {
+    name: string;
+    /** GetCastRange; for a no-target area spell (cast range 0) its `radius` special value, the reach it hits within. */
+    range: number;
+    /** GetCastPoint, s. */
+    cp: number;
+    behavior: number;
+    /** The SPELL_DAMAGE key's value (per second for a per-second row), else GetAbilityDamage: before the target's resistances. */
+    dmg: number;
+    /** The SPELL_DAMAGE row's damage type, else the ability's GetDamageType, else magical. */
+    dtype: number;
 }
 
 /**
- * Slice chase-log: the damage spells `bot` can cast now (learned, shown, IsFullyCastable), as `;`-joined records of
- * name,cast range,cast point (s, two places),behaviour bits (GetBehavior),damage. Damage is the SPELL_DAMAGE key's value
- * (per second for a per-second row), else GetAbilityDamage; a spell with neither over 0 is left out. Logged only: the
- * chase's catch read (kill-chances step 3b) is to read the same spells.
+ * The damage spells `bot` can cast now (learned, shown, IsFullyCastable) with what the chase's catch read needs (kill-chances
+ * step 3b): cast range, cast point and damage. A spell with no damage over 0 is left out.
  */
-export function ReadyDamage(bot: Unit): string | undefined {
-    const out: string[] = [];
+export function ReadySpells(bot: Unit): ReadySpell[] {
+    const out: ReadySpell[] = [];
     for (let slot = 0; slot < SLOTS; slot++) {
         const a = bot.GetAbilityInSlot(slot) as unknown as CastHandle | null | undefined;
         if (a === undefined || a === null || a.IsNull()) continue;
@@ -115,8 +128,26 @@ export function ReadyDamage(bot: Unit): string | undefined {
         const row = SPELL_DAMAGE[name];
         const dmg = row !== undefined ? a.GetSpecialValueFloat(row[0]) : a.GetAbilityDamage();
         if (type(dmg) !== "number" || !(dmg > 0)) continue;
-        const cp = math.floor(a.GetCastPoint() * 100 + 0.5) / 100;
-        out.push([name, math.floor(a.GetCastRange()), cp, a.GetBehavior(), math.floor(dmg + 0.5)].join(","));
+        let range = a.GetCastRange();
+        if (!(range > 0)) {
+            const r = a.GetSpecialValueFloat("radius");
+            range = type(r) === "number" && r > 0 ? r : 0;
+        }
+        const dt = row !== undefined ? row[2] : a.GetDamageType !== undefined ? a.GetDamageType() : DamageType.Magical;
+        out.push({ name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical });
+    }
+    return out;
+}
+
+/**
+ * Slice chase-log: the damage spells `bot` can cast now (ReadySpells), as `;`-joined records of name,cast range,cast point
+ * (s, two places),behaviour bits (GetBehavior),damage. Logged; the catch read reads the same list.
+ */
+export function ReadyDamage(bot: Unit): string | undefined {
+    const out: string[] = [];
+    for (const s of ReadySpells(bot)) {
+        const cp = math.floor(s.cp * 100 + 0.5) / 100;
+        out.push([s.name, math.floor(s.range), cp, s.behavior, math.floor(s.dmg + 0.5)].join(","));
     }
     return out.length > 0 ? out.join(";") : undefined;
 }

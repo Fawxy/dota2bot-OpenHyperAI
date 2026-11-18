@@ -53,8 +53,8 @@ function ____exports.Log(bot, consumer, r, decision)
         return false
     end
     logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_4 = Telemetry.Event
-    local ____array_3 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
         {"pid", pid},
         {"who", consumer},
         {"dec", decision},
@@ -90,15 +90,15 @@ function ____exports.Log(bot, consumer, r, decision)
         },
         {"ally", r.allies}
     )
-    local ____temp_2
+    local ____temp_4
     if #r.reach > 0 then
-        ____temp_2 = r.escape
+        ____temp_4 = r.escape
     else
-        ____temp_2 = nil
+        ____temp_4 = nil
     end
     __TS__SparseArrayPush(
-        ____array_3,
-        {"esc", ____temp_2},
+        ____array_5,
+        {"esc", ____temp_4},
         {"tower", r.tower},
         {
             "miss",
@@ -121,9 +121,9 @@ function ____exports.Log(bot, consumer, r, decision)
             ))
         }
     )
-    ____Telemetry_Event_4(
+    ____Telemetry_Event_6(
         "threat",
-        {__TS__SparseArraySpread(____array_3)}
+        {__TS__SparseArraySpread(____array_5)}
     )
     return true
 end
@@ -381,6 +381,10 @@ function ____exports.Reader(bot, horizon, opts)
                         __continue43 = true
                         break
                     end
+                    if pid == (opts and opts.exclude) then
+                        __continue43 = true
+                        break
+                    end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen <= s.MissingAfter then
                         __continue43 = true
@@ -415,10 +419,10 @@ function ____exports.Reader(bot, horizon, opts)
         local dmg = 0
         for ____, e in ipairs(enemies) do
             do
-                local __continue47
+                local __continue48
                 repeat
                     if distToSegment(e.at, from, place) > e.run then
-                        __continue47 = true
+                        __continue48 = true
                         break
                     end
                     reach[#reach + 1] = e.pid
@@ -441,9 +445,9 @@ function ____exports.Reader(bot, horizon, opts)
                         eng[#eng + 1] = e.pid
                     end
                     dmg = dmg + e.dmg
-                    __continue47 = true
+                    __continue48 = true
                 until true
-                if not __continue47 then
+                if not __continue48 then
                     break
                 end
             end
@@ -465,17 +469,17 @@ function ____exports.Reader(bot, horizon, opts)
         local points
         for ____, m in ipairs(unseen) do
             do
-                local __continue58
+                local __continue59
                 repeat
                     if distToSegment(m.at, from, place) > m.r then
-                        __continue58 = true
+                        __continue59 = true
                         break
                     end
                     if s.VisionCut then
                         points = points or ____exports.WalkPoints(from, place)
                         if not unseenWithin(points, m.at, m.r) then
                             mcut = mcut + 1
-                            __continue58 = true
+                            __continue59 = true
                             break
                         end
                     end
@@ -485,9 +489,9 @@ function ____exports.Reader(bot, horizon, opts)
                     )
                     mpids[#mpids + 1] = m.pid
                     mtss = math.max(mtss or 0, m.tss)
-                    __continue58 = true
+                    __continue59 = true
                 until true
-                if not __continue58 then
+                if not __continue59 then
                     break
                 end
             end

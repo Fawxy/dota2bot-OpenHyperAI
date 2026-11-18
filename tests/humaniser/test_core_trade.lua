@@ -767,6 +767,29 @@ do
 	answer = enemy
 	T = 620.5
 	check("a join on the trade's own target takes it over", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	-- Slice kill-chase (review): a join whose target falls to the kill bar reopens as the kill, which keeps the join's group
+	-- (2) and its hold over the last hit, and clears its SetTarget on close.
+	CoreTrade.Think(bot)
+	check("kill-chase: the join names its target for OHA's casts", bot.target == enemy)
+	enemy.hp = 30
+	T = 621
+	local n0 = #lines
+	check("kill-chase: the join at the kill bar hands to the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	local up = false
+	for i = n0 + 1, #lines do if lines[i]:find("ev=trade") and lines[i]:find("kind=join") and lines[i]:find("why=kill_up") then up = true end end
+	check("kill-chase: its line names kill_up", up)
+	check("kill-chase: the kill carried from the join keeps the pair group", CoreTrade.Joining(bot))
+	CoreTrade.Think(bot)
+	T = 621.5
+	check("kill-chase: and laning's last hit yields to it", CoreTrade.LastHitYields(bot))
+	check("kill-chase: the join's answer on the kill's target keeps the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	answer = nil
+	enemy.alive = false
+	T = 622
+	CoreTrade.Desire(bot)
+	check("kill-chase: the close clears the target it set", bot.target == nil)
+	enemy.alive = true
+	enemy.hp = 70
 	PairJoin.Joins = joins
 	other.alive = false
 	CoreTrade.Reset()
@@ -912,9 +935,25 @@ do
 	end
 	check("keep: a running kill on a seen low target is kept", keep() == nil)
 	check("keep: a dead target ends it first", keep({ alive = false, seen = false }) == "target_dead")
-	check("keep: an unseen target ends it (the fog line 3b reads past)", keep({ seen = false, g = nil }) == "target_lost")
+	check("kill-chase: an unseen target no longer ends a started kill", keep({ seen = false, g = nil }) == nil)
+	check("kill-chase: an unseen target ends a kill not yet started", keep({ seen = false, g = nil, unstarted = true }) == "target_lost")
 	check("keep: a kill not taken within 1 s of its offer", keep({ unstarted = true, offered = 1.2 }) == "not_taken")
-	check("keep: a kill past its 6 s", keep({ started = 6.1, g = nil }) == "time")
+	check("kill-chase: no 6 s limit", keep({ started = 6.1 }) == nil)
+	check("kill-chase: the logged backstop", keep({ started = 30.1, g = nil }) == "backstop")
+	local near = { { d = 300, reach = 200, close = 100, dps = 40, spells = {} } }
+	-- 1 s to close, then 40 a second until it reaches its tower in 3 s: 80.
+	check("kill-chase: a catch that lands before their tower keeps", keep({ hunters = near, thpAbs = 60, safe = 3 }) == nil)
+	check("kill-chase: one that cannot land before their tower ends", keep({ hunters = near, thpAbs = 150, safe = 3 }) == "cannot_catch")
+	check("kill-chase: a target not heading home is chased while we close", keep({ hunters = near, thpAbs = 400 }) == nil)
+	local far = { { d = 600, reach = 200, close = 0, dps = 40, spells = {} } }
+	check("kill-chase: not closing and out of reach ends however long the horizon", keep({ hunters = far, thpAbs = 100 }) == "cannot_catch")
+	check("kill-chase: unseen, at the predicted place and not there: the trail is cold", keep({ seen = false, g = nil, at = true }) == "spot_clear")
+	check("kill-chase: unseen, the place by their tower", keep({ seen = false, g = nil, utower = true }) == "tower")
+	check("kill-chase: unseen, outnumbered", keep({ seen = false, g = nil, uout = true }) == "outnumbered")
+	check("kill-chase: unseen, other unseen enemies on the walk", keep({ seen = false, g = nil, threat = true }) == "threat")
+	check("kill-chase: unseen, the read still ends it", keep({ seen = false, g = nil, hunters = far, thpAbs = 100 }) == "cannot_catch")
+	check("kill-chase: a join at the kill bar hands to the kill", keep({ kind = "join", join = "none", g = nil, killUp = true }) == "kill_up")
+	check("kill-chase: an unseen join still ends", keep({ kind = "join", join = "same", g = nil, seen = false }) == "target_lost")
 	check("keep: a kill by their tower", keep({ g = inputs({ targetHp = 0.3, tower = true }) }) == "tower")
 	check("keep: outnumbered ends a kill", keep({ g = inputs({ targetHp = 0.3, enemiesNear = 2 }) }) == "outnumbered")
 	check("keep: a hit back under its HP bar", keep({ hb = true, g = inputs({ hp = 0.5, targetHp = 0.3 }) }) == "hb_hp")
@@ -922,6 +961,94 @@ do
 	check("keep: a join PairJoin turns to another hero", keep({ kind = "join", join = "other", g = nil }) == "retarget")
 	check("keep: a running join on its target", keep({ kind = "join", join = "same", g = nil }) == nil)
 	check("keep: a join past its time", keep({ kind = "join", join = "same", started = 8.1, g = nil }) == "time")
+end
+
+-- Slice kill-chase: CatchRead, the damage the hunters land within the window against the target's HP.
+do
+	local W = CoreTrade.CATCH_WINDOW
+	local function h(o)
+		local x = { d = 100, reach = 200, close = 0, dps = 50, spells = {} }
+		for k, v in pairs(o or {}) do x[k] = v end
+		return x
+	end
+	local c = CoreTrade.CatchRead({ h() }, 100, 2)
+	check("catch: in reach, attacks over the whole window", near(c.dmg, 100) and c.ok and c.first == 0)
+	c = CoreTrade.CatchRead({ h({ d = 400, close = 100 }) }, 100, 3)
+	check("catch: 2 s to close leaves 1 s of attacks", near(c.dmg, 50) and not c.ok and near(c.first, 2))
+	c = CoreTrade.CatchRead({ h({ d = 400, close = 0 }) }, 1, W)
+	check("catch: not closing and out of reach lands nothing", c.dmg == 0 and not c.ok and c.first == math.huge)
+	c = CoreTrade.CatchRead({ h({ d = 400, close = 0, spells = { { range = 600, cp = 0.3, dmg = 120 } } }) }, 100, W)
+	check("catch: a spell in cast range lands though the attack cannot", near(c.dmg, 120) and c.ok and near(c.first, 0.3))
+	c = CoreTrade.CatchRead({ h({ d = 400, close = 0 }), h({ d = 100, dps = 30 }) }, 100, 3)
+	check("catch: an ally on the target adds its damage", near(c.dmg, 90) and not c.ok)
+end
+
+-- Slice kill-chase: a running kill whose target leaves sight walks to its predicted place and keeps going; seen again by its
+-- new handle, it attacks; at the place with nothing there it ends `spot_clear`.
+do
+	CoreTrade.Reset()
+	local seenFlag = true
+	local oldSeen = Unit.CanBeSeen
+	function Unit:CanBeSeen() if self == enemy then return seenFlag end return true end
+	bot.attacking, bot.lastAttack, bot.hitBy = nil, nil, nil
+	bot.hp, enemy.hp, enemy.loc = 80, 30, Vector(300, 0)
+	enemy.vel = Vector(200, 0)
+	bot.atk, bot.spa = 300, 1
+	T = 900
+	check("kill-chase: a low target opens the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	CoreTrade.Think(bot)
+	check("kill-chase: the kill names its target for OHA's casts", bot.target == enemy)
+	T = 900.5
+	CoreTrade.Desire(bot)
+	-- It slips into the trees: the handle reads unseen, our sighting is where it stood 0.5 s ago.
+	seenFlag = false
+	enemy.loc = Vector(400, 0)
+	local oldInfo = GetHeroLastSeenInfo
+	function GetHeroLastSeenInfo(pid) return { { location = Vector(400, 0), time_since_seen = 0.5 } } end
+	T = 901
+	bot.moves = nil
+	local nn = #lines
+	check("kill-chase: an unseen target keeps the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	local lost = false
+	for i = nn + 1, #lines do if lines[i]:find("ev=chase") and lines[i]:find("ph=lost") then lost = true end end
+	check("kill-chase: the loss of sight is logged on the running chase", lost)
+	CoreTrade.Think(bot)
+	local m = bot.moves and bot.moves[#bot.moves]
+	check("kill-chase: unseen, it walks to the sighting moved on by the target's speed", m ~= nil and near(m.x, 500) and near(m.y, 0))
+	-- We reach that place and it is not there.
+	bot.loc = Vector(500, 0)
+	function GetHeroLastSeenInfo(pid) return { { location = Vector(400, 0), time_since_seen = 0 } } end
+	enemy.vel = nil
+	T = 901.5
+	local n = #lines
+	check("kill-chase: at the place with nothing there the kill ends", CoreTrade.Desire(bot) == 0 or #lines > n)
+	local ended = false
+	for i = n + 1, #lines do if lines[i]:find("ev=trade") and lines[i]:find("why=spot_clear") then ended = true end end
+	check("kill-chase: the end names the cold trail", ended)
+	GetHeroLastSeenInfo = oldInfo
+	Unit.CanBeSeen = oldSeen
+	-- A low target out of attack range running away faster than we walk: the kill ends cannot_catch, and does not reopen
+	-- on the next frame while the read still says so.
+	CoreTrade.Reset()
+	bot.loc, bot.attacking = Vector(0, 0), nil
+	enemy.hp, enemy.loc, enemy.vel = 30, Vector(600, 0), Vector(400, 0)
+	T = 950
+	CoreTrade.Desire(bot)
+	CoreTrade.Think(bot)
+	T = 950.3
+	local n2 = #lines
+	CoreTrade.Desire(bot)
+	local why2
+	for i = n2 + 1, #lines do if lines[i]:find("ev=trade") then why2 = lines[i]:match("why=(%S+)") end end
+	check("kill-chase: a target pulling away out of reach ends cannot_catch", why2 == "cannot_catch")
+	T = 950.6
+	check("kill-chase: the uncatchable kill does not reopen", CoreTrade.Desire(bot) ~= CoreTrade.DESIRE_KILL)
+	enemy.vel = Vector(0, 0)
+	T = 950.9
+	check("kill-chase: once it stops, the read clears and the kill reopens", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	bot.loc, bot.atk, bot.spa, bot.target, bot.attacking = Vector(0, 0), nil, nil, nil, nil
+	enemy.hp, enemy.loc, enemy.vel = 70, Vector(400, 0), nil
+	CoreTrade.Reset()
 end
 
 finish()

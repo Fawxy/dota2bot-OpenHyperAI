@@ -1367,7 +1367,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num
+`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num, `cth` num, `cdm` num, `cft` num, `csf` num, `utw` num, `uou` num, `uth` num
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
@@ -1424,6 +1424,9 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `xa` str: kind=trade (slice hitback-fold), with `hb`: CoreTrade.Exchange's answer, whether the exchange is taken as a hit back retreat waits for (`trade`, `kill`) or why not (`hb_hp`, `hb_burst` or Answer's refusal).
 - `ek` str: kind=keep (slice chase-log, CoreTrade.KeepAnswer; `dec` its answer, `keep` for none, every end and a keep at most each 0.5 s): the episode's kind (`kill` or `join`), the target alive (IsHeroAlive) and seen (1/0), seconds since the offer and since the start (absent: not started), and for a join PairJoin's answer this frame (`none`, `same`, `other`). `hp` to `tm` are Gather's on the target with trade's names, present only where the answer reads them.
 - `hl` num: kind=keep, the chase's terms (read by nothing yet): our hull plus the target's when seen, our and the target's move speed (unseen: Threat's last read, -1 none), our ready damage spells (SpellReady.ReadyDamage: name,cast range,cast point,behaviour,damage records), and while unseen our team's last sighting x, y and its age (s). `d` is to the target, or to that sighting.
+- `chu` str: kind=keep (slice kill-chase, a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records (spells `/`-joined `range:cp:dmg`, damage after the target's resistances), the target's HP (seen, or as last seen), and the read's damage within the window and seconds to its first (-1 none); `csf` the window, the seconds until the target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there).
+- `uat` num: kind=keep, a started kill on an unseen target (1/0): we stand at its predicted place, that place or we inside an enemy tower's reach, more enemy heroes near than ours, unseen enemies other than the target weighing on the walk.
+- `kup` num: kind=keep, a join on a seen target: 1 when it is at the kill bar and Decide calls `kill` (it becomes the kill).
 
 ## cast
 

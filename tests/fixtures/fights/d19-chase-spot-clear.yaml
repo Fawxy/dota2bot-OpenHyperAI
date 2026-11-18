@@ -1,0 +1,32 @@
+id: fights.chase.spot-clear.001
+source: log
+ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 386.000}
+status: active
+decision: core_keep
+# Cut by tools/hlog/cut.js. The game chose spot_clear for the kill on 6 (seen 0, started 3.867 s ago); write the right action, not this.
+# core pid 0, kill on pid 6: alive, unseen, offered 4 s ago, started 3.867 s ago
+world:
+  t: 386
+  pid: 0
+  role: "core"
+  tgt: 6
+  ek: "kill"
+  alv: 1
+  sn: 0
+  oa: 4
+  kh: 0.4
+  sa: 3.867
+  d: 107
+  chu: "75.8,623,326.9,45.1,"
+  cth: 338
+  csf: 30
+  uat: 1
+  utw: 0
+  uou: 0
+  uth: 0
+expect:
+  must: ["end(spot_clear)"]
+notes: >
+  The cold trail (smoke3, 6:26, the same chase as kept-unseen a quarter second on): we stand on the predicted place and the
+  hero is not seen there. The creep's rule (ref theory/fight-chase "Fog"): go to the last-seen spot, and return to lane
+  if they are not there.

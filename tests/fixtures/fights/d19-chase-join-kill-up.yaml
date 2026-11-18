@@ -1,0 +1,26 @@
+id: fights.chase.join-kill-up.001
+source: log
+ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 291.100}
+status: active
+decision: core_keep
+# Cut by tools/hlog/cut.js. The game chose kill_up for the join on 5 (seen 1, started 1.733 s ago); write the right action, not this.
+# core pid 4, join on pid 5: alive, seen, offered 1.767 s ago, started 1.733 s ago, pair join same
+world:
+  t: 291.1
+  pid: 4
+  role: "core"
+  tgt: 5
+  ek: "join"
+  alv: 1
+  sn: 1
+  oa: 1.767
+  kh: 0.4
+  sa: 1.733
+  jn: "same"
+  d: 1038
+  kup: 1
+expect:
+  must: ["end(kill_up)"]
+notes: >
+  The hand-over (smoke3, 4:51): a pair join whose target has fallen to the kill bar becomes the kill, which chases; the join
+  itself lapses Keep (1.5 s) after the hit on us stops and ends at the fog line.

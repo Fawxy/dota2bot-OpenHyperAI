@@ -291,6 +291,9 @@ const DECISIONS = {
             if (cut.sa !== undefined) w.sa = n('sa');
             if (cut.jn !== undefined) w.jn = cut.jn;
             for (const k of ['hb', 'hp', 'thp', 'en', 'ally', 'cr', 'hc', 'tw', 'bu', 'tm', 'd']) if (cut[k] !== undefined) w[k] = n(k);
+            // Slice kill-chase: the catch read's hunters and target HP, the unseen reads and a join's hand-over.
+            if (cut.chu !== undefined) w.chu = String(cut.chu);
+            for (const k of ['cth', 'csf', 'uat', 'utw', 'uou', 'uth', 'kup']) if (cut[k] !== undefined) w[k] = n(k);
             return w;
         },
         check(game, cut, obs) {
