@@ -21,9 +21,7 @@ export type LaneFlag =
     | "Mid"
     | "CounterPlay"
     | "Telegraph"
-    | "Forecast"
-    | "PreContest"
-    | "TakePull";
+    | "Forecast";
 export type Technique = "block" | "full_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
@@ -50,10 +48,6 @@ export const DEFAULTS = {
     CounterPlay: true,
     Telegraph: true,
     Forecast: true,
-    // Off: in console.9057255027 and 9057261947 none of 202 pull_expected signals came within 20 s of that support
-    // pulling; the lane forecast it reads has not predicted the lane in any game so far.
-    PreContest: false,
-    TakePull: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
         Block: 0.3,
@@ -64,7 +58,6 @@ export const DEFAULTS = {
         Shove: 0.4,
         SoloCampJob: 0.6,
         MultiStackAncients: 0.7,
-        PreContest: 0.7,
     },
     // Skill 1 is no handicap of ours (user 12/11/2026): chances end at 1, errors and noise at 0.
     Curves: {
@@ -106,9 +99,6 @@ export const DEFAULTS = {
         SupplyWait: 1.5,
         PartnerHPWindow: 2,
         PartnerBailConfirm: 0.4,
-        ContestDesire: 0.65,
-        ContestMax: 10,
-        ContestAttackGap: 2.5,
         JobStartSlack: 3,
         JobStartLate: 2,
         JobMaxAfterAggro: 15,
@@ -117,15 +107,9 @@ export const DEFAULTS = {
         JobStartHeroHit: 2,
         JobUpcoming: 10,
         MaxTravel: 12,
-        PreContestLead: 2,
-        PreContestWait: 4,
-        // After a pre-contest the enemy did not pull into (enemy-in-lane, no-pull), the bot waits this long before another in that lane.
         // An enemy seen at our front this long is one of the lane's laners; sightings further apart than the gap add nothing.
         LanerSeenMin: 10,
         LanerSeenGap: 1,
-        TakePullMax: 15,
-        TakePullWait: 3,
-        TakePullSwing: 1,
         EqSampleAt: 10,
         WatchSec: 8,
         WatchEvery: 0.25,
@@ -198,9 +182,6 @@ export const DEFAULTS = {
         EnemyTowerRange: 844,
         // Fallback only: a hero's bounding radius (24), added to the tower's reach for a hero's centre (edges meet, user 08/11/2026).
         HeroRadius: 24,
-        // A non-owner laner takes an enemy pull only with at most this many enemy creeps left at its front.
-        TakePullLaneCreeps: 1,
-        TakePullDangerEnemies: 2,
         ShoveMinHP: 0.5,
         FreezeDriftMargin: 0.2,
         MidTowerEq: 0.8,
@@ -220,7 +201,6 @@ export const DEFAULTS = {
         Exposure: 1500,
         LaneFrontPing: 600,
         HumanPullRadius: 800,
-        PreContestStand: 400,
         StepBackCreeps: 700,
         StepBackEps: 50,
         NeutralSearch: 700,
@@ -252,9 +232,6 @@ export const DEFAULTS = {
         PullCampLastSeen: 800,
         PullerNear: 300,
         StackedCampSafe: 1500,
-        ContestReach: 1200,
-        TakePullCreeps: 800,
-        TakePullDanger: 1200,
         CounterNeutralScan: 1600,
         PullPathEdge: 150,
         BoxMargin: 300,

@@ -22,14 +22,13 @@ import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
-import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 
-export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack" | "contest";
+export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack";
 
 export interface JobRequest {
     kind: JobKind;
@@ -39,16 +38,10 @@ export interface JobRequest {
     /** Stack for a core on a FarmPattern trip: only SafeAway's checks, no support or lane-plan gates. */
     core?: boolean;
     minute?: number;
-    /** Contest: the enemy seen pulling, attacked while visible. */
-    targetPid?: number;
-    /** Pre-contest: the expected enemy aggro, awaited at a lookout on their pull path. */
-    preAggroAt?: number;
-    /** Take: a non-owner laner last-hits their pulled wave at the camp instead of hitting the puller. */
-    take?: boolean;
 }
 
 export interface Job extends JobRequest {
-    phase: "travel" | "wait" | "aggro" | "lead" | "watch" | "exit" | "lookout" | "return" | "done";
+    phase: "travel" | "wait" | "aggro" | "lead" | "watch" | "exit" | "return" | "done";
     aggroAt: number;
     plannedSec: number;
     path: Vector[];
@@ -67,12 +60,6 @@ export interface Job extends JobRequest {
     baseAggro: number;
     actualAggro?: number;
     aggroTarget?: Unit;
-    /** Pre-contest: when the puller was first seen from the lookout; ContestMax counts from here. */
-    attackFrom?: number;
-    /** Take: the last-hit swing in flight, the swings made, and when pulled creeps were last seen or the stand reached. */
-    swing?: { target: Unit; at: number };
-    swings?: number;
-    creepSeenAt?: number;
     arrivedAt?: number;
     /** GameTime() of the attack order, the clock GetLastAttackTime() uses. */
     aggroOrderedAt?: number;
@@ -156,14 +143,12 @@ const LOG_KIND: Record<JobKind, string> = {
     stack_pull: "stackpull",
     double_pull: "double",
     stack: "stack",
-    contest: "contest",
 };
 const FLAG_OF: Record<JobKind, LaneConfig.LaneFlag> = {
     full_pull: "FullPull",
     stack_pull: "StackPull",
     double_pull: "FullPull",
     stack: "Stack",
-    contest: "CounterPlay",
 };
 const JOB_FLAGS: LaneConfig.LaneFlag[] = ["FullPull", "StackPull"];
 // jmz_func's melee/ranged split for attack timing.
@@ -206,16 +191,15 @@ function cycleOf(time: number): number {
     return math.floor(time / settings().Timing.WaveCycle);
 }
 
-function commitTech(kind: JobKind): LaneConfig.Technique | "contest" {
+function commitTech(kind: JobKind): LaneConfig.Technique {
     if (kind === "double_pull") return "full_pull";
-    if (kind === "contest") return "contest";
     return kind as LaneConfig.Technique;
 }
 
 // ---------------------------------------------------------------------------------------------- pure helpers
 
 export function AggroSecondsFor(kind: JobKind, data: Camps.CampJobData): number[] {
-    if (kind === "stack" || kind === "contest") return data.stack !== undefined ? [Stacking.AggroSec(data)] : [];
+    if (kind === "stack") return data.stack !== undefined ? [Stacking.AggroSec(data)] : [];
     return data.pull !== undefined ? data.pull.aggroSec : [];
 }
 
@@ -230,22 +214,6 @@ export function NextAggroTime(dotaTime: number, seconds: number[], period: numbe
 
 export function TravelTime(dist: number, speed: number): number {
     return dist / math.max(speed, 1);
-}
-
-/** The point `dist` along the polyline from `origin` through `path`; the last point when the polyline is shorter. */
-export function LookoutPoint(origin: Vector, path: Vector[], dist: number): Vector {
-    let from = origin;
-    let left = dist;
-    for (const to of path) {
-        const seg = dist2D(from, to);
-        if (seg >= left && seg > 0) {
-            const f = left / seg;
-            return Vector(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f, from.z);
-        }
-        left -= seg;
-        from = to;
-    }
-    return from;
 }
 
 export function WindowOpen(now: number, aggroAt: number, travel: number): boolean {
@@ -395,8 +363,6 @@ function register(bot: Unit, job: Job, data: Camps.CampJobData): void {
         ["core", job.core === true],
         ["timing", job.timing ?? "seed"],
     ];
-    if (job.preAggroAt !== undefined) fields.push(["pre", 1]);
-    if (job.take === true) fields.push(["take", 1]);
     Telemetry.Event("lane_job_start", fields);
     HDebug.Log(
         "lane",
@@ -461,49 +427,11 @@ function startStack(bot: Unit, req: JobRequest): boolean {
     return true;
 }
 
-/**
- * Started only by counterplay: walk to the enemy pull camp and hit the puller while it stays visible. A pre-contest
- * (preAggroAt) first waits at a lookout on their pull path for the expected puller.
- */
-function startContest(bot: Unit, req: JobRequest): boolean {
-    const data = Camps.ByIdx(req.campIdx);
-    const spawner = Camps.SpawnerByIdx(req.campIdx);
-    if (data === undefined || spawner === undefined) return false;
-    const now = DotaTime();
-    let stand = Camps.BoxCenter(spawner);
-    if (req.preAggroAt !== undefined) {
-        if (data.pull === undefined) return false;
-        stand = LookoutPoint(spawner.location, PullTiming.LeadPath(data.pull, data.pull.meetPoint), settings().Radii.PreContestStand);
-    }
-    register(
-        bot,
-        {
-            ...req,
-            phase: req.preAggroAt !== undefined ? "lookout" : "travel",
-            aggroAt: req.preAggroAt ?? now,
-            plannedSec: 0,
-            path: [stand],
-            startedAt: now,
-            peakDivert: 0,
-            waveSize: 0,
-            activeCamp: req.campIdx,
-            stand,
-            waypoint: 0,
-            stage: 1,
-            telegraphed: true,
-            baseAggro: now,
-        },
-        data
-    );
-    return true;
-}
-
 export function Start(bot: Unit, req: JobRequest): boolean {
-    // Contest starts skip startBlocked. A forced start is a human's order, which also ends the lane fight (priority).
+    // A forced start is a human's order, which also ends the lane fight (priority).
     if (req.forced !== true && LaneHooks.IsFightCommitting(bot)) return false;
     if (req.kind === "stack") return startStack(bot, req);
     if (!hpOk(bot)) return false;
-    if (req.kind === "contest") return startContest(bot, req);
     if (PULL_KINDS[req.kind] !== true) return false;
     // Ours.SupportPull: our pull job decides and runs this bot's pulls; a human's order still goes through here.
     if (req.forced !== true && PullJob.Applies(bot)) return false;
@@ -603,7 +531,7 @@ export function CoverFor(bot: Unit): LuaMultiReturn<[string | undefined, number 
     const partner = LaneRoles.Partner(bot, s);
     if (partner === undefined || !partner.alive) return $multi(undefined, undefined, undefined);
     const job = jobs[partner.pid];
-    if (isLive(job) && job.kind !== "contest") return $multi("job", partner.pid, LOG_KIND[job.kind]);
+    if (isLive(job)) return $multi("job", partner.pid, LOG_KIND[job.kind]);
     if (partner.distToFront <= settings().Thresholds.SupportNearFront) return $multi(undefined, undefined, undefined);
     const loc = partner.unit.GetLocation();
     for (const c of Camps.PullCampsFor(s.team, s.lane)) {
@@ -724,7 +652,6 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: Te
         // A stack's walk-off reaches past :00; the stack's own cycle is already held by its commit.
         doneCycle[pid] = cycleOf(DotaTime());
     }
-    if (job.take === true) LanePlanner.Release(bot, "contest");
     if (!keepStack && job.kind === "stack_pull" && job.actualAggro !== undefined) Stacking.ClearStack(job.campIdx);
     if (job.kind === "stack") Stacking.Release(job.campIdx, pid);
     const [token] = string.gsub(reason, "%s+", "-");
@@ -737,8 +664,6 @@ function abort(bot: Unit, job: Job, reason: string, keepStack = false, extra: Te
         ["phase", phase],
         ["acted", job.acted === true],
         ["divert", job.peakDivert],
-        ...(job.preAggroAt !== undefined ? ([["pre", 1]] as Telemetry.Fields<"lane_job_abort">) : []),
-        ...(job.take === true ? ([["take", 1]] as Telemetry.Fields<"lane_job_abort">) : []),
         ...extra,
     ];
     if (deferLog && Telemetry.IsEnabled()) pendingModeEnd[pid] = { fields, at: GameTime() };
@@ -769,26 +694,6 @@ function endStack(bot: Unit, job: Job): void {
         ["kind", LOG_KIND[job.kind]],
         ["camp", job.campIdx],
     ]);
-}
-
-/** A contest is no pull attempt, so it ends on its own line, which the console parser does not read. */
-function endContest(bot: Unit, job: Job, reason: string): void {
-    job.phase = "return";
-    releaseClaims(bot);
-    // The core's own lane techniques are free again once the take is over.
-    if (job.take === true) LanePlanner.Release(bot, "contest");
-    doneCycle[bot.GetPlayerID()] = cycleOf(DotaTime());
-    const pre = job.preAggroAt !== undefined ? 1 : 0;
-    const fields: Telemetry.Fields<"lane_job_end"> = [
-        ["pid", bot.GetPlayerID()],
-        ["kind", LOG_KIND[job.kind]],
-        ["camp", job.campIdx],
-        ["reason", reason],
-        ["pre", pre],
-    ];
-    if (job.take === true) fields.push(["take", 1], ["swings", job.swings ?? 0]);
-    Telemetry.Event("lane_job_end", fields);
-    HDebug.Log("lane", string.format("contest-end pid=%d camp=%d reason=%s pre=%d", bot.GetPlayerID(), job.campIdx, reason, pre));
 }
 
 // ---------------------------------------------------------------------------------------------- desire
@@ -852,7 +757,7 @@ function noteHeld(bot: Unit, job: Job, s: LaneState.LaneSnapshot | undefined): v
  * double pull also the walk to the small camp and its hit once the hard camp is on the bot (its chain is taken up).
  */
 function drawingCamp(job: Job): boolean {
-    if (job.kind === "stack" || job.kind === "contest") return false;
+    if (job.kind === "stack") return false;
     if (job.kind === "double_pull" && job.chain === undefined) return true;
     return job.phase === "lead" || job.phase === "watch" || (job.phase === "aggro" && job.aggroOrderedAt !== undefined);
 }
@@ -923,7 +828,7 @@ export function HoldsRetreat(bot: Unit): boolean {
  */
 export function HoldsCasts(bot: Unit): boolean {
     const job = jobs[bot.GetPlayerID()];
-    if (!isLive(job) || job.kind === "contest") return false;
+    if (!isLive(job)) return false;
     if (job.phase === "travel" && !drawingCamp(job) && campNeutral(bot, job) === undefined) return false;
     return !enemyHeroNear(bot);
 }
@@ -939,42 +844,9 @@ function enemyHeroNear(bot: Unit): boolean {
  */
 export function Commits(bot: Unit): boolean {
     const job = jobs[bot.GetPlayerID()];
-    if (!isLive(job) || job.kind === "contest" || Orders.GetFor(bot) !== undefined || Intent.PriorityLive(bot) || enemyHeroNear(bot)) return false;
+    if (!isLive(job) || Orders.GetFor(bot) !== undefined || Intent.PriorityLive(bot) || enemyHeroNear(bot)) return false;
     const retreat = Intent.Resolved(bot, BotMode.Retreat);
-    return retreat !== undefined && retreat < desireOf(job.kind);
-}
-
-/**
- * A take's continue check. Its bot is not the lane's camp-job owner, so MayRunCampJob does not apply: it leaves on
- * low HP, on TakePullMax, or once outnumbered by visible enemy heroes at the camp.
- */
-function keepTaking(bot: Unit, job: Job, now: number): boolean {
-    const cfg = settings();
-    if (!LaneConfig.IsOn("TakePull")) {
-        abort(bot, job, "flag-off");
-        return false;
-    }
-    const s = LaneState.ForBot(bot);
-    if (s !== undefined && LanePlan.View(bot, s).handsOff) {
-        abort(bot, job, "handsoff");
-        return false;
-    }
-    let reason: string | undefined;
-    if (!hpOk(bot)) reason = "low-hp";
-    else if (now - job.startedAt >= cfg.Timing.TakePullMax) reason = "timeout";
-    // A late wave reads as a pull: back to the lane once it arrives, unless the pulled wave has been found.
-    else if (job.creepSeenAt === undefined && s !== undefined && s.enemy.count > cfg.Thresholds.TakePullLaneCreeps) reason = "lane-wave";
-    else {
-        let near = 0;
-        const here = bot.GetLocation();
-        for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
-            if (e.visible && dist2D(e.location, here) <= cfg.Radii.TakePullDanger) near++;
-        }
-        if (near >= cfg.Thresholds.TakePullDangerEnemies) reason = "outnumbered";
-    }
-    if (reason === undefined) return true;
-    endContest(bot, job, reason);
-    return false;
+    return retreat !== undefined && retreat < settings().Timing.JobDesire;
 }
 
 /** Abort checks for a running job; true when it may continue. */
@@ -988,15 +860,6 @@ function keepGoing(bot: Unit, job: Job): boolean {
         return false;
     }
     const now = DotaTime();
-    if (job.take === true) return keepTaking(bot, job, now);
-    if (job.kind === "contest") {
-        // The lookout waits out the aggro, so a pre-contest's ContestMax counts from the first sight of the puller.
-        const from = job.preAggroAt !== undefined ? job.attackFrom : job.startedAt;
-        if (from !== undefined && now - from >= settings().Timing.ContestMax) {
-            endContest(bot, job, "timeout");
-            return false;
-        }
-    }
     if (now > job.aggroAt + settings().Timing.JobMaxAfterAggro) {
         // A pull already in its watch has done its work: grade it rather than call it aborted.
         if (job.phase === "watch") close(bot, job, "return", Grade(job.peakDivert));
@@ -1026,11 +889,6 @@ function keepGoing(bot: Unit, job: Job): boolean {
     }
     noteHeld(bot, job, s);
     return true;
-}
-
-function desireOf(kind: JobKind): number {
-    const t = settings().Timing;
-    return kind === "contest" ? t.ContestDesire : t.JobDesire;
 }
 
 function anyJobFlag(): boolean {
@@ -1261,13 +1119,13 @@ export function Desire(bot: Unit): number {
         job.unthought = true;
         if (!keepGoing(bot, job)) return 0;
         // A stack's walk-off past :00 does not claim the new cycle: the stack was the previous cycle's technique.
-        if (job.kind !== "stack" && job.take !== true && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
-        return desireOf(job.kind);
+        if (job.kind !== "stack" && LanePlanner.Committed(bot) === undefined) LanePlanner.Commit(bot, commitTech(job.kind));
+        return settings().Timing.JobDesire;
     }
     if (!bot.IsAlive()) return 0;
     let started = anyJobFlag() && schedule(bot);
     if (!started && LaneConfig.IsOn("Stack")) started = scheduleStack(bot, now);
-    return started ? desireOf(jobs[bot.GetPlayerID()].kind) : 0;
+    return started ? settings().Timing.JobDesire : 0;
 }
 
 // ---------------------------------------------------------------------------------------------- think
@@ -1291,7 +1149,7 @@ function arrived(bot: Unit, loc: Vector): boolean {
  */
 function pingPartner(bot: Unit, job: Job): void {
     // A core's own stack (FarmPattern) is no "support away, play safe" heads-up for its lane partner.
-    if (job.pinged === true || job.kind === "contest" || job.core === true) return;
+    if (job.pinged === true || job.core === true) return;
     job.pinged = true;
     if (!LaneConfig.IsOn("Telegraph") || !LaneConfig.InLaningPhase()) return;
     const s = LaneState.ForBot(bot);
@@ -1450,115 +1308,6 @@ function sample(bot: Unit, job: Job, now: number): void {
     job.peakDivert = math.max(job.peakDivert, MeasureDivert(watched, job.waveSize));
 }
 
-/** The puller while it stays near the camp, else any visible enemy at the camp; never a chase across the map. */
-function contestTarget(bot: Unit, job: Job): Unit | undefined {
-    const center = job.stand;
-    const radii = settings().Radii;
-    let best: Unit | undefined;
-    for (const e of LaneState.Enemies(bot, bot.GetAssignedLane())) {
-        if (!e.visible || e.unit === undefined) continue;
-        const d = dist2D(e.location, center);
-        if (e.pid === job.targetPid && d <= radii.ContestReach) return e.unit;
-        if (best === undefined && d <= radii.EnemyNearCamp) best = e.unit;
-    }
-    return best;
-}
-
-function enemyInLane(bot: Unit, job: Job): boolean {
-    const s = LaneState.ForBot(bot);
-    if (s === undefined) return false;
-    for (const e of LaneState.Enemies(bot, s.lane)) {
-        if (e.pid === job.targetPid && e.visible && dist2D(e.location, s.frontLoc) <= settings().Radii.Exposure) return true;
-    }
-    return false;
-}
-
-/** Waiting at the lookout for the expected puller; true while the job keeps the frame. */
-function stepLookout(bot: Unit, job: Job, now: number): boolean {
-    const t = settings().Timing;
-    if (now >= job.aggroAt - t.PreContestLead && enemyInLane(bot, job)) {
-        endContest(bot, job, "enemy-in-lane");
-        return false;
-    }
-    if (now > job.aggroAt + t.PreContestWait) {
-        endContest(bot, job, "no-pull");
-        return false;
-    }
-    if (!arrived(bot, job.stand)) return moveTo(bot, job.stand);
-    Intent.Hold(bot, "lane:precontest");
-    return true;
-}
-
-function pulledCreeps(bot: Unit, job: Job): Unit[] {
-    const radii = settings().Radii;
-    const out: Unit[] = [];
-    for (const c of bot.GetNearbyLaneCreeps(radii.LaneCreepScan, true) ?? []) {
-        if (c === null || c === undefined || c.IsNull() || !c.IsAlive()) continue;
-        // A creep out of sight can be listed with no location (console.9057255027).
-        const loc = c.GetLocation();
-        if (loc !== undefined && dist2D(loc, job.stand) <= radii.TakePullCreeps) out.push(c);
-    }
-    return out;
-}
-
-/** Last hits on their pulled wave; true while the job keeps the frame. */
-function stepTake(bot: Unit, job: Job, now: number): boolean {
-    const t = settings().Timing;
-    if (job.swing !== undefined) {
-        const target = job.swing.target;
-        if (!target.IsNull() && target.IsAlive() && now - job.swing.at < t.TakePullSwing) return true;
-        job.swing = undefined;
-    }
-    if (job.arrivedAt === undefined && arrived(bot, job.stand)) job.arrivedAt = now;
-    const creeps = pulledCreeps(bot, job);
-    if (creeps.length > 0) {
-        job.creepSeenAt = now;
-        const damage = bot.GetAttackDamage();
-        const killable = creeps.filter((c) => LastHitSkill.WillKill(bot, c, damage, aggroLead(bot, c), false));
-        const pick = killable.length > 0 ? LastHitSkill.Choose(bot, killable) : undefined;
-        if (pick !== undefined) {
-            bot.Action_AttackUnit(pick, true);
-            LastHitSkill.NoteAttempt(bot, pick);
-            job.swing = { target: pick, at: now };
-            job.swings = (job.swings ?? 0) + 1;
-            return true;
-        }
-        let low = creeps[0];
-        for (const c of creeps) if (c.GetHealth() < low.GetHealth()) low = c;
-        if (GetUnitToUnitDistance(bot, low) > bot.GetAttackRange()) return moveTo(bot, low.GetLocation());
-        Intent.Hold(bot, "lane:take_pull");
-        return true;
-    }
-    const since = job.creepSeenAt ?? job.arrivedAt;
-    if (since === undefined) return moveTo(bot, job.stand);
-    if (now - since >= t.TakePullWait) {
-        endContest(bot, job, "no-creeps");
-        return false;
-    }
-    Intent.Hold(bot, "lane:take_pull");
-    return true;
-}
-
-function stepContest(bot: Unit, job: Job, now: number): boolean {
-    if (job.take === true) return stepTake(bot, job, now);
-    const target = contestTarget(bot, job);
-    if (job.phase === "lookout") {
-        if (target === undefined) return stepLookout(bot, job, now);
-        job.attackFrom = now;
-        job.phase = "travel";
-    }
-    if (target !== undefined) {
-        if (job.lastAttackAt === undefined || now - job.lastAttackAt >= settings().Timing.ContestAttackGap) {
-            bot.Action_AttackUnit(target, true);
-            job.lastAttackAt = now;
-        }
-        return true;
-    }
-    if (!arrived(bot, job.stand)) return moveTo(bot, job.stand);
-    endContest(bot, job, "no-target");
-    return false;
-}
-
 /** Seconds from an attack order on `creep` to its hit landing (walk into range, wind-up, projectile flight). */
 function aggroLead(bot: Unit, creep: Unit): number {
     const t = settings().Timing;
@@ -1682,7 +1431,6 @@ function noteSupply(bot: Unit, job: Job, item: SupplyItem | undefined, state: st
 function step(bot: Unit, job: Job): boolean {
     const now = DotaTime();
     const cfg = settings();
-    if (job.kind === "contest") return stepContest(bot, job, now);
     if (job.phase === "travel" || job.phase === "wait") {
         telegraph(bot, job, now);
         if (job.kind !== "stack" && supply(bot, job, now)) return true;
@@ -1869,7 +1617,6 @@ export const Exec = {
         }
         return false;
     },
-    DesireOf: desireOf,
     LogKind: (kind: JobKind): string => LOG_KIND[kind],
 };
 

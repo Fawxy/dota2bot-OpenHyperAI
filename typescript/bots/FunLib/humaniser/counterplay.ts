@@ -29,16 +29,7 @@ export interface PullSignalInput {
     campPullSec: number[];
 }
 
-export interface PullExpectedInput {
-    now: number;
-    /** Our lane's forecast eq mirrored to the enemy: the caller passes ours, this negates it. */
-    forecastEq: number;
-    enemyDesiredEq: number;
-    pullSec: number[];
-    supportInLane: boolean;
-}
-
-export type SignalKind = "pull" | "freeze" | "stack" | "mid_missing" | "rune_shove" | "pull_expected";
+export type SignalKind = "pull" | "freeze" | "stack" | "mid_missing" | "rune_shove";
 
 export interface Signal {
     kind: SignalKind;
@@ -46,8 +37,6 @@ export interface Signal {
     at: number;
     campIdx?: number;
     enemyPid?: number;
-    /** pull_expected: when the predicted pull aggros the camp. */
-    aggroAt?: number;
     /** pull: their support seen at its camp, last seen there, or our wave's arrival (late or thin). */
     source?: "seen" | "lastseen" | "wave";
     noticed: boolean;
@@ -181,15 +170,6 @@ export function FreezeSuspected(eqHistory: number[], enemyDeniesPerCycle: number
     return true;
 }
 
-/** The next aggro time at which the enemy support will want to pull, or undefined when it will not. */
-export function EnemyPullExpected(i: PullExpectedInput): number | undefined {
-    if (!i.supportInLane || i.pullSec.length === 0) return undefined;
-    const cfg = settings();
-    if (LaneState.LaneScore(i.enemyDesiredEq, -i.forecastEq, 0) > cfg.Planner.FullPullBelow) return undefined;
-    const aggroAt = CampJobs.NextAggroTime(i.now, i.pullSec, cfg.Timing.PullPeriod);
-    return CampJobs.CampsUp(aggroAt) ? aggroAt : undefined;
-}
-
 export function StackSuspected(secOfMinute: number, enemyNearCampVisible: boolean, neutralOutsideBoxVisible: boolean): boolean {
     const t = settings().Timing;
     if (enemyNearCampVisible && secOfMinute >= t.StackWatchFrom && secOfMinute <= t.StackWatchTo) return true;
@@ -231,7 +211,6 @@ function onNotice(bot: Unit, st: ObserverState, key: string, sig: Signal, s: Lan
     const now = DotaTime();
     const instance = `${s.team}:${s.lane}:${key}`;
     HDebug.Log("lane", `counter pid=${bot.GetPlayerID()} noticed=${sig.kind} lane=${sig.lane} camp=${sig.campIdx ?? "-"} enemy=${sig.enemyPid ?? "-"}`);
-    if (sig.kind === "pull_expected") return;
     if (sig.kind === "pull") {
         say(bot, st, inferred ? "say_lane_their_sup_missing" : `say_lane_they_pull_${LANE_NAME[sig.lane]}`, instance);
     } else if (sig.kind === "freeze") {
@@ -360,25 +339,6 @@ function suspectedCamp(camps: Camps.CampJobData[], support: LaneState.LaneEnemy,
     return undefined;
 }
 
-function expectedAggro(s: LaneState.LaneSnapshot, camp: Camps.CampJobData, support: LaneState.LaneEnemy | undefined, now: number): number | undefined {
-    return EnemyPullExpected({
-        now,
-        forecastEq: s.forecastEq,
-        enemyDesiredEq: LaneState.DesiredEq(LaneState.LaneKindOf(enemyTeamOf(s.team), s.lane), false),
-        pullSec: PullTiming.ForCamp(camp).seconds,
-        supportInLane: support !== undefined && isLaner(support, s),
-    });
-}
-
-/** Gate and skill are checked before observe so no notice roll is spent below the gate. */
-function pullExpectedSignal(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], camp: Camps.CampJobData, support: LaneState.LaneEnemy | undefined, now: number): void {
-    if (!LaneConfig.IsOn("PreContest") || LaneConfig.SkillOf(bot) < settings().Gates.PreContest || camp.pull === undefined) return;
-    const aggroAt = expectedAggro(s, camp, support, now);
-    if (aggroAt === undefined) return;
-    const key = `pexp:${camp.campIdx}:${math.floor(aggroAt / settings().Timing.WaveCycle)}`;
-    observe(bot, st, key, { kind: "pull_expected", lane: s.lane, at: now, campIdx: camp.campIdx, enemyPid: support?.pid, aggroAt }, s, enemies);
-}
-
 function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, enemies: LaneState.LaneEnemy[], now: number): void {
     const camps = Camps.PullCampsFor(enemyTeamOf(s.team), s.lane);
     if (camps.length === 0) return;
@@ -390,7 +350,6 @@ function pullSignals(bot: Unit, st: ObserverState, s: LaneState.LaneSnapshot, en
         const sig = { kind: "pull" as const, lane: s.lane, at: now, campIdx: suspected, enemyPid: support.pid, source };
         observe(bot, st, `pull:${suspected}:${cycle}`, sig, s, enemies, !support.visible);
     }
-    pullExpectedSignal(bot, st, s, enemies, camps[0], support, now);
 
     if (st.waveCycle !== cycle) {
         st.waveCycle = cycle;
@@ -493,14 +452,12 @@ export function Tick(bot: Unit): void {
     stackSignals(bot, st, s, enemies, now);
 }
 
-/** A pull_expected is first seen about a cycle before its aggro, so it lives until that aggro rather than CounterSignalTTL. */
 function live(st: ObserverState, now: number): [string, Signal][] {
     const ttl = settings().Timing.CounterSignalTTL;
     const result: [string, Signal][] = [];
     for (const [key, sig] of pairs(st.instances)) {
         if (!sig.noticed) continue;
-        const alive = sig.kind === "pull_expected" && sig.aggroAt !== undefined ? now <= sig.aggroAt : now - sig.at <= ttl;
-        if (alive) result.push([key, sig]);
+        if (now - sig.at <= ttl) result.push([key, sig]);
     }
     return result;
 }
@@ -538,7 +495,7 @@ function counterAnswer(bot: Unit): { answer: "shove" | "zone"; s: LaneState.Lane
     // Never push out a wave our own lane plan is freezing.
     const s = LaneState.ForBot(bot);
     if (s === undefined || LanePlan.View(bot, s).plan === "FREEZE") return undefined;
-    // The same gates LaneTech's shove executor applies, so the planner never commits to a shove that cannot run.
+    // A shove is only offered to a stronger, healthy laner.
     const canShove = LaneConfig.Knows("shove", LaneConfig.SkillOf(bot)) && stronger(bot) && hpOf(bot) >= settings().Thresholds.ShoveMinHP;
     return { answer: canShove ? "shove" : "zone", s };
 }

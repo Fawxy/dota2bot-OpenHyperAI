@@ -20,7 +20,7 @@ const SEEDS = { A: 30, B: 8, C: 25 };
 // told apart only by them.
 const ARMS = {
     off: { set: ['Humaniser.Enable=false', 'Humaniser.States.Enable=false'], states: false },
-    on: { set: ['Humaniser.States.Teams=all', 'Humaniser.Lane.OwnLaningThink=all'], states: true },
+    on: { set: ['Humaniser.States.Teams=all'], states: true },
 };
 
 /** Problems with one game's log text (empty when valid). */

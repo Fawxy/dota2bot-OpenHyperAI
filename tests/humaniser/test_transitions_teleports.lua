@@ -166,10 +166,10 @@ end
 
 do
 	local w = world({ skill = 0.9, transitions = { Enable = true, Teleports = false } })
-	STRONGER = true
+	STRONGER = false
 	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 5 } }
 	w.TP.Tick(w.core)
-	check("Teleports off: no forced level on the same scenario", w.C.Level(w.core) == 0)
+	check("Teleports off: no back-off level where the flag on would give 1", w.C.Level(w.core) == 0)
 	check("Teleports off: GetIncomingTeleports never read", TELEPORT_READS == 0, TELEPORT_READS)
 	w.H.Transitions.Busy.LaneCanSpare(w.core, false)
 	check("Teleports off: busy probe does not read either", TELEPORT_READS == 0, TELEPORT_READS)

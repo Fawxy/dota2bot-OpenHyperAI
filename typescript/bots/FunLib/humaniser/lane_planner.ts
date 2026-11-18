@@ -35,7 +35,7 @@ export interface PlannerInput {
 }
 
 export type Choice = { tech: LaneConfig.Technique | "hold" | "none"; reason: string };
-type Committable = LaneConfig.Technique | "contest";
+type Committable = LaneConfig.Technique;
 
 interface CycleState {
     cycle: number;

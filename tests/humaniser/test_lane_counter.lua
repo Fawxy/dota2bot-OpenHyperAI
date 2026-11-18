@@ -333,6 +333,53 @@ do
 end
 
 do
+	local function stackWorld(stronger)
+		local H, support, core, ecore, esup = world(1, { at = Vector(1200, 5800) })
+		esup.loc = Vector(THEIR_SMALL.x + 50, THEIR_SMALL.y + 50)
+		STRONGER = stronger
+		tick(H, support, 114)
+		check("precondition: stack noticed", #signalsOf(H, support, "stack") == 1)
+		return H, support, core, ecore, esup
+	end
+	local H, support = stackWorld(true)
+	check("stronger: camp not marked", #H.Lane.Counter.MarkedStacked(2) == 0)
+
+	local core, esup
+	H, support, core, _, esup = stackWorld(false)
+	local marks = H.Lane.Counter.MarkedStacked(2)
+	check("not stronger: their camp marked", #marks == 1 and marks[1] == 1)
+	local camps = { { idx = 1, cattr = SPAWNERS[1] } }
+	check("still laning: no stacked-camp preference", H.Lane.PreferStackedCamp(core, camps) == nil)
+	LANING = false
+	hide(esup, 3, 4)
+	T = 120
+	check("after laning, nobody near it: the core prefers it", H.Lane.PreferStackedCamp(core, camps) == camps[1])
+	LAST_SEEN[15] = { location = Vector(1500, 6000), time_since_seen = 3 }
+	T = 121
+	check("enemy last seen 3 s ago beside it: no preference", H.Lane.PreferStackedCamp(core, camps) == nil)
+	LAST_SEEN[15] = { location = Vector(1500, 6000), time_since_seen = 8 }
+	T = 122
+	check("seen 8 s ago: preferred again", H.Lane.PreferStackedCamp(core, camps) == camps[1])
+	check("support is not a core: no preference", H.Lane.PreferStackedCamp(support, camps) == nil)
+	T = 240
+	check("mark expires after 2 minutes", H.Lane.PreferStackedCamp(core, camps) == nil)
+end
+
+do
+	local H, _, core, _, esup = world(0.5, { telemetry = { Enable = true } })
+	OBSERVER = 3
+	local lines = {}
+	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
+	esup.loc = THEIR_SMALL
+	RANDOM_FRACTION = 0.999
+	tick(H, core, 75)
+	RANDOM_FRACTION = nil
+	local sig = {}
+	for _, l in ipairs(lines) do if l:find(" ev=lane_signal ", 1, true) then table.insert(sig, l) end end
+	check("lane_signal: a missed notice roll logs noticed=0", #sig == 1 and sig[1]:find("noticed=0", 1, true) ~= nil, sig[1])
+end
+
+do
 	local function ssWorld(enemyVisible)
 		local H = LaneFresh({ Enable = true }, { skill = 1 })
 		T, CURRENT_TEAM, OBSERVER = 61, 2, 2
@@ -432,70 +479,6 @@ do
 	check("one telegraph for one instance", #said == 1 and said[1] == "say_lane_they_pull_top", #said)
 	tick(H, core, 105)
 	check("the next instance is telegraphed again", #said == 2, #said)
-end
-
-do
-	local C = LaneFresh({ Enable = true }).Lane.Counter
-	-- Our top is the enemy's safe lane (desired -0.7); our forecast eq -0.6 is their 0.6.
-	local base = { now = 60, forecastEq = -0.6, enemyDesiredEq = -0.7, pullSec = { 15, 45 }, supportInLane = true }
-	local function with(o) local t = {} for k, v in pairs(base) do t[k] = v end for k, v in pairs(o) do t[k] = v end return t end
-	check("lane drifting to their tower: pull expected at :15", C.EnemyPullExpected(base) == 75)
-	check("lane at their wanted spot: no pull expected", C.EnemyPullExpected(with({ forecastEq = 0.7 })) == nil)
-	check("support not in lane: none", C.EnemyPullExpected(with({ supportInLane = false })) == nil)
-	check("no pull seconds: none", C.EnemyPullExpected(with({ pullSec = {} })) == nil)
-	check("camps not up before 1:00: none", C.EnemyPullExpected(with({ now = 0, pullSec = { 15 } })) == nil)
-	-- Their score is forecastEq - 0.7: the band ends at Planner.FullPullBelow (-0.5), forecastEq 0.2.
-	check("lane only slightly toward our side (0.3): none", C.EnemyPullExpected(with({ forecastEq = 0.3 })) == nil)
-	check("lane past 0.2 toward our tower (0.1): expected", C.EnemyPullExpected(with({ forecastEq = 0.1 })) == 75)
-end
-
-do
-	-- Mirroring: our top is the enemy's safe lane, so their wanted eq is Eq.Safe, whatever ours (Eq.Off) is.
-	local function expectedWith(eq)
-		local H, support = world(1, { cfg = { Enable = true, PreContest = true, Eq = eq } })
-		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.5, 0.5
-		RANDOM_FRACTION = 0
-		tick(H, support, 61)
-		RANDOM_FRACTION = nil
-		return H.Lane.LaneState.ForBot(support).forecastEq, #signalsOf(H, support, "pull_expected")
-	end
-	local feq, n = expectedWith({ Safe = -0.7, Off = -0.4 })
-	check("fixture: a level lane, forecast 0", near(feq, 0), feq)
-	check("their safe lane wants -0.7: a level lane drifts from it, pull expected", n == 1, n)
-	_, n = expectedWith({ Safe = -0.4, Off = -0.7 })
-	check("their safe lane wants -0.4: a level lane does not, none", n == 0, n)
-end
-
-do
-	-- Our lane drifts toward our tower (forecast about -0.6): the enemy support in lane will want to pull.
-	local said
-	local function expected(skill, cfg, seen)
-		local H, support, _, _, esup = world(skill, { cfg = cfg or { Enable = true, PreContest = true }, unlaned = seen == false })
-		said = {}
-		H.Orders.SetAnnouncer(function(_, key) table.insert(said, key) end)
-		LANE_FRONT[2][Lane.Top], LANE_FRONT[3][Lane.Top] = 0.38, 0.62 -- both fronts meet at 0.38 of our lane: eqPos -0.6
-		if seen == false then hide(esup, 4) end
-		RANDOM_FRACTION = 0
-		tick(H, support, 61)
-		RANDOM_FRACTION = nil
-		return H, support, signalsOf(H, support, "pull_expected")
-	end
-	local H, support, sigs = expected(1)
-	local feq = H.Lane.LaneState.ForBot(support).forecastEq
-	check("fixture: our forecast reads about -0.6", feq < -0.5 and feq > -0.7, feq)
-	check("one pull_expected, aggro at :15", #sigs == 1 and sigs[1].aggroAt == 75 and sigs[1].campIdx == 1 and sigs[1].enemyPid == 15, #sigs)
-	check("no pull_expected chat line", #said == 0, #said)
-	check("below the PreContest gate: none", #select(3, expected(0.6)) == 0)
-	check("PreContest off: none", #select(3, expected(1, { Enable = true, PreContest = false })) == 0)
-	check("PreContest is off by default", #select(3, expected(1, { Enable = true })) == 0)
-	check("enemy support never seen: none", #select(3, expected(1, nil, false)) == 0)
-end
-
-do
-	local p = LaneFresh({ Enable = true }).Lane.CampJobs.LookoutPoint(Vector(0, 0), { Vector(0, 300), Vector(1000, 300) }, 400)
-	check("lookout point is 400 along the polyline", near(p.x, 100) and near(p.y, 300), p.x .. "," .. p.y)
-	p = LaneFresh({ Enable = true }).Lane.CampJobs.LookoutPoint(Vector(0, 0), { Vector(200, 0) }, 400)
-	check("short path: lookout at its end", near(p.x, 200) and near(p.y, 0))
 end
 
 finish()
