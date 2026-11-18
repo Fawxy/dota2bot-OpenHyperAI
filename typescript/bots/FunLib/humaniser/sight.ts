@@ -2,6 +2,24 @@
  * Sight reads shared by telemetry and rigs (proposal docs/proposals/2026-11-18-vision-tool.md in the master repo): what the
  * team sees now, from the API (IsLocationVisible). No model of what it would see from elsewhere lives here yet (step M).
  */
+import { Unit, UnitType } from "bots/ts_libs/dota";
+
+/**
+ * The team's other sight sources near a point, for a model fitted against a grid: every allied hero but `skip`, creep,
+ * ward and building within `within` of (x, y), as `x:y:range` joined by ";" (range GetCurrentVisionRange, floored).
+ */
+export function Viewers(x: number, y: number, within: number, skip: Unit): string {
+    const parts: string[] = [];
+    for (const list of [UnitType.AlliedHeroes, UnitType.AlliedCreeps, UnitType.AlliedWards, UnitType.AlliedBuildings]) {
+        for (const u of GetUnitList(list)) {
+            if (u === skip || !u.IsAlive()) continue;
+            const p = u.GetLocation();
+            if (math.abs(p.x - x) > within || math.abs(p.y - y) > within) continue;
+            parts.push(`${math.floor(p.x)}:${math.floor(p.y)}:${math.floor(u.GetCurrentVisionRange())}`);
+        }
+    }
+    return parts.join(";");
+}
 
 /**
  * IsLocationVisible on a grid over the box (x0r, y0r) to (x1r, y1r), its corner snapped down to `step`, as

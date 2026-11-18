@@ -58,6 +58,7 @@ function CreepMeta:CanBeSeen() return not self.unseen end
 function CreepMeta:GetLocation() if self.removed or self.unseen then return nil end return self.loc end
 function CreepMeta:GetTeam() return self.team end
 function CreepMeta:GetBoundingRadius() return self.hull or 16 end
+function CreepMeta:GetCurrentVisionRange() return self.vision or 750 end
 function CreepMeta:GetAcquisitionRange() return self.acq or 500 end
 function CreepMeta:GetCurrentMovementSpeed() return self.speed or 325 end
 function CreepMeta:GetAttackPoint() return self.attackPoint or 0.5 end

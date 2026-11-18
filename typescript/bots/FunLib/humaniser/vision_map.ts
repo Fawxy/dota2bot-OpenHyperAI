@@ -7,7 +7,7 @@
  *               plus 8 when IsLocationPassable;
  *   kind=t      the next TREE_BATCH tree indices: `xy`, "i:x:y" joined by ";" for each index GetTreeLocation answers;
  *   kind=end    `rows`, `trees` (the count of trees logged).
- * Tree indices are read until TREE_GAP indices in a row answer nothing. Reads and logs only; it changes no order. The
+ * Tree indices are read until TREE_GAP indices in a row answer nothing (nil or (0, 0)). Reads and logs only; it changes no order. The
  * tick runs under pcall (index.ts), so a run is judged by its row counts.
  */
 import { Team, Unit } from "bots/ts_libs/dota";
@@ -66,7 +66,8 @@ function treeBatch(): void {
     const parts: string[] = [];
     for (let k = 0; k < TREE_BATCH && treeMiss < TREE_GAP; k++, treeAt++) {
         const [ok, loc] = pcall(GetTreeLocation, treeAt);
-        if (!ok || loc === undefined || loc === null) {
+        // An index with no tree answers (0, 0) (visionmap1: indices 2,476 to 137,799), not nil.
+        if (!ok || loc === undefined || loc === null || (loc.x === 0 && loc.y === 0)) {
             treeMiss++;
             continue;
         }

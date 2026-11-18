@@ -78,7 +78,7 @@ local function treeBatch()
                 local __continue10
                 repeat
                     local ok, loc = pcall(GetTreeLocation, treeAt)
-                    if not ok or loc == nil or loc == nil then
+                    if not ok or loc == nil or loc == nil or loc.x == 0 and loc.y == 0 then
                         treeMiss = treeMiss + 1
                         __continue10 = true
                         break

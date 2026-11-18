@@ -1141,6 +1141,10 @@ export const EVENTS = {
         /** ph=grid (a rig with `grid`), at ready: IsLocationVisible around the cast at `x`, `y`, as `x0,y0,nx,ny,step,hex`
          *  (sight.ts VisionGridBox: bit i is cell (i % nx, floor(i / nx)) from the south-west corner). */
         vg: "str",
+        /** ph=grid: the team's other sight sources (allied heroes but the cast, creeps, wards, buildings) within the box plus
+         *  2,000, `x:y:range` joined by ";" (sight.ts Viewers), and `vr` the cast's own GetCurrentVisionRange. */
+        vu: "str",
+        vr: "num",
         /** burst-read: ph=cast per spell order of a `burst` actor `pid` (`spell`, its `lvl`, `s` seconds from the burst's first
          *  order, the actor's `mana`, the target `tgt`); ph=trace every 0.25 s for the rig's `trace` seconds after ready (`s` from
          *  ready, the cast's `hp` and `mhp`, `est` the summed GetEstimatedDamageToTarget(true, cast, 3, all) of the `n` enemy

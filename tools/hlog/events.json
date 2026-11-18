@@ -839,6 +839,8 @@
    "sight": "str",
    "hl": "num",
    "vg": "str",
+   "vu": "str",
+   "vr": "num",
    "spell": "str",
    "lvl": "num",
    "s": "num",
@@ -2217,6 +2219,7 @@
    "fail": "text",
    "sight": "text",
    "vg": "text",
+   "vu": "text",
    "spell": "text",
    "foe": "text"
   },

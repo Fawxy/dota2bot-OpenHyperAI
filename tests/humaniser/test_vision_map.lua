@@ -31,7 +31,7 @@ do
 	GetWorldBounds = function() return { -128, -128, 128, 128 } end
 	HEIGHT = function(v) return v.x < 0 and 2 or 4 end
 	IMPASSABLE = function(v) return v.x == 128 end
-	TREES = { [0] = Vector(10.6, 20, 0), [2] = Vector(30, 40, 0) }
+	TREES = { [0] = Vector(10.6, 20, 0), [1] = Vector(0, 0, 0), [2] = Vector(30, 40, 0) }
 	local rad = MakeUnit({ pid = 1, team = 2, loc = Vector(0, 0) })
 	local dire = MakeUnit({ pid = 6, team = 3, loc = Vector(0, 0) })
 	local ls = capture(function()
@@ -48,7 +48,7 @@ do
 	check("vision_map: one start line, the box from GetWorldBounds", #st == 1 and field(st[1], "src") == "api" and field(st[1], "bx0") == "-128" and field(st[1], "step") == "64", st[1])
 	check("vision_map: five rows, one a frame (a second tick in the frame writes nothing)", #h == 5 and field(h[1], "y") == "-128" and field(h[5], "y") == "128", #h)
 	check("vision_map: a row is the height level plus 8 when passable, from x0 east", field(h[1], "x0") == "-128" and field(h[1], "n") == "5" and field(h[1], "hex") == "aacc4", h[1])
-	check("vision_map: trees by index, floored, the missing index skipped", #t == 1 and field(t[1], "xy") == "0:10:20;2:30:40", t[1])
+	check("vision_map: trees by index, floored, a missing index and one at (0, 0) skipped", #t == 1 and field(t[1], "xy") == "0:10:20;2:30:40", t[1])
 	check("vision_map: the end line counts rows and trees, once", #e == 1 and field(e[1], "rows") == "5" and field(e[1], "trees") == "2", e[1])
 	local again = capture(function() T = 0 VM.Tick(rad) end)
 	check("vision_map: nothing after the end", #again == 0, again[1])
