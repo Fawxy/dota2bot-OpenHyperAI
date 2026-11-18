@@ -115,6 +115,9 @@ function readItem(slot: number, item: Item): Sustain.Item | undefined {
     const charges = item.GetCurrentCharges() ?? 0;
     let hp = val(it, spec.hp);
     let mp = val(it, spec.mp);
+    // Logged before a per-charge item's values are multiplied by its charges: an empty wand's key still shows.
+    const hpRead = hp;
+    const mpRead = mp;
     const dur = spec.dur !== undefined ? it.GetSpecialValueFloat(spec.dur) ?? 0 : 0;
     let uses = charges;
     if (spec.perCharge) {
@@ -138,8 +141,8 @@ function readItem(slot: number, item: Item): Sustain.Item | undefined {
         itemLogged[name] = true;
         Telemetry.Event("sustain_item", [
             ["name", name],
-            ["hp", r1(hp)],
-            ["mp", r1(mp)],
+            ["hp", r1(hpRead)],
+            ["mp", r1(mpRead)],
             ["dur", r1(dur)],
             ["ch", charges],
         ]);
@@ -178,9 +181,10 @@ function regenLeft(bot: Unit): [number, number] {
     const done: Record<string, boolean> = {};
     for (const [name, spec] of pairs(ITEMS)) {
         if (spec.mod === undefined || done[spec.mod] || !bot.HasModifier(spec.mod)) continue;
-        done[spec.mod] = true;
+        // A buff two items start (tango, a shared tango) counts once, from whichever of them has been read.
         const l = learned[name];
-        if (l === undefined) continue;
+        if (l === undefined || l.hpRate + l.mpRate === 0) continue;
+        done[spec.mod] = true;
         const left = bot.GetModifierRemainingDuration(bot.GetModifierByName(spec.mod));
         hp += left * l.hpRate;
         mp += left * l.mpRate;

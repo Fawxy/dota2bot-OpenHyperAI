@@ -182,6 +182,8 @@ local function readItem(slot, item)
     local charges = item:GetCurrentCharges() or 0
     local hp = val(it, spec.hp)
     local mp = val(it, spec.mp)
+    local hpRead = hp
+    local mpRead = mp
     local dur = spec.dur ~= nil and (it:GetSpecialValueFloat(spec.dur) or 0) or 0
     local uses = charges
     if spec.perCharge then
@@ -218,11 +220,11 @@ local function readItem(slot, item)
                 {"name", name},
                 {
                     "hp",
-                    r1(hp)
+                    r1(hpRead)
                 },
                 {
                     "mp",
-                    r1(mp)
+                    r1(mpRead)
                 },
                 {
                     "dur",
@@ -305,12 +307,12 @@ local function regenLeft(bot)
                     __continue21 = true
                     break
                 end
-                done[spec.mod] = true
                 local l = learned[name]
-                if l == nil then
+                if l == nil or l.hpRate + l.mpRate == 0 then
                     __continue21 = true
                     break
                 end
+                done[spec.mod] = true
                 local left = bot:GetModifierRemainingDuration(bot:GetModifierByName(spec.mod))
                 hp = hp + left * l.hpRate
                 mp = mp + left * l.mpRate

@@ -102,11 +102,14 @@ function diffGame(game, file) {
         g.rows.push({ pid, t, file });
         groups.set(k, g);
     };
+    // A game start matches one shadow use at most (the first in time); a second shadow episode before it is shadow only.
+    const taken = new Set();
     for (const e of eps) {
         if (e.kind === 'none') continue;
         const obs = OBSERVED[e.name];
         if ((e.kind === 'use' || e.kind === 'step_out_use') && obs) {
-            const hit = starts.find((s) => s.pid === e.pid && s.item === obs && s.t >= e.t - C.BEFORE && s.t <= e.t + C.USE_AFTER);
+            const hit = starts.find((s) => !taken.has(s) && s.pid === e.pid && s.item === obs && s.t >= e.t - C.BEFORE && s.t <= e.t + C.USE_AFTER);
+            if (hit) taken.add(hit);
             add(e.pid, 'use', obs, hit ? 'matched' : 'shadow_only', e.t, hit ? hit.t - e.t : undefined);
         } else if (e.kind === 'home') {
             const hit = arr.find((a) => a.pid === e.pid && a.t >= e.t && a.t <= e.t + C.HOME_AFTER);

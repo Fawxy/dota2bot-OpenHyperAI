@@ -438,8 +438,9 @@ end
 
 -- Humaniser sustain (design step 2): the lane regen purchases below log their rule (ev=sustain_buy); telemetry only.
 local function BuyRegen( sItem, sWhy )
-	if J.Humaniser.IsEnabled() then J.Humaniser.SustainGather.Bought( bot, sItem, sWhy ) end
 	bot:ActionImmediate_PurchaseItem( sItem )
+	-- After the purchase, in a pcall: a telemetry error never skips it.
+	if J.Humaniser.IsEnabled() then pcall( J.Humaniser.SustainGather.Bought, bot, sItem, sWhy ) end
 end
 
 function ItemPurchaseThink()
