@@ -1,7 +1,7 @@
 /**
  * Map dump (`Overrides.VisionMap`, probe games only; master proposal docs/proposals/2026-11-18-vision-tool.md step M): the
  * inputs of a sight model that the API gives once, for `tools/hlog/sight.js`. The Radiant VM writes, one batch a frame
- * from its first tick (about 40 s of game time from the pre-horn):
+ * from its first tick (about 355 frames; it keys on GameTime changing, so a drill's clock reset does no harm):
  *   kind=start  the box (`bx0`..`by1`, from GetWorldBounds, else FALLBACK_HALF; `src` api | fallback) and `step`;
  *   kind=h      one row of the grid: `y`, `x0`, `n`, `hex`, one digit a cell from x0 east: GetHeightLevel (0 to 7),
  *               plus 8 when IsLocationPassable;
