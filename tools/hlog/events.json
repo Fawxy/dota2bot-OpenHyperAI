@@ -127,6 +127,7 @@
    "co": "num",
    "ced": "num",
    "cod": "num",
+   "step": "str",
    "by": "str",
    "order": "str",
    "rdy": "str"
@@ -273,6 +274,7 @@
    "co": "num",
    "ced": "num",
    "cod": "num",
+   "step": "str",
    "by": "str",
    "order": "str",
    "rdy": "str"
@@ -331,7 +333,8 @@
   "oha_idle": {
    "pid": "num",
    "mode": "num",
-   "held": "num"
+   "held": "num",
+   "d": "num"
   },
   "camp": {
    "idx": "num",
@@ -2003,6 +2006,7 @@
    "ln": "text",
    "mode": "text",
    "lf": "text",
+   "step": "text",
    "by": "text",
    "order": "text",
    "rdy": "text"
@@ -2038,6 +2042,7 @@
    "ln": "text",
    "mode": "text",
    "lf": "text",
+   "step": "text",
    "by": "text",
    "order": "text",
    "rdy": "text"

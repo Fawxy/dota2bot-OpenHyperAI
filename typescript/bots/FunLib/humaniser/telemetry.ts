@@ -100,6 +100,10 @@ interface BotState {
     invSig?: string;
     tpFrom?: [number, number, number];
     tpEndAt?: number;
+    // mode_laning_generic: whether the bot runs its Lua Think (false: Valve's C++ laning), its last step and when.
+    laneThink?: boolean;
+    laneStep?: string;
+    laneStepAt: number;
 }
 
 interface MarkRecord {
@@ -535,7 +539,7 @@ const states: Record<number, BotState> = {};
 function stateFor(pid: number): BotState {
     let s = states[pid];
     if (s === undefined) {
-        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false, smoked: false, aegis: false };
+        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false, smoked: false, aegis: false, laneStepAt: -math.huge };
         states[pid] = s;
     }
     return s;
@@ -548,12 +552,35 @@ function heroName(unit: Unit): string {
 /** Called from jmz_func CheckBotIdleState as it would relocate an idle bot; held when our job kept it (both arms). */
 export function NoteOhaIdle(bot: Unit, held: boolean): void {
     if (!IsEnabled()) return;
+    const front = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane(), 0);
     Event("oha_idle", [
         ["pid", bot.GetPlayerID()],
         ["mode", bot.GetActiveMode()],
         ["held", held ? 1 : 0],
+        ["d", math.floor(GetUnitToLocationDistance(bot, front))],
     ]);
 }
+
+/** Once at mode_laning_generic's load: false when the bot's laning is Valve's C++ one (the file defines no Think). */
+export function NoteLaneThink(bot: Unit, owned: boolean): void {
+    stateFor(bot.GetPlayerID()).laneThink = owned;
+}
+
+/** Every frame mode_laning_generic's Think runs: the name of the step that ended it (ev=snap `step`). */
+export function NoteLaneStep(bot: Unit, step: string): void {
+    const s = stateFor(bot.GetPlayerID());
+    s.laneStep = step;
+    s.laneStepAt = DotaTime();
+}
+
+/** The snapshot's `step`: the last one after `since` (the previous snapshot), `none` if the Think did not run, `valve` if it has none. */
+function laneStepField(bot: Unit, since: number): string {
+    const s = stateFor(bot.GetPlayerID());
+    if (s.laneThink === false) return "valve";
+    return s.laneStep !== undefined && s.laneStepAt > since ? s.laneStep : "none";
+}
+
+const guardedLaneStep = Guard("Telemetry.LaneStep", laneStepField, () => undefined);
 
 /** Called from AllyLastHit.MayLastHit for every enemy creep it judges. */
 export function NoteLastHitDecision(bot: Unit, creep: Unit, allowed: boolean, reason: string): void {
@@ -829,7 +856,7 @@ const guardedDamageFields = Guard("Telemetry.Damage", damageFields, () => []);
 // Slice cast-read: the cast read's "ready and unused" (ev=snap rdy).
 const guardedReady = Guard("Telemetry.Ready", SpellReady.ReadyList, () => undefined);
 
-function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
+function botFields(bot: Unit, ctx: BotContext | undefined, since: number): BotPair[] {
     const fields: BotPair[] = unitFields(bot);
     fields.push(["mode", HDebug.ModeName(bot.GetActiveMode())]);
     fields.push(["d", bot.GetActiveModeDesire()]);
@@ -841,6 +868,7 @@ function botFields(bot: Unit, ctx: BotContext | undefined): BotPair[] {
     for (const f of guardedOptionFields(bot)) fields.push(f);
     for (const f of guardedDamageFields(bot)) fields.push(f);
     fields.push(["rdy", guardedReady(bot)]);
+    fields.push(["step", guardedLaneStep(bot, since)]);
     if (ctx !== undefined) {
         fields.push(["by", ctx.by]);
         fields.push(["order", ctx.order]);
@@ -1001,7 +1029,7 @@ function reportMarks(bot: Unit, s: BotState, provider: ContextProvider | undefin
             ["pid", pid],
             ["hero", heroName(bot)],
         ];
-        for (const f of botFields(bot, ctx)) fields.push(f);
+        for (const f of botFields(bot, ctx, s.snapAt)) fields.push(f);
         fields.push(["competing", ctx?.competing]);
         Event("mark_state", fields);
     }
@@ -1684,9 +1712,10 @@ export function Tick(bot: Unit, provider?: ContextProvider, frameOnly?: boolean)
     guardedWorld(bot, now);
     guardedCreeps(bot, now);
     if (slow) {
+        const since = s.snapAt;
         s.snapAt = now;
         const fields: Fields<"snap"> = [["pid", bot.GetPlayerID()]];
-        for (const f of botFields(bot, provider !== undefined ? provider(bot) : undefined)) fields.push(f);
+        for (const f of botFields(bot, provider !== undefined ? provider(bot) : undefined, since)) fields.push(f);
         Event("snap", fields);
         guardedInventory(bot, s);
     }

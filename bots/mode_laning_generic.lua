@@ -352,63 +352,75 @@ local function PositionThink()
 	if target_loc ~= nil then bot:Action_MoveToLocation(target_loc + RandomVector(50)) end
 end
 
+-- Telemetry only (ev=snap step=): each step below returns its name, which no decision reads.
+local Telemetry = J.Humaniser.Telemetry
+Telemetry.NoteLaneThink(bot, bOwnsThink)
+
+-- A support whose body owns its lane hits but not its harass keeps OHA's positioning: the body's hold would cancel its
+-- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With Ours.SupportHarass its hold is a support_lane
+-- step, which Think runs first, so this runs for it only on a frame the body is not running or its task is guarded.
+local function BodyOrPositionThink()
+	if not States.BodySupportHits(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body' end
+	PositionThink()
+	return 'oha_pos'
+end
+
 if bOwnsThink then
 	States.SetLaneSpot(bot, PositionTarget)
-	function Think()
+	local function ThinkSteps()
 		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
-		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return end
+		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body_hit' end
 		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, its lane hits first) come before every step below.
-		if States.SupportStep(bot) then return end
+		if States.SupportStep(bot) then return 'support' end
 		-- Lane-only (a drill): only the last-hit steps (the body's, or OHA's where the body does not own them) and the position.
 		if J.Humaniser.Overrides.LaneOnly(bot) then
 			-- A drill's lane-only core with the wave hold (drill entry laneHold): the hold and its own draw first.
-			if States.LaneOnlyHoldStep(bot) then return end
+			if States.LaneOnlyHoldStep(bot) then return 'aggro' end
 			-- A lever drill's lane-only core with lane aggro (drill entry laneAggro): the feed and the other draws.
-			if States.LaneOnlyAggroStep(bot) then return end
+			if States.LaneOnlyAggroStep(bot) then return 'aggro' end
 			if not States.BodyLastHits(bot) then
-				if not States.BodySupportLastHits(bot) and LastHitThink() then return end
-				if not States.BodySupportHits(bot) and DenyThink() then return end
+				if not States.BodySupportLastHits(bot) and LastHitThink() then return 'oha_lh' end
+				if not States.BodySupportHits(bot) and DenyThink() then return 'oha_deny' end
 			end
-			if States.BodySupportHits(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
-			return
+			return BodyOrPositionThink()
 		end
 		-- Ours.LaneAggro: a core's creep draw (lane_aggro feed, drag) before OHA's techniques and the body's next scan.
-		if States.CoreAggroStep(bot) then return end
+		if States.CoreAggroStep(bot) then return 'aggro' end
 		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
-		if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return end
+		if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return 'etiquette' end
 		-- A technique before the last hit could take a frame inside the self-test's start window and score a miss.
 		bHoldingForLastHit = false
 		if bLaneLaning and not bTrainerSelfTest then
 			-- Aggro draws wait for a creep that is dying or about to be.
 			local sLastHit = LastHitState()
-			if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return end
+			if Lane.PreThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, sLastHit) then return 'lane_pre' end
 		end
 		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
 		-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
 		-- slice 4), it takes them and the denies itself in its Step below.
 		if not States.BodyLastHits(bot) then
 			-- Ours.SupportLastHit: the support's body takes the last hits its claims give it (states/lane_claims), so OHA's do not run.
-			if not States.BodySupportLastHits(bot) and LastHitThink() then return end
-			if not States.BodySupportHits(bot) and DenyThink() then return end
+			if not States.BodySupportLastHits(bot) and LastHitThink() then return 'oha_lh' end
+			if not States.BodySupportHits(bot) and DenyThink() then return 'oha_deny' end
 			if bHoldingForLastHit then
 				bot:Action_MoveToLocation(bot:GetLocation())
-				return
+				return 'oha_hold'
 			end
 		end
-		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return end
+		if bLaneLaning and Lane.Think(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy) then return 'lane_think' end
 
 		if (bHumaniserLaning or bLaneLaning) and Lane.SupersedesHarass(bot) then
-			if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return end
-		elseif bHumaniserLaning and HarassThink() then return end
+			if Lane.HarassThink(bot, nAllyCreeps, nEnemyCreeps, nInRangeEnemy, bHumaniserLaning) then return 'harass' end
+		elseif bHumaniserLaning and HarassThink() then return 'harass' end
 
 		if local_mode_laning_generic then
 			local_mode_laning_generic.Think()
 		end
 
-		-- A support whose body owns its lane hits but not its harass keeps OHA's positioning: the body's hold would cancel its
-		-- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With Ours.SupportHarass its hold is a support_lane
-		-- step above, so this line runs for it only on a frame the body is not running or its task is guarded.
-		if States.BodySupportHits(bot) or not States.Step(bot, BOT_MODE_LANING) then PositionThink() end
+		return BodyOrPositionThink()
+	end
+	function Think()
+		Telemetry.NoteLaneStep(bot, ThinkSteps())
 	end
 end
 

@@ -94,6 +94,7 @@ Team-wide: written once per module instance, de-duplicated by `parse.js` within 
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
 - `hv` num: Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
 - `ce` num: Where the hero stands against the lane creeps, to 12:00 (slice snap-creeps): enemy lane creeps within 500 (protective aggro: an attack on an enemy hero draws its creeps within 500 of the attacker) and within attack range + 48 (centre to centre), own lane creeps within 500, and the distance to the nearest enemy and own lane creep within 1,600 (absent if none).
+- `step` str: Which step of mode_laning_generic's Think acted most recently since the previous snapshot (slice step-telemetry): `body_hit` the laning body's running last-hit or deny swing, `support` a support's lane steps (states/support_lane), `aggro` lane aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `lane_pre` / `lane_think` / `harass` the older humaniser Lane paths, `oha_lh` / `oha_deny` / `oha_hold` OHA's last hit, deny and hold-for-the-hit, `body` the laning body's step, `oha_pos` OHA's PositionThink; `none` when the Lua Think did not run since the previous snapshot, `valve` for a bot whose laning is Valve's C++ one (no Lua Think). Bots only.
 - `by` str: Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`.
 - `rdy` str: Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other.
 
@@ -234,6 +235,7 @@ A hero's snapshot, about once a second, for bots and humans. Read by `hero_minut
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
 - `hv` num: Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
 - `ce` num: Where the hero stands against the lane creeps, to 12:00 (slice snap-creeps): enemy lane creeps within 500 (protective aggro: an attack on an enemy hero draws its creeps within 500 of the attacker) and within attack range + 48 (centre to centre), own lane creeps within 500, and the distance to the nearest enemy and own lane creep within 1,600 (absent if none).
+- `step` str: Which step of mode_laning_generic's Think acted most recently since the previous snapshot (slice step-telemetry): `body_hit` the laning body's running last-hit or deny swing, `support` a support's lane steps (states/support_lane), `aggro` lane aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `lane_pre` / `lane_think` / `harass` the older humaniser Lane paths, `oha_lh` / `oha_deny` / `oha_hold` OHA's last hit, deny and hold-for-the-hit, `body` the laning body's step, `oha_pos` OHA's PositionThink; `none` when the Lua Think did not run since the previous snapshot, `valve` for a bot whose laning is Valve's C++ one (no Lua Think). Bots only.
 - `by` str: Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`.
 - `rdy` str: Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other.
 
@@ -289,6 +291,7 @@ A check by OHA's `J.CheckBotIdleState`: a bot moved under 100 in 3 s in farm or 
 `pid` num, `mode` num
 
 - `held` num: 1 when a running job of ours kept the bot, 0 when OHA relocated it.
+- `d` num: Distance from the hero to where OHA sends it (its assigned lane's own front, `GetLaneFrontLocation` amount 0), as it fires.
 
 ## camp
 

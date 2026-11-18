@@ -60,6 +60,7 @@ ____exports.BOT = __TS__ObjectAssign({}, ____exports.UNIT, {
     co = "num",
     ced = "num",
     cod = "num",
+    step = "str",
     by = "str",
     order = "str",
     rdy = "str"
@@ -259,7 +260,7 @@ ____exports.EVENTS = {
         ms = "num",
         max_ms = "num"
     },
-    oha_idle = {pid = "num", mode = "num", held = "num"},
+    oha_idle = {pid = "num", mode = "num", held = "num", d = "num"},
     camp = {
         idx = "num",
         team = "num",
