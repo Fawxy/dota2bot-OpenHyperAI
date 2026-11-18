@@ -215,6 +215,7 @@ export function Tick(bot: Unit): void {
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
     LaneMetrics.Tick(bot);
+    WaveHold.Watch(bot, HoldHosted(bot), BodyBusy(bot));
     WaveHold.Tick(bot);
     lanePos(bot, l);
 }
@@ -330,19 +331,30 @@ export function CoreAggroStep(bot: Unit): boolean {
     // (stalled, never_started) until the state restarts it; a core's open draw is stepped regardless or it ends `stale`
     // (awchk1). Only the open one: no new draw starts with the body off, and a support's draw stays support_lane's.
     if (!BodyLastHits(bot)) return CoreLastHit.Applies(bot) && LaneAggro.StepOpen(bot);
-    // Ours.CoreHold: the wave hold sets the spot's `hold` input or starts lane aggro's `back` draw, which the step below acts.
-    WaveHold.Step(bot);
+    // Ours.CoreHold: the wave hold's read (Tick) set the spot's `hold` input; here it starts the `back` draw it wants, which
+    // the step below acts.
+    WaveHold.Act(bot);
     return LaneAggro.Step(bot);
 }
 
 /**
- * A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started, stepped by
+ * A drill's lane-only core with the wave hold (drill entry `laneHold`): the draw the hold wants and its open draw, stepped by
  * mode_laning_generic's lane-only branch; no other lane aggro draw starts (StepOpen steps only an open one).
  */
 export function LaneOnlyHoldStep(bot: Unit): boolean {
     if (!IsEnabled() || !Drill.LaneHold(bot) || !BodyLastHits(bot)) return false;
-    WaveHold.Step(bot);
+    WaveHold.Act(bot);
     return LaneAggro.StepOpen(bot);
+}
+
+/**
+ * Whether the wave hold's read runs for this core (slice hold-through-swing): where one of the two steps above would step it,
+ * the laning body running (outside a drill, CoreAggroStep; a lane-only drill core, only with `laneHold`). Swing frames count:
+ * the read gives no order.
+ */
+export function HoldHosted(bot: Unit): boolean {
+    if (!BodyLastHits(bot)) return false;
+    return !Drill.LaneOnly(bot) || Drill.LaneHold(bot);
 }
 
 /** A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, stepped by mode_laning_generic's

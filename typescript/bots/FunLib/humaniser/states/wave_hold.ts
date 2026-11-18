@@ -15,8 +15,9 @@
  * Two starts (logged as `trig`, decided 06/11/2026 from obs0611 marks 4 and 5): `gone`, our wave is gone from the lane outside
  * our T1's range; `forecast`, our wave is still fighting theirs at or inside the hold point and lane_push's run has their front
  * inside our T1's fire within ForecastSecs, so the core is in front before our wave dies.
- * One ev=wave_hold line per attempt, at its end. Stepped from the core draw step (States.CoreAggroStep, H1), before lane
- * aggro's own step; States.Tick ends an attempt whose caller lost the frame.
+ * One ev=wave_hold line per attempt, at its end. Its read (Read: starts, ends, the branch, the spot's input) runs every tick
+ * from States.Tick while the laning body hosts it, swing frames included; its orders (Act: lane_aggro's draws) from the core
+ * draw step (States.CoreAggroStep, H1), before lane aggro's own step. Tick ends an attempt with no laning host for LeftAfter.
  */
 import { BotMode, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -94,7 +95,7 @@ export const SETTINGS = {
     CreepSpeed: 325,
     DrawSecs: 1,
     DragMargin: 2,
-    /** Ends: HurtShare of max HP lost since the start, or under HurtFloor; not stepped for LeftAfter; MaxSecs. */
+    /** Ends: HurtShare of max HP lost since the start, or under HurtFloor; no laning host for LeftAfter; MaxSecs. */
     HurtShare: 0.25,
     HurtFloor: 0.35,
     LeftAfter: 3,
@@ -303,6 +304,11 @@ interface Attempt {
     bd: number;
     /** Hold draws given (lane_aggro StartBack on the hold branch). */
     hdr: number;
+    /** Reads made while the body's swing held the frame. */
+    hs: number;
+    /** The draw the last read wants (the drag's start, or the hold draw to `at`), for Act to give on a frame the lane step
+     *  gets; consumed once, replaced by every read. */
+    want?: { kind: "drag" | "hold"; at: Vector };
     /** Our creeps already fighting at the start that do not end it as `met` (the losing wave, a lone creep under the T1). */
     old: Unit[];
     n: number;
@@ -467,6 +473,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["hd", math.floor(a.hd)],
         ["rch", math.floor(a.rch)],
         ["hdr", a.hdr],
+        ["hs", a.hs],
         ["n", a.n],
         ["lh", counter(bot, "GetLastHits") - a.lh0],
         ["dn", counter(bot, "GetDenies") - a.dn0],
@@ -495,7 +502,8 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
     ]);
 }
 
-/** Every frame (States.Tick): an attempt whose caller lost the frame ends, `retreat` when OHA's retreat holds the core. */
+/** Every tick (States.Tick, after Watch): an attempt with no laning host for LeftAfter ends `left`, `retreat` when OHA's
+ *  retreat holds the core. */
 export function Tick(bot: Unit): void {
     const a = attempts[bot.GetPlayerID()];
     if (a === undefined) return;
@@ -528,6 +536,7 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, r
         behind: pointAt(v, -BehindAt(reach), z),
         bd: BehindAt(reach),
         hdr: 0,
+        hs: 0,
         why: trig === "forecast" ? "losing" : whyGone(bot, now),
         trig,
         fc,
@@ -678,15 +687,19 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
 }
 
 /**
- * One frame for this core: starts, steps or ends the hold. It gives no order itself: the hold is the spot's input, the drag
- * lane_aggro's draw (stepped right after by the caller).
+ * The hold's read, every tick from States.Tick (slice hold-through-swing): starts, reads and ends the attempt and sets the
+ * spot's `hold` input; the draws it wants are Act's. `hosted`: the laning body runs for this core where its lane step would
+ * step the hold (States.HoldHosted); `swing`: the body's last-hit or deny swing holds the frame. A read needs no frame of its
+ * own, so the core's swings at the hold point no longer starve it (mid 161.1, ladder-solo rad1: a 3 s chain of last hits
+ * and denies ended a hold `left` and the spot walked two creeps on the core into our T1's fire).
  */
-export function Step(bot: Unit): void {
+export function Watch(bot: Unit, hosted: boolean, swing: boolean): void {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
+    hosted = hosted && bot.GetActiveMode() === BotMode.Laning;
     let a = attempts[pid];
     if (a === undefined) {
-        if (!Owns(bot)) return;
+        if (!hosted || !Owns(bot)) return;
         const last = decidedAt[pid];
         if (last !== undefined && now - last < SETTINGS.Every) return;
         decidedAt[pid] = now;
@@ -694,6 +707,12 @@ export function Step(bot: Unit): void {
         if (started === undefined) return;
         a = started;
         attempts[pid] = a;
+    }
+    // With no laning host (another mode has the core, or the body is not running), Tick ends the attempt after LeftAfter.
+    // A draw wanted before the hand-off is stale on the way back: Act may run before the next read (review).
+    if (!hosted) {
+        a.want = undefined;
+        return;
     }
     a.steppedAt = now;
     a.hpMin = math.min(a.hpMin, bot.GetHealth());
@@ -704,6 +723,8 @@ export function Step(bot: Unit): void {
     if (now - a.startedAt > SETTINGS.MaxSecs) return finish(bot, a, "timeout", now);
     if (now - a.readAt < SETTINGS.Every) return;
     a.readAt = now;
+    a.want = undefined;
+    if (swing) a.hs++;
     const v = viewOf(bot.GetTeam(), a.lane);
     if (v === undefined) return finish(bot, a, "left", now);
     let front = math.huge;
@@ -765,16 +786,18 @@ export function Step(bot: Unit): void {
         a.cr = "cost";
         return finish(bot, a, "concede", now);
     }
-    if (br === "drag" && !dragging && !LaneAggro.StartBack(bot, a.behind)) {
-        a.cr = "drag";
-        return finish(bot, a, "concede", now);
+    // The hold point (the drag's point on the drag and retreat branches; OHA's retreat holds the frame on the latter) anchors
+    // the spot for the whole attempt, over lane_spot's other anchors.
+    if (br === "drag" && !dragging) {
+        // The drag's draw starts in Act; the branch changes only once it has (its failure concedes there).
+        a.want = { kind: "drag", at: a.behind };
+        Laning.SetHold(bot, a.br === "hold" ? a.hold : a.behind);
+        return;
     }
     if (br !== a.br) {
         a.sw++;
         a.br = br;
     }
-    // The hold point (the drag's point on the drag and retreat branches; OHA's retreat holds the frame on the latter) anchors
-    // the spot for the whole attempt, over lane_spot's other anchors.
     Laning.SetHold(bot, a.br === "hold" ? a.hold : a.behind);
     if (a.br === "hold" && !LaneAggro.Acting(bot)) {
         let on = 0;
@@ -782,8 +805,35 @@ export function Step(bot: Unit): void {
             const t = x.u.GetAttackTarget();
             if (t !== undefined && t !== null && t === bot) on++;
         }
-        if (DrawNow(front, a.hd, GetUnitToLocationDistance(bot, a.hold), on) && LaneAggro.StartBack(bot, pointAt(v, a.hd + SETTINGS.HoldDrawOut, a.hold.z), "hold")) a.hdr++;
+        if (DrawNow(front, a.hd, GetUnitToLocationDistance(bot, a.hold), on)) a.want = { kind: "hold", at: pointAt(v, a.hd + SETTINGS.HoldDrawOut, a.hold.z) };
     }
+}
+
+/**
+ * The hold's orders, from the lane step that steps it (States.CoreAggroStep, LaneOnlyHoldStep), which a body swing never
+ * reaches: the draw the last read wants, through lane_aggro's `back` (stepped right after by the caller). The drag's draw
+ * that does not start concedes the attempt (`cr=drag`), as before the split.
+ */
+export function Act(bot: Unit): void {
+    const a = attempts[bot.GetPlayerID()];
+    if (a === undefined || a.want === undefined) return;
+    const w = a.want;
+    a.want = undefined;
+    if (w.kind === "hold") {
+        if (!LaneAggro.Acting(bot) && LaneAggro.StartBack(bot, w.at, "hold")) a.hdr++;
+        return;
+    }
+    // A drag wanted while another draw acts (the hold draw) does not start, and concedes as before the split: StartBack
+    // refuses while a draw is open.
+    if (!LaneAggro.StartBack(bot, w.at)) {
+        a.cr = "drag";
+        return finish(bot, a, "concede", DotaTime());
+    }
+    if (a.br !== "drag") {
+        a.sw++;
+        a.br = "drag";
+    }
+    Laning.SetHold(bot, a.behind);
 }
 
 export function Reset(): void {

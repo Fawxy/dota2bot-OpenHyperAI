@@ -825,7 +825,7 @@ export const EVENTS = {
          *  `retreat` (OHA's retreat took the core). */
         br: "str",
         /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
-         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
+         *  `hurt`, `left` (no laning host for LeftAfter: another mode, or the laning body not running; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
          *  the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start;
          *  `cr`). */
         res: "str",
@@ -844,6 +844,9 @@ export const EVENTS = {
         rch: "num",
         /** Hold draws: lane_aggro `back` draws the holding core gave to take their wave's aggro at the hold point. */
         hdr: "num",
+        /** Reads of the attempt made while the laning body's last-hit or deny swing held the frame (slice hold-through-swing:
+         *  the read runs from States.Tick, so a swing no longer ends the attempt `left`). */
+        hs: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         /** Our last hits during the attempt. */

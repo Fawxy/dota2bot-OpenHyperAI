@@ -491,12 +491,13 @@ Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave w
 - `pid` num: The holding core.
 - `lane` num: The lane held.
 - `br` str: The last branch: `hold` (at the lane target, lane_spot input `hold`), `drag` (lane_aggro `back` behind our T1), `retreat` (OHA's retreat took the core).
-- `res` str: `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch), `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start; `cr`).
+- `res` str: `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch), `hurt`, `left` (no laning host for LeftAfter: another mode, or the laning body not running; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start; `cr`).
 - `why` str: Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in the last 20 s), `other`.
 - `trig` str: The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting within 200 past the hold point, lane_push's run has their front inside our T1's fire (`rch`) in `fc` seconds; `why` is `losing`).
 - `hd` num: The hold point's distance from our T1: the lane target, or their front when nearer, never inside `rch` + 50.
 - `rch` num: Our T1's fire reach to a creep's centre (attack range plus both hull radii, from the API; fallback 860): the start's late floor and the hold point's floor are this plus 50.
 - `hdr` num: Hold draws: lane_aggro `back` draws the holding core gave to take their wave's aggro at the hold point.
+- `hs` num: Reads of the attempt made while the laning body's last-hit or deny swing held the frame (slice hold-through-swing: the read runs from States.Tick, so a swing no longer ends the attempt `left`).
 - `n` num: Their lane creeps in the stretch at the start; our last hits and denies during the attempt.
 - `lh` num: Our last hits during the attempt.
 - `dn` num: Our denies during the attempt.
