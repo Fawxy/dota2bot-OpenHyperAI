@@ -19,7 +19,7 @@ export const SPELL_DAMAGE: Record<string, [key: string, perSecond: boolean, dama
     zuus_lightning_bolt: ["damage", false, 2],
 };
 
-/** Per damaging ability Valve's estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. */
+/** Per damaging ability Valve's estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. A multi-hit or over-time spell whose key is a per-hit or per-tick value is counted once. */
 export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damageType: number, status: "left_out" | "unknown"]> = {
     abaddon_aphotic_shield: ["damage_absorb", false, 2, "unknown"],
     abyssal_underlord_firestorm: ["wave_damage", false, 2, "unknown"],
@@ -249,7 +249,6 @@ export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damag
     shredder_whirling_death: ["whirling_damage", false, 4, "unknown"],
     silencer_curse_of_the_silent: ["damage", false, 2, "unknown"],
     silencer_last_word: ["damage", false, 2, "unknown"],
-    skeleton_king_bone_guard: ["talent_skeleton_damage", false, 1, "left_out"],
     skeleton_king_hellfire_blast: ["damage", false, 2, "left_out"],
     skywrath_mage_arcane_bolt: ["bolt_damage", false, 2, "unknown"],
     skywrath_mage_concussive_shot: ["damage", false, 2, "unknown"],
