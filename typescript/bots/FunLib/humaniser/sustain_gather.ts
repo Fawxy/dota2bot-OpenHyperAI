@@ -91,7 +91,9 @@ export const SETTINGS = {
 // --------------------------------------------------------------------------------------------------------------- reads
 
 /** Per item name: the most charges seen (what a purchase holds), and what one charge restores per second (a running buff). */
-const learned: Record<string, { maxCharges: number; hp: number; mp: number; hpRate: number; mpRate: number } | undefined> = {};
+const learned: Record<string, { pack: number; hp: number; mp: number; hpRate: number; mpRate: number } | undefined> = {};
+/** Per hero: the charges of each item held at the last read, for a purchase's size. */
+const heldCharges: Record<number, Record<string, number> | undefined> = {};
 const itemLogged: Record<string, boolean> = {};
 
 function val(it: SpecItem, key: string | [string, string] | undefined): number {
@@ -123,9 +125,8 @@ function readItem(slot: number, item: Item): Sustain.Item | undefined {
         // A single-use item with no charge count (a shared tango) is one use.
         uses = 1;
     }
-    const l = (learned[name] ??= { maxCharges: 0, hp: 0, mp: 0, hpRate: 0, mpRate: 0 });
+    const l = (learned[name] ??= { pack: 0, hp: 0, mp: 0, hpRate: 0, mpRate: 0 });
     if (!spec.perCharge) {
-        if (charges > l.maxCharges) l.maxCharges = charges;
         l.hp = hp;
         l.mp = mp;
         if (dur > 0) {
@@ -149,12 +150,24 @@ function readItem(slot: number, item: Item): Sustain.Item | undefined {
 /** The heal and mana items in slots 0-8 (the backpack counts: a swap brings one out). */
 export function Items(bot: Unit): Sustain.Item[] {
     const out: Sustain.Item[] = [];
+    const now: Record<string, number> = {};
     for (let s = 0; s <= 8; s++) {
         const item = bot.GetItemInSlot(s);
         if (item === undefined || item === null) continue;
         const it = readItem(s, item);
-        if (it !== undefined) out.push(it);
+        if (it === undefined) continue;
+        out.push(it);
+        const name = item.GetName();
+        now[name] = (now[name] ?? 0) + (item.GetCurrentCharges() ?? 0);
     }
+    // What one purchase holds: the smallest rise in a hero's charges of an item (two stacked tango packs read 6 at once).
+    const before = (heldCharges[bot.GetPlayerID()] ??= {});
+    for (const [name, n] of pairs(now)) {
+        const rise = n - (before[name] ?? 0);
+        const l = learned[name];
+        if (l !== undefined && rise > 0 && (l.pack === 0 || rise < l.pack)) l.pack = rise;
+    }
+    heldCharges[bot.GetPlayerID()] = now;
     return out;
 }
 
@@ -245,7 +258,7 @@ function shopOf(): Sustain.Offer[] {
     for (const [name, spec] of pairs(ITEMS)) {
         const l = learned[name];
         if (!spec.shop || l === undefined || GetItemStockCount(name) <= 0) continue;
-        const n = math.max(1, l.maxCharges);
+        const n = math.max(1, l.pack);
         out.push({ name: string.gsub(name, "^item_", "")[0], cost: GetItemCost(name), hp: l.hp * n, mp: l.mp * n });
     }
     return out;

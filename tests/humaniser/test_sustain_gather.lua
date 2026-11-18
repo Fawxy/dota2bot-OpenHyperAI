@@ -103,6 +103,20 @@ check("a hero seen 9 s ago still counts; gone at 11 s",
 	near(j.laneBurst, 250) and (function() T = 111 return near(G.Gather(bot).laneBurst, 0) end)())
 check("a running tango's 8 s left restore 56; a busy courier is no courier", near(j.regenLeft, 56) and j.courier == nil)
 
+-- Two stacked packs read 6 at once; a later pack of 3 sets what one purchase holds.
+local other = MakeUnit({ pid = 2, team = 2, hp = 600, maxhp = 600, loc = Vector(0, 0) })
+other.n = 6
+function other:GetItemInSlot(s) if s == 0 then return itemOf("item_tango", self.n, TANGO) end return nil end
+G._test.learned.item_tango.pack = 0
+G.Items(other)
+local six = G._test.learned.item_tango.pack
+other.n = 2
+G.Items(other)
+other.n = 5
+G.Items(other)
+check("a purchase's size is the smallest rise in charges: 3 after a stack of 6", six == 6 and G._test.learned.item_tango.pack == 3,
+	"after the stack " .. tostring(six))
+
 local S = require("bots/FunLib/humaniser/sustain")
 local fields = G.CutFields(0, i, S.Decide(i))
 local f = {}

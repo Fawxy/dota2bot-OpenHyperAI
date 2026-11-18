@@ -149,6 +149,8 @@ ____exports.SETTINGS = {
 }
 --- Per item name: the most charges seen (what a purchase holds), and what one charge restores per second (a running buff).
 local learned = {}
+--- Per hero: the charges of each item held at the last read, for a purchase's size.
+local heldCharges = {}
 local itemLogged = {}
 local function val(it, key)
     if key == nil then
@@ -192,7 +194,7 @@ local function readItem(slot, item)
     local ____learned_0, ____name_1 = learned, name
     if ____learned_0[____name_1] == nil then
         ____learned_0[____name_1] = {
-            maxCharges = 0,
+            pack = 0,
             hp = 0,
             mp = 0,
             hpRate = 0,
@@ -201,9 +203,6 @@ local function readItem(slot, item)
     end
     local l = learned[name]
     if not spec.perCharge then
-        if charges > l.maxCharges then
-            l.maxCharges = charges
-        end
         l.hp = hp
         l.mp = mp
         if dur > 0 then
@@ -249,30 +248,48 @@ end
 --- The heal and mana items in slots 0-8 (the backpack counts: a swap brings one out).
 function ____exports.Items(bot)
     local out = {}
+    local now = {}
     do
         local s = 0
         while s <= 8 do
             do
-                local __continue16
+                local __continue15
                 repeat
                     local item = bot:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue16 = true
+                        __continue15 = true
                         break
                     end
                     local it = readItem(s, item)
-                    if it ~= nil then
-                        out[#out + 1] = it
+                    if it == nil then
+                        __continue15 = true
+                        break
                     end
-                    __continue16 = true
+                    out[#out + 1] = it
+                    local name = item:GetName()
+                    now[name] = (now[name] or 0) + (item:GetCurrentCharges() or 0)
+                    __continue15 = true
                 until true
-                if not __continue16 then
+                if not __continue15 then
                     break
                 end
             end
             s = s + 1
         end
     end
+    local ____heldCharges_3, ____temp_4 = heldCharges, bot:GetPlayerID()
+    if ____heldCharges_3[____temp_4] == nil then
+        ____heldCharges_3[____temp_4] = {}
+    end
+    local before = heldCharges[bot:GetPlayerID()]
+    for name, n in pairs(now) do
+        local rise = n - (before[name] or 0)
+        local l = learned[name]
+        if l ~= nil and rise > 0 and (l.pack == 0 or rise < l.pack) then
+            l.pack = rise
+        end
+    end
+    heldCharges[bot:GetPlayerID()] = now
     return out
 end
 --- HP and mana the regen buffs on the bot still restore: the buff's time left times the rate read from the item.
@@ -282,24 +299,24 @@ local function regenLeft(bot)
     local done = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue20
+            local __continue21
             repeat
                 if spec.mod == nil or done[spec.mod] or not bot:HasModifier(spec.mod) then
-                    __continue20 = true
+                    __continue21 = true
                     break
                 end
                 done[spec.mod] = true
                 local l = learned[name]
                 if l == nil then
-                    __continue20 = true
+                    __continue21 = true
                     break
                 end
                 local left = bot:GetModifierRemainingDuration(bot:GetModifierByName(spec.mod))
                 hp = hp + left * l.hpRate
                 mp = mp + left * l.mpRate
-                __continue20 = true
+                __continue21 = true
             until true
-            if not __continue20 then
+            if not __continue21 then
                 break
             end
         end
@@ -318,11 +335,11 @@ local function treeOf(bot, enemies)
     local bestD = math.huge
     for ____, tree in ipairs(bot:GetNearbyTrees(____exports.SETTINGS.TreeScan) or ({})) do
         do
-            local __continue26
+            local __continue27
             repeat
                 local loc = GetTreeLocation(tree)
                 if not IsLocationVisible(loc) or not IsLocationPassable(loc) then
-                    __continue26 = true
+                    __continue27 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, loc)
@@ -330,9 +347,9 @@ local function treeOf(bot, enemies)
                     bestD = d
                     best = loc
                 end
-                __continue26 = true
+                __continue27 = true
             until true
-            if not __continue26 then
+            if not __continue27 then
                 break
             end
         end
@@ -355,26 +372,26 @@ end
 --- Per bot, per enemy pid: the damage it could deal us over the burst window when last seen in our lane, and when.
 local laneSeen = {}
 local function laneBurst(bot, enemies, now)
-    local ____laneSeen_3, ____temp_4 = laneSeen, bot:GetPlayerID()
-    if ____laneSeen_3[____temp_4] == nil then
-        ____laneSeen_3[____temp_4] = {}
+    local ____laneSeen_6, ____temp_7 = laneSeen, bot:GetPlayerID()
+    if ____laneSeen_6[____temp_7] == nil then
+        ____laneSeen_6[____temp_7] = {}
     end
     local mine = laneSeen[bot:GetPlayerID()]
     for ____, e in ipairs(enemies) do
         do
-            local __continue34
+            local __continue35
             repeat
                 if GetUnitToUnitDistance(bot, e) > ____exports.SETTINGS.LaneRadius then
-                    __continue34 = true
+                    __continue35 = true
                     break
                 end
                 mine[e:GetPlayerID()] = {
                     dmg = SpellReady.DamageOn(e, bot, Threat.SETTINGS.BurstWindow),
                     at = now
                 }
-                __continue34 = true
+                __continue35 = true
             until true
-            if not __continue34 then
+            if not __continue35 then
                 break
             end
         end
@@ -424,23 +441,23 @@ local function shopOf()
     local out = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue48
+            local __continue49
             repeat
                 local l = learned[name]
                 if not spec.shop or l == nil or GetItemStockCount(name) <= 0 then
-                    __continue48 = true
+                    __continue49 = true
                     break
                 end
-                local n = math.max(1, l.maxCharges)
+                local n = math.max(1, l.pack)
                 out[#out + 1] = {
                     name = (string.gsub(name, "^item_", "")),
                     cost = GetItemCost(name),
                     hp = l.hp * n,
                     mp = l.mp * n
                 }
-                __continue48 = true
+                __continue49 = true
             until true
-            if not __continue48 then
+            if not __continue49 then
                 break
             end
         end
@@ -454,11 +471,11 @@ local function healsOf(a)
         local s = 0
         while s <= 8 do
             do
-                local __continue51
+                local __continue52
                 repeat
                     local item = a:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue51 = true
+                        __continue52 = true
                         break
                     end
                     local spec = ____exports.ITEMS[item:GetName()]
@@ -468,9 +485,9 @@ local function healsOf(a)
                             item:GetCurrentCharges() or 0
                         )
                     end
-                    __continue51 = true
+                    __continue52 = true
                 until true
-                if not __continue51 then
+                if not __continue52 then
                     break
                 end
             end
@@ -506,10 +523,10 @@ function ____exports.Gather(bot, run)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue58
+            local __continue59
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.AllyRadius then
-                    __continue58 = true
+                    __continue59 = true
                     break
                 end
                 allies[#allies + 1] = {
@@ -517,9 +534,9 @@ function ____exports.Gather(bot, run)
                     missing = a:GetMaxHealth() - a:GetHealth(),
                     heals = healsOf(a)
                 }
-                __continue58 = true
+                __continue59 = true
             until true
-            if not __continue58 then
+            if not __continue59 then
                 break
             end
         end
@@ -702,9 +719,9 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____cutState_6, ____pid_7 = cutState, pid
-    if ____cutState_6[____pid_7] == nil then
-        ____cutState_6[____pid_7] = {at = -math.huge, decidedAt = -math.huge}
+    local ____cutState_9, ____pid_10 = cutState, pid
+    if ____cutState_9[____pid_10] == nil then
+        ____cutState_9[____pid_10] = {at = -math.huge, decidedAt = -math.huge}
     end
     local st = cutState[pid]
     if now - st.decidedAt < ____exports.SETTINGS.DecideEvery then
