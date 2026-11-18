@@ -92,6 +92,14 @@ if GetTower == nil then
 	function GetTower() return STUB_TOWER end
 end
 function Unit:Action_MoveToLocation(loc) self.moves = self.moves or {} table.insert(self.moves, loc) end
+-- Slice kill-chase: the target a hero names for its spells, its motion and the damage reads the catch read uses.
+function Unit:SetTarget(u) self.target = u end
+function Unit:GetTarget() return self.target end
+function Unit:GetExtrapolatedLocation(s) local v = self.vel or Vector(0, 0) return Vector(self.loc.x + v.x * s, self.loc.y + v.y * s, self.loc.z) end
+function Unit:GetActualIncomingDamage(d) return d * (self.dmgF or 1) end
+function Unit:GetSecondsPerAttack() return self.spa or 1.7 end
+function Unit:FindItemSlot() return -1 end
+if Unit.GetAttackDamage == nil then function Unit:GetAttackDamage() return self.atk or 50 end end
 ANCIENT = { IsAlive = function() return true end, GetHealth = function() return 4500 end }
 function GetAncient() return ANCIENT end
 -- Lane geometry for telemetry's lane-front fields; lane_world.lua replaces these with a lane model.

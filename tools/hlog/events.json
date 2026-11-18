@@ -1846,7 +1846,16 @@
    "sp": "str",
    "lx": "num",
    "ly": "num",
-   "tss": "num"
+   "tss": "num",
+   "chu": "str",
+   "cth": "num",
+   "cdm": "num",
+   "cft": "num",
+   "uat": "num",
+   "utw": "num",
+   "uou": "num",
+   "uth": "num",
+   "kup": "num"
   },
   "cast": {
    "pid": "num",
@@ -2493,7 +2502,8 @@
    "xa": "text",
    "ek": "text",
    "jn": "text",
-   "sp": "text"
+   "sp": "text",
+   "chu": "text"
   },
   "ev_cast": {
    "ab": "text",

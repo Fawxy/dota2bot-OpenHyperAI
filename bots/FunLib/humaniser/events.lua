@@ -1708,7 +1708,16 @@ ____exports.EVENTS = {
         sp = "str",
         lx = "num",
         ly = "num",
-        tss = "num"
+        tss = "num",
+        chu = "str",
+        cth = "num",
+        cdm = "num",
+        cft = "num",
+        uat = "num",
+        utw = "num",
+        uou = "num",
+        uth = "num",
+        kup = "num"
     },
     cast = {
         pid = "num",
