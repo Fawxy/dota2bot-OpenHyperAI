@@ -117,6 +117,7 @@ local drillAggro = {
 -- before OHA's techniques. A support draws through `support_aggro` instead.
 local aggro = {
     name = "aggro",
+    scans = true,
     rank = ranks(
         70,
         unpack(cores)
@@ -134,6 +135,7 @@ local aggro = {
 --- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
 local etiquette = {
     name = "etiquette",
+    scans = true,
     rank = ranks(
         80,
         unpack(all)
@@ -146,6 +148,7 @@ local etiquette = {
 -- is intended. Where the body owns last hits (team slice 4) it takes them and the denies itself.
 local ohaLastHit = {
     name = "oha_lh",
+    scans = true,
     rank = ranks(
         90,
         unpack(all)
@@ -156,6 +159,7 @@ local ohaLastHit = {
 }
 local ohaDeny = {
     name = "oha_deny",
+    scans = true,
     rank = ranks(
         100,
         unpack(all)
@@ -167,6 +171,7 @@ local ohaDeny = {
 --- Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait.
 local ohaHold = {
     name = "oha_hold",
+    scans = true,
     rank = ranks(
         110,
         unpack(all)
@@ -178,6 +183,7 @@ local ohaHold = {
 --- The optional local override's Think: runs beside the rows and never ends the frame.
 local ohaLocal = {
     name = "oha_local",
+    scans = true,
     rank = ranks(
         120,
         unpack(all)
@@ -193,6 +199,7 @@ local ohaLocal = {
 -- positioning: the body's hold would cancel its Valve attacks on heroes (docs/team/research/core-time-diagnosis.md).
 local body = {
     name = "body",
+    scans = true,
     rank = ranks(
         130,
         unpack(all)
@@ -348,9 +355,11 @@ function ____exports.Walk(bot, ctx)
                     acted = r.name
                     break
                 end
-                local ____n_1 = n
-                n = ____n_1 + 1
-                skipScratch[____n_1 + 1] = r.name
+                if r.scans ~= true then
+                    local ____n_1 = n
+                    n = ____n_1 + 1
+                    skipScratch[____n_1 + 1] = r.name
+                end
                 __continue51 = true
             until true
             if not __continue51 then

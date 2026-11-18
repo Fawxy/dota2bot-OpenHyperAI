@@ -1459,7 +1459,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `kup` num: kind=keep, a join on a seen target: 1 when it is at the kill bar and Decide calls `kill` (it becomes the kill).
 - `pos` num: kind=lane: the hero's position, 1 to 5.
 - `row` str: kind=lane: the lane table row that acted (the step name of ev=snap `step`). Logged when the row or `skip` changes, else every 5 s.
-- `skip` str: kind=lane: `,`-joined rows before `row` that wanted the frame and gave no order; absent when none.
+- `skip` str: kind=lane: `,`-joined rows before `row` that wanted the frame and gave no order (rows whose run is their own scan are not listed); absent when none.
 - `lo` num: kind=lane: 1 under lane-only (a drill).
 
 ## burst_add
