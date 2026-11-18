@@ -1912,6 +1912,15 @@
    "uth": "num",
    "kup": "num"
   },
+  "burst_add": {
+   "pid": "num",
+   "ab": "str",
+   "st": "str",
+   "key": "str",
+   "val": "num",
+   "lvl": "num",
+   "own": "num"
+  },
   "cast": {
    "pid": "num",
    "ab": "str",
@@ -2580,6 +2589,11 @@
    "why": "text",
    "ed": "text",
    "chu": "text"
+  },
+  "ev_burst_add": {
+   "ab": "text",
+   "st": "text",
+   "key": "text"
   },
   "ev_cast": {
    "ab": "text",

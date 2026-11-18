@@ -1771,6 +1771,15 @@ ____exports.EVENTS = {
         uth = "num",
         kup = "num"
     },
+    burst_add = {
+        pid = "num",
+        ab = "str",
+        st = "str",
+        key = "str",
+        val = "num",
+        lvl = "num",
+        own = "num"
+    },
     cast = {
         pid = "num",
         ab = "str",

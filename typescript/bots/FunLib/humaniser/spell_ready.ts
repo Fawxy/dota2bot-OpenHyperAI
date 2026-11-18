@@ -8,14 +8,21 @@
  * GetSpecialValueFloat reads its values. So each learned spell an enemy cannot cast takes its damage back out of the
  * estimate: the value at its SPELL_DAMAGE key (a per-second value over the window) through the target's
  * GetActualIncomingDamage, as Valve's own figure is (our side's estimate drops by 58 for Breathe Fire's 80, 108 for Lucent
- * Beam's 150). The result never falls under the hero's attack damage over the window. The table holds only spells Valve's
- * estimate is measured to count (tools/spell-damage/coverage.js: it leaves out Meat Hook, Earth Spike, Shadowraze and
- * more), so a spell it lacks, or whose value reads 0 (Battle Hunger in probe_cd8), stays counted: never an under-read.
+ * Beam's 150). The result never falls under the hero's attack damage over the window. SPELL_DAMAGE holds only spells Valve's
+ * estimate is measured to count (tools/spell-damage/coverage.js); a spell it lacks, or whose value reads 0 (Battle Hunger in
+ * probe_cd8), stays counted.
+ *
+ * The estimate also leaves spells out of its figure (Meat Hook, Impale, Shadowraze, Assassinate, measured) for any hero, ours
+ * included, so a read of it is blind to a castable one until it lands (slice oha-burst-left-out, same switch). SPELL_ADDED
+ * lists each damaging spell measured left out, or never measured (status `unknown`, counted and logged as `ev=burst_add`):
+ * AddedOn adds the value of each the hero can cast now, read at its key as SPELL_DAMAGE's is, to the figure above.
+ * A never-measured spell may be one Valve's estimate already counts (of the nukes measured so far it counts about two in
+ * three), so it can be counted twice until coverage.js measures it.
  */
 import { DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
-import { SPELL_DAMAGE } from "bots/FunLib/humaniser/spell_damage_data";
+import { SPELL_ADDED, SPELL_DAMAGE } from "bots/FunLib/humaniser/spell_damage_data";
 
 const SLOTS = 6;
 
@@ -61,6 +68,61 @@ function spentOf(e: Caster): Spent[] {
         if (type(value) === "number" && value > 0) list.push({ key: row[0], perSecond: row[1], type: row[2], value });
     }
     return list;
+}
+
+interface Added {
+    perSecond: boolean;
+    type: number;
+    value: number;
+}
+
+let addedAt = -1;
+let addedBy: Record<number, Added[]> = {};
+const addedLogged: Record<string, boolean> = {};
+
+export type AddedLogger = (this: void, pid: number, ab: string, st: string, key: string, val: number, lvl: number, own: number) => void;
+let addedLogger: AddedLogger | undefined;
+/** Telemetry sets this at load: it imports this module, so this module cannot import it. */
+export function SetAddedLogger(fn: AddedLogger | undefined): void {
+    addedLogger = fn;
+}
+
+function addedOf(e: Caster): Added[] {
+    const now = DotaTime();
+    if (now !== addedAt) {
+        addedAt = now;
+        addedBy = {};
+    }
+    const pid = e.GetPlayerID();
+    const cached = addedBy[pid];
+    if (cached !== undefined) return cached;
+    const list: Added[] = [];
+    addedBy[pid] = list;
+    if (e.GetAbilityInSlot === undefined) return list;
+    for (let slot = 0; slot < SLOTS; slot++) {
+        const a = e.GetAbilityInSlot(slot) as unknown as AbilityHandle | null | undefined;
+        if (a === undefined || a === null || a.IsNull()) continue;
+        const name = a.GetName();
+        const row = SPELL_ADDED[name];
+        if (row === undefined || a.GetLevel() <= 0 || a.IsHidden() || !a.IsFullyCastable()) continue;
+        const value = a.GetSpecialValueFloat(row[0]);
+        if (type(value) !== "number" || !(value > 0)) continue;
+        list.push({ perSecond: row[1], type: row[2], value });
+        const logKey = `${pid}:${name}:${a.GetLevel()}`;
+        if (addedLogged[logKey] !== true) {
+            addedLogged[logKey] = true;
+            addedLogger?.(pid, name, row[3], row[0], value, a.GetLevel(), e.GetTeam() === GetTeam() ? 1 : 0);
+        }
+    }
+    return list;
+}
+
+/** The damage of `e`'s castable spells that Valve's estimate leaves out (SPELL_ADDED), on `target` over `window`; our own heroes included. */
+export function AddedOn(e: Unit, target: Unit, window: number): number {
+    if (e.IsIllusion()) return 0;
+    let total = 0;
+    for (const s of addedOf(e as Caster)) total += target.GetActualIncomingDamage(s.perSecond ? s.value * window : s.value, s.type);
+    return total;
 }
 
 function attackPart(e: Caster, target: Unit, window: number): number {
@@ -140,13 +202,15 @@ export function ReadyDamage(bot: Unit): string | undefined {
     return out.length > 0 ? out.join(";") : undefined;
 }
 
-/** `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now); with BurstReady off, Valve's figure. */
+/** `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now, plus the castable spells it leaves out: AddedOn); with BurstReady off, Valve's figure. */
 export function DamageOn(e: Unit, target: Unit, window: number): number {
     const est = e.GetEstimatedDamageToTarget(true, target, window, DamageType.All);
-    if (est <= 0 || !Ours.On("BurstReady")) return est;
+    if (!Ours.On("BurstReady")) return est;
+    const added = AddedOn(e, target, window);
+    if (est <= 0) return added > 0 ? added : est;
     const spent = SpentOn(e, target, window);
-    if (spent <= 0) return est;
-    return math.max(math.min(est, attackPart(e as Caster, target, window)), est - spent);
+    if (spent <= 0) return est + added;
+    return math.max(math.min(est, attackPart(e as Caster, target, window)), est - spent) + added;
 }
 
 interface ClassHandle extends AbilityHandle {
