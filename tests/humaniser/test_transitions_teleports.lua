@@ -103,13 +103,7 @@ do
 	w.TP.Tick(w.core)
 	local tp = w.TP.EnemyTps(2)[1]
 	check("high skill and stronger sets up", w.TP.Response(w.core, tp) == "setup")
-	local loc = Vector(0, -5000)
-	local moved = w.H.Lane.AdjustPosition(w.core, loc)
-	local tw = tower(w)
-	local d = dist(FRONT, tw)
-	local expect = Vector(FRONT.x + (tw.x - FRONT.x) / d * 600, FRONT.y + (tw.y - FRONT.y) / d * 600)
-	check("setup point is TpSetupDistance from the TP toward our tower", dist(moved, expect) < 50, dist(moved, expect))
-	check("setup is position-only: no level", w.C.Level(w.core) == 0)
+	check("setup posts no level", w.C.Level(w.core) == 0)
 	w.H.Transitions.Tick(w.core)
 	check("setup posts no retreat claim", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	STRONGER = true
@@ -123,17 +117,7 @@ do
 	TELEPORTS[1].time_remaining = 4.4
 	w.TP.Tick(w.core)
 	check("no longer stronger: switches to backing off", near(w.C.Level(w.core), 1))
-	check("backing off drops the setup point", dist(w.C.AdjustPosition(w.core, loc), expect) > 50)
 	check("backing off suppresses trades when not stronger", w.C.SuppressTrades(w.core))
-
-	-- Where OHA does not own laning the position is left alone; the level claims still apply.
-	local other = world({ skill = 0.9 })
-	other.mid.bot = true
-	STRONGER = true
-	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 5 } }
-	T = 300
-	other.TP.Tick(other.core)
-	check("setup: position unchanged where OHA does not own laning", other.C.AdjustPosition(other.core, loc) == loc)
 end
 
 do
@@ -147,20 +131,7 @@ do
 	T = 300.6
 	TELEPORTS[1].time_remaining = 7.4
 	w.TP.Tick(w.core)
-	check("stays on back when it becomes stronger", near(w.C.Level(w.core), 1) and math.abs(dist(w.C.AdjustPosition(w.core, Vector(0, -5000)), FRONT) - 300) < 1)
-	STRONGER = false
-end
-
-do
-	local w = world({ skill = 0.9 })
-	STRONGER = true
-	local t1 = GetTower(3, dota.Tower.Bot1)
-	TELEPORTS = { { playerid = 10, location = t1.loc, time_remaining = 6 } }
-	w.TP.Tick(w.core)
-	local p = w.C.AdjustPosition(w.core, Vector(0, -5000))
-	local ours = tower(w)
-	check("TP onto their T1: setup point stays 850 from the tower", dist(p, t1.loc) >= 849, dist(p, t1.loc))
-	check("TP onto their T1: setup point is on our side of it", dist(p, ours) < dist(t1.loc, ours), dist(p, ours))
+	check("stays on back when it becomes stronger", near(w.C.Level(w.core), 1))
 	STRONGER = false
 end
 
@@ -175,7 +146,6 @@ do
 	T = 301
 	TELEPORTS = { { playerid = 10, location = Vector(300, -5000), time_remaining = 4 } }
 	w.TP.Tick(w.core)
-	check("new TP resolves to setup: the position moves", dist(w.C.AdjustPosition(w.core, Vector(0, -5000)), Vector(300, -5000)) > 500)
 	check("new TP resolves to setup: level 0", w.C.Level(w.core) == 0, w.C.Level(w.core))
 	w.H.Transitions.Tick(w.core)
 	check("new TP resolves to setup: no retreat claim", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
@@ -195,21 +165,11 @@ for _, c in ipairs({ { caution = false, tp = true }, { caution = false, tp = fal
 end
 
 do
-	-- Setup with Caution off still moves the position.
-	local w = world({ skill = 0.9, transitions = { Enable = true, Caution = false } })
-	STRONGER = true
-	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }
-	w.TP.Tick(w.core)
-	check("Caution off: setup point still applies", dist(w.C.AdjustPosition(w.core, Vector(0, -5000)), FRONT) > 500)
-	STRONGER = false
-end
-
-do
 	local w = world({ skill = 0.9, transitions = { Enable = true, Teleports = false } })
-	STRONGER = true
+	STRONGER = false
 	TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 5 } }
 	w.TP.Tick(w.core)
-	check("Teleports off: no setup on the same scenario", w.C.AdjustPosition(w.core, Vector(0, -5000)).x == 0)
+	check("Teleports off: no back-off level where the flag on would give 1", w.C.Level(w.core) == 0)
 	check("Teleports off: GetIncomingTeleports never read", TELEPORT_READS == 0, TELEPORT_READS)
 	w.H.Transitions.Busy.LaneCanSpare(w.core, false)
 	check("Teleports off: busy probe does not read either", TELEPORT_READS == 0, TELEPORT_READS)
@@ -265,17 +225,14 @@ do
 		if o.t1Dead then TOWERS_W[2][dota.Tower.Bot1].alive = false end
 		TELEPORTS = { { playerid = 10, location = FRONT, time_remaining = 6 } }
 		w.H.Transitions.Tick(w.core)
-		local r = { level = w.C.Level(w.core), claim = w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil,
-			moved = dist(w.C.AdjustPosition(w.core, FRONT), FRONT) }
+		local r = { level = w.C.Level(w.core), claim = w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil }
 		STRONGER = false
 		return r
 	end
 	local back, setup = run({}), run({ skill = 0.9, stronger = true })
 	check("in laning at 11:40 (contrast): backs off with a claim", near(back.level, 1) and back.claim, back.level)
-	check("in laning at 11:40 (contrast): sets up", setup.moved > 500, setup.moved)
 	local b2, s2 = run({ notLaning = true }), run({ notLaning = true, skill = 0.9, stronger = true })
 	check("after laning: no forced back-off", b2.level == 0 and not b2.claim, b2.level)
-	check("after laning: no setup point", s2.moved == 0, s2.moved)
 	local b3 = run({ T = 300, t1Dead = true })
 	check("our T1 down before 10:00: no forced back-off", b3.level == 0 and not b3.claim, b3.level)
 end

@@ -87,7 +87,7 @@ export function NoteLaningOwner(bot: Unit, owned: boolean): void {
     if (owned || warned[pid] === true) return;
     if (!Config.IsFeatureEnabled("LastHitSkill") || !Settings().RequireOwnedLaning) return;
     warned[pid] = true;
-    print(`[Humaniser] LastHitSkill: pid=${pid} ${bot.GetUnitName()} is on Valve laning; no effect (set Lane.OwnLaningThink='all')`);
+    print(`[Humaniser] LastHitSkill: pid=${pid} ${bot.GetUnitName()} is on Valve laning; no effect`);
 }
 
 export function IsActiveFor(bot: Unit): boolean {

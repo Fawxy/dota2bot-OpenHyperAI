@@ -198,13 +198,6 @@ function ____exports.Plan(bot, s)
         input,
         ____exports.Choose(input)
     )
-    local prev = current[pid]
-    if prev == nil or prev.tech ~= result.tech then
-        LaneRoles.ClearNeed(bot)
-        if result.tech == "aggro_pull" then
-            LaneRoles.NoteNeed(bot, now)
-        end
-    end
     current[pid] = result
     inputs[pid] = input
     HDebug.Text(

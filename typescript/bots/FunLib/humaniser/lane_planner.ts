@@ -35,7 +35,7 @@ export interface PlannerInput {
 }
 
 export type Choice = { tech: LaneConfig.Technique | "hold" | "none"; reason: string };
-type Committable = LaneConfig.Technique | "contest";
+type Committable = LaneConfig.Technique;
 
 interface CycleState {
     cycle: number;
@@ -191,11 +191,6 @@ export function Plan(bot: Unit, s: LaneState.LaneSnapshot): Choice {
     const now = DotaTime();
     const input = buildInput(bot, s, now);
     const result = gate(bot, input, Choose(input));
-    const prev = current[pid];
-    if (prev === undefined || prev.tech !== result.tech) {
-        LaneRoles.ClearNeed(bot);
-        if (result.tech === "aggro_pull") LaneRoles.NoteNeed(bot, now);
-    }
     current[pid] = result;
     inputs[pid] = input;
     HDebug.Text(bot, "lane_tech", Describe(result));

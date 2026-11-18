@@ -162,7 +162,6 @@ local Lane = ____dota.Lane
 local Tower = ____dota.Tower
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
-local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -186,9 +185,6 @@ local function dist2D(a, b)
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
 end
-local function clamp01(v)
-    return v < 0 and 0 or (v > 1 and 1 or v)
-end
 --- Enemy TPs for `team`, read from the game at most once per TpRefresh.
 function ____exports.EnemyTps(team)
     local now = DotaTime()
@@ -204,10 +200,10 @@ function ____exports.EnemyTps(team)
     local present = {}
     for ____, t in ipairs(GetIncomingTeleports()) do
         do
-            local __continue9
+            local __continue8
             repeat
                 if t == nil or t == nil or t.location == nil or t.location == nil or not (enemyIds[t.playerid] ~= nil) then
-                    __continue9 = true
+                    __continue8 = true
                     break
                 end
                 present[t.playerid] = true
@@ -237,9 +233,9 @@ function ____exports.EnemyTps(team)
                     )
                 end
                 list[#list + 1] = tp
-                __continue9 = true
+                __continue8 = true
             until true
-            if not __continue9 then
+            if not __continue8 then
                 break
             end
         end
@@ -251,12 +247,6 @@ function ____exports.EnemyTps(team)
     end
     reads[team] = {at = now, list = list}
     return list
-end
-local function ourTower(s)
-    return GetLocationAlongLane(
-        s.lane,
-        clamp01(Camps.ToAbsAmount(s.team, s.ourTowerAmount))
-    )
 end
 --- Where the enemy's T1 in this lane stands, if it still does. Towers are always visible.
 local function enemyT1(bot, s)
@@ -277,18 +267,18 @@ function ____exports.IncomingToLane(bot, s)
     local best
     for ____, tp in ipairs(____exports.EnemyTps(bot:GetTeam())) do
         do
-            local __continue19
+            local __continue17
             repeat
                 if (tower == nil or dist2D(tp.location, tower) > radius) and dist2D(tp.location, s.frontLoc) > radius then
-                    __continue19 = true
+                    __continue17 = true
                     break
                 end
                 if best == nil or tp.seenAt + tp.remaining < best.seenAt + best.remaining then
                     best = tp
                 end
-                __continue19 = true
+                __continue17 = true
             until true
-            if not __continue19 then
+            if not __continue17 then
                 break
             end
         end
@@ -302,34 +292,6 @@ function ____exports.Response(bot, _tp)
     end
     local stronger = LaneConfig.Helpers().WeAreStronger
     return stronger ~= nil and stronger(bot, cfg.TpStrongerRadius) and "setup" or "back"
-end
-local function setupPoint(bot, s, tp)
-    local cfg = Settings.Get()
-    local tower = ourTower(s)
-    local d = dist2D(tp.location, tower)
-    if d <= 0 then
-        return tp.location
-    end
-    local ux = (tower.x - tp.location.x) / d
-    local uy = (tower.y - tp.location.y) / d
-    local step = math.min(d, cfg.TpSetupDistance)
-    local foe = enemyT1(bot, s)
-    if foe ~= nil then
-        local wx = tp.location.x - foe.x
-        local wy = tp.location.y - foe.y
-        local b = wx * ux + wy * uy
-        local disc = b * b - (wx * wx + wy * wy) + cfg.TpTowerClear * cfg.TpTowerClear
-        if disc >= 0 then
-            step = math.max(
-                step,
-                math.min(
-                    d,
-                    -b + math.sqrt(disc)
-                )
-            )
-        end
-    end
-    return Vector(tp.location.x + ux * step, tp.location.y + uy * step, tp.location.z)
 end
 function ____exports.Tick(bot)
     if not Settings.IsOn("Teleports") then
@@ -345,7 +307,6 @@ function ____exports.Tick(bot)
         if reactions[pid] ~= nil then
             __TS__Delete(reactions, pid)
             Caution.ForceLevel(bot, 0, -math.huge)
-            Caution.ForceSetup(bot, nil, -math.huge)
         end
         return
     end
@@ -386,13 +347,7 @@ function ____exports.Tick(bot)
     end
     if r.mode == "setup" then
         Caution.ForceLevel(bot, 0, -math.huge)
-        Caution.ForceSetup(
-            bot,
-            setupPoint(bot, s, tp),
-            ____until
-        )
     else
-        Caution.ForceSetup(bot, nil, -math.huge)
         Caution.ForceLevel(bot, 1, ____until)
     end
 end

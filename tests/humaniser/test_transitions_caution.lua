@@ -168,26 +168,6 @@ do
 end
 
 do
-	local loc = Vector(0, -5000)
-	local w = world()
-	enemy(10, { unseen = 7 })
-	w.C.Level(w.core)
-	T = 300.6
-	local level = w.C.Level(w.core)
-	local moved = w.H.Lane.AdjustPosition(w.core, loc)
-	check("cautious laner (precondition): level 1 at skill 1", near(level, 1), level)
-	check("cautious laner steps back by OffsetMax", math.abs(dist(moved, loc) - 300) < 1e-6, dist(moved, loc))
-	check("the step is toward our tower", moved.x < loc.x and math.abs(moved.y - loc.y) < 1e-6, moved.x)
-
-	w = world({ noHuman = true })
-	enemy(10, { unseen = 7 })
-	w.C.Level(w.core)
-	T = 300.6
-	check("not-OHA laner (precondition): cautious", w.C.Level(w.core) > 0)
-	check("position offset only where OHA owns laning", w.C.AdjustPosition(w.core, loc) == loc)
-end
-
-do
 	local w = world({ skill = 0.2 })
 	enemy(10, { unseen = 7 })
 	w.C.Level(w.core)
@@ -195,7 +175,6 @@ do
 	check("level 0.6 at skill 0.2 with a missing enemy", near(w.C.Level(w.core), 0.6), w.C.Level(w.core))
 	STRONGER = false
 	check("trades suppressed when not stronger", w.H.Lane.Hooks.TradesSuppressed(w.core))
-	check("suppressed trades stop the harass step", w.H.Lane.HarassThink(w.core, {}, {}, {}, false) == false)
 	STRONGER = true
 	check("trades allowed when stronger", not w.C.SuppressTrades(w.core))
 	STRONGER = false
@@ -253,7 +232,6 @@ end
 -- Kill switch: the same cautious scenario with the feature off, and with the sub-flag off.
 for _, tcfg in ipairs({ { Enable = false }, { Enable = true, Caution = false } }) do
 	local label = tcfg.Enable and "caution flag off" or "transitions off"
-	local loc = Vector(0, -5000)
 	local w = world({ transitions = tcfg })
 	enemy(10, { unseen = 7 })
 	w.H.Transitions.Tick(w.core)
@@ -261,8 +239,6 @@ for _, tcfg in ipairs({ { Enable = false }, { Enable = true, Caution = false } }
 	w.H.Transitions.Tick(w.core)
 	STRONGER = false
 	check(label .. ": no level", w.C.Level(w.core) == 0)
-	check(label .. ": AdjustPosition returns loc", w.C.AdjustPosition(w.core, loc) == loc)
-	check(label .. ": position hook returns loc", w.H.Lane.Hooks.PositionOverride(w.core, loc) == loc)
 	check(label .. ": trades not suppressed", not w.H.Lane.Hooks.TradesSuppressed(w.core))
 	check(label .. ": no claims", w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) == nil)
 	check(label .. ": no callout", #w.said == 0, #w.said)
@@ -337,14 +313,13 @@ do
 		T = t0 + 0.6
 		w.C.Tick(w.core)
 		return { level = w.C.Level(w.core), claim = w.H.Intent.ClaimAge(w.core, SOURCE, BotMode.Retreat) ~= nil,
-			said = count(w.said, "say_ss_bot"), pos = w.C.AdjustPosition(w.core, FRONT) }
+			said = count(w.said, "say_ss_bot") }
 	end
 	local on, off, dead = run(true), run(false), run(true, true)
 	check("in laning at 11:40 (contrast): cautious with a claim and a callout", on.level > 0 and on.claim and on.said == 1, on.level)
 	check("after laning: caution level 0", off.level == 0, off.level)
 	check("after laning: no caution claim", not off.claim)
 	check("after laning: no missing callout", off.said == 0, off.said)
-	check("after laning: no position offset", off.pos == FRONT)
 	check("our T1 down before 10:00: level 0, no claim, no callout", dead.level == 0 and not dead.claim and dead.said == 0, dead.level)
 end
 

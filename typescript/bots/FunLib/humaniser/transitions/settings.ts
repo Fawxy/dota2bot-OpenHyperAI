@@ -89,8 +89,6 @@ export const DEFAULTS = {
     MidContestFrom: 10,
     AloneMissing: 4,
     LaneMissing: 6,
-    OffsetMin: 150,
-    OffsetMax: 300,
     RetreatScaleMax: 1.3,
     // Caution scales retreat only while the bot is threatened: hit by a hero within ThreatHitWindow s, under ThreatHP,
     // or targeted by an enemy tower. Otherwise it only steps the lane position back and suppresses trades.
@@ -112,9 +110,6 @@ export const DEFAULTS = {
     TpRadius: 1600,
     TpLinger: 2,
     TpSetupSkill: 0.7,
-    TpSetupDistance: 600,
-    // A setup point is pushed back toward our tower until it is this far from a live enemy T1 (tower range plus margin).
-    TpTowerClear: 850,
     // Radius for the WeAreStronger check that picks setup over backing off.
     TpStrongerRadius: 1600,
     // Enemy TPs are read once per team per this many seconds.
