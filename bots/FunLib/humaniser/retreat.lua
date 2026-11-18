@@ -401,21 +401,21 @@ function unpaid(bot, r)
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue136
+            local __continue137
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue136 = true
+                    __continue137 = true
                     break
                 end
                 if not CreepAggro.Paid(bot, h) then
                     n = n + 1
                 end
-                __continue136 = true
+                __continue137 = true
             until true
-            if not __continue136 then
+            if not __continue137 then
                 break
             end
         end
@@ -850,6 +850,20 @@ end
 local function anchorPoint(a)
     return a.ally ~= nil and valid(a.ally) and a.ally:GetLocation() or a.at
 end
+--- Sustain's safe spot (its design, section 2): the anchor a `threat` leave would choose now, and the walk there in seconds. Reads only.
+function ____exports.SafeSpot(bot)
+    local a = unpack(chooseAnchor(bot, "threat"))
+    local ____temp_3
+    if a == nil then
+        ____temp_3 = nil
+    else
+        ____temp_3 = {
+            at = anchorPoint(a),
+            secs = a.secs or 0
+        }
+    end
+    return ____temp_3
+end
 --- Enemy heroes who can reach `bot` within HealItemHorizon, seen or just out of sight: items wait for none. Also the nearest
 -- enemy hero's last sighting (distance, seconds since), for the log.
 local function itemReach(bot)
@@ -864,16 +878,16 @@ local function itemReach(bot)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue78
+                local __continue79
                 repeat
                     local team = GetTeamForPlayer(pid)
                     if team == bot:GetTeam() or team ~= Team.Radiant and team ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue78 = true
+                        __continue79 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil then
-                        __continue78 = true
+                        __continue79 = true
                         break
                     end
                     local d = dist(info.location, here)
@@ -882,15 +896,15 @@ local function itemReach(bot)
                         tss = info.time_since_seen
                     end
                     if __TS__ArrayIncludes(read.reach, pid) or info.time_since_seen <= 0.1 or info.time_since_seen > t.MissingAfter then
-                        __continue78 = true
+                        __continue79 = true
                         break
                     end
                     if d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin then
                         n = n + 1
                     end
-                    __continue78 = true
+                    __continue79 = true
                 until true
-                if not __continue78 then
+                if not __continue79 then
                     break
                 end
             end
@@ -912,30 +926,30 @@ local function planItems(bot, ep)
     local got = {}
     for ____, k in ipairs(__TS__ObjectKeys(HEAL_ITEM)) do
         do
-            local __continue85
+            local __continue86
             repeat
                 local it = ItemUse.Usable(bot, HEAL_ITEM[k].name)
                 if it == nil then
-                    __continue85 = true
+                    __continue86 = true
                     break
                 end
                 local mod = HEAL_ITEM[k].modifier
                 if mod ~= nil and bot:HasModifier(mod) then
-                    __continue85 = true
+                    __continue86 = true
                     break
                 end
                 if (k == "tango" or k == "tango_single") and tree == nil then
-                    __continue85 = true
+                    __continue86 = true
                     break
                 end
                 if k == "fire" and salveHeld then
-                    __continue85 = true
+                    __continue86 = true
                     break
                 end
                 got[k] = ItemUse.HpRestore(it)
-                __continue85 = true
+                __continue86 = true
             until true
-            if not __continue85 then
+            if not __continue86 then
                 break
             end
         end
@@ -944,7 +958,7 @@ local function planItems(bot, ep)
     local restore = 0
     for ____, cand in ipairs(s.HealSets) do
         do
-            local __continue91
+            local __continue92
             repeat
                 local items = __TS__ArrayMap(
                     cand,
@@ -954,7 +968,7 @@ local function planItems(bot, ep)
                     items,
                     function(____, k) return got[k] ~= nil end
                 ) then
-                    __continue91 = true
+                    __continue92 = true
                     break
                 end
                 local sum = __TS__ArrayReduce(
@@ -967,9 +981,9 @@ local function planItems(bot, ep)
                     restore = sum
                     break
                 end
-                __continue91 = true
+                __continue92 = true
             until true
-            if not __continue91 then
+            if not __continue92 then
                 break
             end
         end
@@ -1074,20 +1088,20 @@ end
 --- HealItems, from Think: the next use, or true while the last one's wait holds every other order.
 local function useItems(bot, st, ep, now)
     if ep.useUntil ~= nil then
-        local ____temp_3
+        local ____temp_4
         if ep.useMod ~= nil then
-            ____temp_3 = bot:HasModifier(ep.useMod)
+            ____temp_4 = bot:HasModifier(ep.useMod)
         else
-            ____temp_3 = bot:GetHealth() > (ep.useHp or 0)
+            ____temp_4 = bot:GetHealth() > (ep.useHp or 0)
         end
-        local shown = ____temp_3
+        local shown = ____temp_4
         if now < ep.useUntil and not shown then
             return true
         end
         ep.useUntil = nil
     end
-    local ____opt_4 = ep.uses
-    local k = ____opt_4 and table.remove(ep.uses, 1)
+    local ____opt_5 = ep.uses
+    local k = ____opt_5 and table.remove(ep.uses, 1)
     if k == nil then
         return false
     end
@@ -1151,8 +1165,8 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
     Lane_.CampJobAbort(bot, "retreat")
     FarmPattern.Abort(bot, "retreat")
     local here = bot:GetLocation()
-    local ____Telemetry_Event_8 = Telemetry.Event
-    local ____array_7 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_9 = Telemetry.Event
+    local ____array_8 = __TS__SparseArrayNew(
         {"ph", "start"},
         {
             "pid",
@@ -1183,15 +1197,15 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
         },
         {"tower", r.tower}
     )
-    local ____temp_6
+    local ____temp_7
     if #r.reach > 0 then
-        ____temp_6 = r.escape
+        ____temp_7 = r.escape
     else
-        ____temp_6 = nil
+        ____temp_7 = nil
     end
     __TS__SparseArrayPush(
-        ____array_7,
-        {"esc", ____temp_6},
+        ____array_8,
+        {"esc", ____temp_7},
         {
             "budget",
             r2(budget)
@@ -1218,9 +1232,9 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
             math.floor(here.y)
         }
     )
-    ____Telemetry_Event_8(
+    ____Telemetry_Event_9(
         "retreat",
-        {__TS__SparseArraySpread(____array_7)}
+        {__TS__SparseArraySpread(____array_8)}
     )
 end
 local function ____end(bot, st, res)
@@ -1700,13 +1714,13 @@ function ____exports.Desire(bot)
         return 0
     end
     local overBefore = st.overSince
-    local ____temp_9
+    local ____temp_10
     if r.threat > budget then
-        ____temp_9 = Trade.Holds(bot)
+        ____temp_10 = Trade.Holds(bot)
     else
-        ____temp_9 = nil
+        ____temp_10 = nil
     end
-    local hold = ____temp_9
+    local hold = ____temp_10
     local joins = hold == "join"
     local hits = hold == "hitback"
     local why, stay = ____exports.LeaveWhy(

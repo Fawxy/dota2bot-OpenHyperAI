@@ -436,6 +436,12 @@ local function TurboModeGeneralPurchase()
 	end
 end
 
+-- Humaniser sustain (design step 2): the lane regen purchases below log their rule (ev=sustain_buy); telemetry only.
+local function BuyRegen( sItem, sWhy )
+	if J.Humaniser.IsEnabled() then J.Humaniser.SustainGather.Bought( bot, sItem, sWhy ) end
+	bot:ActionImmediate_PurchaseItem( sItem )
+end
+
 function ItemPurchaseThink()
 	currentTime = DotaTime()
 	-- A drill rig owns its heroes' purchases: they hold only what the rig hands them (humaniser/drill.ts Owns).
@@ -743,7 +749,7 @@ function ItemPurchaseThink()
 	and botGold >= GetItemCost( "item_clarity" )
 	then
 		bot.hasBuyClarity = true
-		bot:ActionImmediate_PurchaseItem( "item_clarity" )
+		BuyRegen( "item_clarity", "mana_low" )
 	end
 
 	--辅助定位英雄购买辅助物品
@@ -755,7 +761,7 @@ function ItemPurchaseThink()
 			and Utils.CountBackpackEmptySpace(bot) >= 2
 		then
 			bot.hasBuyClarity = true
-			bot:ActionImmediate_PurchaseItem( "item_clarity" )
+			BuyRegen( "item_clarity", "support_clarity" )
 		elseif botLevel >= 5
 			and Role['invisEnemyExist'] == true
 			and buyBootsStatus == true
@@ -803,7 +809,7 @@ function ItemPurchaseThink()
 						and botGold >= GetItemCost('item_flask')
 						and GetItemStockCount('item_flask') > 1
 						then
-							bot:ActionImmediate_PurchaseItem('item_flask')
+							BuyRegen( 'item_flask', 'core_partner_dry' )
 						end
 					else
 						if Item.GetItemCharges(bot, 'item_flask') <= 0
@@ -812,7 +818,7 @@ function ItemPurchaseThink()
 						and (not J.HasItem(bot, 'item_bottle')
 							or (J.HasItem(bot, 'item_bottle') and Item.GetItemCharges(bot, 'item_bottle') <= 0))
 						then
-							bot:ActionImmediate_PurchaseItem('item_flask')
+							BuyRegen( 'item_flask', 'core_alone' )
 						end
 					end
 				else
@@ -820,7 +826,7 @@ function ItemPurchaseThink()
 					and botGold >= GetItemCost('item_flask')
 					and GetItemStockCount('item_flask') > 1
 					then
-						bot:ActionImmediate_PurchaseItem('item_flask')
+						BuyRegen( 'item_flask', 'support' )
 					end
 				end
 			else
@@ -835,7 +841,7 @@ function ItemPurchaseThink()
 						and botGold >= GetItemCost('item_tango')
 						and GetItemStockCount('item_flask') > 1
 						then
-							bot:ActionImmediate_PurchaseItem('item_tango')
+							BuyRegen( 'item_tango', 'core_partner_dry_regen' )
 						end
 					else
 						if Item.GetItemCharges(bot, 'item_flask') <= 0
@@ -844,14 +850,14 @@ function ItemPurchaseThink()
 						and (not J.HasItem(bot, 'item_bottle')
 							or (J.HasItem(bot, 'item_bottle') and Item.GetItemCharges(bot, 'item_bottle') <= 0))
 						then
-							bot:ActionImmediate_PurchaseItem('item_flask')
+							BuyRegen( 'item_flask', 'core_alone_regen' )
 						end
 					end
 				else
 					if Item.GetItemCharges(bot, 'item_tango') <= 0
 					and botGold >= GetItemCost('item_tango')
 					then
-						bot:ActionImmediate_PurchaseItem('item_tango')
+						BuyRegen( 'item_tango', 'support_regen' )
 					end
 				end
 			end
