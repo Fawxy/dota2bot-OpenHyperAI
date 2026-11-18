@@ -163,10 +163,11 @@ check("a support-position hit by a hero at 0.8, favoured: hit back; a paid hitte
 		and T.HoldsOf(inputs({ cands = { unfavoured({ hitting = true, paid = true }) } })) == "hitback"
 		and T.HoldsOf(inputs({ cands = { unfavoured({ hitting = true }) } })) == nil)
 
-check("a hero we lost an exchange with: no hit and no hit back (none lost), Holds still holds, a kill on it goes on; not lost: hit",
+check("a hero we lost an exchange with: no hit and no hit back (none lost), no hit-back hold (a second, not-lost hitter still holds), a kill on it goes on; not lost: hit",
 	none(decide(inputs({ cands = { cand({ lost = true }) } })), "lost")
 		and none(decide(inputs({ cands = { cand({ lost = true, hitting = true }) } })), "lost")
-		and T.HoldsOf(inputs({ cands = { cand({ lost = true, hitting = true }) } })) == "hitback"
+		and T.HoldsOf(inputs({ cands = { cand({ lost = true, hitting = true }) } })) == nil
+		and T.HoldsOf(inputs({ cands = { cand({ lost = true, hitting = true }), cand({ pid = 8, hitting = true }) } })) == "hitback"
 		and decide(inputs({ cands = { cand({ lost = true, thp = 0.2, catch = CATCH }) } })).level == "kill"
 		and decide(inputs({ cands = { cand({ lost = false }) } })).level == "hit")
 
@@ -219,6 +220,21 @@ do
 		return decide(inputs({ cands = {}, run = run({ level = "kill", chaseAt = at, catch = CATCH, unseen = merge({ at = false, tower = false, threat = false }, o) }) }))
 	end
 	local keep = chase({})
+	-- The executor writes each frame's catchFails back into the run; replay that over frames 0.6 s apart (catchGap is 0.5 s).
+	local function frames(catchOk, n)
+		local r = run({ level = "kill", chaseAt = at, catch = { ok = catchOk, dmg = 0, first = math.huge, safe = 3 }, unseen = { at = false, tower = false, threat = false } })
+		local a
+		for f = 0, n - 1 do
+			a = decide(inputs({ now = 100 + f * 0.6, cands = {}, run = r }))
+			if a.ended ~= nil then return a, f end
+			r.catchFails, r.catchFailAt = a.catchFails, a.catchFailAt
+		end
+		return a, n
+	end
+	local failing, endedAt = frames(false, 6)
+	local holding = frames(true, 6)
+	check("an unseen chase on a failing catch read ends cannot_catch at the second failure, frames 0.6 s apart; an ok read keeps chasing",
+		failing.ended == "cannot_catch" and endedAt == 1 and holding.ended == nil and holding.level == "kill" and holding.catchFails == 0)
 	check("an unseen kill walks to the predicted place and ends spot_clear, utower or threat on the reads; a failing catch read ends it too",
 		keep.level == "kill" and keep.how.verb == "move" and keep.how.at.x == 100
 			and none(chase({ at = true }), "spot_clear") and none(chase({ tower = true }), "utower") and none(chase({ threat = true }), "threat")

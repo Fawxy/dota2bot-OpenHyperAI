@@ -67,7 +67,7 @@ local function Fresh(states, o)
 	-- Slice 5's Ours.CoreLastHit makes the body own pos1-3's last hits on both teams; the older cases here test the
 	-- States settings with it off (OHA's path), and slice 5's cases at the end turn it on.
 	package.loaded["bots/FunLib/custom_loader"].Ours = { CoreLastHit = o.coreLastHit == true, CoreLastHitDire = o.direOff ~= true,
-		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot, SupportHarass = o.supportHarass,
+		SupportDeny = o.supportDeny == true, SupportDenyDire = o.supportDireOff ~= true, SupportLastHit = o.supportLastHit ~= false, LaneSpot = o.laneSpot,
 		LaneSpotTower = o.laneSpotTower, LaneSpotThreat = o.threat == true, EvenStand = o.evenStand }
 	local Phase = require("bots/FunLib/humaniser/transitions/phase")
 	Phase.LaningHeld = function() return true end
@@ -381,9 +381,9 @@ do
 	check("held creep at 20% HP: the 820 ring", sl ~= nil and dist(sl, c.loc) >= 820, sl and dist(sl, c.loc))
 	local sm = spotFor(SDK, { hp = 40 }, held("ours"))
 	check("held creep at 40% HP: 200 plus the 120 margin", sm ~= nil and dist(sm, c.loc) >= 320 and dist(sm, c.loc) < 520, sm and dist(sm, c.loc))
-	-- A support (pos 5, with SupportHarass on our spot) under the same tower keeps the open-lane ring: step 1d checked cores
+	-- A support (pos 5, on our spot) under the same tower keeps the open-lane ring: step 1d checked cores
 	-- only (review tower-spot H1).
-	local ss = spotFor(SDK, { pos = 5, supportDeny = true, supportHarass = true }, held("ours"))
+	local ss = spotFor(SDK, { pos = 5, supportDeny = true }, held("ours"))
 	check("support under our tower: the 520 ring", ss ~= nil and dist(ss, c.loc) >= 520, ss and dist(ss, c.loc))
 	local sf = spotFor(SDK, nil, function(bot) held("ours")(bot) TOWERS = { ownTower(-1500, 0) } end)
 	check("creep outside our tower's range: the 520 ring", sf ~= nil and dist(sf, c.loc) >= 520, sf and dist(sf, c.loc))
@@ -535,12 +535,12 @@ do
 	T = T + 1
 	local sup = require("bots/FunLib/humaniser/states/laning").Spot(bsup)
 	check("LaneSpot: a support whose lane hits are OHA's keeps OHA's spot", sup ~= nil and sup.x == -250, sup and sup.x)
-	-- Slice support-spot: a support whose lane hits and harass are ours stands on our spot; SupportHarass off, OHA's.
+	-- Slice support-spot: a support whose lane hits and harass are ours (Laning.OwnsSpot: Ours.LaneSpot and OwnsSupportHits) stands on our spot; with LaneSpot off, or without the support hits, OHA's.
 	local _, bsh, Hsh = spotFor(OHA, { coreLastHit = true, pos = 5, supportDeny = true }, setup)
 	Hsh.States.SetLaneSpot(bsh, function() return Vector(-250, 0) end)
 	T = T + 1
 	local sh = require("bots/FunLib/humaniser/states/laning").Spot(bsh)
-	check("LaneSpot: a support with SupportHarass on stands on our spot", sh ~= nil and sh.x ~= -250 and dist(sh, c.loc) >= 520, sh and sh.x)
+	check("LaneSpot: a support that owns its lane hits (OwnsSpot) stands on our spot; the off controls follow", sh ~= nil and sh.x ~= -250 and dist(sh, c.loc) >= 520, sh and sh.x)
 	local _, bso, Hso = spotFor(OHA, { coreLastHit = true, pos = 5, supportDeny = true, laneSpot = false }, setup)
 	Hso.States.SetLaneSpot(bso, function() return Vector(-250, 0) end)
 	T = T + 1

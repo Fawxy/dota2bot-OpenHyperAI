@@ -50,8 +50,6 @@ const BARS = {
     catchGap: 0.5,
     /** The window the catch read sums our damage over when the target is not heading for its tower (CATCH_WINDOW, `judgement`: a fitted 5.7 s window ended 94 of 124 kills in the smoke game within 0.3 s). */
     catchWindow: 30,
-    /** The default horizon of `Arrives` (s): 1 s of walking plus an attack point (WALK_IN, `judgement`). A kill and a join do not ask it: the catch read and the pair or play reach decide their walk. */
-    walkIn: 1.5,
     /**
      * The walk a hit or hit back pays for follows its value (coordinator, 19/11/2026; the step-4 smoke game: 267 of 579 hits ended
      * `no_reach`, 195 of them after 0.1 s, opened at a gap of 474 on a target walking towards us that then turned): a hit opens only
@@ -128,7 +126,7 @@ export function CatchRead(hunters: Hunter[], thpAbs: number, w: number = BARS.ca
 }
 
 /** Whether a hero at `gap` (distance past attack range plus both hulls, 0 or less in range) is in range within `horizon` s when the target moves `away` (signed; towards us is negative) and we run at `ms`. */
-export function Arrives(gap: number, ms: number, away: number, horizon: number = BARS.walkIn): boolean {
+export function Arrives(gap: number, ms: number, away: number, horizon: number): boolean {
     if (gap <= 0) return true;
     const closing = ms - away;
     return closing > 0 && gap <= closing * horizon;
@@ -385,7 +383,7 @@ function endOf(i: Inputs, run: Run, t: Cand | undefined): string | undefined {
 function answerOf(i: Inputs, pid: number, c: Cand | undefined, p: Pick, run: Run | undefined, ended: string | undefined, reason?: string): Answer {
     const a: Answer = { level: p.level, target: pid, source: p.source, how: howOf(p.level, run, c !== undefined), reason: reason ?? p.reason, ended };
     if (p.level === "kill" && run !== undefined && run.level === "kill" && run.target === pid) {
-        const cs = catchState(i, run, c?.catch?.ok ?? true);
+        const cs = catchState(i, run, c?.catch?.ok ?? run.catch?.ok ?? true);
         a.catchFails = cs.fails;
         a.catchFailAt = cs.at;
     }
@@ -449,7 +447,7 @@ export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     const run = i.run;
     for (const c of i.cands) {
         const slack = run !== undefined && run.target === c.pid ? run : undefined;
-        if (!c.hitting || i.towerOnMe || c.tw) continue;
+        if (!c.hitting || c.lost === true || i.towerOnMe || c.tw) continue;
         if (i.burst >= burstBar(i.n) + (slack !== undefined ? BARS.slackBurst : 0)) continue;
         if (i.hp < hpBar(i.n) - (slack !== undefined ? BARS.slackHp : 0)) continue;
         if (c.paid || c.free || c.ko > c.kt) return "hitback";
