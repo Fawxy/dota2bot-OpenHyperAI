@@ -1259,10 +1259,13 @@ function losing(bot: Unit, ep: Episode, now: number): boolean {
 }
 
 /** Slice chase-log (ev=cast): the hero's running episode, its kind and target. Reads only. */
-export function EpisodeOf(pid: number): { kind: Kind; tpid: number; target: Unit } | undefined {
+export function EpisodeOf(pid: number): { kind: Kind; tpid: number; target: Unit; at: number } | undefined {
     const ep = episodes[pid];
-    return ep === undefined || ep.ended === true ? undefined : { kind: ep.kind, tpid: ep.tpid, target: ep.target };
+    return ep === undefined || ep.ended === true ? undefined : { kind: ep.kind, tpid: ep.tpid, target: ep.target, at: ep.offeredAt };
 }
+
+// Slice join-hits: PairJoin reads a partner's open episode and this module's refusal; it cannot import this module.
+PairJoin.SetReaders({ episodeOf: EpisodeOf, refusal: (bot, target) => FightRefusal(Gather(bot, target), killHpFor(bot)) });
 
 /** A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only. */
 export function Joining(bot: Unit): boolean {
