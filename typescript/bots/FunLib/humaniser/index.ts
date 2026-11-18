@@ -54,6 +54,8 @@ import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";
 export { Retreat };
+import * as SustainGather from "bots/FunLib/humaniser/sustain_gather";
+export { SustainGather };
 import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as CastLog from "bots/FunLib/humaniser/cast_log";
 
@@ -157,6 +159,7 @@ const steps = {
     intent: Intent.Tick,
     telemetry: Telemetry.Tick,
     regen: RegenObs.Tick,
+    sustain: SustainGather.Tick,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
     overlay: drawOverlay,
@@ -238,6 +241,8 @@ function tick(this: void, bot: Unit): void {
     pcall(CastLog.Tick, bot);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
     pcall(steps.regen, bot);
+    // Sustain step 2: the decision in shadow (ev=cut kind=sustain); reads and logs, no order.
+    pcall(steps.sustain, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
     pcall(VisionMap.Tick, bot);
@@ -296,6 +301,8 @@ if (Telemetry.GuardsEnabled()) {
     // A controller error drops that wave's ev=lane_ctl line; no bot action reads it.
     Telemetry.GuardModule("LaneControl", LaneControl, { Tick: none });
     // An error hands the hero to OHA's retreat desire for that call (undefined) and a Think that issues nothing.
+    // Telemetry only: an error drops the purchase's ev=sustain_buy line.
+    Telemetry.GuardModule("SustainGather", SustainGather, { Bought: none });
     Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, HoldsItem: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
     Telemetry.GuardModule("Perception", Perception, {
         FilterNearbyEnemies: arg2,
