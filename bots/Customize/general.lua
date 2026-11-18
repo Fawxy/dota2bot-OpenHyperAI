@@ -182,7 +182,6 @@ Customize.Humaniser = {
         Teleports = true, -- bots back off from, or set up on, an enemy TP into their lane (independent of Caution)
         LaneWard = true,  -- the lane support wards the gank path between about 2:30 and 4:30
         Phase = true,     -- per-bot end of laning: cores with a farm item and a safe jungle farm; supports above level 6 leave between 6:00 and 8:00 with a smoke or an attack order
-        LostLane = true,  -- a lost lane: the core goes to the jungle, a support roams or suggests it to a human
     },
     -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
     -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
@@ -292,7 +291,7 @@ Customize.Humaniser = {
 -- CorePull (slice lane-control 4a): the offlane pos3 pulls its hard camp when the lane controller names it. Off: supports only.
 -- ArbiterShadow (slice arbiter-shadow): per owned hero, the arbiter's pick beside Valve's active mode as ev=arb. Logging only.
 -- ArbiterDrive (rework step 7): the arbiter's pick holds every owned laner from its first laning read to an end event (our or
--- their tier-1 lost, the lane lost, the clock); OHA's modes per the inventory. Off: only the retreat episode and a running job hold.
+-- their tier-1 lost, the clock); OHA's modes per the inventory. Off: only the retreat episode and a running job hold.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- EvenStand (slice mid-stand): with LaneSpotThreat and Retreat on, one enemy hero in reach who is not hitting us, whose burst is

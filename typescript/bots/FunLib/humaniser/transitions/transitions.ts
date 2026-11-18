@@ -109,7 +109,7 @@ export function ConfirmLaneWard(bot: Unit, spot: { location: Vector }): void {
     LaneWard.Confirm(bot, spot);
 }
 
-/** Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended or its lane is lost). */
+/** Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended). */
 export function FarmAllowedInLaning(bot: Unit): boolean {
     return !Trainer.IsSelfTestBot(bot) && Phase.FarmAllowedInLaning(bot);
 }

@@ -123,7 +123,7 @@ end
 function ____exports.ConfirmLaneWard(bot, spot)
     LaneWard.Confirm(bot, spot)
 end
---- Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended or its lane is lost).
+--- Farm-mode hook: true when this core may farm although the laning phase is on (its laning ended).
 function ____exports.FarmAllowedInLaning(bot)
     return not Trainer.IsSelfTestBot(bot) and Phase.FarmAllowedInLaning(bot)
 end
