@@ -1990,7 +1990,7 @@ ____exports.TABLE = {
         }
     },
     ["sight-probe"] = {
-        note = "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 600 west (open, seen), 650 north behind trees (unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
+        note = "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 500 north in the lane corridor (open, seen), 800 north-west behind trees (unseen), 650 west up a height step (high, unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
         cast = SAFE_CORE,
         others = "bench",
         rep = {every = 60, from = 0},
@@ -1998,11 +1998,17 @@ ____exports.TABLE = {
             half = "execution",
             switch = "none",
             window = 600,
-            spots = {side = {"r:bot1", -2750, 700}, open = {"r:bot1", -3350, 700}, trees = {"r:bot1", -2750, 1350}, far = {"r:bot1", -2750, 2900}},
+            spots = {
+                side = {"r:bot1", -2750, 700},
+                open = {"r:bot1", -2730, 1200},
+                trees = {"r:bot1", -3150, 1400},
+                high = {"r:bot1", -3350, 700},
+                far = {"r:bot1", -2750, 2900}
+            },
             timeout = 50,
             release = {modes = {"idle"}},
             grid = {1600, 100},
-            reps = {{name = "open", setup = {r1 = {"stand side"}, d4 = {"stand open"}}, ready = {sees = {"d4"}, after = 20}}, {name = "trees", setup = {r1 = {"stand side"}, d4 = {"stand trees"}}, ready = {unseen = {"d4"}, after = 20}}, {name = "far", setup = {r1 = {"stand side"}, d4 = {"stand far"}}, ready = {unseen = {"d4"}, after = 20}}}
+            reps = {{name = "open", setup = {r1 = {"stand side"}, d4 = {"stand open"}}, ready = {sees = {"d4"}, after = 20}}, {name = "trees", setup = {r1 = {"stand side"}, d4 = {"stand trees"}}, ready = {unseen = {"d4"}, after = 20}}, {name = "far", setup = {r1 = {"stand side"}, d4 = {"stand far"}}, ready = {unseen = {"d4"}, after = 20}}, {name = "high", setup = {r1 = {"stand side"}, d4 = {"stand high"}}, ready = {unseen = {"d4"}, after = 20}}}
         }
     },
     ["retreat-heal-items"] = {

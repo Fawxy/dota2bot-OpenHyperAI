@@ -960,8 +960,8 @@ do
 	local function lines(ph, ls) local r = {} for _, l in ipairs(ls) do if field(l, "ph") == ph then table.insert(r, l) end end return r end
 	local function place(u) local m = lastMove(u.pid) u.loc = Vector(m.x, m.y, 0) end
 	local t = H.Drill.TABLE["sight-probe"].rig
-	check("sight-probe: three reps, open sees d4, trees and far want it unseen, each after 20 s", #t.reps == 3 and t.reps[1].ready.sees[1] == "d4"
-		and t.reps[2].ready.unseen[1] == "d4" and t.reps[3].ready.unseen[1] == "d4" and t.reps[1].ready.after == 20)
+	check("sight-probe: four reps, open sees d4, trees, far and high want it unseen, each after 20 s", #t.reps == 4 and t.reps[1].ready.sees[1] == "d4"
+		and t.reps[2].ready.unseen[1] == "d4" and t.reps[3].ready.unseen[1] == "d4" and t.reps[4].ready.unseen[1] == "d4" and t.reps[1].ready.after == 20)
 	HEIGHT = function() return 3 end
 	T = 1
 	local ls = capture(function() tick(cast, actor) tick(cast, actor) place(cast) place(actor) tick(cast, actor) tick(cast, actor) end)

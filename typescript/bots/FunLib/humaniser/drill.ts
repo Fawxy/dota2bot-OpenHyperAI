@@ -582,9 +582,11 @@ export const TABLE: Record<string, Entry> = {
     // at one spot a rep: `open` (kill-reach's low, 600 west on the strip, seen there), `trees` (650 north of the cast: kill-reach
     // on1 saw a statue there 138 of 530 s, behind trees), `far` (2,200 north in our jungle, past day sight). Read: each rep's
     // ph=ready (ok, fail, `sight`) against the actor's ph=step, and ph=grid (the team's sight around the cast, 100 apart).
-    // 60 s reps from 0:00 to 10:00 hold day (to 5:00) and night; seed 8.
+    // 60 s reps from 0:00 to 10:00 hold day (to 5:00) and night; seed 8. Spots from rig1's grids (18/11/2026): `open` in the
+    // lane corridor the cast sees, `trees` a walked point 800 north-west in fog by day and night, `high` up one height step
+    // (level 4 to the cast's 2) and fogged 650 west although open ground, `far` past the grid.
     "sight-probe": {
-        note: "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 600 west (open, seen), 650 north behind trees (unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
+        note: "rig: Radiant pos1 standing off our bot lane; the Dire pos4 stands 500 north in the lane corridor (open, seen), 800 north-west behind trees (unseen), 650 west up a height step (high, unseen) or 2,200 north (far, unseen); the team's sight grid logged at ready; 60 s reps from 0:00; seed 8",
         cast: SAFE_CORE,
         others: "bench",
         rep: { every: 60, from: 0 },
@@ -594,8 +596,9 @@ export const TABLE: Record<string, Entry> = {
             window: 600,
             spots: {
                 side: ["r:bot1", -2750, 700],
-                open: ["r:bot1", -3350, 700],
-                trees: ["r:bot1", -2750, 1350],
+                open: ["r:bot1", -2730, 1200],
+                trees: ["r:bot1", -3150, 1400],
+                high: ["r:bot1", -3350, 700],
                 far: ["r:bot1", -2750, 2900],
             },
             timeout: 50,
@@ -605,6 +608,7 @@ export const TABLE: Record<string, Entry> = {
                 { name: "open", setup: { r1: ["stand side"], d4: ["stand open"] }, ready: { sees: ["d4"], after: 20 } },
                 { name: "trees", setup: { r1: ["stand side"], d4: ["stand trees"] }, ready: { unseen: ["d4"], after: 20 } },
                 { name: "far", setup: { r1: ["stand side"], d4: ["stand far"] }, ready: { unseen: ["d4"], after: 20 } },
+                { name: "high", setup: { r1: ["stand side"], d4: ["stand high"] }, ready: { unseen: ["d4"], after: 20 } },
             ],
         },
     },
