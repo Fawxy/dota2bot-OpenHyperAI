@@ -19,6 +19,7 @@ local ALLOW = {
 	["mode_team_roam_generic.lua:ItemOpsThink"] = "a helper of team_roam's Think, which is behind that mode's Chooser.Gate",
 	["mode_retreat_generic_wip.lua:*"] = "not a Valve mode name: Dota never loads it",
 	["--mode_item_generic.lua:*"] = "disabled file (leading dashes): Dota never loads it",
+	["mode_watcher_generic.lua:GetDesire"] = "always returns no desire and the file has no Think: the mode never runs for any hero",
 }
 
 -- A mode file's GetDesire and Think: Chooser.Gate wraps GetDesire (Chooser.Decide asks Drill.RigDesire first, so a rig cast
