@@ -32,7 +32,8 @@
 // second of the cast at 75% HP or more with the nearest enemy hero (its own snapshot within a second) inside the cast's `ar`
 // + 48 (strict, both hulls) is one in-range second, split as `hero` (its `tid` an enemy hero), `creep` (`tid` a creep), or by
 // its move to the next snapshot along the line to that hero: `toward` or `away` (over MOVE_STEP), else `idle`; the modes
-// that held it in the seconds it was not attacking the hero (marked `(trade)` inside an open trade episode); and the hero share within +400 (`wide`). As D2's read of the
+// that held it in the seconds it was not attacking the hero (marked `(trade)` inside an open trade episode) and the hero
+// seconds inside one; and the hero share within +400 (`wide`). As D2's read of the
 // head-to-heads (ours 33%, OHA 52% strict), so the numbers compare.
 // Usage: node trade_rig.js <file fragment> [...] [--rows] [--reps] [--json] [--no-ingest]
 // --rows prints one JSON line per trade, --reps one per ready rep (its trade counts and range read).
@@ -84,7 +85,7 @@ function lostBy(snaps, a, b) {
  * within a second; in strict range, the second's class and mode; within +WIDE, whether it attacked the hero.
  */
 function rangeSeconds(own, foes, a, b, episodes = []) {
-    const out = { secs: 0, hero: 0, creep: 0, toward: 0, away: 0, idle: 0, modes: {}, wide: 0, wideHero: 0 };
+    const out = { secs: 0, hero: 0, creep: 0, toward: 0, away: 0, idle: 0, modes: {}, heroModes: {}, wide: 0, wideHero: 0, heroTrade: 0 };
     for (let i = 0; i < own.length; i++) {
         const s = own[i];
         if (s.t < a || s.t >= b || s.alive === 0 || s.hp == null || s.hp < 75 || s.x == null || s.ar == null) continue;
@@ -111,11 +112,12 @@ function rangeSeconds(own, foes, a, b, episodes = []) {
             k = step > MOVE_STEP ? 'toward' : step < -MOVE_STEP ? 'away' : 'idle';
         }
         out[k] += 1;
-        if (k !== 'hero') {
-            // `mode` never names our states; an open trade episode is core_trade's hold whatever OHA mode carries it.
-            const m = episodes.some(([o, c]) => s.t >= o && s.t <= c) ? `${s.mode} (trade)` : s.mode;
-            out.modes[m] = (out.modes[m] ?? 0) + 1;
-        }
+        // `mode` never names our states; an open trade episode is core_trade's hold whatever OHA mode carries it.
+        const inTrade = episodes.some(([o, c]) => s.t >= o && s.t <= c);
+        const m = inTrade ? `${s.mode} (trade)` : s.mode;
+        const tally = k === 'hero' ? out.heroModes : out.modes;
+        tally[m] = (tally[m] ?? 0) + 1;
+        if (k === 'hero' && inTrade) out.heroTrade += 1;
     }
     return out;
 }
@@ -234,9 +236,9 @@ function summary({ trades, reps: rs }) {
         s.ready += 1;
         if (r.trades > 0) s.withTrade += 1;
         s.lost += r.lost;
-        const g = (s.range ??= { secs: 0, hero: 0, creep: 0, toward: 0, away: 0, idle: 0, modes: {}, wide: 0, wideHero: 0 });
-        for (const k of ['secs', 'hero', 'creep', 'toward', 'away', 'idle', 'wide', 'wideHero']) g[k] += r.range[k];
-        for (const [m, n] of Object.entries(r.range.modes)) g.modes[m] = (g.modes[m] ?? 0) + n;
+        const g = (s.range ??= { secs: 0, hero: 0, creep: 0, toward: 0, away: 0, idle: 0, modes: {}, heroModes: {}, wide: 0, wideHero: 0, heroTrade: 0 });
+        for (const k of ['secs', 'hero', 'heroTrade', 'creep', 'toward', 'away', 'idle', 'wide', 'wideHero']) g[k] += r.range[k];
+        for (const t of ['modes', 'heroModes']) for (const [m, n] of Object.entries(r.range[t])) g[t][m] = (g[t][m] ?? 0) + n;
     }
     const by = {};
     for (const t of trades) (by[key(t)] ??= []).push(t);
@@ -292,8 +294,9 @@ if (require.main === module) {
         const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : '-');
         for (const [k, s] of Object.entries(summary(all))) {
             const g = s.range;
-            const modes = Object.entries(g.modes).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${n}`).join(', ');
-            console.log(`${k.padEnd(22)} in range ${g.secs} s: hero ${pct(g.hero, g.secs)} creep ${pct(g.creep, g.secs)} toward ${pct(g.toward, g.secs)} away ${pct(g.away, g.secs)} idle ${pct(g.idle, g.secs)}; not on the hero, held by: ${modes}; +${WIDE}: ${g.wide} s, hero ${pct(g.wideHero, g.wide)}`);
+            const list = (t) => Object.entries(t).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${n}`).join(', ');
+            const modes = `${list(g.modes)}; on the hero: ${list(g.heroModes)}`;
+            console.log(`${k.padEnd(22)} in range ${g.secs} s: hero ${pct(g.hero, g.secs)} (in a trade ${g.heroTrade} s) creep ${pct(g.creep, g.secs)} toward ${pct(g.toward, g.secs)} away ${pct(g.away, g.secs)} idle ${pct(g.idle, g.secs)}; not on the hero, held by: ${modes}; +${WIDE}: ${g.wide} s, hero ${pct(g.wideHero, g.wide)}`);
             const why = Object.entries(s.why ?? {}).map(([w, n]) => `${w} ${n}`).join(', ');
             console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  lost to creeps/hero/other ${s.split ? `${s.split.creeps}/${s.split.hero}/${s.split.other}` : '-'}  5 s by flags c/h/b/o ${s.split5 ? `${s.split5.creeps}/${s.split5.hero}/${s.split5.both}/${s.split5.other}` : '-'}  creeps end ${s.creepsEnd ?? '-'}%  step first ${s.stepFirst ?? '-'}  untaken lh/dn ${s.ulh ?? '-'}/${s.udn ?? '-'}  ends: ${why}`);
         }

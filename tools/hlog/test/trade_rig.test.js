@@ -94,9 +94,10 @@ test('trade_rig: in-range seconds are graded by time, with or without a trade', 
         o(30, 0), // past the window
     ];
     const foe = (x) => [10, 11, 12, 13, 14, 15, 17, 18, 19, 30].map((t) => ({ t: t + 0.2, x, y: 0, alive: 1 }));
-    const r = rangeSeconds(own, [[7, foe(580)], [8, foe(2600)]], 10, 20, [[12.5, 14.5]]);
+    const r = rangeSeconds(own, [[7, foe(580)], [8, foe(2600)]], 10, 20, [[9.5, 10.5], [12.5, 14.5]]);
     assert.deepStrictEqual([r.secs, r.hero, r.creep, r.toward, r.away, r.idle], [6, 1, 1, 1, 1, 2]);
-    // 13 and 14 sit in the trade episode 12.5-14.5.
+    // 10 (on the hero) sits in the trade episode 9.5-10.5, 13 and 14 in 12.5-14.5.
+    assert.deepStrictEqual([r.heroTrade, r.heroModes], [1, { 'laning (trade)': 1 }]);
     assert.deepStrictEqual(r.modes, { laning: 3, 'attack (trade)': 1, 'laning (trade)': 1 });
     assert.deepStrictEqual([r.wide, r.wideHero], [7, 2]);
     // A foe whose nearest snapshot is over a second off is no read: of 10-15 only 14 and 15 have one (at 14.8).
