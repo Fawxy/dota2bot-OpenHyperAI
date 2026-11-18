@@ -894,6 +894,28 @@ export const EVENTS = {
         /** feed:approach_far: the bot's distance to the approach point. */
         ad: "num",
     },
+    /** Slice deaggro: one line per shed attempt (an attack order on our lane creep to move a tower's or enemy creeps' aggro). */
+    deaggro: {
+        pid: "num",
+        /** Attackers on us at the order: `tower`, `lane` or `mixed`. */
+        kind: "str",
+        /** `ok` (no unlocked attacker still on us), `still_hit` (some still on us after ConfirmFor), `gone` (we died),
+         *  `stale` (the caller stopped watching). */
+        result: "str",
+        /** Attackers on us at the order; of them locked (we stood inside their attack range); covered by the order's target. */
+        n: "num",
+        lk: "num",
+        cov: "num",
+        /** On `still_hit`: unlocked attackers still on us. */
+        left: "num",
+        /** Unlocked attackers that died or left sight before the result (off us, but not by a switch). */
+        dead: "num",
+        /** Seconds from the order to the result. */
+        dt: "num",
+        /** Our HP fraction at the order and lost by the result. */
+        hp: "num",
+        dhp: "num",
+    },
     lane_tech: {
         pid: "num",
         tech: "str",

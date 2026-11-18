@@ -633,6 +633,19 @@
    "why": "str",
    "ad": "num"
   },
+  "deaggro": {
+   "pid": "num",
+   "kind": "str",
+   "result": "str",
+   "n": "num",
+   "lk": "num",
+   "cov": "num",
+   "left": "num",
+   "dead": "num",
+   "dt": "num",
+   "hp": "num",
+   "dhp": "num"
+  },
   "lane_tech": {
    "pid": "num",
    "tech": "str",
@@ -2103,6 +2116,10 @@
   "ev_aggro_skip": {
    "role": "text",
    "why": "text"
+  },
+  "ev_deaggro": {
+   "kind": "text",
+   "result": "text"
   },
   "ev_lane_tech": {
    "tech": "text",
