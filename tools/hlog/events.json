@@ -1115,13 +1115,6 @@
    "laning": "bool",
    "why": "str"
   },
-  "tr_lost": {
-   "pid": "num",
-   "lost": "bool",
-   "reason": "str",
-   "deaths": "num",
-   "levelGap": "num"
-  },
   "tr_rotate": {
    "pid": "num",
    "spawn": "num",
@@ -2334,9 +2327,6 @@
   },
   "ev_tr_laning": {
    "why": "text"
-  },
-  "ev_tr_lost": {
-   "reason": "text"
   },
   "ev_tr_rotate": {
    "side": "text",
