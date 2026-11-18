@@ -135,6 +135,7 @@ local aggro = {
 --- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
 local etiquette = {
     name = "etiquette",
+    host = true,
     scans = true,
     rank = ranks(
         80,
@@ -148,6 +149,7 @@ local etiquette = {
 -- is intended. Where the body owns last hits (team slice 4) it takes them and the denies itself.
 local ohaLastHit = {
     name = "oha_lh",
+    host = true,
     scans = true,
     rank = ranks(
         90,
@@ -159,6 +161,7 @@ local ohaLastHit = {
 }
 local ohaDeny = {
     name = "oha_deny",
+    host = true,
     scans = true,
     rank = ranks(
         100,
@@ -171,6 +174,7 @@ local ohaDeny = {
 --- Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait.
 local ohaHold = {
     name = "oha_hold",
+    host = true,
     scans = true,
     rank = ranks(
         110,
@@ -183,6 +187,7 @@ local ohaHold = {
 --- The optional local override's Think: runs beside the rows and never ends the frame.
 local ohaLocal = {
     name = "oha_local",
+    host = true,
     scans = true,
     rank = ranks(
         120,
@@ -211,6 +216,7 @@ local body = {
 --- OHA's PositionThink: the fallback that always acts.
 local ohaPos = {
     name = "oha_pos",
+    host = true,
     rank = ranks(
         140,
         unpack(all)
@@ -235,20 +241,35 @@ ____exports.ROWS = {
     body,
     ohaPos
 }
+for ____, r in ipairs(____exports.ROWS) do
+    local host = r.host == true
+    r.wants = Telemetry.Guard(
+        ("LaneTable." .. r.name) .. ".wants",
+        r.wants,
+        function() return host end
+    )
+    if not host then
+        r.run = Telemetry.Guard(
+            ("LaneTable." .. r.name) .. ".run",
+            r.run,
+            function() return false end
+        )
+    end
+end
 local function build(pos, laneOnly)
     local out = {}
     for ____, r in ipairs(____exports.ROWS) do
         do
-            local __continue36
+            local __continue41
             repeat
                 if r.rank[pos] == nil or laneOnly and not r.drill or not laneOnly and r.drillOnly == true then
-                    __continue36 = true
+                    __continue41 = true
                     break
                 end
                 out[#out + 1] = r
-                __continue36 = true
+                __continue41 = true
             until true
-            if not __continue36 then
+            if not __continue41 then
                 break
             end
         end
@@ -335,7 +356,7 @@ function ____exports.Walk(bot, ctx)
     local acted = order[#order].name
     for ____, r in ipairs(order) do
         do
-            local __continue51
+            local __continue56
             repeat
                 local t0 = Telemetry.DeepT0()
                 local wants = r.wants(bot, ctx)
@@ -343,7 +364,7 @@ function ____exports.Walk(bot, ctx)
                     Telemetry.DeepAdd(("lane_table.Walk:" .. r.name) .. ".wants", t0)
                 end
                 if not wants then
-                    __continue51 = true
+                    __continue56 = true
                     break
                 end
                 local t1 = Telemetry.DeepT0()
@@ -360,9 +381,9 @@ function ____exports.Walk(bot, ctx)
                     n = ____n_1 + 1
                     skipScratch[____n_1 + 1] = r.name
                 end
-                __continue51 = true
+                __continue56 = true
             until true
-            if not __continue51 then
+            if not __continue56 then
                 break
             end
         end

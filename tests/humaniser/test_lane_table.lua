@@ -260,4 +260,16 @@ do
 	check("cut: the same row with a different skipped list is logged", #lines == 5 and lines[5]:find("body_hit", 1, true) == nil, lines[5])
 end
 
+-- An error in a row of ours: the row stands aside and the host's rows still run; an error in a host step is raised.
+do
+	H.Telemetry.SetSink(function() end)
+	local c = ctx({ busy = true, ohaLastHit = true })
+	c.stepBody = function() error("boom") end
+	check("an error in our row falls through to the host's last hit", walk(core, c) == "oha_lh")
+	c = ctx({})
+	c.ohaLastHit = function() error("host boom") end
+	local ok, err = pcall(walk, core, c)
+	check("an error in a host step is raised, not swallowed as ours", not ok and tostring(err):find("host boom", 1, true) ~= nil, err)
+end
+
 finish()

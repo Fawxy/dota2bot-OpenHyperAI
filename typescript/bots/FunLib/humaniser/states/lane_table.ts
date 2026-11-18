@@ -53,6 +53,8 @@ export interface Row {
     drillOnly?: boolean;
     /** The row's run is its own scan (it finds a creep or finds none), so giving no order is not news: left out of `skip`. */
     scans?: boolean;
+    /** One of mode_laning_generic's own steps: its run is not guarded, so an error in it is raised as the host's, as before. */
+    host?: boolean;
     wants: (this: void, bot: Unit, ctx: Ctx) => boolean;
     run: (this: void, bot: Unit, ctx: Ctx) => boolean;
 }
@@ -167,6 +169,7 @@ const aggro: Row = {
 /** Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move. */
 const etiquette: Row = {
     name: "etiquette",
+    host: true,
     scans: true,
     rank: ranks(80, ...all),
     drill: false,
@@ -180,6 +183,7 @@ const etiquette: Row = {
  */
 const ohaLastHit: Row = {
     name: "oha_lh",
+    host: true,
     scans: true,
     rank: ranks(90, ...all),
     drill: true,
@@ -190,6 +194,7 @@ const ohaLastHit: Row = {
 
 const ohaDeny: Row = {
     name: "oha_deny",
+    host: true,
     scans: true,
     rank: ranks(100, ...all),
     drill: true,
@@ -200,6 +205,7 @@ const ohaDeny: Row = {
 /** Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait. */
 const ohaHold: Row = {
     name: "oha_hold",
+    host: true,
     scans: true,
     rank: ranks(110, ...all),
     drill: true,
@@ -210,6 +216,7 @@ const ohaHold: Row = {
 /** The optional local override's Think: runs beside the rows and never ends the frame. */
 const ohaLocal: Row = {
     name: "oha_local",
+    host: true,
     scans: true,
     rank: ranks(120, ...all),
     drill: false,
@@ -236,6 +243,7 @@ const body: Row = {
 /** OHA's PositionThink: the fallback that always acts. */
 const ohaPos: Row = {
     name: "oha_pos",
+    host: true,
     rank: ranks(140, ...all),
     drill: true,
     wants: () => true,
@@ -243,6 +251,14 @@ const ohaPos: Row = {
 };
 
 export const ROWS: Row[] = [bodyHit, supportHit, supportAggro, supportHold, drillHold, drillAggro, aggro, etiquette, ohaLastHit, ohaDeny, ohaHold, ohaLocal, body, ohaPos];
+
+// An error in a row of ours is reported and the row stands aside, so the rows after it (the host's last hit, deny and position)
+// still run. A failed `wants` on a host row answers true: ours does not own the frame.
+for (const r of ROWS) {
+    const host = r.host === true;
+    r.wants = Telemetry.Guard(`LaneTable.${r.name}.wants`, r.wants, () => host);
+    if (!host) r.run = Telemetry.Guard(`LaneTable.${r.name}.run`, r.run, () => false);
+}
 
 function build(pos: 1 | 2 | 3 | 4 | 5, laneOnly: boolean): Row[] {
     const out: Row[] = [];
