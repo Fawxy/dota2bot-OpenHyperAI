@@ -767,6 +767,29 @@ do
 	answer = enemy
 	T = 620.5
 	check("a join on the trade's own target takes it over", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	-- Slice kill-chase (review): a join whose target falls to the kill bar reopens as the kill, which keeps the join's group
+	-- (2) and its hold over the last hit, and clears its SetTarget on close.
+	CoreTrade.Think(bot)
+	check("kill-chase: the join names its target for OHA's casts", bot.target == enemy)
+	enemy.hp = 30
+	T = 621
+	local n0 = #lines
+	check("kill-chase: the join at the kill bar hands to the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL)
+	local up = false
+	for i = n0 + 1, #lines do if lines[i]:find("ev=trade") and lines[i]:find("kind=join") and lines[i]:find("why=kill_up") then up = true end end
+	check("kill-chase: its line names kill_up", up)
+	check("kill-chase: the kill carried from the join keeps the pair group", CoreTrade.Joining(bot))
+	CoreTrade.Think(bot)
+	T = 621.5
+	check("kill-chase: and laning's last hit yields to it", CoreTrade.LastHitYields(bot))
+	check("kill-chase: the join's answer on the kill's target keeps the kill", CoreTrade.Desire(bot) == CoreTrade.DESIRE_KILL and CoreTrade.Joining(bot))
+	answer = nil
+	enemy.alive = false
+	T = 622
+	CoreTrade.Desire(bot)
+	check("kill-chase: the close clears the target it set", bot.target == nil)
+	enemy.alive = true
+	enemy.hp = 70
 	PairJoin.Joins = joins
 	other.alive = false
 	CoreTrade.Reset()

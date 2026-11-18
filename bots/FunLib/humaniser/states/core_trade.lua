@@ -867,6 +867,9 @@ function hitBack(bot, now, why, inputs)
             __TS__StringStartsWith(a, "hb_") and a or "hb_" .. a
         )
     end
+    if a == "kill" and heldUncatchable(bot, hb) then
+        return unanswered(bot, now, "cannot_catch", inputs)
+    end
     return open(
         bot,
         a,
@@ -912,18 +915,18 @@ function joinable(bot)
         JOIN_NEAR
     )) do
         do
-            local __continue180
+            local __continue186
             repeat
                 local t = p.target
                 if p.by == bot or not valid(t) or GetUnitToUnitDistance(bot, t) > reach then
-                    __continue180 = true
+                    __continue186 = true
                     break
                 end
                 if ____exports.FightRefusal(
                     ____exports.Gather(bot, t),
                     killHpFor(bot)
                 ) ~= nil then
-                    __continue180 = true
+                    __continue186 = true
                     break
                 end
                 if Plays.Weigh(Plays.InputsOf({
@@ -932,12 +935,12 @@ function joinable(bot)
                     target = t,
                     at = t:GetLocation()
                 })).zero ~= nil then
-                    __continue180 = true
+                    __continue186 = true
                     break
                 end
                 return p
             until true
-            if not __continue180 then
+            if not __continue186 then
                 break
             end
         end
@@ -1114,11 +1117,11 @@ function safeTime(bot, ep, place)
     local bestD = math.huge
     for ____, id in ipairs(TOWER_IDS) do
         do
-            local __continue228
+            local __continue234
             repeat
                 local t = GetTower(theirs, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue228 = true
+                    __continue234 = true
                     break
                 end
                 local d = distXY(
@@ -1129,9 +1132,9 @@ function safeTime(bot, ep, place)
                     bestD = d
                     best = t:GetLocation()
                 end
-                __continue228 = true
+                __continue234 = true
             until true
-            if not __continue228 then
+            if not __continue234 then
                 break
             end
         end
@@ -1202,21 +1205,21 @@ function huntersOf(bot, ep, place, seen)
     local me = bot:GetPlayerID()
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue246
+            local __continue252
             repeat
                 if a == nil or a == nil or a:IsNull() or not a:IsAlive() or a:IsIllusion() or a:GetPlayerID() == me then
-                    __continue246 = true
+                    __continue252 = true
                     break
                 end
                 local o = episodes[a:GetPlayerID()]
                 if o == nil or o.ended == true or o.tpid ~= ep.tpid or o.kind ~= "kill" and o.kind ~= "join" then
-                    __continue246 = true
+                    __continue252 = true
                     break
                 end
                 out[#out + 1] = hunterOf(ep, a, place, seen)
-                __continue246 = true
+                __continue252 = true
             until true
-            if not __continue246 then
+            if not __continue252 then
                 break
             end
         end
@@ -1250,19 +1253,19 @@ function towerCovers(bot, a, b)
     local reach = LaneConfig.TowerReach()
     for ____, t in ipairs(bot:GetNearbyTowers(1600, true)) do
         do
-            local __continue254
+            local __continue260
             repeat
                 if not t:IsAlive() then
-                    __continue254 = true
+                    __continue260 = true
                     break
                 end
                 local tl = t:GetLocation()
                 if distXY(tl, a) <= reach or distXY(tl, b) <= reach then
                     return true
                 end
-                __continue254 = true
+                __continue260 = true
             until true
-            if not __continue254 then
+            if not __continue260 then
                 break
             end
         end
@@ -1286,14 +1289,14 @@ function unseenReads(bot, ep, place, k)
         end
     end
     k.uout = enemies > math.max(1, allies)
-    local r = Threat.Read(bot, here, place, Threat.SETTINGS.GateHorizon)
-    local others = false
-    for ____, p in ipairs(r.mpids) do
-        if p ~= ep.tpid then
-            others = true
-        end
-    end
-    k.threat = others and r.missing >= Threat.SETTINGS.MissingRefuse
+    local r = Threat.Read(
+        bot,
+        here,
+        place,
+        Threat.SETTINGS.GateHorizon,
+        {exclude = ep.tpid}
+    )
+    k.threat = #r.mpids > 0 and r.missing >= Threat.SETTINGS.MissingRefuse
 end
 function keepKill(bot, ep, now, join)
     local alive = IsHeroAlive(ep.tpid)
@@ -1594,19 +1597,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue320
+            local __continue324
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue320 = true
+                    __continue324 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue320 = true
+                __continue324 = true
             until true
-            if not __continue320 then
+            if not __continue324 then
                 break
             end
         end
@@ -1637,7 +1640,7 @@ function stepOutPoint(bot, creeps)
     return Vector(x + dx / n * (AGGRO_CLEAR + 100), y + dy / n * (AGGRO_CLEAR + 100), me.z)
 end
 function episodeHolds(ep)
-    return ep ~= nil and (ep.lf or ep.kind == "join") and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
+    return ep ~= nil and (ep.lf or ep.kind == "join" or ep.pair == true) and ep.kind ~= "trade" and ep.startedAt ~= nil and not ep.ended
 end
 ____exports.DESIRE_TRADE = 0.6
 ____exports.DESIRE_KILL = 0.75
@@ -1777,7 +1780,7 @@ function ____exports.Taking(bot)
         return valid(ep.target) and hbKeptWhy(____exports.Gather(bot, ep.target)) == nil
     end
     local h, a = hitterExchange(bot)
-    return h ~= nil and (a == "trade" or a == "kill")
+    return h ~= nil and (a == "trade" or a == "kill" and not heldUncatchable(bot, h))
 end
 HITTER_RADIUS = 1600
 NO_EVERY = 5
@@ -1854,9 +1857,22 @@ local function commitTarget(bot, killHp)
     return best, bestI
 end
 uncatchable = {}
+--- Slice kill-chase: the target Think named with SetTarget is cleared, if it is still the one set (another module's stays).
+local function clearTarget(bot, ep)
+    local t = bot:GetTarget()
+    if t == nil or t == nil then
+        return
+    end
+    if t == ep.target or valid(t) and t:IsHero() and t:GetPlayerID() == ep.tpid or not valid(t) then
+        bot:SetTarget(nil)
+    end
+end
 local function close(bot, ep, why, now)
     local pid = bot:GetPlayerID()
     episodes[pid] = nil
+    if ep.kind ~= "trade" then
+        clearTarget(bot, ep)
+    end
     if ep.kind == "kill" then
         uncatchable[pid] = why == "cannot_catch" and ep.tpid or nil
     end
@@ -2109,6 +2125,9 @@ function ____exports.Desire(bot)
     end
     local join = PairJoin.Joins(bot)
     local sameKill = ep ~= nil and ep.kind == "kill" and join ~= nil and join:GetPlayerID() == ep.tpid
+    if sameKill then
+        ep.pair = true
+    end
     if ep ~= nil and ep.kind ~= "join" and join ~= nil and not sameKill then
         close(bot, ep, "pair_join", now)
         ep = nil
@@ -2120,7 +2139,9 @@ function ____exports.Desire(bot)
         end
         close(bot, ep, why, now)
         if why == "kill_up" and ep.kind == "join" and valid(ep.target) then
-            return open(bot, "kill", ep.target, now)
+            local d = open(bot, "kill", ep.target, now)
+            episodes[pid].pair = true
+            return d
         end
         ep = nil
     end
@@ -2204,10 +2225,10 @@ function ____exports.EpisodeOf(pid)
     end
     return ____temp_33
 end
---- A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only.
+--- A pair join (D10) is open for this hero, or a kill carrying one (`pair`): the arbiter's pair group (2). Reads only.
 function ____exports.Joining(bot)
     local ep = episodes[bot:GetPlayerID()]
-    return ep ~= nil and ep.ended ~= true and ep.kind == "join"
+    return ep ~= nil and ep.ended ~= true and (ep.kind == "join" or ep.pair == true)
 end
 --- A trade, kill, fight or join episode is open for this hero (Desire returns its desire in attack mode); reads only.
 function ____exports.Running(bot)
@@ -2225,6 +2246,9 @@ function ____exports.Think(bot)
         return
     end
     if not valid(ep.target) then
+        if ep.kind ~= "trade" then
+            clearTarget(bot, ep)
+        end
         if ep.kind == "kill" and ep.chaseAt ~= nil then
             bot:Action_MoveToLocation(ep.chaseAt)
         end
@@ -2243,19 +2267,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue310
+            local __continue314
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue310 = true
+                    __continue314 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue310 = true
+                __continue314 = true
             until true
-            if not __continue310 then
+            if not __continue314 then
                 break
             end
         end

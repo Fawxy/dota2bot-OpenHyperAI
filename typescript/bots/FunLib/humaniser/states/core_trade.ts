@@ -366,6 +366,9 @@ interface Episode {
     joined?: boolean;
     /** A hit back (Exchange took it): opened on a hero hitting us inside our creeps' aggro, so `wave` and `behind` do not end it. */
     hb?: boolean;
+    /** Slice kill-chase: a kill that carries a pair join (D10, group 2) further: opened by its `kill_up`, or the join's own
+     *  target already under our kill. It keeps the join's group and its hold over the last hit (review of kill-chase). */
+    pair?: boolean;
     /** Slice trade-landed: when our first hit on the target landed, and both heroes' HP on the last keep frame before it (the
      *  exchange's baseline from then); `hpPrev`/`thpPrev` track that frame until it lands. */
     landedAt?: number;
@@ -664,7 +667,7 @@ export function Taking(bot: Unit): boolean {
     // A running hit back holds only inside its own bars (keepWhy's slack): a hero arriving mid-trade lets D1 decide.
     if (ep !== undefined && ep.hb === true && ep.ended !== true) return valid(ep.target) && hbKeptWhy(Gather(bot, ep.target)) === undefined;
     const [h, a] = hitterExchange(bot);
-    return h !== undefined && (a === "trade" || a === "kill");
+    return h !== undefined && (a === "trade" || (a === "kill" && !heldUncatchable(bot, h)));
 }
 
 /** A running hit back's caution bars, kept with KEEP_HP_SLACK: the reason it ends, or undefined while it holds. */
@@ -889,9 +892,17 @@ function heldUncatchable(bot: Unit, target: Unit): boolean {
     return true;
 }
 
+/** Slice kill-chase: the target Think named with SetTarget is cleared, if it is still the one set (another module's stays). */
+function clearTarget(bot: Unit, ep: Episode): void {
+    const t = bot.GetTarget();
+    if (t === undefined || t === null) return;
+    if (t === ep.target || (valid(t) && t.IsHero() && t.GetPlayerID() === ep.tpid) || !valid(t)) bot.SetTarget(undefined as any);
+}
+
 function close(bot: Unit, ep: Episode, why: string, now: number): void {
     const pid = bot.GetPlayerID();
     episodes[pid] = undefined;
+    if (ep.kind !== "trade") clearTarget(bot, ep);
     if (ep.kind === "kill") uncatchable[pid] = why === "cannot_catch" ? ep.tpid : undefined;
     const started = ep.startedAt !== undefined;
     if (ep.play !== undefined && !ep.joined) Plays.End(ep.play, why);
@@ -1041,11 +1052,13 @@ export function Desire(bot: Unit): number | undefined {
         ep = undefined;
     }
     // D10 (pair, group 2) comes before every other fight of the lane: a running trade, kill or fight gives way to it, on
-    // its own target too (it reopens as the join, so the join's group, ends and last-hit yield hold; review of pair-join-on).
+    // its own target too (it reopens as the join, so the join's group, ends and last-hit yield hold; review of pair-join-on),
+    // bar a kill on that target, which keeps the join's group and yield as `pair`.
     const join = PairJoin.Joins(bot);
     // Slice kill-chase: a kill already on the join's own target is the join's answer carried further (it chases; the join
-    // lapses Keep after the hit on us stops), so it stays.
+    // lapses Keep after the hit on us stops), so it stays, with the join's group and last-hit hold (`pair`).
     const sameKill = ep !== undefined && ep.kind === "kill" && join !== undefined && join.GetPlayerID() === ep.tpid;
+    if (sameKill) ep!.pair = true;
     if (ep !== undefined && ep.kind !== "join" && join !== undefined && !sameKill) {
         close(bot, ep, "pair_join", now);
         ep = undefined;
@@ -1055,7 +1068,11 @@ export function Desire(bot: Unit): number | undefined {
         if (why === undefined) return ep.kind === "trade" ? DESIRE_TRADE : DESIRE_KILL;
         close(bot, ep, why, now);
         // Slice kill-chase: a join whose target reached the kill bar reopens as the kill on it, ahead of the join.
-        if (why === "kill_up" && ep.kind === "join" && valid(ep.target)) return open(bot, "kill", ep.target, now);
+        if (why === "kill_up" && ep.kind === "join" && valid(ep.target)) {
+            const d = open(bot, "kill", ep.target, now);
+            episodes[pid]!.pair = true;
+            return d;
+        }
         ep = undefined;
     }
     if (join !== undefined) return open(bot, "join", join, now);
@@ -1113,6 +1130,8 @@ function hitBack(bot: Unit, now: number, why: string, inputs?: Inputs): number {
     const [hb, a] = hitterExchange(bot);
     if (hb === undefined) return unanswered(bot, now, why, inputs);
     if (a !== "trade" && a !== "kill") return unanswered(bot, now, a.startsWith("hb_") ? a : `hb_${a}`);
+    // Slice kill-chase: the cannot_catch hold covers a hit back's kill too (review of kill-chase: a hitter backing away).
+    if (a === "kill" && heldUncatchable(bot, hb)) return unanswered(bot, now, "cannot_catch", inputs);
     return open(bot, a, hb, now, undefined, undefined, true);
 }
 
@@ -1411,10 +1430,9 @@ function unseenReads(bot: Unit, ep: Episode, place: Vector, k: KeepInputs): void
     let allies = 0;
     for (const h of bot.GetNearbyHeroes(NEAR, false, BotMode.None)) if (h.IsAlive() && !h.IsIllusion()) allies++;
     k.uout = enemies > math.max(1, allies);
-    const r = Threat.Read(bot, here, place, Threat.SETTINGS.GateHorizon);
-    let others = false;
-    for (const p of r.mpids) if (p !== ep.tpid) others = true;
-    k.threat = others && r.missing >= Threat.SETTINGS.MissingRefuse;
+    // The target itself is left out: its own weight would count a known low hero as the danger (review of kill-chase).
+    const r = Threat.Read(bot, here, place, Threat.SETTINGS.GateHorizon, { exclude: ep.tpid });
+    k.threat = r.mpids.length > 0 && r.missing >= Threat.SETTINGS.MissingRefuse;
 }
 
 /** keepWhy for a kill or join: KeepAnswer on this frame's reads, the keep cut beside it. */
@@ -1607,10 +1625,10 @@ export function EpisodeOf(pid: number): { kind: Kind; tpid: number; target: Unit
     return ep === undefined || ep.ended === true ? undefined : { kind: ep.kind, tpid: ep.tpid, target: ep.target };
 }
 
-/** A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only. */
+/** A pair join (D10) is open for this hero, or a kill carrying one (`pair`): the arbiter's pair group (2). Reads only. */
 export function Joining(bot: Unit): boolean {
     const ep = episodes[bot.GetPlayerID()];
-    return ep !== undefined && ep.ended !== true && ep.kind === "join";
+    return ep !== undefined && ep.ended !== true && (ep.kind === "join" || ep.pair === true);
 }
 
 /** A trade, kill, fight or join episode is open for this hero (Desire returns its desire in attack mode); reads only. */
@@ -1629,7 +1647,9 @@ export function Think(bot: Unit): void {
     const ep = episodes[pid];
     if (ep === undefined) return;
     if (!valid(ep.target)) {
-        // Slice kill-chase: an unseen kill's target is walked after to its predicted place (the creep's rule).
+        // Slice kill-chase: an unseen kill's target is walked after to its predicted place (the creep's rule). OHA's casts
+        // read GetTarget, so the stale handle is cleared (review of kill-chase); sight back sets it again.
+        if (ep.kind !== "trade") clearTarget(bot, ep);
         if (ep.kind === "kill" && ep.chaseAt !== undefined) bot.Action_MoveToLocation(ep.chaseAt);
         return;
     }
@@ -1737,7 +1757,7 @@ export function LastHitYields(bot: Unit): boolean {
 /** A started kill, fight or join that is not ending: above the last hit. */
 function episodeHolds(ep: Episode | undefined): boolean {
     // A pair join (D10, group 2) is above the last hit (D11, group 3) whoever owns the lane fights.
-    return ep !== undefined && (ep.lf || ep.kind === "join") && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
+    return ep !== undefined && (ep.lf || ep.kind === "join" || ep.pair === true) && ep.kind !== "trade" && ep.startedAt !== undefined && !ep.ended;
 }
 
 /** When this bot last gave an attack order on an enemy hero from a trade (lane_aggro shares the 3 s draw clock). */
