@@ -4,8 +4,10 @@
 //   lane       its lane from team and position (pos 1 and 5 safe, 2 mid, 3 and 4 off)
 //   out        seconds in another lane or off every lane (dynamic.js laneLabel: neither its lane nor `base`)
 //   base       seconds at base (the fountain or the ancient: trips home, deaths' respawns)
-//   cross      seconds an enemy hero assigned to another lane had it as attack target (`tid`)
-//   forbid     global-spell casts the drill cleared (`ev=drill ph=forbid`)
+//   cross      seconds an enemy hero assigned to another lane had it as attack target (`tid`: auto-attacks only, so a
+//              spell cast from another lane is not seen here)
+//   forbid     global-spell episodes the drill's backstop cleared (`ev=drill ph=forbid`, at most one per 5 s; any line
+//              means a hero file lacks its ForbidsCast hook)
 // A seconds count is the sum of snapshot gaps (each capped at GAP_CAP s, so a death's gap does not count). The check holds
 // for a game when every hero's `out` is at most OUT_BAR s and every `cross` is 0 (`ok`). Bars are `judgement`: a hero that
 // stands a few seconds past its lane's band (LANE_R) chasing a pull is not a rotation.

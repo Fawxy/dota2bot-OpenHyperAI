@@ -467,6 +467,7 @@ if Telemetry.GuardsEnabled() then
             InLane = no,
             InLaneDenies = no,
             ForbidsItem = no,
+            ForbidsCast = no,
             LaneHold = no,
             LaneAggro = no,
             IdleStatue = no,

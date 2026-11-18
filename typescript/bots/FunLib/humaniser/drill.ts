@@ -75,7 +75,8 @@ export interface Entry {
     /** The cast plays in-lane (as `inLane`). */
     castInLane?: boolean;
     /** The entry's `r` lists name our side and `d` theirs: swapped when `Ours.Team` scopes Dire, so one entry is played from
-     *  both sides of the map (the ladder's rule: a rung is two games, sides swapped). Unscoped: as written. */
+     *  both sides of the map (the ladder's rule: a rung is two games, sides swapped). Unscoped: as written. Only the role
+     *  lists swap (cast, statue, sentry, chaser, laneOnly, inLane): `spots`, `castSpots` and rig sides stay as written. */
     sided?: boolean;
     /** Everyone not in `cast` or `statue`. */
     others: "bench" | "statue" | "laneonly" | "inlane" | "play";
@@ -984,13 +985,14 @@ export function InLane(bot: Unit): boolean {
 
 /**
  * Modes an in-lane hero may not take (Chooser.Gate's name): each takes a laner out of its lane or across the map (a rune
- * walk, a rotation or gank, a shop trip, a ward walk, Roshan). Push and defend of another lane are held too; of its own
- * lane they run (the wave is the hero's job). `judgement`: the ladder's list (proposal section 3, "Blocked across lanes").
+ * walk, a shop trip, a ward walk, Roshan, the team's gather). Push and defend of another lane are held too; of its own
+ * lane they run (the wave is the hero's job). `roam` and `team_roam` run: in this fork they carry in-lane play (team
+ * roam's last hits, lane fights and help within 2,200; roam's salve guard, tango and hero specials); roam's gank of
+ * another lane is held at its choice (mode_roam_generic CheckLaneToGank asks `InLane`). `judgement`: the ladder's list
+ * (proposal section 3, "Blocked across lanes"); the isolation view reads what still leaves.
  */
 const OUT_OF_LANE: Record<string, true> = {
     rune: true,
-    roam: true,
-    team_roam: true,
     assemble: true,
     assemble_with_humans: true,
     roshan: true,
@@ -1025,7 +1027,14 @@ export function ForbidsItem(bot: Unit, item: string): boolean {
  */
 const GLOBAL_SPELLS: Record<string, true> = { zuus_thundergods_wrath: true };
 
-/** An in-lane hero in the cast point of a global spell: the order is cleared (each frame, from Tick) and logged once per cast. */
+/** Whether an in-lane hero's cast of `ability` is refused at its desire (a hero file's hook: hero_zuus ConsiderR). */
+export function ForbidsCast(bot: Unit, ability: string): boolean {
+    return GLOBAL_SPELLS[ability] === true && Active() !== undefined && InLane(bot);
+}
+
+/** The backstop for a global spell no hero file's hook refuses: an in-lane hero in its cast point has its order cleared
+ *  (each frame, from Tick) and logs `ph=forbid` at most once per 5 s (an episode, not a cast). A hero file that re-queues
+ *  the spell every frame would loop here: a `forbid` line means that hero needs its own `ForbidsCast` hook. */
 const forbidLogged: Record<number, number> = {};
 function forbidCast(bot: Unit): void {
     if (!InLane(bot)) return;

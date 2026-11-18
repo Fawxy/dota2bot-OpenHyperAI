@@ -1012,6 +1012,12 @@ end
 
 function CheckLaneToGank(botPosition)
 
+	-- Lane ladder: a drill's in-lane hero never ganks another lane (humaniser/drill.ts InLane).
+	if J.Humaniser.Drill.InLane(bot) then
+		laneToGank = nil
+		return BOT_MODE_DESIRE_NONE
+	end
+
 	-- Don't gank if enemies are already near us (we're in a fight)
 	if #J.GetEnemiesNearLoc(bot:GetLocation(), 800) > 0 then
 		return BOT_MODE_DESIRE_NONE

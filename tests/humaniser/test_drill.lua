@@ -1140,14 +1140,15 @@ do
 	local dmid = hero(6, DIRE, 2, 2)
 	check("ladder-solo: our mid in-lane, not held", H.Drill.RoleOf(mid) == "cast" and H.Drill.InLane(mid) and not H.Drill.Held(mid) and not H.Drill.LaneOnly(mid))
 	check("ladder-solo: our support and their mid benched", H.Drill.RoleOf(sup) == "bench" and H.Drill.RoleOf(dmid) == "bench")
-	for _, m in ipairs({ "rune", "roam", "team_roam", "ward", "secret_shop", "roshan", "push_tower_top", "defend_tower_bot" }) do
+	for _, m in ipairs({ "rune", "assemble", "ward", "secret_shop", "roshan", "push_tower_top", "defend_tower_bot" }) do
 		check("in-lane: " .. m .. " held at 0", H.Drill.InLaneDenies(mid, m) and H.Chooser.Decide(mid, m) == 0)
 	end
-	for _, m in ipairs({ "laning", "attack", "retreat", "farm", "push_tower_mid", "defend_tower_mid" }) do
+	for _, m in ipairs({ "laning", "attack", "retreat", "farm", "roam", "team_roam", "push_tower_mid", "defend_tower_mid" }) do
 		check("in-lane: " .. m .. " runs", not H.Drill.InLaneDenies(mid, m))
 	end
 	check("in-lane: a benched hero is not in-lane", not H.Drill.InLaneDenies(sup, "rune"))
 	check("in-lane: no teleport, other items run", H.Drill.ForbidsItem(mid, "item_tpscroll") and H.Drill.ForbidsItem(mid, "item_travel_boots") and not H.Drill.ForbidsItem(mid, "item_flask") and not H.Drill.ForbidsItem(sup, "item_tpscroll"))
+	check("in-lane: a global spell is refused at its desire, others are not", H.Drill.ForbidsCast(mid, "zuus_thundergods_wrath") and not H.Drill.ForbidsCast(mid, "zuus_arc_lightning") and not H.Drill.ForbidsCast(sup, "zuus_thundergods_wrath"))
 	GAME_STATE = 8
 	local cleared = 0
 	mid.Action_ClearActions = function() cleared = cleared + 1 end
