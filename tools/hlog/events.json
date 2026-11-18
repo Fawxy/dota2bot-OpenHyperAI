@@ -1916,6 +1916,15 @@
    "skip": "str",
    "lo": "num"
   },
+  "burst_add": {
+   "pid": "num",
+   "ab": "str",
+   "st": "str",
+   "key": "str",
+   "val": "num",
+   "lvl": "num",
+   "own": "num"
+  },
   "cast": {
    "pid": "num",
    "ab": "str",
@@ -2586,6 +2595,11 @@
    "chu": "text",
    "row": "text",
    "skip": "text"
+  },
+  "ev_burst_add": {
+   "ab": "text",
+   "st": "text",
+   "key": "text"
   },
   "ev_cast": {
    "ab": "text",

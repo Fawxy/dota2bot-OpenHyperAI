@@ -1,186 +1,339 @@
 {
  "axe_battle_hunger": {
-  "samples": 166,
-  "counted": 166,
+  "samples": 367,
+  "counted": 367,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
-  "median": 26,
+  "median": 25,
   "verdict": "counted"
  },
- "bane_brain_sap": {
-  "samples": 90,
-  "counted": 90,
+ "axe_counter_helix": {
+  "samples": 2,
+  "counted": 0,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "unmeasured"
+ },
+ "bane_brain_sap": {
+  "samples": 176,
+  "counted": 176,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 90,
   "verdict": "counted"
  },
- "bounty_hunter_jinada": {
-  "samples": 66,
+ "bane_fiends_grip": {
+  "samples": 77,
+  "counted": 77,
+  "logs": [
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 210,
+  "verdict": "counted"
+ },
+ "bane_nightmare": {
+  "samples": 30,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "bounty_hunter_jinada": {
+  "samples": 193,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "bounty_hunter_shuriken_toss": {
+  "samples": 11,
+  "counted": 11,
+  "logs": [
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 70,
+  "verdict": "counted"
+ },
+ "bounty_hunter_track": {
+  "samples": 34,
+  "counted": 0,
+  "logs": [
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "bounty_hunter_wind_walk": {
-  "samples": 52,
+  "samples": 154,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "bristleback_quill_spray": {
-  "samples": 30,
-  "counted": 30,
+  "samples": 72,
+  "counted": 72,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
-  "median": 116,
+  "median": 126,
   "verdict": "counted"
  },
  "dragon_knight_breathe_fire": {
-  "samples": 152,
-  "counted": 152,
+  "samples": 371,
+  "counted": 371,
   "logs": [
    "2026-11-16T21-35-35-probe_cd6",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-45-24-probe_cov_A",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
-  "median": 114,
+  "median": 111,
   "verdict": "counted"
  },
  "dragon_knight_dragon_tail": {
-  "samples": 11,
-  "counted": 3,
+  "samples": 23,
+  "counted": 9,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
- "earthshaker_enchant_totem": {
-  "samples": 5,
+ "dragon_knight_elder_dragon_form": {
+  "samples": 155,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-18T22-45-24-probe_cov_A",
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "earthshaker_echo_slam": {
+  "samples": 82,
+  "counted": 63,
+  "logs": [
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 381,
+  "verdict": "counted"
+ },
+ "earthshaker_enchant_totem": {
+  "samples": 73,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "earthshaker_fissure": {
-  "samples": 90,
-  "counted": 90,
+  "samples": 169,
+  "counted": 169,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
-  "median": 72,
+  "median": 71,
   "verdict": "counted"
  },
  "jakiro_dual_breath": {
-  "samples": 64,
-  "counted": 64,
+  "samples": 151,
+  "counted": 151,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
-  "median": 43,
+  "median": 127,
   "verdict": "counted"
  },
  "jakiro_ice_path": {
-  "samples": 2,
-  "counted": 2,
+  "samples": 35,
+  "counted": 35,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
-  "median": 36,
-  "verdict": "unmeasured"
+  "median": 35,
+  "verdict": "counted"
+ },
+ "jakiro_macropyre": {
+  "samples": 68,
+  "counted": 68,
+  "logs": [
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 425,
+  "verdict": "counted"
+ },
+ "lich_chain_frost": {
+  "samples": 11,
+  "counted": 11,
+  "logs": [
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 538,
+  "verdict": "counted"
  },
  "lich_frost_nova": {
-  "samples": 92,
-  "counted": 92,
+  "samples": 149,
+  "counted": 149,
   "logs": [
    "2026-11-16T21-35-35-probe_cd6",
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-45-24-probe_cov_A",
+   "2026-11-18T22-51-35-probe_cov_B",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 29,
   "verdict": "counted"
  },
  "lich_frost_shield": {
-  "samples": 164,
-  "counted": 25,
+  "samples": 285,
+  "counted": 49,
   "logs": [
    "2026-11-16T21-35-35-probe_cd6",
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-45-24-probe_cov_A",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
+ "lion_finger_of_death": {
+  "samples": 138,
+  "counted": 138,
+  "logs": [
+   "2026-11-18T22-51-35-probe_cov_B"
+  ],
+  "median": 387,
+  "verdict": "counted"
+ },
  "lion_impale": {
-  "samples": 188,
-  "counted": 0,
+  "samples": 415,
+  "counted": 5,
   "logs": [
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-51-35-probe_cov_B",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "lion_mana_drain": {
-  "samples": 11,
+  "samples": 47,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "lion_voodoo": {
+  "samples": 51,
+  "counted": 1,
+  "logs": [
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "luna_lucent_beam": {
-  "samples": 92,
-  "counted": 92,
+  "samples": 317,
+  "counted": 317,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
-  "median": 108,
+  "median": 159,
   "verdict": "counted"
  },
  "necrolyte_death_pulse": {
-  "samples": 93,
-  "counted": 93,
+  "samples": 284,
+  "counted": 284,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
-  "median": 115,
+  "median": 158,
   "verdict": "counted"
  },
- "nevermore_shadowraze2": {
-  "samples": 13,
+ "necrolyte_ghost_shroud": {
+  "samples": 21,
+  "counted": 11,
+  "logs": [
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 125,
+  "verdict": "counted"
+ },
+ "nevermore_shadowraze1": {
+  "samples": 27,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "nevermore_shadowraze2": {
+  "samples": 78,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "nevermore_shadowraze3": {
-  "samples": 71,
+  "samples": 119,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "omniknight_hammer_of_purity": {
-  "samples": 16,
+  "samples": 34,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "omniknight_martyr": {
+  "samples": 302,
+  "counted": 0,
+  "logs": [
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
   "median": 0,
   "verdict": "left_out"
@@ -204,12 +357,13 @@
   "verdict": "left_out"
  },
  "oracle_fortunes_end": {
-  "samples": 146,
-  "counted": 146,
+  "samples": 286,
+  "counted": 286,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
-  "median": 71,
+  "median": 70,
   "verdict": "counted"
  },
  "oracle_purifying_flames": {
@@ -221,121 +375,181 @@
   "median": 199,
   "verdict": "unmeasured"
  },
- "pudge_meat_hook": {
-  "samples": 25,
+ "pudge_dismember": {
+  "samples": 9,
+  "counted": 9,
+  "logs": [
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 155,
+  "verdict": "counted"
+ },
+ "pudge_flesh_heap": {
+  "samples": 54,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "pudge_meat_hook": {
+  "samples": 96,
+  "counted": 0,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "sandking_burrowstrike": {
-  "samples": 28,
-  "counted": 28,
+  "samples": 45,
+  "counted": 45,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 57,
   "verdict": "counted"
  },
- "sandking_sand_storm": {
-  "samples": 24,
+ "sandking_epicenter": {
+  "samples": 29,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-18T22-45-24-probe_cov_A"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "sandking_sand_storm": {
+  "samples": 142,
+  "counted": 1,
+  "logs": [
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "sandking_scorpion_strike": {
-  "samples": 17,
+  "samples": 29,
   "counted": 2,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "skeleton_king_bone_guard": {
-  "samples": 36,
+  "samples": 185,
   "counted": 0,
   "logs": [
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-51-35-probe_cov_B",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "skeleton_king_hellfire_blast": {
-  "samples": 116,
+  "samples": 220,
   "counted": 0,
   "logs": [
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-51-35-probe_cov_B",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "skeleton_king_mortal_strike": {
-  "samples": 5,
+  "samples": 35,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "sniper_assassinate": {
+  "samples": 20,
+  "counted": 0,
+  "logs": [
+   "2026-11-18T21-36-29-drill_assassinate-probe_1"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "sniper_take_aim": {
-  "samples": 74,
-  "counted": 0,
+  "samples": 115,
+  "counted": 8,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "sven_storm_bolt": {
-  "samples": 62,
-  "counted": 62,
+  "samples": 130,
+  "counted": 130,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
-  "median": 58,
+  "median": 57,
   "verdict": "counted"
  },
  "sven_warcry": {
-  "samples": 61,
+  "samples": 121,
   "counted": 1,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "tiny_avalanche": {
-  "samples": 26,
-  "counted": 26,
+  "samples": 60,
+  "counted": 60,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
-  "median": 65,
+  "median": 185,
+  "verdict": "counted"
+ },
+ "tiny_toss": {
+  "samples": 13,
+  "counted": 13,
+  "logs": [
+   "2026-11-18T22-51-35-probe_cov_B"
+  ],
+  "median": 62,
   "verdict": "counted"
  },
  "tiny_tree_grab": {
-  "samples": 60,
-  "counted": 0,
+  "samples": 283,
+  "counted": 14,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "warlock_fatal_bonds": {
-  "samples": 69,
+  "samples": 349,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-38-43-probe_cd7"
+   "2026-11-16T21-38-43-probe_cd7",
+   "2026-11-18T22-51-35-probe_cov_B"
   ],
   "median": 0,
   "verdict": "left_out"
@@ -349,69 +563,96 @@
   "median": 0,
   "verdict": "left_out"
  },
+ "windrunner_focusfire": {
+  "samples": 16,
+  "counted": 16,
+  "logs": [
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 21,
+  "verdict": "counted"
+ },
  "windrunner_powershot": {
-  "samples": 21,
+  "samples": 142,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
+  ],
+  "median": 0,
+  "verdict": "left_out"
+ },
+ "windrunner_shackleshot": {
+  "samples": 9,
+  "counted": 0,
+  "logs": [
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "windrunner_windrun": {
-  "samples": 76,
+  "samples": 168,
   "counted": 0,
   "logs": [
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "witch_doctor_maledict": {
-  "samples": 89,
-  "counted": 1,
+  "samples": 159,
+  "counted": 4,
   "logs": [
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-51-35-probe_cov_B",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "witch_doctor_paralyzing_cask": {
-  "samples": 82,
-  "counted": 77,
+  "samples": 174,
+  "counted": 168,
   "logs": [
    "2026-11-16T21-38-43-probe_cd7",
-   "2026-11-16T21-41-55-probe_cd8"
+   "2026-11-16T21-41-55-probe_cd8",
+   "2026-11-18T22-51-35-probe_cov_B",
+   "2026-11-18T22-57-34-probe_cov_C"
   ],
   "median": 39,
   "verdict": "counted"
  },
  "zuus_arc_lightning": {
-  "samples": 5,
-  "counted": 5,
+  "samples": 6,
+  "counted": 6,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
-  "median": 30,
+  "median": 32,
   "verdict": "counted"
  },
  "zuus_heavenly_jump": {
-  "samples": 73,
+  "samples": 119,
   "counted": 26,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
   "median": 0,
   "verdict": "left_out"
  },
  "zuus_lightning_bolt": {
-  "samples": 42,
-  "counted": 42,
+  "samples": 45,
+  "counted": 45,
   "logs": [
-   "2026-11-16T21-35-35-probe_cd6"
+   "2026-11-16T21-35-35-probe_cd6",
+   "2026-11-18T22-45-24-probe_cov_A"
   ],
-  "median": 117,
+  "median": 124,
   "verdict": "counted"
  }
 }

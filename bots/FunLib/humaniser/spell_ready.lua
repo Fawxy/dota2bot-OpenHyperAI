@@ -5,6 +5,7 @@ local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local ____spell_damage_data = require(GetScriptDirectory().."/FunLib/humaniser/spell_damage_data")
+local SPELL_ADDED = ____spell_damage_data.SPELL_ADDED
 local SPELL_DAMAGE = ____spell_damage_data.SPELL_DAMAGE
 local SLOTS = 6
 local spentAt = -1
@@ -56,11 +57,95 @@ local function spentOf(e)
     end
     return list
 end
+local addedAt = -1
+local addedBy = {}
+local addedLogged = {}
+local addedLogger
+--- Telemetry sets this at load: it imports this module, so this module cannot import it.
+function ____exports.SetAddedLogger(fn)
+    addedLogger = fn
+end
+local function addedOf(e)
+    local now = DotaTime()
+    if now ~= addedAt then
+        addedAt = now
+        addedBy = {}
+    end
+    local pid = e:GetPlayerID()
+    local cached = addedBy[pid]
+    if cached ~= nil then
+        return cached
+    end
+    local list = {}
+    addedBy[pid] = list
+    if e.GetAbilityInSlot == nil then
+        return list
+    end
+    do
+        local slot = 0
+        while slot < SLOTS do
+            do
+                local __continue15
+                repeat
+                    local a = e:GetAbilityInSlot(slot)
+                    if a == nil or a == nil or a:IsNull() then
+                        __continue15 = true
+                        break
+                    end
+                    local name = a:GetName()
+                    local row = SPELL_ADDED[name]
+                    if row == nil or a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
+                        __continue15 = true
+                        break
+                    end
+                    local value = a:GetSpecialValueFloat(row[1])
+                    if type(value) ~= "number" or not (value > 0) then
+                        __continue15 = true
+                        break
+                    end
+                    list[#list + 1] = {perSecond = row[2], type = row[3], value = value}
+                    local logKey = (((tostring(pid) .. ":") .. name) .. ":") .. tostring(a:GetLevel())
+                    if addedLogged[logKey] ~= true then
+                        addedLogged[logKey] = true
+                        if addedLogger ~= nil then
+                            addedLogger(
+                                pid,
+                                name,
+                                row[4],
+                                row[1],
+                                value,
+                                a:GetLevel(),
+                                e:GetTeam() == GetTeam() and 1 or 0
+                            )
+                        end
+                    end
+                    __continue15 = true
+                until true
+                if not __continue15 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+    return list
+end
+--- The damage of `e`'s castable spells that Valve's estimate leaves out (SPELL_ADDED), on `target` over `window`; our own heroes included.
+function ____exports.AddedOn(e, target, window)
+    if e:IsIllusion() then
+        return 0
+    end
+    local total = 0
+    for ____, s in ipairs(addedOf(e)) do
+        total = total + target:GetActualIncomingDamage(s.perSecond and s.value * window or s.value, s.type)
+    end
+    return total
+end
 local function attackPart(e, target, window)
-    local ____this_1
-    ____this_1 = e
-    local ____opt_0 = ____this_1.GetSecondsPerAttack
-    local spa = ____opt_0 and ____opt_0(____this_1)
+    local ____this_3
+    ____this_3 = e
+    local ____opt_2 = ____this_3.GetSecondsPerAttack
+    local spa = ____opt_2 and ____opt_2(____this_3)
     if spa == nil or spa <= 0 then
         return 0
     end
@@ -92,22 +177,22 @@ function ____exports.ReadySpells(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue18
+                local __continue32
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue18 = true
+                        __continue32 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
-                        __continue18 = true
+                        __continue32 = true
                         break
                     end
                     local name = a:GetName()
                     local row = SPELL_DAMAGE[name]
                     local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
                     if type(dmg) ~= "number" or not (dmg > 0) then
-                        __continue18 = true
+                        __continue32 = true
                         break
                     end
                     local range = a:GetCastRange()
@@ -124,9 +209,9 @@ function ____exports.ReadySpells(bot)
                         dmg = dmg,
                         dtype = dt > 0 and dt or DamageType.Magical
                     }
-                    __continue18 = true
+                    __continue32 = true
                 until true
-                if not __continue18 then
+                if not __continue32 then
                     break
                 end
             end
@@ -154,15 +239,19 @@ function ____exports.ReadyDamage(bot)
     end
     return #out > 0 and table.concat(out, ";") or nil
 end
---- `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now); with BurstReady off, Valve's figure.
+--- `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now, plus the castable spells it leaves out: AddedOn); with BurstReady off, Valve's figure.
 function ____exports.DamageOn(e, target, window)
     local est = e:GetEstimatedDamageToTarget(true, target, window, DamageType.All)
-    if est <= 0 or not Ours.On("BurstReady") then
+    if not Ours.On("BurstReady") then
         return est
+    end
+    local added = ____exports.AddedOn(e, target, window)
+    if est <= 0 then
+        return added > 0 and added or est
     end
     local spent = ____exports.SpentOn(e, target, window)
     if spent <= 0 then
-        return est
+        return est + added
     end
     return math.max(
         math.min(
@@ -170,7 +259,7 @@ function ____exports.DamageOn(e, target, window)
             attackPart(e, target, window)
         ),
         est - spent
-    )
+    ) + added
 end
 --- Slice cast-read: an ability's class for the cast read: `u` ultimate, `k` key (a hard disable or spell immunity,
 -- AbilityClasses), `d` damage (a SPELL_DAMAGE row or GetAbilityDamage over 0), else `o`. Logged only.
@@ -209,21 +298,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue37
+                local __continue52
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue37 = true
+                        __continue52 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue37 = true
+                        __continue52 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue37 = true
+                    __continue52 = true
                 until true
-                if not __continue37 then
+                if not __continue52 then
                     break
                 end
             end

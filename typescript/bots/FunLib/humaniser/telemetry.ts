@@ -852,6 +852,10 @@ function damageFields(bot: Unit): BotPair[] {
     return fields;
 }
 
+SpellReady.SetAddedLogger((pid, ab, st, key, val, lvl, own) => {
+    Event("burst_add", [["pid", pid], ["ab", ab], ["st", st], ["key", key], ["val", val], ["lvl", lvl], ["own", own]]);
+});
+
 const guardedDamageFields = Guard("Telemetry.Damage", damageFields, () => []);
 // Slice cast-read: the cast read's "ready and unused" (ev=snap rdy).
 const guardedReady = Guard("Telemetry.Ready", SpellReady.ReadyList, () => undefined);

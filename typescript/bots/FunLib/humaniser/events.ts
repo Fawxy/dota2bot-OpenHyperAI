@@ -3012,6 +3012,22 @@ export const EVENTS = {
         /** kind=lane: 1 under lane-only (a drill). */
         lo: "num",
     },
+    /** Slice oha-burst-left-out: the first time in a game, per level, a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero, spell and spell level (a new level logs again, to show the value follows the level on an enemy handle). */
+    burst_add: {
+        /** The caster's player id. */
+        pid: "num",
+        /** The ability's name. */
+        ab: "str",
+        /** `left_out` (measured left out of the estimate) or `unknown` (never measured; counted anyway). */
+        st: "str",
+        /** The AbilityValues key read from SPELL_ADDED, and the raw value it gave before the target's resistances (a per-second key is multiplied by the window later). */
+        key: "str",
+        val: "num",
+        /** The ability's level. */
+        lvl: "num",
+        /** 1 when the caster is on our team. */
+        own: "num",
+    },
     /** Slice chase-log: a cast by a hero on this script's team (InstallCastCallback, logged on the hero's next tick). */
     cast: {
         pid: "num",
