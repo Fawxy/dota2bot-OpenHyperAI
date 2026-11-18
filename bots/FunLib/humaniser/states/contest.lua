@@ -274,6 +274,22 @@ function ____exports.Running(pid, creep)
     end
     return nil
 end
+--- Whether this bot is in any walk-in whose creep is still alive (states/laning YieldLevel).
+function ____exports.RunningAny(pid)
+    for ____, w in ipairs(walks[pid] or ({})) do
+        local ____this_7
+        ____this_7 = w.creep
+        local ____opt_6 = ____this_7.IsNull
+        local ____temp_8 = ____opt_6 and ____opt_6(____this_7)
+        if ____temp_8 == nil then
+            ____temp_8 = false
+        end
+        if not ____temp_8 and w.creep:IsAlive() then
+            return true
+        end
+    end
+    return false
+end
 --- Ends the walk-in on `creep` (its attempt reported), returning it.
 function ____exports.Finish(pid, creep)
     local w = ____exports.Running(pid, creep)

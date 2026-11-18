@@ -21,6 +21,8 @@ import * as PreHit from "bots/FunLib/humaniser/states/pre_hit";
 import * as IdleSwing from "bots/FunLib/humaniser/states/idle_swing";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Contest from "bots/FunLib/humaniser/states/contest";
+import * as LaneHit from "bots/FunLib/humaniser/states/lane_hit";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 export const NAME = "laning";
 
@@ -405,6 +407,172 @@ function denyDue(bot: Unit): boolean {
     return false;
 }
 
+/**
+ * What laning reads of core_trade (the trade's episode, its aggro clock and plan): core_trade imports this module, so it hands
+ * them over at load (as PairJoin.SetReaders) instead of being imported here.
+ */
+export interface TradeReaders {
+    running: (this: void, bot: Unit) => boolean;
+    primedAt: (this: void, pid: number) => number | undefined;
+    notePrimed: (this: void, pid: number, t: number) => void;
+    plan: (this: void, now: number, primedAt: number | undefined, creepsWithinClear: number) => LaneHit.Aggro;
+}
+let trade: TradeReaders | undefined;
+
+export function SetTradeReaders(r: TradeReaders): void {
+    trade = r;
+}
+
+/** core_trade's AGGRO_CLEAR: enemy lane creeps within this of us decide its aggro plan. */
+const AGGRO_CLEAR = 550;
+
+/** The hero hit laneFarm is carrying out (a `prehit`-kind pick on the hero), per bot, until its attempt reports. */
+const heroHits: Record<number, { hero: Unit; t: number } | undefined> = {};
+/** The last answer logged per bot while a hero stood in range, so a skip is logged once per change (quiet output). */
+const lastHitWhy: Record<number, string | undefined> = {};
+
+/** The nearest enemy hero we can hit from here: in sight, within our attack range plus both hulls. */
+function heroInRange(bot: Unit): Unit | undefined {
+    const ar = bot.GetAttackRange() + bot.GetBoundingRadius();
+    let best: Unit | undefined;
+    let bestGap = math.huge;
+    for (const h of bot.GetNearbyHeroes(ar + 200, true, BotMode.None)) {
+        if (h.IsNull() || !h.IsAlive() || !h.CanBeSeen() || h.IsIllusion()) continue;
+        const gap = GetUnitToUnitDistance(bot, h) - ar - h.GetBoundingRadius();
+        if (gap <= 0 && gap < bestGap) {
+            best = h;
+            bestGap = gap;
+        }
+    }
+    return best;
+}
+
+function underTheirTower(bot: Unit): boolean {
+    const reach = LaneConfig.TowerReach();
+    for (const t of bot.GetNearbyTowers(reach + 200, true)) if (t.IsAlive() && GetUnitToUnitDistance(bot, t) <= reach) return true;
+    return false;
+}
+
+function laneHitEvent(bot: Unit, ph: string, why: string, hero: Unit | undefined, extra: Telemetry.Fields<"lane_hit"> = []): void {
+    const fields: Telemetry.Fields<"lane_hit"> = [
+        ["pid", bot.GetPlayerID()],
+        ["ph", ph],
+        ["why", why],
+        ["tpid", hero !== undefined && !hero.IsNull() ? hero.GetPlayerID() : undefined],
+        ["d", hero !== undefined && !hero.IsNull() && hero.IsAlive() ? math.floor(GetUnitToUnitDistance(bot, hero)) : undefined],
+        ["hp", math.floor((bot.GetHealth() / math.max(bot.GetMaxHealth(), 1)) * 100) / 100],
+    ];
+    for (const f of extra) fields.push(f);
+    Telemetry.Event("lane_hit", fields);
+}
+
+/**
+ * Ours.LaneHit (plan step 3f): after the pick, whether the body hits an enemy hero in range instead (states/lane_hit Answer):
+ * a target of kind `prehit` on the hero, which laneFarm carries out as one attack and then scans again. Undefined: the pick
+ * stands. Decided again every scan; nothing holds it. A waited-on last hit or deny is left only when its swing is not due
+ * before the hit's attack cycle ends (Due), so the pick's own wait is never what the hit costs.
+ */
+function laneHit(
+    bot: Unit,
+    chosen: Lib.Verbs.LaneTarget | undefined,
+    current: Lib.Verbs.LaneTarget | undefined,
+    pre: Lib.Verbs.LaneTarget | undefined,
+): Lib.Verbs.LaneTarget | undefined {
+    if (!Ours.On("LaneHit") || !OwnsLastHit(bot)) return undefined;
+    const pid = bot.GetPlayerID();
+    const hero = heroInRange(bot);
+    if (hero === undefined) {
+        lastHitWhy[pid] = undefined;
+        return undefined;
+    }
+    const verbs = Tasks.Verbs();
+    if (verbs === undefined) return undefined;
+    const now = DotaTime();
+    const spa = (bot as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.() ?? 1.7;
+    const cycle = LaneHit.Cycle(verbs.cooldownLeft(bot as unknown as Lib.TaskUnit), verbs.turnTime(bot as unknown as Lib.TaskUnit, hero as unknown as Lib.TaskCreep), spa);
+    const claims = claimsFor(bot);
+    const mine = (t: Lib.Verbs.LaneTarget): boolean => !Contest.Refused(pid, t.creep) && (claims === undefined || claims(t));
+    const offers = verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: cycle, radius: Contest.Applies(bot) ? Contest.RADIUS : undefined });
+    const blocking = LaneHit.Due(offers, mine, cycle);
+    let creeps = 0;
+    for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) if (!c.IsNull() && c.IsAlive()) creeps++;
+    const primedAt = trade?.primedAt(pid);
+    const plan = trade !== undefined ? trade.plan(now, primedAt, creeps) : "step_out";
+    const walkIn =
+        (current !== undefined && Contest.Running(pid, current.creep) !== undefined) ||
+        (chosen !== undefined && chosen.kind === "lasthit" && chosen.walk > LanePick.MAX_WALK);
+    const why = LaneHit.Answer({
+        trade: trade?.running(bot) ?? false,
+        leaving: RetreatState.Running(bot),
+        pre: pre !== undefined && chosen === pre,
+        walkIn,
+        due: blocking !== undefined,
+        idle: idlePicks[pid] !== undefined,
+        tower: underTheirTower(bot),
+        aggro: plan,
+    });
+    const facts: Telemetry.Fields<"lane_hit"> = [
+        ["cyc", math.floor(cycle * 100) / 100],
+        ["due", blocking !== undefined ? math.floor(blocking.due * 100) / 100 : undefined],
+        ["dk", blocking?.kind],
+        ["ag", plan],
+        ["cr", creeps],
+        ["wait", current !== undefined ? current.kind : undefined],
+    ];
+    if (why !== "hit") {
+        if (lastHitWhy[pid] !== why) laneHitEvent(bot, "skip", why, hero, facts);
+        lastHitWhy[pid] = why;
+        return undefined;
+    }
+    lastHitWhy[pid] = why;
+    // A fresh order with no creep near starts the aggro cooldown the trade and lane_aggro's draw share; one inside it does not.
+    if (plan === "prime") trade?.notePrimed(pid, now);
+    heroHits[pid] = { hero, t: now };
+    laneHitEvent(bot, "go", why, hero, facts);
+    return { creep: hero as unknown as Lib.TaskCreep, kind: "prehit", eta: 0, due: 0, walk: 0, dies: math.huge, ranged: false };
+}
+
+/**
+ * Ours.LaneYield (plan step 3g): the laning desire while nothing of the lane is due for a laner whose last hits the body takes,
+ * states/lane_hit YIELD_DESIRE; undefined otherwise (laning bids as before). Nothing due: no wave hold, no walk-in, and the pick
+ * would take nothing now (lane_pick Choose on laneTargets within the body's horizon, with its claims and the reach rule). A
+ * running camp job is the Lua caller's check. Not read: a due pre-hit (PreHit.Find keeps the pick's notes, so it is asked only
+ * by the body; a pre-hit comes only by our own tower). Logged on each change of answer. Reads facts only, so it is right in
+ * every mode that asks (GetDesire runs for every mode each frame); once per bot per game time.
+ */
+const yieldAt: Record<number, { t: number; v: number | undefined } | undefined> = {};
+const yieldWhy: Record<number, string | undefined> = {};
+export function YieldLevel(bot: Unit): number | undefined {
+    if (!Ours.On("LaneYield") || !OwnsLastHit(bot) || !bot.IsAlive()) return undefined;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const memo = yieldAt[pid];
+    if (memo !== undefined && memo.t === now) return memo.v;
+    const verbs = Tasks.Verbs();
+    let offered = false;
+    if (verbs !== undefined) {
+        const claims = claimsFor(bot);
+        const mine = (t: Lib.Verbs.LaneTarget): boolean => !Contest.Refused(pid, t.creep) && (claims === undefined || claims(t));
+        const targets = verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: Settings().LastHitWithin });
+        offered = LanePick.Choose(targets, undefined, mine) !== undefined;
+    }
+    const why = LaneHit.YieldAnswer({ hold: holdPoint[pid] !== undefined, walkIn: Contest.RunningAny(pid), offered });
+    const v = why === "yield" ? LaneHit.YIELD_DESIRE : undefined;
+    yieldAt[pid] = { t: now, v };
+    if (yieldWhy[pid] !== why) {
+        yieldWhy[pid] = why;
+        Telemetry.Event("lane_yield", [
+            ["pid", pid],
+            ["why", why],
+            ["v", v],
+            ["mode", bot.GetActiveMode()],
+            ["md", math.floor(bot.GetActiveModeDesire() * 1000) / 1000],
+            ["hero", heroInRange(bot) !== undefined ? true : undefined],
+        ]);
+    }
+    return v;
+}
+
 function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
     const sdk = Settings().Spot === "sdk" || OwnsSpot(bot);
     // 'oha' is slice 1's hold: close to PositionThink's own move, standing still once there. 'sdk' shuffles in
@@ -430,6 +598,10 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             const pre = verbs !== undefined ? PreHit.Find(bot, verbs) : undefined;
             const chosen = contestPick(bot, choose(bot, targets, current, pre), current);
             noteYield(bot, targets, current, pre, chosen);
+            // A hero hit (Ours.LaneHit) is the lowest pick: it is asked after the pick and replaces it only when nothing the pick
+            // holds is due before the hit's attack cycle ends. It is no creep attempt, so the pick's notes stay as they were.
+            const hit = laneHit(bot, chosen, current, pre);
+            if (hit !== undefined) return hit;
             if (chosen !== undefined) noteSeen(bot.GetPlayerID(), chosen.creep);
             // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
             if (chosen === undefined && targets.length === 0) return undefined;
@@ -445,7 +617,9 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         label: (l) => {
             // A caller-built `prehit` is a tower pre-hit or an idle swing; the swing is labelled by its kind.
             const ip = idlePicks[bot.GetPlayerID()];
-            if (l === "prehit" && ip !== undefined) l = IdleSwing.Of(bot.GetPlayerID(), ip.creep)?.kind ?? l;
+            const hh = heroHits[bot.GetPlayerID()];
+            if (l === "prehit" && hh !== undefined && DotaTime() - hh.t < 1) l = "herohit";
+            else if (l === "prehit" && ip !== undefined) l = IdleSwing.Of(bot.GetPlayerID(), ip.creep)?.kind ?? l;
             ctx.label(l);
             LanePick.NotePhase(bot.GetPlayerID(), l);
         },
@@ -460,6 +634,15 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         dropLost: (cur) => OwnsSupportHits(bot) || Contest.Refused(bot.GetPlayerID(), cur.creep),
         radius: Contest.Applies(bot) ? Contest.RADIUS : undefined,
         onAttempt: (t, res, contested) => {
+            const hh = heroHits[bot.GetPlayerID()];
+            if (t.kind === "prehit" && hh !== undefined && t.creep === (hh.hero as unknown as Lib.TaskCreep)) {
+                heroHits[bot.GetPlayerID()] = undefined;
+                laneHitEvent(bot, "end", res.success ? "ok" : res.reason, hh.hero, [
+                    ["dt", math.floor((DotaTime() - hh.t) * 100) / 100],
+                    ["msg", res.message],
+                ]);
+                return;
+            }
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
             const idle = t.kind === "prehit" ? IdleSwing.Of(bot.GetPlayerID(), t.creep) : undefined;
             if (idle !== undefined) {

@@ -202,6 +202,15 @@ export const DEFAULTS = {
      *  PairJoin.Gather `on=ours`): the join's target and our share are that hero, and the join holds while the episode runs.
      *  It acts only for a hero in no play that CoreTrade.FightRefusal does not hold. Off: such a record is only logged. */
     JoinOnHit: false,
+    /** Plan trade-from-the-stand probe 3f: a core whose last hits the laning body takes hits an enemy hero in its attack range as
+     *  the body's lowest pick (states/lane_hit Answer: no trade episode, no retreat, no last hit, deny or pre-hit due before the
+     *  hit's attack cycle ends, the idle swing first, not under their tower, AggroPlan not `step_out`): one attack, then the next
+     *  scan. Off: the body hits no hero. */
+    LaneHit: false,
+    /** Plan trade-from-the-stand probe 3g: with nothing of the lane due (states/laning YieldLevel), that core's laning desire is
+     *  lane_hit YIELD_DESIRE (0.52), under the 0.9 last-hit bid and the arbiter's lane floor, so an attack mode can take the hero.
+     *  Valve's attack mode runs for the hero only with CoreTrade off. Off: laning bids as before. */
+    LaneYield: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

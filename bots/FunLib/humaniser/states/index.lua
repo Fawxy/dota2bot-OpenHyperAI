@@ -461,6 +461,13 @@ function ____exports.LaneOnlyAggroStep(bot)
     end
     return LaneAggro.Step(bot)
 end
+--- Ours.LaneYield (mode_laning_generic GetDesire): laning's desire while nothing of the lane is due, else nil (states/laning YieldLevel).
+function ____exports.LaneYield(bot)
+    if not ____exports.IsEnabled() then
+        return nil
+    end
+    return Laning.YieldLevel(bot)
+end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
     Laning.SetSpot(bot, fn)

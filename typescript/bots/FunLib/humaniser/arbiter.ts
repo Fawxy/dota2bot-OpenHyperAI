@@ -11,6 +11,7 @@ import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as LaneFight from "bots/FunLib/humaniser/lane_fight";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
@@ -230,7 +231,12 @@ export function DriveDecide(_bot: Unit, mode: string, p: Candidate, farmHost: (t
  * mode's own GetDesire, which opens a trade or a fight).
  */
 export function DriveAfter(bot: Unit, mode: string, p: Candidate, desire: any): any {
-    if (mode === "laning" && p.name === "lane") return type(desire) === "number" && desire > SETTINGS.LaneDesire ? desire : SETTINGS.LaneDesire;
+    if (mode === "laning" && p.name === "lane") {
+        // Ours.LaneYield (plan trade-from-the-stand 3g): the lane's own yield stands under the floor, or the floor would undo it.
+        const y = Laning.YieldLevel(bot);
+        if (y !== undefined) return y;
+        return type(desire) === "number" && desire > SETTINGS.LaneDesire ? desire : SETTINGS.LaneDesire;
+    }
     if (mode === "laning" && laneAndTrade(p)) return desire;
     const borrowed = BORROWED[mode];
     if (borrowed !== undefined && mode !== p.host) return borrowed(bot) ? desire : 0;

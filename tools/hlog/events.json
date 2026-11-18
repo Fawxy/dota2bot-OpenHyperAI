@@ -1343,6 +1343,30 @@
    "ol": "num",
    "contested": "bool"
   },
+  "lane_hit": {
+   "pid": "num",
+   "ph": "str",
+   "why": "str",
+   "tpid": "num",
+   "d": "num",
+   "hp": "num",
+   "cyc": "num",
+   "due": "num",
+   "dk": "str",
+   "ag": "str",
+   "cr": "num",
+   "wait": "str",
+   "dt": "num",
+   "msg": "str"
+  },
+  "lane_yield": {
+   "pid": "num",
+   "why": "str",
+   "v": "num",
+   "mode": "num",
+   "md": "num",
+   "hero": "bool"
+  },
   "prehit_fc": {
    "pid": "num",
    "hp": "num",
@@ -2381,6 +2405,17 @@
   "ev_prehit": {
    "result": "text",
    "reason": "text"
+  },
+  "ev_lane_hit": {
+   "ph": "text",
+   "why": "text",
+   "dk": "text",
+   "ag": "text",
+   "wait": "text",
+   "msg": "text"
+  },
+  "ev_lane_yield": {
+   "why": "text"
   },
   "ev_prehit_fc": {
    "hs": "text",

@@ -1911,6 +1911,48 @@ export const EVENTS = {
         contested: "bool",
     },
     /**
+     * Ours.LaneHit (plan trade-from-the-stand step 3f, states/laning laneHit): the laning body's hero hit. `ph=go` each hit
+     * decided, `ph=end` when its one attack fired or failed (`why` ok, or the attackAndConfirm reason: missed, no_target,
+     * interrupted, dead; `dt` seconds from go), `ph=skip` with an enemy hero in range and no hit, once per change of `why`
+     * (states/lane_hit Answer: trade, retreat, pre, walk_in, due, idle, tower, aggro).
+     */
+    lane_hit: {
+        pid: "num",
+        ph: "str",
+        why: "str",
+        /** The enemy hero in range and its distance. */
+        tpid: "num",
+        d: "num",
+        /** Our HP share. */
+        hp: "num",
+        /** Seconds until our next swing could start after a hit now (lane_hit Cycle). */
+        cyc: "num",
+        /** The earliest due last hit or deny within the cycle (its `due` s, its kind), when one blocks the hit. */
+        due: "num",
+        dk: "str",
+        /** core_trade AggroPlan's answer and the enemy lane creeps within its clear radius (550). */
+        ag: "str",
+        cr: "num",
+        /** The kind of the creep attempt the body was waiting on, if any. */
+        wait: "str",
+        dt: "num",
+        msg: "str",
+    },
+    /**
+     * Ours.LaneYield (plan trade-from-the-stand step 3g, states/laning YieldLevel): each change of laning's answer for a laner whose
+     * last hits the body takes. `why` yield (laning bids `v`, lane_hit YIELD_DESIRE), or what is due: hold, walk_in, offered.
+     * `mode` and `md` the active mode and its desire (GetActiveModeDesire, the only mode desire the API reads); `hero` an enemy
+     * hero in our attack range.
+     */
+    lane_yield: {
+        pid: "num",
+        why: "str",
+        v: "num",
+        mode: "num",
+        md: "num",
+        hero: "bool",
+    },
+    /**
      * Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on later scans (`hs`, "s:hp" from the decision)
      * beside the forecast's (`fs`, spread, without our hit) until it dies (`dead`, `end` s) or 2.5 s pass. At the decision:
      * `hp`, our low roll `lo`, the tower's hit after armour `tw` and `GetSecondsPerAttack` `twp`, the forecast's own tower hit

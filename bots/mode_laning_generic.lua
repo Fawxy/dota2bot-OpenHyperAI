@@ -153,6 +153,10 @@ function GetDesire()
 	if bOwnsThink then
 		-- last hit
 		if J.IsInLaningPhase() then
+			-- Ours.LaneYield (plan trade-from-the-stand 3g): with nothing of our core's lane due, laning bids under an attack mode, in
+			-- place of this file's 0.9 (asked on the broader creep read below) and base; a running pull keeps its own rule.
+			local fYield = not Lane.CampJobActive(bot) and States.LaneYield(bot) or nil
+			if fYield ~= nil then return fYield end
 			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
 			if J.IsValid(hitCreep) then
 				if (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.

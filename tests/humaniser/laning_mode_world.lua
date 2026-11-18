@@ -123,7 +123,7 @@ function LaningLoad(opts)
 		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
 		CoreTrade = { LastHitYields = function() return opts.retreating == true end },
 		States = {
-			MayOwn = function() return false end, SetLaneSpot = function() end,
+			MayOwn = function() return false end, SetLaneSpot = function() end, LaneYield = function() return nil end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
 			BodyBusy = function() return false end,
 			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the support's

@@ -1209,6 +1209,30 @@ ____exports.EVENTS = {
         ol = "num",
         contested = "bool"
     },
+    lane_hit = {
+        pid = "num",
+        ph = "str",
+        why = "str",
+        tpid = "num",
+        d = "num",
+        hp = "num",
+        cyc = "num",
+        due = "num",
+        dk = "str",
+        ag = "str",
+        cr = "num",
+        wait = "str",
+        dt = "num",
+        msg = "str"
+    },
+    lane_yield = {
+        pid = "num",
+        why = "str",
+        v = "num",
+        mode = "num",
+        md = "num",
+        hero = "bool"
+    },
     prehit_fc = {
         pid = "num",
         hp = "num",

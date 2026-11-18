@@ -2506,4 +2506,10 @@ function ____exports.Reset()
         uncatchable[k] = nil
     end
 end
+Laning.SetTradeReaders({
+    running = function(bot) return ____exports.Running(bot) end,
+    primedAt = function(pid) return ____exports.PrimedAt(pid) end,
+    notePrimed = function(pid, t) return ____exports.NotePrimed(pid, t) end,
+    plan = function(now, at, creeps) return ____exports.AggroPlan(now, at, creeps) end
+})
 return ____exports

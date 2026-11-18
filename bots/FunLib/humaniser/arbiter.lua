@@ -25,6 +25,7 @@ local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
+local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local LaneFight = require(GetScriptDirectory().."/FunLib/humaniser/lane_fight")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
@@ -298,6 +299,10 @@ end
 -- mode's own GetDesire, which opens a trade or a fight).
 function ____exports.DriveAfter(bot, mode, p, desire)
     if mode == "laning" and p.name == "lane" then
+        local y = Laning.YieldLevel(bot)
+        if y ~= nil then
+            return y
+        end
         local ____temp_2
         if type(desire) == "number" and desire > ____exports.SETTINGS.LaneDesire then
             ____temp_2 = desire

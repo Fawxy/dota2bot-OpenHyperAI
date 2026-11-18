@@ -1887,3 +1887,12 @@ export function Reset(): void {
     for (const k in heads) heads[k as unknown as number] = undefined;
     for (const k in uncatchable) uncatchable[k as unknown as number] = undefined;
 }
+
+// Plan trade-from-the-stand step 3f (Ours.LaneHit): the laning body's hero hit reads the episode and shares the aggro clock and
+// plan; laning cannot import this module (it imports laning).
+Laning.SetTradeReaders({
+    running: (bot) => Running(bot),
+    primedAt: (pid) => PrimedAt(pid),
+    notePrimed: (pid, t) => NotePrimed(pid, t),
+    plan: (now, at, creeps) => AggroPlan(now, at, creeps),
+});

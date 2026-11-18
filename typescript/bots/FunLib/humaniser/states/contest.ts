@@ -216,6 +216,12 @@ export function Running(pid: number, creep: Lib.TaskCreep): Walk | undefined {
     return undefined;
 }
 
+/** Whether this bot is in any walk-in whose creep is still alive (states/laning YieldLevel). */
+export function RunningAny(pid: number): boolean {
+    for (const w of walks[pid] ?? []) if (!(w.creep.IsNull?.() ?? false) && w.creep.IsAlive()) return true;
+    return false;
+}
+
 /** Ends the walk-in on `creep` (its attempt reported), returning it. */
 export function Finish(pid: number, creep: Lib.TaskCreep): Walk | undefined {
     const w = Running(pid, creep);

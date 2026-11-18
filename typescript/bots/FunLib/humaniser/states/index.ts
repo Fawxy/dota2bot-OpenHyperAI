@@ -352,6 +352,12 @@ export function LaneOnlyAggroStep(bot: Unit): boolean {
     return LaneAggro.Step(bot);
 }
 
+/** Ours.LaneYield (mode_laning_generic GetDesire): laning's desire while nothing of the lane is due, else nil (states/laning YieldLevel). */
+export function LaneYield(bot: Unit): number | undefined {
+    if (!IsEnabled()) return undefined;
+    return Laning.YieldLevel(bot);
+}
+
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */
 export function SetLaneSpot(bot: Unit, fn: (this: void) => Vector | undefined): void {
     Laning.SetSpot(bot, fn);
