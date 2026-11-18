@@ -23,10 +23,11 @@
 //              (`ev=own_creep_death`, logged at 50% HP or under) that died from open to end within the cast's attack range +
 //              REACH_SLACK of it, not credited to it (`by`); the cast's place is its nearest snapshot
 //   why, dur   how and when the trade ended (`creeps`: two creeps hitting us); so the step-outs
-// A trade whose window or episode holds an HP reset (the recipe's rig_hp_all, sent for :55 and run 1 to 6 s late at 8x: its
-// [DOTACTL] cmd line's time) or runs past its rep's end (the cast is held again) is listed `late`, left out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
-// trade, trades, ordered, fired, mean first, a5, HP each way and ch5, the HP split summed and per trade, the ends and the
-// share ending `creeps`.
+// A trade whose window or episode holds an HP reset (the recipe's rig_hp_all, sent for :55 and run 1 to 6 s late at 8x: from
+// its [DOTACTL] cmd line's time to RESET_LAG after) or runs past its rep's end (the cast is held again) is listed `late`, left
+// out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
+// trade, trades, ordered, fired, mean first, a5, HP each way and ch5, the HP split summed and per trade, step first, the
+// untaken creeps, the ends and the share ending `creeps`.
 // Usage: node trade_rig.js <file fragment> [...] [--rows] [--json] [--no-ingest]
 'use strict';
 const fs = require('fs');
@@ -38,6 +39,8 @@ const NAME = 'lane-trade';
 const WINDOW = 5;
 /** Two hulls (hero 24, creep 16) and a little: a creep at this past attack range is still in reach. `judgement`. */
 const REACH_SLACK = 50;
+/** The reset's HP lands up to this long after its cmd line's time (rig1b_s30: the line at 209, the HP at 211). */
+const RESET_LAG = 3;
 
 const TRADES = `-- ensure: ev_trade(fa)
 SELECT t, kind, result, why, dur, hpd, thpd, ld, pr, so, ag, tgt, fa FROM ev_trade
@@ -146,7 +149,7 @@ function reps(store, like) {
             const hph = during('hhit', x.tgt);
             trades.push({
                 file: path.basename(r.file), rep: r.rep, var: r.var, hero, n: i + 1, open: round1(x.open), tgt: x.tgt,
-                late: Math.max(x.open + WINDOW, x.t) > r.stop || hpSet.some((t) => t >= x.open && t <= Math.max(x.open + WINDOW, x.t)) ? 1 : 0,
+                late: Math.max(x.open + WINDOW, x.t) > r.stop || hpSet.some((t) => t + RESET_LAG >= x.open && t <= Math.max(x.open + WINDOW, x.t)) ? 1 : 0,
                 ordered: (x.pr ?? 0) > 0 || fired ? 1 : 0, pr: x.pr, so: x.so,
                 fired: fired ? 1 : 0, ld: x.ld,
                 first: in5.length ? round1(in5[0].t - x.open) : null,
@@ -226,7 +229,7 @@ if (require.main === module) {
     if (argv.includes('--rows')) console.log(all.trades.map((r) => JSON.stringify(r)).join('\n'));
     else if (argv.includes('--json')) console.log(JSON.stringify(summary(all)));
     else {
-        console.log(`lane-trade: ${all.reps.length} ready reps, ${all.trades.length} taken trades; graded within ${WINDOW} s of the open (late: opened within ${WINDOW} s of the rep's end)`);
+        console.log(`lane-trade: ${all.reps.length} ready reps, ${all.trades.length} taken trades; graded within ${WINDOW} s of the open (late: an HP reset in the window, or past the rep's end)`);
         for (const [k, s] of Object.entries(summary(all))) {
             const why = Object.entries(s.why ?? {}).map(([w, n]) => `${w} ${n}`).join(', ');
             console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  lost to creeps/hero/other ${s.split ? `${s.split.creeps}/${s.split.hero}/${s.split.other}` : '-'}  5 s by flags c/h/b/o ${s.split5 ? `${s.split5.creeps}/${s.split5.hero}/${s.split5.both}/${s.split5.other}` : '-'}  creeps end ${s.creepsEnd ?? '-'}%  step first ${s.stepFirst ?? '-'}  untaken lh/dn ${s.ulh ?? '-'}/${s.udn ?? '-'}  ends: ${why}`);
