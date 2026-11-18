@@ -27,7 +27,7 @@ import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 
 export type Kind = "feed" | "tower" | "back";
@@ -442,7 +442,7 @@ function laneTargets(bot: Unit, within: number, deny: boolean): Lib.Verbs.LaneTa
 /** The shared gates of both moves, or why not. */
 function gate(bot: Unit, now: number): string | undefined {
     const pid = bot.GetPlayerID();
-    if (!CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid))) return "cooldown";
+    if (!CooldownClear(now, orderedAt[pid], Trade.PrimedAt(pid))) return "cooldown";
     if (LaneHeld(now, pid, laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())])) return "lane";
     if (frac(bot) < SETTINGS.MinHp) return "hp";
     const t = bot.GetAttackTarget();
@@ -647,7 +647,7 @@ export function StartBack(bot: Unit, to: Vector, src: "drag" | "hold" = "drag"):
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     if (attempts[pid] !== undefined || !Ours.On("LaneAggro")) return false;
-    if (!CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid))) return false;
+    if (!CooldownClear(now, orderedAt[pid], Trade.PrimedAt(pid))) return false;
     if (LaneHeld(now, pid, laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())])) return false;
     if (frac(bot) < SETTINGS.MinHp) return false;
     const near = enemyCreepsNear(bot, bot.GetLocation(), SETTINGS.DrawR);
@@ -754,7 +754,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         bot.Action_AttackUnit(a.hero, true);
         a.orderedAt = now;
         orderedAt[pid] = now;
-        CoreTrade.NotePrimed(pid, now);
+        Trade.NotePrimed(pid, now);
         laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())] = { pid, at: now };
         if (a.kind === "feed") fed.set(a.creep, true);
         if (a.nd !== undefined) a.nd++;
@@ -798,11 +798,11 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
     }
     if (a.kind === "back") {
         if (GetUnitToLocationDistance(bot, a.back) > SETTINGS.BackArrive && now - a.startedAt < SETTINGS.BackWalk) {
-            if (drawnOn(bot, bot).length === 0 && CooldownClear(now, orderedAt[pid], CoreTrade.PrimedAt(pid)) && retarget(bot, a)) {
+            if (drawnOn(bot, bot).length === 0 && CooldownClear(now, orderedAt[pid], Trade.PrimedAt(pid)) && retarget(bot, a)) {
                 bot.Action_AttackUnit(a.hero, true);
                 a.orderedAt = now;
                 orderedAt[pid] = now;
-                CoreTrade.NotePrimed(pid, now);
+                Trade.NotePrimed(pid, now);
                 laneDraw[laneKey(bot.GetTeam(), bot.GetAssignedLane())] = { pid, at: now };
                 a.nd = (a.nd ?? 0) + 1;
                 return true;

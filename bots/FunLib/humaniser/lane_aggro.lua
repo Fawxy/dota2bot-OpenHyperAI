@@ -80,7 +80,7 @@ local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 function valid(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen()
@@ -689,7 +689,7 @@ local function gate(bot, now)
     if not ____exports.CooldownClear(
         now,
         orderedAt[pid],
-        CoreTrade.PrimedAt(pid)
+        Trade.PrimedAt(pid)
     ) then
         return "cooldown"
     end
@@ -966,7 +966,7 @@ function ____exports.StartBack(bot, to, src)
     if not ____exports.CooldownClear(
         now,
         orderedAt[pid],
-        CoreTrade.PrimedAt(pid)
+        Trade.PrimedAt(pid)
     ) then
         return false
     end
@@ -1091,7 +1091,7 @@ local function act(bot, a, now)
         bot:Action_AttackUnit(a.hero, true)
         a.orderedAt = now
         orderedAt[pid] = now
-        CoreTrade.NotePrimed(pid, now)
+        Trade.NotePrimed(pid, now)
         laneDraw[laneKey(
             bot:GetTeam(),
             bot:GetAssignedLane()
@@ -1170,12 +1170,12 @@ local function act(bot, a, now)
             if #drawnOn(bot, bot) == 0 and ____exports.CooldownClear(
                 now,
                 orderedAt[pid],
-                CoreTrade.PrimedAt(pid)
+                Trade.PrimedAt(pid)
             ) and retarget(bot, a) then
                 bot:Action_AttackUnit(a.hero, true)
                 a.orderedAt = now
                 orderedAt[pid] = now
-                CoreTrade.NotePrimed(pid, now)
+                Trade.NotePrimed(pid, now)
                 laneDraw[laneKey(
                     bot:GetTeam(),
                     bot:GetAssignedLane()

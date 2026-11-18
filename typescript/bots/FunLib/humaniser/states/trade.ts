@@ -9,6 +9,10 @@
  * A running exchange (`Inputs.run`) is the same decision with slack on its own bars, plus the ends of section 2.
  */
 import { BotMode, DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
+import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
+import * as Phase from "bots/FunLib/humaniser/transitions/phase";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
@@ -159,6 +163,8 @@ export interface Cand {
     catch?: Catch;
     /** The hunters behind `catch`, kept for the cut line only. */
     hunters?: Hunter[];
+    /** An exchange with it ended `losing` and neither has damaged the other since for `StayEngaged` (the executor's memory; a read, not a timer): no hit and no hit back on it. */
+    lost?: boolean;
 }
 
 export interface Run {
@@ -264,6 +270,7 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
     const slack = run !== undefined;
     if (r.burst >= burstBar(r.n) + (slack ? BARS.slackBurst : 0)) return "burst";
     if (!walks && i.hp < hpBar(i.n) - (slack ? BARS.slackHp : 0)) return "hp";
+    if (!walks && c.lost === true) return "lost";
     if (walks && r.missing >= Threat.SETTINGS.MissingRefuse) return "missing";
     const wave = slack ? BARS.slackWave : 0;
     if (level === "kill") {
@@ -424,11 +431,11 @@ function noneReason(rest: { c: Cand; p: Pick }[], ended: string | undefined): st
 }
 
 /**
- * What holds retreat (design section 1, "Hold"): `hitback` while some hitter passes tower, burst and HP and is either paid or
+ * What holds retreat (design section 1, "Hold"), over the inputs (`Holds` reads them for a hero): `hitback` while some hitter passes tower, burst and HP and is either paid or
  * free or favoured, whatever the swing is doing (a due deny, creeps and the wave change the swing, not the hold); `join`
  * while some candidate is a pair join. Undefined: retreat decides alone.
  */
-export function Holds(i: Inputs): "hitback" | "join" | undefined {
+export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     const run = i.run;
     for (const c of i.cands) {
         const slack = run !== undefined && run.target === c.pid ? run : undefined;
@@ -490,6 +497,28 @@ interface LastSeen {
     thpAbs: number;
 }
 const lastSeen: Record<number, LastSeen | undefined> = {};
+
+/** The enemy hero handles Gather saw on its last call, by pid: the executor reads them straight after it. */
+const lastHandles: Record<number, Unit | undefined> = {};
+
+/** The last pair answer that was a join (per bot) and when, for the Keep window. */
+const lastPair: Record<number, { p: NonNullable<Inputs["pair"]>; at: number } | undefined> = {};
+
+/** Heroes we lost an exchange with, per bot: set when one ends `losing`, cleared once neither has damaged the other for StayEngaged. */
+const lostWith: Record<number, Record<number, boolean> | undefined> = {};
+
+/** Whether `h` is one we lost an exchange with and not yet quiet (clears the memory when it is). */
+function lostFor(bot: Unit, h: Unit): boolean {
+    const mine = lostWith[bot.GetPlayerID()];
+    const pid = h.GetPlayerID();
+    if (mine === undefined || mine[pid] !== true) return false;
+    const quiet = Threat.SETTINGS.StayEngaged;
+    if (!bot.WasRecentlyDamagedByHero(h, quiet) && !h.WasRecentlyDamagedByHero(bot, quiet)) {
+        mine[pid] = undefined as unknown as boolean;
+        return false;
+    }
+    return true;
+}
 
 /** The hero's running exchange as the catch read counts its hunters: only the executor writes it (`NoteRun`). */
 const runs: Record<number, { level: Level; target: number } | undefined> = {};
@@ -657,10 +686,16 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         }
     }
     const walkOf = Threat.Reader(bot, Threat.SETTINGS.GateHorizon);
+    const bpid = bot.GetPlayerID();
     const pairRead = PairJoin.For(bot);
-    const pair = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.rec.on !== "ours" && pairRead.ans.tgt !== -1
+    let pair: Inputs["pair"] = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.rec.on !== "ours" && pairRead.ans.tgt !== -1
         ? { tgt: pairRead.ans.tgt, ko: pairRead.ans.ko, kt: pairRead.ans.kt, dec: pairRead.ans.dec }
         : undefined;
+    // The ally's last hit leaves a gap between two swings (PairJoin HitRecent is 1 s): a join answer stands for Keep s after the situation lapses.
+    const kept = lastPair[bpid];
+    if (pair !== undefined && pair.ko > pair.kt) lastPair[bpid] = { p: pair, at: now };
+    else if (pair === undefined && kept !== undefined && now - kept.at <= PairJoin.SETTINGS.Keep) pair = kept.p;
+    for (const k in lastHandles) lastHandles[k as unknown as number] = undefined;
     const play = playFor(bot, here);
     const myRange = bot.GetAttackRange();
     const myHull = bot.GetBoundingRadius();
@@ -699,7 +734,9 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             kt: free ? 0 : shareOn(h, bot),
             paid: hitting && CreepAggro.Paid(bot, h),
             tw,
+            lost: lostFor(bot, h),
         };
+        lastHandles[pid] = h;
         const asked = thp <= BARS.commitHp || (pair !== undefined && pair.tgt === pid) || (play !== undefined && play.tgt === pid) || isRun;
         if (asked) {
             const r = walkOf(here, at);
@@ -735,6 +772,10 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         play,
         cands,
     };
+    if (i.play !== undefined && i.play.zero === undefined) {
+        const pc = cands.find((c) => c.pid === i.play!.tgt);
+        if (pc !== undefined) i.play.zero = FightZero(i, pc);
+    }
     if (rs !== undefined) i.run = runOf(bot, rs, runSeen, here);
     return i;
 }
@@ -768,15 +809,33 @@ function shareOn(from: Unit, on: Unit): number {
     return SpellReady.DamageOn(from, on, PairJoin.SETTINGS.Window) / math.max(1, on.GetHealth());
 }
 
-/** A running play near us whose target we may join: not ours, its target seen and the play's hard zero for us (Plays.Weigh), none while we are in a play ourselves. */
+/**
+ * The running play whose target we fight: one we are in already (we rolled it, or joined it), else the first running play
+ * near us that someone else started, with its target seen and its hard zero for us (Plays.Weigh). A hero that started a play
+ * of another kind is that play's (the executor leaves it alone).
+ */
 function playFor(bot: Unit, here: Vector): Inputs["play"] {
-    if (Plays.Of(bot) !== undefined) return undefined;
-    for (const p of Plays.Near(here, CAND_RADIUS)) {
+    const mine = Plays.Of(bot);
+    const pick = (p: Plays.Play): Inputs["play"] => {
         const t = p.target;
-        if (p.by === bot || !valid(t)) continue;
-        const zero = Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero;
-        return { id: p.id, kind: p.kind, tgt: p.tgt, zero };
+        if (!valid(t)) return undefined;
+        return { id: p.id, kind: p.kind, tgt: p.tgt, zero: Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero };
+    };
+    if (mine !== undefined) return mine.by === bot && mine.kind !== LANE_FIGHT ? undefined : pick(mine);
+    for (const p of Plays.Near(here, CAND_RADIUS)) {
+        if (p.by === bot) continue;
+        const r = pick(p);
+        if (r !== undefined) return r;
     }
+    return undefined;
+}
+
+/** Why a lane fight on this candidate is off the table, whoever starts it: their tower, their burst along the walk, a big wave. */
+export function FightZero(i: Inputs, c: Cand): string | undefined {
+    if (i.towerOnMe || c.tw) return "tower";
+    const r: Read3 = c.walk ?? { burst: i.burst, n: i.n, missing: i.missing };
+    if (r.burst >= burstBar(r.n)) return "burst";
+    if (i.wave > BARS.waveKill) return "wave";
     return undefined;
 }
 
@@ -815,6 +874,7 @@ function candText(c: Cand): string {
         or(bit(k?.ok)),
         or(k !== undefined ? math.floor(k.dmg + 0.5) : undefined),
         or(k !== undefined ? round6(k.safe) : undefined),
+        c.lost === true ? 1 : 0,
     ].join(",");
 }
 
@@ -901,9 +961,671 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
     ]);
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// The executor: the episode of one exchange per hero, Desire and Think for the attack mode, and the seam of design section 5.
+// Decide says what to do (`Answer.how`); this part carries it out and keeps the bookkeeping Decide reads back (`RunState`).
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Desire of a hit or hit back, and of a kill or join: under laning's 0.9 last-hit desire and any retreat (design section 9). */
+export const DESIRE_HIT = 0.6;
+export const DESIRE_COMMIT = 0.75;
+
+/**
+ * The speculative lane fight (slice lane-fight, user 04/11/2026: the fights no clear window decides come from the play roll):
+ * the base weight is core_trade's (before value on cil5, lposchk3, sspotchk1: cores 0.4 kills and 0.5 deaths per 100 encounters at
+ * even numbers with the enemy over 40%, about 110 such encounters a game; lfpchk1 at 0.05 fired 1.6 a game, so 0.1 for about 4;
+ * `judgement`), a chance per target at most every FIGHT_ROLL_EVERY s so standing beside a hero is not a roll a frame. A fired play
+ * is fought as a join by its roller and by whoever joins it; the play ends with the roller's exchange or at its timeout.
+ */
+export const LANE_FIGHT = "lane_fight";
+const FIGHT_BASE = 0.1;
+const FIGHT_ROLL_EVERY = 15;
+const FIGHT_TIMEOUT = 10;
+Plays.Define(LANE_FIGHT, { base: FIGHT_BASE, timeout: FIGHT_TIMEOUT, chases: true });
+
+/** Within this of its assigned lane's path the hero is in lane (fight_read's LANE_WIDTH). */
+const LANE_WIDTH = 1200;
+/**
+ * Creep aggro (EC-053, Liquipedia Lane_Creeps 7.41f): an attack order on an enemy hero draws enemy lane creeps within 500 of the
+ * ordering hero and starts a 3 s cooldown even when none are near; attack animations within 500 draw them too, except while that
+ * cooldown runs. So an order given clear of creeps buys up to 3 s of hits near them with no aggro. CLEAR adds 50 for creeps
+ * moving during the order's latency; COOLDOWN_LEFT stops relying on the cooldown 0.3 s before it ends.
+ */
+const AGGRO_CLEAR = 550;
+const AGGRO_COOLDOWN = 3;
+const COOLDOWN_LEFT = 0.3;
+/** One `ev=trade_no` per run of unanswered hits: none for the same hero within this (s), as the D24h view's onset. */
+const NO_EVERY = 5;
+/** After a loss of sight (`target_lost`), what follows within this many seconds is logged on `ev=chase`. */
+const CHASE_WATCH = 12;
+
+type Open = Exclude<Level, "none">;
+
+interface Episode {
+    level: Open;
+    source?: Source;
+    tpid: number;
+    target: Unit;
+    how?: How;
+    offeredAt: number;
+    startedAt?: number;
+    hp0: number;
+    thp0: number;
+    /** Our first landed hit and the baselines `soFar` is read from: the frame before it landed (`hpPrev`, `thpPrev` track that frame until it does). */
+    landedAt?: number;
+    hpPrev?: number;
+    thpPrev?: number;
+    hpL?: number;
+    thpL?: number;
+    /** The bot's GetLastAttackTime at the start (GameTime): an attack fired since raises it. */
+    atkSeen?: number;
+    catchFails: number;
+    catchFailAt?: number;
+    stepSince?: number;
+    primes: number;
+    stepOuts: number;
+    /** Most enemy lane creeps attacking us at once during the exchange. */
+    aggro: number;
+    first?: "step" | "order";
+    /** Attack mode's OnEnd ran: the next Desire closes it naming the mode that took the bot. */
+    ended?: boolean;
+    tmax: number;
+    thull: number;
+    thpSeen: number;
+    unseenSince?: number;
+    play?: Plays.Play;
+    joined?: boolean;
+    /** What it was opened on, for the end line. */
+    hp: number;
+    thp: number;
+    n: number;
+    wave: number;
+}
+
+const episodes: Record<number, Episode | undefined> = {};
+/** Which arm this frame's GetDesire took: Think follows it. */
+const ownsFrame: Record<number, boolean | undefined> = {};
+/** When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there). */
+const primedAt: Record<number, number | undefined> = {};
+/** When this bot last had a lane-fight chance, per target pid. */
+const rolledAt: Record<number, Record<number, number> | undefined> = {};
+const lastNo: Record<number, number | undefined> = {};
+
+/** Load-time: whether mode_attack_generic gives this bot our desire and Think in lane (and OHA's port outside it): the laning body holds the hero. */
+export function Owns(bot: Unit): boolean {
+    return Ours.On("Trade") && (CoreLastHit.Applies(bot) || SupportDeny.Applies(bot));
+}
+
+/** The hero lanes: held by its laning body (transitions/phase) and standing by its own lane; elsewhere OHA's port fights. */
+function inLane(bot: Unit): boolean {
+    return Phase.LaningHeld(bot) && GetAmountAlongLane(bot.GetAssignedLane(), bot.GetLocation()).distance <= LANE_WIDTH;
+}
+
+/** Every fight of this in-lane hero beyond a hit is this module's: team roam keeps only its non-fight branches for it and LaneFight makes no claim. */
+export function OwnsFights(bot: Unit): boolean {
+    return Owns(bot) && bot.IsAlive() && inLane(bot);
+}
+
+/** OHA's farm mode runs a laning hero off on its own triggers (`X.ShouldRun`); in lane this context decides when its hero backs off, so farm skips them. */
+export function OwnsLaneRun(bot: Unit): boolean {
+    return Owns(bot) && inLane(bot);
+}
+
+function roleOf(bot: Unit): string {
+    const pos = LaneConfig.PositionOf(bot);
+    return pos !== undefined && pos >= 4 ? "support" : "core";
+}
+
+/** The name PairJoin and the old views know the level by. */
+const kindOf = (level: Open): string => (level === "hit" || level === "hitback" ? "trade" : level);
+
+const desireOf = (level: Open): number => (level === "hit" || level === "hitback" ? DESIRE_HIT : DESIRE_COMMIT);
+
+/** Where the running exchange stands: `Deficit` from the landing baseline once our first hit has landed, before it from the start (a ranged hit counts from its firing). */
+function soFarOf(bot: Unit, ep: Episode, now: number): { landed: boolean; soFar: number } {
+    const hp = bot.GetHealth();
+    const thp = valid(ep.target) ? ep.target.GetHealth() : ep.thpSeen;
+    const max = bot.GetMaxHealth();
+    // GetLastAttackTime rises when an attack fires, on GameTime's clock, so it is compared with its own value at the start.
+    const fired = bot.GetLastAttackTime();
+    const rose = ep.atkSeen !== undefined && fired > ep.atkSeen;
+    if (rose) ep.atkSeen = fired;
+    const at = bot.GetAttackTarget();
+    if (ep.landedAt === undefined && rose && at !== undefined && at !== null && at.IsHero() && at.GetPlayerID() === ep.tpid) {
+        ep.landedAt = now;
+        ep.hpL = ep.hpPrev ?? ep.hp0;
+        ep.thpL = ep.thpPrev ?? ep.thp0;
+    }
+    if (ep.landedAt === undefined) {
+        ep.hpPrev = hp;
+        ep.thpPrev = thp;
+        return { landed: false, soFar: Deficit(ep.hp0, hp, ep.thp0, thp, max) };
+    }
+    return { landed: true, soFar: Deficit(ep.hpL!, hp, ep.thpL!, thp, max) };
+}
+
+/** The executor's numbers for Decide: what `Gather` takes as the running exchange. */
+export function RunStateOf(bot: Unit, ep: Episode, now: number): RunState {
+    const sf = soFarOf(bot, ep, now);
+    return {
+        level: ep.level,
+        target: ep.tpid,
+        source: ep.source,
+        offered: now - ep.offeredAt,
+        started: ep.startedAt !== undefined ? now - ep.startedAt : undefined,
+        landed: sf.landed,
+        soFar: sf.soFar,
+        catchFails: ep.catchFails,
+        catchFailAt: ep.catchFailAt,
+        stepFor: ep.stepSince !== undefined ? now - ep.stepSince : undefined,
+    };
+}
+
+/** What holds retreat for this hero now (`HoldsOf` on this frame's inputs): `hitback`, `join` or nothing. */
+export function Holds(bot: Unit): "hitback" | "join" | undefined {
+    if (!Owns(bot) || !bot.IsAlive() || !inLane(bot)) return undefined;
+    const ep = episodes[bot.GetPlayerID()];
+    const i = Gather(bot, ep !== undefined && ep.ended !== true ? RunStateOf(bot, ep, DotaTime()) : undefined);
+    return HoldsOf(i);
+}
+
+/** The enemy hero `pid` if our team sees it now: a hero's handle reads null once it leaves sight and a new one comes back with it. */
+function seenHero(pid: number): Unit | undefined {
+    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (h !== undefined && h !== null && !h.IsNull() && !h.IsIllusion() && h.GetPlayerID() === pid && h.IsAlive() && h.CanBeSeen()) return h;
+    }
+    return undefined;
+}
+
+// --- chase telemetry (ev=chase): what follows a loss of sight -----------------------------------------------------------
+
+interface Chase {
+    level: Open;
+    tpid: number;
+    at: number;
+}
+const chases: Record<number, Chase | undefined> = {};
+
+function chaseLost(bot: Unit, ep: Episode, now: number): void {
+    const pid = bot.GetPlayerID();
+    if (chases[pid] !== undefined) chaseEnd(bot, chases[pid]!, now, "next", undefined);
+    chases[pid] = { level: ep.level, tpid: ep.tpid, at: now };
+    const info = GetHeroLastSeenInfo(ep.tpid)[0];
+    const me = bot.GetLocation();
+    const d = info !== undefined ? distXY(me, info.location) : undefined;
+    const reach = bot.GetAttackRange() + bot.GetBoundingRadius() + ep.thull;
+    const a = heads[ep.tpid]?.s0;
+    const b = heads[ep.tpid]?.s1;
+    const span = a !== undefined && b !== undefined ? b.at - a.at : 0;
+    const hv = span > 0 ? distXY(Vector(a!.x, a!.y, 0), Vector(b!.x, b!.y, 0)) / span : undefined;
+    const hd = span > 0 ? math.floor(math.deg(math.atan2(b!.y - a!.y, b!.x - a!.x)) + 0.5) : undefined;
+    Telemetry.Event("chase", [
+        ["pid", pid],
+        ["ph", "lost"],
+        ["role", roleOf(bot)],
+        ["ek", kindOf(ep.level)],
+        ["tgt", ep.tpid],
+        ["dur", ep.startedAt !== undefined ? math.floor((now - ep.startedAt) * 10) / 10 : undefined],
+        ["hp", math.floor(frac(bot) * 100) / 100],
+        ["thp", math.floor((ep.thpSeen / math.max(1, ep.tmax)) * 100) / 100],
+        ["kh", BARS.commitHp],
+        ["x", math.floor(me.x)],
+        ["y", math.floor(me.y)],
+        ["lx", info !== undefined ? math.floor(info.location.x) : undefined],
+        ["ly", info !== undefined ? math.floor(info.location.y) : undefined],
+        ["tss", info !== undefined ? math.floor(info.time_since_seen * 10 + 0.5) / 10 : undefined],
+        ["d", d !== undefined ? math.floor(d) : undefined],
+        ["gap", d !== undefined ? math.floor(d - reach) : undefined],
+        ["ms", math.floor(bot.GetCurrentMovementSpeed())],
+        ["tms", math.floor(Threat.SeenSpeed(ep.tpid) ?? -1)],
+        ["hv", hv !== undefined ? math.floor(hv) : undefined],
+        ["hd", hd],
+        ["sp", SpellReady.ReadyDamage(bot)],
+    ]);
+}
+
+function chaseTick(bot: Unit, now: number): void {
+    const c = chases[bot.GetPlayerID()];
+    if (c === undefined) return;
+    const dead = !IsHeroAlive(c.tpid);
+    const seen = dead ? undefined : seenHero(c.tpid);
+    const out = now - c.at > CHASE_WATCH;
+    if (!dead && seen === undefined && !out) return;
+    chaseEnd(bot, c, now, dead ? "dead" : seen !== undefined ? "seen" : "gone", seen);
+}
+
+function chaseEnd(bot: Unit, c: Chase, now: number, ph: string, seen: Unit | undefined): void {
+    const pid = bot.GetPlayerID();
+    chases[pid] = undefined;
+    const ep = episodes[pid];
+    Telemetry.Event("chase", [
+        ["pid", pid],
+        ["ph", ph],
+        ["ek", kindOf(c.level)],
+        ["tgt", c.tpid],
+        ["dt", math.floor((now - c.at) * 10) / 10],
+        ["alive", bot.IsAlive() ? 1 : 0],
+        ["d", seen !== undefined && bot.IsAlive() ? math.floor(GetUnitToUnitDistance(bot, seen)) : undefined],
+        ["thp", seen !== undefined ? math.floor(frac(seen) * 100) / 100 : undefined],
+        ["hp", bot.IsAlive() ? math.floor(frac(bot) * 100) / 100 : undefined],
+        ["mode", bot.GetActiveMode()],
+        ["onk", ep !== undefined && ep.tpid === c.tpid ? kindOf(ep.level) : undefined],
+    ]);
+}
+
+// --- the episode ------------------------------------------------------------------------------------------------------
+
+/** The target Think named with SetTarget is cleared, if it is still the one set (another module's stays). */
+function clearTarget(bot: Unit, ep: Episode): void {
+    const t = bot.GetTarget();
+    if (t === undefined || t === null) return;
+    if (t === ep.target || (valid(t) && t.IsHero() && t.GetPlayerID() === ep.tpid) || !valid(t)) bot.SetTarget(undefined as any);
+}
+
+function close(bot: Unit, ep: Episode, why: string, now: number): void {
+    const pid = bot.GetPlayerID();
+    episodes[pid] = undefined;
+    NoteRun(pid, "none", undefined);
+    if (ep.level !== "hit" && ep.level !== "hitback") clearTarget(bot, ep);
+    if (why === "losing") {
+        const mine = (lostWith[pid] = lostWith[pid] ?? {});
+        mine[ep.tpid] = true;
+    }
+    const started = ep.startedAt !== undefined;
+    if (ep.play !== undefined && ep.play.by === bot) Plays.End(ep.play, why);
+    const killed = started && !IsHeroAlive(ep.tpid);
+    const thp = killed ? 0 : valid(ep.target) ? ep.target.GetHealth() : ep.thpSeen;
+    if (why === "target_lost" && Telemetry.IsEnabled()) chaseLost(bot, ep, now);
+    Telemetry.Event("trade", [
+        ["pid", pid],
+        ["role", roleOf(bot)],
+        ["kind", ep.level],
+        ["tgt", ep.tpid],
+        ["play", ep.play?.id],
+        ["join", ep.play !== undefined ? (ep.joined === true ? 1 : 0) : undefined],
+        ["hb", ep.level === "hitback" ? 1 : undefined],
+        ["result", started ? (killed ? "kill" : "done") : "lost"],
+        ["why", why],
+        ["dur", started ? math.floor((now - ep.startedAt!) * 10) / 10 : 0],
+        ["hpd", started ? ep.hp0 - bot.GetHealth() : 0],
+        ["thpd", started ? ep.thp0 - thp : 0],
+        ["ld", started && ep.landedAt !== undefined ? math.floor((ep.landedAt - ep.startedAt!) * 10) / 10 : undefined],
+        ["hp", math.floor(ep.hp * 100) / 100],
+        ["thp", math.floor(ep.thp * 100) / 100],
+        ["en", ep.n],
+        ["cr", ep.wave],
+        ["pr", ep.primes],
+        ["so", ep.stepOuts],
+        ["fa", ep.first],
+        ["ag", ep.aggro],
+        ["mode", bot.GetActiveMode()],
+        ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
+    ]);
+    if (started) PairJoin.After(bot, kindOf(ep.level), why, ep.tpid);
+}
+
+function open(bot: Unit, i: Inputs, a: Answer, now: number): number {
+    const level = a.level as Open;
+    const tpid = a.target!;
+    const t = lastHandles[tpid];
+    if (t === undefined) return 0;
+    const c = i.cands.find((x) => x.pid === tpid)!;
+    let play: Plays.Play | undefined;
+    let joined: boolean | undefined;
+    if (a.source === "play" && i.play !== undefined) {
+        play = Plays.Active().find((p) => p.id === i.play!.id);
+        if (play !== undefined) {
+            if (Plays.Of(bot) === undefined) Plays.Join(play, bot);
+            joined = play.by !== bot;
+        }
+    }
+    const pid = bot.GetPlayerID();
+    episodes[pid] = {
+        level,
+        source: a.source,
+        tpid,
+        target: t,
+        how: a.how,
+        offeredAt: now,
+        hp0: bot.GetHealth(),
+        thp0: t.GetHealth(),
+        catchFails: 0,
+        primes: 0,
+        stepOuts: 0,
+        aggro: 0,
+        tmax: t.GetMaxHealth(),
+        thull: t.GetBoundingRadius(),
+        thpSeen: t.GetHealth(),
+        play,
+        joined,
+        hp: i.hp,
+        thp: c.thp,
+        n: i.n,
+        wave: i.wave,
+    };
+    NoteRun(pid, level, tpid);
+    return desireOf(level);
+}
+
+/** What this frame's answer does to the episode: keep it (a level change on the same target is made in place), end it, open one. Returns the desire. */
+function apply(bot: Unit, ep: Episode | undefined, i: Inputs, a: Answer, now: number): number {
+    const pid = bot.GetPlayerID();
+    if (ep !== undefined) {
+        if (a.level !== "none" && a.target === ep.tpid && a.ended === undefined) {
+            if (a.level !== ep.level) {
+                ep.level = a.level as Open;
+                NoteRun(pid, ep.level, ep.tpid);
+            }
+            ep.source = a.source;
+            ep.how = a.how;
+            if (a.catchFails !== undefined) {
+                ep.catchFails = a.catchFails;
+                ep.catchFailAt = a.catchFailAt;
+            }
+            return desireOf(ep.level);
+        }
+        close(bot, ep, a.ended ?? a.reason, now);
+    }
+    if (a.level === "none") {
+        unanswered(bot, now, a.reason, i);
+        return 0;
+    }
+    return open(bot, i, a, now);
+}
+
+/** Logs why no exchange opened this frame while an enemy hero is hitting us (`ev=trade_no`), so the D24h view's unanswered cases have a cause. */
+function unanswered(bot: Unit, now: number, why: string, i: Inputs): void {
+    const pid = bot.GetPlayerID();
+    const last = lastNo[pid];
+    if (!Telemetry.IsEnabled() || (last !== undefined && now - last < NO_EVERY)) return;
+    let hitter: Cand | undefined;
+    for (const c of i.cands) if (c.hitting && (hitter === undefined || c.d < hitter.d)) hitter = c;
+    if (hitter === undefined) return;
+    lastNo[pid] = now;
+    const h = lastHandles[hitter.pid];
+    Telemetry.Event("trade_no", [
+        ["pid", pid],
+        ["role", roleOf(bot)],
+        ["why", why],
+        ["tgt", hitter.pid],
+        ["d", math.floor(hitter.d)],
+        ["reach", math.floor(hitter.d - hitter.gap)],
+        ["har", h !== undefined ? math.floor(h.GetAttackRange()) : undefined],
+        ["agg", hitter.paid ? 1 : 0],
+        ["hp", math.floor(i.hp * 100) / 100],
+        ["thp", math.floor(hitter.thp * 100) / 100],
+        ["en", i.n],
+        ["cr", i.wave],
+        ["hc", i.creepsOnMe],
+        ["mode", bot.GetActiveMode()],
+        ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
+    ]);
+}
+
+/** One lane-fight chance on `target`, at most every FIGHT_ROLL_EVERY seconds; the fired play, if any. */
+function rollFight(bot: Unit, target: Unit, now: number): Plays.Play | undefined {
+    const pid = bot.GetPlayerID();
+    const seen = (rolledAt[pid] = rolledAt[pid] ?? {});
+    const tpid = target.GetPlayerID();
+    const last = seen[tpid];
+    if (last !== undefined && now - last < FIGHT_ROLL_EVERY) return undefined;
+    seen[tpid] = now;
+    return Plays.Roll({ kind: LANE_FIGHT, by: bot, target, at: target.GetLocation() }, now);
+}
+
+/**
+ * The lane-fight chance (design section 4): offered once per target per FIGHT_ROLL_EVERY s when the frame's answer is a hit or
+ * nothing and tower, burst (the walk read) and wave pass. The target is the hit's, else the nearest hero.
+ */
+function chanceTarget(bot: Unit, i: Inputs, a: Answer): Unit | undefined {
+    if (a.level !== "hit" && a.level !== "none") return undefined;
+    let c: Cand | undefined;
+    if (a.level === "hit") c = i.cands.find((x) => x.pid === a.target);
+    else for (const x of i.cands) if (c === undefined || x.d < c.d) c = x;
+    const t = c !== undefined ? lastHandles[c.pid] : undefined;
+    if (c === undefined || t === undefined) return undefined;
+    if (c.walk === undefined) {
+        const r = Threat.Read(bot, bot.GetLocation(), t.GetLocation(), Threat.SETTINGS.GateHorizon);
+        c.walk = { burst: r.burst, n: r.reach.length, missing: r.missing };
+    }
+    return FightZero(i, c) === undefined ? t : undefined;
+}
+
+/**
+ * The in-lane attack desire, or undefined outside lane (the caller then asks OHA's port). One Gather and one Decide a frame; the
+ * answer opens, keeps (a level change on the same target in place), ends or replaces the hero's exchange. An exchange attack mode
+ * never took is ended `not_taken` by Decide itself.
+ */
+export function Desire(bot: Unit): number | undefined {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    let ep = episodes[pid];
+    if (Telemetry.IsEnabled()) chaseTick(bot, now);
+    if (!bot.IsAlive() || !inLane(bot)) {
+        if (ep !== undefined) close(bot, ep, bot.IsAlive() ? "lane_end" : "dead", now);
+        ownsFrame[pid] = false;
+        return bot.IsAlive() ? undefined : 0;
+    }
+    ownsFrame[pid] = true;
+    Plays.Tick(now);
+    if (ep !== undefined && ep.ended === true) {
+        close(bot, ep, `mode_${bot.GetActiveMode()}`, now);
+        ep = undefined;
+    }
+    // A hero that started a play of another kind (the rune spawn's) is driven by that play until it ends (OWNERSHIP H24).
+    const mine = Plays.Of(bot);
+    if (mine !== undefined && mine.by === bot && mine.kind !== LANE_FIGHT) {
+        if (ep !== undefined) close(bot, ep, "play", now);
+        return 0;
+    }
+    let i = Gather(bot, ep !== undefined ? RunStateOf(bot, ep, now) : undefined);
+    if (ep !== undefined) noteSight(bot, ep, now);
+    let a = Decide(i);
+    if (ep === undefined && OwnsFights(bot)) {
+        const t = chanceTarget(bot, i, a);
+        if (t !== undefined && rollFight(bot, t, now) !== undefined) {
+            i = Gather(bot);
+            a = Decide(i);
+        }
+    }
+    Cut(bot, i, a);
+    return apply(bot, ep, i, a, now);
+}
+
+/** After Gather: the target's current handle and HP when it is seen, and the loss of sight of a running kill where the chase goes on past it. */
+function noteSight(bot: Unit, ep: Episode, now: number): void {
+    const t = lastHandles[ep.tpid];
+    if (t !== undefined) {
+        ep.target = t;
+        ep.thpSeen = t.GetHealth();
+        ep.unseenSince = undefined;
+    } else if (ep.level === "kill" && ep.startedAt !== undefined && ep.unseenSince === undefined && IsHeroAlive(ep.tpid)) {
+        ep.unseenSince = now;
+        if (Telemetry.IsEnabled()) chaseLost(bot, ep, now);
+    }
+}
+
+export type AggroAction = "attack" | "prime" | "step_out";
+
+/**
+ * The aggro-free attack: what a trading hero does this frame so its hits draw no creep aggro: `attack` while its own attack
+ * order's cooldown covers it; `prime` (a fresh attack order) when no enemy lane creep is within AGGRO_CLEAR; otherwise `step_out`
+ * of the creeps first.
+ */
+export function AggroPlan(now: number, primed: number | undefined, creepsWithinClear: number): AggroAction {
+    if (primed !== undefined && now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT) return "attack";
+    return creepsWithinClear === 0 ? "prime" : "step_out";
+}
+
+/** Whether this frame's GetDesire took our arm; mode_attack_generic's Think runs ours when true, OHA's port otherwise. */
+export function OwnsFrame(bot: Unit): boolean {
+    return ownsFrame[bot.GetPlayerID()] === true;
+}
+
+/** Carries out `Answer.how` on the episode: a move to the predicted place for an unseen chase, a committed attack order, or the aggro-free plan (the step out of the creeps is the only mechanics decided here). */
+export function Think(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    const ep = episodes[pid];
+    if (ep === undefined || ep.how === undefined) return;
+    const how = ep.how;
+    const commits = how.aggro === "commit";
+    if (!valid(ep.target)) {
+        // OHA's casts read GetTarget, so the stale handle is cleared; sight back sets it again.
+        if (commits) clearTarget(bot, ep);
+        if (how.verb === "move" && how.at !== undefined) bot.Action_MoveToLocation(Vector(how.at.x, how.at.y, bot.GetLocation().z));
+        return;
+    }
+    const now = DotaTime();
+    // OHA's hero files cast at GetTarget under J.IsGoingOnSomeone, so a committed exchange names its target there.
+    if (commits) bot.SetTarget(ep.target);
+    if (ep.startedAt === undefined) {
+        ep.startedAt = now;
+        ep.atkSeen = bot.GetLastAttackTime();
+        PairJoin.Reopened(bot);
+    }
+    const creeps: Unit[] = [];
+    let onMe = 0;
+    for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) {
+        if (c.IsNull() || !c.IsAlive()) continue;
+        creeps.push(c);
+        if (c.GetAttackTarget() === bot) onMe++;
+    }
+    ep.aggro = math.max(ep.aggro, onMe);
+    const plan = commits ? "attack" : AggroPlan(now, primedAt[pid], creeps.length);
+    if (plan === "step_out") {
+        if (ep.stepSince === undefined) {
+            ep.stepSince = now;
+            ep.stepOuts++;
+        }
+        ep.first = ep.first ?? "step";
+        bot.Action_MoveToLocation(stepOutPoint(bot, creeps));
+        return;
+    }
+    ep.stepSince = undefined;
+    ep.first = ep.first ?? "order";
+    if (plan === "prime") {
+        primedAt[pid] = now;
+        ep.primes++;
+        bot.Action_AttackUnit(ep.target, false);
+        return;
+    }
+    if (bot.GetAttackTarget() !== ep.target) {
+        // An order inside the cooldown draws nothing and does not restart it.
+        if (commits) primedAt[pid] = now;
+        bot.Action_AttackUnit(ep.target, false);
+    }
+}
+
+/** AGGRO_CLEAR + 100 from the creeps' centre, on the far side from them. */
+function stepOutPoint(bot: Unit, creeps: Unit[]): Vector {
+    const me = bot.GetLocation();
+    let x = 0;
+    let y = 0;
+    let seen = 0;
+    for (const c of creeps) {
+        // cil2 (A_on_1 t=776.3, B_on_2 t=377.1): a creep the query listed as alive returned no location; cause not known.
+        const l = c.GetLocation() as Vector | undefined;
+        if (l === undefined) continue;
+        x += l.x;
+        y += l.y;
+        seen++;
+    }
+    // No located creep: treat the hero as on the centre, which steps back along the lane.
+    x = seen > 0 ? x / seen : me.x;
+    y = seen > 0 ? y / seen : me.y;
+    let dx = me.x - x;
+    let dy = me.y - y;
+    const len = math.sqrt(dx * dx + dy * dy);
+    if (len < 1) {
+        // Standing on the centre: step back along the lane towards our own side.
+        const back = GetLocationAlongLane(bot.GetAssignedLane(), math.max(0, GetAmountAlongLane(bot.GetAssignedLane(), me).amount - 0.05));
+        dx = back.x - me.x;
+        dy = back.y - me.y;
+    }
+    const n = math.max(1, math.sqrt(dx * dx + dy * dy));
+    return Vector(x + (dx / n) * (AGGRO_CLEAR + 100), y + (dy / n) * (AGGRO_CLEAR + 100), me.z);
+}
+
+/** Attack mode lost the hero to another mode: a started exchange ends there (closed by the next Desire, which can name that mode). */
+export function OnEnd(bot: Unit): void {
+    const ep = episodes[bot.GetPlayerID()];
+    if (ep !== undefined && ep.startedAt !== undefined) ep.ended = true;
+}
+
+/**
+ * Laning's 0.9 last-hit desire must not cut a retreat this hero is already in (core-time-diagnosis s2: a death within 15 s of
+ * such a cut was 4 times as likely), nor a kill or join (lfpchk1: 2 of 8 fights ended in a last hit at 4.9 s; a pair join, D10
+ * group 2, is above the last hit, D11 group 3, by the doctrine). A hit or hit back still gives way to it. A predicate on the
+ * laning GetDesire (OWNERSHIP H2), for every hero this context owns.
+ */
+export function LastHitYields(bot: Unit): boolean {
+    if (!Owns(bot)) return false;
+    if (bot.GetActiveMode() === BotMode.Retreat) return true;
+    const ep = episodes[bot.GetPlayerID()];
+    return ep !== undefined && (ep.level === "kill" || ep.level === "join") && ep.startedAt !== undefined && ep.ended !== true;
+}
+
+/** An exchange is open for this hero (Desire returns its desire in attack mode); reads only. */
+export function Running(bot: Unit): boolean {
+    const ep = episodes[bot.GetPlayerID()];
+    return ep !== undefined && ep.ended !== true;
+}
+
+/** A pair join (D10, group 2) is open for this hero, or a kill carrying one: the arbiter's pair group. Reads only. */
+export function Joining(bot: Unit): boolean {
+    const ep = episodes[bot.GetPlayerID()];
+    return ep !== undefined && ep.ended !== true && ep.source === "pair";
+}
+
+/** The hero's running exchange, its level and target (ev=cast, and PairJoin's partner read). Reads only. */
+export function EpisodeOf(pid: number): { kind: Level; tpid: number; target: Unit; at: number } | undefined {
+    const ep = episodes[pid];
+    return ep === undefined || ep.ended === true ? undefined : { kind: ep.level, tpid: ep.tpid, target: ep.target, at: ep.offeredAt };
+}
+
+/** When this bot last gave an attack order on an enemy hero from an exchange (lane_aggro shares the 3 s draw clock). */
+export function PrimedAt(pid: number): number | undefined {
+    return primedAt[pid];
+}
+
+/** Another lane module gave an attack order on an enemy hero: the aggro-free plan counts it as its prime. */
+export function NotePrimed(pid: number, t: number): void {
+    primedAt[pid] = t;
+}
+
+/** Why `bot` may not fight `target` with a partner: its tower, or their burst along the walk there (what PairJoin asks before an `ours` join). */
+function refusalOf(bot: Unit, target: Unit): string | undefined {
+    const stand = attackPoint(bot, target);
+    const reach = LaneConfig.TowerReach();
+    for (const t of bot.GetNearbyTowers(reach + 1000, true)) {
+        if (!t.IsAlive()) continue;
+        if (t.GetAttackTarget() === bot || distXY(stand, t.GetLocation()) <= reach) return "tower";
+    }
+    const r = Threat.Read(bot, bot.GetLocation(), target.GetLocation(), Threat.SETTINGS.GateHorizon);
+    return r.burst >= burstBar(r.reach.length) ? "burst" : undefined;
+}
+
+// PairJoin reads a partner's open exchange and this module's refusal; it cannot import this module.
+PairJoin.SetReaders({
+    episodeOf: (pid) => {
+        const ep = episodes[pid];
+        return ep === undefined || ep.ended === true ? undefined : { kind: kindOf(ep.level), tpid: ep.tpid, target: ep.target, at: ep.offeredAt };
+    },
+    refusal: refusalOf,
+});
+
 export function Reset(): void {
     for (const k in heads) heads[k as unknown as number] = undefined;
     for (const k in lastSeen) lastSeen[k as unknown as number] = undefined;
     for (const k in runs) runs[k as unknown as number] = undefined;
     for (const k in cutState) cutState[k as unknown as number] = undefined;
+    for (const k in episodes) episodes[k as unknown as number] = undefined;
+    for (const k in ownsFrame) ownsFrame[k as unknown as number] = undefined;
+    for (const k in primedAt) primedAt[k as unknown as number] = undefined;
+    for (const k in rolledAt) rolledAt[k as unknown as number] = undefined;
+    for (const k in lastNo) lastNo[k as unknown as number] = undefined;
+    for (const k in chases) chases[k as unknown as number] = undefined;
+    for (const k in lostWith) lostWith[k as unknown as number] = undefined;
+    for (const k in lastPair) lastPair[k as unknown as number] = undefined;
+    for (const k in lastHandles) lastHandles[k as unknown as number] = undefined;
 }

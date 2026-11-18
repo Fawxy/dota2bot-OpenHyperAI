@@ -19,7 +19,7 @@ local BORROWED
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
@@ -156,9 +156,9 @@ function ____exports.Candidates(bot, jobName, lever)
     out[#out + 1] = retreatCandidate(bot)
     out[#out + 1] = {
         name = "trade",
-        group = CoreTrade.Joining(bot) and 2 or 5,
+        group = Trade.Joining(bot) and 2 or 5,
         host = "attack",
-        applies = CoreTrade.Running(bot)
+        applies = Trade.Running(bot)
     }
     out[#out + 1] = {
         name = "lane_fight",
@@ -226,7 +226,7 @@ function ____exports.Drive(bot, chooserJob)
     return p
 end
 --- The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
--- hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+-- hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
 -- trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
 -- scan, which goes stale once attack holds the hero.
 local function laneAndTrade(p)
@@ -234,7 +234,7 @@ local function laneAndTrade(p)
 end
 --- Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit).
 BORROWED = {
-    attack = function(bot) return CoreTrade.Running(bot) end,
+    attack = function(bot) return Trade.Running(bot) end,
     team_roam = function(bot)
         local p = LaneFight.CurrentPhase(bot)
         return p == "trade" or p == "commit"

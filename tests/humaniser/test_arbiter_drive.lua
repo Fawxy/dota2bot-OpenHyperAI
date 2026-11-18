@@ -70,7 +70,7 @@ end
 do
 	local H, bot = world(true)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
+	local Trade = require("bots/FunLib/humaniser/states/trade")
 	local Fight = require("bots/FunLib/humaniser/lane_fight")
 	local trading = false
 	Trade.Running = function() return trading end
@@ -112,7 +112,7 @@ do
 	local H, bot = world(true)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
 	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
+	local Trade = require("bots/FunLib/humaniser/states/trade")
 	local Fight = require("bots/FunLib/humaniser/lane_fight")
 	Fight.CurrentPhase = function() return "idle" end
 	Trade.Running = function() return false end
@@ -156,7 +156,7 @@ end
 do
 	local H, bot = world(true)
 	local Arb = require("bots/FunLib/humaniser/arbiter")
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
+	local Trade = require("bots/FunLib/humaniser/states/trade")
 	local Fight = require("bots/FunLib/humaniser/lane_fight")
 	Trade.Running = function() return false end
 	Fight.CurrentPhase = function() return "wait_partner" end

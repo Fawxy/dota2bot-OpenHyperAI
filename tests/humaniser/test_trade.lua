@@ -62,8 +62,8 @@ do
 	local a = decide(inputs({ denyDue = true, cands = { cand({ hitting = true }) }, run = hb }))
 	local plain = inputs({ denyDue = true, cands = { cand() } })
 	check("a due deny ends a running hit back (none deny) but Holds stays hitback; on a plain hit Holds is empty",
-		none(a, "deny") and T.Holds(inputs({ denyDue = true, cands = { cand({ hitting = true }) }, run = hb })) == "hitback"
-			and T.Holds(plain) == nil and none(decide(plain), "deny")
+		none(a, "deny") and T.HoldsOf(inputs({ denyDue = true, cands = { cand({ hitting = true }) }, run = hb })) == "hitback"
+			and T.HoldsOf(plain) == nil and none(decide(plain), "deny")
 			and decide(inputs({ cands = { cand({ hitting = true }) }, run = hb })).level == "hitback")
 end
 
@@ -152,8 +152,15 @@ check("a support-position hit by a hero at 0.8, favoured: hit back; a paid hitte
 	decide(inputs({ hp = 0.8, cands = { cand({ hitting = true }) } })).level == "hitback"
 		and decide(inputs({ cands = { unfavoured({ hitting = true, paid = true }) } })).level == "hitback"
 		and none(decide(inputs({ cands = { unfavoured({ hitting = true }) } })), "unfavoured")
-		and T.Holds(inputs({ cands = { unfavoured({ hitting = true, paid = true }) } })) == "hitback"
-		and T.Holds(inputs({ cands = { unfavoured({ hitting = true }) } })) == nil)
+		and T.HoldsOf(inputs({ cands = { unfavoured({ hitting = true, paid = true }) } })) == "hitback"
+		and T.HoldsOf(inputs({ cands = { unfavoured({ hitting = true }) } })) == nil)
+
+check("a hero we lost an exchange with: no hit and no hit back (none lost), Holds still holds, a kill on it goes on; not lost: hit",
+	none(decide(inputs({ cands = { cand({ lost = true }) } })), "lost")
+		and none(decide(inputs({ cands = { cand({ lost = true, hitting = true }) } })), "lost")
+		and T.HoldsOf(inputs({ cands = { cand({ lost = true, hitting = true }) } })) == "hitback"
+		and decide(inputs({ cands = { cand({ lost = true, thp = 0.2, catch = CATCH }) } })).level == "kill"
+		and decide(inputs({ cands = { cand({ lost = false }) } })).level == "hit")
 
 -- The order across candidates (section 3).
 do
@@ -183,7 +190,7 @@ do
 		decide(inputs({ pair = pair, cands = { unfavoured({ d = 1100 }) } })).level == "join"
 			and none(decide(inputs({ pair = pair, cands = { unfavoured({ d = 1300, gap = 1000 }) } })), "no_reach")
 			and none(decide(inputs({ pair = { tgt = 7, ko = 0.2, kt = 0.5, dec = "losing" }, cands = { unfavoured() } })), "unfavoured")
-			and T.Holds(inputs({ pair = pair, cands = { unfavoured({ d = 1100 }) } })) == "join")
+			and T.HoldsOf(inputs({ pair = pair, cands = { unfavoured({ d = 1100 }) } })) == "join")
 end
 
 -- Ends of a running exchange.

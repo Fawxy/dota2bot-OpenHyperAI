@@ -167,14 +167,14 @@ function ____exports.RoleOf(bot)
     local pos = LaneConfig.PositionOf(bot)
     return pos ~= nil and pos >= 4 and "support" or "core"
 end
---- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and since slice
--- support-spot supports whose lane hits and harass are ours (Ours.SupportHarass; their attacks on heroes run in our attack
--- mode, so the body's hold no longer cancels them).
+--- Ours.LaneSpot: this bot stands on our spot whatever States.Laning.Spot says: cores under Ours.CoreLastHit, and supports whose
+-- lane hits are ours (Ours.SupportDeny; their attacks on heroes run in our attack mode, Ours.Trade, so the body's hold no longer
+-- cancels them).
 function ____exports.OwnsSpot(bot)
     if not Ours.On("LaneSpot") then
         return false
     end
-    return CoreLastHit.Applies(bot) or ____exports.OwnsSupportHits(bot) and SupportDeny.Harass(bot)
+    return CoreLastHit.Applies(bot) or ____exports.OwnsSupportHits(bot)
 end
 --- The spot the body holds this frame (cached per frame: holdAt and its exits read it several times). OHA's spot only when
 -- ours is not on for the bot or cannot be computed (no lane direction, an error).

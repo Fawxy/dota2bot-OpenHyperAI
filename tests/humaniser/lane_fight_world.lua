@@ -37,6 +37,7 @@ function LaneFightWorld(o)
 		intent = o.intent, enable = o.enable, debug = o.debug })
 	-- LaneFight's own mechanics: this pos5's in-lane fights stay LaneFight's (slice support-lane-fight's switch off).
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportLaneFight = false
+	package.loaded["bots/FunLib/custom_loader"].Ours.Trade = false
 	T = 100
 	CURRENT_TEAM = team
 	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.5, 0.5

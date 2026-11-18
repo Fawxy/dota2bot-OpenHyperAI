@@ -2981,7 +2981,7 @@ export const EVENTS = {
         /**
          * kind=trade2: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
          * pid, thp, thpAbs, d, gap, away, arr (1/0), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk read
-         * wb, wn, wm (burst, heroes, unseen weight; `-` when not asked) and the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked).
+         * wb, wn, wm (burst, heroes, unseen weight; `-` when not asked), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
          */
         cd: "str",
         /**

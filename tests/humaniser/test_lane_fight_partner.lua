@@ -43,6 +43,7 @@ local function world(o)
 	-- LaneFight's own mechanics, so the cores' in-lane fights stay LaneFight's (slice lane-fight's switch off).
 	package.loaded["bots/FunLib/custom_loader"].Ours.CoreLaneFight = o.coreLaneFight == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportLaneFight = false
+	package.loaded["bots/FunLib/custom_loader"].Ours.Trade = o.coreLaneFight == true
 	T = 100
 	CURRENT_TEAM = team
 	PINGS = {}

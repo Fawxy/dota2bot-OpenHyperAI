@@ -26,8 +26,9 @@ package.loaded["bots/FunLib/humaniser/threat"] = {
 }
 package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() return world.deny end }
 package.loaded["bots/FunLib/humaniser/pair_join"] = {
-	SETTINGS = { Window = 3 },
+	SETTINGS = { Window = 3, Keep = 1.5 },
 	For = function() return world.pair or {} end,
+	SetReaders = function() end,
 }
 package.loaded["bots/FunLib/humaniser/spell_ready"] = {
 	DamageOn = function(from, on) return (world.share[from:GetPlayerID() .. ">" .. on:GetPlayerID()] or 0) end,
@@ -117,6 +118,7 @@ end
 do
 	world.pair = { ans = { dec = "outnumbered", tgt = 6, ko = 0.5, kt = 0.2 }, rec = { on = "hit" } }
 	local joined = Trade.Gather(bot).pair
+	T = T + 5 -- past the Keep window of the answer above
 	world.pair = { ans = { dec = "join", tgt = 6, ko = 0.5, kt = 0.2 }, rec = { on = "ours" } }
 	local ours = Trade.Gather(bot).pair
 	check("the pair answer is read as its target and kill shares whatever its label; an `ours` record is no pair answer",

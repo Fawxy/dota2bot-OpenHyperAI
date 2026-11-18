@@ -42,7 +42,7 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
@@ -81,7 +81,7 @@ ____exports.CoreCamp = CoreCamp
 ____exports.Arbiter = Arbiter
 ____exports.Tasks = Tasks
 ____exports.States = States
-____exports.CoreTrade = CoreTrade
+____exports.Trade = Trade
 ____exports.LaneControl = LaneControl
 ____exports.Retreat = Retreat
 local OVERLAY_REFRESH = 0.25
@@ -419,15 +419,16 @@ if Telemetry.GuardsEnabled() then
         SupportOwnsAttack = no,
         SupportStep = no
     })
-    Telemetry.GuardModule("CoreTrade", CoreTrade, {
+    Telemetry.GuardModule("Trade", Trade, {
         Owns = no,
         Desire = none,
         OwnsFrame = no,
         Think = none,
         OnEnd = none,
         LastHitYields = no,
-        TradeOwnsLaneRun = no,
-        OwnsLaneFights = no
+        OwnsLaneRun = no,
+        OwnsFights = no,
+        Holds = none
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
     Telemetry.GuardModule("PairJoin", PairJoin, {Tick = none})

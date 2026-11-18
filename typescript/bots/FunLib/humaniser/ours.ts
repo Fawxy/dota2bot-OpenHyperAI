@@ -24,6 +24,13 @@ export const DEFAULTS = {
      * port outside it; false leaves Valve's attack mode (sub-switch for debugging).
      */
     CoreTrade: true,
+    /**
+     * Slice oha-trade (design 2026-11-19-trade-decision-design.md): the hero-on-hero exchange in lane is one decision (states/trade):
+     * hit, hit back, kill and join for every laner our laning body holds (CoreLastHit or SupportDeny), the attack mode's desire and
+     * Think in lane, team roam's fight branches, farm's ShouldRun and retreat's hold. Off: OHA's attack port, team roam's own fights,
+     * farm's ShouldRun and no retreat hold. It replaces CoreTrade and the switches that hung on it, which nothing reads once it is on.
+     */
+    Trade: true,
     /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
     CoreLastHitDire: true,
     /** Slice l1-support-deny: pos4-5 go for every own creep they can deny, before anything else in lane (states/support_deny). */

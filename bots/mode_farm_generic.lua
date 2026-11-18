@@ -104,9 +104,9 @@ function GetDesireHelper()
 			runMode = false;
 		end
 		
-		-- Our core's lane context decides when to back off in its lane (Ours.CoreTrade); none of ShouldRun's runs apply there.
+		-- Our core's lane context decides when to back off in its lane (Ours.Trade); none of ShouldRun's runs apply there.
 		-- Our retreat owns a laning hero's runs (Ours.Retreat).
-		shouldRunTime = (J.Humaniser.CoreTrade.TradeOwnsLaneRun(bot) or J.Humaniser.Retreat.Owns(bot)) and 0 or X.ShouldRun(bot);
+		shouldRunTime = (J.Humaniser.Trade.OwnsLaneRun(bot) or J.Humaniser.Retreat.Owns(bot)) and 0 or X.ShouldRun(bot);
 		if shouldRunTime ~= 0
 		then
 			if runTime == 0 then 

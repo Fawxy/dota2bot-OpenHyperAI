@@ -239,6 +239,9 @@ Customize.Humaniser = {
 -- CoreLastHit (slice 5): pos1-3 (both teams) take lane last hits and denies through the laning state's body. On by user
 -- decision 02/11/2026 although worse than OHA on the creep-economy bar (ER-008, ER-009, ER-010 FAIL: share flat, more deaths):
 -- our code ends up enabled; the row stays open for fixes (set false for OHA's laning).
+-- Trade (slice oha-trade, design 2026-11-19-trade-decision-design.md): the hero-on-hero exchange in lane is one decision (states/trade) for
+-- every laner our laning body holds (CoreLastHit or SupportDeny): the attack mode's desire and Think in lane, team roam's fight branches,
+-- farm's ShouldRun skip and retreat's hold. Off: OHA's attack port, team roam's own fights, farm's ShouldRun and no hold.
 -- CoreTrade (slice core-in-lane): with CoreLastHit on, the cores' attack mode is ours in lane (trades on enemy heroes) and
 -- OHA's Lua port of the attack mode outside lane; false leaves Valve's attack mode.
 -- CoreLastHitDire (slice 5 re-run): false keeps the Dire cores on Valve's laning when CoreLastHit is on (Radiant only).
@@ -332,7 +335,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, PairJoin = true, TradeSafe = true, TradeFree = true, FightSafe = true, BurstReady = true, TradeLanded = true, SpellsUp = true, KillReach = true, SupportLaneFight = true, JoinOnHit = false, TradeLands = false }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, CoreTrade = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, SupportHarass = true, CoreLaneFight = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, PairJoin = true, TradeSafe = true, TradeFree = true, FightSafe = true, BurstReady = true, TradeLanded = true, SpellsUp = true, KillReach = true, SupportLaneFight = true, JoinOnHit = false, TradeLands = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

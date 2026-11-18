@@ -541,11 +541,11 @@ do
 	T = T + 1
 	local sh = require("bots/FunLib/humaniser/states/laning").Spot(bsh)
 	check("LaneSpot: a support with SupportHarass on stands on our spot", sh ~= nil and sh.x ~= -250 and dist(sh, c.loc) >= 520, sh and sh.x)
-	local _, bso, Hso = spotFor(OHA, { coreLastHit = true, pos = 5, supportDeny = true, supportHarass = false }, setup)
+	local _, bso, Hso = spotFor(OHA, { coreLastHit = true, pos = 5, supportDeny = true, laneSpot = false }, setup)
 	Hso.States.SetLaneSpot(bso, function() return Vector(-250, 0) end)
 	T = T + 1
 	local so = require("bots/FunLib/humaniser/states/laning").Spot(bso)
-	check("LaneSpot: SupportHarass off, the support keeps OHA's spot", so ~= nil and so.x == -250, so and so.x)
+	check("LaneSpot: LaneSpot off, the support keeps OHA's spot", so ~= nil and so.x == -250, so and so.x)
 end
 
 -- Spot = 'oha' (the default) ignores the wave: slice 1's behaviour.
@@ -763,7 +763,7 @@ do
 	local function support(o)
 		local H, bot, c
 		silenced(function()
-			H, bot = Fresh(DEFAULTS, { pos = o.pos or 5, team = o.team, supportDeny = o.on ~= false, supportDireOff = o.direOff, supportLastHit = o.lastHits, supportHarass = o.harass })
+			H, bot = Fresh(DEFAULTS, { pos = o.pos or 5, team = o.team, supportDeny = o.on ~= false, supportDireOff = o.direOff, supportLastHit = o.lastHits, laneSpot = o.harass })
 			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
 			for _ = 1, 4 do frame(H, bot) end
 			local team = o.enemy and 3 or (o.team or 2)
@@ -802,7 +802,7 @@ do
 	end)
 	check("support last hits off: a dying enemy creep is not the body's (OHA's last hit)", offeredEnemy == false and bote.attacks == nil and He.States.BodySupportLastHits(bote) == false)
 
-	-- OHA's spot (SupportHarass off): the leash is measured from whichever spot the support holds.
+	-- OHA's spot (LaneSpot off): the leash is measured from whichever spot the support holds.
 	local Hl, botl = support({ at = Vector(-200, 0), harass = false })
 	silenced(function() Hl.States.SetLaneSpot(botl, function() return Vector(-1500, 0) end) end)
 	local past

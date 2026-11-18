@@ -29,7 +29,7 @@ local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function stateFor(bot)
@@ -63,7 +63,7 @@ function gatesOpen(bot)
     if not LaneFightConfig.IsActive() or not LaneFightConfig.AppliesTo(bot) or not LaneConfig.InLaningPhase() then
         return false
     end
-    if CoreTrade.OwnsLaneFights(bot) then
+    if Trade.OwnsFights(bot) then
         return false
     end
     return LaneFightConfig.IsOn("Trade") or LaneFightConfig.IsOn("Kill")

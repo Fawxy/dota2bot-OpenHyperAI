@@ -429,9 +429,9 @@ offCase("Trade and Kill off", { burst = 1000, laneFight = { Trade = false, Kill 
 offCase("the laning phase over", { burst = 1000 }, function() LANING = false end)
 offCase("Teams = allies and no human ally", { burst = 1000, laneFight = { Teams = "allies" } })
 offCase("Humaniser off", { burst = 1000, enable = false })
--- Slice lane-fight: a core whose in-lane fights are ours (states/core_trade) gets no claim from here.
+-- Slice lane-fight: a core whose in-lane fights are ours (states/trade) gets no claim from here.
 offCase("the core's lane fights ours", { burst = 1000 }, function()
-	package.loaded["bots/FunLib/humaniser/states/core_trade"].OwnsLaneFights = function() return true end
+	package.loaded["bots/FunLib/humaniser/states/trade"].OwnsFights = function() return true end
 end)
 
 do

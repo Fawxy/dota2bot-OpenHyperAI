@@ -24,7 +24,7 @@ import * as Orders from "bots/FunLib/humaniser/orders";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
@@ -255,7 +255,7 @@ function stateFor(bot: Unit): FightState {
 function gatesOpen(bot: Unit): boolean {
     if (!LaneFightConfig.IsActive() || !LaneFightConfig.AppliesTo(bot) || !LaneConfig.InLaningPhase()) return false;
     // Slice lane-fight: an in-lane core whose fights are ours gets no trade or commit claim from here.
-    if (CoreTrade.OwnsLaneFights(bot)) return false;
+    if (Trade.OwnsFights(bot)) return false;
     return LaneFightConfig.IsOn("Trade") || LaneFightConfig.IsOn("Kill");
 }
 

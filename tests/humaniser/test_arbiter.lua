@@ -87,7 +87,7 @@ do
 
 	-- Activities that run outside the chooser: a core's trade (attack mode), a camp job of the older path, the mid's rune claim.
 	Fight.CurrentPhase = function() return "idle" end
-	local Trade = require("bots/FunLib/humaniser/states/core_trade")
+	local Trade = require("bots/FunLib/humaniser/states/trade")
 	local CampJobs = require("bots/FunLib/humaniser/camp_jobs")
 	local MidRunes = require("bots/FunLib/humaniser/transitions/mid_runes")
 	local trading, camp, claiming = true, nil, false

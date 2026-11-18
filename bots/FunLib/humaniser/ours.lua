@@ -63,6 +63,7 @@ ____exports.DEFAULTS = {
     JobChooser = true,
     CoreLastHit = true,
     CoreTrade = true,
+    Trade = true,
     CoreLastHitDire = true,
     SupportDeny = true,
     SupportDenyDire = true,

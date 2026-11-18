@@ -5,7 +5,7 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
-import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
+import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -110,7 +110,7 @@ export function Candidates(bot: Unit, jobName: string | undefined, lever: string
     const out: Candidate[] = [];
     out.push(retreatCandidate(bot));
     // A pair join (D10) is the pair group's; every other trade, kill or fight is pressure.
-    out.push({ name: "trade", group: CoreTrade.Joining(bot) ? 2 : 5, host: "attack", applies: CoreTrade.Running(bot) });
+    out.push({ name: "trade", group: Trade.Joining(bot) ? 2 : 5, host: "attack", applies: Trade.Running(bot) });
     // Only a trade or a commit: a core waiting for its partner (wait_partner) posts no floor and keeps laning (lane_fight.ts).
     out.push({ name: "lane_fight", group: 5, host: "team_roam", applies: BORROWED.team_roam(bot) });
     out.push(jobCandidate(bot, jobName ?? CampJobs.LiveKind(bot), lever));
@@ -175,7 +175,7 @@ export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
 
 /**
  * The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
- * hit, a kill or fight does not, `CoreTrade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
+ * hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
  * trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
  * scan, which goes stale once attack holds the hero.
  */
@@ -185,7 +185,7 @@ function laneAndTrade(p: Candidate): boolean {
 
 /** Fight modes borrowed from OHA: what says our fight read wants them now (the attack mode's trade, team roam's trade or commit). */
 const BORROWED: Record<string, (this: void, bot: Unit) => boolean> = {
-    attack: (bot) => CoreTrade.Running(bot),
+    attack: (bot) => Trade.Running(bot),
     team_roam: (bot) => {
         const p = LaneFight.CurrentPhase(bot);
         return p === "trade" || p === "commit";

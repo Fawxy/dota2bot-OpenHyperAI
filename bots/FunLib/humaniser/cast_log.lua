@@ -80,7 +80,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local CoreTrade = require(GetScriptDirectory().."/FunLib/humaniser/states/core_trade")
+local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 --- A dead hero has no tick to drain its queue; casts past this many are dropped.
 local PENDING_MAX = 16
@@ -121,7 +121,7 @@ local function log(bot, p)
     local pid = bot:GetPlayerID()
     local loc = e.location
     local hasLoc = loc ~= nil and loc ~= nil and type(loc.x) == "number" and type(loc.y) == "number" and (loc.x ~= 0 or loc.y ~= 0)
-    local ep = CoreTrade.EpisodeOf(pid)
+    local ep = Trade.EpisodeOf(pid)
     local t = ep and ep.target
     local seen = t ~= nil and not t:IsNull() and t:CanBeSeen()
     local name = nameOf(e.ability)
