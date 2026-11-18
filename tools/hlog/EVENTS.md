@@ -75,7 +75,7 @@ Team-wide: written once per module instance, de-duplicated by `parse.js` within 
 
 ## mark_state
 
-`n` num, `pid` num, `hero` str, `competing` str, `x` num, `y` num, `alive` bool, `hp` num, `mp` num, `lvl` num, `kills` num, `deaths` num, `gold` num, `od` num, `ed` num, `hit` bool, `hc` bool, `ht` bool, `ah` num, `ac` num, `an` num, `at` num, `order` str
+`n` num, `pid` num, `hero` str, `competing` str, `x` num, `y` num, `alive` bool, `hp` num, `mp` num, `lvl` num, `kills` num, `deaths` num, `gold` num, `od` num, `ed` num, `hit` bool, `hc` bool, `ht` bool, `ah` num, `ac` num, `an` num, `at` num, `cr` num, `co` num, `ced` num, `cod` num, `order` str
 
 - `lh` num: The hero's last-hit count (`GetLastHits`).
 - `dn` num: The hero's deny count (`GetDenies`).
@@ -93,6 +93,7 @@ Team-wide: written once per module instance, de-duplicated by `parse.js` within 
 - `ol` num: What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered.
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
 - `hv` num: Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
+- `ce` num: Where the hero stands against the lane creeps, to 12:00 (slice snap-creeps): enemy lane creeps within 500 (protective aggro: an attack on an enemy hero draws its creeps within 500 of the attacker) and within attack range + 48 (centre to centre), own lane creeps within 500, and the distance to the nearest enemy and own lane creep within 1,600 (absent if none).
 - `by` str: Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`.
 - `rdy` str: Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other.
 
@@ -214,7 +215,7 @@ The human player's state, printed every frame (noisy). Bots log `snap` instead.
 
 A hero's snapshot, about once a second, for bots and humans. Read by `hero_minute`, `lane_activity`, `hp_loss` and most views.
 
-`pid` num, `human` bool, `x` num, `y` num, `alive` bool, `hp` num, `mp` num, `lvl` num, `kills` num, `deaths` num, `gold` num, `od` num, `ed` num, `hit` bool, `hc` bool, `ht` bool, `ah` num, `ac` num, `an` num, `at` num, `order` str
+`pid` num, `human` bool, `x` num, `y` num, `alive` bool, `hp` num, `mp` num, `lvl` num, `kills` num, `deaths` num, `gold` num, `od` num, `ed` num, `hit` bool, `hc` bool, `ht` bool, `ah` num, `ac` num, `an` num, `at` num, `cr` num, `co` num, `ced` num, `cod` num, `order` str
 
 - `lh` num: The hero's last-hit count (`GetLastHits`).
 - `dn` num: The hero's deny count (`GetDenies`).
@@ -232,6 +233,7 @@ A hero's snapshot, about once a second, for bots and humans. Read by `hero_minut
 - `ol` num: What the bot could do this second, up to 12:00, both arms (slice lane-activity): reachable last hits and denies offered.
 - `ar` num: Attack range, nearest visible enemy hero within 1,200 (absent if none).
 - `hv` num: Damage sources, all game (view `hp_loss`): raw HP; damaged in the last second by a hero, a creep, a tower (the API's flags); enemy heroes, enemy lane creeps, neutrals and enemy towers within 1,600 whose attack target is this bot.
+- `ce` num: Where the hero stands against the lane creeps, to 12:00 (slice snap-creeps): enemy lane creeps within 500 (protective aggro: an attack on an enemy hero draws its creeps within 500 of the attacker) and within attack range + 48 (centre to centre), own lane creeps within 500, and the distance to the nearest enemy and own lane creep within 1,600 (absent if none).
 - `by` str: Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`.
 - `rdy` str: Slice cast-read: the spells the hero can cast this second (learned, shown, not passive, IsFullyCastable) as `;`-joined `name:class`: `u` ultimate, `k` hard disable or spell immunity (ability_classes), `d` damage, `o` other.
 

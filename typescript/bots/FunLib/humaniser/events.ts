@@ -66,6 +66,16 @@ export const BOT = {
     ac: "num",
     an: "num",
     at: "num",
+    /**
+     * Where the hero stands against the lane creeps, to 12:00 (slice snap-creeps): enemy lane creeps within 500 (protective
+     * aggro: an attack on an enemy hero draws its creeps within 500 of the attacker) and within attack range + 48 (centre to
+     * centre), own lane creeps within 500, and the distance to the nearest enemy and own lane creep within 1,600 (absent if none).
+     */
+    ce: "num",
+    cr: "num",
+    co: "num",
+    ced: "num",
+    cod: "num",
     /** Who holds the hero, as `<mode> <desire> by <source>`; the source is empty where the mode is one of Valve's built-ins. Read by `lane_activity` and `@mode_hold`. */
     by: "str",
     order: "str",
