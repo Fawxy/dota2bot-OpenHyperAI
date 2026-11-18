@@ -424,7 +424,7 @@ do
 			for _, rr in ipairs(r.reps) do
 				for k, steps in pairs(rr.setup) do
 					local last = steps[#steps]:match("^(%a+)")
-					check(name .. "/" .. rr.name .. "/" .. k .. ": the last step stands", last == "stand" or last == "leave", steps[#steps])
+					check(name .. "/" .. rr.name .. "/" .. k .. ": the last step stands", last == "stand" or last == "leave" or last == "front" or last == "lasthit" or last == "hitback", steps[#steps])
 					for _, s in ipairs(steps) do
 						local verb, a = s:match("^(%a+)%s*(%S*)")
 						if verb == "stand" or verb == "walk" or (verb == "leave" and a ~= "") then
@@ -436,7 +436,7 @@ do
 						elseif verb == "wait" then
 							check(name .. "/" .. rr.name .. ": the hero waited for is listed", rr.setup[a] ~= nil, s)
 						else
-							check(name .. "/" .. rr.name .. ": known step " .. s, verb == "heal" or verb == "buy" or verb == "sell" or verb == "leave")
+							check(name .. "/" .. rr.name .. ": known step " .. s, verb == "heal" or verb == "buy" or verb == "sell" or verb == "leave" or verb == "front" or verb == "lasthit" or verb == "hitback")
 						end
 					end
 				end
@@ -1023,6 +1023,112 @@ do
 	check("support-kill-reach: the actor stops over the trade's 25% cut", t.reps[1].setup.r1[2] == "attack d4 until hp 0.33")
 	check("support-kill-reach: in the control the actor waits for the pos3 before it hits", t.reps[3].setup.r1[2] == "wait d3" and t.reps[3].setup.r1[3] == "attack d4 until hp 0.33")
 	check("support-kill-reach: the pos3 beyond the actor's 200 target pick from the Lich", dx("foe", "low") > 250)
+end
+
+-- lane-trade (plan trade-from-the-stand step 2): the enemy actor's three kinds. Rep 1 `stand` holds its last-hit place and
+-- never attacks, a dying creep or a hitter beside it; rep 2 `lasthit` walks up to one of our creeps its next two hits kill
+-- (not one they do not, not one far off its place) and walks back once it dies; rep 3 `hitback` also attacks the cast while
+-- the cast hits it, stops 2 s after the last hit, and does not chase past its leash. The released cast's watch logs each
+-- of its attacks on an enemy hero once and each creep attack on it once.
+do
+	local H = world("lane-trade")
+	local Lane = require("bots/ts_libs/dota/index").Lane
+	local cast = hero(1, RAD, 2, Lane.Mid)
+	local actor = hero(7, DIRE, 2, Lane.Mid)
+	cast.maxhp, cast.hp, cast.range = 600, 600, 550
+	actor.maxhp, actor.hp, actor.range, actor.dmg = 600, 600, 380, 50
+	CURRENT_TEAM = DIRE
+	local place = GetLaneFrontLocation(DIRE, Lane.Mid, -(380 - 50))
+	CURRENT_TEAM = RAD
+	actor.loc = Vector(place.x, place.y, 0)
+	cast.loc = Vector(place.x - 900, place.y, 0)
+	CREEPS[2], CREEPS[3] = {}, {}
+	local function tick(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team H.Drill.Tick(u) if H.Drill.Held(u) then H.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	local function attacks(pid) return ActionsOf(pid, "AttackUnit") end
+	local function lines(ph, ls) local r = {} for _, l in ipairs(ls) do if field(l, "ph") == ph then table.insert(r, l) end end return r end
+	ACTIONS = {}
+	-- Rep 1 (stand), from 1:00.
+	T = 61
+	local dying = MakeCreep({ team = 2, x = place.x - 200, y = place.y, hp = 60 })
+	cast.hitBy = nil
+	actor.hitBy = { [cast] = T }
+	tick(actor)
+	check("lane-trade stand: the actor holds its last-hit place, attacking nothing", #attacks(7) == 0 and #ActionsOf(7, "MoveToLocation") > 0)
+	-- Rep 2 (lasthit).
+	T = 91
+	actor.hitBy = nil
+	dying.hp = 101
+	local ls = capture(function() tick(actor) end)
+	check("lane-trade lasthit: a creep over two of its hits is left", #attacks(7) == 0 and #lines("swing", ls) == 0)
+	local far = MakeCreep({ team = 2, x = place.x - 1000, y = place.y, hp = 30 })
+	tick(actor)
+	check("lane-trade lasthit: a dying creep 1,000 off its place is left", #attacks(7) == 0)
+	dying.hp = 100
+	ls = capture(function() tick(actor) end)
+	local a = attacks(7)
+	check("lane-trade lasthit: two hits kill it, so it walks up and attacks it, logging the swing", #a == 1 and a[1].args[1] == dying and #lines("swing", ls) == 1, #a)
+	T = 91.5
+	tick(actor)
+	check("lane-trade lasthit: it keeps on the creep while it lives", attacks(7)[#attacks(7)].args[1] == dying)
+	dying.hp = 0
+	far.hp = 500
+	local n = #attacks(7)
+	T = 92
+	tick(actor)
+	local mv = ActionsOf(7, "MoveToLocation")
+	check("lane-trade lasthit: once it dies it walks back to its place", #attacks(7) == n and mv[#mv] ~= nil and math.abs(mv[#mv].args[1].x - place.x) <= 20)
+	actor.hitBy = { [cast] = T }
+	tick(actor)
+	check("lane-trade lasthit: a hitter is not answered", #attacks(7) == n)
+	-- Rep 3 (hitback): hit by the cast 900 off, inside its range + leash (380 + 400 from the place).
+	T = 121
+	cast.loc = Vector(place.x - 700, place.y, 0)
+	actor.hitBy = { [cast] = T }
+	ls = capture(function() tick(actor) end)
+	a = attacks(7)
+	check("lane-trade hitback: the cast that hit it is attacked, the answer logged", a[#a].args[1] == cast and #lines("answer", ls) == 1 and field(lines("answer", ls)[1], "tpid") == "1")
+	n = #a
+	T = 122.5
+	tick(actor)
+	check("lane-trade hitback: it keeps answering 1.5 s after the hit", #attacks(7) == n + 1 and attacks(7)[n + 1].args[1] == cast)
+	T = 123.6
+	tick(actor)
+	check("lane-trade hitback: 2.6 s after the last hit it stops", #attacks(7) == n + 1)
+	T = 124
+	cast.loc = Vector(place.x - 900, place.y, 0)
+	actor.hitBy = { [cast] = T }
+	ls = capture(function() tick(actor) tick(actor) end)
+	check("lane-trade hitback: a hitter 900 off its place (past 780) is not chased, nor its answer logged", #attacks(7) == n + 1 and #lines("answer", ls) == 0)
+
+	-- The cast's watch, once released: ready needs the cast at its own place and the actor in sight within 1,500.
+	actor.hitBy = nil
+	cast.hitBy = nil
+	local cplace = GetLaneFrontLocation(RAD, Lane.Mid, -(550 - 50))
+	cast.loc = Vector(cplace.x, cplace.y, 0)
+	actor.loc = Vector(cplace.x + 1000, cplace.y, 0)
+	T = 151
+	tick(cast)
+	ls = capture(function() tick(cast) end)
+	check("lane-trade: the cast at its place with the actor 1,000 off is released", #lines("ready", ls) == 1 and field(lines("ready", ls)[1], "ok") == "1", ls[1])
+	CREEPS[3] = {}
+	local creep = MakeCreep({ team = 3, x = cplace.x + 300, y = cplace.y, target = cast })
+	creep.lastAttack = -1000
+	cast.lastAttack = -1000
+	T = 151.1
+	tick(cast)
+	cast.lastAttack, cast.target = 151.15, actor
+	creep.lastAttack = 151.15
+	T = 151.2
+	ls = capture(function() tick(cast) end)
+	check("lane-trade watch: one atk on the enemy hero and one chit", #lines("atk", ls) == 1 and field(lines("atk", ls)[1], "tpid") == "7" and #lines("chit", ls) == 1, table.concat(ls, " / "))
+	T = 151.3
+	ls = capture(function() tick(cast) end)
+	check("lane-trade watch: the same attacks are not counted again", #lines("atk", ls) == 0 and #lines("chit", ls) == 0)
+	cast.lastAttack, cast.target = 151.35, creep
+	T = 151.4
+	ls = capture(function() tick(cast) end)
+	check("lane-trade watch: an attack fired at a creep is no atk", #lines("atk", ls) == 0)
+	CURRENT_TEAM = 2
 end
 
 finish()

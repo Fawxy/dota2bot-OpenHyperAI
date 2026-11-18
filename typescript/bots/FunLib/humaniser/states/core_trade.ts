@@ -388,6 +388,8 @@ interface Episode {
     atkSeen?: number;
     /** Slice trade-lands: an attack fired since the start (GetLastAttackTime rose); losing() moves `atkSeen` on, so it is kept here. */
     fired?: boolean;
+    /** Telemetry only (`fa`): the episode's first act in Think, a step out of the creeps or an attack order. */
+    first?: "step" | "order";
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
     /** Slice chase-log: the target's place on its last seen frame, the place it was at about HEADING_SPAN before that
@@ -1010,6 +1012,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["cr", i.enemyCreepsNear],
         ["pr", ep.primes],
         ["so", ep.stepOuts],
+        ["fa", ep.first],
         ["ag", ep.aggro],
         ["mode", bot.GetActiveMode()],
         ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
@@ -1777,10 +1780,12 @@ export function Think(bot: Unit): void {
             ep.stepSince = now;
             ep.stepOuts++;
         }
+        ep.first = ep.first ?? "step";
         bot.Action_MoveToLocation(stepOutPoint(bot, creeps));
         return;
     }
     ep.stepSince = undefined;
+    ep.first = ep.first ?? "order";
     if (plan === "prime") {
         primedAt[pid] = now;
         ep.primes++;

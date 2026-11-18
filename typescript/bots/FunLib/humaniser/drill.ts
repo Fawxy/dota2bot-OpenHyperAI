@@ -529,6 +529,40 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
+    // Plan trade-from-the-stand step 2 (master docs/proposals/2026-11-18-trade-from-the-stand.md; D18): the lane trade rig, the
+    // "before" for steps 3 and 4. half: execution. One core of ours per lane against one enemy hero the rig drives, waves
+    // untouched, everyone else benched: the Radiant pos2 in mid against the Dire pos2, the Radiant pos1 in our safe lane against
+    // the Dire pos3 (seed 30: Sniper, ranged, against Zeus; Luna against Sand King. Seed 8: Sven, melee, against Bristleback;
+    // Lion against Oracle. The lineups hold no melee Radiant mid, so the melee core lanes in its own lane). Facts a trade reads,
+    // each forced or checked: one enemy hero near and none of ours (benched; `near`, `foesAtMost`, `alliesAtMost`); both at full
+    // HP each rep (recipe: rig_hp_all about 5 s before each rep; `hpAtLeast`); the cast in its lane (setup `front`, its
+    // last-hit place behind its own creeps; released into laning, attack and retreat as in games, OHA's ability use too, so step
+    // 3d can read OHA's casts at the target). The enemy hero by rep kind: `stand` holds its last-hit place; `lasthit` walks up to
+    // each of our lane creeps near it that its next hits kill, swings and walks back; `hitback`, as lasthit, and attacks the
+    // cast while the cast hits it. A graded rep is a trade the cast opens after release (`ev=trade`, view trade_rig.js); the
+    // rig's own truth is `watch`'s lines (the cast's attacks fired at an enemy hero, enemy creeps' attacks fired at it). The
+    // switch is step 3a's, which nothing reads yet: the off arm is today's code.
+    "lane-trade": {
+        note: "rig: Radiant pos2 mid against the Dire pos2, Radiant pos1 in our safe lane against the Dire pos3, waves untouched, everyone else benched; the enemy hero holds its last-hit place (stand), walks up to our dying creeps and back (lasthit), or as lasthit and hits back (hitback); full HP each rep; then laning, attack, retreat with OHA's casts; 30 s reps from 1:00; seeds 30 (Sniper) and 8 (Sven)",
+        cast: { r: [1, 2] },
+        others: "bench",
+        rep: { every: 30, from: 60 },
+        rig: {
+            half: "execution",
+            switch: "TradeNoStep",
+            window: 600,
+            spots: {},
+            timeout: 15,
+            keeps: ["levelup"],
+            watch: true,
+            release: { modes: ["laning", "attack", "retreat", "idle"], abilities: true },
+            reps: [
+                { name: "stand", setup: { r1: ["front"], r2: ["front"], d2: ["front"], d3: ["front"] }, ready: { near: 1500, foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.9 } },
+                { name: "lasthit", setup: { r1: ["front"], r2: ["front"], d2: ["lasthit"], d3: ["lasthit"] }, ready: { near: 1500, foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.9 } },
+                { name: "hitback", setup: { r1: ["front"], r2: ["front"], d2: ["hitback"], d3: ["hitback"] }, ready: { near: 1500, foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.9 } },
+            ],
+        },
+    },
     // Slice support-lane-fight (kill-chances S1, `Ours.SupportLaneFight`). half: execution. kill-reach with the roles swapped:
     // the cast is the Radiant pos5 (Witch Doctor on seed 8, range 600, so its harass reach is about 948 and its commit's walk
     // about 1,548; `low` measures past the core's reach, about 748), the Radiant pos1 hits the Lich and walks off. Kinds: `bar`,
@@ -1413,7 +1447,11 @@ export interface RigRep {
      *   the line it came in on, then attack from there (inside the attacker's range it does not step in).
      * - `leave [spot]`: walk to the spot (default its fountain) and stay; never ends.
      * - `stand <spot> until hp <share>`: a statue there until its own HP share is at or under the share; ends then.
-     * Each list ends in `stand` or `leave`: a hero is placed once it stands at its last step's point, and ready needs every
+     * - `front`: a statue at its last-hit place, behind its own lane front by its attack range (`lastHitPlace`), following
+     *   the front; never ends. `lasthit`: as front, and it walks up to each enemy lane creep near the place that its next two
+     *   hits kill, attacks it and walks back (`swingStep`). `hitback`: as lasthit, and it attacks an enemy hero that hits it
+     *   (`answerStep`).
+     * Each list ends in `stand`, `leave` or one of the three above: a hero is placed once it stands at its last step's point, and ready needs every
      * listed hero of its own team placed (no state is shared across teams: the other team's part is read from the facts).
      */
     setup: Record<string, string[]>;
@@ -1455,6 +1493,12 @@ export interface Rig {
      * around it at that step (`Sight.VisionGridBox`'s `x0,y0,nx,ny,step,hex`): its team's sight, for fitting a sight model.
      */
     grid?: [number, number];
+    /**
+     * From release to the rep's end the cast logs `ph=atk` for each of its attacks fired at an enemy hero (`tpid`), and `ph=chit`
+     * and `ph=hhit` for each attack an enemy lane creep or hero fires at it, with its damage (lane-trade: the view's truth of
+     * what a trade did, read apart from the trade's own fields).
+     */
+    watch?: boolean;
     /** The switch the rig tests (`Ours.<Name>`), off for the rig check (dotactl recipe `rig.override`). */
     switch: string;
     /** DotaTime seconds the rule's stage ends (a laning rule: 600). A rep ending after it is logged `rend` past `win` and the
@@ -1488,6 +1532,12 @@ interface RigState {
     /** Per cast pid: when it was released, and its last trace line. */
     readyAt: Record<number, number>;
     tracedAt: Record<number, number>;
+    /** Per `lasthit` actor pid: the creep it walks up to and the DotaTime it started. */
+    swing: Record<number, { c: Unit; at: number }>;
+    /** Per `hitback` actor pid: the hero it answers and the DotaTime that hero last hit it. */
+    answer: Record<number, { h: Unit; at: number }>;
+    /** Per watched cast pid: GameTime at its last watch frame, and its GetLastAttackTime then. */
+    watchAt: Record<number, [number, number]>;
 }
 
 let rig: RigState | undefined;
@@ -1518,7 +1568,7 @@ function rigState(): RigState | undefined {
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
     if (rig === undefined || rig.rep !== n) {
-        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, atk: {}, inPlace: {}, burst: {}, readyAt: {}, tracedAt: {} };
+        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, atk: {}, inPlace: {}, burst: {}, readyAt: {}, tracedAt: {}, swing: {}, answer: {}, watchAt: {} };
     }
     return rig;
 }
@@ -1874,6 +1924,89 @@ function burstStep(bot: Unit, st: RigState, words: string[]): boolean {
     return false;
 }
 
+/**
+ * lane-trade's last-hit place: this far behind its own lane front, less than its attack range, so a creep at the clash is in
+ * reach. `judgement`.
+ */
+const LH_INSIDE = 50;
+const LH_BACK_MIN = 100;
+/** A `lasthit` actor walks up to one of the enemy's lane creeps within this of its place. `judgement`. */
+const SWING_REACH = 800;
+/** ... once its HP is at or under this many of the actor's hits on it (the walk takes about one). `judgement`. */
+const SWING_HITS = 2;
+/** A walk-up gives up after this long (the creep lives on, another hero took it). `judgement`. */
+const SWING_SECS = 3;
+/** A `hitback` actor answers a hero that damaged it within this, for ANSWER_KEEP after its last hit. `judgement`. */
+const ANSWER_HIT = 0.5;
+const ANSWER_KEEP = 2;
+/** It does not chase past its attack range plus this from its place. `judgement`. */
+const ANSWER_LEASH = 400;
+
+/** Behind its own team's lane front of its lane by its attack range less LH_INSIDE (at least LH_BACK_MIN). */
+function lastHitPlace(bot: Unit): Vector {
+    const back = math.max(LH_BACK_MIN, bot.GetAttackRange() - LH_INSIDE);
+    return GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, -back);
+}
+
+/**
+ * `lasthit`: walk up to the lowest of the enemy's lane creeps within SWING_REACH of the place that SWING_HITS of its hits
+ * kill and attack it until it dies (or SWING_SECS); true while it does. Each walk-up logs `ph=swing`.
+ */
+function swingStep(bot: Unit, st: RigState, place: Vector): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const cur = st.swing[pid];
+    if (cur !== undefined) {
+        if (!cur.c.IsNull() && cur.c.IsAlive() && now - cur.at < SWING_SECS) {
+            if (bot.GetAttackTarget() !== cur.c) bot.Action_AttackUnit(cur.c, true);
+            return true;
+        }
+        delete st.swing[pid];
+        return false;
+    }
+    const dmg = bot.GetAttackDamage();
+    let best: Unit | undefined;
+    for (const c of bot.GetNearbyLaneCreeps(1600, true) ?? []) {
+        if (c.IsNull() || !c.IsAlive() || c.GetLocation() === undefined || GetUnitToLocationDistance(c, place) > SWING_REACH) continue;
+        if (c.GetHealth() > SWING_HITS * c.GetActualIncomingDamage(dmg, DamageType.Physical)) continue;
+        if (best === undefined || c.GetHealth() < best.GetHealth()) best = c;
+    }
+    if (best === undefined) return false;
+    st.swing[pid] = { c: best, at: now };
+    Telemetry.Event("drill", [["ph", "swing"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["d", math.floor(GetUnitToUnitDistance(bot, best))]]);
+    bot.Action_AttackUnit(best, true);
+    return true;
+}
+
+/**
+ * `hitback`: attack the enemy hero that damaged it within ANSWER_HIT, until ANSWER_KEEP after its last hit, while that hero
+ * stays within its attack range + ANSWER_LEASH of the place; true while it does. Each answer logs `ph=answer`.
+ */
+function answerStep(bot: Unit, st: RigState, place: Vector): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const leash = bot.GetAttackRange() + ANSWER_LEASH;
+    // A hitter past the leash is never answered, so its line is not logged frame after frame while its hit is recent.
+    const hitter = (bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []).find(
+        (h) => h.IsAlive() && !h.IsIllusion() && bot.WasRecentlyDamagedByHero(h, ANSWER_HIT) && GetUnitToLocationDistance(h, place) <= leash,
+    );
+    if (hitter !== undefined) {
+        if (st.answer[pid] === undefined) Telemetry.Event("drill", [["ph", "answer"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["tpid", hitter.GetPlayerID()], ["d", math.floor(GetUnitToUnitDistance(bot, hitter))]]);
+        st.answer[pid] = { h: hitter, at: now };
+    }
+    const a = st.answer[pid];
+    if (a === undefined) return false;
+    const h = a.h;
+    if (now - a.at > ANSWER_KEEP || h.IsNull() || !h.IsAlive() || !h.CanBeSeen() || GetUnitToLocationDistance(h, place) > leash) {
+        delete st.answer[pid];
+        return false;
+    }
+    // A walk-up to a creep gives way to the answer.
+    delete st.swing[pid];
+    if (bot.GetAttackTarget() !== h) bot.Action_AttackUnit(h, true);
+    return true;
+}
+
 /** One step's order this frame; true when the step has ended (the next one starts). */
 function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean {
     const pid = bot.GetPlayerID();
@@ -1938,6 +2071,14 @@ function rigStep(bot: Unit, st: RigState, step: string, last: boolean): boolean 
             if (it !== null && it !== undefined && it.GetName() === item) b.ActionImmediate_SellItem(it);
         }
         return true;
+    }
+    if (verb === "front" || verb === "lasthit" || verb === "hitback") {
+        const p = lastHitPlace(bot);
+        if (verb === "hitback" && answerStep(bot, st, p)) return false;
+        if (verb !== "front" && swingStep(bot, st, p)) return false;
+        standAt(bot, p);
+        st.placed[pid] = last && GetUnitToLocationDistance(bot, p) <= RIG_PLACED;
+        return false;
     }
     if (verb === "burst") return burstStep(bot, st, words);
     if (verb === "attack") {
@@ -2286,6 +2427,39 @@ function rigTrace(bot: Unit, st: RigState, secs: number): void {
     ]);
 }
 
+/** Enemy lane creeps within this of a watched cast are read for attacks on it (a ranged creep's reach and its walk). */
+const WATCH_CREEPS = 900;
+
+/**
+ * Rig `watch`, per frame of a released cast: `ph=atk` when its GetLastAttackTime rose with an enemy hero its attack target;
+ * `ph=chit` for each enemy lane creep attacking it whose GetLastAttackTime falls since the last frame, `ph=hhit` the same for an
+ * enemy hero (all on GameTime's clock, so no creep handle need be kept between frames).
+ */
+function rigWatch(bot: Unit, st: RigState): void {
+    const pid = bot.GetPlayerID();
+    const now = GameTime();
+    const mine = bot.GetLastAttackTime();
+    const prev = st.watchAt[pid];
+    st.watchAt[pid] = [now, mine];
+    if (prev === undefined) return;
+    if (mine > prev[1]) {
+        const t = bot.GetAttackTarget();
+        if (t !== undefined && t !== null && !t.IsNull() && t.IsHero() && t.GetTeam() !== bot.GetTeam()) {
+            Telemetry.Event("drill", [["ph", "atk"], ["name", Name()], ["pid", pid], ["rep", st.rep], ["tpid", t.GetPlayerID()], ["d", math.floor(GetUnitToUnitDistance(bot, t))]]);
+        }
+    }
+    // `dmg`: the attack's damage after the cast's armour (GetAttackDamage is the attacker's mean), so the view can split the HP a
+    // trade cost between creeps and the hero; an enemy hero's spells are not attacks and stay in the remainder.
+    const hitOn = (u: Unit, ph: string, tpid?: number) => {
+        if (u.IsNull() || !u.IsAlive() || u.GetAttackTarget() !== bot) return;
+        const at = u.GetLastAttackTime();
+        if (at <= prev[0] || at > now) return;
+        Telemetry.Event("drill", [["ph", ph], ["name", Name()], ["pid", pid], ["rep", st.rep], ["tpid", tpid], ["dmg", math.floor(bot.GetActualIncomingDamage(u.GetAttackDamage(), DamageType.Physical) + 0.5)]]);
+    };
+    for (const c of bot.GetNearbyLaneCreeps(WATCH_CREEPS, true) ?? []) hitOn(c, "chit");
+    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) if (!h.IsIllusion()) hitOn(h, "hhit", h.GetPlayerID());
+}
+
 /** Per frame, a rig's cast: in setup, checks ready; logs `ph=ready` once per rep (ok=1, or ok=0 with the failing check at timeout). */
 function rigTick(bot: Unit): void {
     const st = rigState();
@@ -2294,6 +2468,7 @@ function rigTick(bot: Unit): void {
     if (st.phase[pid] === undefined) st.phase[pid] = "setup";
     const r = rigOf(Active());
     if (st.phase[pid] === "released" && r?.trace !== undefined) rigTrace(bot, st, r.trace);
+    if (st.phase[pid] === "released" && r?.watch === true) rigWatch(bot, st);
     if (st.phase[pid] !== "setup") return;
     const rr = RigRepOf(st.rep);
     if (rr === undefined || r === undefined) return;

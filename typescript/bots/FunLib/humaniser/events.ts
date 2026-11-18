@@ -1102,6 +1102,11 @@ export const EVENTS = {
         var: "str",
         /** In a `lone` rep, on ph=wait and ph=ready: the lone enemy hero's estimated damage over 3 s as a share of the cast's HP. */
         bu: "num",
+        /** lane-trade (rig `watch`, released cast `pid`): ph=atk per attack it fired at enemy hero `tpid` (`d` the distance), ph=chit
+         *  per attack an enemy lane creep fired at it and ph=hhit per attack enemy hero `tpid` fired at it, each with `dmg` (the
+         *  attacker's mean attack damage after the cast's armour). Its actors: ph=swing when a `lasthit` actor `pid` walks up to
+         *  one of our creeps (`d` the distance), ph=answer when a `hitback` actor starts attacking hero `tpid` that hit it. */
+        dmg: "num",
         win: "num",
         rel: "str",
         i: "num",
@@ -2020,6 +2025,9 @@ export const EVENTS = {
         pr: "num",
         so: "num",
         ag: "num",
+        /** The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order
+         *  first); absent when Think never acted (the target unseen, or not taken). */
+        fa: "str",
         /** The bot's active mode at the end, and its desire. */
         mode: "num",
         md: "num",
