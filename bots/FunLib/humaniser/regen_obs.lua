@@ -14,7 +14,10 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local TRACKED = {{item = "tango", modifier = "modifier_tango_heal", mana = false}, {item = "salve", modifier = "modifier_flask_healing", mana = false}, {item = "clarity", modifier = "modifier_clarity_potion", mana = true}}
+local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
+local TRACKED = {{item = "tango", modifier = "modifier_tango_heal", mana = false, names = {"item_tango", "item_tango_single"}}, {item = "salve", modifier = "modifier_flask_healing", mana = false, names = {"item_flask"}}, {item = "clarity", modifier = "modifier_clarity_potion", mana = true, names = {"item_clarity"}}}
+--- A buff that starts this soon after our code ordered its item is ours (`by`); a tango walks to its tree first. judgement.
+local OURS_WITHIN = 3
 local EARLY_TOLERANCE = 0.5
 local REFRESH_RISE = 0.5
 local SOURCE_WINDOW = 2
@@ -172,6 +175,11 @@ local function emit(bot, t, state, why, dur, left, miss, src, drop)
     Telemetry.Event(
         "regen_obs",
         {
+            {
+                "by",
+                state == "start" and (ItemUse.OursUsed(bot, t.names, OURS_WITHIN) and "ours" or "oha") or nil
+            },
+            {"hpm", maxHP},
             {
                 "pid",
                 bot:GetPlayerID()

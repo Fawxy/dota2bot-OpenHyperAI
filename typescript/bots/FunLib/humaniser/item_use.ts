@@ -41,17 +41,36 @@ export function TangoTree(bot: Unit, radius: number): number | undefined {
     return undefined;
 }
 
+/** The game time our code last ordered each item's use, per hero: regen_obs reads it as `by` (ours or OHA). */
+const usedAt: Record<number, Record<string, number> | undefined> = {};
+
+function used(bot: Unit, item: Item): void {
+    (usedAt[bot.GetPlayerID()] ??= {})[item.GetName()] = DotaTime();
+}
+
+/** Whether our code ordered one of these items' use on the bot within `within` seconds. */
+export function OursUsed(bot: Unit, names: string[], within: number): boolean {
+    const m = usedAt[bot.GetPlayerID()];
+    if (m === undefined) return false;
+    const now = DotaTime();
+    for (const n of names) if (m[n] !== undefined && now - m[n] <= within) return true;
+    return false;
+}
+
 /** An item cast on ourselves (salve, clarity). */
 export function UseOnSelf(bot: Unit, item: Item): void {
+    used(bot, item);
     (bot as unknown as ItemBot).Action_UseAbilityOnEntity(item, bot);
 }
 
 /** A no-target item (faerie fire). */
 export function UseNoTarget(bot: Unit, item: Item): void {
+    used(bot, item);
     (bot as unknown as ItemBot).Action_UseAbility(item);
 }
 
 /** A tango on a tree: the hero walks to within the cast range first, so the caller gives no move order meanwhile. */
 export function UseOnTree(bot: Unit, item: Item, tree: number): void {
+    used(bot, item);
     (bot as unknown as ItemBot).Action_UseAbilityOnTree(item, tree);
 }

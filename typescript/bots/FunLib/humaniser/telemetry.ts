@@ -733,6 +733,8 @@ function unitFields(unit: Unit): UnitPair[] {
         ["alive", unit.IsAlive()],
         ["hp", pct(unit.GetHealth(), unit.GetMaxHealth())],
         ["mp", pct(unit.GetMana(), unit.GetMaxMana())],
+        ["hpm", math.floor(unit.GetMaxHealth())],
+        ["mpm", math.floor(unit.GetMaxMana())],
         ["lvl", unit.GetLevel()],
         ["lh", stats.GetLastHits()],
         ["dn", stats.GetDenies()],

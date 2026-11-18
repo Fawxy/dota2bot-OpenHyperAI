@@ -1080,6 +1080,14 @@ local function unitFields(unit)
             )
         },
         {
+            "hpm",
+            math.floor(unit:GetMaxHealth())
+        },
+        {
+            "mpm",
+            math.floor(unit:GetMaxMana())
+        },
+        {
             "lvl",
             unit:GetLevel()
         },

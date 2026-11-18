@@ -7,6 +7,7 @@
  */
 import { Item, Unit, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as ItemUse from "bots/FunLib/humaniser/item_use";
 
 declare function GetTreeLocation(tree: number): Vector;
 
@@ -15,13 +16,17 @@ interface Tracked {
     modifier: string;
     /** The resource the item restores: its missing amount is logged at the start. */
     mana: boolean;
+    /** The item names whose use starts the buff. */
+    names: string[];
 }
 
 const TRACKED: Tracked[] = [
-    { item: "tango", modifier: "modifier_tango_heal", mana: false },
-    { item: "salve", modifier: "modifier_flask_healing", mana: false },
-    { item: "clarity", modifier: "modifier_clarity_potion", mana: true },
+    { item: "tango", modifier: "modifier_tango_heal", mana: false, names: ["item_tango", "item_tango_single"] },
+    { item: "salve", modifier: "modifier_flask_healing", mana: false, names: ["item_flask"] },
+    { item: "clarity", modifier: "modifier_clarity_potion", mana: true, names: ["item_clarity"] },
 ];
+/** A buff that starts this soon after our code ordered its item is ours (`by`); a tango walks to its tree first. judgement. */
+const OURS_WITHIN = 3;
 
 // An end this close to the full duration counts as running out (a frame is 0.03-0.1 s); judgement, a tuning knob.
 const EARLY_TOLERANCE = 0.5;
@@ -161,6 +166,8 @@ function dropInWindow(pid: number, now: number, hp: number): number {
 function emit(bot: Unit, t: Tracked, state: string, why: string, dur: number, left: number, miss: number, src: string, drop: number): void {
     const maxHP = bot.GetMaxHealth(), maxMP = bot.GetMaxMana();
     Telemetry.Event("regen_obs", [
+        ["by", state === "start" ? (ItemUse.OursUsed(bot, t.names, OURS_WITHIN) ? "ours" : "oha") : undefined],
+        ["hpm", maxHP],
         ["pid", bot.GetPlayerID()],
         ["item", t.item],
         ["state", state],
