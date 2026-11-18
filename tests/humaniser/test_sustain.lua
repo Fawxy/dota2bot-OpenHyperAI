@@ -48,7 +48,7 @@ check("salve at a safe spot already reached: use in place",
 
 check("wand at lethal under attack: use; not under attack: kept",
 	is(decide(inputs({ hp = 150, burst = 200, reach = 1, hitRecently = true, items = { wand() } })), "use", "item_magic_stick", "survive")
-		and decide(inputs({ hp = 250, burst = 200, reach = 1, items = { wand() } })).name ~= "item_magic_stick")
+		and decide(inputs({ hp = 150, burst = 200, reach = 1, items = { wand() } })).name ~= "item_magic_stick")
 
 check("rule 1 takes the instant item that restores most, and only if it lifts us over the burst (else D1 is retreat's)",
 	is(decide(inputs({ hp = 150, burst = 260, reach = 1, hitRecently = true, items = { wand({ hp = 60 }), item({ slot = 6, name = "item_faerie_fire", hp = 85 }) } })),
@@ -70,6 +70,24 @@ check("cannot stay, gold covers a tango and the courier beats the trip: buy and 
 		return is(a, "buy", "item_tango", "cannot_stay") and a.at.x == 1
 	end)()
 		and is(decide(inputs({ hp = 150, gold = 200, safeSpot = SAFE })), "home"))
+
+check("cannot stay 350 HP short: the salve that covers it, not the tango that does not; neither affordable: home",
+	is(decide(inputs({ hp = 150, hpMax = 1000, laneBurst = 500, gold = 200, courier = { eta = 20 }, safeSpot = SAFE,
+		shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "buy", "item_flask", "cannot_stay")
+		and is(decide(inputs({ hp = 150, hpMax = 1000, laneBurst = 500, gold = 100, courier = { eta = 20 }, safeSpot = SAFE,
+			shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "home"))
+
+check("a lane burst over max HP caps the kill line: full HP stays, 550 goes home",
+	is(decide(inputs({ laneBurst = 800 })), "none")
+		and is(decide(inputs({ hp = 550, laneBurst = 800 })), "home"))
+
+check("a salve waits while a hero is in reach (a step-out would end interrupted at once); a tango does not",
+	is(decide(inputs({ hp = 250, reach = 1, items = { salve() }, safeSpot = SAFE })), "none")
+		and is(decide(inputs({ hp = 250, reach = 1, items = { tango() }, tree = TREE })), "use", "item_tango"))
+
+check("mana waits while an HP regen runs",
+	is(decide(inputs({ hp = 500, mp = 100, regenLeft = 50, items = { clarity() } })), "none")
+		and is(decide(inputs({ hp = 500, mp = 100, items = { clarity() } })), "use", "item_clarity"))
 
 check("cannot stay with mana low too: home at once, no buy",
 	is(decide(inputs({ hp = 150, mp = 50, gold = 200, courier = { eta = 20 }, safeSpot = SAFE })), "home", nil, "low_both")
@@ -134,5 +152,7 @@ end
 
 check("rule 1 fires inside a running trip home",
 	is(decide(inputs({ hp = 150, burst = 200, reach = 1, hitRecently = true, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
-		"use", "item_magic_stick", "survive"))
+		"use", "item_magic_stick", "survive")
+		and is(decide(inputs({ hp = 150, burst = 200, reach = 1, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
+			"home", nil, "running"))
 finish()

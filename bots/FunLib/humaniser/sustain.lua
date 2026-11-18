@@ -26,9 +26,13 @@ local function usable(i, it)
     end
     return true
 end
---- HP under which the lane's enemies can kill us by the stay bar, never under the heal floor.
+--- HP under which the lane's enemies can kill us by the stay bar, never under the heal floor and never over max HP (a lane
+-- whose burst passes our max HP would otherwise send a full hero home from the fountain; the safe-here read answers that).
 function ____exports.KillLine(i)
-    return math.max(RetreatSettings.HealFloor * i.hpMax, i.laneBurst / ThreatSettings.StandBurst)
+    return math.min(
+        i.hpMax,
+        math.max(RetreatSettings.HealFloor * i.hpMax, i.laneBurst / ThreatSettings.StandBurst)
+    )
 end
 --- HP plus what the regen running and the items in hand can restore, capped at max HP.
 function ____exports.Reachable(i)
@@ -74,6 +78,16 @@ local function pickHp(i, need)
     end
     return under or over
 end
+--- The cheapest purchase the gold covers that restores at least `need` HP.
+local function pickCover(i, need)
+    local best
+    for ____, o in ipairs(i.shop) do
+        if o.hp >= need and o.cost <= i.gold and (best == nil or o.cost < best.cost) then
+            best = o
+        end
+    end
+    return best
+end
 local function pickMp(i)
     local best
     for ____, o in ipairs(i.shop) do
@@ -111,15 +125,15 @@ local function cannotStay(i, kill)
     if manaLow(i) then
         return {kind = "home", reason = "low_both"}
     end
-    local o = pickHp(i, kill - reach)
-    if o ~= nil and reach + o.hp >= kill and i.courier ~= nil and i.courier.eta < i.home and i.safeSpot ~= nil then
+    local o = pickCover(i, kill - reach)
+    if o ~= nil and i.courier ~= nil and i.courier.eta < i.home and i.safeSpot ~= nil then
         return {kind = "buy", name = o.name, at = {x = i.safeSpot.x, y = i.safeSpot.y}, reason = "cannot_stay"}
     end
     return {kind = "home", reason = "cannot_stay"}
 end
 --- Rule 3: under the top-up line, or in an idle window, with no regen running and the missing HP covering one use. A
 -- refilling item first, then a tree item, then one hero damage ends, used at a safe spot. Only an item hero damage ends
--- waits out a recent hit (D6: a tango ticks through damage).
+-- waits out a recent hit or a hero in reach (D6: a tango ticks through damage; a step-out ends `interrupted` on reach).
 local function topUp(i, kill)
     if i.regenLeft > 0 then
         return nil
@@ -134,22 +148,22 @@ local function topUp(i, kill)
     local best
     for ____, it in ipairs(i.items) do
         do
-            local __continue41
+            local __continue45
             repeat
                 if reserved(it) or it.hp <= 0 or it.charges <= 0 or missing < it.hp or not usable(i, it) then
-                    __continue41 = true
+                    __continue45 = true
                     break
                 end
-                if it.breaks and i.hitRecently then
-                    __continue41 = true
+                if it.breaks and (i.hitRecently or i.reach > 0) then
+                    __continue45 = true
                     break
                 end
                 if best == nil or order(it) < order(best) then
                     best = it
                 end
-                __continue41 = true
+                __continue45 = true
             until true
-            if not __continue41 then
+            if not __continue45 then
                 break
             end
         end
@@ -168,31 +182,31 @@ local function topUp(i, kill)
     end
     return use(best, "top_up")
 end
---- Rule 4: mana low, no mana regen running, the missing mana covering one use; a refilling item first.
+--- Rule 4: mana low, no regen running (one at a time), the missing mana covering one use; a refilling item first.
 local function mana(i)
-    if not manaLow(i) or i.manaLeft > 0 then
+    if not manaLow(i) or i.manaLeft > 0 or i.regenLeft > 0 then
         return nil
     end
     local missing = i.mpMax - i.mp
     local best
     for ____, it in ipairs(i.items) do
         do
-            local __continue50
+            local __continue54
             repeat
                 if reserved(it) or it.mp <= 0 or it.charges <= 0 or missing < it.mp then
-                    __continue50 = true
+                    __continue54 = true
                     break
                 end
-                if it.breaks and i.hitRecently then
-                    __continue50 = true
+                if it.breaks and (i.hitRecently or i.reach > 0) then
+                    __continue54 = true
                     break
                 end
                 if best == nil or it.refill and not best.refill then
                     best = it
                 end
-                __continue50 = true
+                __continue54 = true
             until true
-            if not __continue50 then
+            if not __continue54 then
                 break
             end
         end
@@ -208,10 +222,10 @@ local function buyAhead(i, kill)
     local manas = false
     for ____, it in ipairs(i.items) do
         do
-            local __continue57
+            local __continue61
             repeat
                 if it.charges <= 0 or reserved(it) then
-                    __continue57 = true
+                    __continue61 = true
                     break
                 end
                 if it.hp > 0 then
@@ -220,9 +234,9 @@ local function buyAhead(i, kill)
                 if it.mp > 0 then
                     manas = true
                 end
-                __continue57 = true
+                __continue61 = true
             until true
-            if not __continue57 then
+            if not __continue61 then
                 break
             end
         end
@@ -245,10 +259,10 @@ end
 local function give(i)
     for ____, it in ipairs(i.items) do
         do
-            local __continue67
+            local __continue71
             repeat
                 if not it.share or it.charges < 2 then
-                    __continue67 = true
+                    __continue71 = true
                     break
                 end
                 for ____, a in ipairs(i.allies) do
@@ -262,9 +276,9 @@ local function give(i)
                         }
                     end
                 end
-                __continue67 = true
+                __continue71 = true
             until true
-            if not __continue67 then
+            if not __continue71 then
                 break
             end
         end

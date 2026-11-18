@@ -133,9 +133,12 @@ function usable(i: Inputs, it: Item): boolean {
     return true;
 }
 
-/** HP under which the lane's enemies can kill us by the stay bar, never under the heal floor. */
+/**
+ * HP under which the lane's enemies can kill us by the stay bar, never under the heal floor and never over max HP (a lane
+ * whose burst passes our max HP would otherwise send a full hero home from the fountain; the safe-here read answers that).
+ */
 export function KillLine(i: Inputs): number {
-    return math.max(RetreatSettings.HealFloor * i.hpMax, i.laneBurst / ThreatSettings.StandBurst);
+    return math.min(i.hpMax, math.max(RetreatSettings.HealFloor * i.hpMax, i.laneBurst / ThreatSettings.StandBurst));
 }
 
 /** HP plus what the regen running and the items in hand can restore, capped at max HP. */
@@ -166,6 +169,13 @@ function pickHp(i: Inputs, need: number): Offer | undefined {
     return under ?? over;
 }
 
+/** The cheapest purchase the gold covers that restores at least `need` HP. */
+function pickCover(i: Inputs, need: number): Offer | undefined {
+    let best: Offer | undefined;
+    for (const o of i.shop) if (o.hp >= need && o.cost <= i.gold && (best === undefined || o.cost < best.cost)) best = o;
+    return best;
+}
+
 function pickMp(i: Inputs): Offer | undefined {
     let best: Offer | undefined;
     for (const o of i.shop) if (o.mp > 0 && o.cost <= i.gold && (best === undefined || o.cost < best.cost)) best = o;
@@ -190,8 +200,8 @@ function cannotStay(i: Inputs, kill: number): Answer | undefined {
     const reach = Reachable(i);
     if (reach >= kill) return undefined;
     if (manaLow(i)) return { kind: "home", reason: "low_both" };
-    const o = pickHp(i, kill - reach);
-    if (o !== undefined && reach + o.hp >= kill && i.courier !== undefined && i.courier.eta < i.home && i.safeSpot !== undefined)
+    const o = pickCover(i, kill - reach);
+    if (o !== undefined && i.courier !== undefined && i.courier.eta < i.home && i.safeSpot !== undefined)
         return { kind: "buy", name: o.name, at: { x: i.safeSpot.x, y: i.safeSpot.y }, reason: "cannot_stay" };
     return { kind: "home", reason: "cannot_stay" };
 }
@@ -199,7 +209,7 @@ function cannotStay(i: Inputs, kill: number): Answer | undefined {
 /**
  * Rule 3: under the top-up line, or in an idle window, with no regen running and the missing HP covering one use. A
  * refilling item first, then a tree item, then one hero damage ends, used at a safe spot. Only an item hero damage ends
- * waits out a recent hit (D6: a tango ticks through damage).
+ * waits out a recent hit or a hero in reach (D6: a tango ticks through damage; a step-out ends `interrupted` on reach).
  */
 function topUp(i: Inputs, kill: number): Answer | undefined {
     if (i.regenLeft > 0) return undefined;
@@ -209,7 +219,7 @@ function topUp(i: Inputs, kill: number): Answer | undefined {
     let best: Item | undefined;
     for (const it of i.items) {
         if (reserved(it) || it.hp <= 0 || it.charges <= 0 || missing < it.hp || !usable(i, it)) continue;
-        if (it.breaks && i.hitRecently) continue;
+        if (it.breaks && (i.hitRecently || i.reach > 0)) continue;
         if (best === undefined || order(it) < order(best)) best = it;
     }
     if (best === undefined) return undefined;
@@ -218,14 +228,14 @@ function topUp(i: Inputs, kill: number): Answer | undefined {
     return use(best, "top_up");
 }
 
-/** Rule 4: mana low, no mana regen running, the missing mana covering one use; a refilling item first. */
+/** Rule 4: mana low, no regen running (one at a time), the missing mana covering one use; a refilling item first. */
 function mana(i: Inputs): Answer | undefined {
-    if (!manaLow(i) || i.manaLeft > 0) return undefined;
+    if (!manaLow(i) || i.manaLeft > 0 || i.regenLeft > 0) return undefined;
     const missing = i.mpMax - i.mp;
     let best: Item | undefined;
     for (const it of i.items) {
         if (reserved(it) || it.mp <= 0 || it.charges <= 0 || missing < it.mp) continue;
-        if (it.breaks && i.hitRecently) continue;
+        if (it.breaks && (i.hitRecently || i.reach > 0)) continue;
         if (best === undefined || (it.refill && !best.refill)) best = it;
     }
     return best !== undefined ? use(best, "mana") : undefined;
