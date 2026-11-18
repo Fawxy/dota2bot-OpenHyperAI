@@ -1317,7 +1317,7 @@ local function step(bot, st, r, now)
     local at = dist(
         here,
         anchorPoint(ep.anchor)
-    ) <= s.Arrive
+    ) <= s.Arrive or ep.anchor.kind == "fountain" and bot:HasModifier("modifier_fountain_aura_buff")
     if ep.why == "heal" then
         if at and hpShare(bot) >= s.HealUntil then
             return "anchor"

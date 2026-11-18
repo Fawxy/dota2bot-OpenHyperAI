@@ -684,7 +684,9 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
 
     const forced = ep.why === "forced";
     if (!forced && !RetreatState.Owns(bot)) return "cut";
-    const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive;
+    // The fountain's own buff counts as arrival: on patch 7.42 a Dire hero stops 260 to 300 short of the fountain constant
+    // and a heal episode never ended (lane-table smoke, two heroes at full HP in retreat from 7:40 to the end).
+    const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive || (ep.anchor.kind === "fountain" && bot.HasModifier("modifier_fountain_aura_buff"));
     if (ep.why === "heal") {
         if (at && hpShare(bot) >= s.HealUntil) return "anchor";
         if (Ours.On("HealStop") && hpShare(bot) >= s.HealBack && r.reach.length === 0 && r.threat < ep.budget - s.ExitBand && laneNearer(bot, here)) return "healed";
