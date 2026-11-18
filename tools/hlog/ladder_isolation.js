@@ -2,24 +2,44 @@
 // humaniser/drill.ts): one row per in-lane hero of a ladder game (`ev=drill ph=role`, role `cast` of a ladder drill or
 // `inlane`), read from its snapshots up to :until (default 10:00, the laning stage). Per hero:
 //   lane       its lane from team and position (pos 1 and 5 safe, 2 mid, 3 and 4 off)
-//   out        seconds in another lane or off every lane (dynamic.js laneLabel: neither its lane nor `base`)
+//   away       seconds nearer another lane's line than its own (outside base): a hero that left its lane
+//   off        seconds off every lane's band (dynamic.js laneLabel `other`) but nearest its own lane: its own side of
+//              the lane (camps, the edge behind its towers); reported, not a fail (rung 3's camps are the hero's job)
 //   base       seconds at base (the fountain or the ancient: trips home, deaths' respawns)
 //   cross      seconds an enemy hero assigned to another lane had it as attack target (`tid`: auto-attacks only, so a
 //              spell cast from another lane is not seen here)
 //   forbid     global-spell episodes the drill's backstop cleared (`ev=drill ph=forbid`, at most one per 5 s; any line
 //              means a hero file lacks its ForbidsCast hook)
 // A seconds count is the sum of snapshot gaps (each capped at GAP_CAP s, so a death's gap does not count). The check holds
-// for a game when every hero's `out` is at most OUT_BAR s and every `cross` is 0 (`ok`). Bars are `judgement`: a hero that
-// stands a few seconds past its lane's band (LANE_R) chasing a pull is not a rotation.
+// for a game when every hero's `away` is at most AWAY_BAR s and every `cross` is 0 (`ok`). The bar is `judgement`: a few
+// seconds nearer another lane (a chase across the river) is not a rotation.
 // Usage: node ladder_isolation.js <file fragment> [...] [--until M:SS] [--json] [--no-ingest]
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { Store, DB, LOGS, JOBS } = require('./store');
-const { laneLabel } = require('./dynamic');
+const { laneLabel, POLY } = require('./dynamic');
 
 const GAP_CAP = 2;
-const OUT_BAR = 10;
+const AWAY_BAR = 10;
+
+function segDist(p, a, b) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) : 0;
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+/** The lane whose line (dynamic.js POLY) is nearest a point, at any distance. */
+function nearestLane(p) {
+    let best = null, bd = Infinity;
+    for (const [L, P] of Object.entries(POLY)) {
+        for (let i = 0; i + 1 < P.length; i++) {
+            const d = segDist(p, P[i], P[i + 1]);
+            if (d < bd) [bd, best] = [d, L];
+        }
+    }
+    return best;
+}
 const SAFE = { 2: 'bot', 3: 'top' };
 const OFF = { 2: 'top', 3: 'bot' };
 
@@ -51,7 +71,7 @@ function rows(store, like, until = 600) {
         const teamByPid = new Map([...game.heroes.values()].map((h) => [h.pid, h.team]));
         const snaps = store.query(SNAPS, { g, u: until });
         const forbid = new Map(store.query(FORBID, { g }).map((r) => [r.pid, r.n]));
-        const acc = new Map(inLane.map((h) => [h.pid, { out: 0, base: 0, cross: 0 }]));
+        const acc = new Map(inLane.map((h) => [h.pid, { away: 0, off: 0, base: 0, cross: 0 }]));
         const last = new Map();
         for (const s of snaps) {
             const prev = last.get(s.pid);
@@ -61,8 +81,10 @@ function rows(store, like, until = 600) {
             const mine = acc.get(s.pid);
             if (mine) {
                 const at = laneLabel([s.x, s.y]);
+                const own = laneByPid.get(s.pid);
                 if (at === 'base') mine.base += dt;
-                else if (at !== laneByPid.get(s.pid)) mine.out += dt;
+                else if (nearestLane([s.x, s.y]) !== own) mine.away += dt;
+                else if (at !== own) mine.off += dt;
             }
             // An enemy hero of another lane attacking an in-lane hero.
             const m = s.tid == null ? null : String(s.tid).match(/^h(\d+)$/);
@@ -78,23 +100,24 @@ function rows(store, like, until = 600) {
             const a = acc.get(h.pid);
             out.push({
                 file: path.basename(game.file), name: h.name, pid: h.pid, team: h.team, pos: h.pos, lane: laneByPid.get(h.pid),
-                out: Math.round(a.out), base: Math.round(a.base), cross: Math.round(a.cross), forbid: forbid.get(h.pid) ?? 0,
+                away: Math.round(a.away), off: Math.round(a.off), base: Math.round(a.base), cross: Math.round(a.cross), forbid: forbid.get(h.pid) ?? 0,
             });
         }
     }
     return out;
 }
 
-/** Per game: whether the check holds (every hero within OUT_BAR s out of lane, no cross-lane attack). */
+/** Per game: whether the check holds (every hero within AWAY_BAR s nearer another lane, no cross-lane attack). */
 function verdicts(list) {
     const by = new Map();
     for (const r of list) {
-        if (!by.has(r.file)) by.set(r.file, { file: r.file, heroes: 0, worstOut: 0, cross: 0, ok: 1 });
+        if (!by.has(r.file)) by.set(r.file, { file: r.file, heroes: 0, worstAway: 0, worstOff: 0, cross: 0, ok: 1 });
         const v = by.get(r.file);
         v.heroes++;
-        v.worstOut = Math.max(v.worstOut, r.out);
+        v.worstAway = Math.max(v.worstAway, r.away);
+        v.worstOff = Math.max(v.worstOff, r.off);
         v.cross += r.cross;
-        if (r.out > OUT_BAR || r.cross > 0) v.ok = 0;
+        if (r.away > AWAY_BAR || r.cross > 0) v.ok = 0;
     }
     return [...by.values()];
 }
@@ -129,4 +152,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv);
 
-module.exports = { rows, verdicts, laneOf, OUT_BAR };
+module.exports = { rows, verdicts, laneOf, nearestLane, AWAY_BAR };
