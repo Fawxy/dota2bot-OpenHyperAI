@@ -92,6 +92,13 @@ export const SETTINGS = {
     PackBurst: 0.5,
     /** Two or more heroes: the HP floor (see StandBurst). */
     PackHp: 0.7,
+    /**
+     * The stay read (retreat's LeaveWhy, and the trade decision's "is it safe here?"): the horizon (s) of the read at our own place
+     * and the window a hero already hitting us is counted over. The same two numbers for both so a trade never opens on a read
+     * retreat would leave on. judgement; they were retreat's Horizon and EngagedWindow (reasons there).
+     */
+    StayHorizon: 2,
+    StayEngaged: 6,
     /** One ev=threat line per hero and consumer at most this often (s), unless the consumer's decision changes. */
     LogEvery: 5,
 };

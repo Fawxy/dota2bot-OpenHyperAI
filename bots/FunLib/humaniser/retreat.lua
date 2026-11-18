@@ -424,8 +424,8 @@ function unpaid(bot, r)
     return n
 end
 ____exports.SETTINGS = {
-    Horizon = 2,
-    EngagedWindow = 6,
+    Horizon = Threat.SETTINGS.StayHorizon,
+    EngagedWindow = Threat.SETTINGS.StayEngaged,
     EvenBurst = 1,
     EvenHp = 0.5,
     BudgetFree = 0.5,

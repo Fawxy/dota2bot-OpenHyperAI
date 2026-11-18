@@ -24,14 +24,14 @@ import * as CoreTrade from "bots/FunLib/humaniser/states/core_trade";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
-    Horizon: 2,
+    Horizon: Threat.SETTINGS.StayHorizon,
     /**
      * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`), the same value and reason as the lane
      * spot's LANE_ENGAGED_WINDOW: he keeps hitting while we stay. The exit read is the same call, so an episode does not end `safe`
      * while he still hits us. At 2.6% of max HP a second one engaged melee hero reads 0.25 + 0.078 / HP: over the free budget 0.5
      * from about 31% HP, and 0.33 at full HP (a lone harasser at full HP starts nothing). judgement.
      */
-    EngagedWindow: 6,
+    EngagedWindow: Threat.SETTINGS.StayEngaged,
     /**
      * RetreatOdds: a fight the heroes in reach do not outnumber is held (no `threat` leave) only while their burst, as the read
      * counts it (an engaged hero over EngagedWindow), is under this share of our current HP: D1's "their burst can kill me".
