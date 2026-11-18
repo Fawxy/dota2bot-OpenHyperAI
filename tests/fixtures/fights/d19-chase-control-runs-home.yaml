@@ -1,0 +1,39 @@
+id: fights.chase.control-runs-home.001
+source: log
+ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 488.567}
+status: active
+decision: core_keep
+# Cut by tools/hlog/cut.js. The game chose cannot_catch for the kill on 5 (seen 1, started 0.133 s ago); write the right action, not this.
+# core pid 4, kill on pid 5: alive, seen, offered 0.3 s ago, started 0.133 s ago; HP 73% vs 6%, heroes 1 theirs, 2 ours, tower 0
+world:
+  t: 488.567
+  pid: 4
+  role: "core"
+  tgt: 5
+  ek: "kill"
+  alv: 1
+  sn: 1
+  oa: 0.3
+  kh: 0.4
+  sa: 0.133
+  hp: 0.727
+  thp: 0.058
+  en: 1
+  ally: 2
+  cr: 3
+  hc: 1
+  tw: 0
+  bu: 0.141
+  tm: 0
+  d: 510
+  chu: "510.4,198,96,73.3,;620.2,448,130.9,67.9,"
+  cth: 49
+  csf: 1.228
+expect:
+  must: ["end(cannot_catch)"]
+  mustNot: ["keep"]
+notes: >
+  Control: the target is not caught before its tower (smoke3, 8:08). Two of ours on a hero at 49 HP that is 1.2 s from
+  its own tower's reach at its speed towards it; the nearer in reach terms (ranged, 620 off, closing at 131) needs 1.3 s
+  to attack range, the melee 3.3 s; no damage spell ready. Nothing lands before it is under the tower, and D19 says never
+  under their tower, so the chase stops rather than dive (user 18/11/2026: not chase forever).

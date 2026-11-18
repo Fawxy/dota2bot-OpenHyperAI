@@ -1,0 +1,32 @@
+id: fights.chase.kept-unseen.001
+source: log
+ref: {log: 2026-11-18T03-45-56-kill-chase_smoke3.log, t: 385.733}
+status: active
+decision: core_keep
+# Cut by tools/hlog/cut.js. The game chose keep for the kill on 6 (seen 0, started 3.600 s ago); write the right action, not this.
+# core pid 0, kill on pid 6: alive, unseen, offered 3.733 s ago, started 3.6 s ago
+world:
+  t: 385.733
+  pid: 0
+  role: "core"
+  tgt: 6
+  ek: "kill"
+  alv: 1
+  sn: 0
+  oa: 3.733
+  kh: 0.4
+  sa: 3.6
+  d: 188
+  chu: "163.2,623,329.5,45.1,"
+  cth: 338
+  csf: 30
+  uat: 0
+  utw: 0
+  uou: 0
+  uth: 0
+expect:
+  must: ["keep"]
+notes: >
+  The commonest start (smoke3, 6:25): our ranged core's kill target left sight 3.6 s into the kill, yet its predicted place
+  is 163 away, inside our attack range, and we close on it; it is not heading for its tower. Before 3b this ended
+  `target_lost` at the fog line (0 of 136 such low targets died, plan "Step 3 read"); now the chase walks on.
