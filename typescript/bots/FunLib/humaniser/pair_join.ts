@@ -8,6 +8,9 @@
  * The weighing: over `Window` s, each side's best kill share, GetEstimatedDamageToTarget summed over its heroes on one target
  * over that target's HP, the target the side does best on. We join on theirs (`tgt`) when our share is the larger; numbers
  * against us leave it out at once (D1 is retreat's).
+ *
+ * Slice join-hits (`Ours.JoinOnHit`): with no ally hit, an ally (not the bot) attacking an enemy hero makes the record too,
+ * weighed around it with our share on the hero it attacks; off, such a record is only logged (`on=ours`).
  */
 import { Unit, UnitType } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -58,9 +61,15 @@ export interface Member {
     ret?: number;
 }
 
-/** What one decision reads: the hit ally, both sides, and `dmg[a][b]`, hero a's estimated damage to hero b over Window. */
+/**
+ * What one decision reads: the ally the fight is around, both sides, and `dmg[a][b]`, hero a's estimated damage to hero b
+ * over Window. `focus` (slice join-hits): the enemy hero that ally attacks when no ally is hit (`on` = `ours`); our share
+ * and target are then on it alone.
+ */
 export interface Rec {
     ally: number;
+    on?: "hit" | "ours";
+    focus?: number;
     ours: Member[];
     theirs: Member[];
     dmg: Record<number, Record<number, number>>;
@@ -93,10 +102,14 @@ function best(from: Member[], on: Member[], dmg: Record<number, Record<number, n
     return $multi(tgt, share);
 }
 
-/** The rule: outnumbered stays out; else join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side. */
+/**
+ * The rule: outnumbered stays out; else join when our best kill share beats theirs (on `focus` when the record has one: the
+ * hero our ally is already hitting). Ours in retreat (`ret` 1) are leaving: they count on neither side.
+ */
 export function Decide(rec: Rec): Answer {
     const ours = rec.ours.filter((m) => m.ret !== 1);
-    const [tgt, ko] = best(ours, rec.theirs, rec.dmg);
+    const on = rec.focus !== undefined ? rec.theirs.filter((m) => m.pid === rec.focus) : rec.theirs;
+    const [tgt, ko] = best(ours, on.length > 0 ? on : rec.theirs, rec.dmg);
     const [, kt] = best(rec.theirs, ours, rec.dmg);
     if (rec.theirs.length > ours.length) return { dec: "outnumbered", tgt, ko, kt };
     return { dec: ko > kt ? "join" : "losing", tgt, ko, kt };
@@ -127,17 +140,42 @@ function member(u: Unit, ours: boolean): Member {
  */
 export function Gather(bot: Unit): Rec | undefined {
     let ally: Unit | undefined;
+    // Slice join-hits: with no ally hit, an ally other than the bot attacking a seen enemy hero (lowest HP share first). The
+    // bot itself is left out so its own trade does not turn into a join; its partner's hit is what draws it in.
+    let hitter: Unit | undefined;
+    let focus: Unit | undefined;
     const allies: Unit[] = [];
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
         if (!live(a)) continue;
         allies.push(a);
-        if (dist(a, bot) > SETTINGS.AllyRange || !a.WasRecentlyDamagedByAnyHero(SETTINGS.HitRecent)) continue;
-        if (ally === undefined || a.GetHealth() / a.GetMaxHealth() < ally.GetHealth() / ally.GetMaxHealth()) ally = a;
+        if (dist(a, bot) > SETTINGS.AllyRange) continue;
+        const share = a.GetHealth() / a.GetMaxHealth();
+        if (a.WasRecentlyDamagedByAnyHero(SETTINGS.HitRecent)) {
+            if (ally === undefined || share < ally.GetHealth() / ally.GetMaxHealth()) ally = a;
+            continue;
+        }
+        if (a === bot || RetreatState.Running(a)) continue;
+        const t = a.GetAttackTarget();
+        if (t === undefined || t === null || t.IsNull() || !t.IsHero() || t.GetTeam() === a.GetTeam() || !live(t) || !t.CanBeSeen()) continue;
+        if (hitter === undefined || share < hitter.GetHealth() / hitter.GetMaxHealth()) {
+            hitter = a;
+            focus = t;
+        }
     }
+    const on = ally !== undefined ? "hit" : "ours";
+    ally = ally ?? hitter;
     if (ally === undefined) return undefined;
     const ours: Unit[] = allies.filter((a) => dist(a, ally!) <= SETTINGS.OursRange);
     if (ours.filter((a) => !RetreatState.Running(a)).length < 2) return undefined;
-    return weigh(ally, ours);
+    const rec = weigh(ally, ours);
+    if (rec === undefined) return undefined;
+    rec.on = on;
+    if (on === "ours") {
+        const fpid = focus!.GetPlayerID();
+        if (!rec.theirs.some((m) => m.pid === fpid)) return undefined;
+        rec.focus = fpid;
+    }
+    return rec;
 }
 
 /** The weighing around `ally` with our heroes `ours`: their seen heroes within FoeRange of it, or undefined with none. */
@@ -184,6 +222,9 @@ export function For(bot: Unit): { rec?: Rec; ans?: Answer; fresh: boolean } {
     st.at = now;
     st.rec = bot.IsAlive() && now <= SETTINGS.Until ? Gather(bot) : undefined;
     st.ans = st.rec !== undefined ? Decide(st.rec) : undefined;
+    // An `ours` record (slice join-hits) is only logged unless `Ours.JoinOnHit`: off, the join state is left as it was
+    // with no record, so off is today's behaviour.
+    if (st.rec?.on === "ours" && !Ours.On("JoinOnHit")) return { rec: st.rec, ans: st.ans, fresh: true };
     if (st.ans?.dec === "join") {
         st.joinAt = now;
         st.joinTgt = st.ans.tgt;
@@ -319,7 +360,7 @@ export function Tick(bot: Unit): void {
     if (a.dec === st.dec && now - (st.cutAt ?? -math.huge) < SETTINGS.CutEvery) return;
     st.dec = a.dec;
     st.cutAt = now;
-    Telemetry.Event("cut", [
+    const fields: Telemetry.Fields<"cut"> = [
         ["pid", pid],
         ["kind", "join"],
         ["al", rec.ally],
@@ -330,6 +371,9 @@ export function Tick(bot: Unit): void {
         ["tgt", a.tgt],
         ["ko", math.floor(a.ko * 1000 + 0.5) / 1000],
         ["kt", math.floor(a.kt * 1000 + 0.5) / 1000],
-    ]);
+        ["on", rec.on ?? "hit"],
+    ];
+    if (rec.focus !== undefined) fields.push(["fo", rec.focus]);
+    Telemetry.Event("cut", fields);
 }
 

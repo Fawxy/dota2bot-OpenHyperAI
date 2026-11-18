@@ -16,7 +16,8 @@ return function(fx)
 		dmg[from] = dmg[from] or {}
 		dmg[from][to] = e.d
 	end
-	local a = PairJoin.Decide({ ally = w.ally, ours = w.ours or {}, theirs = w.theirs or {}, dmg = dmg })
+	-- focus (slice join-hits, on=ours): the enemy hero the ally attacks; our share and target are on it.
+	local a = PairJoin.Decide({ ally = w.ally, focus = w.focus, ours = w.ours or {}, theirs = w.theirs or {}, dmg = dmg })
 	local action = a.dec == "join" and { verb = "join", target = "hero#" .. a.tgt } or { verb = "out", target = a.dec }
 	return {
 		actions = { action },

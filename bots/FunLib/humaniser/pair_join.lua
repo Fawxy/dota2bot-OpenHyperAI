@@ -12,6 +12,15 @@ local function __TS__ArrayFilter(self, callbackfn, thisArg)
     return result
 end
 
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
+
 local function __TS__ArrayMap(self, callbackfn, thisArg)
     local result = {}
     for i = 1, #self do
@@ -153,13 +162,18 @@ local function best(from, on, dmg)
     end
     return tgt, share
 end
---- The rule: outnumbered stays out; else join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side.
+--- The rule: outnumbered stays out; else join when our best kill share beats theirs (on `focus` when the record has one: the
+-- hero our ally is already hitting). Ours in retreat (`ret` 1) are leaving: they count on neither side.
 function ____exports.Decide(rec)
     local ours = __TS__ArrayFilter(
         rec.ours,
         function(____, m) return m.ret ~= 1 end
     )
-    local tgt, ko = best(ours, rec.theirs, rec.dmg)
+    local on = rec.focus ~= nil and __TS__ArrayFilter(
+        rec.theirs,
+        function(____, m) return m.pid == rec.focus end
+    ) or rec.theirs
+    local tgt, ko = best(ours, #on > 0 and on or rec.theirs, rec.dmg)
     local ____, kt = best(rec.theirs, ours, rec.dmg)
     if #rec.theirs > #ours then
         return {dec = "outnumbered", tgt = tgt, ko = ko, kt = kt}
@@ -172,30 +186,52 @@ end
 -- the one at the lowest HP share.
 function ____exports.Gather(bot)
     local ally
+    local hitter
+    local focus
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue16
+            local __continue17
             repeat
                 if not live(a) then
-                    __continue16 = true
+                    __continue17 = true
                     break
                 end
                 allies[#allies + 1] = a
-                if dist(a, bot) > ____exports.SETTINGS.AllyRange or not a:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitRecent) then
-                    __continue16 = true
+                if dist(a, bot) > ____exports.SETTINGS.AllyRange then
+                    __continue17 = true
                     break
                 end
-                if ally == nil or a:GetHealth() / a:GetMaxHealth() < ally:GetHealth() / ally:GetMaxHealth() then
-                    ally = a
+                local share = a:GetHealth() / a:GetMaxHealth()
+                if a:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitRecent) then
+                    if ally == nil or share < ally:GetHealth() / ally:GetMaxHealth() then
+                        ally = a
+                    end
+                    __continue17 = true
+                    break
                 end
-                __continue16 = true
+                if a == bot or RetreatState.Running(a) then
+                    __continue17 = true
+                    break
+                end
+                local t = a:GetAttackTarget()
+                if t == nil or t == nil or t:IsNull() or not t:IsHero() or t:GetTeam() == a:GetTeam() or not live(t) or not t:CanBeSeen() then
+                    __continue17 = true
+                    break
+                end
+                if hitter == nil or share < hitter:GetHealth() / hitter:GetMaxHealth() then
+                    hitter = a
+                    focus = t
+                end
+                __continue17 = true
             until true
-            if not __continue16 then
+            if not __continue17 then
                 break
             end
         end
     end
+    local on = ally ~= nil and "hit" or "ours"
+    ally = ally or hitter
     if ally == nil then
         return nil
     end
@@ -209,7 +245,22 @@ function ____exports.Gather(bot)
     ) < 2 then
         return nil
     end
-    return weigh(ally, ours)
+    local rec = weigh(ally, ours)
+    if rec == nil then
+        return nil
+    end
+    rec.on = on
+    if on == "ours" then
+        local fpid = focus:GetPlayerID()
+        if not __TS__ArraySome(
+            rec.theirs,
+            function(____, m) return m.pid == fpid end
+        ) then
+            return nil
+        end
+        rec.focus = fpid
+    end
+    return rec
 end
 local states = {}
 --- The bot's decision, made afresh at most every Every s (the matrix is 2 x n x m estimates); reads only.
@@ -231,8 +282,12 @@ function ____exports.For(bot)
     end
     st.rec = ____temp_3
     st.ans = st.rec ~= nil and ____exports.Decide(st.rec) or nil
-    local ____opt_4 = st.ans
-    if (____opt_4 and ____opt_4.dec) == "join" then
+    local ____opt_4 = st.rec
+    if (____opt_4 and ____opt_4.on) == "ours" and not Ours.On("JoinOnHit") then
+        return {rec = st.rec, ans = st.ans, fresh = true}
+    end
+    local ____opt_6 = st.ans
+    if (____opt_6 and ____opt_6.dec) == "join" then
         st.joinAt = now
         st.joinTgt = st.ans.tgt
     elseif st.ans ~= nil then
@@ -251,13 +306,13 @@ function ____exports.Joins(bot)
     if (st and st.joinAt) == nil or DotaTime() - st.joinAt > ____exports.SETTINGS.Keep then
         return nil
     end
-    local ____temp_8
+    local ____temp_10
     if st.joinTgt ~= nil then
-        ____temp_8 = heroOf(st.joinTgt)
+        ____temp_10 = heroOf(st.joinTgt)
     else
-        ____temp_8 = nil
+        ____temp_10 = nil
     end
-    local t = ____temp_8
+    local t = ____temp_10
     if t == nil or not t:CanBeSeen() or dist(t, bot) > ____exports.SETTINGS.TargetRange then
         return nil
     end
@@ -435,8 +490,8 @@ local function tickAfter(bot, now)
         return flush(pid, "stage")
     end
     if now >= w.next then
-        local ____w_samples_9 = w.samples
-        ____w_samples_9[#____w_samples_9 + 1] = sample(bot, w, now)
+        local ____w_samples_11 = w.samples
+        ____w_samples_11[#____w_samples_11 + 1] = sample(bot, w, now)
         w.next = now + ____exports.SETTINGS.AfterEvery
     end
     if now - w.start >= ____exports.SETTINGS.AfterWindow then
@@ -459,10 +514,10 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____exports_For_result_10 = ____exports.For(bot)
-    local rec = ____exports_For_result_10.rec
-    local a = ____exports_For_result_10.ans
-    local fresh = ____exports_For_result_10.fresh
+    local ____exports_For_result_12 = ____exports.For(bot)
+    local rec = ____exports_For_result_12.rec
+    local a = ____exports_For_result_12.ans
+    local fresh = ____exports_For_result_12.fresh
     if not fresh then
         return
     end
@@ -476,35 +531,37 @@ function ____exports.Tick(bot)
     end
     st.dec = a.dec
     st.cutAt = now
-    Telemetry.Event(
-        "cut",
+    local fields = {
+        {"pid", pid},
+        {"kind", "join"},
+        {"al", rec.ally},
         {
-            {"pid", pid},
-            {"kind", "join"},
-            {"al", rec.ally},
-            {
-                "po",
-                members(rec.ours)
-            },
-            {
-                "pt",
-                members(rec.theirs)
-            },
-            {
-                "dm",
-                dmgOf(rec)
-            },
-            {"dec", a.dec},
-            {"tgt", a.tgt},
-            {
-                "ko",
-                math.floor(a.ko * 1000 + 0.5) / 1000
-            },
-            {
-                "kt",
-                math.floor(a.kt * 1000 + 0.5) / 1000
-            }
-        }
-    )
+            "po",
+            members(rec.ours)
+        },
+        {
+            "pt",
+            members(rec.theirs)
+        },
+        {
+            "dm",
+            dmgOf(rec)
+        },
+        {"dec", a.dec},
+        {"tgt", a.tgt},
+        {
+            "ko",
+            math.floor(a.ko * 1000 + 0.5) / 1000
+        },
+        {
+            "kt",
+            math.floor(a.kt * 1000 + 0.5) / 1000
+        },
+        {"on", rec.on or "hit"}
+    }
+    if rec.focus ~= nil then
+        fields[#fields + 1] = {"fo", rec.focus}
+    end
+    Telemetry.Event("cut", fields)
 end
 return ____exports

@@ -53,6 +53,9 @@ local function unit(o)
 	function u:GetMaxHealth() return o.mhp or 600 end
 	function u:WasRecentlyDamagedByAnyHero() return o.hit == true end
 	function u:GetEstimatedDamageToTarget(_, t) return (o.dmg or {})[t:GetPlayerID()] or 0 end
+	function u:IsHero() return true end
+	function u:GetTeam() return o.pid < 5 and 2 or 3 end
+	function u:GetAttackTarget() return o.att end
 	return u
 end
 
@@ -213,6 +216,47 @@ do
 	P.Tick(bot)
 	o = after()
 	check("past the laning stage it ends stage", (o[#o] or ""):find("res=stage", 1, true) ~= nil, o[#o])
+end
+
+do
+	-- Slice join-hits: no ally hit, an ally other than the bot attacking an enemy hero makes an `ours` record on that hero.
+	local P = fresh()
+	local Customize = require("bots.Customize.general")
+	local e6 = unit({ pid = 6, x = 700, y = 0, hp = 500, dmg = { [1] = 50, [0] = 50 } })
+	local e7 = unit({ pid = 7, x = 900, y = 0, hp = 100, dmg = { [1] = 20, [0] = 20 } })
+	local bot = unit({ pid = 0, x = 0, y = 0, hp = 600, dmg = { [6] = 300, [7] = 300 } })
+	local hitter = unit({ pid = 1, x = 500, y = 0, hp = 500, att = e6, dmg = { [6] = 100, [7] = 100 } })
+	lists({ bot, hitter }, { e6, e7 })
+	local rec = P.Gather(bot)
+	check("an ally's hit makes an ours record around it", rec ~= nil and rec.on == "ours" and rec.ally == 1 and rec.focus == 6)
+	local a = rec and P.Decide(rec)
+	check("our share and target are on the hero it hits, not the softer one", a ~= nil and a.tgt == 6 and math.abs(a.ko - 400 / 500) < 1e-9, a and a.tgt)
+	-- The bot's own hit makes no record for itself.
+	local selfHit = unit({ pid = 0, x = 0, y = 0, hp = 600, att = e6, dmg = { [6] = 300 } })
+	lists({ selfHit, unit({ pid = 1, x = 500, y = 0, hp = 500 }) }, { e6 })
+	check("the bot's own hit is not its trigger", P.Gather(selfHit) == nil)
+	-- A hit ally still comes first: the old record, on=hit, no focus.
+	lists({ bot, hitter, unit({ pid = 2, x = 300, y = 0, hp = 400, hit = true }) }, { e6, e7 })
+	local h = P.Gather(bot)
+	check("a hit ally is the record, on=hit", h ~= nil and h.on == "hit" and h.ally == 2 and h.focus == nil)
+	-- A retreating hitter, or one attacking a creep (no hero target), makes none.
+	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
+	RetreatState.SetRunning(hitter, true)
+	lists({ bot, hitter }, { e6 })
+	check("a retreating hitter is no trigger", P.Gather(bot) == nil)
+	RetreatState.SetRunning(hitter, false)
+	-- Joins: off, the ours record is logged only; on, it joins on the hit hero.
+	lists({ bot, hitter }, { e6, e7 })
+	Customize.Ours.JoinOnHit = false
+	T = 600
+	check("switch off: an ours record draws no join", P.Joins(bot) == nil)
+	local P2 = fresh()
+	Customize = require("bots.Customize.general")
+	Customize.Ours.JoinOnHit = true
+	T = 610
+	local t = P2.Joins(bot)
+	check("switch on: the bot joins on the hero its ally hits", t ~= nil and t:GetPlayerID() == 6)
+	Customize.Ours.JoinOnHit = false
 end
 
 finish()

@@ -229,7 +229,10 @@ const DECISIONS = {
                 return ours ? { pid, x, y, hp, mhp, ret } : { pid, x, y, hp, mhp };
             });
             const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
-            return { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            const w = { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            // Slice join-hits: an `on=ours` record weighs our share on the hero the ally attacks.
+            if (cut.on === 'ours' && cut.fo !== undefined && cut.fo !== null) w.focus = Number(cut.fo);
+            return w;
         },
         check(game, cut, obs) {
             const a = obs.actions[0] || {};
@@ -238,7 +241,7 @@ const DECISIONS = {
             return { same: got === want, got, want };
         },
         answer: (game, cut) => cut.dec,
-        brief: (game, cut) => `ally ${cut.al}, ${cut.po.split(';').length}v${cut.pt.split(';').length}, ours ${cut.ko} theirs ${cut.kt}`,
+        brief: (game, cut) => `${cut.on === 'ours' ? `ally ${cut.al} hits ${cut.fo}` : `ally ${cut.al}`}, ${cut.po.split(';').length}v${cut.pt.split(';').length}, ours ${cut.ko} theirs ${cut.kt}`,
         id: (cut) => `fights.join.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.dec} on ${cut.tgt} (ours ${cut.ko}, theirs ${cut.kt})`,
     },
