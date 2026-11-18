@@ -317,6 +317,11 @@ do
 	T = 640
 	check("switch on: a hero in a play is not drawn out of it", P.Joins(bot) == nil)
 	Plays.Of = of
+	-- FightRefusal holds a join we start, as it holds a fight we start: the same world joins below once it clears.
+	readers("tower")
+	T = 645
+	check("switch on: a hero the lane fight's refusal holds does not join", P.Joins(bot) == nil)
+	readers()
 	T = 650
 	local t = P.Joins(bot)
 	check("switch on: the bot joins on the hero its ally's fight is on", t ~= nil and t:GetPlayerID() == 6)

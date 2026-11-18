@@ -328,7 +328,8 @@ Customize.Humaniser = {
 -- lane fights do (the 40% commit with KillReach's walk, the play join and roll); team roam's fight branches and LaneFight's
 -- claims stand aside for it. Off: those, and the trade's 25% kill cut.
 -- JoinOnHit (slice join-hits, kill-chances J1, D10): with PairJoin on, the pair join also weighs a fight when an ally other
--- than the bot attacks an enemy hero and no ally is hit, on the hero it attacks. Off: that record is only logged.
+-- than the bot has a fight of its own open on an enemy hero (a trade, kill or fight) and no ally is hit, on that hero; a hero
+-- in a play, or held by the lane fight's refusal (their tower, outnumbered, burst), does not act on it. Off: that record is only logged.
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.

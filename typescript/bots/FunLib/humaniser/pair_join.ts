@@ -161,6 +161,19 @@ export function SetReaders(r: Readers | undefined): void {
 
 const OPENS: Record<string, boolean> = { trade: true, kill: true, fight: true };
 
+/** Whether a partner's episode of this kind is a fight it opened: an `ours` trigger. A `join` is not (two joins would hold each other up). */
+export function Opens(kind: string): boolean {
+    return OPENS[kind] === true;
+}
+
+/**
+ * Whether a record's answer is acted on: a `hit` record always; an `ours` record only with `Ours.JoinOnHit` and a hero
+ * free to fight the hero (`free`, freeOf's answer), else it is only logged.
+ */
+export function Acts(on: Rec["on"], switchOn: boolean, free: string): boolean {
+    return on !== "ours" || (switchOn && free === "yes");
+}
+
 /**
  * The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
  * or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
@@ -186,7 +199,7 @@ export function Gather(bot: Unit): Rec | undefined {
         }
         if (a === bot || readers === undefined || RetreatState.Running(a)) continue;
         const ep = readers.episodeOf(a.GetPlayerID());
-        if (ep === undefined || OPENS[ep.kind] !== true || !live(ep.target) || !ep.target.CanBeSeen()) continue;
+        if (ep === undefined || !Opens(ep.kind) || !live(ep.target) || !ep.target.CanBeSeen()) continue;
         if (opener === undefined || share < opener.GetHealth() / opener.GetMaxHealth()) {
             opener = a;
             opened = ep;
@@ -255,9 +268,14 @@ export function For(bot: Unit): { rec?: Rec; ans?: Answer; fresh: boolean } {
     st.rec = bot.IsAlive() && now <= SETTINGS.Until ? Gather(bot) : undefined;
     st.ans = st.rec !== undefined ? Decide(st.rec) : undefined;
     // An `ours` record (slice join-hits) is only logged unless `Ours.JoinOnHit`: off, the join state is left as it was
-    // with no record, so off is today's behaviour. On, a hero in a play is left to it: CoreTrade puts a join before the
-    // play, and a roller drawn out by the partner that joined its play would end that play for both.
-    if (st.rec?.on === "ours" && (!Ours.On("JoinOnHit") || Plays.Of(bot) !== undefined)) return { rec: st.rec, ans: st.ans, fresh: true };
+    // with no record, so off is today's behaviour. On, it acts only for a hero free to fight the hero (the cut's `free`):
+    // one in a play is left to it (CoreTrade puts a join before the play, and a roller drawn out by the partner that joined
+    // its play would end that play for both), and CoreTrade's FightRefusal (their tower, outnumbered, burst) holds a join
+    // we start as it holds a fight we start (user 18/11/2026). The hit trigger asks neither.
+    if (st.rec?.on === "ours") {
+        const sw = Ours.On("JoinOnHit");
+        if (!Acts("ours", sw, sw ? freeOf(bot, st.rec.focus!) : "")) return { rec: st.rec, ans: st.ans, fresh: true };
+    }
     if (st.ans?.dec === "join") {
         st.joinAt = now;
         st.joinTgt = st.ans.tgt;
@@ -376,7 +394,7 @@ function tickAfter(bot: Unit, now: number): void {
     if (now - w.start >= SETTINGS.AfterWindow) flush(pid, "full");
 }
 
-/** Whether `bot` could act on a join on `focus` (the cut's `free`): `yes`, or what holds it: its retreat, a play, CoreTrade's FightRefusal. */
+/** Whether `bot` may act on an `ours` record's join on `focus` (For's gate and the cut's `free`): `yes`, or what holds it: its retreat, a play, CoreTrade's FightRefusal. */
 function freeOf(bot: Unit, focus: number): string {
     if (RetreatState.Running(bot)) return "ret";
     if (Plays.Of(bot) !== undefined) return "play";

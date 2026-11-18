@@ -231,7 +231,11 @@ const DECISIONS = {
             const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
             const w = { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
             // Slice join-hits: an `on=ours` record weighs our share on the hero the ally's open episode is on.
-            if (cut.on === 'ours' && cut.fo !== undefined && cut.fo !== null) w.focus = Number(cut.fo);
+            if (cut.on === 'ours' && cut.fo !== undefined && cut.fo !== null) {
+                w.focus = Number(cut.fo);
+                if (cut.ek) w.ek = cut.ek;
+                if (cut.free) w.free = cut.free;
+            }
             return w;
         },
         check(game, cut, obs) {

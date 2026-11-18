@@ -68,7 +68,7 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local live, dist, member, weigh, heroOf
+local live, dist, member, weigh, heroOf, freeOf, readers
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -141,6 +141,22 @@ function heroOf(pid)
     end
     return nil
 end
+function freeOf(bot, focus)
+    if RetreatState.Running(bot) then
+        return "ret"
+    end
+    if Plays.Of(bot) ~= nil then
+        return "play"
+    end
+    local t = heroOf(focus)
+    local ____temp_14
+    if t ~= nil then
+        ____temp_14 = readers and readers.refusal(bot, t)
+    else
+        ____temp_14 = nil
+    end
+    return ____temp_14 or "yes"
+end
 ____exports.SETTINGS = {
     AllyRange = 1200,
     FoeRange = 1000,
@@ -191,11 +207,19 @@ function ____exports.Decide(rec)
     end
     return {dec = ko > kt and "join" or "losing", tgt = tgt, ko = ko, kt = kt}
 end
-local readers
 function ____exports.SetReaders(r)
     readers = r
 end
 local OPENS = {trade = true, kill = true, fight = true}
+--- Whether a partner's episode of this kind is a fight it opened: an `ours` trigger. A `join` is not (two joins would hold each other up).
+function ____exports.Opens(kind)
+    return OPENS[kind] == true
+end
+--- Whether a record's answer is acted on: a `hit` record always; an `ours` record only with `Ours.JoinOnHit` and a hero
+-- free to fight the hero (`free`, freeOf's answer), else it is only logged.
+function ____exports.Acts(on, switchOn, free)
+    return on ~= "ours" or switchOn and free == "yes"
+end
 --- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
 -- or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
 -- pair's; review of pair-join-on: a partner in retreat left a lone hero weighed 1v1, which could join). The hit ally is
@@ -207,15 +231,15 @@ function ____exports.Gather(bot)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue18
+            local __continue20
             repeat
                 if not live(a) then
-                    __continue18 = true
+                    __continue20 = true
                     break
                 end
                 allies[#allies + 1] = a
                 if dist(a, bot) > ____exports.SETTINGS.AllyRange then
-                    __continue18 = true
+                    __continue20 = true
                     break
                 end
                 local share = a:GetHealth() / a:GetMaxHealth()
@@ -223,25 +247,25 @@ function ____exports.Gather(bot)
                     if ally == nil or share < ally:GetHealth() / ally:GetMaxHealth() then
                         ally = a
                     end
-                    __continue18 = true
+                    __continue20 = true
                     break
                 end
                 if a == bot or readers == nil or RetreatState.Running(a) then
-                    __continue18 = true
+                    __continue20 = true
                     break
                 end
                 local ep = readers.episodeOf(a:GetPlayerID())
-                if ep == nil or OPENS[ep.kind] ~= true or not live(ep.target) or not ep.target:CanBeSeen() then
-                    __continue18 = true
+                if ep == nil or not ____exports.Opens(ep.kind) or not live(ep.target) or not ep.target:CanBeSeen() then
+                    __continue20 = true
                     break
                 end
                 if opener == nil or share < opener:GetHealth() / opener:GetMaxHealth() then
                     opener = a
                     opened = ep
                 end
-                __continue18 = true
+                __continue20 = true
             until true
-            if not __continue18 then
+            if not __continue20 then
                 break
             end
         end
@@ -304,8 +328,15 @@ function ____exports.For(bot)
     st.rec = ____temp_3
     st.ans = st.rec ~= nil and ____exports.Decide(st.rec) or nil
     local ____opt_4 = st.rec
-    if (____opt_4 and ____opt_4.on) == "ours" and (not Ours.On("JoinOnHit") or Plays.Of(bot) ~= nil) then
-        return {rec = st.rec, ans = st.ans, fresh = true}
+    if (____opt_4 and ____opt_4.on) == "ours" then
+        local sw = Ours.On("JoinOnHit")
+        if not ____exports.Acts(
+            "ours",
+            sw,
+            sw and freeOf(bot, st.rec.focus) or ""
+        ) then
+            return {rec = st.rec, ans = st.ans, fresh = true}
+        end
     end
     local ____opt_6 = st.ans
     if (____opt_6 and ____opt_6.dec) == "join" then
@@ -518,23 +549,6 @@ local function tickAfter(bot, now)
     if now - w.start >= ____exports.SETTINGS.AfterWindow then
         flush(pid, "full")
     end
-end
---- Whether `bot` could act on a join on `focus` (the cut's `free`): `yes`, or what holds it: its retreat, a play, CoreTrade's FightRefusal.
-local function freeOf(bot, focus)
-    if RetreatState.Running(bot) then
-        return "ret"
-    end
-    if Plays.Of(bot) ~= nil then
-        return "play"
-    end
-    local t = heroOf(focus)
-    local ____temp_14
-    if t ~= nil then
-        ____temp_14 = readers and readers.refusal(bot, t)
-    else
-        ____temp_14 = nil
-    end
-    return ____temp_14 or "yes"
 end
 --- Per frame (index Tick): on each fresh decision in the laning stage, its cut; the join-after watch. Reads only.
 function ____exports.Tick(bot)
