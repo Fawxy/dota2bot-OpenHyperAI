@@ -311,6 +311,14 @@ do
 	T = 630
 	check("switch off: an ours record draws no join", P.Joins(bot) == nil)
 	Customize.Ours.JoinOnHit = true
+	-- The ally's attack target is the other hero (7): its episode has fired nothing at the hero, so the record is not acted on.
+	T = 632
+	check("switch on: an ally that has not attacked the hero is not joined", P.Joins(bot) == nil)
+	T = 634
+	local before = #cuts()
+	P.Tick(bot)
+	check("the not-attacking record is still cut, free=noatk", #cuts() == before + 1 and cuts()[before + 1]:find("free=noatk", 1, true) ~= nil, cuts()[before + 1])
+	function opener:GetAttackTarget() return e6 end
 	local Plays = require("bots/FunLib/humaniser/plays/plays")
 	local of = Plays.Of
 	Plays.Of = function(u) return u == bot and {} or nil end

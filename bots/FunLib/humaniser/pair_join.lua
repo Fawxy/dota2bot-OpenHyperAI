@@ -68,7 +68,7 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local live, dist, member, weigh, heroOf, freeOf, readers
+local live, dist, member, weigh, heroOf, freeOf, freeFor, readers
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -156,6 +156,15 @@ function freeOf(bot, focus)
         ____temp_14 = nil
     end
     return ____temp_14 or "yes"
+end
+function freeFor(bot, rec)
+    local ____exports_WithAttack_18 = ____exports.WithAttack
+    local ____freeOf_result_17 = freeOf(bot, rec.focus)
+    local ____opt_15 = rec.open
+    return ____exports_WithAttack_18(____freeOf_result_17, (____opt_15 and ____opt_15.attacking) == true)
+end
+function ____exports.WithAttack(free, attacking)
+    return free == "yes" and not attacking and "noatk" or free
 end
 ____exports.SETTINGS = {
     AllyRange = 1200,
@@ -333,7 +342,7 @@ function ____exports.For(bot)
         if not ____exports.Acts(
             "ours",
             sw,
-            sw and freeOf(bot, st.rec.focus) or ""
+            sw and freeFor(bot, st.rec) or ""
         ) then
             return {rec = st.rec, ans = st.ans, fresh = true}
         end
@@ -566,10 +575,10 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____exports_For_result_15 = ____exports.For(bot)
-    local rec = ____exports_For_result_15.rec
-    local a = ____exports_For_result_15.ans
-    local fresh = ____exports_For_result_15.fresh
+    local ____exports_For_result_19 = ____exports.For(bot)
+    local rec = ____exports_For_result_19.rec
+    local a = ____exports_For_result_19.ans
+    local fresh = ____exports_For_result_19.fresh
     if not fresh then
         return
     end
@@ -578,8 +587,8 @@ function ____exports.Tick(bot)
         st.dec = nil
         return
     end
-    local ____opt_16 = rec.open
-    local att = ____opt_16 and ____opt_16.attacking
+    local ____opt_20 = rec.open
+    local att = ____opt_20 and ____opt_20.attacking
     if a.dec == st.dec and att == st.att and now - (st.cutAt or -math.huge) < ____exports.SETTINGS.CutEvery then
         return
     end
@@ -626,7 +635,7 @@ function ____exports.Tick(bot)
             {"aa", rec.open.attacking and 1 or 0},
             {
                 "free",
-                freeOf(bot, rec.focus)
+                freeFor(bot, rec)
             }
         )
     end

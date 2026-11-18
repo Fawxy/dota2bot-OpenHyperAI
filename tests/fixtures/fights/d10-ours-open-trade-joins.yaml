@@ -16,11 +16,12 @@ world:
   dmg: [{"from":9,"to":0,"d":91},{"from":9,"to":3,"d":104},{"from":7,"to":0,"d":112},{"from":7,"to":3,"d":130},{"from":3,"to":7,"d":163},{"from":3,"to":9,"d":175},{"from":0,"to":7,"d":97},{"from":0,"to":9,"d":117}]
   focus: 0
   ek: "trade"
+  aa: 1
   free: "yes"
 expect:
   must: ["join(hero#0)", "act(hero#0)"]
   mustNot: ["out(losing)", "out(outnumbered)", "join(hero#3)"]
 notes: >
-  The commonest start (join-hits smoke, 2:57): our pos4 (pid 7) has a trade open on their carry (pid 0, 53% HP) 1 s ago,
-  nobody of ours hit; our pos3 (pid 9) stands 123 from it, free. Our share on the trade's target is 0.55 against their best
+  The commonest start (join-hits smoke, 2:57): our pos4 (pid 7) has a trade open on their carry (pid 0, 53% HP) 1 s ago and
+  already attacking it (the smoke cut had aa=0; set to 1 here), nobody of ours hit; our pos3 (pid 9) stands 123 from it, free. Our share on the trade's target is 0.55 against their best
   0.40 on one of ours: the core joins on the hero its partner's fight is on (D10), not on the nearer-to-full pid 3.

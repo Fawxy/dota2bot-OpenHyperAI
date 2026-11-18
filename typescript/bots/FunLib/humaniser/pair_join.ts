@@ -271,10 +271,11 @@ export function For(bot: Unit): { rec?: Rec; ans?: Answer; fresh: boolean } {
     // with no record, so off is today's behaviour. On, it acts only for a hero free to fight the hero (the cut's `free`):
     // one in a play is left to it (CoreTrade puts a join before the play, and a roller drawn out by the partner that joined
     // its play would end that play for both), and CoreTrade's FightRefusal (their tower, outnumbered, burst) holds a join
-    // we start as it holds a fight we start (user 18/11/2026). The hit trigger asks neither.
+    // we start as it holds a fight we start (user 18/11/2026). It also waits for the ally's attack on the hero (`noatk`): most
+    // opened episodes never fire one. The hit trigger asks none of these.
     if (st.rec?.on === "ours") {
         const sw = Ours.On("JoinOnHit");
-        if (!Acts("ours", sw, sw ? freeOf(bot, st.rec.focus!) : "")) return { rec: st.rec, ans: st.ans, fresh: true };
+        if (!Acts("ours", sw, sw ? freeFor(bot, st.rec) : "")) return { rec: st.rec, ans: st.ans, fresh: true };
     }
     if (st.ans?.dec === "join") {
         st.joinAt = now;
@@ -402,6 +403,15 @@ function freeOf(bot: Unit, focus: number): string {
     return (t !== undefined ? readers?.refusal(bot, t) : undefined) ?? "yes";
 }
 
+/** An `ours` record's `free`: freeOf's answer, or `noatk` while the ally's open fight has not fired an attack at the hero (the trigger is a hit, not an offer). */
+function freeFor(bot: Unit, rec: Rec): string {
+    return WithAttack(freeOf(bot, rec.focus!), rec.open?.attacking === true);
+}
+
+export function WithAttack(free: string, attacking: boolean): string {
+    return free === "yes" && !attacking ? "noatk" : free;
+}
+
 /** Per frame (index Tick): on each fresh decision in the laning stage, its cut; the join-after watch. Reads only. */
 export function Tick(bot: Unit): void {
     if (Telemetry.IsEnabled()) tickAfter(bot, DotaTime());
@@ -436,7 +446,7 @@ export function Tick(bot: Unit): void {
         ["on", rec.on ?? "hit"],
     ];
     if (rec.focus !== undefined && rec.open !== undefined) {
-        fields.push(["fo", rec.focus], ["ek", rec.open.kind], ["oa", math.floor(rec.open.age * 10 + 0.5) / 10], ["aa", rec.open.attacking ? 1 : 0], ["free", freeOf(bot, rec.focus)]);
+        fields.push(["fo", rec.focus], ["ek", rec.open.kind], ["oa", math.floor(rec.open.age * 10 + 0.5) / 10], ["aa", rec.open.attacking ? 1 : 0], ["free", freeFor(bot, rec)]);
     }
     Telemetry.Event("cut", fields);
 }

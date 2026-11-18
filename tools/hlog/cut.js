@@ -235,6 +235,7 @@ const DECISIONS = {
                 w.focus = Number(cut.fo);
                 if (cut.ek) w.ek = cut.ek;
                 if (cut.free) w.free = cut.free;
+                if (cut.aa !== undefined && cut.aa !== null) w.aa = Number(cut.aa);
             }
             return w;
         },

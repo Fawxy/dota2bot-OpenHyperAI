@@ -3,8 +3,9 @@
 -- its record.
 -- world: ally (pid of the hit ally), ours [{pid, x, y, hp, mhp, ret}], theirs [{pid, x, y, hp, mhp}],
 --        dmg [{from, to, d}] (GetEstimatedDamageToTarget over PairJoin Window, both ways).
---        Slice join-hits, an ours record: focus (the hero the ally's episode is on), ek (that episode's kind), free (the
---        cut's `free`: yes, ret, play, tower, outnumbered, burst).
+--        Slice join-hits, an ours record: focus (the hero the ally's episode is on), ek (that episode's kind), aa (1 when the
+--        ally's attack target names the hero, 0 when it has not attacked yet; unset counts as 1), free (the cut's `free`:
+--        yes, ret, play, tower, outnumbered, burst; a `yes` with aa 0 is held as `noatk`).
 -- Observation: join(hero#<tgt>) or out(<outnumbered|losing>); for an ours record that joins, act(hero#<tgt>) or
 -- hold(<free>) (the switch on); none(<ek>) alone when the partner's episode is no trigger; fact.ko, fact.kt (the two kill shares), fact.ours, fact.theirs.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
@@ -28,8 +29,8 @@ return function(fx)
 		if not PairJoin.Opens(w.ek) then
 			actions = { { verb = "none", target = w.ek } }
 		elseif a.dec == "join" then
-			local acts = PairJoin.Acts("ours", true, w.free or "yes")
-			actions[2] = acts and { verb = "act", target = "hero#" .. a.tgt } or { verb = "hold", target = w.free }
+			local acts = PairJoin.Acts("ours", true, PairJoin.WithAttack(w.free or "yes", w.aa ~= 0))
+			actions[2] = acts and { verb = "act", target = "hero#" .. a.tgt } or { verb = "hold", target = PairJoin.WithAttack(w.free or "yes", w.aa ~= 0) }
 		end
 	end
 	return {
