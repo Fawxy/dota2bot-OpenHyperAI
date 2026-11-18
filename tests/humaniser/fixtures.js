@@ -32,6 +32,7 @@ const VERBS = {
     pair_join: ['join', 'out', 'act', 'hold', 'none'],
     core_trade: ['trade', 'kill', 'respect', 'fight'],
     core_keep: ['keep', 'end'],
+    trade: ['none', 'hit', 'hitback', 'kill', 'join', 'end', 'hold'],
 };
 
 function listFixtures(dir) {

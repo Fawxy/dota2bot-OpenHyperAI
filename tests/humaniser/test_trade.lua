@@ -241,4 +241,39 @@ do
 		math.abs(T.Deficit(500, 440, 400, 380, 600) - 40 / 600) < 1e-9 and T.Deficit(500, 500, 400, 300, 600) < 0)
 end
 
+-- The cut line: the cadence (an answer change at once, a running exchange every 0.5 s, else every 2 s) and the fields the driver replays.
+do
+	ResetWorld()
+	local H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true, Cut = true } })
+	local C = require("bots/FunLib/humaniser/states/trade")
+	local lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	local bot = MakeUnit({ pid = 1, team = 2 })
+	local i = inputs({ cands = { cand({ thp = 0.2, catch = CATCH, walk = { burst = 0.1, n = 1, missing = 0.3 }, hunters = {} }) }, denyDue = true })
+	local a = decide(i)
+	C.Cut(bot, i, a)
+	local first = #lines
+	C.Cut(bot, i, a)
+	local steady = #lines
+	i.now = 102.5
+	C.Cut(bot, i, a)
+	local idle = #lines
+	local hit = inputs({ cands = { cand() }, now = 102.6 })
+	C.Cut(bot, hit, decide(hit))
+	local changed = #lines
+	check("the cut: a line at the first decision, none for the same answer within 2 s, one after it, and one when the answer changes",
+		first == 1 and steady == 1 and idle == 2 and changed == 3)
+	local line = lines[1]
+	check("the line names the kind, the answer and a candidate record the driver reads",
+		line:find("kind=trade2", 1, true) ~= nil and line:find("lv=kill", 1, true) ~= nil and line:find("why=kill", 1, true) ~= nil
+			and line:find("cd=", 1, true) ~= nil)
+	local running = inputs({ cands = { cand() }, run = run(), now = 110 })
+	local before = #lines
+	for _, now in ipairs({ 110, 110.2, 110.6 }) do
+		running.now = now
+		C.Cut(bot, running, decide(running))
+	end
+	check("a running exchange logs every 0.5 s, not more often", #lines == before + 2)
+end
+
 finish()

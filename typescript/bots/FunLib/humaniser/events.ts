@@ -2800,7 +2800,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`). */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`), `trade2` (states/trade.ts Decide, beside the old trade while both exist; `lv`, `why`). */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
@@ -2808,7 +2808,7 @@ export const EVENTS = {
         who: "str",
         /** `gate`: the walk's start, x,y (Threat.Gate's `from`). */
         fm: "str",
-        /** `gate`: the walk's end, x,y (the camp or place the trip goes to). */
+        /** `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade2: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none. */
         pl: "str",
         /** The bot's assigned lane. */
         lane: "num",
@@ -2967,7 +2967,36 @@ export const EVENTS = {
         lx: "num",
         ly: "num",
         tss: "num",
-        /** kind=keep (slice kill-chase, a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records
+        /**
+         * kind=trade2 (states/trade.ts, the one trade decision: D18, D19, D24, D10; driver `trade`): every decision's inputs and answer,
+         * logged when the answer changes, every 0.5 s while an exchange runs, else every 2 s, to 12:00. `role` is `core` or `support` by
+         * position, logged and never read. `hp` our HP share, `bu` `n` `mi` the threat read here (their damage on us over our HP, the enemy
+         * heroes that reach us, the unseen weight), `tm` 1 when a tower attacks us, `hc` enemy creeps attacking us (a tower counts 2), `cr` enemy
+         * lane creeps within 500, `dn` 1 when a deny is due.
+         */
+        n: "num",
+        mi: "num",
+        /** kind=trade2: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
+        pjr: "str",
+        /**
+         * kind=trade2: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
+         * pid, thp, thpAbs, d, gap, away, arr (1/0), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk read
+         * wb, wn, wm (burst, heroes, unseen weight; `-` when not asked) and the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked).
+         */
+        cd: "str",
+        /**
+         * kind=trade2: the running exchange, `:`-joined: level, target, source (`-` none), alive, offered, started, landed, soFar, catchFails,
+         * seconds since the last failed catch read, seconds of the step out, chase x, chase y, the unseen catch read ok (`-` where absent).
+         * Absent: no exchange running. Its unseen reads are `uat`, `utw`, `uth`.
+         */
+        run: "str",
+        /** kind=trade2: the answer: level (`none`, `hit`, `hitback`, `kill`, `join`), target pid (absent for none), source (`pair`, `play`), how (`verb:aggro`, with `@x,y` for a move) and why (the rule, or for none the first gate that failed); `ed` is why a running exchange ended this frame, `higher` when another candidate won the order. */
+        lv: "str",
+        src: "str",
+        how: "str",
+        why: "str",
+        ed: "str",
+        /** kind=trade2: the hunters of the lowest-HP kill candidate, as below. kind=keep (slice kill-chase, a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records
          *  (spells `/`-joined `range:cp:dmg`, damage after the target's resistances), the target's HP (seen, or as last seen),
          *  and the read's damage within the window and seconds to its first (-1 none); `csf` the window, the seconds until the
          *  target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there). */

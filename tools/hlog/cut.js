@@ -2,7 +2,7 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|keep] [--who CONSUMER] [--game N] [--id ID]   print a fixture
+//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|trade2|keep] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
@@ -282,6 +282,26 @@ const DECISIONS = {
         id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${tradeAnswer(cut)} on ${cut.tgt}${Number(cut.hb) === 1 ? " (hitting us)" : ""} (hp ${cut.hp} vs ${cut.thp}, creeps ${cut.cr}, tower ${cut.tw})`,
     },
+    // The one trade decision (states/trade.ts Decide): every input rides on the line, the answer is `lv`/`tgt`/`why`, with `ed` the end of a running exchange.
+    trade2: {
+        driver: 'trade',
+        world(game, cut) {
+            const w = { t: Number(cut.t), pid: Number(cut.pid), role: cut.role };
+            for (const k of ['hp', 'bu', 'n', 'mi', 'tm', 'hc', 'cr', 'dn', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['pjr', 'pl', 'cd', 'run']) if (cut[k] !== undefined) w[k] = String(cut[k]);
+            return w;
+        },
+        check(game, cut, obs) {
+            const main = obs.actions[0] || {};
+            const ended = obs.actions.find(a => a.verb === 'end');
+            const got = `${main.verb}(${main.target})${ended ? `/end(${ended.target})` : ''}`;
+            return { same: got === tradeTwoAnswer(cut), got, want: tradeTwoAnswer(cut) };
+        },
+        answer: (game, cut) => (cut.lv === 'none' ? `none(${cut.why})` : cut.lv),
+        brief: (game, cut) => `${cut.role} hp ${cut.hp}, burst ${cut.bu} n ${cut.n}, ${String(cut.cd || '').split(';').filter(Boolean).length} candidates${cut.run ? `, running ${String(cut.run).split(':')[0]}` : ''}, why ${cut.why}`,
+        id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
+        note: (game, cut) => `The game chose ${tradeTwoAnswer(cut)} (hp ${cut.hp}, burst ${cut.bu}, n ${cut.n}, creeps on us ${cut.hc}, wave ${cut.cr})`,
+    },
     // Slice chase-log: CoreTrade.KeepAnswer on a kill or join's frame; `dec` is its answer, `keep` for none.
     keep: {
         driver: 'core_keep',
@@ -311,6 +331,11 @@ const DECISIONS = {
 /** A trade cut's answer: Exchange's (`xa`) when the target was hitting the core, else the trade rule's (`dec`). */
 function tradeAnswer(cut) {
     return Number(cut.hb) === 1 && cut.xa !== undefined ? cut.xa : cut.dec;
+}
+
+/** A trade2 cut's answer as the driver observes it: `lv(hero#tgt)` or `none(why)`, then `/end(ed)` when a running exchange ended. */
+function tradeTwoAnswer(cut) {
+    return `${cut.lv === 'none' ? `none(${cut.why})` : `${cut.lv}(hero#${cut.tgt})`}${cut.ed !== undefined ? `/end(${cut.ed})` : ''}`;
 }
 
 /** The fixture world for one ev=cut line, or throws naming what the log lacks. */
@@ -419,6 +444,10 @@ function factsOf(w) {
     if (b === undefined && w.ek !== undefined) return [`# ${w.role} pid ${w.pid}, ${w.ek} on pid ${w.tgt}: ${w.alv ? 'alive' : 'dead'}, ${w.sn ? 'seen' : 'unseen'}`
         + `, offered ${w.oa} s ago, ${w.sa !== undefined ? `started ${w.sa} s ago` : 'not started'}${w.jn ? `, pair join ${w.jn}` : ''}`
         + `${w.hp !== undefined ? `; HP ${Math.round(100 * w.hp)}% vs ${Math.round(100 * w.thp)}%, heroes ${w.en} theirs, ${w.ally} ours, tower ${w.tw}` : ''}`];
+    // A trade2 world is the one decision's inputs: the hero and its candidates.
+    if (b === undefined && w.cd !== undefined) return [`# ${w.role} pid ${w.pid}: HP ${Math.round(100 * w.hp)}%; burst ${w.bu} over ${w.n} heroes, unseen ${w.mi}; creeps on it ${w.hc}, wave ${w.cr}; tower on it ${w.tm}`
+        + `${w.run ? `; running ${String(w.run).split(':').slice(0, 2).join(' on ')}` : ''}`,
+        ...String(w.cd).split(';').filter(Boolean).map(r => { const f = r.split(','); return `# candidate pid ${f[0]}: HP ${Math.round(100 * f[1])}%, ${f[3]} away (gap ${f[4]}), ${f[7] === '1' ? 'hitting, ' : ''}${f[8] === '1' ? 'free, ' : ''}ko ${f[9]} kt ${f[10]}`; })];
     // A trade world is Decide's inputs: the numbers themselves.
     if (b === undefined) return [`# ${w.role} pid ${w.pid} on pid ${w.tgt}: ${w.d} away, reach ${w.rch}; HP ${Math.round(100 * w.hp)}% vs ${Math.round(100 * w.thp)}%`
         + `; heroes ${w.en} theirs, ${w.ally} ours; creeps near ${w.cr}, on the bot ${w.hc}; tower ${w.tw}${w.tlh ? '; the target is last hitting' : ''}`];
@@ -547,4 +576,4 @@ if (!isMainThread && workerData && workerData.cutIdx) {
     const game = readGames(fs.readFileSync(workerData.log, 'utf8'))[workerData.gi];
     parentPort.postMessage(workerData.cutIdx.map(i => checkOne(game, game.cuts[i], workerData.root)));
 } else if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
-module.exports = { burstOf, heroRecords, readGames, worldOf, replay, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf };
+module.exports = { toLua, burstOf, heroRecords, readGames, worldOf, replay, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf };
