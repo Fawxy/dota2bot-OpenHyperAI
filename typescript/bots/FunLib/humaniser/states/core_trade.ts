@@ -1029,7 +1029,7 @@ const round6 = (v: number): number => math.floor(v * 1000000 + 0.5) / 1000000;
 
 /**
  * The `ev=cut kind=trade` fields of the fresh decision on `target` when a line is due (its inputs and answer, driver
- * core_trade), read before Desire acts on it; Desire adds `did` once it has. Undefined when no line is due. Reads only.
+ * core_trade), read before Desire acts on it; Desire adds `did` once it has. Undefined when no line is due. Writes only the heading samples `reachRead` keeps.
  */
 function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boolean, now: number): Telemetry.Fields<"cut"> | undefined {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || now > TRADE_CUT_UNTIL) return undefined;

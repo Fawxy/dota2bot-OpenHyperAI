@@ -2039,7 +2039,7 @@ TRADE_CUT_UNTIL = 720
 local cutState = {}
 round6 = function(v) return math.floor(v * 1000000 + 0.5) / 1000000 end
 --- The `ev=cut kind=trade` fields of the fresh decision on `target` when a line is due (its inputs and answer, driver
--- core_trade), read before Desire acts on it; Desire adds `did` once it has. Undefined when no line is due. Reads only.
+-- core_trade), read before Desire acts on it; Desire adds `did` once it has. Undefined when no line is due. Writes only the heading samples `reachRead` keeps.
 local function cutFields(bot, target, i, killHp, lf, now)
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true or now > TRADE_CUT_UNTIL then
         return nil
