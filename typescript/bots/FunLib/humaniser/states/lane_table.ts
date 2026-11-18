@@ -51,6 +51,8 @@ export interface Row {
     drill: boolean;
     /** Runs only under LaneOnly: the row is left out of the other orders. */
     drillOnly?: boolean;
+    /** The row's run is its own scan (it finds a creep or finds none), so giving no order is not news: left out of `skip`. */
+    scans?: boolean;
     wants: (this: void, bot: Unit, ctx: Ctx) => boolean;
     run: (this: void, bot: Unit, ctx: Ctx) => boolean;
 }
@@ -147,6 +149,7 @@ const drillAggro: Row = {
  */
 const aggro: Row = {
     name: "aggro",
+    scans: true,
     rank: ranks(70, ...cores),
     drill: false,
     wants: (_bot, ctx) => ctx.enabled(),
@@ -164,6 +167,7 @@ const aggro: Row = {
 /** Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move. */
 const etiquette: Row = {
     name: "etiquette",
+    scans: true,
     rank: ranks(80, ...all),
     drill: false,
     wants: () => true,
@@ -176,6 +180,7 @@ const etiquette: Row = {
  */
 const ohaLastHit: Row = {
     name: "oha_lh",
+    scans: true,
     rank: ranks(90, ...all),
     drill: true,
     // Ours.SupportLastHit: the support's body takes the last hits its claims give it (states/lane_claims), so OHA's do not run.
@@ -185,6 +190,7 @@ const ohaLastHit: Row = {
 
 const ohaDeny: Row = {
     name: "oha_deny",
+    scans: true,
     rank: ranks(100, ...all),
     drill: true,
     wants: (_bot, ctx) => !ctx.bodyLastHits() && !ctx.bodySupportHits(),
@@ -194,6 +200,7 @@ const ohaDeny: Row = {
 /** Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait. */
 const ohaHold: Row = {
     name: "oha_hold",
+    scans: true,
     rank: ranks(110, ...all),
     drill: true,
     wants: (_bot, ctx) => !ctx.bodyLastHits(),
@@ -203,6 +210,7 @@ const ohaHold: Row = {
 /** The optional local override's Think: runs beside the rows and never ends the frame. */
 const ohaLocal: Row = {
     name: "oha_local",
+    scans: true,
     rank: ranks(120, ...all),
     drill: false,
     wants: () => true,
@@ -218,6 +226,7 @@ const ohaLocal: Row = {
  */
 const body: Row = {
     name: "body",
+    scans: true,
     rank: ranks(130, ...all),
     drill: true,
     wants: (_bot, ctx) => !ctx.bodySupportHits(),
@@ -310,7 +319,7 @@ export function Walk(bot: Unit, ctx: Ctx): string {
             acted = r.name;
             break;
         }
-        skipScratch[n++] = r.name;
+        if (r.scans !== true) skipScratch[n++] = r.name;
     }
     if (Telemetry.IsEnabled() && Telemetry.Get().Cut === true) cut(bot, pos, laneOnly, acted, n);
     return acted;

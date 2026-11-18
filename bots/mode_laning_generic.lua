@@ -329,7 +329,10 @@ if bOwnsThink then
 	function Think()
 		-- Set by LastHitThink on the frame it runs, so a frame that skips it cannot hold on an earlier frame's wait.
 		bHoldingForLastHit = false
-		Telemetry.NoteLaneStep(bot, States.LaneStep(bot, laneCtx))
+		local step = States.LaneStep(bot, laneCtx)
+		-- An error inside the table (the guard's answer) must not leave the hero without an order.
+		if step == 'guard_error' then PositionThink() end
+		Telemetry.NoteLaneStep(bot, step)
 	end
 end
 

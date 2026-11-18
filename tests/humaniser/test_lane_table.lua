@@ -250,7 +250,7 @@ do
 	check("cut: the same row after 5 s is logged again", #lines == 3, #lines)
 	T = 109
 	walk(bot, ctx({ busy = true, acts = false }))
-	check("cut: the rows that wanted the frame and gave no order are named", #lines == 4 and lines[4]:find("skip=body_hit,", 1, true) ~= nil
+	check("cut: the rows that wanted the frame and gave no order are named, the rows that only scanned are not", #lines == 4 and lines[4]:find("skip=body_hit ", 1, true) ~= nil
 		and lines[4]:find("row=oha_pos", 1, true) ~= nil, lines[4])
 	T = 110
 	walk(bot, ctx({ busy = true, acts = false }))

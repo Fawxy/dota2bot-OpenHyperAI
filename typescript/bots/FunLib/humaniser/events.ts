@@ -3007,7 +3007,7 @@ export const EVENTS = {
         pos: "num",
         /** kind=lane: the lane table row that acted (the step name of ev=snap `step`). Logged when the row or `skip` changes, else every 5 s. */
         row: "str",
-        /** kind=lane: `,`-joined rows before `row` that wanted the frame and gave no order; absent when none. */
+        /** kind=lane: `,`-joined rows before `row` that wanted the frame and gave no order (rows whose run is their own scan are not listed); absent when none. */
         skip: "str",
         /** kind=lane: 1 under lane-only (a drill). */
         lo: "num",
