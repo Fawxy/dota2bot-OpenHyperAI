@@ -144,6 +144,14 @@ const SAFE_ENGAGED = 6;
  */
 const HARASS_REACH = 300;
 /**
+ * Slice trade-lands (`Ours.TradeLands`, D18; `judgement`): the horizon of "can the hero reach attack range", 1 s of walking as
+ * HARASS_REACH assumes plus an attack point. A trade outside range opens only if it can; a taken trade waits for its first
+ * attack while it still can.
+ */
+const WALK_IN = 1.5;
+/** Backstop of the wait (a fault, logged as `hold_time`): seconds from the trade's start. */
+const HOLD_MAX = 4;
+/**
  * A support prefers an enemy hero whose attack target is a lane creep (a last-hit attempt: its swing goes to the creep, not back
  * at us) by counting it this much nearer (judgement).
  */
@@ -308,6 +316,8 @@ interface Episode {
     thpL?: number;
     /** The bot's GetLastAttackTime when the trade started (GameTime, not DotaTime): an attack fired since raises it. */
     atkSeen?: number;
+    /** Slice trade-lands: an attack fired since the start (GetLastAttackTime rose); losing() moves `atkSeen` on, so it is kept here. */
+    fired?: boolean;
     /** Attack mode's OnEnd ran: the next Desire closes the trade naming the mode that took the bot (OnEnd still reads attack). */
     ended?: boolean;
     /** Slice chase-log: the target's place on its last seen frame, the place it was at about HEADING_SPAN before that
@@ -518,6 +528,72 @@ function killHpFor(bot: Unit): number {
 /** A support whose harass is ours (a bot under CoreLastHit is a core whatever its position). */
 function isSupport(bot: Unit): boolean {
     return !CoreLastHit.Applies(bot) && SupportDeny.Harass(bot);
+}
+
+/**
+ * Slice trade-lands: whether a hero at `gap` (distance past attack range plus both hulls, 0 or less when in range) gets into range
+ * within `horizon` s when the target moves `away` (signed, along the line from us: towards us is negative) and we run at `ms`.
+ */
+export function Arrives(gap: number, ms: number, away: number, horizon: number): boolean {
+    if (gap <= 0) return true;
+    const closing = ms - away;
+    return closing > 0 && gap <= closing * horizon;
+}
+
+/** Slice trade-lands: samples of an enemy hero's place (by pid) a HEADING_SPAN or more apart, newest `s1` and the one before it. */
+const heads: Record<number, { s0?: Place; s1?: Place } | undefined> = {};
+
+function noteHeading(target: Unit, now: number): void {
+    const pid = target.GetPlayerID();
+    const h = (heads[pid] = heads[pid] ?? {});
+    if (h.s1 !== undefined && now - h.s1.at < HEADING_SPAN) return;
+    const l = target.GetLocation();
+    h.s0 = h.s1;
+    h.s1 = { x: l.x, y: l.y, at: now };
+}
+
+/** The target's speed away from `bot` along the line between them (negative: towards), from its movement since the sample before last; 0 when unknown. */
+function awaySpeed(bot: Unit, target: Unit, now: number): number {
+    const s0 = heads[target.GetPlayerID()]?.s0;
+    if (s0 === undefined || now - s0.at > HEADING_STALE) return 0;
+    const l = target.GetLocation();
+    const me = bot.GetLocation();
+    const dx = l.x - me.x;
+    const dy = l.y - me.y;
+    const len = math.sqrt(dx * dx + dy * dy);
+    if (len < 1) return 0;
+    const dt = now - s0.at;
+    return (((l.x - s0.x) * dx + (l.y - s0.y) * dy) / len) / dt;
+}
+
+interface ReachRead {
+    ok: boolean;
+    gap: number;
+    away: number;
+}
+
+/** Slice trade-lands' read: can `bot` get into attack range of `target` within WALK_IN, from the gap, its speed and the target's heading. */
+function reachRead(bot: Unit, target: Unit, now: number): ReachRead {
+    noteHeading(target, now);
+    const gap = GetUnitToUnitDistance(bot, target) - (bot.GetAttackRange() + bot.GetBoundingRadius() + target.GetBoundingRadius());
+    const away = gap > 0 ? awaySpeed(bot, target, now) : 0;
+    return { ok: Arrives(gap, bot.GetCurrentMovementSpeed(), away, WALK_IN), gap, away };
+}
+
+/** A trade or hit back on `target` may open: always with the switch off, else when the read says its hit can land. */
+function lands(bot: Unit, target: Unit, now: number): boolean {
+    return !Ours.On("TradeLands") || reachRead(bot, target, now).ok;
+}
+
+/**
+ * Slice trade-lands: how a running trade's first-attack wait stands this frame. `wait`: a due deny or a join on another hero
+ * does not end it; `time`: the read still says it can reach but HOLD_MAX has run (the end is logged `hold_time`); undefined:
+ * not waiting, today's rules apply (off, not started, an attack has fired, or the read says it cannot reach).
+ */
+function holdState(bot: Unit, ep: Episode, now: number): "wait" | "time" | undefined {
+    if (!Ours.On("TradeLands") || ep.kind !== "trade" || ep.startedAt === undefined || ep.fired === true) return undefined;
+    if (!reachRead(bot, ep.target, now).ok) return undefined;
+    return now - ep.startedAt > HOLD_MAX ? "time" : "wait";
 }
 
 /** How far from the bot an enemy hero is a target: attack range, both bounding radii and the role's walk-in. */
@@ -847,6 +923,7 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
     st.dec = key;
     st.cutAt = now;
     const pi = lf ? Plays.InputsOf({ kind: LANE_FIGHT, by: bot, target, at: target.GetLocation() }) : undefined;
+    const rr = reachRead(bot, target, now);
     return [
         ["pid", pid],
         ["kind", "trade"],
@@ -864,6 +941,11 @@ function cutFields(bot: Unit, target: Unit, i: Inputs, killHp: number, lf: boole
         ["gap", gap !== undefined ? round6(gap) : undefined],
         ["d", math.floor(GetUnitToUnitDistance(bot, target))],
         ["rch", math.floor(reachOf(bot))],
+        ["hl", math.floor(bot.GetBoundingRadius() + target.GetBoundingRadius())],
+        ["ms", math.floor(bot.GetCurrentMovementSpeed())],
+        ["tms", math.floor(target.GetCurrentMovementSpeed())],
+        ["aw", math.floor(rr.away)],
+        ["lw", rr.ok ? 1 : 0],
         ["tlh", lastHitting(target) ? 1 : 0],
         ["bu", i.burst !== undefined ? round6(i.burst) : undefined],
         ["tm", i.burst !== undefined ? (i.towerOnMe === true ? 1 : 0) : undefined],
@@ -931,9 +1013,14 @@ export function Desire(bot: Unit): number | undefined {
     // D10 (pair, group 2) comes before every other fight of the lane: a running trade, kill or fight gives way to it, on
     // its own target too (it reopens as the join, so the join's group, ends and last-hit yield hold; review of pair-join-on).
     const join = PairJoin.Joins(bot);
+    if (ep !== undefined && ep.kind === "trade" && ep.fired !== true && ep.atkSeen !== undefined && bot.GetLastAttackTime() > ep.atkSeen) ep.fired = true;
     if (ep !== undefined && ep.kind !== "join" && join !== undefined) {
-        close(bot, ep, "pair_join", now);
-        ep = undefined;
+        // Slice trade-lands: a join on another hero waits for the trade's first attack (a join on its own target passes).
+        const hold = join.GetPlayerID() !== ep.tpid ? holdState(bot, ep, now) : undefined;
+        if (hold !== "wait") {
+            close(bot, ep, hold === "time" ? "hold_time" : "pair_join", now);
+            ep = undefined;
+        }
     }
     if (ep !== undefined) {
         const why = keepWhy(bot, ep, now, join);
@@ -951,6 +1038,7 @@ export function Desire(bot: Unit): number | undefined {
     const [committed, ci] = commitTarget(bot, killHp);
     const target = committed ?? nearestTarget(bot);
     const inputs = ci ?? (target !== undefined ? Gather(bot, target) : undefined);
+    if (target !== undefined && Ours.On("TradeLands")) noteHeading(target, now);
     const cut = target !== undefined && inputs !== undefined ? cutFields(bot, target, inputs, killHp, owns, now) : undefined;
     const desire = freshDecision(bot, pid, now, owns, target, inputs, killHp);
     if (cut !== undefined) {
@@ -972,6 +1060,7 @@ function freshDecision(bot: Unit, pid: number, now: number, owns: boolean, targe
         const play = rollFight(bot, target, now);
         if (play !== undefined) return open(bot, "fight", target, now, play, false);
     }
+    if (d.kind === "trade" && !lands(bot, target, now)) return unanswered(bot, now, "no_reach", inputs);
     const gap = recoverTo[pid];
     const heldWhy = d.kind === "trade" ? heldBy(inputs, gap) : undefined;
     const held = heldWhy !== undefined;
@@ -994,6 +1083,7 @@ function hitBack(bot: Unit, now: number, why: string, inputs?: Inputs): number {
     const [hb, a] = hitterExchange(bot);
     if (hb === undefined) return unanswered(bot, now, why, inputs);
     if (a !== "trade" && a !== "kill") return unanswered(bot, now, a.startsWith("hb_") ? a : `hb_${a}`);
+    if (a === "trade" && !lands(bot, hb, now)) return unanswered(bot, now, "hb_no_reach");
     return open(bot, a, hb, now, undefined, undefined, true);
 }
 
@@ -1059,7 +1149,11 @@ function keepWhy(bot: Unit, ep: Episode, now: number, join: Unit | undefined): s
     noteSeen(ep, now);
     // Harass's third question, asked every frame of a trade or hit back: a due deny ends it (slice trade-free round 2). A kill
     // or fight keeps going: an enemy caught low is worth more than the deny.
-    if (ep.kind === "trade" && Ours.On("TradeFree") && Laning.DenyDue(bot)) return "deny";
+    if (ep.kind === "trade" && Ours.On("TradeFree") && Laning.DenyDue(bot)) {
+        const hold = holdState(bot, ep, now);
+        if (hold === undefined) return "deny";
+        if (hold === "time") return "hold_time";
+    }
     if (ep.startedAt === undefined) return now - ep.offeredAt > LOST_AFTER ? "not_taken" : undefined;
     if (ep.kind === "fight") {
         if (now - ep.startedAt > FIGHT_TIME) return "time";
@@ -1155,6 +1249,8 @@ function keepKill(bot: Unit, ep: Episode, now: number, join: Unit | undefined): 
 
 /** Seconds between the two places a seen target's heading is read from (`hv`, `hd` on ev=chase). */
 const HEADING_SPAN = 0.5;
+/** A heading sample older than this is not a heading (a target seen again after a gap). */
+const HEADING_STALE = 1.5;
 
 /** A seen frame of the episode's target: its HP, place and the place HEADING_SPAN or more before (its heading at a loss). */
 function noteSeen(ep: Episode, now: number): void {
@@ -1409,4 +1505,5 @@ export function Reset(): void {
     for (const k in cutState) cutState[k as unknown as number] = undefined;
     for (const k in chases) chases[k as unknown as number] = undefined;
     for (const k in keepCutAt) keepCutAt[k as unknown as number] = undefined;
+    for (const k in heads) heads[k as unknown as number] = undefined;
 }

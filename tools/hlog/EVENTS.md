@@ -971,7 +971,7 @@ Forecast probe after a pre-hit `go` (states/pre_hit): the creep's real HP on lat
 
 ## trade_no
 
-An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree` `unfavoured` instead: the hit neither free nor favoured; `deny`: a due deny outbids it), or `hb_<respect>` (the hit back itself refused; `hb_deny` a due deny outbid it).
+An enemy hero hit this in-lane hero within 1 s and no trade opened (states/core_trade): at most one per hero per 5 s. `why`: `no_target` (no enemy hero within `reach`), `play` (a play drives the hero), a trade respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`), `gap` (waiting for the HP gap a lost trade left; with `Ours.TradeFree` `unfavoured` instead: the hit neither free nor favoured; `deny`: a due deny outbids it), or `hb_<respect>` (the hit back itself refused; `hb_deny` a due deny outbid it). With `Ours.TradeLands` `no_reach` or `hb_no_reach`: the trade or hit back's target cannot be reached within 1.5 s.
 
 `pid` num, `role` str, `why` str, `d` num, `reach` num, `har` num, `agg` num, `hp` num, `thp` num, `al` num, `cr` num, `hc` num, `mode` num, `md` num
 
@@ -1001,7 +1001,7 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 - `hb` num: 1 for a hit back (CoreTrade.Exchange took it): opened on a hero hitting us inside our creeps' aggro.
 - `play` num: A `fight`'s play id (`ev=play` id) and 1 when the hero joined another hero's play, 0 when it rolled its own.
 - `result` str: `done` (taken), `kill` (the game says the target died, `IsHeroAlive`) or `lost` (offered, not taken within 1 s; `mode`/`md` is the mode that held the core).
-- `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over.
+- `why` str: How the window ended. A `fight`'s `why` adds `hp` (under the roll's HP floor), `play_end` and `time`; a `join`'s is `pair_end` (PairJoin no longer joins), `retarget` or `time`; any other kind ends `pair_join` when a join on another hero takes over. A `trade`'s adds `hold_time` (slice trade-lands: a deny or join on another hero waited for the first attack and 4 s since the start ran out; a fault).
 - `dur` num: Seconds the window lasted.
 - `hpd` num: HP the bot and the target lost from the trade's start to its end.
 - `ld` num: Slice trade-landed: seconds from the start to the bot's first hit on the target (an attack fired at it, by GetLastAttackTime); absent when none did.
@@ -1367,7 +1367,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num
+`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `lw` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
@@ -1412,6 +1412,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `d` num: kind=trade: the distance to the target and the trade's reach (attack range, both hulls, the role's walk-in).
 - `tlh` num: kind=trade: 1 when the target's attack target is a lane creep (a last-hit or deny swing).
 - `bu` num: kind=trade, with `Ours.TradeSafe` (slice trade-safe; absent off): the threat read's burst in reach over the bot's HP (retreat's stay read), and 1 when the bot's attack point is in an enemy tower's reach or a tower attacks it. The answer adds the respect `burst` (their burst at our HP or more).
+- `aw` num: kind=trade (slice trade-lands): the read behind `Ours.TradeLands`, logged with it off too. `aw` the target's speed away from the bot along the line between them (negative: towards; 0 when unknown or in range), from its movement over the last 0.5 to 1 s; `lw` 1 when the bot can reach attack range within 1.5 s (in range already counts). With `d`, `ar`, `hl` (both hulls) and `ms`: `d - ar - hl` over `ms - aw` is the walk-in time. `hl`, `ms`, `tms` as kind=keep's.
 - `ar` num: kind=trade (slice trade-free-cut): the bot's and the target's attack range, and 1 when the target's attack target is the bot.
 - `tf` num: kind=trade (slice trade-free): 1 when `Ours.TradeFree` asked question 2 (free or favoured) in place of `gap`; absent off.
 - `dn` num: kind=trade (slice trade-free round 2), with `tf`: 1 when the laning body is offered a deny now (Laning.DenyDue), which outbids the trade.
