@@ -104,7 +104,7 @@ local function addedOf(e)
                         break
                     end
                     list[#list + 1] = {perSecond = row[2], type = row[3], value = value}
-                    local logKey = (tostring(pid) .. ":") .. name
+                    local logKey = (((tostring(pid) .. ":") .. name) .. ":") .. tostring(a:GetLevel())
                     if addedLogged[logKey] ~= true then
                         addedLogged[logKey] = true
                         if addedLogger ~= nil then

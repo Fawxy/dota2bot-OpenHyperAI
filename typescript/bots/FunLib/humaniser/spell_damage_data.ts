@@ -19,9 +19,8 @@ export const SPELL_DAMAGE: Record<string, [key: string, perSecond: boolean, dama
     zuus_lightning_bolt: ["damage", false, 2],
 };
 
-/** Per damaging ability Valve's estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. A multi-hit or over-time spell whose key is a per-hit or per-tick value is counted once. */
+/** Per damaging ability Valve's estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. A multi-hit or over-time spell whose key is a per-hit or per-tick value is counted once. An unknown spell may be one Valve's estimate already counts, so it can be counted twice until coverage.js measures it (of the nukes measured so far the estimate counts about two in three). */
 export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damageType: number, status: "left_out" | "unknown"]> = {
-    abaddon_aphotic_shield: ["damage_absorb", false, 2, "unknown"],
     abyssal_underlord_firestorm: ["wave_damage", false, 2, "unknown"],
     abyssal_underlord_pit_of_malice: ["pit_damage", false, 2, "unknown"],
     alchemist_acid_spray: ["damage", false, 1, "unknown"],
@@ -30,7 +29,6 @@ export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damag
     ancient_apparition_ice_age: ["damage", false, 2, "unknown"],
     ancient_apparition_ice_blast: ["AbilityDamage", false, 2, "unknown"],
     ancient_apparition_ice_vortex: ["damage_per_second", true, 2, "unknown"],
-    antimage_mana_void: ["mana_void_damage_per_mana", false, 2, "unknown"],
     arc_warden_flux: ["damage_per_second", true, 2, "unknown"],
     arc_warden_spark_wraith: ["spark_damage_base", false, 2, "unknown"],
     axe_culling_blade: ["damage", false, 4, "unknown"],
@@ -45,7 +43,6 @@ export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damag
     beastmaster_summon_razorback: ["boar_base_damage", false, 1, "unknown"],
     beastmaster_wild_axes: ["axe_damage", false, 2, "unknown"],
     bloodseeker_blood_bath: ["damage", false, 4, "unknown"],
-    bloodseeker_rupture: ["damage_cap_amount", false, 4, "unknown"],
     brewmaster_cinder_brew: ["total_ignite_damage", false, 2, "unknown"],
     brewmaster_earth_hurl_boulder: ["damage", false, 2, "unknown"],
     brewmaster_fire_pull: ["damage", false, 2, "unknown"],
@@ -92,8 +89,8 @@ export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damag
     earth_spirit_rolling_boulder: ["damage", false, 2, "unknown"],
     earthshaker_echo_slam: ["echo_slam_initial_damage", false, 2, "unknown"],
     elder_titan_ancestral_spirit: ["damage_heroes", false, 2, "unknown"],
-    elder_titan_echo_stomp: ["wake_damage_limit", false, 1, "unknown"],
-    elder_titan_echo_stomp_spirit: ["wake_damage_limit", false, 2, "unknown"],
+    elder_titan_echo_stomp: ["stomp_damage", false, 1, "unknown"],
+    elder_titan_echo_stomp_spirit: ["stomp_damage", false, 2, "unknown"],
     ember_spirit_activate_fire_remnant: ["damage", false, 2, "unknown"],
     ember_spirit_fire_remnant: ["damage", false, 2, "unknown"],
     ember_spirit_flame_guard: ["damage_per_second", true, 2, "unknown"],
@@ -156,7 +153,6 @@ export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damag
     lone_druid_entangle: ["damage", false, 2, "unknown"],
     lone_druid_spirit_bear_fetch: ["damage", false, 2, "unknown"],
     luna_lunar_orbit: ["rotating_glaives_collision_damage", false, 1, "unknown"],
-    lycan_summon_wolves_hamstring: ["damage_boost", false, 1, "unknown"],
     magnataur_horn_toss: ["damage", false, 2, "unknown"],
     magnataur_reverse_polarity: ["polarity_damage", false, 2, "unknown"],
     magnataur_shockwave: ["shock_damage", false, 2, "unknown"],
@@ -293,7 +289,6 @@ export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damag
     tusk_walrus_kick: ["damage", false, 2, "unknown"],
     undying_bite: ["damage", false, 1, "unknown"],
     undying_decay: ["decay_damage", false, 2, "unknown"],
-    undying_soul_rip: ["damage_per_unit", false, 2, "unknown"],
     ursa_earthshock: ["AbilityDamage", false, 2, "unknown"],
     vengefulspirit_magic_missile: ["magic_missile_damage", false, 2, "unknown"],
     vengefulspirit_nether_swap: ["damage", false, 2, "unknown"],

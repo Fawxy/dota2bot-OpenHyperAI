@@ -3004,7 +3004,7 @@ export const EVENTS = {
         /** kind=keep, a join on a seen target: 1 when it is at the kill bar and Decide calls `kill` (it becomes the kill). */
         kup: "num",
     },
-    /** Slice oha-burst-left-out: the first time in a game a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero and spell. */
+    /** Slice oha-burst-left-out: the first time in a game, per level, a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero, spell and spell level (a new level logs again, to show the value follows the level on an enemy handle). */
     burst_add: {
         /** The caster's player id. */
         pid: "num",

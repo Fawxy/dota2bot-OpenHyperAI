@@ -58,7 +58,7 @@ do
 	local counted
 	do
 		local names = {}
-		for n in pairs(Data.SPELL_DAMAGE) do names[#names + 1] = n end
+		for n, r in pairs(Data.SPELL_DAMAGE) do if not r[2] then names[#names + 1] = n end end
 		table.sort(names)
 		counted = names[1]
 	end
@@ -91,6 +91,12 @@ do
 	check("added: two spells sum", near(read(enemy, { [0] = added(leftOut), [1] = added(unknown, { value = 40 }) }, 300), 300 + 75 + 30))
 	check("added: with an estimate of 0 the added term is the read", near(read(enemy, { [0] = added(leftOut) }, 0), 75))
 	check("added: with an estimate of 0 and nothing castable the read stays 0", read(enemy, { [0] = added(leftOut, { castable = false }) }, 0) == 0)
+	local both2 = MakeUnit({ pid = 26, team = 3, loc = Vector(0, 0) })
+	local est, spentValue = 300, 150
+	local attackPart = target:GetActualIncomingDamage(both2:GetAttackDamage() * 3 / both2:GetSecondsPerAttack())
+	local want = math.max(math.min(est, attackPart), est - spentValue * 0.75) + 100 * 0.75
+	local got = read(both2, { [0] = added(counted, { castable = false, value = spentValue }), [1] = added(leftOut) }, est)
+	check("added: with a cooling counted spell the term still comes on top of the spent subtraction", near(got, want), tostring(want) .. " got " .. tostring(got))
 	local ally = MakeUnit({ pid = 22, team = 2, loc = Vector(0, 0) })
 	check("added: a hero of our own team gets the term", near(read(ally, { [0] = added(leftOut) }, 300), 375))
 	local illusion = MakeUnit({ pid = 23, team = 3, loc = Vector(0, 0) })
@@ -107,7 +113,7 @@ do
 	read(mine, both, 300)
 	read(mine, both, 300)
 	local first = lines[1] or ""
-	check("log: one ev=burst_add per hero and spell", #lines == 2, #lines)
+	check("log: one ev=burst_add per hero, spell and level", #lines == 2, #lines)
 	check("log: the line names the hero, spell, status, key, value, level and side",
 		first:find("ev=burst_add", 1, true) and first:find("pid=24", 1, true) and first:find("ab=" .. unknown, 1, true)
 			and first:find("st=unknown", 1, true) and first:find("key=" .. unknownRow[1], 1, true) and first:find("val=55", 1, true)
@@ -115,6 +121,8 @@ do
 	local otherHero = MakeUnit({ pid = 25, team = 3, loc = Vector(0, 0) })
 	read(otherHero, both, 300)
 	check("log: another hero with the same spell logs again", #lines == 4, #lines)
+	read(mine, { [0] = added(unknown, { value = 70, level = 4 }) }, 300)
+	check("log: a new level of the same spell logs again, with its value", #lines == 5 and lines[5]:find("lvl=4", 1, true) and lines[5]:find("val=70", 1, true), lines[5])
 	Telemetry.SetSink(nil)
 end
 

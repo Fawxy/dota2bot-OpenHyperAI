@@ -16,6 +16,8 @@
  * included, so a read of it is blind to a castable one until it lands (slice oha-burst-left-out, same switch). SPELL_ADDED
  * lists each damaging spell measured left out, or never measured (status `unknown`, counted and logged as `ev=burst_add`):
  * AddedOn adds the value of each the hero can cast now, read at its key as SPELL_DAMAGE's is, to the figure above.
+ * A never-measured spell may be one Valve's estimate already counts (of the nukes measured so far it counts about two in
+ * three), so it can be counted twice until coverage.js measures it.
  */
 import { DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -106,7 +108,7 @@ function addedOf(e: Caster): Added[] {
         const value = a.GetSpecialValueFloat(row[0]);
         if (type(value) !== "number" || !(value > 0)) continue;
         list.push({ perSecond: row[1], type: row[2], value });
-        const logKey = `${pid}:${name}`;
+        const logKey = `${pid}:${name}:${a.GetLevel()}`;
         if (addedLogged[logKey] !== true) {
             addedLogged[logKey] = true;
             addedLogger?.(pid, name, row[3], row[0], value, a.GetLevel(), e.GetTeam() === GetTeam() ? 1 : 0);

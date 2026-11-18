@@ -94,7 +94,7 @@ function parseKv(text) {
 
 const DAMAGE = /damage/i;
 // Damage-named keys that are not a hit's damage: modifiers, other units, conditions, timing.
-const NOT_A_HIT = /bonus|pct|percent|reduction|amp|resist|block|threshold|radius|interval|duration|tooltip|creep|building|illusion|outgoing|incoming|scepter|shard|heal|return|lifesteal|_as_|armor|crit|mult|factor|chance|range|speed|cleave|count|delay|distance|min_|max_|_type|strength|agility|intel|passthrough|per_beam|per_stack|per_kill|per_charge|stack|buff|_tick_rate|tick_rate|self|talent/i;
+const NOT_A_HIT = /bonus|pct|percent|reduction|amp|resist|block|threshold|radius|interval|duration|tooltip|creep|building|illusion|outgoing|incoming|scepter|shard|heal|return|lifesteal|_as_|armor|crit|mult|factor|chance|range|speed|cleave|count|delay|distance|min_|max_|_type|strength|agility|intel|passthrough|per_beam|per_stack|per_kill|per_charge|stack|buff|_tick_rate|tick_rate|self|talent|limit|cap|absorb|boost|per_mana|per_unit/i;
 const PER_SECOND = /per_second|_dps|per_sec|burn_damage|rot_damage|tick_damage|damage_tick|sand_storm_damage/i;
 const TYPES = { DAMAGE_TYPE_MAGICAL: 2, DAMAGE_TYPE_PHYSICAL: 1, DAMAGE_TYPE_PURE: 4 };
 
@@ -161,7 +161,7 @@ function main() {
         ...rows.map(([n, r]) => `    ${n}: [${JSON.stringify(r.key)}, ${r.dot}, ${r.type}],`),
         '};',
         '',
-        '/** Per damaging ability Valve\'s estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. A multi-hit or over-time spell whose key is a per-hit or per-tick value is counted once. */',
+        '/** Per damaging ability Valve\'s estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. A multi-hit or over-time spell whose key is a per-hit or per-tick value is counted once. An unknown spell may be one Valve\'s estimate already counts, so it can be counted twice until coverage.js measures it (of the nukes measured so far the estimate counts about two in three). */',
         'export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damageType: number, status: "left_out" | "unknown"]> = {',
         ...added.map(([n, r, st]) => `    ${n}: [${JSON.stringify(r.key)}, ${r.dot}, ${r.type}, ${JSON.stringify(st)}],`),
         '};',
