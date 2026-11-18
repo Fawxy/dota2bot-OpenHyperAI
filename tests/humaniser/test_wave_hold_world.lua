@@ -208,9 +208,82 @@ do
 	check("swing 4 s: the attempt runs on (no line)", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
 	check("swing 4 s: no draw cuts into the swing", not A.Acting(w.bot))
 	check("swing 4 s: every read sets the hold point, none clears it", held >= 16 and cleared == 0, held .. " " .. cleared)
-	T = 404.5
+	-- Same clock as the last swing read, so this frame's Watch makes no new read: Act gives the want a swing read left.
 	w.step(false)
-	check("first free frame: the hold draw the read wants starts", A.Acting(w.bot), table.concat(w.lines, "\n"))
+	check("first free frame: Act gives the draw a swing read wanted", A.Acting(w.bot), table.concat(w.lines, "\n"))
+end
+
+-- Review: a want left by the last read before a hand-off is dropped, so the first laning frame back (Act before the next
+-- read) gives no draw on old facts.
+do
+	local w = world(true)
+	T = 450
+	local x, y = w.at(910)
+	w.bot.loc = Vector(x, y)
+	local cs = { w.creep(3, 1500), w.creep(3, 1520), w.creep(3, 1540) }
+	local hx, hy = w.at(1700)
+	MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
+	w.step(false)
+	for i, o in ipairs({ 1150, 1170, 1190 }) do
+		local cx, cy = w.at(o)
+		cs[i].loc = Vector(cx, cy)
+	end
+	T = 450.25
+	w.step(true)
+	T = 450.5
+	w.W.Watch(w.bot, false, false)
+	w.W.Act(w.bot)
+	check("stale want: no draw after a frame with no laning host", not require("bots/FunLib/humaniser/lane_aggro").Acting(w.bot))
+end
+
+-- The drag through Watch and Act (cost over budget with our next wave far: 3 creeps of 100 damage, T 130 on the bot lane).
+-- Watch only wants it; Act starts it and only then the branch is `drag`; with no enemy hero to order on it concedes `cr=drag`.
+local function dragWorld(t0, hero)
+	local w = world(true)
+	T = t0
+	local cs = {}
+	for i, o in ipairs({ 1500, 1520, 1540 }) do
+		cs[i] = w.creep(3, o)
+		cs[i].dmg = 100
+	end
+	-- Near their wave: lane_aggro's draw needs their creeps within its DrawR of the core.
+	local bx, by = w.at(1350)
+	w.bot.loc = Vector(bx, by)
+	if hero then
+		local hx, hy = w.at(1700)
+		MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
+	end
+	return w, cs
+end
+do
+	local w = dragWorld(130, false)
+	w.W.Watch(w.bot, true, false)
+	w.W.Tick(w.bot)
+	check("drag: Watch alone wants the drag and concedes nothing", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	w.W.Act(w.bot)
+	check("drag: no enemy hero to order on, Act concedes cr=drag", w.count("wave_hold", "res=concede") == 1 and w.count("wave_hold", "cr=drag") == 1, table.concat(w.lines, "\n"))
+end
+do
+	local w, cs = dragWorld(130, true)
+	w.step(false)
+	local A = require("bots/FunLib/humaniser/lane_aggro")
+	check("drag: with an enemy hero Act starts the draw", A.Acting(w.bot) and w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	for _, c in ipairs(cs) do
+		local x, y = w.at(5000)
+		c.loc = Vector(x, y)
+	end
+	T = 130.5
+	w.step(false)
+	check("drag: the attempt's branch is drag (sw=1) when it ends", w.count("wave_hold", "res=cleared") == 1 and w.count("wave_hold", "br=drag") == 1 and w.count("wave_hold", "sw=1") == 1, table.concat(w.lines, "\n"))
+end
+do
+	-- A drag wanted while the hold draw acts concedes, as before the split (StartBack refuses while a draw is open).
+	local w = dragWorld(130, true)
+	local A = require("bots/FunLib/humaniser/lane_aggro")
+	local px, py = w.at(1060)
+	check("drag while a draw acts: the hold draw started by hand", A.StartBack(w.bot, Vector(px, py), "hold"))
+	w.step(false)
+	check("drag while a draw acts: concedes cr=drag", w.count("wave_hold", "res=concede") == 1 and w.count("wave_hold", "cr=drag") == 1, table.concat(w.lines, "\n"))
 end
 
 -- The opposite case: another mode has the core (OHA's retreat) for LeftAfter: the attempt ends `left`, branch `retreat`.

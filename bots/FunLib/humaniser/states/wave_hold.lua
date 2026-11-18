@@ -998,6 +998,7 @@ function ____exports.Watch(bot, hosted, swing)
         attempts[pid] = a
     end
     if not hosted then
+        a.want = nil
         return
     end
     a.steppedAt = now
@@ -1217,11 +1218,8 @@ function ____exports.Act(bot)
     end
     local w = a.want
     a.want = nil
-    if LaneAggro.Acting(bot) then
-        return
-    end
     if w.kind == "hold" then
-        if LaneAggro.StartBack(bot, w.at, "hold") then
+        if not LaneAggro.Acting(bot) and LaneAggro.StartBack(bot, w.at, "hold") then
             a.hdr = a.hdr + 1
         end
         return

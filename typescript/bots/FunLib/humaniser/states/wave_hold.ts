@@ -709,7 +709,11 @@ export function Watch(bot: Unit, hosted: boolean, swing: boolean): void {
         attempts[pid] = a;
     }
     // With no laning host (another mode has the core, or the body is not running), Tick ends the attempt after LeftAfter.
-    if (!hosted) return;
+    // A draw wanted before the hand-off is stale on the way back: Act may run before the next read (review).
+    if (!hosted) {
+        a.want = undefined;
+        return;
+    }
     a.steppedAt = now;
     a.hpMin = math.min(a.hpMin, bot.GetHealth());
     if (!Owns(bot)) return finish(bot, a, "left", now);
@@ -815,11 +819,12 @@ export function Act(bot: Unit): void {
     if (a === undefined || a.want === undefined) return;
     const w = a.want;
     a.want = undefined;
-    if (LaneAggro.Acting(bot)) return;
     if (w.kind === "hold") {
-        if (LaneAggro.StartBack(bot, w.at, "hold")) a.hdr++;
+        if (!LaneAggro.Acting(bot) && LaneAggro.StartBack(bot, w.at, "hold")) a.hdr++;
         return;
     }
+    // A drag wanted while another draw acts (the hold draw) does not start, and concedes as before the split: StartBack
+    // refuses while a draw is open.
     if (!LaneAggro.StartBack(bot, w.at)) {
         a.cr = "drag";
         return finish(bot, a, "concede", DotaTime());
