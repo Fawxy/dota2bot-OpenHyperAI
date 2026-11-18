@@ -1914,7 +1914,8 @@ export const EVENTS = {
      * Ours.LaneHit (plan trade-from-the-stand step 3f, states/laning laneHit): the laning body's hero hit. `ph=go` each hit
      * decided, `ph=end` when its one attack fired or failed (`why` ok, or the attackAndConfirm reason: missed, no_target,
      * interrupted, dead; `dt` seconds from go), `ph=skip` with an enemy hero in range and no hit, once per change of `why`
-     * (states/lane_hit Answer: trade, retreat, pre, walk_in, due, idle, tower, aggro).
+     * (states/lane_hit Answer: trade, retreat, pre, walk_in, due, idle, tower, aggro; with Ours.LaneHitAggro `creeps` in place
+     * of aggro: `con` at the trade's creeps bar).
      */
     lane_hit: {
         pid: "num",
@@ -1933,6 +1934,8 @@ export const EVENTS = {
         /** core_trade AggroPlan's answer and the enemy lane creeps within its clear radius (550). */
         ag: "str",
         cr: "num",
+        /** Of those, the ones attacking us. */
+        con: "num",
         /** The kind of the creep attempt the body was waiting on, if any. */
         wait: "str",
         dt: "num",

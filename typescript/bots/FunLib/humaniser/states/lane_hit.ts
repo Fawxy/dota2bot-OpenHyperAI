@@ -29,9 +29,14 @@ export interface HitFacts {
     /** We stand inside an enemy tower's reach: a hit on a hero there draws the tower. */
     tower: boolean;
     aggro: Aggro;
+    /** Ours.LaneHitAggro (plan step 3 f round 2): the aggro plan is not asked; only creeps actually hitting us hold the hit. */
+    aggroFree: boolean;
+    /** Enemy lane creeps attacking us now, and the trade's `creeps` bar (core_trade MAX_CREEPS_ON_ME). */
+    creepsOnMe: number;
+    creepBar: number;
 }
 
-export type HitWhy = "trade" | "retreat" | "pre" | "walk_in" | "due" | "idle" | "tower" | "aggro" | "hit";
+export type HitWhy = "trade" | "retreat" | "pre" | "walk_in" | "due" | "idle" | "tower" | "aggro" | "creeps" | "hit";
 
 /**
  * Whether to hit the hero, and if not the first reason, in the order the lane's own picks rank above it: the running episodes,
@@ -47,6 +52,7 @@ export function Answer(this: void, f: HitFacts): HitWhy {
     if (f.due) return "due";
     if (f.idle) return "idle";
     if (f.tower) return "tower";
+    if (f.aggroFree) return f.creepsOnMe >= f.creepBar ? "creeps" : "hit";
     if (f.aggro === "step_out") return "aggro";
     return "hit";
 }

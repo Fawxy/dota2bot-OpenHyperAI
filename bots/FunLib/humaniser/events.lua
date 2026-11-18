@@ -1221,6 +1221,7 @@ ____exports.EVENTS = {
         dk = "str",
         ag = "str",
         cr = "num",
+        con = "num",
         wait = "str",
         dt = "num",
         msg = "str"

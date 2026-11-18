@@ -27,6 +27,9 @@ function ____exports.Answer(f)
     if f.tower then
         return "tower"
     end
+    if f.aggroFree then
+        return f.creepsOnMe >= f.creepBar and "creeps" or "hit"
+    end
     if f.aggro == "step_out" then
         return "aggro"
     end
@@ -44,26 +47,26 @@ function ____exports.Due(targets, mine, cycle)
     local first
     for ____, t in ipairs(targets) do
         do
-            local __continue13
+            local __continue14
             repeat
                 if mine ~= nil and not mine(t) then
-                    __continue13 = true
+                    __continue14 = true
                     break
                 end
                 if not LanePick.Reachable(t) then
-                    __continue13 = true
+                    __continue14 = true
                     break
                 end
                 if t.due >= cycle + t.walk then
-                    __continue13 = true
+                    __continue14 = true
                     break
                 end
                 if first == nil or t.due < first.due then
                     first = t
                 end
-                __continue13 = true
+                __continue14 = true
             until true
-            if not __continue13 then
+            if not __continue14 then
                 break
             end
         end

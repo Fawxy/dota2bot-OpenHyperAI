@@ -108,6 +108,8 @@ ____exports.DEFAULTS = {
     TradeLands = false,
     JoinOnHit = false,
     LaneHit = false,
+    LaneHitAggro = false,
+    TradeNoStep = false,
     LaneYield = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).

@@ -1772,8 +1772,9 @@ export function Think(bot: Unit): void {
         if (c.GetAttackTarget() === bot) onMe++;
     }
     ep.aggro = math.max(ep.aggro, onMe);
-    // A kill window or a fight commits: it attacks whatever the creeps do.
-    const commits = ep.kind !== "trade";
+    // A kill window or a fight commits: it attacks whatever the creeps do. Plan step 3a (Ours.TradeNoStep): so does a trade;
+    // Decide's `creeps` bar (two creeps hitting us) still ends it, as the `wave` bar does.
+    const commits = ep.kind !== "trade" || Ours.On("TradeNoStep");
     const plan = commits ? "attack" : AggroPlan(now, primedAt[pid], creeps.length);
     if (plan === "step_out") {
         if (ep.stepSince === undefined) {
@@ -1895,4 +1896,5 @@ Laning.SetTradeReaders({
     primedAt: (pid) => PrimedAt(pid),
     notePrimed: (pid, t) => NotePrimed(pid, t),
     plan: (now, at, creeps) => AggroPlan(now, at, creeps),
+    creepBar: MAX_CREEPS_ON_ME,
 });

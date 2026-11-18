@@ -983,7 +983,7 @@ A core's pre-hit on an enemy creep our tower is attacking (states/pre_hit): one 
 
 ## lane_hit
 
-Ours.LaneHit (plan trade-from-the-stand step 3f, states/laning laneHit): the laning body's hero hit. `ph=go` each hit decided, `ph=end` when its one attack fired or failed (`why` ok, or the attackAndConfirm reason: missed, no_target, interrupted, dead; `dt` seconds from go), `ph=skip` with an enemy hero in range and no hit, once per change of `why` (states/lane_hit Answer: trade, retreat, pre, walk_in, due, idle, tower, aggro).
+Ours.LaneHit (plan trade-from-the-stand step 3f, states/laning laneHit): the laning body's hero hit. `ph=go` each hit decided, `ph=end` when its one attack fired or failed (`why` ok, or the attackAndConfirm reason: missed, no_target, interrupted, dead; `dt` seconds from go), `ph=skip` with an enemy hero in range and no hit, once per change of `why` (states/lane_hit Answer: trade, retreat, pre, walk_in, due, idle, tower, aggro; with Ours.LaneHitAggro `creeps` in place of aggro: `con` at the trade's creeps bar).
 
 `pid` num, `ph` str, `why` str, `d` num, `dk` str, `cr` num, `dt` num, `msg` str
 
@@ -992,6 +992,7 @@ Ours.LaneHit (plan trade-from-the-stand step 3f, states/laning laneHit): the lan
 - `cyc` num: Seconds until our next swing could start after a hit now (lane_hit Cycle).
 - `due` num: The earliest due last hit or deny within the cycle (its `due` s, its kind), when one blocks the hit.
 - `ag` str: core_trade AggroPlan's answer and the enemy lane creeps within its clear radius (550).
+- `con` num: Of those, the ones attacking us.
 - `wait` str: The kind of the creep attempt the body was waiting on, if any.
 
 ## lane_yield

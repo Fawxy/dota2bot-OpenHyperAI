@@ -28,7 +28,8 @@ end
 
 -- The pick order: everything the lane holds comes first; the hit's own costs (their tower, creep aggro) are read last.
 do
-	local clear = { trade = false, leaving = false, pre = false, walkIn = false, due = false, idle = false, tower = false, aggro = "prime" }
+	local clear = { trade = false, leaving = false, pre = false, walkIn = false, due = false, idle = false, tower = false, aggro = "prime",
+		aggroFree = false, creepsOnMe = 0, creepBar = 2 }
 	local function with(k, v)
 		local f = {}
 		for a, b in pairs(clear) do f[a] = b end
@@ -40,6 +41,14 @@ do
 	check("answer: the idle swing outranks the hero hit", Hit.Answer(with("idle", true)) == "idle")
 	check("answer: a hit that would draw the creeps waits", Hit.Answer(with("aggro", "step_out")) == "aggro")
 	check("answer: inside the aggro cooldown the hero is hit", Hit.Answer(with("aggro", "attack")) == "hit")
+	-- Round 2 (Ours.LaneHitAggro): creeps that would be drawn no longer hold the hit; two already hitting us do, as for a trade.
+	local free = with("aggroFree", true)
+	free.aggro = "step_out"
+	check("aggro-free: a hit that would draw the creeps goes ahead", Hit.Answer(free) == "hit")
+	free.creepsOnMe = 2
+	check("aggro-free: two creeps hitting us hold the hit", Hit.Answer(free) == "creeps")
+	free.due = true
+	check("aggro-free: a due creep still comes first", Hit.Answer(free) == "due")
 	local busy = with("trade", true)
 	busy.due = true
 	check("answer: an open trade episode keeps the hero, whatever is due", Hit.Answer(busy) == "trade")

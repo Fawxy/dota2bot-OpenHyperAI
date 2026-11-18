@@ -207,6 +207,12 @@ export const DEFAULTS = {
      *  hit's attack cycle ends, the idle swing first, not under their tower, AggroPlan not `step_out`): one attack, then the next
      *  scan. Off: the body hits no hero. */
     LaneHit: false,
+    /** Plan trade-from-the-stand probe 3f round 2: with LaneHit on, the hero hit does not ask the trade's aggro plan; it is held
+     *  only while enemy lane creeps at the trade's `creeps` bar (two) are attacking us. Off: LaneHit waits out `step_out`. */
+    LaneHitAggro: false,
+    /** Plan trade-from-the-stand probe 3a: with CoreTrade on, a trade attacks at once as a kill does (no step out, no prime from
+     *  clear ground); Decide's `creeps` bar (two creeps hitting us) and `wave` bar still end it. Off: the aggro-free plan. */
+    TradeNoStep: false,
     /** Plan trade-from-the-stand probe 3g: with nothing of the lane due (states/laning YieldLevel), that core's laning desire is
      *  lane_hit YIELD_DESIRE (0.52), under the 0.9 last-hit bid and the arbiter's lane floor, so an attack mode can take the hero,
      *  and the 0.9 goes by our own read (a creep the pick would take), not the mode file's 800-radius one.

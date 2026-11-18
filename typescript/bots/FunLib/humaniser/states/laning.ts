@@ -416,6 +416,8 @@ export interface TradeReaders {
     primedAt: (this: void, pid: number) => number | undefined;
     notePrimed: (this: void, pid: number, t: number) => void;
     plan: (this: void, now: number, primedAt: number | undefined, creepsWithinClear: number) => LaneHit.Aggro;
+    /** Decide's `creeps` bar: this many enemy lane creeps attacking us end a trade (MAX_CREEPS_ON_ME). */
+    creepBar: number;
 }
 let trade: TradeReaders | undefined;
 
@@ -501,7 +503,12 @@ function laneHit(
     const offers = verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: cycle, radius: Contest.Applies(bot) ? Contest.RADIUS : undefined });
     const blocking = LaneHit.Due(offers, mine, cycle);
     let creeps = 0;
-    for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) if (!c.IsNull() && c.IsAlive()) creeps++;
+    let onMe = 0;
+    for (const c of bot.GetNearbyLaneCreeps(AGGRO_CLEAR, true)) {
+        if (c.IsNull() || !c.IsAlive()) continue;
+        creeps++;
+        if (c.GetAttackTarget() === bot) onMe++;
+    }
     const primedAt = trade?.primedAt(pid);
     const plan = trade !== undefined ? trade.plan(now, primedAt, creeps) : "step_out";
     const walkIn =
@@ -516,6 +523,9 @@ function laneHit(
         idle: idlePicks[pid] !== undefined,
         tower: underTheirTower(bot),
         aggro: plan,
+        aggroFree: Ours.On("LaneHitAggro"),
+        creepsOnMe: onMe,
+        creepBar: trade?.creepBar ?? 2,
     });
     const facts: Telemetry.Fields<"lane_hit"> = [
         ["cyc", math.floor(cycle * 100) / 100],
@@ -523,6 +533,7 @@ function laneHit(
         ["dk", blocking?.kind],
         ["ag", plan],
         ["cr", creeps],
+        ["con", onMe],
         ["wait", current !== undefined ? current.kind : undefined],
     ];
     if (why !== "hit") {
@@ -531,8 +542,9 @@ function laneHit(
         return undefined;
     }
     lastHitWhy[pid] = why;
-    // A fresh order with no creep near starts the aggro cooldown the trade and lane_aggro's draw share; one inside it does not.
-    if (plan === "prime") trade?.notePrimed(pid, now);
+    // A fresh order starts the aggro cooldown the trade and lane_aggro's draw share (with LaneHitAggro also one beside creeps,
+    // as a kill's order does); one inside the cooldown does not.
+    if (plan !== "attack") trade?.notePrimed(pid, now);
     heroHits[pid] = { hero, t: now };
     laneHitEvent(bot, "go", why, hero, facts);
     return { creep: hero as unknown as Lib.TaskCreep, kind: "prehit", eta: 0, due: 0, walk: 0, dies: math.huge, ranged: false };
