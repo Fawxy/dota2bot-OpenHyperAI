@@ -1094,19 +1094,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue234
+            local __continue235
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue234 = true
+                    __continue235 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue234 = true
+                __continue235 = true
             until true
-            if not __continue234 then
+            if not __continue235 then
                 break
             end
         end
@@ -1770,10 +1770,17 @@ function ____exports.EpisodeOf(pid)
     if ep == nil or ep.ended == true then
         ____temp_30 = nil
     else
-        ____temp_30 = {kind = ep.kind, tpid = ep.tpid, target = ep.target}
+        ____temp_30 = {kind = ep.kind, tpid = ep.tpid, target = ep.target, at = ep.offeredAt}
     end
     return ____temp_30
 end
+PairJoin.SetReaders({
+    episodeOf = ____exports.EpisodeOf,
+    refusal = function(bot, target) return ____exports.FightRefusal(
+        ____exports.Gather(bot, target),
+        killHpFor(bot)
+    ) end
+})
 --- A pair join (D10) is open for this hero: the arbiter's pair group (2). Reads only.
 function ____exports.Joining(bot)
     local ep = episodes[bot:GetPlayerID()]
@@ -1804,19 +1811,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue224
+            local __continue225
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue224 = true
+                    __continue225 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue224 = true
+                __continue225 = true
             until true
-            if not __continue224 then
+            if not __continue225 then
                 break
             end
         end

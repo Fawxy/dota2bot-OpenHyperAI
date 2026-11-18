@@ -1367,7 +1367,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num
+`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (CoreTrade.Decide; `dec`).
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
@@ -1403,8 +1403,8 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
 - `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP.
 - `kt` num: kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP.
-- `on` str: kind=join (slice join-hits): what made the record: `hit` (an ally hit by a hero, `al` that ally) or `ours` (no ally hit; an ally other than the bot attacking an enemy hero, `al` that ally and `fo` its target). Logged whether or not `Ours.JoinOnHit` acts on an `ours` record.
-- `fo` num: kind=join, on=ours: the enemy hero the ally attacks; `tgt` and `ko` are on it.
+- `on` str: kind=join (slice join-hits): what made the record: `hit` (an ally hit by a hero, `al` that ally) or `ours` (no ally hit; an ally other than the bot, not retreating, with a CoreTrade episode of kind trade, kill or fight open on a seen enemy hero: `al` that ally, `fo` the hero). Logged whether or not `Ours.JoinOnHit` acts on an `ours` record. An `ours` cut is also logged when `aa` changes.
+- `fo` num: kind=join, on=ours: the enemy hero the ally's episode is on; `tgt` and `ko` are on it. With it: `ek` the ally's episode kind (`trade`, `kill`, `fight`), `oa` seconds since that episode was offered, `aa` whether the ally's GetAttackTarget names the hero (1/0), and `free`, whether the bot could act on a join: `yes`, or what holds it (`ret` its retreat, `play` a play it is in, or CoreTrade.FightRefusal on the hero: `tower`, `outnumbered`, `burst`).
 - `hp` num: kind=trade (core_trade.ts, D18/D19): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running, every CoreTrade TRADE_CUT_EVERY s while the answer changes, else every TRADE_CUT_KEEP s, to 12:00. `tgt` the target, `role` core or support; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`) or `gap` (a trade the HP gap a lost trade left holds; with `Ours.TradeFree` `unfavoured`, neither free nor favoured, or `deny`, a due deny outbids it, and `gap` no longer decides). The bot's and the target's HP share.
 - `en` num: kind=trade: enemy heroes in sight, and our heroes (the bot included, at least 1), within 1,200 of the bot.
 - `cr` num: kind=trade: enemy lane creeps within 500 of the bot, and those attacking it (plus 2 per enemy tower attacking it).

@@ -56,12 +56,23 @@ local function __TS__StringSubstring(self, start, ____end)
     end
     return string.sub(self, start, ____end)
 end
+
+local function __TS__ArrayPush(self, ...)
+    local items = {...}
+    local len = #self
+    for i = 1, #items do
+        len = len + 1
+        self[len] = items[i]
+    end
+    return len
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local live, dist, member, weigh, heroOf
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
@@ -163,7 +174,7 @@ local function best(from, on, dmg)
     return tgt, share
 end
 --- The rule: outnumbered stays out; else join when our best kill share beats theirs (on `focus` when the record has one: the
--- hero our ally is already hitting). Ours in retreat (`ret` 1) are leaving: they count on neither side.
+-- hero our ally's fight is on). Ours in retreat (`ret` 1) are leaving: they count on neither side.
 function ____exports.Decide(rec)
     local ours = __TS__ArrayFilter(
         rec.ours,
@@ -180,26 +191,31 @@ function ____exports.Decide(rec)
     end
     return {dec = ko > kt and "join" or "losing", tgt = tgt, ko = ko, kt = kt}
 end
+local readers
+function ____exports.SetReaders(r)
+    readers = r
+end
+local OPENS = {trade = true, kill = true, fight = true}
 --- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
 -- or fewer than two of ours not retreating stand within OursRange of the hit ally (a hero alone is D1's and D24's, not a
 -- pair's; review of pair-join-on: a partner in retreat left a lone hero weighed 1v1, which could join). The hit ally is
 -- the one at the lowest HP share.
 function ____exports.Gather(bot)
     local ally
-    local hitter
-    local focus
+    local opener
+    local opened
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue17
+            local __continue18
             repeat
                 if not live(a) then
-                    __continue17 = true
+                    __continue18 = true
                     break
                 end
                 allies[#allies + 1] = a
                 if dist(a, bot) > ____exports.SETTINGS.AllyRange then
-                    __continue17 = true
+                    __continue18 = true
                     break
                 end
                 local share = a:GetHealth() / a:GetMaxHealth()
@@ -207,31 +223,31 @@ function ____exports.Gather(bot)
                     if ally == nil or share < ally:GetHealth() / ally:GetMaxHealth() then
                         ally = a
                     end
-                    __continue17 = true
+                    __continue18 = true
                     break
                 end
-                if a == bot or RetreatState.Running(a) then
-                    __continue17 = true
+                if a == bot or readers == nil or RetreatState.Running(a) then
+                    __continue18 = true
                     break
                 end
-                local t = a:GetAttackTarget()
-                if t == nil or t == nil or t:IsNull() or not t:IsHero() or t:GetTeam() == a:GetTeam() or not live(t) or not t:CanBeSeen() then
-                    __continue17 = true
+                local ep = readers.episodeOf(a:GetPlayerID())
+                if ep == nil or OPENS[ep.kind] ~= true or not live(ep.target) or not ep.target:CanBeSeen() then
+                    __continue18 = true
                     break
                 end
-                if hitter == nil or share < hitter:GetHealth() / hitter:GetMaxHealth() then
-                    hitter = a
-                    focus = t
+                if opener == nil or share < opener:GetHealth() / opener:GetMaxHealth() then
+                    opener = a
+                    opened = ep
                 end
-                __continue17 = true
+                __continue18 = true
             until true
-            if not __continue17 then
+            if not __continue18 then
                 break
             end
         end
     end
     local on = ally ~= nil and "hit" or "ours"
-    ally = ally or hitter
+    ally = ally or opener
     if ally == nil then
         return nil
     end
@@ -251,14 +267,19 @@ function ____exports.Gather(bot)
     end
     rec.on = on
     if on == "ours" then
-        local fpid = focus:GetPlayerID()
+        local ep = opened
         if not __TS__ArraySome(
             rec.theirs,
-            function(____, m) return m.pid == fpid end
+            function(____, m) return m.pid == ep.tpid end
         ) then
             return nil
         end
-        rec.focus = fpid
+        rec.focus = ep.tpid
+        rec.open = {
+            kind = ep.kind,
+            age = DotaTime() - ep.at,
+            attacking = ally:GetAttackTarget() == ep.target
+        }
     end
     return rec
 end
@@ -283,7 +304,7 @@ function ____exports.For(bot)
     st.rec = ____temp_3
     st.ans = st.rec ~= nil and ____exports.Decide(st.rec) or nil
     local ____opt_4 = st.rec
-    if (____opt_4 and ____opt_4.on) == "ours" and not Ours.On("JoinOnHit") then
+    if (____opt_4 and ____opt_4.on) == "ours" and (not Ours.On("JoinOnHit") or Plays.Of(bot) ~= nil) then
         return {rec = st.rec, ans = st.ans, fresh = true}
     end
     local ____opt_6 = st.ans
@@ -498,6 +519,23 @@ local function tickAfter(bot, now)
         flush(pid, "full")
     end
 end
+--- Whether `bot` could act on a join on `focus` (the cut's `free`): `yes`, or what holds it: its retreat, a play, CoreTrade's FightRefusal.
+local function freeOf(bot, focus)
+    if RetreatState.Running(bot) then
+        return "ret"
+    end
+    if Plays.Of(bot) ~= nil then
+        return "play"
+    end
+    local t = heroOf(focus)
+    local ____temp_14
+    if t ~= nil then
+        ____temp_14 = readers and readers.refusal(bot, t)
+    else
+        ____temp_14 = nil
+    end
+    return ____temp_14 or "yes"
+end
 --- Per frame (index Tick): on each fresh decision in the laning stage, its cut; the join-after watch. Reads only.
 function ____exports.Tick(bot)
     if Telemetry.IsEnabled() then
@@ -514,10 +552,10 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____exports_For_result_12 = ____exports.For(bot)
-    local rec = ____exports_For_result_12.rec
-    local a = ____exports_For_result_12.ans
-    local fresh = ____exports_For_result_12.fresh
+    local ____exports_For_result_15 = ____exports.For(bot)
+    local rec = ____exports_For_result_15.rec
+    local a = ____exports_For_result_15.ans
+    local fresh = ____exports_For_result_15.fresh
     if not fresh then
         return
     end
@@ -526,10 +564,13 @@ function ____exports.Tick(bot)
         st.dec = nil
         return
     end
-    if a.dec == st.dec and now - (st.cutAt or -math.huge) < ____exports.SETTINGS.CutEvery then
+    local ____opt_16 = rec.open
+    local att = ____opt_16 and ____opt_16.attacking
+    if a.dec == st.dec and att == st.att and now - (st.cutAt or -math.huge) < ____exports.SETTINGS.CutEvery then
         return
     end
     st.dec = a.dec
+    st.att = att
     st.cutAt = now
     local fields = {
         {"pid", pid},
@@ -559,8 +600,21 @@ function ____exports.Tick(bot)
         },
         {"on", rec.on or "hit"}
     }
-    if rec.focus ~= nil then
-        fields[#fields + 1] = {"fo", rec.focus}
+    if rec.focus ~= nil and rec.open ~= nil then
+        __TS__ArrayPush(
+            fields,
+            {"fo", rec.focus},
+            {"ek", rec.open.kind},
+            {
+                "oa",
+                math.floor(rec.open.age * 10 + 0.5) / 10
+            },
+            {"aa", rec.open.attacking and 1 or 0},
+            {
+                "free",
+                freeOf(bot, rec.focus)
+            }
+        )
     end
     Telemetry.Event("cut", fields)
 end
