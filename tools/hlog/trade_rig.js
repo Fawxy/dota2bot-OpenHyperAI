@@ -13,6 +13,11 @@
 //   hpc, hph   HP the cast lost during the trade (open to end) to enemy lane creeps and to the target's attacks: the sum of
 //              the `dmg` on its `ph=chit` and `ph=hhit` lines (each attack's mean damage after armour, counted when fired);
 //              hpo the rest of `hpd` (spells, a tower, less regen; can be negative)
+//   sf         the episode began with a step-out before any attack order: the trade's `fa` = step (logs before `fa`: so > 0
+//              and pr = 0 is 1, pr > 0 with so = 0 is 0, both unknown)
+//   ulh, udn   last hits and denies that went untaken during the trade: enemy lane creeps (`ev=creep_death`) and our own
+//              (`ev=own_creep_death`, logged at 50% HP or under) that died from open to end within the cast's attack range +
+//              REACH_SLACK of it, not credited to it (`by`); the cast's place is its nearest snapshot
 //   why, dur   how and when the trade ended (`creeps`: two creeps hitting us); so the step-outs
 // A trade opening within WINDOW s of its rep's end is cut by the next rep's setup (the cast is held again): listed `late`, left
 // out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
@@ -27,11 +32,42 @@ const { Store, DB, LOGS, JOBS } = require('./store');
 const DRILL = fs.readFileSync(path.join(__dirname, 'queries', 'drill.sql'), 'utf8');
 const NAME = 'lane-trade';
 const WINDOW = 5;
+/** Two hulls (hero 24, creep 16) and a little: a creep at this past attack range is still in reach. `judgement`. */
+const REACH_SLACK = 50;
 
-const TRADES = `SELECT t, kind, result, why, dur, hpd, thpd, ld, pr, so, ag, tgt FROM ev_trade
+const TRADES = `-- ensure: ev_trade(fa)
+SELECT t, kind, result, why, dur, hpd, thpd, ld, pr, so, ag, tgt, fa FROM ev_trade
     WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
 const LINES = `SELECT t, ph, tpid, dmg FROM ev_drill WHERE game_id = :g AND pid = :p AND ph IN ('atk', 'chit', 'hhit') AND t >= :a AND t <= :b ORDER BY t`;
-const SNAPS = `SELECT t, hv FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
+const SNAPS = `SELECT t, hv, x, y, ar FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
+const deaths = (tbl) => `-- ensure: ${tbl}(team, x, y, by)
+SELECT t, x, y, by FROM ${tbl} WHERE game_id = :g AND team = :team AND t >= :a AND t <= :b ORDER BY t`;
+const LH_DEATHS = deaths('ev_creep_death');
+const DN_DEATHS = deaths('ev_own_creep_death');
+
+/** The snapshot nearest `t`. */
+function nearest(snaps, t) {
+    let best = null;
+    for (const s of snaps) if (best == null || Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
+    return best;
+}
+
+/** Creep deaths in `rows` not credited to `pid` within the cast's attack range + REACH_SLACK of it (its nearest snapshot). */
+function untaken(rows, snaps, pid) {
+    return rows.filter((d) => {
+        if (String(d.by) === String(pid) || d.x == null) return false;
+        const s = nearest(snaps, d.t);
+        return s != null && s.x != null && s.ar != null && Math.hypot(s.x - d.x, s.y - d.y) <= s.ar + REACH_SLACK;
+    }).length;
+}
+
+/** Began with a step-out: the trade's `fa`, else what `so` and `pr` alone say. */
+function stepFirst(x) {
+    if (x.fa != null) return x.fa === 'step' ? 1 : 0;
+    if ((x.so ?? 0) > 0 && (x.pr ?? 0) === 0) return 1;
+    if ((x.so ?? 0) === 0 && (x.pr ?? 0) > 0) return 0;
+    return null;
+}
 const HERO = `SELECT hero FROM ev_bot WHERE game_id = :g AND pid = :p AND hero IS NOT NULL LIMIT 1`;
 
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
@@ -84,6 +120,9 @@ function reps(store, like) {
                 first: in5.length ? round1(in5[0].t - x.open) : null,
                 a5: in5.length,
                 hpd: x.hpd, thpd: x.thpd, hpc, hph, hpo: (x.hpd ?? 0) - hpc - hph,
+                sf: stepFirst(x),
+                ulh: untaken(store.query(LH_DEATHS, { g: r.game_id, team: r.team, a: x.open, b: x.t }), own, r.pid),
+                udn: untaken(store.query(DN_DEATHS, { g: r.game_id, team: r.team, a: x.open, b: x.t }), own, r.pid),
                 hp5: lost(own, x.open, x.open + WINDOW), thp5: lost(tsnaps, x.open, x.open + WINDOW),
                 ch5: lines.filter((l) => l.ph === 'chit' && l.t >= x.open && l.t <= x.open + WINDOW).length,
                 ag: x.ag, why: x.why, dur: x.dur,
@@ -123,6 +162,10 @@ function summary({ trades, reps: rs }) {
         s.ch5 = mean(ts.map((t) => t.ch5));
         const sum = (f) => ts.reduce((a, t) => a + (t[f] ?? 0), 0);
         s.split = { creeps: sum('hpc'), hero: sum('hph'), other: sum('hpo'), creepsPer: mean(ts.map((t) => t.hpc)), heroPer: mean(ts.map((t) => t.hph)) };
+        const known = ts.filter((t) => t.sf != null);
+        s.stepFirst = `${known.filter((t) => t.sf === 1).length} of ${known.length}`;
+        s.ulh = sum('ulh');
+        s.udn = sum('udn');
         s.why = {};
         for (const t of ts) s.why[t.why] = (s.why[t.why] ?? 0) + 1;
         s.creepsEnd = ts.length ? Math.round((100 * (s.why.creeps ?? 0)) / ts.length) : null;
@@ -151,7 +194,7 @@ if (require.main === module) {
         console.log(`lane-trade: ${all.reps.length} ready reps, ${all.trades.length} taken trades; graded within ${WINDOW} s of the open (late: opened within ${WINDOW} s of the rep's end)`);
         for (const [k, s] of Object.entries(summary(all))) {
             const why = Object.entries(s.why ?? {}).map(([w, n]) => `${w} ${n}`).join(', ');
-            console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  lost to creeps/hero/other ${s.split ? `${s.split.creeps}/${s.split.hero}/${s.split.other}` : '-'}  creeps end ${s.creepsEnd ?? '-'}%  ends: ${why}`);
+            console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  lost to creeps/hero/other ${s.split ? `${s.split.creeps}/${s.split.hero}/${s.split.other}` : '-'}  creeps end ${s.creepsEnd ?? '-'}%  step first ${s.stepFirst ?? '-'}  untaken lh/dn ${s.ulh ?? '-'}/${s.udn ?? '-'}  ends: ${why}`);
         }
     }
 }

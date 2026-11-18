@@ -112,6 +112,7 @@ do
 	T = 211
 	check("a trade the core is losing by more than 5% of its HP ends", CoreTrade.Desire(bot) == 0)
 	check("the end line names it and carries HP traded both ways", last():find("result=done") and last():find("why=losing") and last():find("hpd=22") and last():find("thpd=6"))
+	check("with no creep near, the episode's first act is the attack order (fa=order)", last():find("fa=order") ~= nil, last())
 	-- The trade began at a gap of +0.10 (80 against 70); now 58 against 64 is -0.06.
 	T = 230
 	check("after a lost trade no new one opens while the core is behind its starting HP gap", CoreTrade.Desire(bot) == 0)
@@ -286,7 +287,7 @@ do
 	T = 406
 	CoreTrade.Desire(bot)
 	check("a step out that never clears ends the trade, which logs its primes, step outs and peak aggro",
-		last():find("why=no_clear") and last():find("pr=1") and last():find("so=2") and last():find("ag=1"), last())
+		last():find("why=no_clear") and last():find("pr=1") and last():find("so=2") and last():find("ag=1") and last():find("fa=step"), last())
 	creeps = {}
 end
 

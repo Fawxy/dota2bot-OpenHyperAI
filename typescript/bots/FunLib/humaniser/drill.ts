@@ -534,7 +534,7 @@ export const TABLE: Record<string, Entry> = {
     // the Dire pos3 (seed 30: Sniper, ranged, against Zeus; Luna against Sand King. Seed 8: Sven, melee, against Bristleback;
     // Lion against Oracle. The lineups hold no melee Radiant mid, so the melee core lanes in its own lane). Facts a trade reads,
     // each forced or checked: one enemy hero near and none of ours (benched; `near`, `foesAtMost`, `alliesAtMost`); both at full
-    // HP each rep (recipe: rig_hp_all 1 s before each rep; `hpAtLeast`); the cast in its lane (setup `front`, its
+    // HP each rep (recipe: rig_hp_all about 5 s before each rep; `hpAtLeast`); the cast in its lane (setup `front`, its
     // last-hit place behind its own creeps; released into laning, attack and retreat as in games, OHA's ability use too, so step
     // 3d can read OHA's casts at the target). The enemy hero by rep kind: `stand` holds its last-hit place; `lasthit` walks up to
     // each of our lane creeps near it that its next hits kill, swings and walks back; `hitback`, as lasthit, and attacks the

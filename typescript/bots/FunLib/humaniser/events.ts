@@ -1993,6 +1993,9 @@ export const EVENTS = {
         pr: "num",
         so: "num",
         ag: "num",
+        /** The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order
+         *  first); absent when Think never acted (the target unseen, or not taken). */
+        fa: "str",
         /** The bot's active mode at the end, and its desire. */
         mode: "num",
         md: "num",

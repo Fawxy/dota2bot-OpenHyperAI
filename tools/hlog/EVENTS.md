@@ -1008,6 +1008,7 @@ One per in-lane trade window (states/core_trade): taken (`done`, `kill`) or offe
 - `ld` num: Slice trade-landed: seconds from the start to the bot's first hit on the target (an attack fired at it, by GetLastAttackTime); absent when none did.
 - `hp` num: Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500.
 - `pr` num: Aggro-free attacks (EC-053): attack orders given clear of creeps, steps out of them, most enemy creeps on the core at once.
+- `fa` str: The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order first); absent when Think never acted (the target unseen, or not taken).
 - `mode` num: The bot's active mode at the end, and its desire.
 
 ## job_exec
