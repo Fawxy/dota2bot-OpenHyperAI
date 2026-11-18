@@ -8,7 +8,7 @@
  * always wins the frame. Inputs follow EC-045 (creeps in the area, no fighting in a big enemy wave or under their tower)
  * and EC-053 (lane creeps acquire a hero attacker within about 500); every threshold is `judgement`.
  */
-import { BotMode, DamageType, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -120,11 +120,13 @@ const LOSING_BY = 0.05;
 const UNLANDED_CAP = 0.15;
 /**
  * Slice kill-chase (kill-chances step 3b, D19): a running kill is kept while CatchRead says the damage we and the allies on
- * the target can deal within CATCH_WINDOW, after closing to attack or cast range, reaches its HP. The window is how long
- * landed lane kills take, fitted, not an end clock: h2hoha3 (OHA against OHA, 276 kills before 12:00), seconds from the
- * victim's first snapshot at 40% HP or less to its death, 80th percentile 5.7 (median 2.9; OHA against us 4.4, ours 5.1).
+ * the target can deal before it reaches safety, after closing to attack or cast range, reaches its HP. Safety is its own
+ * tower's reach at its speed towards that tower (safeTime); a target not heading there has none in sight, and the horizon
+ * is this cap. A fitted fixed window (5.7 s, h2hoha3 kills from 40% HP to death, 80th percentile) ended 94 of 124 kills in
+ * the smoke game within 0.3 s while seen: one hero's attacks (30 to 40 a second) do not take a laner's 40% (240 to 290 HP)
+ * in it, and the kills it was fitted on had several heroes hitting.
  */
-export const CATCH_WINDOW = 5.7;
+export const CATCH_WINDOW = 30;
 /**
  * A kill has no time limit; this logged backstop (`backstop`) only stops a read that never ends (T1's rule, user
  * 18/11/2026: a time limit is a logged backstop only). `judgement`: about five landed kills' length.
@@ -1196,6 +1198,8 @@ export interface KeepInputs {
     threat?: boolean;
     /** A join on a seen target at the kill bar that Decide calls `kill`: it becomes the kill. */
     killUp?: boolean;
+    /** Seconds until the target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there). */
+    safe?: number;
 }
 
 /** Why a running kill or join ends now, or undefined to keep it: keepWhy's answer for those kinds, pure over its inputs. */
@@ -1236,8 +1240,37 @@ export function KeepAnswer(k: KeepInputs): string | undefined {
         if (k.uout === true) return "outnumbered";
         if (k.threat === true) return "threat";
     }
-    if (k.hunters !== undefined && k.thpAbs !== undefined && !CatchRead(k.hunters, k.thpAbs).ok) return "cannot_catch";
+    if (k.hunters !== undefined && k.thpAbs !== undefined && !CatchRead(k.hunters, k.thpAbs, k.safe).ok) return "cannot_catch";
     return undefined;
+}
+
+const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
+
+/**
+ * Seconds until the target at `place` is inside its own nearest standing tower's reach, at its speed towards that tower
+ * (its seen velocity; unseen and never seen moving, its last read speed straight there). CATCH_WINDOW when it is not
+ * heading there: no safety in sight.
+ */
+function safeTime(bot: Unit, ep: Episode, place: Vector): number {
+    const theirs = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+    let best: Vector | undefined;
+    let bestD = math.huge;
+    for (const id of TOWER_IDS) {
+        const t = GetTower(theirs, id);
+        if (t === undefined || t === null || !t.IsAlive()) continue;
+        const d = distXY(t.GetLocation(), place);
+        if (d < bestD) {
+            bestD = d;
+            best = t.GetLocation();
+        }
+    }
+    if (best === undefined) return CATCH_WINDOW;
+    const left = bestD - LaneConfig.TowerReach();
+    if (left <= 0) return 0;
+    let v: number;
+    if (ep.tvx === undefined) v = Threat.SeenSpeed(ep.tpid) ?? Threat.SETTINGS.MissingSpeed;
+    else v = (ep.tvx * (best.x - place.x) + (ep.tvy ?? 0) * (best.y - place.y)) / math.max(1, bestD);
+    return v > 0 ? math.min(CATCH_WINDOW, left / v) : CATCH_WINDOW;
 }
 
 /** A unit's attack damage per second before armour (GetSecondsPerAttack is on every hero handle). */
@@ -1389,6 +1422,7 @@ function keepKill(bot: Unit, ep: Episode, now: number, join: Unit | undefined): 
             }
             k.hunters = huntersOf(bot, ep, place, seen);
             k.thpAbs = seen ? ep.target.GetHealth() : ep.thpSeen;
+            k.safe = safeTime(bot, ep, place);
         } else if (!seen) {
             // No sighting to chase towards.
             k.at = true;
@@ -1439,7 +1473,7 @@ function keepCut(bot: Unit, ep: Episode, k: KeepInputs, why: string | undefined,
     const g = k.g;
     const info = !k.seen && k.alive ? GetHeroLastSeenInfo(ep.tpid)[0] : undefined;
     const d = k.alive ? chaseDistance(bot, ep, k.seen) : undefined;
-    const c = k.hunters !== undefined && k.thpAbs !== undefined ? CatchRead(k.hunters, k.thpAbs) : undefined;
+    const c = k.hunters !== undefined && k.thpAbs !== undefined ? CatchRead(k.hunters, k.thpAbs, k.safe) : undefined;
     Telemetry.Event("cut", [
         ["pid", pid],
         ["kind", "keep"],
@@ -1476,6 +1510,7 @@ function keepCut(bot: Unit, ep: Episode, k: KeepInputs, why: string | undefined,
         ["cth", k.thpAbs !== undefined ? math.floor(k.thpAbs + 0.5) : undefined],
         ["cdm", c !== undefined ? math.floor(c.dmg + 0.5) : undefined],
         ["cft", c !== undefined ? (c.first === math.huge ? -1 : round6(c.first)) : undefined],
+        ["csf", k.safe !== undefined ? round6(k.safe) : undefined],
         ["uat", bit(k.at)],
         ["utw", bit(k.utower)],
         ["uou", bit(k.uout)],

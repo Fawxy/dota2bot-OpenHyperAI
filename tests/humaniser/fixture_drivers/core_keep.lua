@@ -54,6 +54,7 @@ return function(fx)
 			table.insert(k.hunters, { d = tonumber(f[1]), reach = tonumber(f[2]), close = tonumber(f[3]), dps = tonumber(f[4]), spells = spells })
 		end
 		k.thpAbs = w.cth
+		k.safe = w.csf
 	end
 	for key, field in pairs({ at = "uat", utower = "utw", uout = "uou", threat = "uth", killUp = "kup" }) do
 		if w[field] ~= nil then k[key] = bit(w[field]) end

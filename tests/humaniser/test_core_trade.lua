@@ -918,13 +918,17 @@ do
 	check("kill-chase: no 6 s limit", keep({ started = 6.1 }) == nil)
 	check("kill-chase: the logged backstop", keep({ started = 30.1, g = nil }) == "backstop")
 	local near = { { d = 300, reach = 200, close = 100, dps = 40, spells = {} } }
-	check("kill-chase: a catch that lands keeps", keep({ hunters = near, thpAbs = 150 }) == nil)
-	check("kill-chase: a catch that cannot land ends", keep({ hunters = near, thpAbs = 400 }) == "cannot_catch")
+	-- 1 s to close, then 40 a second until it reaches its tower in 3 s: 80.
+	check("kill-chase: a catch that lands before their tower keeps", keep({ hunters = near, thpAbs = 60, safe = 3 }) == nil)
+	check("kill-chase: one that cannot land before their tower ends", keep({ hunters = near, thpAbs = 150, safe = 3 }) == "cannot_catch")
+	check("kill-chase: a target not heading home is chased while we close", keep({ hunters = near, thpAbs = 400 }) == nil)
+	local far = { { d = 600, reach = 200, close = 0, dps = 40, spells = {} } }
+	check("kill-chase: not closing and out of reach ends however long the horizon", keep({ hunters = far, thpAbs = 100 }) == "cannot_catch")
 	check("kill-chase: unseen, at the predicted place and not there: the trail is cold", keep({ seen = false, g = nil, at = true }) == "spot_clear")
 	check("kill-chase: unseen, the place by their tower", keep({ seen = false, g = nil, utower = true }) == "tower")
 	check("kill-chase: unseen, outnumbered", keep({ seen = false, g = nil, uout = true }) == "outnumbered")
 	check("kill-chase: unseen, other unseen enemies on the walk", keep({ seen = false, g = nil, threat = true }) == "threat")
-	check("kill-chase: unseen, the read still ends it", keep({ seen = false, g = nil, hunters = near, thpAbs = 400 }) == "cannot_catch")
+	check("kill-chase: unseen, the read still ends it", keep({ seen = false, g = nil, hunters = far, thpAbs = 100 }) == "cannot_catch")
 	check("kill-chase: a join at the kill bar hands to the kill", keep({ kind = "join", join = "none", g = nil, killUp = true }) == "kill_up")
 	check("kill-chase: an unseen join still ends", keep({ kind = "join", join = "same", g = nil, seen = false }) == "target_lost")
 	check("keep: a kill by their tower", keep({ g = inputs({ targetHp = 0.3, tower = true }) }) == "tower")

@@ -1713,6 +1713,7 @@ ____exports.EVENTS = {
         cth = "num",
         cdm = "num",
         cft = "num",
+        csf = "num",
         uat = "num",
         utw = "num",
         uou = "num",

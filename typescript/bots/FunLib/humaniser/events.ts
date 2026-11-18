@@ -2874,11 +2874,13 @@ export const EVENTS = {
         tss: "num",
         /** kind=keep (slice kill-chase, a started kill): CatchRead's hunters as `;`-joined `d,reach,close,dps,spells` records
          *  (spells `/`-joined `range:cp:dmg`, damage after the target's resistances), the target's HP (seen, or as last seen),
-         *  and the read's damage within the window and seconds to its first (-1 none). */
+         *  and the read's damage within the window and seconds to its first (-1 none); `csf` the window, the seconds until the
+         *  target reaches its own tower's reach at its speed towards it (CATCH_WINDOW when not heading there). */
         chu: "str",
         cth: "num",
         cdm: "num",
         cft: "num",
+        csf: "num",
         /** kind=keep, a started kill on an unseen target (1/0): we stand at its predicted place, that place or we inside an
          *  enemy tower's reach, more enemy heroes near than ours, unseen enemies other than the target weighing on the walk. */
         uat: "num",
