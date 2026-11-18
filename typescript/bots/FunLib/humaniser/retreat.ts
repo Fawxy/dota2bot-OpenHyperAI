@@ -453,6 +453,12 @@ function anchorPoint(a: Anchor): Vector {
     return a.ally !== undefined && valid(a.ally) ? a.ally.GetLocation() : a.at;
 }
 
+/** Sustain's safe spot (its design, section 2): the anchor a `threat` leave would choose now, and the walk there in seconds. Reads only. */
+export function SafeSpot(bot: Unit): { at: Vector; secs: number } | undefined {
+    const [a] = chooseAnchor(bot, "threat");
+    return a === undefined ? undefined : { at: anchorPoint(a), secs: a.secs ?? 0 };
+}
+
 // ------------------------------------------------------------------------------------------------------------- heal items
 
 /**

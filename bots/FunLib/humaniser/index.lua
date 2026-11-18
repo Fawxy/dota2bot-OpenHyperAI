@@ -44,6 +44,7 @@ local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
+local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local CastLog = require(GetScriptDirectory().."/FunLib/humaniser/cast_log")
 ____exports.Config = Config
@@ -82,6 +83,7 @@ ____exports.States = States
 ____exports.Trade = Trade
 ____exports.LaneControl = LaneControl
 ____exports.Retreat = Retreat
+____exports.SustainGather = SustainGather
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -246,6 +248,7 @@ local steps = {
     intent = Intent.Tick,
     telemetry = Telemetry.Tick,
     regen = RegenObs.Tick,
+    sustain = SustainGather.Tick,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -322,6 +325,7 @@ local function tick(bot)
     steps.telemetry(bot, telemetryContext)
     pcall(CastLog.Tick, bot)
     pcall(steps.regen, bot)
+    pcall(steps.sustain, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     States.Tick(bot)
@@ -498,6 +502,7 @@ if Telemetry.GuardsEnabled() then
     })
     Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
     Telemetry.GuardModule("LaneControl", LaneControl, {Tick = none})
+    Telemetry.GuardModule("SustainGather", SustainGather, {Bought = none})
     Telemetry.GuardModule("Retreat", Retreat, {
         Desire = none,
         Think = none,

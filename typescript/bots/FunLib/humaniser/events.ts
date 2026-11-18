@@ -13,6 +13,9 @@ export const UNIT = {
     alive: "bool",
     hp: "num",
     mp: "num",
+    /** Max HP and max mana, absolute (`hp`, `mp` are percentages of them). */
+    hpm: "num",
+    mpm: "num",
     lvl: "num",
     /** The hero's last-hit count (`GetLastHits`). */
     lh: "num",
@@ -1357,6 +1360,10 @@ export const EVENTS = {
     // the hero lost over those 2 s (0 on a start; a buff that ends early with src - and drop 0 was not ended by damage).
     regen_obs: {
         pid: "num",
+        /** On a start: `ours` when our code ordered the item within 3 s (item_use.ts), else `oha`. */
+        by: "str",
+        /** Max HP, absolute (`hp`, `mp` are shares). */
+        hpm: "num",
         /** `tango`, `salve` or `clarity`. */
         item: "str",
         /** `start`, `refresh` or `end`. */
@@ -2798,7 +2805,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
@@ -3011,6 +3018,65 @@ export const EVENTS = {
         skip: "str",
         /** kind=lane: 1 under lane-only (a drill). */
         lo: "num",
+        /** kind=sustain (sustain_gather.ts, in shadow: nothing acts on it): HP, max HP, mana, max mana, absolute. */
+        hpa: "num",
+        hpm: "num",
+        mpa: "num",
+        mpm: "num",
+        /** kind=sustain: heal and mana items in slots 0-8, `slot,name,uses,hp,mp,dur,breaks,tree,refill,share` per `;` (hp, mp: one use, absolute). */
+        it: "str",
+        /** kind=sustain: the nearest visible passable tree within 1,200 and the nearest visible enemy hero's distance to it (-1 none), `d,enemyD`. */
+        tr: "str",
+        /** kind=sustain: a hero damaged us in the last 2 s (1/0). */
+        hr: "num",
+        /** kind=sustain: the stay read's burst (absolute HP) and the heroes in its reach. */
+        bua: "num",
+        rc: "num",
+        /** kind=sustain: laneBurst, the summed 3 s damage of the enemy heroes seen within 2,000 in the last 10 s (the kill line's stand-in). */
+        lb: "num",
+        /** kind=sustain: HP and mana the running regen buffs still restore. */
+        rl: "num",
+        ml: "num",
+        /** kind=sustain: the safe spot (retreat's `threat` anchor) `x,y,walk seconds`. */
+        ss: "str",
+        /** kind=sustain: gold; the courier's delivery seconds when free (absent: busy or dead); the shop `name,cost,hp,mp` per `;`; seconds to the fountain and back. */
+        gd: "num",
+        co: "num",
+        shp: "str",
+        ho: "num",
+        /** kind=sustain: idle (a camp job runs), at the fountain (1/0). */
+        idl: "num",
+        af: "num",
+        /** kind=sustain: allies within 800, `pid,missing HP,heal uses` per `;`. */
+        als: "str",
+        /** kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`), item and ally pid; its rule is `why`, a running answer's end `ed`. */
+        ak: "str",
+        anm: "str",
+        ato: "num",
+    },
+    /** Sustain (step 2): an item's values as sustain_gather.ts reads them, the first time a hero of this team holds it: one use's HP, mana, duration, and the charges it held. A 0 where the item restores something is a wrong special-value key. */
+    sustain_item: {
+        name: "str",
+        hp: "num",
+        mp: "num",
+        dur: "num",
+        ch: "num",
+    },
+    /** Sustain (step 2): a lane regen purchase by OHA's rules (item_purchase_generic.lua), with the rule (`why`), gold before, HP and mana %. */
+    sustain_buy: {
+        pid: "num",
+        item: "str",
+        why: "str",
+        gold: "num",
+        hp: "num",
+        mp: "num",
+    },
+    /** Sustain (step 2): the hero's courier changed state (`st`: GetCourierState's raw COURIER_STATE_* value; the first smoke game maps them), at distance `d` from the hero. */
+    sustain_courier: {
+        pid: "num",
+        st: "num",
+        dead: "num",
+        d: "num",
     },
     /** Slice oha-burst-left-out: the first time in a game, per level, a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero, spell and spell level (a new level logs again, to show the value follows the level on an enemy handle). */
     burst_add: {
