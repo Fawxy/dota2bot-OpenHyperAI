@@ -28,7 +28,14 @@
 // out of the summary. Untaken offers (result lost) are counted apart. Summary per hero and kind: ready reps, reps with a
 // trade, trades, ordered, fired, mean first, a5, HP each way and ch5, the HP split summed and per trade, step first, the
 // untaken creeps, the ends and the share ending `creeps`.
-// Usage: node trade_rig.js <file fragment> [...] [--rows] [--json] [--no-ingest]
+// The range read (plan "Revision after D and D2"; graded by time, so it holds with no trade open): every released snapshot
+// second of the cast at 75% HP or more with the nearest enemy hero (its own snapshot within a second) inside the cast's `ar`
+// + 48 (strict, both hulls) is one in-range second, split as `hero` (its `tid` an enemy hero), `creep` (`tid` a creep), or by
+// its move to the next snapshot along the line to that hero: `toward` or `away` (over MOVE_STEP), else `idle`; the modes
+// that held it in the seconds it was not attacking the hero (marked `(trade)` inside an open trade episode); and the hero share within +400 (`wide`). As D2's read of the
+// head-to-heads (ours 33%, OHA 52% strict), so the numbers compare.
+// Usage: node trade_rig.js <file fragment> [...] [--rows] [--reps] [--json] [--no-ingest]
+// --rows prints one JSON line per trade, --reps one per ready rep (its trade counts and range read).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -41,12 +48,17 @@ const WINDOW = 5;
 const REACH_SLACK = 50;
 /** The reset's HP lands up to this long after its cmd line's time (rig1b_s30: the line at 209, the HP at 211). */
 const RESET_LAG = 3;
+/** A move of this much along the line to the hero in a snapshot second is toward or away. `judgement`. */
+const MOVE_STEP = 25;
+const HULLS = 48;
+const WIDE = 400;
 
 const TRADES = `-- ensure: ev_trade(fa)
 SELECT t, kind, result, why, dur, hpd, thpd, ld, pr, so, ag, tgt, fa FROM ev_trade
     WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
 const LINES = `SELECT t, ph, tpid, dmg FROM ev_drill WHERE game_id = :g AND pid = :p AND ph IN ('atk', 'chit', 'hhit') AND t >= :a AND t <= :b ORDER BY t`;
-const SNAPS = `SELECT t, hv, x, y, ar, hc, hit FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
+const SNAPS = `-- ensure: ev_snap(tid, mode)
+SELECT t, hv, hp, x, y, ar, hc, hit, tid, mode, alive FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
 const deaths = (tbl) => `-- ensure: ${tbl}(team, x, y, by)
 SELECT t, x, y, by FROM ${tbl} WHERE game_id = :g AND team = :team AND t >= :a AND t <= :b ORDER BY t`;
 const LH_DEATHS = deaths('ev_creep_death');
@@ -63,6 +75,47 @@ function lostBy(snaps, a, b) {
         if (s.t < a - 1 || s.t > b) continue;
         if (prev != null && s.t > a && prev.hv > s.hv) out[s.hc && s.hit ? 'both' : s.hc ? 'creeps' : s.hit ? 'hero' : 'other'] += prev.hv - s.hv;
         prev = s;
+    }
+    return out;
+}
+
+/**
+ * The range read of one released window: per cast snapshot at `hp` 75 or more, the nearest enemy hero by its own snapshot
+ * within a second; in strict range, the second's class and mode; within +WIDE, whether it attacked the hero.
+ */
+function rangeSeconds(own, foes, a, b, episodes = []) {
+    const out = { secs: 0, hero: 0, creep: 0, toward: 0, away: 0, idle: 0, modes: {}, wide: 0, wideHero: 0 };
+    for (let i = 0; i < own.length; i++) {
+        const s = own[i];
+        if (s.t < a || s.t >= b || s.alive === 0 || s.hp == null || s.hp < 75 || s.x == null || s.ar == null) continue;
+        let foe = null;
+        let d = Infinity;
+        for (const [pid, snaps] of foes) {
+            const f = nearest(snaps, s.t);
+            if (f == null || Math.abs(f.t - s.t) > 1 || f.alive === 0 || f.x == null) continue;
+            const dd = Math.hypot(f.x - s.x, f.y - s.y);
+            if (dd < d) [foe, d] = [{ ...f, pid }, dd];
+        }
+        if (foe == null || d > s.ar + HULLS + WIDE) continue;
+        const onHero = s.tid === `h${foe.pid}`;
+        out.wide += 1;
+        if (onHero) out.wideHero += 1;
+        if (d > s.ar + HULLS) continue;
+        out.secs += 1;
+        let k;
+        if (onHero) k = 'hero';
+        else if (typeof s.tid === 'string' && s.tid.startsWith('u')) k = 'creep';
+        else {
+            const n = own[i + 1];
+            const step = n != null && n.t - s.t <= 1.5 && n.x != null ? ((n.x - s.x) * (foe.x - s.x) + (n.y - s.y) * (foe.y - s.y)) / Math.max(1, d) : 0;
+            k = step > MOVE_STEP ? 'toward' : step < -MOVE_STEP ? 'away' : 'idle';
+        }
+        out[k] += 1;
+        if (k !== 'hero') {
+            // `mode` never names our states; an open trade episode is core_trade's hold whatever OHA mode carries it.
+            const m = episodes.some(([o, c]) => s.t >= o && s.t <= c) ? `${s.mode} (trade)` : s.mode;
+            out.modes[m] = (out.modes[m] ?? 0) + 1;
+        }
     }
     return out;
 }
@@ -91,6 +144,7 @@ function stepFirst(x) {
     return null;
 }
 const HERO = `SELECT hero FROM ev_bot WHERE game_id = :g AND pid = :p AND hero IS NOT NULL LIMIT 1`;
+const ENEMIES = `SELECT DISTINCT pid FROM ev_bot WHERE game_id = :g AND team IS NOT NULL AND team <> :team`;
 const RESETS = `SELECT d.t FROM dx_cmd d JOIN games g ON g.log_id = d.log_id WHERE g.game_id = :g AND d.cmd LIKE 'rig_hp_all%' ORDER BY d.t`;
 
 /** When the HP resets ran in the game (none when the log holds no console steps). */
@@ -136,9 +190,10 @@ function reps(store, like) {
         const ts = store.query(TRADES, { g: r.game_id, p: r.pid, a: r.released, b: r.stop + 30 });
         const opened = ts.map((x) => ({ ...x, open: x.t - (x.dur ?? 0) })).filter((x) => x.kind === 'trade' && x.open >= r.released && x.open < r.stop);
         const taken = opened.filter((x) => x.result !== 'lost');
-        repRows.push({ file: path.basename(r.file), game_id: r.game_id, rep: r.rep, var: r.var, hero, trades: taken.length, lost: opened.length - taken.length });
         const lines = store.query(LINES, { g: r.game_id, p: r.pid, a: r.released, b: r.stop + 30 });
         const own = store.query(SNAPS, { g: r.game_id, p: r.pid, a: r.released - 1, b: r.stop + 30 });
+        const foes = store.query(ENEMIES, { g: r.game_id, team: r.team }).map((e) => [e.pid, store.query(SNAPS, { g: r.game_id, p: e.pid, a: r.released - 2, b: r.stop + 2 })]);
+        repRows.push({ file: path.basename(r.file), game_id: r.game_id, rep: r.rep, var: r.var, hero, trades: taken.length, lost: opened.length - taken.length, range: rangeSeconds(own, foes, r.released, r.stop, taken.map((x) => [x.open, x.t])) });
         taken.forEach((x, i) => {
             const atk = lines.filter((l) => l.ph === 'atk' && l.tpid === x.tgt);
             const in5 = atk.filter((l) => l.t >= x.open && l.t <= x.open + WINDOW);
@@ -179,6 +234,9 @@ function summary({ trades, reps: rs }) {
         s.ready += 1;
         if (r.trades > 0) s.withTrade += 1;
         s.lost += r.lost;
+        const g = (s.range ??= { secs: 0, hero: 0, creep: 0, toward: 0, away: 0, idle: 0, modes: {}, wide: 0, wideHero: 0 });
+        for (const k of ['secs', 'hero', 'creep', 'toward', 'away', 'idle', 'wide', 'wideHero']) g[k] += r.range[k];
+        for (const [m, n] of Object.entries(r.range.modes)) g.modes[m] = (g.modes[m] ?? 0) + n;
     }
     const by = {};
     for (const t of trades) (by[key(t)] ??= []).push(t);
@@ -227,14 +285,19 @@ if (require.main === module) {
         all.reps.push(...r.reps);
     }
     if (argv.includes('--rows')) console.log(all.trades.map((r) => JSON.stringify(r)).join('\n'));
+    else if (argv.includes('--reps')) console.log(all.reps.map((r) => JSON.stringify(r)).join('\n'));
     else if (argv.includes('--json')) console.log(JSON.stringify(summary(all)));
     else {
         console.log(`lane-trade: ${all.reps.length} ready reps, ${all.trades.length} taken trades; graded within ${WINDOW} s of the open (late: an HP reset in the window, or past the rep's end)`);
+        const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : '-');
         for (const [k, s] of Object.entries(summary(all))) {
+            const g = s.range;
+            const modes = Object.entries(g.modes).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${m} ${n}`).join(', ');
+            console.log(`${k.padEnd(22)} in range ${g.secs} s: hero ${pct(g.hero, g.secs)} creep ${pct(g.creep, g.secs)} toward ${pct(g.toward, g.secs)} away ${pct(g.away, g.secs)} idle ${pct(g.idle, g.secs)}; not on the hero, held by: ${modes}; +${WIDE}: ${g.wide} s, hero ${pct(g.wideHero, g.wide)}`);
             const why = Object.entries(s.why ?? {}).map(([w, n]) => `${w} ${n}`).join(', ');
             console.log(`${k.padEnd(22)} ready ${s.ready}  with trade ${s.withTrade}  trades ${s.trades} (late ${s.late}, lost ${s.lost})  ordered ${s.ordered ?? 0}  fired ${s.fired ?? 0}  first ${s.first ?? '-'} s  a5 ${s.a5 ?? '-'}  hp ${s.hpd ?? '-'}/${s.thpd ?? '-'} (5 s ${s.hp5 ?? '-'}/${s.thp5 ?? '-'})  ch5 ${s.ch5 ?? '-'}  lost to creeps/hero/other ${s.split ? `${s.split.creeps}/${s.split.hero}/${s.split.other}` : '-'}  5 s by flags c/h/b/o ${s.split5 ? `${s.split5.creeps}/${s.split5.hero}/${s.split5.both}/${s.split5.other}` : '-'}  creeps end ${s.creepsEnd ?? '-'}%  step first ${s.stepFirst ?? '-'}  untaken lh/dn ${s.ulh ?? '-'}/${s.udn ?? '-'}  ends: ${why}`);
         }
     }
 }
 
-module.exports = { reps, summary, WINDOW };
+module.exports = { reps, summary, rangeSeconds, WINDOW };

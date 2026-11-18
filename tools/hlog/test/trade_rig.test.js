@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Store } = require('../store');
-const { reps, summary } = require('../trade_rig');
+const { reps, summary, rangeSeconds } = require('../trade_rig');
 
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 const N = 'lane-trade';
@@ -78,4 +78,27 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
     assert.deepStrictEqual([sum['sniper stand'].ready, sum['sniper stand'].withTrade, sum['sniper stand'].trades, sum['sniper stand'].fired, sum['sniper stand'].lost], [1, 1, 2, 1, 1]);
     assert.deepStrictEqual([sum['sniper stand'].split.creeps, sum['sniper stand'].split.hero, sum['sniper stand'].creepsEnd], [18, 40, 50]);
     assert.deepStrictEqual([sum['sniper lasthit'].trades, sum['sniper lasthit'].late], [0, 2]);
+});
+
+test('trade_rig: in-range seconds are graded by time, with or without a trade', () => {
+    // The cast (ar 550) at x along y=0; the enemy hero at x=580 throughout (a second enemy 2,000 off never counts).
+    const o = (t, x, f = {}) => ({ t, x, y: 0, hp: 90, ar: 550, alive: 1, tid: null, mode: 'laning', ...f });
+    const own = [
+        o(10, 0, { tid: 'h7' }), // 580 off, within 598: on the hero
+        o(11, 0, { tid: 'u12', mode: 'laning' }), // on a creep
+        o(12, 0), o(13, 40, { mode: 'attack' }), // 12 steps 40 toward; 13 steps 40 away
+        o(14, 0), o(15, 10), // 14 moves 10: idle; 15 has no next snapshot within 1.5 s: idle
+        o(17, 0, { hp: 70, tid: 'h7' }), // under 75: not counted
+        o(18, -200, { tid: 'h7' }), // 780 off: outside strict, inside +400, on the hero
+        o(19, -600), // 1,180 off: outside both
+        o(30, 0), // past the window
+    ];
+    const foe = (x) => [10, 11, 12, 13, 14, 15, 17, 18, 19, 30].map((t) => ({ t: t + 0.2, x, y: 0, alive: 1 }));
+    const r = rangeSeconds(own, [[7, foe(580)], [8, foe(2600)]], 10, 20, [[12.5, 14.5]]);
+    assert.deepStrictEqual([r.secs, r.hero, r.creep, r.toward, r.away, r.idle], [6, 1, 1, 1, 1, 2]);
+    // 13 and 14 sit in the trade episode 12.5-14.5.
+    assert.deepStrictEqual(r.modes, { laning: 3, 'attack (trade)': 1, 'laning (trade)': 1 });
+    assert.deepStrictEqual([r.wide, r.wideHero], [7, 2]);
+    // A foe whose nearest snapshot is over a second off is no read: of 10-15 only 14 and 15 have one (at 14.8).
+    assert.strictEqual(rangeSeconds(own, [[7, [{ t: 14.8, x: 580, y: 0, alive: 1 }]]], 10, 20).secs, 2);
 });
