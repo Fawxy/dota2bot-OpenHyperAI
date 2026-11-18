@@ -15,7 +15,7 @@
  * Two starts (logged as `trig`, decided 06/11/2026 from obs0611 marks 4 and 5): `gone`, our wave is gone from the lane outside
  * our T1's range; `forecast`, our wave is still fighting theirs at or inside the hold point and lane_push's run has their front
  * inside our T1's fire within ForecastSecs, so the core is in front before our wave dies.
- * One ev=wave_hold line per attempt, at its end. Stepped from the core draw step (States.CoreAggroStep, H1), before lane
+ * One ev=wave_hold line per attempt, at its end. Stepped from the core draw step (the lane table's `aggro` row, H1), before lane
  * aggro's own step; States.Tick ends an attempt whose caller lost the frame.
  */
 import { BotMode, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";

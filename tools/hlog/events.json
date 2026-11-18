@@ -1910,7 +1910,11 @@
    "utw": "num",
    "uou": "num",
    "uth": "num",
-   "kup": "num"
+   "kup": "num",
+   "pos": "num",
+   "row": "str",
+   "skip": "str",
+   "lo": "num"
   },
   "cast": {
    "pid": "num",
@@ -2579,7 +2583,9 @@
    "how": "text",
    "why": "text",
    "ed": "text",
-   "chu": "text"
+   "chu": "text",
+   "row": "text",
+   "skip": "text"
   },
   "ev_cast": {
    "ab": "text",

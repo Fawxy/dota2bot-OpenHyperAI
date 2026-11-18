@@ -3,7 +3,7 @@
  * body takes the support's denies, whatever the core is doing, replacing OHA's DenyThink; with Ours.SupportLastHit (slice
  * support-lane-hits) also the last hits no allied core will take (states/lane_claims), replacing OHA's LastHitThink for the
  * bot. One picker for every laner (lane_pick Choose, the claims as its role input), swings timed by the engine's verbs. The
- * step runs first in the support's lane steps (states/support_lane). Off: OHA's own path, exactly as before.
+ * step runs first in the support's lane steps (the `support_*` rows of states/lane_table). Off: OHA's own path, exactly as before.
  */
 import { Team, Unit } from "bots/ts_libs/dota";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";

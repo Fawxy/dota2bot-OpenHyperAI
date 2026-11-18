@@ -15,7 +15,7 @@ import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
-import * as SupportLane from "bots/FunLib/humaniser/states/support_lane";
+import * as LaneTable from "bots/FunLib/humaniser/states/lane_table";
 import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
@@ -26,7 +26,6 @@ import * as Farm from "bots/FunLib/humaniser/states/farm";
 import * as Gank from "bots/FunLib/humaniser/states/gank";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
-import * as Drill from "bots/FunLib/humaniser/drill";
 import * as WaveHold from "bots/FunLib/humaniser/states/wave_hold";
 import * as Cut from "bots/FunLib/humaniser/cut";
 
@@ -306,50 +305,44 @@ export function SupportOwnsAttack(bot: Unit): boolean {
     return target !== undefined && target !== null && (LanePick.Attempting(bot.GetPlayerID()) as unknown) === target;
 }
 
-/**
- * First thing in mode_laning_generic's Think for a support under our switches: the support's ordered lane steps
- * (states/support_lane). True when one acted this frame.
- */
-export function SupportStep(bot: Unit): boolean {
-    if (!IsEnabled() || !SupportLane.Applies(bot)) return false;
-    const acted = SupportLane.Step(bot, {
-        bodyRunning: () => laningRunning(bot),
-        bodyLabel: () => Tasks.Current(bot)?.label,
-        stepBody: () => Step(bot, BotMode.Laning),
-    });
-    return acted !== undefined;
-}
+/** The Lua callbacks of mode_laning_generic's Think that LaneStep walks (states/lane_table Ctx). */
+export type LaneCallbacks = Pick<
+    LaneTable.Ctx,
+    "etiquette" | "ohaLastHit" | "ohaDeny" | "ohaHold" | "ohaLocal" | "ohaPosition"
+>;
+
+const laneCtx: Record<number, { cb: LaneCallbacks; ctx: LaneTable.Ctx } | undefined> = {};
 
 /**
- * Slice lane-aggro: a core's draw (lane_aggro feed, drag) while the laning body runs for it, stepped by mode_laning_generic
- * after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
+ * mode_laning_generic's Think for a bot that owns it: the name of the lane table row that acted (states/lane_table). With
+ * the state layer off, every predicate of ours is false and only the host's rows run.
  */
-export function CoreAggroStep(bot: Unit): boolean {
-    if (!IsEnabled()) return false;
-    // While a draw gives the orders, this Think returns before the body is stepped, so the engine ends the body's task
-    // (stalled, never_started) until the state restarts it; a core's open draw is stepped regardless or it ends `stale`
-    // (awchk1). Only the open one: no new draw starts with the body off, and a support's draw stays support_lane's.
-    if (!BodyLastHits(bot)) return CoreLastHit.Applies(bot) && LaneAggro.StepOpen(bot);
-    // Ours.CoreHold: the wave hold sets the spot's `hold` input or starts lane aggro's `back` draw, which the step below acts.
-    WaveHold.Step(bot);
-    return LaneAggro.Step(bot);
-}
-
-/**
- * A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started, stepped by
- * mode_laning_generic's lane-only branch; no other lane aggro draw starts (StepOpen steps only an open one).
- */
-export function LaneOnlyHoldStep(bot: Unit): boolean {
-    if (!IsEnabled() || !Drill.LaneHold(bot) || !BodyLastHits(bot)) return false;
-    WaveHold.Step(bot);
-    return LaneAggro.StepOpen(bot);
-}
-
-/** A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, stepped by mode_laning_generic's
- *  lane-only branch, as CoreAggroStep outside drills. */
-export function LaneOnlyAggroStep(bot: Unit): boolean {
-    if (!IsEnabled() || !Drill.LaneAggro(bot) || !BodyLastHits(bot)) return false;
-    return LaneAggro.Step(bot);
+export function LaneStep(bot: Unit, cb: LaneCallbacks): string {
+    const pid = bot.GetPlayerID();
+    let c = laneCtx[pid];
+    if (c === undefined || c.cb !== cb) {
+        c = {
+            cb,
+            ctx: {
+                enabled: IsEnabled,
+                bodyRunning: () => laningRunning(bot),
+                bodyLabel: () => Tasks.Current(bot)?.label,
+                stepBody: () => Step(bot, BotMode.Laning),
+                bodyBusy: () => BodyBusy(bot),
+                bodyLastHits: () => BodyLastHits(bot),
+                bodySupportHits: () => BodySupportHits(bot),
+                bodySupportLastHits: () => BodySupportLastHits(bot),
+                etiquette: cb.etiquette,
+                ohaLastHit: cb.ohaLastHit,
+                ohaDeny: cb.ohaDeny,
+                ohaHold: cb.ohaHold,
+                ohaLocal: cb.ohaLocal,
+                ohaPosition: cb.ohaPosition,
+            },
+        };
+        laneCtx[pid] = c;
+    }
+    return LaneTable.Walk(bot, c.ctx);
 }
 
 /** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */

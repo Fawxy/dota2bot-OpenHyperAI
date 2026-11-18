@@ -378,22 +378,26 @@ if Telemetry.GuardsEnabled() then
             ConfirmLaneWard = none
         }
     )
-    Telemetry.GuardModule("States", States, {
-        Tick = none,
-        Step = no,
-        MayOwn = no,
-        SetLaneSpot = none,
-        Describe = none,
-        IsEnabled = no,
-        WisdomOwned = no,
-        Owns = no,
-        BodyLastHits = no,
-        BodyBusy = no,
-        BodySupportHits = no,
-        BodySupportLastHits = no,
-        SupportOwnsAttack = no,
-        SupportStep = no
-    })
+    Telemetry.GuardModule(
+        "States",
+        States,
+        {
+            Tick = none,
+            Step = no,
+            MayOwn = no,
+            SetLaneSpot = none,
+            Describe = none,
+            IsEnabled = no,
+            WisdomOwned = no,
+            Owns = no,
+            BodyLastHits = no,
+            BodyBusy = no,
+            BodySupportHits = no,
+            BodySupportLastHits = no,
+            SupportOwnsAttack = no,
+            LaneStep = function() return "guard_error" end
+        }
+    )
     Telemetry.GuardModule("Trade", Trade, {
         Owns = no,
         Desire = none,

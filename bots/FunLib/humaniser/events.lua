@@ -1769,7 +1769,11 @@ ____exports.EVENTS = {
         utw = "num",
         uou = "num",
         uth = "num",
-        kup = "num"
+        kup = "num",
+        pos = "num",
+        row = "str",
+        skip = "str",
+        lo = "num"
     },
     cast = {
         pid = "num",

@@ -13,7 +13,7 @@
  *   behind our T1 to meet our next wave there, a new draw each cooldown while no creep follows. The pull gate does not apply.
  * Cores do both. A support inherits them only while its lane's core is away (user 05/11/2026). One draw per lane at a time,
  * and none while our pull is out on that lane (the pull drags our wave away; feeding it then gives the wave away twice).
- * Stepped from mode_laning_generic's Think (cores, after the body's running swing) and from support_lane's step list.
+ * Stepped from mode_laning_generic's Think through the lane table (states/lane_table: `aggro` for cores, `support_aggro` for supports).
  */
 import { BotMode, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import type * as Lib from "bots/FunLib/engine/tasks";
@@ -612,7 +612,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
 
 /**
  * Where a creep seen at the order stands now: undefined once removed, dead or with no location (it left our vision; the
- * handle stays valid but reads none: chold3_A_on_1 t=217.6, `lua_error` in States.SupportStep).
+ * handle stays valid but reads none: chold3_A_on_1 t=217.6, `lua_error` in States.LaneStep).
  */
 function seenAt(u: Unit): Vector | undefined {
     if (u.IsNull() || !u.IsAlive()) return undefined;

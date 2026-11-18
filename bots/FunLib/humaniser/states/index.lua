@@ -47,7 +47,7 @@ local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_sp
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
 local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
-local SupportLane = require(GetScriptDirectory().."/FunLib/humaniser/states/support_lane")
+local LaneTable = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_table")
 local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
 local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
@@ -58,7 +58,6 @@ local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
-local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local WaveHold = require(GetScriptDirectory().."/FunLib/humaniser/states/wave_hold")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 function ____exports.Settings()
@@ -413,53 +412,38 @@ function ____exports.SupportOwnsAttack(bot)
     local target = bot:GetAttackTarget()
     return target ~= nil and target ~= nil and LanePick.Attempting(bot:GetPlayerID()) == target
 end
---- First thing in mode_laning_generic's Think for a support under our switches: the support's ordered lane steps
--- (states/support_lane). True when one acted this frame.
-function ____exports.SupportStep(bot)
-    if not ____exports.IsEnabled() or not SupportLane.Applies(bot) then
-        return false
-    end
-    local acted = SupportLane.Step(
-        bot,
-        {
-            bodyRunning = function() return laningRunning(bot) end,
-            bodyLabel = function()
-                local ____opt_46 = Tasks.Current(bot)
-                return ____opt_46 and ____opt_46.label
-            end,
-            stepBody = function() return ____exports.Step(bot, BotMode.Laning) end
+local laneCtx = {}
+--- mode_laning_generic's Think for a bot that owns it: the name of the lane table row that acted (states/lane_table). With
+-- the state layer off, every predicate of ours is false and only the host's rows run.
+function ____exports.LaneStep(bot, cb)
+    local pid = bot:GetPlayerID()
+    local c = laneCtx[pid]
+    if c == nil or c.cb ~= cb then
+        c = {
+            cb = cb,
+            ctx = {
+                enabled = ____exports.IsEnabled,
+                bodyRunning = function() return laningRunning(bot) end,
+                bodyLabel = function()
+                    local ____opt_46 = Tasks.Current(bot)
+                    return ____opt_46 and ____opt_46.label
+                end,
+                stepBody = function() return ____exports.Step(bot, BotMode.Laning) end,
+                bodyBusy = function() return ____exports.BodyBusy(bot) end,
+                bodyLastHits = function() return ____exports.BodyLastHits(bot) end,
+                bodySupportHits = function() return ____exports.BodySupportHits(bot) end,
+                bodySupportLastHits = function() return ____exports.BodySupportLastHits(bot) end,
+                etiquette = cb.etiquette,
+                ohaLastHit = cb.ohaLastHit,
+                ohaDeny = cb.ohaDeny,
+                ohaHold = cb.ohaHold,
+                ohaLocal = cb.ohaLocal,
+                ohaPosition = cb.ohaPosition
+            }
         }
-    )
-    return acted ~= nil
-end
---- Slice lane-aggro: a core's draw (lane_aggro feed, drag) while the laning body runs for it, stepped by mode_laning_generic
--- after the body's running swing and before OHA's techniques. Supports draw through their support_lane step instead.
-function ____exports.CoreAggroStep(bot)
-    if not ____exports.IsEnabled() then
-        return false
+        laneCtx[pid] = c
     end
-    if not ____exports.BodyLastHits(bot) then
-        return CoreLastHit.Applies(bot) and LaneAggro.StepOpen(bot)
-    end
-    WaveHold.Step(bot)
-    return LaneAggro.Step(bot)
-end
---- A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started, stepped by
--- mode_laning_generic's lane-only branch; no other lane aggro draw starts (StepOpen steps only an open one).
-function ____exports.LaneOnlyHoldStep(bot)
-    if not ____exports.IsEnabled() or not Drill.LaneHold(bot) or not ____exports.BodyLastHits(bot) then
-        return false
-    end
-    WaveHold.Step(bot)
-    return LaneAggro.StepOpen(bot)
-end
---- A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, stepped by mode_laning_generic's
--- lane-only branch, as CoreAggroStep outside drills.
-function ____exports.LaneOnlyAggroStep(bot)
-    if not ____exports.IsEnabled() or not Drill.LaneAggro(bot) or not ____exports.BodyLastHits(bot) then
-        return false
-    end
-    return LaneAggro.Step(bot)
+    return LaneTable.Walk(bot, c.ctx)
 end
 --- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
 function ____exports.SetLaneSpot(bot, fn)
