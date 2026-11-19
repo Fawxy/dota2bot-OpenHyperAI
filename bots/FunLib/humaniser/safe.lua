@@ -3,7 +3,7 @@ local ____exports = {}
 local ____threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local ThreatSettings = ____threat.SETTINGS
 --- Every number the decision owns, with its source. The unseen bar is `Threat.SETTINGS.MissingRefuse`, read at call time, not copied.
-____exports.BARS = {stay = 1.25, hold = 1, slack = 0.15}
+____exports.BARS = {stay = 1.25, idle = 1, hold = 1, slack = 0.15}
 function ____exports.Decide(i, stay)
     if stay == nil then
         stay = ____exports.BARS.stay
@@ -30,7 +30,12 @@ function ____exports.Decide(i, stay)
     if i.towerOnMe or i.tower and not i.held then
         return answer("deadly", "tower")
     end
-    local bar = i.hold and math.min(stay, ____exports.BARS.hold) or (i.held and stay or stay * (1 + ____exports.BARS.slack))
+    local hit = false
+    for ____, r in ipairs(i.reach) do
+        hit = hit or r.hitting
+    end
+    local line = hit and stay or math.min(stay, ____exports.BARS.idle)
+    local bar = i.hold and math.min(line, ____exports.BARS.hold) or (i.held and line or line * (1 + ____exports.BARS.slack))
     if ratio < bar then
         return answer("deadly", "kill")
     end

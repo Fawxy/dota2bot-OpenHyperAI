@@ -19,7 +19,7 @@ local function safeInputs(reach)
 		away = false, held = false, hold = false }
 end
 local STAY = { safe = safeInputs({ { pid = 5, hitting = true, dmg = 250 }, { pid = 6, hitting = false, dmg = 50, unseen = true } }) }
-local WALK = { safe = safeInputs({ { pid = 5, hitting = false, dmg = 250 } }) }
+local WALK = { safe = safeInputs({ { pid = 5, hitting = false, dmg = 270 } }) }
 local reads = {}
 Threat.Read = function(_, _, place, horizon)
 	table.insert(reads, horizon)
@@ -105,7 +105,7 @@ check("absolute HP; the safe-here read here: its kill (an unseen lane opponent's
 	i.hp == 300 and i.hpMax == 600 and near(i.safe.kill, 300) and i.safe.hitting == true and i.safe.reach == 1)
 check("ready: a slot 0-5 item that can be cast; the backpack's clarity is not",
 	by.tango.ready == true and by.flask.ready == true and by.clarity.ready == false)
-check("the nearest tree as a walk into the tango's 165 range at 300 a second, its walk read over the gate horizon and deadly there (300 / 250 under 1.5)",
+check("the nearest tree as a walk into the tango's 165 range at 300 a second, its walk read over the gate horizon and deadly there (300 / 270 under the fresh idle bar 1.15)",
 	i.tree and near(i.tree.walk, 0.45) and i.tree.safe == false and reads[#reads] == Threat.SETTINGS.GateHorizon)
 check("the next hit due, read with a tree item held", i.nextDue == 2.5)
 check("the shop: a tango pack of three uses from the read, in stock; the salve out of stock is left out",
@@ -143,7 +143,7 @@ do
 		return read0(b, h, place, horizon)
 	end
 	STAY.safe.reach[1].dmg = 50
-	WALK.safe.reach[1].dmg = 250
+	WALK.safe.reach[1].dmg = 270
 	T = 113
 	local tr = G.Gather(bot).tree
 	check("nearest walk deadly, the one toward the safe spot safe: that tree (500 away, 1.1 s)", tr.safe == true and near(tr.walk, (500 - 165) / 300) and G.TreeOf(bot).id == 9)
@@ -151,8 +151,8 @@ do
 	T = 115
 	tr = G.Gather(bot).tree
 	check("the nearest walk safe: the nearest tree, the other not read", tr.safe == true and G.TreeOf(bot).id == 7)
-	BACK.safe.reach[1].dmg = 250
-	WALK.safe.reach[1].dmg = 250
+	BACK.safe.reach[1].dmg = 270
+	WALK.safe.reach[1].dmg = 270
 	T = 117
 	tr = G.Gather(bot).tree
 	check("both deadly: the nearest, unsafe", tr.safe == false and G.TreeOf(bot).id == 7)

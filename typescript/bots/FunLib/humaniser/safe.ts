@@ -3,7 +3,7 @@
  * master repo, sections 2 and 6.1). `Decide` is pure over `Inputs`: no unit handles, no game calls, so a logged cut replays
  * offline. One function for every position and every consumer; `Gather` and the callers come in later steps.
  *
- * Rules, first match: 1 tower, 2 kill, 3 unknown, 4 price, 5 safe.
+ * Rules, first match: 1 tower, 2 kill (the bar is lower while nobody is hitting us), 3 unknown, 4 price, 5 safe.
  */
 import { SETTINGS as ThreatSettings } from "bots/FunLib/humaniser/threat";
 
@@ -11,6 +11,12 @@ import { SETTINGS as ThreatSettings } from "bots/FunLib/humaniser/threat";
 export const BARS = {
     /** ESTIMATE: under this HP / kill ratio a place is deadly. From the shadow batch safeshadow1 (6 games, 13 deaths): retreating between 1.0 and 1.25 of the kill line died about 18%, staying between 1.25 and 1.5 under 1% (user 19/11/2026). The overnight 7.42 batch picks. */
     stay: 1.25,
+    /**
+     * The bar while no reacher is hitting us: their damage over the kill window is the walk out, so HP at the line is enough to leave on the first hit.
+     * Replay of h2h742 (30 games, 166 deaths): the 160 deaths `stay` calls in the 10 s before are still called, 13 of them under 3 s before either way,
+     * and 56 of 131 kill leaves a game do not begin (1% of those with a hero hitting; 2.6% HP lost in the next 4 s). A flat 1.0 calls 28 deaths late.
+     */
+    idle: 1.0,
     /** A caller with a hold (a hit back, a join, a committed job) may stay down to this ratio: their damage is our HP. Replaces `lethal`. */
     hold: 1.0,
     /** A fresh place (a lane spot candidate, a creep's hit place, where a retreat may stop) needs this share more than `stay`; a place the caller already holds (`held`) and a hold are judged at their bar alone, so a hero is not sent where it would leave the next frame. */
@@ -74,7 +80,10 @@ export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
     // A held place in tower reach is a hero last-hitting behind its creeps: only the tower targeting us leaves it (smoke 19/11: 88 tower leaves a game against 15).
     if (i.towerOnMe || (i.tower && !i.held)) return answer("deadly", "tower");
 
-    const bar = i.hold ? math.min(stay, BARS.hold) : i.held ? stay : stay * (1 + BARS.slack);
+    let hit = false;
+    for (const r of i.reach) hit = hit || r.hitting;
+    const line = hit ? stay : math.min(stay, BARS.idle);
+    const bar = i.hold ? math.min(line, BARS.hold) : i.held ? line : line * (1 + BARS.slack);
     if (ratio < bar) return answer("deadly", "kill");
 
     if (i.away && i.missing >= ThreatSettings.MissingRefuse) return answer("deadly", "unknown");

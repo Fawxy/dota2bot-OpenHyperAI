@@ -243,10 +243,10 @@ do
 	local Threat, G, bot = world()
 	local e = enemy(10, -1700, 420)
 	local function at(o) T = T + 0.1; return G.At(bot, HERE, o) end
-	e.perSec = 190 -- over KillWindow (4 s): 760 of 1,000 HP
-	check("ratio 1.3: a place the hero holds is not deadly (bar 1.25), fresh it is (bar 1.44), and control: ratio 1.19 is deadly held too",
+	e.perSec = 235 -- over KillWindow (4 s): 940 of 1,000 HP, and it is not hitting us
+	check("ratio 1.06, nobody hitting: a place the hero holds is not deadly (bar 1.0), fresh it is (bar 1.15), and control: ratio 0.96 is deadly held too",
 		at({ held = true }).level ~= "deadly" and at({}).level == "deadly" and at({ held = false }).level == "deadly"
-			and (function() e.perSec = 210; local l = at({ held = true }).level; e.perSec = 190; return l end)() == "deadly")
+			and (function() e.perSec = 260; local l = at({ held = true }).level; e.perSec = 235; return l end)() == "deadly")
 	check("a hold stays down to 1.0, so the same fresh place is not deadly with hold", at({ hold = true }).level ~= "deadly")
 	e.perSec = 100
 	local realReader = Threat.Reader
