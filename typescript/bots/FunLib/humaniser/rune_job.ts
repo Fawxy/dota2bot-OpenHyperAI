@@ -15,6 +15,7 @@ import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
@@ -29,8 +30,6 @@ type Kind = "power" | "wisdom" | "contest" | "water";
 export const SETTINGS = {
     /** Spawns each position goes for. Power at 6:00, the shrine at 7:00 (transitions/runes RUNE_RULES). */
     Trips: { [4]: [["power", Runes.RUNE_RULES.power.first], ["wisdom", Runes.RUNE_RULES.wisdom.first]], [5]: [["power", Runes.RUNE_RULES.power.first], ["contest", Runes.RUNE_RULES.wisdom.first]] } as Record<number, [Kind, number][]>,
-    /** Rank against the hero's other jobs (the stack job is 0.92): pos4's trip holds its 5:5x stack back, pos5's yields. */
-    Priority: { [4]: 0.95, [5]: 0.85 } as Record<number, number>,
     /** The trip claims the hero this long before the spawn, so a lower job does not start in its way. */
     ClaimFrom: 60,
     /** The calendar's estimate of a trip's end: this long after the spawn (banked trips are away about 14 s, `away`), then
@@ -148,12 +147,8 @@ export function ResetCache(): void {
 }
 
 export function Applies(bot: Unit): boolean {
-    return Ours.On("RuneRotation") && Ours.On("JobChooser") && bot.IsBot() && SETTINGS.Trips[LaneConfig.PositionOf(bot) ?? 0] !== undefined;
-}
-
-/** This hero's rank for the chooser, or undefined when the job never applies to it. */
-export function Priority(bot: Unit): number | undefined {
-    return Applies(bot) ? SETTINGS.Priority[LaneConfig.PositionOf(bot) ?? 0] : undefined;
+    const pos = LaneConfig.PositionOf(bot);
+    return Ours.On("RuneRotation") && Ours.On("JobChooser") && bot.IsBot() && TripTable.Does("rune", pos) && SETTINGS.Trips[pos ?? 0] !== undefined;
 }
 
 function key(kind: Kind, spawn: number): string {

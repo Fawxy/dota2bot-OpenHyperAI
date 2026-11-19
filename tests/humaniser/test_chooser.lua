@@ -158,4 +158,25 @@ do
 		check("switch off, trip hosted in rune, " .. m .. ": OHA's code runs", v == 0.5 and called, tostring(v))
 	end
 end
+
+-- The jobs are asked in the trip table's order for the hero's position: a pos 4 takes its rune trip before the stack, a pos 5
+-- the stack before the rune trip. Both jobs apply and neither starts, so the chooser asks every job that applies.
+do
+	local function asked(pos)
+		local H, bot = world({ JobChooser = true })
+		local seen = {}
+		local never = function() return false end
+		-- world() re-requires every module, so the stub goes on the instance the chooser holds.
+		require("bots/FunLib/humaniser/lane_config").PositionOf = function() return pos end
+		for _, m in ipairs({ { "StackJob", "stack" }, { "RuneJob", "rune" } }) do
+			H[m[1]].Applies = function() return true end
+			H[m[1]].Wants = function() table.insert(seen, m[2]) return false end
+		end
+		H.PullJob.Applies, H.PullFarm.Applies, H.CoreCamp.Owns = never, never, never
+		H.Chooser.Gate(bot, "farm", function() return 0.5 end)()
+		return table.concat(seen, ",")
+	end
+	check("pos 4 is asked for its rune trip before the stack", asked(4) == "rune,stack", asked(4))
+	check("pos 5 is asked for the stack before its rune trip", asked(5) == "stack,rune", asked(5))
+end
 finish()

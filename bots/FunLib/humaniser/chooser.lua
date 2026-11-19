@@ -21,6 +21,8 @@ local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 function runningJob(bot)
     for ____, j in ipairs(JOBS) do
         if j.Running(bot) then
@@ -95,7 +97,7 @@ ____exports.HOST_MODE = BotMode.Farm
 ____exports.EXCEPTIONS = {retreat = "our own retreat after laning", assemble = "our own human interface", assemble_with_humans = "our own human interface", attack = "our own fights, or a Valve fix"}
 local STACK = {
     name = "stack",
-    Priority = function(bot) return StackJob.Applies(bot) and ____exports.SETTINGS.JobDesire or nil end,
+    Applies = function(bot) return StackJob.Applies(bot) end,
     Claims = function(bot) return StackJob.Pending(bot) end,
     Wants = function(bot, blocked, host) return StackJob.Wants(bot, blocked, host) end,
     Running = function(bot) return StackJob.Running(bot) end,
@@ -106,7 +108,7 @@ local STACK = {
 }
 local RUNE = {
     name = "rune",
-    Priority = function(bot) return RuneJob.Priority(bot) end,
+    Applies = function(bot) return RuneJob.Applies(bot) end,
     Claims = function(bot) return RuneJob.Claims(bot) end,
     Wants = function(bot, blocked, host) return RuneJob.Wants(bot, blocked, host) end,
     Running = function(bot) return RuneJob.Running(bot) end,
@@ -117,7 +119,8 @@ local RUNE = {
 }
 local PULL = {
     name = "pull",
-    Priority = function(bot) return PullJob.Priority(bot) end,
+    Applies = function(bot) return PullJob.Applies(bot) end,
+    Lifted = function(bot) return PullJob.Lifted(bot) end,
     Claims = function(bot) return PullJob.Claims(bot) end,
     Wants = function(bot, blocked, host) return PullJob.Wants(bot, blocked, host) end,
     Running = function(bot) return PullJob.Running(bot) end,
@@ -128,7 +131,7 @@ local PULL = {
 }
 local CAMP = {
     name = "camp",
-    Priority = function(bot) return CoreCamp.Priority(bot) end,
+    Applies = function(bot) return CoreCamp.Owns(bot) end,
     Claims = function(bot) return CoreCamp.Claims(bot) end,
     Wants = function(bot, blocked, host) return CoreCamp.Wants(bot, blocked, host) end,
     Running = function(bot) return CoreCamp.Running(bot) end,
@@ -139,7 +142,7 @@ local CAMP = {
 }
 local PULLFARM = {
     name = "pullfarm",
-    Priority = function(bot) return PullFarm.Priority(bot) end,
+    Applies = function(bot) return PullFarm.Applies(bot) end,
     Claims = function(bot) return PullFarm.Claims(bot) end,
     Wants = function(bot, blocked, host) return PullFarm.Wants(bot, blocked, host) end,
     Running = function(bot) return PullFarm.Running(bot) end,
@@ -155,25 +158,34 @@ JOBS = {
     PULLFARM,
     CAMP
 }
---- The jobs that apply to this hero, highest priority first (a tie keeps JOBS order).
+--- The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order).
 local function ranked(bot)
     local out = {}
     local only = Drill.ForcedJob(bot)
+    local pos = LaneConfig.PositionOf(bot)
     for ____, j in ipairs(JOBS) do
         do
-            local __continue43
+            local __continue44
             repeat
                 if only ~= nil and j.name ~= only then
-                    __continue43 = true
+                    __continue44 = true
                     break
                 end
-                local p = j.Priority(bot)
+                if not j.Applies(bot) then
+                    __continue44 = true
+                    break
+                end
+                local p = TripTable.RankOf(
+                    j.name,
+                    pos,
+                    j.Lifted ~= nil and j.Lifted(bot)
+                )
                 if p ~= nil then
                     out[#out + 1] = {j, p}
                 end
-                __continue43 = true
+                __continue44 = true
             until true
-            if not __continue43 then
+            if not __continue44 then
                 break
             end
         end
@@ -183,7 +195,7 @@ local function ranked(bot)
         while i < #out do
             do
                 local k = i
-                while k > 0 and out[k + 1][2] > out[k][2] do
+                while k > 0 and out[k + 1][2] < out[k][2] do
                     local ____temp_0 = {out[k], out[k + 1]}
                     out[k + 1] = ____temp_0[1]
                     out[k] = ____temp_0[2]

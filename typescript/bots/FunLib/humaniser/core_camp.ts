@@ -22,6 +22,7 @@ import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
@@ -29,8 +30,6 @@ import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 // All judgement (slice file "The decision"); the clear-time model and its learning are FarmPattern's values.
 export const SETTINGS = {
-    /** Rank against the hero's other jobs (cores have none today). */
-    Priority: 0.8,
     PlanEvery: 1,
     /** Neutrals spawn at 1:00; no trip before this. */
     From: 120,
@@ -254,16 +253,12 @@ function sharesPlayerID(bot: Unit): boolean {
 export function Applies(bot: Unit): boolean {
     if (!Ours.On("CoreCampTrip") || !Ours.On("CoreLastHit") || !Ours.On("JobChooser") || !bot.IsBot() || sharesPlayerID(bot)) return false;
     const pos = LaneConfig.PositionOf(bot);
-    return pos !== undefined && pos >= 1 && pos <= 3;
+    return TripTable.Does("camp", pos);
 }
 
 /** The core's lane-stage camp trips are this job's: FarmPattern starts none for it. */
 export function Owns(bot: Unit): boolean {
     return Applies(bot) && LaneConfig.InLaningPhase();
-}
-
-export function Priority(bot: Unit): number | undefined {
-    return Owns(bot) ? SETTINGS.Priority : undefined;
 }
 
 export function Running(bot: Unit): boolean {

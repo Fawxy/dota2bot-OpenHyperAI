@@ -17,13 +17,12 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 // All `judgement` (slice file).
 export const SETTINGS = {
-    /** Below the pull (0.9) and above a core's camp trip (0.8): it never competes with them for one hero. */
-    Priority: 0.88,
     /** The farm starts within this many seconds of the pull's end, else the pull's neutrals are gone or the wave has moved on. */
     StartWithin: 12,
     /** The job ends after this many seconds on the camp (a clear is 7-26 s). */
@@ -102,11 +101,7 @@ export function ResetCache(): void {
 }
 
 export function Applies(bot: Unit): boolean {
-    return Ours.On("SupportPullFarm") && PullJob.Applies(bot);
-}
-
-export function Priority(bot: Unit): number | undefined {
-    return Applies(bot) ? SETTINGS.Priority : undefined;
+    return Ours.On("SupportPullFarm") && TripTable.Does("pullfarm", LaneConfig.PositionOf(bot)) && PullJob.Applies(bot);
 }
 
 export function Claims(bot: Unit): boolean {
