@@ -2996,7 +2996,7 @@ export const EVENTS = {
         /**
          * kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
          * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk answer
-         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
+         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back), then sw (1/0: it damaged us within its seconds per attack plus 0.25 s, the stay bar of a running hit back on it; absent on older lines).
          */
         cd: "str",
         /**
