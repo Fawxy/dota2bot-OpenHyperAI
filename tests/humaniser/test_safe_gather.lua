@@ -58,6 +58,7 @@ do
 	-- the hitter stands 300 away and its reach is 1,198 (run 600, range 550, hulls 48): 898 to walk at 300 a second; the other hero's is 598
 	check("exit: the longest walk out of any reacher's range", math.abs(i.exit - 898 / 300) < 1e-6, i.exit)
 	hitter.loc, idle.loc = Vector(-9000, -5000), Vector(-9000, -5000)
+	T = T + 0.1 -- a new frame: the heroes moved
 	check("nobody in reach: no rows and no exit", #G.FromRead(bot, stay(Threat, bot), OPTS).reach == 0 and G.FromRead(bot, stay(Threat, bot), OPTS).exit == nil)
 end
 

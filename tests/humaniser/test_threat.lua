@@ -29,7 +29,9 @@ local function world(o)
 	return H, Threat, bot, e
 end
 
+-- A new sighting is a new frame: Threat reads the team's part once per DotaTime (step 3 of the plan after the collapse).
 local function hide(e, at, tss)
+	T = T + 0.01
 	e.hiddenFrom = { [OBSERVER] = true }
 	LAST_SEEN[e.pid] = { location = at, time_since_seen = tss }
 end
@@ -94,6 +96,7 @@ do
 	check("lethal: their burst passes our HP and they outnumber us", low.band == "lethal", low.band)
 	local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-1100, -6000) })
 	ally.maxhp, ally.hp = 600, 600
+	T = T + 0.1
 	check("lethal: not with an ally who reaches the place", Threat.Read(bot, HERE, CAMP, 4).band ~= "lethal")
 end
 
@@ -145,6 +148,7 @@ do
 	check("vision cut: a fogged stretch within its run, counted", near(part.missing, 0.5) and part.mcut == 0, part.missing)
 	LAST_SEEN[e.pid] = { location = Vector(-3300, -4600), time_since_seen = 4 } -- run 1,920: reaches the walk's start, not its fogged end
 	FOGGED = function(v) return v.x > -1200 end
+	T = T + 0.1
 	check("vision cut: the fogged stretch out of its run, cut", Threat.Read(bot, HERE, CAMP, 4).mcut == 1)
 end
 
@@ -288,6 +292,61 @@ do
 	e.abilities = { [0] = spell("luna_lucent_beam", 2, true, 150) }
 	local illRead = SpellReady.DamageOn(illusion, bot, 3)
 	check("spent: an illusion read first leaves its hero's ready nuke counted", illRead == 300 and SpellReady.DamageOn(e, bot, 3) == 300, illRead)
+end
+
+-- Step 3 of the plan after the collapse: the part of a read no hero's perception changes is read once per team and frame,
+-- DamageOn once per attacker, target, window and frame; what is per hero (itself, a teammate's retreat, its perception) is not.
+do
+	local H, Threat, bot, e = world({ t = 300 })
+	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
+	local SpellReady = require("bots/FunLib/humaniser/spell_ready")
+	SpellReady.ResetCache()
+	local mate = MakeUnit({ pid = 2, team = 2, loc = HERE, level = 3 })
+	mate.lane, mate.pos, mate.maxhp, mate.hp = Lane.Bot, 4, 600, 600
+	e.loc, e.range, e.estDamage = Vector(-1500, -5000), 150, 300
+	local towerCalls, pidCalls, estCalls = 0, 0, 0
+	local getTower, teamFor, est = GetTower, GetTeamForPlayer, e.GetEstimatedDamageToTarget
+	GetTower = function(...) towerCalls = towerCalls + 1 return getTower(...) end
+	GetTeamForPlayer = function(...) pidCalls = pidCalls + 1 return teamFor(...) end
+	e.GetEstimatedDamageToTarget = function(...) estCalls = estCalls + 1 return est(...) end
+	local a = Threat.Read(bot, HERE, CAMP, 4)
+	local tw, pc = towerCalls, pidCalls
+	local b = Threat.Read(mate, HERE, CAMP, 4)
+	check("frame: a second hero's reader in the frame reads no tower and no player id", towerCalls == tw and pidCalls == pc, towerCalls - tw)
+	check("frame: each reader leaves itself out of the allies", a.allies == 1 and b.allies == 1, a.allies, b.allies)
+	local c = Threat.Read(bot, HERE, CAMP, 4)
+	check("frame: one hero's read again gives the same answer", c.burst == a.burst and c.threat == a.threat)
+	RetreatState.SetRunning(mate, true)
+	check("frame: a teammate that started a retreat in the frame is left out", Threat.Read(bot, HERE, CAMP, 4).allies == 0)
+	RetreatState.SetRunning(mate, false)
+	local n = estCalls
+	-- Windows no read above asked (each reader asked 3 s).
+	check("damage: asked twice in a frame, read once", SpellReady.DamageOn(e, mate, 5) == SpellReady.DamageOn(e, mate, 5) and estCalls == n + 1, estCalls - n)
+	check("damage: another window is its own read", SpellReady.DamageOn(e, mate, 7) == 300 and estCalls == n + 2)
+	-- Perception filters the enemy list per observing hero: hidden from hero 1 and not from hero 2 in the same frame.
+	e.hiddenFrom = { [1] = true }
+	OBSERVER = 1
+	local hid = Threat.Read(bot, HERE, CAMP, 4)
+	OBSERVER = 2
+	local shown = Threat.Read(mate, HERE, CAMP, 4)
+	check("frame: an enemy one hero has not noticed stays out of its read only", #hid.reach == 0 and #shown.reach == 1, #hid.reach, #shown.reach)
+	e.hiddenFrom, OBSERVER = nil, 1
+	-- A new frame reads the game again.
+	T = T + 0.1
+	tw = towerCalls
+	e.estDamage = 600
+	Threat.Read(bot, HERE, CAMP, 4)
+	check("frame: the next frame reads the towers again", towerCalls > tw)
+	check("damage: the next frame reads the estimate again", SpellReady.DamageOn(e, bot, 3) == 600)
+	-- ResetCache drops the frame (fixtures can share a DotaTime).
+	e.estDamage = 900
+	SpellReady.ResetCache()
+	check("damage: ResetCache drops the frame's answers", SpellReady.DamageOn(e, bot, 3) == 900)
+	tw = towerCalls
+	Threat.ResetCache()
+	Threat.Read(bot, HERE, CAMP, 4)
+	check("frame: ResetCache drops the team frame", towerCalls > tw)
+	GetTower, GetTeamForPlayer = getTower, teamFor
 end
 
 finish()

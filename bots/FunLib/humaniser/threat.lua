@@ -8,6 +8,219 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
     return result
 end
 
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
+end
+
+local __TS__Symbol, Symbol
+do
+    local symbolMetatable = {__tostring = function(self)
+        return ("Symbol(" .. (self.description or "")) .. ")"
+    end}
+    function __TS__Symbol(description)
+        return setmetatable({description = description}, symbolMetatable)
+    end
+    Symbol = {
+        asyncDispose = __TS__Symbol("Symbol.asyncDispose"),
+        dispose = __TS__Symbol("Symbol.dispose"),
+        iterator = __TS__Symbol("Symbol.iterator"),
+        hasInstance = __TS__Symbol("Symbol.hasInstance"),
+        species = __TS__Symbol("Symbol.species"),
+        toStringTag = __TS__Symbol("Symbol.toStringTag")
+    }
+end
+
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local Map
+do
+    Map = __TS__Class()
+    Map.name = "Map"
+    function Map.prototype.____constructor(self, entries)
+        self[Symbol.toStringTag] = "Map"
+        self.items = {}
+        self.size = 0
+        self.nextKey = {}
+        self.previousKey = {}
+        if entries == nil then
+            return
+        end
+        local iterable = entries
+        if iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            while true do
+                local result = iterator:next()
+                if result.done then
+                    break
+                end
+                local value = result.value
+                self:set(value[1], value[2])
+            end
+        else
+            local array = entries
+            for ____, kvp in ipairs(array) do
+                self:set(kvp[1], kvp[2])
+            end
+        end
+    end
+    function Map.prototype.clear(self)
+        self.items = {}
+        self.nextKey = {}
+        self.previousKey = {}
+        self.firstKey = nil
+        self.lastKey = nil
+        self.size = 0
+    end
+    function Map.prototype.delete(self, key)
+        local contains = self:has(key)
+        if contains then
+            self.size = self.size - 1
+            local next = self.nextKey[key]
+            local previous = self.previousKey[key]
+            if next ~= nil and previous ~= nil then
+                self.nextKey[previous] = next
+                self.previousKey[next] = previous
+            elseif next ~= nil then
+                self.firstKey = next
+                self.previousKey[next] = nil
+            elseif previous ~= nil then
+                self.lastKey = previous
+                self.nextKey[previous] = nil
+            else
+                self.firstKey = nil
+                self.lastKey = nil
+            end
+            self.nextKey[key] = nil
+            self.previousKey[key] = nil
+        end
+        self.items[key] = nil
+        return contains
+    end
+    function Map.prototype.forEach(self, callback)
+        for ____, key in __TS__Iterator(self:keys()) do
+            callback(nil, self.items[key], key, self)
+        end
+    end
+    function Map.prototype.get(self, key)
+        return self.items[key]
+    end
+    function Map.prototype.has(self, key)
+        return self.nextKey[key] ~= nil or self.lastKey == key
+    end
+    function Map.prototype.set(self, key, value)
+        local isNewValue = not self:has(key)
+        if isNewValue then
+            self.size = self.size + 1
+        end
+        self.items[key] = value
+        if self.firstKey == nil then
+            self.firstKey = key
+            self.lastKey = key
+        elseif isNewValue then
+            self.nextKey[self.lastKey] = key
+            self.previousKey[key] = self.lastKey
+            self.lastKey = key
+        end
+        return self
+    end
+    Map.prototype[Symbol.iterator] = function(self)
+        return self:entries()
+    end
+    function Map.prototype.entries(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = {key, items[key]}}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.keys(self)
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = key}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    function Map.prototype.values(self)
+        local items = self.items
+        local nextKey = self.nextKey
+        local key = self.firstKey
+        return {
+            [Symbol.iterator] = function(self)
+                return self
+            end,
+            next = function(self)
+                local result = {done = not key, value = items[key]}
+                key = nextKey[key]
+                return result
+            end
+        }
+    end
+    Map[Symbol.species] = Map
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -89,10 +302,12 @@ local TOWER_IDS = {
 }
 local MAX_PLAYER_ID = 23
 local speeds = {}
+local frames = {}
 local logged = {}
 function ____exports.ResetCache()
     speeds = {}
     logged = {}
+    frames = {}
 end
 local function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
@@ -186,9 +401,138 @@ function ____exports.BandOf(threat, lethal)
     end
     return threat >= ____exports.SETTINGS.Pressured and "pressured" or (threat >= ____exports.SETTINGS.Watch and "watch" or "none")
 end
+local function fixedOf(team, now)
+    local cached = frames[team]
+    if cached ~= nil and cached.t == now then
+        return cached
+    end
+    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
+    local allies = {}
+    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+        do
+            local __continue31
+            repeat
+                if not valid(a) then
+                    __continue31 = true
+                    break
+                end
+                local at = a:GetLocation()
+                if at == nil or at == nil then
+                    __continue31 = true
+                    break
+                end
+                allies[#allies + 1] = {
+                    u = a,
+                    pid = a:GetPlayerID(),
+                    at = at,
+                    sp = a:GetCurrentMovementSpeed(),
+                    range = a:GetAttackRange(),
+                    hull = a:GetBoundingRadius()
+                }
+                __continue31 = true
+            until true
+            if not __continue31 then
+                break
+            end
+        end
+    end
+    local enemyTowers = standing(enemyTeam, TOWER_IDS)
+    local enemyTowerAt = __TS__ArrayMap(
+        enemyTowers,
+        function(____, tw) return tw:GetLocation() end
+    )
+    local function depthAt(t, all)
+        local t1 = __TS__ArrayMap(
+            standing(t, T1_IDS),
+            function(____, tw) return tw:GetLocation() end
+        )
+        return #t1 > 0 and t1 or (all or __TS__ArrayMap(
+            standing(t, TOWER_IDS),
+            function(____, tw) return tw:GetLocation() end
+        ))
+    end
+    local enemyPids = {}
+    do
+        local pid = 0
+        while pid <= MAX_PLAYER_ID do
+            do
+                local __continue39
+                repeat
+                    local t = GetTeamForPlayer(pid)
+                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
+                        __continue39 = true
+                        break
+                    end
+                    enemyPids[#enemyPids + 1] = pid
+                    __continue39 = true
+                until true
+                if not __continue39 then
+                    break
+                end
+            end
+            pid = pid + 1
+        end
+    end
+    local f = {
+        team = team,
+        t = now,
+        enemies = __TS__New(Map),
+        allies = allies,
+        enemyTowers = enemyTowers,
+        enemyTowerAt = enemyTowerAt,
+        enemyTowerReach = {},
+        ownDepthAt = depthAt(team, nil),
+        enemyDepthAt = depthAt(enemyTeam, enemyTowerAt),
+        enemyPids = enemyPids,
+        sightings = {}
+    }
+    frames[team] = f
+    return f
+end
+local function enemyOf(f, e)
+    local cached = f.enemies:get(e)
+    if cached ~= nil then
+        local ____temp_0
+        if cached == false then
+            ____temp_0 = nil
+        else
+            ____temp_0 = cached
+        end
+        return ____temp_0
+    end
+    if not valid(e) or not e:CanBeSeen() then
+        f.enemies:set(e, false)
+        return nil
+    end
+    local x = {
+        u = e,
+        pid = e:GetPlayerID(),
+        at = e:GetLocation(),
+        sp = e:GetCurrentMovementSpeed(),
+        range = e:GetAttackRange(),
+        hull = e:GetBoundingRadius()
+    }
+    f.enemies:set(e, x)
+    return x
+end
+local function sightingOf(f, pid)
+    local s = f.sightings[pid]
+    if s == nil then
+        s = GetHeroLastSeenInfo(pid)[1] or false
+        f.sightings[pid] = s
+    end
+    local ____temp_1
+    if s == false then
+        ____temp_1 = nil
+    else
+        ____temp_1 = s
+    end
+    return ____temp_1
+end
 --- The reads for `bot` with `horizon` seconds ahead, as a function of the walk (`from` to `place`). What does not depend on the
 -- walk (who is seen and where, the standing towers, the unseen heroes' sightings, an escape item) is read from the game once,
--- here, so a caller weighing several places in one frame (the lane spot) pays for the heroes and towers once. Use it within
+-- here, so a caller weighing several places in one frame (the lane spot) pays for the heroes and towers once; the part no hero's
+-- perception changes is read once per team and frame (`TeamFrame`). Use it within
 -- the frame it was made in. `lethal` fires when the heroes in reach can deal the bot's HP within the burst window, they
 -- outnumber our heroes in reach and the bot has no `escape`.
 -- 
@@ -201,122 +545,83 @@ function ____exports.Reader(bot, horizon, opts)
     local s = ____exports.SETTINGS
     local now = DotaTime()
     local team = bot:GetTeam()
-    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
     local hull = bot:GetBoundingRadius()
     local window = opts and opts.window or math.min(horizon, s.BurstWindow)
+    local fixed = fixedOf(team, now)
     local visible = {}
     local enemies = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue30
+            local __continue47
             repeat
-                if not valid(e) or not e:CanBeSeen() then
-                    __continue30 = true
+                local f = enemyOf(fixed, e)
+                if f == nil then
+                    __continue47 = true
                     break
                 end
-                local pid = e:GetPlayerID()
-                visible[pid] = true
-                local sp = e:GetCurrentMovementSpeed()
-                if sp ~= nil and sp > 0 then
-                    speeds[pid] = sp
+                visible[f.pid] = true
+                if f.sp ~= nil and f.sp > 0 then
+                    speeds[f.pid] = f.sp
                 end
-                local at = e:GetLocation()
-                if at == nil or at == nil then
-                    __continue30 = true
+                if f.at == nil or f.at == nil then
+                    __continue47 = true
                     break
                 end
-                enemies[#enemies + 1] = {
-                    u = e,
-                    pid = pid,
-                    at = at,
-                    run = sp * horizon + e:GetAttackRange() + e:GetBoundingRadius() + hull
-                }
-                __continue30 = true
+                enemies[#enemies + 1] = {u = e, pid = f.pid, at = f.at, run = f.sp * horizon + f.range + f.hull + hull}
+                __continue47 = true
             until true
-            if not __continue30 then
+            if not __continue47 then
                 break
             end
         end
     end
     local allies = {}
-    for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
+    for ____, a in ipairs(fixed.allies) do
         do
-            local __continue35
+            local __continue52
             repeat
-                if not valid(a) or a == bot or RetreatState.Running(a) then
-                    __continue35 = true
+                if a.u == bot or RetreatState.Running(a.u) then
+                    __continue52 = true
                     break
                 end
-                local at = a:GetLocation()
-                if at == nil or at == nil then
-                    __continue35 = true
-                    break
-                end
-                allies[#allies + 1] = {
-                    u = a,
-                    pid = a:GetPlayerID(),
-                    at = at,
-                    run = a:GetCurrentMovementSpeed() * horizon + a:GetAttackRange() + a:GetBoundingRadius() + hull
-                }
-                __continue35 = true
+                allies[#allies + 1] = {u = a.u, pid = a.pid, at = a.at, run = a.sp * horizon + a.range + a.hull + hull}
+                __continue52 = true
             until true
-            if not __continue35 then
+            if not __continue52 then
                 break
             end
         end
     end
-    local enemyTowers = standing(enemyTeam, TOWER_IDS)
-    local enemyTowerAt = __TS__ArrayMap(
-        enemyTowers,
-        function(____, tw) return tw:GetLocation() end
-    )
-    local enemyTowerReach = {}
-    local function depthAt(t, all)
-        local t1 = __TS__ArrayMap(
-            standing(t, T1_IDS),
-            function(____, tw) return tw:GetLocation() end
-        )
-        return #t1 > 0 and t1 or (all or __TS__ArrayMap(
-            standing(t, TOWER_IDS),
-            function(____, tw) return tw:GetLocation() end
-        ))
-    end
-    local ownDepthAt = depthAt(team, nil)
-    local enemyDepthAt = depthAt(enemyTeam, enemyTowerAt)
+    local enemyTowers = fixed.enemyTowers
+    local enemyTowerAt = fixed.enemyTowerAt
+    local enemyTowerReach = fixed.enemyTowerReach
+    local ownDepthAt = fixed.ownDepthAt
+    local enemyDepthAt = fixed.enemyDepthAt
     local unseen = {}
-    do
-        local pid = 0
-        while pid <= MAX_PLAYER_ID do
-            do
-                local __continue43
-                repeat
-                    local t = GetTeamForPlayer(pid)
-                    if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue43 = true
-                        break
-                    end
-                    if pid == (opts and opts.exclude) then
-                        __continue43 = true
-                        break
-                    end
-                    local info = GetHeroLastSeenInfo(pid)[1]
-                    if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue43 = true
-                        break
-                    end
-                    unseen[#unseen + 1] = {
-                        pid = pid,
-                        at = info.location,
-                        tss = info.time_since_seen,
-                        r = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin
-                    }
-                    __continue43 = true
-                until true
-                if not __continue43 then
+    for ____, pid in ipairs(fixed.enemyPids) do
+        do
+            local __continue55
+            repeat
+                if visible[pid] == true or pid == (opts and opts.exclude) then
+                    __continue55 = true
                     break
                 end
+                local info = sightingOf(fixed, pid)
+                if info == nil or info.time_since_seen <= s.MissingAfter then
+                    __continue55 = true
+                    break
+                end
+                unseen[#unseen + 1] = {
+                    pid = pid,
+                    at = info.location,
+                    tss = info.time_since_seen,
+                    r = math.min((speeds[pid] or s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin
+                }
+                __continue55 = true
+            until true
+            if not __continue55 then
+                break
             end
-            pid = pid + 1
         end
     end
     local early = now < s.EarlyUntil and s.EarlyWeight or s.LateWeight
@@ -334,10 +639,10 @@ function ____exports.Reader(bot, horizon, opts)
         local dmg = 0
         for ____, e in ipairs(enemies) do
             do
-                local __continue48
+                local __continue60
                 repeat
                     if distToSegment(e.at, from, place) > e.run then
-                        __continue48 = true
+                        __continue60 = true
                         break
                     end
                     reach[#reach + 1] = e.pid
@@ -367,9 +672,9 @@ function ____exports.Reader(bot, horizon, opts)
                         run = e.run
                     }
                     dmg = dmg + e.dmg
-                    __continue48 = true
+                    __continue60 = true
                 until true
-                if not __continue48 then
+                if not __continue60 then
                     break
                 end
             end
@@ -391,17 +696,17 @@ function ____exports.Reader(bot, horizon, opts)
         local points
         for ____, m in ipairs(unseen) do
             do
-                local __continue59
+                local __continue71
                 repeat
                     if distToSegment(m.at, from, place) > m.r then
-                        __continue59 = true
+                        __continue71 = true
                         break
                     end
                     if s.VisionCut then
                         points = points or ____exports.WalkPoints(from, place)
                         if not unseenWithin(points, m.at, m.r) then
                             mcut = mcut + 1
-                            __continue59 = true
+                            __continue71 = true
                             break
                         end
                     end
@@ -411,9 +716,9 @@ function ____exports.Reader(bot, horizon, opts)
                     )
                     mpids[#mpids + 1] = m.pid
                     mtss = math.max(mtss or 0, m.tss)
-                    __continue59 = true
+                    __continue71 = true
                 until true
-                if not __continue59 then
+                if not __continue71 then
                     break
                 end
             end
@@ -515,8 +820,8 @@ function ____exports.Log(bot, consumer, r, decision)
         return false
     end
     logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_8 = Telemetry.Event
-    local ____array_7 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_10 = Telemetry.Event
+    local ____array_9 = __TS__SparseArrayNew(
         {"pid", pid},
         {"who", consumer},
         {"dec", decision},
@@ -552,15 +857,15 @@ function ____exports.Log(bot, consumer, r, decision)
         },
         {"ally", r.allies}
     )
-    local ____temp_6
+    local ____temp_8
     if #r.reach > 0 then
-        ____temp_6 = r.escape
+        ____temp_8 = r.escape
     else
-        ____temp_6 = nil
+        ____temp_8 = nil
     end
     __TS__SparseArrayPush(
-        ____array_7,
-        {"esc", ____temp_6},
+        ____array_9,
+        {"esc", ____temp_8},
         {"tower", r.tower},
         {
             "miss",
@@ -583,9 +888,9 @@ function ____exports.Log(bot, consumer, r, decision)
             ))
         }
     )
-    ____Telemetry_Event_8(
+    ____Telemetry_Event_10(
         "threat",
-        {__TS__SparseArraySpread(____array_7)}
+        {__TS__SparseArraySpread(____array_9)}
     )
     return true
 end

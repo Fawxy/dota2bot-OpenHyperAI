@@ -437,12 +437,15 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     const answers: Record<string, Safe.Answer> = {};
     let readN = 0;
     const keyOf = (p: Vector): string => `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
+    // The enemy heroes' places, read once: every candidate's read asks whether its walk goes towards one.
+    const heroAt: Vector[] = [];
+    for (const h of bot.GetNearbyHeroes(1600, true, 0)) {
+        const at = alive(h) ? h.GetLocation() : undefined;
+        if (at !== undefined) heroAt.push(at);
+    }
     const optsFor = (p: Vector, who?: string): SafeGather.AtOpts => {
         let toward = false;
-        for (const h of bot.GetNearbyHeroes(1600, true, 0)) {
-            const at = alive(h) ? h.GetLocation() : undefined;
-            if (at !== undefined && len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y)) toward = true;
-        }
+        for (const at of heroAt) if (len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y)) toward = true;
         return { from: toward ? here : p, held: len(p.x - here.x, p.y - here.y) <= HELD_NEAR, who };
     };
     const answerAt = (p: Vector): Safe.Answer => {
