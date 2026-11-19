@@ -669,7 +669,8 @@ function ____exports.Reader(bot, horizon, opts)
                         dmg = e.dmg,
                         eng = e.eng == true,
                         at = e.at,
-                        run = e.run
+                        run = e.run,
+                        u = e.u
                     }
                     dmg = dmg + e.dmg
                     __continue60 = true

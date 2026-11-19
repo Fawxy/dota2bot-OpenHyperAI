@@ -94,7 +94,8 @@ ____exports.DEFAULTS = {
     ArbiterDrive = true,
     MidWater = false,
     BurstReady = true,
-    Sustain = true
+    Sustain = true,
+    ExitWindow = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()
