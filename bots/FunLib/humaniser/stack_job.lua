@@ -673,6 +673,43 @@ do
     Map[Symbol.species] = Map
 end
 
+local __TS__StringSplit
+do
+    local sub = string.sub
+    local find = string.find
+    function __TS__StringSplit(source, separator, limit)
+        if limit == nil then
+            limit = 4294967295
+        end
+        if limit == 0 then
+            return {}
+        end
+        local result = {}
+        local resultIndex = 1
+        if separator == nil or separator == "" then
+            for i = 1, #source do
+                result[resultIndex] = sub(source, i, i)
+                resultIndex = resultIndex + 1
+            end
+        else
+            local currentPos = 1
+            while resultIndex <= limit do
+                local startPos, endPos = find(source, separator, currentPos, true)
+                if not startPos then
+                    break
+                end
+                result[resultIndex] = sub(source, currentPos, startPos - 1)
+                resultIndex = resultIndex + 1
+                currentPos = endPos + 1
+            end
+            if resultIndex <= limit then
+                result[resultIndex] = sub(source, currentPos)
+            end
+        end
+        return result
+    end
+end
+
 local function __TS__ArraySplice(self, ...)
     local args = {...}
     local len = #self
@@ -748,7 +785,7 @@ local function __TS__ArraySplice(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, log, firstRes, recordOutcome, report, doubleFields, winField, winOff, targetDist, sample59, override, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, settling, LANE_NEAR, SEEN_SCAN, probe
+local setDir, edgeToward, setExit, near, dist, sec, hpPct, phase, follow, trkField, laneNear, freshInBox, isFirst, campTargets, campNeutrals, describe, log, firstRes, recordOutcome, atOpen, report, doubleFields, winField, winOff, targetDist, sample59, override, exits, EXIT_DIRS, TRI_SE, SHRINE_LANE, settling, LANE_NEAR, SEEN_SCAN, START_GATES, probe
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
@@ -1048,6 +1085,13 @@ function recordOutcome(campIdx, minute, res)
         Stacking.NoteStackOutcome(campIdx, minute, nil, true)
     end
 end
+function atOpen(why)
+    if why == nil then
+        return nil
+    end
+    local tail = table.remove(__TS__StringSplit(why, ":"))
+    return tail ~= nil and START_GATES[tail] == true and 0 or nil
+end
 function report(bot, a)
     local sp = Camps.SpawnerByIdx(a.campIdx)
     local landed = a.aggro ~= nil
@@ -1070,6 +1114,10 @@ function report(bot, a)
                 Stacking.StackCount(a.campIdx)
             },
             {"why", a.why or "?"},
+            {
+                "ato",
+                atOpen(a.why)
+            },
             {"camp", a.campIdx},
             {"type", a.type},
             {
@@ -2078,6 +2126,13 @@ local function finish(bot, a, result)
         report(bot, a)
     end
 end
+START_GATES = {
+    hit = true,
+    threat = true,
+    hp = true,
+    ["low-hp"] = true,
+    ["enemy-near"] = true
+}
 local VISION_DIRS = 8
 local VISION_WAIT = 1
 local VISION_WALK = 10
@@ -2229,10 +2284,10 @@ function ____exports.Wants(bot, blocked, host)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue232
+            local __continue234
             repeat
                 if handled[pid][minute] or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom or now >= (minute + 1) * GameRules.NEUTRAL_EVERY then
-                    __continue232 = true
+                    __continue234 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2397,7 +2452,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, a, "start", "trigger")
                 return true
             until true
-            if not __continue232 then
+            if not __continue234 then
                 break
             end
         end
@@ -2417,11 +2472,11 @@ function ____exports.CalendarEntries(bot, now)
     local a = running[pid]
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue256
+            local __continue258
             repeat
                 local ____end = minute * 60 + 60 + jobEnd()
                 if now >= ____end then
-                    __continue256 = true
+                    __continue258 = true
                     break
                 end
                 if a ~= nil and a.minute == minute then
@@ -2434,12 +2489,12 @@ function ____exports.CalendarEntries(bot, now)
                         fixed = false,
                         running = true
                     }
-                    __continue256 = true
+                    __continue258 = true
                     break
                 end
                 local ____opt_38 = handled[pid]
                 if (____opt_38 and ____opt_38[minute]) == true or now >= minute * 60 + 60 then
-                    __continue256 = true
+                    __continue258 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -2467,7 +2522,7 @@ function ____exports.CalendarEntries(bot, now)
                     }) or ({nil, nil}))
                 end
                 if data == nil or stand == nil then
-                    __continue256 = true
+                    __continue258 = true
                     break
                 end
                 local walk = travel(bot, stand)
@@ -2502,9 +2557,9 @@ function ____exports.CalendarEntries(bot, now)
                     back = ____end + walk,
                     fixed = false
                 }
-                __continue256 = true
+                __continue258 = true
             until true
-            if not __continue256 then
+            if not __continue258 then
                 break
             end
         end

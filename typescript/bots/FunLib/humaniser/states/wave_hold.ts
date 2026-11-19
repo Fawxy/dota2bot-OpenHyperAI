@@ -293,6 +293,8 @@ export function OursAtBehind(ours: number[], bd: number, front: number): number 
 }
 
 interface Attempt {
+    /** Slice trade-count: reads made so far; an end on the first read is the open's own inputs (the start frame reads at once). */
+    reads: number;
     lane: Lane;
     br: Branch;
     sw: number;
@@ -464,6 +466,17 @@ function threatOf(bot: Unit, hold: Vector): Unit | undefined {
     return undefined;
 }
 
+/**
+ * Slice trade-count: 1 when a read-based end (`met`, `cleared`, `tower`, `unsafe`, `concede` but a failed drag) came on the attempt's first read,
+ * which the start frame makes at once, so the end held on the open's own inputs; 0 when a later read gave it; undefined for the ends that are
+ * no read (`hurt`, `timeout`, `left`, `died`) and the drag's refused draw.
+ */
+function atOpen(a: Attempt, res: string): number | undefined {
+    if (res !== "met" && res !== "cleared" && res !== "tower" && res !== "unsafe" && res !== "concede") return undefined;
+    if (res === "concede" && a.cr === "drag") return undefined;
+    return a.reads <= 1 ? 1 : 0;
+}
+
 function finish(bot: Unit, a: Attempt, res: string, now: number): void {
     const pid = bot.GetPlayerID();
     attempts[pid] = undefined;
@@ -506,6 +519,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["hp", math.floor((a.hp0 / math.max(1, bot.GetMaxHealth())) * 100) / 100],
         ["dhp", a.hp0 - a.hpMin],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
+        ["ato", atOpen(a, res)],
         ["md", res === "left" || res === "died" ? bot.GetActiveMode() : undefined],
     ]);
 }
@@ -535,6 +549,7 @@ function begin(bot: Unit, v: LaneView, front: number, n: number, rear: number, r
     const old: Unit[] = [];
     for (let i = 0; i < v.mine.length; i++) if (InClash(v.mine[i].own, v.busy[i], rear)) old.push(v.mine[i].u);
     return {
+        reads: 0,
         lane,
         br: "hold",
         sw: 0,
@@ -742,6 +757,7 @@ export function Watch(bot: Unit, hosted: boolean, swing: boolean): void {
     if (now - a.startedAt > SETTINGS.MaxSecs) return finish(bot, a, "timeout", now);
     if (now - a.readAt < SETTINGS.Every) return;
     a.readAt = now;
+    a.reads++;
     a.want = undefined;
     if (swing) a.hs++;
     const v = viewOf(bot.GetTeam(), a.lane);

@@ -999,6 +999,20 @@ function recordOutcome(campIdx: number, minute: number, res: string): void {
     if (res === "stacked" || res === "unseen") Stacking.NoteStackOutcome(campIdx, minute, undefined, true);
 }
 
+/** The start gates (`Wants`' `blocked`) an end can name: `cancelled:hit`, `interrupted:threat`, `interrupted:hp`... */
+const START_GATES: Record<string, boolean | undefined> = { hit: true, threat: true, hp: true, "low-hp": true, "enemy-near": true };
+
+/**
+ * Slice trade-count: whether the end's reason already held at the start. The job starts only when `blocked` says nothing, so an end that
+ * names one of its gates (the last `:` part of `why`) came after the start: 0. Any other end (a missed hit, a preemption, a death) is a
+ * change in the game no start gate asks: undefined.
+ */
+function atOpen(why: string | undefined): number | undefined {
+    if (why === undefined) return undefined;
+    const tail = why.split(":").pop();
+    return tail !== undefined && START_GATES[tail] === true ? 0 : undefined;
+}
+
 function report(bot: Unit, a: Attempt): void {
     const sp = Camps.SpawnerByIdx(a.campIdx);
     // After a landed hit the box decides the result (`unseen`: never in sight after :00); before it, the attempt failed.
@@ -1011,6 +1025,7 @@ function report(bot: Unit, a: Attempt): void {
         ["res", res],
         ["scount", Stacking.StackCount(a.campIdx)],
         ["why", a.why ?? "?"],
+        ["ato", atOpen(a.why)],
         ["camp", a.campIdx],
         ["type", a.type],
         ["start", math.floor(a.startedAt * 10) / 10],

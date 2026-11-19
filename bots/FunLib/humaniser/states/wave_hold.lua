@@ -493,6 +493,18 @@ local function threatOf(bot, hold)
     end
     return nil
 end
+--- Slice trade-count: 1 when a read-based end (`met`, `cleared`, `tower`, `unsafe`, `concede` but a failed drag) came on the attempt's first read,
+-- which the start frame makes at once, so the end held on the open's own inputs; 0 when a later read gave it; undefined for the ends that are
+-- no read (`hurt`, `timeout`, `left`, `died`) and the drag's refused draw.
+local function atOpen(a, res)
+    if res ~= "met" and res ~= "cleared" and res ~= "tower" and res ~= "unsafe" and res ~= "concede" then
+        return nil
+    end
+    if res == "concede" and a.cr == "drag" then
+        return nil
+    end
+    return a.reads <= 1 and 1 or 0
+end
 local function finish(bot, a, res, now)
     local pid = bot:GetPlayerID()
     attempts[pid] = nil
@@ -600,6 +612,10 @@ local function finish(bot, a, res, now)
                 math.floor((now - a.startedAt) * 100) / 100
             },
             {
+                "ato",
+                atOpen(a, res)
+            },
+            {
                 "md",
                 (res == "left" or res == "died") and bot:GetActiveMode() or nil
             }
@@ -655,6 +671,7 @@ local function begin(bot, v, front, n, rear, reach, now, trig, fc)
         end
     end
     return {
+        reads = 0,
         lane = lane,
         br = "hold",
         sw = 0,
@@ -700,10 +717,10 @@ local function skip(bot, v, why, front, n, reach, now, fc)
     local oin = 0
     for ____, o in ipairs(v.ours) do
         do
-            local __continue87
+            local __continue90
             repeat
                 if o < -____exports.SETTINGS.OursBehind then
-                    __continue87 = true
+                    __continue90 = true
                     break
                 end
                 if o < ____exports.SETTINGS.TowerR then
@@ -711,9 +728,9 @@ local function skip(bot, v, why, front, n, reach, now, fc)
                 else
                     on = on + 1
                 end
-                __continue87 = true
+                __continue90 = true
             until true
-            if not __continue87 then
+            if not __continue90 then
                 break
             end
         end
@@ -729,11 +746,11 @@ local function skip(bot, v, why, front, n, reach, now, fc)
             local i = 0
             while i < #v.mine do
                 do
-                    local __continue93
+                    local __continue96
                     repeat
                         local o = v.mine[i + 1].own
                         if o < ____exports.SETTINGS.TowerR and v.busy[i + 1] then
-                            __continue93 = true
+                            __continue96 = true
                             break
                         end
                         if o >= -____exports.SETTINGS.OursBehind and o <= w.rear + ____exports.SETTINGS.OursAhead then
@@ -757,9 +774,9 @@ local function skip(bot, v, why, front, n, reach, now, fc)
                             obt = ____temp_5
                             break
                         end
-                        __continue93 = true
+                        __continue96 = true
                     until true
-                    if not __continue93 then
+                    if not __continue96 then
                         break
                     end
                 end
@@ -1049,6 +1066,7 @@ function ____exports.Watch(bot, hosted, swing)
         return
     end
     a.readAt = now
+    a.reads = a.reads + 1
     a.want = nil
     if swing then
         a.hs = a.hs + 1
@@ -1064,19 +1082,19 @@ function ____exports.Watch(bot, hosted, swing)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue134
+            local __continue137
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - a.bd or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue134 = true
+                    __continue137 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue134 = true
+                __continue137 = true
             until true
-            if not __continue134 then
+            if not __continue137 then
                 break
             end
         end
@@ -1097,18 +1115,18 @@ function ____exports.Watch(bot, hosted, swing)
     local fresh = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue143
+            local __continue146
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue143 = true
+                    __continue146 = true
                     break
                 end
                 if not __TS__ArrayIncludes(a.old, c) then
                     fresh[#fresh + 1] = c
                 end
-                __continue143 = true
+                __continue146 = true
             until true
-            if not __continue143 then
+            if not __continue146 then
                 break
             end
         end

@@ -596,6 +596,7 @@
    "q": "num",
    "st": "str",
    "drop": "num",
+   "ato": "num",
    "dur": "num",
    "own": "num",
    "fc": "num",
@@ -615,6 +616,7 @@
    "lane": "num",
    "br": "str",
    "res": "str",
+   "ato": "num",
    "why": "str",
    "trig": "str",
    "fc": "num",
@@ -889,6 +891,7 @@
    "min": "num",
    "res": "str",
    "why": "str",
+   "ato": "num",
    "camp": "num",
    "type": "str",
    "start": "num",
@@ -1446,6 +1449,7 @@
    "so": "num",
    "ag": "num",
    "fa": "str",
+   "ato": "num",
    "mode": "num",
    "md": "num"
   },
@@ -2015,6 +2019,11 @@
    "st": "num",
    "dead": "num",
    "d": "num"
+  },
+  "sustain_tp": {
+   "pid": "num",
+   "why": "str",
+   "hp": "num"
   },
   "burst_add": {
    "pid": "num",
@@ -2731,6 +2740,9 @@
   },
   "ev_sustain_buy": {
    "item": "text",
+   "why": "text"
+  },
+  "ev_sustain_tp": {
    "why": "text"
   },
   "ev_burst_add": {

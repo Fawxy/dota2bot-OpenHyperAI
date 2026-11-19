@@ -97,6 +97,22 @@ return function(fx)
 		table.insert(actions, { verb = a.level, target = "hero#" .. tostring(a.target) })
 	end
 	if a.ended ~= nil then table.insert(actions, { verb = "end", target = a.ended }) end
+	-- opens(<reasons>): the gates of every level that fail on the answer's target read fresh (Trade.OpenFails, slice trade-count), `-` for none.
+	if a.level ~= "none" then
+		for _, x in ipairs(i.cands) do
+			if x.pid == a.target then
+				local s = table.concat(Trade.OpenFails(i, x), ",")
+				table.insert(actions, { verb = "opens", target = s == "" and "-" or s })
+			end
+		end
+	end
+	-- endkinds(<reason=kind,...>): Trade.ENDS, which end reasons a start gate can already hold for (`gate`, `think`) and which only come later.
+	do
+		local ks = {}
+		for r, k in pairs(Trade.ENDS) do table.insert(ks, r .. "=" .. k) end
+		table.sort(ks)
+		table.insert(actions, { verb = "endkinds", target = table.concat(ks, ",") })
+	end
 	if a.level == "hit" or a.level == "none" then
 		local c
 		for _, x in ipairs(i.cands) do

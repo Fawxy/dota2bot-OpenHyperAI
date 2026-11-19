@@ -131,6 +131,8 @@ interface Attempt {
     td?: number;
     creep: Unit;
     tower?: Unit;
+    /** Slice trade-count: the approach's own unsafe check (`unsafeOnWay`) read at the start. */
+    u0?: boolean;
     out?: number;
     /** Feed watch: 1 once the laning spot anchored on the fed creep (lane_spot input `fed`), else 0. */
     sty: number;
@@ -364,6 +366,11 @@ function placeSafe(bot: Unit, at: Vector, held: boolean = false): boolean {
     return SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held, who: "aggro" }).level !== "deadly";
 }
 
+/** The check during the approach: an enemy hero within reach of the approach point (or the feed's walk-back point). Asked every frame of the walk, and once at the start for the end line's `ato`. */
+function unsafeOnWay(bot: Unit, a: Attempt): boolean {
+    return !placeSafe(bot, a.approach!, true) || (a.kind === "feed" && !placeSafe(bot, a.back, true));
+}
+
 const TOWERS = [Tower.Top1, Tower.Mid1, Tower.Bot1, Tower.Top2, Tower.Mid2, Tower.Bot2];
 
 function enemyOf(team: number): number {
@@ -481,7 +488,8 @@ function tryTower(bot: Unit, now: number): Try {
     const back = along(at, backDir(team, bot.GetAssignedLane(), at), SETTINGS.TowerBack);
     const a = newAttempt(bot, "tower", "approach", hero, drawable[0], back, at, now);
     a.tower = tw;
-    a.ad = math.floor(GetUnitToLocationDistance(bot, at));
+    a.u0 = unsafeOnWay(bot, a);
+    a.ad =math.floor(GetUnitToLocationDistance(bot, at));
     a.approachTime = SETTINGS.TowerApproachTime;
     return $multi(a, "go");
 }
@@ -532,6 +540,7 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     const hero = orderTarget(bot);
     if (hero === undefined) return $multi(undefined, "no_target");
     const a = newAttempt(bot, "feed", "approach", hero, ranged, back, approach, now);
+    a.u0 = unsafeOnWay(bot, a);
     a.ad = math.floor(ad);
     a.approachTime = ApproachTime(ad, bot.GetCurrentMovementSpeed());
     const r = pushRead(team, lane);
@@ -601,6 +610,7 @@ function finish(bot: Unit, a: Attempt, result: string, now: number, gap?: number
         ["lbl", result === "stale" ? Tasks.Current(bot)?.label ?? "-" : undefined],
         ["gap", gap !== undefined ? math.floor(gap * 100) / 100 : undefined],
         ["drop", a.droppedAt !== undefined ? math.floor((a.droppedAt - (a.orderedAt ?? a.startedAt)) * 100) / 100 : undefined],
+        ["ato", result === "unsafe" && a.u0 !== undefined ? (a.u0 ? 1 : 0) : undefined],
         ["dur", math.floor((now - a.startedAt) * 100) / 100],
     ]);
 }
@@ -720,7 +730,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         const at = a.approach!;
         // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
         // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
-        if (!placeSafe(bot, at, true) || (a.kind === "feed" && !placeSafe(bot, a.back, true))) {
+        if (unsafeOnWay(bot, a)) {
             finish(bot, a, "unsafe", now);
             return false;
         }
