@@ -475,9 +475,15 @@ export function OpenFails(i: Inputs, c: Cand): string[] {
     const add = (why: string | undefined): void => {
         if (why !== undefined && out.indexOf(why) < 0) out.push(why);
     };
-    for (const level of ["kill", "hitback", "hit"] as const) add(gate(i, c, level, undefined, undefined));
-    if (pairOn(i, c)) add(gate(i, c, "join", "pair", undefined));
+    // The levels `pickFor` would try on this candidate with no exchange running, and no others (a kill only on a killable target, a hit back only on a hitter).
+    const killable = c.thp <= BARS.commitHp;
     if (playOn(i, c)) add(gate(i, c, "join", "play", undefined));
+    if (pairOn(i, c)) {
+        if (killable) add(gate(i, c, "kill", "pair", undefined));
+        add(gate(i, c, "join", "pair", undefined));
+    } else if (killable) add(gate(i, c, "kill", undefined, undefined));
+    if (hitsUs(c, undefined)) add(gate(i, c, "hitback", undefined, undefined));
+    add(gate(i, c, "hit", undefined, undefined));
     return out;
 }
 

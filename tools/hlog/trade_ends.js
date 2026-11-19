@@ -70,6 +70,8 @@ function main(argv) {
             e.level = e.open.lv;
             try {
                 const obs = replay('trade', worldOf(game, e.open));
+                const main = obs.actions[0] || {};
+                if (main.verb !== e.open.lv || main.target !== `hero#${e.open.tgt}`) throw new Error('replay differs from the cut');
                 const opens = obs.actions.find((a) => a.verb === 'opens');
                 e.opens = opens === undefined || opens.target === '-' ? [] : opens.target.split(',');
                 if (kinds === undefined) {

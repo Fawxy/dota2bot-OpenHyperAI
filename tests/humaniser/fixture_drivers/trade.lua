@@ -98,7 +98,7 @@ return function(fx)
 	end
 	if a.ended ~= nil then table.insert(actions, { verb = "end", target = a.ended }) end
 	-- opens(<reasons>): the gates of every level that fail on the answer's target read fresh (Trade.OpenFails, slice trade-count), `-` for none.
-	if a.level ~= "none" then
+	if a.level ~= "none" and i.run == nil then
 		for _, x in ipairs(i.cands) do
 			if x.pid == a.target then
 				local s = table.concat(Trade.OpenFails(i, x), ",")

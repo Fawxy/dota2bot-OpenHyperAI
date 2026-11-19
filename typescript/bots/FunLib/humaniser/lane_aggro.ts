@@ -489,7 +489,7 @@ function tryTower(bot: Unit, now: number): Try {
     const a = newAttempt(bot, "tower", "approach", hero, drawable[0], back, at, now);
     a.tower = tw;
     a.u0 = unsafeOnWay(bot, a);
-    a.ad =math.floor(GetUnitToLocationDistance(bot, at));
+    a.ad = math.floor(GetUnitToLocationDistance(bot, at));
     a.approachTime = SETTINGS.TowerApproachTime;
     return $multi(a, "go");
 }
