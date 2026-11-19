@@ -183,16 +183,11 @@ function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): vo
         ["nr", nr !== undefined ? math.floor(nr) : undefined],
         ["cl", info?.clash !== undefined ? math.floor(info.clash) : undefined],
         ["fo", info?.far !== undefined ? math.floor(info.far) : undefined],
-        ["rb", info?.rb !== undefined ? math.floor(info.rb * 100 + 0.5) / 100 : undefined],
-        ["rt", info?.rt !== undefined ? math.floor(info.rt * 100 + 0.5) / 100 : undefined],
         ["rn", info?.rn],
-        ["ob", info?.ob],
-        ["rm", info?.rm !== undefined ? math.floor(info.rm * 100 + 0.5) / 100 : undefined],
-        ["mp", info?.mp],
-        ["op", info?.op],
-        ["rp", info?.rp],
-        ["re", info?.re],
-        ["rat", info?.rat],
+        ["sl", info?.sl],
+        ["sr", info?.sr !== undefined ? math.floor(info.sr * 100 + 0.5) / 100 : undefined],
+        ["pl", info?.pl],
+        ["pq", info?.pq !== undefined ? math.floor(info.pq * 100 + 0.5) / 100 : undefined],
     ]);
     // Same frame as Compute (Spot caches per frame), so the line holds the state that spot was computed from.
     if (info !== undefined && Telemetry.IsEnabled() && Telemetry.Get().Cut === true) pcall(Cut.Spot, bot);

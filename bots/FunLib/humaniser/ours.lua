@@ -78,7 +78,6 @@ ____exports.DEFAULTS = {
     SupportPull = true,
     LaneSpot = true,
     LaneSpotTower = true,
-    LaneSpotThreat = true,
     LaneAggro = true,
     CoreContest = true,
     CoreHold = true,
@@ -91,14 +90,11 @@ ____exports.DEFAULTS = {
     CorePull = true,
     Threat = true,
     Retreat = true,
-    RetreatOdds = false,
     HealStop = true,
     HealItems = false,
     ArbiterShadow = true,
     ArbiterDrive = true,
     MidWater = false,
-    EvenStand = true,
-    HighStand = true,
     BurstReady = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).

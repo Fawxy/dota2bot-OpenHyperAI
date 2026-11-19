@@ -489,9 +489,13 @@ end
 -- Gate: an enemy hero near the pos5 for the whole window skips the minute with that reason; OHA's run aborts a job.
 do
 	local H, bot = world({ t = 3 * 60 + 15 })
-	MakeUnit({ pid = 10, team = 3, loc = Vector(SAFE_T1[RAD].x + 500, SAFE_T1[RAD].y) })
+	MakeUnit({ pid = 10, team = 3, loc = Vector(SAFE_T1[RAD].x + 500, SAFE_T1[RAD].y) }).estDamage = 5000
 	local lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
 	check("enemy near: one skip line", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "enemy-near", lines[1])
+	local H2, bot2 = world({ t = 3 * 60 + 15 })
+	MakeUnit({ pid = 10, team = 3, loc = Vector(SAFE_T1[RAD].x + 500, SAFE_T1[RAD].y) })
+	local calm = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H2, bot2) end end))
+	check("enemy near who cannot kill: no enemy-near skip", #calm == 0 or field(calm[1], "why") ~= "enemy-near", calm[1])
 
 	H, bot = world({ t = 3 * 60 + 15 })
 	MakeUnit({ pid = 11, team = 3, loc = Vector(SAFE_T1[RAD].x + 900, SAFE_T1[RAD].y) })
@@ -1092,7 +1096,7 @@ do
 		check("start refused on: " .. why, #ls == 1 and field(ls[1], "res") == "skip" and field(ls[1], "why") == why and not H1.StackJob.Running(b1), ls[1])
 	end
 	refused(function(b) b.hp = 40 end, "low-hp")
-	refused(function(b) MakeUnit({ pid = 10, team = 3, loc = Vector(b.loc.x + 300, b.loc.y) }) end, "enemy-near")
+	refused(function(b) MakeUnit({ pid = 10, team = 3, loc = Vector(b.loc.x + 300, b.loc.y) }).estDamage = 5000 end, "enemy-near")
 	refused(function(b) b.mode = dota.BotMode.Attack end, "busy")
 
 	-- A drill's benched hero stays with farm's own file: no job, its Think runs.

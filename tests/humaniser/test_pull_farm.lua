@@ -178,7 +178,7 @@ do
 	check("yield: the claim is released", w.H.CampClaims.On("pullfarm", 1) == nil)
 end
 
--- An enemy hero by the camp: no start, one skip line naming the threat.
+-- An enemy hero by the camp who can kill us: no start, one skip line naming the reason.
 do
 	local w = world({ reading = OUT, visible = true })
 	local neutrals = { MakeNeutral({ x = SMALL.x, y = SMALL.y, hp = 300, maxhp = 300 }), MakeNeutral({ x = SMALL.x + 20, y = SMALL.y, hp = 300, maxhp = 300 }) }
@@ -198,10 +198,11 @@ do
 			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
 		end
 		enemy.loc = Vector(SMALL.x + 900, SMALL.y + 300)
+		enemy.estDamage = 5000
 		while T < ended + 20 do frame(w) end
 	end)) do table.insert(all, l) end
 	local pc = lines(all, "pull_clear")
-	check("enemy by the camp: no farm, one skip naming why", #pc == 1 and field(pc[1], "phase") == "skip" and (field(pc[1], "why") == "threat" or field(pc[1], "why") == "enemy-near"), pc[1])
+	check("enemy by the camp: no farm, one skip naming why", #pc == 1 and field(pc[1], "phase") == "skip" and (field(pc[1], "why") == "kill" or field(pc[1], "why") == "enemy-near"), pc[1])
 end
 
 -- Madstone (user 06/11/2026: "they should pick up the madstone after if they do the support-pull-farm routine"): a drop by

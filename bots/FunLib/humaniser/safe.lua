@@ -27,13 +27,10 @@ function ____exports.Decide(i, stay)
             reason = reason
         }
     end
-    if i.tower or i.towerOnMe then
+    if i.towerOnMe or i.tower and not i.held then
         return answer("deadly", "tower")
     end
-    local bar = i.hold and math.min(stay, ____exports.BARS.hold) or stay
-    if i.held then
-        bar = bar * (1 - ____exports.BARS.slack)
-    end
+    local bar = i.hold and math.min(stay, ____exports.BARS.hold) or (i.held and stay or stay * (1 + ____exports.BARS.slack))
     if ratio < bar then
         return answer("deadly", "kill")
     end

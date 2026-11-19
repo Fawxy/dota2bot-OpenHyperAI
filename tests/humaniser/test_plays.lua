@@ -45,6 +45,16 @@ do
 	check("levels ahead and a power rune raise the weight", P.Weigh(with({ ourLevel = 7, rune = true })).w > base)
 	check("a low target weighs a play up, a healthy one down", P.Weigh(with({ targetHp = 0.3 })).w > base and P.Weigh(with({ targetHp = 0.9 })).w < base)
 	check("a consumer's kind brings its own hard zero", P.Weigh(with({ kind = "solo", ours = 2 })).zero == "not-solo")
+	-- A joiner carries its own walk answer (Safe.At, 4 s, away, hold): deadly is its hard zero by the answer's reason; its HP and the head count
+	-- are in that answer, so neither the HP floor nor "outnumbered" zeros it; the count factor still weighs the chance down.
+	local pack = { theirs = 3, hp = 0.3 }
+	local function walk(level, reason) return with({ theirs = pack.theirs, hp = pack.hp, walk = { level = level, reason = reason } }) end
+	check("a joiner whose walk is deadly is zeroed with the answer's reason (kill, unknown, tower)",
+		P.Weigh(walk("deadly", "kill")).zero == "kill" and P.Weigh(walk("deadly", "unknown")).zero == "unknown" and P.Weigh(walk("deadly", "tower")).zero == "tower")
+	check("a joiner whose walk is safe or costly, two down at 0.3 HP: not zeroed (the initiator's same chance is zero: outnumbered and hp)",
+		P.Weigh(walk("safe", "safe")).zero == nil and P.Weigh(walk("costly", "hero")).zero == nil and P.Weigh(with(pack)).zero == "hp")
+	check("the joiner's count factor stays: one down weighs below an even chance, one up above",
+		P.Weigh(with({ theirs = 2, walk = { level = "safe", reason = "safe" } })).count == 0.5 and P.Weigh(with({ ours = 2, walk = { level = "safe", reason = "safe" } })).count == 1.3)
 	check("an undefined kind never fires", P.Weigh(with({ kind = "nope" })).w == 0)
 	local low = with({ kind = "finish", targetHp = 0.3, reach = 600, skill = 1 })
 	check("a low target in reach with numbers even is sure", P.Weigh(low).sure == "low-target" and P.Weigh(low).commit == 1)

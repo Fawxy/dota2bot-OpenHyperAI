@@ -343,7 +343,7 @@ do
 	w.step()
 	local L = require("bots/FunLib/humaniser/states/laning")
 	local x, y = w.at(600)
-	L.SpotInfo = function() return { spot = Vector(x, y), pushed = 6, anchor = "hold", why = "hero", margin = 0, covered = 0 } end
+	L.SpotInfo = function() return { spot = Vector(x, y), pushed = 6, anchor = "hold", why = "kill", margin = 0, covered = 0 } end
 	T = 300.5
 	w.step()
 	check("pushed by a hero to 600 with their front 1,500 out: the hold runs on", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))

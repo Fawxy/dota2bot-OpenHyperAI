@@ -34,7 +34,6 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local logged, r2
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -43,90 +42,6 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
---- ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
--- consumer (gates run every think; the design's "once per decision" would flood). Returns whether it logged.
-function ____exports.Log(bot, consumer, r, decision)
-    local pid = bot:GetPlayerID()
-    local key = (tostring(pid) .. ":") .. consumer
-    local last = logged[key]
-    if last ~= nil and last.decision == decision and r.t - last.t < ____exports.SETTINGS.LogEvery then
-        return false
-    end
-    logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_6 = Telemetry.Event
-    local ____array_5 = __TS__SparseArrayNew(
-        {"pid", pid},
-        {"who", consumer},
-        {"dec", decision},
-        {
-            "x",
-            math.floor(r.place.x)
-        },
-        {
-            "y",
-            math.floor(r.place.y)
-        },
-        {
-            "hz",
-            r2(r.horizon)
-        },
-        {
-            "dep",
-            r2(r.depth)
-        },
-        {
-            "threat",
-            r2(r.threat)
-        },
-        {"band", r.band},
-        {"reach", #r.reach},
-        {
-            "rpid",
-            #r.reach > 0 and table.concat(r.reach, ",") or nil
-        },
-        {
-            "burst",
-            r2(r.burst)
-        },
-        {"ally", r.allies}
-    )
-    local ____temp_4
-    if #r.reach > 0 then
-        ____temp_4 = r.escape
-    else
-        ____temp_4 = nil
-    end
-    __TS__SparseArrayPush(
-        ____array_5,
-        {"esc", ____temp_4},
-        {"tower", r.tower},
-        {
-            "miss",
-            r2(r.missing)
-        },
-        {
-            "mpid",
-            #r.mpids > 0 and table.concat(r.mpids, ",") or nil
-        },
-        {
-            "mtss",
-            r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
-        },
-        {"mcut", r.mcut > 0 and r.mcut or nil},
-        {
-            "hp",
-            r2(bot:GetHealth() / math.max(
-                1,
-                bot:GetMaxHealth()
-            ))
-        }
-    )
-    ____Telemetry_Event_6(
-        "threat",
-        {__TS__SparseArraySpread(____array_5)}
-    )
-    return true
-end
 ____exports.SETTINGS = {
     MissingAfter = 3,
     MissingSpeed = 330,
@@ -155,9 +70,6 @@ ____exports.SETTINGS = {
     EscapeMargin = 100,
     EngagedRecent = 1,
     StandBurst = 1,
-    StandHp = 0.5,
-    PackBurst = 0.5,
-    PackHp = 0.7,
     StayHorizon = 2,
     StayEngaged = 6,
     LogEvery = 5
@@ -177,7 +89,7 @@ local TOWER_IDS = {
 }
 local MAX_PLAYER_ID = 23
 local speeds = {}
-logged = {}
+local logged = {}
 function ____exports.ResetCache()
     speeds = {}
     logged = {}
@@ -573,48 +485,10 @@ end
 function ____exports.Read(bot, from, place, horizon, opts)
     return ____exports.Reader(bot, horizon, opts)(from, place)
 end
---- The stand (D2 against D1): visible enemy heroes can reach the walk, none has damaged us within EngagedRecent (the read was
--- made with `opts.engagedWindow`, so `eng` is filled), their burst is under the bar of our HP and our HP share at the floor or
--- more (one hero StandBurst and StandHp, two or more PackBurst and PackHp), no enemy tower covers the place and the missing
--- belief is under the gates' bar. Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own
--- rules apply again (the dead end "a hold that never hits back" is the hit case).
-function ____exports.Stand(bot, r)
-    local s = ____exports.SETTINGS
-    if #r.reach == 0 or #r.eng > 0 or r.tower then
-        return false
-    end
-    local one = #r.reach == 1
-    if r.burst >= (one and s.StandBurst or s.PackBurst) or r.missing >= s.MissingRefuse then
-        return false
-    end
-    return bot:GetHealth() / math.max(
-        1,
-        bot:GetMaxHealth()
-    ) >= (one and s.StandHp or s.PackHp)
-end
---- The stand with exactly one enemy hero in reach (slice mid-stand), which the lane spot honours too: h2harbiter1 and 2, the
--- mid stood about 1,400 from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a
--- stand 21 times a game. With two or more the spot keeps its own limits and steps back within the lane.
-function ____exports.LoneStand(bot, r)
-    return #r.reach == 1 and ____exports.Stand(bot, r)
-end
 local gateCut
-local gateShadow
---- safe_gather.ts registers its shadow here (it imports this module): called with every gate read, logged or not. It must not throw.
-function ____exports.SetGateShadow(fn)
-    gateShadow = fn
-end
---- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.
-function ____exports.SetGateCut(fn)
-    gateCut = fn
-end
---- The gate rule the starts share (the core camp trip, the pos3's pull, the support's pull and stack, the farm trip, the pull farm): held
--- by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
--- ("missing"); the read and its decision are logged as ev=threat for `consumer`.
-function ____exports.Gate(bot, from, place, consumer)
-    local r = ____exports.Read(bot, from, place, ____exports.SETTINGS.GateHorizon)
-    local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
-    if ____exports.Log(bot, consumer, r, why or "go") and gateCut ~= nil then
+--- The gate's fixture cut for one logged gate decision (safe_gather.ts `TripGate` calls it after `Log`). A fault in the cut is swallowed.
+function ____exports.NoteGateCut(bot, from, place, consumer)
+    if gateCut ~= nil then
         pcall(
             gateCut,
             bot,
@@ -623,10 +497,96 @@ function ____exports.Gate(bot, from, place, consumer)
             consumer
         )
     end
-    if gateShadow ~= nil then
-        pcall(gateShadow, bot, consumer, r)
-    end
-    return {why = why, r = r}
 end
-r2 = function(x) return math.floor(x * 100 + 0.5) / 100 end
+--- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.
+function ____exports.SetGateCut(fn)
+    gateCut = fn
+end
+local function r2(x)
+    return math.floor(x * 100 + 0.5) / 100
+end
+--- ev=threat for one consumer's decision on a read: on a changed decision, else at most once per LogEvery per hero and
+-- consumer (gates run every think; the design's "once per decision" would flood). Returns whether it logged.
+function ____exports.Log(bot, consumer, r, decision)
+    local pid = bot:GetPlayerID()
+    local key = (tostring(pid) .. ":") .. consumer
+    local last = logged[key]
+    if last ~= nil and last.decision == decision and r.t - last.t < ____exports.SETTINGS.LogEvery then
+        return false
+    end
+    logged[key] = {t = r.t, decision = decision}
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
+        {"pid", pid},
+        {"who", consumer},
+        {"dec", decision},
+        {
+            "x",
+            math.floor(r.place.x)
+        },
+        {
+            "y",
+            math.floor(r.place.y)
+        },
+        {
+            "hz",
+            r2(r.horizon)
+        },
+        {
+            "dep",
+            r2(r.depth)
+        },
+        {
+            "threat",
+            r2(r.threat)
+        },
+        {"band", r.band},
+        {"reach", #r.reach},
+        {
+            "rpid",
+            #r.reach > 0 and table.concat(r.reach, ",") or nil
+        },
+        {
+            "burst",
+            r2(r.burst)
+        },
+        {"ally", r.allies}
+    )
+    local ____temp_4
+    if #r.reach > 0 then
+        ____temp_4 = r.escape
+    else
+        ____temp_4 = nil
+    end
+    __TS__SparseArrayPush(
+        ____array_5,
+        {"esc", ____temp_4},
+        {"tower", r.tower},
+        {
+            "miss",
+            r2(r.missing)
+        },
+        {
+            "mpid",
+            #r.mpids > 0 and table.concat(r.mpids, ",") or nil
+        },
+        {
+            "mtss",
+            r.mtss ~= nil and math.floor(r.mtss + 0.5) or nil
+        },
+        {"mcut", r.mcut > 0 and r.mcut or nil},
+        {
+            "hp",
+            r2(bot:GetHealth() / math.max(
+                1,
+                bot:GetMaxHealth()
+            ))
+        }
+    )
+    ____Telemetry_Event_6(
+        "threat",
+        {__TS__SparseArraySpread(____array_5)}
+    )
+    return true
+end
 return ____exports

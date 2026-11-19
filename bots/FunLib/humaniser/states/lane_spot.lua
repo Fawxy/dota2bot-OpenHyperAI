@@ -4,7 +4,6 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local On = ____ours.On
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
@@ -37,37 +36,15 @@ local QUERY = 1400
 local HP_SAFE = 0.5
 local HP_LOW = 0.25
 local HP_MARGIN = 300
+--- A candidate is read as held (the hero already stands on it) within this many units: `At`'s `held`, the lower bar (Safe.BARS.stay against its fresh 15% more).
+local HELD_NEAR = 150
+--- XP is shared within 1,500 of a dying creep: the XP-only spot stays within this of the wave when no place that keeps the farming limits is not deadly.
+local XP_RANGE = 1500
 --- Seconds of the enemy hero's movement added to its attack reach: the ground it closes before we react (judgement). lposchk1
 -- with a fixed 150: cores held 400-800 from an enemy hero lost 0.7-1.1 HP-% a second there, against 0.3 at 800-1,200.
 -- lposchk2 with 1 s (reach about 920 against a 570-range hero): idle cores 800-1,000 from a ranged enemy still lost 0.39 a
 -- second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
 local REACT_SECS = 1.5
---- With Ours.LaneSpotThreat the enemy-hero limit is the threat read of standing at the point for READ_HORIZON seconds (slice
--- retreat, user 10/11/2026), and of the walk to it when that walk goes towards an enemy hero: a spot is acceptable where the read
--- is under READ_BURST (the heroes in reach take that share of our current HP in the window; low HP counts once, through the
--- read's own division by HP) and its missing belief under READ_MISSING. Walking away from every hero reads the place alone, so
--- the candidates behind us are told apart (review 10/11/2026 H2: a walk read from the bot's own position gave every candidate the
--- same reach and burst). Under our own tower the old hero limits and the tower's cover stand (H3). rtwatch1 7:33: the old limits
--- put the spot beyond a chaser 850-920 away, then a `wave` spot 1,400 forward past him, because they test the point, not the
--- walk. All `judgement`, graded in the drill: the horizon is about the walk back to the furthest candidate (1,000 at 300 a
--- second); the burst bar sits above a lone melee harasser at full HP (0.15-0.25 in rtspot1) and under two heroes in reach.
-local READ_HORIZON = 3
-local READ_BURST = 0.35
-local READ_MISSING = 0.5
---- A place whose read is `pressured` (Threat.SETTINGS.Pressured) is refused too: retreat's free leave budget is that band, so a
--- spot under it is one a free laner would leave from. rtch9 (66fa2eb3): two chasers in reach read 0.6-0.7 at full HP with `burst`
--- 0.2-0.33 under READ_BURST; each episode ended out of their reach and the spot walked her back in, 22 episodes in 5 chase reps.
--- A lone harasser at full HP reads 0.25 + 0.5 x burst (+ 0.3 x missing), under the band while burst is under READ_BURST and no
--- unseen hero is counted (user 10/11/2026). With no ally in reach, two enemy laners in reach read 0.5 at any HP: refused.
-local function pressured(r)
-    return r.threat >= Threat.SETTINGS.Pressured
-end
---- Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
--- Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
--- rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
-local LANE_ENGAGED_WINDOW = 6
---- The shadow reads a spot as held (the hero already stands on it) within this many units.
-local SHADOW_HELD = 150
 --- No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
 -- about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
 local MIN_REACH = 800
@@ -75,8 +52,6 @@ local MIN_REACH = 800
 -- lane creeps keep a target until it dies; EC-053 gives acquisition about 500 for a creep without one). HELD_RING keeps the
 -- hero clear of the creep's body and its 100 melee reach.
 local HELD_RING = 200
---- Movement allowed for an enemy hero that our tower punishes for attacking us (judgement): a step in, not a chase.
-local TOWER_REACT_SECS = 0.5
 --- Our tower's attack range when the API gives none.
 local OWN_TOWER_RANGE = 700
 --- The fed creep anchors the spot at or below this HP share (judgement: the deny window opens below 50%, the walk takes time).
@@ -128,15 +103,15 @@ function ____exports.ReadyNukes(enemy)
         local i = 0
         while i < 6 do
             do
-                local __continue9
+                local __continue8
                 repeat
                     local a = enemy:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:IsPassive() or a:GetLevel() < 1 then
-                        __continue9 = true
+                        __continue8 = true
                         break
                     end
                     if a:GetAbilityDamage() <= 0 or a:GetCooldownTimeRemaining() > 0 or a:GetManaCost() > mana then
-                        __continue9 = true
+                        __continue8 = true
                         break
                     end
                     n = n + 1
@@ -144,9 +119,9 @@ function ____exports.ReadyNukes(enemy)
                         range,
                         a:GetCastRange()
                     )
-                    __continue9 = true
+                    __continue8 = true
                 until true
-                if not __continue9 then
+                if not __continue8 then
                     break
                 end
             end
@@ -161,10 +136,10 @@ function ____exports.NearestNuke(bot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
         do
-            local __continue13
+            local __continue12
             repeat
                 if not alive(h) then
-                    __continue13 = true
+                    __continue12 = true
                     break
                 end
                 local dist = GetUnitToUnitDistance(bot, h)
@@ -172,9 +147,9 @@ function ____exports.NearestNuke(bot)
                     bestD = dist
                     best = h
                 end
-                __continue13 = true
+                __continue12 = true
             until true
-            if not __continue13 then
+            if not __continue12 then
                 break
             end
         end
@@ -201,41 +176,27 @@ function ____exports.HeroReach(____self, enemy)
         enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + REACT_SECS * enemy:GetCurrentMovementSpeed()
     )
 end
---- Whether every point an enemy needs (within `hit` of `p`) to attack `p` lies inside one of our towers' range.
-local function covers(cover, p, hit)
-    for ____, t in ipairs(cover.towers) do
-        if d2(p, t.at) + hit <= t.range then
-            return true
-        end
-    end
-    return false
-end
 --- Our towers in reach and what they cover; undefined with Ours.LaneSpotTower off or no tower of ours near.
-local function coverFor(bot, creeps, heroes)
+local function coverFor(bot, creeps)
     if not On("LaneSpotTower") then
         return nil
     end
     local towers = {}
-    local targets = {}
     for ____, t in ipairs(bot:GetNearbyTowers(1600, false)) do
         do
-            local __continue28
+            local __continue23
             repeat
                 if not alive(t) then
-                    __continue28 = true
+                    __continue23 = true
                     break
                 end
                 towers[#towers + 1] = {
                     at = t:GetLocation(),
                     range = t:GetAttackRange() or OWN_TOWER_RANGE
                 }
-                local target = t:GetAttackTarget()
-                if target ~= nil and target ~= nil then
-                    targets[#targets + 1] = target
-                end
-                __continue28 = true
+                __continue23 = true
             until true
-            if not __continue28 then
+            if not __continue23 then
                 break
             end
         end
@@ -257,34 +218,10 @@ local function coverFor(bot, creeps, heroes)
         end
         held[#held + 1] = inRange and target ~= nil and target ~= nil and target ~= bot
     end
-    local tanking = {}
-    local near = {}
-    local hit = {}
-    for ____, h in ipairs(heroes) do
-        local tanked = false
-        for ____, u in ipairs(targets) do
-            if u == h then
-                tanked = true
-            end
-        end
-        tanking[#tanking + 1] = tanked
-        local r = h:GetAttackRange() + h:GetBoundingRadius() + bot:GetBoundingRadius()
-        hit[#hit + 1] = r
-        near[#near + 1] = r + TOWER_REACT_SECS * h:GetCurrentMovementSpeed()
-    end
-    return {
-        towers = towers,
-        held = held,
-        tanking = tanking,
-        near = near,
-        hit = hit
-    }
+    return {towers = towers, held = held}
 end
-local function fieldOf(creeps, towers, heroes, reach, cover, busy)
+local function fieldOf(creeps, towers, cover, busy)
     local f = {
-        hx = {},
-        hy = {},
-        reach = {},
         cx = {},
         cy = {},
         ring = {},
@@ -294,50 +231,37 @@ local function fieldOf(creeps, towers, heroes, reach, cover, busy)
     }
     do
         local i = 0
-        while i < #heroes do
-            local at = heroes[i + 1]:GetLocation()
-            local ____f_hx_0 = f.hx
-            ____f_hx_0[#____f_hx_0 + 1] = at.x
-            local ____f_hy_1 = f.hy
-            ____f_hy_1[#____f_hy_1 + 1] = at.y
-            local ____f_reach_2 = f.reach
-            ____f_reach_2[#____f_reach_2 + 1] = reach[i + 1]
-            i = i + 1
-        end
-    end
-    do
-        local i = 0
         while i < #creeps do
             local c = creeps[i + 1]
             local at = c:GetLocation()
-            local ____f_cx_3 = f.cx
-            ____f_cx_3[#____f_cx_3 + 1] = at.x
-            local ____f_cy_4 = f.cy
-            ____f_cy_4[#____f_cy_4 + 1] = at.y
+            local ____f_cx_0 = f.cx
+            ____f_cx_0[#____f_cx_0 + 1] = at.x
+            local ____f_cy_1 = f.cy
+            ____f_cy_1[#____f_cy_1 + 1] = at.y
             local open = busy ~= nil and busy[i + 1] and HELD_RING or (isRangedCreep(c) and ____exports.RANGED_RING or ____exports.MELEE_RING)
-            local ____f_ringOpen_5 = f.ringOpen
-            ____f_ringOpen_5[#____f_ringOpen_5 + 1] = open
-            local ____f_ring_6 = f.ring
-            ____f_ring_6[#____f_ring_6 + 1] = cover ~= nil and cover.held[i + 1] and HELD_RING or open
+            local ____f_ringOpen_2 = f.ringOpen
+            ____f_ringOpen_2[#____f_ringOpen_2 + 1] = open
+            local ____f_ring_3 = f.ring
+            ____f_ring_3[#____f_ring_3 + 1] = cover ~= nil and cover.held[i + 1] and HELD_RING or open
             i = i + 1
         end
     end
     for ____, t in ipairs(towers) do
         do
-            local __continue46
+            local __continue34
             repeat
                 if not alive(t) then
-                    __continue46 = true
+                    __continue34 = true
                     break
                 end
                 local at = t:GetLocation()
-                local ____f_tx_7 = f.tx
-                ____f_tx_7[#____f_tx_7 + 1] = at.x
-                local ____f_ty_8 = f.ty
-                ____f_ty_8[#____f_ty_8 + 1] = at.y
-                __continue46 = true
+                local ____f_tx_4 = f.tx
+                ____f_tx_4[#____f_tx_4 + 1] = at.x
+                local ____f_ty_5 = f.ty
+                ____f_ty_5[#____f_ty_5 + 1] = at.y
+                __continue34 = true
             until true
-            if not __continue46 then
+            if not __continue34 then
                 break
             end
         end
@@ -356,30 +280,10 @@ local function fieldBreaksTower(f, p)
     end
     return false
 end
---- The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
--- `hp` when only the HP margin breaks a hero or creep limit. `heroes` false leaves the hero limit out (the threat read has
--- it); `cover`, when given, relaxes the limits under our towers.
-local function fieldBreaks(f, p, margin, heroes, cover)
+--- The first hard limit `p` breaks, or undefined: an enemy creep's ring (`creep`), a tower, or `hp` when only the HP margin breaks a
+-- creep limit. `cover`, when given, relaxes the creep rings under our towers.
+local function fieldBreaks(f, p, margin, cover)
     local hp = false
-    if heroes then
-        do
-            local i = 0
-            while i < #f.hx do
-                local r = f.reach[i + 1]
-                if cover ~= nil and (cover.tanking[i + 1] or covers(cover, p, cover.hit[i + 1])) then
-                    r = cover.near[i + 1]
-                end
-                local dist = len(p.x - f.hx[i + 1], p.y - f.hy[i + 1])
-                if dist < r then
-                    return "hero"
-                end
-                if dist < r + margin then
-                    hp = true
-                end
-                i = i + 1
-            end
-        end
-    end
     local ring = cover ~= nil and f.ring or f.ringOpen
     do
         local i = 0
@@ -435,24 +339,24 @@ local function ownDistances(path, t1, dir, list)
     local out = {}
     for ____, c in ipairs(list) do
         do
-            local __continue73
+            local __continue56
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue73 = true
+                    __continue56 = true
                     break
                 end
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue73 = true
+                    __continue56 = true
                     break
                 end
                 local s, d = LanePush.Project(path, l.x, l.y)
                 if d <= PATH_R then
                     out[#out + 1] = dir * (s - t1)
                 end
-                __continue73 = true
+                __continue56 = true
             until true
-            if not __continue73 then
+            if not __continue56 then
                 break
             end
         end
@@ -498,19 +402,18 @@ end
 -- lane_aggro's fed creep (see FedAnchor), `hold` wave_hold's hold point. Undefined only when the lane has no direction (front
 -- and its back point coincide).
 function ____exports.Compute(bot, role, fed, hold)
-    local pref
     local team = bot:GetTeam()
     local lane = bot:GetAssignedLane()
     local front = GetLaneFrontLocation(team, lane, 0)
     local back = GetLaneFrontLocation(team, lane, -400)
     local anchorFed = ____exports.FedAnchor(fed)
-    local ____temp_9
+    local ____temp_6
     if role == "core" and anchorFed == nil and hold == nil then
-        ____temp_9 = clashFor(team, lane, front)
+        ____temp_6 = clashFor(team, lane, front)
     else
-        ____temp_9 = nil
+        ____temp_6 = nil
     end
-    local clash = ____temp_9
+    local clash = ____temp_6
     if clash ~= nil then
         front = clash.at
         back = clash.back
@@ -534,12 +437,8 @@ function ____exports.Compute(bot, role, fed, hold)
     local towers = bot:GetNearbyTowers(1600, true)
     local enemyHero
     local heroDist = math.huge
-    local heroes = {}
-    local reach = {}
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
         if alive(h) then
-            heroes[#heroes + 1] = h
-            reach[#reach + 1] = ____exports.HeroReach(bot, h)
             local dist = d2(
                 h:GetLocation(),
                 front
@@ -611,94 +510,77 @@ function ____exports.Compute(bot, role, fed, hold)
         bot:GetMaxHealth()
     )
     local margin = ____exports.HpMargin(hpFrac)
-    local ____temp_10
+    local ____temp_7
     if role == "core" and hpFrac > HP_LOW then
-        ____temp_10 = coverFor(bot, creeps, heroes)
+        ____temp_7 = coverFor(bot, creeps)
     else
-        ____temp_10 = nil
+        ____temp_7 = nil
     end
-    local cover = ____temp_10
+    local cover = ____temp_7
     local cl = clash and clash.own
     local fo = clash and clash.far
-    local byRead = On("LaneSpotThreat")
     local here = bot:GetLocation()
-    local field = fieldOf(
-        creeps,
-        towers,
-        heroes,
-        reach,
-        cover,
-        busy
-    )
-    local function underOwn(p)
-        if cover == nil then
-            return false
-        end
-        for ____, t in ipairs(cover.towers) do
-            if d2(p, t.at) <= t.range then
-                return true
-            end
-        end
-        return false
-    end
-    local function readOn(p)
-        return byRead and not underOwn(p)
-    end
-    local reads = {}
+    local field = fieldOf(creeps, towers, cover, busy)
+    local answers = {}
     local readN = 0
-    local reader
     local function keyOf(p)
         return (tostring(math.floor(p.x / 25)) .. ",") .. tostring(math.floor(p.y / 25))
     end
-    local function readAt(p)
-        local key = keyOf(p)
-        local r = reads[key]
-        if r == nil then
-            local toward = false
-            do
-                local i = 0
-                while i < #field.hx do
-                    if len(p.x - field.hx[i + 1], p.y - field.hy[i + 1]) < len(here.x - field.hx[i + 1], here.y - field.hy[i + 1]) then
-                        toward = true
-                    end
-                    i = i + 1
-                end
+    local function optsFor(p, who)
+        local toward = false
+        for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
+            local at = alive(h) and h:GetLocation() or nil
+            if at ~= nil and len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y) then
+                toward = true
             end
-            reader = reader or Threat.Reader(bot, READ_HORIZON, {engagedWindow = LANE_ENGAGED_WINDOW})
+        end
+        return {
+            from = toward and here or p,
+            held = len(p.x - here.x, p.y - here.y) <= HELD_NEAR,
+            who = who
+        }
+    end
+    local function answerAt(p)
+        local key = keyOf(p)
+        local a = answers[key]
+        if a == nil then
             local t0 = Telemetry.DeepT0()
-            r = reader(toward and here or p, p)
+            a = SafeGather.At(
+                bot,
+                p,
+                optsFor(p)
+            )
             if t0 ~= nil then
                 Telemetry.DeepAdd("lane_spot.Compute:read", t0)
             end
-            reads[key] = r
+            answers[key] = a
             readN = readN + 1
         end
-        return r
+        return a
     end
-    local stand = On("EvenStand")
-    local function verdict(r)
-        if stand and Threat.LoneStand(bot, r) then
-            return "none"
-        end
-        return r.burst >= READ_BURST and "burst" or (r.missing >= READ_MISSING and "missing" or (pressured(r) and "threat" or "none"))
-    end
-    local function readBreaks(p)
-        return readOn(p) and verdict(readAt(p)) ~= "none"
+    local function deadlyAt(p)
+        local a = answerAt(p)
+        return a.level == "deadly" and a.reason or nil
     end
     local function limits(p, cov)
-        return fieldBreaks(
-            field,
-            p,
-            margin,
-            not readOn(p),
-            cov
-        )
+        return fieldBreaks(field, p, margin, cov)
     end
     local function covered(p)
         return cover ~= nil and limits(p, nil) ~= nil and 1 or 0
     end
+    local pref = Vector(px, py, front.z)
     local function done(spot, pushed, why, cov)
-        local info = {
+        local a = SafeGather.At(
+            bot,
+            spot,
+            optsFor(spot, "spot")
+        )
+        local pa = SafeGather.At(
+            bot,
+            pref,
+            optsFor(pref, "pref")
+        )
+        return {
             spot = spot,
             pushed = pushed,
             anchor = anchor,
@@ -706,69 +588,15 @@ function ____exports.Compute(bot, role, fed, hold)
             margin = margin,
             covered = cov,
             clash = cl,
-            far = fo
+            far = fo,
+            rn = readN,
+            sl = a.level,
+            sr = a.kill > 0 and a.ratio or nil,
+            pl = pa.level,
+            pq = pa.kill > 0 and pa.ratio or nil
         }
-        if byRead then
-            local r = readAt(spot)
-            info.rb = r.burst
-            info.rt = r.threat
-            info.ob = fieldBreaks(
-                field,
-                spot,
-                margin,
-                true,
-                cover
-            ) or "none"
-            info.rm = r.missing
-            info.mp = #r.mpids > 0 and table.concat(r.mpids, ",") or nil
-            info.op = fieldBreaks(
-                field,
-                pref,
-                margin,
-                true,
-                cover
-            ) or "none"
-            info.rp = "none"
-            if readOn(pref) then
-                info.rp = verdict(readAt(pref))
-            end
-            info.re = #r.eng
-            info.rat = #r.att > 0 and 1 or 0
-            info.rn = readN
-            local function stands(p)
-                return len(p.x - here.x, p.y - here.y) <= SHADOW_HELD
-            end
-            SafeGather.Shadow(
-                bot,
-                "spot",
-                r,
-                {
-                    away = false,
-                    held = stands(spot),
-                    hold = false
-                }
-            )
-            local pr = reads[keyOf(pref)]
-            if pr ~= nil then
-                SafeGather.Shadow(
-                    bot,
-                    "pref",
-                    pr,
-                    {
-                        away = false,
-                        held = stands(pref),
-                        hold = false
-                    }
-                )
-            end
-        end
-        return info
     end
-    pref = Vector(px, py, front.z)
-    local first = limits(pref, cover)
-    if first == nil and readBreaks(pref) then
-        first = "hero"
-    end
+    local first = limits(pref, cover) or deadlyAt(pref)
     if first == nil then
         return done(
             pref,
@@ -790,11 +618,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue129
+                    local __continue101
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue129 = true
+                            __continue101 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -802,14 +630,14 @@ function ____exports.Compute(bot, role, fed, hold)
                             keep = p
                             keepPushed = k
                         end
-                        if limits(p, cover) == nil and not readBreaks(Vector(bx, by, front.z)) then
+                        if limits(p, cover) == nil and deadlyAt(Vector(bx, by, front.z)) == nil then
                             best = p
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue129 = true
+                        __continue101 = true
                     until true
-                    if not __continue129 then
+                    if not __continue101 then
                         break
                     end
                 end
@@ -820,22 +648,62 @@ function ____exports.Compute(bot, role, fed, hold)
             k = k + 1
         end
     end
-    if best == nil then
-        if keep ~= nil then
-            return done(keep, keepPushed, "xp", 0)
-        end
+    if best ~= nil then
         return done(
-            Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z),
-            steps,
-            "xp",
-            0
+            best,
+            bestPushed,
+            first,
+            covered(best)
         )
     end
+    do
+        local k = steps + 1
+        while k <= math.floor((XP_RANGE + len(px - front.x, py - front.y)) / PUSH_STEP) do
+            local bx = px + dx * PUSH_STEP * k
+            local by = py + dy * PUSH_STEP * k
+            for ____, off in ipairs(LATERAL) do
+                do
+                    local __continue109
+                    repeat
+                        local cost = len(PUSH_STEP * k, off)
+                        if cost >= bestCost then
+                            __continue109 = true
+                            break
+                        end
+                        local p = Vector(bx + nx * off, by + ny * off, front.z)
+                        if len(p.x - front.x, p.y - front.y) > XP_RANGE then
+                            __continue109 = true
+                            break
+                        end
+                        if limits(p, cover) == nil and deadlyAt(Vector(bx, by, front.z)) == nil then
+                            best = p
+                            bestCost = cost
+                            bestPushed = k
+                        end
+                        __continue109 = true
+                    until true
+                    if not __continue109 then
+                        break
+                    end
+                end
+            end
+            if best ~= nil and PUSH_STEP * (k + 1) >= bestCost then
+                break
+            end
+            k = k + 1
+        end
+    end
+    if best ~= nil then
+        return done(best, bestPushed, "xp", 0)
+    end
+    if keep ~= nil then
+        return done(keep, keepPushed, "xp", 0)
+    end
     return done(
-        best,
-        bestPushed,
-        first,
-        covered(best)
+        Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z),
+        steps,
+        "xp",
+        0
     )
 end
 return ____exports

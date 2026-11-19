@@ -12,7 +12,7 @@ world:
   t: 134.633
   team: 2
   pid: 4
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-1212,"y":-839,"hp":604,"mhp":692,"range":600,"hull":24,"speed":290,"esc":0}
   ce: [{"id":81,"x":-7,"y":-2,"hp":300,"mhp":300,"ranged":1,"tgt":"u73","hull":8}]
   ca: [{"id":99,"x":-1765,"y":-1372,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":100,"x":-1712,"y":-1317,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":101,"x":-1628,"y":-1246,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":73,"x":-373,"y":-320,"hp":265,"mhp":300,"ranged":1,"tgt":"u81","hull":8},{"id":102,"x":-1856,"y":-1495,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
@@ -25,8 +25,9 @@ world:
   lane: 2
   front: {"x":-382,"y":-276,"bx":-676,"by":-547}
 expect:
-  must: ["read(none)"]
-  mustNot: ["read(burst)", "read(threat)", "stand(hero)", "stand(xp)"]
+  must: ["read(safe)"]
+  mustNot: ["read(deadly)", "stand(kill)", "stand(xp)"]
 notes: >
   Slice mid-stand, the start at its usual distance: a Radiant mid at 87% HP (604 of 692), the enemy mid 1,607 away and not
   hitting, burst 413 / 604 = 0.68. The old read refused; standing at the creep is safe (D11).
+  Changed (oha-safe-behave, 19/11/2026): 413 over 2 s against 604 HP: ratio 1.46 at the preferred point, just over the fresh bar 1.44. Old read(none) -> read(safe) (the same answer under the new name); a few HP less would refuse it.

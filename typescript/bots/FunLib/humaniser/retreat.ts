@@ -1,56 +1,35 @@
 /**
  * Our retreat in lane (master docs/team/slices/retreat.md; design docs/proposals/2026-11-09-fights-and-retreat.md s5.4, slice 2).
- * For a hero our retreat owns (RetreatState.Owns): when it leaves (the threat read against a budget from its purpose, at once
- * on `lethal` or a tower on it, or at the heal floor), where to (the anchor whose straight walk costs least in enemy tower
- * reach, enemy creep acquisition and heroes who can reach it) and when it stops (the exit band for ExitDwell, or the anchor).
+ * For a hero our retreat owns (RetreatState.Owns): when it leaves (at once when `SafeGather.At` calls where it stands deadly, or at
+ * the heal floor; a hit back or a join may hold it down to `Safe.BARS.hold`), where to (the anchor whose straight walk costs least in
+ * enemy tower reach, enemy creep acquisition and heroes who can reach it) and when it stops (nobody in reach, a place `At` does
+ * not call deadly for a fresh place, or the anchor).
  * Every other hero walking in retreat mode gets the plain walk (a mode file with Think replaces Valve's walk for all).
  */
-import { BotMode, Lane, Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Lane, Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
-import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Lane_ from "bots/FunLib/humaniser/lane";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Drill from "bots/FunLib/humaniser/drill";
-import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 import * as Cut from "bots/FunLib/humaniser/cut";
 import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
+import * as Safe from "bots/FunLib/humaniser/safe";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
     Horizon: Threat.SETTINGS.StayHorizon,
     /**
-     * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`), the same value and reason as the lane
-     * spot's LANE_ENGAGED_WINDOW: he keeps hitting while we stay. The exit read is the same call, so an episode does not end `safe`
-     * while he still hits us. At 2.6% of max HP a second one engaged melee hero reads 0.25 + 0.078 / HP: over the free budget 0.5
-     * from about 31% HP, and 0.33 at full HP (a lone harasser at full HP starts nothing). judgement.
+     * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stay.
+     * The read `Desire` makes for the heal rules and the telemetry; `SafeGather.At` uses the same window. judgement.
      */
     EngagedWindow: Threat.SETTINGS.StayEngaged,
-    /**
-     * RetreatOdds: a fight the heroes in reach do not outnumber is held (no `threat` leave) only while their burst, as the read
-     * counts it (an engaged hero over EngagedWindow), is under this share of our current HP: D1's "their burst can kill me".
-     * 0.5 left nearly every forced 2v2 (drill retreat-even 3-4: two engaged heroes pass half our HP over 6 s). judgement.
-     */
-    EvenBurst: 1,
-    /** RetreatOdds: and only at this HP share or more, the D24 view's "not in danger" bar: under it the hero, which does not
-     *  hit back yet, would only absorb the damage (a melee hero hitting us at 25% HP still sends us home). judgement. */
-    EvenHp: 0.5,
-    /** Base budget by purpose. judgement. */
-    BudgetFree: 0.5,
-    BudgetBusy: 0.6,
-    BudgetCommitted: 0.75,
-    /**
-     * Leave the episode when threat stays under budget - ExitBand for ExitDwell s (explicit hysteresis) while a hero is still in
-     * reach; with nobody in reach, at once under the band. judgement.
-     */
-    ExitBand: 0.15,
-    ExitDwell: 1.5,
     /** Heal floor: HP share under HealFloor with no enemy in reach sends the hero to the fountain until HealUntil. judgement. */
     HealFloor: 0.3,
     HealUntil: 0.8,
@@ -157,7 +136,6 @@ interface Episode {
     id: number;
     start: number;
     why: Why;
-    budget: number;
     anchor: Anchor;
     hp0: number;
     lastHp: number;
@@ -183,9 +161,10 @@ interface DrillRep {
 
 interface HeroState {
     ep?: Episode;
-    overSince?: number;
-    /** An over-budget read held only by the numbers (RetreatOdds) has been logged as ph=stay since the read last fell under. */
+    /** A hit back or join hold has been logged as ph=stay since the answer last read `under`. */
     stayLogged?: boolean;
+    /** The leave decision made with the last fresh read, so a frame that reuses that read asks nothing again. */
+    leave?: Leave;
     /** ev=cut kind=leave: the answer and the time of the last line (the cut's own rate limit; the decision never reads them). */
     cutDec?: string;
     cutAt?: number;
@@ -272,18 +251,17 @@ export function TowerOnUs(bot: Unit): Unit | undefined {
     return undefined;
 }
 
-/** Busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free. */
-function purposeOf(bot: Unit): [string, number] {
-    const s = SETTINGS;
+/** What the hero is doing, for the episode's start line: busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free. Telemetry only. */
+function purposeOf(bot: Unit): string {
     const job = Chooser.RunningJobName(bot);
-    if (job === "rune") return ["committed", s.BudgetCommitted];
-    if (job !== undefined || Lane_.CampJobDesire(bot) > 0) return ["busy", s.BudgetBusy];
+    if (job === "rune") return "committed";
+    if (job !== undefined || Lane_.CampJobDesire(bot) > 0) return "busy";
     const target = bot.GetAttackTarget();
-    if (valid(target) && target.IsCreep()) return ["busy", s.BudgetBusy];
-    return ["free", s.BudgetFree];
+    if (valid(target) && target.IsCreep()) return "busy";
+    return "free";
 }
 
-/** The read `leaveWhy` decides on: Threat.Read at the hero's own place with the retreat's horizon and engaged window. */
+/** The read the heal rules, the items and the telemetry use: Threat.Read at the hero's own place with the retreat's horizon and engaged window. */
 export function ReadHere(bot: Unit): Threat.Read {
     const here = bot.GetLocation();
     return Threat.Read(bot, here, here, SETTINGS.Horizon, { engagedWindow: SETTINGS.EngagedWindow });
@@ -601,13 +579,12 @@ function nearestTowerBehind(bot: Unit): Unit | undefined {
 
 // ---------------------------------------------------------------------------------------------------------------- episodes
 
-function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: number, purp: string, spot?: string, rep?: number): void {
+function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, a: Safe.Answer | undefined, purp: string, spot?: string, rep?: number): void {
     const now = DotaTime();
     const [anchor, alt, minExp, regen] = chooseAnchor(bot, why);
     episodes++;
     const hp = hpShare(bot);
-    st.ep = { id: episodes, start: now, why, budget, anchor, hp0: hp, lastHp: bot.GetHealth(), dmgh: 0, twr: false, wave: false };
-    st.overSince = undefined;
+    st.ep = { id: episodes, start: now, why, anchor, hp0: hp, lastHp: bot.GetHealth(), dmgh: 0, twr: false, wave: false };
     if (why === "heal" && Ours.On("HealItems") && Ours.On("HealStop")) planItems(bot, st.ep);
     RetreatState.SetRunning(bot, true);
     // Our retreat ends a running job with a cause (retreat left Chooser.EXCEPTIONS' role of taking the hero mid-job).
@@ -628,10 +605,11 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, budget: numbe
         ["al", r.allies],
         ["burst", r2(r.burst)],
         ["eng", r.eng.length],
-        ["unp", unpaid(bot, r)],
+        ["lv", a?.level],
+        ["ra", a !== undefined && a.kill > 0 ? r2(a.ratio) : undefined],
+        ["kill", a !== undefined ? math.floor(a.kill + 0.5) : undefined],
         ["tower", r.tower],
         ["esc", r.reach.length > 0 ? r.escape : undefined],
-        ["budget", r2(budget)],
         ["purp", purp],
         ["anchor", anchor.kind],
         ["cost", anchor.cost],
@@ -651,6 +629,7 @@ function end(bot: Unit, st: HeroState, res: string): void {
     const ep = st.ep;
     if (ep === undefined) return;
     st.ep = undefined;
+    st.leave = undefined;
     st.orderTo = undefined;
     RetreatState.SetRunning(bot, false);
     const max = math.max(1, bot.GetMaxHealth());
@@ -689,123 +668,57 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
     // The fountain's own buff counts as arrival: on patch 7.42 a Dire hero stopped 260 to 300 short of the old (6928, 6372) fountain constant
     // and a heal episode never ended (lane-table smoke, two heroes at full HP in retreat from 7:40 to the end).
     const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive || (ep.anchor.kind === "fountain" && bot.HasModifier("modifier_fountain_aura_buff"));
+    // The fresh bar: a retreat stops only where the hero would not leave again (design 2026-11-19-safe-here-design.md s2).
+    const fresh = (): Safe.Answer => SafeGather.At(bot, here, { held: false, who: "retreat" });
     if (ep.why === "heal") {
         if (at && hpShare(bot) >= s.HealUntil) return "anchor";
-        if (Ours.On("HealStop") && hpShare(bot) >= s.HealBack && r.reach.length === 0 && r.threat < ep.budget - s.ExitBand && laneNearer(bot, here)) return "healed";
+        if (Ours.On("HealStop") && hpShare(bot) >= s.HealBack && r.reach.length === 0 && fresh().level !== "deadly" && laneNearer(bot, here)) return "healed";
         if (ep.itemHeal === true) itemHealOn(bot, ep, r, now);
         return undefined;
     }
     if (at) {
-        if (forced || r.threat < ep.budget) return "anchor";
-        // Still over budget at a stop short of home: on to the fountain.
+        if (forced || fresh().level !== "deadly") return "anchor";
+        // Still deadly at a stop short of home: on to the fountain.
         if (ep.anchor.kind !== "fountain") {
             const f = Fountain(bot.GetTeam());
             ep.anchor = { kind: "fountain", at: f, cost: ep.anchor.cost, len: dist(here, f) };
         }
     }
     if (now - ep.start > s.MaxSecs) return "cut";
-    if (forced || TowerOnUs(bot) !== undefined || r.threat >= ep.budget - s.ExitBand) {
-        ep.underSince = undefined;
-        return undefined;
-    }
-    // D2: nobody can reach us, so the danger has gone and the episode stops here, wherever the walk is. The dwell is for a read
-    // that dips under the band while a hero is still in reach (h2hretreat1: the dwell after the last chaser left reach was most
-    // of D2's high-HP retreat seconds).
-    if (r.reach.length === 0) return "gone";
-    ep.underSince = ep.underSince ?? now;
-    return now - ep.underSince >= s.ExitDwell ? "safe" : undefined;
+    if (forced || TowerOnUs(bot) !== undefined) return undefined;
+    const a = fresh();
+    // D2: nobody can reach us, so the danger has gone and the episode stops here, wherever the walk is.
+    if (r.reach.length === 0 && a.kill === 0) return "gone";
+    return a.level !== "deadly" ? "safe" : undefined;
+}
+
+/** Why the leave rule did not leave: the place is not deadly, or our pair is joining the fight (PairJoin), or we are hitting back (Trade.Holds). */
+export type Stay = "under" | "join" | "hitback";
+
+/** What `LeaveWhy` decided and read: the reason to leave or to stay, `At`'s answer, and what `Trade.Holds` said (only asked when the answer is a kill over `BARS.hold`). */
+export interface Leave {
+    why?: Why;
+    stay?: Stay;
+    a: Safe.Answer;
+    hold?: "join" | "hitback";
 }
 
 /**
- * RetreatOdds (D24): the heroes hitting us (the read's `eng`) with none of our lane creeps within creep aggro of them. Our
- * creeps turn on an enemy hero that attacks us within that radius, so one standing outside it hits us for free: the hold
- * never wins anything there, since our hero does not hit back (h2hevenfight1: held seconds hit an enemy hero 3-8% of the time).
+ * The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once, the heal floor with nobody in reach,
+ * else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
+ * under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
+ * stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
  */
-function unpaid(bot: Unit, r: Threat.Read): number {
-    if (r.eng.length === 0) return 0;
-    let n = 0;
-    for (const h of bot.GetNearbyHeroes(1600, true, BotMode.None) ?? []) {
-        if (!valid(h) || !r.eng.includes(h.GetPlayerID())) continue;
-        if (!CreepAggro.Paid(bot, h)) n++;
-    }
-    return n;
-}
-
-/** Why the leave rule did not leave: the read is within budget, a fight they do not outnumber is held (RetreatOdds), the over-budget read has not yet held for `Profile.ThreatHold`, heroes in reach are not hitting us and D1 does not hold (Threat.Stand; the ev=retreat stay line's `reach` tells one from more), or our pair is joining the fight (PairJoin), or we are hitting back (Trade.Holds). */
-export type Stay = "under" | "even" | "hold" | "stand" | "join" | "hitback";
-
-/**
- * The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
- * leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
- */
-export function LeaveWhy(bot: Unit, st: HeroState, r: Threat.Read, budget: number, now: number, joins = false, hits = false): LuaMultiReturn<[Why | undefined, Stay | undefined]> {
-    if (r.band === "lethal") return $multi("lethal", undefined);
-    if (TowerOnUs(bot) !== undefined) return $multi("tower", undefined);
-    if (hpShare(bot) < SETTINGS.HealFloor && r.reach.length === 0) return $multi("heal", undefined);
-    if (r.threat <= budget) {
-        st.overSince = undefined;
-        st.stayLogged = undefined;
-        return $multi(undefined, "under");
-    }
-    // The stand (D2 against D1; Threat.Stand): heroes in reach who are not hitting us are no reason to leave unless D1 holds,
-    // more of them than us with a burst that can kill. One hero is EvenStand's (the lane spot honours it too, so the spot does
-    // not walk us back into a place this rule leaves), two or more HighStand's (the lane spot keeps its limits).
-    if (Ours.On(r.reach.length === 1 ? "EvenStand" : "HighStand") && Threat.Stand(bot, r)) {
-        st.overSince = undefined;
-        if (st.stayLogged !== true) {
-            st.stayLogged = true;
-            Telemetry.Event("retreat", [
-                ["ph", "stay"], ["why", "stand"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
-                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
-            ]);
-        }
-        return $multi(undefined, "stand");
-    }
-    // D10 (slice pair-join-on, `Ours.PairJoin`): our pair is in the fight and can do more to theirs than they can to us, so the
-    // over-budget `threat` leave waits while the join holds; lethal, a tower and the heal floor still leave first (D1).
-    if (joins) {
-        st.overSince = undefined;
-        if (st.stayLogged !== true) {
-            st.stayLogged = true;
-            Telemetry.Event("retreat", [
-                ["ph", "stay"], ["why", "join"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
-                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
-            ]);
-        }
-        return $multi(undefined, "join");
-    }
-    // D24 (slice high-hit-back; one decision since hitback-fold): a hero hits us at high HP and Trade calls hitting back safe and favoured,
-    // or the hit back runs: the `threat` leave waits for it (`hits`, Trade.Holds); lethal, a tower and the heal floor
-    // still leave first.
-    if (hits) {
-        st.overSince = undefined;
-        if (st.stayLogged !== true) {
-            st.stayLogged = true;
-            Telemetry.Event("retreat", [
-                ["ph", "stay"], ["why", "hitback"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
-                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
-            ]);
-        }
-        return $multi(undefined, "hitback");
-    }
-    // D1 leaves when more enemy heroes than we have can reach us (the hero itself counts on our side). A fight they do not
-    // outnumber is D24's while we are not in danger of dying: their burst under EvenBurst of our HP, our HP at EvenHp or more.
-    // The read's allies are the heroes not in retreat who can reach us within its horizon.
-    const even = r.reach.length <= r.allies + 1 && r.burst < SETTINGS.EvenBurst && hpShare(bot) >= SETTINGS.EvenHp;
-    if (Ours.On("RetreatOdds") && even && unpaid(bot, r) === 0) {
-        st.overSince = undefined;
-        if (st.stayLogged !== true) {
-            st.stayLogged = true;
-            Telemetry.Event("retreat", [
-                ["ph", "stay"], ["pid", bot.GetPlayerID()], ["thr", r2(r.threat)], ["band", r.band], ["reach", r.reach.length],
-                ["al", r.allies], ["burst", r2(r.burst)], ["eng", r.eng.length], ["budget", r2(budget)], ["hp", r2(hpShare(bot))],
-            ]);
-        }
-        return $multi(undefined, "even");
-    }
-    st.overSince = st.overSince ?? now;
-    if (now - st.overSince >= Profile.ThreatHold(bot)) return $multi("threat", undefined);
-    return $multi(undefined, "hold");
+export function LeaveWhy(bot: Unit, holds: (this: void) => "join" | "hitback" | undefined = () => Trade.Holds(bot)): Leave {
+    const a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
+    if (TowerOnUs(bot) !== undefined) return { why: "tower", a };
+    if (hpShare(bot) < SETTINGS.HealFloor && a.kill === 0) return { why: "heal", a };
+    if (a.level !== "deadly") return { stay: "under", a };
+    if (a.reason === "tower") return { why: "tower", a };
+    if (a.ratio < Safe.BARS.hold) return { why: "lethal", a };
+    const hold = holds();
+    if (hold !== undefined) return { stay: hold, a, hold };
+    return { why: "threat", a };
 }
 
 // ---------------------------------------------------------------------------------------------------------------- drill
@@ -825,7 +738,7 @@ function drillDesire(bot: Unit, st: HeroState, now: number): number | undefined 
     const d = st.drill;
     if (d.phase === "walk" && (d.at === undefined || GetUnitToLocationDistance(bot, d.at) <= SETTINGS.DrillSpotArrive)) {
         d.phase = "retreat";
-        start(bot, st, "forced", readOf(bot, st, now), SETTINGS.BudgetFree, "free", d.spot, rep);
+        start(bot, st, "forced", readOf(bot, st, now), undefined, "free", d.spot, rep);
     }
     if (d.phase === "retreat" && st.ep !== undefined) {
         const res = step(bot, st, readOf(bot, st, now), now);
@@ -837,20 +750,18 @@ function drillDesire(bot: Unit, st: HeroState, now: number): number | undefined 
 // ---------------------------------------------------------------------------------------------------------------- hooks
 
 /** ev=cut kind=leave on a changed answer, else while a hero is in reach, at most every CutEvery. Reads state; the decision does not use it. */
-function cutLeave(bot: Unit, st: HeroState, r: Threat.Read, budget: number, purp: string, why: Why | undefined, stay: Stay | undefined, overBefore: number | undefined, now: number, joins: boolean, hits: boolean): void {
+function cutLeave(bot: Unit, st: HeroState, r: Threat.Read, purp: string, l: Leave, now: number): void {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true) return;
-    const dec = why ?? stay!;
+    const dec = l.why ?? l.stay!;
     const changed = st.cutDec !== dec;
     if (!changed && !(r.reach.length > 0 && now - (st.cutAt ?? -math.huge) >= SETTINGS.CutEvery)) return;
     st.cutDec = dec;
     st.cutAt = now;
     pcall(Cut.Leave, bot, {
-        r, dec, budget, purp,
-        over: overBefore !== undefined ? now - overBefore : undefined,
-        hold: Profile.ThreatHold(bot),
-        unp: unpaid(bot, r),
-        pj: joins,
-        hb: hits,
+        r, dec, purp,
+        a: l.a,
+        pj: l.hold === "join",
+        hb: l.hold === "hitback",
         short: math.min(SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
         long: SETTINGS.EngagedWindow,
     });
@@ -874,39 +785,42 @@ export function Desire(bot: Unit): number | undefined {
     }
     if (!bot.IsAlive()) {
         if (st.ep !== undefined) end(bot, st, "died");
-        st.overSince = undefined;
         return 0;
     }
     const readAtBefore = st.readAt;
     const r = readOf(bot, st, now);
     if (st.ep !== undefined) {
-        SafeGather.Shadow(bot, "retreat", r, { away: false, held: true, hold: false });
         const res = step(bot, st, r, now);
         if (res === undefined) return SETTINGS.EpisodeDesire;
         end(bot, st, res);
         return 0;
     }
-    const [purp, budget] = purposeOf(bot);
+    const purp = purposeOf(bot);
     if (r.band !== st.band) {
         st.band = r.band;
         Telemetry.Event("retreat", [
             ["ph", "read"], ["pid", bot.GetPlayerID()], ["band", r.band], ["thr", r2(r.threat)], ["reach", r.reach.length],
-            ["burst", r2(r.burst)], ["eng", r.eng.length], ["tower", r.tower], ["esc", r.escape], ["budget", budget], ["hp", r2(hpShare(bot))],
+            ["burst", r2(r.burst)], ["eng", r.eng.length], ["tower", r.tower], ["esc", r.escape], ["hp", r2(hpShare(bot))],
             ["crp", bot.WasRecentlyDamagedByCreep(1)],
         ]);
     }
     // retreat-heal: the chase drops the cast to the drill's HP before any leave, so the heal walk is forced.
     if (Drill.RetreatHeld(bot, hpShare(bot))) return 0;
-    const overBefore = st.overSince;
-    // Asked only when it can matter (over budget): it gathers the trade decision's inputs.
-    const hold = r.threat > budget ? Trade.Holds(bot) : undefined;
-    const joins = hold === "join";
-    const hits = hold === "hitback";
-    const [why, stay] = LeaveWhy(bot, st, r, budget, now, joins, hits);
-    SafeGather.Shadow(bot, "leave", r, { away: false, held: false, hold: joins || hits });
-    if (readAtBefore !== st.readAt) cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins, hits);
-    if (why === undefined) return 0;
-    start(bot, st, why, r, budget, purp);
+    let l = st.leave;
+    const fresh = readAtBefore !== st.readAt || l === undefined;
+    if (fresh) {
+        l = LeaveWhy(bot);
+        st.leave = l;
+        cutLeave(bot, st, r, purp, l, now);
+    }
+    const leave = l!;
+    if (leave.stay === "under") st.stayLogged = undefined;
+    else if (leave.stay !== undefined && st.stayLogged !== true) {
+        st.stayLogged = true;
+        Telemetry.Event("retreat", [["ph", "stay"], ["why", leave.stay], ["pid", bot.GetPlayerID()], ["lv", leave.a.level], ["ra", r2(leave.a.ratio)], ["kill", math.floor(leave.a.kill + 0.5)], ["hp", r2(hpShare(bot))]]);
+    }
+    if (leave.why === undefined) return 0;
+    start(bot, st, leave.why, r, leave.a, purp);
     return SETTINGS.EpisodeDesire;
 }
 

@@ -13,7 +13,7 @@ world:
   t: 555.533
   team: 3
   pid: 8
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":56,"y":-6,"hp":353,"mhp":824,"range":380,"hull":24,"speed":305,"esc":0}
   ce: [{"id":448,"x":-350,"y":-270,"hp":92,"mhp":312,"ranged":1,"tgt":"u432","hull":8}]
   ca: [{"id":455,"x":483,"y":397,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":432,"x":17,"y":17,"hp":244,"mhp":312,"ranged":1,"tgt":"u448","hull":8},{"id":459,"x":754,"y":590,"hp":312,"mhp":312,"ranged":1,"tgt":"-","hull":8},{"id":460,"x":408,"y":341,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":462,"x":313,"y":278,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16}]
@@ -26,8 +26,9 @@ world:
   lane: 2
   front: {"x":-18,"y":38,"bx":308,"by":270}
 expect:
-  must: ["read(burst)"]
+  must: ["read(deadly)"]
   mustNot: ["stand(pref)"]
 notes: >
   Slice mid-stand, the HP floor: one enemy hero at 760, the mid at 43% HP (353 of 824), burst 250 / 353 = 0.71. Under half HP
   the old limits stand: backing off is right, before and after the change.
+  Changed (oha-safe-behave, 19/11/2026): 250 over 2 s against 353 HP: ratio 1.41 at the preferred point, under the fresh bar 1.44 (the bot stands 760 from it, so it is a fresh place). Old read(burst) -> read(deadly); the spot still backs off.

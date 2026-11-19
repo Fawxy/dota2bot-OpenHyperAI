@@ -12,7 +12,7 @@ world:
   t: 437
   team: 3
   pid: 9
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":788,"y":918,"hp":817,"mhp":868,"range":625,"hull":24,"speed":340,"esc":0}
   ce: [{"id":327,"x":133,"y":141,"hp":300,"mhp":300,"ranged":1,"tgt":"u365","hull":8},{"id":356,"x":101,"y":182,"hp":300,"mhp":300,"ranged":1,"tgt":"u365","hull":8}]
   ca: [{"id":368,"x":536,"y":444,"hp":300,"mhp":300,"ranged":1,"tgt":"u296","hull":8},{"id":367,"x":175,"y":261,"hp":550,"mhp":550,"ranged":0,"tgt":"u356","hull":16},{"id":365,"x":253,"y":229,"hp":398,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":366,"x":234,"y":159,"hp":550,"mhp":550,"ranged":0,"tgt":"u327","hull":16}]
@@ -26,8 +26,9 @@ world:
   hold: 0.17
   dt: 0
 expect:
-  must: ["stay(stand)"]
-  mustNot: ["leave(threat)"]
+  must: ["stay(under)"]
+  mustNot: ["leave"]
 notes: >
   Slice mid-stand: a Dire mid at 94% HP (817 of 868), the enemy mid 1,131 away and not hitting, burst 509 / 817 = 0.62,
   threat 0.56. The old rule left; it stays.
+  Changed (oha-safe-behave, 19/11/2026): one hero, 509 over 2 s against 817 HP: ratio 1.60. Old stay(stand) -> stay(under) (the stand is gone; the answer is the same stay).

@@ -21,11 +21,11 @@ local function is(a, level, reason)
 end
 
 -- h2hsnapcreeps1_B_dire_2 t=396: HP 63%, one hero, burst 0.97 (ratio 1.03)
-local oracle = inputs({ reach = { one(611) } })
-check("Oracle case: deadly at stays 1.5 and 1.25, safe at half the damage; at stay 1.0 it reads safe, so the bar needs a margin",
-	is(S.Decide(oracle, 1.5), "deadly", "kill") and is(S.Decide(oracle, 1.25), "deadly", "kill")
-		and is(S.Decide(inputs({ reach = { one(305.5) } }), 1.5), "safe")
-		and is(S.Decide(oracle, 1.0), "safe"))
+check("Oracle case (ratio 1.03): deadly held and fresh at stay 1.25, safe at half the damage; at stay 1.0 it reads safe held, so the bar needs a margin",
+	is(S.Decide(inputs({ reach = { one(611) }, held = true }), 1.25), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(611) }, held = false }), 1.25), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(305.5) }, held = true }), 1.25), "safe")
+		and is(S.Decide(inputs({ reach = { one(611) }, held = true }), 1.0), "safe"))
 
 check("two heroes in reach with little damage are safe; the same two with real damage are deadly",
 	is(S.Decide(inputs({ reach = { one(40), one(40, { pid = 4 }) } })), "safe")
@@ -36,28 +36,35 @@ check("an enemy tower in reach or on us is deadly with nobody in reach; neither 
 		and is(S.Decide(inputs({ towerOnMe = true })), "deadly", "tower")
 		and is(S.Decide(inputs()), "safe", "safe"))
 
+check("a held place in tower reach is not deadly unless the tower targets us; the same place fresh is deadly",
+	is(S.Decide(inputs({ tower = true, held = true })), "safe")
+		and is(S.Decide(inputs({ tower = true, held = false })), "deadly", "tower")
+		and is(S.Decide(inputs({ tower = true, towerOnMe = true, held = true })), "deadly", "tower"))
+
 check("away with 0.6 unseen weight is deadly unknown; 0.3 is not; 0.6 without away is not",
 	is(S.Decide(inputs({ away = true, missing = 0.6 })), "deadly", "unknown")
 		and is(S.Decide(inputs({ away = true, missing = 0.3 })), "safe")
 		and is(S.Decide(inputs({ away = false, missing = 0.6 })), "safe"))
 
-check("held keeps a place a fresh read refuses (ratio 1.3 against bar 1.5, 1.275 held); a ratio under the held bar still refuses",
-	is(S.Decide(inputs({ reach = { one(630 / 1.3) } }), 1.5), "deadly", "kill")
-		and is(S.Decide(inputs({ reach = { one(630 / 1.3) }, held = true }), 1.5), "safe")
-		and is(S.Decide(inputs({ reach = { one(630 / 1.2) }, held = true }), 1.5), "deadly", "kill"))
+check("held keeps a place a fresh read refuses: ratio 1.3 with stay 1.25 is safe held and deadly fresh (bar 1.44); ratio 1.2 is deadly held too",
+	is(S.Decide(inputs({ reach = { one(630 / 1.3) }, held = true })), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.3) }, held = false })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.2) }, held = true })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.5) }, held = false })), "safe"))
 
-check("the default bar is 1.25: ratio 1.3 is safe, 1.2 is deadly",
-	is(S.Decide(inputs({ reach = { one(630 / 1.3) } })), "safe")
-		and is(S.Decide(inputs({ reach = { one(630 / 1.2) } })), "deadly", "kill"))
+check("the default bar for a held place is 1.25: ratio 1.3 is safe, 1.2 is deadly",
+	is(S.Decide(inputs({ reach = { one(630 / 1.3) }, held = true })), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.2) }, held = true })), "deadly", "kill"))
 
 check("a hold stays at ratio 1.2 and is deadly at 0.9; without a hold 1.2 is deadly",
 	is(S.Decide(inputs({ reach = { one(630 / 1.2) }, hold = true })), "safe")
 		and is(S.Decide(inputs({ reach = { one(630 / 0.9) }, hold = true })), "deadly", "kill")
 		and is(S.Decide(inputs({ reach = { one(630 / 1.2) } })), "deadly", "kill"))
 
-check("a hold never makes the bar stricter than stay: stay 0.8 and a ratio of 0.9 is safe with or without a hold",
+check("a hold never makes the bar stricter than stay (stay 0.8, ratio 0.9 is safe with or without a hold) and is never raised by the fresh share (ratio 1.2 holds, fresh or not)",
 	is(S.Decide(inputs({ reach = { one(630 / 0.9) }, hold = true }), 0.8), "safe")
-		and is(S.Decide(inputs({ reach = { one(630 / 0.9) } }), 0.8), "safe"))
+		and is(S.Decide(inputs({ reach = { one(630 / 0.9) }, held = true }), 0.8), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.2) }, hold = true, held = false })), "safe"))
 
 check("an unseen lane opponent counts in kill like a visible one",
 	is(S.Decide(inputs({ reach = { one(611, { unseen = true }) } })), "deadly", "kill")

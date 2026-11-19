@@ -243,9 +243,11 @@ do
 	local Threat, G, bot = world()
 	local e = enemy(10, -1700, 420)
 	local function at(o) T = T + 0.1; return G.At(bot, HERE, o) end
-	check("a place deadly fresh (ratio 1.19 against 1.25) is not deadly held (1.06), and control: still deadly with neither",
-		at({}).level == "deadly" and at({ held = true }).level ~= "deadly" and at({ held = false }).level == "deadly")
-	check("a hold stays down to 1.0, so the same place is not deadly with hold", at({ hold = true }).level ~= "deadly")
+	e.perSec = 380
+	check("ratio 1.3: a place the hero holds is not deadly (bar 1.25), fresh it is (bar 1.44), and control: ratio 1.19 is deadly held too",
+		at({ held = true }).level ~= "deadly" and at({}).level == "deadly" and at({ held = false }).level == "deadly"
+			and (function() e.perSec = 420; local l = at({ held = true }).level; e.perSec = 380; return l end)() == "deadly")
+	check("a hold stays down to 1.0, so the same fresh place is not deadly with hold", at({ hold = true }).level ~= "deadly")
 	e.perSec = 100
 	local realReader = Threat.Reader
 	Threat.Reader = function(...)
@@ -295,14 +297,21 @@ do
 	check("Shadow swallows it and reports one lua_error", ok and errors == 1, errors)
 end
 
--- Threat.Gate's shadow: a trip's walk, away.
+-- TripGate: a trip's walk, away, held on deadly with the answer's reason; a hero who cannot kill the walk does not hold it.
 do
-	local Threat, _, bot = world()
+	local Threat, G, bot = world()
 	local hitter = enemy(10, -1700, 100)
-	local res = Threat.Gate(bot, HERE, CAMP, "core_camp")
+	local weak = G.TripGate(bot, CAMP, "core_camp", HERE)
 	local l = safeLines("core_camp")
-	check("a gate logs its read as who=<consumer> with away, and its own answer is unchanged",
-		#l == 1 and field(l[1], "awy") == "1" and res.why == "threat" and field(l[1], "rr") == "10,0,300,0", l[1])
+	check("a gate logs its read as who=<consumer> with away; a visible hero in reach that cannot kill (300 of 1,000 HP) does not hold it",
+		#l == 1 and field(l[1], "awy") == "1" and weak.why == nil and field(l[1], "rr") == "10,0,300,0" and field(l[1], "lv") == "safe", l[1])
+	T = T + 1
+	hitter.perSec = 400
+	local strong = G.TripGate(bot, CAMP, "core_camp", HERE)
+	local threatLine
+	for _, x in ipairs(lines) do if x:find("ev=threat ", 1, true) and field(x, "dec") == "kill" then threatLine = x end end
+	check("the same hero dealing 1,200 over the walk holds it with why=kill, and ev=threat logs dec=kill for the consumer",
+		strong.why == "kill" and strong.a.level == "deadly" and threatLine ~= nil and field(threatLine, "who") == "core_camp", strong.why)
 end
 
 finish()

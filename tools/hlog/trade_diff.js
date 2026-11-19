@@ -10,9 +10,9 @@
 // --rows N: N example moments (pid, t, file) under each differing group. --json: the groups and the counts as JSON.
 //
 // What a replay cannot know, and what stands in for it:
-//  - n: the old line has `en` (enemy heroes within 1,200), not the heroes that reach us in 2 s. `en` stands in; a row whose answer
-//    changes between n 1 and n 2 is marked `~n`.
-//  - the walk read (a kill's and a join's): absent, so the read here stands in; the unseen weight is 0. The pair's answer is read from `jn`.
+//  - n: the old line has `en` (enemy heroes within 1,200). Decide only logs it now (the veto is Safe.At's answer), so `~n` is always 0.
+//  - the veto: the old line's burst is the kill line over our HP (1 / burst is the ratio); the bars are the held ones, 1.25 for a hit and 1.0 with a hold.
+//  - the walk answer (a kill's and a join's): absent, so the answer here stands in; the unseen weight is 0. The pair's answer is read from `jn`.
 //  - the catch read of a FRESH kill: the trade line does not carry it. A row whose answer differs between catch ok and catch failed is
 //    "not replayable (catch)" and left out of the table. A running kill's catch is recomputed from the keep line's hunters (`chu`).
 //  - `paid` (a hitter standing in our creeps' aggro): false, so a hit back that only the creeps' aggro favoured reads as unfavoured.
@@ -57,6 +57,12 @@ function catchRead(hunters, thpAbs, w = CATCH_WINDOW) {
     return { ok: dmg >= thpAbs, dmg, first: 0, safe: w };
 }
 
+/** Safe.At's answers here as Decide reads them, from the old line's burst (their damage over our HP): the kill line is the burst, deadly under the held bar (1.25 without a hold, 1.0 with one). */
+function safeOf(burst) {
+    const say = (bar) => (burst > 0 && 1 / burst < bar ? { level: 'deadly', ratio: 1 / burst, reason: 'kill' } : { level: 'safe', ratio: burst > 0 ? 1 / burst : Infinity, reason: 'safe' });
+    return { hit: say(1.25), hold: say(1.0) };
+}
+
 const num = (cut, k) => (cut[k] === undefined ? undefined : Number(cut[k]));
 const nonDefault = (v, d) => (v === undefined || Number.isNaN(v) ? d : v);
 
@@ -72,7 +78,7 @@ function fromTrade(cut) {
     if (cut.bu === undefined) return { skip: 'no burst read (the old decision ran without Ours.TradeSafe)' };
     const n = (k) => Number(cut[k]);
     const base = (nn, c) => ({
-        now: n('t'), hp: n('hp'), burst: n('bu'), n: nn, missing: 0, ms: num(cut, 'lw') === 0 ? 0 : DEFAULT_MS, towerOnMe: n('tm') === 1, creepsOnMe: n('hc'), wave: n('cr'),
+        now: n('t'), hp: n('hp'), safe: safeOf(n('bu')), n: nn, ms: num(cut, 'lw') === 0 ? 0 : DEFAULT_MS, towerOnMe: n('tm') === 1, creepsOnMe: n('hc'), wave: n('cr'),
         denyDue: num(cut, 'dn') === 1,
         cands: [{
             pid: n('tgt'), thp: n('thp'), thpAbs: n('thp') * 600, d: n('d'), gap: n('d') - nonDefault(num(cut, 'ar'), 0) - nonDefault(num(cut, 'hl'), 0),
@@ -111,7 +117,7 @@ function fromKeep(cut) {
         if (kind === 'kill' && hunters !== undefined) run.catch = cs;
     }
     const base = (nn) => ({
-        now: n('t'), hp: hasHere ? n('hp') : 1, burst: hasHere && cut.bu !== undefined ? n('bu') : 0, n: nn, missing: 0, ms: DEFAULT_MS, towerOnMe: num(cut, 'tm') === 1,
+        now: n('t'), hp: hasHere ? n('hp') : 1, safe: safeOf(hasHere && cut.bu !== undefined ? n('bu') : 0), n: nn, ms: DEFAULT_MS, towerOnMe: num(cut, 'tm') === 1,
         creepsOnMe: nonDefault(num(cut, 'hc'), 0), wave: nonDefault(num(cut, 'cr'), 0), denyDue: false,
         pair: cut.jn === 'same' ? { tgt, ko: 1, kt: 0, dec: 'join' } : cut.jn === 'other' ? { tgt: -1, ko: 1, kt: 0, dec: 'join' } : undefined,
         cands: seen ? [{

@@ -57,13 +57,9 @@ export const DEFAULTS = {
      * SupportDeny on, a pos4-5 too, instead of OHA's PositionThink.
      */
     LaneSpot: true,
-    /** With LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (states/lane_spot Cover): enemy
-     *  creeps attacking something else there keep a small ring, enemy heroes our tower would punish a short reach. Supports,
-     *  and off: the open-lane limits. */
+    /** With LaneSpot on, our own towers relax a core's creep rings in their range above 25% HP (states/lane_spot Cover): enemy
+     *  creeps attacking something else there keep a small ring. Heroes are Safe.At's alone. Supports, and off: the open-lane rings. */
     LaneSpotTower: true,
-    /** Slice retreat: with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 3 s (states/lane_spot
-     *  READ_HORIZON) instead of the hero reach and the HP margin on it; off: the old hero limits. */
-    LaneSpotThreat: true,
     /**
      * Slice lane-aggro: an in-lane core (and a support whose lane core is away) draws enemy lane creeps on purpose
      * (lane_aggro): `feed` walks the enemy wave onto our ranged creep for our deny, `drag` walks a creep about to die away
@@ -115,16 +111,11 @@ export const DEFAULTS = {
      *  gates of the core camp trip, the offlane pos3's pull and the support's pull farm read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: CoreCamp MissingOf and ThreatOnWay. */
     Threat: true,
-    /** Slice retreat (design s5.4, master slices/retreat.md): a laning bot hero's retreat is ours (retreat.ts: leave on the
-     *  threat read against a budget, the anchor by route cost, the exit band); OHA's retreat desire, farm's ShouldRun and the
+    /** Slice retreat (design s5.4, master slices/retreat.md): a laning bot hero's retreat is ours (retreat.ts: leave when
+     *  Safe.At calls the place deadly, the anchor by route cost, the stop on a place Safe.At does not call deadly); OHA's retreat desire, farm's ShouldRun and the
      *  areas' retreat nudges are off for it, and every other hero in retreat mode takes the plain walk. Off: OHA's retreat
      *  and Valve's walk. */
     Retreat: true,
-    /** Slice even-fight (D24, D1; missed): with Retreat on, the over-budget `threat` leave is held while the heroes in reach do
-     *  not outnumber us and those hitting us stand in our creep aggro; such a fight is left only on `lethal`, a tower or the
-     *  heal floor. Off by default: the hold does not hit back and cost deaths in its drill (user 11/11/2026: on again once
-     *  leave-together and hit-back are built). Off: the budget alone decides, whatever the numbers. */
-    RetreatOdds: false,
     /** Slice heal-stop (D3): with Retreat on, a heal episode ends where HP is back over half, nobody is in reach and our lane
      *  front is nearer than our fountain (retreat.ts HealBack). Off: it walks on to the fountain and 0.8 HP. */
     HealStop: true,
@@ -142,14 +133,6 @@ export const DEFAULTS = {
     /** Slice rune-verb (rework s7): under the 6:00 plan's switches, the mid's water spawns (2:00, 4:00) are its own trips, one
      *  per spawn (rune_job MidWants), and OHA's power and water branch stands aside for it until the plan takes over. Off: OHA's. */
     MidWater: false,
-    /** Slice mid-stand (D11 read against D1): with LaneSpotThreat and Retreat on, one enemy hero in reach who is not hitting
-     *  us, whose burst is under our HP, at half HP or more, refuses no lane spot and starts no `threat` leave
-     *  (Threat.LoneStand). Off: the spot's burst bar and band, and the budget, whatever the numbers. */
-    EvenStand: true,
-    /** Slices high-stand, stand-rule (D2 read against D1): with Retreat on, two or more enemy heroes in reach, none hitting
-     *  us, whose burst is under half our HP, at 70% HP or more, start no `threat` leave
-     *  (Threat.Stand); the lane spot is unchanged. Off: the budget. */
-    HighStand: true,
     /** Slice burst-cooldowns (D1, D2, D18): an enemy hero's estimated damage (the threat read's burst, the kill check's incoming
      *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
      *  Off: Valve's estimate, which counts every learned enemy spell ready. */

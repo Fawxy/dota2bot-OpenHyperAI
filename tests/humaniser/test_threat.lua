@@ -130,7 +130,7 @@ do
 		H.CoreCamp.MissingGate(bot, CAMP, "core_pull")
 	end)
 	local l = threatLines(out)
-	check("log: held, then go on the change, then go again after LogEvery", #l == 3 and field(l[1], "dec") == "missing" and field(l[2], "dec") == "go" and field(l[3], "dec") == "go", #l)
+	check("log: held, then go on the change, then go again after LogEvery", #l == 3 and field(l[1], "dec") == "unknown" and field(l[2], "dec") == "go" and field(l[3], "dec") == "go", #l)
 	check("log: the held line carries the weight and pid", tonumber(field(l[1], "miss")) == 0.5 and field(l[1], "mpid") == "10", l[1])
 end
 -- The vision cut: a hero last seen by the walk is dropped once every point of the walk within its run is in
@@ -198,35 +198,16 @@ do
 	check("prior: the middle bucket weighs a quarter", near(m.missing, 0.125) and m.depth >= 0.5 and m.depth < 0.65, m.missing .. " depth " .. m.depth)
 end
 
--- R6 on the read (lane_control CoreThreat): two enemies 1,600 from the core are beyond the old 1,200 count but inside the
--- 4 s reach, so the switch on reads danger and the OFF arm does not; a support in lane clears it either way.
-for _, case in ipairs({ { off = false, danger = true }, { off = true, danger = false } }) do
+-- R6 on the read (lane_control CoreThreat): under the switch the core is in danger when Safe.At says deadly here (two heroes 900 away that deal 800
+-- of its 600 HP in 2 s); two that deal nothing are not, where the OFF arm counts the heroes within 1,200 and does. A support in lane clears it either way.
+for _, case in ipairs({ { off = false, dmg = 400, danger = true }, { off = false, dmg = 0, danger = false }, { off = true, dmg = 0, danger = true } }) do
 	local _, _, bot, e = world({ off = case.off })
 	local Ctl = require("bots/FunLib/humaniser/lane_control")
-	e.loc, e.range = Vector(HERE.x + 1600, HERE.y), 600
-	local e2 = MakeUnit({ pid = 11, team = 3, loc = Vector(HERE.x - 1600, HERE.y) })
-	e2.range = 600
-	check("R6 off=" .. tostring(case.off) .. ": two heroes at 1,600", Ctl.CoreThreat(bot, false) == case.danger)
-	check("R6 off=" .. tostring(case.off) .. ": a support in lane clears it", Ctl.CoreThreat(bot, true) == false)
-end
-
--- The shared gate: nothing in reach or counted is open; a counted hero after 4:00 holds "missing"; a visible hero in reach
--- holds "threat" first; each decision is logged with the place's depth.
-do
-	local _, Threat, bot, e = world()
-	local w0, w1, w2
-	local out = capture(function()
-		w0 = Threat.Gate(bot, HERE, CAMP, "t").why
-		hide(e, Vector(-500, -7000), 10)
-		w1 = Threat.Gate(bot, HERE, CAMP, "t").why
-		-- A second, visible hero in reach while the first stays unseen and counted: threat wins the decision.
-		local v = MakeUnit({ pid = 11, team = 3, loc = Vector(-1000, -7500) })
-		v.range = 150
-		w2 = Threat.Gate(bot, HERE, CAMP, "t").why
-	end)
-	check("gate: open, then missing, then threat over a counted hero", w0 == nil and w1 == "missing" and w2 == "threat", tostring(w0) .. " " .. tostring(w1) .. " " .. tostring(w2))
-	local l = threatLines(out)
-	check("gate: each decision logged with dep", #l == 3 and field(l[1], "dec") == "go" and field(l[2], "dec") == "missing" and field(l[3], "dec") == "threat" and field(l[3], "dep") ~= nil, #l)
+	e.loc, e.range, e.estDamage = Vector(HERE.x + 900, HERE.y), 600, case.dmg
+	local e2 = MakeUnit({ pid = 11, team = 3, loc = Vector(HERE.x - 900, HERE.y) })
+	e2.range, e2.estDamage = 600, case.dmg
+	check("R6 off=" .. tostring(case.off) .. " dmg=" .. case.dmg .. ": two heroes at 900", Ctl.CoreThreat(bot, false) == case.danger)
+	check("R6 off=" .. tostring(case.off) .. " dmg=" .. case.dmg .. ": a support in lane clears it", Ctl.CoreThreat(bot, true) == false)
 end
 
 -- One reader over several walks (the lane spot's use) answers each as a read of its own would: what it keeps between

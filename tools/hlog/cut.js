@@ -5,7 +5,7 @@
 //   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|safe|pick] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
-//       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
+//       answer the game gave (spot: the ev=lane_pos why, sx, sy, pl; gate: its ev=threat dec; leave: the cut's dec); --all
 //       checks every cut and judges the bar (95% of each answer)
 //       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 40 cuts always do)
 //   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P] [--engaged 0|1]   one line per cut: time, pid, answer,
@@ -159,18 +159,18 @@ const DECISIONS = {
             if (!lp) return { error: 'no ev=lane_pos beside it' };
             const verb = v => (obs.actions.find(a => a.verb === v) || {}).target;
             const d = Math.hypot(obs.fact.x - Number(lp.sx), obs.fact.y - Number(lp.sy));
-            const why = verb('stand') === lp.why, rp = (verb('read') ?? 'none') === (lp.rp ?? 'off');
-            return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.rp}`, detail: `off by ${d.toFixed(0)}` };
+            const why = verb('stand') === lp.why, rp = (verb('read') ?? 'off') === (lp.pl ?? lp.rp ?? 'off');
+            return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.pl ?? lp.rp}`, detail: `off by ${d.toFixed(0)}` };
         },
         answer: (game, cut) => (game.lanePos.get(`${cut.pid}@${cut.t}`) || {}).why ?? '?',
         brief(game, cut) {
             const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
-            return `${cut.role}, read ${lp.rp ?? 'off'}`;
+            return `${cut.role}, read ${lp.pl ?? lp.rp ?? 'off'}`;
         },
         id: (cut) => `lane.spot.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note(game, cut) {
             const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
-            return `The game chose ${lp.why}/${lp.rp} at (${lp.sx}, ${lp.sy})`;
+            return `The game chose ${lp.why}/${lp.pl ?? lp.rp} at (${lp.sx}, ${lp.sy})`;
         },
     },
     gate: {
@@ -213,7 +213,7 @@ const DECISIONS = {
         driver: 'retreat_leave',
         world(game, cut) {
             const w = commonWorld(game, cut);
-            Object.assign(w, { budget: Number(cut.bud), over: Number(cut.ov), hold: Number(cut.th), dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0, hb: Number(cut.hb) === 1 ? 1 : 0 });
+            Object.assign(w, { dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0, hb: Number(cut.hb) === 1 ? 1 : 0 });
             return w;
         },
         check(game, cut, obs) {
@@ -223,9 +223,9 @@ const DECISIONS = {
             return { same: got === want, got, want };
         },
         answer: (game, cut) => cut.dec,
-        brief: (game, cut) => `threat ${cut.thr} (${cut.band}), ${cut.purp} budget ${cut.bud}`,
+        brief: (game, cut) => `${cut.lv}(${cut.why}) kill ${cut.kill} ratio ${cut.ra === undefined ? '-' : cut.ra}, ${cut.purp}`,
         id: (cut) => `retreat.leave.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${cut.dec} (threat ${cut.thr}, ${cut.purp} budget ${cut.bud}, over ${cut.ov} s)`,
+        note: (game, cut) => `The game chose ${cut.dec} (${cut.lv}(${cut.why}), kill ${cut.kill}, ratio ${cut.ra === undefined ? '-' : cut.ra}, ${cut.purp})`,
     },
     join: {
         driver: 'pair_join',
@@ -255,9 +255,10 @@ const DECISIONS = {
     trade: {
         driver: 'trade',
         world(game, cut) {
+            if (cut.svh === undefined) throw new Error('a trade line from before the veto asked Safe.At (no svh): its burst read is not replayed');
             const w = { t: Number(cut.t), pid: Number(cut.pid), role: cut.role };
-            for (const k of ['hp', 'bu', 'n', 'mi', 'ms', 'tm', 'hc', 'cr', 'dn', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
-            for (const k of ['pjr', 'pl', 'cd', 'run']) if (cut[k] !== undefined) w[k] = String(cut[k]);
+            for (const k of ['hp', 'n', 'ms', 'tm', 'hc', 'cr', 'dn', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['svh', 'svb', 'pjr', 'pl', 'cd', 'run']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },
         check(game, cut, obs) {
@@ -267,9 +268,9 @@ const DECISIONS = {
             return { same: got === tradeAnswer(cut), got, want: tradeAnswer(cut) };
         },
         answer: (game, cut) => (cut.lv === 'none' ? `none(${cut.why})` : cut.lv),
-        brief: (game, cut) => `${cut.role} hp ${cut.hp}, burst ${cut.bu} n ${cut.n}, ${String(cut.cd || '').split(';').filter(Boolean).length} candidates${cut.run ? `, running ${String(cut.run).split(':')[0]}` : ''}, why ${cut.why}`,
+        brief: (game, cut) => `${cut.role} hp ${cut.hp}, safe here ${cut.svh} / hold ${cut.svb}, ${String(cut.cd || '').split(';').filter(Boolean).length} candidates${cut.run ? `, running ${String(cut.run).split(':')[0]}` : ''}, why ${cut.why}`,
         id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${tradeAnswer(cut)} (hp ${cut.hp}, burst ${cut.bu}, n ${cut.n}, creeps on us ${cut.hc}, wave ${cut.cr})`,
+        note: (game, cut) => `The game chose ${tradeAnswer(cut)} (hp ${cut.hp}, safe here ${cut.svh} / hold ${cut.svb}, creeps on us ${cut.hc}, wave ${cut.cr})`,
     },
     // The safe-here read in shadow (safe_gather.ts Shadow): every input rides on the line (`rr`, `mi`, `stw`, `ld`, `awy`, `hld`, `hd`, hp as `hpa` and `hpm`),
     // the answer is `lv` and `why`. Pure Decide, so no map, towers or creeps are needed. Rounded fields (damage and HP to 1, the weight to 0.001, the landing to 0.01) can
@@ -426,7 +427,7 @@ function factsOf(w) {
     if (b === undefined && w.hpa !== undefined) return [`# ${w.who} pid ${w.pid}: HP ${w.hpa} of ${w.hpm}; reachers (pid,hitting,dmg,unseen) ${w.rr || 'none'}; unseen weight ${w.mi}; tower ${w.stw}; landing ${w.ld}`];
     if (b === undefined && w.ord !== undefined) return [`# pid ${w.pid}: order ${w.ord}; offered (n,kind,eta,due,walk,dies,ranged,mine) ${w.tg || 'none'}; waiting on ${w.cur ?? 'nothing'}; pre-hit ${w.pre ?? 'none'}; far ${w.far ?? 'not given'}; idle ${w.idle ?? 'not asked'}`];
     // A trade world is the one decision's inputs: the hero and its candidates.
-    if (b === undefined && w.cd !== undefined) return [`# ${w.role} pid ${w.pid}: HP ${Math.round(100 * w.hp)}%; burst ${w.bu} over ${w.n} heroes, unseen ${w.mi}; creeps on it ${w.hc}, wave ${w.cr}; tower on it ${w.tm}`
+    if (b === undefined && w.cd !== undefined) return [`# ${w.role} pid ${w.pid}: HP ${Math.round(100 * w.hp)}%; safe here (level,ratio,reason) ${w.svh}, with a hold ${w.svb}; creeps on it ${w.hc}, wave ${w.cr}; tower on it ${w.tm}`
         + `${w.run ? `; running ${String(w.run).split(':').slice(0, 2).join(' on ')}` : ''}`,
         ...String(w.cd).split(';').filter(Boolean).map(r => { const f = r.split(','); return `# candidate pid ${f[0]}: HP ${Math.round(100 * f[1])}%, ${f[3]} away (gap ${f[4]}), ${f[7] === '1' ? 'hitting, ' : ''}${f[8] === '1' ? 'free, ' : ''}ko ${f[9]} kt ${f[10]}`; })];
     const at = w.place ? `, ${d(b, w.place)} from the place` : '';

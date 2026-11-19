@@ -287,13 +287,24 @@ do
 	check("hysteresis: a hero 750 from the approach point (inside the start margin, outside its attack) keeps the walk", Ag.Pending(bot))
 end
 
--- Review 2026-11-06-aggro-walkin M1: the walk may last 3.5 s; an enemy hero that comes into reach of the approach point during it
--- ends the move before the order.
+-- Review 2026-11-06-aggro-walkin M1: the walk may last 3.5 s; an enemy hero that comes into reach of the approach point during it and can kill
+-- us there (Safe.At deadly) ends the move before the order; one that cannot does not (control).
 do
 	local Ag, bot, h1, _, has = feedScene(1400)
 	Ag.Step(bot)
 	local at = ActionsOf(1, "MoveToLocation")[1].args[1]
 	h1.loc = Vector(at.x + 300, at.y)
+	T = T + 0.25
+	Ag.Step(bot)
+	check("a hero in reach of the approach point that cannot kill: the walk goes on", Ag.Pending(bot) and not has("result=unsafe"))
+end
+
+do
+	local Ag, bot, h1, _, has = feedScene(1400)
+	Ag.Step(bot)
+	local at = ActionsOf(1, "MoveToLocation")[1].args[1]
+	h1.loc = Vector(at.x + 300, at.y)
+	h1.estDamage = 5000
 	T = T + 0.25
 	Ag.Step(bot)
 	check("unsafe mid-walk: the move ends `unsafe` with no draw order", has("result=unsafe") and not Ag.Pending(bot) and #ActionsOf(1, "AttackUnit") == 0)

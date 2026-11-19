@@ -167,11 +167,207 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local cutOn, log, r1, r2, n0, b01, cutState
+local distToSegment, lanerRows, towerOnMe, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, cutState, frames
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
+function distToSegment(p, a, b)
+    local vx = b.x - a.x
+    local vy = b.y - a.y
+    local len2 = vx * vx + vy * vy
+    local u = len2 > 0 and math.max(
+        0,
+        math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)
+    ) or 0
+    return math.sqrt((p.x - (a.x + u * vx)) ^ 2 + (p.y - (a.y + u * vy)) ^ 2)
+end
+--- HP a second lost to each source over the last `Window` seconds, from the samples taken so far.
+function ____exports.Landing(bot, now)
+    local out = {hero = 0, creeps = 0, tower = 0}
+    local s = samplers[bot:GetPlayerID()]
+    if s == nil then
+        return out
+    end
+    for ____, x in ipairs(s.ring) do
+        do
+            local __continue20
+            repeat
+                if now - x.t > ____exports.SETTINGS.Window then
+                    __continue20 = true
+                    break
+                end
+                out.hero = out.hero + x.hero
+                out.creeps = out.creeps + x.creeps
+                out.tower = out.tower + x.tower
+                __continue20 = true
+            until true
+            if not __continue20 then
+                break
+            end
+        end
+    end
+    out.hero = out.hero / ____exports.SETTINGS.Window
+    out.creeps = out.creeps / ____exports.SETTINGS.Window
+    out.tower = out.tower / ____exports.SETTINGS.Window
+    return out
+end
+function lanerRows(bot, r)
+    local pid = bot:GetPlayerID()
+    local mine = laners[pid] or ({})
+    laners[pid] = mine
+    local now = DotaTime()
+    local visible = {}
+    local here = bot:GetLocation()
+    local own = dist(r.from, here) <= ____exports.SETTINGS.OwnPlace and dist(r.place, here) <= ____exports.SETTINGS.OwnPlace
+    for ____, row in ipairs(r.rows) do
+        visible[row.pid] = true
+        if own then
+            mine[row.pid] = {dmg = row.dmg, at = now}
+        end
+    end
+    local out = {}
+    for k, c in pairs(mine) do
+        do
+            local __continue27
+            repeat
+                if c == nil or visible[k] == true then
+                    __continue27 = true
+                    break
+                end
+                if now - c.at > ____exports.SETTINGS.LanerSeen then
+                    mine[k] = nil
+                    __continue27 = true
+                    break
+                end
+                if not IsHeroAlive(k) then
+                    __continue27 = true
+                    break
+                end
+                local info = GetHeroLastSeenInfo(k)[1]
+                if info == nil or info.time_since_seen <= ____exports.SETTINGS.UnseenAfter then
+                    __continue27 = true
+                    break
+                end
+                local run = math.min(
+                    (Threat.SeenSpeed(k) or Threat.SETTINGS.MissingSpeed) * info.time_since_seen,
+                    Threat.SETTINGS.MissingReachMax
+                ) + Threat.SETTINGS.MissingMargin
+                if distToSegment(info.location, r.from, r.place) > run then
+                    __continue27 = true
+                    break
+                end
+                out[#out + 1] = {pid = k, hitting = false, dmg = c.dmg, unseen = true}
+                __continue27 = true
+            until true
+            if not __continue27 then
+                break
+            end
+        end
+    end
+    return out
+end
+function towerOnMe(bot, now)
+    local pid = bot:GetPlayerID()
+    local seen = towerSeen[pid]
+    if seen ~= nil and seen.t == now then
+        return seen.on
+    end
+    local on = false
+    local br = bot:GetBoundingRadius()
+    for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
+        do
+            local __continue35
+            repeat
+                if not tw:IsAlive() then
+                    __continue35 = true
+                    break
+                end
+                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
+                    __continue35 = true
+                    break
+                end
+                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
+                    on = true
+                    break
+                end
+                __continue35 = true
+            until true
+            if not __continue35 then
+                break
+            end
+        end
+    end
+    towerSeen[pid] = {t = now, on = on}
+    return on
+end
+--- `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
+-- passes the cached one, and the clock here is the game's now, not the read's `t`). `hitting` is the read's `eng`, so it is only set when
+-- the read was made with `engagedWindow`; a gate's read (no window) has none hitting and every row at the short window.
+-- `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from where it stands to the edge of
+-- that hero's reach (its `run`: speed x the read's horizon + attack range + both hulls), at our current speed. A hero already
+-- outside a row's reach adds 0, and an unseen lane row has no place to measure from. Logged only.
+function ____exports.FromRead(bot, r, opts)
+    local reach = {}
+    for ____, row in ipairs(r.rows) do
+        reach[#reach + 1] = {pid = row.pid, hitting = row.eng, dmg = row.dmg}
+    end
+    local exit = 0
+    if #r.rows > 0 then
+        local here = bot:GetLocation()
+        local speed = math.max(
+            1,
+            bot:GetCurrentMovementSpeed()
+        )
+        for ____, row in ipairs(r.rows) do
+            exit = math.max(
+                exit,
+                math.max(
+                    0,
+                    row.run - dist(here, row.at)
+                ) / speed
+            )
+        end
+    end
+    for ____, l in ipairs(lanerRows(bot, r)) do
+        reach[#reach + 1] = l
+    end
+    local ____temp_1 = bot:GetHealth()
+    local ____temp_2 = bot:GetMaxHealth()
+    local ____reach_3 = reach
+    local ____r_missing_4 = r.missing
+    local ____r_tower_5 = r.tower
+    local ____towerOnMe_result_6 = towerOnMe(
+        bot,
+        DotaTime()
+    )
+    local ____exports_Landing_result_7 = ____exports.Landing(
+        bot,
+        DotaTime()
+    )
+    local ____temp_8 = #r.rows > 0 and exit or nil
+    local ____opts_away_9 = opts.away
+    local ____opts_held_10 = opts.held
+    local ____temp_0
+    if type(opts.hold) == "function" then
+        ____temp_0 = opts.hold()
+    else
+        ____temp_0 = opts.hold
+    end
+    return {
+        hp = ____temp_1,
+        hpMax = ____temp_2,
+        reach = ____reach_3,
+        missing = ____r_missing_4,
+        tower = ____r_tower_5,
+        towerOnMe = ____towerOnMe_result_6,
+        landing = ____exports_Landing_result_7,
+        exit = ____temp_8,
+        away = ____opts_away_9,
+        held = ____opts_held_10,
+        hold = ____temp_0
+    }
+end
 --- The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`).
 function ____exports.CutFields(pid, who, place, i, a)
     local rows = {}
@@ -273,32 +469,79 @@ function log(bot, who, place, i, a)
         )
     )
 end
+function frameReader(bot, horizon, engaged, exclude)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local f = frames[pid]
+    if f == nil or f.t ~= now then
+        f = {t = now, readers = {}}
+        frames[pid] = f
+    end
+    local key = (((tostring(horizon) .. ":") .. tostring(engaged and 1 or 0)) .. ":") .. tostring(exclude or "-")
+    local rd = f.readers[key]
+    if rd == nil then
+        rd = Threat.Reader(bot, horizon, {engagedWindow = engaged and Threat.SETTINGS.StayEngaged or nil, exclude = exclude})
+        f.readers[key] = rd
+    end
+    return rd
+end
+function ask(bot, place, opts)
+    local horizon = opts and opts.horizon or (((opts and opts.held) == true or (opts and opts.hold) == true) and Threat.SETTINGS.StayHorizon or ____exports.SETTINGS.FreshHorizon)
+    local from = opts and opts.from or bot:GetLocation()
+    local ____frameReader_25 = frameReader
+    local ____bot_24 = bot
+    local ____temp_21 = opts and opts.engaged
+    if ____temp_21 == nil then
+        ____temp_21 = true
+    end
+    local r = ____frameReader_25(____bot_24, horizon, ____temp_21, opts and opts.exclude)(from, place)
+    local ____exports_FromRead_36 = ____exports.FromRead
+    local ____bot_35 = bot
+    local ____temp_28 = opts and opts.away
+    if ____temp_28 == nil then
+        ____temp_28 = false
+    end
+    local ____temp_31 = opts and opts.held
+    if ____temp_31 == nil then
+        ____temp_31 = false
+    end
+    local ____temp_34 = opts and opts.hold
+    if ____temp_34 == nil then
+        ____temp_34 = false
+    end
+    local i = ____exports_FromRead_36(____bot_35, r, {away = ____temp_28, held = ____temp_31, hold = ____temp_34})
+    local a = Safe.Decide(i)
+    local who = opts and opts.who
+    if who ~= nil and cutOn() and bot:IsAlive() then
+        local ok, err = pcall(
+            log,
+            bot,
+            who,
+            place,
+            i,
+            a
+        )
+        if not ok then
+            Telemetry.Failed("SafeGather.At", err)
+        end
+    end
+    return {a = a, r = r}
+end
 ____exports.SETTINGS = {
     LanerSeen = 10,
     OwnPlace = 50,
     UnseenAfter = 0.5,
     Window = 2,
     MaxGap = 1,
-    CutEvery = 2
+    CutEvery = 2,
+    FreshHorizon = 3
 }
 r1 = function(v) return math.floor(v * 10 + 0.5) / 10 end
 r2 = function(v) return math.floor(v * 100 + 0.5) / 100 end
 n0 = function(v) return math.floor(v + 0.5) end
 b01 = function(b) return b and 1 or 0 end
-local function dist(a, b)
-    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
-end
-local function distToSegment(p, a, b)
-    local vx = b.x - a.x
-    local vy = b.y - a.y
-    local len2 = vx * vx + vy * vy
-    local u = len2 > 0 and math.max(
-        0,
-        math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)
-    ) or 0
-    return math.sqrt((p.x - (a.x + u * vx)) ^ 2 + (p.y - (a.y + u * vy)) ^ 2)
-end
-local samplers = {}
+dist = function(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
+samplers = {}
 --- One frame's HP drop against the last sample, split equally between the sources whose damage flag covers the gap (a hero, a
 -- creep, a tower). A drop with no flag is not counted (burn, fall damage, an unflagged source); a rise is ignored. A second
 -- call with the same `now` does nothing.
@@ -351,199 +594,8 @@ function ____exports.Tick(bot)
         DotaTime()
     )
 end
---- HP a second lost to each source over the last `Window` seconds, from the samples taken so far.
-function ____exports.Landing(bot, now)
-    local out = {hero = 0, creeps = 0, tower = 0}
-    local s = samplers[bot:GetPlayerID()]
-    if s == nil then
-        return out
-    end
-    for ____, x in ipairs(s.ring) do
-        do
-            local __continue20
-            repeat
-                if now - x.t > ____exports.SETTINGS.Window then
-                    __continue20 = true
-                    break
-                end
-                out.hero = out.hero + x.hero
-                out.creeps = out.creeps + x.creeps
-                out.tower = out.tower + x.tower
-                __continue20 = true
-            until true
-            if not __continue20 then
-                break
-            end
-        end
-    end
-    out.hero = out.hero / ____exports.SETTINGS.Window
-    out.creeps = out.creeps / ____exports.SETTINGS.Window
-    out.tower = out.tower / ____exports.SETTINGS.Window
-    return out
-end
---- Per bot, per enemy pid: the damage it could deal us when it last reached us, and when.
-local laners = {}
---- Records the reachers of a read of our own position (see `OwnPlace`) and returns the lane opponents that reached us within `LanerSeen`, are not visible now and could
--- have run to the walk since their last sighting (the missing belief's run: the speed the read last saw, capped, plus its margin).
-local function lanerRows(bot, r)
-    local pid = bot:GetPlayerID()
-    local mine = laners[pid] or ({})
-    laners[pid] = mine
-    local now = DotaTime()
-    local visible = {}
-    local here = bot:GetLocation()
-    local own = dist(r.from, here) <= ____exports.SETTINGS.OwnPlace and dist(r.place, here) <= ____exports.SETTINGS.OwnPlace
-    for ____, row in ipairs(r.rows) do
-        visible[row.pid] = true
-        if own then
-            mine[row.pid] = {dmg = row.dmg, at = now}
-        end
-    end
-    local out = {}
-    for k, c in pairs(mine) do
-        do
-            local __continue27
-            repeat
-                if c == nil or visible[k] == true then
-                    __continue27 = true
-                    break
-                end
-                if now - c.at > ____exports.SETTINGS.LanerSeen then
-                    mine[k] = nil
-                    __continue27 = true
-                    break
-                end
-                if not IsHeroAlive(k) then
-                    __continue27 = true
-                    break
-                end
-                local info = GetHeroLastSeenInfo(k)[1]
-                if info == nil or info.time_since_seen <= ____exports.SETTINGS.UnseenAfter then
-                    __continue27 = true
-                    break
-                end
-                local run = math.min(
-                    (Threat.SeenSpeed(k) or Threat.SETTINGS.MissingSpeed) * info.time_since_seen,
-                    Threat.SETTINGS.MissingReachMax
-                ) + Threat.SETTINGS.MissingMargin
-                if distToSegment(info.location, r.from, r.place) > run then
-                    __continue27 = true
-                    break
-                end
-                out[#out + 1] = {pid = k, hitting = false, dmg = c.dmg, unseen = true}
-                __continue27 = true
-            until true
-            if not __continue27 then
-                break
-            end
-        end
-    end
-    return out
-end
-local towerSeen = {}
---- A live enemy tower whose reach holds `bot` is attacking it or hit it in the last half second: retreat's `TowerOnUs` test
--- written again here, since retreat imports this module (a require cycle). Read once a frame per hero.
-local function towerOnMe(bot, now)
-    local pid = bot:GetPlayerID()
-    local seen = towerSeen[pid]
-    if seen ~= nil and seen.t == now then
-        return seen.on
-    end
-    local on = false
-    local br = bot:GetBoundingRadius()
-    for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
-        do
-            local __continue35
-            repeat
-                if not tw:IsAlive() then
-                    __continue35 = true
-                    break
-                end
-                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
-                    __continue35 = true
-                    break
-                end
-                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
-                    on = true
-                    break
-                end
-                __continue35 = true
-            until true
-            if not __continue35 then
-                break
-            end
-        end
-    end
-    towerSeen[pid] = {t = now, on = on}
-    return on
-end
---- `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
--- passes the cached one, and the clock here is the game's now, not the read's `t`). `hitting` is the read's `eng`, so it is only set when
--- the read was made with `engagedWindow`; a gate's read (no window) has none hitting and every row at the short window.
--- `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from where it stands to the edge of
--- that hero's reach (its `run`: speed x the read's horizon + attack range + both hulls), at our current speed. A hero already
--- outside a row's reach adds 0, and an unseen lane row has no place to measure from. Logged only.
-function ____exports.FromRead(bot, r, opts)
-    local reach = {}
-    for ____, row in ipairs(r.rows) do
-        reach[#reach + 1] = {pid = row.pid, hitting = row.eng, dmg = row.dmg}
-    end
-    local exit = 0
-    if #r.rows > 0 then
-        local here = bot:GetLocation()
-        local speed = math.max(
-            1,
-            bot:GetCurrentMovementSpeed()
-        )
-        for ____, row in ipairs(r.rows) do
-            exit = math.max(
-                exit,
-                math.max(
-                    0,
-                    row.run - dist(here, row.at)
-                ) / speed
-            )
-        end
-    end
-    for ____, l in ipairs(lanerRows(bot, r)) do
-        reach[#reach + 1] = l
-    end
-    local ____temp_1 = bot:GetHealth()
-    local ____temp_2 = bot:GetMaxHealth()
-    local ____reach_3 = reach
-    local ____r_missing_4 = r.missing
-    local ____r_tower_5 = r.tower
-    local ____towerOnMe_result_6 = towerOnMe(
-        bot,
-        DotaTime()
-    )
-    local ____exports_Landing_result_7 = ____exports.Landing(
-        bot,
-        DotaTime()
-    )
-    local ____temp_8 = #r.rows > 0 and exit or nil
-    local ____opts_away_9 = opts.away
-    local ____opts_held_10 = opts.held
-    local ____temp_0
-    if type(opts.hold) == "function" then
-        ____temp_0 = opts.hold()
-    else
-        ____temp_0 = opts.hold
-    end
-    return {
-        hp = ____temp_1,
-        hpMax = ____temp_2,
-        reach = ____reach_3,
-        missing = ____r_missing_4,
-        tower = ____r_tower_5,
-        towerOnMe = ____towerOnMe_result_6,
-        landing = ____exports_Landing_result_7,
-        exit = ____temp_8,
-        away = ____opts_away_9,
-        held = ____opts_held_10,
-        hold = ____temp_0
-    }
-end
+laners = {}
+towerSeen = {}
 cutState = {}
 local function shadow(bot, who, r, opts)
     if not cutOn() or not bot:IsAlive() then
@@ -573,70 +625,14 @@ function ____exports.Shadow(bot, who, r, opts)
         Telemetry.Failed("SafeGather.Shadow", err)
     end
 end
-local frames = {}
---- The reader for this hero, horizon and engaged option, made once per game-time value: `Threat.Reader` is valid only within the frame it was made in.
-local function frameReader(bot, horizon, engaged)
-    local pid = bot:GetPlayerID()
-    local now = DotaTime()
-    local f = frames[pid]
-    if f == nil or f.t ~= now then
-        f = {t = now, readers = {}}
-        frames[pid] = f
-    end
-    local key = (tostring(horizon) .. ":") .. tostring(engaged and 1 or 0)
-    local rd = f.readers[key]
-    if rd == nil then
-        rd = Threat.Reader(bot, horizon, engaged and ({engagedWindow = Threat.SETTINGS.StayEngaged}) or nil)
-        f.readers[key] = rd
-    end
-    return rd
-end
+frames = {}
 --- Can `bot` be killed walking to `place` (design section 3, "one way to ask"): the only call a consumer makes. Reads the walk on the frame's
 -- shared reader (several places in one frame cost one unit scan), builds the inputs, returns `Safe.Decide`'s answer, and logs it as
 -- `who` when asked. It works with telemetry off. An error in the read or the decision is not caught here: it reaches the caller's
 -- own error path (the consumers run under the Humaniser's guards), since a made-up answer would be a decision nobody can see. A fault
 -- in the logging alone is reported and dropped.
 function ____exports.At(bot, place, opts)
-    local horizon = opts and opts.horizon or Threat.SETTINGS.StayHorizon
-    local from = opts and opts.from or bot:GetLocation()
-    local ____frameReader_19 = frameReader
-    local ____bot_18 = bot
-    local ____temp_17 = opts and opts.engaged
-    if ____temp_17 == nil then
-        ____temp_17 = true
-    end
-    local r = ____frameReader_19(____bot_18, horizon, ____temp_17)(from, place)
-    local ____exports_FromRead_30 = ____exports.FromRead
-    local ____bot_29 = bot
-    local ____temp_22 = opts and opts.away
-    if ____temp_22 == nil then
-        ____temp_22 = false
-    end
-    local ____temp_25 = opts and opts.held
-    if ____temp_25 == nil then
-        ____temp_25 = false
-    end
-    local ____temp_28 = opts and opts.hold
-    if ____temp_28 == nil then
-        ____temp_28 = false
-    end
-    local i = ____exports_FromRead_30(____bot_29, r, {away = ____temp_22, held = ____temp_25, hold = ____temp_28})
-    local a = Safe.Decide(i)
-    local who = opts and opts.who
-    if who ~= nil and cutOn() and bot:IsAlive() then
-        local ok, err = pcall(
-            log,
-            bot,
-            who,
-            place,
-            i,
-            a
-        )
-        if not ok then
-            Telemetry.Failed("SafeGather.At", err)
-        end
-    end
-    return a
+    return ask(bot, place, opts).a
 end
 --- Per game (the other caches' reset): the sampler, the lane memory, the shared readers and the shadow's cadence.
 function ____exports.ResetCache()
@@ -656,9 +652,27 @@ function ____exports.ResetCache()
         __TS__Delete(cutState, k)
     end
 end
---- Threat.Gate's call (a trip: the walk leaves our creeps and tower; the gate holds nothing). index.ts registers it with `Threat.SetGateShadow`.
-function ____exports.GateShadow(bot, consumer, r)
-    ____exports.Shadow(bot, consumer, r, {away = true, held = false, hold = false})
+--- The start gate every trip shares (a camp, a pull, a stack, a farm trip, a core's pull): `At` for the walk from `from` (default the hero's place) to
+-- `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
+-- decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
+function ____exports.TripGate(bot, place, consumer, from)
+    local ____ask_result_39 = ask(bot, place, {
+        from = from,
+        horizon = ____exports.WalkHorizon,
+        away = true,
+        held = false,
+        hold = false,
+        who = consumer
+    })
+    local a = ____ask_result_39.a
+    local r = ____ask_result_39.r
+    local why = a.level == "deadly" and a.reason or nil
+    if Threat.Log(bot, consumer, r, why or "go") then
+        Threat.NoteGateCut(bot, r.from, r.place, consumer)
+    end
+    return {why = why, r = r, a = a}
 end
+--- The horizon (s) of a walk to a place away from here (a trip, a kill or join target, a joiner's walk): design section 3. Here is `Threat.SETTINGS.StayHorizon`, 2 s.
+____exports.WalkHorizon = 4
 ____exports._test = {samplers = samplers, laners = laners, cutState = cutState, frames = frames}
 return ____exports

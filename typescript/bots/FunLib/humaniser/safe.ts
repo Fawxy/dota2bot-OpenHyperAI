@@ -13,7 +13,7 @@ export const BARS = {
     stay: 1.25,
     /** A caller with a hold (a hit back, a join, a committed job) may stay down to this ratio: their damage is our HP. Replaces `lethal`. */
     hold: 1.0,
-    /** Both bars read this share lower when the caller already holds the place: the trade's running slack and retreat's `ExitBand` as one rule. */
+    /** A fresh place (a lane spot candidate, a creep's hit place, where a retreat may stop) needs this share more than `stay`; a place the caller already holds (`held`) and a hold are judged at their bar alone, so a hero is not sent where it would leave the next frame. */
     slack: 0.15,
 };
 
@@ -71,10 +71,10 @@ export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
     const price = hero + creeps + tower;
     const answer = (level: Level, reason: string): Answer => ({ level, kill, ratio, price, reason });
 
-    if (i.tower || i.towerOnMe) return answer("deadly", "tower");
+    // A held place in tower reach is a hero last-hitting behind its creeps: only the tower targeting us leaves it (smoke 19/11: 88 tower leaves a game against 15).
+    if (i.towerOnMe || (i.tower && !i.held)) return answer("deadly", "tower");
 
-    let bar = i.hold ? math.min(stay, BARS.hold) : stay;
-    if (i.held) bar *= 1 - BARS.slack;
+    const bar = i.hold ? math.min(stay, BARS.hold) : i.held ? stay : stay * (1 + BARS.slack);
     if (ratio < bar) return answer("deadly", "kill");
 
     if (i.away && i.missing >= ThreatSettings.MissingRefuse) return answer("deadly", "unknown");

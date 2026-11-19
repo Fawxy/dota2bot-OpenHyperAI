@@ -78,20 +78,9 @@ export const SETTINGS = {
      */
     EngagedRecent: 1,
     /**
-     * The stand (slices mid-stand, high-stand, stand-rule; D2 read against D1; see Stand): enemy heroes in reach who are not
-     * hitting us are no reason to leave while their burst over the read's window is under the bar of our current HP and our HP
-     * share is at the floor or more. One hero: StandBurst (D1's "their burst can kill me"; retreat's EvenBurst) and StandHp
-     * (retreat's EvenHp). Two or more: PackBurst and PackHp, whatever the numbers on our side. h2hstand1 stood two heroes on
-     * D1's own bars (burst under our HP with an ally, HP 50%+): of our 19 deaths within 10 s of a stand, 8 came at two heroes
-     * with burst half our HP or more (8 stands a game), 3 at two heroes and HP 50-70% (7.7), 4 at these bars (49) and 4 at
-     * one hero. judgement.
+     * The burst bar of one hero (D1's "their burst can kill me"; retreat's EvenBurst). Sustain's heal budget reads it. judgement.
      */
     StandBurst: 1,
-    StandHp: 0.5,
-    /** Two or more heroes: the burst bar, whatever the numbers on our side (see StandBurst). */
-    PackBurst: 0.5,
-    /** Two or more heroes: the HP floor (see StandBurst). */
-    PackHp: 0.7,
     /**
      * The stay read (retreat's LeaveWhy, and the trade decision's "is it safe here?"): the horizon (s) of the read at our own place
      * and the window a hero already hitting us is counted over. The same two numbers for both so a trade never opens on a read
@@ -408,54 +397,16 @@ export function Read(bot: Unit, from: Vector, place: Vector, horizon: number, op
     return Reader(bot, horizon, opts)(from, place);
 }
 
-/**
- * The stand (D2 against D1): visible enemy heroes can reach the walk, none has damaged us within EngagedRecent (the read was
- * made with `opts.engagedWindow`, so `eng` is filled), their burst is under the bar of our HP and our HP share at the floor or
- * more (one hero StandBurst and StandHp, two or more PackBurst and PackHp), no enemy tower covers the place and the missing
- * belief is under the gates' bar. Retreat does not leave such a place on `threat`. Once one of them hits us the callers' own
- * rules apply again (the dead end "a hold that never hits back" is the hit case).
- */
-export function Stand(bot: Unit, r: Read): boolean {
-    const s = SETTINGS;
-    if (r.reach.length === 0 || r.eng.length > 0 || r.tower) return false;
-    const one = r.reach.length === 1;
-    if (r.burst >= (one ? s.StandBurst : s.PackBurst) || r.missing >= s.MissingRefuse) return false;
-    return bot.GetHealth() / math.max(1, bot.GetMaxHealth()) >= (one ? s.StandHp : s.PackHp);
-}
-
-/**
- * The stand with exactly one enemy hero in reach (slice mid-stand), which the lane spot honours too: h2harbiter1 and 2, the
- * mid stood about 1,400 from a lone enemy mid that was not hitting it (burst read 0.69 at the median) and retreat left such a
- * stand 21 times a game. With two or more the spot keeps its own limits and steps back within the lane.
- */
-export function LoneStand(bot: Unit, r: Read): boolean {
-    return r.reach.length === 1 && Stand(bot, r);
-}
-
 let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;
-let gateShadow: ((this: void, bot: Unit, consumer: string, r: Read) => void) | undefined;
 
-/** safe_gather.ts registers its shadow here (it imports this module): called with every gate read, logged or not. It must not throw. */
-export function SetGateShadow(fn: (this: void, bot: Unit, consumer: string, r: Read) => void): void {
-    gateShadow = fn;
+/** The gate's fixture cut for one logged gate decision (safe_gather.ts `TripGate` calls it after `Log`). A fault in the cut is swallowed. */
+export function NoteGateCut(bot: Unit, from: Vector, place: Vector, consumer: string): void {
+    if (gateCut !== undefined) pcall(gateCut, bot, from, place, consumer);
 }
 
 /** cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision. */
 export function SetGateCut(fn: (this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void): void {
     gateCut = fn;
-}
-
-/**
- * The gate rule the starts share (the core camp trip, the pos3's pull, the support's pull and stack, the farm trip, the pull farm): held
- * by a visible hero who can reach the walk within GateHorizon ("threat"), else by the belief's weight sum at MissingRefuse
- * ("missing"); the read and its decision are logged as ev=threat for `consumer`.
- */
-export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): { why?: "threat" | "missing"; r: Read } {
-    const r = Read(bot, from, place, SETTINGS.GateHorizon);
-    const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
-    if (Log(bot, consumer, r, why ?? "go") && gateCut !== undefined) pcall(gateCut, bot, from, place, consumer);
-    if (gateShadow !== undefined) pcall(gateShadow, bot, consumer, r);
-    return { why, r };
 }
 
 const r2 = (x: number): number => math.floor(x * 100 + 0.5) / 100;

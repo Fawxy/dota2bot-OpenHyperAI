@@ -46,7 +46,6 @@ local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_contro
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local CastLog = require(GetScriptDirectory().."/FunLib/humaniser/cast_log")
 ____exports.Config = Config
@@ -240,7 +239,6 @@ local function drawOverlay(bot)
     end
     HDebug.Draw(bot)
 end
-Threat.SetGateShadow(SafeGather.GateShadow)
 local steps = {
     feed = Camps.FeedNeutralSpeeds,
     pings = Pings.Tick,

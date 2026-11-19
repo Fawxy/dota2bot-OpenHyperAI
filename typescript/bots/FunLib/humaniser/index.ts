@@ -58,7 +58,6 @@ import * as SustainGather from "bots/FunLib/humaniser/sustain_gather";
 export { SustainGather };
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 export { SafeGather };
-import * as Threat from "bots/FunLib/humaniser/threat";
 import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as CastLog from "bots/FunLib/humaniser/cast_log";
 
@@ -148,9 +147,6 @@ function drawOverlay(bot: Unit): void {
     }
     HDebug.Draw(bot);
 }
-
-// The gates' shadow of the safe-here read (ev=cut kind=safe): registered here because threat.ts cannot import safe_gather.ts.
-Threat.SetGateShadow(SafeGather.GateShadow);
 
 // The unguarded steps of tick, so the perf probe can time each (Telemetry.PerfStep; installed below, after the guards).
 // Copied here at load, before GuardModule runs: a step that gets a guard later must leave this table and be called by name.

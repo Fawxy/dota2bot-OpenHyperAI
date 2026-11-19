@@ -12,7 +12,7 @@ world:
   t: 369.633
   team: 2
   pid: 4
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-567,"y":-254,"hp":846,"mhp":846,"range":600,"hull":24,"speed":290,"esc":0}
   ce: [{"id":310,"x":294,"y":302,"hp":300,"mhp":300,"ranged":1,"tgt":"u288","hull":8},{"id":308,"x":11,"y":32,"hp":134,"mhp":550,"ranged":0,"tgt":"u288","hull":16},{"id":269,"x":371,"y":297,"hp":646,"mhp":935,"ranged":0,"tgt":"u288","hull":16}]
   ca: [{"id":297,"x":-354,"y":-279,"hp":300,"mhp":300,"ranged":1,"tgt":"u308","hull":8},{"id":324,"x":-2918,"y":-2482,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":323,"x":-2752,"y":-2352,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":325,"x":-2832,"y":-2414,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":288,"x":-103,"y":-29,"hp":99,"mhp":550,"ranged":0,"tgt":"u308","hull":16},{"id":326,"x":-3033,"y":-2591,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
@@ -25,9 +25,10 @@ world:
   lane: 2
   front: {"x":-88,"y":-65,"bx":-410,"by":-302}
 expect:
-  must: ["read(none)"]
-  mustNot: ["read(burst)", "read(threat)", "stand(hero)", "stand(xp)"]
+  must: ["read(safe)"]
+  mustNot: ["read(deadly)", "stand(kill)", "stand(xp)"]
 notes: >
   Slice mid-stand, the commonest start (D11): a Radiant mid at full HP (846 of 846), one enemy hero 788 away that is not hitting
   it, burst 639 / 846 = 0.76 over 3 s. The old read refused the stand at 0.35 and the mid stood back while its creeps were
   denied. The hero cannot kill it and does not outnumber it, so the spot stands at its creep.
+  Changed (oha-safe-behave, 19/11/2026): 639 over 2 s against 846 HP: ratio 1.32 at the preferred point, which the bot already stands on (held, bar 1.25). Old read(none) -> read(safe); a bot 150 or more from the point would be refused at 1.44.

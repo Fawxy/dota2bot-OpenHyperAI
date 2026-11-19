@@ -243,14 +243,11 @@ Customize.Humaniser = {
 -- give-up on a 0:00 river bounty that a pickup does not take (rune_pickup). Off: OHA's rune mode and its own pickup guard.
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
 -- (hosted by the job chooser, needs JobChooser). Off: the old camp-job pulls (task 07 lane planner).
--- LaneSpot (slice lane-positioning): with CoreLastHit on, pos1-3 stand on our lane spot (states/lane_spot: enemy heroes' reach and creep
+-- LaneSpot (slice lane-positioning): with CoreLastHit on, pos1-3 stand on our lane spot (states/lane_spot: Safe.At's answer for enemy heroes, creep
 -- rings widened below half HP, every enemy tower's range, the XP limit), and with SupportDeny on pos4-5 too.
 -- Off: OHA's PositionTarget (cores) and PositionThink (supports).
--- LaneSpotTower (slice tower-spot): with LaneSpot on, our own towers relax a core's spot limits in their range above 25% HP (enemy
--- creeps attacking something else keep a 200 ring, enemy heroes our tower would punish a short reach). Supports, and off: the
--- open-lane limits everywhere.
--- LaneSpotThreat (slice retreat): with LaneSpot on, the spot's enemy-hero limit is the threat read of the walk to it over 3 s (burst
--- under 0.35 of our HP, missing under 0.5, not `pressured`) instead of the hero reach and the HP margin on it. Off: the old hero limits.
+-- LaneSpotTower (slice tower-spot): with LaneSpot on, our own towers relax a core's creep rings in their range above 25% HP (enemy
+-- creeps attacking something else keep a 200 ring). Heroes are Safe.At's alone. Supports, and off: the open-lane rings everywhere.
 -- LaneAggro (slice lane-aggro): an in-lane pos1-3, and a pos4-5 whose lane core is away, draws enemy lane creeps on purpose: `feed`
 -- walks the enemy wave onto our ranged creep for our deny (tilting the clash toward our tower), `drag` walks a creep about to die
 -- away from an enemy hero for a safe last hit. Off: no draws; OHA-era lane_tech keeps its aggro pull.
@@ -275,13 +272,6 @@ Customize.Humaniser = {
 -- their tier-1 lost, the clock); OHA's modes per the inventory. Off: only the retreat episode and a running job hold.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
--- EvenStand (slice mid-stand): with LaneSpotThreat and Retreat on, one enemy hero in reach who is not hitting us, whose burst is
--- under our HP, at half HP or more, refuses no lane spot and starts no threat leave. Off: the burst bar, the band and the budget.
--- HighStand (slices high-stand, stand-rule): with Retreat on, two or more enemy heroes in reach, none hitting us, burst under half
--- our HP, at 70% HP or more, start no threat leave (Threat.Stand); the lane spot is unchanged. Off: the budget.
--- RetreatOdds (slice even-fight, missed): with Retreat on, an even fight with the hitters inside our creep aggro is held, left
--- only on lethal, a tower or the heal floor. Off by default: the hold does not hit back, so it costs deaths (user 11/11/2026:
--- on again after leave-together and hit-back). Off: the budget alone.
 -- HealStop (slice heal-stop, D3): with Retreat on, a heal walk ends where HP is back over half, nobody is in reach and our
 -- lane front is nearer than our fountain. Off: on to the fountain and 0.8 HP.
 -- HealItems (slice heal-items, D6 stop-gap): with Retreat and HealStop on, a heal start uses the held items that restore HP to
@@ -290,7 +280,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, PickSafe = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, BurstReady = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, PickSafe = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, BurstReady = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

@@ -1571,7 +1571,8 @@ export const EVENTS = {
         reason: "str",
         mid: "num",
     },
-    /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat,
+    /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision (`go`, or since oha-safe-rest the trip gate's Safe.At
+     *  reason when it held: `kill`, `tower`, `unknown`; older logs `threat`, `missing`), place, horizon (s), threat,
      *  band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the
      *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share;
      *  dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief. */
@@ -1599,24 +1600,28 @@ export const EVENTS = {
     },
     /** Slice retreat (retreat.ts): one start and one end per episode of our retreat, and one start per plain walk (kind
      *  plain: heroes our retreat does not own). Start: why (threat, lethal, tower, heal, forced), the read at entry (thr, band,
-     *  reach, burst, tower), the budget and its purpose, the anchor kind, its route cost and the next-best anchor's (alt), and
-     *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: the band's dwell; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
+     *  reach, burst, tower; budget, unp and the old purpose-budget are retired), the safe-here answer that decided it (lv, ra, kill), the work it left (purp), the anchor kind, its route cost and the next-best anchor's (alt), and
+     *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: a place Safe.At does not call deadly for a fresh place; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
      *  walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the
      *  cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band
-     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay
-     *  (RetreatOdds): once per over-budget spell, the read held only because the heroes in reach do not outnumber us. */
+     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay:
+     *  once per spell, a deadly place the hero stays in for a hit back or a join (`why`), with the answer (lv, ra, kill). */
     retreat: {
-        /** `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per over-budget spell the `Ours.RetreatOdds` hold keeps in lane), `skip`, `items`, `use`, `items_off`. */
+        /** `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per spell a hit back or join holds the hero in a deadly place), `skip`, `items`, `use`, `items_off`. */
         ph: "str",
         pid: "num",
         /** `plain` for a walk by a hero our retreat does not own; else our episode. */
         kind: "str",
         /** The episode number. */
         ep: "num",
-        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the stand of heroes not hitting us (`Threat.Stand`; `Ours.EvenStand` one, `Ours.HighStand` two or more: `reach` says which; logs before slice stand-rule say `high` for two or more), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold. */
+        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `join` while our pair joins the fight (`Ours.PairJoin`), `hitback` while Trade.Holds says the hit back runs. Older logs: `stand`, or absent for the retired RetreatOdds hold. */
         why: "str",
         /** The hero's HP share at the line. */
         hp: "num",
+        /** On `start` and `stay`: the safe-here answer's level, HP over kill line (absent with nobody in reach) and kill line in HP. */
+        lv: "str",
+        ra: "num",
+        kill: "num",
         /** The read's threat. */
         thr: "num",
         /** The read's band at the line; `ph=read` is logged on a band change. */
@@ -2677,7 +2682,7 @@ export const EVENTS = {
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
-    // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (Threat.Gate at the camp, `ev=threat who=pull_job`;
+    // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`;
     // Ours.Threat on).
     choice: {
         pid: "num",
@@ -2767,7 +2772,7 @@ export const EVENTS = {
         /** The spot's anchor (creep, front, wave, fed: lane_aggro's fed creep going down), or oha. */
         spot: "str",
         pushed: "num",
-        /** The first limit the preferred point broke, which usually placed the spot: `pref`, `hero`, `creep`, `hp` (only the HP margin moved it), `tower` or `xp`. */
+        /** The first limit the preferred point broke, which usually placed the spot: `pref`, `kill` or `unknown` (Safe.At called the place deadly; `tower` too when it was that), `creep`, `hp` (only the HP margin moved it), `tower` or `xp` (the XP-only spot or the fallback). Older logs: `hero`. */
         why: "str",
         /** The HP margin on the creep rings. */
         hm: "num",
@@ -2794,8 +2799,13 @@ export const EVENTS = {
         rb: "num",
         /** The read's threat at the chosen spot. */
         rt: "num",
-        /** Reads made this frame. */
+        /** Safe.At reads made this frame. */
         rn: "num",
+        /** Safe.At at the chosen spot: level (`safe`, `costly`, `deadly`) and HP over kill line (absent with nobody in reach); at the preferred point `pl` and `pq`. */
+        sl: "str",
+        sr: "num",
+        pl: "str",
+        pq: "num",
         /** What the old hero limits say at the spot: `hero`, `hp`, `creep`, `tower` or `none`. */
         ob: "str",
         /** The read's `missing` and unseen pids (comma-joined) at the chosen spot; the old limits' (`op`) and the read's (`rp`) verdicts at the preferred point. */
@@ -2810,13 +2820,13 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`), `pick` (states/laning.ts choose: the laning body's creep pick, LanePick.Choose; `ans`, `ak`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (SafeGather.TripGate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`), `pick` (states/laning.ts choose: the laning body's creep pick, LanePick.Choose; `ans`, `ak`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
         /** `gate`: the consumer that asked (ev=threat `who`). */
         who: "str",
-        /** `gate`: the walk's start, x,y (Threat.Gate's `from`). */
+        /** `gate`: the walk's start, x,y (SafeGather.TripGate's `from`). */
         fm: "str",
         /** `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none. kind=safe: the place read, x,y. */
         pl: "str",
@@ -2842,17 +2852,17 @@ export const EVENTS = {
         tt: "str",
         /** With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid). */
         vis: "str",
-        /** kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read). */
+        /** kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `join`, `hitback` (stay; older logs `even`, `hold`, `stand`). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read). */
         dec: "str",
-        /** kind=leave: the budget the read was held against (by purpose `purp`: free, busy or committed). */
+        /** kind=leave, older logs: the budget the read was held against (by purpose `purp`: free, busy or committed). */
         bud: "num",
         /** kind=leave: the budget's purpose. */
         purp: "str",
-        /** kind=leave: seconds the read had been over budget before this decision (-1 not over); the hold timer. */
+        /** kind=leave, older logs: seconds the read had been over budget before this decision (-1 not over); the hold timer. */
         ov: "num",
-        /** kind=leave: Profile.ThreatHold, the seconds the read must stay over budget. */
+        /** kind=leave, older logs: Profile.ThreatHold, the seconds the read must stay over budget. */
         th: "num",
-        /** kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them. */
+        /** kind=leave, older logs: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them. */
         unp: "num",
         /** kind=leave: 1 when an enemy tower damaged the bot within 0.5 s. */
         dt: "num",
@@ -2860,7 +2870,7 @@ export const EVENTS = {
         pj: "num",
         /** kind=leave: 1 when Trade.Holds held a hit back for the bot (LeaveWhy stays `hitback`); absent otherwise. Older kind=trade lines: 1 when the target is hitting the core. */
         hb: "num",
-        /** kind=leave: the read's threat and band, for reading a line without replaying it. */
+        /** kind=leave, older logs: the read's threat and band, for reading a line without replaying it. */
         thr: "num",
         band: "str",
         /** `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision). */
@@ -2972,18 +2982,21 @@ export const EVENTS = {
          * kind=trade (states/trade.ts, the one trade decision: D18, D19, D24, D10; driver `trade`; named `trade2` on logs from before the old
          * one went): every decision's inputs and answer,
          * logged when the answer changes, every 0.5 s while an exchange runs, else every 2 s, to 12:00. `role` is `core` or `support` by
-         * position, logged and never read. `hp` our HP share, `bu` `n` `mi` the threat read here (their damage on us over our HP, the enemy
-         * heroes that reach us, the unseen weight), `tm` 1 when a tower attacks us, `hc` enemy creeps attacking us (a tower counts 2), `cr` enemy
+         * position, logged and never read. `hp` our HP share, `svh` and `svb` `Safe.At` here (held; `svh` without a hold, for a hit, `svb` with one, for
+         * a hit back, kill and join) as `level,ratio,reason` (ratio of our HP to the kill line, `-` when nothing reaches), `n` the enemy heroes within 1,600
+         * (older lines `bu` `n` `mi`: the threat read here), `tm` 1 when a tower attacks us, `hc` enemy creeps attacking us (a tower counts 2), `cr` enemy
          * lane creeps within 500, `dn` 1 when a deny is due, `ms` our movement speed (absent on older lines: Decide reads 300).
          */
         n: "num",
         mi: "num",
+        svh: "str",
+        svb: "str",
         /** kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
         pjr: "str",
         /**
          * kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
-         * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk read
-         * wb, wn, wm (burst, heroes, unseen weight; `-` when not asked), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
+         * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk answer
+         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
          */
         cd: "str",
         /**

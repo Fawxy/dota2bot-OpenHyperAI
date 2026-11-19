@@ -364,7 +364,7 @@ local Calendar = require(GetScriptDirectory().."/FunLib/humaniser/calendar")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local EnemyWave = require(GetScriptDirectory().."/FunLib/humaniser/enemy_wave")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 function memoryOf(team, lane)
     local key = (tostring(team) .. ":") .. tostring(lane)
@@ -387,11 +387,11 @@ function ____exports.CoreThreat(u, supportIn)
         return false
     end
     if Ours.On("Threat") then
-        local at = u:GetLocation()
-        local r = Threat.Read(u, at, at, Threat.SETTINGS.GateHorizon)
-        local held = #r.reach >= ____exports.SETTINGS.CoreThreat
-        Threat.Log(u, "lane_ctl", r, held and "threat" or "go")
-        return held
+        return SafeGather.At(
+            u,
+            u:GetLocation(),
+            {held = true, who = "lane_ctl"}
+        ).level == "deadly"
     end
     local near = u:GetNearbyHeroes(____exports.SETTINGS.CoreThreatR, true, 0) or ({})
     return #near >= ____exports.SETTINGS.CoreThreat

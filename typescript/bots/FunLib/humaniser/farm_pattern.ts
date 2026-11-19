@@ -29,7 +29,7 @@ import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as LaneHooks from "bots/FunLib/humaniser/lane_hooks";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Threat from "bots/FunLib/humaniser/threat";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
@@ -534,7 +534,7 @@ function schedule(bot: Unit, now: number): LuaMultiReturn<[string | undefined, T
         const spawner = Camps.SpawnerByIdx(plan.campIdx);
         // The camp alone, as the support's start reads it: the core stands in lane, whose enemies a walk read would count.
         const center = spawner !== undefined ? Camps.BoxCenter(spawner) : undefined;
-        const why = center !== undefined ? Threat.Gate(bot, center, center, "farm_trip").why : undefined;
+        const why = center !== undefined ? SafeGather.TripGate(bot, center, "farm_trip", center).why : undefined;
         if (why !== undefined) return $multi(why, [["lane", lane], ["camp", plan.campIdx]]);
     }
     const trip: Trip = { team, lane, campIdx: plan.campIdx, type: plan.type, phase: "go", waveAt, deadline, leaveBy: plan.leaveBy, startedAt: now, camps: 0 };

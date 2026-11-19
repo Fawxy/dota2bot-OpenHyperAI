@@ -26,6 +26,12 @@ export const SETTINGS = {
     MaxGap: 1,
     /** The shadow logs an unchanged answer at most this often (s), and only while a hero is in reach or the price is over 0. */
     CutEvery: 2,
+    /**
+     * A fresh place is read this far ahead (s) unless the caller gives a horizon; a held one over `Threat.SETTINGS.StayHorizon` (2).
+     * Who is in reach is a hard edge: one step out of a second hero's 2 s reach read safe and the lane sent the hero back in
+     * (smoke 19/11: 240 episodes a game against 119). 3 was the lane spot's own horizon. judgement.
+     */
+    FreshHorizon: 3,
 };
 
 export interface Opts {
@@ -290,13 +296,15 @@ export function Shadow(bot: Unit, who: string, r: Threat.Read, opts: Opts): void
 export interface AtOpts {
     /** The walk starts here; default the hero's location. */
     from?: Vector;
-    /** Seconds ahead; default `Threat.SETTINGS.StayHorizon`. */
+    /** Seconds ahead; default `Threat.SETTINGS.StayHorizon` for a held place or a hold, `SETTINGS.FreshHorizon` for a fresh one. */
     horizon?: number;
     /** Count a hero hitting us over `StayEngaged` (default true); a walk away from a fight that is not ours may turn it off. */
     engaged?: boolean;
     away?: boolean;
     held?: boolean;
     hold?: boolean;
+    /** An unseen hero left out of the unknown weight (`Threat.ReadOpts.exclude`): a chase's target, whose place is the walk's end. */
+    exclude?: number;
     /** When given and cut logging is on, the answer is logged as `ev=cut kind=safe who=<who>` like a shadow, so the call replays offline. */
     who?: string;
 }
@@ -308,7 +316,7 @@ interface Frame {
 const frames: Record<number, Frame | undefined> = {};
 
 /** The reader for this hero, horizon and engaged option, made once per game-time value: `Threat.Reader` is valid only within the frame it was made in. */
-function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void, from: Vector, place: Vector) => Threat.Read {
+function frameReader(bot: Unit, horizon: number, engaged: boolean, exclude?: number): (this: void, from: Vector, place: Vector) => Threat.Read {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     let f = frames[pid];
@@ -316,10 +324,10 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void,
         f = { t: now, readers: {} };
         frames[pid] = f;
     }
-    const key = `${horizon}:${engaged ? 1 : 0}`;
+    const key = `${horizon}:${engaged ? 1 : 0}:${exclude ?? "-"}`;
     let rd = f.readers[key];
     if (rd === undefined) {
-        rd = Threat.Reader(bot, horizon, engaged ? { engagedWindow: Threat.SETTINGS.StayEngaged } : undefined);
+        rd = Threat.Reader(bot, horizon, { engagedWindow: engaged ? Threat.SETTINGS.StayEngaged : undefined, exclude });
         f.readers[key] = rd;
     }
     return rd;
@@ -333,9 +341,14 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void,
  * in the logging alone is reported and dropped.
  */
 export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
-    const horizon = opts?.horizon ?? Threat.SETTINGS.StayHorizon;
+    return ask(bot, place, opts).a;
+}
+
+/** `At`'s answer with the read it was made from (a gate logs the read's reaching and unseen heroes). */
+function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Threat.Read } {
+    const horizon = opts?.horizon ?? (opts?.held === true || opts?.hold === true ? Threat.SETTINGS.StayHorizon : SETTINGS.FreshHorizon);
     const from = opts?.from ?? bot.GetLocation();
-    const r = frameReader(bot, horizon, opts?.engaged ?? true)(from, place);
+    const r = frameReader(bot, horizon, opts?.engaged ?? true, opts?.exclude)(from, place);
     const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false });
     const a = Safe.Decide(i);
     const who = opts?.who;
@@ -343,7 +356,7 @@ export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
         const [ok, err] = pcall(log, bot, who, place, i, a);
         if (!ok) Telemetry.Failed("SafeGather.At", err);
     }
-    return a;
+    return { a, r };
 }
 
 /** Per game (the other caches' reset): the sampler, the lane memory, the shared readers and the shadow's cadence. */
@@ -355,9 +368,19 @@ export function ResetCache(): void {
     for (const k of Object.keys(cutState)) delete cutState[k];
 }
 
-/** Threat.Gate's call (a trip: the walk leaves our creeps and tower; the gate holds nothing). index.ts registers it with `Threat.SetGateShadow`. */
-export function GateShadow(this: void, bot: Unit, consumer: string, r: Threat.Read): void {
-    Shadow(bot, consumer, r, { away: true, held: false, hold: false });
+/**
+ * The start gate every trip shares (a camp, a pull, a stack, a farm trip, a core's pull): `At` for the walk from `from` (default the hero's place) to
+ * `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
+ * decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
+ */
+export function TripGate(bot: Unit, place: Vector, consumer: string, from?: Vector): { why?: string; r: Threat.Read; a: Safe.Answer } {
+    const { a, r } = ask(bot, place, { from, horizon: WalkHorizon, away: true, held: false, hold: false, who: consumer });
+    const why = a.level === "deadly" ? a.reason : undefined;
+    if (Threat.Log(bot, consumer, r, why ?? "go")) Threat.NoteGateCut(bot, r.from, r.place, consumer);
+    return { why, r, a };
 }
+
+/** The horizon (s) of a walk to a place away from here (a trip, a kill or join target, a joiner's walk): design section 3. Here is `Threat.SETTINGS.StayHorizon`, 2 s. */
+export const WalkHorizon = 4;
 
 export const _test = { samplers, laners, cutState, frames };
