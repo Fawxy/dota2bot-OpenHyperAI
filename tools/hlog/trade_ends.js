@@ -12,6 +12,9 @@
 // `fa`), was already true when the exchange opened. Any other end (`later`: the target died, `losing`, `pair_end`, a mode took the hero...)
 // came from a change after the open, and has no flag. A reopen's earlier end is `at open` (the exchange started when it could not
 // finish: the wrong-open cause), `later gate` (a gate that held at open and flipped: the re-asking cause) or `later only`.
+// It also prints the reopen rate (per 100 trades opened and per 100 s in an exchange), the `pair_end` split of join ends (what changed
+// between the open and the last cut: the pair answer gone, its target, the counts, our HP, the odds, or none: a flip) and an upper bound on
+// the hits a swing-place rule would refuse (the creeps within 500 at the open).
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -51,6 +54,68 @@ function episodesOf(log) {
     return { game, eps };
 }
 
+/** The pair answer `dec:tgt:ko:kt` of a cut line, or undefined. */
+function pjrOf(c) {
+    if (!c || !c.pjr || c.pjr === '-') return undefined;
+    const [dec, tgt, ko, kt] = String(c.pjr).split(':');
+    return { dec, tgt, ko: Number(ko), kt: Number(kt) };
+}
+
+const MOVE = 0.1;
+/** Join episodes that ended `pair_end`, split by what changed between the open's cut and the last cut before the end: the pair answer gone
+ *  (`gone`), its target (`target`), the head count `hc` or the creep count (`count`), our HP by MOVE (`hp`), either odds by MOVE
+ *  (`odds`, the read moved), or none of these (`flip`: the same read crossing its line). */
+function pairEnds(all, gamesByFile) {
+    const out = { n: 0, classes: {}, examples: {} };
+    for (const e of all) {
+        if (e.level !== 'join' || e.why !== 'pair_end' || !e.open) continue;
+        const game = gamesByFile.get(e.file);
+        let last;
+        for (const c of game.cuts) {
+            if (c.kind !== 'trade' || c.pid !== e.pid) continue;
+            const t = Number(c.t);
+            if (t > e.end + 0.3) break;
+            if (t > Number(e.open.t)) last = c;
+        }
+        const a = pjrOf(e.open), b = pjrOf(last);
+        let cls;
+        if (!last) cls = 'no_later_cut';
+        else if (!b) cls = 'gone';
+        else if (a && b.tgt !== a.tgt) cls = 'target';
+        else if (last.hc !== e.open.hc || last.cr !== e.open.cr) cls = 'count';
+        else if (Math.abs(Number(last.hp) - Number(e.open.hp)) >= MOVE) cls = 'hp';
+        else if (a && (Math.abs(b.ko - a.ko) >= MOVE || Math.abs(b.kt - a.kt) >= MOVE)) cls = 'odds';
+        else cls = 'flip';
+        out.n++;
+        out.classes[cls] = (out.classes[cls] || 0) + 1;
+        (out.examples[cls] = out.examples[cls] || []).length < 2 && out.examples[cls].push(`${e.file} pid ${e.pid} t=${e.end.toFixed(1)}`);
+    }
+    return out;
+}
+
+function printPairEnds(pe) {
+    console.log(`
+pair_end join ends ${pe.n}: ` + Object.entries(pe.classes).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', '));
+}
+
+/** Reopen rates: per episode opened, and per hero-second inside trade episodes (the seconds a hero spent in an exchange). */
+function printRates(all, games, out) {
+    const sec = all.reduce((s, e) => s + Math.max(0, e.end - e.start), 0);
+    let reopens = 0;
+    for (const r of Object.values(out)) reopens += r.reopens;
+    console.log(`reopens ${reopens} (${(reopens / games).toFixed(1)} a game): ${(reopens / all.length * 100).toFixed(1)} per 100 trades opened, ${(reopens / sec * 100).toFixed(1)} per 100 s in an exchange (${(sec / games).toFixed(0)} s a game)`);
+}
+
+/** An upper bound on the hits 4.2b and 4.3 would refuse (step 4's refusal count). The gates are not built, so this is only the open's creep
+ *  count `cr` (enemy lane creeps within 500 of the hero, not of the swing place): a hit that opened with none needs no priced test and is
+ *  never refused for the creeps; the rest are the most that can be. Taken: the offer was not lost (`result` not `lost`). */
+function printSwing(all) {
+    const hits = all.filter((e) => e.level === 'hit' && e.open && e.result !== 'lost');
+    const by = {};
+    for (const e of hits) { const c = Number(e.open.cr || 0); const k = c === 0 ? '0' : c <= 2 ? '1-2' : '3+'; by[k] = (by[k] || 0) + 1; }
+    console.log(`hits taken ${hits.length}; enemy creeps within 500 at the open: ` + ['0', '1-2', '3+'].map((k) => `${k}: ${by[k] || 0}`).join(', ') + ' (an upper bound on the refusals; the gates are not built)');
+}
+
 function main(argv) {
     const runs = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--rows');
     if (argv.includes('--help') || !runs.length) {
@@ -61,10 +126,12 @@ function main(argv) {
     const logs = runs.flatMap(logsOf);
     if (!logs.length) { console.error('no logs'); process.exit(1); }
     let kinds;
+    const gamesByFile = new Map();
     const all = [];
     let noOpen = 0, noReplay = 0;
     for (const log of logs) {
         const { game, eps } = episodesOf(log);
+        gamesByFile.set(path.basename(log), game);
         for (const e of eps) {
             if (e.open === undefined) { noOpen++; e.level = undefined; all.push(e); continue; }
             e.level = e.open.lv;
@@ -118,9 +185,13 @@ function main(argv) {
             if (rows) (r.examples[key] = r.examples[key] || []).length < rows && r.examples[key].push(`${e.file} pid ${e.pid} t=${e.start.toFixed(1)}`);
         }
     }
-    const result = { games: logs.length, episodes: all.length, noOpenCut: noOpen, notReplayed: noReplay, levels: out };
+    const pe = pairEnds(all, gamesByFile);
+    const result = { pairEnd: pe, games: logs.length, episodes: all.length, noOpenCut: noOpen, notReplayed: noReplay, levels: out };
     if (argv.includes('--json')) { console.log(JSON.stringify(result, null, 1)); return; }
     console.log(`${logs.length} games, ${all.length} episodes (no open cut ${noOpen}, not replayed ${noReplay}), per game ${(all.length / logs.length).toFixed(1)}`);
+    printRates(all, logs.length, out);
+    printPairEnds(pe);
+    printSwing(all);
     for (const [lv, r] of Object.entries(out)) {
         const ends = Object.entries(r.ends).sort((a, b) => b[1].n - a[1].n);
         const tAt = ends.reduce((s, [, x]) => s + x.atOpen, 0), tLater = ends.reduce((s, [, x]) => s + x.later, 0), tOnly = ends.reduce((s, [, x]) => s + x.laterOnly, 0);
