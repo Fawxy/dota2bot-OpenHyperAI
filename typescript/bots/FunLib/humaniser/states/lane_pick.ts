@@ -110,10 +110,14 @@ function choose(
     const pre = indexOf(order, "pre_hit") !== undefined ? offeredPre : undefined;
     let otherLastHit = false;
     let cur: Lib.Verbs.LaneTarget | undefined;
+    // `mine` is asked once per target: a support's is a search of its core's own pick.
+    const open: Lib.Verbs.LaneTarget[] = [];
     for (const t of targets) {
         if (mine !== undefined && !mine(t)) continue;
         if (current !== undefined && t.creep === current.creep) cur = t;
-        if (pre !== undefined && t.kind === "lasthit" && t.creep !== pre.creep && reachable(t, far)) otherLastHit = true;
+        if (!reachable(t, far)) continue;
+        open.push(t);
+        if (pre !== undefined && t.kind === "lasthit" && t.creep !== pre.creep) otherLastHit = true;
     }
     let best: Lib.Verbs.LaneTarget | undefined;
     for (const kind of order) {
@@ -125,8 +129,8 @@ function choose(
         // A pre-hit loses only to a last hit on another creep; a last hit on its own creep is the one it replaces.
         if (kind === "lasthit" && pre !== undefined && !otherLastHit) continue;
         let bestKey = Infinity;
-        for (const t of targets) {
-            if (t.kind !== kind || (mine !== undefined && !mine(t)) || !reachable(t, far)) continue;
+        for (const t of open) {
+            if (t.kind !== kind) continue;
             const key = t.eta - (t.ranged ? RANGED_BIAS : 0);
             if (key < bestKey) {
                 bestKey = key;

@@ -41,6 +41,11 @@ do
 	check("order: today's order, a last-hit wait is kept over a deny", Pick.Choose({ dn, lh }, lh, nil, nil, nil, nil, today) == lh)
 	check("order: deny first, a last-hit wait is left for a deny", Pick.Choose({ dn, lh }, lh, nil, nil, nil, nil, denyFirst) == dn)
 
+	-- Reaches the rank rule itself: the wait is an unreachable last hit, so the best pick is another creep, a deny.
+	local farLh = target("lasthit", 2.5, 2, 3)
+	check("order: today's order, an unreachable last-hit wait is kept against a deny due now", Pick.Choose({ dn, farLh }, farLh, nil, nil, nil, nil, today) == farLh)
+	check("order: deny first, that wait is left for the deny", Pick.Choose({ dn, farLh }, farLh, nil, nil, nil, nil, denyFirst) == dn)
+
 	-- The pre-hit sits where the order puts it.
 	local pre = target("pre_hit", 0)
 	check("order: the pre-hit beats a deny and loses to a last hit", Pick.Choose({ dn }, nil, nil, pre, nil, nil, today) == pre

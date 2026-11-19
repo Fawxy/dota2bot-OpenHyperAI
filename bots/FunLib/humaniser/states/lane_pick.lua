@@ -36,6 +36,7 @@ function choose(targets, current, mine, offeredPre, far, order)
     local pre = ____temp_2
     local otherLastHit = false
     local cur
+    local open = {}
     for ____, t in ipairs(targets) do
         do
             local __continue15
@@ -47,7 +48,12 @@ function choose(targets, current, mine, offeredPre, far, order)
                 if current ~= nil and t.creep == current.creep then
                     cur = t
                 end
-                if pre ~= nil and t.kind == "lasthit" and t.creep ~= pre.creep and reachable(t, far) then
+                if not reachable(t, far) then
+                    __continue15 = true
+                    break
+                end
+                open[#open + 1] = t
+                if pre ~= nil and t.kind == "lasthit" and t.creep ~= pre.creep then
                     otherLastHit = true
                 end
                 __continue15 = true
@@ -60,30 +66,30 @@ function choose(targets, current, mine, offeredPre, far, order)
     local best
     for ____, kind in ipairs(order) do
         do
-            local __continue20
+            local __continue21
             repeat
                 if kind == "pre_hit" then
                     if pre ~= nil then
                         return pre
                     end
-                    __continue20 = true
+                    __continue21 = true
                     break
                 end
                 if kind == "idle_swing" then
-                    __continue20 = true
+                    __continue21 = true
                     break
                 end
                 if kind == "lasthit" and pre ~= nil and not otherLastHit then
-                    __continue20 = true
+                    __continue21 = true
                     break
                 end
                 local bestKey = math.huge
-                for ____, t in ipairs(targets) do
+                for ____, t in ipairs(open) do
                     do
-                        local __continue25
+                        local __continue26
                         repeat
-                            if t.kind ~= kind or mine ~= nil and not mine(t) or not reachable(t, far) then
-                                __continue25 = true
+                            if t.kind ~= kind then
+                                __continue26 = true
                                 break
                             end
                             local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0)
@@ -91,9 +97,9 @@ function choose(targets, current, mine, offeredPre, far, order)
                                 bestKey = key
                                 best = t
                             end
-                            __continue25 = true
+                            __continue26 = true
                         until true
-                        if not __continue25 then
+                        if not __continue26 then
                             break
                         end
                     end
@@ -101,9 +107,9 @@ function choose(targets, current, mine, offeredPre, far, order)
                 if best ~= nil then
                     break
                 end
-                __continue20 = true
+                __continue21 = true
             until true
-            if not __continue20 then
+            if not __continue21 then
                 break
             end
         end
@@ -193,10 +199,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue36
+            local __continue37
             repeat
                 if not reachable(t) then
-                    __continue36 = true
+                    __continue37 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -207,9 +213,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue36 = true
+                __continue37 = true
             until true
-            if not __continue36 then
+            if not __continue37 then
                 break
             end
         end

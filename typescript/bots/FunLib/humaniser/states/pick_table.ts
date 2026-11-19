@@ -12,6 +12,7 @@
  *   Applies); Ours.CoreContest gates the walk-in `far` (contest Applies). None changes a cell.
  */
 export type Pos = 1 | 2 | 3 | 4 | 5;
+/** The decision's kinds, not the engine verb's: a pre-hit and an idle swing are both carried out as the verb kind `prehit`. */
 export type PickKind = "lasthit" | "pre_hit" | "deny" | "idle_swing";
 /** all: every creep of the kind. unclaimed: only one no allied core will take. unattempted: all but one an allied support's body is attempting. */
 export type Claim = "all" | "unclaimed" | "unattempted" | "none";
