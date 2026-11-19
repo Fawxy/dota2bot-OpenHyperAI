@@ -2199,7 +2199,7 @@ export const EVENTS = {
     /** Probe (slice world-facts): the live API value beside the constant a context still holds; once per fact and team per game. */
     world_fact: {
         team: "num",
-        /** `tower_reach`, `tower_range`, `hero_radius`, `lane_creep_speed`, `neutral_speed` or `neutral_speed_<small|medium|large|ancient>`; `attack_period` and `attack_point` are fallbacks logged on first use. */
+        /** `tower_reach`, `tower_range`, `hero_radius`, `lane_creep_speed`, `neutral_speed`, `neutral_speed_<small|medium|large|ancient>` or `lane_t1_<lane>_<team>` (a T1's place along its lane path; constant the 7.41 data's); `attack_period` and `attack_point` are fallbacks logged on first use. */
         fact: "str",
         /** The shared `WorldFacts` read; -1 for a fallback a caller took. */
         live: "num",

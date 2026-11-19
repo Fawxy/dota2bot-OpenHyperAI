@@ -229,6 +229,14 @@ export function Latest(fact: "lane_creep_speed", fb: number): number {
     return fb;
 }
 
+const noted: Record<string, { live: number; constant: number }> = {};
+/** A fact a context reads from the API itself (a T1's place on its lane path, lane_push): the probe's rows carry it, so
+ *  telemetry logs it once per game beside its constant. */
+export function Note(fact: string, value: number, constant: number): void {
+    noted[fact] = { live: value, constant };
+    live[fact] = value;
+}
+
 /** Latest live value per fact, for the probe's ev=world_fact line. */
 export function Live(): Record<string, number> {
     return live;
@@ -268,6 +276,7 @@ export function Reset(): void {
     for (const k of Object.keys(neutralByType)) delete neutralByType[k];
     for (const k of Object.keys(neutralNoRead)) delete neutralNoRead[k];
     for (const k of Object.keys(neutralByCamp)) delete neutralByCamp[tonumber(k) as number];
+    for (const k of Object.keys(noted)) delete noted[k];
     neutralFedAt = undefined;
     towers = newTowers();
     gameReach = undefined;
@@ -303,6 +312,7 @@ export function Probe(
     if (n !== undefined) {
         rows.push({ fact: "neutral_speed", live: NeutralSpeed(bot, constants.neutral), constant: constants.neutral });
     }
+    for (const [fact, n] of Object.entries(noted)) rows.push({ fact, live: n.live, constant: n.constant });
     for (const type of Object.keys(neutralByType)) {
         rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutralSeeds?.[type] ?? constants.neutral });
     }

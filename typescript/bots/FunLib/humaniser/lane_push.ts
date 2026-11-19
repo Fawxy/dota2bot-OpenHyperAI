@@ -688,6 +688,7 @@ export function ProjectScan(lane: LanePath, x: number, y: number): LuaMultiRetur
 }
 
 export function PathOf(lane: Lane): LanePath | undefined {
+    readTowers();
     return LANE_PATHS[lane];
 }
 
@@ -746,6 +747,54 @@ function nearerLane(lane: LanePath, loc: Vector, d: number): boolean {
 
 const T1: Record<number, Tower> = { [Lane.Top]: Tower.Top1, [Lane.Mid]: Tower.Mid1, [Lane.Bot]: Tower.Bot1 };
 
+/** A T1 read further than this from its lane's path, or further than `TowerShift` along it from the data's place, is not
+ *  that lane's T1 (7.42: the T1s stand 160 to 370 off their paths, and the mid ones moved ~370 along it; `judgement`). */
+const TowerOff = 600;
+const TowerShift = 1000;
+const DATA_TOWER_S = new LuaMap<LanePath, number[]>();
+let towersRead = false;
+
+/**
+ * Each lane's T1s on its path from the towers' own places, once per game at the first ask (towers do not move); the lane
+ * data's places, traced on 7.41, are the fallback (each a world fact `lane_t1_<lane>_<team>`). Fills the paths' `towers` in place, so every
+ * reader of a path (OwnT1, the run, the tower rule, core_camp) sees the live places.
+ */
+function readTowers(): void {
+    if (towersRead) return;
+    towersRead = true;
+    for (const lane of [Lane.Top, Lane.Mid, Lane.Bot]) {
+        const path = LANE_PATHS[lane];
+        if (!DATA_TOWER_S.has(path)) DATA_TOWER_S.set(path, path.towers.map((tw) => tw.s));
+        const data = DATA_TOWER_S.get(path)!;
+        path.towers.forEach((tw, i) => {
+            tw.s = data[i];
+            const fact = `lane_t1_${lane}_${tw.team}`;
+            const t = GetTower(tw.team, T1[lane]);
+            const loc = t !== undefined && t !== null && t.IsNull() !== true ? t.GetLocation() : undefined;
+            if (loc === undefined || loc === null) {
+                WorldFacts.Fallback(fact, data[i]);
+                return;
+            }
+            const [s, d] = projectAll(path, loc.x, loc.y);
+            if (d > TowerOff || math.abs(s - data[i]) > TowerShift) WorldFacts.Fallback(fact, data[i]);
+            else {
+                tw.s = s;
+                WorldFacts.Note(fact, s, data[i]);
+            }
+        });
+    }
+}
+
+/** Test hook: the next ask reads the towers again (the paths keep their data places until then). */
+export function ResetTowers(): void {
+    towersRead = false;
+    for (const lane of [Lane.Top, Lane.Mid, Lane.Bot]) {
+        const path = LANE_PATHS[lane];
+        const data = DATA_TOWER_S.get(path);
+        if (data !== undefined) path.towers.forEach((tw, i) => (tw.s = data[i]));
+    }
+}
+
 function t1Hp(team: number, lane: Lane): number | false {
     const t = GetTower(team, T1[lane]);
     return t === undefined || t === null || !t.IsAlive() ? false : t.GetHealth();
@@ -754,6 +803,7 @@ function t1Hp(team: number, lane: Lane): number | false {
 /** The lane creeps `team`'s view of `lane` starts from at the whole second now: the path, the second, its own creeps and
  *  the visible enemy creeps on the path (the enemy wave tracker reads the same). */
 export function CreepsNow(team: number, lane: Lane): LuaMultiReturn<[LanePath | undefined, number, StartCreep[], StartCreep[]]> {
+    readTowers();
     const path = LANE_PATHS[lane];
     const t0 = math.floor(DotaTime());
     if (path === undefined) return $multi(undefined, t0, [], []);

@@ -258,4 +258,42 @@ do
 	T, CURRENT_TEAM = saved, savedTeam
 end
 
+-- Slice tower-reach: each lane's T1s on its path come from the towers' own places (7.42: the mid T1s moved ~370 along the
+-- path), once per game; a missing tower, or one off its lane, keeps the 7.41 data place.
+do
+	local dota = require("bots/ts_libs/dota/index")
+	local Lane = dota.Lane
+	local WF = require("bots/FunLib/humaniser/world_facts")
+	local savedW = TOWERS_W
+	local function tower(x, y) return setmetatable({ loc = Vector(x, y, 0) }, { __index = { IsNull = function() return false end, GetLocation = function(self) return self.loc end } }) end
+	-- The 7.42 places (ev=cut_towers, ladder-solo hts_dire1); Radiant's bot T1 is left out.
+	TOWERS_W = {
+		[2] = { [dota.Tower.Top1] = tower(-6336, 1856), [dota.Tower.Mid1] = tower(-1234, -1232) },
+		[3] = { [dota.Tower.Top1] = tower(-5275, 6036), [dota.Tower.Mid1] = tower(832, 848), [dota.Tower.Bot1] = tower(0, 0) },
+	}
+	WF.Reset()
+	P.ResetTowers()
+	local mid = P.PathOf(Lane.Mid)
+	local sOf = function(path, team) for _, tw in ipairs(path.towers) do if tw.team == team then return tw.s end end end
+	check("towers: mid T1s on the path from the live places",
+		math.abs(sOf(mid, 2) - 4726) < 2 and math.abs(sOf(mid, 3) - 7615) < 2, sOf(mid, 2) .. " " .. sOf(mid, 3))
+	check("towers: OwnT1 reads the live place", math.abs(P.OwnT1(mid, 2) - 4726) < 2)
+	check("towers: top read too", math.abs(sOf(paths[1], 3) - 10202) < 2 and math.abs(sOf(paths[1], 2) - 5769) < 2)
+	local fell = WF.Fallbacks()
+	check("towers: a missing T1 keeps the data place, counted", sOf(paths[3], 2) == 8057 and fell.lane_t1_3_2 == 1)
+	check("towers: a T1 off its lane keeps the data place, counted", sOf(paths[3], 3) == 12574 and fell.lane_t1_3_3 == 1)
+	local rows = {}
+	for _, r in ipairs(WF.Probe({ GetNearbyTowers = function() return {} end, GetNearbyLaneCreeps = function() return {} end, GetNearbyNeutralCreeps = function() return {} end }, { tower = 868, towerRange = 700, laneCreep = 325, neutral = 300 })) do rows[r.fact] = r end
+	check("towers: the probe logs each place read beside its constant",
+		rows.lane_t1_2_2 ~= nil and math.abs(rows.lane_t1_2_2.live - 4726) < 2 and rows.lane_t1_2_2.constant == 4348 and rows.lane_t1_3_2 == nil)
+	-- Read once: a tower moving later changes nothing until the test hook resets it.
+	TOWERS_W[2][dota.Tower.Mid1] = tower(-1544, -1408)
+	P.PathOf(Lane.Mid)
+	check("towers: read once per game", math.abs(sOf(mid, 2) - 4726) < 2)
+	P.ResetTowers()
+	check("towers: the reset hook puts the data places back", sOf(mid, 2) == 4348 and sOf(mid, 3) == 7250)
+	TOWERS_W = savedW
+	WF.Reset()
+end
+
 finish()
