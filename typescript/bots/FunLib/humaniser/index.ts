@@ -166,6 +166,7 @@ const steps = {
     telemetry: Telemetry.Tick,
     regen: RegenObs.Tick,
     sustain: SustainGather.Tick,
+    landing: SafeGather.Tick,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
     overlay: drawOverlay,
@@ -240,6 +241,8 @@ function tick(this: void, bot: Unit): void {
     // Reading and accepting orders happens here every frame, not only when a mode happens to ask.
     steps.orders(bot);
     steps.intent(bot);
+    // The landing sampler (safe here's `landing`): once per hero per tick, with telemetry off too. See SafeGather.Tick.
+    pcall(steps.landing, bot);
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
     steps.telemetry(bot, telemetryContext);

@@ -4,8 +4,8 @@
  * and logs `ev=cut kind=safe` beside the consumer's own decision. Nothing reads the answer: a fault in Shadow is reported and
  * swallowed, and no consumer's behaviour depends on this module.
  *
- * The landing sampler has no Tick step of its own: it takes a sample when a shadow call site runs for that hero, so a hero no
- * site asks about costs nothing.
+ * `At` is the one call a consumer makes: any place, the frame's shared reader, the answer returned. The landing sampler is a per-hero
+ * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
 import * as Safe from "bots/FunLib/humaniser/safe";
@@ -66,8 +66,8 @@ const samplers: Record<number, Sampler | undefined> = {};
 
 /**
  * One frame's HP drop against the last sample, split equally between the sources whose damage flag covers the gap (a hero, a
- * creep, a tower). A drop with no flag is not counted (burn, fall damage, an unflagged source); a rise is ignored. Called by
- * `Shadow` before it reads the landing; a second call in the same frame does nothing.
+ * creep, a tower). A drop with no flag is not counted (burn, fall damage, an unflagged source); a rise is ignored. A second
+ * call with the same `now` does nothing.
  */
 export function Sample(bot: Unit, now: number): void {
     const pid = bot.GetPlayerID();
@@ -94,6 +94,17 @@ export function Sample(bot: Unit, now: number): void {
     if (n === 0) return;
     const share = drop / n;
     keep.push({ t: now, hero: hero ? share : 0, creeps: creeps ? share : 0, tower: tower ? share : 0 });
+}
+
+/**
+ * The sampler's step, run once per hero per Humaniser tick (index.ts `steps.landing`, every `TickEvery`-th frame, 10 Hz), whether
+ * or not telemetry is on. A lower rate loses the attribution: the damage flags cover only a short window (`MaxGap` = 1 s), so
+ * samples further apart than that give no drop and the `landing` price reads 0 under real damage. A dead hero is not sampled
+ * (its respawn would read as a rise and a death as a drop with a flag).
+ */
+export function Tick(bot: Unit): void {
+    if (!bot.IsAlive()) return;
+    Sample(bot, DotaTime());
 }
 
 /** HP a second lost to each source over the last `Window` seconds, from the samples taken so far. */
@@ -245,17 +256,23 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
 const cutState: Record<string, { key: string; at: number } | undefined> = {};
 
 function shadow(bot: Unit, who: string, r: Threat.Read, opts: Opts): void {
-    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || !bot.IsAlive()) return;
-    Sample(bot, DotaTime());
+    if (!cutOn() || !bot.IsAlive()) return;
     const i = FromRead(bot, r, opts);
-    const a = Safe.Decide(i);
+    log(bot, who, r.place, i, Safe.Decide(i));
+}
+
+function cutOn(): boolean {
+    return Telemetry.IsEnabled() && Telemetry.Get().Cut === true;
+}
+
+function log(bot: Unit, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer): void {
     const key = `${a.level}:${a.reason}`;
     const id = `${bot.GetPlayerID()}:${who}`;
     const now = DotaTime();
     const last = cutState[id];
     if (last !== undefined && last.key === key && (now - last.at < SETTINGS.CutEvery || (i.reach.length === 0 && a.price <= 0))) return;
     cutState[id] = { key, at: now };
-    Telemetry.Event("cut", CutFields(bot.GetPlayerID(), who, r.place, i, a));
+    Telemetry.Event("cut", CutFields(bot.GetPlayerID(), who, place, i, a));
 }
 
 /**
@@ -268,8 +285,70 @@ export function Shadow(bot: Unit, who: string, r: Threat.Read, opts: Opts): void
     if (!ok) Telemetry.Failed("SafeGather.Shadow", err);
 }
 
-/** Per game (the other caches' reset): the sampler, the lane memory and the shadow's cadence. */
+// ----------------------------------------------------------------------------------------------------------------------- At
+
+export interface AtOpts {
+    /** The walk starts here; default the hero's location. */
+    from?: Vector;
+    /** Seconds ahead; default `Threat.SETTINGS.StayHorizon`. */
+    horizon?: number;
+    /** Count a hero hitting us over `StayEngaged` (default true); a walk away from a fight that is not ours may turn it off. */
+    engaged?: boolean;
+    away?: boolean;
+    held?: boolean;
+    hold?: boolean;
+    /** When given and cut logging is on, the answer is logged as `ev=cut kind=safe who=<who>` like a shadow, so the call replays offline. */
+    who?: string;
+}
+
+interface Frame {
+    t: number;
+    readers: Record<string, ((this: void, from: Vector, place: Vector) => Threat.Read) | undefined>;
+}
+const frames: Record<number, Frame | undefined> = {};
+
+/** The reader for this hero, horizon and engaged option, made once per game-time value: `Threat.Reader` is valid only within the frame it was made in. */
+function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void, from: Vector, place: Vector) => Threat.Read {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    let f = frames[pid];
+    if (f === undefined || f.t !== now) {
+        f = { t: now, readers: {} };
+        frames[pid] = f;
+    }
+    const key = `${horizon}:${engaged ? 1 : 0}`;
+    let rd = f.readers[key];
+    if (rd === undefined) {
+        rd = Threat.Reader(bot, horizon, engaged ? { engagedWindow: Threat.SETTINGS.StayEngaged } : undefined);
+        f.readers[key] = rd;
+    }
+    return rd;
+}
+
+/**
+ * Can `bot` be killed walking to `place` (design section 3, "one way to ask"): the only call a consumer makes. Reads the walk on the frame's
+ * shared reader (several places in one frame cost one unit scan), builds the inputs, returns `Safe.Decide`'s answer, and logs it as
+ * `who` when asked. It works with telemetry off. An error in the read or the decision is not caught here: it reaches the caller's
+ * own error path (the consumers run under the Humaniser's guards), since a made-up answer would be a decision nobody can see. A fault
+ * in the logging alone is reported and dropped.
+ */
+export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
+    const horizon = opts?.horizon ?? Threat.SETTINGS.StayHorizon;
+    const from = opts?.from ?? bot.GetLocation();
+    const r = frameReader(bot, horizon, opts?.engaged ?? true)(from, place);
+    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false });
+    const a = Safe.Decide(i);
+    const who = opts?.who;
+    if (who !== undefined && cutOn() && bot.IsAlive()) {
+        const [ok, err] = pcall(log, bot, who, place, i, a);
+        if (!ok) Telemetry.Failed("SafeGather.At", err);
+    }
+    return a;
+}
+
+/** Per game (the other caches' reset): the sampler, the lane memory, the shared readers and the shadow's cadence. */
 export function ResetCache(): void {
+    for (const k of Object.keys(frames)) delete frames[k as unknown as number];
     for (const k of Object.keys(samplers)) delete samplers[k as unknown as number];
     for (const k of Object.keys(laners)) delete laners[k as unknown as number];
     for (const k of Object.keys(towerSeen)) delete towerSeen[k as unknown as number];
@@ -281,4 +360,4 @@ export function GateShadow(this: void, bot: Unit, consumer: string, r: Threat.Re
     Shadow(bot, consumer, r, { away: true, held: false, hold: false });
 }
 
-export const _test = { samplers, laners, cutState };
+export const _test = { samplers, laners, cutState, frames };

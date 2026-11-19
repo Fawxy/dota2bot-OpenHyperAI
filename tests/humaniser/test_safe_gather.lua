@@ -180,6 +180,110 @@ do
 	check("a safe answer with nobody in reach and no price is not repeated", #safeLines("leave") == 3)
 end
 
+-- At: the one call a consumer makes. Reader constructions and enemy-hero scans are counted through a wrapper on Threat.Reader and GetUnitList.
+do
+	local Threat, G, bot = world()
+	local hitter = enemy(10, -1700, 150)
+	bot.hitBy = { [hitter] = T }
+	local made, scans = 0, 0
+	local realReader, realList = Threat.Reader, GetUnitList
+	Threat.Reader = function(...) made = made + 1; return realReader(...) end
+	GetUnitList = function(t) if t == require("bots/ts_libs/dota/index").UnitType.EnemyHeroes then scans = scans + 1 end return realList(t) end
+	local a1 = G.At(bot, HERE)
+	G.At(bot, CAMP)
+	G.At(bot, Vector(-1500, -5200), { from = CAMP })
+	check("three places in one frame build one reader and scan the enemy heroes once", made == 1 and scans == 1, made .. "/" .. scans)
+	G.At(bot, HERE, { horizon = 4 })
+	check("control: another horizon in the same frame has its own reader", made == 2 and scans == 2, made)
+	G.At(bot, HERE, { engaged = false })
+	check("control: the engaged option is part of the key", made == 3, made)
+	T = 300.1
+	G.At(bot, HERE)
+	check("a new frame builds a new reader", made == 4 and scans == 4, made)
+	Threat.Reader, GetUnitList = realReader, realList
+
+	T = 300.2
+	bot.hitBy[hitter] = T
+	local a2 = G.At(bot, HERE, { who = "probe" })
+	G.Shadow(bot, "shadow", stay(Threat, bot), OPTS)
+	local la, ls = safeLines("probe"), safeLines("shadow")
+	check("At answers what Shadow logs for the same read, and logs the same fields",
+		a2.level == "deadly" and #la == 1 and #ls == 1 and field(la[1], "lv") == field(ls[1], "lv") and field(la[1], "why") == field(ls[1], "why")
+			and field(la[1], "kill") == field(ls[1], "kill") and field(la[1], "rr") == field(ls[1], "rr") and field(la[1], "lv") == a2.level
+			and a1.kill == a2.kill, la[1])
+	G.At(bot, HERE)
+	check("control: no who, no line", #safeLines("probe") == 1 and #safeLines(nil) == 2)
+end
+
+-- At needs no telemetry: a deadly place reads deadly, a safe place safe, and nothing is logged.
+do
+	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = false } })
+	T = 300
+	CURRENT_TEAM, OBSERVER = 2, 1
+	lines = {}
+	local Threat = require("bots/FunLib/humaniser/threat")
+	Threat.ResetCache()
+	local G = require("bots/FunLib/humaniser/safe_gather")
+	G.ResetCache()
+	require("bots/FunLib/humaniser/spell_ready").DamageOn = function(e, _, w) return (e.perSec or 0) * w end
+	local bot = MakeUnit({ pid = 1, team = 2, loc = HERE, level = 3 })
+	bot.maxhp, bot.hp = 1000, 1000
+	local hitter = enemy(10, -1700, 150)
+	bot.hitBy = { [hitter] = T }
+	local deadly = G.At(bot, HERE, { who = "probe" })
+	local calm = G.At(bot, Vector(-9000, -5000), { from = Vector(-9000, -5000), who = "probe" })
+	check("with telemetry off a deadly place is deadly (kill) and a place nobody reaches is safe, and no line is written",
+		deadly.level == "deadly" and deadly.reason == "kill" and calm.level == "safe" and #lines == 0, calm.reason)
+	local ok = pcall(G.At, bot, nil)
+	check("an error in the read is not swallowed", not ok)
+end
+
+-- At passes away / held / hold to Decide.
+do
+	local Threat, G, bot = world()
+	local e = enemy(10, -1700, 420)
+	local function at(o) T = T + 0.1; return G.At(bot, HERE, o) end
+	check("a place deadly fresh (ratio 1.19 against 1.25) is not deadly held (1.06), and control: still deadly with neither",
+		at({}).level == "deadly" and at({ held = true }).level ~= "deadly" and at({ held = false }).level == "deadly")
+	check("a hold stays down to 1.0, so the same place is not deadly with hold", at({ hold = true }).level ~= "deadly")
+	e.perSec = 100
+	local realReader = Threat.Reader
+	Threat.Reader = function(...)
+		local rd = realReader(...)
+		return function(from, place) local r = rd(from, place); r.missing = 0.6; return r end
+	end
+	check("a walk with missing 0.6 is deadly (unknown) only with away", at({ away = true }).reason == "unknown" and at({}).level == "safe")
+	Threat.Reader = realReader
+end
+
+-- The landing sampler is a Tick step, independent of telemetry.
+do
+	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = false } })
+	T = 300
+	local G = require("bots/FunLib/humaniser/safe_gather")
+	G.ResetCache()
+	local bot = MakeUnit({ pid = 1, team = 2, loc = HERE, level = 3 })
+	bot.maxhp, bot.hp = 1000, 1000
+	G.Tick(bot)
+	T = 300.5
+	bot.hp, bot.heroHitAt = 900, 300.4
+	G.Tick(bot)
+	G.Tick(bot)
+	check("with telemetry off, a drop with the hero flag lands on the hero rate once, though the step ran twice in the tick",
+		near(G.Landing(bot, T).hero, 50) and G.Landing(bot, T).creeps == 0, G.Landing(bot, T).hero)
+	T = 301
+	bot.hp, bot.heroHitAt = 800, nil
+	G.Tick(bot)
+	check("a drop with no flag adds nothing", near(G.Landing(bot, T).hero, 50))
+	T = 301.5
+	bot.hp, bot.alive, bot.heroHitAt = 0, false, 301.4
+	G.Tick(bot)
+	bot.hp, bot.alive = 1000, true
+	T = 302
+	G.Tick(bot)
+	check("a dead hero is not sampled: its killing blow (flagged, 800 HP) is not counted", near(G.Landing(bot, T).hero, 50), G.Landing(bot, T).hero)
+end
+
 -- A fault inside Shadow never reaches the consumer, and is reported.
 do
 	local _, G, bot = world()

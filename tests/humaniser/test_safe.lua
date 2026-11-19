@@ -42,9 +42,13 @@ check("away with 0.6 unseen weight is deadly unknown; 0.3 is not; 0.6 without aw
 		and is(S.Decide(inputs({ away = false, missing = 0.6 })), "safe"))
 
 check("held keeps a place a fresh read refuses (ratio 1.3 against bar 1.5, 1.275 held); a ratio under the held bar still refuses",
-	is(S.Decide(inputs({ reach = { one(630 / 1.3) } })), "deadly", "kill")
-		and is(S.Decide(inputs({ reach = { one(630 / 1.3) }, held = true })), "safe")
-		and is(S.Decide(inputs({ reach = { one(630 / 1.2) }, held = true })), "deadly", "kill"))
+	is(S.Decide(inputs({ reach = { one(630 / 1.3) } }), 1.5), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.3) }, held = true }), 1.5), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.2) }, held = true }), 1.5), "deadly", "kill"))
+
+check("the default bar is 1.25: ratio 1.3 is safe, 1.2 is deadly",
+	is(S.Decide(inputs({ reach = { one(630 / 1.3) } })), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.2) } })), "deadly", "kill"))
 
 check("a hold stays at ratio 1.2 and is deadly at 0.9; without a hold 1.2 is deadly",
 	is(S.Decide(inputs({ reach = { one(630 / 1.2) }, hold = true })), "safe")

@@ -253,6 +253,7 @@ local steps = {
     telemetry = Telemetry.Tick,
     regen = RegenObs.Tick,
     sustain = SustainGather.Tick,
+    landing = SafeGather.Tick,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -325,6 +326,7 @@ local function tick(bot)
     steps.lastHit(bot)
     steps.orders(bot)
     steps.intent(bot)
+    pcall(steps.landing, bot)
     LaneControl.Tick(bot)
     steps.telemetry(bot, telemetryContext)
     pcall(CastLog.Tick, bot)
