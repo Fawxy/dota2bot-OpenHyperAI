@@ -269,9 +269,8 @@ const exits: Record<number, Vector[]> = {};
  * the approach): good_5 (camp 3, stand north; seen from south-west to south-east), good_9 (camp 6; seen east to north),
  * evil_11 (camp 24; seen north-east to north-west), evil_4 (camp 20, seen north-west to south), evil_5 (camp 22, seen
  * north-east to north-west). Each walks off, so stands, on a side that saw all its neutrals; evil_5 north-east, not north,
- * which runs into evil_4's box, and evil_11 north-east, away from the map edge.
- * Matched by spawner origin (7.41 map); other camps derive their walk-off. evil_11 moved on 7.42 (19/11/2026) and its
- * north-east entry went with the old spot: its side is unprobed at (-4229, 8140).
+ * which runs into evil_4's box. Matched by spawner origin; other camps derive their walk-off. evil_11 moved on 7.42
+ * (19/11/2026): its probed north-east entry was for the old spot and is gone, and its side is unprobed at (-4229, 8140).
  */
 const EXIT_DIRS: { x: number; y: number; dx: number; dy: number; sx?: number; sy?: number }[] = [
     { x: 3978, y: -5027, dx: 1, dy: 0 },

@@ -123,6 +123,7 @@ end
 
 -- 7.41 map: neutral spawner origins, T1/T2 towers and the goodguys lane path_corner chains, read from the entity
 -- lump of game/dota/maps/dota.vpk (default_ents.vents_c, 22/10/2026). Box centres are within ~250 of these origins.
+-- The four camps patch 7.42 moved (good_14, good_20, evil_11, evil_20) are at their live 7.42 spawner positions; the towers are 7.41's.
 local MAP_SPAWNERS = {
 	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -4229, 8140 }, { "evil_12", DIRE, "medium", 2016, 7896 },
 	{ "evil_13", DIRE, "small", 8430, 1263 }, { "evil_14", DIRE, "medium", 336, 7696 }, { "evil_15", DIRE, "medium", -2596, 3850 },

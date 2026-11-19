@@ -6,7 +6,7 @@ local FARM, LANING = dota.BotMode.Farm, dota.BotMode.Laning
 local RAD, DIRE = dota.Team.Radiant, dota.Team.Dire
 local BUNDLE = "bots/FunLib/engine/tasks"
 
--- 7.41 spawner origins (test_lane_camps.lua's MAP_SPAWNERS, from maps/dota.vpk); boxes are 300 wide here.
+-- 7.41 spawner origins (test_lane_camps.lua's MAP_SPAWNERS, from maps/dota.vpk) with the four camps 7.42 moved at their live positions; boxes are 300 wide here.
 local MAP = {
 	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -4229, 8140 }, { "evil_12", DIRE, "medium", 2016, 7896 },
 	{ "evil_13", DIRE, "small", 8430, 1263 }, { "evil_14", DIRE, "medium", 336, 7696 }, { "evil_15", DIRE, "medium", -2596, 3850 },
