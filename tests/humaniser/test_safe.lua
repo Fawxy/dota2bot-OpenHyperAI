@@ -36,6 +36,11 @@ check("an enemy tower in reach or on us is deadly with nobody in reach; neither 
 		and is(S.Decide(inputs({ towerOnMe = true })), "deadly", "tower")
 		and is(S.Decide(inputs()), "safe", "safe"))
 
+check("a held place in tower reach is not deadly unless the tower targets us; the same place fresh is deadly",
+	is(S.Decide(inputs({ tower = true, held = true })), "safe")
+		and is(S.Decide(inputs({ tower = true, held = false })), "deadly", "tower")
+		and is(S.Decide(inputs({ tower = true, towerOnMe = true, held = true })), "deadly", "tower"))
+
 check("away with 0.6 unseen weight is deadly unknown; 0.3 is not; 0.6 without away is not",
 	is(S.Decide(inputs({ away = true, missing = 0.6 })), "deadly", "unknown")
 		and is(S.Decide(inputs({ away = true, missing = 0.3 })), "safe")

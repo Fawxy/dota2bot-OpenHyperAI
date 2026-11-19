@@ -235,7 +235,7 @@ do
 end
 
 -- The hero limit is Safe.At (design 2026-11-19-safe-here-design.md s3): a candidate is refused when the kill line of the heroes that
--- can reach its walk within 2 s is over HP / 1.25 (held) or 1.25 x 1.15 (fresh), and the refusal's why is the answer's reason.
+-- can reach its walk within 3 s (fresh) or 2 s (held) is over HP / 1.25 (held) or 1.25 x 1.15 (fresh), and the refusal's why is the answer's reason.
 -- The bot has 100 of 100 HP, so a hero's `estDamage` is its kill line in percent of HP.
 local function atFor(bot, p, held)
 	-- Behind the bot, away from every hero, the spot reads the place alone.
@@ -245,7 +245,7 @@ do
 	local function run(est, o)
 		local e
 		local s, bot = spotFor(SDK, o, function(b)
-			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) })
+			e = MakeUnit({ pid = 7, team = 3, loc = Vector(600, 0) })
 			e.range = 550
 			e.estDamage = est
 		end)
@@ -342,8 +342,8 @@ do
 end
 
 -- The XP-only spot: when every candidate within the 1,000 back is deadly, the nearest place beyond it that is not deadly and still within
--- 1,500 of the wave (why=xp). A ranged hero (range 900, reach about 1,550) 400 from the preferred point covers all of them; one with range 550
--- (reach about 1,200) leaves a place inside the 1,000, so the same lane has no XP-only spot (control).
+-- 1,500 of the wave (why=xp). A hero 400 from the preferred point with range 550 reaches about 1,450 over a fresh place's 3 s, which covers every
+-- candidate inside the 1,000; one with range 400 (reach about 1,300) leaves a place inside the 1,000, so the same lane has no XP-only spot (control).
 do
 	local function run(range)
 		local e
@@ -354,10 +354,10 @@ do
 		end)
 		return s, bot, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
 	end
-	local s, bot, info = run(900)
+	local s, bot, info = run(550)
 	check("xp-only: every candidate inside 1,000 is deadly, the spot is beyond them, why=xp", s ~= nil and info.why == "xp" and s.x < -1100 and s.x >= -1500, s and (tostring(info.why) .. " " .. s.x))
 	check("xp-only: the spot is not deadly and the place a step nearer is", s ~= nil and atFor(bot, s).level ~= "deadly" and atFor(bot, Vector(s.x + 50, s.y)).level == "deadly", s and s.x)
-	local sc, _, ic = run(550)
+	local sc, _, ic = run(400)
 	check("xp-only control: with a place inside 1,000 that passes, the spot is that place, why=kill", sc ~= nil and ic.why == "kill" and sc.x >= -1100, sc and (tostring(ic.why) .. " " .. sc.x))
 end
 
