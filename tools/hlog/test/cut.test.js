@@ -259,3 +259,18 @@ test('pick: a logged line replays to its answer (ranged bias, the role filter, t
     assert.strictEqual(checkOne(g, g.cuts[2]).got, '2(lasthit)');
     assert.strictEqual(checkOne(g, g.cuts[2]).want, '1(lasthit)');
 });
+
+// A banked slice (tower-on-me smoke, 6:52 to 7:07, pids 6, 7 and 8, spot and leave cuts): replayed in order without the module
+// reset, safe_gather's per-hero memory from one cut changes 3 spot and 2 leave answers after it. The default replay must still
+// answer every cut as a fresh reload does; a module that adds memory no Reset* clears shows here (or in a --fresh comparison).
+test('the default replay (modules kept, their state reset) answers each cut of a banked slice as a fresh reload does', () => {
+    const g = readGames(fs.readFileSync(path.join(__dirname, 'data', 'cut_slice.log'), 'utf8')).pop();
+    for (const kind of ['spot', 'leave']) {
+        const cuts = g.cuts.filter(c => c.kind === kind);
+        assert.ok(cuts.length >= 10, `${kind}: the slice holds its cuts`);
+        const fresh = cuts.map(c => checkOne(g, c, undefined, true));
+        const kept = cuts.map(c => checkOne(g, c, undefined, false));
+        assert.ok(fresh.every(r => r.error === undefined), `${kind}: every cut replays`);
+        assert.deepStrictEqual(kept, fresh, kind);
+    }
+});

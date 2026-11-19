@@ -7,7 +7,9 @@
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, pl; gate: its ev=threat dec; leave: the cut's dec); --all
 //       checks every cut and judges the bar (95% of each answer)
-//       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 40 cuts always do)
+//       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 400 cuts,
+//       40 with --fresh, always do)
+//       --fresh reloads the bot's modules for every replay (slow; the default keeps them and resets their state): equal by design
 //   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P] [--engaged 0|1]   one line per cut: time, pid, answer,
 //       HP, heroes, whether an enemy hero in it is hitting the bot (the cut's engaged flag) and the burst (their damage, over 6 s
 //       for a hitting hero else 3 s, over the bot's HP: the threat read's); --engaged keeps the cuts with (1) or without (0) one
@@ -340,22 +342,31 @@ function toLua(v) {
 }
 
 // Speed: a fresh fengari state per replay spent about 0.3 s of its time parsing the bot's Lua (about 1 MB; the harness's compile
-// cache lives in the state). One state per root serves every replay: the globals and the loaded modules (package.loaded) are put
-// back to what they were after the harness prelude before each one, and the compile cache stays, so a replay runs
-// the cached chunks anew (fresh module tables) and parses nothing.
-const RESET = `
+// cache lives in the state), so one state per root and mode serves every replay. Each mode's first replay sets the state up:
+// the fixture runner, driver and world files parse once, and each module's path is looked up (a file open per candidate) once.
+const SETUP = `
+local chunks = {}
+dofile = function(p)
+    if chunks[p] == nil then chunks[p] = assert(loadfile(p)) end
+    if AFTER_DOFILE == nil then return chunks[p]() end
+    local out = table.pack(chunks[p]())
+    AFTER_DOFILE(p)
+    return table.unpack(out, 1, out.n)
+end
+local found, search = {}, package.searchpath
+package.searchpath = function(name, path, ...)
+    MODULE_LOADED = true -- a require that missed package.loaded
+    local k = name .. " " .. path
+    if found[k] == nil then found[k] = table.pack(search(name, path, ...)) end
+    return table.unpack(found[k], 1, found[k].n)
+end
+`;
+// --fresh: the globals and the loaded modules (package.loaded) are put back to what they were after the harness prelude before
+// each replay, so the driver's FreshHumaniser runs the cached chunks anew (fresh module tables). That re-runs the top level of
+// every humaniser module, about 17 ms of a replay's 18.
+const FRESH = `
 if GLOBALS0 == nil then
-    local chunks, plain = {}, dofile
-    dofile = function(p) -- the fixture runner, driver and world files parse once as well
-        if chunks[p] == nil then chunks[p] = assert(loadfile(p)) end
-        return chunks[p]()
-    end
-    local found, search = {}, package.searchpath -- and each module's path is looked up (a file open per candidate) once
-    package.searchpath = function(name, path, ...)
-        local k = name .. " " .. path
-        if found[k] == nil then found[k] = table.pack(search(name, path, ...)) end
-        return table.unpack(found[k], 1, found[k].n)
-    end
+    ${SETUP}
     GLOBALS0, LOADED0 = {}, {}
     for k, v in pairs(_G) do GLOBALS0[k] = v end
     for k, v in pairs(package.loaded) do LOADED0[k] = v end
@@ -365,15 +376,71 @@ for k, v in pairs(GLOBALS0) do _G[k] = v end
 for k in pairs(package.loaded) do if LOADED0[k] == nil then package.loaded[k] = nil end end
 for k, v in pairs(LOADED0) do package.loaded[k] = v end
 `;
+// The default: the humaniser loads once per state (per FreshHumaniser config) and a later FreshHumaniser puts its state back
+// instead: every Reset* a loaded humaniser module exports (the per-game resets, all argument-free) and the Ours switches the
+// world files write into Customize. Module state no Reset* clears would leak from one replay into the next; cut.test.js replays
+// a banked slice both ways to catch that.
+const KEEP = `
+if KEEP_SETUP == nil then
+    KEEP_SETUP = true
+    ${SETUP}
+    -- The Reset* list is found again only after a module loads: scanning every export of every module per replay cost about
+    -- 5 ms in fengari (a new string per fn:sub), more than a kept replay itself.
+    local resets
+    local function resetHumaniser(kept)
+        if resets == nil or MODULE_LOADED then
+            MODULE_LOADED = false
+            resets = {}
+            for name, m in pairs(package.loaded) do
+                if type(m) == "table" and type(name) == "string" and name:find("humaniser", 1, true) then
+                    for fn, f in pairs(m) do
+                        if type(fn) == "string" and type(f) == "function" and fn:sub(1, 5) == "Reset" then resets[#resets + 1] = f end
+                    end
+                end
+            end
+        end
+        for _, f in ipairs(resets) do f() end
+        local ours = package.loaded["bots/FunLib/custom_loader"].Ours
+        if ours ~= nil then
+            for k in pairs(ours) do ours[k] = nil end
+            for k, v in pairs(kept.ours) do ours[k] = v end
+        end
+    end
+    local function configKey(cfg)
+        local keys = {}
+        for k in pairs(cfg or {}) do keys[#keys + 1] = tostring(k) end
+        table.sort(keys)
+        for i, k in ipairs(keys) do keys[i] = k .. "=" .. tostring(cfg[k]) end
+        return table.concat(keys, ",")
+    end
+    -- The driver's dofile of dota_stubs.lua defines FreshHumaniser anew each replay.
+    AFTER_DOFILE = function(p)
+        if p:sub(-15) ~= "/dota_stubs.lua" then return end
+        local real = FreshHumaniser
+        FreshHumaniser = function(cfg)
+            local key = configKey(cfg)
+            if KEPT ~= nil and KEPT.key == key then
+                resetHumaniser(KEPT)
+                return KEPT.index
+            end
+            local index = real(cfg)
+            local snap = {}
+            for k, v in pairs(package.loaded["bots/FunLib/custom_loader"].Ours or {}) do snap[k] = v end
+            KEPT = { key = key, index = index, ours = snap }
+            return index
+        end
+    end
+end
+`;
 const STATES = new Map();
 
 /** Runs the decision's driver on `world` in a reset fengari state: the driver's observation. */
-function replay(decision, world, root) {
-    const key = root === undefined ? '' : String(root);
+function replay(decision, world, root, fresh = false) {
+    const key = `${fresh ? 'fresh' : 'keep'} ${root === undefined ? '' : String(root)}`;
     if (!STATES.has(key)) STATES.set(key, newState(root));
     const L = STATES.get(key);
     const runner = JSON.stringify(path.resolve(__dirname, '../../tests/humaniser/fixture_run.lua').split(path.sep).join('/'));
-    const err = doString(L, RESET + `FIXTURE = ${toLua({ decision, world })}
+    const err = doString(L, (fresh ? FRESH : KEEP) + `FIXTURE = ${toLua({ decision, world })}
 SKILL = nil
 dofile(${runner})`);
     if (err !== null) { STATES.delete(key); throw new Error(err); }
@@ -451,11 +518,11 @@ function clock(s) {
 const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
 /** One cut against what the game decided: { same, got, want, ... } or { error }. */
-function checkOne(game, cut, root) {
+function checkOne(game, cut, root, fresh = false) {
     const d = DECISIONS[cut.kind];
     if (!d) return { error: `no check for kind ${cut.kind}` };
     let obs;
-    try { obs = replay(d.driver, worldOf(game, cut), root); } catch (e) { return { error: String(e.message).split('\n')[0] }; }
+    try { obs = replay(d.driver, worldOf(game, cut), root, fresh); } catch (e) { return { error: String(e.message).split('\n')[0] }; }
     return d.check(game, cut, obs);
 }
 
@@ -463,7 +530,8 @@ async function main(argv) {
     const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
     const log = argv.find((a, i) => !a.startsWith('--') && (i === 0 || !argv[i - 1].startsWith('--')));
     if (!log || argv.includes('--help')) {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 14).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        const head = fs.readFileSync(__filename, 'utf8').split('\n').slice(2);
+        console.log(head.slice(0, head.findIndex(l => !l.startsWith('//'))).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
         process.exit(log ? 0 : 1);
     }
     const games = readGames(fs.readFileSync(log, 'utf8'));
@@ -495,7 +563,8 @@ async function main(argv) {
         const n = Number(opt('--sample', 20));
         const picked = argv.includes('--all') ? pool : sampleByAnswer(game, pool, n);
         const jobs = Number(opt('--jobs', Math.min(6, os.availableParallelism())));
-        const results = await checkMany(log, gi, game, picked, root, picked.length < MIN_PARALLEL ? 1 : jobs);
+        const fresh = argv.includes('--fresh');
+        const results = await checkMany(log, gi, game, picked, root, picked.length < MIN_PARALLEL[fresh ? 'fresh' : 'keep'] ? 1 : jobs, fresh);
         const rows = picked.map((cut, i) => ({ cut, r: results[i] }));
         const ok = rows.filter(x => x.r.same).length, errs = rows.filter(x => x.r.error);
         const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length, byDecision: tally(game, rows) };
@@ -531,21 +600,25 @@ async function main(argv) {
     console.log(lines.join('\n'));
 }
 
-/** Fewer cuts than this are replayed in-process: starting a worker costs more than it saves. */
-const MIN_PARALLEL = 40;
+/**
+ * Fewer cuts than this are replayed in-process: starting a worker (it reads the log and loads the bot's modules, about 1 s) costs more
+ * than it saves. A kept replay takes 1 to 4 ms by kind, a fresh one 18 ms; measured 20/11/2026, workers lost at 373 trade cuts and
+ * won at 1,040 pick cuts.
+ */
+const MIN_PARALLEL = { keep: 400, fresh: 40 };
 
 /**
  * checkOne for each cut, in order. With jobs > 1 the cuts (interleaved, so each worker gets a like mix) are replayed on worker
  * threads, each reading the log itself and keeping its own Lua state; the results are the same as in-process.
  */
-async function checkMany(log, gi, game, cuts, root, jobs) {
-    if (jobs <= 1) return cuts.map(cut => checkOne(game, cut, root));
+async function checkMany(log, gi, game, cuts, root, jobs, fresh = false) {
+    if (jobs <= 1) return cuts.map(cut => checkOne(game, cut, root, fresh));
     const index = new Map(game.cuts.map((c, i) => [c, i]));
     const out = new Array(cuts.length);
     await Promise.all(Array.from({ length: Math.min(jobs, cuts.length) }, (_, w) => new Promise((resolve, reject) => {
         const slots = [];
         for (let i = w; i < cuts.length; i += Math.min(jobs, cuts.length)) slots.push(i);
-        const worker = new Worker(__filename, { workerData: { log, gi, root, cutIdx: slots.map(i => index.get(cuts[i])) } });
+        const worker = new Worker(__filename, { workerData: { log, gi, root, fresh, cutIdx: slots.map(i => index.get(cuts[i])) } });
         worker.once('message', rs => { rs.forEach((r, k) => { out[slots[k]] = r; }); resolve(); });
         worker.once('error', reject);
     })));
@@ -554,6 +627,6 @@ async function checkMany(log, gi, game, cuts, root, jobs) {
 
 if (!isMainThread && workerData && workerData.cutIdx) {
     const game = readGames(fs.readFileSync(workerData.log, 'utf8'))[workerData.gi];
-    parentPort.postMessage(workerData.cutIdx.map(i => checkOne(game, game.cuts[i], workerData.root)));
+    parentPort.postMessage(workerData.cutIdx.map(i => checkOne(game, game.cuts[i], workerData.root, workerData.fresh)));
 } else if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 module.exports = { toLua, burstOf, heroRecords, readGames, worldOf, replay, checkOne, checkMany, uncutGates, sampleByAnswer, barMisses, factsOf };
