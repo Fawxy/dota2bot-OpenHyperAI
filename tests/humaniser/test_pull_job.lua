@@ -434,7 +434,9 @@ end
 -- (`kill` when the hero can kill the walk, Safe.At deadly; `ev=threat who=pull_job`); one that cannot kill does not hold it; off, the pull's
 -- own enemy-site rule (within 1,200 of the site).
 for _, case in ipairs({
-	{ "threat on, enemy at the camp", Vector(-1600, -6600), "0", true, "kill", 5000 },
+	-- It also reaches the support itself, so the job's own start check (`blocked`, Safe.At here) holds it first as `enemy-near`; the camp's walk
+	-- read is made all the same and logs dec=kill.
+	{ "threat on, enemy at the camp", Vector(-1600, -6600), "0", true, "enemy-near", 5000 },
 	{ "threat on, enemy at the camp who cannot kill", Vector(-1600, -6600), "1", true, nil, 0, true },
 	{ "threat on, enemy 2,500 from the camp", Vector(-1600, -9100), "1", true },
 	{ "threat off, enemy at the camp", Vector(-1600, -6600), "0", false, "enemy-site" },

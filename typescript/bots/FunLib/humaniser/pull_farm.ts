@@ -181,11 +181,13 @@ function guard(bot: Unit, f: Farm): string | undefined {
     if (CampClaims.On("core", f.camp) !== undefined) return "yield";
     if (hpShare(bot) < SETTINGS.AbortHP) return "hp";
     let near = false;
-    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
-        const at = locOf(e);
-        if (at !== undefined && dist(at, bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
-    }
+    if (Ours.On("Threat")) near = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "pull_farm_trip" }).level === "deadly";
+    else
+        for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
+            const at = locOf(e);
+            if (at !== undefined && dist(at, bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
+        }
     if (!near) {
         f.threatSince = undefined;
         return undefined;

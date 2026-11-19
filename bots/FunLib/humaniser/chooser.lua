@@ -14,6 +14,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
@@ -61,13 +62,17 @@ end
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
---- Why the hero may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
+--- Why the hero may not leave now (the lane is under attack), else undefined: low HP, a `deadly` Safe.At answer here (`enemy-near`), hit by a
 -- hero just now, or fighting or retreating.
 function ____exports.MayStart(bot)
     if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
         return "low-hp"
     end
-    if #(bot:GetNearbyHeroes(____exports.SETTINGS.EnemyRadius, true, BotMode.None) or ({})) > 0 then
+    if SafeGather.At(
+        bot,
+        bot:GetLocation(),
+        {who = "job_start"}
+    ).level == "deadly" then
         return "enemy-near"
     end
     if hit(bot) then

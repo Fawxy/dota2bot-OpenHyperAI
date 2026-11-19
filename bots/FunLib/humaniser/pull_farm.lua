@@ -527,10 +527,10 @@ function madstones(center)
     local out = __TS__New(Map)
     for ____, d in ipairs(GetDroppedItemList() or ({})) do
         do
-            local __continue63
+            local __continue65
             repeat
                 if d == nil or d == nil or d.item == nil or d.item == nil or d.location == nil then
-                    __continue63 = true
+                    __continue65 = true
                     break
                 end
                 if (string.find(
@@ -539,16 +539,16 @@ function madstones(center)
                     1,
                     true
                 )) == nil or dist(d.location, center) > ____exports.SETTINGS.PickRadius then
-                    __continue63 = true
+                    __continue65 = true
                     break
                 end
                 out:set(
                     (tostring(math.floor(d.location.x)) .. ",") .. tostring(math.floor(d.location.y)),
                     d
                 )
-                __continue63 = true
+                __continue65 = true
             until true
-            if not __continue63 then
+            if not __continue65 then
                 break
             end
         end
@@ -613,19 +613,19 @@ function campLeft(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue79
+            local __continue81
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue79 = true
+                    __continue81 = true
                     break
                 end
                 local at = locOf(u)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue79 = true
+                __continue81 = true
             until true
-            if not __continue79 then
+            if not __continue81 then
                 break
             end
         end
@@ -777,25 +777,33 @@ local function guard(bot, f)
         return "hp"
     end
     local near = false
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        do
-            local __continue31
-            repeat
-                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue31 = true
+    if Ours.On("Threat") then
+        near = SafeGather.At(
+            bot,
+            bot:GetLocation(),
+            {held = true, who = "pull_farm_trip"}
+        ).level == "deadly"
+    else
+        for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+            do
+                local __continue33
+                repeat
+                    if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                        __continue33 = true
+                        break
+                    end
+                    local at = locOf(e)
+                    if at ~= nil and dist(
+                        at,
+                        bot:GetLocation()
+                    ) <= LaneSpot.HeroReach(bot, e) then
+                        near = true
+                    end
+                    __continue33 = true
+                until true
+                if not __continue33 then
                     break
                 end
-                local at = locOf(e)
-                if at ~= nil and dist(
-                    at,
-                    bot:GetLocation()
-                ) <= LaneSpot.HeroReach(bot, e) then
-                    near = true
-                end
-                __continue31 = true
-            until true
-            if not __continue31 then
-                break
             end
         end
     end
@@ -846,7 +854,7 @@ local function madstoneCharges(bot)
         local slot = 0
         while slot <= 16 do
             do
-                local __continue43
+                local __continue45
                 repeat
                     local it = bot:GetItemInSlot(slot)
                     if it == nil or it == nil or (string.find(
@@ -855,7 +863,7 @@ local function madstoneCharges(bot)
                         1,
                         true
                     )) == nil then
-                        __continue43 = true
+                        __continue45 = true
                         break
                     end
                     local ____math_max_9 = math.max
@@ -864,9 +872,9 @@ local function madstoneCharges(bot)
                         1,
                         ____opt_7 and ____opt_7(it) or 1
                     )
-                    __continue43 = true
+                    __continue45 = true
                 until true
-                if not __continue43 then
+                if not __continue45 then
                     break
                 end
             end

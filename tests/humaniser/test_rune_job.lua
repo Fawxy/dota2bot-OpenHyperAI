@@ -144,7 +144,7 @@ do
 	local H = world({ t = 395 })
 	local bot = hero(4, 4)
 	local mate = hero(1, 1, Vector(-4000, 4000))
-	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) })
+	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) }).estDamage = 5000
 	local out = run(H, { bot }, 440)
 	local l = lines(out, "rune_job")[1]
 	check("enemy near at the shrine trigger: skipped", l ~= nil and field(l, "kind") == "wisdom" and field(l, "res") == "skip", l)
@@ -203,11 +203,17 @@ do
 	check("pos4 at the spot nearer it", math.abs(a.x - -9000) < 200, a.x)
 end
 
--- The chooser's start checks: an enemy hero in reach past the leave time skips the trip with its reason.
+-- The chooser's start checks: an enemy hero in reach who can kill us (Safe.At deadly) past the leave time skips the trip with its reason;
+-- one who cannot does not.
 do
+	local H0 = world()
+	local bot0 = hero(4, 4)
+	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) })
+	local l0 = lines(run(H0, { bot0 }, 370), "rune_job")[1]
+	check("enemy near who cannot kill: not skipped for enemy-near", l0 == nil or field(l0, "why") ~= "enemy-near", l0)
 	local H = world()
 	local bot = hero(4, 4)
-	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) })
+	MakeUnit({ pid = 7, team = 3, loc = Vector(-6100, 6000) }).estDamage = 5000
 	local out = run(H, { bot }, 370)
 	local l = lines(out, "rune_job")[1]
 	check("enemy near: no trip, skip why=enemy-near", #lines(out, "job") == 0 and l ~= nil and field(l, "res") == "skip" and field(l, "why") == "enemy-near", l)

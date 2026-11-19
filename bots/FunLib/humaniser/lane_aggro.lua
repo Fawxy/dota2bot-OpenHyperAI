@@ -81,6 +81,7 @@ local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 function valid(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:CanBeSeen()
@@ -230,19 +231,19 @@ function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue131
+            local __continue128
             repeat
                 if not valid(c) then
-                    __continue131 = true
+                    __continue128 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue131 = true
+                __continue128 = true
             until true
-            if not __continue131 then
+            if not __continue128 then
                 break
             end
         end
@@ -305,7 +306,6 @@ ____exports.SETTINGS = {
     DrawR = 450,
     Every = 0.25,
     MinHp = 0.45,
-    HeroMargin = 250,
     TowerR = 1000,
     TowerOrderMargin = 56,
     FeedCreepHp = 0.25,
@@ -334,7 +334,6 @@ ____exports.SETTINGS = {
     StaleActing = 0.5,
     StaleWatch = 3,
     StaleCap = 10,
-    UnsafeMargin = 0,
     HurtShare = 0.12,
     FeedWatch = 30,
     FeedHeroClear = 300,
@@ -548,17 +547,13 @@ local function enemyHeroes(bot, r)
     end
     return out
 end
---- No enemy hero reaches `at` (attack range + radii + margin).
-local function heroSafe(at, heroes, margin)
-    if margin == nil then
-        margin = ____exports.SETTINGS.HeroMargin
+--- The walk to `at` is not `deadly` (Safe.At, 4 s, away, a fresh place); a walk already under way (`held`) is judged on the leave bar. Replaced
+-- the old "no enemy hero's attack reaches it" test: a hero that cannot kill us in reach no longer ends a draw.
+local function placeSafe(bot, at, held)
+    if held == nil then
+        held = false
     end
-    for ____, h in ipairs(heroes) do
-        if GetUnitToLocationDistance(h, at) <= h:GetAttackRange() + h:GetBoundingRadius() * 2 + margin then
-            return false
-        end
-    end
-    return true
+    return SafeGather.At(bot, at, {horizon = SafeGather.WalkHorizon, away = true, held = held, who = "aggro"}).level ~= "deadly"
 end
 local TOWERS = {
     Tower.Top1,
@@ -577,11 +572,11 @@ local function towerNear(at, team, r)
     local bestD = r
     for ____, id in ipairs(TOWERS) do
         do
-            local __continue53
+            local __continue50
             repeat
                 local t = GetTower(team, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue53 = true
+                    __continue50 = true
                     break
                 end
                 local d = d2(
@@ -592,9 +587,9 @@ local function towerNear(at, team, r)
                     best = t
                     bestD = d
                 end
-                __continue53 = true
+                __continue50 = true
             until true
-            if not __continue53 then
+            if not __continue50 then
                 break
             end
         end
@@ -617,10 +612,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue60
+            local __continue57
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue60 = true
+                    __continue57 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -628,9 +623,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue60 = true
+                __continue57 = true
             until true
-            if not __continue60 then
+            if not __continue57 then
                 break
             end
         end
@@ -643,19 +638,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue65
+                local __continue62
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue65 = true
+                        __continue62 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue65 = true
+                    __continue62 = true
                 until true
-                if not __continue65 then
+                if not __continue62 then
                     break
                 end
             end
@@ -725,7 +720,7 @@ end
 local function start(bot, a)
     attempts[bot:GetPlayerID()] = a
 end
-local function tryTower(bot, heroes, now)
+local function tryTower(bot, now)
     local team = bot:GetTeam()
     local tw = towerNear(
         bot:GetLocation(),
@@ -768,7 +763,7 @@ local function tryTower(bot, heroes, now)
     if GetUnitToLocationDistance(bot, at) > ____exports.SETTINGS.TowerApproachMax then
         return nil, "approach_far"
     end
-    if not heroSafe(at, heroes) then
+    if not placeSafe(bot, at) then
         return nil, "unsafe"
     end
     if #laneTargets(bot, ____exports.SETTINGS.BusyWithin, true) > 0 then
@@ -812,10 +807,10 @@ local function tryFeed(bot, heroes, now)
     local none = "none"
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, false)) do
         do
-            local __continue97
+            local __continue94
             repeat
                 if not valid(c) or not isLaneCreep(c) or not isRanged(c) then
-                    __continue97 = true
+                    __continue94 = true
                     break
                 end
                 if fed[c] == true then
@@ -825,9 +820,9 @@ local function tryFeed(bot, heroes, now)
                 else
                     ranged = c
                 end
-                __continue97 = true
+                __continue94 = true
             until true
-            if not __continue97 then
+            if not __continue94 then
                 break
             end
         end
@@ -901,7 +896,7 @@ local function tryFeed(bot, heroes, now)
     ) then
         return nil, "inside_hold"
     end
-    if not heroSafe(approach, heroes) or not heroSafe(back, heroes) then
+    if not placeSafe(bot, approach) or not placeSafe(bot, back) then
         return nil, "unsafe"
     end
     if nearTower(approach, team) then
@@ -1048,8 +1043,7 @@ local function act(bot, a, now)
     end
     if a.phase == "approach" then
         local at = a.approach
-        local heroes = enemyHeroes(bot, 1600)
-        if not heroSafe(at, heroes, ____exports.SETTINGS.UnsafeMargin) or a.kind == "feed" and not heroSafe(a.back, heroes, ____exports.SETTINGS.UnsafeMargin) then
+        if not placeSafe(bot, at, true) or a.kind == "feed" and not placeSafe(bot, a.back, true) then
             finish(bot, a, "unsafe", now)
             return false
         end
@@ -1128,7 +1122,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue179
+                    local __continue176
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1136,16 +1130,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue179 = true
+                            __continue176 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue179 = true
+                        __continue176 = true
                     until true
-                    if not __continue179 then
+                    if not __continue176 then
                         break
                     end
                 end
@@ -1287,15 +1281,16 @@ function ____exports.Step(bot)
         return false
     end
     local heroes = enemyHeroes(bot, 1600)
-    if not heroSafe(
+    if SafeGather.At(
+        bot,
         bot:GetLocation(),
-        heroes
-    ) then
+        {held = true, who = "aggro_here"}
+    ).level == "deadly" then
         skip(bot, "reach", now)
         return false
     end
     local ad
-    local tw, twWhy = tryTower(bot, heroes, now)
+    local tw, twWhy = tryTower(bot, now)
     local next = tw
     local why = "tower:" .. twWhy
     if next == nil and twWhy == "none" then

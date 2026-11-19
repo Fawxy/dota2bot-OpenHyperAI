@@ -7,6 +7,7 @@
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
@@ -260,11 +261,11 @@ function hit(bot: Unit): boolean {
     return bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin);
 }
 
-/** Why the hero may not leave now (the lane is under attack), else undefined: low HP, an enemy hero in reach, hit by a
+/** Why the hero may not leave now (the lane is under attack), else undefined: low HP, a `deadly` Safe.At answer here (`enemy-near`), hit by a
  *  hero just now, or fighting or retreating. */
 export function MayStart(bot: Unit): string | undefined {
     if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
-    if ((bot.GetNearbyHeroes(SETTINGS.EnemyRadius, true, BotMode.None) ?? []).length > 0) return "enemy-near";
+    if (SafeGather.At(bot, bot.GetLocation(), { who: "job_start" }).level === "deadly") return "enemy-near";
     if (hit(bot)) return "hit";
     const mode = bot.GetActiveMode();
     if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";

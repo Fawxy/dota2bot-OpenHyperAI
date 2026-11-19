@@ -492,7 +492,7 @@ end
 do
 	local H = world({ t = 395 })
 	draws(H, 0.0)
-	local tw = { GetLocation = function() return Vector(6269, -2241) end, IsAlive = function() return true end }
+	local tw = MakeUnit({ pid = -1, team = 3, loc = Vector(6269, -2241), hp = 100 })
 	local real = GetTower
 	GetTower = function(team, id) if team == 3 and id == 0 then return tw end end
 	GeneratePath = function(a, b, z, cb)

@@ -28,6 +28,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as Trade from "bots/FunLib/humaniser/states/trade";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 
 export type Kind = "feed" | "tower" | "back";
@@ -42,8 +43,6 @@ export const SETTINGS = {
     /** A decision is read at most this often per bot (lane push and lane target scans are not free). */
     Every: 0.25,
     MinHp: 0.45,
-    /** Enemy heroes' attack range plus this around the bot (and the approach point) closes the move: very little damage. */
-    HeroMargin: 250,
     /** No feed approach this close to an enemy tower (an attack order near it can turn the tower). */
     TowerR: 1000,
     /** The bot never orders within the tower's reach plus this margin of an enemy tower (judgement; was 900 = 844 + 56); the tower move orders from there out. */
@@ -101,10 +100,6 @@ export const SETTINGS = {
     StaleActing: 0.5,
     StaleWatch: 3,
     StaleCap: 10,
-    /** During the approach the move ends `unsafe` only once an enemy hero's attack reaches the approach point (or the feed's
-     *  walk-back point) with this margin: less than HeroMargin at the start, so a walk started safe is not dropped by a few
-     *  units (awchk2: 9 feed walks ended within about 0.5 s of their start, no HP lost). */
-    UnsafeMargin: 0,
     /** The move stops when the bot has lost this share of its max HP since the order. */
     HurtShare: 0.12,
     /** The fed creep's death is read until then. */
@@ -361,12 +356,12 @@ function enemyHeroes(bot: Unit, r: number): Unit[] {
     return out;
 }
 
-/** No enemy hero reaches `at` (attack range + radii + margin). */
-function heroSafe(at: Vector, heroes: Unit[], margin: number = SETTINGS.HeroMargin): boolean {
-    for (const h of heroes) {
-        if (GetUnitToLocationDistance(h, at) <= h.GetAttackRange() + h.GetBoundingRadius() * 2 + margin) return false;
-    }
-    return true;
+/**
+ * The walk to `at` is not `deadly` (Safe.At, 4 s, away, a fresh place); a walk already under way (`held`) is judged on the leave bar. Replaced
+ * the old "no enemy hero's attack reaches it" test: a hero that cannot kill us in reach no longer ends a draw.
+ */
+function placeSafe(bot: Unit, at: Vector, held: boolean = false): boolean {
+    return SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held, who: "aggro" }).level !== "deadly";
 }
 
 const TOWERS = [Tower.Top1, Tower.Mid1, Tower.Bot1, Tower.Top2, Tower.Mid2, Tower.Bot2];
@@ -459,7 +454,7 @@ function start(bot: Unit, a: Attempt): void {
 /** The attempt, or why not and (feed `approach_far`) the approach distance. */
 type Try = LuaMultiReturn<[Attempt | undefined, string, number?]>;
 
-function tryTower(bot: Unit, heroes: Unit[], now: number): Try {
+function tryTower(bot: Unit, now: number): Try {
     const team = bot.GetTeam();
     const tw = towerNear(bot.GetLocation(), enemyOf(team), SETTINGS.TowerSeek + SETTINGS.TowerApproachMax);
     if (tw === undefined) return $multi(undefined, "none");
@@ -479,7 +474,7 @@ function tryTower(bot: Unit, heroes: Unit[], now: number): Try {
     const drawable = enemyCreepsNear(bot, at, SETTINGS.DrawR);
     if (drawable.length === 0) return $multi(undefined, "draw_far");
     if (GetUnitToLocationDistance(bot, at) > SETTINGS.TowerApproachMax) return $multi(undefined, "approach_far");
-    if (!heroSafe(at, heroes)) return $multi(undefined, "unsafe");
+    if (!placeSafe(bot, at)) return $multi(undefined, "unsafe");
     if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return $multi(undefined, "busy");
     const hero = orderTarget(bot);
     if (hero === undefined) return $multi(undefined, "no_target");
@@ -531,7 +526,7 @@ function tryFeed(bot: Unit, heroes: Unit[], now: number): Try {
     const back = along(ranged.GetLocation(), dir, SETTINGS.FeedBack);
     const path = LanePush.PathOf(lane);
     if (path !== undefined && InsideHold(path, team, lane, back.x, back.y)) return $multi(undefined, "inside_hold");
-    if (!heroSafe(approach, heroes) || !heroSafe(back, heroes)) return $multi(undefined, "unsafe");
+    if (!placeSafe(bot, approach) || !placeSafe(bot, back)) return $multi(undefined, "unsafe");
     if (nearTower(approach, team)) return $multi(undefined, "tower");
     if (laneTargets(bot, SETTINGS.BusyWithin, true).length > 0) return $multi(undefined, "busy");
     const hero = orderTarget(bot);
@@ -725,8 +720,7 @@ function act(bot: Unit, a: Attempt, now: number): boolean {
         const at = a.approach!;
         // The walk may last ApproachTimeMax: an enemy hero that comes into reach of the approach point (or the feed's walk-back
         // point) during it ends the move before the bot walks into its attacks (review 2026-11-06-aggro-walkin M1).
-        const heroes = enemyHeroes(bot, 1600);
-        if ((!heroSafe(at, heroes, SETTINGS.UnsafeMargin) || (a.kind === "feed" && !heroSafe(a.back, heroes, SETTINGS.UnsafeMargin)))) {
+        if (!placeSafe(bot, at, true) || (a.kind === "feed" && !placeSafe(bot, a.back, true))) {
             finish(bot, a, "unsafe", now);
             return false;
         }
@@ -881,12 +875,12 @@ export function Step(bot: Unit): boolean {
         return false;
     }
     const heroes = enemyHeroes(bot, 1600);
-    if (!heroSafe(bot.GetLocation(), heroes)) {
+    if (SafeGather.At(bot, bot.GetLocation(), { held: true, who: "aggro_here" }).level === "deadly") {
         skip(bot, "reach", now);
         return false;
     }
     let ad: number | undefined;
-    const [tw, twWhy] = tryTower(bot, heroes, now);
+    const [tw, twWhy] = tryTower(bot, now);
     let next = tw;
     let why = "tower:" + twWhy;
     if (next === undefined && twWhy === "none") {
