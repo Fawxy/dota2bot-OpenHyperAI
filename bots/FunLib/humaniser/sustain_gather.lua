@@ -423,7 +423,7 @@ local function safeHere(bot, r)
             reach = reach + 1
         end
     end
-    return {kill = a.kill, hitting = hitting, reach = reach}
+    return {{kill = a.kill, hitting = hitting, reach = reach}, a.level == "deadly"}
 end
 local safeCache = {}
 local function safeSpot(bot, now)
@@ -530,7 +530,9 @@ function ____exports.Gather(bot, run)
         {engagedWindow = Threat.SETTINGS.StayEngaged}
     )
     local items = ____exports.Items(bot)
-    local tree = treeOf(bot, items, now)
+    local safe, deadlyHere = unpack(safeHere(bot, stay))
+    local t = treeOf(bot, items, now)
+    local tree = t ~= nil and t.walk > 0 and deadlyHere and ({walk = t.walk, safe = false}) or t
     local rl, ml = unpack(regenLeft(bot))
     local fountain = Retreat.Fountain(bot:GetTeam())
     local speed = math.max(
@@ -581,7 +583,7 @@ function ____exports.Gather(bot, run)
         tree = ____tree_13,
         nextDue = ____temp_6,
         hitRecently = bot:WasRecentlyDamagedByAnyHero(2),
-        safe = safeHere(bot, stay),
+        safe = safe,
         regenLeft = rl,
         manaLeft = ml,
         safeSpot = safeSpot(bot, now),

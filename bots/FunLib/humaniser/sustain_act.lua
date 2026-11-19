@@ -522,8 +522,9 @@ function ____exports.ItemThink(bot)
     SustainGather.NoteCourier(bot)
     local i = SustainGather.Gather(bot)
     local ans = Sustain.Decide(i)
-    if acts[pid] ~= nil then
-        if ans.reason ~= "survive" then
+    local running = acts[pid]
+    if running ~= nil then
+        if ans.reason ~= "survive" or running.why == "survive" then
             return
         end
         ____end(bot, "cut")
@@ -531,10 +532,11 @@ function ____exports.ItemThink(bot)
     SustainGather.Cut(bot, i, ans, true)
     start(bot, i, ans, now)
 end
---- The lane table's `sustain` row: an attempt with a walk still to make wants the frame.
+--- The lane table's `sustain` row: an attempt not yet under way wants the frame, a walk or not (smoke 1: 6 of 49 tangos with
+-- the tree in range were never eaten, the body's move given after the cast); a step out once it has drunk does not.
 function ____exports.Walking(bot)
     local a = acts[bot:GetPlayerID()]
-    if a == nil or a.walk <= 0 then
+    if a == nil then
         return false
     end
     return a.kind ~= "step_out_use" or a.drunk ~= true

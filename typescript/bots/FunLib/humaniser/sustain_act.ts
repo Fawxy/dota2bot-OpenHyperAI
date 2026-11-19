@@ -274,19 +274,24 @@ export function ItemThink(bot: Unit): void {
     SustainGather.NoteCourier(bot);
     const i = SustainGather.Gather(bot);
     const ans = Sustain.Decide(i);
-    // Under hits a running attempt is asked again only for rule 1: an instant heal replaces it.
-    if (acts[pid] !== undefined) {
-        if (ans.reason !== "survive") return;
+    // Under hits a running attempt is asked again only for rule 1: an instant heal replaces it, unless it is rule 1's own
+    // (its charge goes a frame or two after the order: smoke 1 cut 16 of 23 wand uses that way and ordered them again).
+    const running = acts[pid];
+    if (running !== undefined) {
+        if (ans.reason !== "survive" || running.why === "survive") return;
         end(bot, "cut");
     }
     SustainGather.Cut(bot, i, ans, true);
     start(bot, i, ans, now);
 }
 
-/** The lane table's `sustain` row: an attempt with a walk still to make wants the frame. */
+/**
+ * The lane table's `sustain` row: an attempt not yet under way wants the frame, a walk or not (smoke 1: 6 of 49 tangos with
+ * the tree in range were never eaten, the body's move given after the cast); a step out once it has drunk does not.
+ */
 export function Walking(bot: Unit): boolean {
     const a = acts[bot.GetPlayerID()];
-    if (a === undefined || a.walk <= 0) return false;
+    if (a === undefined) return false;
     return a.kind !== "step_out_use" || a.drunk !== true;
 }
 

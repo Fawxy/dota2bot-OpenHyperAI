@@ -255,7 +255,7 @@ function treeOf(bot: Unit, items: Sustain.Item[], now: number): Sustain.Inputs["
 }
 
 /** The safe-here read here, from the one stay read Gather makes: what the reachers can deal, whether one is hitting us, and the visible ones in reach. */
-function safeHere(bot: Unit, r: Threat.Read): Sustain.Inputs["safe"] {
+function safeHere(bot: Unit, r: Threat.Read): [Sustain.Inputs["safe"], boolean] {
     const i = SafeGather.FromRead(bot, r, { away: false, held: false, hold: false });
     const a = Safe.Decide(i);
     let hitting = false;
@@ -264,7 +264,7 @@ function safeHere(bot: Unit, r: Threat.Read): Sustain.Inputs["safe"] {
         if (x.hitting) hitting = true;
         if (x.unseen !== true) reach += 1;
     }
-    return { kill: a.kill, hitting, reach };
+    return [{ kill: a.kill, hitting, reach }, a.level === "deadly"];
 }
 
 const safeCache: Record<number, { at: number; spot?: Sustain.Inputs["safeSpot"] } | undefined> = {};
@@ -326,7 +326,11 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
     const hp = bot.GetHealth();
     const stay = Threat.Read(bot, here, here, Threat.SETTINGS.StayHorizon, { engagedWindow: Threat.SETTINGS.StayEngaged });
     const items = Items(bot);
-    const tree = treeOf(bot, items, now);
+    const [safe, deadlyHere] = safeHere(bot, stay);
+    // A walk that starts where we stand deadly is no safe walk, whatever the read over it says (that read has no engaged
+    // window, so a hero hitting us now counts at its short window there: smoke 1, a tango walk started under a lethal leave).
+    const t = treeOf(bot, items, now);
+    const tree = t !== undefined && t.walk > 0 && deadlyHere ? { walk: t.walk, safe: false } : t;
     const [rl, ml] = regenLeft(bot);
     const fountain = Retreat.Fountain(bot.GetTeam());
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
@@ -346,7 +350,7 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
         // The next hit matters only to a tango walk: read with a tree in hand (laneTargets walks the wave).
         nextDue: tree !== undefined ? Laning.NextDue(bot) : undefined,
         hitRecently: bot.WasRecentlyDamagedByAnyHero(2),
-        safe: safeHere(bot, stay),
+        safe,
         regenLeft: rl,
         manaLeft: ml,
         safeSpot: safeSpot(bot, now),

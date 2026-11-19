@@ -90,7 +90,7 @@ do
 	bot.mode = BotMode.Farm
 	T = 100
 	A.ItemThink(bot)
-	check("tango, tree in range, farm mode: eaten on the tree at once", bot.orders[1] == "tree:item_tango:7" and not A.Walking(bot))
+	check("tango, tree in range, farm mode: eaten on the tree at once; the lane row holds the frame until it starts", bot.orders[1] == "tree:item_tango:7" and A.Walking(bot))
 	bot.slots[1].charges = 2
 	T = 100.1
 	A.ItemThink(bot)
@@ -175,6 +175,10 @@ do
 	local cut = false
 	for _, l in ipairs(lines) do if l:find("ev=sustain", 1, true) and l:find("k=give", 1, true) and l:find("ed=cut", 1, true) then cut = true end end
 	check("the give's line ends cut", cut, table.concat(lines, " | "))
+	local n, nl = #bot.orders, #lines
+	T = 500.3
+	A.ItemThink(bot)
+	check("rule 1 again a frame later, the wand's charge not yet gone: the running use is kept, no second order", #bot.orders == n and #lines == nl, table.concat(lines, " | "))
 end
 
 -- home and buy are logged only in this step; a dead hero ends its attempt.

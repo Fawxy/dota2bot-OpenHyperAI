@@ -114,11 +114,16 @@ check("home there and back, the safe spot and the ally with its two salves",
 
 T = 109
 WALK.safe.reach[1].dmg = 100
+STAY.safe.reach[1].dmg = 50
 bot.modifiers = { modifier_tango_heal = 1 }
 bot.left = 8
 COURIER.st = COURIER_STATE_MOVING
 local j = G.Gather(bot)
-check("1 s later the tree is read again: the walk is safe at 300 / 100", j.tree and j.tree.safe == true)
+check("1 s later the tree is read again: safe at 300 / 100 over the walk, and here no longer deadly (300 / 100)", j.tree and j.tree.safe == true)
+STAY.safe.reach[1].dmg = 250
+WALK.safe.reach[1].dmg = 100
+T = 111
+check("the same safe walk from a place that is deadly here (300 / 300): not safe", G.Gather(bot).tree.safe == false)
 check("a running tango's 8 s left restore 56; a busy courier is no courier", near(j.regenLeft, 56) and j.courier == nil)
 
 -- Two stacked packs read 6 at once; a later pack of 3 sets what one purchase holds.
