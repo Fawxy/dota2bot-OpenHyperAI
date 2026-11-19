@@ -173,6 +173,7 @@ local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 ____exports.SETTINGS = {
     LanerSeen = 10,
+    OwnPlace = 50,
     UnseenAfter = 0.5,
     Window = 2,
     MaxGap = 1,
@@ -275,7 +276,7 @@ function ____exports.Landing(bot, now)
 end
 --- Per bot, per enemy pid: the damage it could deal us when it last reached us, and when.
 local laners = {}
---- Records this read's reachers and returns the lane opponents that reached us within `LanerSeen`, are not visible now and could
+--- Records the reachers of a read of our own position (see `OwnPlace`) and returns the lane opponents that reached us within `LanerSeen`, are not visible now and could
 -- have run to the walk since their last sighting (the missing belief's run: the speed the read last saw, capped, plus its margin).
 local function lanerRows(bot, r)
     local pid = bot:GetPlayerID()
@@ -283,31 +284,35 @@ local function lanerRows(bot, r)
     laners[pid] = mine
     local now = DotaTime()
     local visible = {}
+    local here = bot:GetLocation()
+    local own = dist(r.from, here) <= ____exports.SETTINGS.OwnPlace and dist(r.place, here) <= ____exports.SETTINGS.OwnPlace
     for ____, row in ipairs(r.rows) do
         visible[row.pid] = true
-        mine[row.pid] = {dmg = row.dmg, at = now}
+        if own then
+            mine[row.pid] = {dmg = row.dmg, at = now}
+        end
     end
     local out = {}
     for k, c in pairs(mine) do
         do
-            local __continue24
+            local __continue25
             repeat
                 if c == nil or visible[k] == true then
-                    __continue24 = true
+                    __continue25 = true
                     break
                 end
                 if now - c.at > ____exports.SETTINGS.LanerSeen then
                     mine[k] = nil
-                    __continue24 = true
+                    __continue25 = true
                     break
                 end
                 if not IsHeroAlive(k) then
-                    __continue24 = true
+                    __continue25 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(k)[1]
                 if info == nil or info.time_since_seen <= ____exports.SETTINGS.UnseenAfter then
-                    __continue24 = true
+                    __continue25 = true
                     break
                 end
                 local run = math.min(
@@ -315,13 +320,13 @@ local function lanerRows(bot, r)
                     Threat.SETTINGS.MissingReachMax
                 ) + Threat.SETTINGS.MissingMargin
                 if distToSegment(info.location, r.from, r.place) > run then
-                    __continue24 = true
+                    __continue25 = true
                     break
                 end
                 out[#out + 1] = {pid = k, hitting = false, dmg = c.dmg, unseen = true}
-                __continue24 = true
+                __continue25 = true
             until true
-            if not __continue24 then
+            if not __continue25 then
                 break
             end
         end
@@ -341,23 +346,23 @@ local function towerOnMe(bot, now)
     local br = bot:GetBoundingRadius()
     for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
         do
-            local __continue32
+            local __continue33
             repeat
                 if not tw:IsAlive() then
-                    __continue32 = true
+                    __continue33 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
-                    __continue32 = true
+                    __continue33 = true
                     break
                 end
                 if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
                     on = true
                     break
                 end
-                __continue32 = true
+                __continue33 = true
             until true
-            if not __continue32 then
+            if not __continue33 then
                 break
             end
         end

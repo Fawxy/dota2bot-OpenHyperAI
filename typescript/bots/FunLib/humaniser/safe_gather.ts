@@ -16,6 +16,8 @@ import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 export const SETTINGS = {
     /** A lane opponent that reached us this recently still counts when unseen (design section 2). */
     LanerSeen: 10,
+    /** A read is "of the hero's own position" when its `from` and `place` are both within this of the hero; only such reads feed the lane memory. */
+    OwnPlace: 50,
     /** A hero whose last sighting is older than this is not visible now (a visible hero reads about 0). */
     UnseenAfter: 0.5,
     /** The landing is HP lost per second over this window (s). */
@@ -117,7 +119,7 @@ export function Landing(bot: Unit, now: number): Safe.Inputs["landing"] {
 const laners: Record<number, Record<number, { dmg: number; at: number } | undefined> | undefined> = {};
 
 /**
- * Records this read's reachers and returns the lane opponents that reached us within `LanerSeen`, are not visible now and could
+ * Records the reachers of a read of our own position (see `OwnPlace`) and returns the lane opponents that reached us within `LanerSeen`, are not visible now and could
  * have run to the walk since their last sighting (the missing belief's run: the speed the read last saw, capped, plus its margin).
  */
 function lanerRows(bot: Unit, r: Threat.Read): Safe.Reacher[] {
@@ -126,9 +128,12 @@ function lanerRows(bot: Unit, r: Threat.Read): Safe.Reacher[] {
     laners[pid] = mine;
     const now = DotaTime();
     const visible: Record<number, boolean> = {};
+    // Only a read of the hero's own position writes the memory: a hero that reaches a far camp or a kill walk has not reached us.
+    const here = bot.GetLocation();
+    const own = dist(r.from, here) <= SETTINGS.OwnPlace && dist(r.place, here) <= SETTINGS.OwnPlace;
     for (const row of r.rows) {
         visible[row.pid] = true;
-        mine[row.pid] = { dmg: row.dmg, at: now };
+        if (own) mine[row.pid] = { dmg: row.dmg, at: now };
     }
     const out: Safe.Reacher[] = [];
     for (const [k, c] of pairs(mine)) {

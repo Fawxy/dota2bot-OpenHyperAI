@@ -84,6 +84,35 @@ do
 	check("the memory is 10 s: a hero last a reacher 10 s ago still counts", late ~= nil)
 end
 
+-- Only a read of our own position feeds the lane memory; other reads use it and never write it.
+do
+	local FAR = Vector(-1000, -6200)
+	local function unseenAfter(first)
+		local Threat, G, bot = world()
+		local e = enemy(10, -1700, 100)
+		-- a walk to FAR from HERE: the hero at (-1700,-5000) is within its reach as well
+		first(Threat, G, bot)
+		T = 304
+		e.hiddenFrom = { [OBSERVER] = true }
+		LAST_SEEN[10] = { location = Vector(-1700, -5000), time_since_seen = 4 }
+		return row(G.FromRead(bot, stay(Threat, bot), OPTS), 10)
+	end
+	check("control: a hero that reached our own place and then went unseen is remembered",
+		unseenAfter(function(Threat, G, bot) G.FromRead(bot, stay(Threat, bot), OPTS) end) ~= nil)
+	check("a hero that reached only a far place read is not remembered",
+		unseenAfter(function(Threat, G, bot) G.FromRead(bot, Threat.Read(bot, HERE, FAR, 4), OPTS) end) == nil)
+	local Threat, G, bot = world()
+	local e = enemy(10, -1700, 100)
+	G.FromRead(bot, stay(Threat, bot), OPTS)
+	e.perSec = 1
+	G.FromRead(bot, Threat.Read(bot, HERE, FAR, 4), OPTS)
+	T = 304
+	e.hiddenFrom = { [OBSERVER] = true }
+	LAST_SEEN[10] = { location = Vector(-1700, -5000), time_since_seen = 4 }
+	local r = row(G.FromRead(bot, stay(Threat, bot), OPTS), 10)
+	check("a far read after an own-place read does not overwrite the remembered damage (200, not the 3 s read's 3)", r and r.dmg == 200, r and r.dmg)
+end
+
 -- The landing sampler.
 do
 	local _, G, bot = world()
