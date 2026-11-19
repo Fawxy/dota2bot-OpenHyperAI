@@ -358,45 +358,53 @@ function ____exports.Weigh(i)
     local chases = (def and def.chases) == true
     local tower = chases and i.tower < s.TowerZero and 0 or (chases and i.tower < s.TowerNear and s.TowerFactor or 1)
     local forecast = i.forecast ~= nil and clamp(i.forecast, s.ForecastClamp[1], s.ForecastClamp[2]) or 1
-    local ____temp_6
+    local joiner = i.walk ~= nil
+    local ____temp_9
     if def == nil then
-        ____temp_6 = "unknown-kind"
+        ____temp_9 = "unknown-kind"
     else
-        local ____temp_5
-        if i.hp < s.HpFloor then
-            ____temp_5 = "hp"
+        local ____temp_8
+        local ____opt_2 = i.walk
+        if (____opt_2 and ____opt_2.level) == "deadly" then
+            ____temp_8 = i.walk.reason
         else
-            local ____temp_4
-            if up <= -2 then
-                ____temp_4 = "outnumbered"
+            local ____temp_7
+            if not joiner and i.hp < s.HpFloor then
+                ____temp_7 = "hp"
             else
-                local ____temp_3
-                if tower == 0 then
-                    ____temp_3 = "tower"
+                local ____temp_6
+                if not joiner and up <= -2 then
+                    ____temp_6 = "outnumbered"
                 else
-                    local ____temp_2
-                    if def.zero ~= nil then
-                        ____temp_2 = def.zero(i)
+                    local ____temp_5
+                    if tower == 0 then
+                        ____temp_5 = "tower"
                     else
-                        ____temp_2 = nil
+                        local ____temp_4
+                        if def.zero ~= nil then
+                            ____temp_4 = def.zero(i)
+                        else
+                            ____temp_4 = nil
+                        end
+                        ____temp_5 = ____temp_4
                     end
-                    ____temp_3 = ____temp_2
+                    ____temp_6 = ____temp_5
                 end
-                ____temp_4 = ____temp_3
+                ____temp_7 = ____temp_6
             end
-            ____temp_5 = ____temp_4
+            ____temp_8 = ____temp_7
         end
-        ____temp_6 = ____temp_5
+        ____temp_9 = ____temp_8
     end
-    local zero = ____temp_6
+    local zero = ____temp_9
     local w = zero ~= nil and 0 or clamp(def.base * level * count * hp * target * rune * tower * forecast, 0, s.MaxWeight)
-    local ____temp_7
+    local ____temp_10
     if zero == nil and def.sure ~= nil then
-        ____temp_7 = def.sure(i)
+        ____temp_10 = def.sure(i)
     else
-        ____temp_7 = nil
+        ____temp_10 = nil
     end
-    local sure = ____temp_7
+    local sure = ____temp_10
     local commit = sure ~= nil and LaneConfig.Curve("SureCommit", i.skill) or nil
     return {
         w = w,
@@ -465,28 +473,28 @@ function ____exports.Roll(c, now)
     local busy = ____exports.Of(c.by) ~= nil
     local sure = wt.sure ~= nil and not busy
     local chance = sure and wt.commit or wt.w
-    local ____temp_8
+    local ____temp_11
     if chance > 0 and chance < 1 and not busy then
-        ____temp_8 = LaneConfig.Draw()
+        ____temp_11 = LaneConfig.Draw()
     else
-        ____temp_8 = nil
+        ____temp_11 = nil
     end
-    local draw = ____temp_8
-    local ____sure_9
+    local draw = ____temp_11
+    local ____sure_12
     if sure then
-        ____sure_9 = chance >= 1 or draw == nil or draw < chance
+        ____sure_12 = chance >= 1 or draw == nil or draw < chance
     else
-        ____sure_9 = draw ~= nil and draw < chance
+        ____sure_12 = draw ~= nil and draw < chance
     end
-    local fire = ____sure_9
+    local fire = ____sure_12
     local why = wt.zero or (busy and "in-play" or (not sure and wt.w > 0 and draw == nil and "no-rng" or nil))
     local play
     if fire then
         local target = FR.Alive(c.target) and c.target or nil
-        local ____nextId_10 = nextId
-        nextId = ____nextId_10 + 1
+        local ____nextId_13 = nextId
+        nextId = ____nextId_13 + 1
         play = {
-            id = ____nextId_10,
+            id = ____nextId_13,
             kind = c.kind,
             by = c.by,
             target = c.target,
@@ -580,8 +588,8 @@ function ____exports.Join(p, u)
     if not __TS__ArrayIncludes(active, p) or ____exports.Of(u) ~= nil then
         return false
     end
-    local ____p_joiners_13 = p.joiners
-    ____p_joiners_13[#____p_joiners_13 + 1] = u
+    local ____p_joiners_16 = p.joiners
+    ____p_joiners_16[#____p_joiners_16 + 1] = u
     return true
 end
 return ____exports

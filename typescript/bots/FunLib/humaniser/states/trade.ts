@@ -824,7 +824,11 @@ function playFor(bot: Unit, here: Vector): Inputs["play"] {
     const pick = (p: Plays.Play): Inputs["play"] => {
         const t = p.target;
         if (!valid(t)) return undefined;
-        return { id: p.id, kind: p.kind, tgt: p.tgt, zero: Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero };
+        const at = t.GetLocation();
+        const walk = SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, who: "play" });
+        const inputs = Plays.InputsOf({ kind: p.kind, by: bot, target: t, at });
+        inputs.walk = { level: walk.level, reason: walk.reason };
+        return { id: p.id, kind: p.kind, tgt: p.tgt, zero: Plays.Weigh(inputs).zero };
     };
     if (mine !== undefined) return mine.by === bot && mine.kind !== LANE_FIGHT ? undefined : pick(mine);
     for (const p of Plays.Near(here, CAND_RADIUS)) {

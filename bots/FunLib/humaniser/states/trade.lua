@@ -369,16 +369,21 @@ function playFor(bot, here)
         if not valid(t) then
             return nil
         end
+        local at = t:GetLocation()
+        local walk = SafeGather.At(bot, at, {
+            horizon = SafeGather.WalkHorizon,
+            away = true,
+            held = false,
+            hold = true,
+            who = "play"
+        })
+        local inputs = Plays.InputsOf({kind = p.kind, by = bot, target = t, at = at})
+        inputs.walk = {level = walk.level, reason = walk.reason}
         return {
             id = p.id,
             kind = p.kind,
             tgt = p.tgt,
-            zero = Plays.Weigh(Plays.InputsOf({
-                kind = p.kind,
-                by = bot,
-                target = t,
-                at = t:GetLocation()
-            })).zero
+            zero = Plays.Weigh(inputs).zero
         }
     end
     if mine ~= nil then

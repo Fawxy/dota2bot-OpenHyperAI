@@ -118,6 +118,30 @@ do
 	world.pair = nil
 end
 
+-- A running play near us we may join: the joiner's hard zero is Safe.At's answer for its walk to the target (4 s, away, hold, named `play`):
+-- deadly zeroes it with the answer's reason, and two down at 0.3 HP (the old outnumbered and HP zeros) does not.
+do
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local near, inputs, of = Plays.Near, Plays.InputsOf, Plays.Of
+	local other = hero(9, 2, 100, 100)
+	Plays.Of = function() return nil end
+	Plays.Near = function() return { { id = 5, kind = "lane_fight", by = other, target = enemy, tgt = 6, at = enemy.loc, joiners = {} } } end
+	Plays.InputsOf = function(c) return { kind = c.kind, ourLevel = 5, theirLevel = 5, ours = 1, theirs = 3, hp = 0.3, mana = 1, rune = false, tower = 5000, skill = 1 } end
+	enemy.loc, enemy.hp = Vector(300, 0), 70
+	world.ats = {}
+	world.walk = { level = "deadly", ratio = 0.5, reason = "kill", kill = 900, price = 0 }
+	local dead = Trade.Gather(bot).play
+	local asked
+	for _, a in ipairs(world.ats) do if a.opts.who == "play" then asked = a end end
+	world.walk = { level = "safe", ratio = 3, reason = "safe", kill = 0, price = 0 }
+	local ok = Trade.Gather(bot).play
+	check("a joiner's walk to the play's target is asked as `play` (4 s, away, not held, hold); deadly zeroes it with the reason",
+		asked ~= nil and asked.opts.horizon == 4 and asked.opts.away == true and asked.opts.held == false and asked.opts.hold == true
+			and asked.place.x == 300 and dead ~= nil and dead.zero == "kill")
+	check("a safe walk with two down at 0.3 HP is no zero for the joiner", ok ~= nil and ok.zero == nil, ok and ok.zero)
+	Plays.Near, Plays.InputsOf, Plays.Of = near, inputs, of
+end
+
 do
 	local i = Trade.Gather(bot, { level = "hit", target = 6, offered = 2, started = 1, landed = true, soFar = 0.02, catchFails = 0 })
 	check("a running exchange's target is read alive and kept in the inputs", i.run ~= nil and i.run.alive == true and i.run.level == "hit")
