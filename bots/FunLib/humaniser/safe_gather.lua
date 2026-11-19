@@ -480,7 +480,7 @@ function frameReader(bot, horizon, engaged, exclude)
     local key = (((tostring(horizon) .. ":") .. tostring(engaged and 1 or 0)) .. ":") .. tostring(exclude or "-")
     local rd = f.readers[key]
     if rd == nil then
-        rd = Threat.Reader(bot, horizon, {engagedWindow = engaged and Threat.SETTINGS.StayEngaged or nil, exclude = exclude})
+        rd = Threat.Reader(bot, horizon, {engagedWindow = engaged and Threat.SETTINGS.StayEngaged or nil, exclude = exclude, window = ____exports.SETTINGS.KillWindow})
         f.readers[key] = rd
     end
     return rd
@@ -534,7 +534,8 @@ ____exports.SETTINGS = {
     Window = 2,
     MaxGap = 1,
     CutEvery = 2,
-    FreshHorizon = 3
+    FreshHorizon = 3,
+    KillWindow = 4
 }
 r1 = function(v) return math.floor(v * 10 + 0.5) / 10 end
 r2 = function(v) return math.floor(v * 100 + 0.5) / 100 end

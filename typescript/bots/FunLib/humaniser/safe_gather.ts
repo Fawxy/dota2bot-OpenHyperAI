@@ -32,6 +32,12 @@ export const SETTINGS = {
      * (smoke 19/11: 240 episodes a game against 119). 3 was the lane spot's own horizon. judgement.
      */
     FreshHorizon: 3,
+    /**
+     * A reaching hero that is not hitting us yet is counted over this many seconds, whatever the reach horizon (one hitting us: `StayEngaged`, 6).
+     * At 2 s the line trebled the frame a hero began to hit: h2h pair safe-tune0 (19/11), 15 deaths against 8 on the old rules, the
+     * read safe at ratio 2 to 5 one line before `lethal`. 4 is about the walk out (logged exit 1 to 3.5 s) plus a turn. judgement.
+     */
+    KillWindow: 4,
 };
 
 export interface Opts {
@@ -327,7 +333,7 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean, exclude?: num
     const key = `${horizon}:${engaged ? 1 : 0}:${exclude ?? "-"}`;
     let rd = f.readers[key];
     if (rd === undefined) {
-        rd = Threat.Reader(bot, horizon, { engagedWindow: engaged ? Threat.SETTINGS.StayEngaged : undefined, exclude });
+        rd = Threat.Reader(bot, horizon, { engagedWindow: engaged ? Threat.SETTINGS.StayEngaged : undefined, exclude, window: SETTINGS.KillWindow });
         f.readers[key] = rd;
     }
     return rd;

@@ -193,8 +193,14 @@ function safeFrame(pid: number): SafeFrame {
     return f;
 }
 
+/**
+ * A creep's hit place is a short visit, so it is read over the stay horizon (2 s), not a fresh place's 3 s: at 3 s the filter refused
+ * most creeps next to two heroes (h2h pair 19/11: 108 and 53 last hits at 10:00 with the filter, 128 and 70 without, deaths no worse).
+ */
+const PICK_HORIZON = 2;
+
 function askDeadly(bot: Unit, place: Vector, held: boolean): boolean {
-    const [ok, ans] = pcall(SafeGather.At, bot, place, { held });
+    const [ok, ans] = pcall(SafeGather.At, bot, place, { held, horizon: PICK_HORIZON });
     if (!ok) {
         Telemetry.Failed("PickSafe", ans);
         return false;
