@@ -272,6 +272,20 @@ do
 		own.level == "deadly" and own.reason == "tower" and at(300, { held = true }).reason == "tower")
 	check("tower on us: a place 1,500 from the tower, outside its reach, is not refused for the tower",
 		at(1500).reason ~= "tower" and at(1500, { held = true }).level == "safe")
+	T = T + 0.1
+	local far = Vector(tw.loc.x - 1500, tw.loc.y)
+	local first, second, third = G.At(bot, bot.loc, { held = true }), G.At(bot, far, { from = far, held = true }), G.At(bot, bot.loc, { held = true })
+	check("tower on us, three asks in one frame (the lane spot asks about 50): own place deadly, the far place not, own place deadly again",
+		first.reason == "tower" and second.level == "safe" and third.reason == "tower")
+	local _, other = next(TOWERS_W[3], (next(TOWERS_W[3])))
+	local keep = other.loc
+	other.loc = Vector(tw.loc.x - 1300, tw.loc.y)
+	tw.target, bot.towerHitAt = nil, T
+	T = T + 0.1
+	local between = Vector(tw.loc.x - 1400, tw.loc.y)
+	check("hit by a tower with two in reach and neither targeting us: a place only the second reaches is deadly too (the hit names no tower)",
+		G.At(bot, between, { from = between, held = true }).reason == "tower")
+	other.loc, bot.towerHitAt, tw.target = keep, nil, bot
 	standAt(855)
 	T = T + 0.1
 	local edge = G.At(bot, bot.loc, { held = true })
