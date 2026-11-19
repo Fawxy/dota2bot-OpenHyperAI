@@ -859,7 +859,7 @@ export const EVENTS = {
         omin: "num",
         /** Their front's distance from our T1 when the waves met. */
         mo: "num",
-        /** Seconds from one of our creeps (not in the start's clash) first within 700 of their front to the attempt's end. */
+        /** Seconds from one of our creeps (not in the start's clash) first within 700 of their front to the attempt's end, to the read's 0.25 s. */
         mn: "num",
         /** 1 when one of their creeps came within our T1's range (700) during the attempt. */
         tw: "num",

@@ -758,12 +758,16 @@ export function Watch(bot: Unit, hosted: boolean, swing: boolean): void {
     if (nearest === undefined) return finish(bot, a, "cleared", now);
     a.omin = math.min(a.omin, front);
     if (front < SETTINGS.TowerR) a.tw = 1;
+    // Their wave is the attempt's stretch (as the front read): a fight of ours elsewhere on the lane is not this one (review).
     const theirs = new LuaSet<Unit>();
-    for (const x of v.units) theirs.add(x.u);
+    for (const x of v.units) if (x.own >= -SETTINGS.OursBehind - a.bd && x.own <= a.tgt + SETTINGS.StartAhead) theirs.add(x.u);
+    const fresh: Unit[] = [];
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c === undefined || c === null || c.IsNull() || !c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
-        if (a.old.includes(c)) continue;
-        if (a.nearAt === undefined && GetUnitToUnitDistance(c, nearest) <= SETTINGS.MeetR) a.nearAt = now;
+        if (!a.old.includes(c)) fresh.push(c);
+    }
+    if (a.nearAt === undefined && fresh.some((c) => GetUnitToUnitDistance(c, nearest!) <= SETTINGS.MeetR)) a.nearAt = now;
+    for (const c of fresh) {
         if (Fighting(c, theirs)) {
             a.mo = front;
             return finish(bot, a, "met", now);

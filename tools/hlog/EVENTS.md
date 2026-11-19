@@ -504,7 +504,7 @@ Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave w
 - `own0` num: Their front's distance from our T1 along the lane at the start, its least during the attempt, and when the waves met.
 - `omin` num: Their front's least distance from our T1 during the attempt.
 - `mo` num: Their front's distance from our T1 when the waves met.
-- `mn` num: Seconds from one of our creeps (not in the start's clash) first within 700 of their front to the attempt's end.
+- `mn` num: Seconds from one of our creeps (not in the start's clash) first within 700 of their front to the attempt's end, to the read's 0.25 s.
 - `tw` num: 1 when one of their creeps came within our T1's range (700) during the attempt.
 - `tgt` num: The lane's target point (lane_push TargetOf).
 - `nw` num: Seconds to our next wave at the hold point at the start; at the last branch read: seconds the drag needs and to our next wave behind the T1.

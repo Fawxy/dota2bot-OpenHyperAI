@@ -65,6 +65,14 @@ do
 	T = 112
 	w.step()
 	check("gone start: a hold runs (left only after LeftAfter unstepped)", w.count("wave_hold") == 0)
+	-- A creep of ours fighting one of theirs 2,000 past the stretch (another fight on the lane) is not this wave's clash (review).
+	local far = w.creep(3, 2900 + 1600)
+	local farOurs = w.creep(2, 2900 + 1580)
+	farOurs.target = far
+	T = 112.25
+	w.step()
+	check("gone start: another fight further up the lane does not end it as met", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	farOurs.target = nil
 	-- Our next wave within 700 of their front but not yet fighting (the old `met`): the hold goes on, so their wave stays at
 	-- the hold point until the clash starts there (slice hold-till-fight).
 	local nw = w.creep(2, 300)

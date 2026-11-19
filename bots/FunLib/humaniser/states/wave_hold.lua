@@ -27,6 +27,15 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
     end
     return false
 end
+
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -1081,32 +1090,39 @@ function ____exports.Watch(bot, hosted, swing)
     end
     local theirs = {}
     for ____, x in ipairs(v.units) do
-        theirs[x.u] = true
+        if x.own >= -____exports.SETTINGS.OursBehind - a.bd and x.own <= a.tgt + ____exports.SETTINGS.StartAhead then
+            theirs[x.u] = true
+        end
     end
+    local fresh = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue142
+            local __continue143
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue142 = true
+                    __continue143 = true
                     break
                 end
-                if __TS__ArrayIncludes(a.old, c) then
-                    __continue142 = true
-                    break
+                if not __TS__ArrayIncludes(a.old, c) then
+                    fresh[#fresh + 1] = c
                 end
-                if a.nearAt == nil and GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
-                    a.nearAt = now
-                end
-                if ____exports.Fighting(c, theirs) then
-                    a.mo = front
-                    return finish(bot, a, "met", now)
-                end
-                __continue142 = true
+                __continue143 = true
             until true
-            if not __continue142 then
+            if not __continue143 then
                 break
             end
+        end
+    end
+    if a.nearAt == nil and __TS__ArraySome(
+        fresh,
+        function(____, c) return GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR end
+    ) then
+        a.nearAt = now
+    end
+    for ____, c in ipairs(fresh) do
+        if ____exports.Fighting(c, theirs) then
+            a.mo = front
+            return finish(bot, a, "met", now)
         end
     end
     if a.br == "hold" and front < ____exports.SETTINGS.TowerR then
