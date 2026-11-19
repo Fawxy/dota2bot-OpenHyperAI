@@ -1,12 +1,23 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { xpOf, noise } = require('../gate');
+const { xpOf, spanOf, noise, SPANS } = require('../gate');
 
 test('experience from level and XP still needed: the spans below the level plus the part of its own span done', () => {
     assert.strictEqual(xpOf(1, 240), 0);
     assert.strictEqual(xpOf(3, 500), 240 + 400 + 20);
     assert.throws(() => xpOf(2, 401), /level table/);
+});
+
+test('a game takes the oldest level table its readings fit, so one hero state is worth more experience on 7.42', () => {
+    // 7.41 and 7.42 share level 2's span: only level 1's 250 tells a 7.42 game that has not passed level 3.
+    assert.strictEqual(spanOf([{ lvl: 1, xpn: 240 }, { lvl: 2, xpn: 400 }, { lvl: 6, xpn: 760 }]), SPANS[7.41]);
+    assert.strictEqual(spanOf([{ lvl: 1, xpn: 250 }, { lvl: 2, xpn: 400 }]), SPANS[7.42]);
+    assert.throws(() => spanOf([{ lvl: 1, xpn: 251 }]), /every level table/);
+    // Level 6 with 100 to go: 3,100 on 7.41, 3,675 on 7.42 (the patch notes' 410 more to reach level 6, 165 more in it).
+    assert.strictEqual(xpOf(6, 100, SPANS[7.41]), 3100);
+    assert.strictEqual(xpOf(6, 100, SPANS[7.42]), 3100 + 410 + 165);
+    assert.strictEqual(SPANS[7.42].reduce((a, b) => a + b), 66600);
 });
 
 // Rows whose per-cell deviations are given; every cell holds a +v and a -v game, so the cell mean is 0 and the pooled

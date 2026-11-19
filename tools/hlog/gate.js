@@ -1,6 +1,6 @@
 // The merge gate's three measures from the logs (master SCOREBOARD.md "The merge gate"): per game, ours minus OHA in team
 // deaths to --until (queries/ledger_deaths.sql, pos 1-5), team net worth at --at (`nw`) and team experience at --at (`lvl`
-// and `xpn` with the level table below). Ours is the label's seat, as ledger.js.
+// and `xpn` with the game's patch's level table below). Ours is the label's seat, as ledger.js.
 // Usage:
 //   node gate.js <run> [<run> ...] [--ref <run> ...] [--tol deaths=D,nw=N,xp=X]   a row's per-game means; with --ref, the
 //       difference from the reference row and, with --tol, pass or fail (a row fails when worse than the reference by more
@@ -18,20 +18,37 @@ const { Store, DB, LOGS, JOBS } = require('./store');
 const { games } = require('./ledger');
 const held = require('./held');
 
-// Experience to go from level L to L+1, 7.41 (index L-1). The batch's largest `xpn` per level checks it: one over the span
-// means the table is wrong for the build's patch.
-const SPAN = [240, 400, 520, 600, 680, 760, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2200, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000, 7500];
+// Experience to go from level L to L+1 (index L-1), per patch, oldest first. 7.42 raised levels 1 to 17 (its patch notes'
+// "Total amount of experience needed to reach level 30" table). A game's patch is not in its log, so a game takes the
+// oldest table its own `xpn` readings fit (spanOf): every snapshot before the first experience reads the whole of level
+// 1's span, so a 7.42 game never fits 7.41's.
+const SPANS = {
+    7.41: [240, 400, 520, 600, 680, 760, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2200, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000, 8000],
+    7.42: [250, 400, 550, 800, 850, 925, 1050, 1150, 1225, 1300, 1375, 1450, 1525, 1600, 1675, 1750, 1825, 1900, 2000, 2200, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000, 8000],
+};
+const SPAN = SPANS[7.41];
 const MEASURES = ['deaths', 'nw', 'xp'];
 // The direction in which each measure is worse for ours: deaths up, net worth and experience down.
 const WORSE = { deaths: 1, nw: -1, xp: -1 };
 
-function xpOf(lvl, xpn) {
-    if (!(lvl >= 1) || lvl > SPAN.length) return undefined;
+function xpOf(lvl, xpn, span = SPAN) {
+    if (!(lvl >= 1) || lvl > span.length + 1) return undefined;
     let total = 0;
-    for (let l = 1; l < lvl; l++) total += SPAN[l - 1];
-    if (lvl === SPAN.length + 1 || xpn < 0) return total;
-    if (xpn > SPAN[lvl - 1]) throw new Error(`xpn ${xpn} at level ${lvl} is over its span ${SPAN[lvl - 1]}: the level table is not this patch's`);
-    return total + SPAN[lvl - 1] - xpn;
+    for (let l = 1; l < lvl; l++) total += span[l - 1];
+    if (lvl === span.length + 1 || xpn < 0) return total;
+    if (xpn > span[lvl - 1]) throw new Error(`xpn ${xpn} at level ${lvl} is over its span ${span[lvl - 1]}: the level table is not this patch's`);
+    return total + span[lvl - 1] - xpn;
+}
+
+/** The oldest patch's table that holds every reading: `maxima` is [{lvl, xpn}], a game's largest `xpn` per level. */
+function spanOf(maxima) {
+    const fits = (span) => maxima.every((m) => !(m.lvl >= 1) || m.lvl > span.length || m.xpn <= span[m.lvl - 1]);
+    const patch = Object.keys(SPANS).sort((a, b) => a - b).find((k) => fits(SPANS[k]));
+    if (patch === undefined) {
+        const m = maxima.find((x) => Object.values(SPANS).every((span) => x.xpn > span[x.lvl - 1]));
+        throw new Error(`xpn ${m.xpn} at level ${m.lvl} is over its span in every level table (${Object.keys(SPANS).join(', ')}): add this patch's`);
+    }
+    return SPANS[patch];
 }
 
 /** One game's team totals by side: { ours: {deaths, nw, xp}, oha: {...} }. */
@@ -45,10 +62,11 @@ function measures(store, g, { at, until }) {
             AND s.seq = (SELECT s2.seq FROM ev_snap s2 WHERE s2.game_id = l.game_id AND s2.pid = l.pid AND s2.t <= :at
                 AND s2.nw IS NOT NULL ORDER BY s2.t DESC, s2.seq DESC LIMIT 1)
         WHERE l.game_id = :g`, { g: g.game_id, at });
+    const span = spanOf(store.query('SELECT lvl, max(xpn) AS xpn FROM ev_snap WHERE game_id = :g AND xpn IS NOT NULL GROUP BY lvl', { g: g.game_id }));
     for (const r of rows) {
         const o = out[side(r.team)];
         o.nw += r.nw;
-        const xp = r.xpn === null || r.xpn === undefined ? undefined : xpOf(r.lvl, r.xpn);
+        const xp = r.xpn === null || r.xpn === undefined ? undefined : xpOf(r.lvl, r.xpn, span);
         o.xp = xp === undefined || o.xp === undefined ? undefined : o.xp + xp;
     }
     return out;
@@ -197,4 +215,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { xpOf, measures, rowOf, noise, judge, SPAN };
+module.exports = { xpOf, spanOf, measures, rowOf, noise, judge, SPAN, SPANS };
