@@ -17,7 +17,7 @@
  * inside our T1's fire within ForecastSecs, so the core is in front before our wave dies.
  * One ev=wave_hold line per attempt, at its end. Its read (Read: starts, ends, the branch, the spot's input) runs every tick
  * from States.Tick while the laning body hosts it, swing frames included; its orders (Act: lane_aggro's draws) from the core
- * draw step (States.CoreAggroStep, H1), before lane aggro's own step. Tick ends an attempt with no laning host for LeftAfter.
+ * draw step (the lane table's `aggro` row, H1), before lane aggro's own step. Tick ends an attempt with no laning host for LeftAfter.
  */
 import { BotMode, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -810,7 +810,7 @@ export function Watch(bot: Unit, hosted: boolean, swing: boolean): void {
 }
 
 /**
- * The hold's orders, from the lane step that steps it (States.CoreAggroStep, LaneOnlyHoldStep), which a body swing never
+ * The hold's orders, from the lane table row that acts it (`aggro`, `drill_hold`), which a body swing never
  * reaches: the draw the last read wants, through lane_aggro's `back` (stepped right after by the caller). The drag's draw
  * that does not start concedes the attempt (`cr=drag`), as before the split.
  */

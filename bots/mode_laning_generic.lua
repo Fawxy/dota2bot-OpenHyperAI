@@ -300,63 +300,36 @@ local function PositionThink()
 	if target_loc ~= nil then bot:Action_MoveToLocation(target_loc + RandomVector(50)) end
 end
 
--- Telemetry only (ev=snap step=): each step below returns its name, which no decision reads.
+-- Telemetry only (ev=snap step=): the lane table returns the name of the row that acted, which no decision reads.
 local Telemetry = J.Humaniser.Telemetry
 Telemetry.NoteLaneThink(bot, bOwnsThink)
 
--- A support whose body owns its lane hits but not its harass keeps OHA's positioning: the body's hold would cancel its
--- Valve attacks on heroes (docs/team/research/core-time-diagnosis.md). With SupportDeny and LaneSpot its hold is a support_lane
--- step, which Think runs first, so this runs for it only on a frame the body is not running or its task is guarded.
-local function BodyOrPositionThink()
-	if not States.BodySupportHits(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body' end
-	PositionThink()
-	return 'oha_pos'
-end
-
 if bOwnsThink then
 	States.SetLaneSpot(bot, PositionTarget)
-	local function ThinkSteps()
-		-- The SDK body's last-hit or deny swing in progress must not be overridden by the steps below (slice 4).
-		if States.BodyBusy(bot) and States.Step(bot, BOT_MODE_LANING) then return 'body_hit' end
-		-- Ours.SupportDeny: a support's own lane steps (states/support_lane, its lane hits first) come before every step below.
-		if States.SupportStep(bot) then return 'support' end
-		-- Lane-only (a drill): only the last-hit steps (the body's, or OHA's where the body does not own them) and the position.
-		if J.Humaniser.Overrides.LaneOnly(bot) then
-			-- A drill's lane-only core with the wave hold (drill entry laneHold): the hold and its own draw first.
-			if States.LaneOnlyHoldStep(bot) then return 'aggro' end
-			-- A lever drill's lane-only core with lane aggro (drill entry laneAggro): the feed and the other draws.
-			if States.LaneOnlyAggroStep(bot) then return 'aggro' end
-			if not States.BodyLastHits(bot) then
-				if not States.BodySupportLastHits(bot) and LastHitThink() then return 'oha_lh' end
-				if not States.BodySupportHits(bot) and DenyThink() then return 'oha_deny' end
-			end
-			return BodyOrPositionThink()
-		end
-		-- Ours.LaneAggro: a core's creep draw (lane_aggro feed, drag) before OHA's techniques and the body's next scan.
-		if States.CoreAggroStep(bot) then return 'aggro' end
-		-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
-		if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return 'etiquette' end
-		bHoldingForLastHit = false
-		-- With etiquette on, a last hit near a protected human is only allowed when the human will miss it,
-		-- so taking it before a deny is intended. Where the laning state's SDK body owns last hits (team
-		-- slice 4), it takes them and the denies itself in its Step below.
-		if not States.BodyLastHits(bot) then
-			-- Ours.SupportLastHit: the support's body takes the last hits its claims give it (states/lane_claims), so OHA's do not run.
-			if not States.BodySupportLastHits(bot) and LastHitThink() then return 'oha_lh' end
-			if not States.BodySupportHits(bot) and DenyThink() then return 'oha_deny' end
-			if bHoldingForLastHit then
-				bot:Action_MoveToLocation(bot:GetLocation())
-				return 'oha_hold'
-			end
-		end
-		if local_mode_laning_generic then
-			local_mode_laning_generic.Think()
-		end
-
-		return BodyOrPositionThink()
-	end
+	-- The steps of the lane table (states/lane_table) that are OHA's own; the table decides their order against ours.
+	local laneCtx = {
+		etiquette = function()
+			-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
+			if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return true end
+			return false
+		end,
+		ohaLastHit = LastHitThink,
+		ohaDeny = DenyThink,
+		ohaHold = function()
+			if not bHoldingForLastHit then return false end
+			bot:Action_MoveToLocation(bot:GetLocation())
+			return true
+		end,
+		ohaLocal = function()
+			if local_mode_laning_generic then local_mode_laning_generic.Think() end
+			return false
+		end,
+		ohaPosition = function() PositionThink() return true end,
+	}
 	function Think()
-		Telemetry.NoteLaneStep(bot, ThinkSteps())
+		-- Set by LastHitThink on the frame it runs, so a frame that skips it cannot hold on an earlier frame's wait.
+		bHoldingForLastHit = false
+		Telemetry.NoteLaneStep(bot, States.LaneStep(bot, laneCtx))
 	end
 end
 

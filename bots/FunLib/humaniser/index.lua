@@ -395,8 +395,7 @@ if Telemetry.GuardsEnabled() then
         BodyBusy = no,
         BodySupportHits = no,
         BodySupportLastHits = no,
-        SupportOwnsAttack = no,
-        SupportStep = no
+        SupportOwnsAttack = no
     })
     Telemetry.GuardModule("Trade", Trade, {
         Owns = no,

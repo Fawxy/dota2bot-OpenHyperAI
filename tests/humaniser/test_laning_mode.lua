@@ -174,7 +174,7 @@ do
 	local killable = creep({ hp = 40, loc = Vector(100, 0) })
 	local nearly = creep({ hp = 60, loc = Vector(100, 0) })
 	local own = creep({ hp = 40, loc = Vector(-100, 0) })
-	check("step: the support's lane steps", stepOf({ pos = 5, owned = true, ours = true, enemyCreeps = { killable }, supportStep = true }) == "support")
+	check("step: the support's lane steps", stepOf({ pos = 5, owned = true, ours = true, enemyCreeps = { killable }, supportStep = true }) == "support_hit")
 	check("step: OHA's last hit", stepOf({ pos = 1, owned = true, enemyCreeps = { killable } }) == "oha_lh")
 	check("step: OHA's deny while the enemy creep is not killable yet", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly }, allyCreeps = { own } }) == "oha_deny")
 	check("step: OHA's hold for the hit", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly } }) == "oha_hold")
@@ -183,6 +183,20 @@ do
 	local s, bot = stepOf({ pos = 5, owned = true, ours = true, bodyDenies = true, stepActs = true })
 	check("step: a deny-only support is OHA's position, the body not stepped", s == "oha_pos" and (bot.bodySteps or 0) == 0, s)
 	check("step: lane-only, the body acting nothing leaves OHA's position", stepOf({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { creep({ hp = 400, loc = Vector(100, 0) }) } }) == "oha_pos")
+end
+
+-- OHA's hold for a last hit is that frame's own wait: a frame where the last-hit step did not run (the support's body took its hits)
+-- must not hold on the wait of the frame before.
+do
+	local nearly = creep({ hp = 60, loc = Vector(100, 0) })
+	local bot = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly } })
+	GetDesire()
+	Think()
+	check("hold: a creep not killable yet is waited on", bot.step == "oha_hold", bot.step)
+	bot.opts.bodyDenies, bot.opts.bodyLastHits = true, true
+	GetDesire()
+	Think()
+	check("hold: the next frame, with the body owning the hits, does not wait on the old one", bot.step == "oha_pos", bot.step)
 end
 
 -- Ours.LeaveCoreCreep (slice 3): the switch alone makes a support own this Think(); off, it is Valve's (OHA) as before.

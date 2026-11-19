@@ -51,6 +51,7 @@ function LaningLoad(opts)
 	DotaTime = function() return opts.t or 120 end
 	GameTime = DotaTime
 	local bot = LaningHero({ pos = opts.pos, range = opts.range or 150, loc = opts.loc })
+	bot.opts = opts -- a test changes the world between frames through it
 	bot.GetUnitName = function() return "npc_dota_hero_x" end
 	bot.IsInvulnerable = function() return false end
 	bot.IsHero = function() return true end
@@ -86,6 +87,22 @@ function LaningLoad(opts)
 	local okEtiquette, Etiquette = pcall(require, 'bots/FunLib/humaniser/etiquette')
 	if not okEtiquette then Etiquette = { Applies = function() return false end } end
 
+	-- The lane table's own collaborators: no support hit, aggro or drill unless the world says so.
+	package.loaded["bots/FunLib/humaniser/states/laning"] = {
+		OwnsSupportHits = function() return opts.supportStep == true end,
+		HitOffered = function() return opts.supportStep == true end,
+		OwnsSpot = function() return false end,
+	}
+	for _, m in ipairs({ "lane_aggro", "states/wave_hold", "states/core_last_hit", "drill" }) do
+		package.loaded["bots/FunLib/humaniser/" .. m] = {
+			Owns = function() return false end, Pending = function() return false end, Step = function() return false end,
+			StepOpen = function() return false end, LaneHold = function() return false end, LaneAggro = function() return false end,
+			Applies = function() return false end,
+		}
+	end
+	package.loaded["bots/FunLib/humaniser/overrides"] = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end }
+	package.loaded["bots/FunLib/humaniser/states/lane_table"] = nil
+	local LaneTable = require("bots/FunLib/humaniser/states/lane_table")
 	local attempts = {}
 	local humaniser = {
 		AllyLastHit = {
@@ -118,12 +135,27 @@ function LaningLoad(opts)
 			MayOwn = function() return opts.owned == true end, SetLaneSpot = function() end,
 			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
 			BodyBusy = function() return false end,
-			-- Ours.SupportDeny (slice l1-support-deny): opts.supportStep acts first; opts.bodyDenies makes the body own the support's
-			-- lane hits (its denies), opts.bodyLastHits its claimed last hits too (Ours.SupportLastHit).
-			CoreAggroStep = function() return false end,
-			LaneOnlyHoldStep = function() return false end,
-			LaneOnlyAggroStep = function() return false end,
-			SupportStep = function() if opts.supportStep then bot.supportStepped = true return true end return false end,
+			-- The real lane table (states/lane_table) over the stubs above. Ours.SupportDeny (slice l1-support-deny): opts.supportStep
+			-- makes the body run for a support with a hit on offer, so its `support_hit` row acts; opts.bodyDenies makes the body own
+			-- the support's lane hits (its denies), opts.bodyLastHits its claimed last hits too (Ours.SupportLastHit).
+			LaneStep = function(b, cb)
+				return LaneTable.Walk(b, {
+					enabled = function() return true end,
+					bodyRunning = function() return opts.supportStep == true end,
+					bodyLabel = function() return nil end,
+					stepBody = function()
+						bot.bodySteps = (bot.bodySteps or 0) + 1
+						if opts.supportStep then bot.supportStepped = true return true end
+						return opts.stepActs == true
+					end,
+					bodyBusy = function() return false end,
+					bodyLastHits = function() return false end,
+					bodySupportHits = function() return opts.bodyDenies == true end,
+					bodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,
+					etiquette = cb.etiquette, ohaLastHit = cb.ohaLastHit, ohaDeny = cb.ohaDeny,
+					ohaHold = cb.ohaHold, ohaLocal = cb.ohaLocal, ohaPosition = cb.ohaPosition,
+				})
+			end,
 			BodySupportHits = function() return opts.bodyDenies == true end,
 			BodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,
 			SupportOwnsAttack = function() return opts.ownsAttack == true end,
