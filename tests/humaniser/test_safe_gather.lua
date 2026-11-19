@@ -239,6 +239,45 @@ do
 	check("an error in the read is not swallowed", not ok)
 end
 
+-- The exit window (variant D of the plan after the collapse): a hero not hitting us is counted over the walk out of every
+-- reacher's range from the place read, plus a second, in half-second steps up, never over KillWindow. A hitter keeps 6 s.
+do
+	local Threat, G, bot = world()
+	local ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	-- held read, horizon 2: reach 1,198 (run 600, range 550, hulls 48). 1,000 away: 198 to walk at 300 a second, 0.66 s, so a 2 s window.
+	local e = enemy(10, -1000, 400)
+	local function at(place, o) T = T + 0.1; return G.At(bot, place or HERE, o or { held = true }) end
+	local edge = at()
+	check("an idle hero we can walk out of in 0.66 s is counted over 2 s, not 4: 800 of our 1,000 HP is not deadly", edge.kill == 800 and edge.level ~= "deadly", edge.kill)
+	e.loc = Vector(-1700, -5000)
+	local deep = at()
+	check("control: the same hero 300 away (2.99 s to walk out) keeps the full 4 s and is deadly", deep.kill == 1600 and deep.level == "deadly", deep.kill)
+	e.loc = Vector(-1000, -5000)
+	local far = at(Vector(-1700, -5000), {})
+	check("the walk out is measured from the place asked about: a place 300 from the hero is deadly though we stand at its edge", far.level == "deadly" and far.kill == 1600, far.kill)
+	bot.hitBy = { [e] = T }
+	local hit = at()
+	check("a hero hitting us keeps its 6 s window at the edge", hit.kill == 2400 and hit.level == "deadly", hit.kill)
+	bot.hitBy = { [e] = T - 1.5 }
+	local gap = at()
+	check("between swings (its hit 1.5 s ago, the read's 1 s flag lapsed) the edge hero is not capped: 4 s", gap.kill == 1600 and gap.level == "deadly", gap.kill)
+	bot.hitBy = {}
+	e.loc = Vector(-1700, -5000)
+	T = T + 0.1
+	local out = G.At(bot, Vector(-2900, -5000), { from = HERE })
+	check("a walk that starts 300 from the hero and ends 1,200 from it is measured from its nearest point, the start: 4 s", out.kill == 1600, out.kill)
+	e.loc = Vector(-1000, -5000)
+	local second = enemy(11, -1700, 10)
+	local two = at()
+	check("the walk out is the longest over the reachers: a second hero 300 away puts the edge hero back at 4 s", two.kill == 1640, two.kill)
+	second.loc = Vector(-9000, -5000)
+	ours.ExitWindow = false
+	local off = at()
+	ours.ExitWindow = nil
+	check("switch off: the edge hero is counted over 4 s", off.kill == 1600 and off.level == "deadly", off.kill)
+	check("a walk away (a trip's gate) is not capped: the edge hero keeps 4 s", at(HERE, { away = true }).kill == 1600)
+end
+
 -- At passes away / held / hold to Decide.
 do
 	local Threat, G, bot = world()

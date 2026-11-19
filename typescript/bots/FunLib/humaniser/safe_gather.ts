@@ -8,7 +8,9 @@
  * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Safe from "bots/FunLib/humaniser/safe";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -44,6 +46,13 @@ export const SETTINGS = {
      * read safe at ratio 2 to 5 one line before `lethal`. 4 is about the walk out (logged exit 1 to 3.5 s) plus a turn. judgement.
      */
     KillWindow: 4,
+    /**
+     * `Ours.ExitWindow`: a reaching hero that is not hitting us is counted over the walk out of every reacher's range from the place
+     * read (`exit`) plus this many seconds to turn and react, when that is under `KillWindow`. A hero that damaged us within `PressWindow` is not
+     * capped (hitting us it keeps `StayEngaged`, between swings `KillWindow`):
+     * it chases, and capping it called 17 more of h2h742's deaths under 3 s before (16 had a hitter). judgement.
+     */
+    ExitTurn: 1,
 };
 
 export interface Opts {
@@ -225,24 +234,69 @@ function pressed(bot: Unit, now: number): boolean {
     return on;
 }
 
+const exitSeen: Record<number, { t: number; dmg: Record<string, number>; by: Record<number, boolean> } | undefined> = {};
+
+function exitFrame(bot: Unit, now: number): { t: number; dmg: Record<string, number>; by: Record<number, boolean> } {
+    const pid = bot.GetPlayerID();
+    let seen = exitSeen[pid];
+    if (seen === undefined || seen.t !== now) {
+        seen = { t: now, dmg: {}, by: {} };
+        exitSeen[pid] = seen;
+    }
+    return seen;
+}
+
+/** `e` damaged `bot` within `PressWindow`, read once a frame per hero and enemy. */
+function pressedBy(bot: Unit, e: Unit, now: number): boolean {
+    const seen = exitFrame(bot, now);
+    const pid = e.GetPlayerID();
+    let on = seen.by[pid];
+    if (on === undefined) {
+        on = bot.WasRecentlyDamagedByHero(e, SETTINGS.PressWindow);
+        seen.by[pid] = on;
+    }
+    return on;
+}
+
+/** `e`'s damage on `bot` over the exit window `w`, estimated once a frame per hero, enemy and window. */
+function exitDamage(bot: Unit, e: Unit, w: number, now: number): number {
+    const seen = exitFrame(bot, now);
+    const key = `${e.GetPlayerID()}:${w}`;
+    let dmg = seen.dmg[key];
+    if (dmg === undefined) {
+        dmg = SpellReady.DamageOn(e, bot, w);
+        seen.dmg[key] = dmg;
+    }
+    return dmg;
+}
+
 // ------------------------------------------------------------------------------------------------------------ the inputs
 
 /**
  * `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
  * passes the cached one, and the clock here is the game's now, not the read's `t`). `hitting` is the read's `eng`, so it is only set when
  * the read was made with `engagedWindow`; a gate's read (no window) has none hitting and every row at the short window.
- * `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from where it stands to the edge of
- * that hero's reach (its `run`: speed x the read's horizon + attack range + both hulls), at our current speed. A hero already
- * outside a row's reach adds 0, and an unseen lane row has no place to measure from. Logged only.
+ * `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from the walk's nearest point to that hero (the place itself for an own-place read) to the edge of
+ * that hero's reach (its `run`: speed x the read's horizon + attack range + both hulls), at our current speed. A place already
+ * outside a row's reach adds 0, and an unseen lane row has no place to measure from. With `Ours.ExitWindow` a visible hero that
+ * is not hitting us that did not damage us within `PressWindow`
+ * is counted over `exit` + `ExitTurn` when that is under `KillWindow` (never more than the read gave it; not on an `away` walk).
  */
 export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
     const reach: Safe.Reacher[] = [];
-    for (const row of r.rows) reach.push({ pid: row.pid, hitting: row.eng, dmg: row.dmg });
     let exit = 0;
     if (r.rows.length > 0) {
-        const here = bot.GetLocation();
         const speed = math.max(1, bot.GetCurrentMovementSpeed());
-        for (const row of r.rows) exit = math.max(exit, math.max(0, row.run - dist(here, row.at)) / speed);
+        for (const row of r.rows) exit = math.max(exit, math.max(0, row.run - distToSegment(row.at, r.from, r.place)) / speed);
+    }
+    const now = DotaTime();
+    // Half-second steps up: about 50 places a frame share at most six estimates per enemy. Not for a walk away (a trip's gate):
+    // the hero means to stay at its end, and only own-place reads were replayed.
+    const w = Ours.On("ExitWindow") && !opts.away ? math.ceil((exit + SETTINGS.ExitTurn) * 2) / 2 : SETTINGS.KillWindow;
+    for (const row of r.rows) {
+        // The read's `eng` covers 1 s and is absent on a read without an engaged window: a hero between swings is not idle.
+        const capped = !row.eng && row.u !== undefined && w < SETTINGS.KillWindow && !pressedBy(bot, row.u, now);
+        reach.push({ pid: row.pid, hitting: row.eng, dmg: capped ? math.min(row.dmg, exitDamage(bot, row.u!, w, now)) : row.dmg });
     }
     for (const l of lanerRows(bot, r)) reach.push(l);
     return {
@@ -398,6 +452,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(laners)) delete laners[k as unknown as number];
     for (const k of Object.keys(towerSeen)) delete towerSeen[k as unknown as number];
     for (const k of Object.keys(pressSeen)) delete pressSeen[k as unknown as number];
+    for (const k of Object.keys(exitSeen)) delete exitSeen[k as unknown as number];
     for (const k of Object.keys(cutState)) delete cutState[k];
 }
 

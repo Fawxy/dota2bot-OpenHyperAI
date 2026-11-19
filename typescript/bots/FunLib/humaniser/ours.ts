@@ -136,6 +136,9 @@ export const DEFAULTS = {
      *  purchases, teleport home and courier skip that hero, and the support's pull supply asks it. Off: OHA's, the supply step's
      *  own rule, and retreat's heal floor sends the hero home. */
     Sustain: true,
+    /** Plan after the collapse, variant D (an experiment): the safe read counts an enemy hero that is not hitting us over the
+     *  walk out of every reacher's range plus `SafeGather.SETTINGS.ExitTurn`, not the full `KillWindow`. Off: `KillWindow`. */
+    ExitWindow: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

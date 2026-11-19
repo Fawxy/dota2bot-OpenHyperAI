@@ -101,6 +101,8 @@ export interface ReachRow {
     eng: boolean;
     at: Vector;
     run: number;
+    /** The hero's handle, for a consumer that counts it over another window (safe_gather's exit window). */
+    u?: Unit;
 }
 
 export interface Read {
@@ -418,7 +420,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
             }
             if (e.att === true) att.push(e.pid);
             if (e.eng === true) eng.push(e.pid);
-            rows.push({ pid: e.pid, dmg: e.dmg, eng: e.eng === true, at: e.at, run: e.run });
+            rows.push({ pid: e.pid, dmg: e.dmg, eng: e.eng === true, at: e.at, run: e.run, u: e.u });
             dmg += e.dmg;
         }
         let near = 0;
