@@ -7,12 +7,14 @@
  * ends it, whether it needs a tree, refills or can be given, from the item and its modifier at run time. The rules read
  * only those properties. An instant HP item (wand, stick, faerie fire) is kept for rule 1 and counts in `reachable`.
  *
- * Rules, first match (design section 2): 1 survive, 2 cannot stay, 3 top up, 4 mana, 5 buy ahead, 6 give.
+ * Rules, first match (design section 2): 1 survive, 2 cannot stay, 3 top up, 4 mana, 5 buy ahead, 6 give. Rule 2 waits at the
+ * safe spot for a delivery on its way that lifts us over the kill line (eating a tango meanwhile), and ships one when the courier
+ * comes sooner than the walk home (tango and ship: a tango eaten now with a purchase sent `also`).
  */
 import { SETTINGS as RetreatSettings } from "bots/FunLib/humaniser/retreat";
 import { BARS as SafeBars } from "bots/FunLib/humaniser/safe";
 
-export type Kind = "none" | "use" | "step_out_use" | "give" | "buy" | "home";
+export type Kind = "none" | "use" | "step_out_use" | "give" | "buy" | "home" | "wait";
 
 /** Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, its bar (`stay`) the safe-here read's: read at call time, not copied. */
 export const BARS = {
@@ -24,6 +26,14 @@ export const BARS = {
     castSlack: 0.5,
     /** Rule 3 with no hit due (no wave near) or in an idle window: the longest tango walk there and back (s). judgement: 4 s each way costs no lane time there. */
     idleWalk: 8,
+    /**
+     * Rule 2 sends a hero home only under this HP share, whatever the kill line: above it a hero plays back in lane, and a place
+     * the lane can kill it in is retreat's to leave (smoke sustain-home 1: walks home at 65% and 74% HP when a lane's burst read
+     * 536 of 840). judgement, before tonight's batch.
+     */
+    homeCap: 0.5,
+    /** Rule 5 buys mana only under this share (OHA's clarity purchase bar, 30%; smoke 1: a core bought four clarities at 40%). judgement. */
+    manaBuy: 0.3,
 };
 
 /** One heal or mana item in slots 0-8. */
@@ -92,8 +102,12 @@ export interface Inputs {
     /** HP and mana the regen buffs on us still restore. */
     regenLeft: number;
     manaLeft: number;
-    /** A point out of every seen enemy's reach, and the seconds to walk there. */
-    safeSpot?: { x: number; y: number; walk: number };
+    /** A point out of every seen enemy's reach, and the seconds to walk there; `ok` false when the safe-here read there (held) is `deadly`, so no wait runs there (missing: not read, taken as safe). */
+    safeSpot?: { x: number; y: number; walk: number; ok?: boolean };
+    /** Regen on its way, whoever bought it (heal and mana items in the stash or on the courier, read from the game): what it restores and the seconds until it can land. */
+    delivery?: { hp: number; mp: number; eta: number };
+    /** A free slot in 0-8 for a purchase to land in (missing: room). */
+    room?: boolean;
     gold: number;
     /** Set when the courier is free and alive: seconds to deliver a purchase. */
     courier?: { eta: number };
@@ -114,8 +128,10 @@ export interface Answer {
     name?: string;
     /** `give`: the ally. */
     to?: number;
-    /** `step_out_use` and a `buy` that waits: where. */
+    /** `step_out_use`, `wait` and a `buy` or tango that waits: where. */
     at?: { x: number; y: number };
+    /** A purchase sent with a use (rule 2's tango and ship). */
+    also?: string;
     /** The rule that decided (for `none`: why nothing). */
     reason: string;
     /** Why a running answer ended this frame, if it did. */
@@ -218,15 +234,41 @@ function survive(i: Inputs): Answer | undefined {
     return undefined;
 }
 
-/** Rule 2: what the items reach is under the kill line. Low on HP and mana goes home at once; else a delivery that lifts us over it, waited for at a safe spot, if it comes sooner than the trip; else home. Nothing is spent. */
-function cannotStay(i: Inputs, kill: number): Answer | undefined {
+/** Rule 2's tango: a tree item castable now with no regen running (a recast refreshes the buff; it does not stack). */
+function tangoNow(i: Inputs): Item | undefined {
+    if (i.regenLeft > 0) return undefined;
+    for (const it of i.items) if (it.tree && it.hp > 0 && usable(i, it)) return it;
+    return undefined;
+}
+
+/**
+ * Rule 2: what the items reach is under the kill line. Low on HP and mana goes home at once. A delivery on its way that lifts us
+ * over the line is waited for at the safe spot (a tango eaten meanwhile); else, the courier sooner than the trip, the purchase that
+ * lifts us over it is sent, with a tango eaten now when one is in hand (tango and ship); else home. Nothing else is spent: an item
+ * used and then the walk home anyway is the waste the rule exists to stop (user 19/11/2026). The wait and the shipment need a safe
+ * spot the safe-here read there does not call deadly.
+ */
+function cannotStay(i: Inputs, line: number): Answer | undefined {
+    const kill = math.min(line, BARS.homeCap * i.hpMax);
     const reach = Reachable(i);
     if (reach >= kill) return undefined;
     if (manaLow(i)) return { kind: "home", reason: "low_both" };
+    const spot = i.safeSpot !== undefined && i.safeSpot.ok !== false ? { x: i.safeSpot.x, y: i.safeSpot.y } : undefined;
+    if (spot === undefined) return { kind: "home", reason: "cannot_stay" };
+    const d = i.delivery;
+    if (d !== undefined) {
+        // No free slot: it cannot land, so it is not waited for.
+        if (reach + d.hp < kill || d.eta >= i.home || i.room === false) return { kind: "home", reason: "cannot_stay" };
+        const t = tangoNow(i);
+        if (t !== undefined) return { kind: "use", slot: t.slot, name: t.name, at: spot, reason: "wait_tango" };
+        return { kind: "wait", at: spot, reason: "delivery" };
+    }
+    if (i.courier === undefined || i.courier.eta >= i.home || i.room === false) return { kind: "home", reason: "cannot_stay" };
     const o = pickCover(i, kill - reach);
-    if (o !== undefined && i.courier !== undefined && i.courier.eta < i.home && i.safeSpot !== undefined)
-        return { kind: "buy", name: o.name, at: { x: i.safeSpot.x, y: i.safeSpot.y }, reason: "cannot_stay" };
-    return { kind: "home", reason: "cannot_stay" };
+    if (o === undefined) return { kind: "home", reason: "cannot_stay" };
+    const t = tangoNow(i);
+    if (t !== undefined) return { kind: "use", slot: t.slot, name: t.name, at: spot, also: o.name, reason: "tango_ship" };
+    return { kind: "buy", name: o.name, at: spot, reason: "cannot_stay" };
 }
 
 /**
@@ -264,9 +306,10 @@ function mana(i: Inputs): Answer | undefined {
     return best !== undefined ? use(best, "mana") : undefined;
 }
 
-/** Rule 5: no heal item in hand under the top-up line (or no mana item with mana low), and the courier free: buy. */
+/** Rule 5: no heal item in hand under the top-up line (or no mana item with mana low), the courier free and nothing on its way: buy. */
 function buyAhead(i: Inputs, kill: number): Answer | undefined {
-    if (i.courier === undefined) return undefined;
+    // One purchase on its way at a time; none at the fountain (it heals there) or with no slot for it to land in.
+    if (i.courier === undefined || i.delivery !== undefined || i.atFountain || i.room === false) return undefined;
     let heals = false;
     let manas = false;
     for (const it of i.items) {
@@ -278,7 +321,7 @@ function buyAhead(i: Inputs, kill: number): Answer | undefined {
         const o = pickHp(i, i.hpMax - i.hp);
         if (o !== undefined) return { kind: "buy", name: o.name, reason: "buy_hp" };
     }
-    if (!manas && manaLow(i)) {
+    if (!manas && i.mpMax > 0 && i.mp < BARS.manaBuy * i.mpMax) {
         const o = pickMp(i);
         if (o !== undefined) return { kind: "buy", name: o.name, reason: "buy_mana" };
     }

@@ -29,6 +29,36 @@ export function SetRunning(bot: Unit, on: boolean): void {
     running[bot.GetPlayerID()] = on ? true : (undefined as any);
 }
 
+/** Sustain's answer for a hero it carries (sustain_act.ts writes it at each decision, so retreat reads it without importing sustain). */
+const home: Record<number, { on: boolean; at: number } | undefined> = {};
+const healing: Record<number, boolean> = {};
+
+/** A sustain answer older than this (s) is not read: retreat's own heal floor decides. Sustain decides every 0.5 s, but a running use skips its decisions until it starts (a tango walk's deadline: walk plus 1.5 s). */
+export const HOME_FRESH = 10;
+
+/** sustain_act.ts, each decision for a hero it carries: whether rule 2 sends it home; undefined once it no longer carries it. */
+export function SetHome(bot: Unit, on: boolean | undefined): void {
+    home[bot.GetPlayerID()] = on === undefined ? undefined : { on, at: DotaTime() };
+}
+
+/** Sustain's going-home answer (design 2026-11-19-sustain-design.md rule 2), or undefined when sustain does not carry the hero or has not decided lately. */
+export function Home(bot: Unit): boolean | undefined {
+    const h = home[bot.GetPlayerID()];
+    if (h === undefined || DotaTime() - h.at > HOME_FRESH) return undefined;
+    return h.on;
+}
+
+/** A heal episode (the walk home) of our retreat runs for this hero: sustain spends nothing meanwhile (its `home` run). */
+export function Healing(bot: Unit): boolean {
+    return healing[bot.GetPlayerID()] === true;
+}
+
+export function SetHealing(bot: Unit, on: boolean): void {
+    healing[bot.GetPlayerID()] = on ? true : (undefined as any);
+}
+
 export function ResetCache(): void {
     for (const k of Object.keys(running)) delete running[k as unknown as number];
+    for (const k of Object.keys(home)) delete home[k as unknown as number];
+    for (const k of Object.keys(healing)) delete healing[k as unknown as number];
 }

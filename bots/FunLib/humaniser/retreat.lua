@@ -190,112 +190,8 @@ local function __TS__ArraySort(self, compareFn)
     return self
 end
 
-local function __TS__ArrayIncludes(self, searchElement, fromIndex)
-    if fromIndex == nil then
-        fromIndex = 0
-    end
-    local len = #self
-    local k = fromIndex
-    if fromIndex < 0 then
-        k = len + fromIndex
-    end
-    if k < 0 then
-        k = 0
-    end
-    for i = k + 1, len do
-        if self[i] == searchElement then
-            return true
-        end
-    end
-    return false
-end
-
-local function __TS__ArrayMap(self, callbackfn, thisArg)
-    local result = {}
-    for i = 1, #self do
-        result[i] = callbackfn(thisArg, self[i], i - 1, self)
-    end
-    return result
-end
-
-local function __TS__ArrayEvery(self, callbackfn, thisArg)
-    for i = 1, #self do
-        if not callbackfn(thisArg, self[i], i - 1, self) then
-            return false
-        end
-    end
-    return true
-end
-
 local function __TS__CountVarargs(...)
     return select("#", ...)
-end
-
-local function __TS__ArrayReduce(self, callbackFn, ...)
-    local len = #self
-    local k = 0
-    local accumulator = nil
-    if __TS__CountVarargs(...) ~= 0 then
-        accumulator = ...
-    elseif len > 0 then
-        accumulator = self[1]
-        k = 1
-    else
-        error("Reduce of empty array with no initial value", 0)
-    end
-    for i = k + 1, len do
-        accumulator = callbackFn(
-            nil,
-            accumulator,
-            self[i],
-            i - 1,
-            self
-        )
-    end
-    return accumulator
-end
-
-local function __TS__StringStartsWith(self, searchString, position)
-    if position == nil or position < 0 then
-        position = 0
-    end
-    return string.sub(self, position + 1, #searchString + position) == searchString
-end
-
-local function __TS__ArraySlice(self, first, last)
-    local len = #self
-    first = first or 0
-    if first < 0 then
-        first = len + first
-        if first < 0 then
-            first = 0
-        end
-    else
-        if first > len then
-            first = len
-        end
-    end
-    last = last or len
-    if last < 0 then
-        last = len + last
-        if last < 0 then
-            last = 0
-        end
-    else
-        if last > len then
-            last = len
-        end
-    end
-    local out = {}
-    first = first + 1
-    last = last + 1
-    local n = 1
-    while first < last do
-        out[n] = self[first]
-        first = first + 1
-        n = n + 1
-    end
-    return out
 end
 
 local function __TS__SparseArrayNew(...)
@@ -318,18 +214,8 @@ local function __TS__SparseArraySpread(sparseArray)
     local _unpack = unpack or table.unpack
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
-
-local function __TS__ArraySome(self, callbackfn, thisArg)
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            return true
-        end
-    end
-    return false
-end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, enemyOf, valid, ownTowersBehind, nearestTowerBehind, FOUNTAIN, TOWER_IDS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Shop = ____dota.Shop
 local Team = ____dota.Team
@@ -344,77 +230,19 @@ local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
-function dist(a, b)
-    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
-end
-function enemyOf(team)
-    return team == Team.Radiant and Team.Dire or Team.Radiant
-end
-function valid(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
-end
-function ____exports.Fountain(team)
-    local x, y, z = unpack(FOUNTAIN[team])
-    return Vector(x, y, z)
-end
-function ownTowersBehind(bot)
-    local team = bot:GetTeam()
-    local ef = ____exports.Fountain(enemyOf(team))
-    local mine = dist(
-        bot:GetLocation(),
-        ef
-    )
-    local out = {}
-    for ____, id in ipairs(TOWER_IDS) do
-        local tw = GetTower(team, id)
-        if valid(tw) and dist(
-            tw:GetLocation(),
-            ef
-        ) > mine - ____exports.SETTINGS.TowerStandBack then
-            out[#out + 1] = tw
-        end
-    end
-    return out
-end
-function nearestTowerBehind(bot)
-    local best
-    local bestD = math.huge
-    for ____, t in ipairs(ownTowersBehind(bot)) do
-        local d = GetUnitToUnitDistance(bot, t)
-        if d < bestD then
-            best = t
-            bestD = d
-        end
-    end
-    return best
-end
 ____exports.SETTINGS = {
     Horizon = Threat.SETTINGS.StayHorizon,
     EngagedWindow = Threat.SETTINGS.StayEngaged,
     HealFloor = 0.3,
     HealUntil = 0.8,
-    HealBack = 0.5,
     RouteStep = 300,
     SecsPerCost = 5,
     RegenItems = {"item_tango", "item_tango_single", "item_flask", "item_faerie_fire"},
     RegenCredit = 1,
-    HealSets = {
-        {"tango_single"},
-        {"tango"},
-        {"salve"},
-        {"fire"},
-        {"salve", "tango"},
-        {"tango", "fire"}
-    },
-    HealTree = 300,
-    HealUseWait = 1.5,
-    HealItemHorizon = Threat.SETTINGS.GateHorizon,
-    HealItemUnseenMargin = 200,
     EpisodeDesire = 0.95,
     DrillDesire = 1,
     Arrive = 200,
@@ -429,8 +257,9 @@ ____exports.SETTINGS = {
     DrillMinHP = 0.5,
     DrillSpotArrive = 150
 }
-FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6624, 6368, 392}}
-TOWER_IDS = {
+--- Valve's fountain spots (as drill.ts); GetShopLocation(team, SHOP_HOME) is logged beside them at load.
+local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6624, 6368, 392}}
+local TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,
     Tower.Top3,
@@ -443,7 +272,6 @@ TOWER_IDS = {
     Tower.Base1,
     Tower.Base2
 }
-local HEAL_ITEM = {tango_single = {name = "item_tango_single", modifier = "modifier_tango_heal"}, tango = {name = "item_tango", modifier = "modifier_tango_heal"}, salve = {name = "item_flask", modifier = "modifier_flask_healing"}, fire = {name = "item_faerie_fire"}}
 local states = {}
 local episodes = 0
 local fountainLogged = false
@@ -465,14 +293,27 @@ local function stateOf(bot)
     end
     return s
 end
+local function dist(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
 local function hpShare(bot)
     return bot:GetHealth() / math.max(
         1,
         bot:GetMaxHealth()
     )
 end
+local function enemyOf(team)
+    return team == Team.Radiant and Team.Dire or Team.Radiant
+end
+local function valid(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
+end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
+end
+function ____exports.Fountain(team)
+    local x, y, z = unpack(FOUNTAIN[team])
+    return Vector(x, y, z)
 end
 local function logFountain()
     if fountainLogged then
@@ -660,6 +501,27 @@ local function routeCost(bot, from, to, units)
     end
     return cost
 end
+--- Our standing towers that are not ahead of the hero: no nearer the enemy fountain than it, less TowerStandBack. Not our own
+-- fountain's distance: in the safe lane our T1 is farther from our fountain than our pull camp (drill rtwalk1).
+local function ownTowersBehind(bot)
+    local team = bot:GetTeam()
+    local ef = ____exports.Fountain(enemyOf(team))
+    local mine = dist(
+        bot:GetLocation(),
+        ef
+    )
+    local out = {}
+    for ____, id in ipairs(TOWER_IDS) do
+        local tw = GetTower(team, id)
+        if valid(tw) and dist(
+            tw:GetLocation(),
+            ef
+        ) > mine - ____exports.SETTINGS.TowerStandBack then
+            out[#out + 1] = tw
+        end
+    end
+    return out
+end
 local function towards(a, b, by)
     local d = math.max(
         1,
@@ -761,18 +623,6 @@ local function anchorsOf(bot, why)
     end
     return out
 end
---- Whether our lane front of the hero's lane is nearer than our fountain: going back costs less walk than going on.
-local function laneNearer(bot, here)
-    local front = GetLaneFrontLocation(
-        bot:GetTeam(),
-        bot:GetAssignedLane(),
-        0
-    )
-    return front ~= nil and dist(here, front) < dist(
-        here,
-        ____exports.Fountain(bot:GetTeam())
-    )
-end
 --- Whether a healing item is held in the inventory (slots 0-5).
 local function regenHeld(bot)
     for ____, name in ipairs(____exports.SETTINGS.RegenItems) do
@@ -828,284 +678,9 @@ function ____exports.SafeSpot(bot)
     end
     return ____temp_3
 end
---- Enemy heroes who can reach `bot` within HealItemHorizon, seen or just out of sight: items wait for none. Also the nearest
--- enemy hero's last sighting (distance, seconds since), for the log.
-local function itemReach(bot)
-    local s = ____exports.SETTINGS
-    local t = Threat.SETTINGS
-    local here = bot:GetLocation()
-    local read = Threat.Read(bot, here, here, s.HealItemHorizon)
-    local n = #read.reach
-    local near
-    local tss
-    do
-        local pid = 0
-        while pid <= 23 do
-            do
-                local __continue79
-                repeat
-                    local team = GetTeamForPlayer(pid)
-                    if team == bot:GetTeam() or team ~= Team.Radiant and team ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue79 = true
-                        break
-                    end
-                    local info = GetHeroLastSeenInfo(pid)[1]
-                    if info == nil then
-                        __continue79 = true
-                        break
-                    end
-                    local d = dist(info.location, here)
-                    if near == nil or d < near then
-                        near = d
-                        tss = info.time_since_seen
-                    end
-                    if __TS__ArrayIncludes(read.reach, pid) or info.time_since_seen <= 0.1 or info.time_since_seen > t.MissingAfter then
-                        __continue79 = true
-                        break
-                    end
-                    if d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin then
-                        n = n + 1
-                    end
-                    __continue79 = true
-                until true
-                if not __continue79 then
-                    break
-                end
-            end
-            pid = pid + 1
-        end
-    end
-    return n, near, tss
-end
-local function planItems(bot, ep)
-    local s = ____exports.SETTINGS
-    local max = math.max(
-        1,
-        bot:GetMaxHealth()
-    )
-    local need = math.ceil(s.HealBack * max - bot:GetHealth())
-    local here = bot:GetLocation()
-    local salveHeld = ItemUse.Usable(bot, HEAL_ITEM.salve.name) ~= nil
-    local tree = ItemUse.TangoTree(bot, s.HealTree)
-    local got = {}
-    for ____, k in ipairs(__TS__ObjectKeys(HEAL_ITEM)) do
-        do
-            local __continue86
-            repeat
-                local it = ItemUse.Usable(bot, HEAL_ITEM[k].name)
-                if it == nil then
-                    __continue86 = true
-                    break
-                end
-                local mod = HEAL_ITEM[k].modifier
-                if mod ~= nil and bot:HasModifier(mod) then
-                    __continue86 = true
-                    break
-                end
-                if (k == "tango" or k == "tango_single") and tree == nil then
-                    __continue86 = true
-                    break
-                end
-                if k == "fire" and salveHeld then
-                    __continue86 = true
-                    break
-                end
-                got[k] = ItemUse.HpRestore(it)
-                __continue86 = true
-            until true
-            if not __continue86 then
-                break
-            end
-        end
-    end
-    local set
-    local restore = 0
-    for ____, cand in ipairs(s.HealSets) do
-        do
-            local __continue92
-            repeat
-                local items = __TS__ArrayMap(
-                    cand,
-                    function(____, k) return #cand > 1 and k == "tango" and got.tango_single ~= nil and "tango_single" or k end
-                )
-                if not __TS__ArrayEvery(
-                    items,
-                    function(____, k) return got[k] ~= nil end
-                ) then
-                    __continue92 = true
-                    break
-                end
-                local sum = __TS__ArrayReduce(
-                    items,
-                    function(____, a, k) return a + (got[k] or 0) end,
-                    0
-                )
-                if sum >= need then
-                    set = items
-                    restore = sum
-                    break
-                end
-                __continue92 = true
-            until true
-            if not __continue92 then
-                break
-            end
-        end
-    end
-    local tower = nearestTowerBehind(bot)
-    local reachN, near, tss = itemReach(bot)
-    local skip = not laneNearer(bot, here) and "fountain" or (reachN > 0 and "reach" or (#__TS__ObjectKeys(got) == 0 and "none" or (set == nil and "short" or (tower == nil and "no-tower" or nil))))
-    Telemetry.Event(
-        "retreat",
-        {
-            {"ph", "items"},
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"ep", ep.id},
-            {"need", need},
-            {
-                "held",
-                table.concat(
-                    __TS__ObjectKeys(got),
-                    ","
-                ) or "-"
-            },
-            {
-                "set",
-                skip == nil and set ~= nil and table.concat(set, ",") or "-"
-            },
-            {
-                "got",
-                math.floor(restore)
-            },
-            {"tree", tree ~= nil},
-            {"skip", skip or "-"},
-            {
-                "ed",
-                near ~= nil and math.floor(near) or -1
-            },
-            {
-                "ets",
-                tss ~= nil and r2(tss) or -1
-            }
-        }
-    )
-    if skip ~= nil or set == nil or tower == nil then
-        return
-    end
-    ep.uses = __TS__ArraySort(
-        __TS__ArraySlice(set),
-        function(____, a, b) return (__TS__StringStartsWith(b, "tango") and 1 or 0) - (__TS__StringStartsWith(a, "tango") and 1 or 0) end
-    )
-    ep.tree = tree
-    ep.itemHeal = true
-    local p = standPoint(
-        tower,
-        bot:GetTeam()
-    )
-    ep.anchor = {
-        kind = "tower",
-        at = p,
-        cost = ep.anchor.cost,
-        len = dist(here, p)
-    }
-end
---- HealItems: the wait at our tower ends, and the walk home resumes, when a hero reaches us or the items are spent without a `healed` end.
-local function itemHealOn(bot, ep, r, now)
-    local spent = (ep.uses == nil or #ep.uses == 0) and (ep.useUntil == nil or now >= ep.useUntil) and not bot:HasModifier("modifier_tango_heal") and not bot:HasModifier("modifier_flask_healing")
-    local reachN = itemReach(bot)
-    local why = (#r.reach > 0 or reachN > 0) and "reach" or (spent and "spent" or nil)
-    if why == nil then
-        return
-    end
-    ep.itemHeal = false
-    ep.uses = nil
-    local f = ____exports.Fountain(bot:GetTeam())
-    ep.anchor = {
-        kind = "fountain",
-        at = f,
-        cost = ep.anchor.cost,
-        len = dist(
-            bot:GetLocation(),
-            f
-        )
-    }
-    Telemetry.Event(
-        "retreat",
-        {
-            {"ph", "items_off"},
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"ep", ep.id},
-            {"skip", why},
-            {
-                "hp",
-                r2(hpShare(bot))
-            }
-        }
-    )
-end
---- HealItems, from Think: the next use, or true while the last one's wait holds every other order.
-local function useItems(bot, st, ep, now)
-    if ep.useUntil ~= nil then
-        local ____temp_4
-        if ep.useMod ~= nil then
-            ____temp_4 = bot:HasModifier(ep.useMod)
-        else
-            ____temp_4 = bot:GetHealth() > (ep.useHp or 0)
-        end
-        local shown = ____temp_4
-        if now < ep.useUntil and not shown then
-            return true
-        end
-        ep.useUntil = nil
-    end
-    local ____opt_5 = ep.uses
-    local k = ____opt_5 and table.remove(ep.uses, 1)
-    if k == nil then
-        return false
-    end
-    local item = ItemUse.Usable(bot, HEAL_ITEM[k].name)
-    Telemetry.Event(
-        "retreat",
-        {
-            {"ph", "use"},
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"ep", ep.id},
-            {"set", k},
-            {"skip", item == nil and "gone" or "-"},
-            {
-                "hp",
-                r2(hpShare(bot))
-            }
-        }
-    )
-    if item == nil then
-        return false
-    end
-    ep.useUntil = now + ____exports.SETTINGS.HealUseWait
-    ep.useMod = HEAL_ITEM[k].modifier
-    ep.useHp = bot:GetHealth()
-    st.orderTo = nil
-    if k == "fire" then
-        ItemUse.UseNoTarget(bot, item)
-    elseif k == "salve" then
-        ItemUse.UseOnSelf(bot, item)
-    elseif ep.tree ~= nil then
-        ItemUse.UseOnTree(bot, item, ep.tree)
-    end
-    return true
-end
 local function start(bot, st, why, r, a, purp, spot, rep)
     local now = DotaTime()
-    local anchor, alt, minExp, regen = unpack(chooseAnchor(bot, why))
+    local anchor, alt, minExp, regen = unpack(chooseAnchor(bot, why == "heal" and a ~= nil and a.kill > 0 and "threat" or why))
     episodes = episodes + 1
     local hp = hpShare(bot)
     st.ep = {
@@ -1119,16 +694,14 @@ local function start(bot, st, why, r, a, purp, spot, rep)
         twr = false,
         wave = false
     }
-    if why == "heal" and Ours.On("HealItems") and Ours.On("HealStop") then
-        planItems(bot, st.ep)
-    end
     RetreatState.SetRunning(bot, true)
+    RetreatState.SetHealing(bot, why == "heal")
     Chooser.Abort(bot, "retreat")
     Lane_.CampJobAbort(bot, "retreat")
     FarmPattern.Abort(bot, "retreat")
     local here = bot:GetLocation()
-    local ____Telemetry_Event_11 = Telemetry.Event
-    local ____array_10 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_8 = Telemetry.Event
+    local ____array_7 = __TS__SparseArrayNew(
         {"ph", "start"},
         {
             "pid",
@@ -1164,15 +737,15 @@ local function start(bot, st, why, r, a, purp, spot, rep)
         },
         {"tower", r.tower}
     )
-    local ____temp_9
+    local ____temp_6
     if #r.reach > 0 then
-        ____temp_9 = r.escape
+        ____temp_6 = r.escape
     else
-        ____temp_9 = nil
+        ____temp_6 = nil
     end
     __TS__SparseArrayPush(
-        ____array_10,
-        {"esc", ____temp_9},
+        ____array_7,
+        {"esc", ____temp_6},
         {"purp", purp},
         {"anchor", anchor.kind},
         {"cost", anchor.cost},
@@ -1195,9 +768,9 @@ local function start(bot, st, why, r, a, purp, spot, rep)
             math.floor(here.y)
         }
     )
-    ____Telemetry_Event_11(
+    ____Telemetry_Event_8(
         "retreat",
-        {__TS__SparseArraySpread(____array_10)}
+        {__TS__SparseArraySpread(____array_7)}
     )
 end
 local function ____end(bot, st, res)
@@ -1209,6 +782,7 @@ local function ____end(bot, st, res)
     st.leave = nil
     st.orderTo = nil
     RetreatState.SetRunning(bot, false)
+    RetreatState.SetHealing(bot, false)
     local max = math.max(
         1,
         bot:GetMaxHealth()
@@ -1286,16 +860,17 @@ local function step(bot, st, r, now)
         return SafeGather.At(bot, here, {held = false, who = "retreat"})
     end
     if ep.why == "heal" then
-        if at and hpShare(bot) >= s.HealUntil then
-            return "anchor"
+        if at and ep.anchor.kind ~= "fountain" then
+            local f = ____exports.Fountain(bot:GetTeam())
+            ep.anchor = {
+                kind = "fountain",
+                at = f,
+                cost = ep.anchor.cost,
+                len = dist(here, f)
+            }
+            return nil
         end
-        if Ours.On("HealStop") and hpShare(bot) >= s.HealBack and #r.reach == 0 and fresh().level ~= "deadly" and laneNearer(bot, here) then
-            return "healed"
-        end
-        if ep.itemHeal == true then
-            itemHealOn(bot, ep, r, now)
-        end
-        return nil
+        return at and hpShare(bot) >= s.HealUntil and "anchor" or nil
     end
     if at then
         if forced or fresh().level ~= "deadly" then
@@ -1323,7 +898,8 @@ local function step(bot, st, r, now)
     end
     return a.level ~= "deadly" and "safe" or nil
 end
---- The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once, the heal floor with nobody in reach,
+--- The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once; the walk home where the place is not
+-- deadly, when sustain's rule 2 says so for a hero it carries (`RetreatState.Home`), else at the heal floor with nobody in reach;
 -- else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
 -- under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
 -- stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
@@ -1339,7 +915,14 @@ function ____exports.LeaveWhy(bot, holds)
     if ____exports.TowerOnUs(bot) ~= nil then
         return {why = "tower", a = a}
     end
-    if hpShare(bot) < ____exports.SETTINGS.HealFloor and a.kill == 0 then
+    local home = RetreatState.Home(bot)
+    local ____temp_9
+    if home == nil then
+        ____temp_9 = hpShare(bot) < ____exports.SETTINGS.HealFloor and a.kill == 0
+    else
+        ____temp_9 = home and a.level ~= "deadly"
+    end
+    if ____temp_9 then
         return {why = "heal", a = a}
     end
     if a.level ~= "deadly" then
@@ -1644,9 +1227,6 @@ function ____exports.Think(bot)
         return
     end
     if st.ep ~= nil then
-        if st.ep.itemHeal == true and useItems(bot, st, st.ep, now) then
-            return
-        end
         moveTo(
             bot,
             st,
@@ -1691,32 +1271,6 @@ end
 --- The lane-only drill harness steps aside for our retreat while an episode runs (mode_laning_generic).
 function ____exports.Running(bot)
     return RetreatState.Running(bot)
-end
---- HealItems: OHA's item code (ItemUsageComplement, roam's tango) leaves our heal items alone on a hero our retreat owns while
--- a heal episode runs, or under the heal floor (where one starts; faerie fire only with nobody in reach): the heal start's plan decides their
--- use, and a walk home keeps them. hi1: OHA drank the planned salve the frame our episode started (rep 2), and in the second
--- between a `gone` end and the heal start (rep 5). In a fight OHA's salve and faerie fire stay. Reads the cached read only.
-function ____exports.HoldsItem(bot, name)
-    if not Ours.On("HealItems") or not Ours.On("HealStop") or not RetreatState.Owns(bot) then
-        return false
-    end
-    if not __TS__ArraySome(
-        __TS__ObjectKeys(HEAL_ITEM),
-        function(____, k) return HEAL_ITEM[k].name == name end
-    ) then
-        return false
-    end
-    local st = states[bot:GetPlayerID()]
-    if (st and st.ep) ~= nil then
-        return st.ep.why == "heal"
-    end
-    if hpShare(bot) >= ____exports.SETTINGS.HealFloor then
-        return false
-    end
-    if name ~= HEAL_ITEM.fire.name then
-        return true
-    end
-    return (st and st.read) ~= nil and #st.read.reach == 0
 end
 --- mode_farm_generic: none of ShouldRun's runs apply to a hero our retreat owns.
 function ____exports.Owns(bot)

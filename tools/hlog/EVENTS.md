@@ -856,14 +856,14 @@ Slice retreat (retreat.ts): one start and one end per episode of our retreat, an
 - `dist` num: Distance to the anchor.
 - `spot` str: In a drill, the forced start spot.
 - `rep` num: In a drill, the rep.
-- `res` str: On `end`: `gone` (nobody in reach), `safe` (the band's dwell), `healed` (a heal walk back over `HealBack` with the lane nearer than the fountain; `Ours.HealStop`), `anchor`, `died` or `cut`.
+- `res` str: On `end`: `gone` (nobody in reach), `safe` (the band's dwell), `healed` (older logs only: the retired HealStop), `anchor`, `died` or `cut`.
 - `secs` num: Seconds the episode lasted.
 - `hpl` num: HP lost during the episode, as a share of max.
 - `twr` bool: 1 when the walk passed enemy tower reach.
 - `wave` bool: 1 when the walk passed enemy wave reach.
 - `dmgh` num: Hero damage taken, as a share of max.
 - `crp` bool: On `ph=read`: 1 when an enemy creep hit the hero in the last second.
-- `need` num: HealItems (ph=items, use, items_off): HP to HealBack, the usable heal items, the set used (or the item, on use), what it restores, a tree near, why not.
+- `need` num: Older logs only (the retired HealItems, ph=items, use, items_off): HP to HealBack, the usable heal items, the set used (or the item, on use), what it restores, a tree near, why not.
 
 ## tr_caution
 
@@ -1399,7 +1399,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's.
 
-`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `lw` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num, `mi` num, `svh` str, `svb` str, `src` str, `how` str, `why` str, `ed` str, `cth` num, `cdm` num, `cft` num, `csf` num, `utw` num, `uou` num, `uth` num, `hpm` num, `mpa` num, `mpm` num, `rc` num, `ml` num, `co` num, `shp` str, `ho` num, `af` num, `anm` str, `ato` num, `stw` str, `ld` str, `ex` num, `awy` num, `hld` num, `hd` num, `kill` num, `ra` num, `pr` num, `ord` str, `tg` str, `cur` num, `pre` str, `far` str, `idle` str, `ans` str
+`pid` num, `band` str, `aa` num, `free` str, `thp` num, `ally` num, `hc` num, `lf` num, `rch` num, `tm` num, `lw` num, `tar` num, `tme` num, `fpt` num, `ftd` num, `alv` num, `sn` num, `oa` num, `sa` num, `jn` str, `ms` num, `tms` num, `sp` str, `lx` num, `ly` num, `tss` num, `mi` num, `svh` str, `svb` str, `src` str, `how` str, `why` str, `ed` str, `cth` num, `cdm` num, `cft` num, `csf` num, `utw` num, `uou` num, `uth` num, `hpm` num, `mpa` num, `mpm` num, `rc` num, `ml` num, `rom` num, `co` num, `shp` str, `ho` num, `af` num, `anm` str, `ato` num, `stw` str, `ld` str, `ex` num, `awy` num, `hld` num, `hd` num, `kill` num, `ra` num, `pr` num, `ord` str, `tg` str, `cur` num, `pre` str, `far` str, `idle` str, `ans` str
 
 - `kind` str: The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (SafeGather.TripGate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`), `pick` (states/laning.ts choose: the laning body's creep pick, LanePick.Choose; `ans`, `ak`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer.
 - `role` str: The spot's role input (`trade`: the trading hero's): `core` or `support`.
@@ -1477,21 +1477,24 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `nd` num: kind=sustain: seconds until the next last hit or deny is due in our lane (Laning.NextDue); absent with no creep near.
 - `act` num: kind=sustain: 1 when sustain_act.ts carries this answer out (`Ours.Sustain`, a held hero).
 - `rl` num: kind=sustain: HP and mana the running regen buffs still restore.
-- `ss` str: kind=sustain: the safe spot (retreat's `threat` anchor) `x,y,walk seconds`.
+- `ss` str: kind=sustain: the safe spot (retreat's `threat` anchor) `x,y,walk seconds,ok` (ok 0: the safe-here read there calls it deadly; read only under the kill line, else 1).
+- `dl` str: kind=sustain: regen on its way, whoever bought it (heal and mana items in the stash or on the courier) `hp,mp,eta seconds` (absent: none); `rom` 1 when a slot in 0-8 is free for one to land in.
+- `alb` str: kind=sustain: the purchase sent with a use (rule 2's tango and ship).
 - `gd` num: kind=sustain: gold; the courier's delivery seconds when free (absent: busy or dead); the shop `name,cost,hp,mp` per `;`; seconds to the fountain and back.
 - `idl` num: kind=sustain: idle (a camp job runs), at the fountain (1/0).
 - `als` str: kind=sustain: allies within 800, `pid,missing HP,heal uses` per `;`.
-- `ak` str: kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`), item and ally pid; its rule is `why`, a running answer's end `ed`. kind=pick: `ak` is the chosen target's verb kind (`lasthit`, `deny`, `prehit`, `none`).
+- `ak` str: kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`, `wait`), item and ally pid; its rule is `why`, a running answer's end `ed`. kind=pick: `ak` is the chosen target's verb kind (`lasthit`, `deny`, `prehit`, `none`).
 - `rr` str: kind=safe (safe_gather.ts, in shadow: nothing acts on it; the consumer is `who`, the place read is `pl` as `x,y`, our HP and max HP are `hpa` and `hpm`, `mi` the unseen belief's weight sum): `rr` one record per reacher, `;`-joined, `pid,hitting,dmg,unseen` (hitting 1/0: the read's engaged window, so a gate's read has none; dmg absolute, over the read's long window when hitting; unseen 1: a lane opponent last seen under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`, `ex` seconds to walk out of every visible reacher's range (logged only; absent with none in reach), `awy` the walk leaves our creeps and tower, `hld` the caller holds a standing answer here, `hd` the caller has a hold (a hit back or join). The answer: `lv` (`safe`, `costly`, `deadly`), `kill` the reachers' summed damage, `ra` HP over kill (absent with no kill), `pr` the price (HP a second lost), `why` the rule (`tower`, `kill`, `unknown`, `hero`, `creeps`, `safe`). Logged on a change of `lv` or `why`, else every 2 s while a hero is in reach or `pr` is over 0.
 - `sd` num: kind=pick (states/laning.ts `choose`, the laning body's creep pick: every input of LanePick.Choose and its answer, before the walk-in's price may refuse it (contestPick), so tools/hlog/cut.js replays it with no game; `pid`, and `pos`, the pick-table column read). `ord` is the order of kinds (`lasthit,pre_hit,deny,idle_swing` for a core). `tg` one record per offered target, `;`-joined, `n,kind,eta,due,walk,dies,ranged,mine`: n is its place in the offer (1-based), kind `lasthit` or `deny`, times in seconds (6 places; -1 for an infinite `dies`), ranged 1/0, mine 1/0 (the role's filter, asked once during the pick). `cur` the offer the attempt is waiting on (-1: its creep is not among them; absent: no wait). `pre` the pre-hit offered, `n,eta,walk,dies` (n: the offer on the same creep, -1 none; absent: none). `far` present when the walk-in limit was given: `n,ok` per creep it was asked about, `;`-joined, `-` when none. `idle` present when the idle swing was asked: `0` none found, else `n,kind,eta,due,walk,dies,ranged`. The answer: `ans` (`n` of the offer chosen, `pre`, `idle` or `none`) and `ak` (its kind, `none`). `sd` (absent: 0) the creeps this scan's filter refused because their hit place read deadly (`Ours.PickSafe`); they show as mine 0 in `tg`. A replay ignores it. Logged when the answer (creep or kind) or `sd` being nonzero changes, else every 5 s while targets are offered; scans with nothing offered and nothing chosen are left out.
 
 ## sustain
 
-Sustain (step 3, `Ours.Sustain`): one attempt sustain_act.ts carried out, at its end. `k` the answer's kind (`use`, `step_out_use`, `give`), `it` the item, `to` the ally (give), `why` the rule, `hp0`/`hp1` HP at the order and at the end (absolute), `mp0`/`mp1` mana, `sec` seconds from the order, `ed` how it ended: `started` (the buff or the charge went), `done`, `topped`, `interrupted` (a hero reached us on a step-out), `cut` (the hero left the laning mode mid-walk), `released` (the hero is no longer held), `missed` (no effect by the deadline), `dead`.
+Sustain (steps 3-5, `Ours.Sustain`): one attempt sustain_act.ts carried out, at its end. `k` the answer's kind (`use`, `step_out_use`, `give`, `wait`; `buy` for a purchase and its delivery), `it` the item, `to` the ally (give), `why` the rule, `hp0`/`hp1` HP at the order and at the end (absolute), `mp0`/`mp1` mana, `sec` seconds from the order, `ed` how it ended: `started` (the buff or the charge went), `done`, `topped`, `interrupted` (a hero reached us on a step-out), `cut` (the hero left the laning mode mid-walk), `released` (the hero is no longer held), `missed` (no effect by the deadline), `dead`; a wait: `done` (the answer changed); a delivery (a purchase, or regen on the way a wait adopted, `it` stash): `delivered` (nothing left in the stash or on the courier), `failed` (the purchase was refused: `res` its PURCHASE_ITEM_* code), `late` (not delivered by its eta plus `LateSlack`), `courier_dead`.
 
-`pid` num, `k` str, `it` str, `to` num, `why` str, `hp0` num, `hp1` num, `mp0` num, `mp1` num, `sec` num, `ed` str
+`pid` num, `k` str, `it` str, `to` num, `why` str, `hp0` num, `hp1` num, `mp0` num, `mp1` num, `sec` num, `ed` str, `cor` num, `eta` num
 
 - `wk` num: Walk seconds to the tree or the safe spot when the order was given (absent: no walk).
+- `res` num: A purchase: ActionImmediate_PurchaseItem's result code; the courier orders given; the eta read at the purchase (s).
 
 ## sustain_item
 

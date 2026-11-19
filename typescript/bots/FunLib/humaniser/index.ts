@@ -323,8 +323,8 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("SustainGather", SustainGather, { Bought: none });
     // An error in sustain's executor gives no order that frame and lets OHA's item loop have the items (HoldsItem false);
     // the lane row and the supply step take no frame.
-    Telemetry.GuardModule("SustainAct", SustainAct, { ItemThink: none, Holds: no, HoldsItem: no, Walking: no, Step: no, Yield: no, ResetCache: none });
-    Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, HoldsItem: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
+    Telemetry.GuardModule("SustainAct", SustainAct, { ItemThink: none, Holds: no, HoldsItem: no, HoldsBuy: no, OwnsCourier: no, Walking: no, Step: no, Yield: no, ResetCache: none });
+    Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
     Telemetry.GuardModule("Perception", Perception, {
         FilterNearbyEnemies: arg2,
         FilterUnitList: arg1,

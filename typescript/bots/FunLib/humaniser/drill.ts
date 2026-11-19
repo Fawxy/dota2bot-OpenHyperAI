@@ -367,7 +367,7 @@ export const TABLE: Record<string, Entry> = {
             ],
         },
     },
-    // Slice heal-items' drill as a rig (slice drill-rig's first consumer). half: decision. Facts the heal start reads: the
+    // Slice heal-items' drill as a rig, now sustain's (`Ours.Sustain`; HealItems retired in sustain step 4). half: decision. Facts it reads: the
     // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
     // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
     // fountain (the waves, untouched). Forced: HP by the Dire pos3 attacking the statue cast until its share; items bought by
@@ -664,7 +664,7 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 135, from: 60 },
         rig: {
             half: "decision",
-            switch: "HealItems",
+            switch: "Sustain",
             window: 600,
             spots: {
                 cast: ["r:bot1", -2750, 700],

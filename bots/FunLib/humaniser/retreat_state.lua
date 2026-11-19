@@ -194,9 +194,56 @@ function ____exports.SetRunning(bot, on)
     end
     running[____temp_1] = ____on_0
 end
+--- Sustain's answer for a hero it carries (sustain_act.ts writes it at each decision, so retreat reads it without importing sustain).
+local home = {}
+local healing = {}
+--- A sustain answer older than this (s) is not read: retreat's own heal floor decides. Sustain decides every 0.5 s, but a running use skips its decisions until it starts (a tango walk's deadline: walk plus 1.5 s).
+____exports.HOME_FRESH = 10
+--- sustain_act.ts, each decision for a hero it carries: whether rule 2 sends it home; undefined once it no longer carries it.
+function ____exports.SetHome(bot, on)
+    local ____temp_3 = bot:GetPlayerID()
+    local ____temp_2
+    if on == nil then
+        ____temp_2 = nil
+    else
+        ____temp_2 = {
+            on = on,
+            at = DotaTime()
+        }
+    end
+    home[____temp_3] = ____temp_2
+end
+--- Sustain's going-home answer (design 2026-11-19-sustain-design.md rule 2), or undefined when sustain does not carry the hero or has not decided lately.
+function ____exports.Home(bot)
+    local h = home[bot:GetPlayerID()]
+    if h == nil or DotaTime() - h.at > ____exports.HOME_FRESH then
+        return nil
+    end
+    return h.on
+end
+--- A heal episode (the walk home) of our retreat runs for this hero: sustain spends nothing meanwhile (its `home` run).
+function ____exports.Healing(bot)
+    return healing[bot:GetPlayerID()] == true
+end
+function ____exports.SetHealing(bot, on)
+    local ____temp_5 = bot:GetPlayerID()
+    local ____on_4
+    if on then
+        ____on_4 = true
+    else
+        ____on_4 = nil
+    end
+    healing[____temp_5] = ____on_4
+end
 function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(running)) do
         __TS__Delete(running, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(home)) do
+        __TS__Delete(home, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(healing)) do
+        __TS__Delete(healing, k)
     end
 end
 return ____exports
