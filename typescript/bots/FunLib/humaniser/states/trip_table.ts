@@ -6,7 +6,7 @@
  * Kill switches and non-position conditions stay gates in code and the table says what happens with them on:
  * - Ours.DoubleStack gates position 4's stack (stack_job Applies); the cell is the rank once it is on.
  * - Ours.CorePull gates the offlane's pull and one puller per lane is chosen (pull_job Applies); Ours.SupportPull,
- *   SupportPullFarm, RuneRotation, CampTrip and the other job switches gate their jobs the same way. None changes a cell.
+ *   SupportPullFarm, RuneRotation, CoreCampTrip and the other job switches gate their jobs the same way. None changes a cell.
  * - A job's own situation (a claim open, a window due) decides whether it wants the hero now; the table only orders the
  *   jobs that apply.
  */
