@@ -1,8 +1,8 @@
--- Driver: Threat.Gate (the start gate of a trip: the threat read over the walk from `from` to `place`) on a world cut from a
+-- Driver: SafeGather.TripGate (the start gate of a trip: Safe.At over the walk from `from` to `place`, 4 s, away) on a world cut from a
 -- game (ev=cut kind=gate, tools/hlog/cut.js), real map. The world and its API answers: cut_world.lua.
 -- world: as cut_world.lua (no creeps, no tower targets, no vis), plus who, from {x, y}, place {x, y},
 --        vw {n, hex} (visibility at the walk's n + 1 evenly spaced points, from `from` to `place`; absent: all visible).
--- Observation: go, or hold(threat) / hold(missing); fact.reach (heroes in reach), fact.missing (the belief's weight sum),
+-- Observation: go, or hold(kill) / hold(tower) / hold(unknown) (the answer's reason); fact.reach (heroes in reach), fact.missing (the belief's weight sum),
 -- fact.mcut (unseen heroes the vision cut dropped), fact.burst, fact.allies, fact.tower (1 when the place is in a tower's reach).
 local cutWorld = dofile(HARNESS_DIR .. "/fixture_drivers/cut_world.lua")
 
@@ -23,7 +23,7 @@ return function(fx)
 		return math.floor(nib / 2 ^ (3 - i % 4)) % 2 == 1
 	end
 
-	local res = cw.Threat.Gate(cw.bot, from, place, w.who or "gate")
+	local res = require("bots/FunLib/humaniser/safe_gather").TripGate(cw.bot, place, w.who or "gate", from)
 	local r = res.r
 	return {
 		actions = { res.why and { verb = "hold", target = res.why } or { verb = "go" } },

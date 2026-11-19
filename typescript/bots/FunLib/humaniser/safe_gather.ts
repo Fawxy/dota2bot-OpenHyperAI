@@ -335,6 +335,11 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean, exclude?: num
  * in the logging alone is reported and dropped.
  */
 export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
+    return ask(bot, place, opts).a;
+}
+
+/** `At`'s answer with the read it was made from (a gate logs the read's reaching and unseen heroes). */
+function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Threat.Read } {
     const horizon = opts?.horizon ?? Threat.SETTINGS.StayHorizon;
     const from = opts?.from ?? bot.GetLocation();
     const r = frameReader(bot, horizon, opts?.engaged ?? true, opts?.exclude)(from, place);
@@ -345,7 +350,7 @@ export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
         const [ok, err] = pcall(log, bot, who, place, i, a);
         if (!ok) Telemetry.Failed("SafeGather.At", err);
     }
-    return a;
+    return { a, r };
 }
 
 /** Per game (the other caches' reset): the sampler, the lane memory, the shared readers and the shadow's cadence. */
@@ -357,9 +362,16 @@ export function ResetCache(): void {
     for (const k of Object.keys(cutState)) delete cutState[k];
 }
 
-/** Threat.Gate's call (a trip: the walk leaves our creeps and tower; the gate holds nothing). index.ts registers it with `Threat.SetGateShadow`. */
-export function GateShadow(this: void, bot: Unit, consumer: string, r: Threat.Read): void {
-    Shadow(bot, consumer, r, { away: true, held: false, hold: false });
+/**
+ * The start gate every trip shares (a camp, a pull, a stack, a farm trip, a core's pull): `At` for the walk from `from` (default the hero's place) to
+ * `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
+ * decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
+ */
+export function TripGate(bot: Unit, place: Vector, consumer: string, from?: Vector): { why?: string; r: Threat.Read; a: Safe.Answer } {
+    const { a, r } = ask(bot, place, { from, horizon: WalkHorizon, away: true, held: false, hold: false, who: consumer });
+    const why = a.level === "deadly" ? a.reason : undefined;
+    if (Threat.Log(bot, consumer, r, why ?? "go")) Threat.NoteGateCut(bot, r.from, r.place, consumer);
+    return { why, r, a };
 }
 
 /** The horizon (s) of a walk to a place away from here (a trip, a kill or join target, a joiner's walk): design section 3. Here is `Threat.SETTINGS.StayHorizon`, 2 s. */

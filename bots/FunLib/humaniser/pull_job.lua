@@ -366,7 +366,7 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 function campFor(bot)
     local lane = bot:GetAssignedLane()
     if lane ~= Lane.Top and lane ~= Lane.Bot then
@@ -1953,11 +1953,11 @@ function ____exports.Wants(bot, blocked, host)
     local own = siteThreat(p, camp)
     local ____Ours_On_result_34
     if Ours.On("Threat") then
-        ____Ours_On_result_34 = Threat.Gate(
+        ____Ours_On_result_34 = SafeGather.TripGate(
             bot,
             Camps.BoxCenter(p.spawner),
-            Camps.BoxCenter(p.spawner),
-            "pull_job"
+            "pull_job",
+            Camps.BoxCenter(p.spawner)
         ).why
     else
         ____Ours_On_result_34 = own

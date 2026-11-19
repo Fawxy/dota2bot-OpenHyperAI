@@ -25,7 +25,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as TransitionSettings from "bots/FunLib/humaniser/transitions/settings";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Threat from "bots/FunLib/humaniser/threat";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 
 export type JobKind = "full_pull" | "stack_pull" | "double_pull" | "stack";
@@ -322,7 +322,7 @@ export function StartBlocked(bot: Unit, at?: Vector, who = "sup_job"): string | 
     // The rotation was decided first (20-25 s before the spawn); a job now would make it late or cancel it.
     if (LaneHooks.RotationDecided(bot)) return "rotation";
     if (inFight(bot)) return "fight";
-    if (Ours.On("Threat") && at !== undefined) return Threat.Gate(bot, at, at, who).why;
+    if (Ours.On("Threat") && at !== undefined) return SafeGather.TripGate(bot, at, who, at).why;
     return undefined;
 }
 

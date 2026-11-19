@@ -1056,6 +1056,7 @@ do
 		if fight then
 			clearEnemies()
 			local enemy = enemyAt(11, support.loc.x + fight.dist, support.loc.y)
+			if fight.dmg then enemy.estDamage = fight.dmg end
 			if fight.hit then support.heroHitAt = 70 end
 			if fight.attacking then support.target = enemy end
 		end
@@ -1080,11 +1081,13 @@ do
 	check("hit by an enemy hero 500 away: no pull, logged as fight", d == 0 and gate == "fight", tostring(d) .. " " .. tostring(gate))
 	d, gate = startAt(90, nil, { dist = 500, attacking = true })
 	check("attacking an enemy hero 500 away: no pull", d == 0 and gate == "fight", tostring(d) .. " " .. tostring(gate))
-	-- Slice threat: a visible laner who can reach the camp holds the start on the read ("threat", not a fight); the OFF arm
-	-- lets it start (an enemy merely in range is the usual lane).
-	d, gate = startAt(90, nil, { dist = 500 })
-	check("an enemy laner 500 away, no trade: held by the threat gate", d == 0 and gate == "threat", tostring(d) .. " " .. tostring(gate))
-	d = startAt(90, nil, { dist = 500 }, true)
+	-- A visible laner who can reach the camp and kill the walk (Safe.At deadly) holds the start (`kill`, not a fight); one that cannot
+	-- kill does not, and the OFF arm lets it start (an enemy merely in range is the usual lane).
+	d, gate = startAt(90, nil, { dist = 500, dmg = 5000 })
+	check("an enemy laner 500 away who can kill: held by the trip gate", d == 0 and gate == "kill", tostring(d) .. " " .. tostring(gate))
+	d = startAt(90, nil, { dist = 500 })
+	check("an enemy laner 500 away who cannot kill: the pull starts", near(d, 0.7), d)
+	d = startAt(90, nil, { dist = 500, dmg = 5000 }, true)
 	check("an enemy laner 500 away, threat off: the pull starts", near(d, 0.7), d)
 	d = startAt(90, nil, { dist = 1000, hit = true })
 	check("hit, but the hero is 1,000 away: the pull starts", near(d, 0.7), d)
@@ -1352,7 +1355,7 @@ do
 end
 
 -- Under Ours.Threat the start reads the camp with the shared threat gate (slice threat): a visible enemy who can reach it
--- holds "threat", the caution probe's missing count no longer blocks, and a caller with no camp yet is not read.
+-- holds `kill` (Safe.At deadly), the caution probe's missing count no longer blocks, and a caller with no camp yet is not read.
 do
 	local H, core, support = jobWorld(1)
 	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
@@ -1361,7 +1364,10 @@ do
 	check("threat on: the probe's missing count does not block", H.Lane.CampJobs.StartBlocked(support, center) == nil, H.Lane.CampJobs.StartBlocked(support, center))
 	local e = unit({ pid = 11, team = 3, pos = 4, loc = Vector(center.x + 600, center.y) })
 	e.range = 600
-	check("threat on: a visible enemy by the camp holds the start", H.Lane.CampJobs.StartBlocked(support, center) == "threat", H.Lane.CampJobs.StartBlocked(support, center))
+	check("threat on: a visible enemy by the camp who cannot kill does not hold the start", H.Lane.CampJobs.StartBlocked(support, center) == nil, H.Lane.CampJobs.StartBlocked(support, center))
+	e.estDamage = 5000
+	T = T + 1 -- the read is shared within one game-time value
+	check("threat on: one who can kill holds the start", H.Lane.CampJobs.StartBlocked(support, center) == "kill", H.Lane.CampJobs.StartBlocked(support, center))
 	check("threat on: no camp given (the take), the caution probe still gates", H.Lane.CampJobs.StartBlocked(support) == "enemy-missing")
 end
 

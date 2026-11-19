@@ -822,7 +822,7 @@ Regen slice: a window in which a regen item could have been used (the hero alive
 
 ## threat
 
-Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat, band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share; dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief.
+Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision (`go`, or since oha-safe-rest the trip gate's Safe.At reason when it held: `kill`, `tower`, `unknown`; older logs `threat`, `missing`), place, horizon (s), threat, band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share; dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief.
 
 `pid` num, `who` str, `dec` str, `x` num, `y` num, `hz` num, `dep` num, `threat` num, `band` str, `reach` num, `rpid` str, `burst` num, `ally` num, `esc` bool, `tower` bool, `miss` num, `mpid` str, `mtss` num, `mcut` num, `hp` num
 

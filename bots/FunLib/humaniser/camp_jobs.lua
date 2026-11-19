@@ -224,7 +224,7 @@ local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local TransitionSettings = require(GetScriptDirectory().."/FunLib/humaniser/transitions/settings")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 function settings()
     return LaneConfig.Settings()
@@ -706,7 +706,7 @@ function ____exports.StartBlocked(bot, at, who)
         return "fight"
     end
     if Ours.On("Threat") and at ~= nil then
-        return Threat.Gate(bot, at, at, who).why
+        return SafeGather.TripGate(bot, at, who, at).why
     end
     return nil
 end

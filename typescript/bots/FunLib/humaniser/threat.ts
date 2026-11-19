@@ -433,11 +433,10 @@ export function LoneStand(bot: Unit, r: Read): boolean {
 }
 
 let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;
-let gateShadow: ((this: void, bot: Unit, consumer: string, r: Read) => void) | undefined;
 
-/** safe_gather.ts registers its shadow here (it imports this module): called with every gate read, logged or not. It must not throw. */
-export function SetGateShadow(fn: (this: void, bot: Unit, consumer: string, r: Read) => void): void {
-    gateShadow = fn;
+/** The gate's fixture cut for one logged gate decision (safe_gather.ts `TripGate` calls it after `Log`). A fault in the cut is swallowed. */
+export function NoteGateCut(bot: Unit, from: Vector, place: Vector, consumer: string): void {
+    if (gateCut !== undefined) pcall(gateCut, bot, from, place, consumer);
 }
 
 /** cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision. */
@@ -453,8 +452,7 @@ export function SetGateCut(fn: (this: void, bot: Unit, from: Vector, place: Vect
 export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): { why?: "threat" | "missing"; r: Read } {
     const r = Read(bot, from, place, SETTINGS.GateHorizon);
     const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
-    if (Log(bot, consumer, r, why ?? "go") && gateCut !== undefined) pcall(gateCut, bot, from, place, consumer);
-    if (gateShadow !== undefined) pcall(gateShadow, bot, consumer, r);
+    if (Log(bot, consumer, r, why ?? "go")) NoteGateCut(bot, from, place, consumer);
     return { why, r };
 }
 

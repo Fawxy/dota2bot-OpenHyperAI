@@ -321,7 +321,7 @@ local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_sp
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
@@ -1349,15 +1349,8 @@ function ____exports.MissingGate(bot, at, consumer)
     if not Ours.On("Threat") then
         return ____exports.MissingOf(bot, at).n, nil
     end
-    local r = Threat.Read(
-        bot,
-        bot:GetLocation(),
-        at,
-        Threat.SETTINGS.GateHorizon
-    )
-    local held = r.missing >= Threat.SETTINGS.MissingRefuse
-    Threat.Log(bot, consumer, r, held and "missing" or "go")
-    return held and #r.mpids or 0, math.floor(r.missing * 100 + 0.5) / 100
+    local g = SafeGather.TripGate(bot, at, consumer)
+    return g.why ~= nil and math.max(1, #g.r.mpids) or 0, math.floor(g.r.missing * 100 + 0.5) / 100
 end
 local function mateOnJob(bot)
     local s = LaneState.ForBot(bot)
@@ -1470,15 +1463,10 @@ local function startGate(bot, plan, now)
     end
     local center = Camps.BoxCenter(spawner)
     if Ours.On("Threat") then
-        local ____Threat_Gate_result_24 = Threat.Gate(
-            bot,
-            bot:GetLocation(),
-            center,
-            "core_camp"
-        )
-        local why = ____Threat_Gate_result_24.why
-        local r = ____Threat_Gate_result_24.r
-        if why ~= "missing" then
+        local ____SafeGather_TripGate_result_24 = SafeGather.TripGate(bot, center, "core_camp")
+        local why = ____SafeGather_TripGate_result_24.why
+        local r = ____SafeGather_TripGate_result_24.r
+        if why ~= "unknown" then
             return why ~= nil and ({why = why}) or nil
         end
         return {
@@ -1641,25 +1629,33 @@ local function guard(bot, t)
         return nil
     end
     local near = false
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        do
-            local __continue197
-            repeat
-                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue197 = true
+    if Ours.On("Threat") then
+        near = SafeGather.At(
+            bot,
+            bot:GetLocation(),
+            {held = true, who = "core_camp_trip"}
+        ).level == "deadly"
+    else
+        for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+            do
+                local __continue199
+                repeat
+                    if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                        __continue199 = true
+                        break
+                    end
+                    local loc = locOf(e)
+                    if loc ~= nil and dist(
+                        loc,
+                        bot:GetLocation()
+                    ) <= LaneSpot.HeroReach(bot, e) then
+                        near = true
+                    end
+                    __continue199 = true
+                until true
+                if not __continue199 then
                     break
                 end
-                local loc = locOf(e)
-                if loc ~= nil and dist(
-                    loc,
-                    bot:GetLocation()
-                ) <= LaneSpot.HeroReach(bot, e) then
-                    near = true
-                end
-                __continue197 = true
-            until true
-            if not __continue197 then
-                break
             end
         end
     end

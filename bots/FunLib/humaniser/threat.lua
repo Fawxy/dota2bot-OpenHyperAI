@@ -599,10 +599,17 @@ function ____exports.LoneStand(bot, r)
     return #r.reach == 1 and ____exports.Stand(bot, r)
 end
 local gateCut
-local gateShadow
---- safe_gather.ts registers its shadow here (it imports this module): called with every gate read, logged or not. It must not throw.
-function ____exports.SetGateShadow(fn)
-    gateShadow = fn
+--- The gate's fixture cut for one logged gate decision (safe_gather.ts `TripGate` calls it after `Log`). A fault in the cut is swallowed.
+function ____exports.NoteGateCut(bot, from, place, consumer)
+    if gateCut ~= nil then
+        pcall(
+            gateCut,
+            bot,
+            from,
+            place,
+            consumer
+        )
+    end
 end
 --- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.
 function ____exports.SetGateCut(fn)
@@ -614,17 +621,8 @@ end
 function ____exports.Gate(bot, from, place, consumer)
     local r = ____exports.Read(bot, from, place, ____exports.SETTINGS.GateHorizon)
     local why = #r.reach > 0 and "threat" or (r.missing >= ____exports.SETTINGS.MissingRefuse and "missing" or nil)
-    if ____exports.Log(bot, consumer, r, why or "go") and gateCut ~= nil then
-        pcall(
-            gateCut,
-            bot,
-            from,
-            place,
-            consumer
-        )
-    end
-    if gateShadow ~= nil then
-        pcall(gateShadow, bot, consumer, r)
+    if ____exports.Log(bot, consumer, r, why or "go") then
+        ____exports.NoteGateCut(bot, from, place, consumer)
     end
     return {why = why, r = r}
 end

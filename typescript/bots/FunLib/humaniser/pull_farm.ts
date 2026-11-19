@@ -11,7 +11,7 @@ import { DamageType, DroppedItem, Unit, UnitType, Vector } from "bots/ts_libs/do
 import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
-import * as Threat from "bots/FunLib/humaniser/threat";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Profile from "bots/FunLib/humaniser/profile";
@@ -146,7 +146,7 @@ function startGate(bot: Unit, camp: Camps.Spawner, center: Vector, blocked: (bot
     if (bot.GetHealth() - dmg < bot.GetMaxHealth() * SETTINGS.ClearReserve) return "camp-dmg";
     // Ours.Threat: the shared gate on the camp (`threat`, and since slice threat 3 `missing` too); off, the old reach test.
     if (Ours.On("Threat")) {
-        const why = Threat.Gate(bot, bot.GetLocation(), center, "pull_farm").why;
+        const why = SafeGather.TripGate(bot, center, "pull_farm").why;
         if (why !== undefined) return why;
     } else if (CoreCamp.ThreatOnWay(bot, center)) return "threat";
     return blocked(bot) ?? PullJob.PartnerThreat(bot);

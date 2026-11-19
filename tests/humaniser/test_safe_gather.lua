@@ -295,14 +295,21 @@ do
 	check("Shadow swallows it and reports one lua_error", ok and errors == 1, errors)
 end
 
--- Threat.Gate's shadow: a trip's walk, away.
+-- TripGate: a trip's walk, away, held on deadly with the answer's reason; a hero who cannot kill the walk does not hold it.
 do
-	local Threat, _, bot = world()
+	local Threat, G, bot = world()
 	local hitter = enemy(10, -1700, 100)
-	local res = Threat.Gate(bot, HERE, CAMP, "core_camp")
+	local weak = G.TripGate(bot, CAMP, "core_camp", HERE)
 	local l = safeLines("core_camp")
-	check("a gate logs its read as who=<consumer> with away, and its own answer is unchanged",
-		#l == 1 and field(l[1], "awy") == "1" and res.why == "threat" and field(l[1], "rr") == "10,0,300,0", l[1])
+	check("a gate logs its read as who=<consumer> with away; a visible hero in reach that cannot kill (300 of 1,000 HP) does not hold it",
+		#l == 1 and field(l[1], "awy") == "1" and weak.why == nil and field(l[1], "rr") == "10,0,300,0" and field(l[1], "lv") == "safe", l[1])
+	T = T + 1
+	hitter.perSec = 400
+	local strong = G.TripGate(bot, CAMP, "core_camp", HERE)
+	local threatLine
+	for _, x in ipairs(lines) do if x:find("ev=threat ", 1, true) and field(x, "dec") == "kill" then threatLine = x end end
+	check("the same hero dealing 1,200 over the walk holds it with why=kill, and ev=threat logs dec=kill for the consumer",
+		strong.why == "kill" and strong.a.level == "deadly" and threatLine ~= nil and field(threatLine, "who") == "core_camp", strong.why)
 end
 
 finish()

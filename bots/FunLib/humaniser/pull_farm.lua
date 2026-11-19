@@ -501,7 +501,7 @@ local UnitType = ____dota.UnitType
 local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -720,12 +720,7 @@ local function startGate(bot, camp, center, blocked)
         return "camp-dmg"
     end
     if Ours.On("Threat") then
-        local why = Threat.Gate(
-            bot,
-            bot:GetLocation(),
-            center,
-            "pull_farm"
-        ).why
+        local why = SafeGather.TripGate(bot, center, "pull_farm").why
         if why ~= nil then
             return why
         end

@@ -24,7 +24,7 @@ import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as Threat from "bots/FunLib/humaniser/threat";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Runes from "bots/FunLib/humaniser/transitions/runes";
 
 // All judgement (slice file "The decision"); the clear-time model and its learning are FarmPattern's values.
@@ -790,10 +790,8 @@ export function MissingOf(bot: Unit, at: Vector): Missing {
  */
 export function MissingGate(bot: Unit, at: Vector, consumer: string): LuaMultiReturn<[number, number | undefined]> {
     if (!Ours.On("Threat")) return $multi(MissingOf(bot, at).n, undefined);
-    const r = Threat.Read(bot, bot.GetLocation(), at, Threat.SETTINGS.GateHorizon);
-    const held = r.missing >= Threat.SETTINGS.MissingRefuse;
-    Threat.Log(bot, consumer, r, held ? "missing" : "go");
-    return $multi(held ? r.mpids.length : 0, math.floor(r.missing * 100 + 0.5) / 100);
+    const g = SafeGather.TripGate(bot, at, consumer);
+    return $multi(g.why !== undefined ? math.max(1, g.r.mpids.length) : 0, math.floor(g.r.missing * 100 + 0.5) / 100);
 }
 
 function mateOnJob(bot: Unit): boolean {
@@ -857,8 +855,8 @@ function startGate(bot: Unit, plan: CampPlan, now: number): Held | undefined {
     if (spawner === undefined) return undefined;
     const center = Camps.BoxCenter(spawner);
     if (Ours.On("Threat")) {
-        const { why, r } = Threat.Gate(bot, bot.GetLocation(), center, "core_camp");
-        if (why !== "missing") return why !== undefined ? { why } : undefined;
+        const { why, r } = SafeGather.TripGate(bot, center, "core_camp");
+        if (why !== "unknown") return why !== undefined ? { why } : undefined;
         return { why, nmiss: r.mpids.length, mtss: r.mtss, mpid: r.mpids.join(",") };
     }
     if (ThreatOnWay(bot, center)) return { why: "threat" };
@@ -967,11 +965,13 @@ function guard(bot: Unit, t: Trip): string | undefined {
     if (hpOf(bot) < SETTINGS.AbortHP) return "hp";
     if (t.returning === true) return undefined;
     let near = false;
-    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
-        const loc = locOf(e);
-        if (loc !== undefined && dist(loc, bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
-    }
+    if (Ours.On("Threat")) near = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "core_camp_trip" }).level === "deadly";
+    else
+        for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
+            const loc = locOf(e);
+            if (loc !== undefined && dist(loc, bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
+        }
     if (!near) {
         t.threatSince = undefined;
         return undefined;
