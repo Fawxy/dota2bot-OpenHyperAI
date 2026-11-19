@@ -6,7 +6,7 @@
  * not call deadly for a fresh place, or the anchor).
  * Every other hero walking in retreat mode gets the plain walk (a mode file with Think replaces Valve's walk for all).
  */
-import { Lane, Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { Shop, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
@@ -16,7 +16,6 @@ import * as Lane_ from "bots/FunLib/humaniser/lane";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as ItemUse from "bots/FunLib/humaniser/item_use";
 import * as Cut from "bots/FunLib/humaniser/cut";
 import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
@@ -30,14 +29,12 @@ export const SETTINGS = {
      * The read `Desire` makes for the heal rules and the telemetry; `SafeGather.At` uses the same window. judgement.
      */
     EngagedWindow: Threat.SETTINGS.StayEngaged,
-    /** Heal floor: HP share under HealFloor with no enemy in reach sends the hero to the fountain until HealUntil. judgement. */
+    /**
+     * Heal floor: HP share under HealFloor with no enemy in reach sends the hero to the fountain until HealUntil. judgement. For a
+     * hero sustain carries (`Ours.Sustain`) its rule 2 decides the walk home instead, with this floor under its kill line.
+     */
     HealFloor: 0.3,
     HealUntil: 0.8,
-    /**
-     * HealStop (D3): a heal episode also ends `healed` at this HP share with nobody in reach, while our lane front is nearer
-     * than our fountain. The D3 view's bar: a retreat run at 50% HP+ with nobody near is a violation after 10 s. judgement.
-     */
-    HealBack: 0.5,
     /** Route points every RouteStep along each anchor's straight walk. judgement. */
     RouteStep: 300,
     /**
@@ -53,29 +50,6 @@ export const SETTINGS = {
      */
     RegenItems: ["item_tango", "item_tango_single", "item_flask", "item_faerie_fire"],
     RegenCredit: 1,
-    /**
-     * HealItems (slice heal-items, D6 stop-gap): at a heal start the first of these sets, all held, that restores HP to HealBack
-     * is used and the hero waits at our tower; none does, or our fountain is the nearer: the walk home with the items kept.
-     * Cheapest first, two items at most, never two tangoes (a recast refreshes the buff, it does not stack); faerie fire, a
-     * fight's burst, only with no salve held (user 11/11/2026 asked for boundaries). judgement.
-     */
-    HealSets: [["tango_single"], ["tango"], ["salve"], ["fire"], ["salve", "tango"], ["tango", "fire"]] as HealItem[][],
-    /** A tango is in a set only with a tree this near (camp supply's TangoTree). judgement. */
-    HealTree: 300,
-    /** After a use, no other order until its buff shows or this long has passed (a tango walks to its tree first). judgement. */
-    HealUseWait: 1.5,
-    /**
-     * The read's horizon (s) for using items: a salve's 13 s breaks on a hero's hit, so a hero who can reach us within the gates'
-     * horizon (Threat GateHorizon, about 1,400 for a melee) holds them, not only one in the stay read's 2 s (rig on2, on3
-     * `stays`: the attacker standing 700 off read out of reach, and the salve was drunk). judgement.
-     */
-    HealItemHorizon: Threat.SETTINGS.GateHorizon,
-    /**
-     * A hero out of sight for no more than Threat MissingAfter is in neither the read's reach (it reads visible heroes) nor its
-     * missing belief (after MissingAfter); for items it counts from its last sighting: MissingSpeed over the time since plus
-     * HealItemHorizon, plus this for its attack range and both hulls (a melee's 150 and two 24s). judgement.
-     */
-    HealItemUnseenMargin: 200,
     /** The desire while an episode runs; the chooser's gate holds every other mode but the human's orders at 0 meanwhile. judgement. */
     EpisodeDesire: 0.95,
     /** A forced drill rep holds the retreat mode above every mode the cast could otherwise take. */
@@ -111,13 +85,6 @@ const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
 
 export type Why = "threat" | "lethal" | "tower" | "heal" | "forced";
-type HealItem = "tango_single" | "tango" | "salve" | "fire";
-const HEAL_ITEM: Record<HealItem, { name: string; modifier?: string }> = {
-    tango_single: { name: "item_tango_single", modifier: "modifier_tango_heal" },
-    tango: { name: "item_tango", modifier: "modifier_tango_heal" },
-    salve: { name: "item_flask", modifier: "modifier_flask_healing" },
-    fire: { name: "item_faerie_fire" },
-};
 type AnchorKind = "tower_edge" | "tower" | "ally" | "fountain";
 
 interface Anchor {
@@ -143,13 +110,6 @@ interface Episode {
     twr: boolean;
     wave: boolean;
     underSince?: number;
-    /** HealItems: the items still to use, the wait after the last use, and whether the wait at our tower is on. */
-    uses?: HealItem[];
-    useUntil?: number;
-    useMod?: string;
-    useHp?: number;
-    tree?: number;
-    itemHeal?: boolean;
 }
 
 interface DrillRep {
@@ -391,12 +351,6 @@ function anchorsOf(bot: Unit, why: Why): Anchor[] {
     return out;
 }
 
-/** Whether our lane front of the hero's lane is nearer than our fountain: going back costs less walk than going on. */
-function laneNearer(bot: Unit, here: Vector): boolean {
-    const front = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane() as Lane, 0);
-    return front !== undefined && dist(here, front) < dist(here, Fountain(bot.GetTeam()));
-}
-
 /** Whether a healing item is held in the inventory (slots 0-5). */
 function regenHeld(bot: Unit): boolean {
     for (const name of SETTINGS.RegenItems) {
@@ -439,144 +393,6 @@ export function SafeSpot(bot: Unit): { at: Vector; secs: number } | undefined {
     return a === undefined ? undefined : { at: anchorPoint(a), secs: a.secs ?? 0 };
 }
 
-// ------------------------------------------------------------------------------------------------------------- heal items
-
-/**
- * HealItems: the first set in HealSets whose items are all usable now (a tango with a tree near, faerie fire with no salve, no
- * buff already running for an item) and restore HP to HealBack; on one, the anchor becomes our nearest tower behind us.
- */
-/**
- * Enemy heroes who can reach `bot` within HealItemHorizon, seen or just out of sight: items wait for none. Also the nearest
- * enemy hero's last sighting (distance, seconds since), for the log.
- */
-function itemReach(bot: Unit): LuaMultiReturn<[number, number | undefined, number | undefined]> {
-    const s = SETTINGS;
-    const t = Threat.SETTINGS;
-    const here = bot.GetLocation();
-    const read = Threat.Read(bot, here, here, s.HealItemHorizon);
-    let n = read.reach.length;
-    let near: number | undefined;
-    let tss: number | undefined;
-    for (let pid = 0; pid <= 23; pid++) {
-        const team = GetTeamForPlayer(pid);
-        if (team === bot.GetTeam() || (team !== Team.Radiant && team !== Team.Dire) || !IsHeroAlive(pid)) continue;
-        const info = GetHeroLastSeenInfo(pid)[0];
-        if (info === undefined) continue;
-        const d = dist(info.location, here);
-        if (near === undefined || d < near) {
-            near = d;
-            tss = info.time_since_seen;
-        }
-        if (read.reach.includes(pid) || info.time_since_seen <= 0.1 || info.time_since_seen > t.MissingAfter) continue;
-        if (d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin) n++;
-    }
-    return $multi(n, near, tss);
-}
-
-function planItems(bot: Unit, ep: Episode): void {
-    const s = SETTINGS;
-    const max = math.max(1, bot.GetMaxHealth());
-    const need = math.ceil(s.HealBack * max - bot.GetHealth());
-    const here = bot.GetLocation();
-    const salveHeld = ItemUse.Usable(bot, HEAL_ITEM.salve.name) !== undefined;
-    const tree = ItemUse.TangoTree(bot, s.HealTree);
-    const got: Partial<Record<HealItem, number>> = {};
-    for (const k of Object.keys(HEAL_ITEM) as HealItem[]) {
-        const it = ItemUse.Usable(bot, HEAL_ITEM[k].name);
-        if (it === undefined) continue;
-        const mod = HEAL_ITEM[k].modifier;
-        if (mod !== undefined && bot.HasModifier(mod)) continue;
-        if ((k === "tango" || k === "tango_single") && tree === undefined) continue;
-        if (k === "fire" && salveHeld) continue;
-        got[k] = ItemUse.HpRestore(it);
-    }
-    let set: HealItem[] | undefined;
-    let restore = 0;
-    for (const cand of s.HealSets) {
-        // "tango" in a pair stands for either tango, the single first.
-        const items = cand.map((k): HealItem => (cand.length > 1 && k === "tango" && got.tango_single !== undefined ? "tango_single" : k));
-        if (!items.every((k) => got[k] !== undefined)) continue;
-        const sum = items.reduce((a, k) => a + (got[k] ?? 0), 0);
-        if (sum >= need) {
-            set = items;
-            restore = sum;
-            break;
-        }
-    }
-    const tower = nearestTowerBehind(bot);
-    const [reachN, near, tss] = itemReach(bot);
-    const skip = !laneNearer(bot, here) ? "fountain" : reachN > 0 ? "reach" : Object.keys(got).length === 0 ? "none" : set === undefined ? "short" : tower === undefined ? "no-tower" : undefined;
-    Telemetry.Event("retreat", [
-        ["ph", "items"],
-        ["pid", bot.GetPlayerID()],
-        ["ep", ep.id],
-        ["need", need],
-        ["held", (Object.keys(got) as HealItem[]).join(",") || "-"],
-        ["set", skip === undefined && set !== undefined ? set.join(",") : "-"],
-        ["got", math.floor(restore)],
-        ["tree", tree !== undefined],
-        ["skip", skip ?? "-"],
-        ["ed", near !== undefined ? math.floor(near) : -1],
-        ["ets", tss !== undefined ? r2(tss) : -1],
-    ]);
-    if (skip !== undefined || set === undefined || tower === undefined) return;
-    // A tango first, while its tree is the one found here; the others are immediate.
-    ep.uses = set.slice().sort((a, b) => (b.startsWith("tango") ? 1 : 0) - (a.startsWith("tango") ? 1 : 0));
-    ep.tree = tree;
-    ep.itemHeal = true;
-    const p = standPoint(tower, bot.GetTeam());
-    ep.anchor = { kind: "tower", at: p, cost: ep.anchor.cost, len: dist(here, p) };
-}
-
-/** HealItems: the wait at our tower ends, and the walk home resumes, when a hero reaches us or the items are spent without a `healed` end. */
-function itemHealOn(bot: Unit, ep: Episode, r: Threat.Read, now: number): void {
-    const spent = (ep.uses === undefined || ep.uses.length === 0) && (ep.useUntil === undefined || now >= ep.useUntil)
-        && !bot.HasModifier("modifier_tango_heal") && !bot.HasModifier("modifier_flask_healing");
-    const [reachN] = itemReach(bot);
-    const why = r.reach.length > 0 || reachN > 0 ? "reach" : spent ? "spent" : undefined;
-    if (why === undefined) return;
-    ep.itemHeal = false;
-    ep.uses = undefined;
-    const f = Fountain(bot.GetTeam());
-    ep.anchor = { kind: "fountain", at: f, cost: ep.anchor.cost, len: dist(bot.GetLocation(), f) };
-    Telemetry.Event("retreat", [["ph", "items_off"], ["pid", bot.GetPlayerID()], ["ep", ep.id], ["skip", why], ["hp", r2(hpShare(bot))]]);
-}
-
-/** HealItems, from Think: the next use, or true while the last one's wait holds every other order. */
-function useItems(bot: Unit, st: HeroState, ep: Episode, now: number): boolean {
-    if (ep.useUntil !== undefined) {
-        const shown = ep.useMod !== undefined ? bot.HasModifier(ep.useMod) : bot.GetHealth() > (ep.useHp ?? 0);
-        if (now < ep.useUntil && !shown) return true;
-        ep.useUntil = undefined;
-    }
-    const k = ep.uses?.shift();
-    if (k === undefined) return false;
-    const item = ItemUse.Usable(bot, HEAL_ITEM[k].name);
-    Telemetry.Event("retreat", [["ph", "use"], ["pid", bot.GetPlayerID()], ["ep", ep.id], ["set", k], ["skip", item === undefined ? "gone" : "-"], ["hp", r2(hpShare(bot))]]);
-    if (item === undefined) return false;
-    ep.useUntil = now + SETTINGS.HealUseWait;
-    ep.useMod = HEAL_ITEM[k].modifier;
-    ep.useHp = bot.GetHealth();
-    st.orderTo = undefined;
-    if (k === "fire") ItemUse.UseNoTarget(bot, item);
-    else if (k === "salve") ItemUse.UseOnSelf(bot, item);
-    else if (ep.tree !== undefined) ItemUse.UseOnTree(bot, item, ep.tree);
-    return true;
-}
-
-function nearestTowerBehind(bot: Unit): Unit | undefined {
-    let best: Unit | undefined;
-    let bestD = math.huge;
-    for (const t of ownTowersBehind(bot)) {
-        const d = GetUnitToUnitDistance(bot, t);
-        if (d < bestD) {
-            best = t;
-            bestD = d;
-        }
-    }
-    return best;
-}
-
 // ---------------------------------------------------------------------------------------------------------------- episodes
 
 function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, a: Safe.Answer | undefined, purp: string, spot?: string, rep?: number): void {
@@ -585,8 +401,8 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, a: Safe.Answe
     episodes++;
     const hp = hpShare(bot);
     st.ep = { id: episodes, start: now, why, anchor, hp0: hp, lastHp: bot.GetHealth(), dmgh: 0, twr: false, wave: false };
-    if (why === "heal" && Ours.On("HealItems") && Ours.On("HealStop")) planItems(bot, st.ep);
     RetreatState.SetRunning(bot, true);
+    RetreatState.SetHealing(bot, why === "heal");
     // Our retreat ends a running job with a cause (retreat left Chooser.EXCEPTIONS' role of taking the hero mid-job).
     Chooser.Abort(bot, "retreat");
     Lane_.CampJobAbort(bot, "retreat");
@@ -632,6 +448,7 @@ function end(bot: Unit, st: HeroState, res: string): void {
     st.leave = undefined;
     st.orderTo = undefined;
     RetreatState.SetRunning(bot, false);
+    RetreatState.SetHealing(bot, false);
     const max = math.max(1, bot.GetMaxHealth());
     Telemetry.Event("retreat", [
         ["ph", "end"],
@@ -670,12 +487,8 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
     const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive || (ep.anchor.kind === "fountain" && bot.HasModifier("modifier_fountain_aura_buff"));
     // The fresh bar: a retreat stops only where the hero would not leave again (design 2026-11-19-safe-here-design.md s2).
     const fresh = (): Safe.Answer => SafeGather.At(bot, here, { held: false, who: "retreat" });
-    if (ep.why === "heal") {
-        if (at && hpShare(bot) >= s.HealUntil) return "anchor";
-        if (Ours.On("HealStop") && hpShare(bot) >= s.HealBack && r.reach.length === 0 && fresh().level !== "deadly" && laneNearer(bot, here)) return "healed";
-        if (ep.itemHeal === true) itemHealOn(bot, ep, r, now);
-        return undefined;
-    }
+    // The walk home ends at the fountain once healed (sustain design: `home` ends at HealUntil there, then the lane).
+    if (ep.why === "heal") return at && hpShare(bot) >= s.HealUntil ? "anchor" : undefined;
     if (at) {
         if (forced || fresh().level !== "deadly") return "anchor";
         // Still deadly at a stop short of home: on to the fountain.
@@ -704,7 +517,8 @@ export interface Leave {
 }
 
 /**
- * The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once, the heal floor with nobody in reach,
+ * The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once; the walk home where the place is not
+ * deadly, when sustain's rule 2 says so for a hero it carries (`RetreatState.Home`), else at the heal floor with nobody in reach;
  * else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
  * under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
  * stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
@@ -712,7 +526,8 @@ export interface Leave {
 export function LeaveWhy(bot: Unit, holds: (this: void) => "join" | "hitback" | undefined = () => Trade.Holds(bot)): Leave {
     const a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
     if (TowerOnUs(bot) !== undefined) return { why: "tower", a };
-    if (hpShare(bot) < SETTINGS.HealFloor && a.kill === 0) return { why: "heal", a };
+    const home = RetreatState.Home(bot);
+    if (home === undefined ? hpShare(bot) < SETTINGS.HealFloor && a.kill === 0 : home && a.level !== "deadly") return { why: "heal", a };
     if (a.level !== "deadly") return { stay: "under", a };
     if (a.reason === "tower") return { why: "tower", a };
     if (a.ratio < Safe.BARS.hold) return { why: "lethal", a };
@@ -866,7 +681,6 @@ export function Think(bot: Unit): void {
         return;
     }
     if (st.ep !== undefined) {
-        if (st.ep.itemHeal === true && useItems(bot, st, st.ep, now)) return;
         moveTo(bot, st, anchorPoint(st.ep.anchor), now);
         return;
     }
@@ -883,25 +697,6 @@ export function Think(bot: Unit): void {
 /** The lane-only drill harness steps aside for our retreat while an episode runs (mode_laning_generic). */
 export function Running(bot: Unit): boolean {
     return RetreatState.Running(bot);
-}
-
-/**
- * HealItems: OHA's item code (ItemUsageComplement, roam's tango) leaves our heal items alone on a hero our retreat owns while
- * a heal episode runs, or under the heal floor (where one starts; faerie fire only with nobody in reach): the heal start's plan decides their
- * use, and a walk home keeps them. hi1: OHA drank the planned salve the frame our episode started (rep 2), and in the second
- * between a `gone` end and the heal start (rep 5). In a fight OHA's salve and faerie fire stay. Reads the cached read only.
- */
-export function HoldsItem(bot: Unit, name: string): boolean {
-    if (!Ours.On("HealItems") || !Ours.On("HealStop") || !RetreatState.Owns(bot)) return false;
-    if (!(Object.keys(HEAL_ITEM) as HealItem[]).some((k) => HEAL_ITEM[k].name === name)) return false;
-    const st = states[bot.GetPlayerID()];
-    if (st?.ep !== undefined) return st.ep.why === "heal";
-    if (hpShare(bot) >= SETTINGS.HealFloor) return false;
-    // OHA drinks a salve with no enemy within 900, before our read lets nobody reach us within its horizon (hi2 rep 1: 0.3 s
-    // ahead of the heal start); its salve and tango never fire in a fight, so they are held under the floor whatever the reach.
-    // Faerie fire, a fight's burst, only once nobody can reach us.
-    if (name !== HEAL_ITEM.fire.name) return true;
-    return st?.read !== undefined && st.read.reach.length === 0;
 }
 
 /** mode_farm_generic: none of ShouldRun's runs apply to a hero our retreat owns. */

@@ -1008,10 +1008,8 @@ local function ItemUsageComplement()
 		if J.CanCastAbility(hItem)
 		then
 			local sItemName = hItem:GetName()
-			-- Humaniser HealItems (slice heal-items): our retreat's heal start decides tango, salve and faerie fire on a hero it owns.
 			if	X.ConsiderItemDesire[sItemName] ~= nil
 				and not X.IsItemInStash( sItemName )
-				and not ( J.Humaniser.IsEnabled() and J.Humaniser.Retreat.HoldsItem( bot, sItemName ) )
 				-- Humaniser Sustain (Ours.Sustain): every heal and mana item on a laner we hold is sustain's (humaniser/sustain_act.ts).
 				and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsItem( bot, sItemName ) )
 				-- Lane ladder: a drill's in-lane hero never teleports (humaniser/drill.ts ForbidsItem).
@@ -5322,6 +5320,8 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 		and nModeDesire >= BOT_MODE_DESIRE_MODERATE
 		and bot:GetLevel() >= 3
 		and not bot:HasModifier( "modifier_arc_warden_tempest_double" )
+		-- Humaniser Sustain (Ours.Sustain, design step 4): a held laner walks home; its trip is sustain's rule 2 (humaniser/sustain_act.ts).
+		and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.Holds( bot ) )
 	then
 
 		--第一种情况:无敌人无大药回家恢复
@@ -8438,6 +8438,8 @@ end
 function CourierUsageThink()
 	if RefreshBotHandle() then return end
 	if J.Humaniser.Drill.Owns(bot, "courier") then return end
+	-- Humaniser Sustain (Ours.Sustain, design step 5): a regen purchase of ours is on its way by this courier (humaniser/sustain_act.ts).
+	if J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.OwnsCourier(bot) then return end
 	if bot.lastCourierFrameProcessTime == nil then bot.lastCourierFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastCourierFrameProcessTime < 0.5) then return end
 	bot.lastCourierFrameProcessTime = DotaTime()

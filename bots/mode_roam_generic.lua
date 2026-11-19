@@ -1182,8 +1182,6 @@ end
 
 function ConsiderUseTango()
 	if bot:HasModifier('modifier_tango_heal') then return BOT_ACTION_DESIRE_NONE, nil end
-	-- Humaniser HealItems (slice heal-items): our retreat's heal start decides the tango on a hero it owns.
-	if J.Humaniser.IsEnabled() and J.Humaniser.Retreat.HoldsItem( bot, 'item_tango' ) then return BOT_ACTION_DESIRE_NONE, nil end
 	-- Humaniser Sustain (Ours.Sustain): a held laner's tango is sustain's (humaniser/sustain_act.ts).
 	if J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsItem( bot, 'item_tango' ) then return BOT_ACTION_DESIRE_NONE, nil end
 

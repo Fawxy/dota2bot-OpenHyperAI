@@ -1,6 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local courierOf, noteCourier, n0, courierSeen
+local noteCourier, n0, courierSeen
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local Sustain = require(GetScriptDirectory().."/FunLib/humaniser/sustain")
@@ -11,7 +11,7 @@ local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather"
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
-function courierOf(bot)
+function ____exports.CourierOf(bot)
     do
         local n = 0
         while n <= 4 do
@@ -25,7 +25,7 @@ function courierOf(bot)
     return nil
 end
 function noteCourier(bot)
-    local c = courierOf(bot)
+    local c = ____exports.CourierOf(bot)
     if c == nil then
         return
     end
@@ -442,15 +442,47 @@ local function safeHere(bot, r)
     return {{kill = a.kill, hitting = hitting, reach = reach}, a.level == "deadly"}
 end
 local safeCache = {}
-local function safeSpot(bot, now)
-    local c = safeCache[bot:GetPlayerID()]
-    if c ~= nil and now - c.at < ____exports.SETTINGS.SafeEvery then
-        return c.spot
+--- The safe spot, re-read at most every SafeEvery. `deep`: we stand under the kill line, so rule 2 may wait there: the safe-here
+-- read at the spot (held: the wait is a standing answer) says whether it is deadly. Read only then (a read walks every enemy).
+local function safeSpot(bot, now, deep)
+    local pid = bot:GetPlayerID()
+    local c = safeCache[pid]
+    if c == nil or now - c.at >= ____exports.SETTINGS.SafeEvery then
+        local a = Retreat.SafeSpot(bot)
+        c = {at = now, spot = a ~= nil and ({x = a.at.x, y = a.at.y, walk = a.secs}) or nil}
+        safeCache[pid] = c
     end
-    local a = Retreat.SafeSpot(bot)
-    local spot = a ~= nil and ({x = a.at.x, y = a.at.y, walk = a.secs}) or nil
-    safeCache[bot:GetPlayerID()] = {at = now, spot = spot}
+    local spot = c.spot
+    if spot == nil or not deep then
+        return spot
+    end
+    if c.okAt == nil or now - c.okAt >= ____exports.SETTINGS.SafeEvery then
+        c.okAt = now
+        spot.ok = SafeGather.At(
+            bot,
+            Vector(
+                spot.x,
+                spot.y,
+                bot:GetLocation().z
+            ),
+            {held = true}
+        ).level ~= "deadly"
+    end
     return spot
+end
+--- A slot in 0-8 free for a purchase to land in.
+local function roomOf(bot)
+    do
+        local s = 0
+        while s <= 8 do
+            local it = bot:GetItemInSlot(s)
+            if it == nil or it == nil then
+                return true
+            end
+            s = s + 1
+        end
+    end
+    return false
 end
 --- The courier free and alive: seconds for it to fetch a purchase from the fountain and bring it to the bot.
 local function courierEta(bot, c, fountain)
@@ -473,16 +505,87 @@ local function courierEta(bot, c, fountain)
         bot:GetLocation()
     )) / v}
 end
+--- Regen on its way to the hero, read from the game (whoever bought it): heal and mana items in its stash (slots 9-14) or on its
+-- courier, what they restore (their own values, as held items are read) and the seconds until they can land: the courier's
+-- walk to us when it is out delivering or moving, else to the fountain and then to us. None on the way: undefined.
+function ____exports.OnTheWay(bot, c, fountain)
+    if c == nil then
+        c = ____exports.CourierOf(bot)
+    end
+    if fountain == nil then
+        fountain = Retreat.Fountain(bot:GetTeam())
+    end
+    local hp = 0
+    local mp = 0
+    local found = false
+    local function add(slot, item)
+        if item == nil or item == nil then
+            return
+        end
+        local it = readItem(slot, item)
+        if it == nil then
+            return
+        end
+        found = true
+        hp = hp + it.hp * math.max(1, it.charges)
+        mp = mp + it.mp * math.max(1, it.charges)
+    end
+    do
+        local s = 9
+        while s <= 14 do
+            add(
+                s,
+                bot:GetItemInSlot(s)
+            )
+            s = s + 1
+        end
+    end
+    local st = c ~= nil and GetCourierState(c) or COURIER_STATE_DEAD
+    if c ~= nil and st ~= COURIER_STATE_DEAD then
+        do
+            local s = 0
+            while s <= 8 do
+                add(
+                    s,
+                    c:GetItemInSlot(s)
+                )
+                s = s + 1
+            end
+        end
+    end
+    if not found then
+        return nil
+    end
+    local eta = math.huge
+    if c ~= nil and st ~= COURIER_STATE_DEAD then
+        local v = math.max(
+            100,
+            c:GetCurrentMovementSpeed()
+        )
+        local out = st == COURIER_STATE_DELIVERING_ITEMS or st == COURIER_STATE_MOVING
+        eta = out and dist(
+            c:GetLocation(),
+            bot:GetLocation()
+        ) / v or (dist(
+            c:GetLocation(),
+            fountain
+        ) + dist(
+            fountain,
+            bot:GetLocation()
+        )) / v
+    end
+    return {hp = hp, mp = mp, eta = eta}
+end
 --- The lane regen the fountain sells now: price from GetItemCost, what one purchase restores from an item of ours read before.
 local function shopOf()
     local out = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue58
+            local __continue72
             repeat
                 local l = learned[name]
                 if not spec.shop or l == nil or GetItemStockCount(name) <= 0 then
-                    __continue58 = true
+                    __continue72 = true
                     break
                 end
                 local n = math.max(1, l.pack)
@@ -492,9 +595,9 @@ local function shopOf()
                     hp = l.hp * n,
                     mp = l.mp * n
                 }
-                __continue58 = true
+                __continue72 = true
             until true
-            if not __continue58 then
+            if not __continue72 then
                 break
             end
         end
@@ -508,11 +611,11 @@ local function healsOf(a)
         local s = 0
         while s <= 8 do
             do
-                local __continue61
+                local __continue75
                 repeat
                     local item = a:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue61 = true
+                        __continue75 = true
                         break
                     end
                     local spec = ____exports.ITEMS[item:GetName()]
@@ -522,9 +625,9 @@ local function healsOf(a)
                             item:GetCurrentCharges() or 0
                         )
                     end
-                    __continue61 = true
+                    __continue75 = true
                 until true
-                if not __continue61 then
+                if not __continue75 then
                     break
                 end
             end
@@ -547,11 +650,17 @@ function ____exports.Gather(bot, run)
     )
     local items = ____exports.Items(bot)
     local safe, deadlyHere = unpack(safeHere(bot, stay))
-    local spot = safeSpot(bot, now)
+    local hpMax = bot:GetMaxHealth()
+    local spot = safeSpot(
+        bot,
+        now,
+        hp < Sustain.KillLine({hpMax = hpMax, safe = safe})
+    )
     local t = treeOf(bot, items, now, spot)
     local tree = t ~= nil and ({walk = t.walk, safe = t.safe, start = not (t.walk > 0 and deadlyHere)}) or nil
     local rl, ml = unpack(regenLeft(bot))
     local fountain = Retreat.Fountain(bot:GetTeam())
+    local courier = ____exports.CourierOf(bot)
     local speed = math.max(
         100,
         bot:GetCurrentMovementSpeed()
@@ -559,10 +668,10 @@ function ____exports.Gather(bot, run)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue65
+            local __continue79
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.AllyRadius then
-                    __continue65 = true
+                    __continue79 = true
                     break
                 end
                 allies[#allies + 1] = {
@@ -570,16 +679,16 @@ function ____exports.Gather(bot, run)
                     missing = a:GetMaxHealth() - a:GetHealth(),
                     heals = healsOf(a)
                 }
-                __continue65 = true
+                __continue79 = true
             until true
-            if not __continue65 then
+            if not __continue79 then
                 break
             end
         end
     end
     local ____now_7 = now
     local ____hp_8 = hp
-    local ____temp_9 = bot:GetMaxHealth()
+    local ____hpMax_9 = hpMax
     local ____temp_10 = bot:GetMana()
     local ____temp_11 = bot:GetMaxMana()
     local ____items_12 = items
@@ -593,7 +702,7 @@ function ____exports.Gather(bot, run)
     return {
         now = ____now_7,
         hp = ____hp_8,
-        hpMax = ____temp_9,
+        hpMax = ____hpMax_9,
         mp = ____temp_10,
         mpMax = ____temp_11,
         items = ____items_12,
@@ -604,12 +713,10 @@ function ____exports.Gather(bot, run)
         regenLeft = rl,
         manaLeft = ml,
         safeSpot = spot,
+        delivery = ____exports.OnTheWay(bot, courier, fountain),
+        room = roomOf(bot),
         gold = bot:GetGold(),
-        courier = courierEta(
-            bot,
-            courierOf(bot),
-            fountain
-        ),
+        courier = courierEta(bot, courier, fountain),
         shop = shopOf(),
         home = 2 * dist(here, fountain) / speed,
         idle = CampJobs.Active(bot),
@@ -724,7 +831,15 @@ function ____exports.CutFields(pid, i, a)
         },
         {
             "ss",
-            i.safeSpot ~= nil and (((tostring(n0(i.safeSpot.x)) .. ",") .. tostring(n0(i.safeSpot.y))) .. ",") .. t1(i.safeSpot.walk) or nil
+            i.safeSpot ~= nil and (((((tostring(n0(i.safeSpot.x)) .. ",") .. tostring(n0(i.safeSpot.y))) .. ",") .. t1(i.safeSpot.walk)) .. ",") .. tostring(b01(i.safeSpot.ok ~= false)) or nil
+        },
+        {
+            "dl",
+            i.delivery ~= nil and (((tostring(n0(i.delivery.hp)) .. ",") .. tostring(n0(i.delivery.mp))) .. ",") .. t1(i.delivery.eta) or nil
+        },
+        {
+            "rom",
+            b01(i.room ~= false)
         },
         {
             "gd",
@@ -757,6 +872,7 @@ function ____exports.CutFields(pid, i, a)
         {"ak", a.kind},
         {"anm", a.name},
         {"ato", a.to},
+        {"alb", a.also},
         {"why", a.reason},
         {"ed", a.ended}
     }

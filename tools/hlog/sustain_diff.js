@@ -39,6 +39,7 @@ function inputsOf(c) {
     }));
     const tr = c.tr !== undefined ? String(c.tr).split(',').map(Number) : undefined;
     const ss = c.ss !== undefined ? String(c.ss).split(',').map(Number) : undefined;
+    const dl = c.dl !== undefined ? String(c.dl).split(',').map(Number) : undefined;
     const old = c.kill === undefined && c.lb !== undefined;
     return {
         now: num(c.t), hp: num(c.hpa), hpMax: num(c.hpm), mp: num(c.mpa), mpMax: num(c.mpm), items,
@@ -49,11 +50,13 @@ function inputsOf(c) {
             ? { kill: (num(c.lb) || 0) / 1.5, hitting: num(c.hr) === 1 && (num(c.rc) || 0) > 0, reach: num(c.rc) || 0 }
             : { kill: num(c.kill) || 0, hitting: num(c.sh) === 1, reach: num(c.rc) || 0 },
         regenLeft: num(c.rl) || 0, manaLeft: num(c.ml) || 0,
-        safeSpot: ss ? { x: ss[0], y: ss[1], walk: ss[2] } : undefined,
+        safeSpot: ss ? Object.assign({ x: ss[0], y: ss[1], walk: ss[2] }, ss[3] === undefined ? {} : { ok: ss[3] === 1 }) : undefined,
+        delivery: dl ? { hp: dl[0], mp: dl[1], eta: dl[2] } : undefined,
         gold: num(c.gd), courier: c.co !== undefined ? { eta: num(c.co) } : undefined,
         shop: recs(c.shp).map(([name, cost, hp, mp]) => ({ name, cost: +cost, hp: +hp, mp: +mp })),
         home: num(c.ho), idle: num(c.idl) === 1, atFountain: num(c.af) === 1,
         allies: recs(c.als).map(([pid, missing, heals]) => ({ pid: +pid, missing: +missing, heals: +heals })),
+        ...(c.rom === undefined ? {} : { room: num(c.rom) === 1 }),
     };
 }
 

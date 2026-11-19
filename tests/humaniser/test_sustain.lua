@@ -178,4 +178,33 @@ check("rule 1 fires inside a running trip home",
 		"use", "item_magic_stick", "survive")
 		and is(decide(inputs({ hp = 150, safe = { kill = 200, hitting = false, reach = 1 }, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
 			"home", nil, "running"))
+-- Steps 4 and 5: a delivery on its way, the safe spot's own read, room, and tango and ship. A 600 HP hero that a lane of 600
+-- can kill has the kill line at 600 (Stay x 600 over the cap); 200 HP plus a tango (336) reaches 536, short of it.
+local DEEP = { hp = 200, safe = { kill = 600, hitting = false, reach = 0 }, safeSpot = SAFE, gold = 300, courier = { eta = 20 } }
+check("a delivery on its way that lifts us over the line: wait at the safe spot; one that does not, or slower than home: home",
+	is(decide(inputs(merge({ delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "wait", nil, "delivery")
+		and is(decide(inputs(merge({ delivery = { hp = 300, mp = 0, eta = 10 } }, DEEP))), "home", nil, "cannot_stay")
+		and is(decide(inputs(merge({ delivery = { hp = 400, mp = 0, eta = 70 } }, DEEP))), "home", nil, "cannot_stay"))
+
+check("waiting with a tango in hand and no regen running: eat it meanwhile; with one running: wait",
+	is(decide(inputs(merge({ items = { tango() }, tree = TREE, delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "use", "item_tango", "wait_tango")
+		and is(decide(inputs(merge({ items = { tango() }, tree = TREE, regenLeft = 50, delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "wait", nil, "delivery"))
+
+check("a safe spot the safe-here read calls deadly: no wait and no shipment, home",
+	is(decide(inputs(merge(merge({ delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP), { safeSpot = { x = 1, y = 2, walk = 3, ok = false } }))), "home")
+		and is(decide(inputs(merge(merge({}, DEEP), { safeSpot = { x = 1, y = 2, walk = 3, ok = false } }))), "home"))
+
+check("tango and ship: in hand short, in hand plus a purchase clears the line: the tango now, the cheapest cover (a tango pack) sent with it",
+	(function()
+		local a = decide(inputs(merge({ items = { tango() }, tree = TREE }, DEEP)))
+		return is(a, "use", "item_tango", "tango_ship") and a.also == "item_tango" and a.at ~= nil
+	end)())
+
+check("no room for a purchase to land: rule 2 goes home, rule 5 buys nothing",
+	is(decide(inputs(merge({ room = false }, DEEP))), "home")
+		and is(decide(inputs({ hp = 500, hpMax = 1000, gold = 200, courier = { eta = 20 }, room = false })), "none"))
+
+check("rule 5 with a purchase on its way, or at the fountain: no second purchase",
+	is(decide(inputs({ hp = 500, hpMax = 1000, gold = 200, courier = { eta = 20 }, delivery = { hp = 400, mp = 0, eta = 10 } })), "none")
+		and is(decide(inputs({ hp = 500, hpMax = 1000, gold = 200, courier = { eta = 20 }, atFountain = true })), "none"))
 finish()

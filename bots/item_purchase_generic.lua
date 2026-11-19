@@ -436,8 +436,10 @@ local function TurboModeGeneralPurchase()
 	end
 end
 
--- Humaniser sustain (design step 2): the lane regen purchases below log their rule (ev=sustain_buy); telemetry only.
+-- Humaniser sustain (design step 2): the lane regen purchases below log their rule (ev=sustain_buy). Step 5 (Ours.Sustain): a
+-- held laner's regen purchases are sustain's rules 2 and 5 (humaniser/sustain_act.ts); the support's one starting clarity stays OHA's.
 local function BuyRegen( sItem, sWhy )
+	if sWhy ~= 'support_clarity' and J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsBuy( bot ) then return end
 	bot:ActionImmediate_PurchaseItem( sItem )
 	-- After the purchase, in a pcall: a telemetry error never skips it.
 	if J.Humaniser.IsEnabled() then pcall( J.Humaniser.SustainGather.Bought, bot, sItem, sWhy ) end

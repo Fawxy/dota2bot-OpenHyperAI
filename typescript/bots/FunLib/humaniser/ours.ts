@@ -116,13 +116,6 @@ export const DEFAULTS = {
      *  areas' retreat nudges are off for it, and every other hero in retreat mode takes the plain walk. Off: OHA's retreat
      *  and Valve's walk. */
     Retreat: true,
-    /** Slice heal-stop (D3): with Retreat on, a heal episode ends where HP is back over half, nobody is in reach and our lane
-     *  front is nearer than our fountain (retreat.ts HealBack). Off: it walks on to the fountain and 0.8 HP. */
-    HealStop: true,
-    /** Slice heal-items (D6 stop-gap, user 11/11/2026): with Retreat and HealStop on, a heal start that holds items restoring HP to
-     *  HealBack uses them and waits at our tower (retreat.ts HealSets). Off: the walk home, OHA's item use only. Off by default:
-     *  in games the plan skipped nearly every start on a hero within reach while holding the items from OHA (slice missed). */
-    HealItems: false,
     /** Slice arbiter-shadow (design docs/proposals/2026-11-11-arbiter.md): per owned hero, the arbiter's pick as ev=arb beside
      *  Valve's active mode (arbiter.ts). Logging only, no desire changes. Off: no line. */
     ArbiterShadow: true,
@@ -137,9 +130,11 @@ export const DEFAULTS = {
      *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
      *  Off: Valve's estimate, which counts every learned enemy spell ready. */
     BurstReady: true,
-    /** Sustain step 3 (D6; design docs/proposals/2026-11-19-sustain-design.md): a held laner's heal and mana item use is
-     *  sustain.ts Decide's, carried out by sustain_act.ts (use, step_out_use, give); OHA's item loop and roam's tango skip
-     *  every heal and mana item on it, and the support's pull supply asks it. Off: OHA's item use, and the supply step's own rule. */
+    /** Sustain steps 3-5 (D6; design docs/proposals/2026-11-19-sustain-design.md): a held laner's heal and mana item use, its
+     *  walk home (retreat's heal leave reads rule 2), its regen purchases and their courier delivery are sustain.ts Decide's,
+     *  carried out by sustain_act.ts (use, step_out_use, give, home, buy, wait); OHA's item loop, roam's tango, lane-regen
+     *  purchases, teleport home and courier skip that hero, and the support's pull supply asks it. Off: OHA's, the supply step's
+     *  own rule, and retreat's heal floor sends the hero home. */
     Sustain: true,
 };
 

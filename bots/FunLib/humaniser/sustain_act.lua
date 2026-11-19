@@ -189,16 +189,20 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 ____exports.SETTINGS = {
     DecideEvery = 0.5,
     DecideHit = 0.1,
     StartWait = 1.5,
     Arrive = 100,
-    YieldFresh = 0.3
+    YieldFresh = 0.3,
+    LateSlack = 20,
+    CourierEvery = 2
 }
 --- Cast on our own hero (OHA's cast type `unit` for these); a tree item on its tree; any other item has no target.
 local SELF = {item_flask = true, item_clarity = true}
 local acts = {}
+local deliveries = {}
 local decidedAt = {}
 local yieldedAt = {}
 --- When the camp job's supply step last asked (it yields only with time to spare).
@@ -213,6 +217,14 @@ function ____exports.Holds(bot)
     end
     return not (Overrides.LaneOnly(bot) and not Drill.CastItems(bot))
 end
+--- OHA's lane-regen purchase rules (item_purchase_generic.lua BuyRegen) skip a hero sustain carries: rules 2 and 5 buy.
+function ____exports.HoldsBuy(bot)
+    return ____exports.Holds(bot)
+end
+--- OHA's courier code (CourierUsageThink) stands aside while a delivery of ours is on its way to this hero.
+function ____exports.OwnsCourier(bot)
+    return deliveries[bot:GetPlayerID()] ~= nil
+end
 --- OHA's item loop and roam's tango skip this item on this hero: every heal and mana item sustain reads, on a hero it carries.
 function ____exports.HoldsItem(bot, name)
     return SustainGather.ITEMS[name] ~= nil and ____exports.Holds(bot)
@@ -224,18 +236,18 @@ local function chargesOf(bot, name)
         local s = 0
         while s <= 8 do
             do
-                local __continue7
+                local __continue9
                 repeat
                     local it = bot:GetItemInSlot(s)
                     if it == nil or it == nil or it:GetName() ~= name then
-                        __continue7 = true
+                        __continue9 = true
                         break
                     end
                     local c = it:GetCurrentCharges() or 0
                     n = n + (c > 0 and c or 0.5)
-                    __continue7 = true
+                    __continue9 = true
                 until true
-                if not __continue7 then
+                if not __continue9 then
                     break
                 end
             end
@@ -325,8 +337,141 @@ local function ____end(bot, why)
         }
     )
 end
+local function endBuy(bot, why)
+    local pid = bot:GetPlayerID()
+    local d = deliveries[pid]
+    if d == nil then
+        return
+    end
+    deliveries[pid] = nil
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    Telemetry.Event(
+        "sustain",
+        {
+            {"pid", pid},
+            {"k", "buy"},
+            {"it", d.item},
+            {"why", d.why},
+            {
+                "hp0",
+                n0(d.hp0)
+            },
+            {
+                "hp1",
+                n0(bot:GetHealth())
+            },
+            {
+                "mp0",
+                n0(d.mp0)
+            },
+            {
+                "mp1",
+                n0(bot:GetMana())
+            },
+            {
+                "sec",
+                r1(DotaTime() - d.at)
+            },
+            {"ed", why},
+            {"res", d.res},
+            {"cor", d.orders},
+            {
+                "eta",
+                r1(d.eta)
+            }
+        }
+    )
+end
+--- One frame of a delivery: nothing left on the way (stash and courier read) ends it `delivered`; late or the courier dead end it
+-- too (what is still on the way stays in Decide's read, so no second purchase follows); else the courier is ordered to take the
+-- stash to us (and burst).
+local function deliver(bot, d, now)
+    local c = SustainGather.CourierOf(bot)
+    if now > d.at and SustainGather.OnTheWay(bot, c) == nil then
+        return endBuy(bot, "delivered")
+    end
+    local st = c ~= nil and GetCourierState(c) or COURIER_STATE_DEAD
+    if c == nil or st == COURIER_STATE_DEAD then
+        return endBuy(bot, "courier_dead")
+    end
+    if now > d.at + d.eta + ____exports.SETTINGS.LateSlack then
+        return endBuy(bot, "late")
+    end
+    if st == COURIER_STATE_DELIVERING_ITEMS or now - d.orderAt < ____exports.SETTINGS.CourierEvery then
+        return
+    end
+    d.orderAt = now
+    d.orders = d.orders + 1
+    local b = bot
+    b:ActionImmediate_Courier(c, COURIER_ACTION_TAKE_AND_TRANSFER_ITEMS)
+    local burst = c:GetAbilityByName("courier_burst")
+    if burst ~= nil and burst ~= nil and burst:IsFullyCastable() then
+        b:ActionImmediate_Courier(c, COURIER_ACTION_BURST)
+    end
+end
+--- A purchase for Decide's `buy` (or a use's `also`): bought and its delivery started. False when regen is already on the way (the
+-- game's read, whoever bought it), a rig owns the hero's purchases, or the game refused it.
+local function purchase(bot, i, name, why, now)
+    local pid = bot:GetPlayerID()
+    if deliveries[pid] ~= nil or SustainGather.OnTheWay(bot) ~= nil or Drill.Owns(bot, "purchase") or Drill.Owns(bot, "courier") then
+        return false
+    end
+    local full = "item_" .. name
+    local res = bot:ActionImmediate_PurchaseItem(full)
+    if res ~= PURCHASE_ITEM_SUCCESS then
+        if Telemetry.IsEnabled() then
+            Telemetry.Event(
+                "sustain",
+                {
+                    {"pid", pid},
+                    {"k", "buy"},
+                    {"it", full},
+                    {"why", why},
+                    {
+                        "hp0",
+                        n0(i.hp)
+                    },
+                    {
+                        "mp0",
+                        n0(i.mp)
+                    },
+                    {"sec", 0},
+                    {"ed", "failed"},
+                    {"res", res}
+                }
+            )
+        end
+        return false
+    end
+    SustainGather.Bought(bot, full, "ours_" .. why)
+    local ____why_2 = why
+    local ____now_3 = now
+    local ____opt_0 = i.courier
+    local d = {
+        item = full,
+        why = ____why_2,
+        at = ____now_3,
+        eta = ____opt_0 and ____opt_0.eta or 0,
+        hp0 = i.hp,
+        mp0 = i.mp,
+        res = res,
+        orderAt = -math.huge,
+        orders = 0
+    }
+    deliveries[pid] = d
+    deliver(bot, d, now)
+    return true
+end
 --- Gives the attempt's order for this frame (a walk's order again while it runs).
 local function order(bot, a)
+    if a.kind == "wait" then
+        if a.spot ~= nil and GetUnitToLocationDistance(bot, a.spot) > ____exports.SETTINGS.Arrive then
+            bot:Action_MoveToLocation(a.spot)
+        end
+        return
+    end
     local item = itemIn(bot, a.slot, a.item)
     if item == nil then
         return
@@ -354,13 +499,13 @@ local function order(bot, a)
         return
     end
     if a.kind == "give" then
-        local ____temp_0
+        local ____temp_4
         if a.to ~= nil then
-            ____temp_0 = allyOf(a.to)
+            ____temp_4 = allyOf(a.to)
         else
-            ____temp_0 = nil
+            ____temp_4 = nil
         end
-        local ally = ____temp_0
+        local ally = ____temp_4
         if ally ~= nil then
             ItemUse.UseOnAlly(bot, item, ally)
         end
@@ -372,15 +517,80 @@ local function order(bot, a)
         ItemUse.UseNoTarget(bot, item)
     end
 end
---- Starts the answer's attempt, if it is one this step carries out and its order can be given now.
+--- A wait at the safe spot for a delivery on its way: true when it started (its walk carried).
+local function startWait(bot, i, ans, now)
+    if ans.at == nil then
+        return false
+    end
+    local spot = Vector(
+        ans.at.x,
+        ans.at.y,
+        bot:GetLocation().z
+    )
+    local walk = GetUnitToLocationDistance(bot, spot) / math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+    if GetUnitToLocationDistance(bot, spot) > ____exports.SETTINGS.Arrive and not canWalk(bot, now) then
+        return false
+    end
+    local a = {
+        kind = "wait",
+        item = "",
+        slot = -1,
+        why = ans.reason,
+        at = now,
+        hp0 = i.hp,
+        mp0 = i.mp,
+        charges0 = 0,
+        walk = walk,
+        deadline = math.huge,
+        spot = spot
+    }
+    local pid = bot:GetPlayerID()
+    acts[pid] = a
+    order(bot, a)
+    if deliveries[pid] == nil and i.delivery ~= nil and not Drill.Owns(bot, "courier") then
+        local d = {
+            item = "stash",
+            why = ans.reason,
+            at = now,
+            eta = i.delivery.eta,
+            hp0 = i.hp,
+            mp0 = i.mp,
+            orderAt = -math.huge,
+            orders = 0
+        }
+        deliveries[pid] = d
+        deliver(bot, d, now)
+    end
+    return true
+end
+--- Starts the answer's attempt, if it is one this module carries out and its order can be given now. True when it did (or the
+-- answer needs nothing done: none, home); false when an answer was not carried (a refused purchase, a walk nobody carries).
 local function start(bot, i, ans, now)
-    if ans.kind ~= "use" and ans.kind ~= "step_out_use" and ans.kind ~= "give" or ans.slot == nil or ans.name == nil then
-        return
+    if ans.kind == "none" or ans.kind == "home" then
+        return true
+    end
+    if ans.kind == "wait" then
+        return startWait(bot, i, ans, now)
+    end
+    if ans.kind == "buy" then
+        return ans.name ~= nil and purchase(
+            bot,
+            i,
+            ans.name,
+            ans.reason,
+            now
+        )
+    end
+    if ans.slot == nil or ans.name == nil then
+        return false
     end
     local name = "item_" .. ans.name
     local item = itemIn(bot, ans.slot, name)
     if item == nil then
-        return
+        return false
     end
     local a = {
         kind = ans.kind,
@@ -394,21 +604,21 @@ local function start(bot, i, ans, now)
         walk = 0,
         deadline = now + ____exports.SETTINGS.StartWait
     }
-    local ____temp_3 = ans.kind == "use"
-    if ____temp_3 then
-        local ____opt_1 = SustainGather.ITEMS[name]
-        ____temp_3 = (____opt_1 and ____opt_1.tree) == true
+    local ____temp_7 = ans.kind == "use"
+    if ____temp_7 then
+        local ____opt_5 = SustainGather.ITEMS[name]
+        ____temp_7 = (____opt_5 and ____opt_5.tree) == true
     end
-    if ____temp_3 then
+    if ____temp_7 then
         local t = SustainGather.TreeOf(bot)
         if t == nil or i.tree == nil then
-            return
+            return false
         end
         a.tree = t.id
         a.walk = i.tree.walk
     elseif ans.kind == "step_out_use" then
         if ans.at == nil or i.safeSpot == nil then
-            return
+            return false
         end
         a.spot = Vector(
             ans.at.x,
@@ -430,15 +640,15 @@ local function start(bot, i, ans, now)
             at = ans.at
         }
     elseif ans.kind == "give" then
-        local ____temp_6
+        local ____temp_10
         if ans.to ~= nil then
-            ____temp_6 = allyOf(ans.to)
+            ____temp_10 = allyOf(ans.to)
         else
-            ____temp_6 = nil
+            ____temp_10 = nil
         end
-        local ally = ____temp_6
+        local ally = ____temp_10
         if ally == nil then
-            return
+            return false
         end
         a.to = ans.to
         a.walk = math.max(
@@ -450,14 +660,73 @@ local function start(bot, i, ans, now)
         )
     end
     if a.walk > 0 and not canWalk(bot, now) then
-        return
+        return false
     end
     a.deadline = now + a.walk + ____exports.SETTINGS.StartWait
     acts[bot:GetPlayerID()] = a
     order(bot, a)
+    if ans.also ~= nil then
+        purchase(
+            bot,
+            i,
+            ans.also,
+            ans.reason,
+            now
+        )
+    end
+    return true
+end
+--- Rule 2's answers: the hero cannot stay as it is. One not carried (a refused purchase, a wait or tango walk nobody carries) sends it home.
+local RULE2 = {
+    cannot_stay = true,
+    low_both = true,
+    delivery = true,
+    wait_tango = true,
+    tango_ship = true
+}
+--- Starts the answer and tells retreat whether the hero goes home: rule 2's `home`, or a rule 2 answer that could not be carried (a wait first for a tango that could not start).
+local function carry(bot, i, ans, now)
+    local ok = start(bot, i, ans, now)
+    if not ok and (ans.reason == "wait_tango" or ans.reason == "tango_ship") then
+        ok = (ans.also == nil or purchase(
+            bot,
+            i,
+            ans.also,
+            ans.reason,
+            now
+        )) and startWait(bot, i, ans, now)
+    end
+    RetreatState.SetHome(bot, ans.kind == "home" or not ok and RULE2[ans.reason] == true)
 end
 --- One frame of a running attempt: true once it has ended.
 local function progress(bot, a, now)
+    if a.kind == "wait" then
+        if not carried(bot, now) and now > a.at then
+            ____end(bot, "cut")
+            return true
+        end
+        local pid = bot:GetPlayerID()
+        local last = decidedAt[pid]
+        if last ~= nil and now - last < ____exports.SETTINGS.DecideEvery then
+            return false
+        end
+        decidedAt[pid] = now
+        local i = SustainGather.Gather(bot)
+        local ans = Sustain.Decide(i)
+        if ans.kind == "wait" and ans.at ~= nil then
+            a.spot = Vector(
+                ans.at.x,
+                ans.at.y,
+                bot:GetLocation().z
+            )
+            RetreatState.SetHome(bot, false)
+            return false
+        end
+        ____end(bot, "done")
+        SustainGather.Cut(bot, i, ans, true)
+        carry(bot, i, ans, now)
+        return true
+    end
     if a.kind == "step_out_use" then
         if a.drunk ~= true and not carried(bot, now) and now > a.at then
             ____end(bot, "cut")
@@ -472,18 +741,19 @@ local function progress(bot, a, now)
         local i = SustainGather.Gather(bot, a.run)
         local ans = Sustain.Decide(i)
         SustainGather.Cut(bot, i, ans, true)
+        RetreatState.SetHome(bot, ans.kind == "home")
         if ans.reason ~= "running" then
             ____end(bot, ans.ended or "done")
             return true
         end
-        local ____temp_11 = a.drunk ~= true
-        if ____temp_11 then
-            local ____now_10 = now
-            local ____a_deadline_9 = a.deadline
-            local ____opt_7 = a.run
-            ____temp_11 = ____now_10 > ____a_deadline_9 + (____opt_7 and ____opt_7.dur or 0)
+        local ____temp_15 = a.drunk ~= true
+        if ____temp_15 then
+            local ____now_14 = now
+            local ____a_deadline_13 = a.deadline
+            local ____opt_11 = a.run
+            ____temp_15 = ____now_14 > ____a_deadline_13 + (____opt_11 and ____opt_11.dur or 0)
         end
-        if ____temp_11 then
+        if ____temp_15 then
             ____end(bot, "missed")
             return true
         end
@@ -512,13 +782,21 @@ function ____exports.ItemThink(bot)
     local pid = bot:GetPlayerID()
     if not bot:IsAlive() then
         ____end(bot, "dead")
+        endBuy(bot, "dead")
+        RetreatState.SetHome(bot, nil)
         return
     end
     if not ____exports.Holds(bot) then
         ____end(bot, "released")
+        endBuy(bot, "released")
+        RetreatState.SetHome(bot, nil)
         return
     end
     local now = DotaTime()
+    local d = deliveries[pid]
+    if d ~= nil then
+        deliver(bot, d, now)
+    end
     local hit = bot:WasRecentlyDamagedByAnyHero(1)
     local a = acts[pid]
     if a ~= nil and not progress(bot, a, now) and not hit then
@@ -530,7 +808,12 @@ function ____exports.ItemThink(bot)
     end
     decidedAt[pid] = now
     SustainGather.NoteCourier(bot)
-    local i = SustainGather.Gather(bot)
+    local run = RetreatState.Healing(bot) and ({
+        kind = "home",
+        started = now,
+        hp0 = bot:GetHealth()
+    }) or nil
+    local i = SustainGather.Gather(bot, run)
     local ans = Sustain.Decide(i)
     local running = acts[pid]
     if running ~= nil then
@@ -540,7 +823,7 @@ function ____exports.ItemThink(bot)
         ____end(bot, "cut")
     end
     SustainGather.Cut(bot, i, ans, true)
-    start(bot, i, ans, now)
+    carry(bot, i, ans, now)
 end
 --- The lane table's `sustain` row: an attempt not yet under way wants the frame, a walk or not (smoke 1: 6 of 49 tangos with
 -- the tree in range were never eaten, the body's move given after the cast); a step out once it has drunk does not.
@@ -583,6 +866,9 @@ function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(askedAt)) do
         __TS__Delete(askedAt, k)
     end
+    for ____, k in ipairs(__TS__ObjectKeys(deliveries)) do
+        __TS__Delete(deliveries, k)
+    end
 end
-____exports._test = {acts = acts}
+____exports._test = {acts = acts, deliveries = deliveries}
 return ____exports

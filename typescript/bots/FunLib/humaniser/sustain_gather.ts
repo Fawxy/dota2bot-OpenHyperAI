@@ -32,6 +32,8 @@ declare function GetItemStockCount(name: string): number;
 declare const COURIER_STATE_IDLE: number;
 declare const COURIER_STATE_AT_BASE: number;
 declare const COURIER_STATE_DEAD: number;
+declare const COURIER_STATE_MOVING: number;
+declare const COURIER_STATE_DELIVERING_ITEMS: number;
 
 interface SpecItem {
     GetSpecialValueFloat(name: string): number;
@@ -279,18 +281,39 @@ function safeHere(bot: Unit, r: Threat.Read): [Sustain.Inputs["safe"], boolean] 
     return [{ kill: a.kill, hitting, reach }, a.level === "deadly"];
 }
 
-const safeCache: Record<number, { at: number; spot?: Sustain.Inputs["safeSpot"] } | undefined> = {};
+const safeCache: Record<number, { at: number; spot?: Sustain.Inputs["safeSpot"]; okAt?: number } | undefined> = {};
 
-function safeSpot(bot: Unit, now: number): Sustain.Inputs["safeSpot"] {
-    const c = safeCache[bot.GetPlayerID()];
-    if (c !== undefined && now - c.at < SETTINGS.SafeEvery) return c.spot;
-    const a = Retreat.SafeSpot(bot);
-    const spot = a !== undefined ? { x: a.at.x, y: a.at.y, walk: a.secs } : undefined;
-    safeCache[bot.GetPlayerID()] = { at: now, spot };
+/**
+ * The safe spot, re-read at most every SafeEvery. `deep`: we stand under the kill line, so rule 2 may wait there: the safe-here
+ * read at the spot (held: the wait is a standing answer) says whether it is deadly. Read only then (a read walks every enemy).
+ */
+function safeSpot(bot: Unit, now: number, deep: boolean): Sustain.Inputs["safeSpot"] {
+    const pid = bot.GetPlayerID();
+    let c = safeCache[pid];
+    if (c === undefined || now - c.at >= SETTINGS.SafeEvery) {
+        const a = Retreat.SafeSpot(bot);
+        c = { at: now, spot: a !== undefined ? { x: a.at.x, y: a.at.y, walk: a.secs } : undefined };
+        safeCache[pid] = c;
+    }
+    const spot = c.spot;
+    if (spot === undefined || !deep) return spot;
+    if (c.okAt === undefined || now - c.okAt >= SETTINGS.SafeEvery) {
+        c.okAt = now;
+        spot.ok = SafeGather.At(bot, Vector(spot.x, spot.y, bot.GetLocation().z), { held: true }).level !== "deadly";
+    }
     return spot;
 }
 
-function courierOf(bot: Unit): Unit | undefined {
+/** A slot in 0-8 free for a purchase to land in. */
+function roomOf(bot: Unit): boolean {
+    for (let s = 0; s <= 8; s++) {
+        const it = bot.GetItemInSlot(s);
+        if (it === undefined || it === null) return true;
+    }
+    return false;
+}
+
+export function CourierOf(bot: Unit): Unit | undefined {
     for (let n = 0; n <= 4; n++) {
         const c = GetCourier(n);
         if (c !== undefined && c !== null && c.GetPlayerID() === bot.GetPlayerID()) return c;
@@ -305,6 +328,36 @@ function courierEta(bot: Unit, c: Unit | undefined, fountain: Vector): Sustain.I
     if (st !== COURIER_STATE_IDLE && st !== COURIER_STATE_AT_BASE) return undefined;
     const v = math.max(100, c.GetCurrentMovementSpeed());
     return { eta: (dist(c.GetLocation(), fountain) + dist(fountain, bot.GetLocation())) / v };
+}
+
+/**
+ * Regen on its way to the hero, read from the game (whoever bought it): heal and mana items in its stash (slots 9-14) or on its
+ * courier, what they restore (their own values, as held items are read) and the seconds until they can land: the courier's
+ * walk to us when it is out delivering or moving, else to the fountain and then to us. None on the way: undefined.
+ */
+export function OnTheWay(bot: Unit, c: Unit | undefined = CourierOf(bot), fountain: Vector = Retreat.Fountain(bot.GetTeam())): Sustain.Inputs["delivery"] {
+    let hp = 0;
+    let mp = 0;
+    let found = false;
+    const add = (slot: number, item: Item | undefined | null): void => {
+        if (item === undefined || item === null) return;
+        const it = readItem(slot, item);
+        if (it === undefined) return;
+        found = true;
+        hp += it.hp * math.max(1, it.charges);
+        mp += it.mp * math.max(1, it.charges);
+    };
+    for (let s = 9; s <= 14; s++) add(s, bot.GetItemInSlot(s));
+    const st = c !== undefined ? GetCourierState(c) : COURIER_STATE_DEAD;
+    if (c !== undefined && st !== COURIER_STATE_DEAD) for (let s = 0; s <= 8; s++) add(s, c.GetItemInSlot(s));
+    if (!found) return undefined;
+    let eta = math.huge;
+    if (c !== undefined && st !== COURIER_STATE_DEAD) {
+        const v = math.max(100, c.GetCurrentMovementSpeed());
+        const out = st === COURIER_STATE_DELIVERING_ITEMS || st === COURIER_STATE_MOVING;
+        eta = out ? dist(c.GetLocation(), bot.GetLocation()) / v : (dist(c.GetLocation(), fountain) + dist(fountain, bot.GetLocation())) / v;
+    }
+    return { hp, mp, eta };
 }
 
 /** The lane regen the fountain sells now: price from GetItemCost, what one purchase restores from an item of ours read before. */
@@ -342,11 +395,14 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
     // A walk does not start where we stand deadly, whatever the read over it says (that read has no engaged window: smoke 1,
     // a tango walk started under a lethal leave). It still counts in rule 2's reach (review: as one flag it sent harassed
     // heroes holding tangos `home`, which step 3 does not carry, so nothing was eaten).
-    const spot = safeSpot(bot, now);
+    const hpMax = bot.GetMaxHealth();
+    // Rule 2 fires only under the kill line (what we reach is at least our HP): the spot's own read is made only then.
+    const spot = safeSpot(bot, now, hp < Sustain.KillLine({ hpMax, safe } as Sustain.Inputs));
     const t = treeOf(bot, items, now, spot);
     const tree = t !== undefined ? { walk: t.walk, safe: t.safe, start: !(t.walk > 0 && deadlyHere) } : undefined;
     const [rl, ml] = regenLeft(bot);
     const fountain = Retreat.Fountain(bot.GetTeam());
+    const courier = CourierOf(bot);
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
     const allies: Sustain.Inputs["allies"] = [];
     for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
@@ -356,7 +412,7 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
     return {
         now,
         hp,
-        hpMax: bot.GetMaxHealth(),
+        hpMax,
         mp: bot.GetMana(),
         mpMax: bot.GetMaxMana(),
         items,
@@ -368,8 +424,10 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
         regenLeft: rl,
         manaLeft: ml,
         safeSpot: spot,
+        delivery: OnTheWay(bot, courier, fountain),
+        room: roomOf(bot),
         gold: bot.GetGold(),
-        courier: courierEta(bot, courierOf(bot), fountain),
+        courier: courierEta(bot, courier, fountain),
         shop: shopOf(),
         home: (2 * dist(here, fountain)) / speed,
         idle: CampJobs.Active(bot),
@@ -414,7 +472,9 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["rc", i.safe.reach],
         ["rl", n0(i.regenLeft)],
         ["ml", n0(i.manaLeft)],
-        ["ss", i.safeSpot !== undefined ? `${n0(i.safeSpot.x)},${n0(i.safeSpot.y)},${t1(i.safeSpot.walk)}` : undefined],
+        ["ss", i.safeSpot !== undefined ? `${n0(i.safeSpot.x)},${n0(i.safeSpot.y)},${t1(i.safeSpot.walk)},${b01(i.safeSpot.ok !== false)}` : undefined],
+        ["dl", i.delivery !== undefined ? `${n0(i.delivery.hp)},${n0(i.delivery.mp)},${t1(i.delivery.eta)}` : undefined],
+        ["rom", b01(i.room !== false)],
         ["gd", n0(i.gold)],
         ["co", i.courier !== undefined ? r1(i.courier.eta) : undefined],
         ["shp", shop.length > 0 ? shop.join(";") : undefined],
@@ -425,6 +485,7 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["ak", a.kind],
         ["anm", a.name],
         ["ato", a.to],
+        ["alb", a.also],
         ["why", a.reason],
         ["ed", a.ended],
     ];
@@ -472,7 +533,7 @@ const courierSeen: Record<number, number | undefined> = {};
 
 /** `ev=sustain_courier` when the hero's courier changes state (an order shows as its effect: moving, delivering, back at base). */
 function noteCourier(bot: Unit): void {
-    const c = courierOf(bot);
+    const c = CourierOf(bot);
     if (c === undefined) return;
     const st = GetCourierState(c);
     const pid = bot.GetPlayerID();

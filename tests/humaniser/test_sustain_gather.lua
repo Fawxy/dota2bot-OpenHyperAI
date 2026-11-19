@@ -27,6 +27,9 @@ Threat.Read = function(_, _, place, horizon)
 	return WALK
 end
 SafeGather.FromRead = function(_, r) return r.safe end
+-- The safe spot's own read (rule 2's wait): deadly when the test sets it.
+local spotDeadly = false
+SafeGather.At = function() return { level = spotDeadly and "deadly" or "safe" } end
 Laning.NextDue = function() return 2.5 end
 Retreat.SafeSpot = function() return { at = Vector(-500, -500), secs = 2.5 } end
 Retreat.Fountain = function() return Vector(-6000, 0) end
@@ -37,6 +40,8 @@ local COURIER = { pid = 0, st = 1, loc = Vector(-6000, 0) }
 function COURIER:GetPlayerID() return self.pid end
 function COURIER:GetLocation() return self.loc end
 function COURIER:GetCurrentMovementSpeed() return 300 end
+COURIER.slots = {}
+function COURIER:GetItemInSlot(n) return self.slots[n] end
 function GetCourier(n) if n == 0 then return COURIER end return nil end
 function GetCourierState(c) return c.st end
 local STOCK = { item_tango = 5, item_flask = 0, item_clarity = 3 }
@@ -181,4 +186,22 @@ check("the cut line: kind sustain, items as records, the tree walk, the safe-her
 	f.kind == "sustain" and f.hpa == 300 and f.hpm == 600 and string.find(f.it, "0,tango,3,112,0,16,0,1,0,1,1", 1, true) ~= nil
 		and f.tr == "0.5,0,0" and f.kill == 300 and f.sh == 1 and f.rc == 1 and f.nd == 2.5 and f.ak ~= nil and f.why ~= nil and f.co == 20, table.concat(dump, " "))
 
+-- Regen on the way is read from the game: heal and mana items in the stash (9-14) or on the courier, whoever bought them; the
+-- eta is the courier's walk to us when it is out, else to the fountain and then to us.
+do
+	COURIER_STATE_DELIVERING_ITEMS = 3
+	COURIER.st, COURIER.loc = COURIER_STATE_AT_BASE, Vector(-6000, 0)
+	check("nothing in the stash or on the courier: nothing on the way", G.OnTheWay(bot) == nil)
+	bot.slots[9] = itemOf("item_flask", 1, SALVE)
+	COURIER.slots[0] = itemOf("item_clarity", 1, CLARITY)
+	local d = G.OnTheWay(bot)
+	check("a salve in the stash and a clarity on the courier at base: 400 HP, 150 mana, 20 s (6,000 at 300)",
+		d ~= nil and near(d.hp, 400) and near(d.mp, 150) and near(d.eta, 20), d and (d.hp .. "," .. d.mp .. "," .. d.eta))
+	COURIER.st, COURIER.loc = COURIER_STATE_DELIVERING_ITEMS, Vector(-1500, 0)
+	d = G.OnTheWay(bot)
+	check("the courier out delivering: its walk to us, 5 s", d ~= nil and near(d.eta, 5))
+	check("Gather carries it as the delivery input", near(G.Gather(bot).delivery.hp, 400))
+	bot.slots[9], COURIER.slots[0] = nil, nil
+	COURIER.st, COURIER.loc = COURIER_STATE_AT_BASE, Vector(-6000, 0)
+end
 finish()

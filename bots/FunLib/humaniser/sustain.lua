@@ -136,7 +136,23 @@ local function survive(i)
     end
     return nil
 end
---- Rule 2: what the items reach is under the kill line. Low on HP and mana goes home at once; else a delivery that lifts us over it, waited for at a safe spot, if it comes sooner than the trip; else home. Nothing is spent.
+--- Rule 2's tango: a tree item castable now with no regen running (a recast refreshes the buff; it does not stack).
+local function tangoNow(i)
+    if i.regenLeft > 0 then
+        return nil
+    end
+    for ____, it in ipairs(i.items) do
+        if it.tree and it.hp > 0 and usable(i, it) then
+            return it
+        end
+    end
+    return nil
+end
+--- Rule 2: what the items reach is under the kill line. Low on HP and mana goes home at once. A delivery on its way that lifts us
+-- over the line is waited for at the safe spot (a tango eaten meanwhile); else, the courier sooner than the trip, the purchase that
+-- lifts us over it is sent, with a tango eaten now when one is in hand (tango and ship); else home. Nothing else is spent: an item
+-- used and then the walk home anyway is the waste the rule exists to stop (user 19/11/2026). The wait and the shipment need a safe
+-- spot the safe-here read there does not call deadly.
 local function cannotStay(i, kill)
     local reach = ____exports.Reachable(i)
     if reach >= kill then
@@ -145,11 +161,46 @@ local function cannotStay(i, kill)
     if manaLow(i) then
         return {kind = "home", reason = "low_both"}
     end
-    local o = pickCover(i, kill - reach)
-    if o ~= nil and i.courier ~= nil and i.courier.eta < i.home and i.safeSpot ~= nil then
-        return {kind = "buy", name = o.name, at = {x = i.safeSpot.x, y = i.safeSpot.y}, reason = "cannot_stay"}
+    local spot = i.safeSpot ~= nil and i.safeSpot.ok ~= false and ({x = i.safeSpot.x, y = i.safeSpot.y}) or nil
+    if spot == nil then
+        return {kind = "home", reason = "cannot_stay"}
     end
-    return {kind = "home", reason = "cannot_stay"}
+    local d = i.delivery
+    if d ~= nil then
+        if reach + d.hp < kill or d.eta >= i.home or i.room == false then
+            return {kind = "home", reason = "cannot_stay"}
+        end
+        local t = tangoNow(i)
+        if t ~= nil then
+            return {
+                kind = "use",
+                slot = t.slot,
+                name = t.name,
+                at = spot,
+                reason = "wait_tango"
+            }
+        end
+        return {kind = "wait", at = spot, reason = "delivery"}
+    end
+    if i.courier == nil or i.courier.eta >= i.home or i.room == false then
+        return {kind = "home", reason = "cannot_stay"}
+    end
+    local o = pickCover(i, kill - reach)
+    if o == nil then
+        return {kind = "home", reason = "cannot_stay"}
+    end
+    local t = tangoNow(i)
+    if t ~= nil then
+        return {
+            kind = "use",
+            slot = t.slot,
+            name = t.name,
+            at = spot,
+            also = o.name,
+            reason = "tango_ship"
+        }
+    end
+    return {kind = "buy", name = o.name, at = spot, reason = "cannot_stay"}
 end
 --- Rule 3: under the top-up line, or in an idle window, with no regen running and the missing HP covering one use. A
 -- refilling item first, then a tree item, then one hero damage ends, used at a safe spot. Only an item hero damage ends
@@ -168,22 +219,22 @@ local function topUp(i, kill)
     local best
     for ____, it in ipairs(i.items) do
         do
-            local __continue50
+            local __continue61
             repeat
                 if reserved(it) or it.hp <= 0 or it.charges <= 0 or missing < it.hp or not usable(i, it) then
-                    __continue50 = true
+                    __continue61 = true
                     break
                 end
                 if it.breaks and (i.hitRecently or i.safe.reach > 0) then
-                    __continue50 = true
+                    __continue61 = true
                     break
                 end
                 if best == nil or order(it) < order(best) then
                     best = it
                 end
-                __continue50 = true
+                __continue61 = true
             until true
-            if not __continue50 then
+            if not __continue61 then
                 break
             end
         end
@@ -211,41 +262,41 @@ local function mana(i)
     local best
     for ____, it in ipairs(i.items) do
         do
-            local __continue59
+            local __continue70
             repeat
                 if reserved(it) or it.mp <= 0 or it.charges <= 0 or it.ready == false or missing < it.mp then
-                    __continue59 = true
+                    __continue70 = true
                     break
                 end
                 if it.breaks and (i.hitRecently or i.safe.reach > 0) then
-                    __continue59 = true
+                    __continue70 = true
                     break
                 end
                 if best == nil or it.refill and not best.refill then
                     best = it
                 end
-                __continue59 = true
+                __continue70 = true
             until true
-            if not __continue59 then
+            if not __continue70 then
                 break
             end
         end
     end
     return best ~= nil and use(best, "mana") or nil
 end
---- Rule 5: no heal item in hand under the top-up line (or no mana item with mana low), and the courier free: buy.
+--- Rule 5: no heal item in hand under the top-up line (or no mana item with mana low), the courier free and nothing on its way: buy.
 local function buyAhead(i, kill)
-    if i.courier == nil then
+    if i.courier == nil or i.delivery ~= nil or i.atFountain or i.room == false then
         return nil
     end
     local heals = false
     local manas = false
     for ____, it in ipairs(i.items) do
         do
-            local __continue66
+            local __continue77
             repeat
                 if it.charges <= 0 or reserved(it) then
-                    __continue66 = true
+                    __continue77 = true
                     break
                 end
                 if it.hp > 0 then
@@ -254,9 +305,9 @@ local function buyAhead(i, kill)
                 if it.mp > 0 then
                     manas = true
                 end
-                __continue66 = true
+                __continue77 = true
             until true
-            if not __continue66 then
+            if not __continue77 then
                 break
             end
         end
@@ -279,10 +330,10 @@ end
 local function give(i)
     for ____, it in ipairs(i.items) do
         do
-            local __continue76
+            local __continue87
             repeat
                 if not it.share or it.charges < 2 or it.ready == false then
-                    __continue76 = true
+                    __continue87 = true
                     break
                 end
                 for ____, a in ipairs(i.allies) do
@@ -296,9 +347,9 @@ local function give(i)
                         }
                     end
                 end
-                __continue76 = true
+                __continue87 = true
             until true
-            if not __continue76 then
+            if not __continue87 then
                 break
             end
         end

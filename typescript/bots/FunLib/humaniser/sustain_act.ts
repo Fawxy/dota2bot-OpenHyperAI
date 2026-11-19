@@ -1,8 +1,11 @@
 /**
- * Sustain, carried out (design docs/proposals/2026-11-19-sustain-design.md in the master repo, step 3; switch `Ours.Sustain`).
+ * Sustain, carried out (design docs/proposals/2026-11-19-sustain-design.md in the master repo, steps 3-5; switch `Ours.Sustain`).
  * For a held laner (Phase.LaningHeld, no drill hold), `ItemThink` runs the pure Decide on sustain_gather.ts's inputs and gives
- * the order for `use`, `step_out_use` and `give`; `home` and `buy` are logged only (retreat's heal and OHA's purchases still
- * act: steps 4 and 5). OHA's item loop leaves every heal and mana item on such a hero alone (`HoldsItem`).
+ * the order for `use`, `step_out_use`, `give` and `wait`, makes a `buy`'s purchase and has the hero's courier deliver it, and
+ * tells retreat whether rule 2 sends the hero home (`RetreatState.SetHome`: retreat's heal leave walks it; while that walk runs,
+ * Decide is asked with a running `home`, so nothing is spent on the way). OHA's item loop leaves every heal and mana item on
+ * such a hero alone (`HoldsItem`); its lane-regen purchases (`HoldsBuy`), teleport home (`Holds`) and, while a delivery of ours
+ * is on its way, its courier code (`OwnsCourier`) stand aside.
  *
  * Where the orders run: an order with no walk (a self cast, a tango with the tree in range) from ItemUsageThink, in any mode,
  * as OHA's own item use does. A walk (a tango's tree, a step out to the safe spot, an ally out of cast range) starts only
@@ -20,8 +23,15 @@ import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
 declare const BOT_ACTION_TYPE_USE_ABILITY: number;
+declare const PURCHASE_ITEM_SUCCESS: number;
+declare const COURIER_ACTION_TAKE_AND_TRANSFER_ITEMS: number;
+declare const COURIER_ACTION_BURST: number;
+declare const COURIER_STATE_DELIVERING_ITEMS: number;
+declare const COURIER_STATE_DEAD: number;
+declare function GetCourierState(c: Unit): number;
 
 /** API methods ts_libs does not declare yet. */
 interface ActBot {
@@ -29,6 +39,10 @@ interface ActBot {
 }
 interface RangeItem {
     GetCastRange(): number;
+}
+interface ShopBot {
+    ActionImmediate_PurchaseItem(name: string): number;
+    ActionImmediate_Courier(courier: Unit, action: number): boolean;
 }
 
 export const SETTINGS = {
@@ -42,13 +56,17 @@ export const SETTINGS = {
     Arrive: 100,
     /** The supply step yielded within this (s): a walk started from a camp job is still being carried. */
     YieldFresh: 0.3,
+    /** A delivery not in slots 0-8 by its eta plus this ends `late` (s): the courier's walk is estimated on a straight line. judgement. */
+    LateSlack: 20,
+    /** The courier's delivery order is given again at most this often while it is not delivering (s). judgement. */
+    CourierEvery: 2,
 };
 
 /** Cast on our own hero (OHA's cast type `unit` for these); a tree item on its tree; any other item has no target. */
 const SELF: Record<string, true> = { item_flask: true, item_clarity: true };
 
 interface Act {
-    kind: "use" | "step_out_use" | "give";
+    kind: "use" | "step_out_use" | "give" | "wait";
     item: string;
     slot: number;
     why: string;
@@ -69,6 +87,25 @@ interface Act {
 }
 
 const acts: Record<number, Act | undefined> = {};
+
+/**
+ * A delivery our courier carries out: a purchase of ours, or regen already on the way that a wait adopted (`item` "stash").
+ * What is on the way is the game's read (SustainGather.OnTheWay), not this record: it lands when nothing is left in the stash
+ * or on the courier.
+ */
+interface Delivery {
+    item: string;
+    why: string;
+    at: number;
+    /** The eta read at the start (s): `late` after it plus LateSlack. */
+    eta: number;
+    hp0: number;
+    mp0: number;
+    res?: number;
+    orderAt: number;
+    orders: number;
+}
+const deliveries: Record<number, Delivery | undefined> = {};
 const decidedAt: Record<number, number | undefined> = {};
 const yieldedAt: Record<number, number | undefined> = {};
 /** When the camp job's supply step last asked (it yields only with time to spare). */
@@ -79,6 +116,16 @@ export function Holds(bot: Unit): boolean {
     if (!Ours.On("Sustain") || bot.IsIllusion() || !Phase.LaningHeld(bot) || Drill.Held(bot)) return false;
     if (Drill.RigHoldsCasts(bot, true) === true) return false;
     return !(Overrides.LaneOnly(bot) && !Drill.CastItems(bot));
+}
+
+/** OHA's lane-regen purchase rules (item_purchase_generic.lua BuyRegen) skip a hero sustain carries: rules 2 and 5 buy. */
+export function HoldsBuy(bot: Unit): boolean {
+    return Holds(bot);
+}
+
+/** OHA's courier code (CourierUsageThink) stands aside while a delivery of ours is on its way to this hero. */
+export function OwnsCourier(bot: Unit): boolean {
+    return deliveries[bot.GetPlayerID()] !== undefined;
 }
 
 /** OHA's item loop and roam's tango skip this item on this hero: every heal and mana item sustain reads, on a hero it carries. */
@@ -150,8 +197,79 @@ function end(bot: Unit, why: string): void {
     ]);
 }
 
+function endBuy(bot: Unit, why: string): void {
+    const pid = bot.GetPlayerID();
+    const d = deliveries[pid];
+    if (d === undefined) return;
+    deliveries[pid] = undefined;
+    if (!Telemetry.IsEnabled()) return;
+    Telemetry.Event("sustain", [
+        ["pid", pid],
+        ["k", "buy"],
+        ["it", d.item],
+        ["why", d.why],
+        ["hp0", n0(d.hp0)],
+        ["hp1", n0(bot.GetHealth())],
+        ["mp0", n0(d.mp0)],
+        ["mp1", n0(bot.GetMana())],
+        ["sec", r1(DotaTime() - d.at)],
+        ["ed", why],
+        ["res", d.res],
+        ["cor", d.orders],
+        ["eta", r1(d.eta)],
+    ]);
+}
+
+/**
+ * One frame of a delivery: nothing left on the way (stash and courier read) ends it `delivered`; late or the courier dead end it
+ * too (what is still on the way stays in Decide's read, so no second purchase follows); else the courier is ordered to take the
+ * stash to us (and burst).
+ */
+function deliver(bot: Unit, d: Delivery, now: number): void {
+    const c = SustainGather.CourierOf(bot);
+    // Not in the purchase's own frame: the item may reach the stash only once the order is processed.
+    if (now > d.at && SustainGather.OnTheWay(bot, c) === undefined) return endBuy(bot, "delivered");
+    const st = c !== undefined ? GetCourierState(c) : COURIER_STATE_DEAD;
+    if (c === undefined || st === COURIER_STATE_DEAD) return endBuy(bot, "courier_dead");
+    if (now > d.at + d.eta + SETTINGS.LateSlack) return endBuy(bot, "late");
+    if (st === COURIER_STATE_DELIVERING_ITEMS || now - d.orderAt < SETTINGS.CourierEvery) return;
+    d.orderAt = now;
+    d.orders += 1;
+    const b = bot as unknown as ShopBot;
+    b.ActionImmediate_Courier(c, COURIER_ACTION_TAKE_AND_TRANSFER_ITEMS);
+    const burst = c.GetAbilityByName("courier_burst");
+    if (burst !== undefined && burst !== null && burst.IsFullyCastable()) b.ActionImmediate_Courier(c, COURIER_ACTION_BURST);
+}
+
+/**
+ * A purchase for Decide's `buy` (or a use's `also`): bought and its delivery started. False when regen is already on the way (the
+ * game's read, whoever bought it), a rig owns the hero's purchases, or the game refused it.
+ */
+function purchase(bot: Unit, i: Sustain.Inputs, name: string, why: string, now: number): boolean {
+    const pid = bot.GetPlayerID();
+    // A rig hands its heroes their items and holds their couriers (drill.ts Owns): no purchase of ours there.
+    if (deliveries[pid] !== undefined || SustainGather.OnTheWay(bot) !== undefined || Drill.Owns(bot, "purchase") || Drill.Owns(bot, "courier")) return false;
+    const full = `item_${name}`;
+    const res = (bot as unknown as ShopBot).ActionImmediate_PurchaseItem(full);
+    if (res !== PURCHASE_ITEM_SUCCESS) {
+        if (Telemetry.IsEnabled())
+            Telemetry.Event("sustain", [["pid", pid], ["k", "buy"], ["it", full], ["why", why], ["hp0", n0(i.hp)], ["mp0", n0(i.mp)], ["sec", 0], ["ed", "failed"], ["res", res]]);
+        return false;
+    }
+    SustainGather.Bought(bot, full, `ours_${why}`);
+    const d: Delivery = { item: full, why, at: now, eta: i.courier?.eta ?? 0, hp0: i.hp, mp0: i.mp, res, orderAt: -math.huge, orders: 0 };
+    deliveries[pid] = d;
+    // Bought in the shop's range it is in the inventory at once; else the stash, and the courier goes now.
+    deliver(bot, d, now);
+    return true;
+}
+
 /** Gives the attempt's order for this frame (a walk's order again while it runs). */
 function order(bot: Unit, a: Act): void {
+    if (a.kind === "wait") {
+        if (a.spot !== undefined && GetUnitToLocationDistance(bot, a.spot) > SETTINGS.Arrive) bot.Action_MoveToLocation(a.spot);
+        return;
+    }
     const item = itemIn(bot, a.slot, a.item);
     if (item === undefined) return;
     if (a.kind === "step_out_use") {
@@ -176,12 +294,38 @@ function order(bot: Unit, a: Act): void {
     else ItemUse.UseNoTarget(bot, item);
 }
 
-/** Starts the answer's attempt, if it is one this step carries out and its order can be given now. */
-function start(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): void {
-    if ((ans.kind !== "use" && ans.kind !== "step_out_use" && ans.kind !== "give") || ans.slot === undefined || ans.name === undefined) return;
+/** A wait at the safe spot for a delivery on its way: true when it started (its walk carried). */
+function startWait(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): boolean {
+    if (ans.at === undefined) return false;
+    const spot = Vector(ans.at.x, ans.at.y, bot.GetLocation().z);
+    const walk = GetUnitToLocationDistance(bot, spot) / math.max(100, bot.GetCurrentMovementSpeed());
+    if (GetUnitToLocationDistance(bot, spot) > SETTINGS.Arrive && !canWalk(bot, now)) return false;
+    const a: Act = { kind: "wait", item: "", slot: -1, why: ans.reason, at: now, hp0: i.hp, mp0: i.mp, charges0: 0, walk, deadline: math.huge, spot };
+    const pid = bot.GetPlayerID();
+    acts[pid] = a;
+    order(bot, a);
+    // Regen on the way that no delivery of ours carries (OHA's purchase, or one of ours that ran late): our courier brings it,
+    // or the wait would last as long as it sat in the stash.
+    if (deliveries[pid] === undefined && i.delivery !== undefined && !Drill.Owns(bot, "courier")) {
+        const d: Delivery = { item: "stash", why: ans.reason, at: now, eta: i.delivery.eta, hp0: i.hp, mp0: i.mp, orderAt: -math.huge, orders: 0 };
+        deliveries[pid] = d;
+        deliver(bot, d, now);
+    }
+    return true;
+}
+
+/**
+ * Starts the answer's attempt, if it is one this module carries out and its order can be given now. True when it did (or the
+ * answer needs nothing done: none, home); false when an answer was not carried (a refused purchase, a walk nobody carries).
+ */
+function start(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): boolean {
+    if (ans.kind === "none" || ans.kind === "home") return true;
+    if (ans.kind === "wait") return startWait(bot, i, ans, now);
+    if (ans.kind === "buy") return ans.name !== undefined && purchase(bot, i, ans.name, ans.reason, now);
+    if (ans.slot === undefined || ans.name === undefined) return false;
     const name = `item_${ans.name}`;
     const item = itemIn(bot, ans.slot, name);
-    if (item === undefined) return;
+    if (item === undefined) return false;
     const a: Act = {
         kind: ans.kind,
         item: name,
@@ -196,29 +340,64 @@ function start(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): 
     };
     if (ans.kind === "use" && SustainGather.ITEMS[name]?.tree === true) {
         const t = SustainGather.TreeOf(bot);
-        if (t === undefined || i.tree === undefined) return;
+        if (t === undefined || i.tree === undefined) return false;
         a.tree = t.id;
         a.walk = i.tree.walk;
     } else if (ans.kind === "step_out_use") {
-        if (ans.at === undefined || i.safeSpot === undefined) return;
+        if (ans.at === undefined || i.safeSpot === undefined) return false;
         a.spot = Vector(ans.at.x, ans.at.y, bot.GetLocation().z);
         a.walk = i.safeSpot.walk;
         const it = i.items.find((x) => x.slot === ans.slot);
         a.run = { kind: "step_out_use", slot: ans.slot, name: ans.name, started: now, hp0: i.hp, dur: a.walk + (it?.dur ?? 0), at: ans.at };
     } else if (ans.kind === "give") {
         const ally = ans.to !== undefined ? allyOf(ans.to) : undefined;
-        if (ally === undefined) return;
+        if (ally === undefined) return false;
         a.to = ans.to;
         a.walk = math.max(0, GetUnitToUnitDistance(bot, ally) - (item as unknown as RangeItem).GetCastRange()) / math.max(100, bot.GetCurrentMovementSpeed());
     }
-    if (a.walk > 0 && !canWalk(bot, now)) return;
+    if (a.walk > 0 && !canWalk(bot, now)) return false;
     a.deadline = now + a.walk + SETTINGS.StartWait;
     acts[bot.GetPlayerID()] = a;
     order(bot, a);
+    // Rule 2's tango and ship: the purchase goes with the tango (the use started; a refused purchase leaves the tango eaten and the next decision goes home).
+    if (ans.also !== undefined) purchase(bot, i, ans.also, ans.reason, now);
+    return true;
+}
+
+/** Rule 2's answers: the hero cannot stay as it is. One not carried (a refused purchase, a wait or tango walk nobody carries) sends it home. */
+const RULE2: Record<string, true> = { cannot_stay: true, low_both: true, delivery: true, wait_tango: true, tango_ship: true };
+
+/** Starts the answer and tells retreat whether the hero goes home: rule 2's `home`, or a rule 2 answer that could not be carried (a wait first for a tango that could not start). */
+function carry(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): void {
+    let ok = start(bot, i, ans, now);
+    // A rule 2 tango that could not start: the purchase it was sent with goes anyway, and the hero waits for it at the spot.
+    if (!ok && (ans.reason === "wait_tango" || ans.reason === "tango_ship")) ok = (ans.also === undefined || purchase(bot, i, ans.also, ans.reason, now)) && startWait(bot, i, ans, now);
+    RetreatState.SetHome(bot, ans.kind === "home" || (!ok && RULE2[ans.reason] === true));
 }
 
 /** One frame of a running attempt: true once it has ended. */
 function progress(bot: Unit, a: Act, now: number): boolean {
+    if (a.kind === "wait") {
+        if (!carried(bot, now) && now > a.at) {
+            end(bot, "cut");
+            return true;
+        }
+        const pid = bot.GetPlayerID();
+        const last = decidedAt[pid];
+        if (last !== undefined && now - last < SETTINGS.DecideEvery) return false;
+        decidedAt[pid] = now;
+        const i = SustainGather.Gather(bot);
+        const ans = Sustain.Decide(i);
+        if (ans.kind === "wait" && ans.at !== undefined) {
+            a.spot = Vector(ans.at.x, ans.at.y, bot.GetLocation().z);
+            RetreatState.SetHome(bot, false);
+            return false;
+        }
+        end(bot, "done");
+        SustainGather.Cut(bot, i, ans, true);
+        carry(bot, i, ans, now);
+        return true;
+    }
     if (a.kind === "step_out_use") {
         if (a.drunk !== true && !carried(bot, now) && now > a.at) {
             end(bot, "cut");
@@ -232,6 +411,7 @@ function progress(bot: Unit, a: Act, now: number): boolean {
         const i = SustainGather.Gather(bot, a.run);
         const ans = Sustain.Decide(i);
         SustainGather.Cut(bot, i, ans, true);
+        RetreatState.SetHome(bot, ans.kind === "home");
         if (ans.reason !== "running") {
             end(bot, ans.ended ?? "done");
             return true;
@@ -268,13 +448,19 @@ export function ItemThink(bot: Unit): void {
     const pid = bot.GetPlayerID();
     if (!bot.IsAlive()) {
         end(bot, "dead");
+        endBuy(bot, "dead");
+        RetreatState.SetHome(bot, undefined);
         return;
     }
     if (!Holds(bot)) {
         end(bot, "released");
+        endBuy(bot, "released");
+        RetreatState.SetHome(bot, undefined);
         return;
     }
     const now = DotaTime();
+    const d = deliveries[pid];
+    if (d !== undefined) deliver(bot, d, now);
     const hit = bot.WasRecentlyDamagedByAnyHero(1);
     const a = acts[pid];
     if (a !== undefined && !progress(bot, a, now) && !hit) return;
@@ -282,7 +468,9 @@ export function ItemThink(bot: Unit): void {
     if (last !== undefined && now - last < (hit ? SETTINGS.DecideHit : SETTINGS.DecideEvery)) return;
     decidedAt[pid] = now;
     SustainGather.NoteCourier(bot);
-    const i = SustainGather.Gather(bot);
+    // Retreat's walk home runs: Decide is asked with a running `home` (rule 1 still fires; nothing else is spent on the way).
+    const run: Sustain.Run | undefined = RetreatState.Healing(bot) ? { kind: "home", started: now, hp0: bot.GetHealth() } : undefined;
+    const i = SustainGather.Gather(bot, run);
     const ans = Sustain.Decide(i);
     // Under hits a running attempt is asked again only for rule 1: an instant heal replaces it, unless it is rule 1's own
     // (its charge goes a frame or two after the order: smoke 1 cut 16 of 23 wand uses that way and ordered them again).
@@ -292,7 +480,7 @@ export function ItemThink(bot: Unit): void {
         end(bot, "cut");
     }
     SustainGather.Cut(bot, i, ans, true);
-    start(bot, i, ans, now);
+    carry(bot, i, ans, now);
 }
 
 /**
@@ -302,6 +490,7 @@ export function ItemThink(bot: Unit): void {
 export function Walking(bot: Unit): boolean {
     const a = acts[bot.GetPlayerID()];
     if (a === undefined) return false;
+    // A wait holds the frame at the spot too: the body's own move would walk it back into the lane.
     return a.kind !== "step_out_use" || a.drunk !== true;
 }
 
@@ -327,6 +516,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(decidedAt)) delete decidedAt[k as unknown as number];
     for (const k of Object.keys(yieldedAt)) delete yieldedAt[k as unknown as number];
     for (const k of Object.keys(askedAt)) delete askedAt[k as unknown as number];
+    for (const k of Object.keys(deliveries)) delete deliveries[k as unknown as number];
 }
 
-export const _test = { acts };
+export const _test = { acts, deliveries };

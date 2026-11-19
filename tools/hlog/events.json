@@ -1946,6 +1946,9 @@
    "rl": "num",
    "ml": "num",
    "ss": "str",
+   "dl": "str",
+   "rom": "num",
+   "alb": "str",
    "gd": "num",
    "co": "num",
    "shp": "str",
@@ -1987,7 +1990,10 @@
    "mp1": "num",
    "sec": "num",
    "ed": "str",
-   "wk": "num"
+   "wk": "num",
+   "res": "num",
+   "cor": "num",
+   "eta": "num"
   },
   "sustain_item": {
    "name": "str",
@@ -2698,6 +2704,8 @@
    "it": "text",
    "tr": "text",
    "ss": "text",
+   "dl": "text",
+   "alb": "text",
    "shp": "text",
    "als": "text",
    "ak": "text",

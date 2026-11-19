@@ -60,7 +60,7 @@ local function reset()
 end
 local function ended()
 	for i = #lines, 1, -1 do
-		local ed = lines[i]:match("ev=sustain .*ed=(%a+)")
+		local ed = lines[i]:match("ev=sustain .*ed=([%a_]+)")
 		if ed then return ed end
 	end
 	return nil
@@ -202,17 +202,151 @@ do
 	check("its charge gone: started, no third order", ended() == "started" and #bot.orders == 2)
 end
 
--- home and buy are logged only in this step; a dead hero ends its attempt.
+-- Step 4: home is retreat's walk (the flag it reads); while that walk runs Decide is asked with a running `home`.
+local RS = require("bots/FunLib/humaniser/retreat_state")
 do
 	reset()
 	bot.slots = { [1] = itemOf("item_tango", 3) }
 	answer = { kind = "home", reason = "cannot_stay" }
 	T = 600
 	A.ItemThink(bot)
-	check("home: no order (retreat's heal still walks it home)", #bot.orders == 0 and not A.Walking(bot))
+	check("home: no order, the flag set for retreat", #bot.orders == 0 and not A.Walking(bot) and RS.Home(bot) == true)
+	answer = { kind = "none", reason = "fine" }
+	T = 601
+	A.ItemThink(bot)
+	check("none: the flag cleared", RS.Home(bot) == false)
+	RS.SetHealing(bot, true)
+	world.running = { kind = "home", reason = "running" }
+	T = 602
+	A.ItemThink(bot)
+	check("the walk home runs: Decide asked with a running home", INPUTS.run ~= nil and INPUTS.run.kind == "home" and RS.Home(bot) == true)
+	RS.SetHealing(bot, false)
+	world.running = nil
+	world.held = false
+	T = 603
+	A.ItemThink(bot)
+	check("no longer held: the flag gone (retreat's heal floor decides)", RS.Home(bot) == nil)
+end
+
+-- Step 5: a purchase, its courier delivery (OHA's courier stands aside) and the wait at the safe spot. What is on the way is
+-- the game's read (SustainGather.OnTheWay: the stash and the courier), here `world.way`.
+PURCHASE_ITEM_SUCCESS, PURCHASE_ITEM_INSUFFICIENT_GOLD = 0, 63
+COURIER_ACTION_TAKE_AND_TRANSFER_ITEMS, COURIER_ACTION_BURST = 4, 10
+COURIER_STATE_IDLE, COURIER_STATE_AT_BASE, COURIER_STATE_DELIVERING_ITEMS, COURIER_STATE_DEAD = 0, 1, 3, 5
+local courier = { st = 1, GetAbilityByName = function() return { IsFullyCastable = function() return true end } end }
+function GetCourierState(c) return c.st end
+G.CourierOf = function() return courier end
+G.OnTheWay = function() return world.way end
+local buyRes = 0
+function bot:ActionImmediate_PurchaseItem(name)
+	table.insert(self.orders, "buy:" .. name)
+	if buyRes == 0 then world.way = { hp = 400, mp = 0, eta = 20 } end
+	return buyRes
+end
+function bot:ActionImmediate_Courier(_, act) table.insert(self.orders, "courier:" .. act) return true end
+function bot:GetCurrentMovementSpeed() return 300 end
+function bot:Action_MoveToLocation(p) table.insert(self.orders, "move:" .. p.x) end
+INPUTS.shop = { { name = "flask", cost = 110, hp = 400, mp = 0 } }
+INPUTS.courier = { eta = 20 }
+local function count(prefix)
+	local n = 0
+	for _, o in ipairs(bot.orders) do if o:sub(1, #prefix) == prefix then n = n + 1 end end
+	return n
+end
+do
+	reset()
+	world.way = nil
+	bot.slots = {}
+	answer = { kind = "buy", name = "flask", at = { x = -500, y = 0 }, reason = "cannot_stay" }
+	T = 700
+	A.ItemThink(bot)
+	check("buy: purchased, the courier ordered to take and transfer, and burst", bot.orders[1] == "buy:item_flask" and bot.orders[2] == "courier:4" and bot.orders[3] == "courier:10",
+		table.concat(bot.orders, ","))
+	check("buy: OHA's courier stands aside; retreat is not sent home", A.OwnsCourier(bot) and RS.Home(bot) == false)
+	answer = { kind = "wait", at = { x = -500, y = 0 }, reason = "delivery" }
+	INPUTS.delivery = world.way
+	T = 700.6
+	A.ItemThink(bot)
+	check("wait: the hero walks to the safe spot, the lane row holds the frame", A.Walking(bot) and bot.orders[#bot.orders] == "move:-500", table.concat(bot.orders, ","))
+	world.way = nil
+	T = 701
+	A.ItemThink(bot)
+	check("nothing left on the way: the delivery ends, the courier is OHA's again", not A.OwnsCourier(bot))
+	local saw = false
+	for _, l in ipairs(lines) do if l:find("ev=sustain ", 1, true) and l:find("k=buy", 1, true) and l:find("ed=delivered", 1, true) then saw = true end end
+	check("ev=sustain k=buy ed=delivered logged", saw)
+	answer = { kind = "none", reason = "fine" }
+	INPUTS.delivery = nil
+	T = 701.6
+	A.ItemThink(bot)
+	check("the answer moves on: the wait ends done", ended() == "done" and not A.Walking(bot))
+end
+
+do
+	reset()
+	bot.slots = {}
+	world.way = { hp = 400, mp = 0, eta = 15 }
+	answer = { kind = "buy", name = "flask", reason = "buy_hp" }
+	T = 750
+	A.ItemThink(bot)
+	check("regen already on the way (OHA's, or a late one of ours): no second purchase", count("buy:") == 0, table.concat(bot.orders, ","))
+	answer = { kind = "wait", at = { x = -500, y = 0 }, reason = "delivery" }
+	INPUTS.delivery = world.way
+	T = 751
+	A.ItemThink(bot)
+	check("a wait for it adopts it: our courier is ordered to bring it", A.OwnsCourier(bot) and count("courier:4") == 1, table.concat(bot.orders, ","))
+	INPUTS.delivery = nil
+	world.way = nil
+end
+
+do
+	reset()
+	bot.slots = {}
+	world.way = nil
+	buyRes = 63
+	answer = { kind = "buy", name = "flask", at = { x = -500, y = 0 }, reason = "cannot_stay" }
+	T = 800
+	A.ItemThink(bot)
+	check("a refused purchase: no delivery, rule 2 sends the hero home", not A.OwnsCourier(bot) and RS.Home(bot) == true and ended() == "failed")
+	answer = { kind = "buy", name = "flask", reason = "buy_hp" }
+	T = 801
+	A.ItemThink(bot)
+	check("rule 5's buy sends nobody home", RS.Home(bot) == false)
+	buyRes = 0
+end
+
+do
+	reset()
+	bot.slots = {}
+	world.way = nil
+	courier.st = 1
+	answer = { kind = "buy", name = "flask", reason = "buy_hp" }
+	T = 900
+	A.ItemThink(bot)
+	courier.st = 5
+	T = 900.1
+	A.ItemThink(bot)
+	check("the courier dies on the way: the delivery ends", not A.OwnsCourier(bot) and ended() == "courier_dead")
+	courier.st = 1
+	T = 901
+	A.ItemThink(bot)
+	check("its salve still in the stash: no second purchase", count("buy:") == 1, table.concat(bot.orders, ","))
+	world.way = nil
+	T = 902
+	A.ItemThink(bot)
+	T = 902 + 20 + A.SETTINGS.LateSlack + 1
+	A.ItemThink(bot)
+	check("never landed: late", not A.OwnsCourier(bot) and ended() == "late")
+	world.way = nil
+end
+
+-- A dead hero ends its attempt.
+do
+	reset()
+	bot.slots = { [1] = itemOf("item_tango", 3) }
 	answer = { kind = "use", slot = 1, name = "tango", reason = "top_up" }
 	INPUTS.tree = { walk = 1, safe = true }
-	T = 601
+	T = 1000
 	A.ItemThink(bot)
 	bot.alive = false
 	A.ItemThink(bot)

@@ -2190,7 +2190,7 @@ ____exports.TABLE = {
         rep = {every = 135, from = 60},
         rig = {
             half = "decision",
-            switch = "HealItems",
+            switch = "Sustain",
             window = 600,
             spots = {cast = {"r:bot1", -2750, 700}, near = {"r:bot1", -2250, 700}},
             timeout = 95,

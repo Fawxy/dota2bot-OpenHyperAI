@@ -1660,7 +1660,7 @@ export const EVENTS = {
         spot: "str",
         /** In a drill, the rep. */
         rep: "num",
-        /** On `end`: `gone` (nobody in reach), `safe` (the band's dwell), `healed` (a heal walk back over `HealBack` with the lane nearer than the fountain; `Ours.HealStop`), `anchor`, `died` or `cut`. */
+        /** On `end`: `gone` (nobody in reach), `safe` (the band's dwell), `healed` (older logs only: the retired HealStop), `anchor`, `died` or `cut`. */
         res: "str",
         /** Seconds the episode lasted. */
         secs: "num",
@@ -1674,7 +1674,7 @@ export const EVENTS = {
         dmgh: "num",
         /** On `ph=read`: 1 when an enemy creep hit the hero in the last second. */
         crp: "bool",
-        /** HealItems (ph=items, use, items_off): HP to HealBack, the usable heal items, the set used (or the item, on use), what it restores, a tree near, why not. */
+        /** Older logs only (the retired HealItems, ph=items, use, items_off): HP to HealBack, the usable heal items, the set used (or the item, on use), what it restores, a tree near, why not. */
         need: "num",
         held: "str",
         set: "str",
@@ -3060,8 +3060,13 @@ export const EVENTS = {
         /** kind=sustain: HP and mana the running regen buffs still restore. */
         rl: "num",
         ml: "num",
-        /** kind=sustain: the safe spot (retreat's `threat` anchor) `x,y,walk seconds`. */
+        /** kind=sustain: the safe spot (retreat's `threat` anchor) `x,y,walk seconds,ok` (ok 0: the safe-here read there calls it deadly; read only under the kill line, else 1). */
         ss: "str",
+        /** kind=sustain: regen on its way, whoever bought it (heal and mana items in the stash or on the courier) `hp,mp,eta seconds` (absent: none); `rom` 1 when a slot in 0-8 is free for one to land in. */
+        dl: "str",
+        rom: "num",
+        /** kind=sustain: the purchase sent with a use (rule 2's tango and ship). */
+        alb: "str",
         /** kind=sustain: gold; the courier's delivery seconds when free (absent: busy or dead); the shop `name,cost,hp,mp` per `;`; seconds to the fountain and back. */
         gd: "num",
         co: "num",
@@ -3072,7 +3077,7 @@ export const EVENTS = {
         af: "num",
         /** kind=sustain: allies within 800, `pid,missing HP,heal uses` per `;`. */
         als: "str",
-        /** kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`), item and ally pid; its rule is `why`, a running answer's end `ed`. kind=pick: `ak` is the chosen target's verb kind (`lasthit`, `deny`, `prehit`, `none`). */
+        /** kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`, `wait`), item and ally pid; its rule is `why`, a running answer's end `ed`. kind=pick: `ak` is the chosen target's verb kind (`lasthit`, `deny`, `prehit`, `none`). */
         ak: "str",
         anm: "str",
         ato: "num",
@@ -3113,9 +3118,10 @@ export const EVENTS = {
         ans: "str",
     },
     /**
-     * Sustain (step 3, `Ours.Sustain`): one attempt sustain_act.ts carried out, at its end. `k` the answer's kind (`use`, `step_out_use`, `give`), `it` the item, `to` the ally (give),
+     * Sustain (steps 3-5, `Ours.Sustain`): one attempt sustain_act.ts carried out, at its end. `k` the answer's kind (`use`, `step_out_use`, `give`, `wait`; `buy` for a purchase and its delivery), `it` the item, `to` the ally (give),
      * `why` the rule, `hp0`/`hp1` HP at the order and at the end (absolute), `mp0`/`mp1` mana, `sec` seconds from the order, `ed` how it ended: `started` (the buff or the charge went), `done`, `topped`,
-     * `interrupted` (a hero reached us on a step-out), `cut` (the hero left the laning mode mid-walk), `released` (the hero is no longer held), `missed` (no effect by the deadline), `dead`.
+     * `interrupted` (a hero reached us on a step-out), `cut` (the hero left the laning mode mid-walk), `released` (the hero is no longer held), `missed` (no effect by the deadline), `dead`;
+     * a wait: `done` (the answer changed); a delivery (a purchase, or regen on the way a wait adopted, `it` stash): `delivered` (nothing left in the stash or on the courier), `failed` (the purchase was refused: `res` its PURCHASE_ITEM_* code), `late` (not delivered by its eta plus `LateSlack`), `courier_dead`.
      */
     sustain: {
         pid: "num",
@@ -3131,6 +3137,10 @@ export const EVENTS = {
         ed: "str",
         /** Walk seconds to the tree or the safe spot when the order was given (absent: no walk). */
         wk: "num",
+        /** A purchase: ActionImmediate_PurchaseItem's result code; the courier orders given; the eta read at the purchase (s). */
+        res: "num",
+        cor: "num",
+        eta: "num",
     },
     /** Sustain (step 2): an item's values as sustain_gather.ts reads them, the first time a hero of this team holds it: one use's HP, mana, duration, and the charges it held. A 0 where the item restores something is a wrong special-value key. */
     sustain_item: {
