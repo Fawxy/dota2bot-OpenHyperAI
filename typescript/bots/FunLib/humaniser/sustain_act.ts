@@ -71,6 +71,8 @@ interface Act {
 const acts: Record<number, Act | undefined> = {};
 const decidedAt: Record<number, number | undefined> = {};
 const yieldedAt: Record<number, number | undefined> = {};
+/** When the camp job's supply step last asked (it yields only with time to spare). */
+const askedAt: Record<number, number | undefined> = {};
 
 /** A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold). */
 export function Holds(bot: Unit): boolean {
@@ -113,9 +115,14 @@ function carried(bot: Unit, now: number): boolean {
     return y !== undefined && now - y <= SETTINGS.YieldFresh;
 }
 
-/** A walk may start: as `carried`, or a camp job runs whose supply step will yield to it. */
+/**
+ * A walk may start: as `carried`, or a camp job runs whose supply step is asking now (it asks only with time to spare; smoke
+ * 4: a job phase that never asked cut and restarted one tango walk every 0.5 s).
+ */
 function canWalk(bot: Unit, now: number): boolean {
-    return carried(bot, now) || CampJobs.Active(bot);
+    if (carried(bot, now)) return true;
+    const asked = askedAt[bot.GetPlayerID()];
+    return CampJobs.Active(bot) && asked !== undefined && now - asked <= SETTINGS.YieldFresh;
 }
 
 const r1 = (v: number): number => math.floor(v * 10 + 0.5) / 10;
@@ -308,6 +315,7 @@ export function Step(bot: Unit): boolean {
 
 /** camp_jobs' supply step under `Ours.Sustain`: true while an attempt walks, its order given, so the job leaves the frame to it. */
 export function Yield(bot: Unit): boolean {
+    askedAt[bot.GetPlayerID()] = DotaTime();
     if (!Walking(bot)) return false;
     yieldedAt[bot.GetPlayerID()] = DotaTime();
     return Step(bot);
@@ -318,6 +326,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(acts)) delete acts[k as unknown as number];
     for (const k of Object.keys(decidedAt)) delete decidedAt[k as unknown as number];
     for (const k of Object.keys(yieldedAt)) delete yieldedAt[k as unknown as number];
+    for (const k of Object.keys(askedAt)) delete askedAt[k as unknown as number];
 }
 
 export const _test = { acts };

@@ -201,6 +201,8 @@ local SELF = {item_flask = true, item_clarity = true}
 local acts = {}
 local decidedAt = {}
 local yieldedAt = {}
+--- When the camp job's supply step last asked (it yields only with time to spare).
+local askedAt = {}
 --- A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold).
 function ____exports.Holds(bot)
     if not Ours.On("Sustain") or bot:IsIllusion() or not Phase.LaningHeld(bot) or Drill.Held(bot) then
@@ -262,9 +264,14 @@ local function carried(bot, now)
     local y = yieldedAt[bot:GetPlayerID()]
     return y ~= nil and now - y <= ____exports.SETTINGS.YieldFresh
 end
---- A walk may start: as `carried`, or a camp job runs whose supply step will yield to it.
+--- A walk may start: as `carried`, or a camp job runs whose supply step is asking now (it asks only with time to spare; smoke
+-- 4: a job phase that never asked cut and restarted one tango walk every 0.5 s).
 local function canWalk(bot, now)
-    return carried(bot, now) or CampJobs.Active(bot)
+    if carried(bot, now) then
+        return true
+    end
+    local asked = askedAt[bot:GetPlayerID()]
+    return CampJobs.Active(bot) and asked ~= nil and now - asked <= ____exports.SETTINGS.YieldFresh
 end
 local function r1(v)
     return math.floor(v * 10 + 0.5) / 10
@@ -555,6 +562,7 @@ function ____exports.Step(bot)
 end
 --- camp_jobs' supply step under `Ours.Sustain`: true while an attempt walks, its order given, so the job leaves the frame to it.
 function ____exports.Yield(bot)
+    askedAt[bot:GetPlayerID()] = DotaTime()
     if not ____exports.Walking(bot) then
         return false
     end
@@ -571,6 +579,9 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(yieldedAt)) do
         __TS__Delete(yieldedAt, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(askedAt)) do
+        __TS__Delete(askedAt, k)
     end
 end
 ____exports._test = {acts = acts}

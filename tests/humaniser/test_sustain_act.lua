@@ -125,9 +125,12 @@ do
 	bot.mode = BotMode.Farm
 	world.job = true
 	T = 300
+	check("a camp job runs but its supply step has not asked: no walk starts", (function() A.ItemThink(bot) return #bot.orders == 0 end)())
+	T = 300.6
+	A.Yield(bot)
 	A.ItemThink(bot)
 	check("a camp job runs: the walk starts, and the supply's yield carries it", bot.orders[1] == "tree:item_tango:7" and A.Yield(bot))
-	T = 300.1
+	T = 300.7
 	A.ItemThink(bot)
 	check("yielded within 0.3 s: still running", ended() == nil and A.Walking(bot))
 	T = 304
