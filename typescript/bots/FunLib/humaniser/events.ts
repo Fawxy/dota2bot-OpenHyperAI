@@ -2996,7 +2996,7 @@ export const EVENTS = {
         /**
          * kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
          * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk answer
-         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
+         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back), then sw (1/0: it damaged us within its seconds per attack plus 0.25 s, the stay bar of a running hit back on it; absent on older lines).
          */
         cd: "str",
         /**
@@ -3169,6 +3169,12 @@ export const EVENTS = {
         st: "num",
         dead: "num",
         d: "num",
+    },
+    /** Sustain: OHA's retreat teleport home would have cast and sustain held it (SustainAct.HoldsTeleport), once per run of refusals; `why` is OHA's case (1: no enemy near, 3: level 9+ and at most one enemy), `hp` %. A refused case 1 may fall through to OHA's escape (case 2) in the same call, so a refusal followed by an `ev=cast ab=item_tpscroll` at the same `t` is an escape, not a held trip. */
+    sustain_tp: {
+        pid: "num",
+        why: "str",
+        hp: "num",
     },
     /** Slice oha-burst-left-out: the first time in a game, per level, a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero, spell and spell level (a new level logs again, to show the value follows the level on an enemy handle). */
     burst_add: {

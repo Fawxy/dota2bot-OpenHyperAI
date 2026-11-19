@@ -77,6 +77,26 @@ do
 			and decide(inputs({ cands = { cand({ hitting = true }) }, run = hb })).level == "hitback")
 end
 
+-- `hitting` is the 1 s read, `swung` the hitter's own attack interval: an enemy between two swings has the second and not the first.
+do
+	local hb = run({ level = "hitback" })
+	local between = function(o) return cand(merge({ hitting = false, swung = true }, o)) end
+	local paidOnly = between({ ko = 0.2, kt = 0.3, paid = true })
+	local stays = decide(inputs({ cands = { paidOnly }, run = hb }))
+	local favoured = decide(inputs({ cands = { between() }, run = hb }))
+	local stopped = decide(inputs({ cands = { cand({ ko = 0.2, kt = 0.3, paid = false, swung = false }) }, run = hb }))
+	check("between the hitter's swings a running hit back stays hitback (paid or favoured, not dropped to hit); past its interval it ends unfavoured",
+		stays.level == "hitback" and stays.ended == nil and favoured.level == "hitback" and favoured.ended == nil
+			and none(stopped, "unfavoured") and stopped.ended == "unfavoured", stays.level .. "/" .. favoured.level)
+	check("the start bar stays 1 s: no fresh hit back and no retreat hold on a hero between swings; a running hit back holds retreat",
+		decide(inputs({ cands = { between() } })).level == "hit"
+			and none(decide(inputs({ cands = { paidOnly } })), "unfavoured")
+			and T.HoldsOf(inputs({ cands = { paidOnly } })) == nil
+			and T.HoldsOf(inputs({ cands = { paidOnly }, run = hb })) == "hitback")
+	check("a running hit on a hero between swings is no hit back: the stay bar is the hit back's own",
+		decide(inputs({ cands = { between() }, run = run({ level = "hit" }) })).level == "hit")
+end
+
 do
 	local function at(tw, mk)
 		return mk(tw)

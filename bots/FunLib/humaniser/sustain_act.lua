@@ -287,7 +287,8 @@ ____exports.SETTINGS = {
     Arrive = 100,
     YieldFresh = 0.3,
     LateSlack = 20,
-    CourierEvery = 2
+    CourierEvery = 2,
+    RefuseGap = 2
 }
 --- Cast on our own hero (OHA's cast type `unit` for these); a tree item on its tree; any other item has no target.
 local SELF = {item_flask = true, item_clarity = true}
@@ -297,6 +298,7 @@ local decidedAt = {}
 local yieldedAt = {}
 --- When the camp job's supply step last asked (it yields only with time to spare).
 local askedAt = {}
+local refusedAt = {}
 --- A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold).
 function ____exports.Holds(bot)
     if not Ours.On("Sustain") or bot:IsIllusion() or not Phase.LaningHeld(bot) or Drill.Held(bot) then
@@ -306,6 +308,32 @@ function ____exports.Holds(bot)
         return false
     end
     return not (Overrides.LaneOnly(bot) and not Drill.CastItems(bot))
+end
+--- OHA's retreat teleport home (item_tpscroll, ability_item_usage_generic.lua, cases 1 and 3: `why`) stands aside for a hero
+-- sustain carries, whose trip home is rule 2's walk. Asked last in the case's condition, so a refusal is one OHA would have cast;
+-- logged once per run of refusals. OHA's escape teleport (case 2) does not ask: it is a way out of a fight, not a trip home.
+function ____exports.HoldsTeleport(bot, why)
+    if not ____exports.Holds(bot) then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local last = refusedAt[pid]
+    refusedAt[pid] = now
+    if last == nil or now - last > ____exports.SETTINGS.RefuseGap then
+        Telemetry.Event(
+            "sustain_tp",
+            {
+                {"pid", pid},
+                {"why", why},
+                {
+                    "hp",
+                    math.floor(100 * bot:GetHealth() / bot:GetMaxHealth())
+                }
+            }
+        )
+    end
+    return true
 end
 --- OHA's lane-regen purchase rules (item_purchase_generic.lua BuyRegen) skip a hero sustain carries: rules 2 and 5 buy.
 function ____exports.HoldsBuy(bot)
@@ -326,18 +354,18 @@ local function chargesOf(bot, name)
         local s = 0
         while s <= 8 do
             do
-                local __continue9
+                local __continue12
                 repeat
                     local it = bot:GetItemInSlot(s)
                     if it == nil or it == nil or it:GetName() ~= name then
-                        __continue9 = true
+                        __continue12 = true
                         break
                     end
                     local c = it:GetCurrentCharges() or 0
                     n = n + (c > 0 and c or 0.5)
-                    __continue9 = true
+                    __continue12 = true
                 until true
-                if not __continue9 then
+                if not __continue12 then
                     break
                 end
             end
@@ -870,6 +898,9 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(deliveries)) do
         __TS__Delete(deliveries, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(refusedAt)) do
+        __TS__Delete(refusedAt, k)
     end
 end
 ____exports._test = {acts = acts, deliveries = deliveries}
