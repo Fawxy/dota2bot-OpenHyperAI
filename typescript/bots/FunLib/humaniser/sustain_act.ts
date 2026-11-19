@@ -114,8 +114,13 @@ const askedAt: Record<number, number | undefined> = {};
 /** A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold). */
 export function Holds(bot: Unit): boolean {
     if (!Ours.On("Sustain") || bot.IsIllusion() || !Phase.LaningHeld(bot) || Drill.Held(bot)) return false;
-    if (Drill.RigHoldsCasts(bot, true) === true) return false;
+    if (Drill.RigHoldsCasts(bot, true) === true && !Drill.RigFreesSustain(bot)) return false;
     return !(Overrides.LaneOnly(bot) && !Drill.CastItems(bot));
+}
+
+/** A rig owns this kind for the hero (drill.ts Owns) and its release does not free our sustain (the sustain rig's does). */
+function rigOwns(bot: Unit, what: "purchase" | "courier"): boolean {
+    return Drill.Owns(bot, what) && !Drill.RigFreesSustain(bot);
 }
 
 /** OHA's lane-regen purchase rules (item_purchase_generic.lua BuyRegen) skip a hero sustain carries: rules 2 and 5 buy. */
@@ -247,8 +252,8 @@ function deliver(bot: Unit, d: Delivery, now: number): void {
  */
 function purchase(bot: Unit, i: Sustain.Inputs, name: string, why: string, now: number): boolean {
     const pid = bot.GetPlayerID();
-    // A rig hands its heroes their items and holds their couriers (drill.ts Owns): no purchase of ours there.
-    if (deliveries[pid] !== undefined || SustainGather.OnTheWay(bot) !== undefined || Drill.Owns(bot, "purchase") || Drill.Owns(bot, "courier")) return false;
+    // A rig hands its heroes their items and holds their couriers (drill.ts Owns): no purchase of ours there, unless its release frees sustain.
+    if (deliveries[pid] !== undefined || SustainGather.OnTheWay(bot) !== undefined || rigOwns(bot, "purchase") || rigOwns(bot, "courier")) return false;
     const full = `item_${name}`;
     const res = (bot as unknown as ShopBot).ActionImmediate_PurchaseItem(full);
     if (res !== PURCHASE_ITEM_SUCCESS) {
@@ -314,7 +319,7 @@ function startWait(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: numbe
  */
 function adopt(bot: Unit, i: Sustain.Inputs, why: string, now: number): void {
     const pid = bot.GetPlayerID();
-    if (deliveries[pid] !== undefined || i.delivery === undefined || Drill.Owns(bot, "courier")) return;
+    if (deliveries[pid] !== undefined || i.delivery === undefined || rigOwns(bot, "courier")) return;
     const d: Delivery = { item: "stash", why, at: now, eta: i.delivery.eta, hp0: i.hp, mp0: i.mp, orderAt: -math.huge, orders: 0 };
     deliveries[pid] = d;
     deliver(bot, d, now);

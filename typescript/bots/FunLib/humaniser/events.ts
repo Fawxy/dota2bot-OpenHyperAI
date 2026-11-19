@@ -1166,6 +1166,10 @@ export const EVENTS = {
         ok: "num",
         fail: "str",
         hp: "num",
+        /** ph=ready: the cast's mana share. */
+        mp: "num",
+        /** ph=ready in a rig with per-hero tasks (the sustain rig): the task this hero's setup forced (`tango`, `ship`, ...). */
+        task: "str",
         rt: "num",
         dt: "num",
         gold: "num",

@@ -177,7 +177,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local endBuy, deliver, adopt, deliveries, r1, n0
+local rigOwns, endBuy, deliver, adopt, deliveries, r1, n0
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local UnitType = ____dota.UnitType
@@ -191,6 +191,9 @@ local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+function rigOwns(bot, what)
+    return Drill.Owns(bot, what) and not Drill.RigFreesSustain(bot)
+end
 function endBuy(bot, why)
     local pid = bot:GetPlayerID()
     local d = deliveries[pid]
@@ -264,7 +267,7 @@ function deliver(bot, d, now)
 end
 function adopt(bot, i, why, now)
     local pid = bot:GetPlayerID()
-    if deliveries[pid] ~= nil or i.delivery == nil or Drill.Owns(bot, "courier") then
+    if deliveries[pid] ~= nil or i.delivery == nil or rigOwns(bot, "courier") then
         return
     end
     local d = {
@@ -302,7 +305,7 @@ function ____exports.Holds(bot)
     if not Ours.On("Sustain") or bot:IsIllusion() or not Phase.LaningHeld(bot) or Drill.Held(bot) then
         return false
     end
-    if Drill.RigHoldsCasts(bot, true) == true then
+    if Drill.RigHoldsCasts(bot, true) == true and not Drill.RigFreesSustain(bot) then
         return false
     end
     return not (Overrides.LaneOnly(bot) and not Drill.CastItems(bot))
@@ -326,18 +329,18 @@ local function chargesOf(bot, name)
         local s = 0
         while s <= 8 do
             do
-                local __continue9
+                local __continue10
                 repeat
                     local it = bot:GetItemInSlot(s)
                     if it == nil or it == nil or it:GetName() ~= name then
-                        __continue9 = true
+                        __continue10 = true
                         break
                     end
                     local c = it:GetCurrentCharges() or 0
                     n = n + (c > 0 and c or 0.5)
-                    __continue9 = true
+                    __continue10 = true
                 until true
-                if not __continue9 then
+                if not __continue10 then
                     break
                 end
             end
@@ -427,7 +430,7 @@ end
 -- game's read, whoever bought it), a rig owns the hero's purchases, or the game refused it.
 local function purchase(bot, i, name, why, now)
     local pid = bot:GetPlayerID()
-    if deliveries[pid] ~= nil or SustainGather.OnTheWay(bot) ~= nil or Drill.Owns(bot, "purchase") or Drill.Owns(bot, "courier") then
+    if deliveries[pid] ~= nil or SustainGather.OnTheWay(bot) ~= nil or rigOwns(bot, "purchase") or rigOwns(bot, "courier") then
         return false
     end
     local full = "item_" .. name
