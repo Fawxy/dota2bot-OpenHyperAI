@@ -1868,6 +1868,7 @@ ____exports.EVENTS = {
         mp = "num"
     },
     sustain_courier = {pid = "num", st = "num", dead = "num", d = "num"},
+    sustain_tp = {pid = "num", why = "str", hp = "num"},
     burst_add = {
         pid = "num",
         ab = "str",
