@@ -418,6 +418,7 @@ function ____exports.Reader(bot, horizon, opts)
         local chasers = {}
         local eng = {}
         local att = {}
+        local rows = {}
         local dmg = 0
         for ____, e in ipairs(enemies) do
             do
@@ -446,6 +447,13 @@ function ____exports.Reader(bot, horizon, opts)
                     if e.eng == true then
                         eng[#eng + 1] = e.pid
                     end
+                    rows[#rows + 1] = {
+                        pid = e.pid,
+                        dmg = e.dmg,
+                        eng = e.eng == true,
+                        at = e.at,
+                        run = e.run
+                    }
                     dmg = dmg + e.dmg
                     __continue48 = true
                 until true
@@ -556,7 +564,8 @@ function ____exports.Reader(bot, horizon, opts)
             threat = threat,
             band = ____exports.BandOf(threat, lethal),
             eng = eng,
-            att = att
+            att = att,
+            rows = rows
         }
     end
 end
@@ -590,6 +599,11 @@ function ____exports.LoneStand(bot, r)
     return #r.reach == 1 and ____exports.Stand(bot, r)
 end
 local gateCut
+local gateShadow
+--- safe_gather.ts registers its shadow here (it imports this module): called with every gate read, logged or not. It must not throw.
+function ____exports.SetGateShadow(fn)
+    gateShadow = fn
+end
 --- cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision.
 function ____exports.SetGateCut(fn)
     gateCut = fn
@@ -608,6 +622,9 @@ function ____exports.Gate(bot, from, place, consumer)
             place,
             consumer
         )
+    end
+    if gateShadow ~= nil then
+        pcall(gateShadow, bot, consumer, r)
     end
     return {why = why, r = r}
 end

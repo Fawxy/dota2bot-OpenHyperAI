@@ -350,6 +350,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
@@ -490,6 +491,7 @@ function ____exports.ResetCache()
     episodes = 0
     fountainLogged = false
     RetreatState.ResetCache()
+    SafeGather.ResetCache()
 end
 local function stateOf(bot)
     local pid = bot:GetPlayerID()
@@ -1664,6 +1666,7 @@ function ____exports.Desire(bot)
     local readAtBefore = st.readAt
     local r = readOf(bot, st, now)
     if st.ep ~= nil then
+        SafeGather.Shadow(bot, "retreat", r, {away = false, held = true, hold = false})
         local res = step(bot, st, r, now)
         if res == nil then
             return ____exports.SETTINGS.EpisodeDesire
@@ -1732,6 +1735,7 @@ function ____exports.Desire(bot)
         joins,
         hits
     )
+    SafeGather.Shadow(bot, "leave", r, {away = false, held = false, hold = joins or hits})
     if readAtBefore ~= st.readAt then
         cutLeave(
             bot,

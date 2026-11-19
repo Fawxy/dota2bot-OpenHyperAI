@@ -45,6 +45,8 @@ local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
+local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local CastLog = require(GetScriptDirectory().."/FunLib/humaniser/cast_log")
 ____exports.Config = Config
@@ -84,6 +86,7 @@ ____exports.Trade = Trade
 ____exports.LaneControl = LaneControl
 ____exports.Retreat = Retreat
 ____exports.SustainGather = SustainGather
+____exports.SafeGather = SafeGather
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
 local overlayAt = {}
@@ -237,6 +240,7 @@ local function drawOverlay(bot)
     end
     HDebug.Draw(bot)
 end
+Threat.SetGateShadow(SafeGather.GateShadow)
 local steps = {
     feed = Camps.FeedNeutralSpeeds,
     pings = Pings.Tick,

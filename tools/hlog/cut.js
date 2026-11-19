@@ -2,7 +2,7 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade] [--who CONSUMER] [--game N] [--id ID]   print a fixture
+//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|safe] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
@@ -271,6 +271,28 @@ const DECISIONS = {
         id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${tradeAnswer(cut)} (hp ${cut.hp}, burst ${cut.bu}, n ${cut.n}, creeps on us ${cut.hc}, wave ${cut.cr})`,
     },
+    // The safe-here read in shadow (safe_gather.ts Shadow): every input rides on the line (`rr`, `mi`, `stw`, `ld`, `awy`, `hld`, `hd`, hp as `hpa` and `hpm`),
+    // the answer is `lv` and `why`. Pure Decide, so no map, towers or creeps are needed. Rounded fields (damage and HP to 1, the weight to 0.001, the landing to 0.01) can
+    // flip a line that sat on a bar to the unit.
+    safe: {
+        driver: 'safe',
+        world(game, cut) {
+            const w = { t: Number(cut.t), pid: Number(cut.pid), who: cut.who };
+            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['rr', 'stw', 'ld']) if (cut[k] !== undefined) w[k] = String(cut[k]);
+            return w;
+        },
+        check(game, cut, obs) {
+            const a = obs.actions[0] || {};
+            const got = `${a.verb}(${a.target})`;
+            const want = `${cut.lv}(${cut.why})`;
+            return { same: got === want, got, want };
+        },
+        answer: (game, cut) => `${cut.lv}(${cut.why})`,
+        brief: (game, cut) => `${cut.who} hp ${cut.hpa}/${cut.hpm}, ${cut.rr ? String(cut.rr).split(';').length : 0} reachers, kill ${cut.kill}, ratio ${cut.ra === undefined ? '-' : cut.ra}, price ${cut.pr}`,
+        id: (cut) => `safe.${cut.who}.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
+        note: (game, cut) => `The game chose ${cut.lv}(${cut.why}) at ${cut.who} (hp ${cut.hpa} of ${cut.hpm}, kill ${cut.kill})`,
+    },
 };
 
 /** A trade cut's answer as the driver observes it: `lv(hero#tgt)` or `none(why)`, then `/end(ed)` when a running exchange ended. */
@@ -380,6 +402,7 @@ function factsOf(w) {
         return [...w.ours.map(m => `# ours pid ${m.pid}${m.pid === w.ally ? ' (the hit ally)' : ''}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally${m.ret === 1 ? ', retreating' : ''}`),
             ...w.theirs.map(m => `# theirs pid ${m.pid}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally`)];
     }
+    if (b === undefined && w.hpa !== undefined) return [`# ${w.who} pid ${w.pid}: HP ${w.hpa} of ${w.hpm}; reachers (pid,hitting,dmg,unseen) ${w.rr || 'none'}; unseen weight ${w.mi}; tower ${w.stw}; landing ${w.ld}`];
     // A trade world is the one decision's inputs: the hero and its candidates.
     if (b === undefined && w.cd !== undefined) return [`# ${w.role} pid ${w.pid}: HP ${Math.round(100 * w.hp)}%; burst ${w.bu} over ${w.n} heroes, unseen ${w.mi}; creeps on it ${w.hc}, wave ${w.cr}; tower on it ${w.tm}`
         + `${w.run ? `; running ${String(w.run).split(':').slice(0, 2).join(' on ')}` : ''}`,

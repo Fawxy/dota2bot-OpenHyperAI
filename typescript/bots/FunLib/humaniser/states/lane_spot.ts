@@ -37,6 +37,7 @@ import { Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { On } from "bots/FunLib/humaniser/ours";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import type { LanePath } from "bots/FunLib/humaniser/lane_push_data";
 
@@ -100,6 +101,8 @@ const pressured = (r: Threat.Read): boolean => r.threat >= Threat.SETTINGS.Press
  * rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
  */
 const LANE_ENGAGED_WINDOW = 6;
+/** The shadow reads a spot as held (the hero already stands on it) within this many units. */
+const SHADOW_HELD = 150;
 /**
  * No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
  * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
@@ -527,8 +530,9 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     let readN = 0;
     let reader: ReturnType<typeof Threat.Reader> | undefined;
     // One read per position (a row of candidates reads at its lane-axis point): walks towards a hero from here, else the place alone.
+    const keyOf = (p: Vector): string => `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
     const readAt = (p: Vector): Threat.Read => {
-        const key = `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
+        const key = keyOf(p);
         let r = reads[key];
         if (r === undefined) {
             let toward = false;
@@ -568,6 +572,11 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
             info.re = r.eng.length;
             info.rat = r.att.length > 0 ? 1 : 0;
             info.rn = readN;
+            // Shadow of the safe-here read (ev=cut kind=safe), on the reads made above: a point with no read this frame is skipped.
+            const stands = (p: Vector): boolean => len(p.x - here.x, p.y - here.y) <= SHADOW_HELD;
+            SafeGather.Shadow(bot, "spot", r, { away: false, held: stands(spot), hold: false });
+            const pr = reads[keyOf(pref)];
+            if (pr !== undefined) SafeGather.Shadow(bot, "pref", pr, { away: false, held: stands(pref), hold: false });
         }
         return info;
     };

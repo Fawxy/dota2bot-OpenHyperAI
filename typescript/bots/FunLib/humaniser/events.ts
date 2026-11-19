@@ -2808,7 +2808,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
@@ -2816,7 +2816,7 @@ export const EVENTS = {
         who: "str",
         /** `gate`: the walk's start, x,y (Threat.Gate's `from`). */
         fm: "str",
-        /** `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none. */
+        /** `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none. kind=safe: the place read, x,y. */
         pl: "str",
         /** The bot's assigned lane. */
         lane: "num",
@@ -3056,6 +3056,24 @@ export const EVENTS = {
         ak: "str",
         anm: "str",
         ato: "num",
+        /**
+         * kind=safe (safe_gather.ts, in shadow: nothing acts on it; the consumer is `who`, the place read is `pl` as `x,y`, our HP and max HP are `hpa` and `hpm`, `mi` the unseen belief's weight sum):
+         * `rr` one record per reacher, `;`-joined, `pid,hitting,dmg,unseen` (hitting 1/0: the read's engaged window, so a gate's read has none; dmg absolute, over the read's long window when hitting; unseen 1: a lane opponent last seen
+         * under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`,
+         * `ex` seconds to walk out of every visible reacher's range (logged only; absent with none in reach), `awy` the walk leaves our creeps and tower, `hld` the caller holds a standing answer here,
+         * `hd` the caller has a hold (a hit back or join). The answer: `lv` (`safe`, `costly`, `deadly`), `kill` the reachers' summed damage, `ra` HP over kill (absent with no kill), `pr` the price (HP a second lost), `why` the rule
+         * (`tower`, `kill`, `unknown`, `hero`, `creeps`, `safe`). Logged on a change of `lv` or `why`, else every 2 s while a hero is in reach or `pr` is over 0.
+         */
+        rr: "str",
+        stw: "str",
+        ld: "str",
+        ex: "num",
+        awy: "num",
+        hld: "num",
+        hd: "num",
+        kill: "num",
+        ra: "num",
+        pr: "num",
     },
     /** Sustain (step 2): an item's values as sustain_gather.ts reads them, the first time a hero of this team holds it: one use's HP, mana, duration, and the charges it held. A 0 where the item restores something is a wrong special-value key. */
     sustain_item: {
