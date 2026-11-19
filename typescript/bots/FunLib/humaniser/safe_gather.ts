@@ -183,28 +183,34 @@ function lanerRows(bot: Unit, r: Threat.Read): Safe.Reacher[] {
 
 // ----------------------------------------------------------------------------------------------------------------- tower
 
-const towerSeen: Record<number, { t: number; on: boolean } | undefined> = {};
+/** The tower on a hero this frame: where it stands and how far it reaches this hero (its reach plus the hero's hull). */
+const towerSeen: Record<number, { t: number; at?: Vector; reach?: number } | undefined> = {};
 
 /**
- * A live enemy tower whose reach holds `bot` is attacking it or hit it in the last half second: retreat's `TowerOnUs` test
- * written again here, since retreat imports this module (a require cycle). Read once a frame per hero.
+ * A live enemy tower whose reach holds `bot` is attacking it or hit it in the last half second (retreat's `TowerOnUs` test
+ * written again here, since retreat imports this module: a require cycle), and that tower can reach `place`. The hero's own
+ * place is always inside. A place the tower cannot reach is not deadly for it: h2h742 had 13.6 such refusals a game, the lane
+ * spot's and its preference's, while a tower hit the hero where it stood. Read once a frame per hero.
  */
-function towerOnMe(bot: Unit, now: number): boolean {
+function towerOnMe(bot: Unit, now: number, place: Vector): boolean {
     const pid = bot.GetPlayerID();
-    const seen = towerSeen[pid];
-    if (seen !== undefined && seen.t === now) return seen.on;
-    let on = false;
-    const br = bot.GetBoundingRadius();
-    for (const tw of bot.GetNearbyTowers(1200, true) ?? []) {
-        if (!tw.IsAlive()) continue;
-        if (GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br) continue;
-        if (tw.GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(0.5)) {
-            on = true;
-            break;
+    let seen = towerSeen[pid];
+    if (seen === undefined || seen.t !== now) {
+        seen = { t: now };
+        const br = bot.GetBoundingRadius();
+        for (const tw of bot.GetNearbyTowers(1200, true) ?? []) {
+            if (!tw.IsAlive()) continue;
+            const reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br;
+            if (GetUnitToUnitDistance(bot, tw) > reach) continue;
+            if (tw.GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(0.5)) {
+                seen.at = tw.GetLocation();
+                seen.reach = reach;
+                break;
+            }
         }
+        towerSeen[pid] = seen;
     }
-    towerSeen[pid] = { t: now, on };
-    return on;
+    return seen.at !== undefined && seen.reach !== undefined && dist(seen.at, place) <= seen.reach;
 }
 
 const pressSeen: Record<number, { t: number; on: boolean } | undefined> = {};
@@ -245,7 +251,7 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         reach,
         missing: r.missing,
         tower: r.tower,
-        towerOnMe: towerOnMe(bot, DotaTime()),
+        towerOnMe: towerOnMe(bot, DotaTime(), r.place),
         landing: Landing(bot, DotaTime()),
         exit: r.rows.length > 0 ? exit : undefined,
         away: opts.away,

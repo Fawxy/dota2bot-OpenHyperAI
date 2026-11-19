@@ -267,39 +267,40 @@ function lanerRows(bot, r)
     end
     return out
 end
-function towerOnMe(bot, now)
+function towerOnMe(bot, now, place)
     local pid = bot:GetPlayerID()
     local seen = towerSeen[pid]
-    if seen ~= nil and seen.t == now then
-        return seen.on
-    end
-    local on = false
-    local br = bot:GetBoundingRadius()
-    for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
-        do
-            local __continue35
-            repeat
-                if not tw:IsAlive() then
+    if seen == nil or seen.t ~= now then
+        seen = {t = now}
+        local br = bot:GetBoundingRadius()
+        for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
+            do
+                local __continue35
+                repeat
+                    if not tw:IsAlive() then
+                        __continue35 = true
+                        break
+                    end
+                    local reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br
+                    if GetUnitToUnitDistance(bot, tw) > reach then
+                        __continue35 = true
+                        break
+                    end
+                    if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
+                        seen.at = tw:GetLocation()
+                        seen.reach = reach
+                        break
+                    end
                     __continue35 = true
+                until true
+                if not __continue35 then
                     break
                 end
-                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
-                    __continue35 = true
-                    break
-                end
-                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
-                    on = true
-                    break
-                end
-                __continue35 = true
-            until true
-            if not __continue35 then
-                break
             end
         end
+        towerSeen[pid] = seen
     end
-    towerSeen[pid] = {t = now, on = on}
-    return on
+    return seen.at ~= nil and seen.reach ~= nil and dist(seen.at, place) <= seen.reach
 end
 function pressed(bot, now)
     local pid = bot:GetPlayerID()
@@ -349,7 +350,8 @@ function ____exports.FromRead(bot, r, opts)
     local ____r_tower_5 = r.tower
     local ____towerOnMe_result_6 = towerOnMe(
         bot,
-        DotaTime()
+        DotaTime(),
+        r.place
     )
     local ____exports_Landing_result_7 = ____exports.Landing(
         bot,
