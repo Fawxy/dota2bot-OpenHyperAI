@@ -43,6 +43,7 @@ export interface Inputs {
     missing: number;
     /** The place is in a live enemy tower's reach. */
     tower: boolean;
+    /** A tower is attacking the hero and can reach the place asked (the hero's own place always). */
     towerOnMe: boolean;
     /** HP per second lost to each source over the last 2 s. */
     landing: { hero: number; creeps: number; tower: number };

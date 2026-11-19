@@ -3090,7 +3090,7 @@ export const EVENTS = {
         /**
          * kind=safe (safe_gather.ts, in shadow: nothing acts on it; the consumer is `who`, the place read is `pl` as `x,y`, our HP and max HP are `hpa` and `hpm`, `mi` the unseen belief's weight sum):
          * `rr` one record per reacher, `;`-joined, `pid,hitting,dmg,unseen` (hitting 1/0: the read's engaged window, so a gate's read has none; dmg absolute, over the read's long window when hitting; unseen 1: a lane opponent last seen
-         * under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`,
+         * under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0; `tower` by the tower's reach to a point; towerOnMe since 20/11/2026 only when a tower on the hero can reach the place, by its reach plus the hero's hull, so `0,1` is a place in that band; before that whatever the place), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`,
          * `ex` seconds to walk out of every visible reacher's range (logged only; absent with none in reach), `awy` the walk leaves our creeps and tower, `hld` the caller holds a standing answer here,
          * `hd` the caller has a hold (a hit back or join). The answer: `lv` (`safe`, `costly`, `deadly`), `kill` the reachers' summed damage, `ra` HP over kill (absent with no kill), `pr` the price (HP a second lost), `why` the rule
          * (`tower`, `kill`, `unknown`, `hero`, `creeps`, `safe`). Logged on a change of `lv` or `why`, else every 2 s while a hero is in reach or `pr` is over 0.
