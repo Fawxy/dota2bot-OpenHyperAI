@@ -95,6 +95,10 @@ export const DEFAULTS = {
      *  creep below half HP that no enemy hero reaches before our hits kill it (states/idle_swing), both laners on one creep.
      *  Off: the laner stands. A forced shove (Overrides.ForceShove) does not need it. */
     PreDeny: true,
+    /** Slice pick-safe (safe-here design): the lane creep pick does not take a creep whose hit place the shared safe read
+     *  (safe_gather At) calls deadly, as it does not take a creep that is not its claim; a running attempt on one is released.
+     *  Off: the pick has no danger check. */
+    PickSafe: true,
     /** Slice lane-control 2a (lane controller design s5.1-s5.3): once per wave per team and lane, the controller's reading,
      *  mode, intent and chosen levers as ev=lane_ctl (lane_control); LaneControlDrive decides whether bots act on it. Off: no reading,
      *  no line and no driving. */

@@ -263,6 +263,8 @@ Customize.Humaniser = {
 -- wave left on the camp when the site is safe, and gives the camp up to a core whose camp trip comes. Off: it walks back to lane.
 -- PreDeny (slice idle-swing): an owned laner with no last hit, deny or pre-hit on offer hits our lane creep below half HP that
 -- no enemy hero reaches before our hits kill it, both laners on one creep (states/idle_swing). Off: it stands.
+-- PickSafe (slice pick-safe): the lane creep pick does not take a creep whose hit place the safe read calls deadly, and releases a
+-- running attempt on one. Off: no danger check in the pick.
 -- LaneControl (slice lane-control 2a): the lane controller's per-wave reading, mode, intent and chosen levers, logged as
 -- ev=lane_ctl. Off: no reading and no line.
 -- LaneControlDrive (slice lane-control 2b): under LaneControl, the decision drives the levers (the idle swing's mode and setup,
@@ -288,7 +290,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, BurstReady = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, LaneSpotThreat = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, PickSafe = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, RetreatOdds = false, HealStop = true, HealItems = false, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, EvenStand = true, HighStand = true, BurstReady = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
