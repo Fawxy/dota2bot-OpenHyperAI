@@ -680,7 +680,7 @@ function ____exports.SafeSpot(bot)
 end
 local function start(bot, st, why, r, a, purp, spot, rep)
     local now = DotaTime()
-    local anchor, alt, minExp, regen = unpack(chooseAnchor(bot, why))
+    local anchor, alt, minExp, regen = unpack(chooseAnchor(bot, why == "heal" and a ~= nil and a.kill > 0 and "threat" or why))
     episodes = episodes + 1
     local hp = hpShare(bot)
     st.ep = {
@@ -860,6 +860,16 @@ local function step(bot, st, r, now)
         return SafeGather.At(bot, here, {held = false, who = "retreat"})
     end
     if ep.why == "heal" then
+        if at and ep.anchor.kind ~= "fountain" then
+            local f = ____exports.Fountain(bot:GetTeam())
+            ep.anchor = {
+                kind = "fountain",
+                at = f,
+                cost = ep.anchor.cost,
+                len = dist(here, f)
+            }
+            return nil
+        end
         return at and hpShare(bot) >= s.HealUntil and "anchor" or nil
     end
     if at then

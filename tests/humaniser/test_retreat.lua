@@ -291,6 +291,22 @@ do
 	check("sustain not carrying: the heal floor", r.d5 == 0.95, tostring(r.d5))
 end
 
+-- Sustain's home with a hero who can still reach us (a costly place): the first leg is the anchor a threat leave prices, not the
+-- straight line to the fountain (smoke sustain-home 2: died 3 s into a heal walk through the enemy); at it, on to the fountain.
+do
+	local H, bot = world({ hp = 250 })
+	local RS = require("bots/FunLib/humaniser/retreat_state")
+	enemy(10, Vector(700, -5000), 60)
+	local r = {}
+	local out = capture(function()
+		RS.SetHome(bot, true)
+		r.d1 = H.Retreat.Desire(bot)
+	end)
+	local l = lines(out, "retreat")
+	check("sustain home in reach: a heal episode whose first anchor is not the fountain", r.d1 == 0.95 and field(l[1], "why") == "heal" and field(l[1], "anchor") ~= "fountain",
+		tostring(l[1]))
+end
+
 -- retreat-heal's harness: in a chase rep the cast's retreat starts nothing above the drill's 25% HP (a lethal read
 -- included), and once it has been there it leaves as usual for the rest of the rep; a control rep is not held.
 do

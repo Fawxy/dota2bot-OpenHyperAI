@@ -397,7 +397,9 @@ export function SafeSpot(bot: Unit): { at: Vector; secs: number } | undefined {
 
 function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, a: Safe.Answer | undefined, purp: string, spot?: string, rep?: number): void {
     const now = DotaTime();
-    const [anchor, alt, minExp, regen] = chooseAnchor(bot, why);
+    // A walk home with a hero who can still reach us (sustain's home in a costly place) goes first to the anchor a `threat` leave
+    // prices, then on to the fountain (step): smoke sustain-home 2, the straight line home went through the enemy, dead in 3 s.
+    const [anchor, alt, minExp, regen] = chooseAnchor(bot, why === "heal" && a !== undefined && a.kill > 0 ? "threat" : why);
     episodes++;
     const hp = hpShare(bot);
     st.ep = { id: episodes, start: now, why, anchor, hp0: hp, lastHp: bot.GetHealth(), dmgh: 0, twr: false, wave: false };
@@ -488,7 +490,15 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
     // The fresh bar: a retreat stops only where the hero would not leave again (design 2026-11-19-safe-here-design.md s2).
     const fresh = (): Safe.Answer => SafeGather.At(bot, here, { held: false, who: "retreat" });
     // The walk home ends at the fountain once healed (sustain design: `home` ends at HealUntil there, then the lane).
-    if (ep.why === "heal") return at && hpShare(bot) >= s.HealUntil ? "anchor" : undefined;
+    if (ep.why === "heal") {
+        // At a stop short of home (the priced first leg), on to the fountain.
+        if (at && ep.anchor.kind !== "fountain") {
+            const f = Fountain(bot.GetTeam());
+            ep.anchor = { kind: "fountain", at: f, cost: ep.anchor.cost, len: dist(here, f) };
+            return undefined;
+        }
+        return at && hpShare(bot) >= s.HealUntil ? "anchor" : undefined;
+    }
     if (at) {
         if (forced || fresh().level !== "deadly") return "anchor";
         // Still deadly at a stop short of home: on to the fountain.
