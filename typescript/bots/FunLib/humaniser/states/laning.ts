@@ -389,6 +389,31 @@ export function DenyDue(bot: Unit): boolean {
     return due;
 }
 
+/**
+ * Sustain's `nextDue` (design docs/proposals/2026-11-19-sustain-design.md, rule 3): seconds until the soonest last hit or deny
+ * this laner would take comes due (laneTargets' `due`, within `NextDueWithin`, the body's claims when its hits are ours);
+ * undefined with no creep near. DenyDue answers only "now"; this is its time version. Once per bot per game time.
+ */
+const nextDueAt: Record<number, { t: number; due?: number } | undefined> = {};
+export const NextDueWithin = 30;
+export function NextDue(bot: Unit): number | undefined {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const memo = nextDueAt[pid];
+    if (memo !== undefined && memo.t === now) return memo.due;
+    let due: number | undefined;
+    const verbs = Tasks.Verbs();
+    if (verbs !== undefined) {
+        const claims = OwnsLastHit(bot) || OwnsSupportHits(bot) ? claimsFor(bot) : undefined;
+        for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: NextDueWithin })) {
+            if (claims !== undefined && !claims(t)) continue;
+            if (due === undefined || t.due < due) due = t.due;
+        }
+    }
+    nextDueAt[pid] = { t: now, due };
+    return due;
+}
+
 function denyDue(bot: Unit): boolean {
     const core = OwnsLastHit(bot);
     if (!core && !OwnsSupportHits(bot)) return false;

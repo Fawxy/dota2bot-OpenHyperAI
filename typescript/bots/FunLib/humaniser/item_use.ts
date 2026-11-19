@@ -69,6 +69,12 @@ export function UseNoTarget(bot: Unit, item: Item): void {
     (bot as unknown as ItemBot).Action_UseAbility(item);
 }
 
+/** An item given to or cast on an ally (a tango shared): the hero walks into cast range first. */
+export function UseOnAlly(bot: Unit, item: Item, ally: Unit): void {
+    used(bot, item);
+    (bot as unknown as ItemBot).Action_UseAbilityOnEntity(item, ally);
+}
+
 /** A tango on a tree: the hero walks to within the cast range first, so the caller gives no move order meanwhile. */
 export function UseOnTree(bot: Unit, item: Item, tree: number): void {
     used(bot, item);

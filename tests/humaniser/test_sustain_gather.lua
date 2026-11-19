@@ -1,7 +1,7 @@
--- Sustain step 2 (design 2026-11-19-sustain-design.md): Gather reads the decision's Inputs from the game. The reads it
--- borrows (Threat.Read, Retreat.SafeSpot, SpellReady.DamageOn, CampJobs.Active) are replaced on their module tables, so
--- these checks are Gather's own: the items read from their special values, a running buff's rest, the lane burst's
--- 10 s memory, the shop from what was read, the courier, the tree, and the cut line's text.
+-- Sustain (design 2026-11-19-sustain-design.md, steps 2 and 3): Gather reads the decision's Inputs from the game. The reads it
+-- borrows (Threat.Read, SafeGather.FromRead, Laning.NextDue, Retreat.SafeSpot, CampJobs.Active) are replaced on their module
+-- tables, so these checks are Gather's own: the items read from their special values and whether they can be cast now, a
+-- running buff's rest, the safe-here read here and over the tree walk, the shop from what was read, the courier, and the cut line.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
@@ -9,14 +9,27 @@ local G = require("bots/FunLib/humaniser/sustain_gather")
 local UnitType = require("bots/ts_libs/dota/index").UnitType
 local Threat = require("bots/FunLib/humaniser/threat")
 local Retreat = require("bots/FunLib/humaniser/retreat")
-local SpellReady = require("bots/FunLib/humaniser/spell_ready")
+local SafeGather = require("bots/FunLib/humaniser/safe_gather")
+local Laning = require("bots/FunLib/humaniser/states/laning")
 local CampJobs = require("bots/FunLib/humaniser/camp_jobs")
 
-local STAY = { burst = 0.5, reach = { 1 } }
-Threat.Read = function() return STAY end
+-- A read is told by its place: here (the stay read) or the tree's (the walk). FromRead hands back the Safe inputs each carries.
+local function safeInputs(reach)
+	return { hp = 300, hpMax = 600, reach = reach, missing = 0, tower = false, towerOnMe = false, landing = { hero = 0, creeps = 0, tower = 0 },
+		away = false, held = false, hold = false }
+end
+local STAY = { safe = safeInputs({ { pid = 5, hitting = true, dmg = 250 }, { pid = 6, hitting = false, dmg = 50, unseen = true } }) }
+local WALK = { safe = safeInputs({ { pid = 5, hitting = false, dmg = 250 } }) }
+local reads = {}
+Threat.Read = function(_, _, place, horizon)
+	table.insert(reads, horizon)
+	if place.x == 0 and place.y == 0 then return STAY end
+	return WALK
+end
+SafeGather.FromRead = function(_, r) return r.safe end
+Laning.NextDue = function() return 2.5 end
 Retreat.SafeSpot = function() return { at = Vector(-500, -500), secs = 2.5 } end
 Retreat.Fountain = function() return Vector(-6000, 0) end
-SpellReady.DamageOn = function(e) return e.burst or 0 end
 CampJobs.Active = function() return false end
 
 COURIER_STATE_IDLE, COURIER_STATE_AT_BASE, COURIER_STATE_MOVING, COURIER_STATE_DEAD = 0, 1, 2, 5
@@ -40,6 +53,8 @@ local function itemOf(name, charges, values)
 		GetName = function() return name end,
 		GetCurrentCharges = function() return charges end,
 		GetSpecialValueFloat = function(_, k) return values[k] or 0 end,
+		IsFullyCastable = function() return values.cooling ~= true end,
+		GetCastRange = function() return 165 end,
 	}
 end
 local TANGO = { health_regen = 7, buff_duration = 16 }
@@ -81,9 +96,13 @@ check("items: a tango's three uses of 7 x 16, a salve that breaks, a clarity in 
 		and by.branches == nil)
 check("a wand restores 15 a charge once; an empty stick has no use",
 	by.magic_wand and by.magic_wand.charges == 1 and near(by.magic_wand.hp, 75) and near(by.magic_wand.mp, 75) and by.magic_stick.charges == 0)
-check("absolute HP and the stay read's burst share made absolute", i.hp == 300 and i.hpMax == 600 and near(i.burst, 150) and i.reach == 1)
-check("the nearest tree, and the enemy's distance to it", i.tree and near(i.tree.d, 300) and near(i.tree.enemyD, 200))
-check("lane burst: the hero within 2,000 counts, the one 4,000 off does not", near(i.laneBurst, 250))
+check("absolute HP; the safe-here read here: its kill (an unseen lane opponent's row counts), a hero hitting, one visible in reach",
+	i.hp == 300 and i.hpMax == 600 and near(i.safe.kill, 300) and i.safe.hitting == true and i.safe.reach == 1)
+check("ready: a slot 0-5 item that can be cast; the backpack's clarity is not",
+	by.tango.ready == true and by.flask.ready == true and by.clarity.ready == false)
+check("the nearest tree as a walk into the tango's 165 range at 300 a second, its walk read over the gate horizon and deadly there (300 / 250 under 1.5)",
+	i.tree and near(i.tree.walk, 0.45) and i.tree.safe == false and reads[#reads] == Threat.SETTINGS.GateHorizon)
+check("the next hit due, read with a tree item held", i.nextDue == 2.5)
 check("the shop: a tango pack of three uses from the read, in stock; the salve out of stock is left out",
 	#i.shop == 2 and (function()
 		for _, o in ipairs(i.shop) do if o.name == "tango" then return o.cost == 90 and near(o.hp, 336) end end
@@ -94,13 +113,12 @@ check("home there and back, the safe spot and the ally with its two salves",
 	near(i.home, 40) and i.safeSpot.walk == 2.5 and #i.allies == 1 and i.allies[1].missing == 300 and i.allies[1].heals == 2)
 
 T = 109
-enemy.loc = Vector(5000, 0)
+WALK.safe.reach[1].dmg = 100
 bot.modifiers = { modifier_tango_heal = 1 }
 bot.left = 8
 COURIER.st = COURIER_STATE_MOVING
 local j = G.Gather(bot)
-check("a hero seen 9 s ago still counts; gone at 11 s",
-	near(j.laneBurst, 250) and (function() T = 111 return near(G.Gather(bot).laneBurst, 0) end)())
+check("1 s later the tree is read again: the walk is safe at 300 / 100", j.tree and j.tree.safe == true)
 check("a running tango's 8 s left restore 56; a busy courier is no courier", near(j.regenLeft, 56) and j.courier == nil)
 
 -- Two stacked packs read 6 at once; a later pack of 3 sets what one purchase holds.
@@ -122,8 +140,8 @@ local fields = G.CutFields(0, i, S.Decide(i))
 local f = {}
 for _, p in ipairs(fields) do f[p[1]] = p[2] end
 local dump = {} for k, v in pairs(f) do table.insert(dump, k .. "=" .. tostring(v)) end
-check("the cut line: kind sustain, items as records, the answer",
-	f.kind == "sustain" and f.hpa == 300 and f.hpm == 600 and string.find(f.it, "0,tango,3,112,0,16,0,1,0,1", 1, true) ~= nil
-		and f.tr == "300,200" and f.ak ~= nil and f.why ~= nil and f.co == 20, table.concat(dump, " "))
+check("the cut line: kind sustain, items as records, the tree walk, the safe-here read, the next hit, the answer",
+	f.kind == "sustain" and f.hpa == 300 and f.hpm == 600 and string.find(f.it, "0,tango,3,112,0,16,0,1,0,1,1", 1, true) ~= nil
+		and f.tr == "0.5,0" and f.kill == 300 and f.sh == 1 and f.rc == 1 and f.nd == 2.5 and f.ak ~= nil and f.why ~= nil and f.co == 20, table.concat(dump, " "))
 
 finish()

@@ -15,6 +15,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as SustainAct from "bots/FunLib/humaniser/sustain_act";
 
 type Pred = (this: void) => boolean;
 
@@ -76,6 +77,19 @@ const bodyHit: Row = {
     drill: true,
     wants: (_bot, ctx) => ctx.bodyBusy(),
     run: (_bot, ctx) => ctx.stepBody(),
+};
+
+/**
+ * Sustain step 3 (D6, `Ours.Sustain`): a heal attempt that walks (a tango's tree, a step out to the safe spot, an ally out of
+ * cast range) holds the frame until its use starts, so the rows below do not undo the walk. After a swing in progress; before
+ * the support's hits, which sustain's next-due read already waited for (a tango walk starts only if it ends before the next hit).
+ */
+const sustain: Row = {
+    name: "sustain",
+    rank: ranks(15, ...all),
+    drill: true,
+    wants: (bot, ctx) => ctx.enabled() && SustainAct.Walking(bot),
+    run: (bot) => SustainAct.Step(bot),
 };
 
 /**
@@ -251,7 +265,7 @@ const ohaPos: Row = {
     run: (_bot, ctx) => ctx.ohaPosition(),
 };
 
-export const ROWS: Row[] = [bodyHit, supportHit, supportAggro, supportHold, drillHold, drillAggro, aggro, etiquette, ohaLastHit, ohaDeny, ohaHold, ohaLocal, body, ohaPos];
+export const ROWS: Row[] = [bodyHit, sustain, supportHit, supportAggro, supportHold, drillHold, drillAggro, aggro, etiquette, ohaLastHit, ohaDeny, ohaHold, ohaLocal, body, ohaPos];
 
 // An error in a row of ours is reported and the row stands aside, so the rows after it (the host's last hit, deny and position)
 // still run. A failed `wants` on a host row answers true: ours does not own the frame.

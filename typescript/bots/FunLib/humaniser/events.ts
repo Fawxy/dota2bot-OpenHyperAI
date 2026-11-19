@@ -3021,22 +3021,27 @@ export const EVENTS = {
         skip: "str",
         /** kind=lane: 1 under lane-only (a drill). */
         lo: "num",
-        /** kind=sustain (sustain_gather.ts, in shadow: nothing acts on it): HP, max HP, mana, max mana, absolute. */
+        /**
+         * kind=sustain (sustain_gather.ts: in shadow for every hero; with `Ours.Sustain` a held hero's line is the answer sustain_act.ts carries out, `act` 1): HP, max HP, mana, max mana, absolute.
+         * Older logs (step 2) carry `bua` (the stay read's burst), `lb` (laneBurst, the kill line's stand-in) and `tr` as `d,enemyD`, and no `kill`, `sh` or `nd`.
+         */
         hpa: "num",
         hpm: "num",
         mpa: "num",
         mpm: "num",
-        /** kind=sustain: heal and mana items in slots 0-8, `slot,name,uses,hp,mp,dur,breaks,tree,refill,share` per `;` (hp, mp: one use, absolute). */
+        /** kind=sustain: heal and mana items in slots 0-8, `slot,name,uses,hp,mp,dur,breaks,tree,refill,share,ready` per `;` (hp, mp: one use, absolute; ready 1: castable now, in slots 0-5 and off cooldown). */
         it: "str",
-        /** kind=sustain: the nearest visible passable tree within 1,200 and the nearest visible enemy hero's distance to it (-1 none), `d,enemyD`. */
+        /** kind=sustain: the nearest visible passable tree within 1,200, read only with a tree item held: `walk,safe`, seconds to walk into cast range and 1 when the safe-here read over that walk is not deadly. */
         tr: "str",
         /** kind=sustain: a hero damaged us in the last 2 s (1/0). */
         hr: "num",
-        /** kind=sustain: the stay read's burst (absolute HP) and the heroes in its reach. */
-        bua: "num",
+        /** kind=sustain: the safe-here read here (2 s): `kill` (as kind=safe's field), `sh` a reacher is hitting us (1/0), `rc` visible heroes in its reach. */
+        sh: "num",
         rc: "num",
-        /** kind=sustain: laneBurst, the summed 3 s damage of the enemy heroes seen within 2,000 in the last 10 s (the kill line's stand-in). */
-        lb: "num",
+        /** kind=sustain: seconds until the next last hit or deny is due in our lane (Laning.NextDue); absent with no creep near. */
+        nd: "num",
+        /** kind=sustain: 1 when sustain_act.ts carries this answer out (`Ours.Sustain`, a held hero). */
+        act: "num",
         /** kind=sustain: HP and mana the running regen buffs still restore. */
         rl: "num",
         ml: "num",
@@ -3074,6 +3079,26 @@ export const EVENTS = {
         kill: "num",
         ra: "num",
         pr: "num",
+    },
+    /**
+     * Sustain (step 3, `Ours.Sustain`): one attempt sustain_act.ts carried out, at its end. `k` the answer's kind (`use`, `step_out_use`, `give`), `it` the item, `to` the ally (give),
+     * `why` the rule, `hp0`/`hp1` HP at the order and at the end (absolute), `mp0`/`mp1` mana, `sec` seconds from the order, `ed` how it ended: `started` (the buff or the charge went), `done`, `topped`,
+     * `interrupted` (a hero reached us on a step-out), `cut` (the hero left the laning mode mid-walk), `released` (the hero is no longer held), `missed` (no effect by the deadline), `dead`.
+     */
+    sustain: {
+        pid: "num",
+        k: "str",
+        it: "str",
+        to: "num",
+        why: "str",
+        hp0: "num",
+        hp1: "num",
+        mp0: "num",
+        mp1: "num",
+        sec: "num",
+        ed: "str",
+        /** Walk seconds to the tree or the safe spot when the order was given (absent: no walk). */
+        wk: "num",
     },
     /** Sustain (step 2): an item's values as sustain_gather.ts reads them, the first time a hero of this team holds it: one use's HP, mana, duration, and the charges it held. A 0 where the item restores something is a wrong special-value key. */
     sustain_item: {

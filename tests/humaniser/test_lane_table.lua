@@ -26,6 +26,10 @@ package.loaded["bots/FunLib/humaniser/drill"] = {
 }
 package.loaded["bots/FunLib/humaniser/overrides"] = { LaneOnly = function() return world.laneOnly == true end }
 package.loaded["bots/FunLib/humaniser/lane_config"] = { PositionOf = function(u) return u.pos end }
+package.loaded["bots/FunLib/humaniser/sustain_act"] = {
+	Walking = function() return world.sustainWalk == true end,
+	Step = function() world.sustainSteps = (world.sustainSteps or 0) + 1 return true end,
+}
 package.loaded["bots/FunLib/humaniser/states/lane_table"] = nil
 local LaneTable = require("bots/FunLib/humaniser/states/lane_table")
 
@@ -71,10 +75,10 @@ local function isSupportRow(name) return name:find("^support_") ~= nil end
 
 -- The contract: each position's order, written out. A later re-ranking shows up as a diff of these lists.
 do
-	local coreOrder = "body_hit,aggro,etiquette,oha_lh,oha_deny,oha_hold,oha_local,body,oha_pos"
-	local coreDrill = "body_hit,drill_hold,drill_aggro,oha_lh,oha_deny,oha_hold,body,oha_pos"
-	local supportOrder = "body_hit,support_hit,support_aggro,support_hold,etiquette,oha_lh,oha_deny,oha_hold,oha_local,body,oha_pos"
-	local supportDrill = "body_hit,support_hit,support_aggro,support_hold,oha_lh,oha_deny,oha_hold,body,oha_pos"
+	local coreOrder = "body_hit,sustain,aggro,etiquette,oha_lh,oha_deny,oha_hold,oha_local,body,oha_pos"
+	local coreDrill = "body_hit,sustain,drill_hold,drill_aggro,oha_lh,oha_deny,oha_hold,body,oha_pos"
+	local supportOrder = "body_hit,sustain,support_hit,support_aggro,support_hold,etiquette,oha_lh,oha_deny,oha_hold,oha_local,body,oha_pos"
+	local supportDrill = "body_hit,sustain,support_hit,support_aggro,support_hold,oha_lh,oha_deny,oha_hold,body,oha_pos"
 	for pos = 1, 3 do
 		check("order, position " .. pos, names(LaneTable.Order(pos, false)) == coreOrder, names(LaneTable.Order(pos, false)))
 		check("order, position " .. pos .. ", lane-only", names(LaneTable.Order(pos, true)) == coreDrill, names(LaneTable.Order(pos, true)))
@@ -111,6 +115,32 @@ do
 	check("lane-only: the rows a drill does not run are not asked", asked.aggro == nil and asked.etiquette == nil and asked.oha_local == nil and asked.oha_lh == 1)
 	world.laneOnly = false
 	for _, r in ipairs(LaneTable.ROWS) do r.wants = saved[r] end
+end
+
+-- Sustain's walk (a tango's tree, a step out): after a swing in progress, before every other row, for both roles and lane-only;
+-- off with the state layer off; no walk, no frame.
+do
+	world.offered = true
+	world.sustainWalk = true
+	world.sustainSteps = 0
+	local c, o = ctx({ running = true, label = "hold", bodySupportHits = true })
+	local supportRow = walk(support, c)
+	c = ctx({})
+	local coreRow = walk(core, c)
+	world.laneOnly = true
+	c = ctx({})
+	local drillRow = walk(core, c)
+	world.laneOnly = false
+	c = ctx({ busy = true })
+	local swing = walk(core, c)
+	c, o = ctx({ enabled = false })
+	local off = walk(core, c)
+	check("a sustain walk takes the frame over the support's hit, the core's rows and a drill's; a swing in progress keeps it; off: the host's",
+		supportRow == "sustain" and coreRow == "sustain" and drillRow == "sustain" and swing == "body_hit" and off ~= "sustain" and world.sustainSteps == 3)
+	world.sustainWalk = false
+	c, o = ctx({ running = true, label = "hold", bodySupportHits = true })
+	check("no walk: the support's hit row has the frame", walk(support, c) == "support_hit")
+	world.offered = false
 end
 
 -- A support's lane hits first, then its draw, then its hold; a row whose run gives no order falls through.

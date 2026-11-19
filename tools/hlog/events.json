@@ -1929,9 +1929,10 @@
    "it": "str",
    "tr": "str",
    "hr": "num",
-   "bua": "num",
+   "sh": "num",
    "rc": "num",
-   "lb": "num",
+   "nd": "num",
+   "act": "num",
    "rl": "num",
    "ml": "num",
    "ss": "str",
@@ -1955,6 +1956,20 @@
    "kill": "num",
    "ra": "num",
    "pr": "num"
+  },
+  "sustain": {
+   "pid": "num",
+   "k": "str",
+   "it": "str",
+   "to": "num",
+   "why": "str",
+   "hp0": "num",
+   "hp1": "num",
+   "mp0": "num",
+   "mp1": "num",
+   "sec": "num",
+   "ed": "str",
+   "wk": "num"
   },
   "sustain_item": {
    "name": "str",
@@ -2667,6 +2682,12 @@
    "rr": "text",
    "stw": "text",
    "ld": "text"
+  },
+  "ev_sustain": {
+   "k": "text",
+   "it": "text",
+   "why": "text",
+   "ed": "text"
   },
   "ev_sustain_item": {
    "name": "text"

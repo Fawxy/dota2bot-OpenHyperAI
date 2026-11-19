@@ -101,6 +101,11 @@ function LaningLoad(opts)
 		}
 	end
 	package.loaded["bots/FunLib/humaniser/overrides"] = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end }
+	-- Sustain's walk row: no heal attempt walks unless the world says so.
+	package.loaded["bots/FunLib/humaniser/sustain_act"] = {
+		Walking = function() return opts.sustainWalk == true end,
+		Step = function() return opts.sustainWalk == true end,
+	}
 	package.loaded["bots/FunLib/humaniser/states/lane_table"] = nil
 	local LaneTable = require("bots/FunLib/humaniser/states/lane_table")
 	local attempts = {}

@@ -45,6 +45,8 @@ local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
+local SustainAct = require(GetScriptDirectory().."/FunLib/humaniser/sustain_act")
+local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
@@ -86,6 +88,7 @@ ____exports.Trade = Trade
 ____exports.LaneControl = LaneControl
 ____exports.Retreat = Retreat
 ____exports.SustainGather = SustainGather
+____exports.SustainAct = SustainAct
 ____exports.SafeGather = SafeGather
 local OVERLAY_REFRESH = 0.25
 local startLogged = {}
@@ -241,6 +244,10 @@ local function drawOverlay(bot)
     HDebug.Draw(bot)
 end
 Threat.SetGateShadow(SafeGather.GateShadow)
+CampJobs.SetSustain(
+    function(bot) return SustainAct.Holds(bot) end,
+    function(bot) return SustainAct.Yield(bot) end
+)
 local steps = {
     feed = Camps.FeedNeutralSpeeds,
     pings = Pings.Tick,
@@ -252,7 +259,11 @@ local steps = {
     intent = Intent.Tick,
     telemetry = Telemetry.Tick,
     regen = RegenObs.Tick,
-    sustain = SustainGather.Tick,
+    sustain = function(bot)
+        if not SustainAct.Holds(bot) then
+            SustainGather.Tick(bot)
+        end
+    end,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -502,6 +513,15 @@ if Telemetry.GuardsEnabled() then
     Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
     Telemetry.GuardModule("LaneControl", LaneControl, {Tick = none})
     Telemetry.GuardModule("SustainGather", SustainGather, {Bought = none})
+    Telemetry.GuardModule("SustainAct", SustainAct, {
+        ItemThink = none,
+        Holds = no,
+        HoldsItem = no,
+        Walking = no,
+        Step = no,
+        Yield = no,
+        ResetCache = none
+    })
     Telemetry.GuardModule("Retreat", Retreat, {
         Desire = none,
         Think = none,

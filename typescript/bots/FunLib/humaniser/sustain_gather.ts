@@ -1,7 +1,10 @@
 /**
- * Sustain, the game side (design docs/proposals/2026-11-19-sustain-design.md in the master repo, step 2): `Gather` reads
- * `Sustain.Inputs` from the game once, and `Tick` runs the pure `Decide` on them in shadow and logs `ev=cut kind=sustain`.
- * Nothing acts on the answer: no order, no gate. Step 3 gives it an executor under `Ours.Sustain`.
+ * Sustain, the game side (design docs/proposals/2026-11-19-sustain-design.md in the master repo, steps 2 and 3): `Gather`
+ * reads `Sustain.Inputs` from the game once, and `Tick` runs the pure `Decide` on them in shadow and logs `ev=cut kind=sustain`
+ * for every hero that sustain_act.ts does not carry out (with `Ours.Sustain`, a held hero's line is that module's).
+ *
+ * The danger inputs are the safe-here read's (safe_gather.ts `FromRead` on the one stay read made here): the kill line's
+ * `kill`, who is hitting, and the read over the walk to a tree. Its lane-opponent rows replace step 2's own lane memory.
  *
  * Items are data: ITEMS names the special values one use is read from (the item's own values at run time, as `ev=regen_win`
  * reads them) and what the modifier does (hero damage ends it; read from the item's description, not the API).
@@ -16,9 +19,11 @@ import { Item, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Sustain from "bots/FunLib/humaniser/sustain";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
-import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
+import * as Safe from "bots/FunLib/humaniser/safe";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Retreat from "bots/FunLib/humaniser/retreat";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
+import * as Laning from "bots/FunLib/humaniser/states/laning";
 
 declare function GetTreeLocation(tree: number): Vector;
 declare function GetCourier(n: number): Unit | undefined;
@@ -30,6 +35,7 @@ declare const COURIER_STATE_DEAD: number;
 
 interface SpecItem {
     GetSpecialValueFloat(name: string): number;
+    GetCastRange(): number;
 }
 interface TreeBot {
     GetNearbyTrees(radius: number): number[];
@@ -71,12 +77,10 @@ export const ITEMS: Record<string, Spec> = {
 };
 
 export const SETTINGS = {
-    /** laneBurst counts an enemy hero seen this recently (design section 2). */
-    LaneSeen: 10,
-    /** An enemy hero this near is one of the lane's (judgement: a lane's width plus a hero's walk to it). */
-    LaneRadius: 2000,
     /** A tree within this is the nearest tree read (regen_obs's scan). */
     TreeScan: 1200,
+    /** A tango's cast range when the item's own cannot be read (API: 165). */
+    TangoRange: 165,
     /** Lane allies within this (design section 2). */
     AllyRadius: 800,
     /** The safe spot is re-read at most this often per hero (s): retreat's anchor choice walks routes. judgement. */
@@ -147,7 +151,8 @@ function readItem(slot: number, item: Item): Sustain.Item | undefined {
             ["ch", charges],
         ]);
     }
-    return { slot, name: string.gsub(name, "^item_", "")[0], charges: uses, hp, mp, dur, breaks: spec.breaks, tree: spec.tree, refill: spec.refill, share: spec.share };
+    const ready = slot <= 5 && item.IsFullyCastable();
+    return { slot, name: string.gsub(name, "^item_", "")[0], charges: uses, hp, mp, dur, breaks: spec.breaks, tree: spec.tree, refill: spec.refill, share: spec.share, ready };
 }
 
 /** The heal and mana items in slots 0-8 (the backpack counts: a swap brings one out). */
@@ -195,9 +200,32 @@ function regenLeft(bot: Unit): [number, number] {
 const valid = (u: Unit | undefined | null): u is Unit => u !== undefined && u !== null && !u.IsNull() && u.IsAlive();
 const dist = (a: Vector, b: Vector): number => math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 
-/** The nearest visible, passable tree, and the nearest visible enemy hero's distance to it. */
-function treeOf(bot: Unit, enemies: Unit[]): Sustain.Inputs["tree"] {
-    let best: Vector | undefined;
+/** Per hero: the tree the last read chose (its id, for the executor's order), with when it was read. */
+const trees: Record<number, { at: number; id: number; loc: Vector; tree: NonNullable<Sustain.Inputs["tree"]> } | undefined> = {};
+
+/** The tree the last Gather chose for this hero, if any: the executor's target. */
+export function TreeOf(bot: Unit): { id: number; loc: Vector } | undefined {
+    const t = trees[bot.GetPlayerID()];
+    return t !== undefined ? { id: t.id, loc: t.loc } : undefined;
+}
+
+/**
+ * The nearest visible, passable tree, read only with a tree item held: the seconds to walk into the item's cast range of
+ * it, and whether that walk is safe: the safe-here read over the walk (the trip gates' horizon) is not `deadly`. A walk
+ * needs no read with the tree already in range. Re-read at most every SafeEvery per hero (a read walks every enemy).
+ */
+function treeOf(bot: Unit, items: Sustain.Item[], now: number): Sustain.Inputs["tree"] {
+    const pid = bot.GetPlayerID();
+    let slot: number | undefined;
+    for (const it of items) if (it.tree && it.charges > 0 && (slot === undefined || it.ready === true)) slot = it.slot;
+    if (slot === undefined) {
+        trees[pid] = undefined;
+        return undefined;
+    }
+    const c = trees[pid];
+    if (c !== undefined && now - c.at < SETTINGS.SafeEvery) return c.tree;
+    let best: number | undefined;
+    let bestLoc: Vector | undefined;
     let bestD = math.huge;
     for (const tree of (bot as unknown as TreeBot).GetNearbyTrees(SETTINGS.TreeScan) ?? []) {
         const loc = GetTreeLocation(tree);
@@ -205,27 +233,38 @@ function treeOf(bot: Unit, enemies: Unit[]): Sustain.Inputs["tree"] {
         const d = GetUnitToLocationDistance(bot, loc);
         if (d < bestD) {
             bestD = d;
-            best = loc;
+            best = tree;
+            bestLoc = loc;
         }
     }
-    if (best === undefined) return undefined;
-    let enemyD = math.huge;
-    for (const e of enemies) enemyD = math.min(enemyD, dist(e.GetLocation(), best));
-    return { d: bestD, enemyD };
+    if (best === undefined || bestLoc === undefined) {
+        trees[pid] = undefined;
+        return undefined;
+    }
+    const item = bot.GetItemInSlot(slot);
+    const range = item !== undefined && item !== null ? (item as unknown as SpecItem).GetCastRange() : 0;
+    const walk = math.max(0, bestD - (range > 0 ? range : SETTINGS.TangoRange)) / math.max(100, bot.GetCurrentMovementSpeed());
+    let safe = true;
+    if (walk > 0) {
+        const r = Threat.Read(bot, bot.GetLocation(), bestLoc, Threat.SETTINGS.GateHorizon);
+        safe = Safe.Decide(SafeGather.FromRead(bot, r, { away: false, held: false, hold: false })).level !== "deadly";
+    }
+    const tree = { walk, safe };
+    trees[pid] = { at: now, id: best, loc: bestLoc, tree };
+    return tree;
 }
 
-/** Per bot, per enemy pid: the damage it could deal us over the burst window when last seen in our lane, and when. */
-const laneSeen: Record<number, Record<number, { dmg: number; at: number } | undefined>> = {};
-
-function laneBurst(bot: Unit, enemies: Unit[], now: number): number {
-    const mine = (laneSeen[bot.GetPlayerID()] ??= {});
-    for (const e of enemies) {
-        if (GetUnitToUnitDistance(bot, e) > SETTINGS.LaneRadius) continue;
-        mine[e.GetPlayerID()] = { dmg: SpellReady.DamageOn(e, bot, Threat.SETTINGS.BurstWindow), at: now };
+/** The safe-here read here, from the one stay read Gather makes: what the reachers can deal, whether one is hitting us, and the visible ones in reach. */
+function safeHere(bot: Unit, r: Threat.Read): Sustain.Inputs["safe"] {
+    const i = SafeGather.FromRead(bot, r, { away: false, held: false, hold: false });
+    const a = Safe.Decide(i);
+    let hitting = false;
+    let reach = 0;
+    for (const x of i.reach) {
+        if (x.hitting) hitting = true;
+        if (x.unseen !== true) reach += 1;
     }
-    let sum = 0;
-    for (const [, s] of pairs(mine)) if (s !== undefined && now - s.at <= SETTINGS.LaneSeen) sum += s.dmg;
-    return sum;
+    return { kill: a.kill, hitting, reach };
 }
 
 const safeCache: Record<number, { at: number; spot?: Sustain.Inputs["safeSpot"] } | undefined> = {};
@@ -285,9 +324,9 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
     const now = DotaTime();
     const here = bot.GetLocation();
     const hp = bot.GetHealth();
-    const enemies: Unit[] = [];
-    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) if (valid(e) && e.CanBeSeen() && !e.IsIllusion()) enemies.push(e);
     const stay = Threat.Read(bot, here, here, Threat.SETTINGS.StayHorizon, { engagedWindow: Threat.SETTINGS.StayEngaged });
+    const items = Items(bot);
+    const tree = treeOf(bot, items, now);
     const [rl, ml] = regenLeft(bot);
     const fountain = Retreat.Fountain(bot.GetTeam());
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
@@ -302,12 +341,12 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
         hpMax: bot.GetMaxHealth(),
         mp: bot.GetMana(),
         mpMax: bot.GetMaxMana(),
-        items: Items(bot),
-        tree: treeOf(bot, enemies),
+        items,
+        tree,
+        // The next hit matters only to a tango walk: read with a tree in hand (laneTargets walks the wave).
+        nextDue: tree !== undefined ? Laning.NextDue(bot) : undefined,
         hitRecently: bot.WasRecentlyDamagedByAnyHero(2),
-        burst: stay.burst * hp,
-        reach: stay.reach.length,
-        laneBurst: laneBurst(bot, enemies, now),
+        safe: safeHere(bot, stay),
         regenLeft: rl,
         manaLeft: ml,
         safeSpot: safeSpot(bot, now),
@@ -327,10 +366,11 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
 const n0 = (v: number): number => math.floor(v + 0.5);
 const b01 = (b: boolean): number => (b ? 1 : 0);
 
-/** Items as `slot,name,uses,hp,mp,dur,breaks,tree,refill,share` joined by `;`. */
+/** Items as `slot,name,uses,hp,mp,dur,breaks,tree,refill,share,ready` joined by `;`. */
 export function ItemsText(items: Sustain.Item[]): string {
     const out: string[] = [];
-    for (const it of items) out.push([it.slot, it.name, it.charges, t1(it.hp), t1(it.mp), t1(it.dur), b01(it.breaks), b01(it.tree), b01(it.refill), b01(it.share)].join(","));
+    for (const it of items)
+        out.push([it.slot, it.name, it.charges, t1(it.hp), t1(it.mp), t1(it.dur), b01(it.breaks), b01(it.tree), b01(it.refill), b01(it.share), b01(it.ready !== false)].join(","));
     return out.join(";");
 }
 
@@ -348,11 +388,12 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["mpa", n0(i.mp)],
         ["mpm", n0(i.mpMax)],
         ["it", i.items.length > 0 ? ItemsText(i.items) : undefined],
-        ["tr", i.tree !== undefined ? `${n0(i.tree.d)},${i.tree.enemyD === math.huge ? -1 : n0(i.tree.enemyD)}` : undefined],
+        ["tr", i.tree !== undefined ? `${t1(i.tree.walk)},${b01(i.tree.safe)}` : undefined],
+        ["nd", i.nextDue !== undefined ? r1(i.nextDue) : undefined],
         ["hr", b01(i.hitRecently)],
-        ["bua", n0(i.burst)],
-        ["rc", i.reach],
-        ["lb", n0(i.laneBurst)],
+        ["kill", n0(i.safe.kill)],
+        ["sh", b01(i.safe.hitting)],
+        ["rc", i.safe.reach],
         ["rl", n0(i.regenLeft)],
         ["ml", n0(i.manaLeft)],
         ["ss", i.safeSpot !== undefined ? `${n0(i.safeSpot.x)},${n0(i.safeSpot.y)},${t1(i.safeSpot.walk)}` : undefined],
@@ -373,7 +414,22 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
 
 const cutState: Record<number, { key?: string; at: number; decidedAt: number } | undefined> = {};
 
-/** Shadow (step 2): every hero in the laning stage, both teams; the answer is logged, never carried out. */
+/** The cut line for one decision: on a changed answer, else every CutEvery. `acted`: sustain_act.ts carries it out. */
+export function Cut(bot: Unit, i: Sustain.Inputs, a: Sustain.Answer, acted: boolean): void {
+    if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true) return;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const st = (cutState[pid] ??= { at: -math.huge, decidedAt: -math.huge });
+    const key = `${a.kind}:${a.name}:${a.reason}:${a.ended}`;
+    if (key === st.key && now - st.at < SETTINGS.CutEvery) return;
+    st.key = key;
+    st.at = now;
+    const f = CutFields(pid, i, a);
+    if (acted) f.push(["act", 1]);
+    Telemetry.Event("cut", f);
+}
+
+/** Shadow: every hero in the laning stage, both teams, that sustain_act.ts does not carry out (index.ts asks); the answer is logged, never carried out. */
 export function Tick(bot: Unit): void {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true || !bot.IsAlive()) return;
     const now = DotaTime();
@@ -384,12 +440,12 @@ export function Tick(bot: Unit): void {
     st.decidedAt = now;
     noteCourier(bot);
     const i = Gather(bot);
-    const a = Sustain.Decide(i);
-    const key = `${a.kind}:${a.name}:${a.reason}`;
-    if (key === st.key && now - st.at < SETTINGS.CutEvery) return;
-    st.key = key;
-    st.at = now;
-    Telemetry.Event("cut", CutFields(pid, i, a));
+    Cut(bot, i, Sustain.Decide(i), false);
+}
+
+/** The courier telemetry for a hero sustain_act.ts carries (its Tick is not asked). */
+export function NoteCourier(bot: Unit): void {
+    noteCourier(bot);
 }
 
 // ------------------------------------------------------------------------------------------------------ other telemetry
@@ -425,4 +481,4 @@ export function Bought(bot: Unit, name: string, why: string): void {
     ]);
 }
 
-export const _test = { learned, laneSeen, cutState };
+export const _test = { learned, cutState, trees };

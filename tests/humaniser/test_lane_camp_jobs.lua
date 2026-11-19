@@ -1104,9 +1104,26 @@ local function supplyWorld(o)
 	support.maxMana, support.mana = 300, o.mana or 300
 	support.items = o.items or { [0] = { name = "item_tango" } }
 	TREES = { [7] = Vector(support.loc.x + 150, support.loc.y) }
+	-- Sustain (Ours.Sustain) carries this support only when the world says so; its attempt walks when o.yield.
+	H.Lane.CampJobs.SetSustain(function() return o.sustain == true end, function()
+		support.yields = (support.yields or 0) + 1
+		return o.yield == true
+	end)
 	return H, support
 end
 local function used(pid, kind) return #ActionsOf(pid, kind) end
+
+do
+	-- A support sustain carries: the job asks it, and leaves the frame while its attempt walks; the supply's own rule is off.
+	local H, support = supplyWorld({ sustain = true, yield = true })
+	frame(H, support, 70)
+	check("sustain carries the support and its attempt walks: the job gives no order, the supply none of its own",
+		used(support.pid, "UseAbilityOnTree") == 0 and used(support.pid, "MoveToLocation") == 0 and (support.yields or 0) >= 1)
+	H, support = supplyWorld({ sustain = true, yield = false })
+	frame(H, support, 70)
+	check("no attempt walking: the walk to the camp goes on, and the supply eats nothing itself",
+		used(support.pid, "UseAbilityOnTree") == 0 and used(support.pid, "MoveToLocation") == 1)
+end
 
 do
 	local H, support = supplyWorld({})

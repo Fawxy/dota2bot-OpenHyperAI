@@ -6,9 +6,11 @@ local UnitType = ____dota.UnitType
 local Sustain = require(GetScriptDirectory().."/FunLib/humaniser/sustain")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
-local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
+local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
+local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 function courierOf(bot)
     do
         local n = 0
@@ -138,9 +140,8 @@ ____exports.ITEMS = {
     }
 }
 ____exports.SETTINGS = {
-    LaneSeen = 10,
-    LaneRadius = 2000,
     TreeScan = 1200,
+    TangoRange = 165,
     AllyRadius = 800,
     SafeEvery = 1,
     DecideEvery = 0.5,
@@ -234,6 +235,7 @@ local function readItem(slot, item)
             }
         )
     end
+    local ready = slot <= 5 and item:IsFullyCastable()
     return {
         slot = slot,
         name = (string.gsub(name, "^item_", "")),
@@ -244,7 +246,8 @@ local function readItem(slot, item)
         breaks = spec.breaks,
         tree = spec.tree,
         refill = spec.refill,
-        share = spec.share
+        share = spec.share,
+        ready = ready
     }
 end
 --- The heal and mana items in slots 0-8 (the backpack counts: a swap brings one out).
@@ -331,80 +334,96 @@ end
 local function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
---- The nearest visible, passable tree, and the nearest visible enemy hero's distance to it.
-local function treeOf(bot, enemies)
+--- Per hero: the tree the last read chose (its id, for the executor's order), with when it was read.
+local trees = {}
+--- The tree the last Gather chose for this hero, if any: the executor's target.
+function ____exports.TreeOf(bot)
+    local t = trees[bot:GetPlayerID()]
+    return t ~= nil and ({id = t.id, loc = t.loc}) or nil
+end
+--- The nearest visible, passable tree, read only with a tree item held: the seconds to walk into the item's cast range of
+-- it, and whether that walk is safe: the safe-here read over the walk (the trip gates' horizon) is not `deadly`. A walk
+-- needs no read with the tree already in range. Re-read at most every SafeEvery per hero (a read walks every enemy).
+local function treeOf(bot, items, now)
+    local pid = bot:GetPlayerID()
+    local slot
+    for ____, it in ipairs(items) do
+        if it.tree and it.charges > 0 and (slot == nil or it.ready == true) then
+            slot = it.slot
+        end
+    end
+    if slot == nil then
+        trees[pid] = nil
+        return nil
+    end
+    local c = trees[pid]
+    if c ~= nil and now - c.at < ____exports.SETTINGS.SafeEvery then
+        return c.tree
+    end
     local best
+    local bestLoc
     local bestD = math.huge
     for ____, tree in ipairs(bot:GetNearbyTrees(____exports.SETTINGS.TreeScan) or ({})) do
         do
-            local __continue27
+            local __continue33
             repeat
                 local loc = GetTreeLocation(tree)
                 if not IsLocationVisible(loc) or not IsLocationPassable(loc) then
-                    __continue27 = true
+                    __continue33 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, loc)
                 if d < bestD then
                     bestD = d
-                    best = loc
+                    best = tree
+                    bestLoc = loc
                 end
-                __continue27 = true
+                __continue33 = true
             until true
-            if not __continue27 then
+            if not __continue33 then
                 break
             end
         end
     end
-    if best == nil then
+    if best == nil or bestLoc == nil then
+        trees[pid] = nil
         return nil
     end
-    local enemyD = math.huge
-    for ____, e in ipairs(enemies) do
-        enemyD = math.min(
-            enemyD,
-            dist(
-                e:GetLocation(),
-                best
-            )
+    local item = bot:GetItemInSlot(slot)
+    local range = item ~= nil and item ~= nil and item:GetCastRange() or 0
+    local walk = math.max(0, bestD - (range > 0 and range or ____exports.SETTINGS.TangoRange)) / math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+    local safe = true
+    if walk > 0 then
+        local r = Threat.Read(
+            bot,
+            bot:GetLocation(),
+            bestLoc,
+            Threat.SETTINGS.GateHorizon
         )
+        safe = Safe.Decide(SafeGather.FromRead(bot, r, {away = false, held = false, hold = false})).level ~= "deadly"
     end
-    return {d = bestD, enemyD = enemyD}
+    local tree = {walk = walk, safe = safe}
+    trees[pid] = {at = now, id = best, loc = bestLoc, tree = tree}
+    return tree
 end
---- Per bot, per enemy pid: the damage it could deal us over the burst window when last seen in our lane, and when.
-local laneSeen = {}
-local function laneBurst(bot, enemies, now)
-    local ____laneSeen_6, ____temp_7 = laneSeen, bot:GetPlayerID()
-    if ____laneSeen_6[____temp_7] == nil then
-        ____laneSeen_6[____temp_7] = {}
-    end
-    local mine = laneSeen[bot:GetPlayerID()]
-    for ____, e in ipairs(enemies) do
-        do
-            local __continue35
-            repeat
-                if GetUnitToUnitDistance(bot, e) > ____exports.SETTINGS.LaneRadius then
-                    __continue35 = true
-                    break
-                end
-                mine[e:GetPlayerID()] = {
-                    dmg = SpellReady.DamageOn(e, bot, Threat.SETTINGS.BurstWindow),
-                    at = now
-                }
-                __continue35 = true
-            until true
-            if not __continue35 then
-                break
-            end
+--- The safe-here read here, from the one stay read Gather makes: what the reachers can deal, whether one is hitting us, and the visible ones in reach.
+local function safeHere(bot, r)
+    local i = SafeGather.FromRead(bot, r, {away = false, held = false, hold = false})
+    local a = Safe.Decide(i)
+    local hitting = false
+    local reach = 0
+    for ____, x in ipairs(i.reach) do
+        if x.hitting then
+            hitting = true
+        end
+        if x.unseen ~= true then
+            reach = reach + 1
         end
     end
-    local sum = 0
-    for ____, s in pairs(mine) do
-        if s ~= nil and now - s.at <= ____exports.SETTINGS.LaneSeen then
-            sum = sum + s.dmg
-        end
-    end
-    return sum
+    return {kill = a.kill, hitting = hitting, reach = reach}
 end
 local safeCache = {}
 local function safeSpot(bot, now)
@@ -443,11 +462,11 @@ local function shopOf()
     local out = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue49
+            local __continue53
             repeat
                 local l = learned[name]
                 if not spec.shop or l == nil or GetItemStockCount(name) <= 0 then
-                    __continue49 = true
+                    __continue53 = true
                     break
                 end
                 local n = math.max(1, l.pack)
@@ -457,9 +476,9 @@ local function shopOf()
                     hp = l.hp * n,
                     mp = l.mp * n
                 }
-                __continue49 = true
+                __continue53 = true
             until true
-            if not __continue49 then
+            if not __continue53 then
                 break
             end
         end
@@ -473,11 +492,11 @@ local function healsOf(a)
         local s = 0
         while s <= 8 do
             do
-                local __continue52
+                local __continue56
                 repeat
                     local item = a:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue52 = true
+                        __continue56 = true
                         break
                     end
                     local spec = ____exports.ITEMS[item:GetName()]
@@ -487,9 +506,9 @@ local function healsOf(a)
                             item:GetCurrentCharges() or 0
                         )
                     end
-                    __continue52 = true
+                    __continue56 = true
                 until true
-                if not __continue52 then
+                if not __continue56 then
                     break
                 end
             end
@@ -503,12 +522,6 @@ function ____exports.Gather(bot, run)
     local now = DotaTime()
     local here = bot:GetLocation()
     local hp = bot:GetHealth()
-    local enemies = {}
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if valid(e) and e:CanBeSeen() and not e:IsIllusion() then
-            enemies[#enemies + 1] = e
-        end
-    end
     local stay = Threat.Read(
         bot,
         here,
@@ -516,6 +529,8 @@ function ____exports.Gather(bot, run)
         Threat.SETTINGS.StayHorizon,
         {engagedWindow = Threat.SETTINGS.StayEngaged}
     )
+    local items = ____exports.Items(bot)
+    local tree = treeOf(bot, items, now)
     local rl, ml = unpack(regenLeft(bot))
     local fountain = Retreat.Fountain(bot:GetTeam())
     local speed = math.max(
@@ -525,10 +540,10 @@ function ____exports.Gather(bot, run)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue59
+            local __continue60
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.AllyRadius then
-                    __continue59 = true
+                    __continue60 = true
                     break
                 end
                 allies[#allies + 1] = {
@@ -536,25 +551,37 @@ function ____exports.Gather(bot, run)
                     missing = a:GetMaxHealth() - a:GetHealth(),
                     heals = healsOf(a)
                 }
-                __continue59 = true
+                __continue60 = true
             until true
-            if not __continue59 then
+            if not __continue60 then
                 break
             end
         end
     end
+    local ____now_7 = now
+    local ____hp_8 = hp
+    local ____temp_9 = bot:GetMaxHealth()
+    local ____temp_10 = bot:GetMana()
+    local ____temp_11 = bot:GetMaxMana()
+    local ____items_12 = items
+    local ____tree_13 = tree
+    local ____temp_6
+    if tree ~= nil then
+        ____temp_6 = Laning.NextDue(bot)
+    else
+        ____temp_6 = nil
+    end
     return {
-        now = now,
-        hp = hp,
-        hpMax = bot:GetMaxHealth(),
-        mp = bot:GetMana(),
-        mpMax = bot:GetMaxMana(),
-        items = ____exports.Items(bot),
-        tree = treeOf(bot, enemies),
+        now = ____now_7,
+        hp = ____hp_8,
+        hpMax = ____temp_9,
+        mp = ____temp_10,
+        mpMax = ____temp_11,
+        items = ____items_12,
+        tree = ____tree_13,
+        nextDue = ____temp_6,
         hitRecently = bot:WasRecentlyDamagedByAnyHero(2),
-        burst = stay.burst * hp,
-        reach = #stay.reach,
-        laneBurst = laneBurst(bot, enemies, now),
+        safe = safeHere(bot, stay),
         regenLeft = rl,
         manaLeft = ml,
         safeSpot = safeSpot(bot, now),
@@ -576,7 +603,7 @@ n0 = function(v) return math.floor(v + 0.5) end
 local function b01(b)
     return b and 1 or 0
 end
---- Items as `slot,name,uses,hp,mp,dur,breaks,tree,refill,share` joined by `;`.
+--- Items as `slot,name,uses,hp,mp,dur,breaks,tree,refill,share,ready` joined by `;`.
 function ____exports.ItemsText(items)
     local out = {}
     for ____, it in ipairs(items) do
@@ -591,7 +618,8 @@ function ____exports.ItemsText(items)
                 b01(it.breaks),
                 b01(it.tree),
                 b01(it.refill),
-                b01(it.share)
+                b01(it.share),
+                b01(it.ready ~= false)
             },
             ","
         )
@@ -648,21 +676,25 @@ function ____exports.CutFields(pid, i, a)
         },
         {
             "tr",
-            i.tree ~= nil and (tostring(n0(i.tree.d)) .. ",") .. tostring(i.tree.enemyD == math.huge and -1 or n0(i.tree.enemyD)) or nil
+            i.tree ~= nil and (t1(i.tree.walk) .. ",") .. tostring(b01(i.tree.safe)) or nil
+        },
+        {
+            "nd",
+            i.nextDue ~= nil and r1(i.nextDue) or nil
         },
         {
             "hr",
             b01(i.hitRecently)
         },
         {
-            "bua",
-            n0(i.burst)
+            "kill",
+            n0(i.safe.kill)
         },
-        {"rc", i.reach},
         {
-            "lb",
-            n0(i.laneBurst)
+            "sh",
+            b01(i.safe.hitting)
         },
+        {"rc", i.safe.reach},
         {
             "rl",
             n0(i.regenLeft)
@@ -711,7 +743,31 @@ function ____exports.CutFields(pid, i, a)
     }
 end
 local cutState = {}
---- Shadow (step 2): every hero in the laning stage, both teams; the answer is logged, never carried out.
+--- The cut line for one decision: on a changed answer, else every CutEvery. `acted`: sustain_act.ts carries it out.
+function ____exports.Cut(bot, i, a, acted)
+    if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true then
+        return
+    end
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local ____cutState_14, ____pid_15 = cutState, pid
+    if ____cutState_14[____pid_15] == nil then
+        ____cutState_14[____pid_15] = {at = -math.huge, decidedAt = -math.huge}
+    end
+    local st = cutState[pid]
+    local key = (((((a.kind .. ":") .. tostring(a.name)) .. ":") .. a.reason) .. ":") .. tostring(a.ended)
+    if key == st.key and now - st.at < ____exports.SETTINGS.CutEvery then
+        return
+    end
+    st.key = key
+    st.at = now
+    local f = ____exports.CutFields(pid, i, a)
+    if acted then
+        f[#f + 1] = {"act", 1}
+    end
+    Telemetry.Event("cut", f)
+end
+--- Shadow: every hero in the laning stage, both teams, that sustain_act.ts does not carry out (index.ts asks); the answer is logged, never carried out.
 function ____exports.Tick(bot)
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true or not bot:IsAlive() then
         return
@@ -721,9 +777,9 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____cutState_9, ____pid_10 = cutState, pid
-    if ____cutState_9[____pid_10] == nil then
-        ____cutState_9[____pid_10] = {at = -math.huge, decidedAt = -math.huge}
+    local ____cutState_17, ____pid_18 = cutState, pid
+    if ____cutState_17[____pid_18] == nil then
+        ____cutState_17[____pid_18] = {at = -math.huge, decidedAt = -math.huge}
     end
     local st = cutState[pid]
     if now - st.decidedAt < ____exports.SETTINGS.DecideEvery then
@@ -732,17 +788,16 @@ function ____exports.Tick(bot)
     st.decidedAt = now
     noteCourier(bot)
     local i = ____exports.Gather(bot)
-    local a = Sustain.Decide(i)
-    local key = (((a.kind .. ":") .. tostring(a.name)) .. ":") .. a.reason
-    if key == st.key and now - st.at < ____exports.SETTINGS.CutEvery then
-        return
-    end
-    st.key = key
-    st.at = now
-    Telemetry.Event(
-        "cut",
-        ____exports.CutFields(pid, i, a)
+    ____exports.Cut(
+        bot,
+        i,
+        Sustain.Decide(i),
+        false
     )
+end
+--- The courier telemetry for a hero sustain_act.ts carries (its Tick is not asked).
+function ____exports.NoteCourier(bot)
+    noteCourier(bot)
 end
 courierSeen = {}
 --- OHA's lane regen purchase rules call this beside each regen purchase (`item_purchase_generic.lua`).
@@ -774,5 +829,5 @@ function ____exports.Bought(bot, name, why)
         }
     )
 end
-____exports._test = {learned = learned, laneSeen = laneSeen, cutState = cutState}
+____exports._test = {learned = learned, cutState = cutState, trees = trees}
 return ____exports

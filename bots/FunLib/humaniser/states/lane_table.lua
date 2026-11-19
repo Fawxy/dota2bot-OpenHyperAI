@@ -8,6 +8,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local SustainAct = require(GetScriptDirectory().."/FunLib/humaniser/sustain_act")
 local function ranks(n, ...)
     local positions = {...}
     local r = {
@@ -41,6 +42,19 @@ local bodyHit = {
     drill = true,
     wants = function(_bot, ctx) return ctx.bodyBusy() end,
     run = function(_bot, ctx) return ctx.stepBody() end
+}
+--- Sustain step 3 (D6, `Ours.Sustain`): a heal attempt that walks (a tango's tree, a step out to the safe spot, an ally out of
+-- cast range) holds the frame until its use starts, so the rows below do not undo the walk. After a swing in progress; before
+-- the support's hits, which sustain's next-due read already waited for (a tango walk starts only if it ends before the next hit).
+local sustain = {
+    name = "sustain",
+    rank = ranks(
+        15,
+        unpack(all)
+    ),
+    drill = true,
+    wants = function(bot, ctx) return ctx.enabled() and SustainAct.Walking(bot) end,
+    run = function(bot) return SustainAct.Step(bot) end
 }
 --- User rule 02/11/2026: the support's lane hits before anything else (denies, and since slice support-lane-hits the last hits
 -- its claims give it). Wants the frame while the body is in an attempt or would start one now; its scan picks the creep.
@@ -227,6 +241,7 @@ local ohaPos = {
 }
 ____exports.ROWS = {
     bodyHit,
+    sustain,
     supportHit,
     supportAggro,
     supportHold,
@@ -260,16 +275,16 @@ local function build(pos, laneOnly)
     local out = {}
     for ____, r in ipairs(____exports.ROWS) do
         do
-            local __continue41
+            local __continue43
             repeat
                 if r.rank[pos] == nil or laneOnly and not r.drill or not laneOnly and r.drillOnly == true then
-                    __continue41 = true
+                    __continue43 = true
                     break
                 end
                 out[#out + 1] = r
-                __continue41 = true
+                __continue43 = true
             until true
-            if not __continue41 then
+            if not __continue43 then
                 break
             end
         end
@@ -356,7 +371,7 @@ function ____exports.Walk(bot, ctx)
     local acted = order[#order].name
     for ____, r in ipairs(order) do
         do
-            local __continue56
+            local __continue58
             repeat
                 local t0 = Telemetry.DeepT0()
                 local wants = r.wants(bot, ctx)
@@ -364,7 +379,7 @@ function ____exports.Walk(bot, ctx)
                     Telemetry.DeepAdd(("lane_table.Walk:" .. r.name) .. ".wants", t0)
                 end
                 if not wants then
-                    __continue56 = true
+                    __continue58 = true
                     break
                 end
                 local t1 = Telemetry.DeepT0()
@@ -381,9 +396,9 @@ function ____exports.Walk(bot, ctx)
                     n = ____n_1 + 1
                     skipScratch[____n_1 + 1] = r.name
                 end
-                __continue56 = true
+                __continue58 = true
             until true
-            if not __continue56 then
+            if not __continue58 then
                 break
             end
         end
