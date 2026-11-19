@@ -71,7 +71,8 @@ export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
     const price = hero + creeps + tower;
     const answer = (level: Level, reason: string): Answer => ({ level, kill, ratio, price, reason });
 
-    if (i.tower || i.towerOnMe) return answer("deadly", "tower");
+    // A held place in tower reach is a hero last-hitting behind its creeps: only the tower targeting us leaves it (smoke 19/11: 88 tower leaves a game against 15).
+    if (i.towerOnMe || (i.tower && !i.held)) return answer("deadly", "tower");
 
     const bar = i.hold ? math.min(stay, BARS.hold) : i.held ? stay : stay * (1 + BARS.slack);
     if (ratio < bar) return answer("deadly", "kill");

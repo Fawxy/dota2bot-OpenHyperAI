@@ -26,6 +26,12 @@ export const SETTINGS = {
     MaxGap: 1,
     /** The shadow logs an unchanged answer at most this often (s), and only while a hero is in reach or the price is over 0. */
     CutEvery: 2,
+    /**
+     * A fresh place is read this far ahead (s) unless the caller gives a horizon; a held one over `Threat.SETTINGS.StayHorizon` (2).
+     * Who is in reach is a hard edge: one step out of a second hero's 2 s reach read safe and the lane sent the hero back in
+     * (smoke 19/11: 240 episodes a game against 119). 3 was the lane spot's own horizon. judgement.
+     */
+    FreshHorizon: 3,
 };
 
 export interface Opts {
@@ -290,7 +296,7 @@ export function Shadow(bot: Unit, who: string, r: Threat.Read, opts: Opts): void
 export interface AtOpts {
     /** The walk starts here; default the hero's location. */
     from?: Vector;
-    /** Seconds ahead; default `Threat.SETTINGS.StayHorizon`. */
+    /** Seconds ahead; default `Threat.SETTINGS.StayHorizon` for a held place or a hold, `SETTINGS.FreshHorizon` for a fresh one. */
     horizon?: number;
     /** Count a hero hitting us over `StayEngaged` (default true); a walk away from a fight that is not ours may turn it off. */
     engaged?: boolean;
@@ -333,7 +339,7 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void,
  * in the logging alone is reported and dropped.
  */
 export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
-    const horizon = opts?.horizon ?? Threat.SETTINGS.StayHorizon;
+    const horizon = opts?.horizon ?? (opts?.held === true || opts?.hold === true ? Threat.SETTINGS.StayHorizon : SETTINGS.FreshHorizon);
     const from = opts?.from ?? bot.GetLocation();
     const r = frameReader(bot, horizon, opts?.engaged ?? true)(from, place);
     const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false });

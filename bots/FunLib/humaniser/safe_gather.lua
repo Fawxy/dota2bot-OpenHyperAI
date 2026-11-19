@@ -279,7 +279,8 @@ ____exports.SETTINGS = {
     UnseenAfter = 0.5,
     Window = 2,
     MaxGap = 1,
-    CutEvery = 2
+    CutEvery = 2,
+    FreshHorizon = 3
 }
 r1 = function(v) return math.floor(v * 10 + 0.5) / 10 end
 r2 = function(v) return math.floor(v * 100 + 0.5) / 100 end
@@ -597,30 +598,30 @@ end
 -- own error path (the consumers run under the Humaniser's guards), since a made-up answer would be a decision nobody can see. A fault
 -- in the logging alone is reported and dropped.
 function ____exports.At(bot, place, opts)
-    local horizon = opts and opts.horizon or Threat.SETTINGS.StayHorizon
+    local horizon = opts and opts.horizon or (((opts and opts.held) == true or (opts and opts.hold) == true) and Threat.SETTINGS.StayHorizon or ____exports.SETTINGS.FreshHorizon)
     local from = opts and opts.from or bot:GetLocation()
-    local ____frameReader_19 = frameReader
-    local ____bot_18 = bot
-    local ____temp_17 = opts and opts.engaged
-    if ____temp_17 == nil then
-        ____temp_17 = true
+    local ____frameReader_23 = frameReader
+    local ____bot_22 = bot
+    local ____temp_21 = opts and opts.engaged
+    if ____temp_21 == nil then
+        ____temp_21 = true
     end
-    local r = ____frameReader_19(____bot_18, horizon, ____temp_17)(from, place)
-    local ____exports_FromRead_30 = ____exports.FromRead
-    local ____bot_29 = bot
-    local ____temp_22 = opts and opts.away
-    if ____temp_22 == nil then
-        ____temp_22 = false
+    local r = ____frameReader_23(____bot_22, horizon, ____temp_21)(from, place)
+    local ____exports_FromRead_34 = ____exports.FromRead
+    local ____bot_33 = bot
+    local ____temp_26 = opts and opts.away
+    if ____temp_26 == nil then
+        ____temp_26 = false
     end
-    local ____temp_25 = opts and opts.held
-    if ____temp_25 == nil then
-        ____temp_25 = false
+    local ____temp_29 = opts and opts.held
+    if ____temp_29 == nil then
+        ____temp_29 = false
     end
-    local ____temp_28 = opts and opts.hold
-    if ____temp_28 == nil then
-        ____temp_28 = false
+    local ____temp_32 = opts and opts.hold
+    if ____temp_32 == nil then
+        ____temp_32 = false
     end
-    local i = ____exports_FromRead_30(____bot_29, r, {away = ____temp_22, held = ____temp_25, hold = ____temp_28})
+    local i = ____exports_FromRead_34(____bot_33, r, {away = ____temp_26, held = ____temp_29, hold = ____temp_32})
     local a = Safe.Decide(i)
     local who = opts and opts.who
     if who ~= nil and cutOn() and bot:IsAlive() then
