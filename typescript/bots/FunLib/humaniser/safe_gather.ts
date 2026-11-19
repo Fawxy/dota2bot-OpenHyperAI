@@ -200,13 +200,12 @@ function towerOnMe(bot: Unit, now: number, place: Vector): boolean {
         seen = { t: now, on: [] };
         const br = bot.GetBoundingRadius();
         const here = bot.GetLocation();
-        const hit = bot.WasRecentlyDamagedByTower(0.5);
         for (const tw of bot.GetNearbyTowers(1200, true) ?? []) {
             if (!tw.IsAlive()) continue;
             const at = tw.GetLocation();
             const reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br;
             if (dist(at, here) > reach) continue;
-            if (hit || tw.GetAttackTarget() === bot) seen.on.push({ at, reach });
+            if (tw.GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(0.5)) seen.on.push({ at, reach });
         }
         towerSeen[pid] = seen;
     }

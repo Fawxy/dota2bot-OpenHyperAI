@@ -274,7 +274,6 @@ function towerOnMe(bot, now, place)
         seen = {t = now, on = {}}
         local br = bot:GetBoundingRadius()
         local here = bot:GetLocation()
-        local hit = bot:WasRecentlyDamagedByTower(0.5)
         for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
             do
                 local __continue35
@@ -289,7 +288,7 @@ function towerOnMe(bot, now, place)
                         __continue35 = true
                         break
                     end
-                    if hit or tw:GetAttackTarget() == bot then
+                    if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
                         local ____seen_on_0 = seen.on
                         ____seen_on_0[#____seen_on_0 + 1] = {at = at, reach = reach}
                     end
