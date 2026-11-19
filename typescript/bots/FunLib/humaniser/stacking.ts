@@ -57,7 +57,7 @@ function currentMinute(): number {
 /**
  * 7.41 stack windows (seconds to land the hit) from scripts/creep_pull_timings.txt in pak01_dir.vpk (read 22/10/2026,
  * what the `dota_hud_show_creep_spawn_camp_names` overlay shows), by the camp's spawner origin from maps/dota.vpk:
- * [x, y, stack_start, stack_end]. Camps 1,300+ apart, so WINDOW_MATCH cannot pick the wrong one.
+ * [x, y, stack_start, stack_end]. good_14, good_20, evil_11 and evil_20 are the 7.42 positions (19/11/2026, their windows unchanged). Camps 1,300+ apart, so WINDOW_MATCH cannot pick the wrong one.
  */
 const WINDOWS: number[][] = [
     [-4824, 3915, 54, 56], // evil_1
@@ -68,12 +68,12 @@ const WINDOWS: number[][] = [
     [7928, -120, 55, 56], // evil_7
     [4352, 48, 53, 55], // evil_8
     [3392, -1408, 53, 55], // evil_9
-    [-2880, 7376, 54, 56], // evil_11
+    [-4229, 8140, 54, 56], // evil_11
     [2016, 7896, 55, 57], // evil_12
     [8430, 1263, 55, 56], // evil_13
     [336, 7696, 55, 56], // evil_14
     [-2596, 3850, 55, 56], // evil_15
-    [-4208, 8336, 55, 56], // evil_20
+    [-6408, 7816, 55, 56], // evil_20
     [3978, -5027, 55, 57], // good_1
     [4649, -3699, 52, 54], // good_2
     [186, -5197, 54, 55], // good_4
@@ -84,10 +84,10 @@ const WINDOWS: number[][] = [
     [-720, -7696, 55, 57], // good_11
     [-2415, -8402, 53, 55], // good_12
     [-8313, -553, 55, 56], // good_13
-    [2768, -8336, 55, 57], // good_14
+    [4520, -8336, 55, 57], // good_14
     [1922, -3975, 56, 57], // good_15
     [-8023, -1838, 55, 56], // good_16
-    [4416, -8432, 55, 56], // good_20
+    [6712, -7632, 55, 56], // good_20
 ];
 const WINDOW_MATCH = 300;
 

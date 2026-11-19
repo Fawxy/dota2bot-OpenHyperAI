@@ -465,7 +465,7 @@ ____exports.SETTINGS = {
     DrillMinHP = 0.5,
     DrillSpotArrive = 150
 }
-FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
+FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6624, 6368, 392}}
 TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,

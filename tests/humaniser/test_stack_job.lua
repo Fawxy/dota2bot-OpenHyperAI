@@ -6,16 +6,16 @@ local FARM, LANING = dota.BotMode.Farm, dota.BotMode.Laning
 local RAD, DIRE = dota.Team.Radiant, dota.Team.Dire
 local BUNDLE = "bots/FunLib/engine/tasks"
 
--- 7.41 spawner origins (test_lane_camps.lua's MAP_SPAWNERS, from maps/dota.vpk); boxes are 300 wide here.
+-- 7.41 spawner origins (test_lane_camps.lua's MAP_SPAWNERS, from maps/dota.vpk) with the four camps 7.42 moved at their live positions; boxes are 300 wide here.
 local MAP = {
-	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -2880, 7376 }, { "evil_12", DIRE, "medium", 2016, 7896 },
+	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -4229, 8140 }, { "evil_12", DIRE, "medium", 2016, 7896 },
 	{ "evil_13", DIRE, "small", 8430, 1263 }, { "evil_14", DIRE, "medium", 336, 7696 }, { "evil_15", DIRE, "medium", -2596, 3850 },
-	{ "evil_2", DIRE, "small", -3911, 4829 }, { "evil_20", DIRE, "medium", -4208, 8336 }, { "evil_4", DIRE, "medium", 1224, 4176 },
+	{ "evil_2", DIRE, "small", -3911, 4829 }, { "evil_20", DIRE, "medium", -6408, 7816 }, { "evil_4", DIRE, "medium", 1224, 4176 },
 	{ "evil_5", DIRE, "large", 1064, 2580 }, { "evil_6", DIRE, "medium", -852, 4940 }, { "evil_7", DIRE, "large", 7928, -120 },
 	{ "evil_8", DIRE, "ancient", 4352, 48 }, { "evil_9", DIRE, "medium", 3392, -1408 },
 	{ "good_1", RAD, "small", 3978, -5027 }, { "good_11", RAD, "medium", -720, -7696 }, { "good_12", RAD, "medium", -2415, -8402 },
-	{ "good_13", RAD, "large", -8313, -553 }, { "good_14", RAD, "small", 2768, -8336 }, { "good_15", RAD, "medium", 1922, -3975 },
-	{ "good_16", RAD, "small", -8023, -1838 }, { "good_2", RAD, "large", 4649, -3699 }, { "good_20", RAD, "medium", 4416, -8432 },
+	{ "good_13", RAD, "large", -8313, -553 }, { "good_14", RAD, "small", 4520, -8336 }, { "good_15", RAD, "medium", 1922, -3975 },
+	{ "good_16", RAD, "small", -8023, -1838 }, { "good_2", RAD, "large", 4649, -3699 }, { "good_20", RAD, "medium", 6712, -7632 },
 	{ "good_4", RAD, "medium", 186, -5197 }, { "good_5", RAD, "large", -1454, -3356 }, { "good_7", RAD, "medium", -4013, 992 },
 	{ "good_8", RAD, "ancient", -5015, -96 }, { "good_9", RAD, "medium", -1983, -4815 },
 }
@@ -1004,7 +1004,7 @@ end
 do
 	local H = world()
 	local C = H.Lane.Camps
-	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_11", DIRE, 0.71, 0.71 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 0.71, 0.71 } }) do
+	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 0.71, 0.71 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local stand = H.StackJob.Stand(sp, C.ByIdx(idxOf(c[1]), c[2]))
 		local dx, dy = stand.x - sp.location.x, stand.y - sp.location.y

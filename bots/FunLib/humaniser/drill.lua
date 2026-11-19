@@ -2541,7 +2541,7 @@ function ____exports.Implied(key)
     local ____opt_16 = ____opt_18 and ____opt_18.overrides
     return ____opt_16 and ____opt_16[key]
 end
-FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
+FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6624, 6368, 392}}
 STATUE_BEHIND = -300
 STATUE_SWAY = 40
 statueSide = {}

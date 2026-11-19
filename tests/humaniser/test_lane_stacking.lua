@@ -629,4 +629,23 @@ do
 	check("retreat already at 0.75: no stack", startAt(90, 0.75) == 0)
 end
 
+do
+	-- 7.42 moved four camps; good_14's new spot is 141 from good_20's old one, so stale data gave it good_20's window.
+	local moved = {
+		{ "good_14", Vector(4520, -8336), 55, 57 }, { "good_20", Vector(6712, -7632), 55, 56 },
+		{ "evil_11", Vector(-4229, 8140), 54, 56 }, { "evil_20", Vector(-6408, 7816), 55, 56 },
+	}
+	local camps = {}
+	for _, m in ipairs(moved) do table.insert(camps, { "medium", m[2] }) end
+	table.insert(camps, { "small", Vector(2768, -8336) })
+	table.insert(camps, { "small", Vector(-2880, 7376) })
+	local H = world(1, { camps = camps })
+	for i, m in ipairs(moved) do
+		local from, to = H.Lane.Stacking.Window(i)
+		check(m[1] .. " keeps its own window at the 7.42 spot", from == m[3] and to == m[4], tostring(from) .. "-" .. tostring(to))
+	end
+	check("7.41 good_14 spot matches no window", H.Lane.Stacking.Window(5) == nil)
+	check("7.41 evil_11 spot matches no window", H.Lane.Stacking.Window(6) == nil)
+end
+
 finish()
