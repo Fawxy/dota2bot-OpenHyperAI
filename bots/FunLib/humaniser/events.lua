@@ -543,6 +543,7 @@ ____exports.EVENTS = {
         own0 = "num",
         omin = "num",
         mo = "num",
+        mn = "num",
         tw = "num",
         tgt = "num",
         nw = "num",

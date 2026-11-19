@@ -491,7 +491,7 @@ Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave w
 - `pid` num: The holding core.
 - `lane` num: The lane held.
 - `br` str: The last branch: `hold` (at the lane target, lane_spot input `hold`), `drag` (lane_aggro `back` behind our T1), `retreat` (OHA's retreat took the core).
-- `res` str: `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch), `hurt`, `left` (no laning host for LeftAfter: another mode, or the laning body not running; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start; `cr`).
+- `res` str: `met` (one of our creeps not in the start's clash fighting one of theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch), `hurt`, `left` (no laning host for LeftAfter: another mode, or the laning body not running; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start; `cr`).
 - `why` str: Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in the last 20 s), `other`.
 - `trig` str: The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting within 200 past the hold point, lane_push's run has their front inside our T1's fire (`rch`) in `fc` seconds; `why` is `losing`).
 - `hd` num: The hold point's distance from our T1: the lane target, or their front when nearer, never inside `rch` + 50.
@@ -504,6 +504,7 @@ Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave w
 - `own0` num: Their front's distance from our T1 along the lane at the start, its least during the attempt, and when the waves met.
 - `omin` num: Their front's least distance from our T1 during the attempt.
 - `mo` num: Their front's distance from our T1 when the waves met.
+- `mn` num: Seconds from one of our creeps (not in the start's clash) first within 700 of their front to the attempt's end, to the read's 0.25 s.
 - `tw` num: 1 when one of their creeps came within our T1's range (700) during the attempt.
 - `tgt` num: The lane's target point (lane_push TargetOf).
 - `nw` num: Seconds to our next wave at the hold point at the start; at the last branch read: seconds the drag needs and to our next wave behind the T1.

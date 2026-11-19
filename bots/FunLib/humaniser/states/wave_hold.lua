@@ -27,6 +27,15 @@ local function __TS__ArrayIncludes(self, searchElement, fromIndex)
     end
     return false
 end
+
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -535,6 +544,10 @@ local function finish(bot, a, res, now)
                 "mo",
                 a.mo ~= nil and math.floor(a.mo) or nil
             },
+            {
+                "mn",
+                a.nearAt ~= nil and math.floor((now - a.nearAt) * 10) / 10 or nil
+            },
             {"tw", a.tw},
             {"tgt", a.tgt},
             {
@@ -971,6 +984,20 @@ local function tryStart(bot, now)
     end
     return a
 end
+--- Our creep `c` and their wave (`theirs`, the lane creeps in the attempt's view) are fighting: `c` attacks one of them, or
+-- one of them attacks `c`. Only then have the waves met (SETTINGS.MeetR).
+function ____exports.Fighting(c, theirs)
+    local t = c:GetAttackTarget()
+    if t ~= nil and t ~= nil and theirs[t] ~= nil then
+        return true
+    end
+    for e in pairs(theirs) do
+        if e:GetAttackTarget() == c then
+            return true
+        end
+    end
+    return false
+end
 --- The hold's read, every tick from States.Tick (slice hold-through-swing): starts, reads and ends the attempt and sets the
 -- spot's `hold` input; the draws it wants are Act's. `hosted`: the laning body runs for this core where its lane step would
 -- step the hold (States.HoldHosted); `swing`: the body's last-hit or deny swing holds the frame. A read needs no frame of its
@@ -1037,19 +1064,19 @@ function ____exports.Watch(bot, hosted, swing)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue129
+            local __continue134
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - a.bd or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue129 = true
+                    __continue134 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue129 = true
+                __continue134 = true
             until true
-            if not __continue129 then
+            if not __continue134 then
                 break
             end
         end
@@ -1061,27 +1088,41 @@ function ____exports.Watch(bot, hosted, swing)
     if front < ____exports.SETTINGS.TowerR then
         a.tw = 1
     end
+    local theirs = {}
+    for ____, x in ipairs(v.units) do
+        if x.own >= -____exports.SETTINGS.OursBehind - a.bd and x.own <= a.tgt + ____exports.SETTINGS.StartAhead then
+            theirs[x.u] = true
+        end
+    end
+    local fresh = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue135
+            local __continue143
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue135 = true
+                    __continue143 = true
                     break
                 end
-                if __TS__ArrayIncludes(a.old, c) then
-                    __continue135 = true
-                    break
+                if not __TS__ArrayIncludes(a.old, c) then
+                    fresh[#fresh + 1] = c
                 end
-                if GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
-                    a.mo = front
-                    return finish(bot, a, "met", now)
-                end
-                __continue135 = true
+                __continue143 = true
             until true
-            if not __continue135 then
+            if not __continue143 then
                 break
             end
+        end
+    end
+    if a.nearAt == nil and __TS__ArraySome(
+        fresh,
+        function(____, c) return GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR end
+    ) then
+        a.nearAt = now
+    end
+    for ____, c in ipairs(fresh) do
+        if ____exports.Fighting(c, theirs) then
+            a.mo = front
+            return finish(bot, a, "met", now)
         end
     end
     if a.br == "hold" and front < ____exports.SETTINGS.TowerR then

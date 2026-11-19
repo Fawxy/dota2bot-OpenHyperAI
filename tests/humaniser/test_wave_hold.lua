@@ -54,6 +54,19 @@ check("not unsafe: inside the floor for a creep ring, not a hero", not W.Unsafe(
 check("in the clash: one of ours fighting 300 behind their rear", W.InClash(1500, true, 1800))
 check("not in the clash: our next wave walking up 3,000 behind our T1", not W.InClash(-3000, false, 1800))
 check("not in the clash: one of ours fighting 2,000 past their rear (another fight)", not W.InClash(3900, true, 1800))
+-- The waves have met only when they fight (slice hold-till-fight): ours attacks one of theirs, or one of theirs attacks ours.
+do
+	local function u(target) return { GetAttackTarget = function() return target end } end
+	local e1, e2 = u(nil), u(nil)
+	local theirs = { [e1] = true, [e2] = true }
+	local ours = u(e2)
+	check("fighting: ours attacks one of their wave", W.Fighting(ours, theirs))
+	local idle = u(nil)
+	check("not fighting: ours near but attacking nothing, theirs on another target", not W.Fighting(idle, theirs))
+	e1.GetAttackTarget = function() return idle end
+	check("fighting: one of theirs attacks ours", W.Fighting(idle, theirs))
+	check("not fighting: ours attacks a unit outside their wave (a neutral, a hero)", not W.Fighting(u(u(nil)), { [e2] = true }))
+end
 
 -- The forecast start reads lane_push's run: their front inside our T1's fire (860) within 8 s while our wave still fights.
 -- Radiant's bot T1 sits at 8,057 on the bot path (sign +1); 2:30 has no spawn in the next 8 s.
