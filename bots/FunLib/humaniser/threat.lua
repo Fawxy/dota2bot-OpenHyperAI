@@ -203,7 +203,7 @@ function ____exports.Reader(bot, horizon, opts)
     local team = bot:GetTeam()
     local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
     local hull = bot:GetBoundingRadius()
-    local window = math.min(horizon, s.BurstWindow)
+    local window = opts and opts.window or math.min(horizon, s.BurstWindow)
     local visible = {}
     local enemies = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
@@ -515,8 +515,8 @@ function ____exports.Log(bot, consumer, r, decision)
         return false
     end
     logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_6 = Telemetry.Event
-    local ____array_5 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_8 = Telemetry.Event
+    local ____array_7 = __TS__SparseArrayNew(
         {"pid", pid},
         {"who", consumer},
         {"dec", decision},
@@ -552,15 +552,15 @@ function ____exports.Log(bot, consumer, r, decision)
         },
         {"ally", r.allies}
     )
-    local ____temp_4
+    local ____temp_6
     if #r.reach > 0 then
-        ____temp_4 = r.escape
+        ____temp_6 = r.escape
     else
-        ____temp_4 = nil
+        ____temp_6 = nil
     end
     __TS__SparseArrayPush(
-        ____array_5,
-        {"esc", ____temp_4},
+        ____array_7,
+        {"esc", ____temp_6},
         {"tower", r.tower},
         {
             "miss",
@@ -583,9 +583,9 @@ function ____exports.Log(bot, consumer, r, decision)
             ))
         }
     )
-    ____Telemetry_Event_6(
+    ____Telemetry_Event_8(
         "threat",
-        {__TS__SparseArraySpread(____array_5)}
+        {__TS__SparseArraySpread(____array_7)}
     )
     return true
 end

@@ -193,8 +193,14 @@ function safeFrame(pid: number): SafeFrame {
     return f;
 }
 
+/**
+ * A creep's hit place is a short visit, so it is read over the stay horizon (2 s), not a fresh place's 3 s: at 3 s the filter refused
+ * most creeps next to two heroes (h2h pair 19/11: 108 and 53 last hits at 10:00 with the filter, 128 and 70 without, deaths no worse).
+ */
+const PICK_HORIZON = 2;
+
 function askDeadly(bot: Unit, place: Vector, held: boolean): boolean {
-    const [ok, ans] = pcall(SafeGather.At, bot, place, { held });
+    const [ok, ans] = pcall(SafeGather.At, bot, place, { held, horizon: PICK_HORIZON });
     if (!ok) {
         Telemetry.Failed("PickSafe", ans);
         return false;
@@ -212,7 +218,8 @@ function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
         // Every creep already in range is hit from where the hero stands: one ask answers them all.
         if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true);
         deadly = f.here;
-    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), false);
+    // A last hit is a step in and out, not a place to settle: the leave bar (held), not a fresh place's (pair 19/11: 80 and 66 drops a game at the fresh bar).
+    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), true);
     f.creeps.set(t.creep, deadly);
     return deadly;
 }

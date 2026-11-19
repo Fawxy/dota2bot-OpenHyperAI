@@ -144,7 +144,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ohaSpot, safeFrame, askDeadly, deadlyAt, claimsFor, logSkip, offerIndex, askedMine, cutPick, denyDue, LEASH, DEFAULTS, settings, spots, spotCache, fedCreep, holdPoint, safeFrames, farPrices, askedTargets, askedOk, askedCount, PICK_CUT_EVERY, pickCuts, r6
+local ohaSpot, safeFrame, askDeadly, deadlyAt, claimsFor, logSkip, offerIndex, askedMine, cutPick, denyDue, LEASH, DEFAULTS, settings, spots, spotCache, fedCreep, holdPoint, safeFrames, PICK_HORIZON, farPrices, askedTargets, askedOk, askedCount, PICK_CUT_EVERY, pickCuts, r6
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
@@ -277,7 +277,7 @@ function safeFrame(pid)
     return f
 end
 function askDeadly(bot, place, held)
-    local ok, ans = pcall(SafeGather.At, bot, place, {held = held})
+    local ok, ans = pcall(SafeGather.At, bot, place, {held = held, horizon = PICK_HORIZON})
     if not ok then
         Telemetry.Failed("PickSafe", ans)
         return false
@@ -308,7 +308,7 @@ function deadlyAt(bot, t)
                 t.creep:GetLocation(),
                 bot:GetAttackRange()
             ),
-            false
+            true
         )
     end
     f.creeps[t.creep] = deadly
@@ -582,6 +582,7 @@ function ____exports.SpotInfo(bot)
     return ____opt_9 and ____opt_9.info
 end
 safeFrames = {}
+PICK_HORIZON = 2
 local function safeRefusedNow(pid, creep)
     local f = safeFrames[pid]
     return f ~= nil and f.t == DotaTime() and f.creeps[creep] == true

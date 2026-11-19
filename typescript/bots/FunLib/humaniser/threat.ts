@@ -226,6 +226,8 @@ export function BandOf(threat: number, lethal: boolean): Band {
 /** `engagedWindow`: seconds a reaching hero that is hitting us now is counted over (instead of the burst window). */
 export interface ReadOpts {
     engagedWindow?: number;
+    /** Seconds a reaching hero's damage is counted over; default min(horizon, BurstWindow). */
+    window?: number;
     /** An unseen hero left out of `missing` (slice kill-chase: the chased target, whose place is the walk's end). */
     exclude?: number;
 }
@@ -261,7 +263,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
     const team = bot.GetTeam();
     const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
     const hull = bot.GetBoundingRadius();
-    const window = math.min(horizon, s.BurstWindow);
+    const window = opts?.window ?? math.min(horizon, s.BurstWindow);
     const visible: Record<number, boolean> = {};
     const enemies: Seen[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
