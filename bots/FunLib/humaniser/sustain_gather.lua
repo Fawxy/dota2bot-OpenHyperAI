@@ -341,10 +341,12 @@ function ____exports.TreeOf(bot)
     local t = trees[bot:GetPlayerID()]
     return t ~= nil and ({id = t.id, loc = t.loc}) or nil
 end
---- The nearest visible, passable tree, read only with a tree item held: the seconds to walk into the item's cast range of
--- it, and whether that walk is safe: the safe-here read over the walk (the trip gates' horizon) is not `deadly`. A walk
--- needs no read with the tree already in range. Re-read at most every SafeEvery per hero (a read walks every enemy).
-local function treeOf(bot, items, now)
+--- The tree a tango walks to, read only with a tree item held. Two candidates among the visible, passable trees in the
+-- scan: the nearest, and, with a safe spot, the one on the shortest detour from here to it (toward our side: a hero backs
+-- off and eats on the way). Each walk is the seconds into the item's cast range of it, and safe when the safe-here read
+-- over it (the trip gates' horizon) is not `deadly`; none needed for a tree already in range. The nearer safe one is
+-- chosen, else the nearest (unsafe). Re-read at most every SafeEvery per hero (a read walks every enemy).
+local function treeOf(bot, items, now, spot)
     local pid = bot:GetPlayerID()
     local slot
     for ____, it in ipairs(items) do
@@ -360,9 +362,10 @@ local function treeOf(bot, items, now)
     if c ~= nil and now - c.at < ____exports.SETTINGS.SafeEvery then
         return c.tree
     end
-    local best
-    local bestLoc
-    local bestD = math.huge
+    local here = bot:GetLocation()
+    local goal = spot
+    local near
+    local back
     for ____, tree in ipairs(bot:GetNearbyTrees(____exports.SETTINGS.TreeScan) or ({})) do
         do
             local __continue33
@@ -373,10 +376,14 @@ local function treeOf(bot, items, now)
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, loc)
-                if d < bestD then
-                    bestD = d
-                    best = tree
-                    bestLoc = loc
+                if near == nil or d < near.d then
+                    near = {id = tree, loc = loc, d = d}
+                end
+                if goal ~= nil then
+                    local via = d + math.sqrt((loc.x - goal.x) ^ 2 + (loc.y - goal.y) ^ 2)
+                    if back == nil or via < back.via then
+                        back = {id = tree, loc = loc, d = d, via = via}
+                    end
                 end
                 __continue33 = true
             until true
@@ -385,28 +392,37 @@ local function treeOf(bot, items, now)
             end
         end
     end
-    if best == nil or bestLoc == nil then
+    if near == nil then
         trees[pid] = nil
         return nil
     end
     local item = bot:GetItemInSlot(slot)
     local range = item ~= nil and item ~= nil and item:GetCastRange() or 0
-    local walk = math.max(0, bestD - (range > 0 and range or ____exports.SETTINGS.TangoRange)) / math.max(
+    local speed = math.max(
         100,
         bot:GetCurrentMovementSpeed()
     )
-    local safe = true
-    if walk > 0 then
-        local r = Threat.Read(
-            bot,
-            bot:GetLocation(),
-            bestLoc,
-            Threat.SETTINGS.GateHorizon
-        )
-        safe = Safe.Decide(SafeGather.FromRead(bot, r, {away = false, held = false, hold = false})).level ~= "deadly"
+    local function judge(t)
+        local walk = math.max(0, t.d - (range > 0 and range or ____exports.SETTINGS.TangoRange)) / speed
+        if walk <= 0 then
+            return {walk = walk, safe = true}
+        end
+        local r = Threat.Read(bot, here, t.loc, Threat.SETTINGS.GateHorizon)
+        return {
+            walk = walk,
+            safe = Safe.Decide(SafeGather.FromRead(bot, r, {away = false, held = false, hold = false})).level ~= "deadly"
+        }
     end
-    local tree = {walk = walk, safe = safe}
-    trees[pid] = {at = now, id = best, loc = bestLoc, tree = tree}
+    local pick = near
+    local tree = judge(near)
+    if not tree.safe and back ~= nil and back.id ~= near.id then
+        local t2 = judge(back)
+        if t2.safe then
+            pick = back
+            tree = t2
+        end
+    end
+    trees[pid] = {at = now, id = pick.id, loc = pick.loc, tree = tree}
     return tree
 end
 --- The safe-here read here, from the one stay read Gather makes: what the reachers can deal, whether one is hitting us, and the visible ones in reach.
@@ -462,11 +478,11 @@ local function shopOf()
     local out = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue53
+            local __continue58
             repeat
                 local l = learned[name]
                 if not spec.shop or l == nil or GetItemStockCount(name) <= 0 then
-                    __continue53 = true
+                    __continue58 = true
                     break
                 end
                 local n = math.max(1, l.pack)
@@ -476,9 +492,9 @@ local function shopOf()
                     hp = l.hp * n,
                     mp = l.mp * n
                 }
-                __continue53 = true
+                __continue58 = true
             until true
-            if not __continue53 then
+            if not __continue58 then
                 break
             end
         end
@@ -492,11 +508,11 @@ local function healsOf(a)
         local s = 0
         while s <= 8 do
             do
-                local __continue56
+                local __continue61
                 repeat
                     local item = a:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue56 = true
+                        __continue61 = true
                         break
                     end
                     local spec = ____exports.ITEMS[item:GetName()]
@@ -506,9 +522,9 @@ local function healsOf(a)
                             item:GetCurrentCharges() or 0
                         )
                     end
-                    __continue56 = true
+                    __continue61 = true
                 until true
-                if not __continue56 then
+                if not __continue61 then
                     break
                 end
             end
@@ -531,7 +547,8 @@ function ____exports.Gather(bot, run)
     )
     local items = ____exports.Items(bot)
     local safe, deadlyHere = unpack(safeHere(bot, stay))
-    local t = treeOf(bot, items, now)
+    local spot = safeSpot(bot, now)
+    local t = treeOf(bot, items, now, spot)
     local tree = t ~= nil and ({walk = t.walk, safe = t.safe, start = not (t.walk > 0 and deadlyHere)}) or nil
     local rl, ml = unpack(regenLeft(bot))
     local fountain = Retreat.Fountain(bot:GetTeam())
@@ -542,10 +559,10 @@ function ____exports.Gather(bot, run)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue60
+            local __continue65
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.AllyRadius then
-                    __continue60 = true
+                    __continue65 = true
                     break
                 end
                 allies[#allies + 1] = {
@@ -553,9 +570,9 @@ function ____exports.Gather(bot, run)
                     missing = a:GetMaxHealth() - a:GetHealth(),
                     heals = healsOf(a)
                 }
-                __continue60 = true
+                __continue65 = true
             until true
-            if not __continue60 then
+            if not __continue65 then
                 break
             end
         end
@@ -586,7 +603,7 @@ function ____exports.Gather(bot, run)
         safe = safe,
         regenLeft = rl,
         manaLeft = ml,
-        safeSpot = safeSpot(bot, now),
+        safeSpot = spot,
         gold = bot:GetGold(),
         courier = courierEta(
             bot,

@@ -126,6 +126,38 @@ T = 111
 check("the same safe walk from a place deadly here (300 / 300): still safe, but no walk starts", (function() local tr = G.Gather(bot).tree return tr.safe == true and tr.start == false end)())
 check("a running tango's 8 s left restore 56; a busy courier is no courier", near(j.regenLeft, 56) and j.courier == nil)
 
+-- The nearest tree's walk deadly, a tree on the way to the safe spot (-500, -500) safe: the tango walks back to that one.
+do
+	TREES[9] = Vector(-400, -300)
+	local trees0 = bot.GetNearbyTrees
+	function bot:GetNearbyTrees() return { 8, 7, 9 } end
+	local read0 = Threat.Read
+	local BACK = { safe = safeInputs({ { pid = 5, hitting = false, dmg = 50 } }) }
+	Threat.Read = function(b, h, place, horizon)
+		if place.x == -400 and place.y == -300 then return BACK end
+		return read0(b, h, place, horizon)
+	end
+	STAY.safe.reach[1].dmg = 50
+	WALK.safe.reach[1].dmg = 250
+	T = 113
+	local tr = G.Gather(bot).tree
+	check("nearest walk deadly, the one toward the safe spot safe: that tree (500 away, 1.1 s)", tr.safe == true and near(tr.walk, (500 - 165) / 300) and G.TreeOf(bot).id == 9)
+	WALK.safe.reach[1].dmg = 100
+	T = 115
+	tr = G.Gather(bot).tree
+	check("the nearest walk safe: the nearest tree, the other not read", tr.safe == true and G.TreeOf(bot).id == 7)
+	BACK.safe.reach[1].dmg = 250
+	WALK.safe.reach[1].dmg = 250
+	T = 117
+	tr = G.Gather(bot).tree
+	check("both deadly: the nearest, unsafe", tr.safe == false and G.TreeOf(bot).id == 7)
+	Threat.Read = read0
+	bot.GetNearbyTrees = trees0
+	TREES[9] = nil
+	STAY.safe.reach[1].dmg = 250
+	WALK.safe.reach[1].dmg = 100
+end
+
 -- Two stacked packs read 6 at once; a later pack of 3 sets what one purchase holds.
 local other = MakeUnit({ pid = 2, team = 2, hp = 600, maxhp = 600, loc = Vector(0, 0) })
 other.n = 6

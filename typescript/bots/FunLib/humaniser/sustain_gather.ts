@@ -210,11 +210,13 @@ export function TreeOf(bot: Unit): { id: number; loc: Vector } | undefined {
 }
 
 /**
- * The nearest visible, passable tree, read only with a tree item held: the seconds to walk into the item's cast range of
- * it, and whether that walk is safe: the safe-here read over the walk (the trip gates' horizon) is not `deadly`. A walk
- * needs no read with the tree already in range. Re-read at most every SafeEvery per hero (a read walks every enemy).
+ * The tree a tango walks to, read only with a tree item held. Two candidates among the visible, passable trees in the
+ * scan: the nearest, and, with a safe spot, the one on the shortest detour from here to it (toward our side: a hero backs
+ * off and eats on the way). Each walk is the seconds into the item's cast range of it, and safe when the safe-here read
+ * over it (the trip gates' horizon) is not `deadly`; none needed for a tree already in range. The nearer safe one is
+ * chosen, else the nearest (unsafe). Re-read at most every SafeEvery per hero (a read walks every enemy).
  */
-function treeOf(bot: Unit, items: Sustain.Item[], now: number): Sustain.Inputs["tree"] {
+function treeOf(bot: Unit, items: Sustain.Item[], now: number, spot: Sustain.Inputs["safeSpot"]): Sustain.Inputs["tree"] {
     const pid = bot.GetPlayerID();
     let slot: number | undefined;
     for (const it of items) if (it.tree && it.charges > 0 && (slot === undefined || it.ready === true)) slot = it.slot;
@@ -224,33 +226,43 @@ function treeOf(bot: Unit, items: Sustain.Item[], now: number): Sustain.Inputs["
     }
     const c = trees[pid];
     if (c !== undefined && now - c.at < SETTINGS.SafeEvery) return c.tree;
-    let best: number | undefined;
-    let bestLoc: Vector | undefined;
-    let bestD = math.huge;
+    const here = bot.GetLocation();
+    const goal = spot;
+    let near: { id: number; loc: Vector; d: number } | undefined;
+    let back: { id: number; loc: Vector; d: number; via: number } | undefined;
     for (const tree of (bot as unknown as TreeBot).GetNearbyTrees(SETTINGS.TreeScan) ?? []) {
         const loc = GetTreeLocation(tree);
         if (!IsLocationVisible(loc) || !IsLocationPassable(loc)) continue;
         const d = GetUnitToLocationDistance(bot, loc);
-        if (d < bestD) {
-            bestD = d;
-            best = tree;
-            bestLoc = loc;
+        if (near === undefined || d < near.d) near = { id: tree, loc, d };
+        if (goal !== undefined) {
+            const via = d + math.sqrt((loc.x - goal.x) ** 2 + (loc.y - goal.y) ** 2);
+            if (back === undefined || via < back.via) back = { id: tree, loc, d, via };
         }
     }
-    if (best === undefined || bestLoc === undefined) {
+    if (near === undefined) {
         trees[pid] = undefined;
         return undefined;
     }
     const item = bot.GetItemInSlot(slot);
     const range = item !== undefined && item !== null ? (item as unknown as SpecItem).GetCastRange() : 0;
-    const walk = math.max(0, bestD - (range > 0 ? range : SETTINGS.TangoRange)) / math.max(100, bot.GetCurrentMovementSpeed());
-    let safe = true;
-    if (walk > 0) {
-        const r = Threat.Read(bot, bot.GetLocation(), bestLoc, Threat.SETTINGS.GateHorizon);
-        safe = Safe.Decide(SafeGather.FromRead(bot, r, { away: false, held: false, hold: false })).level !== "deadly";
+    const speed = math.max(100, bot.GetCurrentMovementSpeed());
+    const judge = (t: { loc: Vector; d: number }): { walk: number; safe: boolean } => {
+        const walk = math.max(0, t.d - (range > 0 ? range : SETTINGS.TangoRange)) / speed;
+        if (walk <= 0) return { walk, safe: true };
+        const r = Threat.Read(bot, here, t.loc, Threat.SETTINGS.GateHorizon);
+        return { walk, safe: Safe.Decide(SafeGather.FromRead(bot, r, { away: false, held: false, hold: false })).level !== "deadly" };
+    };
+    let pick = near;
+    let tree = judge(near);
+    if (!tree.safe && back !== undefined && back.id !== near.id) {
+        const t2 = judge(back);
+        if (t2.safe) {
+            pick = back;
+            tree = t2;
+        }
     }
-    const tree = { walk, safe };
-    trees[pid] = { at: now, id: best, loc: bestLoc, tree };
+    trees[pid] = { at: now, id: pick.id, loc: pick.loc, tree };
     return tree;
 }
 
@@ -330,7 +342,8 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
     // A walk does not start where we stand deadly, whatever the read over it says (that read has no engaged window: smoke 1,
     // a tango walk started under a lethal leave). It still counts in rule 2's reach (review: as one flag it sent harassed
     // heroes holding tangos `home`, which step 3 does not carry, so nothing was eaten).
-    const t = treeOf(bot, items, now);
+    const spot = safeSpot(bot, now);
+    const t = treeOf(bot, items, now, spot);
     const tree = t !== undefined ? { walk: t.walk, safe: t.safe, start: !(t.walk > 0 && deadlyHere) } : undefined;
     const [rl, ml] = regenLeft(bot);
     const fountain = Retreat.Fountain(bot.GetTeam());
@@ -354,7 +367,7 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
         safe,
         regenLeft: rl,
         manaLeft: ml,
-        safeSpot: safeSpot(bot, now),
+        safeSpot: spot,
         gold: bot.GetGold(),
         courier: courierEta(bot, courierOf(bot), fountain),
         shop: shopOf(),
