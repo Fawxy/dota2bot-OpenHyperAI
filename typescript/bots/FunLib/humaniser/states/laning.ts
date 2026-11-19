@@ -174,50 +174,61 @@ export function ClaimPos(bot: Unit): PickTable.Pos {
     return pos as PickTable.Pos;
 }
 
-/** Creeps refused as deadly in the current scan (reset by `choose`; `denyDue` adds to it, `choose` reads it for the pick's cut line). */
-let safeDropped = 0;
-/** Per bot, the creeps the safe read refused at game time `t`, so a running attempt on one is released by the same scan. */
-const safeRefused: Record<number, { t: number; creeps: Lib.TaskCreep[] } | undefined> = {};
+/** Per bot and game time, the safe read's answer for each creep asked (true: deadly) and for the hero's own place: the pick, the
+ *  deny check, the support's hit row and the idle swing ask about the same creeps in one frame. */
+interface SafeFrame {
+    t: number;
+    creeps: LuaTable<Lib.TaskCreep, boolean>;
+    here?: boolean;
+}
+const safeFrames: Record<number, SafeFrame | undefined> = {};
 
-const hereDeadly: Record<number, { t: number; deadly: boolean } | undefined> = {};
+function safeFrame(pid: number): SafeFrame {
+    const now = DotaTime();
+    let f = safeFrames[pid];
+    if (f === undefined || f.t !== now) {
+        f = { t: now, creeps: new LuaTable() };
+        safeFrames[pid] = f;
+    }
+    return f;
+}
+
+function askDeadly(bot: Unit, place: Vector, held: boolean): boolean {
+    const [ok, ans] = pcall(SafeGather.At, bot, place, { held });
+    if (!ok) {
+        Telemetry.Failed("PickSafe", ans);
+        return false;
+    }
+    return (ans as Safe.Answer).level === "deadly";
+}
 
 /** Whether the safe read calls the place where `bot` would hit this creep deadly. A fault in the read allows the creep. */
 function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
-    const here = bot.GetLocation();
-    const at = t.creep.GetLocation() as unknown as Vector;
-    const inRange = t.walk <= 0;
-    const place = inRange ? here : Contest.StandPoint(here, at, bot.GetAttackRange());
-    const pid = bot.GetPlayerID();
-    const now = DotaTime();
-    // Every creep already in range is hit from where the hero stands: one ask per hero per frame answers them all.
-    const mem = inRange ? hereDeadly[pid] : undefined;
+    const f = safeFrame(bot.GetPlayerID());
+    const known = f.creeps.get(t.creep);
+    if (known !== undefined) return known;
     let deadly: boolean;
-    if (mem !== undefined && mem.t === now) deadly = mem.deadly;
-    else {
-        const [ok, ans] = pcall(SafeGather.At, bot, place, { held: inRange });
-        if (!ok) {
-            Telemetry.Failed("PickSafe", ans);
-            return false;
-        }
-        deadly = (ans as Safe.Answer).level === "deadly";
-        if (inRange) hereDeadly[pid] = { t: now, deadly };
-    }
-    if (!deadly) return false;
-    safeDropped++;
-    let r = safeRefused[pid];
-    if (r === undefined || r.t !== now) {
-        r = { t: now, creeps: [] };
-        safeRefused[pid] = r;
-    }
-    r.creeps.push(t.creep);
-    return true;
+    if (t.walk <= 0) {
+        // Every creep already in range is hit from where the hero stands: one ask answers them all.
+        if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true);
+        deadly = f.here;
+    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), false);
+    f.creeps.set(t.creep, deadly);
+    return deadly;
 }
 
 function safeRefusedNow(pid: number, creep: Lib.TaskCreep): boolean {
-    const r = safeRefused[pid];
-    if (r === undefined || r.t !== DotaTime()) return false;
-    for (const c of r.creeps) if (c === creep) return true;
-    return false;
+    const f = safeFrames[pid];
+    return f !== undefined && f.t === DotaTime() && f.creeps.get(creep) === true;
+}
+
+/** How many of the offered creeps the safe read refused this frame (the pick cut's `sd`). */
+function safeDropped(pid: number, targets: Lib.Verbs.LaneTarget[]): number {
+    const f = safeFrames[pid];
+    if (f === undefined || f.t !== DotaTime()) return 0;
+    let n = 0;
+    for (const t of targets) if (f.creeps.get(t.creep) === true) n++;
+    return n;
 }
 
 /**
@@ -330,7 +341,6 @@ function recordMine(this: void, t: Lib.Verbs.LaneTarget): boolean {
 
 function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget, cut = false): Lib.Verbs.LaneTarget | undefined {
     const pid = bot.GetPlayerID();
-    safeDropped = 0;
     const claims = claimsFor(bot);
     const far = farFor(bot);
     // A creep whose walk-in the price released is not picked again: from nearer, the plain reach rule would take it unpriced.
@@ -363,7 +373,7 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
     idlePicks[pid] = idle !== undefined && chosen === idle ? idle : undefined;
     // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
     if (cutting && (chosen !== undefined || targets.length > 0)) {
-        const [ok, err] = pcall(cutPick, bot, targets, current, pre, chosen, far !== undefined, idleAsked, idle, order, safeDropped);
+        const [ok, err] = pcall(cutPick, bot, targets, current, pre, chosen, far !== undefined, idleAsked, idle, order, safeDropped(pid, targets));
         if (!ok) Telemetry.Failed("Laning.CutPick", err);
     }
     return chosen;
