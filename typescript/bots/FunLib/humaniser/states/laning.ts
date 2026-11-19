@@ -153,7 +153,7 @@ export function OwnsLastHit(bot: Unit): boolean {
 
 /**
  * Whether the body takes this support's lane hits (Ours.SupportDeny): its denies, and with Ours.SupportLastHit the last hits
- * no core will take (states/lane_claims). Stepped only by its support_lane step, so OHA's positioning and harass keep the
+ * no core will take (states/lane_claims). Stepped only by the lane table's `support_*` rows, so OHA's positioning and harass keep the
  * other frames.
  */
 export function OwnsSupportHits(bot: Unit): boolean {
@@ -354,7 +354,7 @@ function wasPreHit(pid: number, creep: Lib.TaskCreep): boolean {
 
 /**
  * A lane hit the support's body would go for now: what its own scan would pick (same laneTargets query and claims), within
- * the leash of the spot. support_lane reads it to step the body ahead of OHA's own laning steps.
+ * the leash of the spot. the lane table's `support_hit` row reads it to step the body ahead of OHA's own laning steps.
  */
 export function HitOffered(bot: Unit): boolean {
     if (!OwnsSupportHits(bot)) return false;
@@ -374,7 +374,7 @@ export function HitOffered(bot: Unit): boolean {
 /**
  * Slice trade-free round 2: a deny this laner's body would be offered now (laneTargets' denies within LastHitWithin, the reach
  * rule and the body's claims), for a bot whose lane hits are ours. Harass's third question reads it: a due deny outbids a
- * trade. A support's body takes a hit only within LEASH of its spot (HitOffered, support_lane's step), so beyond it no deny
+ * trade. A support's body takes a hit only within LEASH of its spot (HitOffered, the `support_hit` row), so beyond it no deny
  * is due (review of round 2). Reads facts only (no pick, no skill roll); once per bot per game time, as Gather and keepWhy
  * ask it several times a frame.
  */

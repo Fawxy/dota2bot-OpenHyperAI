@@ -1,4 +1,6 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
+local function no() return false end
+local HostSteps = { etiquette = no, ohaLastHit = no, ohaDeny = no, ohaHold = no, ohaLocal = no, ohaPosition = function() return true end }
 
 -- Team slices 3 and 4: the laning state's own spot (lane_spot.ts: creep and tower rings, ranged inset, side
 -- shift) and its SDK last hits (laning.ts body + BodyLastHits gating the Lua Think's own).
@@ -782,16 +784,16 @@ do
 	silenced(function()
 		H.States.Tick(bot)
 		H.Tasks.Tick(bot)
-		stepped = H.States.SupportStep(bot)
+		stepped = H.States.LaneStep(bot, HostSteps) == "support_hit"
 		T = T + 0.05
 		for _ = 1, 3 do
 			H.States.Tick(bot)
 			H.Tasks.Tick(bot)
-			H.States.SupportStep(bot)
+			H.States.LaneStep(bot, HostSteps)
 			T = T + 0.05
 		end
 	end)
-	check("support deny: the support step acts first", stepped == true)
+	check("support deny: the support_hit row acts first", stepped == true)
 	check("support deny: the body swung at the own creep", bot.attacks ~= nil and bot.attacks[#bot.attacks] == own)
 
 	local He, bote = support({ enemy = true, lastHits = false })

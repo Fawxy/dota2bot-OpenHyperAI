@@ -1208,7 +1208,7 @@ function ____exports.Watch(bot, hosted, swing)
         end
     end
 end
---- The hold's orders, from the lane step that steps it (States.CoreAggroStep, LaneOnlyHoldStep), which a body swing never
+--- The hold's orders, from the lane table row that acts it (`aggro`, `drill_hold`), which a body swing never
 -- reaches: the draw the last read wants, through lane_aggro's `back` (stepped right after by the caller). The drag's draw
 -- that does not start concedes the attempt (`cr=drag`), as before the split.
 function ____exports.Act(bot)
