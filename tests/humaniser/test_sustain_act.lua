@@ -175,10 +175,28 @@ do
 	local cut = false
 	for _, l in ipairs(lines) do if l:find("ev=sustain", 1, true) and l:find("k=give", 1, true) and l:find("ed=cut", 1, true) then cut = true end end
 	check("the give's line ends cut", cut, table.concat(lines, " | "))
-	local n, nl = #bot.orders, #lines
+	local nl = #lines
 	T = 500.3
 	A.ItemThink(bot)
-	check("rule 1 again a frame later, the wand's charge not yet gone: the running use is kept, no second order", #bot.orders == n and #lines == nl, table.concat(lines, " | "))
+	check("rule 1 again a frame later, the wand's charge not yet gone: the running use is kept (not cut and restarted)", #lines == nl, table.concat(lines, " | "))
+end
+
+-- An instant use whose charge has not gone is ordered again each frame (a stun swallowed the first), until it starts.
+do
+	reset()
+	bot.slots = { [3] = itemOf("item_magic_wand", 8) }
+	bot.hitByHero = true
+	answer = { kind = "use", slot = 3, name = "magic_wand", reason = "survive" }
+	T = 550
+	A.ItemThink(bot)
+	T = 550.05
+	A.ItemThink(bot)
+	check("the wand's charge still there a frame later: ordered again", #bot.orders == 2 and bot.orders[2] == "none:item_magic_wand", table.concat(bot.orders, ","))
+	bot.slots[3].charges = 0
+	answer = { kind = "none", reason = "fine" }
+	T = 550.1
+	A.ItemThink(bot)
+	check("its charge gone: started, no third order", ended() == "started" and #bot.orders == 2)
 end
 
 -- home and buy are logged only in this step; a dead hero ends its attempt.

@@ -247,6 +247,9 @@ function progress(bot: Unit, a: Act, now: number): boolean {
         end(bot, "missed");
         return true;
     }
+    // An order with no walk is given again each frame until its charge goes: a stun or a mode's move in between swallows it
+    // (smoke 2: 5 of 11 wand uses under hits missed, the next one landed). A walk's order is the lane row's or the supply's.
+    if (a.walk <= 0) order(bot, a);
     return false;
 }
 

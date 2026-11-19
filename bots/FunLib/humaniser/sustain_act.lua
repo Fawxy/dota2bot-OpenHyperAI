@@ -494,6 +494,9 @@ local function progress(bot, a, now)
         ____end(bot, "missed")
         return true
     end
+    if a.walk <= 0 then
+        order(bot, a)
+    end
     return false
 end
 --- ItemUsageThink's call (ability_item_usage_generic.lua), every hero every frame: nothing unless sustain carries the hero.
