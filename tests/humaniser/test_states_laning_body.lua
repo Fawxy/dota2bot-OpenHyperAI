@@ -899,6 +899,11 @@ do
 	check("deny yield: the core picks the other deny", pick ~= nil and pick.creep == d2, pick and pick.kind)
 	local stay = Pick.Choose({ lt(d1, "deny", 0.1), lt(e1, "lasthit", 2.0) }, lt(d1, "deny", 0.1), mine)
 	check("deny yield: a wait on it is dropped for the next last hit", stay ~= nil and stay.creep == e1)
+	local column = Claims.Mine(core, 1, 1)
+	check("claims column: `unattempted` on a core's denies leaves the support's deny, takes the rest",
+		column ~= nil and column(lt(d1, "deny", 0.2)) == false and column(lt(d2, "deny", 0.3)) == true and column(lt(e1, "lasthit", 0.5)) == true)
+	core, d1 = world({ off = true })
+	check("claims column, Ours.CoreDenyYield off: a core takes every creep", Claims.Mine(core, 1, 1) == nil)
 	core, d1 = world({ phase = "hold" })
 	mine = Claims.CoreMine(core)
 	check("deny yield: a support holding (no attempt) is not yielded to", mine(lt(d1, "deny", 0.2)) == true and Claims.DenyYield(core, lt(d1, "deny", 0.2)) == nil)
@@ -961,6 +966,51 @@ do
 		require("bots/FunLib/humaniser/states/lane_pick").Describe(1, T))
 	swung, lh = bodyRun(10)
 	check("deny yield body: an attempt ending 10 s after the yield carries no yd", lh ~= nil and lh:find(" yd=", 1, true) == nil, lh)
+end
+
+-- The claim columns of the pick table (states/pick_table) as the picker's `mine` reads them (LaneClaims.Mine, laning ClaimPos).
+do
+	local Claims
+	local function lt(c, kind, eta) return { creep = c, kind = kind, eta = eta, due = eta, walk = 0, dies = 5, ranged = false } end
+
+	-- `unclaimed` on last hits (pos 5): not a creep an allied core is beside, the one no core is near; every deny.
+	local function support(o)
+		local bot, x, d
+		silenced(function()
+			local positions
+			local H
+			H, bot, positions = Fresh({ Enable = true, Own = { laning = { 2 } }, Teams = "allies", Laning = { LastHit = o.listed and { 5 } or {} } },
+				{ pos = 5, supportDeny = true, supportLastHit = o.lastHits ~= false })
+			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+			for _ = 1, 4 do frame(H, bot) end
+			Claims = require("bots/FunLib/humaniser/states/lane_claims")
+			x = creep({ loc = Vector(-200, 0), hp = 45, regen = -40 })
+			d = creep({ loc = Vector(-190, 20), hp = 45, regen = -40, team = 2 })
+			if o.core then
+				MakeUnit({ pid = 2, mode = LANING, loc = Vector(-150, 50), level = 3 })
+				positions[2] = 1
+			end
+		end)
+		return bot, x, d
+	end
+	local Laning = function() return require("bots/FunLib/humaniser/states/laning") end
+	local bot, x, d = support({})
+	local mine = Claims.Mine(bot, Laning().ClaimPos(bot), 1)
+	check("claims column: a pos 5 takes a last hit no core is near", mine(lt(x, "lasthit", 0.3)) == true)
+	check("claims column: a pos 5 takes every deny", mine(lt(d, "deny", 0.3)) == true)
+	bot, x, d = support({ core = true })
+	mine = Claims.Mine(bot, Laning().ClaimPos(bot), 1)
+	check("claims column: a pos 5 leaves a last hit an idle core is beside", mine(lt(x, "lasthit", 0.3)) == false)
+	check("claims column: ...and still takes a deny", mine(lt(d, "deny", 0.3)) == true)
+	bot, x, d = support({ lastHits = false })
+	mine = Claims.Mine(bot, Laning().ClaimPos(bot), 1)
+	check("claims column, Ours.SupportLastHit off: no last hit, denies stay", mine(lt(x, "lasthit", 0.3)) == false and mine(lt(d, "deny", 0.3)) == true)
+
+	-- A pos 5 listed in Laning.LastHit reads position 1's column: all last hits, and no yield of denies to another support.
+	bot, x, d = support({ core = true, listed = true })
+	check("claims column: a listed pos 5 reads position 1's column", Laning().ClaimPos(bot) == 1)
+	mine = Claims.Mine(bot, Laning().ClaimPos(bot), 1)
+	check("claims column: a listed pos 5 takes the last hit a core is beside", mine(lt(x, "lasthit", 0.3)) == true)
 end
 
 -- wave_hold's hold point (lane_spot input `hold`, slice core-in-lane): our wave gone, their melee creep walking in at (-200, 0)
