@@ -1063,7 +1063,7 @@ export function Implied(key: string): unknown {
     return Active()?.overrides?.[key];
 }
 
-const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
+const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6624, 6368, 392] };
 // A statue stands this far behind its own lane front (GetLaneFrontLocation's delta), out of the clash.
 const STATUE_BEHIND = -300;
 // It keeps a move order on at all times, swapping between two points this far apart: a hero with no order acquires

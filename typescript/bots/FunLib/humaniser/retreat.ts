@@ -127,7 +127,7 @@ export const SETTINGS = {
 };
 
 /** Valve's fountain spots (as drill.ts); GetShopLocation(team, SHOP_HOME) is logged beside them at load. */
-const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
+const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6624, 6368, 392] };
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
 
 export type Why = "threat" | "lethal" | "tower" | "heal" | "forced";
@@ -684,7 +684,7 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
 
     const forced = ep.why === "forced";
     if (!forced && !RetreatState.Owns(bot)) return "cut";
-    // The fountain's own buff counts as arrival: on patch 7.42 a Dire hero stops 260 to 300 short of the fountain constant
+    // The fountain's own buff counts as arrival: on patch 7.42 a Dire hero stopped 260 to 300 short of the old (6928, 6372) fountain constant
     // and a heal episode never ended (lane-table smoke, two heroes at full HP in retreat from 7:40 to the end).
     const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive || (ep.anchor.kind === "fountain" && bot.HasModifier("modifier_fountain_aura_buff"));
     if (ep.why === "heal") {

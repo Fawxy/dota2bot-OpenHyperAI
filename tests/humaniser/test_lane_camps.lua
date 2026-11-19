@@ -123,15 +123,16 @@ end
 
 -- 7.41 map: neutral spawner origins, T1/T2 towers and the goodguys lane path_corner chains, read from the entity
 -- lump of game/dota/maps/dota.vpk (default_ents.vents_c, 22/10/2026). Box centres are within ~250 of these origins.
+-- The four camps patch 7.42 moved (good_14, good_20, evil_11, evil_20) are at their live 7.42 spawner positions; the towers are 7.41's.
 local MAP_SPAWNERS = {
-	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -2880, 7376 }, { "evil_12", DIRE, "medium", 2016, 7896 },
+	{ "evil_1", DIRE, "large", -4824, 3915 }, { "evil_11", DIRE, "small", -4229, 8140 }, { "evil_12", DIRE, "medium", 2016, 7896 },
 	{ "evil_13", DIRE, "small", 8430, 1263 }, { "evil_14", DIRE, "medium", 336, 7696 }, { "evil_15", DIRE, "medium", -2596, 3850 },
-	{ "evil_2", DIRE, "small", -3911, 4829 }, { "evil_20", DIRE, "medium", -4208, 8336 }, { "evil_4", DIRE, "medium", 1224, 4176 },
+	{ "evil_2", DIRE, "small", -3911, 4829 }, { "evil_20", DIRE, "medium", -6408, 7816 }, { "evil_4", DIRE, "medium", 1224, 4176 },
 	{ "evil_5", DIRE, "large", 1064, 2580 }, { "evil_6", DIRE, "medium", -852, 4940 }, { "evil_7", DIRE, "large", 7928, -120 },
 	{ "evil_8", DIRE, "ancient", 4352, 48 }, { "evil_9", DIRE, "medium", 3392, -1408 },
 	{ "good_1", RAD, "small", 3978, -5027 }, { "good_11", RAD, "medium", -720, -7696 }, { "good_12", RAD, "medium", -2415, -8402 },
-	{ "good_13", RAD, "large", -8313, -553 }, { "good_14", RAD, "small", 2768, -8336 }, { "good_15", RAD, "medium", 1922, -3975 },
-	{ "good_16", RAD, "small", -8023, -1838 }, { "good_2", RAD, "large", 4649, -3699 }, { "good_20", RAD, "medium", 4416, -8432 },
+	{ "good_13", RAD, "large", -8313, -553 }, { "good_14", RAD, "small", 4520, -8336 }, { "good_15", RAD, "medium", 1922, -3975 },
+	{ "good_16", RAD, "small", -8023, -1838 }, { "good_2", RAD, "large", 4649, -3699 }, { "good_20", RAD, "medium", 6712, -7632 },
 	{ "good_4", RAD, "medium", 186, -5197 }, { "good_5", RAD, "large", -1454, -3356 }, { "good_7", RAD, "medium", -4013, 992 },
 	{ "good_8", RAD, "ancient", -5015, -96 }, { "good_9", RAD, "medium", -1983, -4815 },
 }
