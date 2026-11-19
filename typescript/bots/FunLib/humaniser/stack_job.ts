@@ -18,6 +18,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -594,7 +595,7 @@ export function ResetCache(): void {
 export function Applies(bot: Unit): boolean {
     if (!Ours.On("StackExecute")) return false;
     const pos = LaneConfig.PositionOf(bot);
-    return pos === 5 || (pos === 4 && Ours.On("DoubleStack"));
+    return TripTable.Does("stack", pos) && (pos !== 4 || Ours.On("DoubleStack"));
 }
 
 function dist(a: Vector, b: Vector): number {

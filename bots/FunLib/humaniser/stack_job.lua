@@ -759,6 +759,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -1702,7 +1703,7 @@ function ____exports.Applies(bot)
         return false
     end
     local pos = LaneConfig.PositionOf(bot)
-    return pos == 5 or pos == 4 and Ours.On("DoubleStack")
+    return TripTable.Does("stack", pos) and (pos ~= 4 or Ours.On("DoubleStack"))
 end
 --- Own-side, not ancient, with a Valve stack window: the camps this job may stack.
 function ____exports.Candidates(team)

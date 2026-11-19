@@ -14,6 +14,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -30,14 +31,9 @@ export const SETTINGS = {
      *  3 of 9 pulls on a fresh camp still cancelled `one` after the hold, 3-6 s into the walk). Both values leave about 2 s
      *  before the slot (ldr17: the empty-camp cancels fell 2.0 s before to 0.8 s after it); the hold never runs past the hit. */
     CampReadNear: 500,
-    /** Rank against the hero's other jobs: below the stack (0.92) and the rune trip (0.85 pos5 / 0.95 pos4 rank above at their
-     *  times through their claims). */
-    Priority: 0.9,
-    /** Slice lane-control 3: the rank while the lane's decision wants this pull and it fits before the next departure (above
-     *  the pos4 rune trip's 0.95 and the stack's 0.92). PriorityEvery: how often it is re-read. Take: a pull's end after its
-     *  hit second for the calendar (the job ends 3 s after the wave is due at the camp, about 7 s after the hit). All
-     *  `judgement`. */
-    FitPriority: 0.96,
+    /** Slice lane-control 3: how often the lift (the lane's decision wants this pull and it fits before the next departure)
+     *  is re-read. Take: a pull's end after its hit second for the calendar (the job ends 3 s after the wave is due at the
+     *  camp, about 7 s after the hit). All `judgement`. */
     PriorityEvery: 0.5,
     Take: 12,
     /** Leave this long before the walk alone would arrive, so the bot stands at the camp before the hit. */
@@ -224,7 +220,7 @@ const decided: Record<number, Decision | undefined> = {};
 const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
 const ended: Record<number, Ended | undefined> = {};
-const priorities: Record<number, { at: number; p: number } | undefined> = {};
+const priorities: Record<number, { at: number; p: boolean } | undefined> = {};
 
 /** A pull that ended ok: its camp, when, and the wave's diverted share so far (PullFarm's trigger reads it). */
 interface Ended {
@@ -271,22 +267,22 @@ function campFor(bot: Unit): Camps.CampJobData | undefined {
 }
 
 export function Applies(bot: Unit): boolean {
-    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && ((isSupport(bot) && pullerOfLane(bot)) || corePuller(bot)) && campFor(bot) !== undefined;
+    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && TripTable.Does("pull", LaneConfig.PositionOf(bot)) && ((isSupport(bot) && pullerOfLane(bot)) || corePuller(bot)) && campFor(bot) !== undefined;
 }
 
 /**
- * Slice lane-control 3 (design s5.4, s5.5): above the hero's other jobs (FitPriority) while the lane controller's decision
- * for the next pulled wave has this support's pull and the pull fits before the next departure on its calendar (a claim has
- * begun, the walk has not: a rune trip claims from a minute before its spawn, a stack from :15); else Priority, so a
- * departure the pull does not fit before keeps its rank. Read at most every PriorityEvery s.
+ * Slice lane-control 3 (design s5.4, s5.5): the pull takes its lifted place in the trip table (states/trip_table) while the
+ * lane controller's decision for the next pulled wave has this support's pull and the pull fits before the next departure
+ * on its calendar (a claim has begun, the walk has not: a rune trip claims from a minute before its spawn, a stack from
+ * :15); else its usual place, so a departure the pull does not fit before keeps its rank. Read at most every PriorityEvery s.
  */
-export function Priority(bot: Unit): number | undefined {
-    if (!Applies(bot)) return undefined;
+export function Lifted(bot: Unit): boolean {
+    if (!Applies(bot)) return false;
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const c = priorities[pid];
     if (c !== undefined && now >= c.at && now - c.at < SETTINGS.PriorityEvery) return c.p;
-    const p = fitsAhead(bot, now) ? SETTINGS.FitPriority : SETTINGS.Priority;
+    const p = fitsAhead(bot, now);
     priorities[pid] = { at: now, p };
     return p;
 }
