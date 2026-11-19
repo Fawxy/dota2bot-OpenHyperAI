@@ -1,7 +1,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { mapLeave, deathsFromSnaps, stateAt } = require('../safe_deaths');
+const path = require('path');
+const { mapLeave, mapSafe, deathsFromSnaps, stateAt, episodesOf, analyse } = require('../safe_deaths');
+const { toLua } = require('../cut');
+const { newState, doString, getGlobal } = require('../../../tests/humaniser/harness');
 
 const TOWERS = new Map([[3, '0,5000,5000,700,144']]);
 // Our hero at the origin: speed 300, hull 24; `he` rows are pid,x,y,hp,range,hull,speed,atk,eng,e3,e6,illusion.
@@ -67,4 +70,74 @@ test('state at a death: not held after an arb end, else a running retreat with i
     assert.deepEqual(stateAt(ev, '1', 25), { state: 'read' });
     assert.deepEqual(stateAt(ev, '1', 35), { state: 'retreat', why: 'tower' });
     assert.deepEqual(stateAt(ev, '2', 35), { state: 'notheld' });
+});
+
+const parse = (line) => Object.fromEntries(line.split(' ').map((kv) => kv.split('=')));
+
+test('a kind=safe line maps to the inputs the cut.js safe driver feeds Safe.Decide: same answer, unseen reachers, tower and hold included', () => {
+    const lines = [
+        'hpa=584 hpm=730 rr=7,1,201,0;5,1,310,0 mi=0 stw=0,0 ld=73,0,0 awy=0 hld=1 hd=0',
+        'hpa=300 hpm=730 rr=7,0,400,1 mi=0.4 stw=1,1 ld=10,20,30 awy=1 hld=0 hd=1',
+        'hpa=730 hpm=730 mi=0 stw=0,0 ld=0,0,0 awy=0 hld=0 hd=0',
+    ].map(parse);
+    const L = newState();
+    const driver = path.resolve(__dirname, '../../../tests/humaniser/fixture_drivers/safe.lua');
+    let err = doString(L, `dofile(HARNESS_DIR .. "/dota_stubs.lua")\nFreshHumaniser({ Enable = true })\nSAFE = require("bots/FunLib/humaniser/safe")\nDRIVER = dofile(${JSON.stringify(driver)})`);
+    assert.equal(err, null);
+    const seen = new Set();
+    for (const cut of lines) {
+        const world = { hpa: Number(cut.hpa), hpm: Number(cut.hpm), mi: Number(cut.mi), awy: Number(cut.awy), hld: Number(cut.hld), hd: Number(cut.hd), rr: cut.rr, stw: cut.stw, ld: cut.ld };
+        err = doString(L, `local fx = { world = ${toLua(world)} }
+local a = SAFE.Decide(${toLua(mapSafe(cut).inputs)})
+local d = DRIVER(fx).actions[1]
+OUT = a.level .. "(" .. a.reason .. ")" .. "|" .. d.verb .. "(" .. d.target .. ")"`);
+        assert.equal(err, null);
+        const [mine, theirs] = String(getGlobal(L, 'OUT')).split('|');
+        assert.equal(mine, theirs);
+        seen.add(mine);
+    }
+    assert.ok(seen.size > 1, 'the lines must not all give one answer');
+    assert.equal(mapSafe(lines[0]).n, 2);
+    assert.equal(mapSafe(lines[2]).n, 0);
+    assert.equal(mapSafe(lines[1]).inputs.reach[0].unseen, true);
+});
+
+const answers = (deadlyAt) => Object.fromEntries(['1', '1.25', '1.5', '2'].map((b) => [b, { level: deadlyAt.includes(b) ? 'deadly' : 'safe', reason: 'kill', kill: 0 }]));
+const ROW = { n: 1, kill0: 100, pos: '3', inputs: { hp: 500, hpMax: 500 } };
+const row = (t, retreat, deadlyAt, extra = {}) => ({ ...ROW, file: 'f', pid: '1', t, retreat, dec: retreat ? 'threat' : 'stay', answers: answers(deadlyAt), ...extra });
+const game = (rows, extra = {}) => ({ rows, deaths: [], episodes: [], snaps: new Map(), ...extra });
+
+test('table 4 puts each moment in one of four cells by the bar and the hero\'s retreat, and the HP lost and death follow that moment', () => {
+    // 1.0 is deadly at the first two rows only; the hero retreats on the first and third. Each row weighs 2 s.
+    const rows = [row(0, true, ['1']), row(2, false, ['1']), row(4, true, []), row(6, false, []), row(8, false, [])];
+    // the hero drops to 40% after the second row (stayed where the bar says leave) and dies at 4.5
+    const snaps = new Map([['1', [{ t: 3, hp: 50 }, { t: 4, hp: 40 }]]]);
+    const res = analyse([game(rows, { snaps, deaths: [{ pid: '1', t: 4.5 }] })], true);
+    const cell = (c) => res.t4[`all\t1\t${c}`];
+    assert.deepEqual(['DR', 'DN', 'SR', 'SN'].map((c) => cell(c).sec), [2, 2, 2, 2]);
+    // a death inside the 5 s loses the whole start HP (1.0) for the moments before it
+    assert.deepEqual(['DR', 'DN', 'SR', 'SN'].map((c) => cell(c).lost), [2, 2, 2, 0]);
+    // control: the same rows with the retreat flags swapped move the seconds across the cells
+    const flipped = analyse([game(rows.map((r) => ({ ...r, retreat: !r.retreat })))], true);
+    const f = (c) => flipped.t4[`all\t1\t${c}`];
+    assert.deepEqual([f('DR').sec, f('DN').sec, f('SR').sec, f('SN').sec], [2, 2, 2, 2]);
+    assert.equal(f('DR').n, 1);
+    assert.equal(f('DN').n, 1);
+    assert.equal(f('DN').lostSec, 0, 'no snapshots in the window: left out of the HP column');
+});
+
+test('an episode counts as one a bar would not have begun only when the bar does not call its start moment deadly', () => {
+    const rows = [row(10, false, ['1']), row(11, true, ['1']), row(30, false, [])];
+    const ev = [
+        { kind: 'retreat', ph: 'start', pid: '1', t: 10.5, why: 'threat' },
+        { kind: 'retreat', ph: 'end', pid: '1', t: 14, res: 'gone', secs: 3.5, hpl: 0.2 },
+        { kind: 'retreat', ph: 'start', pid: '1', t: 60, why: 'threat' },
+        { kind: 'retreat', ph: 'end', pid: '1', t: 62, res: 'gone', secs: 2, hpl: 0 },
+    ];
+    const res = analyse([game(rows, { episodes: episodesOf(ev), deaths: [{ pid: '1', t: 14.5 }] })], true);
+    assert.equal(res.t5.all.n, 2);
+    assert.equal(res.t5.all.noLine, 1, 'the second episode has no source line in the 2.5 s before it');
+    assert.deepEqual([res.t5.bar['1'].began, res.t5.bar['1'].not], [1, 0]);
+    const b = res.t5.bar['1.25'];
+    assert.deepEqual([b.began, b.not, b.notDied, b.notHpl, b.notLen], [0, 1, 1, [0.2], [3.5]]);
 });
