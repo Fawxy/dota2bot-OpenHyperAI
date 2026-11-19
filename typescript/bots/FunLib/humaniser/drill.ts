@@ -101,10 +101,11 @@ const ALL: Sides = { r: [1, 2, 3, 4, 5], d: [1, 2, 3, 4, 5] };
 
 /**
  * The sustain rig's tasks (D6, `Ours.Sustain`; master docs/proposals/2026-11-19-sustain-design.md, check 3): each forces one
- * answer's facts on one hero. The recipe sets every hero's HP to 25% at +63 s of each rep (`rig_hp_all`), a hero holding a
+ * answer's facts on one hero. The recipe sets every hero's HP to 20% at +63 s of each rep (`rig_hp_all`), a hero holding a
  * circlet to 5% (`rig_hp_holding`), one holding branches to 10% mana (`rig_mp_holding`), and every tango to one charge
  * (`rig_charges`): the marker items name the task to the server setters, which cannot read the bot's state. At 25% with no
- * enemy the kill line is the 30% floor, so:
+ * enemy the kill line is the 30% floor (20% leaves a margin for the regen before release: fix1, a home hero at 25% stood at 30% when
+ * released and bought instead of going home), so:
  * - `tango` / `salve` / `bottle`: what is in hand clears the line; rule 3 tops up (a tango at a tree, a salve stepped out
  *   or used where it stands, the bottle).
  * - `home`: nothing in hand, mana low: rule 2 sends it home at once (`low_both`), retreat walks it, it heals to 80%.
@@ -124,12 +125,12 @@ const SUSTAIN_TREE = 600;
 const SUSTAIN_TASKS: Record<string, { buy: string[]; ready: RigReady }> = {
     tango: {
         buy: ["item_tango"],
-        ready: { hpAtMost: 0.3, holds: ["item_tango"], charges: { item_tango: [1, 1] }, clear: SUSTAIN_CLEAR, tree: SUSTAIN_TREE },
+        ready: { hpAtMost: 0.25, holds: ["item_tango"], charges: { item_tango: [1, 1] }, clear: SUSTAIN_CLEAR, tree: SUSTAIN_TREE },
     },
-    salve: { buy: ["item_flask"], ready: { hpAtMost: 0.3, holds: ["item_flask"], clear: SUSTAIN_CLEAR } },
-    bottle: { buy: ["item_bottle"], ready: { hpAtMost: 0.3, holds: ["item_bottle"], charges: { item_bottle: [1, 3] }, clear: SUSTAIN_CLEAR } },
-    home: { buy: ["item_branches"], ready: { hpAtMost: 0.3, mpAtMost: 0.2, holds: ["item_branches"], clear: SUSTAIN_CLEAR } },
-    ship: { buy: [], ready: { hpAtMost: 0.3, mpAtLeast: 0.5, goldAtLeast: 200, courier: true, clear: SUSTAIN_CLEAR } },
+    salve: { buy: ["item_flask"], ready: { hpAtMost: 0.25, holds: ["item_flask"], clear: SUSTAIN_CLEAR } },
+    bottle: { buy: ["item_bottle"], ready: { hpAtMost: 0.25, holds: ["item_bottle"], charges: { item_bottle: [1, 3] }, clear: SUSTAIN_CLEAR } },
+    home: { buy: ["item_branches"], ready: { hpAtMost: 0.25, mpAtMost: 0.2, holds: ["item_branches"], clear: SUSTAIN_CLEAR } },
+    ship: { buy: [], ready: { hpAtMost: 0.25, mpAtLeast: 0.5, goldAtLeast: 200, courier: true, clear: SUSTAIN_CLEAR } },
     tango_ship: {
         buy: ["item_tango", "item_circlet"],
         ready: {
@@ -143,7 +144,7 @@ const SUSTAIN_TASKS: Record<string, { buy: string[]; ready: RigReady }> = {
             tree: SUSTAIN_TREE,
         },
     },
-    bottle_dry: { buy: ["item_bottle"], ready: { hpAtMost: 0.3, holds: ["item_bottle"], charges: { item_bottle: [0, 0] }, clear: SUSTAIN_CLEAR } },
+    bottle_dry: { buy: ["item_bottle"], ready: { hpAtMost: 0.25, holds: ["item_bottle"], charges: { item_bottle: [0, 0] }, clear: SUSTAIN_CLEAR } },
 };
 /** The tasks the rig rotates through: rep k gives hero r(i+1) task (i + k) mod length, so each hero meets each task. */
 const SUSTAIN_ROTATION = ["tango", "salve", "bottle", "home", "ship", "tango_ship"];
@@ -792,6 +793,10 @@ export const TABLE: Record<string, Entry> = {
             },
             timeout: 80,
             release: { modes: ["laning", "retreat", "idle"], sustain: true },
+            // Sustain's walks (a tree, a step out, the wait for a delivery) and its item orders run only in the laning mode's `sustain`
+            // row; the idle hold's standing order cancels them (fix1: every use answer held, none carried; the released heroes in
+            // farm at 0.55 all rep). Under any laning bid, so the idle hold stands a hero only when laning does not want it. `judgement`.
+            idle: 0.05,
             reps: sustainReps(),
         },
     },
