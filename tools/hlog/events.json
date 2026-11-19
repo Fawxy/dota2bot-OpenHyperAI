@@ -596,6 +596,7 @@
    "q": "num",
    "st": "str",
    "drop": "num",
+   "ato": "num",
    "dur": "num",
    "own": "num",
    "fc": "num",
@@ -615,6 +616,7 @@
    "lane": "num",
    "br": "str",
    "res": "str",
+   "ato": "num",
    "why": "str",
    "trig": "str",
    "fc": "num",
@@ -854,6 +856,8 @@
    "ok": "num",
    "fail": "str",
    "hp": "num",
+   "mp": "num",
+   "task": "str",
    "rt": "num",
    "dt": "num",
    "gold": "num",
@@ -889,6 +893,7 @@
    "min": "num",
    "res": "str",
    "why": "str",
+   "ato": "num",
    "camp": "num",
    "type": "str",
    "start": "num",
@@ -1446,6 +1451,7 @@
    "so": "num",
    "ag": "num",
    "fa": "str",
+   "ato": "num",
    "mode": "num",
    "md": "num"
   },
@@ -1941,6 +1947,7 @@
    "hr": "num",
    "sh": "num",
    "rc": "num",
+   "spr": "num",
    "nd": "num",
    "act": "num",
    "rl": "num",
@@ -1966,6 +1973,7 @@
    "awy": "num",
    "hld": "num",
    "hd": "num",
+   "prs": "num",
    "kill": "num",
    "ra": "num",
    "pr": "num",
@@ -2015,6 +2023,11 @@
    "st": "num",
    "dead": "num",
    "d": "num"
+  },
+  "sustain_tp": {
+   "pid": "num",
+   "why": "str",
+   "hp": "num"
   },
   "burst_add": {
    "pid": "num",
@@ -2347,6 +2360,7 @@
    "rel": "text",
    "step": "text",
    "fail": "text",
+   "task": "text",
    "sight": "text",
    "vg": "text",
    "vu": "text",
@@ -2731,6 +2745,9 @@
   },
   "ev_sustain_buy": {
    "item": "text",
+   "why": "text"
+  },
+  "ev_sustain_tp": {
    "why": "text"
   },
   "ev_burst_add": {

@@ -100,6 +100,77 @@ const SAFE_CORE: Sides = { r: [1] };
 const ALL: Sides = { r: [1, 2, 3, 4, 5], d: [1, 2, 3, 4, 5] };
 
 /**
+ * The sustain rig's tasks (D6, `Ours.Sustain`; master docs/proposals/2026-11-19-sustain-design.md, check 3): each forces one
+ * answer's facts on one hero. The recipe sets every hero's HP to 20% at +63 s of each rep (`rig_hp_all`), a hero holding a
+ * circlet to 5% (`rig_hp_holding`), one holding branches to 10% mana (`rig_mp_holding`), and every tango to one charge
+ * (`rig_charges`), the last three for Radiant heroes only (team 2: the bench buys too): the marker items name the task to the server setters, which cannot read the bot's state. At 25% with no
+ * enemy the kill line is the 30% floor (20% leaves a margin for the regen before release: fix1, a home hero at 25% stood at 30% when
+ * released and bought instead of going home), so:
+ * - `tango` / `salve` / `bottle`: what is in hand clears the line; rule 3 tops up (a tango at a tree, a salve stepped out
+ *   or used where it stands, the bottle).
+ * - `home`: nothing in hand, mana low: rule 2 sends it home at once (`low_both`), retreat walks it, it heals to 80%.
+ * - `ship`: nothing in hand, mana full, gold and a free courier: rule 2 buys the cover and waits at the safe spot; our
+ *   courier delivers it (design step 5, the call games had not proven before the smokes).
+ * - `tango_ship`: one tango at 5%: the tango alone falls short, so it is eaten now and a salve shipped with it (`also`).
+ * - `bottle_dry` (design step 6, not in the rotation yet): a bottle with no charges (`rig_charges item_bottle 0`); its
+ *   answer (home for a refill, or hold for a rune) is step 6's to design; add it to SUSTAIN_ROTATION then.
+ */
+const SUSTAIN_HEALS = ["item_tango", "item_flask", "item_bottle", "item_clarity", "item_faerie_fire", "item_enchanted_mango"];
+const SUSTAIN_MARKS = ["item_branches", "item_circlet"];
+const SUSTAIN_ITEMS = [...SUSTAIN_HEALS, ...SUSTAIN_MARKS];
+/** No enemy hero this near (none acts: every Dire hero is benched), so the safe-here read's kill is 0. */
+const SUSTAIN_CLEAR = 1600;
+/** The tree a tango walks to: within rule 3's idle walk (8 s there and back) with margin. `judgement`. */
+const SUSTAIN_TREE = 600;
+const SUSTAIN_TASKS: Record<string, { buy: string[]; ready: RigReady }> = {
+    tango: {
+        buy: ["item_tango"],
+        ready: { hpAtMost: 0.25, holds: ["item_tango"], charges: { item_tango: [1, 1] }, clear: SUSTAIN_CLEAR, tree: SUSTAIN_TREE },
+    },
+    salve: { buy: ["item_flask"], ready: { hpAtMost: 0.25, holds: ["item_flask"], clear: SUSTAIN_CLEAR } },
+    bottle: { buy: ["item_bottle"], ready: { hpAtMost: 0.25, holds: ["item_bottle"], charges: { item_bottle: [1, 3] }, clear: SUSTAIN_CLEAR } },
+    home: { buy: ["item_branches"], ready: { hpAtMost: 0.25, mpAtMost: 0.2, holds: ["item_branches"], clear: SUSTAIN_CLEAR } },
+    ship: { buy: [], ready: { hpAtMost: 0.25, mpAtLeast: 0.5, goldAtLeast: 200, courier: true, clear: SUSTAIN_CLEAR } },
+    tango_ship: {
+        buy: ["item_tango", "item_circlet"],
+        ready: {
+            hpAtMost: 0.1,
+            mpAtLeast: 0.5,
+            holds: ["item_tango", "item_circlet"],
+            charges: { item_tango: [1, 1] },
+            goldAtLeast: 200,
+            courier: true,
+            clear: SUSTAIN_CLEAR,
+            tree: SUSTAIN_TREE,
+        },
+    },
+    bottle_dry: { buy: ["item_bottle"], ready: { hpAtMost: 0.25, holds: ["item_bottle"], charges: { item_bottle: [0, 0] }, clear: SUSTAIN_CLEAR } },
+};
+/** The tasks the rig rotates through: rep k gives hero r(i+1) task (i + k) mod length (six kinds; a game's five reps meet five of them per hero). */
+const SUSTAIN_ROTATION = ["tango", "salve", "bottle", "home", "ship", "tango_ship"];
+
+/** One rep kind per rotation step: each hero sells what the last task left, heals, buys its task's items and stands at its own spot. */
+function sustainReps(): RigRep[] {
+    const reps: RigRep[] = [];
+    for (let k = 0; k < SUSTAIN_ROTATION.length; k++) {
+        const setup: Record<string, string[]> = {};
+        const readyBy: Record<string, RigReady> = {};
+        const tasks: Record<string, string> = {};
+        for (let i = 0; i < 5; i++) {
+            const key = `r${i + 1}`;
+            const task = SUSTAIN_ROTATION[(i + k) % SUSTAIN_ROTATION.length];
+            const t = SUSTAIN_TASKS[task];
+            const own = t.ready.holds ?? [];
+            setup[key] = ["heal", ...SUSTAIN_ITEMS.map((it) => `sell ${it}`), ...t.buy.map((it) => `buy ${it}`), `stand s${i + 1}`];
+            readyBy[key] = { ...t.ready, lacks: SUSTAIN_ITEMS.filter((it) => own.indexOf(it) < 0) };
+            tasks[key] = task;
+        }
+        reps.push({ name: `rot${k + 1}`, setup, ready: {}, readyBy, tasks });
+    }
+    return reps;
+}
+
+/**
  * The drill table. Names match dotactl's recipes.json `drills`. A slice whose drill has no entry adds it here (and a
  * recipe when it needs reset steps or a later `--until`).
  */
@@ -696,6 +767,37 @@ export const TABLE: Record<string, Entry> = {
                     ready: { hpAtMost: 0.6, holds: ["item_flask"], clear: 1600 },
                 },
             ],
+        },
+    },
+    // Sustain's execution rig (D6, design check 3; SUSTAIN_TASKS above): the five Radiant heroes, each at its own spot in our
+    // jungle and base 4,000 to 6,000 from the fountain, off the lanes and 1,200 or more apart (rule 6 gives within 800); every
+    // Dire hero benched. Each 108 s rep rotates the six tasks across the five heroes (six rep kinds), so one game has five
+    // reps from 1:00 inside the laning stage and about four of each task. Released to laning (sustain's walks run in its
+    // `sustain` row), retreat (the walk home) and idle; `release.sustain` frees our sustain's items, purchases and courier
+    // (switch off: OHA's item use), every other kind stays the rig's. Read with tools/hlog/sustain_rig.js.
+    sustain: {
+        note: "rig: the five Radiant heroes, each at its own spot off the lanes, every Dire hero benched; each rep a rotation of six sustain tasks (tango, salve, bottle, home, ship, tango and ship) forced by items bought at the fountain and the recipe's HP, mana and charge setters; then laning, retreat and idle with our sustain's items, purchases and courier; 108 s reps from 1:00",
+        cast: { r: [1, 2, 3, 4, 5] },
+        others: "bench",
+        rep: { every: 108, from: 60 },
+        rig: {
+            half: "execution",
+            switch: "Sustain",
+            window: 600,
+            spots: {
+                s1: ["r:bot3", 1350, 1300],
+                s2: ["r:bot3", 2950, 1100],
+                s3: ["r:top3", 1300, 1050],
+                s4: ["r:top3", 2300, 1850],
+                s5: ["r:mid3", 2850, 650],
+            },
+            timeout: 80,
+            release: { modes: ["laning", "retreat", "idle"], sustain: true },
+            // Sustain's walks (a tree, a step out, the wait for a delivery) and its item orders run only in the laning mode's `sustain`
+            // row; the idle hold's standing order cancels them (fix1: every use answer held, none carried; the released heroes in
+            // farm at 0.55 all rep). Under any laning bid, so the idle hold stands a hero only when laning does not want it. `judgement`.
+            idle: 0.05,
+            reps: sustainReps(),
         },
     },
     // The lane ladder (master docs/proposals/2026-11-19-lane-ladder.md, step C): one hero per lane, per side, playing its
@@ -1525,6 +1627,18 @@ export interface RigReady {
      * cast cannot read when they are meant to be out of sight (`unseen`). Fails `early`.
      */
     after?: number;
+    /** The cast's mana share at or under this, latched as `hpAtMost` (slice sustain-rig). Fails `mp`. */
+    mpAtMost?: number;
+    /** The cast's mana share at or over this. Fails `mplow`. */
+    mpAtLeast?: number;
+    /** The cast's gold at or over this. Fails `gold`. */
+    goldAtLeast?: number;
+    /** The cast's own courier alive and free (idle or at base, the state sustain's courier read takes). Fails `courier`. */
+    courier?: boolean;
+    /** A tree within this of the cast (GetNearbyTrees). Fails `tree`. */
+    tree?: number;
+    /** Per item: the charges of the cast's first one in slots 0-8, [min, max] (a bottle's, a tango's). Fails `charges`. */
+    charges?: Record<string, [number, number]>;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -1555,6 +1669,10 @@ export interface RigRep {
      */
     setup: Record<string, string[]>;
     ready: RigReady;
+    /** Per cast hero (`r1`): its own ready checks in place of `ready` (several casts, each on its own task: the sustain rig). */
+    readyBy?: Record<string, RigReady>;
+    /** Per cast hero: the task its setup forces, logged as `task=` on its ready line. */
+    tasks?: Record<string, string>;
     /** The creep-aggro fact for the rep (slice hit-back): whether an enemy hero stands inside our lane creeps' aggro (`RigCreepAggro`). */
     aggro?: boolean;
 }
@@ -1577,7 +1695,12 @@ export interface Rig {
      */
     /** Kinds OHA keeps for every hero of the rig, in every phase (the rig's situation depends on them). */
     keeps?: HeldKind[];
-    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: HeldKind[] };
+    /**
+     * `sustain`: the regen owner runs for the released cast: with `Ours.Sustain` on, our sustain's heal and mana items, its
+     * purchases and its courier deliveries (`RigFreesSustain`; OHA's item use, purchases and courier stay held); off, OHA's item
+     * use (the before line: its rules on the same facts).
+     */
+    release: { modes: string[]; items?: boolean; abilities?: boolean; also?: HeldKind[]; sustain?: boolean };
     /**
      * The `idle` hold's desire for this rig (default RIG_IDLE_DESIRE). tower-prehit 0.3: laning bids 0.446 between due last
      * hits at level 7 or under before 9:00 and 0.369 at level 8 to 11 before 12:00, so the default 0.5 stood the cast still
@@ -1622,6 +1745,8 @@ interface RigState {
     idleAt: Record<number, [Vector, number]>;
     /** Per cast pid: its HP share has been at or under the ready bar this rep. */
     hpMet: Record<number, boolean>;
+    /** Per cast pid: its mana share has been at or under the ready bar this rep (`mpAtMost`). */
+    mpMet: Record<number, boolean>;
     /** Per attacker pid: the hero its attack step found, kept for the rep (hit-back fix2: the cast walked off its spot to hit back). */
     atk: Record<number, Unit>;
     /** Per attacker pid: an `attack ... from <d>` step reached its distance this rep. */
@@ -1667,7 +1792,7 @@ function rigState(): RigState | undefined {
     const n = RepAt(DotaTime());
     if (n === 0) return undefined;
     if (rig === undefined || rig.rep !== n) {
-        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, atk: {}, inPlace: {}, burst: {}, readyAt: {}, tracedAt: {}, swing: {}, answer: {}, watchAt: {} };
+        rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, mpMet: {}, atk: {}, inPlace: {}, burst: {}, readyAt: {}, tracedAt: {}, swing: {}, answer: {}, watchAt: {} };
     }
     return rig;
 }
@@ -1729,9 +1854,21 @@ export function Owns(bot: Unit, what: OwnedKind): boolean {
     if (role !== "cast") return false;
     if (rigCastHeld(bot)) return true;
     const host = overrides()?.["DrillHost"] === true;
+    // The sustain release's off arm: OHA's item use is the regen owner (the before line on the same facts).
+    if (what === "items" && r.release.sustain === true && !Ours.On("Sustain")) return false;
     if (what === "items") return !host && r.release.items !== true;
     if (what === "abilities") return !host && r.release.abilities !== true;
     return r.release.also === undefined || r.release.also.indexOf(what) < 0;
+}
+
+/**
+ * A released rig cast whose release names `sustain`, with the switch on: our sustain may use its heal and mana items, buy and
+ * send its courier, which the rig otherwise owns (`Owns`). False for anyone else, in setup, and with the switch off.
+ */
+export function RigFreesSustain(bot: Unit): boolean {
+    const r = rigOf(Active());
+    if (r === undefined || r.release.sustain !== true || !Ours.On("Sustain") || RoleOf(bot) !== "cast") return false;
+    return !rigCastHeld(bot);
 }
 
 /** Chooser.Decide: a rig cast after release gets desire 0 for every mode its release does not list. */
@@ -1943,6 +2080,44 @@ function hpShare(u: Unit): number {
 function holdsItem(bot: Unit, name: string): boolean {
     const slot = bot.FindItemSlot(name);
     return slot >= 0 && slot <= 8;
+}
+
+declare function GetCourier(n: number): Unit | undefined;
+declare function GetCourierState(c: Unit): number;
+declare const COURIER_STATE_IDLE: number;
+declare const COURIER_STATE_AT_BASE: number;
+interface TreeBot {
+    GetNearbyTrees(radius: number): number[];
+}
+
+function mpShare(u: Unit): number {
+    return u.GetMana() / math.max(1, u.GetMaxMana());
+}
+
+/** The charges of the hero's first `name` in slots 0-8; undefined when it holds none. */
+function chargesOf(bot: Unit, name: string): number | undefined {
+    for (let slot = 0; slot <= 8; slot++) {
+        const it = bot.GetItemInSlot(slot);
+        if (it !== null && it !== undefined && it.GetName() === name) return it.GetCurrentCharges() ?? 0;
+    }
+    return undefined;
+}
+
+/** The hero's own courier alive and free: idle or at base (sustain_gather's courier read). */
+function courierFree(bot: Unit): boolean {
+    for (let n = 0; n <= 4; n++) {
+        const c = GetCourier(n);
+        if (c === undefined || c === null || c.GetPlayerID() !== bot.GetPlayerID()) continue;
+        const s = GetCourierState(c);
+        return s === COURIER_STATE_IDLE || s === COURIER_STATE_AT_BASE;
+    }
+    return false;
+}
+
+/** The ready checks for this cast hero: its own (`readyBy`), else the rep's. */
+function readyOf(bot: Unit, rr: RigRep): RigReady {
+    const k = keyOf(bot);
+    return (k !== undefined ? rr.readyBy?.[k] : undefined) ?? rr.ready;
 }
 
 /** Stands at `p` as a statue does: a move order always on, swaying, so it never acquires a target. */
@@ -2342,7 +2517,7 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         // Each cast waits for itself and the rig's actors, never for another cast (tower-prehit: one cast per lane).
         if (u !== undefined && st.placed[u.GetPlayerID()] !== true && (u.GetPlayerID() === bot.GetPlayerID() || RoleOf(u) !== "cast")) return "setup";
     }
-    const r = rr.ready;
+    const r = readyOf(bot, rr);
     if (r.after !== undefined && DotaTime() - st.start < r.after) return "early";
     for (const k of r.sees ?? []) {
         const s = rigSight(bot, st, k);
@@ -2360,8 +2535,20 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         else if (st.hpMet[bot.GetPlayerID()] !== true) return "hp";
     }
     if (r.hpAtLeast !== undefined && hpShare(bot) < r.hpAtLeast) return "hplow";
+    if (r.mpAtMost !== undefined) {
+        if (mpShare(bot) <= r.mpAtMost) st.mpMet[bot.GetPlayerID()] = true;
+        else if (st.mpMet[bot.GetPlayerID()] !== true) return "mp";
+    }
+    if (r.mpAtLeast !== undefined && mpShare(bot) < r.mpAtLeast) return "mplow";
     for (const it of r.holds ?? []) if (!holdsItem(bot, it)) return "holds";
     for (const it of r.lacks ?? []) if (holdsItem(bot, it)) return "lacks";
+    for (const [it, [lo, hi]] of Object.entries(r.charges ?? {})) {
+        const c = chargesOf(bot, it);
+        if (c === undefined || c < lo || c > hi) return "charges";
+    }
+    if (r.goldAtLeast !== undefined && bot.GetGold() < r.goldAtLeast) return "gold";
+    if (r.courier === true && !courierFree(bot)) return "courier";
+    if (r.tree !== undefined && ((bot as unknown as TreeBot).GetNearbyTrees(r.tree) ?? []).length === 0) return "tree";
     if (r.clear !== undefined || r.near !== undefined) {
         let nearest = math.huge;
         for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) {
@@ -2586,10 +2773,12 @@ function rigTick(bot: Unit): void {
         ["pid", pid],
         ["rep", st.rep],
         ["var", rr.name],
+        ["task", rr.tasks?.[keyOf(bot) ?? ""]],
         ["ok", fail === undefined ? 1 : 0],
         ["fail", fail],
         ["secs", math.floor(secs * 10 + 0.5) / 10],
         ["hp", math.floor(hpShare(bot) * 100 + 0.5) / 100],
+        ["mp", math.floor(mpShare(bot) * 100 + 0.5) / 100],
         ["d", nearestPast(bot)],
         ["bu", burstField(bot, rr)],
         ["rend", st.start + Active()!.rep.every],

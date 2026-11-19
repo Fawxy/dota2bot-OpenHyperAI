@@ -4,7 +4,7 @@
  * the order for `use`, `step_out_use`, `give` and `wait`, makes a `buy`'s purchase and has the hero's courier deliver it, and
  * tells retreat whether rule 2 sends the hero home (`RetreatState.SetHome`: retreat's heal leave walks it; while that walk runs,
  * Decide is asked with a running `home`, so nothing is spent on the way). OHA's item loop leaves every heal and mana item on
- * such a hero alone (`HoldsItem`); its lane-regen purchases (`HoldsBuy`), teleport home (`Holds`) and, while a delivery of ours
+ * such a hero alone (`HoldsItem`); its lane-regen purchases (`HoldsBuy`), teleport home (`HoldsTeleport`; not its escape) and, while a delivery of ours
  * is on its way, its courier code (`OwnsCourier`) stand aside.
  *
  * Where the orders run: an order with no walk (a self cast, a tango with the tree in range) from ItemUsageThink, in any mode,
@@ -60,6 +60,8 @@ export const SETTINGS = {
     LateSlack: 20,
     /** The courier's delivery order is given again at most this often while it is not delivering (s). judgement. */
     CourierEvery: 2,
+    /** A teleport refusal this long after the last one starts a new run and logs again (s). OHA asks every frame. judgement. */
+    RefuseGap: 2,
 };
 
 /** Cast on our own hero (OHA's cast type `unit` for these); a tree item on its tree; any other item has no target. */
@@ -110,12 +112,39 @@ const decidedAt: Record<number, number | undefined> = {};
 const yieldedAt: Record<number, number | undefined> = {};
 /** When the camp job's supply step last asked (it yields only with time to spare). */
 const askedAt: Record<number, number | undefined> = {};
+const refusedAt: Record<number, number | undefined> = {};
 
 /** A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold). */
 export function Holds(bot: Unit): boolean {
     if (!Ours.On("Sustain") || bot.IsIllusion() || !Phase.LaningHeld(bot) || Drill.Held(bot)) return false;
-    if (Drill.RigHoldsCasts(bot, true) === true) return false;
+    if (Drill.RigHoldsCasts(bot, true) === true && !Drill.RigFreesSustain(bot)) return false;
     return !(Overrides.LaneOnly(bot) && !Drill.CastItems(bot));
+}
+
+/**
+ * OHA's retreat teleport home (item_tpscroll, ability_item_usage_generic.lua, cases 1 and 3: `why`) stands aside for a hero
+ * sustain carries, whose trip home is rule 2's walk. Asked last in the case's condition, so a refusal is one OHA would have cast;
+ * logged once per run of refusals. OHA's escape teleport (case 2) does not ask: it is a way out of a fight, not a trip home.
+ */
+export function HoldsTeleport(bot: Unit, why: string): boolean {
+    if (!Holds(bot)) return false;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const last = refusedAt[pid];
+    refusedAt[pid] = now;
+    if (last === undefined || now - last > SETTINGS.RefuseGap) {
+        Telemetry.Event("sustain_tp", [
+            ["pid", pid],
+            ["why", why],
+            ["hp", math.floor((100 * bot.GetHealth()) / bot.GetMaxHealth())],
+        ]);
+    }
+    return true;
+}
+
+/** A rig owns this kind for the hero (drill.ts Owns) and its release does not free our sustain (the sustain rig's does). */
+function rigOwns(bot: Unit, what: "purchase" | "courier"): boolean {
+    return Drill.Owns(bot, what) && !Drill.RigFreesSustain(bot);
 }
 
 /** OHA's lane-regen purchase rules (item_purchase_generic.lua BuyRegen) skip a hero sustain carries: rules 2 and 5 buy. */
@@ -247,8 +276,8 @@ function deliver(bot: Unit, d: Delivery, now: number): void {
  */
 function purchase(bot: Unit, i: Sustain.Inputs, name: string, why: string, now: number): boolean {
     const pid = bot.GetPlayerID();
-    // A rig hands its heroes their items and holds their couriers (drill.ts Owns): no purchase of ours there.
-    if (deliveries[pid] !== undefined || SustainGather.OnTheWay(bot) !== undefined || Drill.Owns(bot, "purchase") || Drill.Owns(bot, "courier")) return false;
+    // A rig hands its heroes their items and holds their couriers (drill.ts Owns): no purchase of ours there, unless its release frees sustain.
+    if (deliveries[pid] !== undefined || SustainGather.OnTheWay(bot) !== undefined || rigOwns(bot, "purchase") || rigOwns(bot, "courier")) return false;
     const full = `item_${name}`;
     const res = (bot as unknown as ShopBot).ActionImmediate_PurchaseItem(full);
     if (res !== PURCHASE_ITEM_SUCCESS) {
@@ -314,7 +343,7 @@ function startWait(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: numbe
  */
 function adopt(bot: Unit, i: Sustain.Inputs, why: string, now: number): void {
     const pid = bot.GetPlayerID();
-    if (deliveries[pid] !== undefined || i.delivery === undefined || Drill.Owns(bot, "courier")) return;
+    if (deliveries[pid] !== undefined || i.delivery === undefined || rigOwns(bot, "courier")) return;
     const d: Delivery = { item: "stash", why, at: now, eta: i.delivery.eta, hp0: i.hp, mp0: i.mp, orderAt: -math.huge, orders: 0 };
     deliveries[pid] = d;
     deliver(bot, d, now);
@@ -528,6 +557,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(yieldedAt)) delete yieldedAt[k as unknown as number];
     for (const k of Object.keys(askedAt)) delete askedAt[k as unknown as number];
     for (const k of Object.keys(deliveries)) delete deliveries[k as unknown as number];
+    for (const k of Object.keys(refusedAt)) delete refusedAt[k as unknown as number];
 }
 
 export const _test = { acts, deliveries };

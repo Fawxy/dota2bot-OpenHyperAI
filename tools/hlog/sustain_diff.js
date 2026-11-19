@@ -48,7 +48,7 @@ function inputsOf(c) {
         hitRecently: num(c.hr) === 1,
         safe: old
             ? { kill: (num(c.lb) || 0) / 1.5, hitting: num(c.hr) === 1 && (num(c.rc) || 0) > 0, reach: num(c.rc) || 0 }
-            : { kill: num(c.kill) || 0, hitting: num(c.sh) === 1, reach: num(c.rc) || 0 },
+            : { kill: num(c.kill) || 0, hitting: num(c.sh) === 1, reach: num(c.rc) || 0, ...(c.spr === undefined ? {} : { pressed: num(c.spr) === 1 }) },
         regenLeft: num(c.rl) || 0, manaLeft: num(c.ml) || 0,
         safeSpot: ss ? Object.assign({ x: ss[0], y: ss[1], walk: ss[2] }, ss[3] === undefined ? {} : { ok: ss[3] === 1 }) : undefined,
         delivery: dl ? { hp: dl[0], mp: dl[1], eta: dl[2] } : undefined,

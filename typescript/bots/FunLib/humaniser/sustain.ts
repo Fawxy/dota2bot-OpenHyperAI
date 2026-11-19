@@ -12,7 +12,7 @@
  * comes sooner than the walk home (tango and ship: a tango eaten now with a purchase sent `also`).
  */
 import { SETTINGS as RetreatSettings } from "bots/FunLib/humaniser/retreat";
-import { BARS as SafeBars } from "bots/FunLib/humaniser/safe";
+import { Line as SafeLine } from "bots/FunLib/humaniser/safe";
 
 export type Kind = "none" | "use" | "step_out_use" | "give" | "buy" | "home" | "wait";
 
@@ -98,7 +98,7 @@ export interface Inputs {
      * The safe-here read here, 2 s (design docs/proposals/2026-11-19-safe-here-design.md): what the heroes in reach can deal
      * (absolute; lane opponents seen in the last 10 s included), whether one of them is hitting us, and how many reach us.
      */
-    safe: { kill: number; hitting: boolean; reach: number };
+    safe: { kill: number; hitting: boolean; reach: number; /** `Safe.Pressed` of the same read; absent on an older cut, where `hitting` stands in. */ pressed?: boolean };
     /** HP and mana the regen buffs on us still restore. */
     regenLeft: number;
     manaLeft: number;
@@ -177,7 +177,7 @@ function usable(i: Inputs, it: Item): boolean {
  * a full hero would otherwise send one home from the fountain; that place is retreat's answer).
  */
 export function KillLine(i: Inputs): number {
-    return math.min(i.hpMax, math.max(RetreatSettings.HealFloor * i.hpMax, SafeBars.stay * i.safe.kill));
+    return math.min(i.hpMax, math.max(RetreatSettings.HealFloor * i.hpMax, SafeLine(i.safe.pressed ?? i.safe.hitting) * i.safe.kill));
 }
 
 /** HP plus what the regen running and the items in hand can restore, capped at max HP. */

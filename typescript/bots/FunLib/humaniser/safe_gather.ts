@@ -14,6 +14,12 @@ import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
 export const SETTINGS = {
+    /**
+     * `Safe.Inputs.pressed`: an enemy hero damaged us within this many seconds. The 1 s `hitting` flag lapses between a laner's swings, so a bar
+     * switched on it left on a hit, read safe a second later and walked back in (smoke 20/11: restarts within 3 s of a safe end 16 a team against 14.9).
+     * 3 is about two swings and the walk out of reach. Replay of h2h742: 2 to 6 s all keep the 160 deaths called; 3 drops 50 kill leaves a game. judgement.
+     */
+    PressWindow: 3,
     /** A lane opponent that reached us this recently still counts when unseen (design section 2). */
     LanerSeen: 10,
     /** A read is "of the hero's own position" when its `from` and `place` are both within this of the hero; only such reads feed the lane memory. */
@@ -177,27 +183,45 @@ function lanerRows(bot: Unit, r: Threat.Read): Safe.Reacher[] {
 
 // ----------------------------------------------------------------------------------------------------------------- tower
 
-const towerSeen: Record<number, { t: number; on: boolean } | undefined> = {};
+/** The towers on a hero this frame: where each stands and how far it reaches this hero (its reach plus the hero's hull). */
+const towerSeen: Record<number, { t: number; on: { at: Vector; reach: number }[] } | undefined> = {};
 
 /**
- * A live enemy tower whose reach holds `bot` is attacking it or hit it in the last half second: retreat's `TowerOnUs` test
- * written again here, since retreat imports this module (a require cycle). Read once a frame per hero.
+ * A live enemy tower whose reach holds `bot` is attacking it or hit it in the last half second (retreat's `TowerOnUs` test
+ * written again here, since retreat imports this module: a require cycle), and that tower can reach `place`. The hero's own
+ * place is always inside. A place the tower cannot reach is not deadly for it: h2h742 had 13.6 such refusals a game, the lane
+ * spot's and its preference's, while a tower hit the hero where it stood. The recent-damage flag does not name its tower, so
+ * every tower holding the hero counts then. Read once a frame per hero.
  */
-function towerOnMe(bot: Unit, now: number): boolean {
+function towerOnMe(bot: Unit, now: number, place: Vector): boolean {
     const pid = bot.GetPlayerID();
-    const seen = towerSeen[pid];
-    if (seen !== undefined && seen.t === now) return seen.on;
-    let on = false;
-    const br = bot.GetBoundingRadius();
-    for (const tw of bot.GetNearbyTowers(1200, true) ?? []) {
-        if (!tw.IsAlive()) continue;
-        if (GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br) continue;
-        if (tw.GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(0.5)) {
-            on = true;
-            break;
+    let seen = towerSeen[pid];
+    if (seen === undefined || seen.t !== now) {
+        seen = { t: now, on: [] };
+        const br = bot.GetBoundingRadius();
+        const here = bot.GetLocation();
+        for (const tw of bot.GetNearbyTowers(1200, true) ?? []) {
+            if (!tw.IsAlive()) continue;
+            const at = tw.GetLocation();
+            const reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br;
+            if (dist(at, here) > reach) continue;
+            if (tw.GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(0.5)) seen.on.push({ at, reach });
         }
+        towerSeen[pid] = seen;
     }
-    towerSeen[pid] = { t: now, on };
+    for (const tw of seen.on) if (dist(tw.at, place) <= tw.reach) return true;
+    return false;
+}
+
+const pressSeen: Record<number, { t: number; on: boolean } | undefined> = {};
+
+/** An enemy hero damaged `bot` within `PressWindow`. Read once a frame per hero: the lane spot asks about 50 places a frame. */
+function pressed(bot: Unit, now: number): boolean {
+    const pid = bot.GetPlayerID();
+    const seen = pressSeen[pid];
+    if (seen !== undefined && seen.t === now) return seen.on;
+    const on = bot.WasRecentlyDamagedByAnyHero(SETTINGS.PressWindow);
+    pressSeen[pid] = { t: now, on };
     return on;
 }
 
@@ -227,12 +251,13 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         reach,
         missing: r.missing,
         tower: r.tower,
-        towerOnMe: towerOnMe(bot, DotaTime()),
+        towerOnMe: towerOnMe(bot, DotaTime(), r.place),
         landing: Landing(bot, DotaTime()),
         exit: r.rows.length > 0 ? exit : undefined,
         away: opts.away,
         held: opts.held,
         hold: typeof opts.hold === "function" ? opts.hold() : opts.hold,
+        pressed: pressed(bot, DotaTime()),
     };
 }
 
@@ -257,6 +282,7 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
         ["awy", b01(i.away)],
         ["hld", b01(i.held)],
         ["hd", b01(i.hold)],
+        ["prs", b01(i.pressed === true)],
         ["lv", a.level],
         ["kill", n0(a.kill)],
         ["ra", a.kill > 0 ? r2(a.ratio) : undefined],
@@ -371,6 +397,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(samplers)) delete samplers[k as unknown as number];
     for (const k of Object.keys(laners)) delete laners[k as unknown as number];
     for (const k of Object.keys(towerSeen)) delete towerSeen[k as unknown as number];
+    for (const k of Object.keys(pressSeen)) delete pressSeen[k as unknown as number];
     for (const k of Object.keys(cutState)) delete cutState[k];
 }
 

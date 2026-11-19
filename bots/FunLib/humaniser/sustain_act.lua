@@ -177,7 +177,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local endBuy, deliver, adopt, deliveries, r1, n0
+local rigOwns, endBuy, deliver, adopt, deliveries, r1, n0
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local UnitType = ____dota.UnitType
@@ -191,6 +191,9 @@ local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+function rigOwns(bot, what)
+    return Drill.Owns(bot, what) and not Drill.RigFreesSustain(bot)
+end
 function endBuy(bot, why)
     local pid = bot:GetPlayerID()
     local d = deliveries[pid]
@@ -264,7 +267,7 @@ function deliver(bot, d, now)
 end
 function adopt(bot, i, why, now)
     local pid = bot:GetPlayerID()
-    if deliveries[pid] ~= nil or i.delivery == nil or Drill.Owns(bot, "courier") then
+    if deliveries[pid] ~= nil or i.delivery == nil or rigOwns(bot, "courier") then
         return
     end
     local d = {
@@ -287,7 +290,8 @@ ____exports.SETTINGS = {
     Arrive = 100,
     YieldFresh = 0.3,
     LateSlack = 20,
-    CourierEvery = 2
+    CourierEvery = 2,
+    RefuseGap = 2
 }
 --- Cast on our own hero (OHA's cast type `unit` for these); a tree item on its tree; any other item has no target.
 local SELF = {item_flask = true, item_clarity = true}
@@ -297,15 +301,42 @@ local decidedAt = {}
 local yieldedAt = {}
 --- When the camp job's supply step last asked (it yields only with time to spare).
 local askedAt = {}
+local refusedAt = {}
 --- A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold).
 function ____exports.Holds(bot)
     if not Ours.On("Sustain") or bot:IsIllusion() or not Phase.LaningHeld(bot) or Drill.Held(bot) then
         return false
     end
-    if Drill.RigHoldsCasts(bot, true) == true then
+    if Drill.RigHoldsCasts(bot, true) == true and not Drill.RigFreesSustain(bot) then
         return false
     end
     return not (Overrides.LaneOnly(bot) and not Drill.CastItems(bot))
+end
+--- OHA's retreat teleport home (item_tpscroll, ability_item_usage_generic.lua, cases 1 and 3: `why`) stands aside for a hero
+-- sustain carries, whose trip home is rule 2's walk. Asked last in the case's condition, so a refusal is one OHA would have cast;
+-- logged once per run of refusals. OHA's escape teleport (case 2) does not ask: it is a way out of a fight, not a trip home.
+function ____exports.HoldsTeleport(bot, why)
+    if not ____exports.Holds(bot) then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local last = refusedAt[pid]
+    refusedAt[pid] = now
+    if last == nil or now - last > ____exports.SETTINGS.RefuseGap then
+        Telemetry.Event(
+            "sustain_tp",
+            {
+                {"pid", pid},
+                {"why", why},
+                {
+                    "hp",
+                    math.floor(100 * bot:GetHealth() / bot:GetMaxHealth())
+                }
+            }
+        )
+    end
+    return true
 end
 --- OHA's lane-regen purchase rules (item_purchase_generic.lua BuyRegen) skip a hero sustain carries: rules 2 and 5 buy.
 function ____exports.HoldsBuy(bot)
@@ -326,18 +357,18 @@ local function chargesOf(bot, name)
         local s = 0
         while s <= 8 do
             do
-                local __continue9
+                local __continue13
                 repeat
                     local it = bot:GetItemInSlot(s)
                     if it == nil or it == nil or it:GetName() ~= name then
-                        __continue9 = true
+                        __continue13 = true
                         break
                     end
                     local c = it:GetCurrentCharges() or 0
                     n = n + (c > 0 and c or 0.5)
-                    __continue9 = true
+                    __continue13 = true
                 until true
-                if not __continue9 then
+                if not __continue13 then
                     break
                 end
             end
@@ -427,7 +458,7 @@ end
 -- game's read, whoever bought it), a rig owns the hero's purchases, or the game refused it.
 local function purchase(bot, i, name, why, now)
     local pid = bot:GetPlayerID()
-    if deliveries[pid] ~= nil or SustainGather.OnTheWay(bot) ~= nil or Drill.Owns(bot, "purchase") or Drill.Owns(bot, "courier") then
+    if deliveries[pid] ~= nil or SustainGather.OnTheWay(bot) ~= nil or rigOwns(bot, "purchase") or rigOwns(bot, "courier") then
         return false
     end
     local full = "item_" .. name
@@ -870,6 +901,9 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(deliveries)) do
         __TS__Delete(deliveries, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(refusedAt)) do
+        __TS__Delete(refusedAt, k)
     end
 end
 ____exports._test = {acts = acts, deliveries = deliveries}

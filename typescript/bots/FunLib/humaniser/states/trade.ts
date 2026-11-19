@@ -154,14 +154,16 @@ interface Cand {
     gap: number;
     /** Its speed away from us along the line between us (negative: towards). */
     away: number;
-    /** It damaged us in the last second. */
+    /** It damaged us in the last second: the start bar of a hit back. */
     hitting: boolean;
+    /** It damaged us within its own attack interval (`SwingWindow`): the stay bar of a running hit back on it, true between two of its swings. */
+    swung: boolean;
     /** It swings at a lane creep, or our range is `outrange` over its. */
     free: boolean;
     /** Our 3 s damage on it over its HP, and its on us over ours. */
     ko: number;
     kt: number;
-    /** It stands in our creeps' aggro. */
+    /** It is `swung` and stands in our creeps' aggro. */
     paid: boolean;
     /** Our attack point on it is inside an enemy tower's reach. */
     tw: boolean;
@@ -257,6 +259,11 @@ function pairOn(i: Inputs, c: Cand): boolean {
     return i.pair !== undefined && i.pair.tgt === c.pid && i.pair.ko > i.pair.kt;
 }
 
+/** `c` is hitting us as a hit back reads it: a hit in the last second, or, for the running hit back's own target, one within its attack interval. */
+function hitsUs(c: Cand, run: Run | undefined): boolean {
+    return c.hitting || (c.swung && run !== undefined && run.level === "hitback" && run.target === c.pid);
+}
+
 function playOn(i: Inputs, c: Cand): boolean {
     return i.play !== undefined && i.play.tgt === c.pid && i.play.zero === undefined;
 }
@@ -312,7 +319,7 @@ function pickFor(i: Inputs, c: Cand, run: Run | undefined): Pick {
         if (killable && !fail(gate(i, c, "kill", "pair", run))) return { level: "kill", source: "pair", reason: "pair", rank: 4 };
         if (!fail(gate(i, c, "join", "pair", run))) return { level: "join", source: "pair", reason: "pair", rank: 4 };
     } else if (killable && !fail(gate(i, c, "kill", undefined, run))) return { level: "kill", reason: "kill", rank: 3 };
-    if (c.hitting && !fail(gate(i, c, "hitback", undefined, run))) return { level: "hitback", reason: "hitback", rank: 2 };
+    if (hitsUs(c, run) && !fail(gate(i, c, "hitback", undefined, run))) return { level: "hitback", reason: "hitback", rank: 2 };
     if (!fail(gate(i, c, "hit", undefined, run))) return { level: "hit", reason: "hit", rank: 1 };
     return { level: "none", reason: first ?? "none", rank: 0 };
 }
@@ -427,6 +434,67 @@ export function Decide(i: Inputs): Answer {
     return { level: "none", reason: noneReason(rest, ended), ended };
 }
 
+/**
+ * Slice trade-count (design step4-exchanges 4.1): where each end reason can come from. `gate`: a gate of some level gives it, so it can
+ * already hold when the exchange opens; `think`: the executor's own read (`no_clear`: a creep within the aggro radius of the hero at
+ * the first act); `later`: a change in the game after the open, which no start gate asks. A reason not listed (`mode_*`) is `later`.
+ */
+export const ENDS: Record<string, "gate" | "think" | "later" | undefined> = {
+    tower: "gate",
+    kill: "gate",
+    unknown: "gate",
+    lost: "gate",
+    catch: "gate",
+    wave: "gate",
+    no_reach: "gate",
+    unfavoured: "gate",
+    deny: "gate",
+    creeps: "gate",
+    no_clear: "think",
+    target_dead: "later",
+    target_lost: "later",
+    not_taken: "later",
+    backstop: "later",
+    losing: "later",
+    cannot_catch: "later",
+    spot_clear: "later",
+    utower: "later",
+    threat: "later",
+    pair_end: "later",
+    play_end: "later",
+    higher: "later",
+    switch: "later",
+    lane_end: "later",
+    dead: "later",
+    play: "later",
+};
+
+/** The reasons a fresh read gives each level on `c` (no running exchange): what could end the exchange the moment after it opens. */
+export function OpenFails(i: Inputs, c: Cand): string[] {
+    const out: string[] = [];
+    const add = (why: string | undefined): void => {
+        if (why !== undefined && out.indexOf(why) < 0) out.push(why);
+    };
+    // The levels `pickFor` would try on this candidate with no exchange running, and no others (a kill only on a killable target, a hit back only on a hitter).
+    const killable = c.thp <= BARS.commitHp;
+    if (playOn(i, c)) add(gate(i, c, "join", "play", undefined));
+    if (pairOn(i, c)) {
+        if (killable) add(gate(i, c, "kill", "pair", undefined));
+        add(gate(i, c, "join", "pair", undefined));
+    } else if (killable) add(gate(i, c, "kill", undefined, undefined));
+    if (hitsUs(c, undefined)) add(gate(i, c, "hitback", undefined, undefined));
+    add(gate(i, c, "hit", undefined, undefined));
+    return out;
+}
+
+/** 1 when the end `why` already held at the open (`opens`: `OpenFails` there; `first`: the episode's first act), 0 when it came later, undefined when it can only come later. */
+export function TrueAtOpen(why: string, opens: string[], first: string | undefined): number | undefined {
+    const kind = ENDS[why];
+    if (kind === "gate") return opens.indexOf(why) >= 0 ? 1 : 0;
+    if (kind === "think") return first === "step" ? 1 : 0;
+    return undefined;
+}
+
 /** The reason of a frame with no answer: the end that stopped a running exchange, else the nearest candidate's first failed gate. */
 function noneReason(rest: { c: Cand; p: Pick }[], ended: string | undefined): string {
     if (ended !== undefined) return ended;
@@ -443,7 +511,7 @@ function noneReason(rest: { c: Cand; p: Pick }[], ended: string | undefined): st
 export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     const run = i.run;
     for (const c of i.cands) {
-        if (!c.hitting || c.lost === true || i.towerOnMe || c.tw) continue;
+        if (!hitsUs(c, run) || c.lost === true || i.towerOnMe || c.tw) continue;
         if (i.safe.hold.level === "deadly") continue;
         if (c.paid || c.free || c.ko > c.kt) return "hitback";
     }
@@ -460,6 +528,14 @@ const CAND_RADIUS = 1600;
 const CREEP_RADIUS = 500;
 /** A hero hit us "recently" within this (s): Threat.SETTINGS.EngagedRecent's value. */
 const HIT_RECENT = 1;
+/** Past the hitter's seconds per attack before `swung` lapses: a projectile's flight and the frame step vary the gap between two landings (`judgement`). */
+const SWING_SLACK = 0.25;
+
+/** The window `swung` is read over for a hitter: its seconds per attack plus the slack (`swung` includes `hitting`, so a fast hitter needs no floor). */
+function SwingWindow(spa: number | undefined): number {
+    if (spa === undefined || spa <= 0) return HIT_RECENT;
+    return spa + SWING_SLACK;
+}
 /** Seconds between the two places a target's velocity is read from, and the age past which a sample is no velocity (a target seen again after a gap). `judgement`. */
 const HEADING_SPAN = 0.5;
 const HEADING_STALE = 1.5;
@@ -719,6 +795,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         if (gap > 0 && d > 1) away = (vx * (at.x - here.x) + vy * (at.y - here.y)) / d;
         const free = Free(lastHitting(h), myRange, h.GetAttackRange());
         const hitting = bot.WasRecentlyDamagedByHero(h, HIT_RECENT);
+        const swung = hitting || bot.WasRecentlyDamagedByHero(h, SwingWindow((h as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.()));
         const stand = attackPoint(bot, h);
         let tw = false;
         for (const tl of towers) if (distXY(stand, tl) <= reach) tw = true;
@@ -733,10 +810,11 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             gap,
             away,
             hitting,
+            swung,
             free,
             ko: free ? 0 : shareOn(bot, h),
             kt: free ? 0 : shareOn(h, bot),
-            paid: hitting && CreepAggro.Paid(bot, h),
+            paid: swung && CreepAggro.Paid(bot, h),
             tw,
             lost: lostFor(bot, h),
         };
@@ -885,6 +963,7 @@ function candText(c: Cand, ms: number): string {
         or(k !== undefined ? math.floor(k.dmg + 0.5) : undefined),
         or(k !== undefined ? round6(k.safe) : undefined),
         c.lost === true ? 1 : 0,
+        c.swung ? 1 : 0,
     ].join(",");
 }
 
@@ -1054,6 +1133,8 @@ interface Episode {
     thp: number;
     n: number;
     wave: number;
+    /** `OpenFails` on the open's inputs (slice trade-count). */
+    opens: string[];
 }
 
 const episodes: Record<number, Episode | undefined> = {};
@@ -1271,6 +1352,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["pr", ep.primes],
         ["so", ep.stepOuts],
         ["fa", ep.first],
+        ["ato", TrueAtOpen(why, ep.opens, ep.first)],
         ["ag", ep.aggro],
         ["mode", bot.GetActiveMode()],
         ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
@@ -1316,6 +1398,7 @@ function open(bot: Unit, i: Inputs, a: Answer, now: number): number {
         thp: c.thp,
         n: i.n,
         wave: i.wave,
+        opens: OpenFails(i, c),
     };
     NoteRun(pid, level, tpid);
     return desireOf(level);

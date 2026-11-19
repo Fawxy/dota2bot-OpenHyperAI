@@ -235,7 +235,8 @@ do
 end
 
 -- The hero limit is Safe.At (design 2026-11-19-safe-here-design.md s3): a candidate is refused when the kill line of the heroes that
--- can reach its walk within 3 s (fresh) or 2 s (held) is over HP / 1.25 (held) or 1.25 x 1.15 (fresh), and the refusal's why is the answer's reason.
+-- can reach its walk within 3 s (fresh) or 2 s (held) is over HP / 1.25 (held) or 1.25 x 1.15 (fresh), with nobody hitting us over HP (held) or
+-- HP / 1.15 (fresh), and the refusal's why is the answer's reason. No hero below hits the bot unless the case says so.
 -- The bot has 100 of 100 HP, so a hero's `estDamage` is its kill line in percent of HP.
 local function atFor(bot, p, held)
 	-- Behind the bot, away from every hero, the spot reads the place alone.
@@ -251,8 +252,8 @@ do
 		end)
 		return s, bot, e, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
 	end
-	local s, bot, e, info = run(100)
-	check("hero: a kill line of 100% refuses the preferred point, why=kill", s ~= nil and info.why == "kill" and s.x < -100, info and tostring(info.why))
+	local s, bot, e, info = run(120)
+	check("hero: a kill line of 120% refuses the preferred point, why=kill", s ~= nil and info.why == "kill" and s.x < -100, info and tostring(info.why))
 	check("hero: the chosen spot is itself not deadly, and the point one step nearer is", s ~= nil and atFor(bot, s).level ~= "deadly"
 		and atFor(bot, Vector(s.x + 50, s.y)).level == "deadly", s and s and s.x)
 	local sc, _, _, ic = run(10)
@@ -260,7 +261,7 @@ do
 	check("hero: ev=lane_pos carries the answers at the chosen spot and the preferred point", info.sl ~= nil and info.pl == "deadly" and info.pq ~= nil and info.pq < 1.4375, info and tostring(info.pl))
 end
 
--- A place the hero holds is judged at 1.25, a fresh one at 1.25 x 1.15 = 1.44: with a kill line of 77 of 100 HP (ratio 1.3) the
+-- With nobody hitting, a place the hero holds is judged at 1.0, a fresh one at 1.15: with a kill line of 92 of 100 HP (ratio 1.09) the
 -- preferred point is kept by a bot standing on it and refused to one a step away.
 do
 	local function run(botX)
@@ -269,14 +270,14 @@ do
 			b.loc = Vector(botX, 0)
 			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) })
 			e.range = 550
-			e.estDamage = 77
+			e.estDamage = 92
 		end)
 		return s, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
 	end
 	local sHeld, iHeld = run(-100)
-	check("held: a bot on the preferred point keeps it at ratio 1.3", sHeld ~= nil and iHeld.why == "pref" and sHeld.x == -100, iHeld and tostring(iHeld.why))
+	check("held: a bot on the preferred point keeps it at ratio 1.09", sHeld ~= nil and iHeld.why == "pref" and sHeld.x == -100, iHeld and tostring(iHeld.why))
 	local sFresh, iFresh = run(-400)
-	check("fresh: the same point 300 away is refused at ratio 1.3 (bar 1.44)", sFresh ~= nil and iFresh.why == "kill" and sFresh.x < -100, iFresh and tostring(iFresh.why))
+	check("fresh: the same point 300 away is refused at ratio 1.09 (bar 1.15)", sFresh ~= nil and iFresh.why == "kill" and sFresh.x < -100, iFresh and tostring(iFresh.why))
 end
 
 -- Heroes are counted by what they can do, not by head: two in reach at full HP with 10 damage each (rtch9's `pressured` read, which the
@@ -332,7 +333,7 @@ do
 	tower.GetBoundingRadius = tower.GetBoundingRadius or function() return 144 end
 	local e
 	local s, bot = spotFor(SDK, nil, function()
-		e = MakeUnit({ pid = 7, team = 3, loc = Vector(-600, 0) }) e.range = 550 e.estDamage = 100
+		e = MakeUnit({ pid = 7, team = 3, loc = Vector(-600, 0) }) e.range = 550 e.estDamage = 120
 		TOWERS = { tower }
 	end)
 	local info = require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
@@ -350,7 +351,7 @@ do
 		local s, bot = spotFor(SDK, nil, function()
 			e = MakeUnit({ pid = 7, team = 3, loc = Vector(300, 0) })
 			e.range = range
-			e.estDamage = 100
+			e.estDamage = 120
 		end)
 		return s, bot, require("bots/FunLib/humaniser/states/laning").SpotInfo(bot)
 	end

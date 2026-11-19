@@ -42,7 +42,7 @@ function readGames(text) {
         if (!Number.isFinite(t)) continue;
         if (g === undefined || t < last - GAME_SPLIT) {
             // Tower places do not move: a pregame line split off by a clock jump still serves the game after it.
-            g = { cuts: [], creeps: new Map(), lanePos: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
+            g = { cuts: [], trades: [], creeps: new Map(), lanePos: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
             games.push(g);
         }
         last = t;
@@ -55,6 +55,7 @@ function readGames(text) {
             g.cuts.push(f);
         }
         // A kind's creeps line is keyed apart: two cuts of one hero in one frame must not share creeps (the spot's carry no kind).
+        else if (f.ev === 'trade') g.trades.push(f);
         else if (f.ev === 'cut_creeps') g.creeps.set(f.kind ? `${key}@${f.kind}` : key, f);
         else if (f.ev === 'lane_pos') g.lanePos.set(key, f);
         else if (f.ev === 'threat') g.threats.set(`${key}@${f.who}`, f);
@@ -117,10 +118,10 @@ function commonWorld(game, cut) {
     if (!cc) throw new Error(`no ev=cut_creeps for pid ${cut.pid} at ${cut.t}`);
     const bot = botOf(game, cut);
     const team = Number(bot.team);
-    const [bx, by, hp, mhp, range, hull, speed, esc] = nums(cut.b);
+    const [bx, by, hp, mhp, range, hull, speed, esc, prs] = nums(cut.b);
     const w = {
         t: Number(cut.t), team, pid: Number(cut.pid), ours: oursOf(bot),
-        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc },
+        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc, ...(prs === undefined ? {} : { prs }) },
         ce: creepList(cc.ce), ca: creepList(cc.ca),
         he: heroRecords(cut.he), hu: unseenRecords(cut.hu), ha: allyRecords(cut.ha),
         towers: towersOf(game, team, cut.ta, cut.tt),
@@ -279,7 +280,7 @@ const DECISIONS = {
         driver: 'safe',
         world(game, cut) {
             const w = { t: Number(cut.t), pid: Number(cut.pid), who: cut.who };
-            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd', 'prs']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
             for (const k of ['rr', 'stw', 'ld']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },

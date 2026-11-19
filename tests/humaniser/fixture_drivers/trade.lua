@@ -5,7 +5,7 @@
 --        absent on older lines: 300), tm (1: a tower
 --        attacks us), hc (creeps attacking us), cr (creeps within 500), dn (1: a deny is due), t (the clock), role (logged only);
 --        pjr "dec:tgt:ko:kt" (the pair answer), pl "id:kind:tgt:zero" (a running play; `-` no zero);
---        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr (read for the eye, unused),hit,free,ko,kt,paid,tw,wlv,wra,wwhy,cok,cdm,csf,lo" (`-` absent; wlv, wra, wwhy: Safe.At along the walk, away and with a hold; lo: lost, absent on older lines);
+--        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr (read for the eye, unused),hit,free,ko,kt,paid,tw,wlv,wra,wwhy,cok,cdm,csf,lo,sw" (`-` absent; sw: hit us within its attack interval, absent on older lines; wlv, wra, wwhy: Safe.At along the walk, away and with a hold; lo: lost, absent on older lines);
 --        run: "level:tgt:src:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:unseenCatchOk" with uat, utw, uth.
 -- Observation: none(<first failed gate or end>), hit(hero#P), hitback(hero#P), kill(hero#P) or join(hero#P); end(<why>) when a running
 -- exchange ended this frame (`higher`: another candidate won); hold(<hitback|join>) when Holds says retreat waits; chance(<roll|tower|burst|wave>)
@@ -72,6 +72,8 @@ return function(fx)
 			local c = { pid = num(f[1]), thp = num(f[2]), thpAbs = num(f[3]), d = num(f[4]), gap = num(f[5]), away = num(f[6]),
 				hitting = bit(num(f[8])), free = bit(num(f[9])), ko = num(f[10]), kt = num(f[11]),
 				paid = bit(num(f[12])), tw = bit(num(f[13])), lost = bit(num(f[20])) }
+			-- Lines from before `sw` read the 1 s flag as the stay bar too: swung is never narrower than hitting.
+			if num(f[21]) ~= nil then c.swung = bit(num(f[21])) else c.swung = c.hitting end
 			if f[14] ~= nil and f[14] ~= "-" then c.walk = say(f[14] .. "," .. f[15] .. "," .. f[16]) end
 			if num(f[17]) ~= nil then c.catch = { ok = bit(num(f[17])), dmg = num(f[18]) or 0, first = 0, safe = num(f[19]) or 0 } end
 			table.insert(i.cands, c)
@@ -95,6 +97,22 @@ return function(fx)
 		table.insert(actions, { verb = a.level, target = "hero#" .. tostring(a.target) })
 	end
 	if a.ended ~= nil then table.insert(actions, { verb = "end", target = a.ended }) end
+	-- opens(<reasons>): the gates of every level that fail on the answer's target read fresh (Trade.OpenFails, slice trade-count), `-` for none.
+	if a.level ~= "none" and i.run == nil then
+		for _, x in ipairs(i.cands) do
+			if x.pid == a.target then
+				local s = table.concat(Trade.OpenFails(i, x), ",")
+				table.insert(actions, { verb = "opens", target = s == "" and "-" or s })
+			end
+		end
+	end
+	-- endkinds(<reason=kind,...>): Trade.ENDS, which end reasons a start gate can already hold for (`gate`, `think`) and which only come later.
+	do
+		local ks = {}
+		for r, k in pairs(Trade.ENDS) do table.insert(ks, r .. "=" .. k) end
+		table.sort(ks)
+		table.insert(actions, { verb = "endkinds", target = table.concat(ks, ",") })
+	end
 	if a.level == "hit" or a.level == "none" then
 		local c
 		for _, x in ipairs(i.cands) do

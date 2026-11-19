@@ -167,7 +167,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local distToSegment, lanerRows, towerOnMe, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, cutState, frames
+local distToSegment, lanerRows, towerOnMe, pressed, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, pressSeen, cutState, frames
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
@@ -267,38 +267,55 @@ function lanerRows(bot, r)
     end
     return out
 end
-function towerOnMe(bot, now)
+function towerOnMe(bot, now, place)
     local pid = bot:GetPlayerID()
     local seen = towerSeen[pid]
+    if seen == nil or seen.t ~= now then
+        seen = {t = now, on = {}}
+        local br = bot:GetBoundingRadius()
+        local here = bot:GetLocation()
+        for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
+            do
+                local __continue35
+                repeat
+                    if not tw:IsAlive() then
+                        __continue35 = true
+                        break
+                    end
+                    local at = tw:GetLocation()
+                    local reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br
+                    if dist(at, here) > reach then
+                        __continue35 = true
+                        break
+                    end
+                    if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
+                        local ____seen_on_0 = seen.on
+                        ____seen_on_0[#____seen_on_0 + 1] = {at = at, reach = reach}
+                    end
+                    __continue35 = true
+                until true
+                if not __continue35 then
+                    break
+                end
+            end
+        end
+        towerSeen[pid] = seen
+    end
+    for ____, tw in ipairs(seen.on) do
+        if dist(tw.at, place) <= tw.reach then
+            return true
+        end
+    end
+    return false
+end
+function pressed(bot, now)
+    local pid = bot:GetPlayerID()
+    local seen = pressSeen[pid]
     if seen ~= nil and seen.t == now then
         return seen.on
     end
-    local on = false
-    local br = bot:GetBoundingRadius()
-    for ____, tw in ipairs(bot:GetNearbyTowers(1200, true) or ({})) do
-        do
-            local __continue35
-            repeat
-                if not tw:IsAlive() then
-                    __continue35 = true
-                    break
-                end
-                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
-                    __continue35 = true
-                    break
-                end
-                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
-                    on = true
-                    break
-                end
-                __continue35 = true
-            until true
-            if not __continue35 then
-                break
-            end
-        end
-    end
-    towerSeen[pid] = {t = now, on = on}
+    local on = bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.PressWindow)
+    pressSeen[pid] = {t = now, on = on}
     return on
 end
 --- `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
@@ -332,40 +349,45 @@ function ____exports.FromRead(bot, r, opts)
     for ____, l in ipairs(lanerRows(bot, r)) do
         reach[#reach + 1] = l
     end
-    local ____temp_1 = bot:GetHealth()
-    local ____temp_2 = bot:GetMaxHealth()
-    local ____reach_3 = reach
-    local ____r_missing_4 = r.missing
-    local ____r_tower_5 = r.tower
-    local ____towerOnMe_result_6 = towerOnMe(
+    local ____temp_2 = bot:GetHealth()
+    local ____temp_3 = bot:GetMaxHealth()
+    local ____reach_4 = reach
+    local ____r_missing_5 = r.missing
+    local ____r_tower_6 = r.tower
+    local ____towerOnMe_result_7 = towerOnMe(
+        bot,
+        DotaTime(),
+        r.place
+    )
+    local ____exports_Landing_result_8 = ____exports.Landing(
         bot,
         DotaTime()
     )
-    local ____exports_Landing_result_7 = ____exports.Landing(
-        bot,
-        DotaTime()
-    )
-    local ____temp_8 = #r.rows > 0 and exit or nil
-    local ____opts_away_9 = opts.away
-    local ____opts_held_10 = opts.held
-    local ____temp_0
+    local ____temp_9 = #r.rows > 0 and exit or nil
+    local ____opts_away_10 = opts.away
+    local ____opts_held_11 = opts.held
+    local ____temp_1
     if type(opts.hold) == "function" then
-        ____temp_0 = opts.hold()
+        ____temp_1 = opts.hold()
     else
-        ____temp_0 = opts.hold
+        ____temp_1 = opts.hold
     end
     return {
-        hp = ____temp_1,
-        hpMax = ____temp_2,
-        reach = ____reach_3,
-        missing = ____r_missing_4,
-        tower = ____r_tower_5,
-        towerOnMe = ____towerOnMe_result_6,
-        landing = ____exports_Landing_result_7,
-        exit = ____temp_8,
-        away = ____opts_away_9,
-        held = ____opts_held_10,
-        hold = ____temp_0
+        hp = ____temp_2,
+        hpMax = ____temp_3,
+        reach = ____reach_4,
+        missing = ____r_missing_5,
+        tower = ____r_tower_6,
+        towerOnMe = ____towerOnMe_result_7,
+        landing = ____exports_Landing_result_8,
+        exit = ____temp_9,
+        away = ____opts_away_10,
+        held = ____opts_held_11,
+        hold = ____temp_1,
+        pressed = pressed(
+            bot,
+            DotaTime()
+        )
     }
 end
 --- The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`).
@@ -430,6 +452,10 @@ function ____exports.CutFields(pid, who, place, i, a)
             "hd",
             b01(i.hold)
         },
+        {
+            "prs",
+            b01(i.pressed == true)
+        },
         {"lv", a.level},
         {
             "kill",
@@ -488,28 +514,28 @@ end
 function ask(bot, place, opts)
     local horizon = opts and opts.horizon or (((opts and opts.held) == true or (opts and opts.hold) == true) and Threat.SETTINGS.StayHorizon or ____exports.SETTINGS.FreshHorizon)
     local from = opts and opts.from or bot:GetLocation()
-    local ____frameReader_25 = frameReader
-    local ____bot_24 = bot
-    local ____temp_21 = opts and opts.engaged
-    if ____temp_21 == nil then
-        ____temp_21 = true
+    local ____frameReader_26 = frameReader
+    local ____bot_25 = bot
+    local ____temp_22 = opts and opts.engaged
+    if ____temp_22 == nil then
+        ____temp_22 = true
     end
-    local r = ____frameReader_25(____bot_24, horizon, ____temp_21, opts and opts.exclude)(from, place)
-    local ____exports_FromRead_36 = ____exports.FromRead
-    local ____bot_35 = bot
-    local ____temp_28 = opts and opts.away
-    if ____temp_28 == nil then
-        ____temp_28 = false
+    local r = ____frameReader_26(____bot_25, horizon, ____temp_22, opts and opts.exclude)(from, place)
+    local ____exports_FromRead_37 = ____exports.FromRead
+    local ____bot_36 = bot
+    local ____temp_29 = opts and opts.away
+    if ____temp_29 == nil then
+        ____temp_29 = false
     end
-    local ____temp_31 = opts and opts.held
-    if ____temp_31 == nil then
-        ____temp_31 = false
+    local ____temp_32 = opts and opts.held
+    if ____temp_32 == nil then
+        ____temp_32 = false
     end
-    local ____temp_34 = opts and opts.hold
-    if ____temp_34 == nil then
-        ____temp_34 = false
+    local ____temp_35 = opts and opts.hold
+    if ____temp_35 == nil then
+        ____temp_35 = false
     end
-    local i = ____exports_FromRead_36(____bot_35, r, {away = ____temp_28, held = ____temp_31, hold = ____temp_34})
+    local i = ____exports_FromRead_37(____bot_36, r, {away = ____temp_29, held = ____temp_32, hold = ____temp_35})
     local a = Safe.Decide(i)
     local who = opts and opts.who
     if who ~= nil and cutOn() and bot:IsAlive() then
@@ -528,6 +554,7 @@ function ask(bot, place, opts)
     return {a = a, r = r}
 end
 ____exports.SETTINGS = {
+    PressWindow = 3,
     LanerSeen = 10,
     OwnPlace = 50,
     UnseenAfter = 0.5,
@@ -597,6 +624,7 @@ function ____exports.Tick(bot)
 end
 laners = {}
 towerSeen = {}
+pressSeen = {}
 cutState = {}
 local function shadow(bot, who, r, opts)
     if not cutOn() or not bot:IsAlive() then
@@ -649,6 +677,9 @@ function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(towerSeen)) do
         __TS__Delete(towerSeen, k)
     end
+    for ____, k in ipairs(__TS__ObjectKeys(pressSeen)) do
+        __TS__Delete(pressSeen, k)
+    end
     for ____, k in ipairs(__TS__ObjectKeys(cutState)) do
         __TS__Delete(cutState, k)
     end
@@ -657,7 +688,7 @@ end
 -- `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
 -- decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
 function ____exports.TripGate(bot, place, consumer, from)
-    local ____ask_result_39 = ask(bot, place, {
+    local ____ask_result_40 = ask(bot, place, {
         from = from,
         horizon = ____exports.WalkHorizon,
         away = true,
@@ -665,8 +696,8 @@ function ____exports.TripGate(bot, place, consumer, from)
         hold = false,
         who = consumer
     })
-    local a = ____ask_result_39.a
-    local r = ____ask_result_39.r
+    local a = ____ask_result_40.a
+    local r = ____ask_result_40.r
     local why = a.level == "deadly" and a.reason or nil
     if Threat.Log(bot, consumer, r, why or "go") then
         Threat.NoteGateCut(bot, r.from, r.place, consumer)

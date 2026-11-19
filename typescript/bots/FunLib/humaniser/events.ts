@@ -787,6 +787,8 @@ export const EVENTS = {
         st: "str",
         /** feed: seconds from the order to the drop order. */
         drop: "num",
+        /** Slice trade-count, result `unsafe` of a feed or tower move: 1 when the approach's unsafe check (the one each frame of the walk asks) already held at the start, 0 when it came later. Absent otherwise. */
+        ato: "num",
         /** Seconds the attempt took. */
         dur: "num",
         /** feed: the clash's distance from our T1 along the lane now, and forecast (own + move), against the lane's target point. */
@@ -829,6 +831,8 @@ export const EVENTS = {
          *  the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start;
          *  `cr`). */
         res: "str",
+        /** Slice trade-count: for `met`, `cleared`, `tower`, `unsafe` and `concede` (not the failed drag), 1 when the first read ended it (the start frame reads at once: the end held on the open's own inputs), 0 when a later read did; absent for the ends that are no read (`hurt`, `timeout`, `left`, `died`). */
+        ato: "num",
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
         why: "str",
@@ -1166,6 +1170,10 @@ export const EVENTS = {
         ok: "num",
         fail: "str",
         hp: "num",
+        /** ph=ready: the cast's mana share. */
+        mp: "num",
+        /** ph=ready in a rig with per-hero tasks (the sustain rig): the task this hero's setup forced (`tango`, `ship`, ...). */
+        task: "str",
         rt: "num",
         dt: "num",
         gold: "num",
@@ -1225,6 +1233,8 @@ export const EVENTS = {
         res: "str",
         /** On `failed`, the job's end reason (`missed:mistake:no-aggro`, `no_target:mistake:no-camp`, `cancelled:hit`, `preempted:mode=N`, `dead`). On `skip`, the last gate (`low-hp`, `enemy-near`, `hit`, `busy`, `late`, `no-camp`, `refused`). */
         why: "str",
+        /** Slice trade-count: 0 when the job ended on a start gate (`cancelled:hit`, `interrupted:threat`, a low-HP or enemy-near end) that was clear at its start; absent for any other end. */
+        ato: "num",
         /** The camp's spawner index. */
         camp: "num",
         /** The camp type. */
@@ -2080,6 +2090,8 @@ export const EVENTS = {
         /** The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order
          *  first); absent when Think never acted (the target unseen, or not taken). */
         fa: "str",
+        /** Slice trade-count: 1 when the end's reason `why` already held when the exchange opened (a gate of some level failing on the open's inputs read fresh, or `no_clear` with `fa` `step`), 0 when it came later; absent for an end that can only come later (target dead or lost, `losing`, `pair_end`, a mode took the hero...). Read-only. */
+        ato: "num",
         /** The bot's active mode at the end, and its desire. */
         mode: "num",
         md: "num",
@@ -2832,7 +2844,7 @@ export const EVENTS = {
         pl: "str",
         /** The bot's assigned lane. */
         lane: "num",
-        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready. */
+        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready, 1 when an enemy hero damaged it in the safe read's press window (absent on logs before 20/11/2026). */
         b: "str",
         /** GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y. */
         fr: "str",
@@ -2996,7 +3008,7 @@ export const EVENTS = {
         /**
          * kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
          * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk answer
-         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
+         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back), then sw (1/0: it damaged us within its seconds per attack plus 0.25 s, the stay bar of a running hit back on it; absent on older lines).
          */
         cd: "str",
         /**
@@ -3053,6 +3065,8 @@ export const EVENTS = {
         /** kind=sustain: the safe-here read here (2 s): `kill` (as kind=safe's field), `sh` a reacher is hitting us (1/0), `rc` visible heroes in its reach. */
         sh: "num",
         rc: "num",
+        /** kind=sustain: the same read's `prs` (kind=safe), which picks the kill line's bar. */
+        spr: "num",
         /** kind=sustain: seconds until the next last hit or deny is due in our lane (Laning.NextDue); absent with no creep near. */
         nd: "num",
         /** kind=sustain: 1 when sustain_act.ts carries this answer out (`Ours.Sustain`, a held hero). */
@@ -3084,7 +3098,7 @@ export const EVENTS = {
         /**
          * kind=safe (safe_gather.ts, in shadow: nothing acts on it; the consumer is `who`, the place read is `pl` as `x,y`, our HP and max HP are `hpa` and `hpm`, `mi` the unseen belief's weight sum):
          * `rr` one record per reacher, `;`-joined, `pid,hitting,dmg,unseen` (hitting 1/0: the read's engaged window, so a gate's read has none; dmg absolute, over the read's long window when hitting; unseen 1: a lane opponent last seen
-         * under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`,
+         * under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0; `tower` by the tower's reach to a point; towerOnMe since 20/11/2026 only when a tower on the hero can reach the place, by its reach plus the hero's hull, so `0,1` is a place in that band; before that whatever the place), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`,
          * `ex` seconds to walk out of every visible reacher's range (logged only; absent with none in reach), `awy` the walk leaves our creeps and tower, `hld` the caller holds a standing answer here,
          * `hd` the caller has a hold (a hit back or join). The answer: `lv` (`safe`, `costly`, `deadly`), `kill` the reachers' summed damage, `ra` HP over kill (absent with no kill), `pr` the price (HP a second lost), `why` the rule
          * (`tower`, `kill`, `unknown`, `hero`, `creeps`, `safe`). Logged on a change of `lv` or `why`, else every 2 s while a hero is in reach or `pr` is over 0.
@@ -3096,6 +3110,8 @@ export const EVENTS = {
         awy: "num",
         hld: "num",
         hd: "num",
+        /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
+        prs: "num",
         kill: "num",
         ra: "num",
         pr: "num",
@@ -3165,6 +3181,12 @@ export const EVENTS = {
         st: "num",
         dead: "num",
         d: "num",
+    },
+    /** Sustain: OHA's retreat teleport home would have cast and sustain held it (SustainAct.HoldsTeleport), once per run of refusals; `why` is OHA's case (1: no enemy near, 3: level 9+ and at most one enemy), `hp` %. A refused case 1 may fall through to OHA's escape (case 2) in the same call, so a refusal followed by an `ev=cast ab=item_tpscroll` at the same `t` is an escape, not a held trip. */
+    sustain_tp: {
+        pid: "num",
+        why: "str",
+        hp: "num",
     },
     /** Slice oha-burst-left-out: the first time in a game, per level, a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero, spell and spell level (a new level logs again, to show the value follows the level on an enemy handle). */
     burst_add: {

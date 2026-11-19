@@ -8,6 +8,12 @@
 --   rig_creep <team 2|3> <melee|ranged> <x> <y> [n]   create n lane creeps of that team
 --   rig_kill_creeps <team 2|3> <x> <y> <radius>       kill that team's lane creeps in the circle
 --   rig_tower_hp <team 2|3> <x> <y> <radius>          heal that team's live towers in the circle to full
+--   rig_hp_holding <item> <share> [team 2|3]   set the health share of every live hero holding that item (slots 0-8)
+--   rig_mp_holding <item> <share> [team]       set the mana share of every live hero holding that item
+--   rig_charges <item> <n> [team]              set the charges of that item on every live hero holding it (a bottle's, a tango's)
+-- With a team, only that team's heroes (a benched enemy buys the same items).
+-- The *_holding setters let a rig name a hero by a marker item it bought in setup (the sustain rig): the server cannot read
+-- the bot's state, and a pid differs by lineup.
 -- Bot pids are PlayerResource ids; heroes are found through HeroList (GetSelectedHeroEntity can be nil for bots).
 local function hero(pid)
 	pid = tonumber(pid)
@@ -87,5 +93,43 @@ Convars:RegisterCommand("rig_kill_creeps", function(_, team, x, y, r)
 	end
 	say(string.format("kill_creeps team=%s n=%d", team, n))
 end, "rig: kill lane creeps in a circle", FCVAR_CHEAT)
+
+-- Every live non-illusion hero with `item` in slots 0-8, and that item.
+local function holders(item, team)
+	local r = {}
+	team = tonumber(team)
+	for _, h in ipairs(HeroList:GetAllHeroes()) do
+		if not h:IsIllusion() and h:IsAlive() and (team == nil or h:GetTeamNumber() == team) then
+			for s = 0, 8 do
+				local it = h:GetItemInSlot(s)
+				if it ~= nil and it:GetAbilityName() == item then
+					table.insert(r, { h = h, it = it })
+					break
+				end
+			end
+		end
+	end
+	return r
+end
+
+local function share(v) return math.max(0, math.min(1, tonumber(v) or 1)) end
+
+Convars:RegisterCommand("rig_hp_holding", function(_, item, s, team)
+	local hs = holders(item, team)
+	for _, e in ipairs(hs) do e.h:SetHealth(math.max(1, math.floor(e.h:GetMaxHealth() * share(s)))) end
+	say(string.format("hp_holding item=%s share=%s n=%d", tostring(item), tostring(s), #hs))
+end, "rig: set the health share of every hero holding an item", FCVAR_CHEAT)
+
+Convars:RegisterCommand("rig_mp_holding", function(_, item, s, team)
+	local hs = holders(item, team)
+	for _, e in ipairs(hs) do e.h:SetMana(e.h:GetMaxMana() * share(s)) end
+	say(string.format("mp_holding item=%s share=%s n=%d", tostring(item), tostring(s), #hs))
+end, "rig: set the mana share of every hero holding an item", FCVAR_CHEAT)
+
+Convars:RegisterCommand("rig_charges", function(_, item, n, team)
+	local hs = holders(item, team)
+	for _, e in ipairs(hs) do e.it:SetCurrentCharges(math.max(0, math.floor(tonumber(n) or 0))) end
+	say(string.format("charges item=%s n=%s heroes=%d", tostring(item), tostring(n), #hs))
+end, "rig: set the charges of an item on every hero holding it", FCVAR_CHEAT)
 
 say("setters registered")

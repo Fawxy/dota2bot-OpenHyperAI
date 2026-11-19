@@ -305,6 +305,33 @@ do
 	world.way = nil
 end
 
+-- A rig owns its heroes' purchases and courier (drill.ts Owns): no purchase of ours, unless its release frees sustain (the sustain
+-- rig, Drill.RigFreesSustain); then the purchase and the delivery run, and a rig hero with OHA's items held is ours again.
+do
+	local owns, frees, holds = Drill.Owns, Drill.RigFreesSustain, Drill.RigHoldsCasts
+	Drill.Owns = function(_, what) return what == "purchase" or what == "courier" or what == "items" end
+	Drill.RigFreesSustain = function() return false end
+	reset()
+	world.way = nil
+	bot.slots = {}
+	answer = { kind = "buy", name = "flask", at = { x = -500, y = 0 }, reason = "cannot_stay" }
+	T = 750
+	A.ItemThink(bot)
+	check("rig owns purchases: no purchase of ours", count("buy:") == 0, table.concat(bot.orders, ","))
+	Drill.RigHoldsCasts = function() return true end
+	check("rig holds the cast's items: not held by sustain", not A.Holds(bot))
+	Drill.RigFreesSustain = function() return true end
+	check("the sustain rig's release: held by sustain although the rig holds OHA's items", A.Holds(bot))
+	reset()
+	world.way = nil
+	bot.slots = {}
+	T = 760
+	A.ItemThink(bot)
+	check("the sustain rig's release: our purchase and the courier's delivery run", bot.orders[1] == "buy:item_flask" and bot.orders[2] == "courier:4", table.concat(bot.orders, ","))
+	Drill.Owns, Drill.RigFreesSustain, Drill.RigHoldsCasts = owns, frees, holds
+	world.way = nil
+end
+
 do
 	reset()
 	bot.slots = {}
@@ -358,6 +385,82 @@ do
 	A.ItemThink(bot)
 	check("dead mid-attempt: ends dead", ended() == "dead")
 	bot.alive = true
+end
+
+-- OHA's retreat teleport (ability_item_usage_generic.lua item_tpscroll), its own source text run here: sustain holds the trips
+-- home of a held laner (cases 1 and 3; rule 2 walks home) and leaves its escape (case 2) to OHA. h2h742: one gate on the whole
+-- block left 7 of 280 losing escapes with a teleport, the mirror 81 of 318.
+do
+	local src = io.open(BOTS_ROOT .. "/bots/ability_item_usage_generic.lua", "r"):read("a")
+	local from = src:find("\n\t%-%-撤退\n")
+	local to = src:find("\n\t%-%-TP出去发育\n")
+	check("the retreat teleport block is found in OHA's file", from ~= nil and to ~= nil and to > from)
+	local tp = MakeUnit({ pid = 2, team = 2, hp = 60, maxhp = 600, level = 4 })
+	function tp:GetAttackTarget() return nil end
+	local juke = true
+	local function ask(s)
+		local env = setmetatable({
+			bot = tp, botName = "npc_dota_hero_lion", nMode = BOT_MODE_RETREAT, nModeDesire = 0.95, botHP = s.hp, botMP = 0.5,
+			nEnemyCount = s.enemies, nAllyCount = 1, itemFlask = nil, nMinTPDistance = 5500, sCastType = "ground",
+			BOT_MODE_DESIRE_MODERATE = 0.5, BOT_ACTION_DESIRE_HIGH = 0.75,
+			X = { CanJuke = function() return juke end },
+			J = { Humaniser = { IsEnabled = function() return true end, SustainAct = A }, GetTeamFountain = function() return "fountain" end,
+				GetNearbyHeroes = function() return {} end },
+		}, { __index = _G })
+		local chunk = assert(load(src:sub(from, to) .. "\nreturn nil", "tp_block", "t", env))
+		local desire, loc, _, why = chunk()
+		return desire, loc, why
+	end
+	local function tpLines()
+		local n, why = 0, nil
+		for _, l in ipairs(lines) do
+			local w = l:match("ev=sustain_tp .*why=(%S+)")
+			if w then n, why = n + 1, w end
+		end
+		return n, why
+	end
+
+	reset()
+	T = 300
+	tp.level, tp.hitByHero, tp.fountainDist = 4, true, 8000
+	local d, loc, why = ask({ hp = 0.1, enemies = 1 })
+	check("held, losing a fight it can break vision from: OHA's escape teleport casts", d == 0.75 and loc == "fountain" and why == "撤退:2", why)
+	check("an escape logs no refusal", tpLines() == 0)
+
+	reset()
+	T = 300
+	tp.hitByHero = false
+	d = ask({ hp = 0.1, enemies = 0 })
+	local n, w = tpLines()
+	check("held, no enemy near, low: the trip home is sustain's, no teleport", d == nil)
+	check("the refused trip home logs its case", n == 1 and w == "1", n)
+	T = 300.5
+	ask({ hp = 0.1, enemies = 0 })
+	check("one line per run of refusals", tpLines() == 1)
+	T = 303
+	ask({ hp = 0.1, enemies = 0 })
+	check("a refusal after the gap logs again", tpLines() == 2)
+
+	-- No enemy in view, under 15%, hit by a hero lately: case 1 is held, and the same call goes on to case 2's escape.
+	reset()
+	T = 300
+	tp.hitByHero = true
+	d, loc, why = ask({ hp = 0.1, enemies = 0 })
+	n, w = tpLines()
+	check("a held trip home that is also an escape still teleports, its refusal logged", d == 0.75 and why == "撤退:2" and n == 1 and w == "1", why)
+
+	reset()
+	T = 300
+	tp.level, tp.hitByHero = 10, false
+	d = ask({ hp = 0.3, enemies = 1 })
+	n, w = tpLines()
+	check("held, level 10, one enemy not hitting: case 3's trip home is held too", d == nil and n == 1 and w == "3", w)
+
+	reset()
+	world.held = false
+	tp.level, tp.hitByHero = 4, false
+	d, loc, why = ask({ hp = 0.1, enemies = 0 })
+	check("not held: OHA's trip home casts and nothing is logged", d == 0.75 and why == "撤退:1" and tpLines() == 0, why)
 end
 
 finish()

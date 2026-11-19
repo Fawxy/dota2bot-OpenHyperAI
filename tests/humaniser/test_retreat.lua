@@ -28,6 +28,12 @@ local function enemy(pid, loc, est)
 	return e
 end
 
+-- The enemy hit us within the engaged second, and goes on doing so however the clock moves: the read counts it over 6 s and at the 1.25 bar.
+local function hitting(bot, ...)
+	bot.hitBy = bot.hitBy or {}
+	for _, e in ipairs({ ... }) do bot.hitBy[e] = math.huge end
+end
+
 local function capture(fn)
 	local printed, old = {}, print
 	print = function(s) table.insert(printed, tostring(s)) end
@@ -54,15 +60,14 @@ end
 local function noHold() require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end end
 local function running(bot) return require("bots/FunLib/humaniser/retreat_state").Running(bot) end
 
--- A deadly place is left at once, with no reaction time: two heroes in reach with 300 damage each against 600 HP are ratio 1.0, under
+-- A deadly place is left at once, with no reaction time: two heroes hitting us with 300 damage each against 600 HP are ratio 1.0, under
 -- the held bar 1.25. Controls: the same two with 100 each (ratio 3, what the head count used to leave) stay; ratio 1.3 stays at a place
 -- the hero holds; ratio 1.2 leaves.
 do
 	local function two(est)
 		local H, bot = world()
 		noHold()
-		enemy(10, Vector(300, -5000), est)
-		enemy(11, Vector(300, -4900), est)
+		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
 		local out = capture(function() H.Retreat.Desire(bot) end)
 		return bot, out
 	end
@@ -80,16 +85,20 @@ end
 -- The Oracle stand case (h2hsnapcreeps1_B_dire_2 t=396: one hero, kill line just over HP, ratio about 1.03): left at once, where the
 -- old stand (burst under HP) stayed. Control: half the damage stays.
 do
-	local function lone(est)
+	local function lone(est, hits)
 		local H, bot = world()
 		noHold()
-		enemy(10, Vector(300, -5000), est)
+		local e = enemy(10, Vector(300, -5000), est)
+		if hits then hitting(bot, e) end
 		local out = capture(function() H.Retreat.Desire(bot) end)
 		return bot, lines(out, "retreat")[1]
 	end
-	local bot, s = lone(583)
-	check("oracle: a lone hero with a kill line of 583 over 600 HP (ratio 1.03) is left, why=threat", running(bot) and field(s, "why") == "threat", s)
-	check("oracle control: half the damage stays", not running((lone(290))))
+	local bot, s = lone(583, true)
+	check("oracle: a lone hero hitting us with a kill line of 583 over 600 HP (ratio 1.03) is left, why=threat", running(bot) and field(s, "why") == "threat", s)
+	check("oracle control: half the damage stays", not running((lone(290, true))))
+	check("idle: the same hero not hitting us is not left at ratio 1.03 (bar 1.0)", not running((lone(583, false))))
+	local low, ls = lone(640, false)
+	check("idle control: its kill line over our HP (ratio 0.94) is left, why=lethal", running(low) and field(ls, "why") == "lethal", ls)
 end
 
 -- An engaged hero (it hit us within a second) is counted over EngagedWindow (6 s): 30 a second is 180 against 60 when it is not
@@ -121,14 +130,33 @@ do
 	check("engaged: the episode does not end safe while he still hits us", running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
 end
 
+-- Between a laner's swings: 115 a second against 600 HP is 690 over 6 s on the hit (ratio 0.87, lethal) and 460 over 4 s once the 1 s
+-- engaged flag lapses (ratio 1.30). The hero stays pressed for 3 s after the hit, so the episode does not end at the idle stop bar (1.15)
+-- in the gap and walk back into the next swing; with no hit for longer than that it does.
+do
+	local H, bot = world()
+	noHold()
+	local e = enemy(10, Vector(300, -5000), 0)
+	e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 115 * dur end
+	bot.hitBy, bot.heroHitAt = { [e] = T }, T
+	local out = capture(function()
+		check("swing gap: the hit starts the episode", H.Retreat.Desire(bot) == 0.95)
+		T = T + 1.5
+		check("swing gap: 1.5 s after the hit, nobody hitting, ratio 1.30 does not end it (pressed: the stop bar is still 1.44)", H.Retreat.Desire(bot) == 0.95)
+		T = T + 2
+		check("swing gap: 3.5 s after the last hit it ends (idle stop bar 1.15)", H.Retreat.Desire(bot) == 0)
+	end)
+	local l = lines(out, "retreat")
+	check("swing gap: one episode, res=safe", #l == 2 and field(l[#l], "res") == "safe", #l)
+end
+
 -- The hit back (D24) and the join (D10) hold a deadly place down to Safe.BARS.hold (ratio 1.0): Trade.Holds is asked only when the
 -- answer is deadly by the kill line and not under that; under it the hero leaves `lethal` whatever Holds says.
 do
 	local asked = 0
 	local function run(holds, est)
 		local H, bot = world({ hp = 540 })
-		enemy(10, Vector(300, -5000), est)
-		enemy(11, Vector(300, -4900), est)
+		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
 		asked = 0
 		require("bots/FunLib/humaniser/states/trade").Holds = function() asked = asked + 1 return holds end
 		local out = capture(function() H.Retreat.Desire(bot) T = T + 0.2 H.Retreat.Desire(bot) end)
@@ -382,6 +410,7 @@ do
 	noHold()
 	local e1 = enemy(10, Vector(300, -5000), 300)
 	local e2 = enemy(11, Vector(300, -4900), 300)
+	hitting(bot, e1, e2)
 	local out = capture(function()
 		check("exit: the deadly read starts the episode", H.Retreat.Desire(bot) == 0.95)
 		e1.estDamage, e2.estDamage = 230, 230
@@ -403,6 +432,7 @@ do
 	noHold()
 	local e1 = enemy(10, Vector(300, -5000), 300)
 	local e2 = enemy(11, Vector(300, -4900), 300)
+	hitting(bot, e1, e2)
 	local out = capture(function()
 		check("gone: the episode starts", H.Retreat.Desire(bot) == 0.95)
 		T = T + 0.2
@@ -481,8 +511,8 @@ do
 	local function run(cut, est)
 		local H, bot = world({ telemetry = { Enable = true, Cut = cut } })
 		noHold()
-		enemy(10, Vector(300, -5000), est)
-		enemy(11, Vector(300, -4900), est)
+		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
+		bot.heroHitAt = T
 		local desires = {}
 		local out = capture(function()
 			for _ = 1, 12 do
@@ -500,6 +530,7 @@ do
 	check("cut: no line with the cut off", #none == 0, #none)
 	check("cut: the leave is logged once (the episode ends the reads)", #cuts == 1 and field(cuts[1], "dec") == "threat", #cuts)
 	check("cut: the line carries the answer the rule read", field(cuts[1], "lv") == "deadly" and field(cuts[1], "why") == "kill" and tonumber(field(cuts[1], "kill")) == 600 and tonumber(field(cuts[1], "ra")) == 1 and field(cuts[1], "purp") == "free", cuts[1])
+	check("cut: the bot record ends with the press flag the kill bar turned on", tostring(field(cuts[1], "b")):match(",1$") ~= nil, field(cuts[1], "b"))
 	local _, calm = run(true, 100)
 	check("cut: a place that is not deadly is logged as under", #calm >= 1 and field(calm[1], "dec") == "under" and field(calm[1], "lv") == "safe", calm[1])
 end
