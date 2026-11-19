@@ -59,6 +59,9 @@ do
 	check("unranked: a pre-hit is not chosen without a pre-hit rank", Pick.Choose({}, nil, nil, pre, nil, nil, noLastHit) == nil)
 	check("unranked: the idle swing is not asked without an idle_swing rank", Pick.Choose({}, nil, nil, nil, idle, nil, noDeny) == nil and idleCalls == 0)
 	check("unranked: a support's order has no pre-hit; its pick is a deny", Pick.Choose({ dn }, nil, nil, pre, nil, nil, Table.Order(5)) == dn)
+	local own = target("lasthit", 0.2)
+	local ownPre = { creep = own.creep, kind = "pre_hit", eta = 0, due = 0, walk = 0, dies = math.huge, ranged = false }
+	check("unranked: without a pre-hit rank, the last hit on the pre-hit's own creep is still taken", Pick.Choose({ own }, nil, nil, ownPre, nil, nil, Table.Order(5)) == own)
 	check("idle swing: asked only once nothing else is chosen and no wait is held", Pick.Choose({}, nil, nil, nil, idle, nil, Table.Order(5)) ~= nil
 		and idleCalls == 1 and Pick.Choose({ lh }, nil, nil, nil, idle, nil, Table.Order(5)) == lh and idleCalls == 1)
 end

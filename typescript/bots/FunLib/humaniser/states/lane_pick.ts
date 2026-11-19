@@ -102,10 +102,12 @@ function choose(
     targets: Lib.Verbs.LaneTarget[],
     current: Lib.Verbs.LaneTarget | undefined,
     mine: ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined,
-    pre: Lib.Verbs.LaneTarget | undefined,
+    offeredPre: Lib.Verbs.LaneTarget | undefined,
     far: Far | undefined,
     order: PickKind[],
 ): Lib.Verbs.LaneTarget | undefined {
+    // Without a pre_hit rank the pre-hit must not hide the last hit on its own creep either.
+    const pre = indexOf(order, "pre_hit") !== undefined ? offeredPre : undefined;
     let otherLastHit = false;
     let cur: Lib.Verbs.LaneTarget | undefined;
     for (const t of targets) {

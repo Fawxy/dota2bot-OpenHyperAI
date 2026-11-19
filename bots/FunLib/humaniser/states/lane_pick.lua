@@ -26,7 +26,14 @@ function indexOf(kinds, kind)
     end
     return nil
 end
-function choose(targets, current, mine, pre, far, order)
+function choose(targets, current, mine, offeredPre, far, order)
+    local ____temp_2
+    if indexOf(order, "pre_hit") ~= nil then
+        ____temp_2 = offeredPre
+    else
+        ____temp_2 = nil
+    end
+    local pre = ____temp_2
     local otherLastHit = false
     local cur
     for ____, t in ipairs(targets) do
@@ -238,8 +245,8 @@ function ____exports.Attempting(pid)
     if s == nil or s.ph ~= "lasthit" and s.ph ~= "deny" and s.ph ~= "prehit" and s.ph ~= "predeny" and s.ph ~= "shove" then
         return nil
     end
-    local ____opt_2 = s.chosen
-    return ____opt_2 and ____opt_2.creep
+    local ____opt_3 = s.chosen
+    return ____opt_3 and ____opt_3.creep
 end
 function ____exports.NoteVerdict(pid, now, verdict)
     local s = scanOf(pid)
