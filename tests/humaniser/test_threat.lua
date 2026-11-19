@@ -7,6 +7,8 @@ local Lane = dota.Lane
 local HERE = Vector(-2000, -5000)
 local CAMP = Vector(-1000, -6200)
 
+-- Threat.Reader keeps the team's fixed reads (towers, allies, last-seen) per DotaTime: a test that moves units or
+-- changes the world between reads bumps T, as a new game frame would, or it reads the old frame.
 local function world(o)
 	o = o or {}
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = true } })
