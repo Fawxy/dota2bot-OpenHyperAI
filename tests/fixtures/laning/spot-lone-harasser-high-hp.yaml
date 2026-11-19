@@ -10,7 +10,7 @@ world:
   pid: 5
   role: "core"
   lane: 2
-  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":false,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-534,"y":-183,"hp":668,"mhp":670,"range":600,"hull":24,"speed":293,"esc":0}
   front: {"x":-819,"y":-596,"bx":-518,"by":-333}
   ce: [{"id":31,"x":-1170,"y":-929,"hp":148,"mhp":300,"ranged":1,"tgt":"u26","hull":8},{"id":32,"x":-946,"y":-665,"hp":271,"mhp":550,"ranged":0,"tgt":"u26","hull":16},{"id":33,"x":-969,"y":-559,"hp":67,"mhp":550,"ranged":0,"tgt":"u27","hull":16},{"id":34,"x":-841,"y":-691,"hp":345,"mhp":550,"ranged":0,"tgt":"u26","hull":16}]

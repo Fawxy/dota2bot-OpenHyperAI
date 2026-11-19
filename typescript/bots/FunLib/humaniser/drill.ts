@@ -127,7 +127,7 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 30, from: 0 },
     },
-    // The lone-hero stand (slice mid-stand, D11 against D1; switch `Ours.EvenStand`). half: execution. Facts the stand reads:
+    // The lone-hero stand (slice mid-stand, D11 against D1; the stand rule is `Safe.At` since oha-safe-behave; switch `Ours.Retreat`). half: execution. Facts the stand reads:
     // exactly one enemy hero in reach (forced: the Dire mid stands at a fixed point on its side of the mid river, everyone
     // else benched); it is not hitting the cast (a rig statue never attacks or casts); its estimated damage over 3 s is
     // between the old refusal bar and the cast's HP (forced: both mids at level 6 by the recipe with level-ups kept, so its
@@ -143,7 +143,7 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60 },
         rig: {
             half: "execution",
-            switch: "EvenStand",
+            switch: "Retreat",
             window: 600,
             spots: {
                 home: ["r:mid1", 450, 450],
@@ -270,7 +270,6 @@ export const TABLE: Record<string, Entry> = {
     // in reach. Controls: `free` (as far, the fact false), `stand` (Lich beside, never attacking). A leave-together rep (`pair`) was dropped (user 12/11/2026: the cast's own retreat left before the partner
     // did, or the hitters did). 120 s reps from 0:00, five inside 10:00, so rep 5 is a second `far` (the cast's heal walk from the
     // side spot and back is about 60 s). Release: laning (last hits compete), attack (the trade), retreat, idle.
-    // `Ours.RetreatOdds` on in both arms (recipe), so a held cast is what the hit back answers.
     "retreat-hitback": {
         note: "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
         cast: SAFE_CORE,

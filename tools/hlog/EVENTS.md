@@ -828,15 +828,16 @@ Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer
 
 ## retreat
 
-Slice retreat (retreat.ts): one start and one end per episode of our retreat, and one start per plain walk (kind plain: heroes our retreat does not own). Start: why (threat, lethal, tower, heal, forced), the read at entry (thr, band, reach, burst, tower), the budget and its purpose, the anchor kind, its route cost and the next-best anchor's (alt), and for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: the band's dwell; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay (RetreatOdds): once per over-budget spell, the read held only because the heroes in reach do not outnumber us.
+Slice retreat (retreat.ts): one start and one end per episode of our retreat, and one start per plain walk (kind plain: heroes our retreat does not own). Start: why (threat, lethal, tower, heal, forced), the read at entry (thr, band, reach, burst, tower; budget, unp and the old purpose-budget are retired), the safe-here answer that decided it (lv, ra, kill), the work it left (purp), the anchor kind, its route cost and the next-best anchor's (alt), and for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: a place Safe.At does not call deadly for a fresh place; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay: once per spell, a deadly place the hero stays in for a hit back or a join (`why`), with the answer (lv, ra, kill).
 
-`pid` num, `minexp` num, `regen` bool, `held` str, `set` str, `got` num, `tree` bool, `skip` str, `ed` num, `ets` num, `x` num, `y` num
+`pid` num, `ra` num, `kill` num, `minexp` num, `regen` bool, `held` str, `set` str, `got` num, `tree` bool, `skip` str, `ed` num, `ets` num, `x` num, `y` num
 
-- `ph` str: `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per over-budget spell the `Ours.RetreatOdds` hold keeps in lane), `skip`, `items`, `use`, `items_off`.
+- `ph` str: `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per spell a hit back or join holds the hero in a deadly place), `skip`, `items`, `use`, `items_off`.
 - `kind` str: `plain` for a walk by a hero our retreat does not own; else our episode.
 - `ep` num: The episode number.
-- `why` str: On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the stand of heroes not hitting us (`Threat.Stand`; `Ours.EvenStand` one, `Ours.HighStand` two or more: `reach` says which; logs before slice stand-rule say `high` for two or more), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold.
+- `why` str: On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `join` while our pair joins the fight (`Ours.PairJoin`), `hitback` while Trade.Holds says the hit back runs. Older logs: `stand`, or absent for the retired RetreatOdds hold.
 - `hp` num: The hero's HP share at the line.
+- `lv` str: On `start` and `stay`: the safe-here answer's level, HP over kill line (absent with nobody in reach) and kill line in HP.
 - `thr` num: The read's threat.
 - `band` str: The read's band at the line; `ph=read` is logged on a band change.
 - `reach` num: Enemy heroes able to reach the hero within the read's horizon.
@@ -1371,12 +1372,12 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 ## lane_pos
 
-`pid` num, `owned` bool, `running` bool, `mode` num, `pushed` num, `fo` num, `mp` str, `op` str, `rp` str, `rat` num
+`pid` num, `owned` bool, `running` bool, `mode` num, `pushed` num, `fo` num, `sr` num, `pl` str, `pq` num, `mp` str, `op` str, `rp` str, `rat` num
 
 - `d` num: The hero's distance from its preferred laning spot.
 - `label` str: The task label; the laning body walking to a last hit or deny reads here.
 - `spot` str: The spot's anchor (creep, front, wave, fed: lane_aggro's fed creep going down), or oha.
-- `why` str: The first limit the preferred point broke, which usually placed the spot: `pref`, `hero`, `creep`, `hp` (only the HP margin moved it), `tower` or `xp`.
+- `why` str: The first limit the preferred point broke, which usually placed the spot: `pref`, `kill` or `unknown` (Safe.At called the place deadly; `tower` too when it was that), `creep`, `hp` (only the HP margin moved it), `tower` or `xp` (the XP-only spot or the fallback). Older logs: `hero`.
 - `hm` num: The HP margin on the creep rings.
 - `ut` num: 1 when a core's spot stands closer than the open-lane limits allow (our tower's cover, `Ours.LaneSpotTower`); else 0. With `Ours.LaneSpotThreat` it counts the creep cover and our tower's cover for heroes.
 - `sx` num: The spot itself, x (one sample a second).
@@ -1388,7 +1389,8 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `cl` num: A core's spot on the rearmost clash (their creeps between our T1 and our front, the waves crossed): the clash's distance from our T1 along the lane and our front's; absent when the spot anchored on our front as usual.
 - `rb` num: Ours.LaneSpotThreat: the threat read at the chosen spot (burst, threat) and the old hero limits' verdict there.
 - `rt` num: The read's threat at the chosen spot.
-- `rn` num: Reads made this frame.
+- `rn` num: Safe.At reads made this frame.
+- `sl` str: Safe.At at the chosen spot: level (`safe`, `costly`, `deadly`) and HP over kill line (absent with nobody in reach); at the preferred point `pl` and `pq`.
 - `ob` str: What the old hero limits say at the spot: `hero`, `hp`, `creep`, `tower` or `none`.
 - `rm` num: The read's `missing` and unseen pids (comma-joined) at the chosen spot; the old limits' (`op`) and the read's (`rp`) verdicts at the preferred point.
 - `re` num: Heroes the read counted as engaged (hitting us within a second) at the chosen spot, and 1 when a reaching hero's attack target is us.
@@ -1415,16 +1417,16 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `ta` str: Towers standing, hex masks over cut.ts TOWER_IDS: ours, theirs.
 - `tt` str: Towers within 3,000 of either: team, TOWER_IDS index, attack target.
 - `vis` str: With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid).
-- `dec` str: kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read).
-- `bud` num: kind=leave: the budget the read was held against (by purpose `purp`: free, busy or committed).
+- `dec` str: kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `join`, `hitback` (stay; older logs `even`, `hold`, `stand`). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read).
+- `bud` num: kind=leave, older logs: the budget the read was held against (by purpose `purp`: free, busy or committed).
 - `purp` str: kind=leave: the budget's purpose.
-- `ov` num: kind=leave: seconds the read had been over budget before this decision (-1 not over); the hold timer.
-- `th` num: kind=leave: Profile.ThreatHold, the seconds the read must stay over budget.
-- `unp` num: kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
+- `ov` num: kind=leave, older logs: seconds the read had been over budget before this decision (-1 not over); the hold timer.
+- `th` num: kind=leave, older logs: Profile.ThreatHold, the seconds the read must stay over budget.
+- `unp` num: kind=leave, older logs: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them.
 - `dt` num: kind=leave: 1 when an enemy tower damaged the bot within 0.5 s.
 - `pj` num: kind=leave: 1 when Trade.Holds held a join for the bot (LeaveWhy stays `join`); absent otherwise.
 - `hb` num: kind=leave: 1 when Trade.Holds held a hit back for the bot (LeaveWhy stays `hitback`); absent otherwise. Older kind=trade lines: 1 when the target is hitting the core.
-- `thr` num: kind=leave: the read's threat and band, for reading a line without replaying it.
+- `thr` num: kind=leave, older logs: the read's threat and band, for reading a line without replaying it.
 - `vw` str: `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision).
 - `al` num: kind=join (pair_join.ts, D10 in shadow): the ally hit by a hero within PairJoin HitRecent, within AllyRange of the bot (the lowest HP share). Logged every PairJoin Every s while the answer changes, else every CutEvery s, to 12:00. The answer is `dec`: `join` or `losing` (older logs also `outnumbered`).
 - `po` str: kind=join: our heroes within OursRange of the ally, the bot and the ally included: pid, x, y, HP, max HP, in our retreat.

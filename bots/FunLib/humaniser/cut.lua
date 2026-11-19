@@ -530,28 +530,23 @@ function ____exports.Leave(bot, i)
                 #hu > 0 and visionGrid(at, at) or nil
             },
             {"dec", i.dec},
-            {"bud", i.budget},
             {"purp", i.purp},
+            {"lv", i.a.level},
+            {"why", i.a.reason},
             {
-                "ov",
-                i.over ~= nil and math.floor(i.over * 10000 + 0.5) / 10000 or -1
+                "kill",
+                f(i.a.kill)
             },
             {
-                "th",
-                math.floor(i.hold * 10000 + 0.5) / 10000
+                "ra",
+                i.a.kill > 0 and math.floor(i.a.ratio * 100 + 0.5) / 100 or nil
             },
-            {"unp", i.unp},
             {"pj", i.pj and 1 or nil},
             {"hb", i.hb and 1 or nil},
             {
                 "dt",
                 bot:WasRecentlyDamagedByTower(0.5) and 1 or 0
-            },
-            {
-                "thr",
-                math.floor(i.r.threat * 100 + 0.5) / 100
-            },
-            {"band", i.r.band}
+            }
         }
     )
     Telemetry.Event(

@@ -12,7 +12,7 @@ world:
   t: 523.033
   team: 2
   pid: 2
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-1661,"y":-1281,"hp":733,"mhp":912,"range":790,"hull":24,"speed":330,"esc":0}
   ce: [{"id":421,"x":-1152,"y":-955,"hp":312,"mhp":312,"ranged":1,"tgt":"b","hull":8},{"id":413,"x":-1167,"y":-921,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
   ca: [{"id":430,"x":-2108,"y":-1734,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":431,"x":-2014,"y":-1637,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":432,"x":-1952,"y":-1571,"hp":562,"mhp":562,"ranged":0,"tgt":"-","hull":16},{"id":435,"x":-2224,"y":-1875,"hp":312,"mhp":312,"ranged":1,"tgt":"-","hull":8}]
@@ -26,8 +26,10 @@ world:
   hold: 0.17
   dt: 0
 expect:
-  must: ["leave(threat)"]
+  must: ["stay(under)"]
+  mustNot: ["leave"]
 notes: >
   Slice mid-stand, the end: the lone hero hit the mid within the last second (80% HP, 733 of 912; 483 over 6 s = 0.66,
   threat 0.58 over the free budget). The stand rule stops at the first hit: the leave is right, before and after the change
   (D24: step out after a hit; the passive hold is a dead end).
+  Changed (oha-safe-behave, 19/11/2026): the hero hits us, so its 483 over the 6 s window is the kill line against 733 HP: ratio 1.52, over the held bar 1.25. Old leave(threat) on threat 0.58 over a 0.5 budget -> stay(under). A hit no longer ends the stand by itself: HP over kill line decides (ratio 1.0 to 1.25 with a hit back or join would hold; under 1.25 without leaves).

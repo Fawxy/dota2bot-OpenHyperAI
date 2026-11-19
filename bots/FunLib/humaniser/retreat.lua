@@ -329,9 +329,8 @@ local function __TS__ArraySome(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, enemyOf, valid, ownTowersBehind, nearestTowerBehind, unpaid, FOUNTAIN, TOWER_IDS
+local dist, enemyOf, valid, ownTowersBehind, nearestTowerBehind, FOUNTAIN, TOWER_IDS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local BotMode = ____dota.BotMode
 local Shop = ____dota.Shop
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -340,17 +339,16 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
-local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
-local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
+local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
 end
@@ -395,44 +393,9 @@ function nearestTowerBehind(bot)
     end
     return best
 end
-function unpaid(bot, r)
-    if #r.eng == 0 then
-        return 0
-    end
-    local n = 0
-    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
-        do
-            local __continue137
-            repeat
-                if not valid(h) or not __TS__ArrayIncludes(
-                    r.eng,
-                    h:GetPlayerID()
-                ) then
-                    __continue137 = true
-                    break
-                end
-                if not CreepAggro.Paid(bot, h) then
-                    n = n + 1
-                end
-                __continue137 = true
-            until true
-            if not __continue137 then
-                break
-            end
-        end
-    end
-    return n
-end
 ____exports.SETTINGS = {
     Horizon = Threat.SETTINGS.StayHorizon,
     EngagedWindow = Threat.SETTINGS.StayEngaged,
-    EvenBurst = 1,
-    EvenHp = 0.5,
-    BudgetFree = 0.5,
-    BudgetBusy = 0.6,
-    BudgetCommitted = 0.75,
-    ExitBand = 0.15,
-    ExitDwell = 1.5,
     HealFloor = 0.3,
     HealUntil = 0.8,
     HealBack = 0.5,
@@ -581,23 +544,22 @@ function ____exports.TowerOnUs(bot)
     end
     return nil
 end
---- Busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free.
+--- What the hero is doing, for the episode's start line: busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free. Telemetry only.
 local function purposeOf(bot)
-    local s = ____exports.SETTINGS
     local job = Chooser.RunningJobName(bot)
     if job == "rune" then
-        return {"committed", s.BudgetCommitted}
+        return "committed"
     end
     if job ~= nil or Lane_.CampJobDesire(bot) > 0 then
-        return {"busy", s.BudgetBusy}
+        return "busy"
     end
     local target = bot:GetAttackTarget()
     if valid(target) and target:IsCreep() then
-        return {"busy", s.BudgetBusy}
+        return "busy"
     end
-    return {"free", s.BudgetFree}
+    return "free"
 end
---- The read `leaveWhy` decides on: Threat.Read at the hero's own place with the retreat's horizon and engaged window.
+--- The read the heal rules, the items and the telemetry use: Threat.Read at the hero's own place with the retreat's horizon and engaged window.
 function ____exports.ReadHere(bot)
     local here = bot:GetLocation()
     return Threat.Read(
@@ -1141,7 +1103,7 @@ local function useItems(bot, st, ep, now)
     end
     return true
 end
-local function start(bot, st, why, r, budget, purp, spot, rep)
+local function start(bot, st, why, r, a, purp, spot, rep)
     local now = DotaTime()
     local anchor, alt, minExp, regen = unpack(chooseAnchor(bot, why))
     episodes = episodes + 1
@@ -1150,7 +1112,6 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
         id = episodes,
         start = now,
         why = why,
-        budget = budget,
         anchor = anchor,
         hp0 = hp,
         lastHp = bot:GetHealth(),
@@ -1158,7 +1119,6 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
         twr = false,
         wave = false
     }
-    st.overSince = nil
     if why == "heal" and Ours.On("HealItems") and Ours.On("HealStop") then
         planItems(bot, st.ep)
     end
@@ -1167,8 +1127,8 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
     Lane_.CampJobAbort(bot, "retreat")
     FarmPattern.Abort(bot, "retreat")
     local here = bot:GetLocation()
-    local ____Telemetry_Event_9 = Telemetry.Event
-    local ____array_8 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_11 = Telemetry.Event
+    local ____array_10 = __TS__SparseArrayNew(
         {"ph", "start"},
         {
             "pid",
@@ -1193,25 +1153,26 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
             r2(r.burst)
         },
         {"eng", #r.eng},
+        {"lv", a and a.level},
         {
-            "unp",
-            unpaid(bot, r)
+            "ra",
+            a ~= nil and a.kill > 0 and r2(a.ratio) or nil
+        },
+        {
+            "kill",
+            a ~= nil and math.floor(a.kill + 0.5) or nil
         },
         {"tower", r.tower}
     )
-    local ____temp_7
+    local ____temp_9
     if #r.reach > 0 then
-        ____temp_7 = r.escape
+        ____temp_9 = r.escape
     else
-        ____temp_7 = nil
+        ____temp_9 = nil
     end
     __TS__SparseArrayPush(
-        ____array_8,
-        {"esc", ____temp_7},
-        {
-            "budget",
-            r2(budget)
-        },
+        ____array_10,
+        {"esc", ____temp_9},
         {"purp", purp},
         {"anchor", anchor.kind},
         {"cost", anchor.cost},
@@ -1234,9 +1195,9 @@ local function start(bot, st, why, r, budget, purp, spot, rep)
             math.floor(here.y)
         }
     )
-    ____Telemetry_Event_9(
+    ____Telemetry_Event_11(
         "retreat",
-        {__TS__SparseArraySpread(____array_8)}
+        {__TS__SparseArraySpread(____array_10)}
     )
 end
 local function ____end(bot, st, res)
@@ -1245,6 +1206,7 @@ local function ____end(bot, st, res)
         return
     end
     st.ep = nil
+    st.leave = nil
     st.orderTo = nil
     RetreatState.SetRunning(bot, false)
     local max = math.max(
@@ -1320,11 +1282,14 @@ local function step(bot, st, r, now)
         here,
         anchorPoint(ep.anchor)
     ) <= s.Arrive or ep.anchor.kind == "fountain" and bot:HasModifier("modifier_fountain_aura_buff")
+    local function fresh()
+        return SafeGather.At(bot, here, {held = false, who = "retreat"})
+    end
     if ep.why == "heal" then
         if at and hpShare(bot) >= s.HealUntil then
             return "anchor"
         end
-        if Ours.On("HealStop") and hpShare(bot) >= s.HealBack and #r.reach == 0 and r.threat < ep.budget - s.ExitBand and laneNearer(bot, here) then
+        if Ours.On("HealStop") and hpShare(bot) >= s.HealBack and #r.reach == 0 and fresh().level ~= "deadly" and laneNearer(bot, here) then
             return "healed"
         end
         if ep.itemHeal == true then
@@ -1333,7 +1298,7 @@ local function step(bot, st, r, now)
         return nil
     end
     if at then
-        if forced or r.threat < ep.budget then
+        if forced or fresh().level ~= "deadly" then
             return "anchor"
         end
         if ep.anchor.kind ~= "fountain" then
@@ -1349,196 +1314,48 @@ local function step(bot, st, r, now)
     if now - ep.start > s.MaxSecs then
         return "cut"
     end
-    if forced or ____exports.TowerOnUs(bot) ~= nil or r.threat >= ep.budget - s.ExitBand then
-        ep.underSince = nil
+    if forced or ____exports.TowerOnUs(bot) ~= nil then
         return nil
     end
-    if #r.reach == 0 then
+    local a = fresh()
+    if #r.reach == 0 and a.kill == 0 then
         return "gone"
     end
-    ep.underSince = ep.underSince or now
-    return now - ep.underSince >= s.ExitDwell and "safe" or nil
+    return a.level ~= "deadly" and "safe" or nil
 end
---- The leave rule: lethal, a tower on us or the heal floor at once; over budget for `Profile.ThreatHold`. Returns the reason to
--- leave, or, with none, the reason to stay (ev=cut kind=leave logs it; the driver retreat_leave compares it).
-function ____exports.LeaveWhy(bot, st, r, budget, now, joins, hits)
-    if joins == nil then
-        joins = false
+--- The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once, the heal floor with nobody in reach,
+-- else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
+-- under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
+-- stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
+function ____exports.LeaveWhy(bot, holds)
+    if holds == nil then
+        holds = function() return Trade.Holds(bot) end
     end
-    if hits == nil then
-        hits = false
-    end
-    if r.band == "lethal" then
-        return "lethal", nil
-    end
+    local a = SafeGather.At(
+        bot,
+        bot:GetLocation(),
+        {held = true, who = "leave"}
+    )
     if ____exports.TowerOnUs(bot) ~= nil then
-        return "tower", nil
+        return {why = "tower", a = a}
     end
-    if hpShare(bot) < ____exports.SETTINGS.HealFloor and #r.reach == 0 then
-        return "heal", nil
+    if hpShare(bot) < ____exports.SETTINGS.HealFloor and a.kill == 0 then
+        return {why = "heal", a = a}
     end
-    if r.threat <= budget then
-        st.overSince = nil
-        st.stayLogged = nil
-        return nil, "under"
+    if a.level ~= "deadly" then
+        return {stay = "under", a = a}
     end
-    if Ours.On(#r.reach == 1 and "EvenStand" or "HighStand") and Threat.Stand(bot, r) then
-        st.overSince = nil
-        if st.stayLogged ~= true then
-            st.stayLogged = true
-            Telemetry.Event(
-                "retreat",
-                {
-                    {"ph", "stay"},
-                    {"why", "stand"},
-                    {
-                        "pid",
-                        bot:GetPlayerID()
-                    },
-                    {
-                        "thr",
-                        r2(r.threat)
-                    },
-                    {"band", r.band},
-                    {"reach", #r.reach},
-                    {"al", r.allies},
-                    {
-                        "burst",
-                        r2(r.burst)
-                    },
-                    {"eng", #r.eng},
-                    {
-                        "budget",
-                        r2(budget)
-                    },
-                    {
-                        "hp",
-                        r2(hpShare(bot))
-                    }
-                }
-            )
-        end
-        return nil, "stand"
+    if a.reason == "tower" then
+        return {why = "tower", a = a}
     end
-    if joins then
-        st.overSince = nil
-        if st.stayLogged ~= true then
-            st.stayLogged = true
-            Telemetry.Event(
-                "retreat",
-                {
-                    {"ph", "stay"},
-                    {"why", "join"},
-                    {
-                        "pid",
-                        bot:GetPlayerID()
-                    },
-                    {
-                        "thr",
-                        r2(r.threat)
-                    },
-                    {"band", r.band},
-                    {"reach", #r.reach},
-                    {"al", r.allies},
-                    {
-                        "burst",
-                        r2(r.burst)
-                    },
-                    {"eng", #r.eng},
-                    {
-                        "budget",
-                        r2(budget)
-                    },
-                    {
-                        "hp",
-                        r2(hpShare(bot))
-                    }
-                }
-            )
-        end
-        return nil, "join"
+    if a.ratio < Safe.BARS.hold then
+        return {why = "lethal", a = a}
     end
-    if hits then
-        st.overSince = nil
-        if st.stayLogged ~= true then
-            st.stayLogged = true
-            Telemetry.Event(
-                "retreat",
-                {
-                    {"ph", "stay"},
-                    {"why", "hitback"},
-                    {
-                        "pid",
-                        bot:GetPlayerID()
-                    },
-                    {
-                        "thr",
-                        r2(r.threat)
-                    },
-                    {"band", r.band},
-                    {"reach", #r.reach},
-                    {"al", r.allies},
-                    {
-                        "burst",
-                        r2(r.burst)
-                    },
-                    {"eng", #r.eng},
-                    {
-                        "budget",
-                        r2(budget)
-                    },
-                    {
-                        "hp",
-                        r2(hpShare(bot))
-                    }
-                }
-            )
-        end
-        return nil, "hitback"
+    local hold = holds()
+    if hold ~= nil then
+        return {stay = hold, a = a, hold = hold}
     end
-    local even = #r.reach <= r.allies + 1 and r.burst < ____exports.SETTINGS.EvenBurst and hpShare(bot) >= ____exports.SETTINGS.EvenHp
-    if Ours.On("RetreatOdds") and even and unpaid(bot, r) == 0 then
-        st.overSince = nil
-        if st.stayLogged ~= true then
-            st.stayLogged = true
-            Telemetry.Event(
-                "retreat",
-                {
-                    {"ph", "stay"},
-                    {
-                        "pid",
-                        bot:GetPlayerID()
-                    },
-                    {
-                        "thr",
-                        r2(r.threat)
-                    },
-                    {"band", r.band},
-                    {"reach", #r.reach},
-                    {"al", r.allies},
-                    {
-                        "burst",
-                        r2(r.burst)
-                    },
-                    {"eng", #r.eng},
-                    {
-                        "budget",
-                        r2(budget)
-                    },
-                    {
-                        "hp",
-                        r2(hpShare(bot))
-                    }
-                }
-            )
-        end
-        return nil, "even"
-    end
-    st.overSince = st.overSince or now
-    if now - st.overSince >= Profile.ThreatHold(bot) then
-        return "threat", nil
-    end
-    return nil, "hold"
+    return {why = "threat", a = a}
 end
 --- The retreat-walk drill's cast: walk to the rep's start spot, then the forced episode, then stand. Undefined when not in it.
 local function drillDesire(bot, st, now)
@@ -1588,7 +1405,7 @@ local function drillDesire(bot, st, now)
             st,
             "forced",
             readOf(bot, st, now),
-            ____exports.SETTINGS.BudgetFree,
+            nil,
             "free",
             d.spot,
             rep
@@ -1608,11 +1425,11 @@ local function drillDesire(bot, st, now)
     return ____exports.SETTINGS.DrillDesire
 end
 --- ev=cut kind=leave on a changed answer, else while a hero is in reach, at most every CutEvery. Reads state; the decision does not use it.
-local function cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins, hits)
+local function cutLeave(bot, st, r, purp, l, now)
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true then
         return
     end
-    local dec = why or stay
+    local dec = l.why or l.stay
     local changed = st.cutDec ~= dec
     if not changed and not (#r.reach > 0 and now - (st.cutAt or -math.huge) >= ____exports.SETTINGS.CutEvery) then
         return
@@ -1625,13 +1442,10 @@ local function cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, jo
         {
             r = r,
             dec = dec,
-            budget = budget,
             purp = purp,
-            over = overBefore ~= nil and now - overBefore or nil,
-            hold = Profile.ThreatHold(bot),
-            unp = unpaid(bot, r),
-            pj = joins,
-            hb = hits,
+            a = l.a,
+            pj = l.hold == "join",
+            hb = l.hold == "hitback",
             short = math.min(____exports.SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
             long = ____exports.SETTINGS.EngagedWindow
         }
@@ -1660,13 +1474,11 @@ function ____exports.Desire(bot)
         if st.ep ~= nil then
             ____end(bot, st, "died")
         end
-        st.overSince = nil
         return 0
     end
     local readAtBefore = st.readAt
     local r = readOf(bot, st, now)
     if st.ep ~= nil then
-        SafeGather.Shadow(bot, "retreat", r, {away = false, held = true, hold = false})
         local res = step(bot, st, r, now)
         if res == nil then
             return ____exports.SETTINGS.EpisodeDesire
@@ -1674,7 +1486,7 @@ function ____exports.Desire(bot)
         ____end(bot, st, res)
         return 0
     end
-    local purp, budget = unpack(purposeOf(bot))
+    local purp = purposeOf(bot)
     if r.band ~= st.band then
         st.band = r.band
         Telemetry.Event(
@@ -1698,7 +1510,6 @@ function ____exports.Desire(bot)
                 {"eng", #r.eng},
                 {"tower", r.tower},
                 {"esc", r.escape},
-                {"budget", budget},
                 {
                     "hp",
                     r2(hpShare(bot))
@@ -1716,50 +1527,59 @@ function ____exports.Desire(bot)
     ) then
         return 0
     end
-    local overBefore = st.overSince
-    local ____temp_10
-    if r.threat > budget then
-        ____temp_10 = Trade.Holds(bot)
-    else
-        ____temp_10 = nil
-    end
-    local hold = ____temp_10
-    local joins = hold == "join"
-    local hits = hold == "hitback"
-    local why, stay = ____exports.LeaveWhy(
-        bot,
-        st,
-        r,
-        budget,
-        now,
-        joins,
-        hits
-    )
-    SafeGather.Shadow(bot, "leave", r, {away = false, held = false, hold = joins or hits})
-    if readAtBefore ~= st.readAt then
+    local l = st.leave
+    local fresh = readAtBefore ~= st.readAt or l == nil
+    if fresh then
+        l = ____exports.LeaveWhy(bot)
+        st.leave = l
         cutLeave(
             bot,
             st,
             r,
-            budget,
             purp,
-            why,
-            stay,
-            overBefore,
-            now,
-            joins,
-            hits
+            l,
+            now
         )
     end
-    if why == nil then
+    local leave = l
+    if leave.stay == "under" then
+        st.stayLogged = nil
+    elseif leave.stay ~= nil and st.stayLogged ~= true then
+        st.stayLogged = true
+        Telemetry.Event(
+            "retreat",
+            {
+                {"ph", "stay"},
+                {"why", leave.stay},
+                {
+                    "pid",
+                    bot:GetPlayerID()
+                },
+                {"lv", leave.a.level},
+                {
+                    "ra",
+                    r2(leave.a.ratio)
+                },
+                {
+                    "kill",
+                    math.floor(leave.a.kill + 0.5)
+                },
+                {
+                    "hp",
+                    r2(hpShare(bot))
+                }
+            }
+        )
+    end
+    if leave.why == nil then
         return 0
     end
     start(
         bot,
         st,
-        why,
+        leave.why,
         r,
-        budget,
+        leave.a,
         purp
     )
     return ____exports.SETTINGS.EpisodeDesire

@@ -263,7 +263,7 @@ end
 -- is right, the hold point would give Sniper free harass).
 function ____exports.Unsafe(anchor, why, own, reach, front)
     local floor = reach + ____exports.SETTINGS.LateMargin
-    return anchor == "hold" and why == "hero" and own < floor and front <= floor + ____exports.SETTINGS.HoldDrawLead * creepSpeed()
+    return anchor == "hold" and (why == "kill" or why == "unknown") and own < floor and front <= floor + ____exports.SETTINGS.HoldDrawLead * creepSpeed()
 end
 --- Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin).
 function ____exports.BehindAt(reach)

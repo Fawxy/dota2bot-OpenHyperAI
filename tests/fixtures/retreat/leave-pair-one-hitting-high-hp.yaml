@@ -13,7 +13,7 @@ world:
   t: 113.633
   team: 2
   pid: 0
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":6008,"y":-5964,"hp":625,"mhp":714,"range":330,"hull":24,"speed":282,"esc":0}
   ce: []
   ca: [{"id":77,"x":3931,"y":-6006,"hp":550,"mhp":550,"ranged":0,"tgt":"u87","hull":16},{"id":60,"x":5909,"y":-5154,"hp":300,"mhp":300,"ranged":1,"tgt":"h9","hull":8},{"id":61,"x":6081,"y":-5060,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":57,"x":6126,"y":-4871,"hp":429,"mhp":550,"ranged":0,"tgt":"h9","hull":16},{"id":58,"x":5970,"y":-5576,"hp":238,"mhp":550,"ranged":0,"tgt":"h7","hull":16},{"id":81,"x":3655,"y":-6144,"hp":300,"mhp":300,"ranged":1,"tgt":"-","hull":8},{"id":78,"x":4017,"y":-6034,"hp":550,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":79,"x":3995,"y":-5962,"hp":497,"mhp":550,"ranged":0,"tgt":"u87","hull":16}]
@@ -28,9 +28,10 @@ world:
   dt: 0
   pj: 0
 expect:
-  must: ["leave(threat)"]
-  mustNot: ["stay"]
+  must: ["stay(under)"]
+  mustNot: ["leave"]
 notes: >
   Control (D1, the opposite rule; h2hjoinafter1 A_rad_1, 1:53): our pos1 at 88% with two enemy heroes in reach, one 277 off
   attacking it and hit it recently, the ally 2,000 away. A hero hitting us ends the stand: the read counts that hero over
   6 s (0.74, over budget) and leaving is right.
+  Changed (oha-safe-behave, 19/11/2026): two heroes in reach, one hitting: 306 over the windows (6 s for the hitter) against 625 HP: ratio 2.04. Old leave(threat) (threat 0.74 over budget) -> stay(under).

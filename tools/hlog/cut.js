@@ -5,7 +5,7 @@
 //   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|safe|pick] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
-//       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
+//       answer the game gave (spot: the ev=lane_pos why, sx, sy, pl; gate: its ev=threat dec; leave: the cut's dec); --all
 //       checks every cut and judges the bar (95% of each answer)
 //       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 40 cuts always do)
 //   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P] [--engaged 0|1]   one line per cut: time, pid, answer,
@@ -159,18 +159,18 @@ const DECISIONS = {
             if (!lp) return { error: 'no ev=lane_pos beside it' };
             const verb = v => (obs.actions.find(a => a.verb === v) || {}).target;
             const d = Math.hypot(obs.fact.x - Number(lp.sx), obs.fact.y - Number(lp.sy));
-            const why = verb('stand') === lp.why, rp = (verb('read') ?? 'none') === (lp.rp ?? 'off');
-            return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.rp}`, detail: `off by ${d.toFixed(0)}` };
+            const why = verb('stand') === lp.why, rp = (verb('read') ?? 'off') === (lp.pl ?? lp.rp ?? 'off');
+            return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.pl ?? lp.rp}`, detail: `off by ${d.toFixed(0)}` };
         },
         answer: (game, cut) => (game.lanePos.get(`${cut.pid}@${cut.t}`) || {}).why ?? '?',
         brief(game, cut) {
             const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
-            return `${cut.role}, read ${lp.rp ?? 'off'}`;
+            return `${cut.role}, read ${lp.pl ?? lp.rp ?? 'off'}`;
         },
         id: (cut) => `lane.spot.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note(game, cut) {
             const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
-            return `The game chose ${lp.why}/${lp.rp} at (${lp.sx}, ${lp.sy})`;
+            return `The game chose ${lp.why}/${lp.pl ?? lp.rp} at (${lp.sx}, ${lp.sy})`;
         },
     },
     gate: {
@@ -213,7 +213,7 @@ const DECISIONS = {
         driver: 'retreat_leave',
         world(game, cut) {
             const w = commonWorld(game, cut);
-            Object.assign(w, { budget: Number(cut.bud), over: Number(cut.ov), hold: Number(cut.th), dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0, hb: Number(cut.hb) === 1 ? 1 : 0 });
+            Object.assign(w, { dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0, hb: Number(cut.hb) === 1 ? 1 : 0 });
             return w;
         },
         check(game, cut, obs) {
@@ -223,9 +223,9 @@ const DECISIONS = {
             return { same: got === want, got, want };
         },
         answer: (game, cut) => cut.dec,
-        brief: (game, cut) => `threat ${cut.thr} (${cut.band}), ${cut.purp} budget ${cut.bud}`,
+        brief: (game, cut) => `${cut.lv}(${cut.why}) kill ${cut.kill} ratio ${cut.ra === undefined ? '-' : cut.ra}, ${cut.purp}`,
         id: (cut) => `retreat.leave.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${cut.dec} (threat ${cut.thr}, ${cut.purp} budget ${cut.bud}, over ${cut.ov} s)`,
+        note: (game, cut) => `The game chose ${cut.dec} (${cut.lv}(${cut.why}), kill ${cut.kill}, ratio ${cut.ra === undefined ? '-' : cut.ra}, ${cut.purp})`,
     },
     join: {
         driver: 'pair_join',

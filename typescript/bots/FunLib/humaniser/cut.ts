@@ -10,9 +10,10 @@
  * records of `,`-joined numbers in the order the field's comment gives (lane creeps on ev=cut_creeps, the same frame); a target is `b` (this bot), `h<pid>`, `u<CreepId>`
  * or `-`.
  *
- * `leave` (retreat's LeaveWhy, beside the answer it logs as `dec`): the read at the bot's own place with the engaged window, plus
- * what the rule reads past it: the budget, the hold timer, RetreatOdds' unpaid count, the threshold, a tower's damage on the
- * bot. The same hero, tower and vision records as the spot, with no lane front; its cut_creeps line carries `kind=leave`.
+ * `leave` (retreat's LeaveWhy, beside the answer it logs as `dec`): the world of the bot's own place (heroes with damage over the
+ * short and long windows, towers, vision, creeps) that `SafeGather.At` reads, plus what the rule read past it: the answer's `lv`,
+ * `why`, `kill` and `ra`, what Trade.Holds said (`pj`, `hb`) and a tower's damage on the bot (`dt`). The same hero, tower and
+ * vision records as the spot, with no lane front; its cut_creeps line carries `kind=leave`.
  *
  * `gate` (Threat.Gate: the start gate of a trip, the walk from `fm` to `pl`): the same machinery over a walk instead of the
  * bot's lane. Visible heroes and allies within CUT_R of the walk's box (a hero reaches the walk within the 4 s horizon from
@@ -28,6 +29,7 @@ import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as Sight from "bots/FunLib/humaniser/sight";
+import type * as Safe from "bots/FunLib/humaniser/safe";
 
 /**
  * Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
@@ -218,16 +220,11 @@ export function Spot(bot: Unit): void {
 
 export interface LeaveInputs {
     r: Threat.Read;
-    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold`, `stand`, `join`, `hitback` (stay). */
+    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `join`, `hitback` (stay). */
     dec: string;
-    budget: number;
     purp: string;
-    /** Seconds the read had been over budget before this decision (undefined: not over). */
-    over?: number;
-    /** Profile.ThreatHold. */
-    hold: number;
-    /** RetreatOdds' unpaid engaged heroes. */
-    unp: number;
+    /** The safe-here answer the rule read (SafeGather.At, held, at the bot's place). */
+    a: Safe.Answer;
     /** Trade.Holds held a join for the bot (D10's join: LeaveWhy stays `join`). */
     pj: boolean;
     /** Trade.Holds held for the bot (D24's hit back: LeaveWhy stays `hitback`). */
@@ -259,16 +256,14 @@ export function Leave(bot: Unit, i: LeaveInputs): void {
         ["tt", nearTowers.join(";")],
         ["vis", hu.length > 0 ? visionGrid(at, at) : undefined],
         ["dec", i.dec],
-        ["bud", i.budget],
         ["purp", i.purp],
-        ["ov", i.over !== undefined ? math.floor(i.over * 10000 + 0.5) / 10000 : -1],
-        ["th", math.floor(i.hold * 10000 + 0.5) / 10000],
-        ["unp", i.unp],
+        ["lv", i.a.level],
+        ["why", i.a.reason],
+        ["kill", f(i.a.kill)],
+        ["ra", i.a.kill > 0 ? math.floor(i.a.ratio * 100 + 0.5) / 100 : undefined],
         ["pj", i.pj ? 1 : undefined],
         ["hb", i.hb ? 1 : undefined],
         ["dt", bot.WasRecentlyDamagedByTower(0.5) ? 1 : 0],
-        ["thr", math.floor(i.r.threat * 100 + 0.5) / 100],
-        ["band", i.r.band],
     ]);
     Telemetry.Event("cut_creeps", [
         ["pid", pid],

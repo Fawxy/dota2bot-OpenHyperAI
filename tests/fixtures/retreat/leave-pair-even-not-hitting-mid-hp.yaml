@@ -12,7 +12,7 @@ world:
   t: 65.767
   team: 3
   pid: 5
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"EvenStand":true,"HealItems":false,"HealStop":true,"HighStand":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-5810,"y":5713,"hp":437,"mhp":714,"range":150,"hull":24,"speed":310,"esc":0}
   ce: [{"id":17,"x":-6112,"y":4858,"hp":223,"mhp":300,"ranged":1,"tgt":"u29","hull":8},{"id":41,"x":-6051,"y":5038,"hp":164,"mhp":550,"ranged":0,"tgt":"u40","hull":16},{"id":44,"x":-6176,"y":4703,"hp":300,"mhp":300,"ranged":1,"tgt":"u40","hull":8},{"id":42,"x":-5982,"y":5013,"hp":550,"mhp":550,"ranged":0,"tgt":"u38","hull":16},{"id":43,"x":-6145,"y":5089,"hp":461,"mhp":550,"ranged":0,"tgt":"u40","hull":16}]
   ca: [{"id":29,"x":-5998,"y":5155,"hp":297,"mhp":550,"ranged":0,"tgt":"u41","hull":16},{"id":38,"x":-5943,"y":5108,"hp":404,"mhp":550,"ranged":0,"tgt":"u41","hull":16},{"id":39,"x":-5730,"y":5378,"hp":300,"mhp":300,"ranged":1,"tgt":"u41","hull":8},{"id":40,"x":-6070,"y":5142,"hp":168,"mhp":550,"ranged":0,"tgt":"u43","hull":16}]
@@ -26,7 +26,8 @@ world:
   dt: 0
   pj: 0
 expect:
-  must: ["stay(hold)"]
-  mustNot: ["stay(stand)", "leave"]
+  must: ["stay(under)"]
+  mustNot: ["leave"]
 notes: >
   Commonest new start (D2 against D1; h2hhighstand1 C_dire_3, 1:06): our pos5 at 61% with two enemy heroes about 1,000 off, neither hitting, an ally 512 off, so not outnumbered; their 3 s burst is under our HP. D1 alone says stay, but h2hstand1 stood such reads at two heroes and died within 10 s of 3 in 77 stands at HP 50-70%: the stand does not hold it (PackHp 0.7), only the threat hold until the read has held over budget.
+  Changed (oha-safe-behave, 19/11/2026): two heroes in reach, 159 over 2 s against 437 HP: ratio 2.75. Old stay(hold) -> stay(under); the hold timer is gone.

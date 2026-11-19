@@ -5,16 +5,16 @@
  * A preferred point (a ranged core at attack range - 50 from the lowest-HP enemy creep, a melee core just behind our front,
  * both shifted away from the nearest enemy hero; a support attack range - 50 behind our front, in deny reach of it, shifted
  * to the enemy hero's side of the lane, off the core's approach), then the candidate nearest to it that
- * keeps the hard limits: outside every visible enemy hero's reach (its attack range plus both bounding radii plus 1.5 s of
- * its movement, and never under 800), outside the enemy creeps' acquisition rings (520 melee, 620 ranged), both widened by the
- * HP margin, outside every enemy tower's range plus the hold's drift, and no further back than the XP limit (1,000 from the
- * preferred point). With no candidate inside the XP limit that keeps them all, the furthest back that keeps the tower limit. Without a visible enemy wave (between waves,
- * walking out) the preferred point is 100 behind our front and the hero and tower limits apply.
+ * keeps the hard limits: not `deadly` by `SafeGather.At` (the safe-here read: a place its walk from here reaches, or the place
+ * alone when the walk goes away from every hero; a place the hero stands within HELD_NEAR of is judged as held, any other as
+ * fresh), outside the enemy creeps' acquisition rings (520 melee, 620 ranged), widened by the HP margin, outside every enemy
+ * tower's range plus the hold's drift, and no further back than the XP limit (1,000 from the preferred point). With no candidate
+ * inside the XP limit that keeps them all, the nearest candidate beyond it that is not `deadly` and still within XP_RANGE of the
+ * wave (`why=xp`), else the furthest back that keeps the tower limit. Without a visible enemy wave (between waves, walking out)
+ * the preferred point is 100 behind our front and the hero and tower limits apply.
  *
  * Our own tower covers the ground in its range (Ours.LaneSpotTower): an enemy creep in its range that is attacking something
- * other than us keeps only HELD_RING, and an enemy hero our tower is attacking, or one that would have to stand inside our
- * tower's range to hit the point, keeps only its attack reach plus TOWER_REACT_SECS of movement, with no MIN_REACH floor.
- * Cores only, and none of this at HP_LOW or below.
+ * other than us keeps only HELD_RING. Cores only, and none of this at HP_LOW or below. Heroes are `At`'s alone, under our tower too.
  *
  * A fed creep (lane_aggro's feed, the named input `fed`, slice lane-aggro): once our ranged creep that lane_aggro drew their wave
  * onto is at FED_HP or below, the preferred point is FED_BEHIND behind it, inside the bot's attack reach, so the body's deny
@@ -35,7 +35,7 @@
  */
 import { Lane, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { On } from "bots/FunLib/humaniser/ours";
-import * as Threat from "bots/FunLib/humaniser/threat";
+import type * as Safe from "bots/FunLib/humaniser/safe";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
@@ -45,6 +45,7 @@ export const MELEE_RING = 520;
 export const RANGED_RING = 620;
 /** Enemy tower attack range (~700) plus a margin; at every level, since nothing in lane owns a dive. */
 export const TOWER_RING = 750;
+/** The hero's reach limits are `At`'s; `HeroReach` stays for the camp, pull farm and wave hold scans that ask where an enemy hero reaches. */
 /** How far the hold may leave the spot (its tolerance 40 plus scatter 40), so a hold on a spot at the ring stays outside it. */
 const HOLD_DRIFT = 80;
 const RANGED_ABOVE = 320;
@@ -66,6 +67,10 @@ const QUERY = 1400;
 const HP_SAFE = 0.5;
 const HP_LOW = 0.25;
 const HP_MARGIN = 300;
+/** A candidate is read as held (the hero already stands on it) within this many units: `At`'s `held`, the lower bar (Safe.BARS.stay against its fresh 15% more). */
+const HELD_NEAR = 150;
+/** XP is shared within 1,500 of a dying creep: the XP-only spot stays within this of the wave when no place that keeps the farming limits is not deadly. */
+const XP_RANGE = 1500;
 /**
  * Seconds of the enemy hero's movement added to its attack reach: the ground it closes before we react (judgement). lposchk1
  * with a fixed 150: cores held 400-800 from an enemy hero lost 0.7-1.1 HP-% a second there, against 0.3 at 800-1,200.
@@ -73,36 +78,6 @@ const HP_MARGIN = 300;
  * second, 0.06 beyond 1,000; 1.5 s puts that reach at about 1,070.
  */
 const REACT_SECS = 1.5;
-/**
- * With Ours.LaneSpotThreat the enemy-hero limit is the threat read of standing at the point for READ_HORIZON seconds (slice
- * retreat, user 10/11/2026), and of the walk to it when that walk goes towards an enemy hero: a spot is acceptable where the read
- * is under READ_BURST (the heroes in reach take that share of our current HP in the window; low HP counts once, through the
- * read's own division by HP) and its missing belief under READ_MISSING. Walking away from every hero reads the place alone, so
- * the candidates behind us are told apart (review 10/11/2026 H2: a walk read from the bot's own position gave every candidate the
- * same reach and burst). Under our own tower the old hero limits and the tower's cover stand (H3). rtwatch1 7:33: the old limits
- * put the spot beyond a chaser 850-920 away, then a `wave` spot 1,400 forward past him, because they test the point, not the
- * walk. All `judgement`, graded in the drill: the horizon is about the walk back to the furthest candidate (1,000 at 300 a
- * second); the burst bar sits above a lone melee harasser at full HP (0.15-0.25 in rtspot1) and under two heroes in reach.
- */
-const READ_HORIZON = 3;
-const READ_BURST = 0.35;
-const READ_MISSING = 0.5;
-/**
- * A place whose read is `pressured` (Threat.SETTINGS.Pressured) is refused too: retreat's free leave budget is that band, so a
- * spot under it is one a free laner would leave from. rtch9 (66fa2eb3): two chasers in reach read 0.6-0.7 at full HP with `burst`
- * 0.2-0.33 under READ_BURST; each episode ended out of their reach and the spot walked her back in, 22 episodes in 5 chase reps.
- * A lone harasser at full HP reads 0.25 + 0.5 x burst (+ 0.3 x missing), under the band while burst is under READ_BURST and no
- * unseen hero is counted (user 10/11/2026). With no ally in reach, two enemy laners in reach read 0.5 at any HP: refused.
- */
-const pressured = (r: Threat.Read): boolean => r.threat >= Threat.SETTINGS.Pressured;
-/**
- * Seconds a hero already hitting us is counted over (`Threat.Read` `opts.engagedWindow`): he keeps hitting while we stand there.
- * Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
- * rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
- */
-const LANE_ENGAGED_WINDOW = 6;
-/** The shadow reads a spot as held (the hero already stands on it) within this many units. */
-const SHADOW_HELD = 150;
 /**
  * No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
  * about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
@@ -114,8 +89,6 @@ const MIN_REACH = 800;
  * hero clear of the creep's body and its 100 melee reach.
  */
 const HELD_RING = 200;
-/** Movement allowed for an enemy hero that our tower punishes for attacking us (judgement): a step in, not a chase. */
-const TOWER_REACT_SECS = 0.5;
 /** Our tower's attack range when the API gives none. */
 const OWN_TOWER_RANGE = 700;
 /** The fed creep anchors the spot at or below this HP share (judgement: the deny window opens below 50%, the walk takes time). */
@@ -138,7 +111,7 @@ const BACK_ALONG = 400;
 
 export type Role = "core" | "support";
 /** What decided the point: the preferred point itself, or the limit that moved it. */
-export type Why = "pref" | "hero" | "creep" | "hp" | "tower" | "xp";
+export type Why = "pref" | "kill" | "unknown" | "creep" | "hp" | "tower" | "xp";
 
 export interface SpotInfo {
     spot: Vector;
@@ -153,36 +126,20 @@ export interface SpotInfo {
     /** With the rearmost clash as the anchor: its distance from our T1 along the lane, and our front's (ev=lane_pos `cl`, `fo`). */
     clash?: number;
     far?: number;
-    /** With Ours.LaneSpotThreat: the read at the chosen spot (burst, threat) and what the old hero limits would say there
-     *  (`hero`, `hp`, ... or `none`), so both rules are graded on one truth (ev=lane_pos `rb`, `rt`, `ob`). */
-    rb?: number;
-    rt?: number;
     /** Reads made this Compute (frame cost). */
     rn?: number;
-    ob?: string;
-    /** The read's `missing` and the heroes it counts as unseen (comma-joined pids) at the chosen spot. */
-    rm?: number;
-    mp?: string;
-    /** At the preferred point: what the old hero limits say (`op`: `hero`, `hp`, ... or `none`) and what the read says (`rp`:
-     *  `burst`, `missing`, `threat` (the read is `pressured`) or `none`), so a log can tell which limit pushed the spot. */
-    op?: string;
-    rp?: string;
-    /** Heroes the read counted as engaged at the chosen spot, and 1 when some reaching hero's `GetAttackTarget()` is the bot. */
-    re?: number;
-    rat?: number;
+    /** What `SafeGather.At` says at the chosen spot (`sl`: safe, costly or deadly; `sr`: HP over kill line, absent with nobody in reach) and at the preferred point (`pl`, `pq`). */
+    sl?: string;
+    sr?: number;
+    pl?: string;
+    pq?: number;
 }
 
-/** Our towers' cover this frame: what each limit becomes under it. */
+/** Our towers' cover this frame: what the creep rings become under it. */
 export interface Cover {
     towers: { at: Vector; range: number }[];
     /** Per creep (in `creeps` order): held by our tower, so its ring is HELD_RING. */
     held: boolean[];
-    /** Per hero (in `heroes` order): our tower is attacking it. */
-    tanking: boolean[];
-    /** Per hero: its reach where our tower covers the point (attack reach plus TOWER_REACT_SECS of movement). */
-    near: number[];
-    /** Per hero: attack range plus both radii, what it needs to hit us without moving. */
-    hit: number[];
 }
 
 function sub(a: Vector, b: Vector): [number, number] {
@@ -253,22 +210,13 @@ export function HeroReach(self: Unit, enemy: Unit): number {
     return math.max(MIN_REACH, enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + REACT_SECS * enemy.GetCurrentMovementSpeed());
 }
 
-/** Whether every point an enemy needs (within `hit` of `p`) to attack `p` lies inside one of our towers' range. */
-function covers(cover: Cover, p: Vector, hit: number): boolean {
-    for (const t of cover.towers) if (d2(p, t.at) + hit <= t.range) return true;
-    return false;
-}
-
 /** Our towers in reach and what they cover; undefined with Ours.LaneSpotTower off or no tower of ours near. */
-function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined {
+function coverFor(bot: Unit, creeps: Unit[]): Cover | undefined {
     if (!On("LaneSpotTower")) return undefined;
     const towers: Cover["towers"] = [];
-    const targets: Unit[] = [];
     for (const t of bot.GetNearbyTowers(1600, false)) {
         if (!alive(t)) continue;
         towers.push({ at: t.GetLocation(), range: t.GetAttackRange() ?? OWN_TOWER_RANGE });
-        const target = t.GetAttackTarget();
-        if (target !== undefined && target !== null) targets.push(target);
     }
     if (towers.length === 0) return undefined;
     const held: boolean[] = [];
@@ -278,29 +226,15 @@ function coverFor(bot: Unit, creeps: Unit[], heroes: Unit[]): Cover | undefined 
         for (const t of towers) if (d2(c.GetLocation(), t.at) <= t.range + c.GetBoundingRadius()) inRange = true;
         held.push(inRange && target !== undefined && target !== null && target !== bot);
     }
-    const tanking: boolean[] = [];
-    const near: number[] = [];
-    const hit: number[] = [];
-    for (const h of heroes) {
-        let tanked = false;
-        for (const u of targets) if (u === h) tanked = true;
-        tanking.push(tanked);
-        const r = h.GetAttackRange() + h.GetBoundingRadius() + bot.GetBoundingRadius();
-        hit.push(r);
-        near.push(r + TOWER_REACT_SECS * h.GetCurrentMovementSpeed());
-    }
-    return { towers, held, tanking, near, hit };
+    return { towers, held };
 }
 
 /**
  * What the spot's limits read from the game, taken once per Compute: Compute asks about some thirty places in one frame,
- * and the units do not move inside it. `reach` holds each hero's reach (HeroReach), in `heroes` order. `ring` is each
+ * and the units do not move inside it. `reach` is gone: heroes are `At`'s. `ring` is each
  * creep's ring under our towers' cover, `ringOpen` without it.
  */
 interface Field {
-    hx: number[];
-    hy: number[];
-    reach: number[];
     cx: number[];
     cy: number[];
     ring: number[];
@@ -309,14 +243,8 @@ interface Field {
     ty: number[];
 }
 
-function fieldOf(creeps: Unit[], towers: Unit[], heroes: Unit[], reach: number[], cover: Cover | undefined, busy: boolean[] | undefined): Field {
-    const f: Field = { hx: [], hy: [], reach: [], cx: [], cy: [], ring: [], ringOpen: [], tx: [], ty: [] };
-    for (let i = 0; i < heroes.length; i++) {
-        const at = heroes[i].GetLocation();
-        f.hx.push(at.x);
-        f.hy.push(at.y);
-        f.reach.push(reach[i]);
-    }
+function fieldOf(creeps: Unit[], towers: Unit[], cover: Cover | undefined, busy: boolean[] | undefined): Field {
+    const f: Field = { cx: [], cy: [], ring: [], ringOpen: [], tx: [], ty: [] };
     for (let i = 0; i < creeps.length; i++) {
         const c = creeps[i];
         const at = c.GetLocation();
@@ -341,21 +269,11 @@ function fieldBreaksTower(f: Field, p: Vector): boolean {
 }
 
 /**
- * The first hard limit `p` breaks, or undefined: an enemy hero's reach (`hero`), an enemy creep's ring (`creep`), a tower, or
- * `hp` when only the HP margin breaks a hero or creep limit. `heroes` false leaves the hero limit out (the threat read has
- * it); `cover`, when given, relaxes the limits under our towers.
+ * The first hard limit `p` breaks, or undefined: an enemy creep's ring (`creep`), a tower, or `hp` when only the HP margin breaks a
+ * creep limit. `cover`, when given, relaxes the creep rings under our towers.
  */
-function fieldBreaks(f: Field, p: Vector, margin: number, heroes: boolean, cover: Cover | undefined): Why | undefined {
+function fieldBreaks(f: Field, p: Vector, margin: number, cover: Cover | undefined): Why | undefined {
     let hp = false;
-    if (heroes) {
-        for (let i = 0; i < f.hx.length; i++) {
-            let r = f.reach[i];
-            if (cover !== undefined && (cover.tanking[i] || covers(cover, p, cover.hit[i]))) r = cover.near[i];
-            const dist = len(p.x - f.hx[i], p.y - f.hy[i]);
-            if (dist < r) return "hero";
-            if (dist < r + margin) hp = true;
-        }
-    }
     const ring = cover !== undefined ? f.ring : f.ringOpen;
     for (let i = 0; i < f.cx.length; i++) {
         const dist = len(p.x - f.cx[i], p.y - f.cy[i]);
@@ -442,12 +360,8 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
 
     let enemyHero: Unit | undefined;
     let heroDist = math.huge;
-    const heroes: Unit[] = [];
-    const reach: number[] = [];
     for (const h of bot.GetNearbyHeroes(1600, true, 0)) {
         if (alive(h)) {
-            heroes.push(h);
-            reach.push(HeroReach(bot, h));
             const dist = d2(h.GetLocation(), front);
             if (dist < heroDist) {
                 heroDist = dist;
@@ -513,76 +427,53 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
     // tspchk1: a core laning took back from retreat at 1% HP stood on a relaxed spot by the enemy wave and died; at HP_LOW one
     // creep that turns on it kills, so our tower's cover counts only above it.
     // Cores only: tspchk2 checked the core spot; a support's spot under our tower keeps the open-lane limits until a check reads it.
-    const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps, heroes) : undefined;
+    const cover = role === "core" && hpFrac > HP_LOW ? coverFor(bot, creeps) : undefined;
     const cl = clash?.own;
     const fo = clash?.far;
-    // Ours.LaneSpotThreat: the enemy-hero limit is the read (see READ_HORIZON); under our own tower the old limits and the cover stand.
-    const byRead = On("LaneSpotThreat");
     const here = bot.GetLocation();
-    const field = fieldOf(creeps, towers, heroes, reach, cover, busy);
-    const underOwn = (p: Vector): boolean => {
-        if (cover === undefined) return false;
-        for (const t of cover.towers) if (d2(p, t.at) <= t.range) return true;
-        return false;
-    };
-    const readOn = (p: Vector): boolean => byRead && !underOwn(p);
-    const reads: Record<string, Threat.Read> = {};
+    const field = fieldOf(creeps, towers, cover, busy);
+    // One answer per position (a row of candidates reads at its lane-axis point). A walk towards a hero reads from here; a walk
+    // away from every hero reads the place alone, so the candidates behind us are told apart (review 10/11/2026 H2).
+    const answers: Record<string, Safe.Answer> = {};
     let readN = 0;
-    let reader: ReturnType<typeof Threat.Reader> | undefined;
-    // One read per position (a row of candidates reads at its lane-axis point): walks towards a hero from here, else the place alone.
     const keyOf = (p: Vector): string => `${math.floor(p.x / 25)},${math.floor(p.y / 25)}`;
-    const readAt = (p: Vector): Threat.Read => {
+    const optsFor = (p: Vector, who?: string): SafeGather.AtOpts => {
+        let toward = false;
+        for (const h of bot.GetNearbyHeroes(1600, true, 0)) {
+            const at = alive(h) ? h.GetLocation() : undefined;
+            if (at !== undefined && len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y)) toward = true;
+        }
+        return { from: toward ? here : p, held: len(p.x - here.x, p.y - here.y) <= HELD_NEAR, who };
+    };
+    const answerAt = (p: Vector): Safe.Answer => {
         const key = keyOf(p);
-        let r = reads[key];
-        if (r === undefined) {
-            let toward = false;
-            for (let i = 0; i < field.hx.length; i++) {
-                if (len(p.x - field.hx[i], p.y - field.hy[i]) < len(here.x - field.hx[i], here.y - field.hy[i])) toward = true;
-            }
-            reader = reader ?? Threat.Reader(bot, READ_HORIZON, { engagedWindow: LANE_ENGAGED_WINDOW });
+        let a = answers[key];
+        if (a === undefined) {
             const t0 = Telemetry.DeepT0();
-            r = reader(toward ? here : p, p);
+            a = SafeGather.At(bot, p, optsFor(p));
             if (t0 !== undefined) Telemetry.DeepAdd("lane_spot.Compute:read", t0);
-            reads[key] = r;
+            answers[key] = a;
             readN++;
         }
-        return r;
+        return a;
     };
-    // Ours.EvenStand: a lone hero who is not hitting us and cannot kill us refuses no place (Threat.LoneStand).
-    const stand = On("EvenStand");
-    const verdict = (r: Threat.Read): "burst" | "missing" | "threat" | "none" => {
-        if (stand && Threat.LoneStand(bot, r)) return "none";
-        return r.burst >= READ_BURST ? "burst" : r.missing >= READ_MISSING ? "missing" : pressured(r) ? "threat" : "none";
+    const deadlyAt = (p: Vector): Why | undefined => {
+        const a = answerAt(p);
+        return a.level === "deadly" ? (a.reason as Why) : undefined;
     };
-    const readBreaks = (p: Vector): boolean => readOn(p) && verdict(readAt(p)) !== "none";
-    const limits = (p: Vector, cov: Cover | undefined): Why | undefined => fieldBreaks(field, p, margin, !readOn(p), cov);
+    const limits = (p: Vector, cov: Cover | undefined): Why | undefined => fieldBreaks(field, p, margin, cov);
     const covered = (p: Vector): number => (cover !== undefined && limits(p, undefined) !== undefined ? 1 : 0);
-    const done = (spot: Vector, pushed: number, why: Why, cov: number): SpotInfo => {
-        const info: SpotInfo = { spot, pushed, anchor, why, margin, covered: cov, clash: cl, far: fo };
-        if (byRead) {
-            const r = readAt(spot);
-            info.rb = r.burst;
-            info.rt = r.threat;
-            info.ob = fieldBreaks(field, spot, margin, true, cover) ?? "none";
-            info.rm = r.missing;
-            info.mp = r.mpids.length > 0 ? r.mpids.join(",") : undefined;
-            info.op = fieldBreaks(field, pref, margin, true, cover) ?? "none";
-            info.rp = "none";
-            if (readOn(pref)) info.rp = verdict(readAt(pref));
-            info.re = r.eng.length;
-            info.rat = r.att.length > 0 ? 1 : 0;
-            info.rn = readN;
-            // Shadow of the safe-here read (ev=cut kind=safe), on the reads made above: a point with no read this frame is skipped.
-            const stands = (p: Vector): boolean => len(p.x - here.x, p.y - here.y) <= SHADOW_HELD;
-            SafeGather.Shadow(bot, "spot", r, { away: false, held: stands(spot), hold: false });
-            const pr = reads[keyOf(pref)];
-            if (pr !== undefined) SafeGather.Shadow(bot, "pref", pr, { away: false, held: stands(pref), hold: false });
-        }
-        return info;
-    };
     const pref = Vector(px, py, front.z);
-    let first = limits(pref, cover);
-    if (first === undefined && readBreaks(pref)) first = "hero";
+    const done = (spot: Vector, pushed: number, why: Why, cov: number): SpotInfo => {
+        // The chosen spot and the preferred point are logged as who=spot and who=pref (one line each, not one per candidate).
+        const a = SafeGather.At(bot, spot, optsFor(spot, "spot"));
+        const pa = SafeGather.At(bot, pref, optsFor(pref, "pref"));
+        return {
+            spot, pushed, anchor, why, margin, covered: cov, clash: cl, far: fo, rn: readN,
+            sl: a.level, sr: a.kill > 0 ? a.ratio : undefined, pl: pa.level, pq: pa.kill > 0 ? pa.ratio : undefined,
+        };
+    };
+    let first = limits(pref, cover) ?? deadlyAt(pref);
     if (first === undefined) return done(pref, 0, "pref", covered(pref));
 
     // Nearest candidate to the preferred point that keeps every limit: back along the lane in PUSH_STEP rows, a few sideways.
@@ -604,7 +495,7 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
                 keep = p;
                 keepPushed = k;
             }
-            if (limits(p, cover) === undefined && !readBreaks(Vector(bx, by, front.z))) {
+            if (limits(p, cover) === undefined && deadlyAt(Vector(bx, by, front.z)) === undefined) {
                 best = p;
                 bestCost = cost;
                 bestPushed = k;
@@ -612,9 +503,27 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         }
         if (best !== undefined && PUSH_STEP * (k + 1) >= bestCost) break;
     }
-    if (best === undefined) {
-        if (keep !== undefined) return done(keep, keepPushed, "xp", 0);
-        return done(Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), steps, "xp", 0);
+    if (best !== undefined) return done(best, bestPushed, first, covered(best));
+
+    // The XP-only spot: past the XP limit, the nearest place that keeps the same limits and is not deadly, while the wave is
+    // still within XP_RANGE of it.
+    for (let k = steps + 1; k <= math.floor((XP_RANGE + len(px - front.x, py - front.y)) / PUSH_STEP); k++) {
+        const bx = px + dx * PUSH_STEP * k;
+        const by = py + dy * PUSH_STEP * k;
+        for (const off of LATERAL) {
+            const cost = len(PUSH_STEP * k, off);
+            if (cost >= bestCost) continue;
+            const p = Vector(bx + nx * off, by + ny * off, front.z);
+            if (len(p.x - front.x, p.y - front.y) > XP_RANGE) continue;
+            if (limits(p, cover) === undefined && deadlyAt(Vector(bx, by, front.z)) === undefined) {
+                best = p;
+                bestCost = cost;
+                bestPushed = k;
+            }
+        }
+        if (best !== undefined && PUSH_STEP * (k + 1) >= bestCost) break;
     }
-    return done(best, bestPushed, first, covered(best));
+    if (best !== undefined) return done(best, bestPushed, "xp", 0);
+    if (keep !== undefined) return done(keep, keepPushed, "xp", 0);
+    return done(Vector(px + dx * PUSH_STEP * steps, py + dy * PUSH_STEP * steps, front.z), steps, "xp", 0);
 }

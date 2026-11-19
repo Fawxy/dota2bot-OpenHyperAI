@@ -14,7 +14,7 @@ world:
   t: 510.9
   team: 3
   pid: 8
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-266,"y":-138,"hp":971,"mhp":1226,"range":150,"hull":24,"speed":310,"esc":0}
   ce: [{"id":414,"x":-238,"y":-224,"hp":562,"mhp":562,"ranged":0,"tgt":"u429","hull":16},{"id":423,"x":-646,"y":-524,"hp":300,"mhp":312,"ranged":1,"tgt":"b","hull":8},{"id":421,"x":-310,"y":-230,"hp":76,"mhp":562,"ranged":0,"tgt":"u429","hull":16}]
   ca: [{"id":406,"x":-188,"y":-108,"hp":309,"mhp":312,"ranged":1,"tgt":"u421","hull":8},{"id":386,"x":-138,"y":-106,"hp":217,"mhp":312,"ranged":1,"tgt":"u421","hull":8}]
@@ -27,9 +27,10 @@ world:
   lane: 2
   front: {"x":-215,"y":-100,"bx":113,"by":130}
 expect:
-  must: ["read(burst)"]
+  must: ["read(deadly)"]
   mustNot: ["stand(pref)"]
 notes: >
   Slice mid-stand, the end: the lone hero hit the mid within the last second (79% HP, 971 of 1,226; 725 over the 6 s engaged
   window = 0.75). The stand rule stops at the first hit and the old bar applies: a hold that never hits back is a dead end
   (card threat-and-retreat), so the spot backs off, before and after the change.
+  Changed (oha-safe-behave, 19/11/2026): the hitting hero is counted over 6 s: 725 against 971 HP is ratio 1.34 at the preferred point, under the fresh bar 1.44. Old read(burst) -> read(deadly); the spot still backs off.

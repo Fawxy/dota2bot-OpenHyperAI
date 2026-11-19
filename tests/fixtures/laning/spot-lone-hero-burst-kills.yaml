@@ -12,7 +12,7 @@ world:
   t: 299.633
   team: 2
   pid: 4
-  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotThreat":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RetreatOdds":false,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
+  ours: {"ArbiterDrive":true,"ArbiterShadow":true,"CoreCampTrip":true,"CoreContest":true,"CoreDenyYield":true,"CoreHold":true,"CoreLastHit":true,"CoreLastHitDire":true,"CorePull":true,"DoubleStack":true,"HealItems":false,"HealStop":true,"HitBack":false,"JobChooser":true,"LaneAggro":true,"LaneControl":true,"LaneControlDrive":true,"LaneSpot":true,"LaneSpotTower":true,"LeaveCoreCreep":true,"MidWater":false,"PreDeny":true,"PreHit":true,"Retreat":true,"RuneRotation":true,"RuneSpawn":true,"StackExecute":true,"SupportDeny":true,"SupportDenyDire":true,"SupportLastHit":true,"SupportPull":true,"SupportPullFarm":true,"Threat":true}
   bot: {"x":-961,"y":-820,"hp":467,"mhp":824,"range":600,"hull":24,"speed":290,"esc":0}
   ce: [{"id":245,"x":-476,"y":-271,"hp":137,"mhp":300,"ranged":1,"tgt":"u233","hull":8},{"id":243,"x":-594,"y":-426,"hp":361,"mhp":550,"ranged":0,"tgt":"u235","hull":16},{"id":244,"x":-518,"y":-351,"hp":487,"mhp":550,"ranged":0,"tgt":"-","hull":16}]
   ca: [{"id":233,"x":-242,"y":-212,"hp":490,"mhp":550,"ranged":0,"tgt":"h9","hull":16},{"id":235,"x":-331,"y":-300,"hp":426,"mhp":550,"ranged":0,"tgt":"-","hull":16},{"id":238,"x":-1062,"y":-819,"hp":202,"mhp":300,"ranged":1,"tgt":"-","hull":8},{"id":207,"x":-1022,"y":-875,"hp":21,"mhp":300,"ranged":1,"tgt":"-","hull":8}]
@@ -25,8 +25,9 @@ world:
   lane: 2
   front: {"x":-276,"y":-197,"bx":-579,"by":-458}
 expect:
-  must: ["read(burst)"]
+  must: ["read(deadly)"]
   mustNot: ["stand(pref)"]
 notes: >
   Slice mid-stand, the opposite rule (D1): the same lone hero, not hitting, but the mid is at 57% HP (467 of 824) and the
   burst is 542 / 467 = 1.16: it can kill. Backing off is right, before and after the change.
+  Changed (oha-safe-behave, 19/11/2026): the kill line 542 over 2 s against 467 HP is ratio 0.86 at the preferred point (a fresh place needs 1.44). Old read(burst) -> read(deadly); the spot still backs off.

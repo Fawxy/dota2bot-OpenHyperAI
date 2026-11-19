@@ -1884,7 +1884,7 @@ ____exports.TABLE = {
         rep = {every = 30, from = 60},
         rig = {
             half = "execution",
-            switch = "EvenStand",
+            switch = "Retreat",
             window = 600,
             spots = {home = {"r:mid1", 450, 450}, foe = {"d:mid1", -550, -550}},
             timeout = 15,

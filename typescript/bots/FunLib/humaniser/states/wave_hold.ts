@@ -266,7 +266,7 @@ export function DrawNow(front: number, hd: number, at: number, on: number): bool
  */
 export function Unsafe(anchor: string | undefined, why: string | undefined, own: number, reach: number, front: number): boolean {
     const floor = reach + SETTINGS.LateMargin;
-    return anchor === "hold" && why === "hero" && own < floor && front <= floor + SETTINGS.HoldDrawLead * creepSpeed();
+    return anchor === "hold" && (why === "kill" || why === "unknown") && own < floor && front <= floor + SETTINGS.HoldDrawLead * creepSpeed();
 }
 
 /** Pure: the drag point's distance behind our T1: out of its fire for every creep (`reach` plus LateMargin). */

@@ -1599,24 +1599,28 @@ export const EVENTS = {
     },
     /** Slice retreat (retreat.ts): one start and one end per episode of our retreat, and one start per plain walk (kind
      *  plain: heroes our retreat does not own). Start: why (threat, lethal, tower, heal, forced), the read at entry (thr, band,
-     *  reach, burst, tower), the budget and its purpose, the anchor kind, its route cost and the next-best anchor's (alt), and
-     *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: the band's dwell; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
+     *  reach, burst, tower; budget, unp and the old purpose-budget are retired), the safe-here answer that decided it (lv, ra, kill), the work it left (purp), the anchor kind, its route cost and the next-best anchor's (alt), and
+     *  for a forced drill rep the start spot. End: res (gone: nobody in reach; safe: a place Safe.At does not call deadly for a fresh place; healed: a heal walk back over HealBack with the lane nearer than the fountain; anchor, died, cut), secs, HP lost (hpl, share of max), whether the
      *  walk passed enemy tower (twr) or wave (wave) reach, hero damage taken (dmgh, share of max). ph=skip: a drill rep the
      *  cast started under the low-HP bar (healed instead). ph=read: an owned hero out of an episode whose read changed band
-     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay
-     *  (RetreatOdds): once per over-budget spell, the read held only because the heroes in reach do not outnumber us. */
+     *  (the chase drill grades the band on reps with no entry), with crp: an enemy creep hit it in the last second. ph=stay:
+     *  once per spell, a deadly place the hero stays in for a hit back or a join (`why`), with the answer (lv, ra, kill). */
     retreat: {
-        /** `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per over-budget spell the `Ours.RetreatOdds` hold keeps in lane), `skip`, `items`, `use`, `items_off`. */
+        /** `start` or `end` of an episode, `read` (a band change out of an episode), `stay` (once per spell a hit back or join holds the hero in a deadly place), `skip`, `items`, `use`, `items_off`. */
         ph: "str",
         pid: "num",
         /** `plain` for a walk by a hero our retreat does not own; else our episode. */
         kind: "str",
         /** The episode number. */
         ep: "num",
-        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `stand` for the stand of heroes not hitting us (`Threat.Stand`; `Ours.EvenStand` one, `Ours.HighStand` two or more: `reach` says which; logs before slice stand-rule say `high` for two or more), `join` while our pair joins the fight (`Ours.PairJoin`), absent for the `Ours.RetreatOdds` hold. */
+        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `join` while our pair joins the fight (`Ours.PairJoin`), `hitback` while Trade.Holds says the hit back runs. Older logs: `stand`, or absent for the retired RetreatOdds hold. */
         why: "str",
         /** The hero's HP share at the line. */
         hp: "num",
+        /** On `start` and `stay`: the safe-here answer's level, HP over kill line (absent with nobody in reach) and kill line in HP. */
+        lv: "str",
+        ra: "num",
+        kill: "num",
         /** The read's threat. */
         thr: "num",
         /** The read's band at the line; `ph=read` is logged on a band change. */
@@ -2767,7 +2771,7 @@ export const EVENTS = {
         /** The spot's anchor (creep, front, wave, fed: lane_aggro's fed creep going down), or oha. */
         spot: "str",
         pushed: "num",
-        /** The first limit the preferred point broke, which usually placed the spot: `pref`, `hero`, `creep`, `hp` (only the HP margin moved it), `tower` or `xp`. */
+        /** The first limit the preferred point broke, which usually placed the spot: `pref`, `kill` or `unknown` (Safe.At called the place deadly; `tower` too when it was that), `creep`, `hp` (only the HP margin moved it), `tower` or `xp` (the XP-only spot or the fallback). Older logs: `hero`. */
         why: "str",
         /** The HP margin on the creep rings. */
         hm: "num",
@@ -2794,8 +2798,13 @@ export const EVENTS = {
         rb: "num",
         /** The read's threat at the chosen spot. */
         rt: "num",
-        /** Reads made this frame. */
+        /** Safe.At reads made this frame. */
         rn: "num",
+        /** Safe.At at the chosen spot: level (`safe`, `costly`, `deadly`) and HP over kill line (absent with nobody in reach); at the preferred point `pl` and `pq`. */
+        sl: "str",
+        sr: "num",
+        pl: "str",
+        pq: "num",
         /** What the old hero limits say at the spot: `hero`, `hp`, `creep`, `tower` or `none`. */
         ob: "str",
         /** The read's `missing` and unseen pids (comma-joined) at the chosen spot; the old limits' (`op`) and the read's (`rp`) verdicts at the preferred point. */
@@ -2842,17 +2851,17 @@ export const EVENTS = {
         tt: "str",
         /** With an unseen enemy: IsLocationVisible on a grid over the bot and its lane front, `x0,y0,nx,ny,step,hex` (cut.ts visionGrid). */
         vis: "str",
-        /** kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `even`, `hold` (stay). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read). */
+        /** kind=leave: what the game decided, `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `join`, `hitback` (stay; older logs `even`, `hold`, `stand`). Logged when the answer changes, and while an enemy hero is in the read's reach every Retreat CutEvery s (on a frame that made a fresh read). */
         dec: "str",
-        /** kind=leave: the budget the read was held against (by purpose `purp`: free, busy or committed). */
+        /** kind=leave, older logs: the budget the read was held against (by purpose `purp`: free, busy or committed). */
         bud: "num",
         /** kind=leave: the budget's purpose. */
         purp: "str",
-        /** kind=leave: seconds the read had been over budget before this decision (-1 not over); the hold timer. */
+        /** kind=leave, older logs: seconds the read had been over budget before this decision (-1 not over); the hold timer. */
         ov: "num",
-        /** kind=leave: Profile.ThreatHold, the seconds the read must stay over budget. */
+        /** kind=leave, older logs: Profile.ThreatHold, the seconds the read must stay over budget. */
         th: "num",
-        /** kind=leave: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them. */
+        /** kind=leave, older logs: RetreatOdds' engaged heroes with none of our lane creeps within creep aggro of them. */
         unp: "num",
         /** kind=leave: 1 when an enemy tower damaged the bot within 0.5 s. */
         dt: "num",
@@ -2860,7 +2869,7 @@ export const EVENTS = {
         pj: "num",
         /** kind=leave: 1 when Trade.Holds held a hit back for the bot (LeaveWhy stays `hitback`); absent otherwise. Older kind=trade lines: 1 when the target is hitting the core. */
         hb: "num",
-        /** kind=leave: the read's threat and band, for reading a line without replaying it. */
+        /** kind=leave, older logs: the read's threat and band, for reading a line without replaying it. */
         thr: "num",
         band: "str",
         /** `gate`, with an unseen enemy: IsLocationVisible at Threat's walk points, `n,hex` (n steps, bit i of the hex the i-th of n + 1 points; cut.ts walkVision). */

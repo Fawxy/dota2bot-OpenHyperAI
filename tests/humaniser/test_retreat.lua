@@ -1,7 +1,8 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
--- Slice retreat (master docs/team/slices/retreat.md): our retreat for a laning hero. The leave rule (over budget for the
--- hero's reaction time; lethal, a tower on us and the heal floor at once), the anchor by route cost, the exit band and its
--- dwell, an ally in retreat counting no help, the areas' retreat nudges off for an owned hero, and the OFF arm.
+-- Slice retreat (master docs/team/slices/retreat.md): our retreat for a laning hero. The leave rule (Safe.At at the hero's own place:
+-- deadly leaves at once, a hit back or join holds it down to Safe.BARS.hold; a tower on us and the heal floor at once), the anchor by
+-- route cost, the stop on a fresh place (Safe.BARS.stay x 1.15) or nobody in reach, an ally in retreat counting no help, the areas'
+-- retreat nudges off for an owned hero, and the OFF arm. HP 600 unless set: a kill line of 600 is ratio 1.0, 460 is 1.3, 400 is 1.5.
 local dota = require("bots/ts_libs/dota/index")
 local Lane = dota.Lane
 
@@ -16,9 +17,6 @@ local function world(o)
 	FOGGED = function() return false end
 	H.Retreat.ResetCache()
 	require("bots/FunLib/humaniser/threat").ResetCache()
-	-- Most tests here drive the leave with two full-HP heroes in reach who are not hitting us: the stand's situation, so its
-	-- two-hero half is off unless a test asks for it (`high`).
-	package.loaded["bots/FunLib/custom_loader"].Ours.HighStand = o.high == true
 	local bot = MakeUnit({ pid = 1, team = 2, loc = o.loc or HERE, level = 3 })
 	bot.lane, bot.pos, bot.maxhp, bot.hp = Lane.Bot, 1, 600, o.hp or 600
 	return H, bot
@@ -53,141 +51,103 @@ local function react(bot)
 	return require("bots/FunLib/humaniser/profile").ThreatHold(bot)
 end
 
--- Over budget: the hero leaves only once the threat has lasted its reaction time, not on a flicker. Two heroes in reach with
--- a third of our HP in burst read 0.25 x 2 + 0.5 x 0.33 = 0.67 against the free budget 0.5.
+local function noHold() require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end end
+local function running(bot) return require("bots/FunLib/humaniser/retreat_state").Running(bot) end
+
+-- A deadly place is left at once, with no reaction time: two heroes in reach with 300 damage each against 600 HP are ratio 1.0, under
+-- the held bar 1.25. Controls: the same two with 100 each (ratio 3, what the head count used to leave) stay; ratio 1.3 stays at a place
+-- the hero holds; ratio 1.2 leaves.
 do
-	local H, bot = world()
-	enemy(10, Vector(300, -5000), 100)
-	enemy(11, Vector(300, -4900), 100)
-	local out = capture(function()
-		check("leave: no episode on the first over-budget read", H.Retreat.Desire(bot) == 0)
-		T = T + react(bot) * 0.5
-		check("leave: still none before the reaction time", H.Retreat.Desire(bot) == 0)
-		T = T + react(bot) * 0.6
-		check("leave: the episode's desire once it has lasted", H.Retreat.Desire(bot) == 0.95, H.Retreat.Desire(bot))
-	end)
-	local reads = {}
+	local function two(est)
+		local H, bot = world()
+		noHold()
+		enemy(10, Vector(300, -5000), est)
+		enemy(11, Vector(300, -4900), est)
+		local out = capture(function() H.Retreat.Desire(bot) end)
+		return bot, out
+	end
+	local bot, out = two(300)
+	local reads, s = {}, lines(out, "retreat")[1]
 	for _, l in ipairs(out) do if l:find("ev=retreat ph=read ", 1, true) then reads[#reads + 1] = l end end
-	local s = lines(out, "retreat")[1]
-	check("leave: one ph=read line per band change, not per think", #reads == 1 and field(reads[1], "band") == "pressured", #reads)
-	check("leave: ev=retreat start why=threat with the budget and purpose", field(s, "why") == "threat" and tonumber(field(s, "budget")) == 0.5 and field(s, "purp") == "free", s)
-	check("leave: the hero counts as retreating for its allies' read", H.Retreat.Running(bot))
+	check("leave: the episode on the first deadly read, no wait", running(bot) and field(s, "why") == "threat", s)
+	check("leave: ev=retreat start carries the answer (deadly, ratio 1, kill 600) and the purpose", field(s, "lv") == "deadly" and tonumber(field(s, "ra")) == 1 and tonumber(field(s, "kill")) == 600 and field(s, "purp") == "free", s)
+	check("leave: one ph=read line per band change, not per think", #reads == 1, #reads)
+	check("stay: two heroes in reach with 100 damage each are no reason to leave (ratio 3)", not running((two(100))))
+	check("stay: ratio 1.3 is kept at a place the hero holds (bar 1.25)", not running((two(230))))
+	check("leave: ratio 1.2 is not", running((two(250))))
 end
 
--- A flicker: the threat drops under budget before the reaction time, so the clock restarts.
+-- The Oracle stand case (h2hsnapcreeps1_B_dire_2 t=396: one hero, kill line just over HP, ratio about 1.03): left at once, where the
+-- old stand (burst under HP) stayed. Control: half the damage stays.
 do
-	local H, bot = world()
-	local e1 = enemy(10, Vector(300, -5000), 100)
-	enemy(11, Vector(300, -4900), 100)
-	capture(function()
-		H.Retreat.Desire(bot)
-		T = T + react(bot) * 0.6
-		e1.alive = false
-		H.Retreat.Desire(bot)
-		e1.alive = true
-		T = T + react(bot) * 0.6
-		check("leave: a dip under budget restarts the clock", H.Retreat.Desire(bot) == 0)
-	end)
+	local function lone(est)
+		local H, bot = world()
+		noHold()
+		enemy(10, Vector(300, -5000), est)
+		local out = capture(function() H.Retreat.Desire(bot) end)
+		return bot, lines(out, "retreat")[1]
+	end
+	local bot, s = lone(583)
+	check("oracle: a lone hero with a kill line of 583 over 600 HP (ratio 1.03) is left, why=threat", running(bot) and field(s, "why") == "threat", s)
+	check("oracle control: half the damage stays", not running((lone(290))))
 end
 
--- One lane opponent in reach at full HP is under budget: the laner stays (OHA counted heads; the rule prices them).
-do
-	local H, bot = world()
-	enemy(10, Vector(300, -5000), 60)
-	capture(function()
-		H.Retreat.Desire(bot)
-		T = T + 3
-		check("stay: one opponent in reach at full HP", H.Retreat.Desire(bot) == 0)
-	end)
-end
-
--- An engaged hero (it hit us within a second) is counted over EngagedWindow (6 s), so one melee hero that keeps hitting at about
--- 2.6% of our max HP a second reads 0.25 + 0.5 x 0.156 / HP: over the free budget from about 31% HP, 0.33 at full HP.
--- rtlng2: the lane spot alone could not out-walk him; leaving a hero that is hitting us is the retreat's job.
+-- An engaged hero (it hit us within a second) is counted over EngagedWindow (6 s): 30 a second is 180 against 60 when it is not
+-- hitting. At 200 HP that is ratio 1.1 against 3.3, and at 600 HP 3.3 either way.
 do
 	local function engagedWorld(hp, engaged)
 		local H, bot = world({ hp = hp })
+		noHold()
 		local e = enemy(10, Vector(300, -5000), 0)
-		e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 15.6 * dur end
+		e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 30 * dur end
 		local function hit() if engaged then bot.hitBy = { [e] = T - 0.2 } end end
 		hit()
-		return H, bot, e, hit
+		return H, bot, hit
 	end
 	local function leaves(hp, engaged)
-		local H, bot, e, hit = engagedWorld(hp, engaged)
-		local out = capture(function()
-			H.Retreat.Desire(bot)
-			T = T + react(bot) + 1
-			hit()
-			H.Retreat.Desire(bot)
-		end)
-		return H.Retreat.Running(bot), lines(out, "retreat")[1]
+		local H, bot = engagedWorld(hp, engaged)
+		local out = capture(function() H.Retreat.Desire(bot) end)
+		return running(bot), lines(out, "retreat")[1]
 	end
-	local on, s = leaves(150, true)
-	check("engaged: a melee hero hitting us at 25% HP starts a retreat why=threat, logged with eng", on and field(s, "why") == "threat" and field(s, "eng") == "1", s)
-	check("engaged: the same hero not hitting us at 25% HP starts none (2 s window)", not leaves(150, false))
+	local on, s = leaves(200, true)
+	check("engaged: a melee hero hitting us at 33% HP starts a retreat why=threat", on and field(s, "why") == "threat", s)
+	check("engaged: the same hero not hitting us starts none (2 s window)", not leaves(200, false))
 	check("engaged: at full HP the hitting hero starts none (a lone harasser is not run from)", not leaves(600, true))
-	local H, bot, e, hit = engagedWorld(150, true)
+	local H, bot, hit = engagedWorld(200, true)
 	local out = capture(function()
-		H.Retreat.Desire(bot)
-		T = T + react(bot) + 1
-		hit()
 		H.Retreat.Desire(bot)
 		for _ = 1, 5 do T = T + 1 hit() H.Retreat.Desire(bot) end
 	end)
-	check("engaged: the episode does not end safe while he still hits us", H.Retreat.Running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
+	check("engaged: the episode does not end safe while he still hits us", running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
 end
 
--- Slice high-hit-back (D24): over budget with a hero hitting us, the `threat` leave waits while Trade.Holds; it is
--- asked only over budget. Lethal still leaves first.
+-- The hit back (D24) and the join (D10) hold a deadly place down to Safe.BARS.hold (ratio 1.0): Trade.Holds is asked only when the
+-- answer is deadly by the kill line and not under that; under it the hero leaves `lethal` whatever Holds says.
 do
 	local asked = 0
-	local function run(holds, engaged, est)
+	local function run(holds, est)
 		local H, bot = world({ hp = 540 })
-		local e1 = enemy(10, Vector(300, -5000), est or 100)
-		enemy(11, Vector(300, -4900), est or 100)
-		if engaged then bot.hitBy = { [e1] = T - 0.2 } end
+		enemy(10, Vector(300, -5000), est)
+		enemy(11, Vector(300, -4900), est)
 		asked = 0
-		-- The world loads a fresh humaniser: stub the trade module retreat now holds.
-		local CT = require("bots/FunLib/humaniser/states/trade")
-		CT.Holds = function() asked = asked + 1 return holds and "hitback" or nil end
-		local out = capture(function()
-			H.Retreat.Desire(bot)
-			T = T + react(bot) + 0.5
-			if engaged then bot.hitBy = { [e1] = T - 0.2 } end
-			H.Retreat.Desire(bot)
-		end)
-		return H.Retreat.Running(bot), out
+		require("bots/FunLib/humaniser/states/trade").Holds = function() asked = asked + 1 return holds end
+		local out = capture(function() H.Retreat.Desire(bot) T = T + 0.2 H.Retreat.Desire(bot) end)
+		return running(bot), out
 	end
-	local on, out = run(true, true)
+	local on, out = run("hitback", 250)
 	local stay
 	for _, l in ipairs(out) do if l:find("ph=stay", 1, true) then stay = l end end
-	check("hit back: hit at 90% over budget with the hit back holding, no leave", not on and asked > 0, tostring(on) .. " asked=" .. asked)
-	check("hit back: one ph=stay why=hitback line", stay ~= nil and field(stay, "why") == "hitback", stay)
-	check("hit back: the same read with no hit back holding leaves", (run(false, true)))
-	local _, _ = run(true, false, 0)
-	check("hit back: not asked while the read is within budget", asked == 0)
-	check("hit back: lethal leaves whatever the hit back says", (run(true, true, 2000)))
-	-- The join hold (D10): Trade.Holds answers `join`, and the leave waits, logged why=join.
-	local function joinRun(holds)
-		local H, bot = world({ hp = 540 })
-		local e1 = enemy(10, Vector(300, -5000), 100)
-		enemy(11, Vector(300, -4900), 100)
-		bot.hitBy = { [e1] = T - 0.2 }
-		require("bots/FunLib/humaniser/states/trade").Holds = function() return holds end
-		local out = capture(function()
-			H.Retreat.Desire(bot)
-			T = T + react(bot) + 0.5
-			bot.hitBy = { [e1] = T - 0.2 }
-			H.Retreat.Desire(bot)
-		end)
-		local stay
-		for _, l in ipairs(out) do if l:find("ph=stay", 1, true) then stay = l end end
-		return H.Retreat.Running(bot), stay
-	end
-	local joinOn, joinStay = joinRun("join")
+	check("hit back: ratio 1.08 with the hit back holding, no leave", not on and asked > 0, tostring(on) .. " asked=" .. asked)
+	check("hit back: one ph=stay why=hitback line, with the answer", stay ~= nil and field(stay, "why") == "hitback" and field(stay, "lv") == "deadly", stay)
+	check("hit back: the same read with no hit back holding leaves", (run(nil, 250)))
+	run("hitback", 100)
+	check("hit back: not asked while the place is not deadly (ratio 2.7)", asked == 0)
+	local lethalOn, lethalOut = run("hitback", 2000)
+	check("hit back: ratio under 1.0 leaves lethal and never asks", lethalOn and asked == 0 and field(lines(lethalOut, "retreat")[1], "why") == "lethal", asked)
+	local joinOn, joinOut = run("join", 250)
+	local joinStay
+	for _, l in ipairs(joinOut) do if l:find("ph=stay", 1, true) then joinStay = l end end
 	check("join hold: no leave, one ph=stay why=join line", not joinOn and joinStay ~= nil and field(joinStay, "why") == "join", joinStay)
-	check("join hold: the same read with Holds empty leaves", (joinRun(nil)))
 end
 
 -- Lethal leaves at once; an escape item ready (or a faster bot out of their range) is not lethal.
@@ -528,42 +488,38 @@ do
 	check("regen: a tango in the backpack counts for nothing", field(backpack, "anchor") == "ally" and field(backpack, "regen") == "0", backpack)
 end
 
--- The exit band: with a hero still in reach, the episode ends `safe` only once threat stays under budget - 0.15 for 1.5 s; a
--- spike in the dwell restarts it. One harmless hero in reach reads 0.25, under the free band 0.35.
+-- The stop is the fresh bar (Safe.BARS.stay x 1.15 = 1.4375): with a hero still in reach the episode ends `safe` only at a place
+-- the hero would not leave again. Ratio 1.3 is a place to stay in but not to stop at; 1.5 stops it. The same ratio 1.3 starts no
+-- episode in the first place (the leave test above), so the two bars differ.
 do
 	local H, bot = world()
-	local e1 = enemy(10, Vector(300, -5000), 100)
-	local e2 = enemy(11, Vector(300, -4900), 100)
+	noHold()
+	local e1 = enemy(10, Vector(300, -5000), 300)
+	local e2 = enemy(11, Vector(300, -4900), 300)
 	local out = capture(function()
-		H.Retreat.Desire(bot)
-		T = T + 2
-		H.Retreat.Desire(bot)
-		e1.estDamage, e2.alive = 0, false
-		T = T + 1
-		check("exit: under the band with one in reach, still in the dwell", H.Retreat.Desire(bot) == 0.95)
-		e1.estDamage, e2.alive = 100, true
+		check("exit: the deadly read starts the episode", H.Retreat.Desire(bot) == 0.95)
+		e1.estDamage, e2.estDamage = 230, 230
 		T = T + 0.2
-		H.Retreat.Desire(bot)
-		e1.estDamage, e2.alive = 0, false
+		check("exit: ratio 1.3 does not end it (fresh bar 1.44)", H.Retreat.Desire(bot) == 0.95)
+		T = T + 3
+		check("exit: still going after seconds at ratio 1.3, no dwell timer decides", H.Retreat.Desire(bot) == 0.95)
+		e1.estDamage, e2.estDamage = 200, 200
 		T = T + 0.2
-		H.Retreat.Desire(bot)
-		T = T + 1.2
-		check("exit: the spike restarted the dwell", H.Retreat.Desire(bot) == 0.95)
-		T = T + 0.5
-		check("exit: ends after 1.5 s under the band", H.Retreat.Desire(bot) == 0)
+		check("exit: ratio 1.5 ends it", H.Retreat.Desire(bot) == 0)
 	end)
 	local l = lines(out, "retreat")
 	check("exit: res=safe", field(l[#l], "res") == "safe", l[#l])
 end
 
--- D2: once no enemy hero can reach us the episode ends on that read (res=gone), with no dwell and short of its anchor.
+-- D2: once no enemy hero can reach us the episode ends on that read (res=gone), short of its anchor. Control: both in reach keep it.
 do
 	local H, bot = world()
-	local e1 = enemy(10, Vector(300, -5000), 100)
-	local e2 = enemy(11, Vector(300, -4900), 100)
+	noHold()
+	local e1 = enemy(10, Vector(300, -5000), 300)
+	local e2 = enemy(11, Vector(300, -4900), 300)
 	local out = capture(function()
-		H.Retreat.Desire(bot)
-		T = T + 2
+		check("gone: the episode starts", H.Retreat.Desire(bot) == 0.95)
+		T = T + 0.2
 		check("gone: in the episode while both are in reach", H.Retreat.Desire(bot) == 0.95)
 		e1.loc, e2.loc = Vector(3000, -5000), Vector(3000, -4900)
 		T = T + 0.2
@@ -583,112 +539,6 @@ do
 	check("ally: counted while it stays", Threat.Read(bot, HERE, HERE, 2).allies == 1)
 	require("bots/FunLib/humaniser/retreat_state").SetRunning(ally, true)
 	check("ally: no help while it retreats", Threat.Read(bot, HERE, HERE, 2).allies == 0)
-end
-
--- Slice even-fight (D24, D1): two heroes in reach with the lane partner beside us read 0.67 - 0.15 = 0.52, over the free
--- budget, yet they do not outnumber us; RetreatOdds keeps the hero in lane and logs the hold once. Off, the same read leaves.
-do
-	local function evenFight(est, odds)
-		local H, bot = world()
-		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = odds
-		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
-		ally.maxhp, ally.hp = 600, 600
-		enemy(10, Vector(300, -5000), est)
-		enemy(11, Vector(300, -4900), est)
-		local out = capture(function()
-			for _ = 1, 4 do
-				H.Retreat.Desire(bot)
-				T = T + react(bot)
-			end
-		end)
-		local stays = {}
-		for _, l in ipairs(out) do if l:find("ev=retreat ph=stay ", 1, true) then stays[#stays + 1] = l end end
-		return H.Retreat.Running(bot), lines(out, "retreat"), stays
-	end
-	local on, _, stays = evenFight(100, true)
-	check("odds: an even 2v2 over budget starts no episode", not on)
-	check("odds: the hold is logged once per over-budget spell, with the allies counted", #stays == 1 and field(stays[1], "al") == "1" and field(stays[1], "reach") == "2", #stays)
-	local offOn, offLines = evenFight(100, false)
-	check("odds off: the same read leaves why=threat (the path replaced)", offOn and field(offLines[1], "why") == "threat", offLines[1])
-	local lethalOn, lethalLines = evenFight(300, true)
-	check("odds: an even 2v2 whose burst kills us still leaves why=lethal", lethalOn and field(lethalLines[1], "why") == "lethal", lethalLines[1])
-end
-
--- Slices high-stand, stand-rule (D2 against D1): two heroes in reach, nobody hitting us, burst 100 + 100 of our 600 HP (0.33):
--- the read is over the free budget, the stand keeps the hero in lane and logs `stay why=stand` once. A hit on us, a burst at
--- half our HP (PackBurst, with or without an ally), HP under 70% (PackHp) or the switch off: the stand does not hold them.
-do
-	local function two(o)
-		local H, bot = world({ high = o.off ~= true, hp = o.hp })
-		-- The stand alone: a hit back (D24, Trade.Holds) would answer the hitter first.
-		require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end
-		if o.ally then
-			local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
-			ally.maxhp, ally.hp = 600, 600
-		end
-		local e1, e2 = enemy(10, Vector(300, -5000), o.est or 100), enemy(11, Vector(300, -4900), o.est or 100)
-		local out = capture(function()
-			for _ = 1, 4 do
-				if o.hit then bot.hitBy = { [e1] = T - 0.2 } end
-				H.Retreat.Desire(bot)
-				T = T + react(bot)
-			end
-		end)
-		local stays = {}
-		for _, l in ipairs(out) do if l:find("ev=retreat ph=stay ", 1, true) then stays[#stays + 1] = l end end
-		return H.Retreat.Running(bot), lines(out, "retreat"), stays
-	end
-	local on, _, stays = two({})
-	check("stand: two not hitting us at full HP, burst 0.33, start no episode", not on)
-	check("stand: the stand is logged once as why=stand with its reach", #stays == 1 and field(stays[1], "why") == "stand" and field(stays[1], "reach") == "2", stays[1])
-	local offOn, offLines = two({ off = true })
-	check("stand off: the same read leaves why=threat (the path replaced)", offOn and field(offLines[1], "why") == "threat", offLines[1])
-	local hitOn, hitLines = two({ hit = true })
-	check("stand: one of them hitting us leaves why=threat", hitOn and field(hitLines[1], "why") == "threat", hitLines[1])
-	local burstOn, burstLines = two({ est = 160 })
-	check("stand: outnumbered, their burst at half our HP (320 of 600) leaves why=threat", burstOn and field(burstLines[1], "why") == "threat", burstLines[1])
-	local function stood(st) for _, l in ipairs(st) do if field(l, "why") == "stand" then return true end end return false end
-	local _, _, evenStays = two({ est = 160, ally = true })
-	check("stand: with an ally beside us the same half-HP burst does not stand (PackBurst whatever the numbers)", not stood(evenStays), evenStays[1])
-	local midOn, midLines, midStays = two({ hp = 400, est = 60 })
-	check("stand: at 67% HP (400 of 600) with burst 0.3 leaves why=threat (PackHp 0.7)", midOn and not stood(midStays) and field(midLines[1], "why") == "threat", midLines[1])
-	local hiOn, _, hiStays = two({ hp = 450, est = 60 })
-	check("stand: at 75% HP (450 of 600) with burst 0.27 stands, logged once as why=stand", not hiOn and #hiStays == 1 and field(hiStays[1], "why") == "stand", hiStays[1])
-end
-
--- Even-fight round 2 (D24): the hold stands only while the heroes hitting us pay for it in creep aggro (our lane creeps within
--- 500 of them). Hitting us from outside it, the same even 2v2 is left on `threat`, as with the switch off.
-do
-	local function hitFrom(creepX, fact)
-		local H, bot = world()
-		if fact ~= nil then package.loaded["bots/FunLib/humaniser/drill"].RigCreepAggro = function() return fact end end
-		package.loaded["bots/FunLib/custom_loader"].Ours.RetreatOdds = true
-		-- The hold alone: a hit back (slice high-hit-back) answers this even 2v2 at full HP first.
-		require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end
-		local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(-100, -5000) })
-		ally.maxhp, ally.hp = 600, 600
-		local e1, e2 = enemy(10, Vector(300, -5000), 100), enemy(11, Vector(300, -4900), 100)
-		MakeCreep({ team = 2, x = creepX, y = -5000 })
-		local out = capture(function()
-			for _ = 1, 4 do
-				bot.hitBy = { [e1] = T - 0.2, [e2] = T - 0.2 }
-				H.Retreat.Desire(bot)
-				T = T + react(bot)
-			end
-		end)
-		return H.Retreat.Running(bot), lines(out, "retreat")
-	end
-	local paidOn = hitFrom(150)
-	check("aggro: two heroes hitting us beside our creeps are held (they pay in creep damage)", not paidOn)
-	local freeOn, freeLines = hitFrom(-1200)
-	check("aggro: the same two hitting us with no creep of ours within 500 leave why=threat, logged unp=2",
-		freeOn and field(freeLines[1], "why") == "threat" and field(freeLines[1], "unp") == "2", freeLines[1])
-	-- A drill rig supplies the fact (creep_aggro.Paid, as the hit back reads it): on1, off the lane, the hold read the empty
-	-- map and our retreat left every 1v1 the hit back was answering.
-	check("aggro: rig fact true, no creep of ours near: held", not hitFrom(-1200, true))
-	local rigOn, rigLines = hitFrom(150, false)
-	check("aggro: rig fact false, our creep beside them: they leave why=threat",
-		rigOn and field(rigLines[1], "why") == "threat" and field(rigLines[1], "unp") == "2", rigLines[1])
 end
 
 -- A death ends the episode with res=died.
@@ -742,10 +592,11 @@ end
 -- ev=cut kind=leave (fixture cuts): a line when the answer changes and, while a hero is in reach, every CutEvery; the decisions are
 -- the same with the cut off (it only reads).
 do
-	local function run(cut)
+	local function run(cut, est)
 		local H, bot = world({ telemetry = { Enable = true, Cut = cut } })
-		enemy(10, Vector(300, -5000), 100)
-		enemy(11, Vector(300, -4900), 100)
+		noHold()
+		enemy(10, Vector(300, -5000), est)
+		enemy(11, Vector(300, -4900), est)
 		local desires = {}
 		local out = capture(function()
 			for _ = 1, 12 do
@@ -757,13 +608,14 @@ do
 		for _, l in ipairs(out) do if l:find("ev=cut ", 1, true) and l:find("kind=leave", 1, true) then cuts[#cuts + 1] = l end end
 		return desires, cuts
 	end
-	local on, cuts = run(true)
-	local off, none = run(false)
+	local on, cuts = run(true, 300)
+	local off, none = run(false, 300)
 	check("cut: the desires are the same with the cut off", table.concat(on, ",") == table.concat(off, ","), table.concat(on, ",") .. " / " .. table.concat(off, ","))
 	check("cut: no line with the cut off", #none == 0, #none)
-	check("cut: the hold, then the leave, each logged once as the answer changes (the episode ends the reads)", #cuts == 2 and field(cuts[1], "dec") == "hold" and field(cuts[2], "dec") == "threat", #cuts)
-	check("cut: the hold line says the read was not over budget before it (ov -1) and carries the threshold", tonumber(field(cuts[1], "ov")) == -1 and tonumber(field(cuts[1], "th")) > 0, cuts[1])
-	check("cut: the leave line carries the time over budget", tonumber(field(cuts[2], "ov")) > 0.17 and field(cuts[2], "purp") == "free" and tonumber(field(cuts[2], "bud")) == 0.5, cuts[2])
+	check("cut: the leave is logged once (the episode ends the reads)", #cuts == 1 and field(cuts[1], "dec") == "threat", #cuts)
+	check("cut: the line carries the answer the rule read", field(cuts[1], "lv") == "deadly" and field(cuts[1], "why") == "kill" and tonumber(field(cuts[1], "kill")) == 600 and tonumber(field(cuts[1], "ra")) == 1 and field(cuts[1], "purp") == "free", cuts[1])
+	local _, calm = run(true, 100)
+	check("cut: a place that is not deadly is logged as under", #calm >= 1 and field(calm[1], "dec") == "under" and field(calm[1], "lv") == "safe", calm[1])
 end
 
 -- While no episode runs and a hero stays in reach under budget, the samples are CutEvery apart, not per read.
