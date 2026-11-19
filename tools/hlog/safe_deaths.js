@@ -12,9 +12,8 @@
 // Table 2: seconds a game that are deadly, by reach count and HP band; the share of them followed by that hero's death in 10 s.
 // Table 3: hp / kill at the last line before each death with 2+ (and with 1) in reach, and at the last line 3 s or more before it.
 //
-// Our heroes: those with at least one ev=cut kind=leave line in the game. Deaths: per hero, the ev=snap `deaths` counter rising
-//   (it rises at the first snap after the respawn); the death is the last snap with hp above 0 before the hero's hp read 0 or
-//   it jumped more than 1,200 in under 3 s (the respawn). Up to a snapshot interval (1 s) early. The rule is core_death's.
+// Our heroes: those with at least one ev=cut kind=leave line in the game. Deaths: per hero, the death is the last ev=snap before
+//   the gap in its snapshots that precedes the rise of its `deaths` counter (dead heroes log no snapshots). Up to 1 s early.
 //   A window is [death - 10, death + 1].
 //
 // What a replay cannot know, and what stands in for it:
@@ -110,12 +109,12 @@ function today(cut) {
     return { level: leave ? 'deadly' : 'safe', reason: cut.dec === 'tower' ? 'tower' : cut.dec === 'heal' ? 'other' : leave ? 'kill' : 'stay' };
 }
 
-/** Our deaths per pid for each game of a log: [{ pid, t }] by game index (cut.js's split rule). */
+/** Per game of a log: { deaths: [{ pid, t }], ev } where ev holds the arb ends and retreat starts and ends in order. */
 function deathsOf(text) {
     const games = [];
     let g, last = -Infinity;
-    const snaps = [];
-    const flush = () => { if (g !== undefined) games.push(deathsFromSnaps(snaps.splice(0))); };
+    let snaps = [], ev = [];
+    const flush = () => { if (g !== undefined) { games.push({ deaths: deathsFromSnaps(snaps), ev }); snaps = []; ev = []; } };
     for (const line of text.split('\n')) {
         if (line.includes('[DOTACTL] ')) continue;
         const i = line.indexOf('[HEV] ');
@@ -124,34 +123,44 @@ function deathsOf(text) {
         if (!Number.isFinite(t)) continue;
         if (g === undefined || t < last - GAME_SPLIT) { flush(); g = true; }
         last = t;
-        if (!line.includes(' ev=snap ')) continue;
+        const kind = (line.match(/ ev=(snap|arb|retreat) /) || [])[1];
+        if (!kind) continue;
         const f = {};
-        for (const m of line.slice(i + 6).matchAll(/(\w+)=("([^"]*)"|\S+)/g)) f[m[1]] = m[2];
-        if (f.deaths === undefined) continue;
-        snaps.push({ pid: f.pid, t, x: +f.x, y: +f.y, hp: +f.hp, deaths: +f.deaths });
+        for (const m of line.slice(i + 6).matchAll(/(\w+)=("([^"]*)"|\S+)/g)) f[m[1]] = m[3] !== undefined ? m[3] : m[2];
+        if (kind === 'snap') { if (f.deaths !== undefined) snaps.push({ pid: f.pid, t, x: +f.x, y: +f.y, hp: +f.hp, deaths: +f.deaths }); }
+        else if (kind === 'arb' && f.ph === 'end') ev.push({ kind: 'arbEnd', pid: f.pid, t });
+        else if (kind === 'retreat' && (f.ph === 'start' || f.ph === 'end') && f.kind !== 'plain') ev.push({ kind: 'retreat', ph: f.ph, pid: f.pid, t, why: f.why });
     }
     flush();
     return games;
 }
 
+/**
+ * A death is the last snapshot before the gap in the hero's snapshots that precedes the rise of its `deaths` counter: dead
+ * heroes log no snapshots, and the counter rises at the first snapshot after the respawn. A gap with no rise (a logging pause)
+ * is no death; a teleport or blink with the hero alive leaves no gap.
+ */
 function deathsFromSnaps(snaps) {
     const by = new Map();
     for (const s of snaps) { if (!by.has(s.pid)) by.set(s.pid, []); by.get(s.pid).push(s); }
     const out = [];
     for (const [pid, list] of by) {
-        let lastOk, frozen = false, prev;
-        for (const s of list) {
-            if (prev !== undefined && s.deaths > prev.deaths) {
-                if (lastOk !== undefined) out.push({ pid, t: lastOk });
-                frozen = false; lastOk = undefined;
-            }
-            if (prev !== undefined && !frozen && s.t - prev.t < 3 && Math.hypot(s.x - prev.x, s.y - prev.y) > 1200) frozen = true;
-            if (s.hp <= 0 && prev !== undefined && prev.hp > 0) frozen = true;
-            if (!frozen && s.hp > 0) lastOk = s.t;
-            prev = s;
+        for (let i = 1; i < list.length; i++) {
+            for (let k = list[i - 1].deaths; k < list[i].deaths; k++) out.push({ pid, t: list[i - 1].t });
         }
     }
     return out;
+}
+
+/** What held a hero at time t: not held by us (an arb end earlier), a retreat episode running (its why), else the read running. */
+function stateAt(ev, pid, t) {
+    if (ev.some((e) => e.kind === 'arbEnd' && e.pid === pid && e.t <= t)) return { state: 'notheld' };
+    let open;
+    for (const e of ev) {
+        if (e.kind !== 'retreat' || e.pid !== pid || e.t > t) continue;
+        if (e.ph === 'start') { if (open === undefined) open = e; } else open = undefined;
+    }
+    return open ? { state: 'retreat', why: open.why || '?' } : { state: 'read' };
 }
 
 /** The rows and deaths of one log's game: { rows (leave lines in order), deaths }. */
@@ -172,7 +181,8 @@ function gameOfLog(log, gameNo) {
         rows.push({ file, pid: cut.pid, t: Number(cut.t), dec: cut.dec, n: m.n, inputs: m.inputs, kill0: m.inputs.reach.reduce((s, r) => s + r.dmg, 0) });
     }
     const ours = new Set(rows.map((r) => r.pid));
-    const deaths = (deathsOf(text)[gi] || []).filter((d) => ours.has(d.pid)).map((d) => ({ ...d, file }));
+    const dg = deathsOf(text)[gi] || { deaths: [], ev: [] };
+    const deaths = dg.deaths.filter((d) => ours.has(d.pid)).map((d) => ({ ...d, file, ...stateAt(dg.ev, d.pid, d.t) }));
     return { rows, deaths };
 }
 
@@ -190,6 +200,7 @@ function analyse(games) {
     const examples = {};
     let nDeaths = 0, noLine = 0;
     const perDeath = [];
+    const notCalled = {};
     for (const g of games) {
         const byPid = new Map();
         for (const r of g.rows) { if (!byPid.has(r.pid)) byPid.set(r.pid, []); byPid.get(r.pid).push(r); }
@@ -197,6 +208,12 @@ function analyse(games) {
         for (const d of g.deaths) {
             nDeaths++;
             const win = (byPid.get(d.pid) || []).filter((r) => r.t >= d.t - WINDOW_BEFORE && r.t <= d.t + WINDOW_AFTER);
+            const ownKey = d.state === 'retreat' ? `retreat:${d.why}` : d.state === 'notheld' ? 'not held' : 'read running';
+            for (const bar of BARS) {
+                if (win.some((r) => answerOf(r, bar).level === 'deadly')) continue;
+                const c = notCalled[bar] || (notCalled[bar] = {});
+                c[ownKey] = (c[ownKey] || 0) + 1;
+            }
             if (!win.length) { noLine++; continue; }
             perDeath.push({ d, win, all: byPid.get(d.pid) });
         }
@@ -239,7 +256,7 @@ function analyse(games) {
             if (nw && !today0) (examples[`bar-only\t${bar}\t${rk}`] = examples[`bar-only\t${bar}\t${rk}`] || []).push({ file: d.file, pid: d.pid, t: nw.t });
         }
     }
-    return { t1, t2, t3, examples, nDeaths, noLine, withLine: perDeath.length };
+    return { t1, t2, t3, notCalled, examples, nDeaths, noLine, withLine: perDeath.length };
 }
 
 function report(res, nGames, show) {
@@ -253,6 +270,12 @@ function report(res, nGames, show) {
         const cell = (m, ks) => ks.map((k) => `${k}: ${m[k] ? `${m[k].n}, ${fmt(median(m[k].lead))}` : '0'}`).join('  ');
         const reasons = Object.keys(r.byReason).sort();
         out.push(`  ${bar.padEnd(6)} ${String(r.n).padStart(4)} ${String(r.called).padStart(6)}  ${fmt(median(r.lead)).padStart(6)}        | ${cell(r.byReach, ['0', '1', '2+'])} | ${cell(r.byReason, reasons)}`);
+    }
+    out.push('  not called, by state at the death (all deaths, those with no line too): not held = an arb end earlier; retreat:<why> = episode running; else read running');
+    for (const bar of BARS) {
+        const c = res.notCalled[bar] || {};
+        const n = Object.values(c).reduce((a, v) => a + v, 0);
+        out.push(`  ${bar.padEnd(6)} ${String(n).padStart(4)}  ${Object.entries(c).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}: ${v}`).join('  ')}`);
     }
     out.push('', 'Table 2: deadly seconds a game (weight: time to the hero\'s next leave line, cap 2 s), by heroes in reach and HP band; died10 = share followed by that hero\'s death within 10 s');
     out.push('  bar      reach  HP band   sec/game  died10');
@@ -307,4 +330,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { mapLeave, deathsFromSnaps, decideAll, today, analyse };
+module.exports = { mapLeave, deathsFromSnaps, stateAt,  decideAll, today, analyse };
