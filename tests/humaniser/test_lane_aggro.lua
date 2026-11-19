@@ -1,6 +1,9 @@
 -- Slice lane-aggro: the rules that decide when a laner may draw creeps (lane_aggro). The in-game halves (who the creeps target,
 -- the deny) are read from ev=aggro in the check run.
 dofile(HARNESS_DIR .. "/lane_world.lua")
+-- The host's own steps do nothing here, so a frame ends only in the lane table's rows of ours (or its OHA position fallback).
+local function no() return false end
+local HostSteps = { etiquette = no, ohaLastHit = no, ohaDeny = no, ohaHold = no, ohaLocal = no, ohaPosition = function() return true end }
 LaneFresh({ Enable = true })
 local A = require("bots/FunLib/humaniser/lane_aggro")
 
@@ -43,7 +46,7 @@ check("stale: watch, 1 s gap (a swing) kept", not A.Stale("watch", 1))
 check("stale: watch, 20 s gap (a retreat) ends it", A.Stale("watch", 20))
 
 -- A creep seen at the order that has since left our vision keeps a valid handle with no location (chold3_A_on_1 t=217.6:
--- `lua_error` in States.SupportStep, lane_aggro's moved count indexed it). It is not counted, and nothing raises.
+-- `lua_error` in States.LaneStep, lane_aggro's moved count indexed it). It is not counted, and nothing raises.
 do
 	local function u(loc, alive) return { IsNull = function() return false end, IsAlive = function() return alive ~= false end, GetLocation = function() return loc end } end
 	local start = { { unit = u(nil), x = 0, y = 0 }, { unit = u(Vector(200, 0)), x = 0, y = 0 }, { unit = u(Vector(50, 0)), x = 0, y = 0 }, { unit = u(Vector(500, 0), false), x = 0, y = 0 } }
@@ -173,14 +176,14 @@ do
 	local n0 = #ActionsOf(1, "MoveToLocation")
 	for _ = 1, 4 do
 		T = T + 0.25
-		H.States.CoreAggroStep(bot)
+		H.States.LaneStep(bot, HostSteps)
 	end
 	check("body off: the approach keeps stepping", #ActionsOf(1, "MoveToLocation") == n0 + 4 and Ag.Pending(bot), #ActionsOf(1, "MoveToLocation") - n0)
 	check("body off: no stale end", not has("result=stale"))
 end
 
 -- Review 2026-11-06-aggro-walkin-321f215 M1: with the body off only the open attempt is stepped, and only a core's. An attempt
--- that ends there (a retreat held the bot) opens no new draw; a support's open draw stays support_lane's (body-running gate).
+-- that ends there (a retreat held the bot) opens no new draw; a support's open draw stays the `support_aggro` row's (body-running gate).
 do
 	local dota = require("bots/ts_libs/dota/index")
 	local Ag, bot, _, _, has, H = feedScene(1400)
@@ -192,7 +195,7 @@ do
 	bot.mode = dota.BotMode.Laning
 	local n0 = #ActionsOf(1, "MoveToLocation")
 	check("body off: the laning body is not running", not H.States.BodyLastHits(bot))
-	H.States.CoreAggroStep(bot)
+	H.States.LaneStep(bot, HostSteps)
 	check("body off: the stale attempt ends and no new draw starts", has("result=stale") and not Ag.Pending(bot) and #ActionsOf(1, "MoveToLocation") == n0)
 
 	Ag, bot, _, _, _, H = feedScene(1400, 5)
@@ -200,7 +203,7 @@ do
 	check("support scene: the support's feed starts (its core away)", Ag.Pending(bot))
 	n0 = #ActionsOf(1, "MoveToLocation")
 	T = T + 0.25
-	H.States.CoreAggroStep(bot)
+	H.States.LaneStep(bot, HostSteps)
 	check("body off, a support: the core step does not step its draw", #ActionsOf(1, "MoveToLocation") == n0)
 end
 

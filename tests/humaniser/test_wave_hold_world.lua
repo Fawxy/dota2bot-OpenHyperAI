@@ -37,7 +37,14 @@ local function world(laneAggro)
 		end
 		return n
 	end
-	return { W = W, bot = bot, creep = creep, count = count, lines = lines, H = H, at = at }
+	-- One frame as in game: the read from States.Tick (hosted, `swing` while the body's swing holds the frame), then Tick's
+	-- end check, then (only without a swing) the lane step's Act.
+	local function step(swing, hosted)
+		W.Watch(bot, hosted ~= false, swing == true)
+		W.Tick(bot)
+		if not swing then W.Act(bot) end
+	end
+	return { W = W, bot = bot, creep = creep, count = count, lines = lines, H = H, at = at, step = step }
 end
 
 -- obs0611 mark 4's shape, the gone start: our pull returnee fighting at 666 under our T1, theirs at 950-990 (outside tower
@@ -51,16 +58,16 @@ do
 	w.creep(3, 990)
 	back.target = e1
 	e1.target = back
-	w.W.Step(w.bot)
+	w.step()
 	T = 110.5
-	w.W.Step(w.bot)
+	w.step()
 	check("gone start: the returnee fighting under our T1 neither keeps the hold off nor ends it as met", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
 	T = 112
-	w.W.Step(w.bot)
+	w.step()
 	check("gone start: a hold runs (left only after LeftAfter unstepped)", w.count("wave_hold") == 0)
 	w.creep(2, 300)
 	T = 112.5
-	w.W.Step(w.bot)
+	w.step()
 	check("gone start: our next wave reaching their front ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=gone") == 1, table.concat(w.lines, "\n"))
 end
 
@@ -72,13 +79,13 @@ do
 	for _, o in ipairs({ -205, -8, 115, 215 }) do w.creep(2, o) end
 	w.creep(3, 2190)
 	w.creep(3, 2290)
-	w.W.Step(w.bot)
+	w.step()
 	T = 27.5
-	w.W.Step(w.bot)
+	w.step()
 	-- A hold started here would end as met once the waves meet; none started, so no line.
 	w.creep(2, 1800)
 	T = 28
-	w.W.Step(w.bot)
+	w.step()
 	check("fresh wave walking out: no hold starts", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
 	check("fresh wave walking out: one ours_far skip names our walking creep (no target)", #w.lines == 1 and w.lines[1]:find("why=ours_far", 1, true) ~= nil and w.lines[1]:find("obt=none", 1, true) ~= nil, table.concat(w.lines, "\n"))
 end
@@ -96,15 +103,15 @@ do
 	for i, o in ipairs({ 1000, 1020, 1040, 1060 }) do es[i] = w.creep(3, o) end
 	m.target, r.target = es[1], es[1]
 	es[1].target, es[2].target = m, m
-	w.W.Step(w.bot)
+	w.step()
 	T = 150.5
-	w.W.Step(w.bot)
+	w.step()
 	check("forecast start: no line while the losing wave fights on (its fight is not met)", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
 	local x, y = nextWave.loc.x, nextWave.loc.y
 	local fx, fy = es[1].loc.x, es[1].loc.y
 	nextWave.loc = Vector(fx + (x - fx) * 0.05, fy + (y - fy) * 0.05)
 	T = 151
-	w.W.Step(w.bot)
+	w.step()
 	check("forecast start: our next wave reaching their front ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=forecast") == 1 and w.count("wave_hold", "why=losing") == 1, table.concat(w.lines, "\n"))
 end
 
@@ -120,7 +127,7 @@ do
 	e1.target, e2.target = ours[1], ours[1]
 	for i = 0, 16 do
 		T = 150 + i * 0.5
-		w.W.Step(w.bot)
+		w.step()
 	end
 	check("winning clash: no hold", w.count("wave_hold") == 0)
 	check("skip `ours` at most once per 5 s over 8 s of reads: 2 lines", w.count("wave_hold_skip", "why=ours") == 2, w.count("wave_hold_skip", "why=ours"))
@@ -135,17 +142,17 @@ do
 	w.creep(3, 792)
 	w.creep(3, 830)
 	w.creep(3, 1188)
-	w.W.Step(w.bot)
+	w.step()
 	check("hschk2: their front under tower fire: no hold, skip late with rch=860", w.count("wave_hold") == 0 and w.count("wave_hold_skip", "why=late") == 1 and w.count("wave_hold_skip", "rch=860") == 1, table.concat(w.lines, "\n"))
 	local w2 = world()
 	for _, t in pairs(TOWERS_W[2]) do t.hull = 100 end
 	T = 498
 	w2.creep(3, 880)
 	w2.creep(3, 900)
-	w2.W.Step(w2.bot)
+	w2.step()
 	T = 498.5
 	w2.creep(2, 700)
-	w2.W.Step(w2.bot)
+	w2.step()
 	check("the API's tower hull sets the floor: front 880 starts and holds at 880", w2.count("wave_hold", "rch=816") == 1 and w2.count("wave_hold", "hd=879") + w2.count("wave_hold", "hd=880") == 1, table.concat(w2.lines, "\n"))
 end
 
@@ -162,9 +169,152 @@ do
 	w.creep(3, 1190)
 	local hx, hy = w.at(1500)
 	MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
-	w.W.Step(w.bot)
+	w.step()
 	local A = require("bots/FunLib/humaniser/lane_aggro")
 	check("hold draw: lane_aggro's draw runs for the holding core", A.Acting(w.bot), table.concat(w.lines, "\n"))
+end
+
+-- Slice hold-through-swing (ladder-solo rad1 mid 155.7-161.1: a 3 s chain of the body's last hits and denies at the hold
+-- point ended the hold `left`, and the spot walked the creeps on the core into our T1's fire): 4 s of swing frames keep the
+-- attempt and its hold point, count `hs`, and give no draw; the next free frame's Act gives the draw the last read wants.
+do
+	local w = world(true)
+	T = 400
+	local x, y = w.at(910)
+	w.bot.loc = Vector(x, y)
+	-- Started on a free frame with their front 1,500 out (no draw due yet), then it walks to 1,150 while the core swings.
+	local cs = { w.creep(3, 1500), w.creep(3, 1520), w.creep(3, 1540) }
+	local hx, hy = w.at(1700)
+	MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
+	local A = require("bots/FunLib/humaniser/lane_aggro")
+	local L = require("bots/FunLib/humaniser/states/laning")
+	w.step(false)
+	T = 400.1
+	for i, o in ipairs({ 1150, 1170, 1190 }) do
+		local cx, cy = w.at(o)
+		cs[i].loc = Vector(cx, cy)
+	end
+	local held, cleared = 0, 0
+	local set = L.SetHold
+	L.SetHold = function(b, at)
+		if at == nil then cleared = cleared + 1 else held = held + 1 end
+		return set(b, at)
+	end
+	for i = 0, 16 do
+		T = 400.25 + i * 0.25
+		w.step(true)
+	end
+	L.SetHold = set
+	check("swing 4 s: the attempt runs on (no line)", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	check("swing 4 s: no draw cuts into the swing", not A.Acting(w.bot))
+	check("swing 4 s: every read sets the hold point, none clears it", held >= 16 and cleared == 0, held .. " " .. cleared)
+	-- Same clock as the last swing read, so this frame's Watch makes no new read: Act gives the want a swing read left.
+	w.step(false)
+	check("first free frame: Act gives the draw a swing read wanted", A.Acting(w.bot), table.concat(w.lines, "\n"))
+end
+
+-- Review: a want left by the last read before a hand-off is dropped, so the first laning frame back (Act before the next
+-- read) gives no draw on old facts.
+do
+	local w = world(true)
+	T = 450
+	local x, y = w.at(910)
+	w.bot.loc = Vector(x, y)
+	local cs = { w.creep(3, 1500), w.creep(3, 1520), w.creep(3, 1540) }
+	local hx, hy = w.at(1700)
+	MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
+	w.step(false)
+	for i, o in ipairs({ 1150, 1170, 1190 }) do
+		local cx, cy = w.at(o)
+		cs[i].loc = Vector(cx, cy)
+	end
+	T = 450.25
+	w.step(true)
+	T = 450.5
+	w.W.Watch(w.bot, false, false)
+	w.W.Act(w.bot)
+	check("stale want: no draw after a frame with no laning host", not require("bots/FunLib/humaniser/lane_aggro").Acting(w.bot))
+end
+
+-- The drag through Watch and Act (cost over budget with our next wave far: 3 creeps of 100 damage, T 130 on the bot lane).
+-- Watch only wants it; Act starts it and only then the branch is `drag`; with no enemy hero to order on it concedes `cr=drag`.
+local function dragWorld(t0, hero)
+	local w = world(true)
+	T = t0
+	local cs = {}
+	for i, o in ipairs({ 1500, 1520, 1540 }) do
+		cs[i] = w.creep(3, o)
+		cs[i].dmg = 100
+	end
+	-- Near their wave: lane_aggro's draw needs their creeps within its DrawR of the core.
+	local bx, by = w.at(1350)
+	w.bot.loc = Vector(bx, by)
+	if hero then
+		local hx, hy = w.at(1700)
+		MakeUnit({ pid = 7, team = 3, loc = Vector(hx, hy) }).lane = Lane.Bot
+	end
+	return w, cs
+end
+do
+	local w = dragWorld(130, false)
+	w.W.Watch(w.bot, true, false)
+	w.W.Tick(w.bot)
+	check("drag: Watch alone wants the drag and concedes nothing", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	w.W.Act(w.bot)
+	check("drag: no enemy hero to order on, Act concedes cr=drag", w.count("wave_hold", "res=concede") == 1 and w.count("wave_hold", "cr=drag") == 1, table.concat(w.lines, "\n"))
+end
+do
+	local w, cs = dragWorld(130, true)
+	w.step(false)
+	local A = require("bots/FunLib/humaniser/lane_aggro")
+	check("drag: with an enemy hero Act starts the draw", A.Acting(w.bot) and w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	for _, c in ipairs(cs) do
+		local x, y = w.at(5000)
+		c.loc = Vector(x, y)
+	end
+	T = 130.5
+	w.step(false)
+	check("drag: the attempt's branch is drag (sw=1) when it ends", w.count("wave_hold", "res=cleared") == 1 and w.count("wave_hold", "br=drag") == 1 and w.count("wave_hold", "sw=1") == 1, table.concat(w.lines, "\n"))
+end
+do
+	-- A drag wanted while the hold draw acts concedes, as before the split (StartBack refuses while a draw is open).
+	local w = dragWorld(130, true)
+	local A = require("bots/FunLib/humaniser/lane_aggro")
+	local px, py = w.at(1060)
+	check("drag while a draw acts: the hold draw started by hand", A.StartBack(w.bot, Vector(px, py), "hold"))
+	w.step(false)
+	check("drag while a draw acts: concedes cr=drag", w.count("wave_hold", "res=concede") == 1 and w.count("wave_hold", "cr=drag") == 1, table.concat(w.lines, "\n"))
+end
+
+-- The opposite case: another mode has the core (OHA's retreat) for LeftAfter: the attempt ends `left`, branch `retreat`.
+do
+	local w = world()
+	T = 500
+	w.creep(3, 1500)
+	w.creep(3, 1520)
+	w.step()
+	w.bot.mode = BotMode.Retreat
+	for i = 1, 14 do
+		T = 500 + i * 0.25
+		w.step()
+	end
+	check("retreat 3.5 s: the attempt ends left, br=retreat", w.count("wave_hold", "res=left") == 1 and w.count("wave_hold", "br=retreat") == 1, table.concat(w.lines, "\n"))
+end
+
+-- And the body not running (hosted false) for LeftAfter in laning mode ends it `left` too; the swing count is on the line.
+do
+	local w = world()
+	T = 600
+	w.creep(3, 1500)
+	w.creep(3, 1520)
+	w.step(true)
+	T = 600.25
+	w.step(true)
+	for i = 1, 14 do
+		T = 600.25 + i * 0.25
+		w.step(false, false)
+	end
+	check("no host 3.5 s: left with md=1 and hs=2", w.count("wave_hold", "res=left") == 1 and w.count("wave_hold", "md=1") == 1 and w.count("wave_hold", "hs=2") == 1, table.concat(w.lines, "\n"))
 end
 
 -- An enemy hero pushing the held spot inside the floor ends the attempt `unsafe` once their front is within 1 s of the floor
@@ -173,18 +323,18 @@ do
 	local w = world()
 	T = 300
 	local c1, c2 = w.creep(3, 1500), w.creep(3, 1520)
-	w.W.Step(w.bot)
+	w.step()
 	local L = require("bots/FunLib/humaniser/states/laning")
 	local x, y = w.at(600)
 	L.SpotInfo = function() return { spot = Vector(x, y), pushed = 6, anchor = "hold", why = "hero", margin = 0, covered = 0 } end
 	T = 300.5
-	w.W.Step(w.bot)
+	w.step()
 	check("pushed by a hero to 600 with their front 1,500 out: the hold runs on", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
 	local x1, y1 = w.at(1150)
 	local x2, y2 = w.at(1170)
 	c1.loc, c2.loc = Vector(x1, y1), Vector(x2, y2)
 	T = 301
-	w.W.Step(w.bot)
+	w.step()
 	check("unsafe: still pushed to 600 with their front at 1,150 (within 1 s of the floor) ends the attempt", w.count("wave_hold", "res=unsafe") == 1, table.concat(w.lines, "\n"))
 end
 

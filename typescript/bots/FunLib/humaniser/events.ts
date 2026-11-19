@@ -81,8 +81,8 @@ export const BOT = {
     cod: "num",
     /**
      * Which step of mode_laning_generic's Think acted most recently since the previous snapshot (slice step-telemetry): `body_hit`
-     * the laning body's running last-hit or deny swing, `support` a support's lane steps (states/support_lane), `aggro` lane
-     * aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `oha_lh` / `oha_deny` / `oha_hold` OHA's
+     * the laning body's running last-hit or deny swing, `support_hit` / `support_aggro` / `support_hold` a support's lane rows (states/lane_table), `drill_hold` / `drill_aggro`
+     * a lane-only core's wave hold and lane aggro, `aggro` a core's lane aggro or the wave hold, `etiquette` Ours.LeaveCoreCreep's cancel (with OHA's move), `oha_lh` / `oha_deny` / `oha_hold` OHA's
      * last hit, deny and hold-for-the-hit, `body` the
      * laning body's step, `oha_pos` OHA's PositionThink; `none` when the Lua Think did not run since the previous snapshot,
      * `valve` for a bot whose laning is Valve's C++ one (no Lua Think). Bots only.
@@ -825,7 +825,7 @@ export const EVENTS = {
          *  `retreat` (OHA's retreat took the core). */
         br: "str",
         /** `met` (our wave reached theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch),
-         *  `hurt`, `left` (not stepped; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
+         *  `hurt`, `left` (no laning host for LeftAfter: another mode, or the laning body not running; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside
          *  the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start;
          *  `cr`). */
         res: "str",
@@ -844,6 +844,9 @@ export const EVENTS = {
         rch: "num",
         /** Hold draws: lane_aggro `back` draws the holding core gave to take their wave's aggro at the hold point. */
         hdr: "num",
+        /** Reads of the attempt made while the laning body's last-hit or deny swing held the frame (slice hold-through-swing:
+         *  the read runs from States.Tick, so a swing no longer ends the attempt `left`). */
+        hs: "num",
         /** Their lane creeps in the stretch at the start; our last hits and denies during the attempt. */
         n: "num",
         /** Our last hits during the attempt. */
@@ -2805,7 +2808,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
@@ -3010,6 +3013,14 @@ export const EVENTS = {
         uth: "num",
         /** kind=keep, a join on a seen target: 1 when it is at the kill bar and Decide calls `kill` (it becomes the kill). */
         kup: "num",
+        /** kind=lane: the hero's position, 1 to 5. */
+        pos: "num",
+        /** kind=lane: the lane table row that acted (the step name of ev=snap `step`). Logged when the row or `skip` changes, else every 5 s. */
+        row: "str",
+        /** kind=lane: `,`-joined rows before `row` that wanted the frame and gave no order (rows whose run is their own scan are not listed); absent when none. */
+        skip: "str",
+        /** kind=lane: 1 under lane-only (a drill). */
+        lo: "num",
         /** kind=sustain (sustain_gather.ts, in shadow: nothing acts on it): HP, max HP, mana, max mana, absolute. */
         hpa: "num",
         hpm: "num",

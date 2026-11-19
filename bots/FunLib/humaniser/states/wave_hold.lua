@@ -513,6 +513,7 @@ local function finish(bot, a, res, now)
                 math.floor(a.rch)
             },
             {"hdr", a.hdr},
+            {"hs", a.hs},
             {"n", a.n},
             {
                 "lh",
@@ -592,7 +593,8 @@ local function finish(bot, a, res, now)
         }
     )
 end
---- Every frame (States.Tick): an attempt whose caller lost the frame ends, `retreat` when OHA's retreat holds the core.
+--- Every tick (States.Tick, after Watch): an attempt with no laning host for LeftAfter ends `left`, `retreat` when OHA's
+-- retreat holds the core.
 function ____exports.Tick(bot)
     local a = attempts[bot:GetPlayerID()]
     if a == nil then
@@ -653,6 +655,7 @@ local function begin(bot, v, front, n, rear, reach, now, trig, fc)
         ),
         bd = ____exports.BehindAt(reach),
         hdr = 0,
+        hs = 0,
         why = trig == "forecast" and "losing" or whyGone(bot, now),
         trig = trig,
         fc = fc,
@@ -968,14 +971,18 @@ local function tryStart(bot, now)
     end
     return a
 end
---- One frame for this core: starts, steps or ends the hold. It gives no order itself: the hold is the spot's input, the drag
--- lane_aggro's draw (stepped right after by the caller).
-function ____exports.Step(bot)
+--- The hold's read, every tick from States.Tick (slice hold-through-swing): starts, reads and ends the attempt and sets the
+-- spot's `hold` input; the draws it wants are Act's. `hosted`: the laning body runs for this core where its lane step would
+-- step the hold (States.HoldHosted); `swing`: the body's last-hit or deny swing holds the frame. A read needs no frame of its
+-- own, so the core's swings at the hold point no longer starve it (mid 161.1, ladder-solo rad1: a 3 s chain of last hits
+-- and denies ended a hold `left` and the spot walked two creeps on the core into our T1's fire).
+function ____exports.Watch(bot, hosted, swing)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
+    hosted = hosted and bot:GetActiveMode() == BotMode.Laning
     local a = attempts[pid]
     if a == nil then
-        if not ____exports.Owns(bot) then
+        if not hosted or not ____exports.Owns(bot) then
             return
         end
         local last = decidedAt[pid]
@@ -989,6 +996,10 @@ function ____exports.Step(bot)
         end
         a = started
         attempts[pid] = a
+    end
+    if not hosted then
+        a.want = nil
+        return
     end
     a.steppedAt = now
     a.hpMin = math.min(
@@ -1011,6 +1022,10 @@ function ____exports.Step(bot)
         return
     end
     a.readAt = now
+    a.want = nil
+    if swing then
+        a.hs = a.hs + 1
+    end
     local v = viewOf(
         bot:GetTeam(),
         a.lane
@@ -1022,19 +1037,19 @@ function ____exports.Step(bot)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue127
+            local __continue129
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - a.bd or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue127 = true
+                    __continue129 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue127 = true
+                __continue129 = true
             until true
-            if not __continue127 then
+            if not __continue129 then
                 break
             end
         end
@@ -1048,23 +1063,23 @@ function ____exports.Step(bot)
     end
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue133
+            local __continue135
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue133 = true
+                    __continue135 = true
                     break
                 end
                 if __TS__ArrayIncludes(a.old, c) then
-                    __continue133 = true
+                    __continue135 = true
                     break
                 end
                 if GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
                     a.mo = front
                     return finish(bot, a, "met", now)
                 end
-                __continue133 = true
+                __continue135 = true
             until true
-            if not __continue133 then
+            if not __continue135 then
                 break
             end
         end
@@ -1162,9 +1177,10 @@ function ____exports.Step(bot)
         a.cr = "cost"
         return finish(bot, a, "concede", now)
     end
-    if br == "drag" and not dragging and not LaneAggro.StartBack(bot, a.behind) then
-        a.cr = "drag"
-        return finish(bot, a, "concede", now)
+    if br == "drag" and not dragging then
+        a.want = {kind = "drag", at = a.behind}
+        Laning.SetHold(bot, a.br == "hold" and a.hold or a.behind)
+        return
     end
     if br ~= a.br then
         a.sw = a.sw + 1
@@ -1184,14 +1200,44 @@ function ____exports.Step(bot)
             a.hd,
             GetUnitToLocationDistance(bot, a.hold),
             on
-        ) and LaneAggro.StartBack(
-            bot,
-            pointAt(v, a.hd + ____exports.SETTINGS.HoldDrawOut, a.hold.z),
-            "hold"
         ) then
-            a.hdr = a.hdr + 1
+            a.want = {
+                kind = "hold",
+                at = pointAt(v, a.hd + ____exports.SETTINGS.HoldDrawOut, a.hold.z)
+            }
         end
     end
+end
+--- The hold's orders, from the lane table row that acts it (`aggro`, `drill_hold`), which a body swing never
+-- reaches: the draw the last read wants, through lane_aggro's `back` (stepped right after by the caller). The drag's draw
+-- that does not start concedes the attempt (`cr=drag`), as before the split.
+function ____exports.Act(bot)
+    local a = attempts[bot:GetPlayerID()]
+    if a == nil or a.want == nil then
+        return
+    end
+    local w = a.want
+    a.want = nil
+    if w.kind == "hold" then
+        if not LaneAggro.Acting(bot) and LaneAggro.StartBack(bot, w.at, "hold") then
+            a.hdr = a.hdr + 1
+        end
+        return
+    end
+    if not LaneAggro.StartBack(bot, w.at) then
+        a.cr = "drag"
+        return finish(
+            bot,
+            a,
+            "concede",
+            DotaTime()
+        )
+    end
+    if a.br ~= "drag" then
+        a.sw = a.sw + 1
+        a.br = "drag"
+    end
+    Laning.SetHold(bot, a.behind)
 end
 function ____exports.Reset()
     for k in pairs(attempts) do
