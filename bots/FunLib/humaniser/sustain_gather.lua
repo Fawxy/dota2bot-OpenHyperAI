@@ -1,30 +1,4 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
--- Lua Library inline imports
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
-    end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
-end
--- End of Lua Library inline imports
 local ____exports = {}
 local noteCourier, n0, courierSeen
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
@@ -811,7 +785,7 @@ function ____exports.CutFields(pid, i, a)
             ","
         )
     end
-    local ____array_15 = __TS__SparseArrayNew(
+    return {
         {"pid", pid},
         {"kind", "sustain"},
         {
@@ -853,17 +827,10 @@ function ____exports.CutFields(pid, i, a)
         {
             "sh",
             b01(i.safe.hitting)
-        }
-    )
-    local ____i_safe_pressed_14 = i.safe.pressed
-    if ____i_safe_pressed_14 == nil then
-        ____i_safe_pressed_14 = i.safe.hitting
-    end
-    __TS__SparseArrayPush(
-        ____array_15,
+        },
         {
             "spr",
-            b01(____i_safe_pressed_14)
+            b01(i.safe.pressed == true or i.safe.hitting)
         },
         {"rc", i.safe.reach},
         {
@@ -920,8 +887,7 @@ function ____exports.CutFields(pid, i, a)
         {"alb", a.also},
         {"why", a.reason},
         {"ed", a.ended}
-    )
-    return {__TS__SparseArraySpread(____array_15)}
+    }
 end
 local cutState = {}
 --- The cut line for one decision: on a changed answer, else every CutEvery. `acted`: sustain_act.ts carries it out.
@@ -931,9 +897,9 @@ function ____exports.Cut(bot, i, a, acted)
     end
     local pid = bot:GetPlayerID()
     local now = DotaTime()
-    local ____cutState_16, ____pid_17 = cutState, pid
-    if ____cutState_16[____pid_17] == nil then
-        ____cutState_16[____pid_17] = {at = -math.huge, decidedAt = -math.huge}
+    local ____cutState_14, ____pid_15 = cutState, pid
+    if ____cutState_14[____pid_15] == nil then
+        ____cutState_14[____pid_15] = {at = -math.huge, decidedAt = -math.huge}
     end
     local st = cutState[pid]
     local key = (((((a.kind .. ":") .. tostring(a.name)) .. ":") .. a.reason) .. ":") .. tostring(a.ended)
@@ -958,9 +924,9 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____cutState_19, ____pid_20 = cutState, pid
-    if ____cutState_19[____pid_20] == nil then
-        ____cutState_19[____pid_20] = {at = -math.huge, decidedAt = -math.huge}
+    local ____cutState_17, ____pid_18 = cutState, pid
+    if ____cutState_17[____pid_18] == nil then
+        ____cutState_17[____pid_18] = {at = -math.huge, decidedAt = -math.huge}
     end
     local st = cutState[pid]
     if now - st.decidedAt < ____exports.SETTINGS.DecideEvery then

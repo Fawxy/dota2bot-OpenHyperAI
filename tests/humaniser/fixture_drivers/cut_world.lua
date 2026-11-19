@@ -1,6 +1,6 @@
 -- Builds the world of a fixture cut from a game (tools/hlog/cut.js, ev=cut) for the cut drivers (lane_spot, threat_gate,
 -- retreat_leave): every API call the decision and its Threat.Read make is answered from the world; nothing else runs.
--- world: t, team, pid, lane, ours {Switch = bool}, bot {x, y, hp, mhp, range, hull, speed, esc},
+-- world: t, team, pid, lane, ours {Switch = bool}, bot {x, y, hp, mhp, range, hull, speed, esc, prs (1/0, absent on older cuts)},
 --        ce/ca [{id, x, y, hp, mhp, ranged, tgt, hull}], he [{pid, x, y, hp, range, hull, speed, atk, eng, e3, e6, ill}],
 --        hu [{pid, x, y, tss, sp}], ha [{pid, x, y, range, hull, speed, ret}], towers [{team, i, x, y, range, hull, tgt}],
 --        vis {x0, y0, nx, ny, step, hex} (cell i, j at x0 + i step, y0 + j step; absent: all visible).
@@ -30,7 +30,7 @@ function U:IsIllusion() return self.ill == true end
 function U:IsHero() return self.hero == true end
 function U:GetEstimatedDamageToTarget(_, _, duration) return duration >= 6 and (self.e6 or 0) or (self.e3 or 0) end
 function U:WasRecentlyDamagedByHero(e) return e.eng == true end
--- The cut carries only the 1 s `eng` per hero: a hero that hit us within it stands in for the safe read's longer window.
+-- The safe read's `pressed`: the cut's own flag (bot.prs), or on a cut from before it was logged a hero with the 1 s `eng`.
 function U:WasRecentlyDamagedByAnyHero() return self.heroHit == true end
 function U:WasRecentlyDamagedByTower() return self.dtower == true end
 function U:FindItemSlot(name) return (self.esc and name == "item_tpscroll") and 0 or -1 end
@@ -65,7 +65,7 @@ return function(w)
 	local elsewhere = unit({ loc = Vector(0, 0), hp = 1 })
 	local b = w.bot
 	local bot = unit({ loc = Vector(b.x, b.y), team = team, hp = b.hp, mhp = b.mhp, range = b.range, hull = b.hull, speed = b.speed,
-		esc = b.esc == 1 or b.esc == true, pid = w.pid, lane = w.lane, hero = true, dtower = w.dt == 1 })
+		esc = b.esc == 1 or b.esc == true, pid = w.pid, lane = w.lane, hero = true, dtower = w.dt == 1, heroHit = b.prs == 1 })
 	byHero[w.pid] = bot
 	local pending = {}
 	local function creep(c, t, list)
@@ -82,7 +82,7 @@ return function(w)
 		local u = unit({ loc = Vector(e.x, e.y), team = enemyTeam, hp = e.hp, range = e.range, hull = e.hull, speed = e.speed, pid = e.pid,
 			e3 = e.e3, e6 = e.e6, eng = e.eng == 1, ill = e.ill == 1, hero = true, name = "npc_dota_hero_enemy" })
 		if e.atk == 1 then u.target = bot end
-		if u.eng and not u.ill then bot.heroHit = true end
+		if b.prs == nil and u.eng and not u.ill then bot.heroHit = true end
 		if not u.ill then byHero[e.pid] = u end
 		table.insert(world.enemies, u)
 	end

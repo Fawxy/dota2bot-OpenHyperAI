@@ -470,7 +470,7 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["hr", b01(i.hitRecently)],
         ["kill", n0(i.safe.kill)],
         ["sh", b01(i.safe.hitting)],
-        ["spr", b01(i.safe.pressed ?? i.safe.hitting)],
+        ["spr", b01(i.safe.pressed === true || i.safe.hitting)],
         ["rc", i.safe.reach],
         ["rl", n0(i.regenLeft)],
         ["ml", n0(i.manaLeft)],

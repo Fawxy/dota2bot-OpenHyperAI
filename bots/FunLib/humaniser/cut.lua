@@ -11,6 +11,12 @@ local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_st
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local Sight = require(GetScriptDirectory().."/FunLib/humaniser/sight")
+local ____safe_gather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
+local SafeGatherSettings = ____safe_gather.SETTINGS
+--- `b`'s last number: the safe read's `pressed` for this hero (the kill bar turns on it), so a cut between an enemy's swings replays at the bar the game used.
+local function pressedNow(bot)
+    return bot:WasRecentlyDamagedByAnyHero(SafeGatherSettings.PressWindow) and 1 or 0
+end
 --- Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
 -- walking back to lane reads its walk to a spot by the front (smoke 1: 5 of 60 cuts lost a hero 3,500 from the bot).
 local CUT_R = 3000
@@ -59,15 +65,15 @@ local function creeps(kind, bot, at, front)
     local out = {}
     for ____, c in ipairs(GetUnitList(kind) or ({})) do
         do
-            local __continue10
+            local __continue11
             repeat
                 if not live(c) or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue10 = true
+                    __continue11 = true
                     break
                 end
                 local l = c:GetLocation()
                 if not near(l, at, front) then
-                    __continue10 = true
+                    __continue11 = true
                     break
                 end
                 local ranged = (string.find(
@@ -89,9 +95,9 @@ local function creeps(kind, bot, at, front)
                     },
                     ","
                 )
-                __continue10 = true
+                __continue11 = true
             until true
-            if not __continue10 then
+            if not __continue11 then
                 break
             end
         end
@@ -101,20 +107,20 @@ end
 local function escapeReady(bot)
     for ____, name in ipairs(Threat.SETTINGS.EscapeItems) do
         do
-            local __continue15
+            local __continue16
             repeat
                 local slot = bot:FindItemSlot(name)
                 if slot < 0 or slot > 5 then
-                    __continue15 = true
+                    __continue16 = true
                     break
                 end
                 local item = bot:GetItemInSlot(slot)
                 if item ~= nil and item ~= nil and item:IsFullyCastable() then
                     return true
                 end
-                __continue15 = true
+                __continue16 = true
             until true
-            if not __continue15 then
+            if not __continue16 then
                 break
             end
         end
@@ -143,11 +149,11 @@ local function logTowers(team)
         local i = 0
         while i < #____exports.TOWER_IDS do
             do
-                local __continue22
+                local __continue23
                 repeat
                     local tw = GetTower(team, ____exports.TOWER_IDS[i + 1])
                     if not live(tw) then
-                        __continue22 = true
+                        __continue23 = true
                         break
                     end
                     local l = tw:GetLocation()
@@ -161,9 +167,9 @@ local function logTowers(team)
                         },
                         ","
                     )
-                    __continue22 = true
+                    __continue23 = true
                 until true
-                if not __continue22 then
+                if not __continue23 then
                     break
                 end
             end
@@ -188,11 +194,11 @@ local function towersNow(team, bot, at, front, out)
         local i = 0
         while i < #____exports.TOWER_IDS do
             do
-                local __continue25
+                local __continue26
                 repeat
                     local tw = GetTower(team, ____exports.TOWER_IDS[i + 1])
                     if not live(tw) then
-                        __continue25 = true
+                        __continue26 = true
                         break
                     end
                     mask = mask + 2 ^ i
@@ -207,9 +213,9 @@ local function towersNow(team, bot, at, front, out)
                             ","
                         )
                     end
-                    __continue25 = true
+                    __continue26 = true
                 until true
-                if not __continue25 then
+                if not __continue26 then
                     break
                 end
             end
@@ -227,10 +233,10 @@ local function units(bot, keep, short, long)
     local he = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue29
+            local __continue30
             repeat
                 if not live(e) or not e:CanBeSeen() then
-                    __continue29 = true
+                    __continue30 = true
                     break
                 end
                 local l = e:GetLocation()
@@ -239,7 +245,7 @@ local function units(bot, keep, short, long)
                     visible[e:GetPlayerID()] = true
                 end
                 if not keep(l) then
-                    __continue29 = true
+                    __continue30 = true
                     break
                 end
                 local e3 = SpellReady.DamageOn(e, bot, short)
@@ -263,9 +269,9 @@ local function units(bot, keep, short, long)
                     },
                     ","
                 )
-                __continue29 = true
+                __continue30 = true
             until true
-            if not __continue29 then
+            if not __continue30 then
                 break
             end
         end
@@ -275,15 +281,15 @@ local function units(bot, keep, short, long)
         local p = 0
         while p <= MAX_PLAYER_ID do
             do
-                local __continue34
+                local __continue35
                 repeat
                     if GetTeamForPlayer(p) ~= enemyTeam or visible[p] == true or not IsHeroAlive(p) then
-                        __continue34 = true
+                        __continue35 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(p)[1]
                     if info == nil then
-                        __continue34 = true
+                        __continue35 = true
                         break
                     end
                     hu[#hu + 1] = table.concat(
@@ -296,9 +302,9 @@ local function units(bot, keep, short, long)
                         },
                         ","
                     )
-                    __continue34 = true
+                    __continue35 = true
                 until true
-                if not __continue34 then
+                if not __continue35 then
                     break
                 end
             end
@@ -308,14 +314,14 @@ local function units(bot, keep, short, long)
     local ha = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue37
+            local __continue38
             repeat
                 if not live(a) or a == bot or a:IsIllusion() then
-                    __continue37 = true
+                    __continue38 = true
                     break
                 end
                 if not keep(a:GetLocation()) then
-                    __continue37 = true
+                    __continue38 = true
                     break
                 end
                 local l = a:GetLocation()
@@ -331,9 +337,9 @@ local function units(bot, keep, short, long)
                     },
                     ","
                 )
-                __continue37 = true
+                __continue38 = true
             until true
-            if not __continue37 then
+            if not __continue38 then
                 break
             end
         end
@@ -393,7 +399,8 @@ function ____exports.Spot(bot)
                         f(bot:GetAttackRange()),
                         f(bot:GetBoundingRadius()),
                         f(bot:GetCurrentMovementSpeed()),
-                        escapeReady(bot) and 1 or 0
+                        escapeReady(bot) and 1 or 0,
+                        pressedNow(bot)
                     },
                     ","
                 )
@@ -503,7 +510,8 @@ function ____exports.Leave(bot, i)
                         f(bot:GetAttackRange()),
                         f(bot:GetBoundingRadius()),
                         f(bot:GetCurrentMovementSpeed()),
-                        escapeReady(bot) and 1 or 0
+                        escapeReady(bot) and 1 or 0,
+                        pressedNow(bot)
                     },
                     ","
                 )
@@ -640,7 +648,8 @@ function ____exports.Gate(bot, from, place, consumer)
                         f(bot:GetAttackRange()),
                         f(bot:GetBoundingRadius()),
                         f(bot:GetCurrentMovementSpeed()),
-                        escapeReady(bot) and 1 or 0
+                        escapeReady(bot) and 1 or 0,
+                        pressedNow(bot)
                     },
                     ","
                 )

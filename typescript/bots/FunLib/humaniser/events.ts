@@ -2832,7 +2832,7 @@ export const EVENTS = {
         pl: "str",
         /** The bot's assigned lane. */
         lane: "num",
-        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready. */
+        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready, 1 when an enemy hero damaged it in the safe read's press window (absent on logs before 20/11/2026). */
         b: "str",
         /** GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y. */
         fr: "str",

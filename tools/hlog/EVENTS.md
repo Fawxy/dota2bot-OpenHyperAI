@@ -1407,7 +1407,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `fm` str: `gate`: the walk's start, x,y (SafeGather.TripGate's `from`).
 - `pl` str: `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none. kind=safe: the place read, x,y.
 - `lane` num: The bot's assigned lane.
-- `b` str: The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready.
+- `b` str: The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready, 1 when an enemy hero damaged it in the safe read's press window (absent on logs before 20/11/2026).
 - `fr` str: GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y.
 - `fed` num: The spot's `fed` input: lane_aggro's fed creep (CreepId).
 - `hold` str: The spot's `hold` input: wave_hold's hold point, x,y.
