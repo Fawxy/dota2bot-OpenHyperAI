@@ -1892,6 +1892,17 @@ ____exports.EVENTS = {
         lag = "num",
         ks = "str"
     },
+    atk_order = {
+        pid = "num",
+        w = "str",
+        cst = "num",
+        chn = "num",
+        usg = "num",
+        q = "num",
+        act = "num",
+        mode = "str",
+        ek = "str"
+    },
     chase = {
         pid = "num",
         ph = "str",

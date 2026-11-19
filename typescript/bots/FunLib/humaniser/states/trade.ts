@@ -19,6 +19,7 @@ import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
+import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as Safe from "bots/FunLib/humaniser/safe";
@@ -1492,6 +1493,22 @@ export function OwnsFrame(bot: Unit): boolean {
     return ownsFrame[bot.GetPlayerID()] === true;
 }
 
+/** Slice cast-cancel-probe (plan 2b), probe only: what the hero was doing when trade ordered an attack. */
+function probeOrder(bot: Unit, w: string, ep: Episode): void {
+    if (!Telemetry.IsEnabled()) return;
+    Telemetry.Event("atk_order", [
+        ["pid", bot.GetPlayerID()],
+        ["w", w],
+        ["cst", bot.IsCastingAbility() ? 1 : 0],
+        ["chn", bot.IsChanneling() ? 1 : 0],
+        ["usg", bot.IsUsingAbility() ? 1 : 0],
+        ["q", bot.NumQueuedActions()],
+        ["act", (bot as unknown as { GetCurrentActionType(): number }).GetCurrentActionType()],
+        ["mode", HDebug.ModeName(bot.GetActiveMode())],
+        ["ek", ep.level],
+    ]);
+}
+
 /** Carries out `Answer.how` on the episode: a move to the predicted place for an unseen chase, a committed attack order, or the aggro-free plan (the step out of the creeps is the only mechanics decided here). */
 export function Think(bot: Unit): void {
     const pid = bot.GetPlayerID();
@@ -1536,12 +1553,14 @@ export function Think(bot: Unit): void {
     if (plan === "prime") {
         primedAt[pid] = now;
         ep.primes++;
+        probeOrder(bot, "prime", ep);
         bot.Action_AttackUnit(ep.target, false);
         return;
     }
     if (bot.GetAttackTarget() !== ep.target) {
         // An order inside the cooldown draws nothing and does not restart it.
         if (commits) primedAt[pid] = now;
+        probeOrder(bot, "order", ep);
         bot.Action_AttackUnit(ep.target, false);
     }
 }

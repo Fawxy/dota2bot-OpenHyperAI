@@ -64,6 +64,7 @@ local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
+local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
@@ -662,19 +663,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue320
+            local __continue322
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue320 = true
+                    __continue322 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue320 = true
+                __continue322 = true
             until true
-            if not __continue320 then
+            if not __continue322 then
                 break
             end
         end
@@ -2200,6 +2201,47 @@ end
 function ____exports.OwnsFrame(bot)
     return ownsFrame[bot:GetPlayerID()] == true
 end
+--- Slice cast-cancel-probe (plan 2b), probe only: what the hero was doing when trade ordered an attack.
+local function probeOrder(bot, w, ep)
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    Telemetry.Event(
+        "atk_order",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"w", w},
+            {
+                "cst",
+                bot:IsCastingAbility() and 1 or 0
+            },
+            {
+                "chn",
+                bot:IsChanneling() and 1 or 0
+            },
+            {
+                "usg",
+                bot:IsUsingAbility() and 1 or 0
+            },
+            {
+                "q",
+                bot:NumQueuedActions()
+            },
+            {
+                "act",
+                bot:GetCurrentActionType()
+            },
+            {
+                "mode",
+                HDebug.ModeName(bot:GetActiveMode())
+            },
+            {"ek", ep.level}
+        }
+    )
+end
 --- Carries out `Answer.how` on the episode: a move to the predicted place for an unseen chase, a committed attack order, or the aggro-free plan (the step out of the creeps is the only mechanics decided here).
 function ____exports.Think(bot)
     local pid = bot:GetPlayerID()
@@ -2235,19 +2277,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue310
+            local __continue312
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue310 = true
+                    __continue312 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue310 = true
+                __continue312 = true
             until true
-            if not __continue310 then
+            if not __continue312 then
                 break
             end
         end
@@ -2268,6 +2310,7 @@ function ____exports.Think(bot)
     if plan == "prime" then
         primedAt[pid] = now
         ep.primes = ep.primes + 1
+        probeOrder(bot, "prime", ep)
         bot:Action_AttackUnit(ep.target, false)
         return
     end
@@ -2275,6 +2318,7 @@ function ____exports.Think(bot)
         if commits then
             primedAt[pid] = now
         end
+        probeOrder(bot, "order", ep)
         bot:Action_AttackUnit(ep.target, false)
     end
 end

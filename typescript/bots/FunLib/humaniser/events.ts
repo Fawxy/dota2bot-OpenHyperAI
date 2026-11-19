@@ -3210,6 +3210,22 @@ export const EVENTS = {
         /** The first cast per hero only: the callback table's keys as key:type, `|`-joined (its shape is unprobed). */
         ks: "str",
     },
+    /** Slice cast-cancel-probe (plan 2b): an attack order Trade.Think issued, with what the hero was doing. Probe only. */
+    atk_order: {
+        pid: "num",
+        /** `prime` (the cooldown-priming order) or `order` (the re-issue when the attack target differs). */
+        w: "str",
+        /** 1 when IsCastingAbility, IsChanneling, IsUsingAbility were true, and the queued-action count. */
+        cst: "num",
+        chn: "num",
+        usg: "num",
+        q: "num",
+        /** `GetCurrentActionType` before the order, and the hero's active mode name. */
+        act: "num",
+        mode: "str",
+        /** The episode's level (kind). */
+        ek: "str",
+    },
     /** Slice chase-log: a trade exchange that lost sight of its target (`ph=lost`), then what followed within 12 s. */
     chase: {
         pid: "num",
