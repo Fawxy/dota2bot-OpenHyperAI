@@ -750,6 +750,8 @@ function ItemPurchaseThink()
 	and GetItemStockCount('item_clarity') > 1
 	and Item.GetItemCharges(bot, 'item_clarity') <= 0
 	and botGold >= GetItemCost( "item_clarity" )
+	-- Humaniser Sustain: sustain buys a held laner's mana (rule 5); its flag would also hold off the support's starting clarity.
+	and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsBuy( bot ) )
 	then
 		bot.hasBuyClarity = true
 		BuyRegen( "item_clarity", "mana_low" )

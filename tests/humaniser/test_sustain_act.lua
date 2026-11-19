@@ -295,6 +295,12 @@ do
 	T = 751
 	A.ItemThink(bot)
 	check("a wait for it adopts it: our courier is ordered to bring it", A.OwnsCourier(bot) and count("courier:4") == 1, table.concat(bot.orders, ","))
+	T = 751 + 15 + A.SETTINGS.LateSlack + 1
+	A.ItemThink(bot)
+	local late = false
+	for _, l in ipairs(lines) do if l:find("k=buy", 1, true) and l:find("ed=late", 1, true) then late = true end end
+	check("not landed by its eta: the delivery ends late; the wait's decision takes it over again (review: no stuck wait with the courier idle)",
+		late and A.Walking(bot) and A.OwnsCourier(bot) and count("courier:4") == 2, table.concat(bot.orders, ","))
 	INPUTS.delivery = nil
 	world.way = nil
 end

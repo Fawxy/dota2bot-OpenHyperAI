@@ -83,9 +83,10 @@ check("at 150 HP the tangos reach the kill line: stay and use; no tree: home, no
 	is(decide(inputs({ hp = 150, items = { tango() }, tree = TREE })), "use", "item_tango")
 		and is(decide(inputs({ hp = 150, items = { tango() } })), "home", nil, "cannot_stay"))
 
-check("the kill line is Stay x the safe-here kill: 350 HP and a salve stays at kill 100, goes home at kill 480",
+check("the kill line is Stay x the safe-here kill, capped at half HP for going home: at kill 480 (line 600) 350 HP and a salve stays and drinks, 80 HP and a salve goes home",
 	is(decide(inputs({ hp = 350, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "step_out_use")
-		and is(decide(inputs({ hp = 350, safe = { kill = 480, hitting = false, reach = 0 }, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "home"))
+		and is(decide(inputs({ hp = 350, safe = { kill = 480, hitting = false, reach = 0 }, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "step_out_use")
+		and is(decide(inputs({ hp = 80, safe = { kill = 480, hitting = false, reach = 0 }, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "home"))
 
 check("cannot stay, gold covers a tango and the courier beats the trip: buy and wait at the safe spot; no courier: home",
 	(function()
@@ -100,9 +101,10 @@ check("cannot stay 350 HP short: the salve that covers it, not the tango that do
 		and is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0 }, gold = 100, courier = { eta = 20 }, safeSpot = SAFE,
 			shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "home"))
 
-check("a kill line over max HP is capped: full HP stays, 550 goes home",
+check("a lane that can kill a full hero sends home only under half HP: full HP and 550 stay, 250 goes home",
 	is(decide(inputs({ safe = { kill = 600, hitting = false, reach = 0 } })), "none")
-		and is(decide(inputs({ hp = 550, safe = { kill = 600, hitting = false, reach = 0 } })), "home"))
+		and not is(decide(inputs({ hp = 550, safe = { kill = 600, hitting = false, reach = 0 } })), "home")
+		and is(decide(inputs({ hp = 250, safe = { kill = 600, hitting = false, reach = 0 } })), "home"))
 
 check("a salve waits while a hero is in reach (a step-out would end interrupted at once); a tango does not",
 	is(decide(inputs({ hp = 250, safe = { kill = 100, hitting = false, reach = 1 }, items = { salve() }, safeSpot = SAFE })), "none")
@@ -129,8 +131,9 @@ check("mana at 100 with a clarity: use; hit recently: none; at 200: none",
 		and is(decide(inputs({ mp = 100, items = { clarity() }, hitRecently = true })), "none")
 		and is(decide(inputs({ mp = 200, items = { clarity() } })), "none"))
 
-check("mana low and no mana item: buy a clarity; the wand's mana is kept",
-	is(decide(inputs({ mp = 100, gold = 100, courier = { eta = 20 } })), "buy", "item_clarity", "buy_mana")
+check("mana under the 30% purchase bar and no mana item: buy a clarity (33%: none); the wand's mana is kept",
+	is(decide(inputs({ mp = 80, gold = 100, courier = { eta = 20 } })), "buy", "item_clarity", "buy_mana")
+		and not is(decide(inputs({ mp = 100, gold = 100, courier = { eta = 20 } })), "buy")
 		and is(decide(inputs({ mp = 100, items = { wand() } })), "none"))
 
 check("a support with two tango charges and a bare core missing 200: give; one charge: none; the core holds a salve: none",
@@ -179,16 +182,16 @@ check("rule 1 fires inside a running trip home",
 		and is(decide(inputs({ hp = 150, safe = { kill = 200, hitting = false, reach = 1 }, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
 			"home", nil, "running"))
 -- Steps 4 and 5: a delivery on its way, the safe spot's own read, room, and tango and ship. A 600 HP hero that a lane of 600
--- can kill has the kill line at 600 (Stay x 600 over the cap); 200 HP plus a tango (336) reaches 536, short of it.
-local DEEP = { hp = 200, safe = { kill = 600, hitting = false, reach = 0 }, safeSpot = SAFE, gold = 300, courier = { eta = 20 } }
+-- can kill has the kill line at 600, capped at 300 for going home; 150 HP plus one tango charge (112) reaches 262, short of it.
+local DEEP = { hp = 150, safe = { kill = 600, hitting = false, reach = 0 }, safeSpot = SAFE, gold = 300, courier = { eta = 20 } }
 check("a delivery on its way that lifts us over the line: wait at the safe spot; one that does not, or slower than home: home",
 	is(decide(inputs(merge({ delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "wait", nil, "delivery")
-		and is(decide(inputs(merge({ delivery = { hp = 300, mp = 0, eta = 10 } }, DEEP))), "home", nil, "cannot_stay")
+		and is(decide(inputs(merge({ delivery = { hp = 100, mp = 0, eta = 10 } }, DEEP))), "home", nil, "cannot_stay")
 		and is(decide(inputs(merge({ delivery = { hp = 400, mp = 0, eta = 70 } }, DEEP))), "home", nil, "cannot_stay"))
 
 check("waiting with a tango in hand and no regen running: eat it meanwhile; with one running: wait",
-	is(decide(inputs(merge({ items = { tango() }, tree = TREE, delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "use", "item_tango", "wait_tango")
-		and is(decide(inputs(merge({ items = { tango() }, tree = TREE, regenLeft = 50, delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "wait", nil, "delivery"))
+	is(decide(inputs(merge({ items = { tango({ charges = 1 }) }, tree = TREE, delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "use", "item_tango", "wait_tango")
+		and is(decide(inputs(merge({ items = { tango({ charges = 1 }) }, tree = TREE, regenLeft = 10, delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP))), "wait", nil, "delivery"))
 
 check("a safe spot the safe-here read calls deadly: no wait and no shipment, home",
 	is(decide(inputs(merge(merge({ delivery = { hp = 400, mp = 0, eta = 10 } }, DEEP), { safeSpot = { x = 1, y = 2, walk = 3, ok = false } }))), "home")
@@ -196,7 +199,7 @@ check("a safe spot the safe-here read calls deadly: no wait and no shipment, hom
 
 check("tango and ship: in hand short, in hand plus a purchase clears the line: the tango now, the cheapest cover (a tango pack) sent with it",
 	(function()
-		local a = decide(inputs(merge({ items = { tango() }, tree = TREE }, DEEP)))
+		local a = decide(inputs(merge({ items = { tango({ charges = 1 }) }, tree = TREE }, DEEP)))
 		return is(a, "use", "item_tango", "tango_ship") and a.also == "item_tango" and a.at ~= nil
 	end)())
 

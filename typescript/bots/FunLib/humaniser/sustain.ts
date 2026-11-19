@@ -26,6 +26,14 @@ export const BARS = {
     castSlack: 0.5,
     /** Rule 3 with no hit due (no wave near) or in an idle window: the longest tango walk there and back (s). judgement: 4 s each way costs no lane time there. */
     idleWalk: 8,
+    /**
+     * Rule 2 sends a hero home only under this HP share, whatever the kill line: above it a hero plays back in lane, and a place
+     * the lane can kill it in is retreat's to leave (smoke sustain-home 1: walks home at 65% and 74% HP when a lane's burst read
+     * 536 of 840). judgement, before tonight's batch.
+     */
+    homeCap: 0.5,
+    /** Rule 5 buys mana only under this share (OHA's clarity purchase bar, 30%; smoke 1: a core bought four clarities at 40%). judgement. */
+    manaBuy: 0.3,
 };
 
 /** One heal or mana item in slots 0-8. */
@@ -240,7 +248,8 @@ function tangoNow(i: Inputs): Item | undefined {
  * used and then the walk home anyway is the waste the rule exists to stop (user 19/11/2026). The wait and the shipment need a safe
  * spot the safe-here read there does not call deadly.
  */
-function cannotStay(i: Inputs, kill: number): Answer | undefined {
+function cannotStay(i: Inputs, line: number): Answer | undefined {
+    const kill = math.min(line, BARS.homeCap * i.hpMax);
     const reach = Reachable(i);
     if (reach >= kill) return undefined;
     if (manaLow(i)) return { kind: "home", reason: "low_both" };
@@ -312,7 +321,7 @@ function buyAhead(i: Inputs, kill: number): Answer | undefined {
         const o = pickHp(i, i.hpMax - i.hp);
         if (o !== undefined) return { kind: "buy", name: o.name, reason: "buy_hp" };
     }
-    if (!manas && manaLow(i)) {
+    if (!manas && i.mpMax > 0 && i.mp < BARS.manaBuy * i.mpMax) {
         const o = pickMp(i);
         if (o !== undefined) return { kind: "buy", name: o.name, reason: "buy_mana" };
     }

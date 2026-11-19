@@ -5,7 +5,14 @@ local RetreatSettings = ____retreat.SETTINGS
 local ____safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SafeBars = ____safe.BARS
 --- Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, its bar (`stay`) the safe-here read's: read at call time, not copied.
-____exports.BARS = {topUp = 0.65, mana = 0.4, castSlack = 0.5, idleWalk = 8}
+____exports.BARS = {
+    topUp = 0.65,
+    mana = 0.4,
+    castSlack = 0.5,
+    idleWalk = 8,
+    homeCap = 0.5,
+    manaBuy = 0.3
+}
 --- An instant HP item: kept for rule 1, never spent topping up.
 local function reserved(it)
     return it.dur == 0 and it.hp > 0
@@ -153,7 +160,8 @@ end
 -- lifts us over it is sent, with a tango eaten now when one is in hand (tango and ship); else home. Nothing else is spent: an item
 -- used and then the walk home anyway is the waste the rule exists to stop (user 19/11/2026). The wait and the shipment need a safe
 -- spot the safe-here read there does not call deadly.
-local function cannotStay(i, kill)
+local function cannotStay(i, line)
+    local kill = math.min(line, ____exports.BARS.homeCap * i.hpMax)
     local reach = ____exports.Reachable(i)
     if reach >= kill then
         return nil
@@ -318,7 +326,7 @@ local function buyAhead(i, kill)
             return {kind = "buy", name = o.name, reason = "buy_hp"}
         end
     end
-    if not manas and manaLow(i) then
+    if not manas and i.mpMax > 0 and i.mp < ____exports.BARS.manaBuy * i.mpMax then
         local o = pickMp(i)
         if o ~= nil then
             return {kind = "buy", name = o.name, reason = "buy_mana"}

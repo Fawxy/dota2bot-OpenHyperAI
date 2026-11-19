@@ -342,7 +342,8 @@ export function OnTheWay(bot: Unit, c: Unit | undefined = CourierOf(bot), founta
     const add = (slot: number, item: Item | undefined | null): void => {
         if (item === undefined || item === null) return;
         const it = readItem(slot, item);
-        if (it === undefined) return;
+        // An item that restores nothing now (an empty wand, stick or bottle from the item build) is not regen on the way (review).
+        if (it === undefined || it.hp * it.charges + it.mp * it.charges <= 0) return;
         found = true;
         hp += it.hp * math.max(1, it.charges);
         mp += it.mp * math.max(1, it.charges);

@@ -301,17 +301,23 @@ function startWait(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: numbe
     const walk = GetUnitToLocationDistance(bot, spot) / math.max(100, bot.GetCurrentMovementSpeed());
     if (GetUnitToLocationDistance(bot, spot) > SETTINGS.Arrive && !canWalk(bot, now)) return false;
     const a: Act = { kind: "wait", item: "", slot: -1, why: ans.reason, at: now, hp0: i.hp, mp0: i.mp, charges0: 0, walk, deadline: math.huge, spot };
-    const pid = bot.GetPlayerID();
-    acts[pid] = a;
+    acts[bot.GetPlayerID()] = a;
     order(bot, a);
-    // Regen on the way that no delivery of ours carries (OHA's purchase, or one of ours that ran late): our courier brings it,
-    // or the wait would last as long as it sat in the stash.
-    if (deliveries[pid] === undefined && i.delivery !== undefined && !Drill.Owns(bot, "courier")) {
-        const d: Delivery = { item: "stash", why: ans.reason, at: now, eta: i.delivery.eta, hp0: i.hp, mp0: i.mp, orderAt: -math.huge, orders: 0 };
-        deliveries[pid] = d;
-        deliver(bot, d, now);
-    }
+    adopt(bot, i, ans.reason, now);
     return true;
+}
+
+/**
+ * Regen on the way that no delivery of ours carries (OHA's purchase, or one of ours that ran late): our courier brings it, or a
+ * wait would last as long as it sat in the stash. Asked at a wait's start and at each of its decisions (review: a delivery
+ * ended `late` left the wait standing with the courier idle).
+ */
+function adopt(bot: Unit, i: Sustain.Inputs, why: string, now: number): void {
+    const pid = bot.GetPlayerID();
+    if (deliveries[pid] !== undefined || i.delivery === undefined || Drill.Owns(bot, "courier")) return;
+    const d: Delivery = { item: "stash", why, at: now, eta: i.delivery.eta, hp0: i.hp, mp0: i.mp, orderAt: -math.huge, orders: 0 };
+    deliveries[pid] = d;
+    deliver(bot, d, now);
 }
 
 /**
@@ -370,8 +376,12 @@ const RULE2: Record<string, true> = { cannot_stay: true, low_both: true, deliver
 /** Starts the answer and tells retreat whether the hero goes home: rule 2's `home`, or a rule 2 answer that could not be carried (a wait first for a tango that could not start). */
 function carry(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): void {
     let ok = start(bot, i, ans, now);
-    // A rule 2 tango that could not start: the purchase it was sent with goes anyway, and the hero waits for it at the spot.
-    if (!ok && (ans.reason === "wait_tango" || ans.reason === "tango_ship")) ok = (ans.also === undefined || purchase(bot, i, ans.also, ans.reason, now)) && startWait(bot, i, ans, now);
+    // A rule 2 tango that could not start: the hero waits at the spot instead, and only once the wait has started is the purchase
+    // sent with it made (review: bought first, a wait that could not start then sent the hero home with the salve bought).
+    if (!ok && (ans.reason === "wait_tango" || ans.reason === "tango_ship") && startWait(bot, i, ans, now)) {
+        ok = ans.also === undefined || purchase(bot, i, ans.also, ans.reason, now);
+        if (!ok) end(bot, "cut");
+    }
     RetreatState.SetHome(bot, ans.kind === "home" || (!ok && RULE2[ans.reason] === true));
 }
 
@@ -391,6 +401,7 @@ function progress(bot: Unit, a: Act, now: number): boolean {
         if (ans.kind === "wait" && ans.at !== undefined) {
             a.spot = Vector(ans.at.x, ans.at.y, bot.GetLocation().z);
             RetreatState.SetHome(bot, false);
+            adopt(bot, i, ans.reason, now);
             return false;
         }
         end(bot, "done");

@@ -523,7 +523,7 @@ function ____exports.OnTheWay(bot, c, fountain)
             return
         end
         local it = readItem(slot, item)
-        if it == nil then
+        if it == nil or it.hp * it.charges + it.mp * it.charges <= 0 then
             return
         end
         found = true

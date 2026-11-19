@@ -177,6 +177,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local endBuy, deliver, adopt, deliveries, r1, n0
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local UnitType = ____dota.UnitType
@@ -190,6 +191,95 @@ local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+function endBuy(bot, why)
+    local pid = bot:GetPlayerID()
+    local d = deliveries[pid]
+    if d == nil then
+        return
+    end
+    deliveries[pid] = nil
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    Telemetry.Event(
+        "sustain",
+        {
+            {"pid", pid},
+            {"k", "buy"},
+            {"it", d.item},
+            {"why", d.why},
+            {
+                "hp0",
+                n0(d.hp0)
+            },
+            {
+                "hp1",
+                n0(bot:GetHealth())
+            },
+            {
+                "mp0",
+                n0(d.mp0)
+            },
+            {
+                "mp1",
+                n0(bot:GetMana())
+            },
+            {
+                "sec",
+                r1(DotaTime() - d.at)
+            },
+            {"ed", why},
+            {"res", d.res},
+            {"cor", d.orders},
+            {
+                "eta",
+                r1(d.eta)
+            }
+        }
+    )
+end
+function deliver(bot, d, now)
+    local c = SustainGather.CourierOf(bot)
+    if now > d.at and SustainGather.OnTheWay(bot, c) == nil then
+        return endBuy(bot, "delivered")
+    end
+    local st = c ~= nil and GetCourierState(c) or COURIER_STATE_DEAD
+    if c == nil or st == COURIER_STATE_DEAD then
+        return endBuy(bot, "courier_dead")
+    end
+    if now > d.at + d.eta + ____exports.SETTINGS.LateSlack then
+        return endBuy(bot, "late")
+    end
+    if st == COURIER_STATE_DELIVERING_ITEMS or now - d.orderAt < ____exports.SETTINGS.CourierEvery then
+        return
+    end
+    d.orderAt = now
+    d.orders = d.orders + 1
+    local b = bot
+    b:ActionImmediate_Courier(c, COURIER_ACTION_TAKE_AND_TRANSFER_ITEMS)
+    local burst = c:GetAbilityByName("courier_burst")
+    if burst ~= nil and burst ~= nil and burst:IsFullyCastable() then
+        b:ActionImmediate_Courier(c, COURIER_ACTION_BURST)
+    end
+end
+function adopt(bot, i, why, now)
+    local pid = bot:GetPlayerID()
+    if deliveries[pid] ~= nil or i.delivery == nil or Drill.Owns(bot, "courier") then
+        return
+    end
+    local d = {
+        item = "stash",
+        why = why,
+        at = now,
+        eta = i.delivery.eta,
+        hp0 = i.hp,
+        mp0 = i.mp,
+        orderAt = -math.huge,
+        orders = 0
+    }
+    deliveries[pid] = d
+    deliver(bot, d, now)
+end
 ____exports.SETTINGS = {
     DecideEvery = 0.5,
     DecideHit = 0.1,
@@ -202,7 +292,7 @@ ____exports.SETTINGS = {
 --- Cast on our own hero (OHA's cast type `unit` for these); a tree item on its tree; any other item has no target.
 local SELF = {item_flask = true, item_clarity = true}
 local acts = {}
-local deliveries = {}
+deliveries = {}
 local decidedAt = {}
 local yieldedAt = {}
 --- When the camp job's supply step last asked (it yields only with time to spare).
@@ -285,12 +375,8 @@ local function canWalk(bot, now)
     local asked = askedAt[bot:GetPlayerID()]
     return CampJobs.Active(bot) and asked ~= nil and now - asked <= ____exports.SETTINGS.YieldFresh
 end
-local function r1(v)
-    return math.floor(v * 10 + 0.5) / 10
-end
-local function n0(v)
-    return math.floor(v + 0.5)
-end
+r1 = function(v) return math.floor(v * 10 + 0.5) / 10 end
+n0 = function(v) return math.floor(v + 0.5) end
 local function ____end(bot, why)
     local pid = bot:GetPlayerID()
     local a = acts[pid]
@@ -336,80 +422,6 @@ local function ____end(bot, why)
             }
         }
     )
-end
-local function endBuy(bot, why)
-    local pid = bot:GetPlayerID()
-    local d = deliveries[pid]
-    if d == nil then
-        return
-    end
-    deliveries[pid] = nil
-    if not Telemetry.IsEnabled() then
-        return
-    end
-    Telemetry.Event(
-        "sustain",
-        {
-            {"pid", pid},
-            {"k", "buy"},
-            {"it", d.item},
-            {"why", d.why},
-            {
-                "hp0",
-                n0(d.hp0)
-            },
-            {
-                "hp1",
-                n0(bot:GetHealth())
-            },
-            {
-                "mp0",
-                n0(d.mp0)
-            },
-            {
-                "mp1",
-                n0(bot:GetMana())
-            },
-            {
-                "sec",
-                r1(DotaTime() - d.at)
-            },
-            {"ed", why},
-            {"res", d.res},
-            {"cor", d.orders},
-            {
-                "eta",
-                r1(d.eta)
-            }
-        }
-    )
-end
---- One frame of a delivery: nothing left on the way (stash and courier read) ends it `delivered`; late or the courier dead end it
--- too (what is still on the way stays in Decide's read, so no second purchase follows); else the courier is ordered to take the
--- stash to us (and burst).
-local function deliver(bot, d, now)
-    local c = SustainGather.CourierOf(bot)
-    if now > d.at and SustainGather.OnTheWay(bot, c) == nil then
-        return endBuy(bot, "delivered")
-    end
-    local st = c ~= nil and GetCourierState(c) or COURIER_STATE_DEAD
-    if c == nil or st == COURIER_STATE_DEAD then
-        return endBuy(bot, "courier_dead")
-    end
-    if now > d.at + d.eta + ____exports.SETTINGS.LateSlack then
-        return endBuy(bot, "late")
-    end
-    if st == COURIER_STATE_DELIVERING_ITEMS or now - d.orderAt < ____exports.SETTINGS.CourierEvery then
-        return
-    end
-    d.orderAt = now
-    d.orders = d.orders + 1
-    local b = bot
-    b:ActionImmediate_Courier(c, COURIER_ACTION_TAKE_AND_TRANSFER_ITEMS)
-    local burst = c:GetAbilityByName("courier_burst")
-    if burst ~= nil and burst ~= nil and burst:IsFullyCastable() then
-        b:ActionImmediate_Courier(c, COURIER_ACTION_BURST)
-    end
 end
 --- A purchase for Decide's `buy` (or a use's `also`): bought and its delivery started. False when regen is already on the way (the
 -- game's read, whoever bought it), a rig owns the hero's purchases, or the game refused it.
@@ -547,23 +559,9 @@ local function startWait(bot, i, ans, now)
         deadline = math.huge,
         spot = spot
     }
-    local pid = bot:GetPlayerID()
-    acts[pid] = a
+    acts[bot:GetPlayerID()] = a
     order(bot, a)
-    if deliveries[pid] == nil and i.delivery ~= nil and not Drill.Owns(bot, "courier") then
-        local d = {
-            item = "stash",
-            why = ans.reason,
-            at = now,
-            eta = i.delivery.eta,
-            hp0 = i.hp,
-            mp0 = i.mp,
-            orderAt = -math.huge,
-            orders = 0
-        }
-        deliveries[pid] = d
-        deliver(bot, d, now)
-    end
+    adopt(bot, i, ans.reason, now)
     return true
 end
 --- Starts the answer's attempt, if it is one this module carries out and its order can be given now. True when it did (or the
@@ -687,14 +685,17 @@ local RULE2 = {
 --- Starts the answer and tells retreat whether the hero goes home: rule 2's `home`, or a rule 2 answer that could not be carried (a wait first for a tango that could not start).
 local function carry(bot, i, ans, now)
     local ok = start(bot, i, ans, now)
-    if not ok and (ans.reason == "wait_tango" or ans.reason == "tango_ship") then
-        ok = (ans.also == nil or purchase(
+    if not ok and (ans.reason == "wait_tango" or ans.reason == "tango_ship") and startWait(bot, i, ans, now) then
+        ok = ans.also == nil or purchase(
             bot,
             i,
             ans.also,
             ans.reason,
             now
-        )) and startWait(bot, i, ans, now)
+        )
+        if not ok then
+            ____end(bot, "cut")
+        end
     end
     RetreatState.SetHome(bot, ans.kind == "home" or not ok and RULE2[ans.reason] == true)
 end
@@ -720,6 +721,7 @@ local function progress(bot, a, now)
                 bot:GetLocation().z
             )
             RetreatState.SetHome(bot, false)
+            adopt(bot, i, ans.reason, now)
             return false
         end
         ____end(bot, "done")
