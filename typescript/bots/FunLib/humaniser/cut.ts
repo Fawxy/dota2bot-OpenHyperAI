@@ -15,7 +15,7 @@
  * `why`, `kill` and `ra`, what Trade.Holds said (`pj`, `hb`) and a tower's damage on the bot (`dt`). The same hero, tower and
  * vision records as the spot, with no lane front; its cut_creeps line carries `kind=leave`.
  *
- * `gate` (Threat.Gate: the start gate of a trip, the walk from `fm` to `pl`): the same machinery over a walk instead of the
+ * `gate` (SafeGather.TripGate: the start gate of a trip, the walk from `fm` to `pl`): the same machinery over a walk instead of the
  * bot's lane. Visible heroes and allies within CUT_R of the walk's box (a hero reaches the walk within the 4 s horizon from
  * 3,000 at most), the unseen heroes, and IsLocationVisible at the walk points Threat reads (`vw`, one bit per point, no grid). Logged
  * beside the gate's own ev=threat line, which is what the replay is compared with. `he`, `hu`, `ha`, `ta` and `b` keep the
@@ -302,7 +302,7 @@ function walkVision(from: Vector, place: Vector): string {
     return `${points.length - 1},${hex}`;
 }
 
-/** The inputs of one Threat.Gate decision, logged right after the gate's ev=threat line (same frame, same Read). */
+/** The inputs of one SafeGather.TripGate decision, logged right after the gate's ev=threat line (same frame, same Read). */
 export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): void {
     if (!Telemetry.IsEnabled() || Telemetry.Get().Cut !== true) return;
     const pid = bot.GetPlayerID();

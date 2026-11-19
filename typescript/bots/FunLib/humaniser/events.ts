@@ -2682,7 +2682,7 @@ export const EVENTS = {
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
-    // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (Threat.Gate at the camp, `ev=threat who=pull_job`;
+    // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`;
     // Ours.Threat on).
     choice: {
         pid: "num",
@@ -2820,13 +2820,13 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`), `pick` (states/laning.ts choose: the laning body's creep pick, LanePick.Choose; `ans`, `ak`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (SafeGather.TripGate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`), `pick` (states/laning.ts choose: the laning body's creep pick, LanePick.Choose; `ans`, `ak`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
         /** `gate`: the consumer that asked (ev=threat `who`). */
         who: "str",
-        /** `gate`: the walk's start, x,y (Threat.Gate's `from`). */
+        /** `gate`: the walk's start, x,y (SafeGather.TripGate's `from`). */
         fm: "str",
         /** `gate`: the walk's end, x,y (the camp or place the trip goes to). kind=trade: a running play near us, `id:kind:tgt:zero` (`-` for no zero); absent: none. kind=safe: the place read, x,y. */
         pl: "str",

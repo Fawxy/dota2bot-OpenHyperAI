@@ -210,25 +210,6 @@ for _, case in ipairs({ { off = false, dmg = 400, danger = true }, { off = false
 	check("R6 off=" .. tostring(case.off) .. " dmg=" .. case.dmg .. ": a support in lane clears it", Ctl.CoreThreat(bot, true) == false)
 end
 
--- The shared gate: nothing in reach or counted is open; a counted hero after 4:00 holds "missing"; a visible hero in reach
--- holds "threat" first; each decision is logged with the place's depth.
-do
-	local _, Threat, bot, e = world()
-	local w0, w1, w2
-	local out = capture(function()
-		w0 = Threat.Gate(bot, HERE, CAMP, "t").why
-		hide(e, Vector(-500, -7000), 10)
-		w1 = Threat.Gate(bot, HERE, CAMP, "t").why
-		-- A second, visible hero in reach while the first stays unseen and counted: threat wins the decision.
-		local v = MakeUnit({ pid = 11, team = 3, loc = Vector(-1000, -7500) })
-		v.range = 150
-		w2 = Threat.Gate(bot, HERE, CAMP, "t").why
-	end)
-	check("gate: open, then missing, then threat over a counted hero", w0 == nil and w1 == "missing" and w2 == "threat", tostring(w0) .. " " .. tostring(w1) .. " " .. tostring(w2))
-	local l = threatLines(out)
-	check("gate: each decision logged with dep", #l == 3 and field(l[1], "dec") == "go" and field(l[2], "dec") == "missing" and field(l[3], "dec") == "threat" and field(l[3], "dep") ~= nil, #l)
-end
-
 -- One reader over several walks (the lane spot's use) answers each as a read of its own would: what it keeps between
 -- walks (a hero's damage and engagement, the escape item, a tower's reach) must not carry from one walk into the next.
 do

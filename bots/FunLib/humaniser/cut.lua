@@ -589,7 +589,7 @@ local function walkVision(from, place)
     end
     return (tostring(#points - 1) .. ",") .. hex
 end
---- The inputs of one Threat.Gate decision, logged right after the gate's ev=threat line (same frame, same Read).
+--- The inputs of one SafeGather.TripGate decision, logged right after the gate's ev=threat line (same frame, same Read).
 function ____exports.Gate(bot, from, place, consumer)
     if not Telemetry.IsEnabled() or Telemetry.Get().Cut ~= true then
         return
