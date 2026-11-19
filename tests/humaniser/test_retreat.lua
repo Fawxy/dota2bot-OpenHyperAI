@@ -277,6 +277,24 @@ do
 	check("heal: anchor fountain, end res=anchor", field(l[1], "anchor") == "fountain" and field(l[2], "res") == "anchor", l[2])
 end
 
+-- A hero that cannot reach the fountain point (patch 7.42, Dire) has arrived once the fountain's buff is on it.
+do
+	local H, bot = world({ hp = 150 })
+	local out = capture(function()
+		H.Retreat.Desire(bot)
+		local f = H.Retreat.Fountain(2)
+		bot.loc = Vector(f.x + 300, f.y, f.z)
+		bot.hp = 500
+		T = T + 5
+		check("heal: healed 300 short of the fountain point without its buff, the episode holds", H.Retreat.Desire(bot) == 0.95)
+		bot.modifiers["modifier_fountain_aura_buff"] = true
+		T = T + 1
+		check("heal: with the fountain's buff it ends", H.Retreat.Desire(bot) == 0)
+	end)
+	local l = lines(out, "retreat")
+	check("heal: the buff end is res=anchor", field(l[2], "res") == "anchor", l[2])
+end
+
 -- HealStop (D3): HP back over half on the walk, nobody in reach, the lane front nearer than the fountain: the walk stops
 -- there. Short of half, or with the fountain nearer, or with the switch off, it walks on.
 do
