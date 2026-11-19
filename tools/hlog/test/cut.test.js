@@ -216,7 +216,7 @@ test('--list shows whether an enemy hero in the cut is hitting and the burst ove
 // kind=trade: today's line has `lv`; a `trade2` line is the same decision under its earlier name; the retired decision's line (no `lv`) is
 // set apart as `trade_old` and does not replay.
 test('trade: a trade2 line reads as trade and replays; the retired decision\'s line is set apart', () => {
-    const now = 't=200.000 ev=cut pid=1 kind=trade2 role=core hp=1 bu=0.2 n=1 mi=0 tm=0 hc=0 cr=1 dn=0 cd=7,0.7,420,300,100,0,1,0,0,0.3,0.2,0,0,-,-,-,-,-,-,0 lv=hit tgt=7 why=hit';
+    const now = 't=200.000 ev=cut pid=1 kind=trade2 role=core hp=1 svh=safe,5,safe svb=safe,5,safe n=1 tm=0 hc=0 cr=1 dn=0 cd=7,0.7,420,300,100,0,1,0,0,0.3,0.2,0,0,-,-,-,-,-,-,0 lv=hit tgt=7 why=hit';
     const old = 't=201.000 ev=cut pid=1 kind=trade role=core tgt=6 hp=0.6 thp=0.5 en=1 ally=1 cr=0 hc=0 tw=0 kh=0.4 lf=1 d=400 rch=648 tlh=0 dec=trade';
     const g = readGames([hev(now), hev(old)].join('\n')).pop();
     assert.deepStrictEqual(g.cuts.map(c => c.kind), ['trade', 'trade_old']);

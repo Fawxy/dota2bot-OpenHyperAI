@@ -297,6 +297,8 @@ export interface AtOpts {
     away?: boolean;
     held?: boolean;
     hold?: boolean;
+    /** An unseen hero left out of the unknown weight (`Threat.ReadOpts.exclude`): a chase's target, whose place is the walk's end. */
+    exclude?: number;
     /** When given and cut logging is on, the answer is logged as `ev=cut kind=safe who=<who>` like a shadow, so the call replays offline. */
     who?: string;
 }
@@ -308,7 +310,7 @@ interface Frame {
 const frames: Record<number, Frame | undefined> = {};
 
 /** The reader for this hero, horizon and engaged option, made once per game-time value: `Threat.Reader` is valid only within the frame it was made in. */
-function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void, from: Vector, place: Vector) => Threat.Read {
+function frameReader(bot: Unit, horizon: number, engaged: boolean, exclude?: number): (this: void, from: Vector, place: Vector) => Threat.Read {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     let f = frames[pid];
@@ -316,10 +318,10 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void,
         f = { t: now, readers: {} };
         frames[pid] = f;
     }
-    const key = `${horizon}:${engaged ? 1 : 0}`;
+    const key = `${horizon}:${engaged ? 1 : 0}:${exclude ?? "-"}`;
     let rd = f.readers[key];
     if (rd === undefined) {
-        rd = Threat.Reader(bot, horizon, engaged ? { engagedWindow: Threat.SETTINGS.StayEngaged } : undefined);
+        rd = Threat.Reader(bot, horizon, { engagedWindow: engaged ? Threat.SETTINGS.StayEngaged : undefined, exclude });
         f.readers[key] = rd;
     }
     return rd;
@@ -335,7 +337,7 @@ function frameReader(bot: Unit, horizon: number, engaged: boolean): (this: void,
 export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
     const horizon = opts?.horizon ?? Threat.SETTINGS.StayHorizon;
     const from = opts?.from ?? bot.GetLocation();
-    const r = frameReader(bot, horizon, opts?.engaged ?? true)(from, place);
+    const r = frameReader(bot, horizon, opts?.engaged ?? true, opts?.exclude)(from, place);
     const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false });
     const a = Safe.Decide(i);
     const who = opts?.who;
@@ -359,5 +361,8 @@ export function ResetCache(): void {
 export function GateShadow(this: void, bot: Unit, consumer: string, r: Threat.Read): void {
     Shadow(bot, consumer, r, { away: true, held: false, hold: false });
 }
+
+/** The horizon (s) of a walk to a place away from here (a trip, a kill or join target, a joiner's walk): design section 3. Here is `Threat.SETTINGS.StayHorizon`, 2 s. */
+export const WalkHorizon = 4;
 
 export const _test = { samplers, laners, cutState, frames };

@@ -17,8 +17,13 @@ local function cand(o)
 	return merge({ pid = 7, thp = 0.7, thpAbs = 420, d = 300, gap = 100, away = 0, hitting = false, free = false,
 		ko = 0.3, kt = 0.2, paid = false, tw = false }, o)
 end
+-- Safe.At's answers as Decide reads them: deadly vetoes a level, costly and safe pass.
+local SAFE = { level = "safe", ratio = math.huge, reason = "safe" }
+local COSTLY = { level = "costly", ratio = 3, reason = "hero" }
+local function deadly(reason) return { level = "deadly", ratio = 0.5, reason = reason or "kill" } end
+local function here(hit, hold) return { hit = hit, hold = hold or hit } end
 local function inputs(o)
-	return merge({ now = 100, hp = 1, burst = 0.2, n = 1, missing = 0, ms = 300, towerOnMe = false, creepsOnMe = 0, wave = 1, denyDue = false,
+	return merge({ now = 100, hp = 1, safe = here(SAFE), n = 1, ms = 300, towerOnMe = false, creepsOnMe = 0, wave = 1, denyDue = false,
 		cands = { cand() } }, o)
 end
 -- started = false: attack mode has not taken the offer (a nil would leave the default).
@@ -30,17 +35,22 @@ end
 local function unfavoured(o) return cand(merge({ ko = 0.2, kt = 0.3 }, o)) end
 local function none(a, why) return a.level == "none" and a.reason == why end
 
-check("Luna: n 1 and a small burst, target 0.21 with the catch ok: kill; n 2 and burst 0.6: none burst",
-	decide(inputs({ burst = 0.18, cands = { cand({ thp = 0.21, thpAbs = 126, catch = CATCH }) } })).level == "kill"
-		and none(decide(inputs({ n = 2, burst = 0.6, cands = { cand({ thp = 0.21, thpAbs = 126, catch = CATCH }) } })), "burst"))
+check("Luna: target 0.21 with the catch ok, safe here: kill; deadly here: none, the answer's reason (kill); costly passes",
+	decide(inputs({ cands = { cand({ thp = 0.21, thpAbs = 126, catch = CATCH }) } })).level == "kill"
+		and none(decide(inputs({ safe = here(deadly("kill")), cands = { cand({ thp = 0.21, thpAbs = 126, catch = CATCH }) } })), "kill")
+		and decide(inputs({ safe = here(COSTLY), cands = { cand({ thp = 0.21, thpAbs = 126, catch = CATCH }) } })).level == "kill")
 
-check("hit at 0.6 HP against one hitter, favoured: hit back; two reach us: none hp",
-	decide(inputs({ hp = 0.6, cands = { cand({ hitting = true }) } })).level == "hitback"
-		and none(decide(inputs({ hp = 0.6, n = 2, burst = 0.3, cands = { cand({ hitting = true }) } })), "hp"))
+-- The hit is judged without a hold, the hit back with one: a here answer that is deadly only without the hold refuses the hit and not the hit back.
+-- HP enters only through the answer: 0.3 of max HP with a safe answer still hits back.
+check("deadly without a hold, safe with one: a hitter is hit back (even at 0.3 HP), a quiet hero is not hit; deadly with the hold: neither",
+	decide(inputs({ hp = 0.3, safe = here(deadly("kill"), SAFE), cands = { cand({ hitting = true }) } })).level == "hitback"
+		and none(decide(inputs({ safe = here(deadly("kill"), SAFE), cands = { cand() } })), "kill")
+		and none(decide(inputs({ safe = here(deadly("kill")), cands = { cand({ hitting = true }) } })), "kill")
+		and decide(inputs({ hp = 0.3, cands = { cand({ hitting = true }) } })).level == "hitback")
 
-check("target 0.3, our burst 1.2 at n 1: none burst; burst 0.4: kill",
-	none(decide(inputs({ burst = 1.2, cands = { cand({ thp = 0.3, catch = CATCH }) } })), "burst")
-		and decide(inputs({ burst = 0.4, cands = { cand({ thp = 0.3, catch = CATCH }) } })).level == "kill")
+check("tower at here is the veto's reason: none tower; the walk's `unknown` is a kill candidate's",
+	none(decide(inputs({ safe = here(deadly("tower")), cands = { cand({ hitting = true }) } })), "tower")
+		and none(decide(inputs({ cands = { unfavoured({ thp = 0.3, catch = CATCH, walk = deadly("unknown") }) } })), "unknown"))
 
 do
 	local k = run({ level = "kill" })
@@ -104,13 +114,13 @@ end
 
 do
 	local function kill(walk, c) return decide(inputs({ cands = { c(merge({ thp = 0.2, catch = CATCH, walk = walk }, {})) } })) end
-	check("kill candidate, catch ok: walk.missing 0.6 refuses (none missing, and a favoured hero still gets the hit); 0.3: kill",
-		none(kill({ burst = 0.1, n = 1, missing = 0.6 }, unfavoured), "missing")
-			and kill({ burst = 0.1, n = 1, missing = 0.6 }, cand).level == "hit"
-			and kill({ burst = 0.1, n = 1, missing = 0.3 }, unfavoured).level == "kill")
-	check("kill candidate, n 1 here but walk.n 2 and walk.burst 0.6: none burst; walk.burst 0.4: kill",
-		none(kill({ burst = 0.6, n = 2, missing = 0 }, unfavoured), "burst")
-			and kill({ burst = 0.4, n = 2, missing = 0 }, unfavoured).level == "kill")
+	check("kill candidate, catch ok: a deadly walk (unknown) refuses (none unknown, and a favoured hero still gets the hit); a costly or safe walk: kill",
+		none(kill(deadly("unknown"), unfavoured), "unknown")
+			and kill(deadly("unknown"), cand).level == "hit"
+			and kill(COSTLY, unfavoured).level == "kill" and kill(SAFE, unfavoured).level == "kill")
+	check("kill candidate, safe here but the walk deadly (kill): none kill, and the walk's answer replaces the one here (deadly here, safe walk: kill)",
+		none(kill(deadly("kill"), unfavoured), "kill")
+			and decide(inputs({ safe = here(deadly("kill")), cands = { unfavoured({ thp = 0.2, catch = CATCH, walk = SAFE }) } })).level == "kill")
 end
 
 check("creeps on us 2 (a tower counts 2): none creeps; 1: hit",
@@ -152,9 +162,9 @@ do
 			and same.level == "kill" and same.source == "pair" and same.target == 7 and same.ended == nil)
 end
 
-check("running hit at 0.47 HP, n 1: keeps (slack 0.05); a fresh hit at 0.47 is none hp",
-	decide(inputs({ hp = 0.47, run = run() })).level == "hit" and none(decide(inputs({ hp = 0.47 })), "hp")
-		and none(decide(inputs({ hp = 0.44, run = run() })), "hp"))
+check("a running hit ends on a deadly answer here (none kill, the reason named) and keeps on a costly one",
+	none(decide(inputs({ safe = here(deadly("kill")), run = run() })), "kill") and decide(inputs({ safe = here(deadly("kill")), run = run() })).level == "none"
+		and decide(inputs({ safe = here(COSTLY), run = run() })).level == "hit")
 
 check("a support-position hit by a hero at 0.8, favoured: hit back; a paid hitter is answered unfavoured, an unpaid one not",
 	decide(inputs({ hp = 0.8, cands = { cand({ hitting = true }) } })).level == "hitback"
@@ -280,7 +290,7 @@ do
 	local lines = {}
 	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 	local bot = MakeUnit({ pid = 1, team = 2 })
-	local i = inputs({ cands = { cand({ thp = 0.2, catch = CATCH, walk = { burst = 0.1, n = 1, missing = 0.3 }, hunters = {} }) }, denyDue = true })
+	local i = inputs({ cands = { cand({ thp = 0.2, catch = CATCH, walk = SAFE, hunters = {} }) }, denyDue = true })
 	local a = decide(i)
 	C.Cut(bot, i, a)
 	local first = #lines
@@ -298,6 +308,8 @@ do
 	check("the line names the kind, the answer and a candidate record the driver reads",
 		line:find("kind=trade", 1, true) ~= nil and line:find("lv=kill", 1, true) ~= nil and line:find("why=kill", 1, true) ~= nil
 			and line:find("cd=", 1, true) ~= nil)
+	check("and Safe.At's answers here (svh, svb) and the candidate's walk answer ride on it for the replay",
+		line:find("svh=safe,-,safe", 1, true) ~= nil and line:find("svb=safe,-,safe", 1, true) ~= nil and line:find(",safe,-,safe,", 1, true) ~= nil)
 	local running = inputs({ cands = { cand() }, run = run(), now = 110 })
 	local before = #lines
 	for _, now in ipairs({ 110, 110.2, 110.6 }) do

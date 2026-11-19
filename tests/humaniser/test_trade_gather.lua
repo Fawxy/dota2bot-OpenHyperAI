@@ -1,27 +1,20 @@
 -- Trade.Gather (design 2026-11-19-trade-decision-design.md s1, the Inputs table): what it reads, from which call, for which candidate;
--- Decide on what it gathered; and the cut line. Threat, PairJoin, Laning, SpellReady and CreepAggro are stubbed: this file tests
--- Gather's own wiring (which read, over which horizon, for whom), not their numbers.
+-- Decide on what it gathered; and the cut line. SafeGather, Threat, PairJoin, Laning, SpellReady and CreepAggro are stubbed: this file tests
+-- Gather's own wiring (which question, over which horizon, for whom), not their numbers.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
 
-local world = { burst = 0.3, reach = {}, missing = 0, reads = {}, walks = {}, deny = false, pair = nil, share = {}, paid = false }
+local world = { ats = {}, here = { level = "safe", ratio = 2.5, reason = "safe", kill = 0, price = 0 }, walk = { level = "safe", ratio = 3, reason = "safe", kill = 0, price = 0 },
+	deny = false, pair = nil, share = {}, paid = false }
 local RealThreat = require("bots/FunLib/humaniser/threat")
-local function read(horizon, from, place, opts)
-	return { burst = world.burst, reach = world.reach, missing = world.missing, mpids = {} }
-end
-package.loaded["bots/FunLib/humaniser/threat"] = {
-	SETTINGS = RealThreat.SETTINGS,
-	SeenSpeed = function() return 300 end,
-	Read = function(_, _, place, horizon, opts)
-		table.insert(world.reads, { horizon = horizon, engaged = opts and opts.engagedWindow, place = place })
-		return read(horizon)
-	end,
-	Reader = function(_, horizon)
-		return function(_, place)
-			table.insert(world.walks, { horizon = horizon, place = place })
-			return { burst = 0.55, reach = { 1, 2 }, missing = 0.2, mpids = {} }
-		end
+-- Safe.At is asked for a place with the options the consumer passes; the answer is the world's `here` for the hero's own place and `walk` elsewhere.
+package.loaded["bots/FunLib/humaniser/safe_gather"] = {
+	WalkHorizon = 4,
+	At = function(bot, place, opts)
+		table.insert(world.ats, { place = place, opts = opts })
+		local here = bot:GetLocation()
+		return (place.x == here.x and place.y == here.y) and world.here or world.walk
 	end,
 }
 package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() return world.deny end }
@@ -63,13 +56,15 @@ function GetTower() return nil end
 do
 	world.share["1>6"] = 20
 	local i = Trade.Gather(bot)
-	local r = world.reads[1]
-	check("the read here is Threat's stay read: 2 s, a hitter over 6 s, burst and heroes from it",
-		#world.reads == 1 and r.horizon == 2 and r.engaged == 6 and i.burst == 0.3 and i.n == 0 and i.hp == 0.8)
+	local a, b = world.ats[1], world.ats[2]
+	check("here is asked twice, held and over the stay horizon (the default): without a hold for a hit, with one for the rest; the hit's answer is named `trade`",
+		#world.ats == 2 and a.place.x == 0 and a.opts.held == true and a.opts.hold == false and a.opts.who == "trade" and a.opts.horizon == nil
+			and b.opts.held == true and b.opts.hold == true and b.opts.who == nil and i.hp == 0.8 and i.n == 1
+			and i.safe.hit.level == "safe" and i.safe.hold.ratio == 2.5)
 	local c = i.cands[1]
 	check("a candidate carries its distance, the gap past our range and both hulls, ",
 		c.pid == 6 and c.d == 900 and c.gap == 900 - (150 + 24 + 24) and c.thp == 0.7 and c.thpAbs == 70)
-	check("a hero at 0.7 HP is no kill candidate: no walk read, no catch read", c.walk == nil and c.catch == nil and #world.walks == 0)
+	check("a hero at 0.7 HP is no kill candidate: no walk read, no catch read", c.walk == nil and c.catch == nil and #world.ats == 2)
 	check("our attack point is the stop at attack range, outside a tower 5,000 away", c.tw == false and i.towerOnMe == false)
 	check("Decide on what was gathered: it is out of reach in 0.5 s, so no hit",
 		Trade.Decide(i).level == "none" and Trade.Decide(i).reason == "no_reach")
@@ -84,11 +79,12 @@ do
 	local i = Trade.Gather(bot)
 	local c = i.cands[1]
 	check("range 600 over 100: the hit is free, and the damage shares are not asked", c.free == true and c.ko == 0 and c.kt == 0)
-	check("a kill candidate (0.3 HP) gets the walk read over GateHorizon to its place",
-		c.walk ~= nil and c.walk.burst == 0.55 and c.walk.n == 2 and world.walks[1].horizon == RealThreat.SETTINGS.GateHorizon
-			and world.walks[1].place.x == 190)
+	local w = world.ats[#world.ats]
+	check("a kill candidate (0.3 HP) gets Safe.At along the walk to its place: 4 s, away, not held, with a hold; the answer is read as level, ratio and reason",
+		c.walk ~= nil and c.walk.level == "safe" and c.walk.ratio == 3 and c.walk.reason == "safe"
+			and w.place.x == 190 and w.opts.horizon == 4 and w.opts.away == true and w.opts.held == false and w.opts.hold == true and w.opts.who == "trade_walk")
 	check("and a catch read from the hunters: the bot's dps on its HP", c.catch ~= nil and c.catch.ok == true and #c.hunters == 1)
-	world.walks = {}
+	world.ats = {}
 	enemy.hp = 70
 	bot.range = 150
 	enemy.range = 150

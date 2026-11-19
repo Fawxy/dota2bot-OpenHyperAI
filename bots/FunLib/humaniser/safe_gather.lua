@@ -575,7 +575,7 @@ function ____exports.Shadow(bot, who, r, opts)
 end
 local frames = {}
 --- The reader for this hero, horizon and engaged option, made once per game-time value: `Threat.Reader` is valid only within the frame it was made in.
-local function frameReader(bot, horizon, engaged)
+local function frameReader(bot, horizon, engaged, exclude)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local f = frames[pid]
@@ -583,10 +583,10 @@ local function frameReader(bot, horizon, engaged)
         f = {t = now, readers = {}}
         frames[pid] = f
     end
-    local key = (tostring(horizon) .. ":") .. tostring(engaged and 1 or 0)
+    local key = (((tostring(horizon) .. ":") .. tostring(engaged and 1 or 0)) .. ":") .. tostring(exclude or "-")
     local rd = f.readers[key]
     if rd == nil then
-        rd = Threat.Reader(bot, horizon, engaged and ({engagedWindow = Threat.SETTINGS.StayEngaged}) or nil)
+        rd = Threat.Reader(bot, horizon, {engagedWindow = engaged and Threat.SETTINGS.StayEngaged or nil, exclude = exclude})
         f.readers[key] = rd
     end
     return rd
@@ -599,28 +599,28 @@ end
 function ____exports.At(bot, place, opts)
     local horizon = opts and opts.horizon or Threat.SETTINGS.StayHorizon
     local from = opts and opts.from or bot:GetLocation()
-    local ____frameReader_19 = frameReader
-    local ____bot_18 = bot
+    local ____frameReader_21 = frameReader
+    local ____bot_20 = bot
     local ____temp_17 = opts and opts.engaged
     if ____temp_17 == nil then
         ____temp_17 = true
     end
-    local r = ____frameReader_19(____bot_18, horizon, ____temp_17)(from, place)
-    local ____exports_FromRead_30 = ____exports.FromRead
-    local ____bot_29 = bot
-    local ____temp_22 = opts and opts.away
-    if ____temp_22 == nil then
-        ____temp_22 = false
+    local r = ____frameReader_21(____bot_20, horizon, ____temp_17, opts and opts.exclude)(from, place)
+    local ____exports_FromRead_32 = ____exports.FromRead
+    local ____bot_31 = bot
+    local ____temp_24 = opts and opts.away
+    if ____temp_24 == nil then
+        ____temp_24 = false
     end
-    local ____temp_25 = opts and opts.held
-    if ____temp_25 == nil then
-        ____temp_25 = false
+    local ____temp_27 = opts and opts.held
+    if ____temp_27 == nil then
+        ____temp_27 = false
     end
-    local ____temp_28 = opts and opts.hold
-    if ____temp_28 == nil then
-        ____temp_28 = false
+    local ____temp_30 = opts and opts.hold
+    if ____temp_30 == nil then
+        ____temp_30 = false
     end
-    local i = ____exports_FromRead_30(____bot_29, r, {away = ____temp_22, held = ____temp_25, hold = ____temp_28})
+    local i = ____exports_FromRead_32(____bot_31, r, {away = ____temp_24, held = ____temp_27, hold = ____temp_30})
     local a = Safe.Decide(i)
     local who = opts and opts.who
     if who ~= nil and cutOn() and bot:IsAlive() then
@@ -660,5 +660,7 @@ end
 function ____exports.GateShadow(bot, consumer, r)
     ____exports.Shadow(bot, consumer, r, {away = true, held = false, hold = false})
 end
+--- The horizon (s) of a walk to a place away from here (a trip, a kill or join target, a joiner's walk): design section 3. Here is `Threat.SETTINGS.StayHorizon`, 2 s.
+____exports.WalkHorizon = 4
 ____exports._test = {samplers = samplers, laners = laners, cutState = cutState, frames = frames}
 return ____exports

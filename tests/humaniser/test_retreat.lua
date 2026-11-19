@@ -123,11 +123,12 @@ do
 		end)
 		return H.Retreat.Running(bot), lines(out, "retreat")[1]
 	end
-	local on, s = leaves(150, true)
-	check("engaged: a melee hero hitting us at 25% HP starts a retreat why=threat, logged with eng", on and field(s, "why") == "threat" and field(s, "eng") == "1", s)
-	check("engaged: the same hero not hitting us at 25% HP starts none (2 s window)", not leaves(150, false))
+	-- 90 HP against 15.6 a second over 6 s (93.6): under Trade.Holds' hold bar (HP over the kill line 1.0), where a hit back no longer holds a leave (it reads lethal, as burst is over 1).
+	local on, s = leaves(90, true)
+	check("engaged: a melee hero hitting us at 15% HP starts a retreat, logged with eng", on and field(s, "why") == "lethal" and field(s, "eng") == "1", s)
+	check("engaged: the same hero not hitting us at 15% HP starts none (2 s window)", not leaves(90, false))
 	check("engaged: at full HP the hitting hero starts none (a lone harasser is not run from)", not leaves(600, true))
-	local H, bot, e, hit = engagedWorld(150, true)
+	local H, bot, e, hit = engagedWorld(90, true)
 	local out = capture(function()
 		H.Retreat.Desire(bot)
 		T = T + react(bot) + 1
