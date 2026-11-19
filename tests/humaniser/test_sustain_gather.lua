@@ -123,7 +123,7 @@ check("1 s later the tree is read again: safe at 300 / 100 over the walk, and he
 STAY.safe.reach[1].dmg = 250
 WALK.safe.reach[1].dmg = 100
 T = 111
-check("the same safe walk from a place that is deadly here (300 / 300): not safe", G.Gather(bot).tree.safe == false)
+check("the same safe walk from a place deadly here (300 / 300): still safe, but no walk starts", (function() local tr = G.Gather(bot).tree return tr.safe == true and tr.start == false end)())
 check("a running tango's 8 s left restore 56; a busy courier is no courier", near(j.regenLeft, 56) and j.courier == nil)
 
 -- Two stacked packs read 6 at once; a later pack of 3 sets what one purchase holds.
@@ -147,6 +147,6 @@ for _, p in ipairs(fields) do f[p[1]] = p[2] end
 local dump = {} for k, v in pairs(f) do table.insert(dump, k .. "=" .. tostring(v)) end
 check("the cut line: kind sustain, items as records, the tree walk, the safe-here read, the next hit, the answer",
 	f.kind == "sustain" and f.hpa == 300 and f.hpm == 600 and string.find(f.it, "0,tango,3,112,0,16,0,1,0,1,1", 1, true) ~= nil
-		and f.tr == "0.5,0" and f.kill == 300 and f.sh == 1 and f.rc == 1 and f.nd == 2.5 and f.ak ~= nil and f.why ~= nil and f.co == 20, table.concat(dump, " "))
+		and f.tr == "0.5,0,0" and f.kill == 300 and f.sh == 1 and f.rc == 1 and f.nd == 2.5 and f.ak ~= nil and f.why ~= nil and f.co == 20, table.concat(dump, " "))
 
 finish()

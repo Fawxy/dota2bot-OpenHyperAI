@@ -327,10 +327,11 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
     const stay = Threat.Read(bot, here, here, Threat.SETTINGS.StayHorizon, { engagedWindow: Threat.SETTINGS.StayEngaged });
     const items = Items(bot);
     const [safe, deadlyHere] = safeHere(bot, stay);
-    // A walk that starts where we stand deadly is no safe walk, whatever the read over it says (that read has no engaged
-    // window, so a hero hitting us now counts at its short window there: smoke 1, a tango walk started under a lethal leave).
+    // A walk does not start where we stand deadly, whatever the read over it says (that read has no engaged window: smoke 1,
+    // a tango walk started under a lethal leave). It still counts in rule 2's reach (review: as one flag it sent harassed
+    // heroes holding tangos `home`, which step 3 does not carry, so nothing was eaten).
     const t = treeOf(bot, items, now);
-    const tree = t !== undefined && t.walk > 0 && deadlyHere ? { walk: t.walk, safe: false } : t;
+    const tree = t !== undefined ? { walk: t.walk, safe: t.safe, start: !(t.walk > 0 && deadlyHere) } : undefined;
     const [rl, ml] = regenLeft(bot);
     const fountain = Retreat.Fountain(bot.GetTeam());
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
@@ -392,7 +393,7 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["mpa", n0(i.mp)],
         ["mpm", n0(i.mpMax)],
         ["it", i.items.length > 0 ? ItemsText(i.items) : undefined],
-        ["tr", i.tree !== undefined ? `${t1(i.tree.walk)},${b01(i.tree.safe)}` : undefined],
+        ["tr", i.tree !== undefined ? `${t1(i.tree.walk)},${b01(i.tree.safe)},${b01(i.tree.start !== false)}` : undefined],
         ["nd", i.nextDue !== undefined ? r1(i.nextDue) : undefined],
         ["hr", b01(i.hitRecently)],
         ["kill", n0(i.safe.kill)],

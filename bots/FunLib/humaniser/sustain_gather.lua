@@ -532,7 +532,7 @@ function ____exports.Gather(bot, run)
     local items = ____exports.Items(bot)
     local safe, deadlyHere = unpack(safeHere(bot, stay))
     local t = treeOf(bot, items, now)
-    local tree = t ~= nil and t.walk > 0 and deadlyHere and ({walk = t.walk, safe = false}) or t
+    local tree = t ~= nil and ({walk = t.walk, safe = t.safe, start = not (t.walk > 0 and deadlyHere)}) or nil
     local rl, ml = unpack(regenLeft(bot))
     local fountain = Retreat.Fountain(bot:GetTeam())
     local speed = math.max(
@@ -678,7 +678,7 @@ function ____exports.CutFields(pid, i, a)
         },
         {
             "tr",
-            i.tree ~= nil and (t1(i.tree.walk) .. ",") .. tostring(b01(i.tree.safe)) or nil
+            i.tree ~= nil and (((t1(i.tree.walk) .. ",") .. tostring(b01(i.tree.safe))) .. ",") .. tostring(b01(i.tree.start ~= false)) or nil
         },
         {
             "nd",

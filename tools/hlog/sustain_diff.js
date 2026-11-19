@@ -42,7 +42,7 @@ function inputsOf(c) {
     const old = c.kill === undefined && c.lb !== undefined;
     return {
         now: num(c.t), hp: num(c.hpa), hpMax: num(c.hpm), mp: num(c.mpa), mpMax: num(c.mpm), items,
-        tree: tr ? (old ? { walk: 0, safe: tr[0] <= 600 && (tr[1] < 0 || tr[0] < tr[1]) } : { walk: tr[0], safe: tr[1] === 1 }) : undefined,
+        tree: tr ? (old ? { walk: 0, safe: tr[0] <= 600 && (tr[1] < 0 || tr[0] < tr[1]) } : { walk: tr[0], safe: tr[1] === 1, start: tr[2] === undefined ? undefined : tr[2] === 1 }) : undefined,
         nextDue: num(c.nd),
         hitRecently: num(c.hr) === 1,
         safe: old

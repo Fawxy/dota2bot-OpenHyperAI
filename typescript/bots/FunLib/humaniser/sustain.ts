@@ -78,8 +78,8 @@ export interface Inputs {
     mp: number;
     mpMax: number;
     items: Item[];
-    /** The nearest passable tree, read only with a tree item held: seconds to walk into cast range of it, and whether that walk is safe (the safe-here read over it is not `deadly`). */
-    tree?: { walk: number; safe: boolean };
+    /** The nearest passable tree, read only with a tree item held: seconds to walk into cast range of it, and whether that walk is safe (the safe-here read over it is not `deadly`); `start` false when we stand `deadly` here, so a walk may count in rule 2 but not start now. */
+    tree?: { walk: number; safe: boolean; start?: boolean };
     /** Seconds until the next last hit or deny comes due in our lane; none with no wave near. */
     nextDue?: number;
     /** A hero damaged us in the last 2 s. */
@@ -134,7 +134,8 @@ function treeReach(i: Inputs): boolean {
 
 /** Rule 3's tree: a safe walk there and back that ends before the next hit is due (no last hit or deny missed); with none due, or between jobs, a short walk. */
 function treeNow(i: Inputs): boolean {
-    if (i.tree === undefined || !i.tree.safe) return false;
+    // `start` false: we stand deadly here, so no walk starts now (it still counts in rule 2's reach: review of step 3).
+    if (i.tree === undefined || !i.tree.safe || i.tree.start === false) return false;
     const trip = 2 * i.tree.walk;
     if (i.nextDue !== undefined && !i.idle) return trip + BARS.castSlack <= i.nextDue;
     return trip <= BARS.idleWalk;

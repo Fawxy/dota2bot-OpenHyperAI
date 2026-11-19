@@ -16,7 +16,7 @@ local function treeReach(i)
 end
 --- Rule 3's tree: a safe walk there and back that ends before the next hit is due (no last hit or deny missed); with none due, or between jobs, a short walk.
 local function treeNow(i)
-    if i.tree == nil or not i.tree.safe then
+    if i.tree == nil or not i.tree.safe or i.tree.start == false then
         return false
     end
     local trip = 2 * i.tree.walk

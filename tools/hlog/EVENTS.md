@@ -1468,7 +1468,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `lo` num: kind=lane: 1 under lane-only (a drill).
 - `hpa` num: kind=sustain (sustain_gather.ts: in shadow for every hero; with `Ours.Sustain` a held hero's line is the answer sustain_act.ts carries out, `act` 1): HP, max HP, mana, max mana, absolute. Older logs (step 2) carry `bua` (the stay read's burst), `lb` (laneBurst, the kill line's stand-in) and `tr` as `d,enemyD`, and no `kill`, `sh` or `nd`.
 - `it` str: kind=sustain: heal and mana items in slots 0-8, `slot,name,uses,hp,mp,dur,breaks,tree,refill,share,ready` per `;` (hp, mp: one use, absolute; ready 1: castable now, in slots 0-5 and off cooldown).
-- `tr` str: kind=sustain: the nearest visible passable tree within 1,200, read only with a tree item held: `walk,safe`, seconds to walk into cast range and 1 when the safe-here read over that walk is not deadly.
+- `tr` str: kind=sustain: the nearest visible passable tree within 1,200, read only with a tree item held: `walk,safe,start`, seconds to walk into cast range, 1 when the safe-here read over that walk is not deadly, and 1 when a walk may start here (0: deadly where we stand).
 - `hr` num: kind=sustain: a hero damaged us in the last 2 s (1/0).
 - `sh` num: kind=sustain: the safe-here read here (2 s): `kill` (as kind=safe's field), `sh` a reacher is hitting us (1/0), `rc` visible heroes in its reach.
 - `nd` num: kind=sustain: seconds until the next last hit or deny is due in our lane (Laning.NextDue); absent with no creep near.

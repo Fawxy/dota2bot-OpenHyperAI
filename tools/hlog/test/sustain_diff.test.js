@@ -8,7 +8,7 @@ const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 // The line test_sustain_gather.lua checks CutFields writes, with its answer changed.
 // A step 2 line (the old danger inputs: bua, lb, the tree as d,enemyD), as banked logs before step 3 hold them.
 const OLD = 'pid=0 kind=sustain hpa=300 hpm=600 mpa=100 mpm=300 it=0,tango,3,112,0,16,0,1,0,1 tr=300,-1 hr=0 bua=150 rc=1 lb=250 rl=0 ml=0 ss=-500,-500,2.5 gd=230 co=20 ho=40 idl=0 af=0';
-const CUT = 'pid=0 kind=sustain hpa=300 hpm=600 mpa=100 mpm=300 it=0,tango,3,112,0,16,0,1,0,1,1;1,flask,1,400,0,10,1,0,0,0,1 tr=0.5,1 nd=2.5 hr=0 kill=300 sh=1 rc=1 rl=0 ml=0 ss=-500,-500,2.5 gd=230 co=20 shp=tango,90,336,0 ho=40 idl=0 af=0 als=1,300,2';
+const CUT = 'pid=0 kind=sustain hpa=300 hpm=600 mpa=100 mpm=300 it=0,tango,3,112,0,16,0,1,0,1,1;1,flask,1,400,0,10,1,0,0,0,1 tr=0.5,1,0 nd=2.5 hr=0 kill=300 sh=1 rc=1 rl=0 ml=0 ss=-500,-500,2.5 gd=230 co=20 shp=tango,90,336,0 ho=40 idl=0 af=0 als=1,300,2';
 
 test('a cut line reads back into the Inputs it was written from', () => {
     const g = parseLog(line(100, `cut ${CUT} ak=none why=fine`))[0];
@@ -17,7 +17,7 @@ test('a cut line reads back into the Inputs it was written from', () => {
     assert.equal(i.hpMax, 600);
     assert.deepEqual(i.items[0], { slot: 0, name: 'tango', charges: 3, hp: 112, mp: 0, dur: 16, breaks: false, tree: true, refill: false, share: true, ready: true });
     assert.equal(i.items[1].breaks, true);
-    assert.deepEqual(i.tree, { walk: 0.5, safe: true });
+    assert.deepEqual(i.tree, { walk: 0.5, safe: true, start: false });
     assert.equal(i.nextDue, 2.5);
     assert.deepEqual(i.safeSpot, { x: -500, y: -500, walk: 2.5 });
     assert.equal(i.courier.eta, 20);

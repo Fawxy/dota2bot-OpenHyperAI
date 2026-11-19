@@ -3031,7 +3031,7 @@ export const EVENTS = {
         mpm: "num",
         /** kind=sustain: heal and mana items in slots 0-8, `slot,name,uses,hp,mp,dur,breaks,tree,refill,share,ready` per `;` (hp, mp: one use, absolute; ready 1: castable now, in slots 0-5 and off cooldown). */
         it: "str",
-        /** kind=sustain: the nearest visible passable tree within 1,200, read only with a tree item held: `walk,safe`, seconds to walk into cast range and 1 when the safe-here read over that walk is not deadly. */
+        /** kind=sustain: the nearest visible passable tree within 1,200, read only with a tree item held: `walk,safe,start`, seconds to walk into cast range, 1 when the safe-here read over that walk is not deadly, and 1 when a walk may start here (0: deadly where we stand). */
         tr: "str",
         /** kind=sustain: a hero damaged us in the last 2 s (1/0). */
         hr: "num",

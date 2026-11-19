@@ -51,6 +51,12 @@ check("rule 2 counts a tango whose walk is shorter than home (60 s): 20 s each w
 	is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 20, safe = true } })), "none")
 		and is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 40, safe = true } })), "home", nil, "cannot_stay"))
 
+check("standing deadly here (start false): the tango still counts in rule 2 (stay, not home) but no walk starts; a walk unsafe over its way counts in neither",
+	is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 1, safe = true, start = false } })), "none")
+		and is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 1, safe = true, start = false } })), "none")
+		and is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 1, safe = true, start = true } })), "use", "item_tango")
+		and is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 1, safe = false } })), "home"))
+
 check("an item not castable now (backpack, cooldown) counts but is never picked",
 	is(decide(inputs({ hp = 360, items = { tango({ ready = false }) }, tree = TREE })), "none")
 		and is(decide(inputs({ hp = 150, hitRecently = true, safe = { kill = 200, hitting = true, reach = 1 }, items = { wand({ ready = false }) } })), "home"))
