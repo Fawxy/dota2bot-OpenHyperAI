@@ -7,8 +7,8 @@
 //                         missed, cut, released or dead; or OHA's (switch off): an `ev=regen_obs state=start` of it not `by=ours`
 //                         (a bottle is not observed on OHA's side: `n/a`)
 //   home                  the hero reached its fountain (a snapshot within BASE_R) and stood at HOME_HP or more there
-//   ship                  a purchase of ours delivered (`k=buy ed=delivered`) and that item then used
-//   tango_ship            the tango used and a purchase delivered
+//   ship                  a purchase of ours (`k=buy`) and the item it bought then used (`late` 1: its delivery ran past its eta)
+//   tango_ship            the tango used and its purchase (`why=tango_ship`) made, not refused
 // Per row also: `secs` from release to the act (the first use, the arrival, the delivery), `got` the answers of ours seen
 // (k:item:ed, in order), `heal` a retreat heal leave started, `tp` a teleport used, `died` the hero died in the window.
 // Usage: node sustain_rig.js <log> [<log> ...] [--rows] [--json]
@@ -81,12 +81,16 @@ function readGame(game, file) {
         } else if (task === 'home') {
             if (atHome) Object.assign(row, { done: 1, secs: r1(atHome.t - a) });
         } else if (task === 'ship') {
-            const item = delivered && delivered.it;
-            const after = item ? sus.find((e) => (e.k === 'use' || e.k === 'step_out_use') && e.it === item && e.t >= delivered.t && !BAD_END.has(e.ed)) : undefined;
-            if (delivered && after) Object.assign(row, { done: 1, secs: r1(delivered.t - a), by: 'ours' });
+            // The first purchase of ours and a use of what it bought after it began: shipped and used, whatever its delivery line
+            // says (fix2: a delivery ended `late`, the wait adopted the stash, and the tango came and was eaten). `late` marks it.
+            const buy = sus.find((e) => e.k === 'buy' && e.it !== 'stash');
+            const after = buy ? sus.find((e) => (e.k === 'use' || e.k === 'step_out_use') && e.it === buy.it && began(e) >= began(buy) && !BAD_END.has(e.ed)) : undefined;
+            row.late = buy && buy.ed === 'late' ? 1 : 0;
+            if (buy && after) Object.assign(row, { done: 1, secs: r1(began(after) - a), by: 'ours' });
         } else if (task === 'tango_ship') {
             const t = used('item_tango');
-            if (t && delivered) Object.assign(row, { done: 1, secs: r1(delivered.t - a), by: 'ours' });
+            const buy = sus.find((e) => e.k === 'buy' && e.it !== 'stash' && e.why === 'tango_ship');
+            if (t && buy && buy.ed !== 'failed') Object.assign(row, { done: 1, secs: r1(began(t) - a), by: 'ours' });
         }
         rows.push(row);
     }
