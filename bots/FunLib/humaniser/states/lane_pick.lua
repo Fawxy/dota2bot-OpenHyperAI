@@ -1,6 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local reachable, choose, DENY_OFFSET
+local reachable, indexOf, choose
+local PickTable = require(GetScriptDirectory().."/FunLib/humaniser/states/pick_table")
 function reachable(t, far)
     if t.walk <= 0 then
         return true
@@ -13,44 +14,89 @@ function reachable(t, far)
     end
     return far ~= nil and t.kind == "lasthit" and far(t)
 end
-function choose(targets, current, mine, pre, far)
-    if pre ~= nil then
-        local other = false
-        for ____, t in ipairs(targets) do
-            if t.kind == "lasthit" and t.creep ~= pre.creep and (mine == nil or mine(t)) and reachable(t, far) then
-                other = true
+function indexOf(kinds, kind)
+    do
+        local i = 0
+        while i < #kinds do
+            if kinds[i + 1] == kind then
+                return i
             end
-        end
-        if not other then
-            return pre
+            i = i + 1
         end
     end
-    local best
-    local bestKey = math.huge
+    return nil
+end
+function choose(targets, current, mine, pre, far, order)
+    local otherLastHit = false
     local cur
     for ____, t in ipairs(targets) do
         do
-            local __continue17
+            local __continue15
             repeat
                 if mine ~= nil and not mine(t) then
-                    __continue17 = true
+                    __continue15 = true
                     break
                 end
                 if current ~= nil and t.creep == current.creep then
                     cur = t
                 end
-                if not reachable(t, far) then
-                    __continue17 = true
+                if pre ~= nil and t.kind == "lasthit" and t.creep ~= pre.creep and reachable(t, far) then
+                    otherLastHit = true
+                end
+                __continue15 = true
+            until true
+            if not __continue15 then
+                break
+            end
+        end
+    end
+    local best
+    for ____, kind in ipairs(order) do
+        do
+            local __continue20
+            repeat
+                if kind == "pre_hit" then
+                    if pre ~= nil then
+                        return pre
+                    end
+                    __continue20 = true
                     break
                 end
-                local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0) + (t.kind == "lasthit" and 0 or DENY_OFFSET)
-                if key < bestKey then
-                    bestKey = key
-                    best = t
+                if kind == "idle_swing" then
+                    __continue20 = true
+                    break
                 end
-                __continue17 = true
+                if kind == "lasthit" and pre ~= nil and not otherLastHit then
+                    __continue20 = true
+                    break
+                end
+                local bestKey = math.huge
+                for ____, t in ipairs(targets) do
+                    do
+                        local __continue25
+                        repeat
+                            if t.kind ~= kind or mine ~= nil and not mine(t) or not reachable(t, far) then
+                                __continue25 = true
+                                break
+                            end
+                            local key = t.eta - (t.ranged and ____exports.RANGED_BIAS or 0)
+                            if key < bestKey then
+                                bestKey = key
+                                best = t
+                            end
+                            __continue25 = true
+                        until true
+                        if not __continue25 then
+                            break
+                        end
+                    end
+                end
+                if best ~= nil then
+                    break
+                end
+                __continue20 = true
             until true
-            if not __continue17 then
+            if not __continue20 then
                 break
             end
         end
@@ -58,17 +104,21 @@ function choose(targets, current, mine, pre, far)
     if cur == nil or best == nil or best.creep == cur.creep then
         return best
     end
-    if cur.kind == "deny" and best.kind == "lasthit" then
+    local curRank = indexOf(order, cur.kind) or math.huge
+    local bestRank = indexOf(order, best.kind) or math.huge
+    if bestRank < curRank then
         return best
     end
-    if best.kind == "deny" then
+    if bestRank > curRank then
+        return cur
+    end
+    if not PickTable.Retargets(best.kind) then
         return cur
     end
     return best.eta <= ____exports.DUE_NOW and cur.eta >= ____exports.SWITCH_GAP and best or cur
 end
 --- Seconds of eta a ranged or siege creep is preferred by (more gold and XP).
 ____exports.RANGED_BIAS = 0.4
-DENY_OFFSET = 1000
 --- Seconds a swing needs after the walk into range (wind-up plus a little) for the creep to still be alive when it lands.
 -- A creep that dies to the others before walk + this is not offered (slice 5, probe s5p3: a third of the lost attempts
 -- were creeps due now but more than a second's walk away, lost before the bot reached range). `judgement`.
@@ -100,28 +150,31 @@ ____exports.DUE_NOW = 0.2
 -- one is most likely lost to the attack cooldown, as it would have been the other way round (a certain last hit over a
 -- probable one; in llhscn1 an attempt in hand landed 0.39 of the time). `judgement`.
 ____exports.SWITCH_GAP = 0.5
---- The pick, and while an attempt waits on `current`. `pre` is a pre-hit the bot would make now (states/pre_hit): it ranks
--- below every reachable last hit on another creep (a pre-hit spends the attack cycle those need; user 04/11/2026: a pre-hit
--- should not interfere with the last hits on offer) and above every deny, and replaces a wait on its own creep (the last-hit
--- verb cannot win that creep: the tower's next hit takes it from above our kill range).
--- Without `pre`: the pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
--- taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
--- never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
--- with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
--- considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
--- for it too.
+--- The pick, and while an attempt waits on `current`. `kinds` is the hero's order of target kinds (states/pick_table Order;
+-- default position 1's): the first kind with a reachable candidate the bot may take wins, the best of it by eta. `pre` is a
+-- pre-hit the bot would make now (states/pre_hit): it comes at its place in the order. Under today's order that is below every
+-- reachable last hit on another creep (a pre-hit spends the attack cycle those need; user 04/11/2026: a pre-hit should not
+-- interfere with the last hits on offer) and above every deny, and it replaces a wait on its own creep (the last-hit verb
+-- cannot win that creep: the tower's next hit takes it from above our kill range).
+-- While an attempt waits on `current` (slice lane-last-hits) whether to leave it follows the order: a creep of a better kind
+-- replaces the wait, one of a worse kind never does, and for a kind that retargets (pick_table) a creep killable now is taken
+-- unless the current one is due within SWITCH_GAP. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died
+-- in a core's range with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine`
+-- accepts are considered (default all).
 -- `idle` finds the idle swing (states/idle_swing: a pre-deny or a shove; asked lazily, its search reads forecasts): taken only
--- when nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit (lane controller design
--- s5.6, user 06/11/2026).
-function ____exports.Choose(targets, current, mine, pre, idle, far)
+-- when `kinds` has `idle_swing`, nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit
+-- (lane controller design s5.6, user 06/11/2026).
+function ____exports.Choose(targets, current, mine, pre, idle, far, kinds)
+    local order = kinds or PickTable.Order(1)
     local chosen = choose(
         targets,
         current,
         mine,
         pre,
-        far
+        far,
+        order
     )
-    if chosen == nil and current == nil and idle ~= nil then
+    if chosen == nil and current == nil and idle ~= nil and indexOf(order, "idle_swing") ~= nil then
         return idle()
     end
     return chosen
@@ -133,10 +186,10 @@ local function countOffers(targets, except)
     local otherLastHits = 0
     for ____, t in ipairs(targets) do
         do
-            local __continue27
+            local __continue36
             repeat
                 if not reachable(t) then
-                    __continue27 = true
+                    __continue36 = true
                     break
                 end
                 if t.kind == "lasthit" then
@@ -147,9 +200,9 @@ local function countOffers(targets, except)
                 else
                     denies = denies + 1
                 end
-                __continue27 = true
+                __continue36 = true
             until true
-            if not __continue27 then
+            if not __continue36 then
                 break
             end
         end

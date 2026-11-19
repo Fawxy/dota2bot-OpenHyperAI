@@ -17,6 +17,8 @@ import * as Etiquette from "bots/FunLib/humaniser/etiquette";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as PickTable from "bots/FunLib/humaniser/states/pick_table";
+import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 /** Why a creep is a support's: a deny, a last hit no core is near enough for, or one its core is too busy for. */
@@ -57,7 +59,7 @@ function coreTakes(core: Attacker, t: Lib.Verbs.LaneTarget, within: number): boo
     // The core's body retargets through the same picker, so the creep it is on next is Choose's answer, not the one it
     // waits on now: a deny wait is dropped for any reachable last hit (slhchk2 A game 1 t=210.87, review
     // 2026-11-04-support-lane-hits-e93e444 F1).
-    const next = LanePick.Choose(offers, other, CoreMine(core)) ?? other;
+    const next = LanePick.Choose(offers, other, CoreMine(core), undefined, undefined, undefined, PickTable.Order(LaneConfig.PositionOf(core))) ?? other;
     if (next.creep === t.creep) return true;
     if (mine === undefined) return false;
     const free = next.due + (core.GetSecondsPerAttack?.() ?? 1);
@@ -71,17 +73,18 @@ function coreTakes(core: Attacker, t: Lib.Verbs.LaneTarget, within: number): boo
  */
 export function DenyYield(core: Unit, t: Lib.Verbs.LaneTarget): number | undefined {
     if (t.kind !== "deny" || !Ours.On("CoreDenyYield")) return undefined;
-    // Only a pos 1-3 yields: a pos 4-5 listed in Laning.LastHit takes a core's mine, and two of them must not yield a deny
-    // to each other (review 2026-11-06-deny-yield-0ee970a F4).
+    // Only a core yields: a pos 4-5 listed in Laning.LastHit reads a core's column (laning ClaimPos), and two of them must not
+    // yield a deny to each other (review 2026-11-06-deny-yield-0ee970a F4).
     const own = LaneConfig.PositionOf(core);
-    if (own !== undefined && own >= 4) return undefined;
+    if (own !== undefined && !PickTable.IsCore(own)) return undefined;
+    if (PickTable.ClaimOf("deny", (own ?? 1) as PickTable.Pos) !== "unattempted") return undefined;
     const creep = t.creep as unknown as Unit;
     for (let i = 1; i <= 5; i++) {
         const member = GetTeamMember(i);
         if (member === null || member === undefined || member === core) continue;
         if (!member.IsAlive() || member.IsIllusion()) continue;
         const pos = LaneConfig.PositionOf(member);
-        if (pos === undefined || pos < 4) continue;
+        if (pos === undefined || PickTable.IsCore(pos)) continue;
         if (LanePick.Attempting(member.GetPlayerID()) !== t.creep) continue;
         if (GetUnitToUnitDistance(member, creep) > Etiquette.SETTINGS.ApproachRange) continue;
         return member.GetPlayerID();
@@ -95,6 +98,25 @@ export function CoreMine(core: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => 
     return (t) => DenyYield(core, t) === undefined;
 }
 
+/**
+ * The creeps a laner whose body owns its lane hits may take, from its position's column of the pick table (`pos` is laning
+ * ClaimPos): undefined when that is every creep. `unclaimed` is SupportClaim, off (no last hit) with Ours.SupportLastHit off;
+ * `unattempted` is DenyYield, all with Ours.CoreDenyYield off.
+ */
+export function Mine(bot: Unit, pos: PickTable.Pos, within: number): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
+    const lastHit = PickTable.ClaimOf("lasthit", pos);
+    const deny = PickTable.ClaimOf("deny", pos);
+    if (lastHit === "all" && (deny === "all" || (deny === "unattempted" && !Ours.On("CoreDenyYield")))) return undefined;
+    const lastHits = SupportDeny.LastHits(bot);
+    return (t) => {
+        const claim = t.kind === "deny" ? deny : lastHit;
+        if (claim === "none") return false;
+        if (claim === "unattempted") return DenyYield(bot, t) === undefined;
+        if (claim === "unclaimed") return (t.kind === "deny" || lastHits) && SupportClaim(bot, t, within) !== undefined;
+        return true;
+    };
+}
+
 /** The claim `bot` (a support) has on `t`, or undefined when an allied core will take it. */
 export function SupportClaim(bot: Unit, t: Lib.Verbs.LaneTarget, within: number): Claim | undefined {
     if (t.kind === "deny") return "deny";
@@ -106,7 +128,7 @@ export function SupportClaim(bot: Unit, t: Lib.Verbs.LaneTarget, within: number)
         if (member === null || member === undefined || member === bot) continue;
         if (!member.IsAlive() || member.IsIllusion()) continue;
         const pos = LaneConfig.PositionOf(member);
-        if (pos === undefined || pos > 3) continue;
+        if (!PickTable.IsCore(pos)) continue;
         if (coreTakes(member, t, within)) return undefined;
         if (LanePick.Attempting(member.GetPlayerID()) !== undefined && GetUnitToUnitDistance(member, creep) <= Etiquette.SETTINGS.ApproachRange) busy = true;
     }

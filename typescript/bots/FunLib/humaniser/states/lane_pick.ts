@@ -1,17 +1,18 @@
 /**
- * Which lane creep a laner goes for next, from the engine's `laneTargets` facts. Strict priority (slice l1-lane-priority, user
- * rule 01/11/2026): any reachable last hit beats every deny; denies are taken only when no last hit is offered. Within a kind
+ * Which lane creep a laner goes for next, from the engine's `laneTargets` facts. Strict priority between kinds, in the order
+ * states/pick_table gives the position (slice l1-lane-priority, user rule 01/11/2026: today any reachable last hit beats every
+ * deny; denies are taken only when no last hit is offered). Within a kind
  * the earliest eta wins, a ranged or siege creep counting as RANGED_BIAS sooner, so a melee creep due now still beats a ranged
  * one due much later. Bias is `judgement`. A creep that will be dead before the bot can walk into range and swing is skipped
  * (slice 5), as is one more than MAX_WALK away (slice lane-last-hits). One picker for every laner (user 03/11/2026: laning is one
  * shared body with role as an input): the role enters as `mine`, the creeps that are the bot's to take (states/lane_claims).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
+import * as PickTable from "bots/FunLib/humaniser/states/pick_table";
+import type { PickKind } from "bots/FunLib/humaniser/states/pick_table";
 
 /** Seconds of eta a ranged or siege creep is preferred by (more gold and XP). */
 export const RANGED_BIAS = 0.4;
-/** Added to a deny's key so any last hit sorts before it. */
-const DENY_OFFSET = 1000;
 /**
  * Seconds a swing needs after the walk into range (wind-up plus a little) for the creep to still be alive when it lands.
  * A creep that dies to the others before walk + this is not offered (slice 5, probe s5p3: a third of the lost attempts
@@ -61,19 +62,20 @@ export const DUE_NOW = 0.2;
 export const SWITCH_GAP = 0.5;
 
 /**
- * The pick, and while an attempt waits on `current`. `pre` is a pre-hit the bot would make now (states/pre_hit): it ranks
- * below every reachable last hit on another creep (a pre-hit spends the attack cycle those need; user 04/11/2026: a pre-hit
- * should not interfere with the last hits on offer) and above every deny, and replaces a wait on its own creep (the last-hit
- * verb cannot win that creep: the tower's next hit takes it from above our kill range).
- * Without `pre`: the pick, and while an attempt waits on `current` (slice lane-last-hits) whether to leave it: a creep killable now is
- * taken unless the current one is due within SWITCH_GAP; a last hit always replaces a deny (the strict priority); a deny
- * never replaces a last-hit wait. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died in a core's range
- * with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine` accepts are
- * considered (default all: a core); a support's claimed last hit is one no core will take, so the strict priority holds
- * for it too.
+ * The pick, and while an attempt waits on `current`. `kinds` is the hero's order of target kinds (states/pick_table Order;
+ * default position 1's): the first kind with a reachable candidate the bot may take wins, the best of it by eta. `pre` is a
+ * pre-hit the bot would make now (states/pre_hit): it comes at its place in the order. Under today's order that is below every
+ * reachable last hit on another creep (a pre-hit spends the attack cycle those need; user 04/11/2026: a pre-hit should not
+ * interfere with the last hits on offer) and above every deny, and it replaces a wait on its own creep (the last-hit verb
+ * cannot win that creep: the tower's next hit takes it from above our kill range).
+ * While an attempt waits on `current` (slice lane-last-hits) whether to leave it follows the order: a creep of a better kind
+ * replaces the wait, one of a worse kind never does, and for a kind that retargets (pick_table) a creep killable now is taken
+ * unless the current one is due within SWITCH_GAP. Lane-only calibration llhscn1 (03/11/2026): 71% of the creeps that died
+ * in a core's range with no attempt died while the body waited on another creep that was still on offer. Only creeps `mine`
+ * accepts are considered (default all).
  * `idle` finds the idle swing (states/idle_swing: a pre-deny or a shove; asked lazily, its search reads forecasts): taken only
- * when nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit (lane controller design
- * s5.6, user 06/11/2026).
+ * when `kinds` has `idle_swing`, nothing else is chosen and no attempt waits, so it never costs a last hit, a deny or a pre-hit
+ * (lane controller design s5.6, user 06/11/2026).
  */
 export function Choose(
     this: void,
@@ -83,10 +85,17 @@ export function Choose(
     pre?: Lib.Verbs.LaneTarget,
     idle?: (this: void) => Lib.Verbs.LaneTarget | undefined,
     far?: Far,
+    kinds?: PickKind[],
 ): Lib.Verbs.LaneTarget | undefined {
-    const chosen = choose(targets, current, mine, pre, far);
-    if (chosen === undefined && current === undefined && idle !== undefined) return idle();
+    const order = kinds ?? PickTable.Order(1);
+    const chosen = choose(targets, current, mine, pre, far, order);
+    if (chosen === undefined && current === undefined && idle !== undefined && indexOf(order, "idle_swing") !== undefined) return idle();
     return chosen;
+}
+
+function indexOf(kinds: PickKind[], kind: string): number | undefined {
+    for (let i = 0; i < kinds.length; i++) if (kinds[i] === kind) return i;
+    return undefined;
 }
 
 function choose(
@@ -95,31 +104,41 @@ function choose(
     mine: ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined,
     pre: Lib.Verbs.LaneTarget | undefined,
     far: Far | undefined,
+    order: PickKind[],
 ): Lib.Verbs.LaneTarget | undefined {
-    if (pre !== undefined) {
-        let other = false;
-        for (const t of targets) {
-            if (t.kind === "lasthit" && t.creep !== pre.creep && (mine === undefined || mine(t)) && reachable(t, far)) other = true;
-        }
-        if (!other) return pre;
-    }
-    let best: Lib.Verbs.LaneTarget | undefined;
-    let bestKey = Infinity;
+    let otherLastHit = false;
     let cur: Lib.Verbs.LaneTarget | undefined;
     for (const t of targets) {
         if (mine !== undefined && !mine(t)) continue;
         if (current !== undefined && t.creep === current.creep) cur = t;
-        if (!reachable(t, far)) continue;
-        // A deny's key is pushed past any last hit's (eta is seconds, never near DENY_OFFSET), so denies win only alone.
-        const key = t.eta - (t.ranged ? RANGED_BIAS : 0) + (t.kind === "lasthit" ? 0 : DENY_OFFSET);
-        if (key < bestKey) {
-            bestKey = key;
-            best = t;
+        if (pre !== undefined && t.kind === "lasthit" && t.creep !== pre.creep && reachable(t, far)) otherLastHit = true;
+    }
+    let best: Lib.Verbs.LaneTarget | undefined;
+    for (const kind of order) {
+        if (kind === "pre_hit") {
+            if (pre !== undefined) return pre;
+            continue;
         }
+        if (kind === "idle_swing") continue;
+        // A pre-hit loses only to a last hit on another creep; a last hit on its own creep is the one it replaces.
+        if (kind === "lasthit" && pre !== undefined && !otherLastHit) continue;
+        let bestKey = Infinity;
+        for (const t of targets) {
+            if (t.kind !== kind || (mine !== undefined && !mine(t)) || !reachable(t, far)) continue;
+            const key = t.eta - (t.ranged ? RANGED_BIAS : 0);
+            if (key < bestKey) {
+                bestKey = key;
+                best = t;
+            }
+        }
+        if (best !== undefined) break;
     }
     if (cur === undefined || best === undefined || best.creep === cur.creep) return best;
-    if (cur.kind === "deny" && best.kind === "lasthit") return best;
-    if (best.kind === "deny") return cur;
+    const curRank = indexOf(order, cur.kind) ?? math.huge;
+    const bestRank = indexOf(order, best.kind) ?? math.huge;
+    if (bestRank < curRank) return best;
+    if (bestRank > curRank) return cur;
+    if (!PickTable.Retargets(best.kind as PickKind)) return cur;
     return best.eta <= DUE_NOW && cur.eta >= SWITCH_GAP ? best : cur;
 }
 

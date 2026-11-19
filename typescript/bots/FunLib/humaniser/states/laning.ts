@@ -17,6 +17,7 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as LaneClaims from "bots/FunLib/humaniser/states/lane_claims";
+import * as PickTable from "bots/FunLib/humaniser/states/pick_table";
 import * as PreHit from "bots/FunLib/humaniser/states/pre_hit";
 import * as IdleSwing from "bots/FunLib/humaniser/states/idle_swing";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
@@ -70,7 +71,7 @@ function ohaSpot(bot: Unit): Vector | undefined {
 
 export function RoleOf(bot: Unit): LaneSpot.Role {
     const pos = LaneConfig.PositionOf(bot);
-    return pos !== undefined && pos >= 4 ? "support" : "core";
+    return pos !== undefined && !PickTable.IsCore(pos) ? "support" : "core";
 }
 
 interface SpotCache {
@@ -161,17 +162,20 @@ export function OwnsSupportHits(bot: Unit): boolean {
 }
 
 /**
- * The creeps this laner may take: for a core all but a deny an allied support is attempting (LaneClaims.CoreMine; all with
- * Ours.CoreDenyYield off), the support's claims otherwise.
+ * The column of the pick table this laner reads: its own position's, or position 1's for a pos 4-5 listed in
+ * States.Laning.LastHit (OwnsLastHit), which takes a core's last hits and denies.
  */
-// OwnsLastHit is checked first: a bot listed in Laning.LastHit takes a core's mine (CoreMine) even at pos 4-5; DenyYield
-// never yields for a pos 4-5, so two of them cannot yield to each other (review 2026-11-06-deny-yield-0ee970a F4).
+export function ClaimPos(bot: Unit): PickTable.Pos {
+    const pos = LaneConfig.PositionOf(bot);
+    if (pos === undefined || pos < 1 || pos > 5) return 1;
+    if (!PickTable.IsCore(pos) && OwnsLastHit(bot)) return 1;
+    return pos as PickTable.Pos;
+}
+
+/** The creeps this laner may take, from its column of the pick table (LaneClaims.Mine): undefined for all of them. */
 function claimsFor(bot: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
-    if (OwnsLastHit(bot)) return LaneClaims.CoreMine(bot);
-    if (!OwnsSupportHits(bot)) return undefined;
-    const lastHits = SupportDeny.LastHits(bot);
-    const within = Settings().LastHitWithin;
-    return (t) => (t.kind === "deny" ? true : lastHits && LaneClaims.SupportClaim(bot, t, within) !== undefined);
+    if (!OwnsLastHit(bot) && !OwnsSupportHits(bot)) return undefined;
+    return LaneClaims.Mine(bot, ClaimPos(bot), Settings().LastHitWithin);
 }
 
 /**
@@ -275,6 +279,7 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
             return idle;
         },
         far,
+        PickTable.Order(ClaimPos(bot)),
     );
     idlePicks[pid] = idle !== undefined && chosen === idle ? idle : undefined;
     return chosen;
@@ -315,7 +320,7 @@ const YIELD_REPORT_SECS = 6;
 /** After a core's pick: whether the pick without the yield was a deny an allied support is attempting, so the core yielded it. */
 function noteYield(bot: Unit, targets: Lib.Verbs.LaneTarget[], current: Lib.Verbs.LaneTarget | undefined, pre: Lib.Verbs.LaneTarget | undefined, chosen: Lib.Verbs.LaneTarget | undefined): void {
     if (!OwnsLastHit(bot) || LaneClaims.CoreMine(bot) === undefined) return;
-    const plain = LanePick.Choose(targets, current, undefined, pre);
+    const plain = LanePick.Choose(targets, current, undefined, pre, undefined, undefined, PickTable.Order(ClaimPos(bot)));
     if (plain === undefined || plain.kind !== "deny" || (chosen !== undefined && chosen.creep === plain.creep)) return;
     const sup = LaneClaims.DenyYield(bot, plain);
     if (sup === undefined) return;
