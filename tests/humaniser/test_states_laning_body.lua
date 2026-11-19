@@ -615,7 +615,7 @@ do
 			package.loaded["bots/FunLib/custom_loader"].Ours.PickSafe = o.switch ~= false
 			SG = require("bots/FunLib/humaniser/safe_gather")
 			SG.At = function(b, place, opts)
-				calls[#calls + 1] = { place = place, held = opts and opts.held, who = opts and opts.who }
+				calls[#calls + 1] = { place = place, held = opts and opts.held, horizon = opts and opts.horizon, who = opts and opts.who }
 				if o.throws then error("boom") end
 				return { level = o.levelAt(place) }
 			end
@@ -652,10 +652,10 @@ do
 
 	local askedOut, askedIn
 	for _, c in ipairs(dead.calls) do
-		if c.held == false and math.abs(c.place.x + 250) < 1 and c.place.y == 0 then askedOut = true end
+		if c.held == true and c.horizon == 2 and math.abs(c.place.x + 250) < 1 and c.place.y == 0 then askedOut = true end
 		if c.held == true and atBot(c.place) then askedIn = true end
 	end
-	check("pick safe: out of range asks held=false at the point attack range from the creep, not at the bot", askedOut == true, #dead.calls)
+	check("pick safe: out of range asks at the point attack range from the creep, not at the bot, by the leave bar (held) 2 s ahead", askedOut == true, #dead.calls)
 	check("pick safe: in range asks held=true at the bot's own place", askedIn == true, #dead.calls)
 	local anyWho = false
 	for _, c in ipairs(dead.calls) do if c.who ~= nil then anyWho = true end end

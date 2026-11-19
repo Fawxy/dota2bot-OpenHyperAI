@@ -218,7 +218,8 @@ function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
         // Every creep already in range is hit from where the hero stands: one ask answers them all.
         if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true);
         deadly = f.here;
-    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), false);
+    // A last hit is a step in and out, not a place to settle: the leave bar (held), not a fresh place's (pair 19/11: 80 and 66 drops a game at the fresh bar).
+    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), true);
     f.creeps.set(t.creep, deadly);
     return deadly;
 }

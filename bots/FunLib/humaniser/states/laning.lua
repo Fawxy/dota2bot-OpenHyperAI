@@ -308,7 +308,7 @@ function deadlyAt(bot, t)
                 t.creep:GetLocation(),
                 bot:GetAttackRange()
             ),
-            false
+            true
         )
     end
     f.creeps[t.creep] = deadly
