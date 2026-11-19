@@ -1173,4 +1173,114 @@ do
 	check("no drill: nothing held", not H2.Drill.InLaneDenies(hero(1, RAD, 2, 2), "rune") and not H2.Drill.ForbidsItem(hero(1, RAD, 2, 2), "item_tpscroll"))
 end
 
+-- The sustain rig (slice sustain-rig): five Radiant casts, six rep kinds rotating six tasks; per-hero ready checks; the release
+-- frees our sustain's items, purchases and courier with the switch on, OHA's item use with it off.
+do
+	local H, C = world("sustain")
+	local e = H.Drill.TABLE["sustain"]
+	local reps = e.rig.reps
+	check("sustain rig: six rep kinds, each with a setup, ready checks and a task for all five heroes", #reps == 6 and (function()
+		for _, rr in ipairs(reps) do
+			for i = 1, 5 do
+				local k = "r" .. i
+				if rr.setup[k] == nil or rr.readyBy[k] == nil or rr.tasks[k] == nil then return false end
+				if rr.setup[k][#rr.setup[k]] ~= "stand s" .. i then return false end
+			end
+		end
+		return true
+	end)())
+	local seen = {}
+	for _, rr in ipairs(reps) do for i = 1, 5 do local t = rr.tasks["r" .. i] seen[i .. t] = true end end
+	local each = true
+	for i = 1, 5 do for _, t in ipairs({ "tango", "salve", "bottle", "home", "ship", "tango_ship" }) do each = each and seen[i .. t] == true end end
+	check("sustain rig: over the six kinds every hero meets every task", each)
+	local r1 = reps[1].readyBy["r1"]
+	check("sustain rig: a task lacks every other task's item and holds its own", reps[1].tasks["r1"] == "tango" and r1.holds[1] == "item_tango"
+		and (function() for _, it in ipairs(r1.lacks) do if it == "item_tango" then return false end end return #r1.lacks == 7 end)())
+	check("sustain rig: the ship task holds nothing and lacks all eight", #reps[1].readyBy["r5"].lacks == 8 and reps[1].tasks["r5"] == "ship")
+
+	local bots = {}
+	for i = 1, 5 do
+		local u = hero(i - 1, RAD, i, 3)
+		u.maxhp, u.hp, u.items, u.mana, u.maxMana = 100, 100, {}, 100, 100
+		u.loc = Vector(-6619, -6336, 0)
+		u.charges = {}
+		u.ActionImmediate_PurchaseItem = function(self, name)
+			for s = 0, 8 do if self.items[s] == nil then self.items[s] = { name = name } return 0 end end
+			return 1
+		end
+		u.ActionImmediate_SellItem = function(self, it) for s, v in pairs(self.items) do if v.name == it:GetName() then self.items[s] = nil end end end
+		u.GetGold = function() return 600 end
+		u.GetItemInSlot = function(self, slot)
+			local it = self.items[slot]
+			if it == nil then return nil end
+			return { GetName = function() return it.name end, GetCurrentCharges = function() return it.charges or 1 end, name = it.name }
+		end
+		bots[i] = u
+	end
+	local dire = hero(7, DIRE, 3, 3)
+	check("sustain rig: Radiant all cast, Dire benched", H.Drill.RoleOf(bots[1]) == "cast" and H.Drill.RoleOf(bots[5]) == "cast" and H.Drill.RoleOf(dire) == "bench")
+	COURIER_STATE_IDLE, COURIER_STATE_AT_BASE, COURIER_STATE_DEAD = 0, 1, 5
+	local couriers = {}
+	for i = 1, 5 do couriers[i] = { pid = i - 1, st = 1, GetPlayerID = function(self) return self.pid end } end
+	GetCourier = function(n) return couriers[n + 1] end
+	GetCourierState = function(c) return c.st end
+	local W = H
+	local function tick(...) for _, u in ipairs({ ... }) do CURRENT_TEAM = u.team W.Drill.Tick(u) if W.Drill.Held(u) then W.Drill.Hold(u) end end CURRENT_TEAM = 2 end
+	local function readies(lines) local r = {} for _, l in ipairs(lines) do if field(l, "ph") == "ready" then table.insert(r, l) end end return r end
+	local function lastMoveTo(pid) local mv = ActionsOf(pid, "MoveToLocation") return mv[#mv] and mv[#mv].args[1] end
+	-- The spots hang off our T3s, which the lane world does not stand up.
+	local towerOf = GetTower
+	GetTower = function() return MakeUnit({ pid = 99, team = RAD, loc = Vector(-3950, -6100, 0) }) end
+	ACTIONS = {}
+	T = 61
+	capture(function() tick(bots[1], bots[5]) tick(bots[1], bots[5]) end)
+	check("sustain rig: the tango hero buys its tango at the fountain and walks to its spot; the ship hero buys nothing",
+		bots[1].items[0] and bots[1].items[0].name == "item_tango" and lastMoveTo(0) ~= nil and next(bots[5].items) == nil and lastMoveTo(4) ~= nil)
+	local s1, s5 = lastMoveTo(0), lastMoveTo(4)
+	bots[1].loc, bots[5].loc = Vector(s1.x, s1.y, 0), Vector(s5.x, s5.y, 0)
+	TREES = {}
+	bots[1].hp, bots[5].hp = 25, 25
+	local wl = capture(function() tick(bots[1], bots[5]) tick(bots[1], bots[5]) end)
+	local r = readies(wl)
+	check("sustain rig: no tree near the tango hero and the ship hero's courier is at base: only the ship hero is ready", #r == 1 and field(r[1], "pid") == "4" and field(r[1], "task") == "ship" and field(r[1], "ok") == "1", table.concat(wl, " / "))
+	TREES = { [1] = Vector(s1.x + 200, s1.y, 0) }
+	r = readies(capture(function() tick(bots[1]) end))
+	check("sustain rig: a tree within 600: the tango hero is ready, task=tango, with its mana on the line", #r == 1 and field(r[1], "task") == "tango" and field(r[1], "mp") == "1", r[1])
+	check("sustain rig: released with the switch on: our sustain is freed, OHA's items, purchases and courier stay held",
+		H.Drill.RigFreesSustain(bots[1]) and H.Drill.Owns(bots[1], "items") and H.Drill.Owns(bots[1], "purchase") and H.Drill.Owns(bots[1], "courier") and H.Chooser.HoldsCasts(bots[1], true))
+	check("sustain rig: a hero still in setup is not freed", not H.Drill.RigFreesSustain(bots[2]) and H.Drill.Owns(bots[2], "items"))
+	check("sustain rig: released into laning, retreat and idle", H.Drill.RigDesire(bots[1], "laning") == nil and H.Drill.RigDesire(bots[1], "retreat") == nil and H.Drill.RigDesire(bots[1], "attack") == 0)
+	C.Ours = { Sustain = false }
+	check("sustain rig: switch off: OHA's item use runs for the released hero, nothing of ours is freed, purchases stay held",
+		not H.Drill.RigFreesSustain(bots[1]) and not H.Drill.Owns(bots[1], "items") and H.Drill.Owns(bots[1], "purchase") and not H.Chooser.HoldsCasts(bots[1], true))
+	C.Ours = nil
+	local Hn = world("retreat-heal-items")
+	check("another rig frees no sustain", not Hn.Drill.RigFreesSustain(hero(4, RAD, 5, 3)))
+
+	-- Mana latched, charges bounded: the home hero (rep 1, r4) at 10% mana, then regen over the bar, still counts.
+	W = world("sustain")
+	local h4 = bots[4]
+	h4.items, h4.loc, h4.hp, h4.mana = {}, Vector(-6619, -6336, 0), 100, 100
+	ACTIONS = {}
+	T = 61
+	capture(function() tick(h4) tick(h4) end)
+	local s4 = lastMoveTo(3)
+	h4.loc = Vector(s4.x, s4.y, 0)
+	h4.hp = 25
+	local w = capture(function() tick(h4) tick(h4) end)
+	check("sustain rig: the home hero at full mana waits (mp)", #readies(w) == 0 and (function() for _, l in ipairs(w) do if field(l, "fail") == "mp" then return true end end end)())
+	-- Under the mana bar while another check (lacks: a salve in hand) still fails latches it; back over it, ready still comes.
+	h4.mana = 10
+	h4.items[5] = { name = "item_flask" }
+	local lk = capture(function() tick(h4) end)
+	check("sustain rig: a salve in the home hero's hand: not ready (lacks)", #readies(lk) == 0 and field(lk[#lk], "fail") == "lacks", table.concat(lk, " / "))
+	h4.items[5] = nil
+	h4.mana = 25
+	local ml = capture(function() T = 140 tick(h4) end)
+	r = readies(ml)
+	check("sustain rig: mana latched once under the bar; the home task is ready", #r == 1 and field(r[1], "task") == "home" and field(r[1], "ok") == "1", table.concat(ml, " / "))
+	GetCourier, GetCourierState, GetTower = nil, nil, towerOf
+end
+
 finish()

@@ -854,6 +854,8 @@
    "ok": "num",
    "fail": "str",
    "hp": "num",
+   "mp": "num",
+   "task": "str",
    "rt": "num",
    "dt": "num",
    "gold": "num",
@@ -2016,6 +2018,11 @@
    "dead": "num",
    "d": "num"
   },
+  "sustain_tp": {
+   "pid": "num",
+   "why": "str",
+   "hp": "num"
+  },
   "burst_add": {
    "pid": "num",
    "ab": "str",
@@ -2347,6 +2354,7 @@
    "rel": "text",
    "step": "text",
    "fail": "text",
+   "task": "text",
    "sight": "text",
    "vg": "text",
    "vu": "text",
@@ -2731,6 +2739,9 @@
   },
   "ev_sustain_buy": {
    "item": "text",
+   "why": "text"
+  },
+  "ev_sustain_tp": {
    "why": "text"
   },
   "ev_burst_add": {

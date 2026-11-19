@@ -305,6 +305,33 @@ do
 	world.way = nil
 end
 
+-- A rig owns its heroes' purchases and courier (drill.ts Owns): no purchase of ours, unless its release frees sustain (the sustain
+-- rig, Drill.RigFreesSustain); then the purchase and the delivery run, and a rig hero with OHA's items held is ours again.
+do
+	local owns, frees, holds = Drill.Owns, Drill.RigFreesSustain, Drill.RigHoldsCasts
+	Drill.Owns = function(_, what) return what == "purchase" or what == "courier" or what == "items" end
+	Drill.RigFreesSustain = function() return false end
+	reset()
+	world.way = nil
+	bot.slots = {}
+	answer = { kind = "buy", name = "flask", at = { x = -500, y = 0 }, reason = "cannot_stay" }
+	T = 750
+	A.ItemThink(bot)
+	check("rig owns purchases: no purchase of ours", count("buy:") == 0, table.concat(bot.orders, ","))
+	Drill.RigHoldsCasts = function() return true end
+	check("rig holds the cast's items: not held by sustain", not A.Holds(bot))
+	Drill.RigFreesSustain = function() return true end
+	check("the sustain rig's release: held by sustain although the rig holds OHA's items", A.Holds(bot))
+	reset()
+	world.way = nil
+	bot.slots = {}
+	T = 760
+	A.ItemThink(bot)
+	check("the sustain rig's release: our purchase and the courier's delivery run", bot.orders[1] == "buy:item_flask" and bot.orders[2] == "courier:4", table.concat(bot.orders, ","))
+	Drill.Owns, Drill.RigFreesSustain, Drill.RigHoldsCasts = owns, frees, holds
+	world.way = nil
+end
+
 do
 	reset()
 	bot.slots = {}
