@@ -643,6 +643,74 @@ do
 	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
 end
 
+-- Ours.PickSafe: a creep whose hit place the safe read calls deadly is not this hero's to take. The read is stubbed on the module
+-- table (laning.lua indexes it at each call); `levelAt(place)` answers per place so one world can have a deadly and a safe creep.
+-- The last hit is 200 away (a 50 walk into the 150 reach, stand point (-250, 0)), the deny is in range (place = the bot's own).
+do
+	local function scenario(o)
+		local H, bot, lh, deny, events, SG
+		local calls = {}
+		silenced(function()
+			H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Laning = { LastHit = { 2 } } })
+			package.loaded["bots/FunLib/custom_loader"].Ours.PickSafe = o.switch ~= false
+			SG = require("bots/FunLib/humaniser/safe_gather")
+			SG.At = function(b, place, opts)
+				calls[#calls + 1] = { place = place, held = opts and opts.held, who = opts and opts.who }
+				if o.throws then error("boom") end
+				return { level = o.levelAt(place) }
+			end
+			events = {}
+			require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
+			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+			for _ = 1, 4 do frame(H, bot) end
+			-- Alive for 0.8 s: longer than the 0.17 s walk and the swing's slack, so the reach rule offers it.
+			lh = creep({ loc = Vector(-100, 0), hp = 90, regen = -100 })
+			if o.deny then deny = creep({ loc = Vector(-400, 0), hp = 60, regen = -100, team = bot.team }) end
+			for _ = 1, 3 do frame(H, bot) end
+		end)
+		local picks = {}
+		for _, l in ipairs(events) do if l:find("ev=cut ", 1, true) and l:find("kind=pick", 1, true) then picks[#picks + 1] = l end end
+		require("bots/FunLib/humaniser/telemetry").SetSink(nil)
+		return { bot = bot, lh = lh, deny = deny, calls = calls, picks = picks, events = events }
+	end
+	-- The first pick the body made: the kind it chose (the creeps are offered lasthit first, deny second).
+	local function chose(r, kind) return r.picks[1] ~= nil and r.picks[1]:find(" ak=" .. kind, 1, true) ~= nil end
+	local atBot = function(p) return p.x == -300 and p.y == 0 end
+
+	local deadlyAtStand = function(p) return p.x > -280 and "deadly" or "safe" end
+	local costlyAtStand = function(p) return p.x > -280 and "costly" or "safe" end
+
+	local dead = scenario({ levelAt = deadlyAtStand, deny = true })
+	check("pick safe: a last hit whose stand point is deadly is not taken, the deny in a safe place is", chose(dead, "deny"), dead.picks[1])
+	local sd = dead.picks[1] and dead.picks[1]:match(" sd=(%d+)")
+	check("pick safe: the cut line counts the dropped creep and shows it as not mine", sd == "1"
+		and dead.picks[1]:find("tg=1,lasthit,[^;]*,0;2,deny", 1) ~= nil, dead.picks[1])
+
+	local costly = scenario({ levelAt = costlyAtStand, deny = true })
+	check("pick safe: control, costly does not drop the last hit", chose(costly, "lasthit"), costly.picks[1])
+	check("pick safe: no sd on a line when nothing was dropped", costly.picks[1] ~= nil and costly.picks[1]:find(" sd=", 1, true) == nil, costly.picks[1])
+
+	local askedOut, askedIn
+	for _, c in ipairs(dead.calls) do
+		if c.held == false and math.abs(c.place.x + 250) < 1 and c.place.y == 0 then askedOut = true end
+		if c.held == true and atBot(c.place) then askedIn = true end
+	end
+	check("pick safe: out of range asks held=false at the point attack range from the creep, not at the bot", askedOut == true, #dead.calls)
+	check("pick safe: in range asks held=true at the bot's own place", askedIn == true, #dead.calls)
+	local anyWho = false
+	for _, c in ipairs(dead.calls) do if c.who ~= nil then anyWho = true end end
+	check("pick safe: the pick asks without a who (no extra safe lines of its own)", not anyWho)
+
+	local off = scenario({ levelAt = deadlyAtStand, switch = false })
+	check("pick safe off: the read is never asked and the creep is taken", #off.calls == 0 and chose(off, "lasthit"), #off.calls)
+
+	local boom = scenario({ throws = true })
+	check("pick safe: a read that throws still lets the creep be picked", #boom.calls > 0 and chose(boom, "lasthit"), #boom.calls)
+	local failed = false
+	for _, l in ipairs(boom.events) do if l:find("PickSafe", 1, true) then failed = true end end
+	check("pick safe: the fault is reported", failed)
+end
+
 -- A creep that reads alive with no location when the attempt ends (prhfc2 game C, log 2026-11-04T02-49-08-prhfc2_C_on_3.log
 -- t=155.533: ev=state_task reason=error, `at` nil in placeOf): the attempt is still reported, placed from its last scan.
 do

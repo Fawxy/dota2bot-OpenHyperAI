@@ -22,6 +22,8 @@ import * as PreHit from "bots/FunLib/humaniser/states/pre_hit";
 import * as IdleSwing from "bots/FunLib/humaniser/states/idle_swing";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Contest from "bots/FunLib/humaniser/states/contest";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
+import type * as Safe from "bots/FunLib/humaniser/safe";
 
 export const NAME = "laning";
 
@@ -172,10 +174,71 @@ export function ClaimPos(bot: Unit): PickTable.Pos {
     return pos as PickTable.Pos;
 }
 
-/** The creeps this laner may take, from its column of the pick table (LaneClaims.Mine): undefined for all of them. */
+/** Per bot and game time, the safe read's answer for each creep asked (true: deadly) and for the hero's own place: the pick, the
+ *  deny check, the support's hit row and the idle swing ask about the same creeps in one frame. */
+interface SafeFrame {
+    t: number;
+    creeps: LuaTable<Lib.TaskCreep, boolean>;
+    here?: boolean;
+}
+const safeFrames: Record<number, SafeFrame | undefined> = {};
+
+function safeFrame(pid: number): SafeFrame {
+    const now = DotaTime();
+    let f = safeFrames[pid];
+    if (f === undefined || f.t !== now) {
+        f = { t: now, creeps: new LuaTable() };
+        safeFrames[pid] = f;
+    }
+    return f;
+}
+
+function askDeadly(bot: Unit, place: Vector, held: boolean): boolean {
+    const [ok, ans] = pcall(SafeGather.At, bot, place, { held });
+    if (!ok) {
+        Telemetry.Failed("PickSafe", ans);
+        return false;
+    }
+    return (ans as Safe.Answer).level === "deadly";
+}
+
+/** Whether the safe read calls the place where `bot` would hit this creep deadly. A fault in the read allows the creep. */
+function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
+    const f = safeFrame(bot.GetPlayerID());
+    const known = f.creeps.get(t.creep);
+    if (known !== undefined) return known;
+    let deadly: boolean;
+    if (t.walk <= 0) {
+        // Every creep already in range is hit from where the hero stands: one ask answers them all.
+        if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true);
+        deadly = f.here;
+    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), false);
+    f.creeps.set(t.creep, deadly);
+    return deadly;
+}
+
+function safeRefusedNow(pid: number, creep: Lib.TaskCreep): boolean {
+    const f = safeFrames[pid];
+    return f !== undefined && f.t === DotaTime() && f.creeps.get(creep) === true;
+}
+
+/** How many of the offered creeps the safe read refused this frame (the pick cut's `sd`). */
+function safeDropped(pid: number, targets: Lib.Verbs.LaneTarget[]): number {
+    const f = safeFrames[pid];
+    if (f === undefined || f.t !== DotaTime()) return 0;
+    let n = 0;
+    for (const t of targets) if (f.creeps.get(t.creep) === true) n++;
+    return n;
+}
+
+/**
+ * The creeps this laner may take: its column of the pick table (LaneClaims.Mine, undefined for all of them) and, under
+ * Ours.PickSafe, not those whose hit place is deadly. The safe read is asked only for creeps the claim lets through.
+ */
 function claimsFor(bot: Unit): ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined {
-    if (!OwnsLastHit(bot) && !OwnsSupportHits(bot)) return undefined;
-    return LaneClaims.Mine(bot, ClaimPos(bot), Settings().LastHitWithin);
+    const base = !OwnsLastHit(bot) && !OwnsSupportHits(bot) ? undefined : LaneClaims.Mine(bot, ClaimPos(bot), Settings().LastHitWithin);
+    if (!Ours.On("PickSafe")) return base;
+    return (t) => (base === undefined || base(t)) && !deadlyAt(bot, t);
 }
 
 /**
@@ -310,14 +373,14 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
     idlePicks[pid] = idle !== undefined && chosen === idle ? idle : undefined;
     // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
     if (cutting && (chosen !== undefined || targets.length > 0)) {
-        const [ok, err] = pcall(cutPick, bot, targets, current, pre, chosen, far !== undefined, idleAsked, idle, order);
+        const [ok, err] = pcall(cutPick, bot, targets, current, pre, chosen, far !== undefined, idleAsked, idle, order, safeDropped(pid, targets));
         if (!ok) Telemetry.Failed("Laning.CutPick", err);
     }
     return chosen;
 }
 
 const PICK_CUT_EVERY = 5;
-const pickCuts: Record<number, { creep?: Lib.TaskCreep; kind?: string; ans?: string; at: number } | undefined> = {};
+const pickCuts: Record<number, { creep?: Lib.TaskCreep; kind?: string; ans?: string; sd?: boolean; at: number } | undefined> = {};
 
 const r6 = (v: number): number => (v === math.huge ? -1 : math.floor(v * 1000000 + 0.5) / 1000000);
 
@@ -342,6 +405,7 @@ function cutPick(
     idleAsked: boolean,
     idle: Lib.Verbs.LaneTarget | undefined,
     order: PickTable.PickKind[],
+    dropped: number,
 ): void {
     const pid = bot.GetPlayerID();
     const now = DotaTime();
@@ -349,9 +413,11 @@ function cutPick(
     // A pre-hit and an idle swing on one creep share the verb kind, so the answer's source is compared too.
     const src = chosen === undefined ? "none" : chosen === pre ? "pre" : chosen === idle ? "idle" : "offer";
     const st = (pickCuts[pid] = pickCuts[pid] ?? { at: 0 });
-    if (st.kind === ak && st.ans === src && st.creep === chosen?.creep && now >= st.at && now - st.at < PICK_CUT_EVERY) return;
+    const sdOn = dropped > 0;
+    if (st.kind === ak && st.ans === src && st.creep === chosen?.creep && (st.sd ?? false) === sdOn && now >= st.at && now - st.at < PICK_CUT_EVERY) return;
     st.kind = ak;
     st.ans = src;
+    st.sd = sdOn;
     st.creep = chosen?.creep;
     st.at = now;
     const tg: string[] = [];
@@ -390,6 +456,7 @@ function cutPick(
         ["idle", idleText],
         ["ans", ans],
         ["ak", ak],
+        ["sd", sdOn ? dropped : undefined],
     ]);
 }
 
@@ -570,7 +637,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         // the body hands the frame back instead of holding on (D5): to its hold step on our spot, or to OHA's positioning and harass.
         // A walk-in is released only when its price fails (contestPick refuses the creep), not when its creep drops out of the
         // offers for a scan as its attackers change (its due time jumps); that would throw most long walks away early.
-        dropLost: (cur) => OwnsSupportHits(bot) || Contest.Refused(bot.GetPlayerID(), cur.creep),
+        dropLost: (cur) => OwnsSupportHits(bot) || Contest.Refused(bot.GetPlayerID(), cur.creep) || safeRefusedNow(bot.GetPlayerID(), cur.creep),
         radius: Contest.Applies(bot) ? Contest.RADIUS : undefined,
         onAttempt: (t, res, contested) => {
             const [ol, od, ow] = LanePick.AttemptOffers(bot.GetPlayerID());
