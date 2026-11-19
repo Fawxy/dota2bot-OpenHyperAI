@@ -5,7 +5,8 @@
 // from the release to the rep's end (`rend`):
 //   tango, salve, bottle  the item used: an `ev=sustain` attempt of ours with it (`k` use or step_out_use) that did not end
 //                         missed, cut, released or dead; or OHA's (switch off): an `ev=regen_obs state=start` of it not `by=ours`
-//                         (a bottle is not observed on OHA's side: `n/a`)
+//                         (OHA's bottle use is not observed: an off-arm bottle rep with nothing of ours is not graded)
+//   On the off arm (`Sustain:0` on ev=bot) ship and tango_ship are 0 by design: the rig holds OHA's purchases and courier.
 //   home                  the hero reached its fountain (a snapshot within BASE_R) and stood at HOME_HP or more there
 //   ship                  a purchase of ours (`k=buy`) and the item it bought then used (`late` 1: its delivery ran past its eta)
 //   tango_ship            the tango used and its purchase (`why=tango_ship`) made, not refused
@@ -38,6 +39,9 @@ function readGame(game, file) {
     const team = new Map();
     for (const e of ev) if (e.ev === 'drill' && e.ph === 'role' && e.team !== undefined) team.set(e.pid, e.team);
     const ready = ev.filter((e) => e.ev === 'drill' && e.ph === 'ready' && e.name === NAME);
+    // The arm: `Sustain:1` in a Radiant hero's ev=bot `ours` list (the cast is Radiant).
+    const bot = ev.find((e) => e.ev === 'bot' && /Sustain:/.test(String(e.ours || '')));
+    const arm = { on: bot !== undefined && /(^|,)Sustain:1(,|$)/.test(String(bot.ours)) };
     const rows = [];
     for (const r of ready) {
         if (Number(r.ok) !== 1) continue;
@@ -49,7 +53,6 @@ function readGame(game, file) {
         // A sustain line is logged at the attempt's end; it began `sec` before.
         const began = (e) => e.t - (Number(e.sec) || 0);
         const used = (item) => sus.find((e) => (e.k === 'use' || e.k === 'step_out_use') && e.it === item && !BAD_END.has(e.ed));
-        const delivered = sus.find((e) => e.k === 'buy' && e.ed === 'delivered');
         const snaps = ev.filter((e) => e.ev === 'snap' && inWin(e));
         const f = FOUNTAIN[team.get(pid) ?? 2];
         const atHome = snaps.find((s) => s.x !== undefined && Math.hypot(s.x - f[0], s.y - f[1]) <= BASE_R && Number(s.hp) >= HOME_HP);
@@ -77,7 +80,8 @@ function readGame(game, file) {
             const oha = OBS[item] ? ev.find((e) => e.ev === 'regen_obs' && e.state === 'start' && e.by !== 'ours' && e.item === OBS[item] && inWin(e)) : undefined;
             if (ours) Object.assign(row, { done: 1, secs: r1(began(ours) - a), by: 'ours' });
             else if (oha) Object.assign(row, { done: 1, secs: r1(oha.t - a), by: 'oha' });
-            else if (!OBS[item] && !sus.length) row.done = null;
+            // OHA's bottle use is not observed: an off-arm rep with nothing of ours is not graded; an on-arm one is a miss.
+            else if (!OBS[item] && !arm.on) row.done = null;
         } else if (task === 'home') {
             if (atHome) Object.assign(row, { done: 1, secs: r1(atHome.t - a) });
         } else if (task === 'ship') {

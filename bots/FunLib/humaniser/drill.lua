@@ -1877,7 +1877,7 @@ local ALL = {r = {
 --- The sustain rig's tasks (D6, `Ours.Sustain`; master docs/proposals/2026-11-19-sustain-design.md, check 3): each forces one
 -- answer's facts on one hero. The recipe sets every hero's HP to 20% at +63 s of each rep (`rig_hp_all`), a hero holding a
 -- circlet to 5% (`rig_hp_holding`), one holding branches to 10% mana (`rig_mp_holding`), and every tango to one charge
--- (`rig_charges`): the marker items name the task to the server setters, which cannot read the bot's state. At 25% with no
+-- (`rig_charges`), the last three for Radiant heroes only (team 2: the bench buys too): the marker items name the task to the server setters, which cannot read the bot's state. At 25% with no
 -- enemy the kill line is the 30% floor (20% leaves a margin for the regen before release: fix1, a home hero at 25% stood at 30% when
 -- released and bought instead of going home), so:
 -- - `tango` / `salve` / `bottle`: what is in hand clears the line; rule 3 tops up (a tango at a tree, a salve stepped out
@@ -1937,7 +1937,7 @@ local SUSTAIN_TASKS = {
     }},
     bottle_dry = {buy = {"item_bottle"}, ready = {hpAtMost = 0.25, holds = {"item_bottle"}, charges = {item_bottle = {0, 0}}, clear = SUSTAIN_CLEAR}}
 }
---- The tasks the rig rotates through: rep k gives hero r(i+1) task (i + k) mod length, so each hero meets each task.
+--- The tasks the rig rotates through: rep k gives hero r(i+1) task (i + k) mod length (six kinds; a game's five reps meet five of them per hero).
 local SUSTAIN_ROTATION = {
     "tango",
     "salve",

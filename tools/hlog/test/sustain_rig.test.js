@@ -50,6 +50,7 @@ test('each task is graded on its own act inside the window from release to the r
 
 test('a missed use, a walk home that never heals, a buy never used: not done; OHA side read from regen_obs', () => {
     const g = game([
+        line(1, 'bot pid=0 ours=Retreat:1,Sustain:0'),
         ready(120, 0, 'tango'),
         ready(120, 1, 'home'),
         ready(120, 2, 'ship'),
@@ -68,4 +69,9 @@ test('a missed use, a walk home that never heals, a buy never used: not done; OH
     assert.equal(by.salve.by, 'oha');
     assert.equal(by.bottle.done, null, 'a bottle with nothing of ours is not graded: OHA bottle use is not observed');
     assert.equal(summary(g.rows).bottle.graded, 0);
+});
+
+test('switch on: a bottle rep with nothing of ours is a miss, not ungraded', () => {
+    const g = game([line(1, 'bot pid=0 ours=Retreat:1,Sustain:1'), ready(120, 4, 'bottle')]);
+    assert.equal(g.rows[0].done, 0);
 });
