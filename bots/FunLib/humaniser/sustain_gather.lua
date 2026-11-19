@@ -439,7 +439,15 @@ local function safeHere(bot, r)
             reach = reach + 1
         end
     end
-    return {{kill = a.kill, hitting = hitting, reach = reach}, a.level == "deadly"}
+    return {
+        {
+            kill = a.kill,
+            hitting = hitting,
+            reach = reach,
+            pressed = Safe.Pressed(i)
+        },
+        a.level == "deadly"
+    }
 end
 local safeCache = {}
 --- The safe spot, re-read at most every SafeEvery. `deep`: we stand under the kill line, so rule 2 may wait there: the safe-here
@@ -819,6 +827,10 @@ function ____exports.CutFields(pid, i, a)
         {
             "sh",
             b01(i.safe.hitting)
+        },
+        {
+            "spr",
+            b01(i.safe.pressed == true or i.safe.hitting)
         },
         {"rc", i.safe.reach},
         {

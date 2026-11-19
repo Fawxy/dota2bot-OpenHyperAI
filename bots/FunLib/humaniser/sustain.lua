@@ -3,7 +3,7 @@ local ____exports = {}
 local ____retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local RetreatSettings = ____retreat.SETTINGS
 local ____safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
-local SafeBars = ____safe.BARS
+local SafeLine = ____safe.Line
 --- Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, its bar (`stay`) the safe-here read's: read at call time, not copied.
 ____exports.BARS = {
     topUp = 0.65,
@@ -56,9 +56,21 @@ end
 -- home on one line; never under the heal floor (sustain's own going-home floor) and never over max HP (a lane that can kill
 -- a full hero would otherwise send one home from the fountain; that place is retreat's answer).
 function ____exports.KillLine(i)
-    return math.min(
-        i.hpMax,
-        math.max(RetreatSettings.HealFloor * i.hpMax, SafeBars.stay * i.safe.kill)
+    local ____math_min_5 = math.min
+    local ____i_hpMax_4 = i.hpMax
+    local ____math_max_3 = math.max
+    local ____temp_2 = RetreatSettings.HealFloor * i.hpMax
+    local ____SafeLine_1 = SafeLine
+    local ____i_safe_pressed_0 = i.safe.pressed
+    if ____i_safe_pressed_0 == nil then
+        ____i_safe_pressed_0 = i.safe.hitting
+    end
+    return ____math_min_5(
+        ____i_hpMax_4,
+        ____math_max_3(
+            ____temp_2,
+            ____SafeLine_1(____i_safe_pressed_0) * i.safe.kill
+        )
     )
 end
 --- HP plus what the regen running and the items in hand can restore, capped at max HP.

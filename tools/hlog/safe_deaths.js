@@ -18,6 +18,8 @@
 //   the gap in its snapshots that precedes the rise of its `deaths` counter (dead heroes log no snapshots). Up to 1 s early.
 //   A window is [death - 10, death + 1].
 //
+// A stay column is the bar under a hero's hits; with none lately (`prs`, or no reacher hitting on a line without it) Decide uses the lower
+// of it and Safe.BARS.idle, so the columns above 1.0 differ only on pressed lines.
 // What a replay cannot know, and what stands in for it:
 //  - landing (HP per second lost by source), exit: zeros. The answer's level `costly` is not replayed; only deadly counts.
 //  - reach: the Reader's test over the logged heroes (CUT_R 3,000 box): non-illusion heroes within speed x 2 + range + hull + our
@@ -107,6 +109,7 @@ function mapSafe(cut) {
         inputs: {
             hp: Number(cut.hpa), hpMax: Number(cut.hpm), reach, missing: Number(cut.mi ?? 0), tower: tower === '1', towerOnMe: towerOnMe === '1',
             landing: { hero, creeps, tower: tw }, away: Number(cut.awy) === 1, held: Number(cut.hld) === 1, hold: Number(cut.hd) === 1,
+            pressed: cut.prs === undefined ? undefined : Number(cut.prs) === 1,
         },
     };
 }

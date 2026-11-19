@@ -2836,7 +2836,7 @@ export const EVENTS = {
         pl: "str",
         /** The bot's assigned lane. */
         lane: "num",
-        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready. */
+        /** The bot: x, y, HP, max HP, attack range, hull, movement speed, 1 when an escape item is ready, 1 when an enemy hero damaged it in the safe read's press window (absent on logs before 20/11/2026). */
         b: "str",
         /** GetLaneFrontLocation(team, lane, 0) and (-400): x, y, x, y. */
         fr: "str",
@@ -3057,6 +3057,8 @@ export const EVENTS = {
         /** kind=sustain: the safe-here read here (2 s): `kill` (as kind=safe's field), `sh` a reacher is hitting us (1/0), `rc` visible heroes in its reach. */
         sh: "num",
         rc: "num",
+        /** kind=sustain: the same read's `prs` (kind=safe), which picks the kill line's bar. */
+        spr: "num",
         /** kind=sustain: seconds until the next last hit or deny is due in our lane (Laning.NextDue); absent with no creep near. */
         nd: "num",
         /** kind=sustain: 1 when sustain_act.ts carries this answer out (`Ours.Sustain`, a held hero). */
@@ -3100,6 +3102,8 @@ export const EVENTS = {
         awy: "num",
         hld: "num",
         hd: "num",
+        /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
+        prs: "num",
         kill: "num",
         ra: "num",
         pr: "num",

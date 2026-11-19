@@ -167,7 +167,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local distToSegment, lanerRows, towerOnMe, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, cutState, frames
+local distToSegment, lanerRows, towerOnMe, pressed, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, pressSeen, cutState, frames
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
@@ -301,6 +301,16 @@ function towerOnMe(bot, now)
     towerSeen[pid] = {t = now, on = on}
     return on
 end
+function pressed(bot, now)
+    local pid = bot:GetPlayerID()
+    local seen = pressSeen[pid]
+    if seen ~= nil and seen.t == now then
+        return seen.on
+    end
+    local on = bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.PressWindow)
+    pressSeen[pid] = {t = now, on = on}
+    return on
+end
 --- `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
 -- passes the cached one, and the clock here is the game's now, not the read's `t`). `hitting` is the read's `eng`, so it is only set when
 -- the read was made with `engagedWindow`; a gate's read (no window) has none hitting and every row at the short window.
@@ -365,7 +375,11 @@ function ____exports.FromRead(bot, r, opts)
         exit = ____temp_8,
         away = ____opts_away_9,
         held = ____opts_held_10,
-        hold = ____temp_0
+        hold = ____temp_0,
+        pressed = pressed(
+            bot,
+            DotaTime()
+        )
     }
 end
 --- The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`).
@@ -429,6 +443,10 @@ function ____exports.CutFields(pid, who, place, i, a)
         {
             "hd",
             b01(i.hold)
+        },
+        {
+            "prs",
+            b01(i.pressed == true)
         },
         {"lv", a.level},
         {
@@ -528,6 +546,7 @@ function ask(bot, place, opts)
     return {a = a, r = r}
 end
 ____exports.SETTINGS = {
+    PressWindow = 3,
     LanerSeen = 10,
     OwnPlace = 50,
     UnseenAfter = 0.5,
@@ -597,6 +616,7 @@ function ____exports.Tick(bot)
 end
 laners = {}
 towerSeen = {}
+pressSeen = {}
 cutState = {}
 local function shadow(bot, who, r, opts)
     if not cutOn() or not bot:IsAlive() then
@@ -648,6 +668,9 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(towerSeen)) do
         __TS__Delete(towerSeen, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(pressSeen)) do
+        __TS__Delete(pressSeen, k)
     end
     for ____, k in ipairs(__TS__ObjectKeys(cutState)) do
         __TS__Delete(cutState, k)

@@ -117,10 +117,10 @@ function commonWorld(game, cut) {
     if (!cc) throw new Error(`no ev=cut_creeps for pid ${cut.pid} at ${cut.t}`);
     const bot = botOf(game, cut);
     const team = Number(bot.team);
-    const [bx, by, hp, mhp, range, hull, speed, esc] = nums(cut.b);
+    const [bx, by, hp, mhp, range, hull, speed, esc, prs] = nums(cut.b);
     const w = {
         t: Number(cut.t), team, pid: Number(cut.pid), ours: oursOf(bot),
-        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc },
+        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc, ...(prs === undefined ? {} : { prs }) },
         ce: creepList(cc.ce), ca: creepList(cc.ca),
         he: heroRecords(cut.he), hu: unseenRecords(cut.hu), ha: allyRecords(cut.ha),
         towers: towersOf(game, team, cut.ta, cut.tt),
@@ -279,7 +279,7 @@ const DECISIONS = {
         driver: 'safe',
         world(game, cut) {
             const w = { t: Number(cut.t), pid: Number(cut.pid), who: cut.who };
-            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd', 'prs']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
             for (const k of ['rr', 'stw', 'ld']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },

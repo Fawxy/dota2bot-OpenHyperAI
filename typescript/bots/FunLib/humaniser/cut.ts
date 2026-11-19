@@ -30,6 +30,12 @@ import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as Sight from "bots/FunLib/humaniser/sight";
 import type * as Safe from "bots/FunLib/humaniser/safe";
+import { SETTINGS as SafeGatherSettings } from "bots/FunLib/humaniser/safe_gather";
+
+/** `b`'s last number: the safe read's `pressed` for this hero (the kill bar turns on it), so a cut between an enemy's swings replays at the bar the game used. */
+function pressedNow(bot: Unit): number {
+    return bot.WasRecentlyDamagedByAnyHero(SafeGatherSettings.PressWindow) ? 1 : 0;
+}
 
 /**
  * Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
@@ -199,7 +205,7 @@ export function Spot(bot: Unit): void {
         ["kind", "spot"],
         ["role", role],
         ["lane", lane],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0].join(",")],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot)].join(",")],
         ["fr", [f(front.x), f(front.y), f(back.x), f(back.y)].join(",")],
         ["fed", live(fed) ? Telemetry.CreepId(fed) : undefined],
         ["hold", hold !== undefined ? `${f(hold.x)},${f(hold.y)}` : undefined],
@@ -248,7 +254,7 @@ export function Leave(bot: Unit, i: LeaveInputs): void {
     Telemetry.Event("cut", [
         ["pid", pid],
         ["kind", "leave"],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0].join(",")],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot)].join(",")],
         ["he", he.join(";")],
         ["hu", hu.length > 0 ? hu.join(";") : undefined],
         ["ha", ha.length > 0 ? ha.join(";") : undefined],
@@ -319,7 +325,7 @@ export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): 
         ["pid", pid],
         ["kind", "gate"],
         ["who", consumer],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0].join(",")],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot)].join(",")],
         ["fm", `${f(from.x)},${f(from.y)}`],
         ["pl", `${f(place.x)},${f(place.y)}`],
         ["he", he.join(";")],
