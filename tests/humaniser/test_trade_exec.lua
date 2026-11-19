@@ -5,17 +5,18 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
 
-local world = { burst = 0.2, reach = {}, creeps = {}, pair = nil, share = {}, lanes = true, walkBurst = 0.1 }
+local world = { creeps = {}, pair = nil, share = {}, lanes = true }
 local RealThreat = require("bots/FunLib/humaniser/threat")
 package.loaded["bots/FunLib/humaniser/threat"] = {
 	SETTINGS = RealThreat.SETTINGS,
 	SeenSpeed = function() return 300 end,
-	Read = function(_, _, _, horizon)
-		if horizon == RealThreat.SETTINGS.GateHorizon then world.gateReads = (world.gateReads or 0) + 1 end
-		return { burst = world.burst, reach = world.reach, missing = 0, mpids = {} }
-	end,
-	Reader = function()
-		return function() return { burst = world.walkBurst, reach = {}, missing = 0, mpids = {} } end
+}
+-- Safe.At: safe everywhere; the walks (a horizon of 4 s) are counted.
+package.loaded["bots/FunLib/humaniser/safe_gather"] = {
+	WalkHorizon = 4,
+	At = function(_, _, opts)
+		if opts ~= nil and opts.horizon == 4 then world.walkAsks = (world.walkAsks or 0) + 1 end
+		return { level = "safe", ratio = math.huge, reason = "safe", kill = 0, price = 0 }
 	end,
 }
 package.loaded["bots/FunLib/humaniser/transitions/phase"] = { LaningHeld = function() return world.lanes end }
@@ -206,18 +207,18 @@ do
 	local Plays = require("bots/FunLib/humaniser/plays/plays")
 	local roll = Plays.Roll
 	Plays.Roll = function() return nil end
-	world.gateReads = 0
+	world.walkAsks = 0
 	T = 100
 	Trade.Desire(bot)
 	T = 100.5
 	Trade.Desire(bot)
 	T = 110
 	Trade.Desire(bot)
-	local early = world.gateReads
+	local early = world.walkAsks
 	T = 116
 	Trade.Desire(bot)
 	check("the walk read for a chance is taken once per target per 15 s (frames at 100, 100.5, 110: one read; 116: a second)",
-		early == 1 and world.gateReads == 2, tostring(early) .. "/" .. tostring(world.gateReads))
+		early == 1 and world.walkAsks == 2, tostring(early) .. "/" .. tostring(world.walkAsks))
 	Plays.Roll = roll
 	world.share["1>6"], world.share["6>1"] = 30, 10
 end

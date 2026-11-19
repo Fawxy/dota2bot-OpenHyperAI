@@ -189,7 +189,7 @@ local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
 local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
 local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
@@ -1023,7 +1023,7 @@ local function schedule(bot, now)
         local center = spawner ~= nil and Camps.BoxCenter(spawner) or nil
         local ____temp_6
         if center ~= nil then
-            ____temp_6 = Threat.Gate(bot, center, center, "farm_trip").why
+            ____temp_6 = SafeGather.TripGate(bot, center, "farm_trip", center).why
         else
             ____temp_6 = nil
         end

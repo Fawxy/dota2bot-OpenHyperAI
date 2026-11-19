@@ -18,6 +18,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Busy from "bots/FunLib/humaniser/transitions/busy";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Rotation from "bots/FunLib/humaniser/transitions/rotation";
@@ -45,8 +46,6 @@ const LATE_BY = 15;
 const PICKUP_FOR = 20;
 /** Walking paths are longer than the straight line (transitions settings PathFactor). */
 const PATH_FACTOR = 1.2;
-const DANGER_RADIUS = 1200;
-const DANGER_HP = 0.5;
 
 const WISDOM_POSITIONS: Record<number, boolean> = { [4]: true };
 const WISDOM_IGNORES: Record<string, boolean> = { "lane pushed": true, "enemy missing": true };
@@ -124,12 +123,10 @@ export function LeaveAt(bot: Unit, spawn: number): number | undefined {
     return J.runeArriveBy(u, plan) - (d * PATH_FACTOR) / math.max(1, bot.GetCurrentMovementSpeed());
 }
 
-function danger(bot: Unit): string | undefined {
-    const enemies = bot.GetNearbyHeroes(DANGER_RADIUS, true, BotMode.None) ?? [];
-    const allies = bot.GetNearbyHeroes(DANGER_RADIUS, false, BotMode.None) ?? [];
-    if (enemies.length > allies.length) return "outnumbered";
-    if (bot.WasRecentlyDamagedByAnyHero(2) && bot.GetHealth() / math.max(1, bot.GetMaxHealth()) < DANGER_HP) return "damaged";
-    return undefined;
+/** The walk to the shrine is `deadly` (Safe.At, 4 s, away; a trip already under way is `held`): its reason (`kill`, `tower`, `unknown`), else undefined. */
+function danger(bot: Unit, held: boolean = false): string | undefined {
+    const a = SafeGather.At(bot, ShrineFor(bot.GetTeam()), { horizon: SafeGather.WalkHorizon, away: true, held, who: "wisdom" });
+    return a.level === "deadly" ? a.reason : undefined;
 }
 
 const gateNoted: Record<number, string | undefined> = {};
@@ -324,7 +321,7 @@ export function Spec(
             if (owned === undefined || owned(bot, NAME)) return Ours.On("RuneRotation") && Ours.On("JobChooser") ? undefined : scoreAny(bot);
             return shadow !== undefined ? shadow(bot) : undefined;
         },
-        guard: () => danger(bot),
+        guard: () => danger(bot, true),
         // (A power trip whose rotation OHA called off ends from inside its body: `over`.)
         onEnd: (r, info) => ended(bot, r, info),
         body: (ctx) => body(bot, ctx),

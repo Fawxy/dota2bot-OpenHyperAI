@@ -10,9 +10,9 @@ world:
   pid: 9
   role: support
   hp: 0.867
-  bu: 0
+  svh: "safe,-,safe"
+  svb: "safe,-,safe"
   n: 1
-  mi: 0
   tm: 0
   hc: 0
   cr: 0

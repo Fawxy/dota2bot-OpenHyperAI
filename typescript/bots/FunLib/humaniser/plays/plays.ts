@@ -11,6 +11,7 @@ import { Unit, Vector } from "bots/ts_libs/dota";
 import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import type { Level } from "bots/FunLib/humaniser/safe";
 
 export type Kind = string;
 
@@ -97,6 +98,11 @@ export interface Inputs {
     reach?: number;
     /** The initiator's skill (the difficulty model): a sure play commits with chance Curve SureCommit of it. */
     skill: number;
+    /**
+     * A joiner's own walk to the play's place, as `Safe.At` answers it (4 s, away, with a hold): given, a `deadly` answer is the hero's hard zero
+     * (its reason) and the head count and HP floor zeros are not applied, since the answer's kill line already holds both. The count factor stays.
+     */
+    walk?: { level: Level; reason: string };
 }
 
 /**
@@ -151,18 +157,21 @@ export function Weigh(i: Inputs): Weight {
     const chases = def?.chases === true;
     const tower = chases && i.tower < s.TowerZero ? 0 : chases && i.tower < s.TowerNear ? s.TowerFactor : 1;
     const forecast = i.forecast !== undefined ? clamp(i.forecast, s.ForecastClamp[0], s.ForecastClamp[1]) : 1;
+    const joiner = i.walk !== undefined;
     const zero =
         def === undefined
             ? "unknown-kind"
-            : i.hp < s.HpFloor
-              ? "hp"
-              : up <= -2
-                ? "outnumbered"
-                : tower === 0
-                  ? "tower"
-                  : def.zero !== undefined
-                    ? def.zero(i)
-                    : undefined;
+            : i.walk?.level === "deadly"
+              ? i.walk.reason
+              : !joiner && i.hp < s.HpFloor
+                ? "hp"
+                : !joiner && up <= -2
+                  ? "outnumbered"
+                  : tower === 0
+                    ? "tower"
+                    : def.zero !== undefined
+                      ? def.zero(i)
+                      : undefined;
     const w = zero !== undefined ? 0 : clamp(def!.base * level * count * hp * target * rune * tower * forecast, 0, s.MaxWeight);
     const sure = zero === undefined && def!.sure !== undefined ? def!.sure(i) : undefined;
     const commit = sure !== undefined ? LaneConfig.Curve("SureCommit", i.skill) : undefined;

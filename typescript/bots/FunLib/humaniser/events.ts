@@ -1571,7 +1571,8 @@ export const EVENTS = {
         reason: "str",
         mid: "num",
     },
-    /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision, place, horizon (s), threat,
+    /** Slice threat: one consumer's decision on a threat read (threat.ts Log): consumer, decision (`go`, or since oha-safe-rest the trip gate's Safe.At
+     *  reason when it held: `kill`, `tower`, `unknown`; older logs `threat`, `missing`), place, horizon (s), threat,
      *  band, heroes in reach and their pids, burst (share of HP), allies in reach, tower, missing weight sum, its pids and the
      *  longest unseen (s), mcut the unseen heroes dropped because the walk within their reach is in sight, the bot's HP share;
      *  dep the place's depth between the teams' towers (0 ours, 1 theirs), which scales the belief. */
@@ -2981,18 +2982,21 @@ export const EVENTS = {
          * kind=trade (states/trade.ts, the one trade decision: D18, D19, D24, D10; driver `trade`; named `trade2` on logs from before the old
          * one went): every decision's inputs and answer,
          * logged when the answer changes, every 0.5 s while an exchange runs, else every 2 s, to 12:00. `role` is `core` or `support` by
-         * position, logged and never read. `hp` our HP share, `bu` `n` `mi` the threat read here (their damage on us over our HP, the enemy
-         * heroes that reach us, the unseen weight), `tm` 1 when a tower attacks us, `hc` enemy creeps attacking us (a tower counts 2), `cr` enemy
+         * position, logged and never read. `hp` our HP share, `svh` and `svb` `Safe.At` here (held; `svh` without a hold, for a hit, `svb` with one, for
+         * a hit back, kill and join) as `level,ratio,reason` (ratio of our HP to the kill line, `-` when nothing reaches), `n` the enemy heroes within 1,600
+         * (older lines `bu` `n` `mi`: the threat read here), `tm` 1 when a tower attacks us, `hc` enemy creeps attacking us (a tower counts 2), `cr` enemy
          * lane creeps within 500, `dn` 1 when a deny is due, `ms` our movement speed (absent on older lines: Decide reads 300).
          */
         n: "num",
         mi: "num",
+        svh: "str",
+        svb: "str",
         /** kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
         pjr: "str",
         /**
          * kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
-         * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk read
-         * wb, wn, wm (burst, heroes, unseen weight; `-` when not asked), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
+         * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk answer
+         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back).
          */
         cd: "str",
         /**

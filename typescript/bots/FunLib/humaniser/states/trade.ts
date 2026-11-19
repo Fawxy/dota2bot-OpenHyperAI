@@ -21,15 +21,15 @@ import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
+import * as Safe from "bots/FunLib/humaniser/safe";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 
 export type Level = "none" | "hit" | "hitback" | "kill" | "join";
 export type Source = "pair" | "play";
 
 /**
- * Every number the decision owns, with its source. The burst and HP bars live in `Threat.SETTINGS` (StandBurst 1 / PackBurst
- * 0.5 and StandHp 0.5 / PackHp 0.7, banked h2hstand1) and the unseen bar is its `MissingRefuse` (0.5, the 425 graded rows):
- * read at call time, not copied.
+ * Every number the decision owns, with its source. Whether a place can be stood at is `Safe.At`'s answer (its bars live in
+ * `safe.ts`): a `deadly` answer vetoes a level, `costly` and `safe` pass.
  */
 const BARS = {
     /** A target at this HP share or less is a kill candidate. Banked `@lane_encounters` on cil5, lposchk3, sspotchk1: 11 kills and no deaths per 100 encounters with the lowest enemy at 40% or less, 1.8 and 1.8 at 41-70%. */
@@ -39,9 +39,7 @@ const BARS = {
     waveKill: 5,
     /** Enemy creeps attacking us (a tower counts 2) at which a hit or hit back is vetoed: already tanking (`judgement`). */
     creeps: 2,
-    /** A running exchange's slack on its own bars: HP share, burst, and one more creep in the wave (`judgement`). */
-    slackHp: 0.05,
-    slackBurst: 0.05,
+    /** A running exchange's slack on its own bars: one more creep in the wave (`judgement`). */
     slackWave: 1,
     /** `losing`: HP share lost beyond the target's since our first landed hit (LOSING_BY, user 03/11/2026), and before it (UNLANDED_CAP, banked h2hhighhit2: 42 of 50 no-damage `losing` ends had lost under 120 HP). */
     losing: 0.05,
@@ -71,11 +69,14 @@ const BARS = {
     chase: 30,
 };
 
-export interface Read3 {
-    burst: number;
-    n: number;
-    missing: number;
+/** `Safe.At`'s answer as the decision reads it: the level, the ratio of our HP to the kill line (logged only) and the reason (`kill`, `tower`, `unknown` when deadly). */
+export interface Say {
+    level: Safe.Level;
+    ratio: number;
+    reason: string;
 }
+
+const sayOf = (a: Safe.Answer): Say => ({ level: a.level, ratio: a.ratio, reason: a.reason });
 
 /** One hero of ours on the target, as the catch read sees it. */
 export interface Hunter {
@@ -164,8 +165,8 @@ interface Cand {
     paid: boolean;
     /** Our attack point on it is inside an enemy tower's reach. */
     tw: boolean;
-    /** The threat read along the walk to it over `Threat.SETTINGS.GateHorizon`, asked for a kill or join; absent: the read here stands in. */
-    walk?: Read3;
+    /** `Safe.At` along the walk to it (`SafeGather.WalkHorizon`, away, hold), asked for a kill or join; absent: the answer here (hold) stands in. */
+    walk?: Say;
     /** The catch read on it, asked for a kill candidate; absent: no kill. */
     catch?: Catch;
     /** The hunters behind `catch`, kept for the cut line only. */
@@ -203,10 +204,10 @@ export interface Inputs {
     hp: number;
     /** Our movement speed. */
     ms: number;
-    /** The threat read here over `StayHorizon` (a hitter over `StayEngaged`): their damage on us over our HP, the enemy heroes that reach us, the unseen weight. */
-    burst: number;
+    /** `Safe.At` here over `StayHorizon`, held: for a hit (no hold) and for the levels that carry a hold (hit back, kill, join). Logged and replayed as the answers. */
+    safe: { hit: Say; hold: Say };
+    /** Enemy heroes within `CAND_RADIUS`: logged as the exchange's head count. */
     n: number;
-    missing: number;
     /** A tower is attacking us. */
     towerOnMe: boolean;
     /** Enemy lane creeps attacking us (a tower counts 2), and enemy lane creeps within 500. */
@@ -252,9 +253,6 @@ interface Pick {
     rank: number;
 }
 
-const burstBar = (n: number): number => (n >= 2 ? Threat.SETTINGS.PackBurst : Threat.SETTINGS.StandBurst);
-const hpBar = (n: number): number => (n >= 2 ? Threat.SETTINGS.PackHp : Threat.SETTINGS.StandHp);
-
 function pairOn(i: Inputs, c: Cand): boolean {
     return i.pair !== undefined && i.pair.tgt === c.pid && i.pair.ko > i.pair.kt;
 }
@@ -275,12 +273,10 @@ function catchState(i: Inputs, run: Run, ok: boolean): { fails: number; at?: num
 function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | undefined, run: Run | undefined): string | undefined {
     if (i.towerOnMe || c.tw) return "tower";
     const walks = level === "kill" || level === "join";
-    const r: Read3 = walks && c.walk !== undefined ? c.walk : { burst: i.burst, n: i.n, missing: i.missing };
     const slack = run !== undefined;
-    if (r.burst >= burstBar(r.n) + (slack ? BARS.slackBurst : 0)) return "burst";
-    if (!walks && i.hp < hpBar(i.n) - (slack ? BARS.slackHp : 0)) return "hp";
+    const say = walks && c.walk !== undefined ? c.walk : level === "hit" ? i.safe.hit : i.safe.hold;
+    if (say.level === "deadly") return say.reason;
     if (!walks && c.lost === true) return "lost";
-    if (walks && r.missing >= Threat.SETTINGS.MissingRefuse) return "missing";
     const wave = slack ? BARS.slackWave : 0;
     if (level === "kill") {
         const cs = c.catch;
@@ -440,17 +436,15 @@ function noneReason(rest: { c: Cand; p: Pick }[], ended: string | undefined): st
 }
 
 /**
- * What holds retreat (design section 1, "Hold"), over the inputs (`Holds` reads them for a hero): `hitback` while some hitter passes tower, burst and HP and is either paid or
+ * What holds retreat (design section 1, "Hold"), over the inputs (`Holds` reads them for a hero): `hitback` while some hitter passes tower and the held here answer (hold) is not `deadly` and is either paid or
  * free or favoured, whatever the swing is doing (a due deny, creeps and the wave change the swing, not the hold); `join`
  * while some candidate is a pair join. Undefined: retreat decides alone.
  */
 export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     const run = i.run;
     for (const c of i.cands) {
-        const slack = run !== undefined && run.target === c.pid ? run : undefined;
         if (!c.hitting || c.lost === true || i.towerOnMe || c.tw) continue;
-        if (i.burst >= burstBar(i.n) + (slack !== undefined ? BARS.slackBurst : 0)) continue;
-        if (i.hp < hpBar(i.n) - (slack !== undefined ? BARS.slackHp : 0)) continue;
+        if (i.safe.hold.level === "deadly") continue;
         if (c.paid || c.free || c.ko > c.kt) return "hitback";
     }
     for (const c of i.cands) {
@@ -675,7 +669,8 @@ type RunState = Omit<Run, "alive" | "chaseAt" | "unseen" | "catch">;
 export function Gather(bot: Unit, rs?: RunState): Inputs {
     const now = DotaTime();
     const here = bot.GetLocation();
-    const stay = Threat.Read(bot, here, here, Threat.SETTINGS.StayHorizon, { engagedWindow: Threat.SETTINGS.StayEngaged });
+    const safeHit = SafeGather.At(bot, here, { held: true, hold: false, who: "trade" });
+    const safeHold = SafeGather.At(bot, here, { held: true, hold: true });
     let wave = 0;
     let creepsOnMe = 0;
     for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, true)) {
@@ -694,7 +689,6 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             towerOnMe = true;
         }
     }
-    const walkOf = Threat.Reader(bot, Threat.SETTINGS.GateHorizon);
     const bpid = bot.GetPlayerID();
     const pairRead = PairJoin.For(bot);
     let pair: Inputs["pair"] = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.ans.tgt !== -1
@@ -711,8 +705,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const ms = bot.GetCurrentMovementSpeed();
     const cands: Cand[] = [];
     let runSeen = false;
-    // The walk read the safe-here shadow logs: the running exchange's, else the pair's target, else the play's, else the first asked.
-    let shadowWalk: { r: Threat.Read; rank: number; hold: boolean } | undefined;
+    // The walk answer logged as `trade_walk`: the running exchange's, else the first candidate asked.
+    let walkLogged: boolean = false;
     for (const h of bot.GetNearbyHeroes(CAND_RADIUS, true, BotMode.None)) {
         if (!valid(h)) continue;
         const pid = h.GetPlayerID();
@@ -749,10 +743,9 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         lastHandles[pid] = h;
         const asked = thp <= BARS.commitHp || (pair !== undefined && pair.tgt === pid) || (play !== undefined && play.tgt === pid) || isRun;
         if (asked) {
-            const r = walkOf(here, at);
-            c.walk = { burst: r.burst, n: r.reach.length, missing: r.missing };
-            const rank = isRun ? 3 : pair !== undefined && pair.tgt === pid ? 2 : play !== undefined && play.tgt === pid ? 1 : 0;
-            if (shadowWalk === undefined || rank > shadowWalk.rank) shadowWalk = { r, rank, hold: rank >= 2 && (isRun ? rs!.level === "join" : true) };
+            const named: boolean = isRun || (rs === undefined && !walkLogged);
+            walkLogged = walkLogged || named;
+            c.walk = sayOf(SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, who: named ? "trade_walk" : undefined }));
         }
         if (thp <= BARS.commitHp || (isRun && rs!.level === "kill")) {
             const ls: LastSeen = {
@@ -773,9 +766,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const i: Inputs = {
         now,
         hp: frac(bot),
-        burst: stay.burst,
-        n: stay.reach.length,
-        missing: stay.missing,
+        safe: { hit: sayOf(safeHit), hold: sayOf(safeHold) },
+        n: cands.length,
         ms,
         towerOnMe,
         creepsOnMe,
@@ -790,9 +782,6 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         if (pc !== undefined) i.play.zero = FightZero(i, pc);
     }
     if (rs !== undefined) i.run = runOf(bot, rs, runSeen, here);
-    // Shadow of the safe-here read (ev=cut kind=safe) on the reads above; HoldsOf is asked only when the shadow runs.
-    SafeGather.Shadow(bot, "trade", stay, { away: false, held: rs !== undefined, hold: () => HoldsOf(i) !== undefined });
-    if (shadowWalk !== undefined) SafeGather.Shadow(bot, "trade_walk", shadowWalk.r, { away: true, held: rs !== undefined, hold: shadowWalk.hold });
     return i;
 }
 
@@ -810,11 +799,11 @@ function runOf(bot: Unit, rs: RunState, seen: boolean, here: Vector): Run {
     const hull = ls?.hull ?? 0;
     const known = ls !== undefined;
     const lsr: LastSeen = ls ?? { vx: 0, vy: 0, physF: 1, magF: 1, hull: 0, thpAbs: 0 };
-    const r = Threat.Read(bot, here, place, Threat.SETTINGS.GateHorizon, { exclude: rs.target });
+    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, exclude: rs.target });
     run.unseen = {
         at: distXY(here, place) <= bot.GetBoundingRadius() + hull + AT_PLACE,
         tower: towerCovers(bot, here, place),
-        threat: r.mpids.length > 0 && r.missing >= Threat.SETTINGS.MissingRefuse,
+        threat: walk.level === "deadly",
     };
     run.catch = CatchRead(huntersOf(bot, place, lsr, rs.target, false, known), lsr.thpAbs, safeTime(bot, place, lsr, rs.target, false, known));
     return run;
@@ -835,7 +824,11 @@ function playFor(bot: Unit, here: Vector): Inputs["play"] {
     const pick = (p: Plays.Play): Inputs["play"] => {
         const t = p.target;
         if (!valid(t)) return undefined;
-        return { id: p.id, kind: p.kind, tgt: p.tgt, zero: Plays.Weigh(Plays.InputsOf({ kind: p.kind, by: bot, target: t, at: t.GetLocation() })).zero };
+        const at = t.GetLocation();
+        const walk = SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, who: "play" });
+        const inputs = Plays.InputsOf({ kind: p.kind, by: bot, target: t, at });
+        inputs.walk = { level: walk.level, reason: walk.reason };
+        return { id: p.id, kind: p.kind, tgt: p.tgt, zero: Plays.Weigh(inputs).zero };
     };
     if (mine !== undefined) return mine.by === bot && mine.kind !== LANE_FIGHT ? undefined : pick(mine);
     for (const p of Plays.Near(here, CAND_RADIUS)) {
@@ -846,11 +839,11 @@ function playFor(bot: Unit, here: Vector): Inputs["play"] {
     return undefined;
 }
 
-/** Why a lane fight on this candidate is off the table, whoever starts it: their tower, their burst along the walk, a big wave. */
+/** Why a lane fight on this candidate is off the table, whoever starts it: their tower, the walk's answer (`kill`, `unknown`), a big wave. */
 export function FightZero(i: Inputs, c: Cand): string | undefined {
     if (i.towerOnMe || c.tw) return "tower";
-    const r: Read3 = c.walk ?? { burst: i.burst, n: i.n, missing: i.missing };
-    if (r.burst >= burstBar(r.n)) return "burst";
+    const say = c.walk ?? i.safe.hold;
+    if (say.level === "deadly") return say.reason;
     if (i.wave > BARS.waveKill) return "wave";
     return undefined;
 }
@@ -885,15 +878,19 @@ function candText(c: Cand, ms: number): string {
         round6(c.kt),
         c.paid ? 1 : 0,
         c.tw ? 1 : 0,
-        or(w !== undefined ? round6(w.burst) : undefined),
-        or(w?.n),
-        or(w !== undefined ? round6(w.missing) : undefined),
+        or(w?.level),
+        or(w !== undefined ? sayRatio(w) : undefined),
+        or(w?.reason),
         or(bit(k?.ok)),
         or(k !== undefined ? math.floor(k.dmg + 0.5) : undefined),
         or(k !== undefined ? round6(k.safe) : undefined),
         c.lost === true ? 1 : 0,
     ].join(",");
 }
+
+/** The ratio of a `Say` to six places; `-` when nothing can reach (`math.huge`). */
+const sayRatio = (s: Say): number | string => (s.ratio === math.huge ? "-" : round6(s.ratio));
+const sayText = (s: Say): string => [s.level, sayRatio(s), s.reason].join(",");
 
 function huntersText(hs: Hunter[]): string {
     const out: string[] = [];
@@ -953,9 +950,9 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["kind", "trade"],
         ["role", pos !== undefined && pos >= 4 ? "support" : "core"],
         ["hp", round6(i.hp)],
-        ["bu", round6(i.burst)],
+        ["svh", sayText(i.safe.hit)],
+        ["svb", sayText(i.safe.hold)],
         ["n", i.n],
-        ["mi", round6(i.missing)],
         ["ms", math.floor(i.ms)],
         ["tm", i.towerOnMe ? 1 : 0],
         ["hc", i.creepsOnMe],
@@ -1400,10 +1397,7 @@ function chanceTarget(bot: Unit, i: Inputs, a: Answer, now: number): Unit | unde
     else for (const x of i.cands) if (c === undefined || x.d < c.d) c = x;
     const t = c !== undefined ? lastHandles[c.pid] : undefined;
     if (c === undefined || t === undefined || !rollDue(bot, c.pid, now)) return undefined;
-    if (c.walk === undefined) {
-        const r = Threat.Read(bot, bot.GetLocation(), t.GetLocation(), Threat.SETTINGS.GateHorizon);
-        c.walk = { burst: r.burst, n: r.reach.length, missing: r.missing };
-    }
+    if (c.walk === undefined) c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true }));
     return FightZero(i, c) === undefined ? t : undefined;
 }
 

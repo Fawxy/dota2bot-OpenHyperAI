@@ -128,6 +128,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Busy = require(GetScriptDirectory().."/FunLib/humaniser/transitions/busy")
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local Rotation = require(GetScriptDirectory().."/FunLib/humaniser/transitions/rotation")
@@ -213,8 +214,6 @@ local LATE_BY = 15
 local PICKUP_FOR = 20
 --- Walking paths are longer than the straight line (transitions settings PathFactor).
 local PATH_FACTOR = 1.2
-local DANGER_RADIUS = 1200
-local DANGER_HP = 0.5
 local WISDOM_POSITIONS = {[4] = true}
 local WISDOM_IGNORES = {["lane pushed"] = true, ["enemy missing"] = true}
 local trips = {}
@@ -279,19 +278,17 @@ function ____exports.LeaveAt(bot, spawn)
         bot:GetCurrentMovementSpeed()
     )
 end
-local function danger(bot)
-    local enemies = bot:GetNearbyHeroes(DANGER_RADIUS, true, BotMode.None) or ({})
-    local allies = bot:GetNearbyHeroes(DANGER_RADIUS, false, BotMode.None) or ({})
-    if #enemies > #allies then
-        return "outnumbered"
+--- The walk to the shrine is `deadly` (Safe.At, 4 s, away; a trip already under way is `held`): its reason (`kill`, `tower`, `unknown`), else undefined.
+local function danger(bot, held)
+    if held == nil then
+        held = false
     end
-    if bot:WasRecentlyDamagedByAnyHero(2) and bot:GetHealth() / math.max(
-        1,
-        bot:GetMaxHealth()
-    ) < DANGER_HP then
-        return "damaged"
-    end
-    return nil
+    local a = SafeGather.At(
+        bot,
+        ____exports.ShrineFor(bot:GetTeam()),
+        {horizon = SafeGather.WalkHorizon, away = true, held = held, who = "wisdom"}
+    )
+    return a.level == "deadly" and a.reason or nil
 end
 local gateNoted = {}
 --- ev=wisdom_gate: why the pos 4 is past its leave time but not going, once per fill and reason.
@@ -387,7 +384,7 @@ local powerBody = __TS__Generator(function(bot, ctx, d)
     ctx.label("wait")
     while true do
         do
-            local __continue34
+            local __continue32
             repeat
                 if not bot:IsAlive() then
                     return ctx.fail("dead")
@@ -405,7 +402,7 @@ local powerBody = __TS__Generator(function(bot, ctx, d)
                             Intent.Hold(bot, "lane:rune_hold")
                         end
                         coroutine.yield()
-                        __continue34 = true
+                        __continue32 = true
                         break
                     end
                     ctx.label("pickup")
@@ -420,9 +417,9 @@ local powerBody = __TS__Generator(function(bot, ctx, d)
                     Intent.Hold(bot, "lane:rune_wait")
                 end
                 coroutine.yield()
-                __continue34 = true
+                __continue32 = true
             until true
-            if not __continue34 then
+            if not __continue32 then
                 break
             end
         end
@@ -507,7 +504,7 @@ function ____exports.Spec(bot, owned, shadow)
             end
             return ____temp_6
         end,
-        guard = function() return danger(bot) end,
+        guard = function() return danger(bot, true) end,
         onEnd = function(r, info) return ended(bot, r, info) end,
         body = function(ctx) return body(bot, ctx) end
     }

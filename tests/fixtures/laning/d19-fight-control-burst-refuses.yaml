@@ -10,9 +10,9 @@ world:
   pid: 9
   role: core
   hp: 0.601
-  bu: 1.094
+  svh: "deadly,0.91,kill"
+  svb: "deadly,0.91,kill"
   n: 1
-  mi: 0
   tm: 0
   hc: 1
   cr: 3
@@ -20,11 +20,13 @@ world:
   cd: 4,0.955,-,658,-115,0,1,0,0,0.369,1.19,0,0,-,-,-,-,-,-,0
 expect:
   must:
-    - none(burst)
-    - chance(burst)
+    - none(kill)
+    - chance(kill)
   mustNot:
     - chance(roll)
 notes: |-
   Control, the opposite rule D1 (h2htick1 B_dire_2, 5:09.8, our mid pid 9): 60% HP against 96%, one hero each, three creeps, one on us; their burst in reach is 1.09 of our HP. Their hits can kill us, so no lane fight is offered (`burst`), as harass refuses it. Same HP gap as lane.fight.safe-behind.001, which rolls on a low burst.
 
   Rewritten for the one trade decision (oha-trade step 5): the world is the cut's inputs in the new record (cd: 4's HP, distance, gap past our reach 773, hitting 0, free 0, ko, kt; tower attack point 0 and the tower on us in tm; arrives 1, not paid, not lost: the old cut did not log those). Answer now: none(burst) and the lane-fight chance zeroed `burst` (Trade.FightZero). Old expectation: mustNot fight(roll), acceptable fight(burst): same.
+
+  Rewritten for oha-safe-rest part 1: Safe.At's answer here is deadly(kill) (HP over the kill line 0.91, from the old burst 1.094); the reason is `kill`, formerly `burst`, for the hit and for the chance's zero (Trade.FightZero).

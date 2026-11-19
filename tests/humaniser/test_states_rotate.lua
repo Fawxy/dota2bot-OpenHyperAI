@@ -140,19 +140,32 @@ do
 	check("unowned: no task, no moves", #events(lines, "state_start") == 0 and #ActionsOf(4, "MoveToLocation") == 0)
 end
 
--- Enemies outnumber the pos 4 on the way: the guard ends the trip and it is not retried for this fill.
+-- Two enemies that can kill the pos 4 on the way (Safe.At deadly): the guard ends the trip and it is not retried for this fill.
 do
 	local w = world()
 	local lines = capture(function()
 		while T < 405 do frame(w, w.p4) end
 		-- GetNearbyHeroes counts the bot itself among its allies, as the rune mode's own outnumbered gate does.
+		hero({ pid = 10, team = 3, pos = 3, lane = Lane.Top, loc = Vector(w.p4.loc.x + 300, w.p4.loc.y) }).estDamage = 600
+		hero({ pid = 11, team = 3, pos = 4, lane = Lane.Top, loc = Vector(w.p4.loc.x + 350, w.p4.loc.y) }).estDamage = 600
+		while T < 440 do frame(w, w.p4) end
+	end)
+	local ev = events(lines, "wisdom")[1]
+	check("danger: trip abandoned as deadly (kill)", ev ~= nil and ev:find("reason=kill", 1, true) ~= nil, ev)
+	check("danger: not retried", #events(lines, "state_start") == 1)
+end
+
+-- Control: the same two enemies dealing nothing do not stop the trip (they used to, as outnumbered).
+do
+	local w = world()
+	local lines = capture(function()
+		while T < 405 do frame(w, w.p4) end
 		hero({ pid = 10, team = 3, pos = 3, lane = Lane.Top, loc = Vector(w.p4.loc.x + 300, w.p4.loc.y) })
 		hero({ pid = 11, team = 3, pos = 4, lane = Lane.Top, loc = Vector(w.p4.loc.x + 350, w.p4.loc.y) })
 		while T < 440 do frame(w, w.p4) end
 	end)
 	local ev = events(lines, "wisdom")[1]
-	check("danger: trip abandoned as outnumbered", ev ~= nil and ev:find("reason=outnumbered", 1, true) ~= nil, ev)
-	check("danger: not retried", #events(lines, "state_start") == 1)
+	check("danger control: two enemies that cannot kill: the trip is not abandoned for danger", ev == nil or ev:find("reason=kill", 1, true) == nil, ev)
 end
 
 -- While the pos 4 is on its trip the shrine is taken for the team (OHA's wisdom logic skips it for everyone).

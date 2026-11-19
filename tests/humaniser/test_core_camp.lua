@@ -339,13 +339,18 @@ do
 	check("off: CoreCamp does not own the core", not H.CoreCamp.Owns(core))
 end
 
--- An enemy hero by the camp: the walk would meet it, so no trip; one skip line for the window, naming the threat.
+-- An enemy hero by the camp that can kill us on the walk (Safe.At deadly): no trip; one skip line for the window, naming the reason.
+-- The same hero dealing no damage is no reason (control).
 do
-	local H, core = world({ camps = { { "small", SMALL } }, enemyAt = Vector(300, -6600) })
+	local H, core, _, enemy = world({ camps = { { "small", SMALL } }, enemyAt = Vector(300, -6600) })
+	enemy.estDamage = 5000
 	local out = run(H, core, 305)
 	local skips = lines(out, "core_camp", "skip")
 	check("threat at the camp: no trip", #lines(out, "core_camp", "start") == 0)
-	check("threat at the camp: one skip line for the window, why=threat", #skips == 1 and field(skips[1], "why") == "threat", #skips)
+	check("threat at the camp: one skip line for the window, why=kill", #skips == 1 and field(skips[1], "why") == "kill", #skips)
+	local H2, core2 = world({ camps = { { "small", SMALL } }, enemyAt = Vector(300, -6600) })
+	local out2 = run(H2, core2, 305)
+	check("a hero in reach that cannot kill: the trip starts", #lines(out2, "core_camp", "start") == 1, table.concat(lines(out2, "core_camp"), " | "))
 end
 
 -- The gate tally: each planning second of a minute counted by what held it, flushed when the minute turns.
@@ -366,6 +371,7 @@ do
 		if camp[1].hp < camp[1].maxhp and camp[1].maxhp ~= 5000 then camp[1].hp, camp[1].maxhp = 5000, 5000 end
 		if cameAt == nil and H.CoreCamp.Running(core) and camp[1].maxhp == 5000 then
 			enemy.loc = Vector(core.loc.x + 300, core.loc.y)
+			enemy.estDamage = 5000
 			cameAt = T
 		elseif cameAt ~= nil and enemy.loc.x ~= 6000 then
 			enemy.loc = Vector(core.loc.x + 300, core.loc.y)
@@ -482,7 +488,7 @@ for _, pos in ipairs({ 1, 3 }) do
 	local out = run(H, core, 302)
 	local skips = lines(out, "core_camp", "skip")
 	check("missing pos" .. pos .. ": an unseen enemy near the camp holds the trip", #lines(out, "core_camp", "start") == 0)
-	check("missing pos" .. pos .. ": one skip line, why=missing nmiss=1", #skips == 1 and field(skips[1], "why") == "missing" and field(skips[1], "nmiss") == "1", skips[1])
+	check("missing pos" .. pos .. ": one skip line, why=unknown nmiss=1", #skips == 1 and field(skips[1], "why") == "unknown" and field(skips[1], "nmiss") == "1", skips[1])
 end
 
 do
@@ -655,13 +661,14 @@ for _, case in ipairs({ "none", "missing", "threat" }) do
 			LAST_SEEN[enemy.pid] = { location = Vector(-4000, -6200), time_since_seen = 10 }
 		elseif case == "threat" then
 			enemy.loc = Vector(-1500, -6500)
+			enemy.estDamage = 5000
 		end
 	end)
 	local nexts, holds, ended = lines(out, "core_camp", "next"), lines(out, "core_camp", "nexthold"), lines(out, "core_camp", "end")[1]
 	if case == "none" then
 		check("chain: with no hold the next camp is taken", #nexts == 1 and field(nexts[1], "camp") == "2" and #holds == 0, nexts[1] or ended)
 	else
-		check("chain " .. case .. ": the next camp is held, why=" .. case, #nexts == 0 and #holds == 1 and field(holds[1], "why") == case and field(holds[1], "camp") == "2" and field(holds[1], "after") == "cleared", holds[1] or nexts[1])
+		check("chain " .. case .. ": the next camp is held, why=" .. (case == "missing" and "unknown" or "kill"), #nexts == 0 and #holds == 1 and field(holds[1], "why") == (case == "missing" and "unknown" or "kill") and field(holds[1], "camp") == "2" and field(holds[1], "after") == "cleared", holds[1] or nexts[1])
 		check("chain " .. case .. ": the core walks back after the first camp", ended ~= nil and field(ended, "camps") == "1" and field(ended, "camp") == "1" and camp[2].hp > 0, ended)
 		if case == "missing" then check("chain missing: nmiss, mtss and mpid on the hold", holds[1] ~= nil and field(holds[1], "nmiss") == "1" and field(holds[1], "mtss") == "10" and field(holds[1], "mpid") == "10", holds[1]) end
 	end

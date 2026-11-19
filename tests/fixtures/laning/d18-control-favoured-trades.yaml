@@ -10,9 +10,9 @@ world:
   pid: 3
   role: core
   hp: 1
-  bu: 0.205
+  svh: "safe,4.88,safe"
+  svb: "safe,4.88,safe"
   n: 1
-  mi: 0
   tm: 0
   hc: 0
   cr: 1
