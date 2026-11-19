@@ -83,6 +83,17 @@ check("nobody hitting, a fresh place: the bar is 1.15 (ratio 1.2 safe, 1.1 deadl
 		and is(S.Decide(inputs({ reach = { one(630 / 2.4, { hitting = true }), one(630 / 2.4, { pid = 4 }) }, held = true })), "deadly", "kill")
 		and is(S.Decide(inputs({ reach = { one(630 / 2.4), one(630 / 2.4, { pid = 4 }) }, held = true })), "safe"))
 
+-- The reviewer's case: a laner's swings are over a second apart, so between them no reacher is `hitting`. `pressed` (a hero damaged us
+-- in the last 3 s) holds the bar at 1.25 across the gap; a bar on `hitting` alone read safe there and sent the hero back in.
+check("between swings (pressed, nobody hitting) ratio 1.1 held is still deadly and a fresh place at 1.3 too; with neither both are safe",
+	is(S.Decide(inputs({ reach = { one(630 / 1.1) }, held = true, pressed = true })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.3) }, pressed = true })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.1) }, held = true, pressed = false })), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.3) }, pressed = false })), "safe"))
+
+check("Line: the stay bar under a hero's hits, the lower of it and idle without; a stay under idle is never raised",
+	S.Line(true) == 1.25 and S.Line(false) == 1.0 and S.Line(false, 2.0) == 1.0 and S.Line(true, 2.0) == 2.0 and S.Line(false, 0.8) == 0.8)
+
 do
 	local none = S.Decide(inputs())
 	check("nothing in reach: kill 0, ratio math.huge, safe even at zero HP-share concerns",

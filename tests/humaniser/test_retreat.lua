@@ -130,6 +130,26 @@ do
 	check("engaged: the episode does not end safe while he still hits us", running(bot) and #lines(out, "retreat") == 1, #lines(out, "retreat"))
 end
 
+-- Between a laner's swings: 115 a second against 600 HP is 690 over 6 s on the hit (ratio 0.87, lethal) and 460 over 4 s once the 1 s
+-- engaged flag lapses (ratio 1.30). The hero stays pressed for 3 s after the hit, so the episode does not end at the idle stop bar (1.15)
+-- in the gap and walk back into the next swing; with no hit for longer than that it does.
+do
+	local H, bot = world()
+	noHold()
+	local e = enemy(10, Vector(300, -5000), 0)
+	e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 115 * dur end
+	bot.hitBy, bot.heroHitAt = { [e] = T }, T
+	local out = capture(function()
+		check("swing gap: the hit starts the episode", H.Retreat.Desire(bot) == 0.95)
+		T = T + 1.5
+		check("swing gap: 1.5 s after the hit, nobody hitting, ratio 1.30 does not end it (pressed: the stop bar is still 1.44)", H.Retreat.Desire(bot) == 0.95)
+		T = T + 2
+		check("swing gap: 3.5 s after the last hit it ends (idle stop bar 1.15)", H.Retreat.Desire(bot) == 0)
+	end)
+	local l = lines(out, "retreat")
+	check("swing gap: one episode, res=safe", #l == 2 and field(l[#l], "res") == "safe", #l)
+end
+
 -- The hit back (D24) and the join (D10) hold a deadly place down to Safe.BARS.hold (ratio 1.0): Trade.Holds is asked only when the
 -- answer is deadly by the kill line and not under that; under it the hero leaves `lethal` whatever Holds says.
 do

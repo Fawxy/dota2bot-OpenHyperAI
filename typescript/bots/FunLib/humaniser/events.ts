@@ -3053,6 +3053,8 @@ export const EVENTS = {
         /** kind=sustain: the safe-here read here (2 s): `kill` (as kind=safe's field), `sh` a reacher is hitting us (1/0), `rc` visible heroes in its reach. */
         sh: "num",
         rc: "num",
+        /** kind=sustain: the same read's `prs` (kind=safe), which picks the kill line's bar. */
+        spr: "num",
         /** kind=sustain: seconds until the next last hit or deny is due in our lane (Laning.NextDue); absent with no creep near. */
         nd: "num",
         /** kind=sustain: 1 when sustain_act.ts carries this answer out (`Ours.Sustain`, a held hero). */
@@ -3096,6 +3098,8 @@ export const EVENTS = {
         awy: "num",
         hld: "num",
         hd: "num",
+        /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
+        prs: "num",
         kill: "num",
         ra: "num",
         pr: "num",

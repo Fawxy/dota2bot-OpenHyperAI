@@ -83,7 +83,12 @@ check("at 150 HP the tangos reach the kill line: stay and use; no tree: home, no
 	is(decide(inputs({ hp = 150, items = { tango() }, tree = TREE })), "use", "item_tango")
 		and is(decide(inputs({ hp = 150, items = { tango() } })), "home", nil, "cannot_stay"))
 
-check("the kill line is Stay x the safe-here kill, capped at half HP for going home: at kill 480 (line 600) 350 HP and a salve stays and drinks, 80 HP and a salve goes home",
+check("the kill line is the safe-here read's bar x its kill: at kill 480, 600 with a hero's hits on us (pressed, or hitting on an older cut) and 480 with none",
+	S.KillLine({ hpMax = 1000, safe = { kill = 480, hitting = false, reach = 1, pressed = true } }) == 600
+		and S.KillLine({ hpMax = 1000, safe = { kill = 480, hitting = true, reach = 1 } }) == 600
+		and S.KillLine({ hpMax = 1000, safe = { kill = 480, hitting = false, reach = 1, pressed = false } }) == 480)
+
+check("the kill line capped at half HP for going home: at kill 480 with nobody hitting (line 480) 350 HP and a salve stays and drinks, 80 HP and a salve goes home",
 	is(decide(inputs({ hp = 350, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "step_out_use")
 		and is(decide(inputs({ hp = 350, safe = { kill = 480, hitting = false, reach = 0 }, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "step_out_use")
 		and is(decide(inputs({ hp = 80, safe = { kill = 480, hitting = false, reach = 0 }, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "home"))
@@ -96,9 +101,9 @@ check("cannot stay, gold covers a tango and the courier beats the trip: buy and 
 		and is(decide(inputs({ hp = 150, gold = 200, safeSpot = SAFE })), "home"))
 
 check("cannot stay 350 HP short: the salve that covers it, not the tango that does not; neither affordable: home",
-	is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0 }, gold = 200, courier = { eta = 20 }, safeSpot = SAFE,
+	is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0, pressed = true }, gold = 200, courier = { eta = 20 }, safeSpot = SAFE,
 		shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "buy", "item_flask", "cannot_stay")
-		and is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0 }, gold = 100, courier = { eta = 20 }, safeSpot = SAFE,
+		and is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0, pressed = true }, gold = 100, courier = { eta = 20 }, safeSpot = SAFE,
 			shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "home"))
 
 check("a lane that can kill a full hero sends home only under half HP: full HP and 550 stay, 250 goes home",

@@ -32,6 +32,6 @@ notes: >
   Slice mid-stand, the HP floor: one enemy hero at 760, the mid at 43% HP (353 of 824), burst 250 / 353 = 0.71. Under half HP
   the old limits stand: backing off is right, before and after the change.
   Changed (oha-safe-behave, 19/11/2026): 250 over 2 s against 353 HP: ratio 1.41 at the preferred point, under the fresh bar 1.44 (the bot stands 760 from it, so it is a fresh place). Old read(burst) -> read(deadly); the spot still backs off.
-  Quarantined (oha-kill-line-idle, 20/11/2026): the fixture world hands a 4 s read the cut's 2 s damage (250). Nobody is hitting, so the fresh bar is
-  1.15 and 353 / 250 = 1.41 reads safe. On the line between the cut's 2 s and 6 s figures the 4 s damage is 375 and the ratio 0.94: deadly, as expected.
-  Counted again when the cut carries the kill window's damage.
+  Quarantined (oha-kill-line-idle, 20/11/2026): the fixture world hands a 4 s read the cut's 3 s damage (250). No hero has hit the bot, so the fresh
+  bar is 1.15 and 353 / 250 = 1.41 reads safe. On the line between the cut's 3 s and 6 s figures the 4 s damage is 333 and the ratio 1.06: deadly at
+  a fresh place, as expected. Counted again when the cut carries the kill window's damage.

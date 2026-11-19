@@ -4,6 +4,25 @@ local ____threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local ThreatSettings = ____threat.SETTINGS
 --- Every number the decision owns, with its source. The unseen bar is `Threat.SETTINGS.MissingRefuse`, read at call time, not copied.
 ____exports.BARS = {stay = 1.25, idle = 1, hold = 1, slack = 0.15}
+--- Whether the hero is under a hero's hits: `pressed`, or a reacher `hitting` (the shorter flag, the only one an older cut carries).
+function ____exports.Pressed(i)
+    if i.pressed == true then
+        return true
+    end
+    for ____, r in ipairs(i.reach) do
+        if r.hitting then
+            return true
+        end
+    end
+    return false
+end
+--- The HP / kill ratio under which a held place is deadly: `stay` under a hero's hits, else the lower of it and `BARS.idle`.
+function ____exports.Line(pressed, stay)
+    if stay == nil then
+        stay = ____exports.BARS.stay
+    end
+    return pressed and stay or math.min(stay, ____exports.BARS.idle)
+end
 function ____exports.Decide(i, stay)
     if stay == nil then
         stay = ____exports.BARS.stay
@@ -30,11 +49,10 @@ function ____exports.Decide(i, stay)
     if i.towerOnMe or i.tower and not i.held then
         return answer("deadly", "tower")
     end
-    local hit = false
-    for ____, r in ipairs(i.reach) do
-        hit = hit or r.hitting
-    end
-    local line = hit and stay or math.min(stay, ____exports.BARS.idle)
+    local line = ____exports.Line(
+        ____exports.Pressed(i),
+        stay
+    )
     local bar = i.hold and math.min(line, ____exports.BARS.hold) or (i.held and line or line * (1 + ____exports.BARS.slack))
     if ratio < bar then
         return answer("deadly", "kill")

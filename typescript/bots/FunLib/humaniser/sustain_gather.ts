@@ -278,7 +278,7 @@ function safeHere(bot: Unit, r: Threat.Read): [Sustain.Inputs["safe"], boolean] 
         if (x.hitting) hitting = true;
         if (x.unseen !== true) reach += 1;
     }
-    return [{ kill: a.kill, hitting, reach }, a.level === "deadly"];
+    return [{ kill: a.kill, hitting, reach, pressed: Safe.Pressed(i) }, a.level === "deadly"];
 }
 
 const safeCache: Record<number, { at: number; spot?: Sustain.Inputs["safeSpot"]; okAt?: number } | undefined> = {};
@@ -470,6 +470,7 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["hr", b01(i.hitRecently)],
         ["kill", n0(i.safe.kill)],
         ["sh", b01(i.safe.hitting)],
+        ["spr", b01(i.safe.pressed ?? i.safe.hitting)],
         ["rc", i.safe.reach],
         ["rl", n0(i.regenLeft)],
         ["ml", n0(i.manaLeft)],

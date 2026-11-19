@@ -26,6 +26,7 @@ function U:GetCurrentMovementSpeed() return 300 end
 function U:GetAssignedLane() return 1 end
 function U:GetTeam() return self.team end
 function U:GetPlayerID() return 1 end
+function U:WasRecentlyDamagedByAnyHero() return false end
 
 local T1 = Vector(-6336, 1856)
 local FAR = Vector(-5200, 5483)

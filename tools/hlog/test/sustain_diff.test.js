@@ -24,6 +24,8 @@ test('a cut line reads back into the Inputs it was written from', () => {
     assert.deepEqual(i.shop, [{ name: 'tango', cost: 90, hp: 336, mp: 0 }]);
     assert.deepEqual(i.allies, [{ pid: 1, missing: 300, heals: 2 }]);
     assert.deepEqual(i.safe, { kill: 300, hitting: true, reach: 1 });
+    const between = inputsOf(parseLog(line(100, `cut ${CUT.replace('sh=1', 'sh=0 spr=1')} ak=none why=fine`))[0].events[0]);
+    assert.deepEqual(between.safe, { kill: 300, hitting: false, reach: 1, pressed: true });
 });
 
 test('a step 2 line reads its old danger inputs as the nearest it can: the kill line from laneBurst, a tree in 600 nearer us', () => {

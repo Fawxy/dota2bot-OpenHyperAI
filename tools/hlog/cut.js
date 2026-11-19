@@ -279,7 +279,7 @@ const DECISIONS = {
         driver: 'safe',
         world(game, cut) {
             const w = { t: Number(cut.t), pid: Number(cut.pid), who: cut.who };
-            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd', 'prs']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
             for (const k of ['rr', 'stw', 'ld']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },

@@ -30,6 +30,8 @@ function U:IsIllusion() return self.ill == true end
 function U:IsHero() return self.hero == true end
 function U:GetEstimatedDamageToTarget(_, _, duration) return duration >= 6 and (self.e6 or 0) or (self.e3 or 0) end
 function U:WasRecentlyDamagedByHero(e) return e.eng == true end
+-- The cut carries only the 1 s `eng` per hero: a hero that hit us within it stands in for the safe read's longer window.
+function U:WasRecentlyDamagedByAnyHero() return self.heroHit == true end
 function U:WasRecentlyDamagedByTower() return self.dtower == true end
 function U:FindItemSlot(name) return (self.esc and name == "item_tpscroll") and 0 or -1 end
 function U:GetItemInSlot() return { IsFullyCastable = function() return true end } end
@@ -80,6 +82,7 @@ return function(w)
 		local u = unit({ loc = Vector(e.x, e.y), team = enemyTeam, hp = e.hp, range = e.range, hull = e.hull, speed = e.speed, pid = e.pid,
 			e3 = e.e3, e6 = e.e6, eng = e.eng == 1, ill = e.ill == 1, hero = true, name = "npc_dota_hero_enemy" })
 		if e.atk == 1 then u.target = bot end
+		if u.eng and not u.ill then bot.heroHit = true end
 		if not u.ill then byHero[e.pid] = u end
 		table.insert(world.enemies, u)
 	end
