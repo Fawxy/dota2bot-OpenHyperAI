@@ -56,6 +56,9 @@ import * as Retreat from "bots/FunLib/humaniser/retreat";
 export { Retreat };
 import * as SustainGather from "bots/FunLib/humaniser/sustain_gather";
 export { SustainGather };
+import * as SustainAct from "bots/FunLib/humaniser/sustain_act";
+export { SustainAct };
+import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 export { SafeGather };
 import * as PairJoin from "bots/FunLib/humaniser/pair_join";
@@ -148,6 +151,13 @@ function drawOverlay(bot: Unit): void {
     HDebug.Draw(bot);
 }
 
+// The pull supply step asks sustain for a hero it carries: registered here because sustain_act.ts imports camp_jobs.ts.
+// Through the module table, so the guards installed below apply.
+CampJobs.SetSustain(
+    (bot: Unit) => SustainAct.Holds(bot),
+    (bot: Unit) => SustainAct.Yield(bot),
+);
+
 // The unguarded steps of tick, so the perf probe can time each (Telemetry.PerfStep; installed below, after the guards).
 // Copied here at load, before GuardModule runs: a step that gets a guard later must leave this table and be called by name.
 const steps = {
@@ -161,7 +171,10 @@ const steps = {
     intent: Intent.Tick,
     telemetry: Telemetry.Tick,
     regen: RegenObs.Tick,
-    sustain: SustainGather.Tick,
+    // A hero sustain carries logs its own cut from ItemThink: the shadow skips it.
+    sustain: (bot: Unit) => {
+        if (!SustainAct.Holds(bot)) SustainGather.Tick(bot);
+    },
     landing: SafeGather.Tick,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
@@ -246,7 +259,7 @@ function tick(this: void, bot: Unit): void {
     pcall(CastLog.Tick, bot);
     // The observer only reads: an error in it must not skip the States and Tasks ticks below.
     pcall(steps.regen, bot);
-    // Sustain step 2: the decision in shadow (ev=cut kind=sustain); reads and logs, no order.
+    // Sustain: the decision in shadow (ev=cut kind=sustain) for a hero sustain_act.ts does not carry; reads and logs, no order.
     pcall(steps.sustain, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
@@ -308,6 +321,9 @@ if (Telemetry.GuardsEnabled()) {
     // An error hands the hero to OHA's retreat desire for that call (undefined) and a Think that issues nothing.
     // Telemetry only: an error drops the purchase's ev=sustain_buy line.
     Telemetry.GuardModule("SustainGather", SustainGather, { Bought: none });
+    // An error in sustain's executor gives no order that frame and lets OHA's item loop have the items (HoldsItem false);
+    // the lane row and the supply step take no frame.
+    Telemetry.GuardModule("SustainAct", SustainAct, { ItemThink: none, Holds: no, HoldsItem: no, Walking: no, Step: no, Yield: no, ResetCache: none });
     Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, HoldsItem: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
     Telemetry.GuardModule("Perception", Perception, {
         FilterNearbyEnemies: arg2,

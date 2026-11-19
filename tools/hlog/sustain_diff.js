@@ -27,17 +27,27 @@ const OBSERVED = { tango: 'tango', tango_single: 'tango', flask: 'salve', clarit
 const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
 const recs = (s) => (s === undefined || s === '' ? [] : String(s).split(';').filter(Boolean).map((r) => r.split(',')));
 
-/** One cut line's fields back into sustain.ts's Inputs (the fields sustain_gather.ts CutFields writes). */
+/**
+ * One cut line's fields back into sustain.ts's Inputs (the fields sustain_gather.ts CutFields writes). A step 2 line (`lb`,
+ * no `kill`) carries the old danger inputs: its `tree` and `safe` are left as that line can give them, so a replay of an
+ * old log is a direction only.
+ */
 function inputsOf(c) {
-    const items = recs(c.it).map(([slot, name, uses, hp, mp, dur, br, tr, rf, sh]) => ({
+    const items = recs(c.it).map(([slot, name, uses, hp, mp, dur, br, tr, rf, sh, rd]) => ({
         slot: +slot, name, charges: +uses, hp: +hp, mp: +mp, dur: +dur, breaks: br === '1', tree: tr === '1', refill: rf === '1', share: sh === '1',
+        ready: rd === undefined ? undefined : rd === '1',
     }));
     const tr = c.tr !== undefined ? String(c.tr).split(',').map(Number) : undefined;
     const ss = c.ss !== undefined ? String(c.ss).split(',').map(Number) : undefined;
+    const old = c.kill === undefined && c.lb !== undefined;
     return {
         now: num(c.t), hp: num(c.hpa), hpMax: num(c.hpm), mp: num(c.mpa), mpMax: num(c.mpm), items,
-        tree: tr ? { d: tr[0], enemyD: tr[1] < 0 ? Infinity : tr[1] } : undefined,
-        hitRecently: num(c.hr) === 1, burst: num(c.bua), reach: num(c.rc), laneBurst: num(c.lb),
+        tree: tr ? (old ? { walk: 0, safe: tr[0] <= 600 && (tr[1] < 0 || tr[0] < tr[1]) } : { walk: tr[0], safe: tr[1] === 1, start: tr[2] === undefined ? undefined : tr[2] === 1 }) : undefined,
+        nextDue: num(c.nd),
+        hitRecently: num(c.hr) === 1,
+        safe: old
+            ? { kill: (num(c.lb) || 0) / 1.5, hitting: num(c.hr) === 1 && (num(c.rc) || 0) > 0, reach: num(c.rc) || 0 }
+            : { kill: num(c.kill) || 0, hitting: num(c.sh) === 1, reach: num(c.rc) || 0 },
         regenLeft: num(c.rl) || 0, manaLeft: num(c.ml) || 0,
         safeSpot: ss ? { x: ss[0], y: ss[1], walk: ss[2] } : undefined,
         gold: num(c.gd), courier: c.co !== undefined ? { eta: num(c.co) } : undefined,

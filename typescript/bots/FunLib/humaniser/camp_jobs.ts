@@ -1359,8 +1359,17 @@ function aggroLanded(bot: Unit, job: Job, now: number): number {
  * waits for 200 HP or 60% mana lost, and from the camp coming into sight the cast hold keeps its item code off.
  * True while the job leaves the frame to the use.
  */
+/** sustain_act.ts's Holds and Yield, registered by index.ts (sustain_act imports this module, so it cannot be imported here). */
+let sustainHook: { holds: (this: void, bot: Unit) => boolean; yield: (this: void, bot: Unit) => boolean } | undefined;
+export function SetSustain(holds: (this: void, bot: Unit) => boolean, yieldTo: (this: void, bot: Unit) => boolean): void {
+    sustainHook = { holds, yield: yieldTo };
+}
+
 function supply(bot: Unit, job: Job, now: number): boolean {
     const slack = job.aggroAt - now - travelTo(bot, job.stand);
+    // Sustain (Ours.Sustain) decides a hero it carries: the walk to the camp is its idle window, and the job leaves it the
+    // frame while its attempt walks, with time to spare.
+    if (sustainHook !== undefined && sustainHook.holds(bot)) return slack >= settings().Timing.SupplySlack && sustainHook.yield(bot);
     if (job.supplyUntil !== undefined) {
         const taken = bot.HasModifier(job.supplyModifier ?? "");
         if (now < job.supplyUntil && slack > 0 && !taken) return true;

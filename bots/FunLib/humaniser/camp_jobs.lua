@@ -2059,11 +2059,16 @@ local function aggroLanded(bot, job, now)
         now - (GameTime() - last)
     ) + flight
 end
---- A support about to take a camp's hits eats a tango and drinks a clarity on the way, with time to spare: upstream
--- waits for 200 HP or 60% mana lost, and from the camp coming into sight the cast hold keeps its item code off.
--- True while the job leaves the frame to the use.
+--- sustain_act.ts's Holds and Yield, registered by index.ts (sustain_act imports this module, so it cannot be imported here).
+local sustainHook
+function ____exports.SetSustain(holds, yieldTo)
+    sustainHook = {holds = holds, yield = yieldTo}
+end
 local function supply(bot, job, now)
     local slack = job.aggroAt - now - travelTo(bot, job.stand)
+    if sustainHook ~= nil and sustainHook.holds(bot) then
+        return slack >= settings().Timing.SupplySlack and sustainHook.yield(bot)
+    end
     if job.supplyUntil ~= nil then
         local taken = bot:HasModifier(job.supplyModifier or "")
         if now < job.supplyUntil and slack > 0 and not taken then

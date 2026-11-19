@@ -61,6 +61,11 @@ function ____exports.UseNoTarget(bot, item)
     used(bot, item)
     bot:Action_UseAbility(item)
 end
+--- An item given to or cast on an ally (a tango shared): the hero walks into cast range first.
+function ____exports.UseOnAlly(bot, item, ally)
+    used(bot, item)
+    bot:Action_UseAbilityOnEntity(item, ally)
+end
 --- A tango on a tree: the hero walks to within the cast range first, so the caller gives no move order meanwhile.
 function ____exports.UseOnTree(bot, item, tree)
     used(bot, item)

@@ -2,43 +2,63 @@
 local ____exports = {}
 local ____retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local RetreatSettings = ____retreat.SETTINGS
-local ____threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
-local ThreatSettings = ____threat.SETTINGS
---- Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, the burst bar (`StandBurst`) the threat read's: read at call time, not copied.
-____exports.BARS = {topUp = 0.65, mana = 0.4, treeReach = 600}
+local ____safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
+local SafeBars = ____safe.BARS
+--- Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, its bar (`stay`) the safe-here read's: read at call time, not copied.
+____exports.BARS = {topUp = 0.65, mana = 0.4, castSlack = 0.5, idleWalk = 8}
 --- An instant HP item: kept for rule 1, never spent topping up.
 local function reserved(it)
     return it.dur == 0 and it.hp > 0
 end
-local function treeOk(i)
-    return i.tree ~= nil and i.tree.d <= ____exports.BARS.treeReach and i.tree.d < i.tree.enemyD
+--- Rule 2's tree (user 19/11/2026): the walk is a cost against the trip, so a tango counts when its walk is safe and there and back is shorter than home.
+local function treeReach(i)
+    return i.tree ~= nil and i.tree.safe and 2 * i.tree.walk < i.home
 end
---- Whether one use can start now: a tree item with a tree in reach, an item hero damage ends with a safe spot to use it at.
-local function usable(i, it)
+--- Rule 3's tree: a safe walk there and back that ends before the next hit is due (no last hit or deny missed); with none due, or between jobs, a short walk.
+local function treeNow(i)
+    if i.tree == nil or not i.tree.safe or i.tree.start == false then
+        return false
+    end
+    local trip = 2 * i.tree.walk
+    if i.nextDue ~= nil and not i.idle then
+        return trip + ____exports.BARS.castSlack <= i.nextDue
+    end
+    return trip <= ____exports.BARS.idleWalk
+end
+--- Whether a use counts in what we reach: a tree item with a tree worth its walk, an item hero damage ends with a safe spot to use it at.
+local function counts(i, it)
     if it.charges <= 0 then
         return false
     end
     if it.tree then
-        return treeOk(i)
+        return treeReach(i)
     end
     if it.breaks and it.dur > 0 then
         return i.safeSpot ~= nil
     end
     return true
 end
---- HP under which the lane's enemies can kill us by the stay bar, never under the heal floor and never over max HP (a lane
--- whose burst passes our max HP would otherwise send a full hero home from the fountain; the safe-here read answers that).
+--- Whether one use can start now: castable, and a tree item's walk fits before the next hit.
+local function usable(i, it)
+    if it.ready == false or not counts(i, it) then
+        return false
+    end
+    return not it.tree or treeNow(i)
+end
+--- HP under which this place is `deadly` by the safe-here read's own bar (Stay x kill), so sustain and retreat send a hero
+-- home on one line; never under the heal floor (sustain's own going-home floor) and never over max HP (a lane that can kill
+-- a full hero would otherwise send one home from the fountain; that place is retreat's answer).
 function ____exports.KillLine(i)
     return math.min(
         i.hpMax,
-        math.max(RetreatSettings.HealFloor * i.hpMax, i.laneBurst / ThreatSettings.StandBurst)
+        math.max(RetreatSettings.HealFloor * i.hpMax, SafeBars.stay * i.safe.kill)
     )
 end
 --- HP plus what the regen running and the items in hand can restore, capped at max HP.
 function ____exports.Reachable(i)
     local r = i.hp + i.regenLeft
     for ____, it in ipairs(i.items) do
-        if it.hp > 0 and usable(i, it) then
+        if it.hp > 0 and counts(i, it) then
             r = r + it.hp * it.charges
         end
     end
@@ -56,10 +76,10 @@ local function pickHp(i, need)
     local over
     for ____, o in ipairs(i.shop) do
         do
-            local __continue16
+            local __continue21
             repeat
                 if o.hp <= 0 or o.cost > i.gold then
-                    __continue16 = true
+                    __continue21 = true
                     break
                 end
                 if o.hp <= need then
@@ -69,9 +89,9 @@ local function pickHp(i, need)
                 elseif over == nil or o.hp < over.hp then
                     over = o
                 end
-                __continue16 = true
+                __continue21 = true
             until true
-            if not __continue16 then
+            if not __continue21 then
                 break
             end
         end
@@ -100,18 +120,18 @@ end
 local function use(it, reason)
     return {kind = "use", slot = it.slot, name = it.name, reason = reason}
 end
---- Rule 1: a hero is hitting us, its burst kills us, and an instant item (the most restored first) lifts us over it.
+--- Rule 1: a hero in reach is hitting us, what the reachers can deal kills us, and an instant item (the most restored first) lifts us over it.
 local function survive(i)
-    if not i.hitRecently or i.reach == 0 or i.hp >= i.burst then
+    if not i.safe.hitting or i.hp >= i.safe.kill then
         return nil
     end
     local best
     for ____, it in ipairs(i.items) do
-        if reserved(it) and it.charges > 0 and (best == nil or it.hp > best.hp) then
+        if reserved(it) and it.charges > 0 and it.ready ~= false and (best == nil or it.hp > best.hp) then
             best = it
         end
     end
-    if best ~= nil and i.hp + best.hp >= i.burst then
+    if best ~= nil and i.hp + best.hp >= i.safe.kill then
         return use(best, "survive")
     end
     return nil
@@ -148,22 +168,22 @@ local function topUp(i, kill)
     local best
     for ____, it in ipairs(i.items) do
         do
-            local __continue45
+            local __continue50
             repeat
                 if reserved(it) or it.hp <= 0 or it.charges <= 0 or missing < it.hp or not usable(i, it) then
-                    __continue45 = true
+                    __continue50 = true
                     break
                 end
-                if it.breaks and (i.hitRecently or i.reach > 0) then
-                    __continue45 = true
+                if it.breaks and (i.hitRecently or i.safe.reach > 0) then
+                    __continue50 = true
                     break
                 end
                 if best == nil or order(it) < order(best) then
                     best = it
                 end
-                __continue45 = true
+                __continue50 = true
             until true
-            if not __continue45 then
+            if not __continue50 then
                 break
             end
         end
@@ -191,22 +211,22 @@ local function mana(i)
     local best
     for ____, it in ipairs(i.items) do
         do
-            local __continue54
+            local __continue59
             repeat
-                if reserved(it) or it.mp <= 0 or it.charges <= 0 or missing < it.mp then
-                    __continue54 = true
+                if reserved(it) or it.mp <= 0 or it.charges <= 0 or it.ready == false or missing < it.mp then
+                    __continue59 = true
                     break
                 end
-                if it.breaks and (i.hitRecently or i.reach > 0) then
-                    __continue54 = true
+                if it.breaks and (i.hitRecently or i.safe.reach > 0) then
+                    __continue59 = true
                     break
                 end
                 if best == nil or it.refill and not best.refill then
                     best = it
                 end
-                __continue54 = true
+                __continue59 = true
             until true
-            if not __continue54 then
+            if not __continue59 then
                 break
             end
         end
@@ -222,10 +242,10 @@ local function buyAhead(i, kill)
     local manas = false
     for ____, it in ipairs(i.items) do
         do
-            local __continue61
+            local __continue66
             repeat
                 if it.charges <= 0 or reserved(it) then
-                    __continue61 = true
+                    __continue66 = true
                     break
                 end
                 if it.hp > 0 then
@@ -234,9 +254,9 @@ local function buyAhead(i, kill)
                 if it.mp > 0 then
                     manas = true
                 end
-                __continue61 = true
+                __continue66 = true
             until true
-            if not __continue61 then
+            if not __continue66 then
                 break
             end
         end
@@ -259,10 +279,10 @@ end
 local function give(i)
     for ____, it in ipairs(i.items) do
         do
-            local __continue71
+            local __continue76
             repeat
-                if not it.share or it.charges < 2 then
-                    __continue71 = true
+                if not it.share or it.charges < 2 or it.ready == false then
+                    __continue76 = true
                     break
                 end
                 for ____, a in ipairs(i.allies) do
@@ -276,9 +296,9 @@ local function give(i)
                         }
                     end
                 end
-                __continue71 = true
+                __continue76 = true
             until true
-            if not __continue71 then
+            if not __continue76 then
                 break
             end
         end
@@ -288,7 +308,7 @@ end
 --- Why a running answer ends this frame, if it does.
 local function ends(i, r, kill)
     if r.kind == "step_out_use" then
-        if i.reach > 0 then
+        if i.safe.reach > 0 then
             return "interrupted"
         end
         if i.hp >= topLine(i, kill) then

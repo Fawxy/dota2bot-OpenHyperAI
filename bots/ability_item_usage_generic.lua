@@ -1012,6 +1012,8 @@ local function ItemUsageComplement()
 			if	X.ConsiderItemDesire[sItemName] ~= nil
 				and not X.IsItemInStash( sItemName )
 				and not ( J.Humaniser.IsEnabled() and J.Humaniser.Retreat.HoldsItem( bot, sItemName ) )
+				-- Humaniser Sustain (Ours.Sustain): every heal and mana item on a laner we hold is sustain's (humaniser/sustain_act.ts).
+				and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsItem( bot, sItemName ) )
 				-- Lane ladder: a drill's in-lane hero never teleports (humaniser/drill.ts ForbidsItem).
 				and not J.Humaniser.Drill.ForbidsItem( bot, sItemName )
 			then
@@ -8396,6 +8398,8 @@ end
 function ItemUsageThink()
 	if RefreshBotHandle() then return end
 	J.Humaniser.Tick(bot)
+	-- Humaniser Sustain (Ours.Sustain): a held laner's heal and mana items, before the cast holds (sustain_act.ts Holds has the drill's).
+	if J.Humaniser.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then J.Humaniser.SustainAct.ItemThink(bot) end
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
 	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor

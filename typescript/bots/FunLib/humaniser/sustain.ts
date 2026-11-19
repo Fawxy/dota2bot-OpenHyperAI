@@ -10,18 +10,20 @@
  * Rules, first match (design section 2): 1 survive, 2 cannot stay, 3 top up, 4 mana, 5 buy ahead, 6 give.
  */
 import { SETTINGS as RetreatSettings } from "bots/FunLib/humaniser/retreat";
-import { SETTINGS as ThreatSettings } from "bots/FunLib/humaniser/threat";
+import { BARS as SafeBars } from "bots/FunLib/humaniser/safe";
 
 export type Kind = "none" | "use" | "step_out_use" | "give" | "buy" | "home";
 
-/** Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, the burst bar (`StandBurst`) the threat read's: read at call time, not copied. */
+/** Every number the decision owns, with its source. The kill line's floor (`HealFloor`) and `HealUntil` are retreat's, its bar (`stay`) the safe-here read's: read at call time, not copied. */
 export const BARS = {
     /** Rule 3's top-up line, HP share (user 19/11/2026): OHA's median tango use is 64%; the reference keeps a mid above 60% (`theory/mid-trading-loop.md`). */
     topUp: 0.65,
     /** Rules 2 and 4: mana under this share is low (OHA's clarity bar of 40%, kept: `judgement`). */
     mana: 0.4,
-    /** A tree this near is in reach for a tango (the observer's `regen_cover` window, 600). */
-    treeReach: 600,
+    /** Rule 3: a tango walk there and back must end this long before the next last hit or deny is due (the turn and the cast). judgement. */
+    castSlack: 0.5,
+    /** Rule 3 with no hit due (no wave near) or in an idle window: the longest tango walk there and back (s). judgement: 4 s each way costs no lane time there. */
+    idleWalk: 8,
 };
 
 /** One heal or mana item in slots 0-8. */
@@ -43,6 +45,8 @@ export interface Item {
     refill: boolean;
     /** One use can be given to an ally. */
     share: boolean;
+    /** Castable now: in slots 0-5 and off cooldown. One that is not still counts in what we reach (a swap, a cooldown) but is never picked. Missing: ready. */
+    ready?: boolean;
 }
 
 /** A regen item the side shop or fountain sells, as one purchase. */
@@ -74,15 +78,17 @@ export interface Inputs {
     mp: number;
     mpMax: number;
     items: Item[];
-    /** The nearest passable tree: its distance, and the nearest enemy hero's distance to it. */
-    tree?: { d: number; enemyD: number };
+    /** The nearest passable tree, read only with a tree item held: seconds to walk into cast range of it, and whether that walk is safe (the safe-here read over it is not `deadly`); `start` false when we stand `deadly` here, so a walk may count in rule 2 but not start now. */
+    tree?: { walk: number; safe: boolean; start?: boolean };
+    /** Seconds until the next last hit or deny comes due in our lane; none with no wave near. */
+    nextDue?: number;
     /** A hero damaged us in the last 2 s. */
     hitRecently: boolean;
-    /** The threat read here: the damage the enemy heroes in reach deal us in the engaged window (absolute), and how many reach us. */
-    burst: number;
-    reach: number;
-    /** The most the lane's enemy heroes seen in the last 10 s deal us in the stay window (absolute): the kill line's stand-in until the shared "is it safe here?" read. */
-    laneBurst: number;
+    /**
+     * The safe-here read here, 2 s (design docs/proposals/2026-11-19-safe-here-design.md): what the heroes in reach can deal
+     * (absolute; lane opponents seen in the last 10 s included), whether one of them is hitting us, and how many reach us.
+     */
+    safe: { kill: number; hitting: boolean; reach: number };
     /** HP and mana the regen buffs on us still restore. */
     regenLeft: number;
     manaLeft: number;
@@ -121,30 +127,47 @@ function reserved(it: Item): boolean {
     return it.dur === 0 && it.hp > 0;
 }
 
-function treeOk(i: Inputs): boolean {
-    return i.tree !== undefined && i.tree.d <= BARS.treeReach && i.tree.d < i.tree.enemyD;
+/** Rule 2's tree (user 19/11/2026): the walk is a cost against the trip, so a tango counts when its walk is safe and there and back is shorter than home. */
+function treeReach(i: Inputs): boolean {
+    return i.tree !== undefined && i.tree.safe && 2 * i.tree.walk < i.home;
 }
 
-/** Whether one use can start now: a tree item with a tree in reach, an item hero damage ends with a safe spot to use it at. */
-function usable(i: Inputs, it: Item): boolean {
+/** Rule 3's tree: a safe walk there and back that ends before the next hit is due (no last hit or deny missed); with none due, or between jobs, a short walk. */
+function treeNow(i: Inputs): boolean {
+    // `start` false: we stand deadly here, so no walk starts now (it still counts in rule 2's reach: review of step 3).
+    if (i.tree === undefined || !i.tree.safe || i.tree.start === false) return false;
+    const trip = 2 * i.tree.walk;
+    if (i.nextDue !== undefined && !i.idle) return trip + BARS.castSlack <= i.nextDue;
+    return trip <= BARS.idleWalk;
+}
+
+/** Whether a use counts in what we reach: a tree item with a tree worth its walk, an item hero damage ends with a safe spot to use it at. */
+function counts(i: Inputs, it: Item): boolean {
     if (it.charges <= 0) return false;
-    if (it.tree) return treeOk(i);
+    if (it.tree) return treeReach(i);
     if (it.breaks && it.dur > 0) return i.safeSpot !== undefined;
     return true;
 }
 
+/** Whether one use can start now: castable, and a tree item's walk fits before the next hit. */
+function usable(i: Inputs, it: Item): boolean {
+    if (it.ready === false || !counts(i, it)) return false;
+    return !it.tree || treeNow(i);
+}
+
 /**
- * HP under which the lane's enemies can kill us by the stay bar, never under the heal floor and never over max HP (a lane
- * whose burst passes our max HP would otherwise send a full hero home from the fountain; the safe-here read answers that).
+ * HP under which this place is `deadly` by the safe-here read's own bar (Stay x kill), so sustain and retreat send a hero
+ * home on one line; never under the heal floor (sustain's own going-home floor) and never over max HP (a lane that can kill
+ * a full hero would otherwise send one home from the fountain; that place is retreat's answer).
  */
 export function KillLine(i: Inputs): number {
-    return math.min(i.hpMax, math.max(RetreatSettings.HealFloor * i.hpMax, i.laneBurst / ThreatSettings.StandBurst));
+    return math.min(i.hpMax, math.max(RetreatSettings.HealFloor * i.hpMax, SafeBars.stay * i.safe.kill));
 }
 
 /** HP plus what the regen running and the items in hand can restore, capped at max HP. */
 export function Reachable(i: Inputs): number {
     let r = i.hp + i.regenLeft;
-    for (const it of i.items) if (it.hp > 0 && usable(i, it)) r += it.hp * it.charges;
+    for (const it of i.items) if (it.hp > 0 && counts(i, it)) r +=it.hp * it.charges;
     return math.min(r, i.hpMax);
 }
 
@@ -186,12 +209,12 @@ function use(it: Item, reason: string): Answer {
     return { kind: "use", slot: it.slot, name: it.name, reason };
 }
 
-/** Rule 1: a hero is hitting us, its burst kills us, and an instant item (the most restored first) lifts us over it. */
+/** Rule 1: a hero in reach is hitting us, what the reachers can deal kills us, and an instant item (the most restored first) lifts us over it. */
 function survive(i: Inputs): Answer | undefined {
-    if (!i.hitRecently || i.reach === 0 || i.hp >= i.burst) return undefined;
+    if (!i.safe.hitting || i.hp >= i.safe.kill) return undefined;
     let best: Item | undefined;
-    for (const it of i.items) if (reserved(it) && it.charges > 0 && (best === undefined || it.hp > best.hp)) best = it;
-    if (best !== undefined && i.hp + best.hp >= i.burst) return use(best, "survive");
+    for (const it of i.items) if (reserved(it) && it.charges > 0 && it.ready !== false && (best === undefined || it.hp > best.hp)) best = it;
+    if (best !== undefined && i.hp + best.hp >= i.safe.kill) return use(best, "survive");
     return undefined;
 }
 
@@ -219,7 +242,7 @@ function topUp(i: Inputs, kill: number): Answer | undefined {
     let best: Item | undefined;
     for (const it of i.items) {
         if (reserved(it) || it.hp <= 0 || it.charges <= 0 || missing < it.hp || !usable(i, it)) continue;
-        if (it.breaks && (i.hitRecently || i.reach > 0)) continue;
+        if (it.breaks && (i.hitRecently || i.safe.reach > 0)) continue;
         if (best === undefined || order(it) < order(best)) best = it;
     }
     if (best === undefined) return undefined;
@@ -234,8 +257,8 @@ function mana(i: Inputs): Answer | undefined {
     const missing = i.mpMax - i.mp;
     let best: Item | undefined;
     for (const it of i.items) {
-        if (reserved(it) || it.mp <= 0 || it.charges <= 0 || missing < it.mp) continue;
-        if (it.breaks && (i.hitRecently || i.reach > 0)) continue;
+        if (reserved(it) || it.mp <= 0 || it.charges <= 0 || it.ready === false || missing < it.mp) continue;
+        if (it.breaks && (i.hitRecently || i.safe.reach > 0)) continue;
         if (best === undefined || (it.refill && !best.refill)) best = it;
     }
     return best !== undefined ? use(best, "mana") : undefined;
@@ -265,7 +288,7 @@ function buyAhead(i: Inputs, kill: number): Answer | undefined {
 /** Rule 6: an ally with no heal item misses one use's worth, and we hold two uses or more of an item we can give. */
 function give(i: Inputs): Answer | undefined {
     for (const it of i.items) {
-        if (!it.share || it.charges < 2) continue;
+        if (!it.share || it.charges < 2 || it.ready === false) continue;
         for (const a of i.allies) if (a.heals === 0 && a.missing >= it.hp) return { kind: "give", slot: it.slot, name: it.name, to: a.pid, reason: "give" };
     }
     return undefined;
@@ -274,7 +297,7 @@ function give(i: Inputs): Answer | undefined {
 /** Why a running answer ends this frame, if it does. */
 function ends(i: Inputs, r: Run, kill: number): string | undefined {
     if (r.kind === "step_out_use") {
-        if (i.reach > 0) return "interrupted";
+        if (i.safe.reach > 0) return "interrupted";
         if (i.hp >= topLine(i, kill)) return "topped";
         if (i.now - r.started >= (r.dur ?? 0)) return "done";
         return undefined;

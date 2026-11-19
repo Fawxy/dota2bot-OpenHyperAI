@@ -137,6 +137,10 @@ export const DEFAULTS = {
      *  damage, the pair join's and trade-free's kill shares) counts only the spells it can cast now (SpellReady.DamageOn).
      *  Off: Valve's estimate, which counts every learned enemy spell ready. */
     BurstReady: true,
+    /** Sustain step 3 (D6; design docs/proposals/2026-11-19-sustain-design.md): a held laner's heal and mana item use is
+     *  sustain.ts Decide's, carried out by sustain_act.ts (use, step_out_use, give); OHA's item loop and roam's tango skip
+     *  every heal and mana item on it, and the support's pull supply asks it. Off: OHA's item use, and the supply step's own rule. */
+    Sustain: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

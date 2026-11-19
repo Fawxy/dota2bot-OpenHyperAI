@@ -1,6 +1,6 @@
 -- Sustain (design 2026-11-19-sustain-design.md): Decide over plain inputs, one check per row of the design's section 6
 -- table plus the rules it adds, case and control in one check, so a Decide that always answers none, or always the
--- first rule, fails every one. A hero of 600 HP and 300 mana; the kill line is the heal floor, 180, unless set.
+-- first rule, fails every one. A hero of 600 HP and 300 mana; the kill line is the heal floor, 180 (over Stay x kill, 125), unless set.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
@@ -19,13 +19,13 @@ local function salve(o) return item(merge({ slot = 2, name = "item_flask", hp = 
 local function wand(o) return item(merge({ slot = 3, name = "item_magic_stick", hp = 120, mp = 120 }, o)) end
 local function bottle(o) return item(merge({ slot = 4, name = "item_bottle", charges = 3, hp = 110, mp = 60, dur = 2.7, refill = true }, o)) end
 local function clarity(o) return item(merge({ slot = 5, name = "item_clarity", mp = 150, dur = 25, breaks = true }, o)) end
-local TREE = { d = 300, enemyD = 900 }
+local TREE = { walk = 0.5, safe = true }
 local SAFE = { x = 1, y = 2, walk = 3 }
 local SHOP = { { name = "item_flask", cost = 110, hp = 400, mp = 0 }, { name = "item_tango", cost = 90, hp = 336, mp = 0 },
 	{ name = "item_clarity", cost = 50, hp = 0, mp = 150 } }
 local function inputs(o)
-	return merge({ now = 100, hp = 600, hpMax = 600, mp = 300, mpMax = 300, items = {}, hitRecently = false, burst = 0, reach = 0,
-		laneBurst = 100, regenLeft = 0, manaLeft = 0, gold = 0, shop = SHOP, home = 60, idle = false, atFountain = false, allies = {} }, o)
+	return merge({ now = 100, hp = 600, hpMax = 600, mp = 300, mpMax = 300, items = {}, hitRecently = false,
+		safe = { kill = 100, hitting = false, reach = 0 }, regenLeft = 0, manaLeft = 0, gold = 0, shop = SHOP, home = 60, idle = false, atFountain = false, allies = {} }, o)
 end
 local function is(a, kind, name, reason)
 	return a.kind == kind and (name == nil or a.name == name) and (reason == nil or a.reason == reason)
@@ -35,8 +35,31 @@ check("tango at 60% with a tree in reach: use; no tree: none",
 	is(decide(inputs({ hp = 360, items = { tango() }, tree = TREE })), "use", "item_tango", "top_up")
 		and is(decide(inputs({ hp = 360, items = { tango() } })), "none"))
 
-check("a tree nearer the enemy than us is out of reach: none",
-	is(decide(inputs({ hp = 360, items = { tango() }, tree = { d = 300, enemyD = 200 } })), "none"))
+check("a tree whose walk the safe-here read calls deadly: none",
+	is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 0.5, safe = false } })), "none"))
+
+check("a tango walk there and back must end before the next hit is due: 1 s each way fits 3 s, not 2 s",
+	is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 1, safe = true }, nextDue = 3 })), "use", "item_tango")
+		and is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 1, safe = true }, nextDue = 2 })), "none"))
+
+check("no hit due, or between jobs: a walk up to 8 s there and back; 5 s each way: none",
+	is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 4, safe = true } })), "use", "item_tango")
+		and is(decide(inputs({ hp = 360, idle = true, items = { tango() }, tree = { walk = 4, safe = true }, nextDue = 1 })), "use", "item_tango")
+		and is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 5, safe = true } })), "none"))
+
+check("rule 2 counts a tango whose walk is shorter than home (60 s): 20 s each way stays, 40 s goes home",
+	is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 20, safe = true } })), "none")
+		and is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 40, safe = true } })), "home", nil, "cannot_stay"))
+
+check("standing deadly here (start false): the tango still counts in rule 2 (stay, not home) but no walk starts; a walk unsafe over its way counts in neither",
+	is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 1, safe = true, start = false } })), "none")
+		and is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 1, safe = true, start = false } })), "none")
+		and is(decide(inputs({ hp = 360, items = { tango() }, tree = { walk = 1, safe = true, start = true } })), "use", "item_tango")
+		and is(decide(inputs({ hp = 150, items = { tango() }, tree = { walk = 1, safe = false } })), "home"))
+
+check("an item not castable now (backpack, cooldown) counts but is never picked",
+	is(decide(inputs({ hp = 360, items = { tango({ ready = false }) }, tree = TREE })), "none")
+		and is(decide(inputs({ hp = 150, hitRecently = true, safe = { kill = 240, hitting = true, reach = 1 }, items = { wand({ ready = false }) } })), "home"))
 
 check("salve at 250 HP with a safe spot 3 s away: step out and use; hit recently: none; a tango ticks through the hit",
 	is(decide(inputs({ hp = 250, items = { salve() }, safeSpot = SAFE })), "step_out_use", "item_flask", "top_up")
@@ -47,22 +70,22 @@ check("salve at a safe spot already reached: use in place",
 	is(decide(inputs({ hp = 250, items = { salve() }, safeSpot = { x = 1, y = 2, walk = 0 } })), "use", "item_flask"))
 
 check("wand at lethal under attack: use; not under attack: kept",
-	is(decide(inputs({ hp = 150, burst = 200, reach = 1, hitRecently = true, items = { wand() } })), "use", "item_magic_stick", "survive")
-		and decide(inputs({ hp = 150, burst = 200, reach = 1, items = { wand() } })).name ~= "item_magic_stick")
+	is(decide(inputs({ hp = 150, hitRecently = true, safe = { kill = 200, hitting = true, reach = 1 }, items = { wand() } })), "use", "item_magic_stick", "survive")
+		and decide(inputs({ hp = 150, safe = { kill = 200, hitting = false, reach = 1 }, items = { wand() } })).name ~= "item_magic_stick")
 
-check("rule 1 takes the instant item that restores most, and only if it lifts us over the burst (else D1 is retreat's)",
-	is(decide(inputs({ hp = 150, burst = 260, reach = 1, hitRecently = true, items = { wand({ hp = 60 }), item({ slot = 6, name = "item_faerie_fire", hp = 85 }) } })),
-		"none")
-		and is(decide(inputs({ hp = 150, burst = 220, reach = 1, hitRecently = true, items = { wand({ hp = 60 }), item({ slot = 6, name = "item_faerie_fire", hp = 85 }) } })),
+check("rule 1 takes the instant item that restores most, and only if it lifts us over the kill (else rule 2: home, nothing spent)",
+	is(decide(inputs({ hp = 150, hitRecently = true, safe = { kill = 260, hitting = true, reach = 1 }, items = { wand({ hp = 60 }), item({ slot = 6, name = "item_faerie_fire", hp = 85 }) } })),
+		"home")
+		and is(decide(inputs({ hp = 150, hitRecently = true, safe = { kill = 220, hitting = true, reach = 1 }, items = { wand({ hp = 60 }), item({ slot = 6, name = "item_faerie_fire", hp = 85 }) } })),
 			"use", "item_faerie_fire", "survive"))
 
 check("at 150 HP the tangos reach the kill line: stay and use; no tree: home, nothing spent",
 	is(decide(inputs({ hp = 150, items = { tango() }, tree = TREE })), "use", "item_tango")
 		and is(decide(inputs({ hp = 150, items = { tango() } })), "home", nil, "cannot_stay"))
 
-check("the kill line rises with the lane's burst: 350 HP and a salve stays at burst 100, goes home at burst 800",
+check("the kill line is Stay x the safe-here kill: 350 HP and a salve stays at kill 100, goes home at kill 480",
 	is(decide(inputs({ hp = 350, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "step_out_use")
-		and is(decide(inputs({ hp = 350, laneBurst = 800, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "home"))
+		and is(decide(inputs({ hp = 350, safe = { kill = 480, hitting = false, reach = 0 }, items = { salve({ hp = 200 }) }, safeSpot = SAFE })), "home"))
 
 check("cannot stay, gold covers a tango and the courier beats the trip: buy and wait at the safe spot; no courier: home",
 	(function()
@@ -72,18 +95,18 @@ check("cannot stay, gold covers a tango and the courier beats the trip: buy and 
 		and is(decide(inputs({ hp = 150, gold = 200, safeSpot = SAFE })), "home"))
 
 check("cannot stay 350 HP short: the salve that covers it, not the tango that does not; neither affordable: home",
-	is(decide(inputs({ hp = 150, hpMax = 1000, laneBurst = 500, gold = 200, courier = { eta = 20 }, safeSpot = SAFE,
+	is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0 }, gold = 200, courier = { eta = 20 }, safeSpot = SAFE,
 		shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "buy", "item_flask", "cannot_stay")
-		and is(decide(inputs({ hp = 150, hpMax = 1000, laneBurst = 500, gold = 100, courier = { eta = 20 }, safeSpot = SAFE,
+		and is(decide(inputs({ hp = 150, hpMax = 1000, safe = { kill = 400, hitting = false, reach = 0 }, gold = 100, courier = { eta = 20 }, safeSpot = SAFE,
 			shop = { { name = "item_tango", cost = 90, hp = 336, mp = 0 }, { name = "item_flask", cost = 110, hp = 400, mp = 0 } } })), "home"))
 
-check("a lane burst over max HP caps the kill line: full HP stays, 550 goes home",
-	is(decide(inputs({ laneBurst = 800 })), "none")
-		and is(decide(inputs({ hp = 550, laneBurst = 800 })), "home"))
+check("a kill line over max HP is capped: full HP stays, 550 goes home",
+	is(decide(inputs({ safe = { kill = 600, hitting = false, reach = 0 } })), "none")
+		and is(decide(inputs({ hp = 550, safe = { kill = 600, hitting = false, reach = 0 } })), "home"))
 
 check("a salve waits while a hero is in reach (a step-out would end interrupted at once); a tango does not",
-	is(decide(inputs({ hp = 250, reach = 1, items = { salve() }, safeSpot = SAFE })), "none")
-		and is(decide(inputs({ hp = 250, reach = 1, items = { tango() }, tree = TREE })), "use", "item_tango"))
+	is(decide(inputs({ hp = 250, safe = { kill = 100, hitting = false, reach = 1 }, items = { salve() }, safeSpot = SAFE })), "none")
+		and is(decide(inputs({ hp = 250, safe = { kill = 100, hitting = false, reach = 1 }, items = { tango() }, tree = TREE })), "use", "item_tango"))
 
 check("mana waits while an HP regen runs",
 	is(decide(inputs({ hp = 500, mp = 100, regenLeft = 50, items = { clarity() } })), "none")
@@ -134,7 +157,7 @@ check("the wand is never spent topping up, and counts in what we reach",
 do
 	local run = { kind = "step_out_use", slot = 2, name = "item_flask", started = 95, hp0 = 250, dur = 10, at = { x = 1, y = 2 } }
 	local on = decide(inputs({ hp = 300, run = run, items = {}, safeSpot = SAFE, regenLeft = 200 }))
-	local reached = decide(inputs({ hp = 300, run = run, reach = 1, items = {}, safeSpot = SAFE }))
+	local reached = decide(inputs({ hp = 300, run = run, safe = { kill = 100, hitting = false, reach = 1 }, items = {}, safeSpot = SAFE }))
 	local topped = decide(inputs({ hp = 420, run = run, items = {}, safeSpot = SAFE }))
 	local over = decide(inputs({ now = 106, hp = 300, run = run, items = {}, safeSpot = SAFE, regenLeft = 0 }))
 	check("a step-out use runs on; ends interrupted when a hero reaches us, topped over the line, done when its time is up",
@@ -151,8 +174,8 @@ do
 end
 
 check("rule 1 fires inside a running trip home",
-	is(decide(inputs({ hp = 150, burst = 200, reach = 1, hitRecently = true, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
+	is(decide(inputs({ hp = 150, hitRecently = true, safe = { kill = 200, hitting = true, reach = 1 }, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
 		"use", "item_magic_stick", "survive")
-		and is(decide(inputs({ hp = 150, burst = 200, reach = 1, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
+		and is(decide(inputs({ hp = 150, safe = { kill = 200, hitting = false, reach = 1 }, items = { wand() }, run = { kind = "home", started = 90, hp0 = 150 } })),
 			"home", nil, "running"))
 finish()
