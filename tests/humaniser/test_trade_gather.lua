@@ -47,7 +47,11 @@ end
 function Unit:GetNearbyLaneCreeps() return creeps end
 function Unit:GetNearbyTowers(_, enemies) return enemies and { tower } or {} end
 function Unit:GetAttackTarget() return self.attacking end
-function Unit:WasRecentlyDamagedByHero() return self.hitMe == true end
+-- `hitAgo` (seconds since the hero last damaged us) answers by the window asked; without it `hitMe` answers any window.
+function Unit:WasRecentlyDamagedByHero(_, window)
+	if self.hitAgo ~= nil then return self.hitAgo <= window end
+	return self.hitMe == true
+end
 function Unit:IsCreep() return false end
 function GetUnitToUnitDistance(a, b) return GetUnitToLocationDistance(a, b.loc) end
 function IsHeroAlive() return true end
@@ -140,6 +144,23 @@ do
 			and asked.place.x == 300 and dead ~= nil and dead.zero == "kill")
 	check("a safe walk with two down at 0.3 HP is no zero for the joiner", ok ~= nil and ok.zero == nil, ok and ok.zero)
 	Plays.Near, Plays.InputsOf, Plays.Of = near, inputs, of
+end
+
+do
+	enemy.spa = 1.6
+	local function read(ago)
+		bot.hitAgo = ago
+		local c = Trade.Gather(bot).cands[1]
+		return c
+	end
+	local mid, past, fresh = read(1.4), read(1.9), read(0.5)
+	enemy.spa = 1.2
+	local quick = read(1.6)
+	bot.hitAgo = nil
+	enemy.spa = nil
+	check("swung spans the hitter's attack interval (GetSecondsPerAttack 1.6): hit 1.4 s ago is swung and not hitting, 1.9 s neither, 0.5 s both; a 1.2 s hitter 1.6 s ago is not",
+		mid.hitting == false and mid.swung == true and past.hitting == false and past.swung == false
+			and fresh.hitting == true and fresh.swung == true and quick.swung == false)
 end
 
 do
