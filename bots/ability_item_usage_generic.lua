@@ -5320,8 +5320,6 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 		and nModeDesire >= BOT_MODE_DESIRE_MODERATE
 		and bot:GetLevel() >= 3
 		and not bot:HasModifier( "modifier_arc_warden_tempest_double" )
-		-- Humaniser Sustain (Ours.Sustain, design step 4): a held laner walks home; its trip is sustain's rule 2 (humaniser/sustain_act.ts).
-		and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.Holds( bot ) )
 	then
 
 		--第一种情况:无敌人无大药回家恢复
@@ -5337,6 +5335,8 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 			and not bot:HasModifier( "modifier_item_urn_heal" )
 			and not bot:HasModifier( "modifier_item_spirit_vessel_heal" )
 			and bot:DistanceFromFountain() > nMinTPDistance
+			-- Humaniser Sustain (Ours.Sustain): a held laner's trip home is sustain's rule 2, a walk; asked last, so it logs only a refused cast.
+			and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsTeleport( bot, '1' ) )
 		then
 			tpLoc = J.GetTeamFountain()
 			sCastMotive = '撤退:1'
@@ -5412,6 +5412,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 			and not bot:HasModifier( "modifier_bottle_regeneration" )
 			and not bot:HasModifier( "modifier_tango_heal" )
 			and bot:DistanceFromFountain() > nMinTPDistance - 600
+			and not ( J.Humaniser.IsEnabled() and J.Humaniser.SustainAct.HoldsTeleport( bot, '3' ) )
 		then
 			tpLoc = J.GetTeamFountain()
 			sCastMotive = '撤退:3'

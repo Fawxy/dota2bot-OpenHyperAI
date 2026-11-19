@@ -3166,6 +3166,12 @@ export const EVENTS = {
         dead: "num",
         d: "num",
     },
+    /** Sustain: OHA's retreat teleport home would have cast and sustain held it (SustainAct.HoldsTeleport), once per run of refusals; `why` is OHA's case (1: no enemy near, 3: level 9+ and at most one enemy), `hp` %. */
+    sustain_tp: {
+        pid: "num",
+        why: "str",
+        hp: "num",
+    },
     /** Slice oha-burst-left-out: the first time in a game, per level, a hero's castable spell that Valve's estimate leaves out (or never measured) is added to its burst read (SpellReady.AddedOn), once per hero, spell and spell level (a new level logs again, to show the value follows the level on an enemy handle). */
     burst_add: {
         /** The caster's player id. */
