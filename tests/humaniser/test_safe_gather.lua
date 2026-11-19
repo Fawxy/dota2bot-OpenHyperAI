@@ -258,7 +258,15 @@ do
 	bot.hitBy = { [e] = T }
 	local hit = at()
 	check("a hero hitting us keeps its 6 s window at the edge", hit.kill == 2400 and hit.level == "deadly", hit.kill)
+	bot.hitBy = { [e] = T - 1.5 }
+	local gap = at()
+	check("between swings (its hit 1.5 s ago, the read's 1 s flag lapsed) the edge hero is not capped: 4 s", gap.kill == 1600 and gap.level == "deadly", gap.kill)
 	bot.hitBy = {}
+	e.loc = Vector(-1700, -5000)
+	T = T + 0.1
+	local out = G.At(bot, Vector(-2900, -5000), { from = HERE })
+	check("a walk that starts 300 from the hero and ends outside its reach is measured from the start: 4 s", out.kill == 1600, out.kill)
+	e.loc = Vector(-1000, -5000)
 	local second = enemy(11, -1700, 10)
 	local two = at()
 	check("the walk out is the longest over the reachers: a second hero 300 away puts the edge hero back at 4 s", two.kill == 1640, two.kill)

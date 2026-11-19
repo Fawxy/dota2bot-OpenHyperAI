@@ -167,7 +167,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local distToSegment, lanerRows, towerOnMe, pressed, exitDamage, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, pressSeen, exitSeen, cutState, frames
+local distToSegment, lanerRows, towerOnMe, pressed, exitFrame, pressedBy, exitDamage, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, pressSeen, exitSeen, cutState, frames
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
@@ -320,13 +320,27 @@ function pressed(bot, now)
     pressSeen[pid] = {t = now, on = on}
     return on
 end
-function exitDamage(bot, e, w, now)
+function exitFrame(bot, now)
     local pid = bot:GetPlayerID()
     local seen = exitSeen[pid]
     if seen == nil or seen.t ~= now then
-        seen = {t = now, dmg = {}}
+        seen = {t = now, dmg = {}, by = {}}
         exitSeen[pid] = seen
     end
+    return seen
+end
+function pressedBy(bot, e, now)
+    local seen = exitFrame(bot, now)
+    local pid = e:GetPlayerID()
+    local on = seen.by[pid]
+    if on == nil then
+        on = bot:WasRecentlyDamagedByHero(e, ____exports.SETTINGS.PressWindow)
+        seen.by[pid] = on
+    end
+    return on
+end
+function exitDamage(bot, e, w, now)
+    local seen = exitFrame(bot, now)
     local key = (tostring(e:GetPlayerID()) .. ":") .. tostring(w)
     local dmg = seen.dmg[key]
     if dmg == nil then
@@ -338,10 +352,11 @@ end
 --- `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
 -- passes the cached one, and the clock here is the game's now, not the read's `t`). `hitting` is the read's `eng`, so it is only set when
 -- the read was made with `engagedWindow`; a gate's read (no window) has none hitting and every row at the short window.
--- `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from the place read to the edge of
+-- `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from the place read, or from the walk's start when that is deeper in, to the edge of
 -- that hero's reach (its `run`: speed x the read's horizon + attack range + both hulls), at our current speed. A place already
 -- outside a row's reach adds 0, and an unseen lane row has no place to measure from. With `Ours.ExitWindow` a visible hero that
--- is not hitting us is counted over `exit` + `ExitTurn` when that is under `KillWindow` (never more than the read gave it; not on an `away` walk).
+-- is not hitting us that did not damage us within `PressWindow`
+-- is counted over `exit` + `ExitTurn` when that is under `KillWindow` (never more than the read gave it; not on an `away` walk).
 function ____exports.FromRead(bot, r, opts)
     local reach = {}
     local exit = 0
@@ -355,7 +370,10 @@ function ____exports.FromRead(bot, r, opts)
                 exit,
                 math.max(
                     0,
-                    row.run - dist(r.place, row.at)
+                    row.run - math.min(
+                        dist(r.place, row.at),
+                        dist(r.from, row.at)
+                    )
                 ) / speed
             )
         end
@@ -363,7 +381,7 @@ function ____exports.FromRead(bot, r, opts)
     local now = DotaTime()
     local w = Ours.On("ExitWindow") and not opts.away and math.ceil((exit + ____exports.SETTINGS.ExitTurn) * 2) / 2 or ____exports.SETTINGS.KillWindow
     for ____, row in ipairs(r.rows) do
-        local capped = not row.eng and row.u ~= nil and w < ____exports.SETTINGS.KillWindow
+        local capped = not row.eng and row.u ~= nil and w < ____exports.SETTINGS.KillWindow and not pressedBy(bot, row.u, now)
         reach[#reach + 1] = {
             pid = row.pid,
             hitting = row.eng,
