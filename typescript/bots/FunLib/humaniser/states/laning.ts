@@ -260,14 +260,39 @@ function logSkip(bot: Unit, t: Lib.Verbs.LaneTarget, price: Contest.Price, at: s
     ]);
 }
 
-function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget): Lib.Verbs.LaneTarget | undefined {
+type Mine = (this: void, t: Lib.Verbs.LaneTarget) => boolean;
+
+/** What the pick's `mine` answered for each target it asked about, kept while the body's pick is cut (ev=cut kind=pick). */
+const askedTargets: Lib.Verbs.LaneTarget[] = [];
+const askedOk: boolean[] = [];
+let askedCount = 0;
+let askedInner: Mine | undefined;
+
+function recordMine(this: void, t: Lib.Verbs.LaneTarget): boolean {
+    const ok = (askedInner as Mine)(t);
+    askedTargets[askedCount] = t;
+    askedOk[askedCount] = ok;
+    askedCount++;
+    return ok;
+}
+
+function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.LaneTarget, pre?: Lib.Verbs.LaneTarget, cut = false): Lib.Verbs.LaneTarget | undefined {
     const pid = bot.GetPlayerID();
     const claims = claimsFor(bot);
     const far = farFor(bot);
     // A creep whose walk-in the price released is not picked again: from nearer, the plain reach rule would take it unpriced.
-    const mine: ((this: void, t: Lib.Verbs.LaneTarget) => boolean) | undefined =
-        far === undefined ? claims : (t) => !Contest.Refused(pid, t.creep) && (claims === undefined || claims(t));
+    let mine: Mine | undefined = far === undefined ? claims : (t) => !Contest.Refused(pid, t.creep) && (claims === undefined || claims(t));
+    const cutting = cut && Telemetry.IsEnabled() && Telemetry.Get().Cut === true;
+    if (cutting) {
+        askedCount = 0;
+        if (mine !== undefined) {
+            askedInner = mine;
+            mine = recordMine;
+        }
+    }
+    const order = PickTable.Order(ClaimPos(bot));
     let idle: Lib.Verbs.LaneTarget | undefined;
+    let idleAsked = false;
     const chosen = LanePick.Choose(
         targets,
         current,
@@ -275,14 +300,94 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
         pre,
         () => {
             const verbs = Tasks.Verbs();
+            idleAsked = true;
             idle = verbs !== undefined ? IdleSwing.Find(bot, verbs, mine) : undefined;
             return idle;
         },
         far,
-        PickTable.Order(ClaimPos(bot)),
+        order,
     );
     idlePicks[pid] = idle !== undefined && chosen === idle ? idle : undefined;
+    // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.
+    if (cutting && (chosen !== undefined || targets.length > 0)) {
+        const [ok, err] = pcall(cutPick, bot, targets, current, pre, chosen, far !== undefined, idleAsked, idle, order);
+        if (!ok) Telemetry.Failed("Laning.CutPick", err);
+    }
     return chosen;
+}
+
+const PICK_CUT_EVERY = 5;
+const pickCuts: Record<number, { creep?: Lib.TaskCreep; kind?: string; at: number } | undefined> = {};
+
+const r6 = (v: number): number => (v === math.huge ? -1 : math.floor(v * 1000000 + 0.5) / 1000000);
+
+function offerIndex(targets: Lib.Verbs.LaneTarget[], creep: Lib.TaskCreep): number {
+    for (let i = 0; i < targets.length; i++) if (targets[i].creep === creep) return i + 1;
+    return -1;
+}
+
+function askedMine(t: Lib.Verbs.LaneTarget): boolean {
+    for (let i = 0; i < askedCount; i++) if (askedTargets[i] === t) return askedOk[i];
+    return true;
+}
+
+/** `ev=cut kind=pick`: the inputs of LanePick.Choose as the body's pick gave them, and its answer, when it changes and else every PICK_CUT_EVERY s. */
+function cutPick(
+    bot: Unit,
+    targets: Lib.Verbs.LaneTarget[],
+    current: Lib.Verbs.LaneTarget | undefined,
+    pre: Lib.Verbs.LaneTarget | undefined,
+    chosen: Lib.Verbs.LaneTarget | undefined,
+    hasFar: boolean,
+    idleAsked: boolean,
+    idle: Lib.Verbs.LaneTarget | undefined,
+    order: PickTable.PickKind[],
+): void {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const ak = chosen !== undefined ? chosen.kind : "none";
+    const st = (pickCuts[pid] = pickCuts[pid] ?? { at: 0 });
+    if (st.kind === ak && st.creep === chosen?.creep && now >= st.at && now - st.at < PICK_CUT_EVERY) return;
+    st.kind = ak;
+    st.creep = chosen?.creep;
+    st.at = now;
+    const tg: string[] = [];
+    for (let i = 0; i < targets.length; i++) {
+        const t = targets[i];
+        tg.push([i + 1, t.kind, r6(t.eta), r6(t.due), r6(t.walk), r6(t.dies), t.ranged ? 1 : 0, askedMine(t) ? 1 : 0].join(","));
+    }
+    let far: string | undefined;
+    if (hasFar) {
+        const asked: string[] = [];
+        for (const fp of farPrices[pid] ?? []) asked.push(`${offerIndex(targets, fp.creep)},${fp.price.ok ? 1 : 0}`);
+        far = asked.length > 0 ? asked.join(";") : "-";
+    }
+    let idleText: string | undefined;
+    if (idleAsked) {
+        idleText =
+            idle === undefined
+                ? "0"
+                : [offerIndex(targets, idle.creep), idle.kind, r6(idle.eta), r6(idle.due), r6(idle.walk), r6(idle.dies), idle.ranged ? 1 : 0].join(",");
+    }
+    let ans = "none";
+    if (chosen !== undefined) {
+        if (chosen === pre) ans = "pre";
+        else if (chosen === idle) ans = "idle";
+        else ans = tostring(targets.indexOf(chosen) + 1);
+    }
+    Telemetry.Event("cut", [
+        ["pid", pid],
+        ["kind", "pick"],
+        ["pos", ClaimPos(bot)],
+        ["ord", order.join(",")],
+        ["tg", tg.join(";")],
+        ["cur", current !== undefined ? offerIndex(targets, current.creep) : undefined],
+        ["pre", pre !== undefined ? [offerIndex(targets, pre.creep), r6(pre.eta), r6(pre.walk), r6(pre.dies)].join(",") : undefined],
+        ["far", far],
+        ["idle", idleText],
+        ["ans", ans],
+        ["ak", ak],
+    ]);
 }
 
 /**
@@ -433,7 +538,7 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
         pick: (targets, current) => {
             const verbs = Tasks.Verbs();
             const pre = verbs !== undefined ? PreHit.Find(bot, verbs) : undefined;
-            const chosen = contestPick(bot, choose(bot, targets, current, pre), current);
+            const chosen = contestPick(bot, choose(bot, targets, current, pre, true), current);
             noteYield(bot, targets, current, pre, chosen);
             if (chosen !== undefined) noteSeen(bot.GetPlayerID(), chosen.creep);
             // laneFarm asks on every scan, also with nothing offered: an empty scan that picks nothing is not a pick.

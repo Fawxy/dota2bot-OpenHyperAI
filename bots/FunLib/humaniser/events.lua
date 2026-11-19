@@ -1811,7 +1811,14 @@ ____exports.EVENTS = {
         hd = "num",
         kill = "num",
         ra = "num",
-        pr = "num"
+        pr = "num",
+        ord = "str",
+        tg = "str",
+        cur = "num",
+        pre = "str",
+        far = "str",
+        idle = "str",
+        ans = "str"
     },
     sustain_item = {
         name = "str",

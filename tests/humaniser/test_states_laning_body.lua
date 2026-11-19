@@ -607,6 +607,42 @@ do
 	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
 end
 
+-- ev=cut kind=pick: the body's pick logs its inputs and answer when the answer changes, not on every scan of the same attempt.
+do
+	local H, bot, c, c2, events
+	local function picks()
+		local out = {}
+		for _, l in ipairs(events) do if l:find("ev=cut ", 1, true) and l:find("kind=pick", 1, true) then out[#out + 1] = l end end
+		return out
+	end
+	silenced(function()
+		H, bot = Fresh({ Enable = true, Own = { laning = { 2 } }, Laning = { LastHit = { 2 } } })
+		events = {}
+		require("bots/FunLib/humaniser/telemetry").SetSink(function(line) events[#events + 1] = line end)
+		H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
+		for _ = 1, 4 do frame(H, bot) end
+		c = creep({ loc = Vector(-200, 0), hp = 60, regen = -100 })
+		for _ = 1, 3 do frame(H, bot) end
+	end)
+	local first = picks()
+	check("pick cut: the first pick logs one line with the offered creep and the answer", #first == 1
+		and first[1]:find(" pid=1 ", 1, true) ~= nil and first[1]:find(" pos=2 ", 1, true) ~= nil
+		and first[1]:find(" ord=lasthit,pre_hit,deny,idle_swing ", 1, true) ~= nil and first[1]:find(" tg=1,lasthit,", 1, true) ~= nil
+		and first[1]:find(",0,1 ", 1, true) ~= nil and first[1]:find(" ans=1 ak=lasthit", 1, true) ~= nil, first[1])
+	silenced(function() for _ = 1, 10 do frame(H, bot) end end)
+	check("pick cut: the same answer on later scans inside 5 s logs no second line", #picks() == 1, #picks())
+	silenced(function()
+		c.alive, c.hp = false, 0
+		bot.lastHits = 1
+		for _ = 1, 3 do frame(H, bot) end
+		c2 = creep({ loc = Vector(-180, 0), hp = 60, regen = -100 })
+		for _ = 1, 3 do frame(H, bot) end
+	end)
+	local all = picks()
+	check("pick cut: a different creep chosen logs again", #all == 2 and all[2] ~= first[1], #all)
+	require("bots/FunLib/humaniser/telemetry").SetSink(nil)
+end
+
 -- A creep that reads alive with no location when the attempt ends (prhfc2 game C, log 2026-11-04T02-49-08-prhfc2_C_on_3.log
 -- t=155.533: ev=state_task reason=error, `at` nil in placeOf): the attempt is still reported, placed from its last scan.
 do

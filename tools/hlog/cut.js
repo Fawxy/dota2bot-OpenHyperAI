@@ -2,7 +2,7 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|safe] [--who CONSUMER] [--game N] [--id ID]   print a fixture
+//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|safe|pick] [--who CONSUMER] [--game N] [--id ID]   print a fixture
 //       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
 //       answer the game gave (spot: the ev=lane_pos why, sx, sy, rp; gate: its ev=threat dec; leave: the cut's dec); --all
@@ -293,6 +293,27 @@ const DECISIONS = {
         id: (cut) => `safe.${cut.who}.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.lv}(${cut.why}) at ${cut.who} (hp ${cut.hpa} of ${cut.hpm}, kill ${cut.kill})`,
     },
+    // The laning body's creep pick (laning.ts choose, LanePick.Choose): the offered creeps, the wait, the pre-hit and the order ride on the line; `mine`, the walk-in
+    // limit `far` and the idle swing found are the game's answers, taken as logged. The answer is `ans` (the offer's place, `pre`, `idle`, `none`) and its kind `ak`.
+    pick: {
+        driver: 'pick',
+        world(game, cut) {
+            const w = { t: Number(cut.t), pid: Number(cut.pid) };
+            for (const k of ['cur']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['ord', 'tg', 'pre', 'far', 'idle']) if (cut[k] !== undefined) w[k] = String(cut[k]);
+            return w;
+        },
+        check(game, cut, obs) {
+            const a = obs.actions[0] || {};
+            const got = `${a.verb}(${a.target})`;
+            const want = `${cut.ans}(${cut.ak})`;
+            return { same: got === want, got, want };
+        },
+        answer: (game, cut) => (cut.ans === 'none' ? 'none' : `${cut.ans === 'pre' || cut.ans === 'idle' ? cut.ans : 'offer'}(${cut.ak})`),
+        brief: (game, cut) => `pos ${cut.pos}, ${cut.tg ? String(cut.tg).split(';').length : 0} offered${cut.cur !== undefined ? `, waiting on ${cut.cur}` : ''}${cut.pre !== undefined ? ', pre-hit offered' : ''}, took ${cut.ans}`,
+        id: (cut) => `lane.pick.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
+        note: (game, cut) => `The game chose ${cut.ans}(${cut.ak}) of ${cut.tg ? String(cut.tg).split(';').length : 0} offered (order ${cut.ord})`,
+    },
 };
 
 /** A trade cut's answer as the driver observes it: `lv(hero#tgt)` or `none(why)`, then `/end(ed)` when a running exchange ended. */
@@ -403,6 +424,7 @@ function factsOf(w) {
             ...w.theirs.map(m => `# theirs pid ${m.pid}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally`)];
     }
     if (b === undefined && w.hpa !== undefined) return [`# ${w.who} pid ${w.pid}: HP ${w.hpa} of ${w.hpm}; reachers (pid,hitting,dmg,unseen) ${w.rr || 'none'}; unseen weight ${w.mi}; tower ${w.stw}; landing ${w.ld}`];
+    if (b === undefined && w.ord !== undefined) return [`# pid ${w.pid}: order ${w.ord}; offered (n,kind,eta,due,walk,dies,ranged,mine) ${w.tg || 'none'}; waiting on ${w.cur ?? 'nothing'}; pre-hit ${w.pre ?? 'none'}; far ${w.far ?? 'not given'}; idle ${w.idle ?? 'not asked'}`];
     // A trade world is the one decision's inputs: the hero and its candidates.
     if (b === undefined && w.cd !== undefined) return [`# ${w.role} pid ${w.pid}: HP ${Math.round(100 * w.hp)}%; burst ${w.bu} over ${w.n} heroes, unseen ${w.mi}; creeps on it ${w.hc}, wave ${w.cr}; tower on it ${w.tm}`
         + `${w.run ? `; running ${String(w.run).split(':').slice(0, 2).join(' on ')}` : ''}`,

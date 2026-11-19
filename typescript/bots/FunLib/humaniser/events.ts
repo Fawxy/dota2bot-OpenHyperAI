@@ -2808,7 +2808,7 @@ export const EVENTS = {
     /** A decision's API inputs in the frame it decided (cut.ts): `kind` names the decision; the record formats are cut.ts's. */
     cut: {
         pid: "num",
-        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
+        /** The decision: `spot` (LaneSpot.Compute, beside ev=lane_pos), `gate` (Threat.Gate, beside its ev=threat), `leave` (retreat's LeaveWhy; the answer is `dec`), `join` (PairJoin.Decide, in shadow; `dec`), `lane` (states/lane_table Walk: the row that acted, `row`, with the rows that wanted the frame and gave no order, `skip`), `trade` (states/trade.ts Decide; `lv`, `why`), `sustain` (sustain.ts Decide in shadow; `ak`, `why`), `safe` (safe_gather.ts Shadow: safe.ts Decide in shadow beside each consumer, `who` = leave, retreat, spot, pref, trade, trade_walk or a gate's consumer; `lv`, `why`), `pick` (states/laning.ts choose: the laning body's creep pick, LanePick.Choose; `ans`, `ak`). Older logs: `trade` is the retired CoreTrade.Decide (told apart by its `dec`, `rch` and `kh` fields and no `lv`), `trade2` is the same line as today's `trade`, and `keep` is the retired CoreTrade.KeepAnswer. */
         kind: "str",
         /** The spot's role input (`trade`: the trading hero's): `core` or `support`. */
         role: "str",
@@ -3074,6 +3074,21 @@ export const EVENTS = {
         kill: "num",
         ra: "num",
         pr: "num",
+        /**
+         * kind=pick (states/laning.ts `choose`, the laning body's creep pick: every input of LanePick.Choose and its answer, so tools/hlog/cut.js replays it with no game; `pid`, and `pos`, the pick-table column read).
+         * `ord` is the order of kinds (`lasthit,pre_hit,deny,idle_swing` for a core). `tg` one record per offered target, `;`-joined, `n,kind,eta,due,walk,dies,ranged,mine`: n is its place in the offer (1-based), kind `lasthit` or `deny`,
+         * times in seconds (6 places; -1 for an infinite `dies`), ranged 1/0, mine 1/0 (the role's filter, asked once during the pick). `cur` the offer the attempt is waiting on (-1: its creep is not among them; absent: no wait).
+         * `pre` the pre-hit offered, `n,eta,walk,dies` (n: the offer on the same creep, -1 none; absent: none). `far` present when the walk-in limit was given: `n,ok` per creep it was asked about, `;`-joined, `-` when none.
+         * `idle` present when the idle swing was asked: `0` none found, else `n,kind,eta,due,walk,dies,ranged`. The answer: `ans` (`n` of the offer chosen, `pre`, `idle` or `none`) and `ak` (its kind, `none`).
+         * Logged when the answer (creep or kind) changes, else every 5 s while targets are offered; scans with nothing offered and nothing chosen are left out.
+         */
+        ord: "str",
+        tg: "str",
+        cur: "num",
+        pre: "str",
+        far: "str",
+        idle: "str",
+        ans: "str",
     },
     /** Sustain (step 2): an item's values as sustain_gather.ts reads them, the first time a hero of this team holds it: one use's HP, mana, duration, and the charges it held. A 0 where the item restores something is a wrong special-value key. */
     sustain_item: {

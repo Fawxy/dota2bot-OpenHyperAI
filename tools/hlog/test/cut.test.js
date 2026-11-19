@@ -236,3 +236,20 @@ test('safe: a logged line replays to its level and reason, and a changed answer 
     assert.deepStrictEqual(g.cuts.map(c => checkOne(g, c).same), [true, true, false]);
     assert.strictEqual(checkOne(g, g.cuts[0]).got, 'deadly(kill)');
 });
+
+// kind=pick: the body's creep pick replays through LanePick.Choose with `mine`, `far` and the idle swing as the game answered them.
+test('pick: a logged line replays to its answer (ranged bias, the role filter, the walk-in limit, a pre-hit), and a wrong answer is told apart', () => {
+    const line = (extra) => hev(`t=200.000 ev=cut pid=1 kind=pick pos=1 ord=lasthit,pre_hit,deny,idle_swing ${extra}`);
+    const g = readGames([
+        line('tg=1,lasthit,0.6,0.6,0,-1,0,1;2,lasthit,0.9,0.9,0,-1,1,1 ans=2 ak=lasthit'),
+        line('tg=1,deny,0,0,0,-1,0,1;2,lasthit,0.8,0.8,0,-1,0,0 ans=1 ak=deny'),
+        line('tg=1,lasthit,0.6,0.6,0,-1,0,1;2,lasthit,0.9,0.9,0,-1,1,1 ans=1 ak=lasthit'),
+        line('tg=1,deny,0,0,0,-1,0,1 pre=-1,0,0,9 ans=pre ak=prehit'),
+        line('tg=1,lasthit,0.5,0.5,1.5,5,0,1 far=1,1 ans=1 ak=lasthit'),
+        line('tg=1,lasthit,0.5,0.5,1.5,5,0,1 far=1,0 ans=none ak=none'),
+        line('tg=1,lasthit,0.5,0.5,2,1,0,1 idle=-1,prehit,0,0,0,-1,0 ans=idle ak=prehit'),
+    ].join('\n')).pop();
+    assert.deepStrictEqual(g.cuts.map(c => checkOne(g, c).same), [true, true, false, true, true, true, true]);
+    assert.strictEqual(checkOne(g, g.cuts[2]).got, '2(lasthit)');
+    assert.strictEqual(checkOne(g, g.cuts[2]).want, '1(lasthit)');
+});
