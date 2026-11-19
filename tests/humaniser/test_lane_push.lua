@@ -40,11 +40,11 @@ end
 -- the schedule fills it at full HP (flagbearer on the minute); its 1:30 wave would be behind our lead and is left out.
 do
 	local own = {
-		{ kind = "melee", s = 5500, hp = 600 }, { kind = "melee", s = 5480, hp = 300 }, { kind = "ranged", s = 5350, hp = 290 },
+		{ kind = "melee", s = 5600, hp = 600 }, { kind = "melee", s = 5580, hp = 300 }, { kind = "ranged", s = 5450, hp = 290 },
 		{ kind = "melee", s = 1900, hp = 550 }, { kind = "melee", s = 1880, hp = 550 }, { kind = "flag", s = 1870, hp = 550 },
 		{ kind = "ranged", s = 1730, hp = 300 },
 	}
-	local init = P.ViewStart(paths[2], 2, 137, own, { { kind = "melee", s = 5700, hp = 200 } })
+	local init = P.ViewStart(paths[2], 2, 137, own, { { kind = "melee", s = 5800, hp = 200 } })
 	check("view: 7 own, 1 seen, one wave of 4 filled", #init == 12, tostring(#init))
 	check("view: own HP clipped to the kind's maximum", init[1].hp == 550, tostring(init[1].hp))
 	local fill = { { "melee", 6376 }, { "melee", 6376 }, { "flag", 6376 }, { "ranged", 6526 } }
@@ -56,7 +56,7 @@ do
 	check("view: the 2:00 Dire wave placed where the schedule puts it", ok)
 
 	local r = P.ReadFrom(paths[2], 2, 137, init, { [2] = 1700 })
-	check("reading: clash and 30 s move as the offline model", near(r.clash, 5600) and near(r.move, 574.875),
+	check("reading: clash and 30 s move as the offline model", near(r.clash, 5700) and near(r.move, 534.625),
 		tostring(r.clash) .. " " .. tostring(r.move))
 	check("reading: away from both T1s the model decides, OUT", r.state == "OUT" and not r.tower, r.state)
 end
@@ -200,7 +200,7 @@ do
 		a = (a * 31 + c) % 1000003
 		b = (b * 37 + c) % 999983
 	end
-	check("run: 40 random runs sample for sample as the plain loop", a == 869389 and b == 838495 and #s == 33160, a .. " " .. b .. " " .. #s)
+	check("run: 40 random runs sample for sample as the plain loop", a == 408298 and b == 402509 and #s == 33059, a .. " " .. b .. " " .. #s)
 
 	-- A run cut at an earlier second (Upto, by step time) is the shorter run itself.
 	local same = true

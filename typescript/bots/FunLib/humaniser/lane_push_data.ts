@@ -1,5 +1,6 @@
 /** Lane paths for the push reading (lane_push), generated from docs/proposals/lane-forecast/lanes.json (geometry.js: each lane is the two
- * teams' first-wave lead-creep traces joined at first contact, lr logs, 02/11/2026). s runs from Radiant's spawn; towers are each team's T1. */
+ * teams' first-wave lead-creep traces joined at first contact, lr logs, 02/11/2026). s runs from Radiant's spawn; towers are each team's T1.
+ * The mid tower marks are 7.42 values (19/11/2026), projected from the towers' positions in `ev=cut_towers`; top and bot are 7.41. */
 /** Read-only, and only these three: lane_push.Project caches segment data by table identity. */
 export interface LanePath { pts: number[][]; s: number[]; spawnR: number; spawnD: number; towers: { team: number; s: number }[] }
 
@@ -16,7 +17,7 @@ export const LANE_PATHS: Record<number, LanePath> = {
         s: [0,276,601,925,1251,1575,1901,2215,2541,2865,3190,3515,3840,4165,4483,4808,5133,5458,5718,5806,6055,6379,6705,7030,7355,7680,8005,8330,8655,8980,9305,9629,9951,10276,10601,10926,11251,11576],
         spawnR: -325,
         spawnD: 11901,
-        towers: [{team:2,s:4348},{team:3,s:7250}],
+        towers: [{team:2,s:4726},{team:3,s:7615}],
     },
     [3]: {
         pts: [[-3163,-6112],[-2741,-6130],[-2322,-6176],[-1998,-6208],[-1673,-6199],[-1348,-6189],[-1024,-6168],[-726,-6272],[-438,-6422],[-120,-6443],[205,-6450],[529,-6446],[854,-6423],[1178,-6399],[1502,-6376],[1826,-6350],[2149,-6314],[2472,-6278],[2795,-6242],[3118,-6210],[3442,-6185],[3766,-6161],[4091,-6139],[4414,-6111],[4730,-6033],[5045,-5955],[5360,-5877],[5646,-5730],[5859,-5498],[5962,-5312],[6117,-5026],[6178,-4709],[6229,-4388],[6280,-4067],[6329,-3745],[6345,-3421],[6360,-3096],[6421,-2778],[6493,-2461],[6565,-2144],[6637,-1827],[6547,-1515],[6456,-1203],[6366,-890],[6276,-578],[6205,-262],[6161,60],[6128,383],[6098,706],[6116,1031],[6133,1355],[6150,1680],[6164,2005],[6176,2329],[6177,2654],[6158,2978],[6199,3182],[6261,3380]],

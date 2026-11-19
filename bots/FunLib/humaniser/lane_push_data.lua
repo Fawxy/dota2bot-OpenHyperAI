@@ -207,7 +207,7 @@ ____exports.LANE_PATHS = {[1] = {
     },
     spawnR = -325,
     spawnD = 11901,
-    towers = {{team = 2, s = 4348}, {team = 3, s = 7250}}
+    towers = {{team = 2, s = 4726}, {team = 3, s = 7615}}
 }, [3] = {
     pts = {
         {-3163, -6112},

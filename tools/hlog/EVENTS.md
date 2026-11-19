@@ -1097,7 +1097,7 @@ Slice rune-spawn: the team's 6:00 plan, once per team at RunePlan PlanAt and aga
 
 `team` num
 
-- `fact` str: `tower_reach`, `tower_range`, `hero_radius`, `lane_creep_speed`, `neutral_speed` or `neutral_speed_<small|medium|large|ancient>`; `attack_period` and `attack_point` are fallbacks logged on first use.
+- `fact` str: `mid_t1_s` (the mid tier 1 tower's live position projected onto the mid lane path, against the lane_push_data mark), `fountain_x`, `fountain_y`, `tower_reach`, `tower_range`, `hero_radius`, `lane_creep_speed`, `neutral_speed` or `neutral_speed_<small|medium|large|ancient>`; `attack_period` and `attack_point` are fallbacks logged on first use.
 - `live` num: The shared `WorldFacts` read; -1 for a fallback a caller took.
 - `constant` num: The old constant (for a fallback, the value used).
 - `fell` num: Times a reader returned its constant so far (a failed read, or `Latest` asked before the first read).

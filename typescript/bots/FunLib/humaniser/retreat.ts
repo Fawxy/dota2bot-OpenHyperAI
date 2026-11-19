@@ -14,6 +14,7 @@ import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Lane_ from "bots/FunLib/humaniser/lane";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
+import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -127,7 +128,7 @@ export const SETTINGS = {
 };
 
 /** Valve's fountain spots (as drill.ts); GetShopLocation(team, SHOP_HOME) is logged beside them at load. */
-const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6928, 6372, 392] };
+const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6624, 6368, 392] };
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
 
 export type Why = "threat" | "lethal" | "tower" | "heal" | "forced";
@@ -200,11 +201,13 @@ interface HeroState {
 const states: Record<number, HeroState> = {};
 let episodes = 0;
 let fountainLogged = false;
+let midT1Logged = false;
 
 export function ResetCache(): void {
     for (const k of Object.keys(states)) delete states[k as unknown as number];
     episodes = 0;
     fountainLogged = false;
+    midT1Logged = false;
     RetreatState.ResetCache();
 }
 
@@ -252,6 +255,20 @@ function logFountain(): void {
         const live = shop !== undefined && shop !== null;
         Telemetry.Event("world_fact", [["team", team], ["fact", "fountain_x"], ["live", live ? math.floor(shop.x) : undefined], ["constant", math.floor(f.x)]]);
         Telemetry.Event("world_fact", [["team", team], ["fact", "fountain_y"], ["live", live ? math.floor(shop.y) : undefined], ["constant", math.floor(f.y)]]);
+    }
+}
+
+function logMidT1(): void {
+    if (midT1Logged) return;
+    midT1Logged = true;
+    const path = LanePush.PathOf(Lane.Mid);
+    if (path === undefined) return;
+    for (const team of [Team.Radiant, Team.Dire]) {
+        const t = GetTower(team, Tower.Mid1);
+        const loc = t !== undefined && t !== null && !t.IsNull() ? t.GetLocation() : undefined;
+        const [constant] = LanePush.OwnT1(path, team);
+        const live = loc !== undefined ? math.floor(LanePush.Project(path, loc.x, loc.y)[0]) : undefined;
+        Telemetry.Event("world_fact", [["team", team], ["fact", "mid_t1_s"], ["live", live], ["constant", constant]]);
     }
 }
 
@@ -684,7 +701,7 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
 
     const forced = ep.why === "forced";
     if (!forced && !RetreatState.Owns(bot)) return "cut";
-    // The fountain's own buff counts as arrival: on patch 7.42 a Dire hero stops 260 to 300 short of the fountain constant
+    // The fountain's own buff counts as arrival: on patch 7.42 a Dire hero stopped 260 to 300 short of the old (6928, 6372) fountain constant
     // and a heal episode never ended (lane-table smoke, two heroes at full HP in retreat from 7:40 to the end).
     const at = dist(here, anchorPoint(ep.anchor)) <= s.Arrive || (ep.anchor.kind === "fountain" && bot.HasModifier("modifier_fountain_aura_buff"));
     if (ep.why === "heal") {
@@ -864,6 +881,7 @@ export function Desire(bot: Unit): number | undefined {
     const st = stateOf(bot);
     const now = DotaTime();
     logFountain();
+    logMidT1();
     const drill = drillDesire(bot, st, now);
     if (drill !== undefined) return drill;
     if (!RetreatState.Owns(bot)) {

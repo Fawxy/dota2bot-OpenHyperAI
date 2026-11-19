@@ -332,6 +332,7 @@ local ____exports = {}
 local dist, enemyOf, valid, ownTowersBehind, nearestTowerBehind, unpaid, FOUNTAIN, TOWER_IDS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local Lane = ____dota.Lane
 local Shop = ____dota.Shop
 local Team = ____dota.Team
 local Tower = ____dota.Tower
@@ -344,6 +345,7 @@ local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
+local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local CreepAggro = require(GetScriptDirectory().."/FunLib/humaniser/creep_aggro")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -401,21 +403,21 @@ function unpaid(bot, r)
     local n = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue137
+            local __continue142
             repeat
                 if not valid(h) or not __TS__ArrayIncludes(
                     r.eng,
                     h:GetPlayerID()
                 ) then
-                    __continue137 = true
+                    __continue142 = true
                     break
                 end
                 if not CreepAggro.Paid(bot, h) then
                     n = n + 1
                 end
-                __continue137 = true
+                __continue142 = true
             until true
-            if not __continue137 then
+            if not __continue142 then
                 break
             end
         end
@@ -465,7 +467,7 @@ ____exports.SETTINGS = {
     DrillMinHP = 0.5,
     DrillSpotArrive = 150
 }
-FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6928, 6372, 392}}
+FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6624, 6368, 392}}
 TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,
@@ -483,12 +485,14 @@ local HEAL_ITEM = {tango_single = {name = "item_tango_single", modifier = "modif
 local states = {}
 local episodes = 0
 local fountainLogged = false
+local midT1Logged = false
 function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(states)) do
         __TS__Delete(states, k)
     end
     episodes = 0
     fountainLogged = false
+    midT1Logged = false
     RetreatState.ResetCache()
 end
 local function stateOf(bot)
@@ -550,29 +554,46 @@ local function logFountain()
         )
     end
 end
+local function logMidT1()
+    if midT1Logged then
+        return
+    end
+    midT1Logged = true
+    local path = LanePush.PathOf(Lane.Mid)
+    if path == nil then
+        return
+    end
+    for ____, team in ipairs({Team.Radiant, Team.Dire}) do
+        local t = GetTower(team, Tower.Mid1)
+        local loc = t ~= nil and t ~= nil and not t:IsNull() and t:GetLocation() or nil
+        local constant = LanePush.OwnT1(path, team)
+        local live = loc ~= nil and math.floor((LanePush.Project(path, loc.x, loc.y))) or nil
+        Telemetry.Event("world_fact", {{"team", team}, {"fact", "mid_t1_s"}, {"live", live}, {"constant", constant}})
+    end
+end
 --- An enemy tower whose reach holds `bot` and that is attacking it now or hit it in the last half second.
 function ____exports.TowerOnUs(bot)
     local enemy = enemyOf(bot:GetTeam())
     local br = bot:GetBoundingRadius()
     for ____, id in ipairs(TOWER_IDS) do
         do
-            local __continue18
+            local __continue23
             repeat
                 local tw = GetTower(enemy, id)
                 if not valid(tw) then
-                    __continue18 = true
+                    __continue23 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
-                    __continue18 = true
+                    __continue23 = true
                     break
                 end
                 if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
                     return tw
                 end
-                __continue18 = true
+                __continue23 = true
             until true
-            if not __continue18 then
+            if not __continue23 then
                 break
             end
         end
@@ -768,10 +789,10 @@ local function anchorsOf(bot, why)
     local allyD = ____exports.SETTINGS.AllyAnchorMax
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue62
+            local __continue67
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or RetreatState.Running(a) then
-                    __continue62 = true
+                    __continue67 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, a)
@@ -779,9 +800,9 @@ local function anchorsOf(bot, why)
                     ally = a
                     allyD = d
                 end
-                __continue62 = true
+                __continue67 = true
             until true
-            if not __continue62 then
+            if not __continue67 then
                 break
             end
         end
@@ -878,16 +899,16 @@ local function itemReach(bot)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue79
+                local __continue84
                 repeat
                     local team = GetTeamForPlayer(pid)
                     if team == bot:GetTeam() or team ~= Team.Radiant and team ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue79 = true
+                        __continue84 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil then
-                        __continue79 = true
+                        __continue84 = true
                         break
                     end
                     local d = dist(info.location, here)
@@ -896,15 +917,15 @@ local function itemReach(bot)
                         tss = info.time_since_seen
                     end
                     if __TS__ArrayIncludes(read.reach, pid) or info.time_since_seen <= 0.1 or info.time_since_seen > t.MissingAfter then
-                        __continue79 = true
+                        __continue84 = true
                         break
                     end
                     if d <= t.MissingSpeed * (info.time_since_seen + s.HealItemHorizon) + s.HealItemUnseenMargin then
                         n = n + 1
                     end
-                    __continue79 = true
+                    __continue84 = true
                 until true
-                if not __continue79 then
+                if not __continue84 then
                     break
                 end
             end
@@ -926,30 +947,30 @@ local function planItems(bot, ep)
     local got = {}
     for ____, k in ipairs(__TS__ObjectKeys(HEAL_ITEM)) do
         do
-            local __continue86
+            local __continue91
             repeat
                 local it = ItemUse.Usable(bot, HEAL_ITEM[k].name)
                 if it == nil then
-                    __continue86 = true
+                    __continue91 = true
                     break
                 end
                 local mod = HEAL_ITEM[k].modifier
                 if mod ~= nil and bot:HasModifier(mod) then
-                    __continue86 = true
+                    __continue91 = true
                     break
                 end
                 if (k == "tango" or k == "tango_single") and tree == nil then
-                    __continue86 = true
+                    __continue91 = true
                     break
                 end
                 if k == "fire" and salveHeld then
-                    __continue86 = true
+                    __continue91 = true
                     break
                 end
                 got[k] = ItemUse.HpRestore(it)
-                __continue86 = true
+                __continue91 = true
             until true
-            if not __continue86 then
+            if not __continue91 then
                 break
             end
         end
@@ -958,7 +979,7 @@ local function planItems(bot, ep)
     local restore = 0
     for ____, cand in ipairs(s.HealSets) do
         do
-            local __continue92
+            local __continue97
             repeat
                 local items = __TS__ArrayMap(
                     cand,
@@ -968,7 +989,7 @@ local function planItems(bot, ep)
                     items,
                     function(____, k) return got[k] ~= nil end
                 ) then
-                    __continue92 = true
+                    __continue97 = true
                     break
                 end
                 local sum = __TS__ArrayReduce(
@@ -981,9 +1002,9 @@ local function planItems(bot, ep)
                     restore = sum
                     break
                 end
-                __continue92 = true
+                __continue97 = true
             until true
-            if not __continue92 then
+            if not __continue97 then
                 break
             end
         end
@@ -1644,6 +1665,7 @@ function ____exports.Desire(bot)
     local st = stateOf(bot)
     local now = DotaTime()
     logFountain()
+    logMidT1()
     local drill = drillDesire(bot, st, now)
     if drill ~= nil then
         return drill
