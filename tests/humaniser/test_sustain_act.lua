@@ -414,6 +414,14 @@ do
 	ask({ hp = 0.1, enemies = 0 })
 	check("a refusal after the gap logs again", tpLines() == 2)
 
+	-- No enemy in view, under 15%, hit by a hero lately: case 1 is held, and the same call goes on to case 2's escape.
+	reset()
+	T = 300
+	tp.hitByHero = true
+	d, loc, why = ask({ hp = 0.1, enemies = 0 })
+	n, w = tpLines()
+	check("a held trip home that is also an escape still teleports, its refusal logged", d == 0.75 and why == "撤退:2" and n == 1 and w == "1", why)
+
 	reset()
 	T = 300
 	tp.level, tp.hitByHero = 10, false

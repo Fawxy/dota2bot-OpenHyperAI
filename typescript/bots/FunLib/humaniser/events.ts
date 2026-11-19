@@ -3166,7 +3166,7 @@ export const EVENTS = {
         dead: "num",
         d: "num",
     },
-    /** Sustain: OHA's retreat teleport home would have cast and sustain held it (SustainAct.HoldsTeleport), once per run of refusals; `why` is OHA's case (1: no enemy near, 3: level 9+ and at most one enemy), `hp` %. */
+    /** Sustain: OHA's retreat teleport home would have cast and sustain held it (SustainAct.HoldsTeleport), once per run of refusals; `why` is OHA's case (1: no enemy near, 3: level 9+ and at most one enemy), `hp` %. A refused case 1 may fall through to OHA's escape (case 2) in the same call, so a refusal followed by an `ev=cast ab=item_tpscroll` at the same `t` is an escape, not a held trip. */
     sustain_tp: {
         pid: "num",
         why: "str",
