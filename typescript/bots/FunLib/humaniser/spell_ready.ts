@@ -202,47 +202,9 @@ export function ReadyDamage(bot: Unit): string | undefined {
     return out.length > 0 ? out.join(";") : undefined;
 }
 
-// DamageOn's answers, per attacker, target and window, for one frame: the safe read asks it per reaching hero for every reader.
-let damageAt = -1;
-let damageBy = new Map<Unit, Map<Unit, Record<number, number>>>();
-
-/** Per game (and per fixture: fixtures can share a DotaTime): the frame caches. */
-export function ResetCache(): void {
-    damageAt = -1;
-    damageBy = new Map();
-    spentAt = -1;
-    spentBy = {};
-    addedAt = -1;
-    addedBy = {};
-}
-
 /** `e`'s GetEstimatedDamageToTarget on `target` over `window` (all damage types, spells it can cast now, plus the castable spells it leaves out: AddedOn); with BurstReady off, Valve's figure. */
 export function DamageOn(e: Unit, target: Unit, window: number): number {
-    const now = DotaTime();
-    if (now !== damageAt) {
-        damageAt = now;
-        damageBy = new Map();
-    }
-    // By handle, not player id: an illusion shares its hero's id and reads a different figure.
-    let byTarget = damageBy.get(e);
-    if (byTarget === undefined) {
-        byTarget = new Map();
-        damageBy.set(e, byTarget);
-    }
-    let byWindow = byTarget.get(target);
-    if (byWindow === undefined) {
-        byWindow = {};
-        byTarget.set(target, byWindow);
-    }
-    const cached = byWindow[window];
-    if (cached !== undefined) return cached;
-    const v = damageOn(e, target, window);
-    byWindow[window] = v;
-    return v;
-}
-
-function damageOn(e: Unit, target: Unit, window: number): number {
-    const est =e.GetEstimatedDamageToTarget(true, target, window, DamageType.All);
+    const est = e.GetEstimatedDamageToTarget(true, target, window, DamageType.All);
     if (!Ours.On("BurstReady")) return est;
     const added = AddedOn(e, target, window);
     if (est <= 0) return added > 0 ? added : est;
