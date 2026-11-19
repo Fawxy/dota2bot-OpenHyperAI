@@ -455,6 +455,11 @@ function reportError(this: void, where: string, err: any, tb: string | undefined
     ]);
 }
 
+/** A module that runs its own pcall (a shadow that must never change its caller) reports the error here: the same rate-limited ev=lua_error as a guarded call. */
+export function Failed(this: void, where: string, err: any): void {
+    pcall(reportError, where, err, undefined);
+}
+
 /**
  * fn under xpcall. An error is reported (rate-limited per where+msg) and swallowed: the caller gets
  * fallback(...args), which should be what the hook returns with its feature off. Reporting happens after

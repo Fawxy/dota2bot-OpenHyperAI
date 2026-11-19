@@ -105,6 +105,15 @@ export const SETTINGS = {
 
 export type Band = "none" | "watch" | "pressured" | "lethal";
 
+/** One reaching hero as the read counted it: the damage it was given (over the engaged window when `eng`, else the burst window), where it stood and how far it reaches within the horizon (its run plus attack range and both hulls). */
+export interface ReachRow {
+    pid: number;
+    dmg: number;
+    eng: boolean;
+    at: Vector;
+    run: number;
+}
+
 export interface Read {
     t: number;
     from: Vector;
@@ -135,6 +144,8 @@ export interface Read {
      *  (`att`, logged to see whether the API answers for an enemy hero); both empty without the option. */
     eng: number[];
     att: number[];
+    /** The reaching heroes in `reach` order, with the damage the read counted for each (safe_gather.ts reads these instead of asking SpellReady again). */
+    rows: ReachRow[];
 }
 
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
@@ -309,6 +320,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
         const chasers: Unit[] = [];
         const eng: number[] = [];
         const att: number[] = [];
+        const rows: ReachRow[] = [];
         let dmg = 0;
         for (const e of enemies) {
             if (distToSegment(e.at, from, place) > e.run) continue;
@@ -325,6 +337,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
             }
             if (e.att === true) att.push(e.pid);
             if (e.eng === true) eng.push(e.pid);
+            rows.push({ pid: e.pid, dmg: e.dmg, eng: e.eng === true, at: e.at, run: e.run });
             dmg += e.dmg;
         }
         let near = 0;
@@ -386,7 +399,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
         const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * near;
         const threat = math.max(0, math.min(1, raw));
         const lethal = burst >= 1 && reach.length > near && !escape;
-        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att };
+        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att, rows };
     };
 }
 
@@ -420,6 +433,12 @@ export function LoneStand(bot: Unit, r: Read): boolean {
 }
 
 let gateCut: ((this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void) | undefined;
+let gateShadow: ((this: void, bot: Unit, consumer: string, r: Read) => void) | undefined;
+
+/** safe_gather.ts registers its shadow here (it imports this module): called with every gate read, logged or not. It must not throw. */
+export function SetGateShadow(fn: (this: void, bot: Unit, consumer: string, r: Read) => void): void {
+    gateShadow = fn;
+}
 
 /** cut.ts registers the gate's fixture cut here (it imports this module, so the module cannot import it); called after each logged gate decision. */
 export function SetGateCut(fn: (this: void, bot: Unit, from: Vector, place: Vector, consumer: string) => void): void {
@@ -435,6 +454,7 @@ export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): 
     const r = Read(bot, from, place, SETTINGS.GateHorizon);
     const why = r.reach.length > 0 ? "threat" : r.missing >= SETTINGS.MissingRefuse ? "missing" : undefined;
     if (Log(bot, consumer, r, why ?? "go") && gateCut !== undefined) pcall(gateCut, bot, from, place, consumer);
+    if (gateShadow !== undefined) pcall(gateShadow, bot, consumer, r);
     return { why, r };
 }
 

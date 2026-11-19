@@ -21,6 +21,7 @@ import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 
 export type Level = "none" | "hit" | "hitback" | "kill" | "join";
 export type Source = "pair" | "play";
@@ -710,6 +711,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const ms = bot.GetCurrentMovementSpeed();
     const cands: Cand[] = [];
     let runSeen = false;
+    // The walk read the safe-here shadow logs: the running exchange's, else the pair's target, else the play's, else the first asked.
+    let shadowWalk: { r: Threat.Read; rank: number; hold: boolean } | undefined;
     for (const h of bot.GetNearbyHeroes(CAND_RADIUS, true, BotMode.None)) {
         if (!valid(h)) continue;
         const pid = h.GetPlayerID();
@@ -748,6 +751,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         if (asked) {
             const r = walkOf(here, at);
             c.walk = { burst: r.burst, n: r.reach.length, missing: r.missing };
+            const rank = isRun ? 3 : pair !== undefined && pair.tgt === pid ? 2 : play !== undefined && play.tgt === pid ? 1 : 0;
+            if (shadowWalk === undefined || rank > shadowWalk.rank) shadowWalk = { r, rank, hold: rank >= 2 && (isRun ? rs!.level === "join" : true) };
         }
         if (thp <= BARS.commitHp || (isRun && rs!.level === "kill")) {
             const ls: LastSeen = {
@@ -785,6 +790,9 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         if (pc !== undefined) i.play.zero = FightZero(i, pc);
     }
     if (rs !== undefined) i.run = runOf(bot, rs, runSeen, here);
+    // Shadow of the safe-here read (ev=cut kind=safe) on the reads above; HoldsOf is asked only when the shadow runs.
+    SafeGather.Shadow(bot, "trade", stay, { away: false, held: rs !== undefined, hold: () => HoldsOf(i) !== undefined });
+    if (shadowWalk !== undefined) SafeGather.Shadow(bot, "trade_walk", shadowWalk.r, { away: true, held: rs !== undefined, hold: shadowWalk.hold });
     return i;
 }
 

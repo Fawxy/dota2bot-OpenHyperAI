@@ -6,6 +6,7 @@ local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local On = ____ours.On
 local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 ____exports.MELEE_RING = 520
 ____exports.RANGED_RING = 620
@@ -65,6 +66,8 @@ end
 -- Two burst windows: about the walk to the furthest-back candidate (1,000 at 300) plus one more attack cycle. Checked against
 -- rtlng1c2: a lone chaser took 2-4.5% of max HP a second while hitting, so 6 s costs 12-27% at full HP, under READ_BURST. judgement.
 local LANE_ENGAGED_WINDOW = 6
+--- The shadow reads a spot as held (the hero already stands on it) within this many units.
+local SHADOW_HELD = 150
 --- No enemy hero's reach is under this (the melee margin, judgement): lposchk2 idle cores 400-600 from a melee enemy (reach
 -- about 500) lost 0.5 HP-% a second, 600-800 0.24, beyond 800 0.09; a melee hero closes on a core that stands at its reach.
 local MIN_REACH = 800
@@ -644,8 +647,11 @@ function ____exports.Compute(bot, role, fed, hold)
     local reads = {}
     local readN = 0
     local reader
+    local function keyOf(p)
+        return (tostring(math.floor(p.x / 25)) .. ",") .. tostring(math.floor(p.y / 25))
+    end
     local function readAt(p)
-        local key = (tostring(math.floor(p.x / 25)) .. ",") .. tostring(math.floor(p.y / 25))
+        local key = keyOf(p)
         local r = reads[key]
         if r == nil then
             local toward = false
@@ -729,6 +735,32 @@ function ____exports.Compute(bot, role, fed, hold)
             info.re = #r.eng
             info.rat = #r.att > 0 and 1 or 0
             info.rn = readN
+            local function stands(p)
+                return len(p.x - here.x, p.y - here.y) <= SHADOW_HELD
+            end
+            SafeGather.Shadow(
+                bot,
+                "spot",
+                r,
+                {
+                    away = false,
+                    held = stands(spot),
+                    hold = false
+                }
+            )
+            local pr = reads[keyOf(pref)]
+            if pr ~= nil then
+                SafeGather.Shadow(
+                    bot,
+                    "pref",
+                    pr,
+                    {
+                        away = false,
+                        held = stands(pref),
+                        hold = false
+                    }
+                )
+            end
         end
         return info
     end
@@ -758,11 +790,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue126
+                    local __continue129
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue126 = true
+                            __continue129 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -775,9 +807,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue126 = true
+                        __continue129 = true
                     until true
-                    if not __continue126 then
+                    if not __continue129 then
                         break
                     end
                 end

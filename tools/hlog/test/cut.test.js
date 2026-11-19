@@ -224,3 +224,15 @@ test('trade: a trade2 line reads as trade and replays; the retired decision\'s l
     assert.ok(r.same, JSON.stringify(r));
     assert.ok(checkOne(g, g.cuts[1]).error);
 });
+
+// kind=safe: the shadow line replays through Safe.Decide; a line whose recorded answer is not what Decide gives is reported as different.
+test('safe: a logged line replays to its level and reason, and a changed answer is told apart', () => {
+    const line = (extra) => hev(`t=200.000 ev=cut pid=1 kind=safe who=leave pl=-2000,-5000 hpa=630 hpm=1000 mi=0 stw=0,0 ld=0,0,0 awy=0 hld=0 hd=0 ${extra}`);
+    const g = readGames([
+        line('rr=10,1,611,0 lv=deadly kill=611 ra=1.03 pr=0 why=kill'),
+        line('rr=10,1,305,0 lv=safe kill=305 ra=2.07 pr=0 why=safe'),
+        line('rr=10,1,305,1 lv=deadly kill=305 ra=2.07 pr=0 why=kill'),
+    ].join('\n')).pop();
+    assert.deepStrictEqual(g.cuts.map(c => checkOne(g, c).same), [true, true, false]);
+    assert.strictEqual(checkOne(g, g.cuts[0]).got, 'deadly(kill)');
+});

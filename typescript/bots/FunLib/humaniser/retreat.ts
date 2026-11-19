@@ -20,6 +20,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 import * as Cut from "bots/FunLib/humaniser/cut";
 import * as Trade from "bots/FunLib/humaniser/states/trade";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
@@ -206,6 +207,7 @@ export function ResetCache(): void {
     episodes = 0;
     fountainLogged = false;
     RetreatState.ResetCache();
+    SafeGather.ResetCache();
 }
 
 function stateOf(bot: Unit): HeroState {
@@ -878,6 +880,7 @@ export function Desire(bot: Unit): number | undefined {
     const readAtBefore = st.readAt;
     const r = readOf(bot, st, now);
     if (st.ep !== undefined) {
+        SafeGather.Shadow(bot, "retreat", r, { away: false, held: true, hold: false });
         const res = step(bot, st, r, now);
         if (res === undefined) return SETTINGS.EpisodeDesire;
         end(bot, st, res);
@@ -900,6 +903,7 @@ export function Desire(bot: Unit): number | undefined {
     const joins = hold === "join";
     const hits = hold === "hitback";
     const [why, stay] = LeaveWhy(bot, st, r, budget, now, joins, hits);
+    SafeGather.Shadow(bot, "leave", r, { away: false, held: false, hold: joins || hits });
     if (readAtBefore !== st.readAt) cutLeave(bot, st, r, budget, purp, why, stay, overBefore, now, joins, hits);
     if (why === undefined) return 0;
     start(bot, st, why, r, budget, purp);

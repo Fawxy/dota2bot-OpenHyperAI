@@ -1944,7 +1944,17 @@
    "als": "str",
    "ak": "str",
    "anm": "str",
-   "ato": "num"
+   "ato": "num",
+   "rr": "str",
+   "stw": "str",
+   "ld": "str",
+   "ex": "num",
+   "awy": "num",
+   "hld": "num",
+   "hd": "num",
+   "kill": "num",
+   "ra": "num",
+   "pr": "num"
   },
   "sustain_item": {
    "name": "str",
@@ -2653,7 +2663,10 @@
    "shp": "text",
    "als": "text",
    "ak": "text",
-   "anm": "text"
+   "anm": "text",
+   "rr": "text",
+   "stw": "text",
+   "ld": "text"
   },
   "ev_sustain_item": {
    "name": "text"
