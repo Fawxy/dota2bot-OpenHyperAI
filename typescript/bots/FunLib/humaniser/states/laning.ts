@@ -179,21 +179,31 @@ let safeDropped = 0;
 /** Per bot, the creeps the safe read refused at game time `t`, so a running attempt on one is released by the same scan. */
 const safeRefused: Record<number, { t: number; creeps: Lib.TaskCreep[] } | undefined> = {};
 
+const hereDeadly: Record<number, { t: number; deadly: boolean } | undefined> = {};
+
 /** Whether the safe read calls the place where `bot` would hit this creep deadly. A fault in the read allows the creep. */
 function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
     const here = bot.GetLocation();
     const at = t.creep.GetLocation() as unknown as Vector;
     const inRange = t.walk <= 0;
     const place = inRange ? here : Contest.StandPoint(here, at, bot.GetAttackRange());
-    const [ok, ans] = pcall(SafeGather.At, bot, place, { held: inRange });
-    if (!ok) {
-        Telemetry.Failed("PickSafe", ans);
-        return false;
-    }
-    if ((ans as Safe.Answer).level !== "deadly") return false;
-    safeDropped++;
     const pid = bot.GetPlayerID();
     const now = DotaTime();
+    // Every creep already in range is hit from where the hero stands: one ask per hero per frame answers them all.
+    const mem = inRange ? hereDeadly[pid] : undefined;
+    let deadly: boolean;
+    if (mem !== undefined && mem.t === now) deadly = mem.deadly;
+    else {
+        const [ok, ans] = pcall(SafeGather.At, bot, place, { held: inRange });
+        if (!ok) {
+            Telemetry.Failed("PickSafe", ans);
+            return false;
+        }
+        deadly = (ans as Safe.Answer).level === "deadly";
+        if (inRange) hereDeadly[pid] = { t: now, deadly };
+    }
+    if (!deadly) return false;
+    safeDropped++;
     let r = safeRefused[pid];
     if (r === undefined || r.t !== now) {
         r = { t: now, creeps: [] };
