@@ -1,6 +1,7 @@
 /** Lane paths for the push reading (lane_push), generated from docs/proposals/lane-forecast/lanes.json (geometry.js: each lane is the two
- * teams' first-wave lead-creep traces joined at first contact, lr logs, 02/11/2026). s runs from Radiant's spawn; towers are each team's T1. */
-/** Read-only, and only these three: lane_push.Project caches segment data by table identity. */
+ * teams' first-wave lead-creep traces joined at first contact, lr logs, 02/11/2026). s runs from Radiant's spawn; towers are each team's T1 as traced on 7.41: lane_push replaces each `s` once per game with the
+ * live tower's place on the path (readTowers) and keeps these as the fallback. */
+/** Only these three tables, and only `towers[i].s` changes: lane_push.Project caches segment data by table identity. */
 export interface LanePath { pts: number[][]; s: number[]; spawnR: number; spawnD: number; towers: { team: number; s: number }[] }
 
 export const LANE_PATHS: Record<number, LanePath> = {

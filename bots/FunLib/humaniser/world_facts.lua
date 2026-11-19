@@ -432,6 +432,13 @@ function ____exports.Latest(fact, fb)
     end
     return fb
 end
+local noted = {}
+--- A fact a context reads from the API itself (a T1's place on its lane path, lane_push): the probe's rows carry it, so
+-- telemetry logs it once per game beside its constant.
+function ____exports.Note(fact, value, constant)
+    noted[fact] = {live = value, constant = constant}
+    live[fact] = value
+end
 --- Latest live value per fact, for the probe's ev=world_fact line.
 function ____exports.Live()
     return live
@@ -492,6 +499,9 @@ function ____exports.Reset()
             tonumber(k)
         )
     end
+    for ____, k in ipairs(__TS__ObjectKeys(noted)) do
+        __TS__Delete(noted, k)
+    end
     neutralFedAt = nil
     towers = newTowers()
     gameReach = nil
@@ -542,6 +552,11 @@ function ____exports.Probe(bot, constants)
             live = ____exports.NeutralSpeed(bot, constants.neutral),
             constant = constants.neutral
         }
+    end
+    for ____, ____value in ipairs(__TS__ObjectEntries(noted)) do
+        local fact = ____value[1]
+        local n = ____value[2]
+        rows[#rows + 1] = {fact = fact, live = n.live, constant = n.constant}
     end
     for ____, ____type in ipairs(__TS__ObjectKeys(neutralByType)) do
         local ____temp_2 = "neutral_speed_" .. ____type

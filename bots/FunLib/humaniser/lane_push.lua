@@ -53,9 +53,15 @@ local function __TS__SparseArraySpread(sparseArray)
     local _unpack = unpack or table.unpack
     return _unpack(sparseArray, 1, sparseArray.sparseLength)
 end
+
+local function __TS__ArrayForEach(self, callbackFn, thisArg)
+    for i = 1, #self do
+        callbackFn(thisArg, self[i], i - 1, self)
+    end
+end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dirOf, readUntil, readingOf, segs, projectAll, nearerLane, R, D, CHUNK, SLACK, segsOf, memoAt, memoS, memoD
+local dirOf, readUntil, readingOf, segs, projectAll, nearerLane, readTowers, R, D, CHUNK, SLACK, segsOf, memoAt, memoS, memoD, T1, TowerOff, TowerShift, DATA_TOWER_S, towersRead
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
@@ -349,6 +355,42 @@ function nearerLane(lane, loc, d)
         end
     end
     return false
+end
+function readTowers()
+    if towersRead then
+        return
+    end
+    towersRead = true
+    for ____, lane in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
+        local path = LANE_PATHS[lane]
+        if not (DATA_TOWER_S[path] ~= nil) then
+            DATA_TOWER_S[path] = __TS__ArrayMap(
+                path.towers,
+                function(____, tw) return tw.s end
+            )
+        end
+        local data = DATA_TOWER_S[path]
+        __TS__ArrayForEach(
+            path.towers,
+            function(____, tw, i)
+                tw.s = data[i + 1]
+                local fact = (("lane_t1_" .. tostring(lane)) .. "_") .. tostring(tw.team)
+                local t = GetTower(tw.team, T1[lane])
+                local loc = t ~= nil and t ~= nil and t:IsNull() ~= true and t:GetLocation() or nil
+                if loc == nil or loc == nil then
+                    WorldFacts.Fallback(fact, data[i + 1])
+                    return
+                end
+                local s, d = projectAll(path, loc.x, loc.y)
+                if d > TowerOff or math.abs(s - data[i + 1]) > TowerShift then
+                    WorldFacts.Fallback(fact, data[i + 1])
+                else
+                    tw.s = s
+                    WorldFacts.Note(fact, s, data[i + 1])
+                end
+            end
+        )
+    end
 end
 ____exports.SETTINGS = {
     Horizon = 30,
@@ -1006,6 +1048,7 @@ function ____exports.ProjectScan(lane, x, y)
     return bestS, bestD
 end
 function ____exports.PathOf(lane)
+    readTowers()
     return LANE_PATHS[lane]
 end
 --- `team`'s T1 on the path, and the sign that turns a path distance into "towards their T1".
@@ -1081,20 +1124,43 @@ local function creepsOn(lane, units, team, visibleOnly)
     end
     return out
 end
-local T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
+T1 = {[Lane.Top] = Tower.Top1, [Lane.Mid] = Tower.Mid1, [Lane.Bot] = Tower.Bot1}
+TowerOff = 600
+TowerShift = 1000
+DATA_TOWER_S = {}
+towersRead = false
+--- Test hook: the next ask reads the towers again (the paths keep their data places until then).
+function ____exports.ResetTowers()
+    towersRead = false
+    for ____, lane in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
+        local path = LANE_PATHS[lane]
+        local data = DATA_TOWER_S[path]
+        if data ~= nil then
+            __TS__ArrayForEach(
+                path.towers,
+                function(____, tw, i)
+                    local ____data_index_35 = data[i + 1]
+                    tw.s = ____data_index_35
+                    return ____data_index_35
+                end
+            )
+        end
+    end
+end
 local function t1Hp(team, lane)
     local t = GetTower(team, T1[lane])
-    local ____temp_35
+    local ____temp_36
     if t == nil or t == nil or not t:IsAlive() then
-        ____temp_35 = false
+        ____temp_36 = false
     else
-        ____temp_35 = t:GetHealth()
+        ____temp_36 = t:GetHealth()
     end
-    return ____temp_35
+    return ____temp_36
 end
 --- The lane creeps `team`'s view of `lane` starts from at the whole second now: the path, the second, its own creeps and
 -- the visible enemy creeps on the path (the enemy wave tracker reads the same).
 function ____exports.CreepsNow(team, lane)
+    readTowers()
     local path = LANE_PATHS[lane]
     local t0 = math.floor(DotaTime())
     if path == nil then
