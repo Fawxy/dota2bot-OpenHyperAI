@@ -3052,7 +3052,7 @@ export const EVENTS = {
         af: "num",
         /** kind=sustain: allies within 800, `pid,missing HP,heal uses` per `;`. */
         als: "str",
-        /** kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`), item and ally pid; its rule is `why`, a running answer's end `ed`. */
+        /** kind=sustain: the answer's kind (`none`, `use`, `step_out_use`, `give`, `buy`, `home`), item and ally pid; its rule is `why`, a running answer's end `ed`. kind=pick: `ak` is the chosen target's verb kind (`lasthit`, `deny`, `prehit`, `none`). */
         ak: "str",
         anm: "str",
         ato: "num",
@@ -3075,7 +3075,7 @@ export const EVENTS = {
         ra: "num",
         pr: "num",
         /**
-         * kind=pick (states/laning.ts `choose`, the laning body's creep pick: every input of LanePick.Choose and its answer, so tools/hlog/cut.js replays it with no game; `pid`, and `pos`, the pick-table column read).
+         * kind=pick (states/laning.ts `choose`, the laning body's creep pick: every input of LanePick.Choose and its answer, before the walk-in's price may refuse it (contestPick), so tools/hlog/cut.js replays it with no game; `pid`, and `pos`, the pick-table column read).
          * `ord` is the order of kinds (`lasthit,pre_hit,deny,idle_swing` for a core). `tg` one record per offered target, `;`-joined, `n,kind,eta,due,walk,dies,ranged,mine`: n is its place in the offer (1-based), kind `lasthit` or `deny`,
          * times in seconds (6 places; -1 for an infinite `dies`), ranged 1/0, mine 1/0 (the role's filter, asked once during the pick). `cur` the offer the attempt is waiting on (-1: its creep is not among them; absent: no wait).
          * `pre` the pre-hit offered, `n,eta,walk,dies` (n: the offer on the same creep, -1 none; absent: none). `far` present when the walk-in limit was given: `n,ok` per creep it was asked about, `;`-joined, `-` when none.

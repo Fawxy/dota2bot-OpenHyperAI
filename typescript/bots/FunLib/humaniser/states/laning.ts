@@ -317,7 +317,7 @@ function choose(bot: Unit, targets: Lib.Verbs.LaneTarget[], current?: Lib.Verbs.
 }
 
 const PICK_CUT_EVERY = 5;
-const pickCuts: Record<number, { creep?: Lib.TaskCreep; kind?: string; at: number } | undefined> = {};
+const pickCuts: Record<number, { creep?: Lib.TaskCreep; kind?: string; ans?: string; at: number } | undefined> = {};
 
 const r6 = (v: number): number => (v === math.huge ? -1 : math.floor(v * 1000000 + 0.5) / 1000000);
 
@@ -346,9 +346,12 @@ function cutPick(
     const pid = bot.GetPlayerID();
     const now = DotaTime();
     const ak = chosen !== undefined ? chosen.kind : "none";
+    // A pre-hit and an idle swing on one creep share the verb kind, so the answer's source is compared too.
+    const src = chosen === undefined ? "none" : chosen === pre ? "pre" : chosen === idle ? "idle" : "offer";
     const st = (pickCuts[pid] = pickCuts[pid] ?? { at: 0 });
-    if (st.kind === ak && st.creep === chosen?.creep && now >= st.at && now - st.at < PICK_CUT_EVERY) return;
+    if (st.kind === ak && st.ans === src && st.creep === chosen?.creep && now >= st.at && now - st.at < PICK_CUT_EVERY) return;
     st.kind = ak;
+    st.ans = src;
     st.creep = chosen?.creep;
     st.at = now;
     const tg: string[] = [];

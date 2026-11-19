@@ -341,13 +341,15 @@ function cutPick(bot, targets, current, pre, chosen, hasFar, idleAsked, idle, or
     local pid = bot:GetPlayerID()
     local now = DotaTime()
     local ak = chosen ~= nil and chosen.kind or "none"
+    local src = chosen == nil and "none" or (chosen == pre and "pre" or (chosen == idle and "idle" or "offer"))
     local ____temp_16 = pickCuts[pid] or ({at = 0})
     pickCuts[pid] = ____temp_16
     local st = ____temp_16
-    if st.kind == ak and st.creep == (chosen and chosen.creep) and now >= st.at and now - st.at < PICK_CUT_EVERY then
+    if st.kind == ak and st.ans == src and st.creep == (chosen and chosen.creep) and now >= st.at and now - st.at < PICK_CUT_EVERY then
         return
     end
     st.kind = ak
+    st.ans = src
     st.creep = chosen and chosen.creep
     st.at = now
     local tg = {}
