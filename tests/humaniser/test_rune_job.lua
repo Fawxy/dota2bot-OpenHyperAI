@@ -240,7 +240,7 @@ do
 	local H = world({ rune = false })
 	local bot = hero(4, 4)
 	local out = run(H, { bot }, 425)
-	check("switch off: no rune line, no rune job", #lines(out, "rune_job") == 0 and #lines(out, "job") == 0 and H.RuneJob.Priority(bot) == nil)
+	check("switch off: no rune line, no rune job", #lines(out, "rune_job") == 0 and #lines(out, "job") == 0 and not H.RuneJob.Applies(bot))
 	check("switch off: OHA's rune mode keeps both spawns", not H.RuneJob.Owns(bot, "power") and not H.RuneJob.Owns(bot, "wisdom") and not H.RuneJob.ShrineHeld(bot))
 end
 
@@ -250,7 +250,7 @@ do
 	package.loaded["bots/FunLib/custom_loader"].Ours.JobChooser = false
 	local bot = hero(4, 4)
 	T = 400
-	check("chooser off: the job owns no spawn", H.RuneJob.Priority(bot) == nil and not H.RuneJob.Owns(bot, "wisdom") and not H.RuneJob.ShrineHeld(bot))
+	check("chooser off: the job owns no spawn", not H.RuneJob.Applies(bot) and not H.RuneJob.Owns(bot, "wisdom") and not H.RuneJob.ShrineHeld(bot))
 end
 
 -- The old rotation (OHA's power-rune rotation in transitions) gives way only when the rune job can run (review L4, 03/11/2026).

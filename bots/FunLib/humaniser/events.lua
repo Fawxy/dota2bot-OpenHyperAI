@@ -1820,6 +1820,7 @@ ____exports.EVENTS = {
         kill = "num",
         ra = "num",
         pr = "num",
+        sd = "num",
         ord = "str",
         tg = "str",
         cur = "num",

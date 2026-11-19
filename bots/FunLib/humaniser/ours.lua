@@ -84,6 +84,7 @@ ____exports.DEFAULTS = {
     CoreCampTrip = true,
     SupportPullFarm = true,
     PreDeny = true,
+    PickSafe = true,
     LaneControl = true,
     LaneControlDrive = true,
     CorePull = true,

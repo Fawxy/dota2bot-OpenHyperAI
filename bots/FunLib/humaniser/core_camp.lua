@@ -318,6 +318,7 @@ local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -399,15 +400,15 @@ function liveNeutrals(team, idx, center, now)
     local untouched = true
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue40
+            local __continue39
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue40 = true
+                    __continue39 = true
                     break
                 end
                 local at = u:GetLocation()
                 if at == nil or at == nil or dist(at, center) > ____exports.SETTINGS.CampRadius then
-                    __continue40 = true
+                    __continue39 = true
                     break
                 end
                 local n = readNeutral(
@@ -419,9 +420,9 @@ function liveNeutrals(team, idx, center, now)
                 if not n.full then
                     untouched = false
                 end
-                __continue40 = true
+                __continue39 = true
             until true
-            if not __continue40 then
+            if not __continue39 then
                 break
             end
         end
@@ -440,10 +441,10 @@ end
 function ____exports.UnderEnemyTower(path, team, s)
     for ____, tw in ipairs(path.towers) do
         do
-            local __continue55
+            local __continue54
             repeat
                 if tw.team == team then
-                    __continue55 = true
+                    __continue54 = true
                     break
                 end
                 local ____temp_11
@@ -454,7 +455,7 @@ function ____exports.UnderEnemyTower(path, team, s)
                 end
                 return ____temp_11
             until true
-            if not __continue55 then
+            if not __continue54 then
                 break
             end
         end
@@ -492,19 +493,19 @@ function campNeutralCount(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue70
+            local __continue69
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue70 = true
+                    __continue69 = true
                     break
                 end
                 local at = u:GetLocation()
                 if at ~= nil and at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue70 = true
+                __continue69 = true
             until true
-            if not __continue70 then
+            if not __continue69 then
                 break
             end
         end
@@ -572,16 +573,16 @@ function ____exports.MissingOf(bot, at)
         local pid = 0
         while pid <= MAX_PLAYER_ID do
             do
-                local __continue151
+                local __continue150
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == team or t ~= Team.Radiant and t ~= Team.Dire or visible[pid] == true or not IsHeroAlive(pid) then
-                        __continue151 = true
+                        __continue150 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen <= s.MissingAfter then
-                        __continue151 = true
+                        __continue150 = true
                         break
                     end
                     local run = math.min(s.MissingSpeed * info.time_since_seen, s.MissingReachMax)
@@ -591,9 +592,9 @@ function ____exports.MissingOf(bot, at)
                         ____out_pids_23[#____out_pids_23 + 1] = pid
                         out.mtss = math.max(out.mtss or 0, info.time_since_seen)
                     end
-                    __continue151 = true
+                    __continue150 = true
                 until true
-                if not __continue151 then
+                if not __continue150 then
                     break
                 end
             end
@@ -744,7 +745,6 @@ function measured(bot, t, now, center)
     t.hpm = t.hpAtEngage ~= nil and r2(t.hpAtEngage - hpOf(bot)) or nil
 end
 ____exports.SETTINGS = {
-    Priority = 0.8,
     PlanEvery = 1,
     From = 120,
     StartHP = 0.65,
@@ -855,14 +855,11 @@ function ____exports.Applies(bot)
         return false
     end
     local pos = LaneConfig.PositionOf(bot)
-    return pos ~= nil and pos >= 1 and pos <= 3
+    return TripTable.Does("camp", pos)
 end
 --- The core's lane-stage camp trips are this job's: FarmPattern starts none for it.
 function ____exports.Owns(bot)
     return ____exports.Applies(bot) and LaneConfig.InLaningPhase()
-end
-function ____exports.Priority(bot)
-    return ____exports.Owns(bot) and ____exports.SETTINGS.Priority or nil
 end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
@@ -1018,19 +1015,19 @@ local function allyInBox(bot, idx)
     local farmer = CampClaims.On("pullfarm", idx)
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue87
+            local __continue86
             repeat
                 if a == nil or a == nil or not a:IsAlive() or a:GetPlayerID() == pid or a:GetPlayerID() == farmer then
-                    __continue87 = true
+                    __continue86 = true
                     break
                 end
                 local at = locOf(a)
                 if at ~= nil and Camps.InBox(idx, at, 300) then
                     return true
                 end
-                __continue87 = true
+                __continue86 = true
             until true
-            if not __continue87 then
+            if not __continue86 then
                 break
             end
         end
@@ -1043,19 +1040,19 @@ local function pulledInto(center)
     for ____, kind in ipairs({UnitType.AlliedCreeps, UnitType.EnemyCreeps}) do
         for ____, u in ipairs(GetUnitList(kind) or ({})) do
             do
-                local __continue93
+                local __continue92
                 repeat
                     if u == nil or u == nil or not u:IsAlive() or not LanePush.IsLaneCreep(u:GetUnitName()) then
-                        __continue93 = true
+                        __continue92 = true
                         break
                     end
                     local at = locOf(u)
                     if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                         return true
                     end
-                    __continue93 = true
+                    __continue92 = true
                 until true
-                if not __continue93 then
+                if not __continue92 then
                     break
                 end
             end
@@ -1116,7 +1113,7 @@ function ____exports.Plan(bot, from, now, c)
     local best
     for ____, spawner in ipairs(tripSpawners(bot)) do
         do
-            local __continue109
+            local __continue108
             repeat
                 local center = Camps.BoxCenter(spawner)
                 if dist(center, c.at) > s.MaxCampDist or not campOpen(
@@ -1126,7 +1123,7 @@ function ____exports.Plan(bot, from, now, c)
                     now,
                     pullCamps
                 ) then
-                    __continue109 = true
+                    __continue108 = true
                     break
                 end
                 local stacks = math.max(
@@ -1145,14 +1142,14 @@ function ____exports.Plan(bot, from, now, c)
                 local clr = prior * paceFor(bot, src)
                 local hpc = hpPrior * hpRateFor(bot, src)
                 if hpOf(bot) - hpc < s.ArriveHP then
-                    __continue109 = true
+                    __continue108 = true
                     break
                 end
                 local back = dist(center, c.at) / speed
                 local ret = now + dist(from, center) / speed + clr + back
                 local force = Overrides.CampForce()
                 if ret > (force and now + s.Horizon or c.t + s.MaxLate) then
-                    __continue109 = true
+                    __continue108 = true
                     break
                 end
                 local gold = (s.CampGold[spawner.type] or s.CampGold.medium) * (1 + stacks)
@@ -1180,9 +1177,9 @@ function ____exports.Plan(bot, from, now, c)
                         net = net
                     }
                 end
-                __continue109 = true
+                __continue108 = true
             until true
-            if not __continue109 then
+            if not __continue108 then
                 break
             end
         end
@@ -1315,19 +1312,19 @@ function ____exports.ThreatOnWay(bot, at)
     local here = bot:GetLocation()
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue142
+            local __continue141
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue142 = true
+                    __continue141 = true
                     break
                 end
                 local loc = locOf(e)
                 if loc ~= nil and distToSegment(loc, here, at) <= LaneSpot.HeroReach(bot, e) + ____exports.SETTINGS.ThreatMargin then
                     return true
                 end
-                __continue142 = true
+                __continue141 = true
             until true
-            if not __continue142 then
+            if not __continue141 then
                 break
             end
         end
@@ -1367,18 +1364,18 @@ local function mateOnJob(bot)
     local pid = bot:GetPlayerID()
     for ____, h in ipairs(s.allies) do
         do
-            local __continue159
+            local __continue158
             repeat
                 if not h.assigned or h.pid == pid or not h.alive then
-                    __continue159 = true
+                    __continue158 = true
                     break
                 end
                 if StackJob.Running(h.unit) or PullJob.Running(h.unit) or RuneJob.Running(h.unit) or CampJobs.Active(h.unit) then
                     return true
                 end
-                __continue159 = true
+                __continue158 = true
             until true
-            if not __continue159 then
+            if not __continue158 then
                 break
             end
         end
@@ -1388,19 +1385,19 @@ end
 local function enemyLaneCreepNear(at, radius)
     for ____, c in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue164
+            local __continue163
             repeat
                 if c == nil or c == nil or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue164 = true
+                    __continue163 = true
                     break
                 end
                 local loc = locOf(c)
                 if loc ~= nil and dist(loc, at) <= radius then
                     return true
                 end
-                __continue164 = true
+                __continue163 = true
             until true
-            if not __continue164 then
+            if not __continue163 then
                 break
             end
         end
@@ -1643,10 +1640,10 @@ local function guard(bot, t)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue197
+            local __continue196
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue197 = true
+                    __continue196 = true
                     break
                 end
                 local loc = locOf(e)
@@ -1656,9 +1653,9 @@ local function guard(bot, t)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue197 = true
+                __continue196 = true
             until true
-            if not __continue197 then
+            if not __continue196 then
                 break
             end
         end

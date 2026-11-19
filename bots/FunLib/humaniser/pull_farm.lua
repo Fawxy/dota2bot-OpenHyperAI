@@ -507,6 +507,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -527,10 +528,10 @@ function madstones(center)
     local out = __TS__New(Map)
     for ____, d in ipairs(GetDroppedItemList() or ({})) do
         do
-            local __continue63
+            local __continue62
             repeat
                 if d == nil or d == nil or d.item == nil or d.item == nil or d.location == nil then
-                    __continue63 = true
+                    __continue62 = true
                     break
                 end
                 if (string.find(
@@ -539,16 +540,16 @@ function madstones(center)
                     1,
                     true
                 )) == nil or dist(d.location, center) > ____exports.SETTINGS.PickRadius then
-                    __continue63 = true
+                    __continue62 = true
                     break
                 end
                 out:set(
                     (tostring(math.floor(d.location.x)) .. ",") .. tostring(math.floor(d.location.y)),
                     d
                 )
-                __continue63 = true
+                __continue62 = true
             until true
-            if not __continue63 then
+            if not __continue62 then
                 break
             end
         end
@@ -613,19 +614,19 @@ function campLeft(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue79
+            local __continue78
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue79 = true
+                    __continue78 = true
                     break
                 end
                 local at = locOf(u)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue79 = true
+                __continue78 = true
             until true
-            if not __continue79 then
+            if not __continue78 then
                 break
             end
         end
@@ -636,7 +637,6 @@ function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
 ____exports.SETTINGS = {
-    Priority = 0.88,
     StartWithin = 12,
     MaxFarm = 35,
     ClearSeconds = 4,
@@ -666,10 +666,10 @@ function ____exports.ResetCache()
     end
 end
 function ____exports.Applies(bot)
-    return Ours.On("SupportPullFarm") and PullJob.Applies(bot)
-end
-function ____exports.Priority(bot)
-    return ____exports.Applies(bot) and ____exports.SETTINGS.Priority or nil
+    return Ours.On("SupportPullFarm") and TripTable.Does(
+        "pullfarm",
+        LaneConfig.PositionOf(bot)
+    ) and PullJob.Applies(bot)
 end
 function ____exports.Claims(bot)
     return ____exports.Running(bot)
@@ -684,19 +684,19 @@ end
 local function coreThere(bot, center)
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue13
+            local __continue12
             repeat
                 if a == nil or a == nil or not a:IsAlive() or a == bot or (LaneConfig.PositionOf(a) or 9) > 3 then
-                    __continue13 = true
+                    __continue12 = true
                     break
                 end
                 local at = locOf(a)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CoreThere then
                     return true
                 end
-                __continue13 = true
+                __continue12 = true
             until true
-            if not __continue13 then
+            if not __continue12 then
                 break
             end
         end
@@ -784,10 +784,10 @@ local function guard(bot, f)
     local near = false
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue31
+            local __continue30
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue31 = true
+                    __continue30 = true
                     break
                 end
                 local at = locOf(e)
@@ -797,9 +797,9 @@ local function guard(bot, f)
                 ) <= LaneSpot.HeroReach(bot, e) then
                     near = true
                 end
-                __continue31 = true
+                __continue30 = true
             until true
-            if not __continue31 then
+            if not __continue30 then
                 break
             end
         end
@@ -851,7 +851,7 @@ local function madstoneCharges(bot)
         local slot = 0
         while slot <= 16 do
             do
-                local __continue43
+                local __continue42
                 repeat
                     local it = bot:GetItemInSlot(slot)
                     if it == nil or it == nil or (string.find(
@@ -860,7 +860,7 @@ local function madstoneCharges(bot)
                         1,
                         true
                     )) == nil then
-                        __continue43 = true
+                        __continue42 = true
                         break
                     end
                     local ____math_max_9 = math.max
@@ -869,9 +869,9 @@ local function madstoneCharges(bot)
                         1,
                         ____opt_7 and ____opt_7(it) or 1
                     )
-                    __continue43 = true
+                    __continue42 = true
                 until true
-                if not __continue43 then
+                if not __continue42 then
                     break
                 end
             end

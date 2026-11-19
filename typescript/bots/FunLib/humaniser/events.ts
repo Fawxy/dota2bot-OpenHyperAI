@@ -3091,8 +3091,10 @@ export const EVENTS = {
          * times in seconds (6 places; -1 for an infinite `dies`), ranged 1/0, mine 1/0 (the role's filter, asked once during the pick). `cur` the offer the attempt is waiting on (-1: its creep is not among them; absent: no wait).
          * `pre` the pre-hit offered, `n,eta,walk,dies` (n: the offer on the same creep, -1 none; absent: none). `far` present when the walk-in limit was given: `n,ok` per creep it was asked about, `;`-joined, `-` when none.
          * `idle` present when the idle swing was asked: `0` none found, else `n,kind,eta,due,walk,dies,ranged`. The answer: `ans` (`n` of the offer chosen, `pre`, `idle` or `none`) and `ak` (its kind, `none`).
-         * Logged when the answer (creep or kind) changes, else every 5 s while targets are offered; scans with nothing offered and nothing chosen are left out.
+         * `sd` (absent: 0) the creeps this scan's filter refused because their hit place read deadly (`Ours.PickSafe`); they show as mine 0 in `tg`. A replay ignores it.
+         * Logged when the answer (creep or kind) or `sd` being nonzero changes, else every 5 s while targets are offered; scans with nothing offered and nothing chosen are left out.
          */
+        sd: "num",
         ord: "str",
         tg: "str",
         cur: "num",
