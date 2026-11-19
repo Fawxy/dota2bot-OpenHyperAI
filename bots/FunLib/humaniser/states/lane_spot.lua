@@ -526,11 +526,17 @@ function ____exports.Compute(bot, role, fed, hold)
     local function keyOf(p)
         return (tostring(math.floor(p.x / 25)) .. ",") .. tostring(math.floor(p.y / 25))
     end
+    local heroAt = {}
+    for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
+        local at = alive(h) and h:GetLocation() or nil
+        if at ~= nil then
+            heroAt[#heroAt + 1] = at
+        end
+    end
     local function optsFor(p, who)
         local toward = false
-        for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, 0)) do
-            local at = alive(h) and h:GetLocation() or nil
-            if at ~= nil and len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y) then
+        for ____, at in ipairs(heroAt) do
+            if len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y) then
                 toward = true
             end
         end
@@ -618,11 +624,11 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue101
+                    local __continue104
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue101 = true
+                            __continue104 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
@@ -635,9 +641,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue101 = true
+                        __continue104 = true
                     until true
-                    if not __continue101 then
+                    if not __continue104 then
                         break
                     end
                 end
@@ -663,16 +669,16 @@ function ____exports.Compute(bot, role, fed, hold)
             local by = py + dy * PUSH_STEP * k
             for ____, off in ipairs(LATERAL) do
                 do
-                    local __continue109
+                    local __continue112
                     repeat
                         local cost = len(PUSH_STEP * k, off)
                         if cost >= bestCost then
-                            __continue109 = true
+                            __continue112 = true
                             break
                         end
                         local p = Vector(bx + nx * off, by + ny * off, front.z)
                         if len(p.x - front.x, p.y - front.y) > XP_RANGE then
-                            __continue109 = true
+                            __continue112 = true
                             break
                         end
                         if limits(p, cover) == nil and deadlyAt(Vector(bx, by, front.z)) == nil then
@@ -680,9 +686,9 @@ function ____exports.Compute(bot, role, fed, hold)
                             bestCost = cost
                             bestPushed = k
                         end
-                        __continue109 = true
+                        __continue112 = true
                     until true
-                    if not __continue109 then
+                    if not __continue112 then
                         break
                     end
                 end

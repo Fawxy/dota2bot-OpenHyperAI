@@ -141,11 +141,14 @@ const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, T
 const MAX_PLAYER_ID = 23;
 
 let speeds: Record<number, number> = {};
+// The team frames (TeamFrame below), one per team: the one VM serves one team, but fixtures run both.
+let frames: Record<number, TeamFrame | undefined> = {};
 let logged: Record<string, { t: number; decision: string }> = {};
 
 export function ResetCache(): void {
     speeds = {};
     logged = {};
+    frames = {};
 }
 
 function dist(a: Vector, b: Vector): number {
@@ -232,6 +235,103 @@ export interface ReadOpts {
     exclude?: number;
 }
 
+/** One hero's reads that every reader of the frame shares (its run is per reader: the horizon and the reader's hull). */
+interface Fixed {
+    u: Unit;
+    pid: number;
+    at: Vector;
+    sp: number;
+    range: number;
+    hull: number;
+}
+
+/**
+ * What every reader of one team in one frame reads alike, read from the game once per team and `DotaTime` (step 3 of the plan
+ * after the collapse): one Lua VM serves a team, so the five heroes' readers share it. The enemy hero list is not here: the
+ * perception override filters `GetUnitList` per observing hero, so each reader asks for it and looks each unit up in `enemies`.
+ * Script state (a teammate's retreat) is not here either; it can change between two heroes' thinks.
+ */
+interface TeamFrame {
+    team: number;
+    t: number;
+    /** Per enemy hero handle: undefined when it is not valid or cannot be seen (`false` marks one already read as such). */
+    enemies: Map<Unit, Fixed | false>;
+    /** The team's valid heroes with a location, in list order. */
+    allies: Fixed[];
+    enemyTowers: Unit[];
+    enemyTowerAt: Vector[];
+    /** Each enemy tower's reach, filled on first use. */
+    enemyTowerReach: (number | undefined)[];
+    ownDepthAt: Vector[];
+    enemyDepthAt: Vector[];
+    /** The alive enemy player ids, ascending. */
+    enemyPids: number[];
+    /** GetHeroLastSeenInfo's first sighting per pid, read on first use (`false`: none). */
+    sightings: Record<number, { location: Vector; time_since_seen: number } | false>;
+}
+
+function fixedOf(team: number, now: number): TeamFrame {
+    const cached = frames[team];
+    if (cached !== undefined && cached.t === now) return cached;
+    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
+    const allies: Fixed[] = [];
+    for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
+        if (!valid(a)) continue;
+        const at = a.GetLocation();
+        if (at === null || at === undefined) continue;
+        allies.push({ u: a, pid: a.GetPlayerID(), at, sp: a.GetCurrentMovementSpeed(), range: a.GetAttackRange(), hull: a.GetBoundingRadius() });
+    }
+    const enemyTowers = standing(enemyTeam, TOWER_IDS);
+    const enemyTowerAt = enemyTowers.map((tw) => tw.GetLocation());
+    // The depth reads a team's standing T1s (the tower set the depth factors were fitted on), else its standing towers.
+    const depthAt = (t: number, all: Vector[] | undefined): Vector[] => {
+        const t1 = standing(t, T1_IDS).map((tw) => tw.GetLocation());
+        return t1.length > 0 ? t1 : (all ?? standing(t, TOWER_IDS).map((tw) => tw.GetLocation()));
+    };
+    const enemyPids: number[] = [];
+    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
+        const t = GetTeamForPlayer(pid);
+        if (t === team || (t !== Team.Radiant && t !== Team.Dire) || !IsHeroAlive(pid)) continue;
+        enemyPids.push(pid);
+    }
+    const f: TeamFrame = {
+        team,
+        t: now,
+        enemies: new Map(),
+        allies,
+        enemyTowers,
+        enemyTowerAt,
+        enemyTowerReach: [],
+        ownDepthAt: depthAt(team, undefined),
+        enemyDepthAt: depthAt(enemyTeam, enemyTowerAt),
+        enemyPids,
+        sightings: {},
+    };
+    frames[team] = f;
+    return f;
+}
+
+function enemyOf(f: TeamFrame, e: Unit): Fixed | undefined {
+    const cached = f.enemies.get(e);
+    if (cached !== undefined) return cached === false ? undefined : cached;
+    if (!valid(e) || !e.CanBeSeen()) {
+        f.enemies.set(e, false);
+        return undefined;
+    }
+    const x: Fixed = { u: e, pid: e.GetPlayerID(), at: e.GetLocation(), sp: e.GetCurrentMovementSpeed(), range: e.GetAttackRange(), hull: e.GetBoundingRadius() };
+    f.enemies.set(e, x);
+    return x;
+}
+
+function sightingOf(f: TeamFrame, pid: number): { location: Vector; time_since_seen: number } | undefined {
+    let s = f.sightings[pid];
+    if (s === undefined) {
+        s = GetHeroLastSeenInfo(pid)[0] ?? false;
+        f.sightings[pid] = s;
+    }
+    return s === false ? undefined : s;
+}
+
 /** A hero as one set of reads sees it: where it is and how far it gets within the horizon (its run plus its attack range and both hulls). */
 interface Seen {
     u: Unit;
@@ -247,7 +347,8 @@ interface Seen {
 /**
  * The reads for `bot` with `horizon` seconds ahead, as a function of the walk (`from` to `place`). What does not depend on the
  * walk (who is seen and where, the standing towers, the unseen heroes' sightings, an escape item) is read from the game once,
- * here, so a caller weighing several places in one frame (the lane spot) pays for the heroes and towers once. Use it within
+ * here, so a caller weighing several places in one frame (the lane spot) pays for the heroes and towers once; the part no hero's
+ * perception changes is read once per team and frame (`TeamFrame`). Use it within
  * the frame it was made in. `lethal` fires when the heroes in reach can deal the bot's HP within the burst window, they
  * outnumber our heroes in reach and the bot has no `escape`.
  *
@@ -261,44 +362,33 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
     const s = SETTINGS;
     const now = DotaTime();
     const team = bot.GetTeam();
-    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
     const hull = bot.GetBoundingRadius();
     const window = opts?.window ?? math.min(horizon, s.BurstWindow);
+    const fixed = fixedOf(team, now);
     const visible: Record<number, boolean> = {};
     const enemies: Seen[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (!valid(e) || !e.CanBeSeen()) continue;
-        const pid = e.GetPlayerID();
-        visible[pid] = true;
-        const sp = e.GetCurrentMovementSpeed();
-        if (sp !== undefined && sp > 0) speeds[pid] = sp;
-        const at = e.GetLocation();
-        if (at === null || at === undefined) continue;
-        enemies.push({ u: e, pid, at, run: sp * horizon + e.GetAttackRange() + e.GetBoundingRadius() + hull });
+        const f = enemyOf(fixed, e);
+        if (f === undefined) continue;
+        visible[f.pid] = true;
+        if (f.sp !== undefined && f.sp > 0) speeds[f.pid] = f.sp;
+        if (f.at === null || f.at === undefined) continue;
+        enemies.push({ u: e, pid: f.pid, at: f.at, run: f.sp * horizon + f.range + f.hull + hull });
     }
     const allies: Seen[] = [];
-    for (const a of GetUnitList(UnitType.AlliedHeroes) ?? []) {
-        if (!valid(a) || a === bot || RetreatState.Running(a)) continue;
-        const at = a.GetLocation();
-        if (at === null || at === undefined) continue;
-        allies.push({ u: a, pid: a.GetPlayerID(), at, run: a.GetCurrentMovementSpeed() * horizon + a.GetAttackRange() + a.GetBoundingRadius() + hull });
+    for (const a of fixed.allies) {
+        if (a.u === bot || RetreatState.Running(a.u)) continue;
+        allies.push({ u: a.u, pid: a.pid, at: a.at, run: a.sp * horizon + a.range + a.hull + hull });
     }
-    const enemyTowers = standing(enemyTeam, TOWER_IDS);
-    const enemyTowerAt = enemyTowers.map((tw) => tw.GetLocation());
-    const enemyTowerReach: (number | undefined)[] = [];
-    // The depth reads a team's standing T1s (the tower set the depth factors were fitted on), else its standing towers.
-    const depthAt = (t: number, all: Vector[] | undefined): Vector[] => {
-        const t1 = standing(t, T1_IDS).map((tw) => tw.GetLocation());
-        return t1.length > 0 ? t1 : (all ?? standing(t, TOWER_IDS).map((tw) => tw.GetLocation()));
-    };
-    const ownDepthAt = depthAt(team, undefined);
-    const enemyDepthAt = depthAt(enemyTeam, enemyTowerAt);
+    const enemyTowers = fixed.enemyTowers;
+    const enemyTowerAt = fixed.enemyTowerAt;
+    const enemyTowerReach = fixed.enemyTowerReach;
+    const ownDepthAt = fixed.ownDepthAt;
+    const enemyDepthAt = fixed.enemyDepthAt;
     const unseen: { pid: number; at: Vector; tss: number; r: number }[] = [];
-    for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
-        const t = GetTeamForPlayer(pid);
-        if (t === team || (t !== Team.Radiant && t !== Team.Dire) || visible[pid] === true || !IsHeroAlive(pid)) continue;
-        if (pid === opts?.exclude) continue;
-        const info = GetHeroLastSeenInfo(pid)[0];
+    for (const pid of fixed.enemyPids) {
+        if (visible[pid] === true || pid === opts?.exclude) continue;
+        const info = sightingOf(fixed, pid);
         if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
         unseen.push({ pid, at: info.location, tss: info.time_since_seen, r: math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin });
     }
