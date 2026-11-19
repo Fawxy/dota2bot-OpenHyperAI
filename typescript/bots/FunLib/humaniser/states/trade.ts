@@ -434,6 +434,67 @@ export function Decide(i: Inputs): Answer {
     return { level: "none", reason: noneReason(rest, ended), ended };
 }
 
+/**
+ * Slice trade-count (design step4-exchanges 4.1): where each end reason can come from. `gate`: a gate of some level gives it, so it can
+ * already hold when the exchange opens; `think`: the executor's own read (`no_clear`: a creep within the aggro radius of the hero at
+ * the first act); `later`: a change in the game after the open, which no start gate asks. A reason not listed (`mode_*`) is `later`.
+ */
+export const ENDS: Record<string, "gate" | "think" | "later" | undefined> = {
+    tower: "gate",
+    kill: "gate",
+    unknown: "gate",
+    lost: "gate",
+    catch: "gate",
+    wave: "gate",
+    no_reach: "gate",
+    unfavoured: "gate",
+    deny: "gate",
+    creeps: "gate",
+    no_clear: "think",
+    target_dead: "later",
+    target_lost: "later",
+    not_taken: "later",
+    backstop: "later",
+    losing: "later",
+    cannot_catch: "later",
+    spot_clear: "later",
+    utower: "later",
+    threat: "later",
+    pair_end: "later",
+    play_end: "later",
+    higher: "later",
+    switch: "later",
+    lane_end: "later",
+    dead: "later",
+    play: "later",
+};
+
+/** The reasons a fresh read gives each level on `c` (no running exchange): what could end the exchange the moment after it opens. */
+export function OpenFails(i: Inputs, c: Cand): string[] {
+    const out: string[] = [];
+    const add = (why: string | undefined): void => {
+        if (why !== undefined && out.indexOf(why) < 0) out.push(why);
+    };
+    // The levels `pickFor` would try on this candidate with no exchange running, and no others (a kill only on a killable target, a hit back only on a hitter).
+    const killable = c.thp <= BARS.commitHp;
+    if (playOn(i, c)) add(gate(i, c, "join", "play", undefined));
+    if (pairOn(i, c)) {
+        if (killable) add(gate(i, c, "kill", "pair", undefined));
+        add(gate(i, c, "join", "pair", undefined));
+    } else if (killable) add(gate(i, c, "kill", undefined, undefined));
+    if (hitsUs(c, undefined)) add(gate(i, c, "hitback", undefined, undefined));
+    add(gate(i, c, "hit", undefined, undefined));
+    return out;
+}
+
+/** 1 when the end `why` already held at the open (`opens`: `OpenFails` there; `first`: the episode's first act), 0 when it came later, undefined when it can only come later. */
+export function TrueAtOpen(why: string, opens: string[], first: string | undefined): number | undefined {
+    const kind = ENDS[why];
+    if (kind === "gate") return opens.indexOf(why) >= 0 ? 1 : 0;
+    if (kind === "think") return first === "step" ? 1 : 0;
+    return undefined;
+}
+
 /** The reason of a frame with no answer: the end that stopped a running exchange, else the nearest candidate's first failed gate. */
 function noneReason(rest: { c: Cand; p: Pick }[], ended: string | undefined): string {
     if (ended !== undefined) return ended;
@@ -1072,6 +1133,8 @@ interface Episode {
     thp: number;
     n: number;
     wave: number;
+    /** `OpenFails` on the open's inputs (slice trade-count). */
+    opens: string[];
 }
 
 const episodes: Record<number, Episode | undefined> = {};
@@ -1289,6 +1352,7 @@ function close(bot: Unit, ep: Episode, why: string, now: number): void {
         ["pr", ep.primes],
         ["so", ep.stepOuts],
         ["fa", ep.first],
+        ["ato", TrueAtOpen(why, ep.opens, ep.first)],
         ["ag", ep.aggro],
         ["mode", bot.GetActiveMode()],
         ["md", math.floor(bot.GetActiveModeDesire() * 100) / 100],
@@ -1334,6 +1398,7 @@ function open(bot: Unit, i: Inputs, a: Answer, now: number): number {
         thp: c.thp,
         n: i.n,
         wave: i.wave,
+        opens: OpenFails(i, c),
     };
     NoteRun(pid, level, tpid);
     return desireOf(level);

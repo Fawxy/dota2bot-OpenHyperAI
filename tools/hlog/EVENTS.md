@@ -471,6 +471,7 @@ Slice lane-aggro: one line per draw (lane_aggro).
 - `q` num: Lane push reading at a feed: clash between the T1s (0 ours) and its state.
 - `st` str: Lane push state at a feed: `OUT`, `HOLD` or `IN`.
 - `drop` num: feed: seconds from the order to the drop order.
+- `ato` num: Slice trade-count, result `unsafe` of a feed or tower move: 1 when the approach's unsafe check (the one each frame of the walk asks) already held at the start, 0 when it came later. Absent otherwise.
 - `dur` num: Seconds the attempt took.
 - `own` num: feed: the clash's distance from our T1 along the lane now, and forecast (own + move), against the lane's target point.
 - `fc` num: feed: the clash's distance from our T1 forecast ahead (own + move).
@@ -492,6 +493,7 @@ Slice core-in-lane (wave_hold, Ours.CoreHold): one line per hold of their wave w
 - `lane` num: The lane held.
 - `br` str: The last branch: `hold` (at the lane target, lane_spot input `hold`), `drag` (lane_aggro `back` behind our T1), `retreat` (OHA's retreat took the core).
 - `res` str: `met` (one of our creeps not in the start's clash fighting one of theirs), `cleared` (none of theirs left), `tower` (theirs reached our T1, hold branch), `hurt`, `left` (no laning host for LeftAfter: another mode, or the laning body not running; `md`), `died`, `timeout`, `unsafe` (an enemy hero pushed the held spot inside the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start; `cr`).
+- `ato` num: Slice trade-count: for `met`, `cleared`, `tower`, `unsafe` and `concede` (not the failed drag), 1 when the first read ended it (the start frame reads at once: the end held on the open's own inputs), 0 when a later read did; absent for the ends that are no read (`hurt`, `timeout`, `left`, `died`).
 - `why` str: Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in the last 20 s), `other`.
 - `trig` str: The start: `gone` (our wave gone from the lane outside our T1's range) or `forecast` (our wave still fighting within 200 past the hold point, lane_push's run has their front inside our T1's fire (`rch`) in `fc` seconds; `why` is `losing`).
 - `hd` num: The hold point's distance from our T1: the lane target, or their front when nearer, never inside `rch` + 50.
@@ -641,6 +643,7 @@ One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecut
 - `min` num: The trigger minute.
 - `res` str: `stacked` (a neutral not seen during the job appeared in the box after :00), `not_stacked`, `unseen` (hit landed, box never in sight after :00), `failed` (no hit landed) or `skip` (no job started). A log's stacked rate is a lower bound; the replay grades it (`stacktruth.js`).
 - `why` str: On `failed`, the job's end reason (`missed:mistake:no-aggro`, `no_target:mistake:no-camp`, `cancelled:hit`, `preempted:mode=N`, `dead`). On `skip`, the last gate (`low-hp`, `enemy-near`, `hit`, `busy`, `late`, `no-camp`, `refused`).
+- `ato` num: Slice trade-count: 0 when the job ended on a start gate (`cancelled:hit`, `interrupted:threat`, a low-HP or enemy-near end) that was clear at its start; absent for any other end.
 - `camp` num: The camp's spawner index.
 - `type` str: The camp type.
 - `start` num: The second the attempt started.
@@ -1040,6 +1043,7 @@ One per in-lane exchange (states/trade): taken (`done`, `kill`) or offered and n
 - `hp` num: Inputs when the window opened: HP fractions, heroes within 1200, enemy lane creeps within 500.
 - `pr` num: Aggro-free attacks (EC-053): attack orders given clear of creeps, steps out of them, most enemy creeps on the core at once.
 - `fa` str: The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order first); absent when Think never acted (the target unseen, or not taken).
+- `ato` num: Slice trade-count: 1 when the end's reason `why` already held when the exchange opened (a gate of some level failing on the open's inputs read fresh, or `no_clear` with `fa` `step`), 0 when it came later; absent for an end that can only come later (target dead or lost, `losing`, `pair_end`, a mode took the hero...). Read-only.
 - `mode` num: The bot's active mode at the end, and its desire.
 
 ## job_exec

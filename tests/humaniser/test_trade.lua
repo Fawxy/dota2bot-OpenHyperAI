@@ -339,4 +339,48 @@ do
 	check("a running exchange logs every 0.5 s, not more often", #lines == before + 2)
 end
 
+-- Slice trade-count: start and running ask the same function. Over a grid of inputs, whatever level opens, fed back as that level running
+-- (nothing changed), is kept and not ended; and every end reason the decision can give is mapped to a start gate or marked later only.
+do
+	local opened, ended = 0, {}
+	for _, thp in ipairs({ 0.2, 0.35, 0.7 }) do
+		for _, hit in ipairs({ false, true }) do
+			for _, ko in ipairs({ { 0.3, 0.2 }, { 0.2, 0.3 } }) do
+				for _, gap in ipairs({ 0, 100, 250 }) do
+					for _, wave in ipairs({ 0, 3 }) do
+						for _, paid in ipairs({ false, true }) do
+							for _, pairOn in ipairs({ false, true }) do
+								local c = cand({ thp = thp, thpAbs = thp * 600, hitting = hit, ko = ko[1], kt = ko[2], gap = gap, paid = paid, catch = CATCH })
+								local i = inputs({ wave = wave, cands = { c }, pair = pairOn and { tgt = 7, ko = 0.5, kt = 0.2, dec = "join" } or nil })
+								local a = decide(i)
+								if a.level ~= "none" then
+									opened = opened + 1
+									i.run = run({ level = a.level, target = a.target, source = a.source })
+									local b = decide(i)
+									if b.ended ~= nil then ended[#ended + 1] = a.level .. ":" .. tostring(b.ended) end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	check("property: " .. opened .. " inputs that open a level, fed back as that level running, none ends it" .. (#ended > 0 and " (" .. table.concat(ended, ",", 1, math.min(#ended, 5)) .. ")" or ""),
+		opened > 20 and #ended == 0)
+	local reasons = { "tower", "kill", "unknown", "lost", "catch", "wave", "no_reach", "unfavoured", "deny", "creeps", "no_clear", "target_dead", "target_lost",
+		"not_taken", "backstop", "losing", "cannot_catch", "spot_clear", "utower", "threat", "pair_end", "play_end", "higher", "switch", "lane_end", "dead", "play" }
+	local all = true
+	for _, r in ipairs(reasons) do
+		local k = T.ENDS[r]
+		if k ~= "gate" and k ~= "think" and k ~= "later" then all = false end
+	end
+	local i = inputs({ cands = { unfavoured({ hitting = true, paid = true }) } })
+	local opens = T.OpenFails(i, i.cands[1])
+	check("every end reason maps to a start gate or is marked later only; a hit back opened on `paid` already fails the hit's favoured gate, a later-only end has no flag",
+		all and T.TrueAtOpen("unfavoured", opens, "order") == 1 and T.TrueAtOpen("deny", opens, "order") == 0
+			and T.TrueAtOpen("no_clear", opens, "step") == 1 and T.TrueAtOpen("no_clear", opens, "order") == 0 and T.TrueAtOpen("losing", opens, "order") == nil
+			and T.TrueAtOpen("mode_attack", opens, nil) == nil)
+end
+
 finish()

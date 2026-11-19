@@ -42,7 +42,7 @@ function readGames(text) {
         if (!Number.isFinite(t)) continue;
         if (g === undefined || t < last - GAME_SPLIT) {
             // Tower places do not move: a pregame line split off by a clock jump still serves the game after it.
-            g = { cuts: [], creeps: new Map(), lanePos: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
+            g = { cuts: [], trades: [], creeps: new Map(), lanePos: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
             games.push(g);
         }
         last = t;
@@ -55,6 +55,7 @@ function readGames(text) {
             g.cuts.push(f);
         }
         // A kind's creeps line is keyed apart: two cuts of one hero in one frame must not share creeps (the spot's carry no kind).
+        else if (f.ev === 'trade') g.trades.push(f);
         else if (f.ev === 'cut_creeps') g.creeps.set(f.kind ? `${key}@${f.kind}` : key, f);
         else if (f.ev === 'lane_pos') g.lanePos.set(key, f);
         else if (f.ev === 'threat') g.threats.set(`${key}@${f.who}`, f);

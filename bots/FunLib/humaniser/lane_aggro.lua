@@ -211,6 +211,7 @@ function finish(bot, a, result, now, gap)
             "drop",
             a.droppedAt ~= nil and math.floor((a.droppedAt - (a.orderedAt or a.startedAt)) * 100) / 100 or nil
         },
+        {"ato", result == "unsafe" and a.u0 ~= nil and (a.u0 and 1 or 0) or nil},
         {
             "dur",
             math.floor((now - a.startedAt) * 100) / 100
@@ -231,19 +232,19 @@ function drawnOn(bot, target)
     local out = {}
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, true)) do
         do
-            local __continue128
+            local __continue129
             repeat
                 if not valid(c) then
-                    __continue128 = true
+                    __continue129 = true
                     break
                 end
                 local t = c:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and t == target then
                     out[#out + 1] = c
                 end
-                __continue128 = true
+                __continue129 = true
             until true
-            if not __continue128 then
+            if not __continue129 then
                 break
             end
         end
@@ -555,6 +556,10 @@ local function placeSafe(bot, at, held)
     end
     return SafeGather.At(bot, at, {horizon = SafeGather.WalkHorizon, away = true, held = held, who = "aggro"}).level ~= "deadly"
 end
+--- The check during the approach: an enemy hero within reach of the approach point (or the feed's walk-back point). Asked every frame of the walk, and once at the start for the end line's `ato`.
+local function unsafeOnWay(bot, a)
+    return not placeSafe(bot, a.approach, true) or a.kind == "feed" and not placeSafe(bot, a.back, true)
+end
 local TOWERS = {
     Tower.Top1,
     Tower.Mid1,
@@ -572,11 +577,11 @@ local function towerNear(at, team, r)
     local bestD = r
     for ____, id in ipairs(TOWERS) do
         do
-            local __continue50
+            local __continue51
             repeat
                 local t = GetTower(team, id)
                 if t == nil or t == nil or not t:IsAlive() then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 local d = d2(
@@ -587,9 +592,9 @@ local function towerNear(at, team, r)
                     best = t
                     bestD = d
                 end
-                __continue50 = true
+                __continue51 = true
             until true
-            if not __continue50 then
+            if not __continue51 then
                 break
             end
         end
@@ -612,10 +617,10 @@ local function orderTarget(bot)
     local bestD = math.huge
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue57
+            local __continue58
             repeat
                 if not valid(h) or h:IsIllusion() then
-                    __continue57 = true
+                    __continue58 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -623,9 +628,9 @@ local function orderTarget(bot)
                     best = h
                     bestD = d
                 end
-                __continue57 = true
+                __continue58 = true
             until true
-            if not __continue57 then
+            if not __continue58 then
                 break
             end
         end
@@ -638,19 +643,19 @@ local function allyPullOut(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue62
+                local __continue63
                 repeat
                     local h = GetTeamMember(i)
                     if h == nil or h == nil or h:IsNull() then
-                        __continue62 = true
+                        __continue63 = true
                         break
                     end
                     if h:GetAssignedLane() == lane and PullJob.Running(h) then
                         return true
                     end
-                    __continue62 = true
+                    __continue63 = true
                 until true
-                if not __continue62 then
+                if not __continue63 then
                     break
                 end
             end
@@ -793,6 +798,7 @@ local function tryTower(bot, now)
         now
     )
     a.tower = tw
+    a.u0 = unsafeOnWay(bot, a)
     a.ad = math.floor(GetUnitToLocationDistance(bot, at))
     a.approachTime = ____exports.SETTINGS.TowerApproachTime
     return a, "go"
@@ -807,10 +813,10 @@ local function tryFeed(bot, heroes, now)
     local none = "none"
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1200, false)) do
         do
-            local __continue94
+            local __continue95
             repeat
                 if not valid(c) or not isLaneCreep(c) or not isRanged(c) then
-                    __continue94 = true
+                    __continue95 = true
                     break
                 end
                 if fed[c] == true then
@@ -820,9 +826,9 @@ local function tryFeed(bot, heroes, now)
                 else
                     ranged = c
                 end
-                __continue94 = true
+                __continue95 = true
             until true
-            if not __continue94 then
+            if not __continue95 then
                 break
             end
         end
@@ -919,6 +925,7 @@ local function tryFeed(bot, heroes, now)
         approach,
         now
     )
+    a.u0 = unsafeOnWay(bot, a)
     a.ad = math.floor(ad)
     a.approachTime = ____exports.ApproachTime(
         ad,
@@ -1043,7 +1050,7 @@ local function act(bot, a, now)
     end
     if a.phase == "approach" then
         local at = a.approach
-        if not placeSafe(bot, at, true) or a.kind == "feed" and not placeSafe(bot, a.back, true) then
+        if unsafeOnWay(bot, a) then
             finish(bot, a, "unsafe", now)
             return false
         end
@@ -1122,7 +1129,7 @@ local function act(bot, a, now)
             end
             for ____, s0 in ipairs(a.start or ({})) do
                 do
-                    local __continue176
+                    local __continue177
                     repeat
                         local u = s0.unit
                         local l = seenAt(u)
@@ -1130,16 +1137,16 @@ local function act(bot, a, now)
                             l,
                             Vector(s0.x, s0.y, 0)
                         ) < ____exports.SETTINGS.MovedR then
-                            __continue176 = true
+                            __continue177 = true
                             break
                         end
                         local d = GetUnitToUnitDistance(u, a.creep)
                         if nearest == nil or d < nearest then
                             nearest = d
                         end
-                        __continue176 = true
+                        __continue177 = true
                     until true
-                    if not __continue176 then
+                    if not __continue177 then
                         break
                     end
                 end

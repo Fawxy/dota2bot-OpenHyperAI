@@ -787,6 +787,8 @@ export const EVENTS = {
         st: "str",
         /** feed: seconds from the order to the drop order. */
         drop: "num",
+        /** Slice trade-count, result `unsafe` of a feed or tower move: 1 when the approach's unsafe check (the one each frame of the walk asks) already held at the start, 0 when it came later. Absent otherwise. */
+        ato: "num",
         /** Seconds the attempt took. */
         dur: "num",
         /** feed: the clash's distance from our T1 along the lane now, and forecast (own + move), against the lane's target point. */
@@ -829,6 +831,8 @@ export const EVENTS = {
          *  the hold point's floor), `concede` (the cost rule: over budget with no drag in time, or the drag's draw did not start;
          *  `cr`). */
         res: "str",
+        /** Slice trade-count: for `met`, `cleared`, `tower`, `unsafe` and `concede` (not the failed drag), 1 when the first read ended it (the start frame reads at once: the end held on the open's own inputs), 0 when a later read did; absent for the ends that are no read (`hurt`, `timeout`, `left`, `died`). */
+        ato: "num",
         /** Why our wave was gone (logged only): `pull` (an ally's pull job on the lane), `aggro` (our lane-aggro tower move in
          *  the last 20 s), `other`. */
         why: "str",
@@ -1229,6 +1233,8 @@ export const EVENTS = {
         res: "str",
         /** On `failed`, the job's end reason (`missed:mistake:no-aggro`, `no_target:mistake:no-camp`, `cancelled:hit`, `preempted:mode=N`, `dead`). On `skip`, the last gate (`low-hp`, `enemy-near`, `hit`, `busy`, `late`, `no-camp`, `refused`). */
         why: "str",
+        /** Slice trade-count: 0 when the job ended on a start gate (`cancelled:hit`, `interrupted:threat`, a low-HP or enemy-near end) that was clear at its start; absent for any other end. */
+        ato: "num",
         /** The camp's spawner index. */
         camp: "num",
         /** The camp type. */
@@ -2084,6 +2090,8 @@ export const EVENTS = {
         /** The episode's first act: `step` (a step out of the creeps before any attack order) or `order` (an attack order
          *  first); absent when Think never acted (the target unseen, or not taken). */
         fa: "str",
+        /** Slice trade-count: 1 when the end's reason `why` already held when the exchange opened (a gate of some level failing on the open's inputs read fresh, or `no_clear` with `fa` `step`), 0 when it came later; absent for an end that can only come later (target dead or lost, `losing`, `pair_end`, a mode took the hero...). Read-only. */
+        ato: "num",
         /** The bot's active mode at the end, and its desire. */
         mode: "num",
         md: "num",
