@@ -3,7 +3,7 @@ local ____exports = {}
 local ____threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local ThreatSettings = ____threat.SETTINGS
 --- Every number the decision owns, with its source. The unseen bar is `Threat.SETTINGS.MissingRefuse`, read at call time, not copied.
-____exports.BARS = {stay = 1.5, hold = 1, slack = 0.15}
+____exports.BARS = {stay = 1.25, hold = 1, slack = 0.15}
 function ____exports.Decide(i, stay)
     if stay == nil then
         stay = ____exports.BARS.stay

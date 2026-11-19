@@ -9,8 +9,8 @@ import { SETTINGS as ThreatSettings } from "bots/FunLib/humaniser/threat";
 
 /** Every number the decision owns, with its source. The unseen bar is `Threat.SETTINGS.MissingRefuse`, read at call time, not copied. */
 export const BARS = {
-    /** PROVISIONAL: under this HP / kill ratio a place is deadly. Step 3's death replay sets it from 1.0, 1.25, 1.5 and 2.0 (design section 2 "Bars", section 6.2); 1.5 sits between today's bars of 1.0 (one hero) and 2.0 (two or more). */
-    stay: 1.5,
+    /** ESTIMATE: under this HP / kill ratio a place is deadly. From the shadow batch safeshadow1 (6 games, 13 deaths): retreating between 1.0 and 1.25 of the kill line died about 18%, staying between 1.25 and 1.5 under 1% (user 19/11/2026). The overnight 7.42 batch picks. */
+    stay: 1.25,
     /** A caller with a hold (a hit back, a join, a committed job) may stay down to this ratio: their damage is our HP. Replaces `lethal`. */
     hold: 1.0,
     /** Both bars read this share lower when the caller already holds the place: the trade's running slack and retreat's `ExitBand` as one rule. */
