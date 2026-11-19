@@ -265,7 +265,7 @@ do
 	e.loc = Vector(-1700, -5000)
 	T = T + 0.1
 	local out = G.At(bot, Vector(-2900, -5000), { from = HERE })
-	check("a walk that starts 300 from the hero and ends outside its reach is measured from the start: 4 s", out.kill == 1600, out.kill)
+	check("a walk that starts 300 from the hero and ends 1,200 from it is measured from its nearest point, the start: 4 s", out.kill == 1600, out.kill)
 	e.loc = Vector(-1000, -5000)
 	local second = enemy(11, -1700, 10)
 	local two = at()

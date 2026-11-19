@@ -352,7 +352,7 @@ end
 --- `Safe.Inputs` from a read the consumer made this frame (no second read; a consumer that caches its read for a fraction of a second
 -- passes the cached one, and the clock here is the game's now, not the read's `t`). `hitting` is the read's `eng`, so it is only set when
 -- the read was made with `engagedWindow`; a gate's read (no window) has none hitting and every row at the short window.
--- `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from the place read, or from the walk's start when that is deeper in, to the edge of
+-- `exit`: the longest, over the reachers, of the seconds for the hero to walk straight away from the walk's nearest point to that hero (the place itself for an own-place read) to the edge of
 -- that hero's reach (its `run`: speed x the read's horizon + attack range + both hulls), at our current speed. A place already
 -- outside a row's reach adds 0, and an unseen lane row has no place to measure from. With `Ours.ExitWindow` a visible hero that
 -- is not hitting us that did not damage us within `PressWindow`
@@ -370,10 +370,7 @@ function ____exports.FromRead(bot, r, opts)
                 exit,
                 math.max(
                     0,
-                    row.run - math.min(
-                        dist(r.place, row.at),
-                        dist(r.from, row.at)
-                    )
+                    row.run - distToSegment(row.at, r.from, r.place)
                 ) / speed
             )
         end
