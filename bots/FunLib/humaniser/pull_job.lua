@@ -362,6 +362,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local PullTiming = require(GetScriptDirectory().."/FunLib/humaniser/pull_timing")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
@@ -917,8 +918,6 @@ end
 ____exports.SETTINGS = {
     CampLowHold = 1.5,
     CampReadNear = 500,
-    Priority = 0.9,
-    FitPriority = 0.96,
     PriorityEvery = 0.5,
     Take = 12,
     Early = 2,
@@ -1021,15 +1020,18 @@ local function corePuller(bot)
     )
 end
 function ____exports.Applies(bot)
-    return Ours.On("SupportPull") and Ours.On("JobChooser") and bot:IsBot() and (isSupport(bot) and pullerOfLane(bot) or corePuller(bot)) and campFor(bot) ~= nil
+    return Ours.On("SupportPull") and Ours.On("JobChooser") and bot:IsBot() and TripTable.Does(
+        "pull",
+        LaneConfig.PositionOf(bot)
+    ) and (isSupport(bot) and pullerOfLane(bot) or corePuller(bot)) and campFor(bot) ~= nil
 end
---- Slice lane-control 3 (design s5.4, s5.5): above the hero's other jobs (FitPriority) while the lane controller's decision
--- for the next pulled wave has this support's pull and the pull fits before the next departure on its calendar (a claim has
--- begun, the walk has not: a rune trip claims from a minute before its spawn, a stack from :15); else Priority, so a
--- departure the pull does not fit before keeps its rank. Read at most every PriorityEvery s.
-function ____exports.Priority(bot)
+--- Slice lane-control 3 (design s5.4, s5.5): the pull takes its lifted place in the trip table (states/trip_table) while the
+-- lane controller's decision for the next pulled wave has this support's pull and the pull fits before the next departure
+-- on its calendar (a claim has begun, the walk has not: a rune trip claims from a minute before its spawn, a stack from
+-- :15); else its usual place, so a departure the pull does not fit before keeps its rank. Read at most every PriorityEvery s.
+function ____exports.Lifted(bot)
     if not ____exports.Applies(bot) then
-        return nil
+        return false
     end
     local pid = bot:GetPlayerID()
     local now = DotaTime()
@@ -1037,7 +1039,7 @@ function ____exports.Priority(bot)
     if c ~= nil and now >= c.at and now - c.at < ____exports.SETTINGS.PriorityEvery then
         return c.p
     end
-    local p = fitsAhead(bot, now) and ____exports.SETTINGS.FitPriority or ____exports.SETTINGS.Priority
+    local p = fitsAhead(bot, now)
     priorities[pid] = {at = now, p = p}
     return p
 end

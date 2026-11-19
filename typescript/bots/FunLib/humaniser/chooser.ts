@@ -2,7 +2,7 @@
  * Hero job chooser (slice job-chooser, design docs/proposals/2026-11-02-job-chooser-design.md): whether a job may start or
  * must stop, which mode hosts it, and every contact with OHA. OHA's files call only this module, never a job; a job says
  * when it wants to run, how it does the work and when it is finished.
- * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane), PullFarm (slice support-pull-farm) and CoreCamp (slice core-next-gold), ranked per hero by priority; a running job is never interrupted by another.
+ * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane), PullFarm (slice support-pull-farm) and CoreCamp (slice core-next-gold), ranked per hero by states/trip_table; a running job is never interrupted by another.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -14,6 +14,8 @@ import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Arbiter from "bots/FunLib/humaniser/arbiter";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -47,9 +49,11 @@ export const EXCEPTIONS: Record<string, string> = {
 
 /** One job the chooser hosts: when it wants the hero, how it steps, how it ends. */
 interface Job {
-    name: string;
-    /** Rank against the hero's other jobs; undefined when the job never applies to it. */
-    Priority(this: void, bot: Unit): number | undefined;
+    name: TripTable.TripKind;
+    /** Whether the job is one this hero may do at all; its place among the others is states/trip_table's. */
+    Applies(this: void, bot: Unit): boolean;
+    /** The job's situation lift holds now: the table's lifted place applies (only the pull has one). */
+    Lifted?(this: void, bot: Unit): boolean;
     /** Running, or a trigger still open: lower-ranked jobs do not start. */
     Claims(this: void, bot: Unit): boolean;
     Wants(this: void, bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean;
@@ -62,7 +66,7 @@ interface Job {
 
 const STACK: Job = {
     name: "stack",
-    Priority: (bot) => (StackJob.Applies(bot) ? SETTINGS.JobDesire : undefined),
+    Applies: (bot) => StackJob.Applies(bot),
     Claims: (bot) => StackJob.Pending(bot),
     Wants: (bot, blocked, host) => StackJob.Wants(bot, blocked, host),
     Running: (bot) => StackJob.Running(bot),
@@ -74,7 +78,7 @@ const STACK: Job = {
 
 const RUNE: Job = {
     name: "rune",
-    Priority: (bot) => RuneJob.Priority(bot),
+    Applies: (bot) => RuneJob.Applies(bot),
     Claims: (bot) => RuneJob.Claims(bot),
     Wants: (bot, blocked, host) => RuneJob.Wants(bot, blocked, host),
     Running: (bot) => RuneJob.Running(bot),
@@ -86,7 +90,8 @@ const RUNE: Job = {
 
 const PULL: Job = {
     name: "pull",
-    Priority: (bot) => PullJob.Priority(bot),
+    Applies: (bot) => PullJob.Applies(bot),
+    Lifted: (bot) => PullJob.Lifted(bot),
     Claims: (bot) => PullJob.Claims(bot),
     Wants: (bot, blocked, host) => PullJob.Wants(bot, blocked, host),
     Running: (bot) => PullJob.Running(bot),
@@ -98,7 +103,7 @@ const PULL: Job = {
 
 const CAMP: Job = {
     name: "camp",
-    Priority: (bot) => CoreCamp.Priority(bot),
+    Applies: (bot) => CoreCamp.Owns(bot),
     Claims: (bot) => CoreCamp.Claims(bot),
     Wants: (bot, blocked, host) => CoreCamp.Wants(bot, blocked, host),
     Running: (bot) => CoreCamp.Running(bot),
@@ -110,7 +115,7 @@ const CAMP: Job = {
 
 const PULLFARM: Job = {
     name: "pullfarm",
-    Priority: (bot) => PullFarm.Priority(bot),
+    Applies: (bot) => PullFarm.Applies(bot),
     Claims: (bot) => PullFarm.Claims(bot),
     Wants: (bot, blocked, host) => PullFarm.Wants(bot, blocked, host),
     Running: (bot) => PullFarm.Running(bot),
@@ -122,18 +127,20 @@ const PULLFARM: Job = {
 
 const JOBS: Job[] = [STACK, RUNE, PULL, PULLFARM, CAMP];
 
-/** The jobs that apply to this hero, highest priority first (a tie keeps JOBS order). */
+/** The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order). */
 function ranked(bot: Unit): Job[] {
     const out: [Job, number][] = [];
     // A drill's idle-statue cast runs only its forced job (humaniser/drill.ts ForcedJob).
     const only = Drill.ForcedJob(bot);
+    const pos = LaneConfig.PositionOf(bot);
     for (const j of JOBS) {
         if (only !== undefined && j.name !== only) continue;
-        const p = j.Priority(bot);
+        if (!j.Applies(bot)) continue;
+        const p = TripTable.RankOf(j.name, pos, j.Lifted !== undefined && j.Lifted(bot));
         if (p !== undefined) out.push([j, p]);
     }
     for (let i = 1; i < out.length; i++) {
-        for (let k = i; k > 0 && out[k][1] > out[k - 1][1]; k--) [out[k], out[k - 1]] = [out[k - 1], out[k]];
+        for (let k = i; k > 0 && out[k][1] < out[k - 1][1]; k--) [out[k], out[k - 1]] = [out[k - 1], out[k]];
     }
     return out.map((e) => e[0]);
 }
