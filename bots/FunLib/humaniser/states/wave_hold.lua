@@ -535,6 +535,10 @@ local function finish(bot, a, res, now)
                 "mo",
                 a.mo ~= nil and math.floor(a.mo) or nil
             },
+            {
+                "mn",
+                a.nearAt ~= nil and math.floor((now - a.nearAt) * 10) / 10 or nil
+            },
             {"tw", a.tw},
             {"tgt", a.tgt},
             {
@@ -971,6 +975,20 @@ local function tryStart(bot, now)
     end
     return a
 end
+--- Our creep `c` and their wave (`theirs`, the lane creeps in the attempt's view) are fighting: `c` attacks one of them, or
+-- one of them attacks `c`. Only then have the waves met (SETTINGS.MeetR).
+function ____exports.Fighting(c, theirs)
+    local t = c:GetAttackTarget()
+    if t ~= nil and t ~= nil and theirs[t] ~= nil then
+        return true
+    end
+    for e in pairs(theirs) do
+        if e:GetAttackTarget() == c then
+            return true
+        end
+    end
+    return false
+end
 --- The hold's read, every tick from States.Tick (slice hold-through-swing): starts, reads and ends the attempt and sets the
 -- spot's `hold` input; the draws it wants are Act's. `hosted`: the laning body runs for this core where its lane step would
 -- step the hold (States.HoldHosted); `swing`: the body's last-hit or deny swing holds the frame. A read needs no frame of its
@@ -1037,19 +1055,19 @@ function ____exports.Watch(bot, hosted, swing)
     local nearest
     for ____, x in ipairs(v.units) do
         do
-            local __continue129
+            local __continue134
             repeat
                 if x.own < -____exports.SETTINGS.OursBehind - a.bd or x.own > a.tgt + ____exports.SETTINGS.StartAhead then
-                    __continue129 = true
+                    __continue134 = true
                     break
                 end
                 if x.own < front then
                     front = x.own
                     nearest = x.u
                 end
-                __continue129 = true
+                __continue134 = true
             until true
-            if not __continue129 then
+            if not __continue134 then
                 break
             end
         end
@@ -1061,25 +1079,32 @@ function ____exports.Watch(bot, hosted, swing)
     if front < ____exports.SETTINGS.TowerR then
         a.tw = 1
     end
+    local theirs = {}
+    for ____, x in ipairs(v.units) do
+        theirs[x.u] = true
+    end
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue135
+            local __continue142
             repeat
                 if c == nil or c == nil or c:IsNull() or not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue135 = true
+                    __continue142 = true
                     break
                 end
                 if __TS__ArrayIncludes(a.old, c) then
-                    __continue135 = true
+                    __continue142 = true
                     break
                 end
-                if GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
+                if a.nearAt == nil and GetUnitToUnitDistance(c, nearest) <= ____exports.SETTINGS.MeetR then
+                    a.nearAt = now
+                end
+                if ____exports.Fighting(c, theirs) then
                     a.mo = front
                     return finish(bot, a, "met", now)
                 end
-                __continue135 = true
+                __continue142 = true
             until true
-            if not __continue135 then
+            if not __continue142 then
                 break
             end
         end

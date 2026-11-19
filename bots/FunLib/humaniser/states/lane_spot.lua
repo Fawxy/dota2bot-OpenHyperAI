@@ -87,7 +87,7 @@ local FRONT_SEEN = 1000
 local CLASH_BEHIND = 700
 --- Their rearmost creep must be within this of our T1 (along the lane) for the clash to anchor: our tower's range plus 300.
 local NEAR_T1 = 1000
---- Our creep within this of their rearmost creep, on our side, is fighting it (wave_hold's MeetR).
+--- Our creep within this of their rearmost creep, on our side, is fighting it.
 local MEET_R = 700
 --- Lane creeps further than this from the lane path are not on it (wave_hold's PathR).
 local PATH_R = 600

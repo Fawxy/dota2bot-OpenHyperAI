@@ -68,7 +68,12 @@ export const SETTINGS = {
      */
     OursBehind: 400,
     OursAhead: 600,
-    /** The waves met: one of ours this close to their nearest creep. */
+    /**
+     * The waves met (the user's rule, 18/11/2026): one of our creeps not in the clash at the start is fighting one of theirs
+     * (either attacks the other). Until then the core keeps their wave at the hold point, so the clash starts there, out of
+     * our T1's fire; ending at MeetR apart let both waves walk on and meet halfway, inside it (ladder-solo, tr_radiant1 and
+     * tr_dire1: 5 of 11 `met` ends followed by our T1 killing their creeps). MeetR is now only the mark the line's `mn` counts from.
+     */
     MeetR: 700,
     /** The core is near enough to hold (from the hold point) and healthy enough to start. */
     Reach: 2000,
@@ -317,6 +322,8 @@ interface Attempt {
     own0: number;
     omin: number;
     mo?: number;
+    /** When one of our creeps not in the start's clash first came within MeetR of their front. */
+    nearAt?: number;
     tw: number;
     tgt: number;
     nw: number;
@@ -480,6 +487,7 @@ function finish(bot: Unit, a: Attempt, res: string, now: number): void {
         ["own0", math.floor(a.own0)],
         ["omin", math.floor(a.omin)],
         ["mo", a.mo !== undefined ? math.floor(a.mo) : undefined],
+        ["mn", a.nearAt !== undefined ? math.floor((now - a.nearAt) * 10) / 10 : undefined],
         ["tw", a.tw],
         ["tgt", a.tgt],
         ["nw", math.floor(a.nw * 10) / 10],
@@ -687,6 +695,17 @@ function tryStart(bot: Unit, now: number): Attempt | undefined {
 }
 
 /**
+ * Our creep `c` and their wave (`theirs`, the lane creeps in the attempt's view) are fighting: `c` attacks one of them, or
+ * one of them attacks `c`. Only then have the waves met (SETTINGS.MeetR).
+ */
+export function Fighting(c: Unit, theirs: LuaSet<Unit>): boolean {
+    const t = c.GetAttackTarget();
+    if (t !== undefined && t !== null && theirs.has(t)) return true;
+    for (const e of theirs) if (e.GetAttackTarget() === c) return true;
+    return false;
+}
+
+/**
  * The hold's read, every tick from States.Tick (slice hold-through-swing): starts, reads and ends the attempt and sets the
  * spot's `hold` input; the draws it wants are Act's. `hosted`: the laning body runs for this core where its lane step would
  * step the hold (States.HoldHosted); `swing`: the body's last-hit or deny swing holds the frame. A read needs no frame of its
@@ -739,10 +758,13 @@ export function Watch(bot: Unit, hosted: boolean, swing: boolean): void {
     if (nearest === undefined) return finish(bot, a, "cleared", now);
     a.omin = math.min(a.omin, front);
     if (front < SETTINGS.TowerR) a.tw = 1;
+    const theirs = new LuaSet<Unit>();
+    for (const x of v.units) theirs.add(x.u);
     for (const c of GetUnitList(UnitType.AlliedCreeps)) {
         if (c === undefined || c === null || c.IsNull() || !c.IsAlive() || !LanePush.IsLaneCreep(c.GetUnitName())) continue;
         if (a.old.includes(c)) continue;
-        if (GetUnitToUnitDistance(c, nearest) <= SETTINGS.MeetR) {
+        if (a.nearAt === undefined && GetUnitToUnitDistance(c, nearest) <= SETTINGS.MeetR) a.nearAt = now;
+        if (Fighting(c, theirs)) {
             a.mo = front;
             return finish(bot, a, "met", now);
         }

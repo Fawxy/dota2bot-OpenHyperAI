@@ -65,10 +65,17 @@ do
 	T = 112
 	w.step()
 	check("gone start: a hold runs (left only after LeftAfter unstepped)", w.count("wave_hold") == 0)
-	w.creep(2, 300)
+	-- Our next wave within 700 of their front but not yet fighting (the old `met`): the hold goes on, so their wave stays at
+	-- the hold point until the clash starts there (slice hold-till-fight).
+	local nw = w.creep(2, 300)
 	T = 112.5
 	w.step()
-	check("gone start: our next wave reaching their front ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=gone") == 1, table.concat(w.lines, "\n"))
+	check("gone start: our next wave near their front but not fighting keeps the hold on", w.count("wave_hold") == 0, table.concat(w.lines, "\n"))
+	nw.target = e1
+	T = 113
+	w.step()
+	check("gone start: our next wave attacking their front ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=gone") == 1, table.concat(w.lines, "\n"))
+	check("gone start: the met line counts the seconds since our wave came near (mn)", w.count("wave_hold", "mn=0.5") == 1, table.concat(w.lines, "\n"))
 end
 
 -- The same lane with our fresh wave walking out under our T1 (no attack target): our wave, no start, and no skip line while
@@ -110,9 +117,11 @@ do
 	local x, y = nextWave.loc.x, nextWave.loc.y
 	local fx, fy = es[1].loc.x, es[1].loc.y
 	nextWave.loc = Vector(fx + (x - fx) * 0.05, fy + (y - fy) * 0.05)
+	-- Their creep attacking ours is the fight too.
+	es[3].target = nextWave
 	T = 151
 	w.step()
-	check("forecast start: our next wave reaching their front ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=forecast") == 1 and w.count("wave_hold", "why=losing") == 1, table.concat(w.lines, "\n"))
+	check("forecast start: their creep attacking our next wave ends it as met", w.count("wave_hold", "res=met") == 1 and w.count("wave_hold", "trig=forecast") == 1 and w.count("wave_hold", "why=losing") == 1, table.concat(w.lines, "\n"))
 end
 
 -- A full wave of ours fighting 2 weak creeps of theirs at 900 (inside the 910 floor): no start, and one skip line `ours` for
@@ -147,11 +156,11 @@ do
 	local w2 = world()
 	for _, t in pairs(TOWERS_W[2]) do t.hull = 100 end
 	T = 498
-	w2.creep(3, 880)
+	local f = w2.creep(3, 880)
 	w2.creep(3, 900)
 	w2.step()
 	T = 498.5
-	w2.creep(2, 700)
+	w2.creep(2, 700).target = f
 	w2.step()
 	check("the API's tower hull sets the floor: front 880 starts and holds at 880", w2.count("wave_hold", "rch=816") == 1 and w2.count("wave_hold", "hd=879") + w2.count("wave_hold", "hd=880") == 1, table.concat(w2.lines, "\n"))
 end
