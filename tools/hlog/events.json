@@ -1955,7 +1955,14 @@
    "hd": "num",
    "kill": "num",
    "ra": "num",
-   "pr": "num"
+   "pr": "num",
+   "ord": "str",
+   "tg": "str",
+   "cur": "num",
+   "pre": "str",
+   "far": "str",
+   "idle": "str",
+   "ans": "str"
   },
   "sustain_item": {
    "name": "str",
@@ -2667,7 +2674,13 @@
    "anm": "text",
    "rr": "text",
    "stw": "text",
-   "ld": "text"
+   "ld": "text",
+   "ord": "text",
+   "tg": "text",
+   "pre": "text",
+   "far": "text",
+   "idle": "text",
+   "ans": "text"
   },
   "ev_sustain_item": {
    "name": "text"
