@@ -571,7 +571,8 @@ do
 	check("benched: walks to its own fountain", to ~= nil and to.x > 6000 and to.y > 6000, to and (to.x .. "," .. to.y) or "no move")
 	local home = MakeUnit({ pid = 1, team = 2, loc = Vector(-6600, -6300, 0) })
 	home.pos = 1
-	check("benched at the fountain: no move", H.Chooser.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
+	home.loc = require("bots/FunLib/humaniser/drill").WaitSlot(home)
+	check("benched at its fountain slot: no move", H.Chooser.Bench(home) and #ActionsOf(1, "MoveToLocation") == 0)
 	local m = H.StackJob.Minutes()
 	check("drill stack: from 2:00, every third minute", m[1] == 2 and m[2] == 5 and m[3] == 8)
 	check("drill stack implies StackFar", H.Overrides.Get("StackFar") == true)

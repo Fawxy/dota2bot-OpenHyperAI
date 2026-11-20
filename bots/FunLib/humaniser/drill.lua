@@ -362,7 +362,7 @@ local function __TS__ObjectEntries(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local overrides, swapped, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, atFountain, burstStep, lastHitPlace, swingStep, answerStep, rigStep, rigHold, pastReach, pairFacts, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK, RIG_CHANNEL_SECS, RIG_REORDER_SECS, LH_INSIDE, LH_BACK_MIN, SWING_REACH, SWING_HITS, SWING_SECS, ANSWER_HIT, ANSWER_KEEP, ANSWER_LEASH
+local overrides, swapped, listed, spotPoint, noteSpot, behindOwnT1, endLinger, lingerPoint, nearbyHero, startLinger, lingerTick, chase, sentryAttack, keyOf, rigOf, rigState, rigActor, rigCastHeld, releasedModes, rigIdle, rawSpot, passableNear, nearestTower, rigPoint, logSpot, heroOf, lastPoint, attackTarget, hpShare, holdsItem, standAt, waitInFountain, atFountain, burstStep, lastHitPlace, swingStep, answerStep, rigStep, rigHold, pastReach, pairFacts, controlRep, Customize, brokeOff, FOUNTAIN, STATUE_BEHIND, STATUE_SWAY, statueSide, lastSpot, SPOT_OFFSET, CHASER_WAIT_BEHIND, LINGER_HP, LINGER_SECS, LINGER_DIST, LINGER_STANDOFF_SLACK, TOWER_REACH_FALLBACK, LINGER_TOWER_MARGIN, lingering, lingered, rig, rigSpots, RIG_IDLE_DESIRE, TOWER_IDS, RIG_SNAP_STEP, RIG_SNAP_RINGS, rigUnits, RIG_PLACED, RIG_APPROACH, RIG_SHOP_REACH, RIG_BUY_SECS, RIG_FULL_HP, RIG_AT, RIG_FROM_SLACK, WAIT_RADIUS, WAIT_STEP, WAIT_AT, waitSlots, RIG_CHANNEL_SECS, RIG_REORDER_SECS, LH_INSIDE, LH_BACK_MIN, SWING_REACH, SWING_HITS, SWING_SECS, ANSWER_HIT, ANSWER_KEEP, ANSWER_LEASH
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -806,14 +806,14 @@ function chase(bot)
     local castOnly = (____opt_44 and ____opt_44.chaseCast) == true
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue104
+            local __continue103
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or GetUnitToLocationDistance(h, spot) > ____exports.CHASE_RANGE then
-                    __continue104 = true
+                    __continue103 = true
                     break
                 end
                 if castOnly and ____exports.RoleOf(h) ~= "cast" then
-                    __continue104 = true
+                    __continue103 = true
                     break
                 end
                 local dd = GetUnitToUnitDistance(bot, h)
@@ -821,9 +821,9 @@ function chase(bot)
                     best = h
                     bestD = dd
                 end
-                __continue104 = true
+                __continue103 = true
             until true
-            if not __continue104 then
+            if not __continue103 then
                 break
             end
         end
@@ -894,10 +894,10 @@ function sentryAttack(bot, spot)
     local bestD = math.huge
     for ____, h in ipairs(bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})) do
         do
-            local __continue124
+            local __continue123
             repeat
                 if not h:IsAlive() then
-                    __continue124 = true
+                    __continue123 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h) - h:GetBoundingRadius()
@@ -905,9 +905,9 @@ function sentryAttack(bot, spot)
                     best = h
                     bestD = d
                 end
-                __continue124 = true
+                __continue123 = true
             until true
-            if not __continue124 then
+            if not __continue123 then
                 break
             end
         end
@@ -1092,11 +1092,11 @@ function nearestTower(team, p)
     local best = math.huge
     for ____, k in ipairs(__TS__ObjectKeys(TOWER_IDS)) do
         do
-            local __continue180
+            local __continue179
             repeat
                 local tw = GetTower(team, TOWER_IDS[k])
                 if tw == nil or tw == nil or not tw:IsAlive() then
-                    __continue180 = true
+                    __continue179 = true
                     break
                 end
                 local a = tw:GetLocation()
@@ -1104,9 +1104,9 @@ function nearestTower(team, p)
                     best,
                     math.sqrt((a.x - p.x) ^ 2 + (a.y - p.y) ^ 2)
                 )
-                __continue180 = true
+                __continue179 = true
             until true
-            if not __continue180 then
+            if not __continue179 then
                 break
             end
         end
@@ -1219,10 +1219,10 @@ function attackTarget(bot, st, key)
     local bestD = RIG_PLACED
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue196
+            local __continue195
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil then
-                    __continue196 = true
+                    __continue195 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(h, p)
@@ -1230,9 +1230,9 @@ function attackTarget(bot, st, key)
                     best = h
                     bestD = d
                 end
-                __continue196 = true
+                __continue195 = true
             until true
-            if not __continue196 then
+            if not __continue195 then
                 break
             end
         end
@@ -1264,6 +1264,32 @@ function standAt(bot, p)
     end
     bot:Action_MoveToLocation(target)
     return true
+end
+--- The hero's waiting slot (by position; by player id before its position is known), snapped to passable ground.
+function ____exports.WaitSlot(bot)
+    local team = bot:GetTeam()
+    local n = LaneConfig.PositionOf(bot) or bot:GetPlayerID() % 5 + 1
+    local key = (tostring(team) .. ":") .. tostring(n)
+    local known = waitSlots[key]
+    if known ~= nil then
+        return known
+    end
+    local x, y, z = unpack(FOUNTAIN[team])
+    local len = math.sqrt(x * x + y * y)
+    local ux = -x / len
+    local uy = -y / len
+    local a = (n - 3) * WAIT_STEP
+    local dx = math.cos(a) * ux - math.sin(a) * uy
+    local dy = math.cos(a) * uy + math.sin(a) * ux
+    local p = passableNear(Vector(x + WAIT_RADIUS * dx, y + WAIT_RADIUS * dy, z)) or Vector(x, y, z)
+    waitSlots[key] = p
+    return p
+end
+function waitInFountain(bot)
+    local p = ____exports.WaitSlot(bot)
+    if GetUnitToLocationDistance(bot, p) > WAIT_AT then
+        bot:Action_MoveToLocation(p)
+    end
 end
 function atFountain(bot)
     local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
@@ -1308,11 +1334,11 @@ function burstStep(bot, st, words)
     end
     for ____, name in ipairs(spells) do
         do
-            local __continue223
+            local __continue226
             repeat
                 local a = bot:GetAbilityByName(name)
                 if a == nil or a == nil or a:IsNull() or a:GetLevel() <= 0 or not a:IsFullyCastable() then
-                    __continue223 = true
+                    __continue226 = true
                     break
                 end
                 local last = cur.ordered[name]
@@ -1352,7 +1378,7 @@ function burstStep(bot, st, words)
                 )
                 return false
             until true
-            if not __continue223 then
+            if not __continue226 then
                 break
             end
         end
@@ -1389,22 +1415,22 @@ function swingStep(bot, st, place)
     local best
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1600, true) or ({})) do
         do
-            local __continue232
+            local __continue235
             repeat
                 if c:IsNull() or not c:IsAlive() or c:GetLocation() == nil or GetUnitToLocationDistance(c, place) > SWING_REACH then
-                    __continue232 = true
+                    __continue235 = true
                     break
                 end
                 if c:GetHealth() > SWING_HITS * c:GetActualIncomingDamage(dmg, DamageType.Physical) then
-                    __continue232 = true
+                    __continue235 = true
                     break
                 end
                 if best == nil or c:GetHealth() < best:GetHealth() then
                     best = c
                 end
-                __continue232 = true
+                __continue235 = true
             until true
-            if not __continue232 then
+            if not __continue235 then
                 break
             end
         end
@@ -1658,7 +1684,7 @@ function rigHold(bot)
     local st = rigState()
     local k = keyOf(bot)
     if st == nil or k == nil then
-        atFountain(bot)
+        waitInFountain(bot)
         return true
     end
     local rr = ____exports.RigRepOf(st.rep)
@@ -1666,7 +1692,7 @@ function rigHold(bot)
     local steps = rr and rr.setup[k]
     if steps == nil or #steps == 0 then
         st.placed[pid] = true
-        atFountain(bot)
+        waitInFountain(bot)
         return true
     end
     do
@@ -1709,44 +1735,44 @@ function ____exports.LowFacts(bot, low)
     local allies = 0
     for ____, h in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue374
+            local __continue377
             repeat
                 if h:GetPlayerID() == bot:GetPlayerID() or not h:IsAlive() or h:GetLocation() == nil or h:IsIllusion() then
-                    __continue374 = true
+                    __continue377 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     allies = allies + 1
                 end
-                __continue374 = true
+                __continue377 = true
             until true
-            if not __continue374 then
+            if not __continue377 then
                 break
             end
         end
     end
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue378
+            local __continue381
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or h:IsIllusion() then
-                    __continue378 = true
+                    __continue381 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, h) <= 1200 then
                     foes = foes + 1
                 end
                 if low == nil or hpShare(h) > low[1] then
-                    __continue378 = true
+                    __continue381 = true
                     break
                 end
                 local p = pastReach(bot, h)
                 if p >= low[2] and p <= low[3] then
                     found = true
                 end
-                __continue378 = true
+                __continue381 = true
             until true
-            if not __continue378 then
+            if not __continue381 then
                 break
             end
         end
@@ -1757,23 +1783,23 @@ end
 function ____exports.TowerOnCreep(bot, d)
     for ____, tower in ipairs(bot:GetNearbyTowers(1200, false) or ({})) do
         do
-            local __continue385
+            local __continue388
             repeat
                 local t = tower:GetAttackTarget()
                 if t == nil or t == nil or t:IsNull() or not t:IsAlive() then
-                    __continue385 = true
+                    __continue388 = true
                     break
                 end
                 if t:GetTeam() == bot:GetTeam() or not t:IsCreep() or t:IsHero() then
-                    __continue385 = true
+                    __continue388 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, t) <= d then
                     return true
                 end
-                __continue385 = true
+                __continue388 = true
             until true
-            if not __continue385 then
+            if not __continue388 then
                 break
             end
         end
@@ -1791,18 +1817,18 @@ function pairFacts(bot, ally, foe)
     local hit
     for ____, a in ipairs(allies) do
         do
-            local __continue393
+            local __continue396
             repeat
                 if GetUnitToUnitDistance(a, bot) > ally or not a:WasRecentlyDamagedByAnyHero(1) then
-                    __continue393 = true
+                    __continue396 = true
                     break
                 end
                 if hit == nil or hpShare(a) < hpShare(hit) then
                     hit = a
                 end
-                __continue393 = true
+                __continue396 = true
             until true
-            if not __continue393 then
+            if not __continue396 then
                 break
             end
         end
@@ -2818,11 +2844,7 @@ function ____exports.Hold(bot)
         end
     end
     if r == "bench" or r == "chaser" then
-        local x, y, z = unpack(FOUNTAIN[bot:GetTeam()])
-        local f = Vector(x, y, z)
-        if GetUnitToLocationDistance(bot, f) > 300 then
-            bot:Action_MoveToLocation(f)
-        end
+        waitInFountain(bot)
         return true
     end
     if r ~= "statue" and r ~= "sentry" and not ____exports.IdleStatue(bot) then
@@ -3043,17 +3065,17 @@ local function courierFree(bot)
         local n = 0
         while n <= 4 do
             do
-                local __continue207
+                local __continue206
                 repeat
                     local c = GetCourier(n)
                     if c == nil or c == nil or c:GetPlayerID() ~= bot:GetPlayerID() then
-                        __continue207 = true
+                        __continue206 = true
                         break
                     end
                     local s = GetCourierState(c)
                     return s == COURIER_STATE_IDLE or s == COURIER_STATE_AT_BASE
                 until true
-                if not __continue207 then
+                if not __continue206 then
                     break
                 end
             end
@@ -3074,6 +3096,10 @@ local function readyOf(bot, rr)
     end
     return ____temp_74 or rr.ready
 end
+WAIT_RADIUS = 350
+WAIT_STEP = 0.6
+WAIT_AT = 50
+waitSlots = {}
 RIG_CHANNEL_SECS = 0.3
 RIG_REORDER_SECS = 0.5
 LH_INSIDE = 50
@@ -3112,24 +3138,24 @@ local function foggedWithin(bot, r)
         local pid = 0
         while pid <= 23 do
             do
-                local __continue290
+                local __continue293
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t == bot:GetTeam() or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(pid) then
-                        __continue290 = true
+                        __continue293 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(pid)[1]
                     if info == nil or info.time_since_seen >= RIG_FOG_CLEAR then
-                        __continue290 = true
+                        __continue293 = true
                         break
                     end
                     if GetUnitToLocationDistance(bot, info.location) <= r then
                         return true
                     end
-                    __continue290 = true
+                    __continue293 = true
                 until true
-                if not __continue290 then
+                if not __continue293 then
                     break
                 end
             end
@@ -3190,17 +3216,17 @@ local function loneBurst(bot, r)
     local dmg = 0
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue308
+            local __continue311
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > r then
-                    __continue308 = true
+                    __continue311 = true
                     break
                 end
                 n = n + 1
                 dmg = dmg + h:GetEstimatedDamageToTarget(true, bot, 3, DamageType.All)
-                __continue308 = true
+                __continue311 = true
             until true
-            if not __continue308 then
+            if not __continue311 then
                 break
             end
         end
@@ -3292,19 +3318,19 @@ local function failingCheck(bot, st, rr)
         local nearest = math.huge
         for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue345
+                local __continue348
                 repeat
                     if not h:IsAlive() or h:GetLocation() == nil then
-                        __continue345 = true
+                        __continue348 = true
                         break
                     end
                     nearest = math.min(
                         nearest,
                         GetUnitToUnitDistance(bot, h)
                     )
-                    __continue345 = true
+                    __continue348 = true
                 until true
-                if not __continue345 then
+                if not __continue348 then
                     break
                 end
             end
@@ -3419,10 +3445,10 @@ local function rigTrace(bot, st, secs)
     local near
     for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue412
+            local __continue415
             repeat
                 if not h:IsAlive() or h:GetLocation() == nil or not h:CanBeSeen() or GetUnitToUnitDistance(bot, h) > RIG_TRACE_REACH then
-                    __continue412 = true
+                    __continue415 = true
                     break
                 end
                 n = n + 1
@@ -3430,9 +3456,9 @@ local function rigTrace(bot, st, secs)
                 if near == nil or GetUnitToUnitDistance(bot, h) < GetUnitToUnitDistance(bot, near) then
                     near = h
                 end
-                __continue412 = true
+                __continue415 = true
             until true
-            if not __continue412 then
+            if not __continue415 then
                 break
             end
         end
@@ -3915,6 +3941,9 @@ function ____exports.ResetCache()
     end
     removedLogged = false
     rig = nil
+    for ____, k in ipairs(__TS__ObjectKeys(waitSlots)) do
+        __TS__Delete(waitSlots, k)
+    end
     for ____, k in ipairs(__TS__ObjectKeys(rigUnits)) do
         __TS__Delete(rigUnits, k)
     end
