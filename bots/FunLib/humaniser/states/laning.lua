@@ -276,11 +276,14 @@ function safeFrame(pid)
     end
     return f
 end
-function askDeadly(bot, place, held)
+function askDeadly(bot, place, held, onFault)
+    if onFault == nil then
+        onFault = false
+    end
     local ok, ans = pcall(SafeGather.At, bot, place, {held = held, horizon = PICK_HORIZON})
     if not ok then
         Telemetry.Failed("PickSafe", ans)
-        return false
+        return onFault
     end
     return ans.level == "deadly"
 end
@@ -308,7 +311,8 @@ function deadlyAt(bot, t)
                 t.creep:GetLocation(),
                 bot:GetAttackRange()
             ),
-            true
+            true,
+            t.walk > LanePick.MAX_WALK and Contest.ReadOn()
         )
     end
     f.creeps[t.creep] = deadly
@@ -781,7 +785,7 @@ PICK_CUT_EVERY = 5
 pickCuts = {}
 r6 = function(v) return v == math.huge and -1 or math.floor(v * 1000000 + 0.5) / 1000000 end
 --- A walk-in starts when the pick chose a last hit beyond MAX_WALK; while it runs its price is read again every scan, and a
--- price that no longer passes (a second hero came, HP fell) refuses the creep, which releases the attempt through laneFarm's
+-- price that no longer passes (the cost rose; with Ours.ContestRead off also a second hero or HP under the floor) refuses the creep, which releases the attempt through laneFarm's
 -- dropLost. Any other undefined pick keeps the wait, as for every core attempt.
 local function contestPick(bot, chosen, current)
     local pid = bot:GetPlayerID()

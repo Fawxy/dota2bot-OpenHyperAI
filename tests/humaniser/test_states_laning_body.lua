@@ -625,7 +625,11 @@ do
 			H.States.SetLaneSpot(bot, function() return Vector(-300, 0) end)
 			for _ = 1, 4 do frame(H, bot) end
 			-- Alive for 0.8 s: longer than the 0.17 s walk and the swing's slack, so the reach rule offers it.
-			lh = creep({ loc = Vector(-100, 0), hp = 90, regen = -100 })
+			if o.far then
+				local ours = package.loaded["bots/FunLib/custom_loader"].Ours
+				ours.CoreLastHit, ours.CoreLastHitDire, ours.CoreContest = true, true, o.contest ~= false
+			end
+			lh = creep({ loc = o.far and Vector(200, 0) or Vector(-100, 0), hp = o.far and 200 or 90, regen = -100 })
 			if o.deny then deny = creep({ loc = Vector(-400, 0), hp = 60, regen = -100, team = bot.team }) end
 			for _ = 1, 3 do frame(H, bot) end
 		end)
@@ -670,6 +674,20 @@ do
 	local failed = false
 	for _, l in ipairs(boom.events) do if l:find("PickSafe", 1, true) then failed = true end end
 	check("pick safe: the fault is reported", failed)
+
+	-- Ours.ContestRead: the walk-in's price no longer tests danger, so the pick's ask at the stand point is the only test.
+	-- The creep is 500 away: a 1.17 s walk, past MAX_WALK, taken only as a walk-in (stand point (50, 0)).
+	local farSafe = scenario({ levelAt = function() return "safe" end, far = true })
+	local farOff = scenario({ levelAt = function() return "safe" end, far = true, contest = false })
+	check("contest read: control, a far creep with a safe stand point is taken, and only as a walk-in",
+		chose(farSafe, "lasthit") and not chose(farOff, "lasthit"), farSafe.picks[1])
+	local farDead = scenario({ levelAt = function(p) return p.x > -280 and "deadly" or "safe" end, far = true })
+	check("contest read: a far creep whose stand point is deadly is not walked in to", #farDead.picks > 0 and not chose(farDead, "lasthit"), farDead.picks[1])
+	local askedFar = false
+	for _, c in ipairs(farDead.calls) do if c.held == true and math.abs(c.place.x - 50) < 1 then askedFar = true end end
+	check("contest read: the ask is at the walk-in's stand point", askedFar, #farDead.calls)
+	local farBoom = scenario({ throws = true, far = true })
+	check("contest read: a read that throws refuses a walk-in (nothing else tests its danger)", #farBoom.picks > 0 and not chose(farBoom, "lasthit"), farBoom.picks[1])
 end
 
 -- A creep that reads alive with no location when the attempt ends (prhfc2 game C, log 2026-11-04T02-49-08-prhfc2_C_on_3.log

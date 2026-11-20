@@ -27,7 +27,7 @@ ____exports.RADIUS = 1000
 --- The priced HP may be at most this share of max HP per creep (`judgement`: about one enemy hit and a nuke at level 1-3).
 ____exports.COST_CAP = 0.1
 --- A running walk-in is released on cost only above COST_CAP times this (`judgement`): a price hovering at the cap would
--- otherwise throw walks away halfway. The HP floor, two heroes and the tower stay hard.
+-- otherwise throw walks away halfway. With Ours.ContestRead off, the HP floor, two heroes and the tower stay hard.
 ____exports.WALK_SLACK = 1.5
 --- HP share the core must keep after the priced cost (`judgement`; lane aggro's draws gate at 0.45).
 ____exports.HP_FLOOR = 0.5
@@ -40,8 +40,9 @@ local QUERY = 1600
 --- Our swing's own time in the zone when the API gives no attack point, s.
 local SWING_DEFAULT = 0.5
 --- The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
--- zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
--- more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
+-- zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Without
+-- `read`, two or more such heroes, the creep inside an enemy tower's ring, or HP after the cost under HP_FLOOR refuse it too;
+-- with `read` (Ours.ContestRead) only the cost does, and the pick's safe read at the stand point is the danger test.
 function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower, cap, read)
     if cap == nil then
         cap = ____exports.COST_CAP
