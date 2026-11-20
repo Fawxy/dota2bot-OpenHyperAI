@@ -126,14 +126,7 @@ export interface LastHitOpts {
     /** Hold tag passed to the adapter's `hold` while standing in range waiting. */
     hold?: string;
     interruptIf?: (this: void) => boolean;
-    /**
-     * When the swing fires. `expected` (default): once the believed HP at landing, the unknown-phase hits spread as a rate,
-     * is under our damage. `chance`: once no swing ordered on one of the next frames (to CHANCE_LOOK s) has a better chance
-     * to kill, over the unknown phases of the attackers between swings (see `killChance`).
-     */
-    swing?: SwingRule;
 }
-export type SwingRule = "expected" | "chance";
 /**
  * Last-hits an enemy lane creep (`opts.target`, or the best one within `searchRadius` that the adapter's
  * `lastHitFilter` allows). Waits in attack range until the bot believes its hit, ordered now, lands after

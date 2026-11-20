@@ -1,6 +1,6 @@
 import { get } from "./adapter";
 import { attackAndConfirm, HoldOpts, holdAt } from "./verbs";
-import { deny, lastHit, LaneTarget, laneTargets, LastHitOpts, ownHitTime, SwingRule } from "./lasthit";
+import { deny, lastHit, LaneTarget, laneTargets, LastHitOpts, ownHitTime } from "./lasthit";
 import { Result, TaskBody, TaskUnit, Vec } from "./types";
 
 export interface LaneFarmOpts {
@@ -44,8 +44,6 @@ export interface LaneFarmOpts {
      * the rule would apply, so a caller can release some attempts and keep waiting on others.
      */
     dropLost?: boolean | ((this: void, current: LaneTarget) => boolean);
-    /** The swing rule each last-hit or deny attempt uses (lastHit's `swing`), read at the attempt's start. Default `expected`. */
-    swing?: (this: void) => SwingRule;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;
@@ -169,7 +167,6 @@ export function* laneFarm(bot: TaskUnit, spot: (this: void) => Vec | undefined, 
             deadline: opts.deadline,
             hold: opts.hold?.hold,
             interruptIf: () => stop() || away() > leash || retarget(t),
-            swing: opts.swing?.(),
         };
         const res =
             t.kind === "prehit"

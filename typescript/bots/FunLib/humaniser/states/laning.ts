@@ -637,8 +637,6 @@ function* body(bot: Unit, ctx: Lib.Ctx): Lib.TaskBody {
             return owns;
         },
         within: Settings().LastHitWithin,
-        // K1: when the swing fires (slice lh-chance).
-        swing: () => (Ours.On("LastHitChance") ? "chance" : "expected"),
         pick: (targets, current) => {
             const verbs = Tasks.Verbs();
             const pre = verbs !== undefined ? PreHit.Find(bot, verbs) : undefined;

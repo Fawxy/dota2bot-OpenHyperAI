@@ -143,10 +143,6 @@ export const DEFAULTS = {
      *  deadly under `Safe.BARS.idle` (1.0) of the kill line, not `stay` (1.25). Off: `stay` always (the safe read's and
      *  sustain's kill line both read `Inputs.pressed`). A switch for the checkpoint's deaths test (20/11/2026). */
     IdleBar: true,
-    /** Slice lh-chance (K1): the laning body's last-hit and deny swings use the engine's `chance` rule (swing unless a swing on
-     *  one of the next frames has a better chance to kill over the unknown attacker phases). Off: the `expected` rule (believed
-     *  HP at landing under our damage). */
-    LastHitChance: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

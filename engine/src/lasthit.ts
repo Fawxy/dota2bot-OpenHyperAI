@@ -636,60 +636,6 @@ function due(b: Belief): boolean {
 }
 
 /**
- * The chance that our hit, landing `tHit` s from now for `mine` damage, kills the creep: over the unknown phases of the
- * attackers between swings, each one's next hit uniform on its bracket [first, last] (`HpForecast.unphasedHits`: past its
- * attack point, so within one cycle, plus flight) and every cycle after, with the hits of known time fixed. A kill needs
- * the others to leave the creep alive one tick before ours lands and at or under our damage. Stratified samples, no random
- * draw (the skill error owns the random source). Phases are independent across attackers (UNVERIFIED: lane creeps of one
- * wave start their attacks close together).
- */
-const CHANCE_SAMPLES = 64;
-function killChance(f: HpForecast, tHit: number, mine: number): number {
-    const at = tHit - MIN_MARGIN;
-    let base = f.hp + f.regen * tHit;
-    for (const h of f.hits) {
-        if (h.t > at) break;
-        if (h.by !== "self") base -= h.damage;
-    }
-    let wins = 0;
-    for (let s = 0; s < CHANCE_SAMPLES; s++) {
-        let hp = base;
-        for (let j = 0; j < f.unphasedHits.length; j++) {
-            const u = f.unphasedHits[j];
-            // Stratified, deterministic: no random draw (the skill error owns the RNG).
-            const q = ((s + 0.5) / CHANCE_SAMPLES + (j * 0.6180339887)) % 1;
-            const first = u.first + q * math.max(0, u.last - u.first);
-            if (u.period > 0) for (let t = first; t <= at; t += u.period) hp -= u.damage;
-        }
-        if (hp > 0 && hp <= mine) wins++;
-    }
-    return wins / CHANCE_SAMPLES;
-}
-
-/** How far ahead the `chance` rule compares later swings, and the gain in chance a later one needs to be waited for. */
-const CHANCE_LOOK = 0.6;
-const CHANCE_GAIN = 0.02;
-
-/**
- * The `chance` swing rule: the kill chance of a swing ordered now (`p`), and whether to swing (`due`): the creep survives
- * the seen hits, the chance is above 0, and no swing ordered on one of the next frames (`step` s apart, to CHANCE_LOOK)
- * beats it by CHANCE_GAIN. Later swings are judged on what is known now; waiting also shows wind-ups not yet begun, which
- * this does not credit. `shift` is the bot's rolled timing error (positive: it believes its hit lands later, so swings early).
- */
-function chanceDue(bot: TaskUnit, creep: TaskCreep, b: Belief, step: number, shift: number): { due: boolean; p: number } {
-    if (!b.survives) return { due: false, p: 0 };
-    step = math.max(step, MIN_MARGIN);
-    const at = math.max(0, b.tHit + shift);
-    const f = hpForecast(bot, creep, at + CHANCE_LOOK + 0.1);
-    const p = killChance(f, at, b.mine);
-    if (p <= 0) return { due: false, p };
-    for (let d = step; d <= CHANCE_LOOK + 1e-9; d += step) {
-        if (killChance(f, at + d, b.mine) > p + CHANCE_GAIN) return { due: false, p };
-    }
-    return { due: true, p };
-}
-
-/**
  * The kill window over an attempt's frames before its swing (message attribution only; it changes no decision): the window is
  * open on a frame when `due` holds for a swing ordered then, from wherever the bot stands. `at` seconds from the attempt's
  * start to the first open frame (-1 never), `by` what held the swing back on that frame (`swing` none: it swung; `paused` the
@@ -838,15 +784,7 @@ export interface LastHitOpts {
     /** Hold tag passed to the adapter's `hold` while standing in range waiting. */
     hold?: string;
     interruptIf?: (this: void) => boolean;
-    /**
-     * When the swing fires. `expected` (default): once the believed HP at landing, the unknown-phase hits spread as a rate,
-     * is under our damage. `chance`: once no swing ordered on one of the next frames (to CHANCE_LOOK s) has a better chance
-     * to kill, over the unknown phases of the attackers between swings (see `killChance`).
-     */
-    swing?: SwingRule;
 }
-
-export type SwingRule = "expected" | "chance";
 
 type Mode = "lasthit" | "deny";
 
@@ -856,7 +794,6 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     if (mode === "deny" && bot.GetDenies === undefined) return fail("unsupported");
     const start = now();
     const maxWait = opts.maxWait ?? 1.5;
-    const rule: SwingRule = opts.swing ?? "expected";
 
     let creep = opts.target;
     if (creep === undefined) {
@@ -957,15 +894,11 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
             if ((mode === "lasthit" || deniable(creep)) && cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE)) {
                 const b = believe(bot, creep, true, observedDps);
                 held = string.format("wait hp=%d pred=%d mine=%d", math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine));
-                // The chance rule looks ahead in steps of the frame gap the verb sees: a later swing can only be ordered on a frame.
-                const c = rule === "chance" ? chanceDue(bot, creep, b, gapN > 0 ? gapSum / gapN : MIN_MARGIN, rollFor(bot, creep).shift) : undefined;
-                if (c !== undefined ? c.due : due(b)) {
+                if (due(b)) {
                     opened(t, gap, "swing");
                     tHit = b.tHit;
                     // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
                     diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(incomingDps(bot, creep).dps));
-                    // The chance rule's kill chance at the swing (`pk`; absent under the expected rule).
-                    if (c !== undefined) diag = string.format("%s pk=%.2f", diag, c.p);
                     // Enemy hero wind-ups this swing counted as certain (a feint would break them): `ew` how many, `er` 1
                     // when the swing is due only because of them, `ec` the latest of their commit points and `oc` ours
                     // (seconds from now).

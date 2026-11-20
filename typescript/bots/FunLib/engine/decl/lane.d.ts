@@ -1,6 +1,6 @@
 /** @noSelfInFile */
 import { HoldOpts } from "./verbs";
-import { LaneTarget, SwingRule } from "./lasthit";
+import { LaneTarget } from "./lasthit";
 import { Result, TaskBody, TaskUnit, Vec } from "./types";
 export interface LaneFarmOpts {
     /** holdAt options for standing at the spot (its interruptIf is the verb's own). */
@@ -43,8 +43,6 @@ export interface LaneFarmOpts {
      * the rule would apply, so a caller can release some attempts and keep waiting on others.
      */
     dropLost?: boolean | ((this: void, current: LaneTarget) => boolean);
-    /** The swing rule each last-hit or deny attempt uses (lastHit's `swing`), read at the attempt's start. Default `expected`. */
-    swing?: (this: void) => SwingRule;
     /** Enemy heroes within this of the bot at an attempt's start make it `contested`. Default 1000. */
     contestRadius?: number;
     label?: (this: void, label: string) => void;

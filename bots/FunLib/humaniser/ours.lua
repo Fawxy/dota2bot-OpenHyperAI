@@ -96,8 +96,7 @@ ____exports.DEFAULTS = {
     BurstReady = true,
     Sustain = true,
     ExitWindow = true,
-    IdleBar = true,
-    LastHitChance = true
+    IdleBar = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()
