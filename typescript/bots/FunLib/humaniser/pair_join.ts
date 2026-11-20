@@ -12,6 +12,7 @@ import { Unit, UnitType } from "bots/ts_libs/dota";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
+import * as Ours from "bots/FunLib/humaniser/ours";
 
 export const SETTINGS = {
     /** The ally's distance from the bot for the rule to apply (D10's 1,200; the funnel's). */
@@ -52,6 +53,10 @@ export interface Member {
     hp: number;
     mhp: number;
     ret?: number;
+    /** Reach (GetAttackRange + hull), movement speed and hull, for Ours.JoinArrive. Absent on a cut from before it: counted whole. */
+    rc?: number;
+    ms?: number;
+    hull?: number;
 }
 
 /** What one decision reads: the hit ally the fight is around, both sides, and `dmg[a][b]`, hero a's estimated damage to hero b over Window. */
@@ -60,6 +65,8 @@ export interface Rec {
     ours: Member[];
     theirs: Member[];
     dmg: Record<number, Record<number, number>>;
+    /** Ours.JoinArrive was on: a hero's damage counts for the share of Window left after its walk into its own range of the target. */
+    arrive?: boolean;
 }
 
 export type Dec = "join" | "losing";
@@ -73,13 +80,20 @@ export interface Answer {
     kt: number;
 }
 
+/** The share of Window hero `f` has left to damage `o` after walking into its own attack range of it (1 when either carries no reach). */
+function arrival(f: Member, o: Member): number {
+    if (f.rc === undefined || f.ms === undefined || o.hull === undefined) return 1;
+    const gap = math.max(0, math.sqrt((f.x - o.x) ** 2 + (f.y - o.y) ** 2) - (f.rc + o.hull));
+    return math.max(0, 1 - gap / math.max(1, f.ms) / SETTINGS.Window);
+}
+
 /** The side `from`'s best kill share on `on` over the window: the target and the share. */
-function best(from: Member[], on: Member[], dmg: Record<number, Record<number, number>>): LuaMultiReturn<[number, number]> {
+function best(from: Member[], on: Member[], dmg: Record<number, Record<number, number>>, arrive: boolean): LuaMultiReturn<[number, number]> {
     let tgt = -1;
     let share = 0;
     for (const o of on) {
         let d = 0;
-        for (const f of from) d += dmg[f.pid]?.[o.pid] ?? 0;
+        for (const f of from) d += (dmg[f.pid]?.[o.pid] ?? 0) * (arrive ? arrival(f, o) : 1);
         const s = d / math.max(o.hp, 1);
         if (tgt === -1 || s > share) {
             tgt = o.pid;
@@ -92,8 +106,9 @@ function best(from: Member[], on: Member[], dmg: Record<number, Record<number, n
 /** The rule: join when our best kill share beats theirs. Ours in retreat (`ret` 1) are leaving: they count on neither side. */
 export function Decide(rec: Rec): Answer {
     const ours = rec.ours.filter((m) => m.ret !== 1);
-    const [tgt, ko] = best(ours, rec.theirs, rec.dmg);
-    const [, kt] = best(rec.theirs, ours, rec.dmg);
+    const arrive = rec.arrive === true;
+    const [tgt, ko] = best(ours, rec.theirs, rec.dmg, arrive);
+    const [, kt] = best(rec.theirs, ours, rec.dmg, arrive);
     return { dec: ko > kt ? "join" : "losing", tgt, ko, kt };
 }
 
@@ -111,6 +126,10 @@ function member(u: Unit, ours: boolean): Member {
     const l = u.GetLocation();
     const m: Member = { pid: u.GetPlayerID(), x: math.floor(l.x + 0.5), y: math.floor(l.y + 0.5), hp: math.floor(u.GetHealth() + 0.5), mhp: math.floor(u.GetMaxHealth() + 0.5) };
     if (ours) m.ret = RetreatState.Running(u) ? 1 : 0;
+    const hull = u.GetBoundingRadius();
+    m.rc = math.floor(u.GetAttackRange() + hull + 0.5);
+    m.ms = math.floor(u.GetCurrentMovementSpeed() + 0.5);
+    m.hull = math.floor(hull + 0.5);
     return m;
 }
 
@@ -155,7 +174,9 @@ function weigh(ally: Unit, ours: Unit[]): Rec | undefined {
     };
     fill(ours, theirs);
     fill(theirs, ours);
-    return { ally: ally.GetPlayerID(), ours: ours.map((u) => member(u, true)), theirs: theirs.map((u) => member(u, false)), dmg };
+    const rec: Rec = { ally: ally.GetPlayerID(), ours: ours.map((u) => member(u, true)), theirs: theirs.map((u) => member(u, false)), dmg };
+    if (Ours.On("JoinArrive")) rec.arrive = true;
+    return rec;
 }
 
 interface State {
@@ -189,6 +210,10 @@ function heroOf(pid: number): Unit | undefined {
 
 function members(ms: Member[]): string {
     return ms.map((m) => [m.pid, m.x, m.y, m.hp, m.mhp, ...(m.ret !== undefined ? [m.ret] : [])].join(",")).join(";");
+}
+
+function reachOf(rec: Rec): string {
+    return [...rec.ours, ...rec.theirs].filter((m) => m.rc !== undefined).map((m) => [m.pid, m.rc, m.ms, m.hull].join(",")).join(";");
 }
 
 function dmgOf(rec: Rec): string {
@@ -307,7 +332,9 @@ export function Tick(bot: Unit): void {
         ["tgt", a.tgt],
         ["ko", math.floor(a.ko * 1000 + 0.5) / 1000],
         ["kt", math.floor(a.kt * 1000 + 0.5) / 1000],
+        ["jar", reachOf(rec)],
     ];
+    if (rec.arrive === true) fields.push(["jav", 1]);
     Telemetry.Event("cut", fields);
 }
 

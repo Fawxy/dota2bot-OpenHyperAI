@@ -57,6 +57,9 @@ local function unit(o)
 	function u:IsHero() return true end
 	function u:GetTeam() return o.pid < 5 and 2 or 3 end
 	function u:GetAttackTarget() return o.att end
+	function u:GetAttackRange() return o.range or 600 end
+	function u:GetBoundingRadius() return 24 end
+	function u:GetCurrentMovementSpeed() return o.ms or 300 end
 	return u
 end
 
@@ -177,6 +180,75 @@ do
 	P.Tick(bot)
 	o = after()
 	check("past the laning stage it ends stage", (o[#o] or ""):find("res=stage", 1, true) ~= nil, o[#o])
+end
+
+-- Ours.JoinArrive: a hero's damage counts for the share of Window left after its walk into its own range of the target.
+do
+	local P = fresh()
+	-- A hero at x with reach 648 (range 624 + hull 24), speed 300, hull 24.
+	local function h(pid, hp, x, reach)
+		local t = { pid = pid, x = x, y = 0, hp = hp, mhp = 600 }
+		if reach ~= false then t.rc, t.ms, t.hull = 648, 300, 24 end
+		return t
+	end
+	-- Hero 6 (HP 400) at x = 500 hits each of ours for 200 of 600 HP (0.33). Hero 0 does 100 to it alone (0.25), hero 1 adds 200.
+	local dmg = { [0] = { [6] = 100 }, [1] = { [6] = 200 }, [6] = { [0] = 200, [1] = 200 } }
+	local function rec(partnerX, arrive, reach)
+		return { ally = 0, ours = { h(0, 600, 0, reach), h(1, 600, partnerX, reach) }, theirs = { h(6, 400, 500, reach) }, dmg = dmg, arrive = arrive }
+	end
+	local near = P.Decide(rec(0, true))
+	check("a partner in range counts whole: join", near.dec == "join" and math.abs(near.ko - 0.75) < 1e-9, near.ko)
+	-- 1572 from the target: 900 outside its reach, 3 s of walking: nothing left of the window.
+	local far = P.Decide(rec(-1072, true))
+	check("a partner 3 s of walking from its range adds nothing: losing", far.dec == "losing" and math.abs(far.ko - 0.25) < 1e-9, far.ko)
+	local off = P.Decide(rec(-1072, false))
+	check("the same far partner counts whole with the rule off: join", off.dec == "join" and math.abs(off.ko - 0.75) < 1e-9, off.ko)
+	-- Control: 60 outside its reach is 0.2 s of walking, 0.933 of the window.
+	local step = P.Decide(rec(-232, true))
+	check("a partner one step out of range still counts nearly whole: join", step.dec == "join" and math.abs(step.ko - (100 + 200 * (1 - 0.2 / 3)) / 400) < 1e-9, step.ko)
+	-- No reach carried (an old cut): the rule has nothing to scale by.
+	local old = P.Decide(rec(-1072, true, false))
+	check("members with no reach count whole on or off", old.dec == "join" and math.abs(old.ko - 0.75) < 1e-9 and old.ko == P.Decide(rec(-1072, false, false)).ko, old.ko)
+
+	-- Their side: hero 0 at 300 HP is hit by 6 for 100 and by 7 for 200; ours do 150 each to hero 6 (0.5).
+	local dmg2 = { [0] = { [6] = 150, [7] = 0 }, [1] = { [6] = 150, [7] = 0 }, [6] = { [0] = 100, [1] = 0 }, [7] = { [0] = 200, [1] = 0 } }
+	local function rec2(x7, arrive)
+		return { ally = 0, ours = { h(0, 300, 0), h(1, 600, 0) }, theirs = { h(6, 600, 500), h(7, 600, x7) }, dmg = dmg2, arrive = arrive }
+	end
+	local both = P.Decide(rec2(500, true))
+	check("an enemy in range adds its damage: losing", both.dec == "losing" and math.abs(both.kt - 1) < 1e-9, both.kt)
+	local away = P.Decide(rec2(2500, true))
+	check("an enemy far outside its range adds less: join", away.dec == "join" and math.abs(away.kt - 1 / 3) < 1e-9, away.kt)
+	check("the far enemy counts whole with the rule off: losing", P.Decide(rec2(2500, false)).dec == "losing")
+end
+
+do
+	-- Gather records reach on both sides and the switch; the cut logs them and replays to the same answer.
+	local H
+	ResetWorld()
+	H = FreshHumaniser({ Enable = true, Telemetry = { Enable = true, Cut = true } })
+	local P = require("bots/FunLib/humaniser/pair_join")
+	local lines = {}
+	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
+	local bot = unit({ pid = 0, x = 0, y = 0, hp = 600, hit = true, dmg = { [6] = 90 } })
+	local partner = unit({ pid = 1, x = 500, y = 0, hp = 600, range = 150, ms = 325, dmg = { [6] = 60 } })
+	local e = unit({ pid = 6, x = 900, y = 0, hp = 500, range = 550, ms = 290, dmg = { [0] = 120 } })
+	lists({ bot, partner }, { e })
+	T = 100
+	P.Tick(bot)
+	local cut = lines[1] or ""
+	check("the cut logs each member's reach, both sides", cut:find(" jar=0,624,300,24;1,174,325,24;6,574,290,24", 1, true) ~= nil, cut)
+	check("the cut says the rule was on", cut:find(" jav=1", 1, true) ~= nil, cut)
+	local rec = P.Gather(bot)
+	check("the record carries the flag and the partner's reach", rec ~= nil and rec.arrive == true and rec.ours[2].rc == 174 and rec.ours[2].ms == 325)
+	package.loaded["bots/FunLib/custom_loader"].Ours = { JoinArrive = false }
+	local off = P.Gather(bot)
+	check("with the switch off the record has no flag", off ~= nil and off.arrive == nil)
+	lines = {}
+	T = 110
+	P.Tick(bot)
+	check("with the switch off the cut has no jav", (lines[1] or ""):find(" jav=", 1, true) == nil and (lines[1] or ""):find(" jar=", 1, true) ~= nil, lines[1])
+	package.loaded["bots/FunLib/custom_loader"].Ours = {}
 end
 
 finish()

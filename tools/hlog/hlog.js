@@ -8,7 +8,7 @@
 //   node hlog.js list [word]                             named queries and views: params and first sentence (word filters)
 //   node hlog.js schema [ev]                             tables, rows and columns (kind, non-null count, an example)
 //   node hlog.js prune                                   drop logs whose file is gone
-// Options: --db <file> (default ~/.dotactl/hlog-<store version>.sqlite), --logs <dir>, --json, --wide (no cell truncation), --no-ingest.
+// Options: --db <file> (default ~/.dotactl/hlog-<ingest version>.sqlite), --logs <dir>, --json, --wide (no cell truncation), --no-ingest.
 'use strict';
 
 const fs = require('fs');
@@ -210,7 +210,7 @@ function main(argv) {
         } else if (cmd === 'q' && rest[0]) {
             sync();
             const logsIn = store.query('SELECT count(*) AS n FROM logs')[0].n;
-            if (!logsIn) console.error(`the store ${path.basename(opt("db") || DB)} has no logs (a new store version starts empty): run without --no-ingest, or hlog.js ingest <log>`);
+            if (!logsIn) console.error(`the store ${path.basename(opt("db") || DB)} has no logs (a new ingest version starts empty): run without --no-ingest, or hlog.js ingest <log>`);
             say(store.query(sqlOf(rest[0]), labelToFile(store, params(argv))));
         } else if (cmd === 'events' && rest[0]) {
             store.ingest(rest[0]);

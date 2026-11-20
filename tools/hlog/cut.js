@@ -240,7 +240,10 @@ const DECISIONS = {
             const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
             // An `on=ours` line (retired join-hits) is no replay: its record weighed one hero, which Decide no longer does.
             if (cut.on === 'ours') throw new Error('an on=ours join line (the retired record) is not replayable');
-            return { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            const w = { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            if (cut.jar !== undefined) w.ar = String(cut.jar);
+            if (cut.jav !== undefined) w.arv = Number(cut.jav);
+            return w;
         },
         check(game, cut, obs) {
             const a = obs.actions[0] || {};
@@ -260,7 +263,7 @@ const DECISIONS = {
         world(game, cut) {
             if (cut.svh === undefined) throw new Error('a trade line from before the veto asked Safe.At (no svh): its burst read is not replayed');
             const w = { t: Number(cut.t), pid: Number(cut.pid), role: cut.role };
-            for (const k of ['hp', 'n', 'ms', 'tm', 'hc', 'cr', 'dn', 'thd', 'crd', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['hp', 'n', 'ms', 'tm', 'hc', 'cr', 'dn', 'thd', 'jhd', 'crd', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
             for (const k of ['svh', 'svb', 'swg', 'pjr', 'pl', 'cd', 'run']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },
