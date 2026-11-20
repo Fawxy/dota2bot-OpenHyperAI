@@ -482,6 +482,9 @@ do
 	check("our order's cooldown covers a swing among 3 creeps only while none is on us: with one on us their 0.2 joins the target's 0.2 against our 0.3",
 		decide(inputs(merge({ cands = { cand({ near = 3, kc = 0.2, say = here(SAFE) }) } }, covered))).level == "hit"
 			and none(decide(inputs(merge({ creepsOnMe = 1, cands = { cand({ near = 3, kc = 0.2, say = here(SAFE) }) } }, covered))), "aggro"))
+	check("the hold follows the swing place: a favoured hitter whose attack point their tower covers holds nothing (control: the same hitter with a safe swing place holds)",
+		T.HoldsOf(inputs({ swing = SW, creepRead = true, cands = { cand({ hitting = true, tw = true, say = here(deadly("tower")) }) } })) == nil
+			and T.HoldsOf(inputs({ swing = SW, creepRead = true, cands = { cand({ hitting = true, tw = true, say = here(SAFE) }) } })) == "hitback")
 	local low = { thp = 0.2, thpAbs = 120, catch = CATCH }
 	check("a kill inside a wave of 7 is the walk's answer, not a count (control: without the read, `wave`)",
 		decide(inputs({ swing = SW, creepRead = true, wave = 7, cands = { cand(merge(merge({}, low), clear)) } })).level == "kill"

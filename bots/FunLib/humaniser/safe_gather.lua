@@ -570,9 +570,13 @@ function laneCreeps(bot, now)
 end
 --- `Ours.CreepRead`: what an attack on a hero from `place` draws. `near`: the enemy lane creeps within `AggroRadius` of the place or of the hero;
 -- `dmg`: their damage on us over `window` (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
-function ____exports.CreepsAt(bot, place, window)
+-- `sheds` false: the act will not stop to shed (a kill or join), so every creep counts from its arrival.
+function ____exports.CreepsAt(bot, place, window, sheds)
     if window == nil then
         window = ____exports.SETTINGS.KillWindow
+    end
+    if sheds == nil then
+        sheds = true
     end
     local now = DotaTime()
     local lc = laneCreeps(bot, now)
@@ -620,8 +624,8 @@ function ____exports.CreepsAt(bot, place, window)
             own[#own + 1] = {x = o.at.x, y = o.at.y, d = d, r = o.r}
         end
     end
-    local plan = Deaggro.Plan(attackers, own)
-    if plan.target ~= nil then
+    local plan = sheds and Deaggro.Plan(attackers, own) or nil
+    if plan ~= nil and plan.target ~= nil then
         local t = own[plan.target + 1]
         do
             local k = 0
@@ -706,7 +710,7 @@ function ____exports.FromRead(bot, r, opts)
     local draws = opts.draws == true and Ours.On("CreepRead")
     local drawn = Ours.On("TowerRead") and drawnAt(bot, now, r.place, draws) or nil
     if drawn ~= nil and draws then
-        local dmg = ____exports.CreepsAt(bot, r.place).dmg
+        local dmg = ____exports.CreepsAt(bot, r.place, ____exports.SETTINGS.KillWindow, opts.commits ~= true).dmg
         if dmg > 0 then
             drawn[#drawn + 1] = {src = "creeps", dmg = dmg}
         end
@@ -917,8 +921,8 @@ function ask(bot, place, opts)
         ____temp_31 = true
     end
     local r = ____frameReader_35(____bot_34, horizon, ____temp_31, opts and opts.exclude)(from, place)
-    local ____exports_FromRead_48 = ____exports.FromRead
-    local ____bot_47 = bot
+    local ____exports_FromRead_50 = ____exports.FromRead
+    local ____bot_49 = bot
     local ____temp_38 = opts and opts.away
     if ____temp_38 == nil then
         ____temp_38 = false
@@ -931,7 +935,13 @@ function ask(bot, place, opts)
     if ____temp_44 == nil then
         ____temp_44 = false
     end
-    local i = ____exports_FromRead_48(____bot_47, r, {away = ____temp_38, held = ____temp_41, hold = ____temp_44, draws = opts and opts.draws})
+    local i = ____exports_FromRead_50(____bot_49, r, {
+        away = ____temp_38,
+        held = ____temp_41,
+        hold = ____temp_44,
+        draws = opts and opts.draws,
+        commits = opts and opts.commits
+    })
     local a = Safe.Decide(i)
     local who = opts and opts.who
     if who ~= nil and cutOn() and bot:IsAlive() then
@@ -1081,13 +1091,13 @@ function ____exports.At(bot, place, opts)
 end
 --- `At` asked once for both bars of one place: without a hold (`who` logs this one) and with one, from one read.
 function ____exports.AtBoth(bot, place, opts)
-    local ____ask_result_51 = ask(
+    local ____ask_result_53 = ask(
         bot,
         place,
         __TS__ObjectAssign({}, opts, {hold = false})
     )
-    local a = ____ask_result_51.a
-    local i = ____ask_result_51.i
+    local a = ____ask_result_53.a
+    local i = ____ask_result_53.i
     return {
         plain = a,
         hold = Safe.Decide(__TS__ObjectAssign({}, i, {hold = true}))
@@ -1130,7 +1140,7 @@ end
 -- `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
 -- decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
 function ____exports.TripGate(bot, place, consumer, from)
-    local ____ask_result_52 = ask(bot, place, {
+    local ____ask_result_54 = ask(bot, place, {
         from = from,
         horizon = ____exports.WalkHorizon,
         away = true,
@@ -1138,8 +1148,8 @@ function ____exports.TripGate(bot, place, consumer, from)
         hold = false,
         who = consumer
     })
-    local a = ____ask_result_52.a
-    local r = ____ask_result_52.r
+    local a = ____ask_result_54.a
+    local r = ____ask_result_54.r
     local why = a.level == "deadly" and a.reason or nil
     if Threat.Log(bot, consumer, r, why or "go") then
         Threat.NoteGateCut(bot, r.from, r.place, consumer)

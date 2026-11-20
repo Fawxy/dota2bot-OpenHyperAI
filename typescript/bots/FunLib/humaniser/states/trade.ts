@@ -577,6 +577,8 @@ export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     for (const c of i.cands) {
         if (!hitsUs(c, run) || c.lost === true || (i.creepRead !== true && (i.towerOnMe || c.tw))) continue;
         if (i.safe.hold.level === "deadly") continue;
+        // With the creep read the hit back is judged at its swing place (their tower turns on an attacker at once): a hold the trade would refuse there is no hold.
+        if (i.creepRead === true && c.say !== undefined && c.say.hold.level === "deadly") continue;
         if (c.paid || c.free || c.ko > c.kt) return "hitback";
     }
     for (const c of i.cands) {
@@ -869,6 +871,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
                 if (c.GetAttackTarget() === bot) creepsOnMe++;
             }
             const spa = (c as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
+            // With the creep read the swing place's creeps are SafeGather's (`CreepsAt`): only the counts are kept here.
+            if (creepOn) continue;
             creepReads.push({ at: l, dHere, dps: (c.GetAttackDamage() / (spa !== undefined && spa > 0 ? spa : CREEP_SPA)) * physF, reach: c.GetAttackRange() + c.GetBoundingRadius() + hull, ms: c.GetCurrentMovementSpeed() });
         }
     }
@@ -996,7 +1000,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         if (asked) {
             const named: boolean = isRun || (rs === undefined && !walkLogged);
             walkLogged = walkLogged || named;
-            c.walk = sayOf(SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, who: named ? "trade_walk" : undefined }));
+            c.walk = sayOf(SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, who: named ? "trade_walk" : undefined }));
         }
         if (thp <= BARS.commitHp || (isRun && rs!.level === "kill")) {
             const ls: LastSeen = {
@@ -1053,12 +1057,11 @@ function runOf(bot: Unit, rs: RunState, seen: boolean, here: Vector): Run {
     const hull = ls?.hull ?? 0;
     const known = ls !== undefined;
     const lsr: LastSeen = ls ?? { vx: 0, vy: 0, physF: 1, magF: 1, hull: 0, thpAbs: 0 };
-    // With the creep read the tower on the chase is a row of the walk's answer (`threat`), not a flag.
     const creepOn = Ours.On("TradeSwing") && Ours.On("CreepRead") && Ours.On("TowerRead");
-    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, exclude: rs.target });
+    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, exclude: rs.target });
     run.unseen = {
         at: distXY(here, place) <= bot.GetBoundingRadius() + hull + AT_PLACE,
-        tower: !creepOn && towerCovers(bot, here, place),
+        tower: towerCovers(bot, here, place),
         threat: walk.level === "deadly",
     };
     run.catch = CatchRead(huntersOf(bot, place, lsr, rs.target, false, known), lsr.thpAbs, safeTime(bot, place, lsr, rs.target, false, known));
@@ -1662,7 +1665,11 @@ function chanceTarget(bot: Unit, i: Inputs, a: Answer, now: number): Unit | unde
     else for (const x of i.cands) if (c === undefined || x.d < c.d) c = x;
     const t = c !== undefined ? lastHandles[c.pid] : undefined;
     if (c === undefined || t === undefined || !rollDue(bot, c.pid, now)) return undefined;
-    if (c.walk === undefined) c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true }));
+    // The roll is checked on the walk the join will be asked: with the creep read, an attack there (the tower at once, the creeps unshed).
+    if (c.walk === undefined) {
+        const creepOn = Ours.On("TradeSwing") && Ours.On("CreepRead") && Ours.On("TowerRead");
+        c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true }));
+    }
     return FightZero(i, c) === undefined ? t : undefined;
 }
 

@@ -73,8 +73,9 @@ export interface Opts {
     held: boolean;
     /** The caller has a hold (a hit back or a join). A function is asked only when the shadow runs, for a hold that costs a read. */
     hold: boolean | ((this: void) => boolean);
-    /** `AtOpts.draws`. */
+    /** `AtOpts.draws`, `AtOpts.commits`. */
     draws?: boolean;
+    commits?: boolean;
 }
 
 const r1 = (v: number): number => math.floor(v * 10 + 0.5) / 10;
@@ -386,8 +387,9 @@ function laneCreeps(bot: Unit, now: number): { enemy: CreepFact[]; own: OwnCreep
 /**
  * `Ours.CreepRead`: what an attack on a hero from `place` draws. `near`: the enemy lane creeps within `AggroRadius` of the place or of the hero;
  * `dmg`: their damage on us over `window` (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
+ * `sheds` false: the act will not stop to shed (a kill or join), so every creep counts from its arrival.
  */
-export function CreepsAt(bot: Unit, place: Vector, window: number = SETTINGS.KillWindow): { near: number; dmg: number } {
+export function CreepsAt(bot: Unit, place: Vector, window: number = SETTINGS.KillWindow, sheds: boolean = true): { near: number; dmg: number } {
     const now = DotaTime();
     const lc = laneCreeps(bot, now);
     const here = bot.GetLocation();
@@ -406,8 +408,8 @@ export function CreepsAt(bot: Unit, place: Vector, window: number = SETTINGS.Kil
         const d = dist(o.at, place);
         if (d <= mine + o.r) own.push({ x: o.at.x, y: o.at.y, d, r: o.r });
     }
-    const plan = Deaggro.Plan(attackers, own);
-    if (plan.target !== undefined) {
+    const plan = sheds ? Deaggro.Plan(attackers, own) : undefined;
+    if (plan !== undefined && plan.target !== undefined) {
         const t = own[plan.target];
         for (let k = 0; k < drawn.length; k++) {
             const a = attackers[k];
@@ -489,7 +491,7 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
     const drawn = Ours.On("TowerRead") ? drawnAt(bot, now, r.place, draws) : undefined;
     // The creeps' row needs the tower's: without `drawn` the flat tower rule stands and no row is read.
     if (drawn !== undefined && draws) {
-        const dmg = CreepsAt(bot, r.place).dmg;
+        const dmg = CreepsAt(bot, r.place, SETTINGS.KillWindow, opts.commits !== true).dmg;
         if (dmg > 0) drawn.push({ src: "creeps", dmg });
     }
     // Half-second steps up: about 50 places a frame share at most six estimates per enemy. Not for a walk away (a trip's gate):
@@ -606,6 +608,8 @@ export interface AtOpts {
     who?: string;
     /** `Ours.CreepRead`: the act asked for is an attack on a hero from the place, which draws the enemy lane creeps near it: their row joins `drawn`. */
     draws?: boolean;
+    /** With `draws`: the act does not stop to shed the creeps it draws (a kill or join), so none is priced as shed. */
+    commits?: boolean;
 }
 
 interface Frame {
@@ -648,7 +652,7 @@ function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Thre
     const horizon = opts?.horizon ?? (opts?.held === true || opts?.hold === true ? Threat.SETTINGS.StayHorizon : SETTINGS.FreshHorizon);
     const from = opts?.from ?? bot.GetLocation();
     const r = frameReader(bot, horizon, opts?.engaged ?? true, opts?.exclude)(from, place);
-    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false, draws: opts?.draws });
+    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false, draws: opts?.draws, commits: opts?.commits });
     const a = Safe.Decide(i);
     const who = opts?.who;
     if (who !== undefined && cutOn() && bot.IsAlive()) {

@@ -410,6 +410,8 @@ do
 	local shed = at(150, { draws = true })
 	check("a creep of ours inside our attack range and the creep's acquisition range takes it before it arrives: no row, and 150 HP holds",
 		shed.kill == 0 and shed.level == "safe", tostring(shed.kill))
+	check("an act that will not stop to shed (a kill or join) counts it though the shed target stands there",
+		near(at(1000, { draws = true, commits = true }).kill, 60 * (4 - ta)))
 	own.loc = Vector(HERE.x - 500, HERE.y)
 	check("a creep of ours 1,030 from the enemy creep is no shed target: counted again", near(at(1000, { draws = true }).kill, 60 * (4 - ta)))
 	own.loc = Vector(HERE.x + 200, HERE.y)
