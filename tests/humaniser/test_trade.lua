@@ -443,6 +443,13 @@ do
 	check("a held hit is not raised to a hit back the favoured test refuses", hb.level == "hit")
 	local back = decide(inputs({ hold = true, cands = { unfavoured({ hitting = true, swung = true }) }, run = run({ level = "hitback" }) }))
 	check("an unfired hit back is held the same way", back.level == "hitback" and back.ended == nil)
+	local quiet = function(i) return decide(inputs(merge({ cands = { unfavoured() }, run = run({ level = "hitback" }) }, i))) end
+	check("an unfired hit back whose target stopped swinging is carried as a hit (rule off: it ends unfavoured)",
+		quiet({ hold = true }).level == "hit" and quiet({ hold = true }).ended == nil and quiet({}).ended == "unfavoured")
+	local stuck, fired = hit({ hold = true }, { started = 3.1 }), decide(inputs({ hold = true, run = run({ started = 3.1, landed = true }) }))
+	check("a held hit taken 3 s with no attack fired ends on the logged backstop; one that has fired, or with the rule off, does not",
+		none(stuck, "backstop") and stuck.ended == "backstop" and fired.level == "hit" and fired.ended == nil
+			and decide(inputs({ run = run({ started = 3.1 }) })).ended == nil)
 	local sw = { cover = 0, atk = 0.4 }
 	local among = decide(inputs({ hold = true, swing = sw, cands = { unfavoured({ near = 2, kc = 0.2 }) }, run = run() }))
 	check("with the swing rule on too, the held hit stays among the creeps until it fires", among.level == "hit" and among.ended == nil)

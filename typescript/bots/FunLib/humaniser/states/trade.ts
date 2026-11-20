@@ -63,10 +63,15 @@ const BARS = {
     playWalk: 600,
     /** Our range this far over the target's makes a hit free (OUTRANGE; necrolyte on dragon knight 400 and sniper on zeus 170 are free, oracle on lion 20 and dazzle on necrolyte 75 are not; `judgement`). */
     outrange: 100,
-    /** Logged backstops, never the rule: an offer attack mode did not take (LOST_AFTER), a step out that has not cleared the creeps (STEP_OUT_LIMIT), a chase (CHASE_BACKSTOP; T1: a time limit is a backstop only). */
+    /**
+     * Logged backstops, never the rule: an offer attack mode did not take (LOST_AFTER), a step out that has not cleared the creeps (STEP_OUT_LIMIT), a chase
+     * (CHASE_BACKSTOP; T1: a time limit is a backstop only), a held hit (`Ours.TradeHold`) taken this long with no attack fired (`judgement`: reach keeps
+     * it within 1 s of a swing, so 3 s unfired is a hero that cannot swing or a target kiting at the edge).
+     */
     notTaken: 1,
     noClear: 2,
     chase: 30,
+    holdCap: 3,
 };
 
 /** `Safe.At`'s answer as the decision reads it: the level, the ratio of our HP to the kill line (logged only) and the reason (`kill`, `tower`, `unknown` when deadly). */
@@ -316,8 +321,9 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
     const sw = i.swing;
     const reaches = Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0));
     // An opened hit is carried to its first swing: the target ending its last hit (`free`) or the odds crossing their line on the walk in is not a
-    // reason to turn round. Reach, the safe read, a due deny and the HP lost before landing still end it.
-    const held = i.hold === true && run !== undefined && !run.landed && run.level === level;
+    // reason to turn round. Reach, the safe read, a due deny and the HP lost before landing still end it. A hit back whose target stops swinging is held as
+    // the hit it falls to; a hit is never held up into a hit back.
+    const held = i.hold === true && run !== undefined && !run.landed && (run.level === level || (run.level === "hitback" && level === "hit"));
     if (sw === undefined) {
         if (!held && !(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
     } else if (!reaches) {
@@ -400,6 +406,8 @@ function endOf(i: Inputs, run: Run, t: Cand | undefined): string | undefined {
     if (run.started === undefined && run.offered > BARS.notTaken) return "not_taken";
     if (run.stepFor !== undefined && run.stepFor > BARS.noClear) return "no_clear";
     if (run.level === "kill" && run.started !== undefined && run.started > BARS.chase) return "backstop";
+    const hits = run.level === "hit" || run.level === "hitback";
+    if (i.hold === true && hits && !run.landed && run.started !== undefined && run.started > BARS.holdCap) return "backstop";
     if (t === undefined) {
         if (run.level !== "kill") return "target_lost";
         const u = run.unseen;
@@ -411,7 +419,7 @@ function endOf(i: Inputs, run: Run, t: Cand | undefined): string | undefined {
         if (run.catch !== undefined && catchState(i, run, run.catch.ok).ended) return "cannot_catch";
         return undefined;
     }
-    if (run.level === "hit" || run.level === "hitback") {
+    if (hits) {
         if (run.soFar > (run.landed ? BARS.losing : BARS.unlandedCap)) return "losing";
     }
     if (run.level === "join") {
