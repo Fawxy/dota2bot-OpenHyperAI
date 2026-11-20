@@ -438,6 +438,41 @@ function watchHeroes(bot: TaskUnit, creep: TaskCreep, w: HeroWatch): void {
     if (winding) w.windup++;
 }
 
+/**
+ * In-game check of the wind-up reader on the creep's other attackers that are not heroes (lane creeps, towers; slice
+ * lh-unphased): over the frames a verb watched one creep, attacker readings (`n`, one per attacker per frame), those read as
+ * winding up (`windup`), and the raw animation of the last one read (`act`, `cycle`, `point`, `spa` GetSecondsPerAttack).
+ * A lane creep winds up for its attack point of each attack cycle, so a working reader reads about that share of a creep
+ * attacker's frames as a wind-up. Message fields cf cwf ca cc cpt cs. Message attribution only.
+ */
+interface CreepWatch {
+    n: number;
+    windup: number;
+    act: number;
+    cycle: number;
+    point: number;
+    spa: number;
+}
+
+function watchCreeps(bot: TaskUnit, creep: TaskCreep, w: CreepWatch): void {
+    const n = nearby(bot);
+    others(bot, n);
+    for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
+        if (a === (creep as TaskAttacker) || a === (bot as unknown) || n.heroes?.get(a) === true) continue;
+        w.n++;
+        if (windupLeft(a) !== undefined) w.windup++;
+        w.act = a.GetAnimActivity?.() ?? -1;
+        w.cycle = a.GetAnimCycle?.() ?? -1;
+        w.point = a.GetAttackPoint?.() ?? -1;
+        w.spa = a.GetSecondsPerAttack?.() ?? -1;
+    }
+}
+
+function creepWatchText(w: CreepWatch): string {
+    if (w.n === 0) return " cf=0 cwf=0";
+    return string.format(" cf=%d cwf=%d ca=%d cc=%.2f cpt=%.2f cs=%.2f", w.n, w.windup, w.act, w.cycle, w.point, w.spa);
+}
+
 function heroWatchText(w: HeroWatch): string {
     if (w.frames === 0) return " hf=0 hwf=0";
     return string.format(" hf=%d hwf=%d ha=%d hc=%.2f hpt=%.2f", w.frames, w.windup, w.act, w.cycle, w.point);
@@ -788,6 +823,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     let enemyOnIt = false;
     let tHit = 0;
     const heroes: HeroWatch = { frames: 0, windup: 0, act: -1, cycle: -1, point: -1 };
+    const creeps: CreepWatch = { n: 0, windup: 0, act: -1, cycle: -1, point: -1, spa: -1 };
     let diag = "";
     // Before a swing, what held it back on the last frame (in-game attribution of a lost creep that was never swung at):
     // `range` walking in, `cd` attack cooldown, `hp50` a deny above half HP, `wait` the kill belief not yet due.
@@ -804,7 +840,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         win.frames++;
     };
     const early = (r: Result): Result => {
-        r.message = string.format("w=%.2f why=%s", now() - start, held) + windowText(win) + heroWatchText(heroes);
+        r.message = string.format("w=%.2f why=%s", now() - start, held) + windowText(win) + heroWatchText(heroes) + creepWatchText(creeps);
         return r;
     };
     let lastFrame: number | undefined;
@@ -845,6 +881,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         if (now() - start > maxWait || expired(opts.deadline)) return early(fail("timeout"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);
         watchHeroes(bot, creep, heroes);
+        watchCreeps(bot, creep, creeps);
         if (dist(bot.GetLocation(), creep.GetLocation()) > bot.GetAttackRange()) {
             held = string.format("range d=%d", math.floor(dist(bot.GetLocation(), creep.GetLocation()) - bot.GetAttackRange()));
             if (openNow()) opened(t, gap, "range");
@@ -893,7 +930,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     let landHp: number | undefined;
     const out = (r: Result): Result => {
         const hp = gone(creep) ? 0 : math.floor(creep.GetHealth());
-        r.message = string.format("%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f", diag, hp, now() - swingAt, fireAt ?? -1, landHp ?? -1, gapN > 0 ? gapSum / gapN : 0) + windowText(win) + heroWatchText(heroes);
+        r.message = string.format("%s end=%d dt=%.2f fa=%.2f lhp=%d fg=%.3f", diag, hp, now() - swingAt, fireAt ?? -1, landHp ?? -1, gapN > 0 ? gapSum / gapN : 0) + windowText(win) + heroWatchText(heroes) + creepWatchText(creeps);
         return r;
     };
     while (true) {
@@ -913,7 +950,10 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         if (!bot.IsAlive()) return out(fail("dead"));
         if (now() - swingAt > tHit + CONFIRM_SLACK) return out(fail("missed"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);
-        if (!gone(creep)) watchHeroes(bot, creep, heroes);
+        if (!gone(creep)) {
+            watchHeroes(bot, creep, heroes);
+            watchCreeps(bot, creep, creeps);
+        }
     }
 }
 
