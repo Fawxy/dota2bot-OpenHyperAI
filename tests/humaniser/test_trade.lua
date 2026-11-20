@@ -455,4 +455,55 @@ do
 	check("with the swing rule on too, the held hit stays among the creeps until it fires", among.level == "hit" and among.ended == nil)
 end
 
+-- Explore trade (Inputs.agg, `Ours.ExploreTrade`): the aggression scales the favoured test (ko x agg against kt), the kill level's target HP share
+-- (0.4 x agg) and the `losing` end (0.05 x agg). Each row has its control in the same check: absent and 1 are the rules as they were.
+do
+	local function lvl(o, agg) o.agg = agg return decide(inputs(o)) end
+	local unf = function() return { cand({ ko = 0.2, kt = 0.3 }) } end
+	local fav = function() return { cand({ ko = 0.3, kt = 0.2 }) } end
+	check("favoured margin: ko 0.2 against kt 0.3 hits only from agg 1.75 (0.35 over 0.3); ko 0.3 against 0.2 is refused only at agg 0.5 (0.15 under 0.2)",
+		none(lvl({ cands = unf() }, nil), "unfavoured") and none(lvl({ cands = unf() }, 1), "unfavoured") and none(lvl({ cands = unf() }, 1.35), "unfavoured")
+			and lvl({ cands = unf() }, 1.75).level == "hit"
+			and lvl({ cands = fav() }, nil).level == "hit" and lvl({ cands = fav() }, 0.75).level == "hit"
+			and none(lvl({ cands = fav() }, 0.5), "unfavoured"))
+	local kill = function(thp) return { cand({ thp = thp, thpAbs = thp * 600, catch = CATCH, ko = 0.6, kt = 0.2 }) } end
+	check("kill HP share: a target at 0.5 is a kill only from agg 1.35 (bar 0.54), a target at 0.3 stops being one at agg 0.5 (bar 0.2, a hit instead), the cap is 0.7",
+		lvl({ cands = kill(0.5) }, 1).level == "hit" and lvl({ cands = kill(0.5) }, 1.35).level == "kill"
+			and lvl({ cands = kill(0.3) }, nil).level == "kill" and lvl({ cands = kill(0.3) }, 0.75).level == "kill"
+			and lvl({ cands = kill(0.3) }, 0.5).level == "hit"
+			and lvl({ cands = kill(0.75) }, 1.75).level == "hit",
+		lvl({ cands = kill(0.5) }, 1).level .. lvl({ cands = kill(0.5) }, 1.35).level .. lvl({ cands = kill(0.3) }, nil).level .. lvl({ cands = kill(0.3) }, 0.75).level .. lvl({ cands = kill(0.3) }, 0.5).level .. lvl({ cands = kill(0.75) }, 1.75).level)
+	local landed = function(so) return run({ level = "hit", landed = true, soFar = so }) end
+	check("losing end: 0.07 lost ends a landed hit at agg 1 and absent but not at 1.75 (bar 0.0875); 0.04 ends it only at agg 0.5 (bar 0.025)",
+		lvl({ cands = fav(), run = landed(0.07) }, 1).ended == "losing" and lvl({ cands = fav(), run = landed(0.07) }, nil).ended == "losing"
+			and lvl({ cands = fav(), run = landed(0.07) }, 1.75).level == "hit" and lvl({ cands = fav(), run = landed(0.07) }, 1.75).ended == nil
+			and lvl({ cands = fav(), run = landed(0.04) }, 1).level == "hit" and lvl({ cands = fav(), run = landed(0.04) }, 0.5).ended == "losing")
+	check("a hit back's hold follows the same margin: kt 0.3 against ko 0.2 holds retreat only at agg 1.75",
+		T.HoldsOf(inputs({ cands = { cand({ hitting = true, ko = 0.2, kt = 0.3 }) } })) == nil
+			and T.HoldsOf(inputs({ agg = 1.75, cands = { cand({ hitting = true, ko = 0.2, kt = 0.3 }) } })) == "hitback")
+end
+
+-- The draw (explore.ts Agg): off gives nothing and draws nothing; on holds one value for a 45 s block counted from the hero's first call and redraws in the next.
+do
+	local Explore = require("bots/FunLib/humaniser/explore")
+	local Customize = package.loaded["bots/FunLib/custom_loader"]
+	local bot = { GetPlayerID = function() return 4 end, GetNearbyHeroes = function() return {} end, GetNearbyLaneCreeps = function() return {} end,
+		GetHealth = function() return 500 end, GetMaxHealth = function() return 600 end, GetLevel = function() return 3 end }
+	local function at(t, fraction) _G.T = t RANDOM_FRACTION = fraction return Explore.Agg(bot) end
+	Customize.Ours.ExploreTrade = false
+	local off = at(100, 0)
+	Customize.Ours.ExploreTrade = true
+	local a0 = at(100, 0)
+	local held = at(144, 0.99)
+	local a1 = at(145, 0.99)
+	local still = at(189, 0)
+	local a2 = at(190, 0)
+	check("explore trade: off draws nothing; on, the first call draws and the block holds to 44 s, redraws at 45 s and again at 90 s",
+		off == nil and a0 == 0.5 and held == 0.5 and a1 == 1.75 and still == 1.75 and a2 == 0.5,
+		tostring(off) .. " " .. tostring(a0) .. " " .. tostring(held) .. " " .. tostring(a1) .. " " .. tostring(still) .. " " .. tostring(a2))
+	Customize.Ours.ExploreTrade = false
+	RANDOM_FRACTION = nil
+	Explore.ResetCache()
+end
+
 finish()

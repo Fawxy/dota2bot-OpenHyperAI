@@ -167,6 +167,9 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local blocks
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
@@ -191,6 +194,7 @@ local function ____end(pid, why, now)
     Telemetry.Event(
         "roll",
         {
+            {"kind", "safe"},
             {"ph", "end"},
             {"pid", pid},
             {"mult", x.mult},
@@ -253,6 +257,7 @@ function ____exports.Observe(bot, a)
     Telemetry.Event(
         "roll",
         {
+            {"kind", "safe"},
             {"ph", "start"},
             {"pid", pid},
             {"mult", mult},
@@ -298,6 +303,129 @@ function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(rolls)) do
         __TS__Delete(rolls, k)
     end
+    for ____, k in ipairs(__TS__ObjectKeys(blocks)) do
+        __TS__Delete(blocks, k)
+    end
 end
-____exports._test = {rolls = rolls}
+____exports.TRADE = {
+    Aggs = {
+        0.5,
+        0.75,
+        1,
+        1.35,
+        1.75
+    },
+    Block = 45,
+    NearHeroes = 1200,
+    NearCreeps = 1000,
+    SeeHeroes = 1600
+}
+blocks = {}
+--- The 45 s block index of `now` for a hero whose first laning frame was `first`.
+function ____exports.BlockOf(first, now)
+    return math.max(
+        0,
+        math.floor((now - first) / ____exports.TRADE.Block)
+    )
+end
+--- The draw for a uniform `u` in [0, 1).
+function ____exports.AggFor(u)
+    local n = #____exports.TRADE.Aggs
+    return ____exports.TRADE.Aggs[math.min(
+        n - 1,
+        math.max(
+            0,
+            math.floor(u * n)
+        )
+    ) + 1]
+end
+local function logTrade(bot, b)
+    local ned = -1
+    local ne = 0
+    for ____, h in ipairs(bot:GetNearbyHeroes(____exports.TRADE.SeeHeroes, true, BotMode.None)) do
+        do
+            local __continue24
+            repeat
+                if h:IsNull() or not h:IsAlive() then
+                    __continue24 = true
+                    break
+                end
+                local d = GetUnitToUnitDistance(bot, h)
+                if ned < 0 or d < ned then
+                    ned = d
+                end
+                if d <= ____exports.TRADE.NearHeroes then
+                    ne = ne + 1
+                end
+                __continue24 = true
+            until true
+            if not __continue24 then
+                break
+            end
+        end
+    end
+    local mine = #bot:GetNearbyHeroes(____exports.TRADE.NearHeroes, false, BotMode.None)
+    Telemetry.Event(
+        "roll",
+        {
+            {"kind", "trade"},
+            {"ph", "start"},
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"agg", b.agg},
+            {"blk", b.blk},
+            {
+                "hp",
+                r2(bot:GetHealth() / math.max(
+                    1,
+                    bot:GetMaxHealth()
+                ))
+            },
+            {
+                "lvl",
+                bot:GetLevel()
+            },
+            {
+                "ned",
+                math.floor(ned)
+            },
+            {"ne", ne},
+            {
+                "ocr",
+                #bot:GetNearbyLaneCreeps(____exports.TRADE.NearCreeps, false)
+            },
+            {
+                "ecr",
+                #bot:GetNearbyLaneCreeps(____exports.TRADE.NearCreeps, true)
+            },
+            {"pn", mine > 0 and 1 or 0}
+        }
+    )
+end
+--- The hero's aggression on the in-lane exchange (`Ours.ExploreTrade`): undefined with the switch off, else the draw held for the
+-- current 45 s block, redrawn on the first call in the next one. Called from `Trade.Gather`, so only a hero in lane draws.
+function ____exports.Agg(bot)
+    if not Ours.On("ExploreTrade") then
+        return nil
+    end
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local held = blocks[pid]
+    local first = held ~= nil and held.first or now
+    local blk = ____exports.BlockOf(first, now)
+    if held ~= nil and held.blk == blk then
+        return held.agg
+    end
+    local b = {
+        agg = ____exports.AggFor(LaneConfig.Draw() or RandomFloat(0, 1)),
+        blk = blk,
+        first = first
+    }
+    blocks[pid] = b
+    logTrade(bot, b)
+    return b.agg
+end
+____exports._test = {rolls = rolls, blocks = blocks}
 return ____exports

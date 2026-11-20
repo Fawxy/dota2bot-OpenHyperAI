@@ -154,6 +154,9 @@ export const DEFAULTS = {
     /** Experiment (explore.ts): a hero our retreat owns draws a multiplier on its safe-read kill bar per fight episode and logs it as ev=roll,
      *  so the bar is fitted from outcomes. Off: no draw, every bar as it was. */
     ExploreRoll: false,
+    /** Experiment (explore.ts): a hero in lane draws an aggression multiplier per 45 s block on the in-lane exchange's bars (favoured margin, kill HP
+     *  share, `losing` end) and logs it as ev=roll kind=trade. Off: no draw, every bar as it was. */
+    ExploreTrade: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

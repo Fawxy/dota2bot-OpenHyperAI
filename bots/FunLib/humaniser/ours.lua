@@ -99,7 +99,8 @@ ____exports.DEFAULTS = {
     IdleBar = true,
     TradeSwing = true,
     TradeHold = true,
-    ExploreRoll = false
+    ExploreRoll = false,
+    ExploreTrade = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

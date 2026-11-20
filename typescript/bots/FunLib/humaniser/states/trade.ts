@@ -12,6 +12,7 @@ import { BotMode, DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/t
 import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
+import * as Explore from "bots/FunLib/humaniser/explore";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -73,6 +74,11 @@ const BARS = {
     chase: 30,
     holdCap: 3,
 };
+
+/** The kill level's target HP share never passes this under `Inputs.agg` (the agg 1.75 draw gives 0.7). */
+const AGG_COMMIT_CAP = 0.7;
+const aggOf = (i: Inputs): number => i.agg ?? 1;
+const commitOf = (i: Inputs): number => math.min(AGG_COMMIT_CAP, BARS.commitHp * aggOf(i));
 
 /** `Safe.At`'s answer as the decision reads it: the level, the ratio of our HP to the kill line (logged only) and the reason (`kill`, `tower`, `unknown` when deadly). */
 export interface Say {
@@ -243,6 +249,12 @@ export interface Inputs {
      * `atk`: our attack point (s).
      */
     swing?: { cover: number; due?: number; atk: number };
+    /**
+     * `Ours.ExploreTrade` (experiment): the hero's held aggression, a multiplier on three bars, higher attacks heroes sooner. Absent: 1. It scales our
+     * kill share against theirs in the favoured test (`ko` x agg against `kt`), the kill level's target HP share (`BARS.commitHp` x agg, capped at
+     * `AGG_COMMIT_CAP`) and the `losing` end's HP share lost (`BARS.losing` x agg). Logged on the cut line.
+     */
+    agg?: number;
     /** `Ours.TradeHold`: a running hit or hit back is not asked the favoured test again before its first attack has fired. */
     hold?: boolean;
 }
@@ -319,13 +331,14 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         return undefined;
     }
     const sw = i.swing;
+    const ag = aggOf(i);
     const reaches = Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0));
     // An opened hit is carried to its first swing: the target ending its last hit (`free`) or the odds crossing their line on the walk in is not a
     // reason to turn round. Reach, the safe read, a due deny and the HP lost before landing still end it. A hit back whose target stops swinging is held as
     // the hit it falls to; a hit is never held up into a hit back.
     const held = i.hold === true && run !== undefined && !run.landed && (run.level === level || (run.level === "hitback" && level === "hit"));
     if (sw === undefined) {
-        if (!held && !(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
+        if (!held && !(c.free || c.ko * ag > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
     } else if (!reaches) {
         // Finish comes first: a hero out of reach is not asked what its swing would draw.
         return "no_reach";
@@ -337,7 +350,7 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         const covered = slack ? sw.cover > 0 : sw.cover > SwingIn(c.gap, i.ms, c.away) + sw.atk;
         const draws = !unfired && !covered && (c.near ?? 0) > 0;
         const theirs = c.kt + (draws ? (c.kc ?? 0) : 0);
-        if (!((c.free && !draws) || c.ko > theirs || (level === "hitback" && c.paid))) return c.free || c.ko > c.kt ? "aggro" : "unfavoured";
+        if (!((c.free && !draws) || c.ko * ag > theirs || (level === "hitback" && c.paid))) return c.free || c.ko * ag > c.kt ? "aggro" : "unfavoured";
     }
     if (sw === undefined && run?.stepFor === undefined && !reaches) return "no_reach";
     if (i.denyDue) return "deny";
@@ -356,7 +369,7 @@ function pickFor(i: Inputs, c: Cand, run: Run | undefined): Pick {
         first = first ?? why;
         return true;
     };
-    const killable = c.thp <= BARS.commitHp || (run !== undefined && run.level === "kill");
+    const killable = c.thp <= commitOf(i) || (run !== undefined && run.level === "kill");
     if (playOn(i, c) && !fail(gate(i, c, "join", "play", run))) return { level: "join", source: "play", reason: "play", rank: 5 };
     const pair = pairOn(i, c);
     if (pair) {
@@ -420,7 +433,7 @@ function endOf(i: Inputs, run: Run, t: Cand | undefined): string | undefined {
         return undefined;
     }
     if (hits) {
-        if (run.soFar > (run.landed ? BARS.losing : BARS.unlandedCap)) return "losing";
+        if (run.soFar > (run.landed ? BARS.losing * aggOf(i) : BARS.unlandedCap)) return "losing";
     }
     if (run.level === "join") {
         if (run.source === "pair" && !pairOn(i, t)) return "pair_end";
@@ -524,7 +537,7 @@ export function OpenFails(i: Inputs, c: Cand): string[] {
         if (why !== undefined && out.indexOf(why) < 0) out.push(why);
     };
     // The levels `pickFor` would try on this candidate with no exchange running, and no others (a kill only on a killable target, a hit back only on a hitter).
-    const killable = c.thp <= BARS.commitHp;
+    const killable = c.thp <= commitOf(i);
     if (playOn(i, c)) add(gate(i, c, "join", "play", undefined));
     if (pairOn(i, c)) {
         if (killable) add(gate(i, c, "kill", "pair", undefined));
@@ -561,7 +574,7 @@ export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     for (const c of i.cands) {
         if (!hitsUs(c, run) || c.lost === true || i.towerOnMe || c.tw) continue;
         if (i.safe.hold.level === "deadly") continue;
-        if (c.paid || c.free || c.ko > c.kt) return "hitback";
+        if (c.paid || c.free || c.ko * aggOf(i) > c.kt) return "hitback";
     }
     for (const c of i.cands) {
         const slack = run !== undefined && run.target === c.pid ? run : undefined;
@@ -883,6 +896,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const myHull = bot.GetBoundingRadius();
     const ms = bot.GetCurrentMovementSpeed();
     const cands: Cand[] = [];
+    const agg = Explore.Agg(bot);
+    const commit = math.min(AGG_COMMIT_CAP, BARS.commitHp * (agg ?? 1));
     let runSeen = false;
     // The walk answer logged as `trade_walk`: the running exchange's, else the first candidate asked.
     let walkLogged: boolean = false;
@@ -940,13 +955,13 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             kc,
         };
         lastHandles[pid] = h;
-        const asked = thp <= BARS.commitHp || (pair !== undefined && pair.tgt === pid) || (play !== undefined && play.tgt === pid) || isRun;
+        const asked = thp <= commit || (pair !== undefined && pair.tgt === pid) || (play !== undefined && play.tgt === pid) || isRun;
         if (asked) {
             const named: boolean = isRun || (rs === undefined && !walkLogged);
             walkLogged = walkLogged || named;
             c.walk = sayOf(SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, who: named ? "trade_walk" : undefined }));
         }
-        if (thp <= BARS.commitHp || (isRun && rs!.level === "kill")) {
+        if (thp <= commit || (isRun && rs!.level === "kill")) {
             const ls: LastSeen = {
                 vx,
                 vy,
@@ -978,6 +993,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     };
     if (swingOn) i.swing = { cover, due: cands.length > 0 ? Laning.NextDue(bot) : undefined, atk: attackPointOf(bot) };
     if (Ours.On("TradeHold")) i.hold = true;
+    if (agg !== undefined) i.agg = agg;
     if (i.play !== undefined && i.play.zero === undefined) {
         const pc = cands.find((c) => c.pid === i.play!.tgt);
         if (pc !== undefined) i.play.zero = FightZero(i, pc);
@@ -1164,6 +1180,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["dn", i.denyDue ? 1 : 0],
         ["swg", i.swing !== undefined ? `${round6(i.swing.cover)}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
         ["thd", i.hold === true ? 1 : undefined],
+        ["agg", i.agg],
         ["pjr", i.pair !== undefined ? `${i.pair.dec}:${i.pair.tgt}:${round6(i.pair.ko)}:${round6(i.pair.kt)}` : undefined],
         ["pl", i.play !== undefined ? `${i.play.id}:${i.play.kind}:${i.play.tgt}:${i.play.zero ?? "-"}` : undefined],
         ["cd", cds.join(";")],

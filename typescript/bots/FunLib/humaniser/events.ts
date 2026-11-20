@@ -1698,6 +1698,8 @@ export const EVENTS = {
     },
     /** Explore roll (explore.ts, `Ours.ExploreRoll`): a hero our retreat owns draws a multiplier on its safe-read kill bar when it first stands in the band (an enemy hero reaches its own place and HP / kill is under 2), holds it until 8 s out of the band or death. `start`: the roll and the read it was drawn on; `end`: how long it was held. */
     roll: {
+        /** `safe` (the safe read's kill bar, `Ours.ExploreRoll`) or `trade` (the aggression roll on the in-lane exchange, `Ours.ExploreTrade`). */
+        kind: "str",
         /** `start` or `end`. */
         ph: "str",
         pid: "num",
@@ -1717,6 +1719,15 @@ export const EVENTS = {
         /** On `end`: seconds the roll was held, and why: `out` (8 s out of band) or `died`. */
         secs: "num",
         why: "str",
+        /** kind=trade, on `start`: the drawn aggression (a multiplier on the exchange bars: over 1 attacks heroes sooner), the 45 s block it holds for (0 from the hero's first laning frame), hero level, the nearest enemy hero's distance (-1 none within 1,600), enemy heroes within 1,200, own and enemy lane creeps within 1,000, and 1 when a lane partner is within 1,200. */
+        agg: "num",
+        blk: "num",
+        lvl: "num",
+        ned: "num",
+        ne: "num",
+        ocr: "num",
+        ecr: "num",
+        pn: "num",
     },
     tr_caution: {
         pid: "num",
@@ -3140,6 +3151,8 @@ export const EVENTS = {
         prs: "num",
         /** kind=safe: the explore roll's multiplier on the kill bar (`Ours.ExploreRoll`), absent when 1. */
         xm: "num",
+        /** kind=trade: the explore aggression roll's multiplier on the exchange bars (`Ours.ExploreTrade`), absent when off. */
+        agg: "num",
         kill: "num",
         ra: "num",
         pr: "num",
