@@ -158,6 +158,9 @@ export const DEFAULTS = {
     /** Step 4.4, narrowed (same proposal): a hit or hit back that has opened is not asked the favoured test again until its first attack has
      *  fired. Off: asked every frame. */
     TradeHold: true,
+    /** Step 4.6b (same proposal): a pair join is judged on arrival within 2 s and carried to its first attack when the pair answer lapses or names another
+     *  target; a losing answer on its own target, a deadly walk, out of arrival or a 3 s backstop still end it. Off: a flat 1,200 reach, and the answer lapsing ends it. */
+    JoinHold: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;
