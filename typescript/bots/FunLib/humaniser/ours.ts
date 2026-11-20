@@ -148,6 +148,9 @@ export const DEFAULTS = {
      *  last hit or deny comes due before the swing lands; the executor orders the attack as answered. Off: the wave gates alone, and the
      *  executor steps out of the creeps before it orders. */
     TradeSwing: true,
+    /** Step 4.4, narrowed (same proposal): a hit or hit back that has opened is not asked the favoured test again until its first attack has
+     *  fired. Off: asked every frame. */
+    TradeHold: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -1,0 +1,31 @@
+id: lane.trade.held.001
+source: log
+ref:
+  log: 2026-11-20T01-29-02-tradeswing_B_dire_smoke2.log
+  t: 97.267
+status: active
+decision: trade
+world:
+  t: 97.267
+  pid: 9
+  role: core
+  hp: 0.546
+  n: 1
+  ms: 295
+  tm: 0
+  hc: 0
+  cr: 0
+  dn: 0
+  thd: 1
+  svh: "safe,2.046875,safe"
+  svb: "safe,2.046875,safe"
+  swg: "2.333331:2.364835:0.24855"
+  cd: "4,0.992647,675,665,-8,0,1,0,0,0.397037,0.48855,0,0,deadly,1.693966,tower,-,-,-,0,0,0,0"
+  run: "hit:4:-:1:0.666672:0.366669:0:-0.004167:0:-:-:-:-:-"
+expect:
+  must:
+    - hit(hero#4)
+  mustNot:
+    - end(unfavoured)
+notes: |-
+  The mid's hit dropped a step from its swing (tradeswing_B_dire_smoke2, 1:37.3, oracle pid 9 on lion pid 4): the hit opened, attack mode took it 0.37 s ago, the target is 8 inside our attack range and no attack has fired. The target has finished its last hit (free 0) and the odds read 0.397 against 0.489, so the game (Ours.TradeHold not yet built) ended the hit `unfavoured` here: the walk was paid and nothing was thrown. Safe here, no creep on us, no deny due, no HP lost. Right action (D18, step 4.4 narrowed): carry the opened hit to its first swing. The cut's world plus `thd: 1`; without it the answer is the game's none(unfavoured). Control: lane.trade.held.002.

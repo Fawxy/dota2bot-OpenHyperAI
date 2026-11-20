@@ -97,7 +97,8 @@ ____exports.DEFAULTS = {
     Sustain = true,
     ExitWindow = true,
     IdleBar = true,
-    TradeSwing = true
+    TradeSwing = true,
+    TradeHold = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()
