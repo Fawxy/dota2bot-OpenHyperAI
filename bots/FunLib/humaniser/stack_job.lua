@@ -2388,7 +2388,7 @@ function ____exports.Wants(bot, blocked, host)
                 if minute * 60 + 60 + jobEnd() - now > awayMax() then
                     return skip("far")
                 end
-                local why = blocked(bot, {neutrals = true})
+                local why = blocked(bot, {neutrals = true, at = stand, who = "stack_trip"})
                 if why ~= nil then
                     gateWhy[pid] = why
                     return false

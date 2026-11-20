@@ -230,8 +230,9 @@ function ____exports.Running(bot)
     return runningJob(bot) ~= nil
 end
 --- The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
--- value separates danger from a healthy hero (slice file, "Retreat"), so the job ends when a hero hit it just now and HP is
--- under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
+-- value separates danger from a healthy hero (slice file, "Retreat"), so the job ends itself: with `Ours.TripRead` on a deadly safe-read answer
+-- where the hero stands (held; no reaction hold, one deadly frame ends it), unless the job has its own guard (`Job.guards`); off, when a
+-- hero hit it just now and HP is under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
 -- rank order; a start waits while a higher-ranked job claims the hero (`why=<job>` in the waiting job's skip line).
 local function hostDesire(bot)
     if StackJob.Benched(bot) then

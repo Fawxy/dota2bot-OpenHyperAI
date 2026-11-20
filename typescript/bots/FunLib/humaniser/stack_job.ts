@@ -1271,7 +1271,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
             return true;
         }
         if (minute * 60 + 60 + jobEnd() - now > awayMax()) return skip("far");
-        const why = blocked(bot, { neutrals: true });
+        const why = blocked(bot, { neutrals: true, at: stand, who: "stack_trip" });
         if (why !== undefined) {
             gateWhy[pid] = why;
             return false;

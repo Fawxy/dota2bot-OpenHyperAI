@@ -1044,6 +1044,21 @@ do
 	lines = stackLines(capture(function() while T < 3 * 60 + 50 do frame(H, bot) end end))
 	check("TripRead: a hero hit with nobody able to kill it is no reason to skip: the job starts", H.StackJob.Running(bot) and #lines == 0, lines[1])
 
+	-- The walk to the camp is asked as a trip: a hero that can kill us waiting at the camp, out of reach of where we stand.
+	local function killerAtCamp(o)
+		local Hk, bk = world(o)
+		local camp = SPAWNERS[idxOf("good_1")].location
+		neutrals(camp, 3)
+		MakeUnit({ pid = 10, team = 3, loc = Vector(camp.x + 100, camp.y) }).estDamage = 5000
+		local ls = stackLines(capture(function() while T < 3 * 60 + 50 do frame(Hk, bk) end end))
+		return Hk.StackJob.Running(bk), ls
+	end
+	local ranOn, onLines = killerAtCamp({ t = 3 * 60 + 15 })
+	check("TripRead: a hero at the camp that can kill us refuses the stack's walk: skip why=kill",
+		not ranOn and #onLines == 1 and field(onLines[1], "res") == "skip" and field(onLines[1], "why") == "kill", onLines[1])
+	local ranOff = killerAtCamp({ t = 3 * 60 + 15, tripRead = false })
+	check("TripRead off: the stack's walk is not asked: the job starts", ranOff)
+
 	-- Retreat first: at 0.976 (the lowest banked ending) retreat's own desire beats the job's through Valve's arbitration.
 	H, bot = running()
 	local retreat = H.Chooser.Gate(bot, "retreat", function() return 0.976 end)()

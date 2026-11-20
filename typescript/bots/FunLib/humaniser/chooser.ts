@@ -167,8 +167,9 @@ export function Running(bot: Unit): boolean {
 
 /**
  * The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
- * value separates danger from a healthy hero (slice file, "Retreat"), so the job ends when a hero hit it just now and HP is
- * under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
+ * value separates danger from a healthy hero (slice file, "Retreat"), so the job ends itself: with `Ours.TripRead` on a deadly safe-read answer
+ * where the hero stands (held; no reaction hold, one deadly frame ends it), unless the job has its own guard (`Job.guards`); off, when a
+ * hero hit it just now and HP is under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
  * rank order; a start waits while a higher-ranked job claims the hero (`why=<job>` in the waiting job's skip line).
  */
 function hostDesire(bot: Unit): number | undefined {
@@ -280,7 +281,8 @@ function hit(bot: Unit): boolean {
 export interface StartAsk {
     /** The job walks into a camp's neutrals and has no price for their damage: the HP floor stays for it (the safe read counts no neutrals). */
     neutrals?: boolean;
-    /** Where the trip goes, when no gate of the job's own reads the walk: asked as a trip (`SafeGather.TripGate`, logged as `who`). */
+    /** Where the trip goes: the walk there is asked as a trip (`SafeGather.TripGate`, logged as `who`). The rune trip and the stack give it; the
+     *  pull does not (its own gate reads the camp, and the answer here covers the lane it leaves). */
     at?: Vector;
     who?: string;
 }
