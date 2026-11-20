@@ -458,7 +458,7 @@ function watchCreeps(bot: TaskUnit, creep: TaskCreep, w: CreepWatch): void {
     const n = nearby(bot);
     others(bot, n);
     for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
-        if (a === (creep as TaskAttacker) || a === (bot as unknown) || n.heroes?.get(a) === true) continue;
+        if (a === (creep as TaskAttacker) || n.heroes?.get(a) === true) continue;
         w.n++;
         if (windupLeft(a) !== undefined) w.windup++;
         w.act = a.GetAnimActivity?.() ?? -1;

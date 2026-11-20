@@ -1984,7 +1984,7 @@ local function watchCreeps(bot, creep, w)
         do
             local __continue104
             repeat
-                local ____temp_88 = a == creep or a == bot
+                local ____temp_88 = a == creep
                 if not ____temp_88 then
                     local ____opt_86 = n.heroes
                     ____temp_88 = (____opt_86 and ____opt_86[a]) == true
