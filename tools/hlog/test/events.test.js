@@ -89,7 +89,7 @@ test('store: numbers printed from a mixed field stay INTEGER rows (creep_death.b
     assert.strictEqual(s.query('SELECT typeof(by) AS k FROM ev_creep_death ORDER BY t')[0].k, 'integer');
 });
 
-test('store: a changed declaration rebuilds the store, an unchanged one keeps it', () => {
+test('store: neither an unchanged nor a dropped declaration empties the store, and the dropped column stays text', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-events-'));
     const f = path.join(dir, 'a.log');
     fs.writeFileSync(f, ['10/30 08:00:00 [HEV] t=-60 ev=bot pid=1 hero=lion team=2 schema=2 build=0123456', '[HEV] t=1 ev=probe pid=1 a=5'].join('\n') + '\n');
@@ -101,7 +101,8 @@ test('store: a changed declaration rebuilds the store, an unchanged one keeps it
     assert.strictEqual(Number(s.query('SELECT count(*) AS n FROM ev_probe')[0].n), 1);
     s.db.close();
     s = new Store(db, { views: null, kinds: {} });
-    assert.strictEqual(s.tables().includes('ev_probe'), false);
+    assert.strictEqual(s.ingest(f), false);
+    assert.deepStrictEqual(s.query('SELECT a, typeof(a) AS k FROM ev_probe').map(r => [r.a, r.k]), [['5', 'text']]);
     s.db.close();
 });
 

@@ -23,7 +23,7 @@ function load() {
 }
 
 // Field and event meanings: the comment (`/** */` or `//` lines) right above a field or an event in events.ts. They go to
-// EVENTS.md only; events.json (and so the store version) ignores them, so a comment edit never empties the store. A field
+// EVENTS.md only; events.json ignores them, so a comment edit never touches the store. A field
 // from a spread (`...BOT`) keeps the comment it has where it is declared.
 function docs(text) {
     const consts = {};
