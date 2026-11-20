@@ -431,7 +431,7 @@ function ____exports.FromRead(bot, r, opts)
             bot,
             DotaTime()
         ),
-        mult = Explore.Mult(bot)
+        mult = Explore.Held(bot) and Explore.Mult(bot) or nil
     }
 end
 --- The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`).
@@ -502,7 +502,7 @@ function ____exports.CutFields(pid, who, place, i, a)
         },
         {
             "xm",
-            i.mult ~= nil and i.mult ~= 1 and r2(i.mult) or nil
+            i.mult ~= nil and r2(i.mult) or nil
         },
         {"lv", a.level},
         {

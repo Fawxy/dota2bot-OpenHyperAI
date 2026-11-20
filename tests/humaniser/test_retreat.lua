@@ -603,6 +603,18 @@ do
 	local again = capture(function() T = T + 0.5 H.Retreat.Desire(bot) end)
 	local second = lines(again, "roll")[1]
 	check("explore: the next band entry draws afresh", field(second, "ph") == "start" and tonumber(field(second, "mult")) == 1.75, second)
+	-- A roll that made the hero leave lives through the episode: the leave read is not asked while it runs.
+	local H2, walker = world()
+	setRoll(true)
+	RANDOM_FRACTION = 0.99
+	noHold()
+	hitting(walker, enemy(10, Vector(300, -5000), 230), enemy(11, Vector(300, -4900), 230))
+	local walk = capture(function()
+		H2.Retreat.Desire(walker)
+		RANDOM_FRACTION = 0
+		for _ = 1, 24 do T = T + 0.5 if running(walker) then H2.Retreat.Desire(walker) end end
+	end)
+	check("explore: a roll is not ended or redrawn during the retreat it caused (12 s, one roll line)", running(walker) and #lines(walk, "roll") == 1, #lines(walk, "roll"))
 	RANDOM_FRACTION = nil
 	setRoll(nil)
 end
