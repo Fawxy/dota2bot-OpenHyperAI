@@ -143,6 +143,9 @@ export const DEFAULTS = {
      *  deadly under `Safe.BARS.idle` (1.0) of the kill line, not `stay` (1.25). Off: `stay` always (the safe read's and
      *  sustain's kill line both read `Inputs.pressed`). A switch for the checkpoint's deaths test (20/11/2026). */
     IdleBar: true,
+    /** Step 4.2a (docs/proposals/2026-11-20-step4-exchanges.md), the read half: an enemy tower is a row in the safe read's kill line (its damage
+     *  on us from when it would be on us to the end of the kill window), not a flat `deadly tower`. Off: the flat rule. */
+    TowerRead: true,
     /** Step 4.3 (docs/proposals/2026-11-20-step4-exchanges.md): with Trade on, a hit or hit back opens only when its swing place is clear of
      *  enemy lane creeps (or our own attack order's cooldown covers it) or it still pays with their damage counted, and a fresh one only when no
      *  last hit or deny comes due before the swing lands; the executor orders the attack as answered. Off: the wave gates alone, and the

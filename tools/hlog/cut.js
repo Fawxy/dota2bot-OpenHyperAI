@@ -92,9 +92,9 @@ function towersOf(game, team, ta, tt) {
     for (const [t, mask] of [[team, ownMask], [enemy, enemyMask]]) {
         const line = game.towers.get(String(t));
         if (!line) throw new Error(`no ev=cut_towers for team ${t}`);
-        for (const [i, x, y, r, h] of records(line.tw).map(r => r.map(Number))) {
+        for (const [i, x, y, r, h, dmg, spa] of records(line.tw).map(r => r.map(Number))) {
             if (!(mask & (1 << i))) continue;
-            towers.push({ team: t, i, x, y, range: r, hull: h, tgt: targets.get(`${t}:${i}`) || '-' });
+            towers.push({ team: t, i, x, y, range: r, hull: h, ...(dmg === undefined ? {} : { dmg, spa }), tgt: targets.get(`${t}:${i}`) || '-' });
         }
     }
     return towers;
@@ -120,10 +120,10 @@ function commonWorld(game, cut) {
     if (!cc) throw new Error(`no ev=cut_creeps for pid ${cut.pid} at ${cut.t}`);
     const bot = botOf(game, cut);
     const team = Number(bot.team);
-    const [bx, by, hp, mhp, range, hull, speed, esc, prs] = nums(cut.b);
+    const [bx, by, hp, mhp, range, hull, speed, esc, prs, arm] = nums(cut.b);
     const w = {
         t: Number(cut.t), team, pid: Number(cut.pid), ours: oursOf(bot),
-        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc, ...(prs === undefined ? {} : { prs }) },
+        bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc, ...(prs === undefined ? {} : { prs }), ...(arm === undefined ? {} : { arm }) },
         ce: creepList(cc.ce), ca: creepList(cc.ca),
         he: heroRecords(cut.he), hu: unseenRecords(cut.hu), ha: allyRecords(cut.ha),
         towers: towersOf(game, team, cut.ta, cut.tt),
@@ -181,11 +181,11 @@ const DECISIONS = {
         world(game, cut) {
             const bot = botOf(game, cut);
             const team = Number(bot.team);
-            const [bx, by, hp, mhp, range, hull, speed, esc] = nums(cut.b);
+            const [bx, by, hp, mhp, range, hull, speed, esc, , arm] = nums(cut.b);
             const [fx, fy] = nums(cut.fm), [px, py] = nums(cut.pl);
             const w = {
                 t: Number(cut.t), team, pid: Number(cut.pid), who: cut.who, ours: oursOf(bot),
-                bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc },
+                bot: { x: bx, y: by, hp, mhp, range, hull, speed, esc, ...(arm === undefined ? {} : { arm }) },
                 from: { x: fx, y: fy }, place: { x: px, y: py },
                 he: heroRecords(cut.he), hu: unseenRecords(cut.hu), ha: allyRecords(cut.ha),
                 towers: towersOf(game, team, cut.ta, undefined),
@@ -283,7 +283,7 @@ const DECISIONS = {
         world(game, cut) {
             const w = { t: Number(cut.t), pid: Number(cut.pid), who: cut.who };
             for (const k of ['hpa', 'hpm', 'mi', 'awy', 'hld', 'hd', 'prs']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
-            for (const k of ['rr', 'stw', 'ld']) if (cut[k] !== undefined) w[k] = String(cut[k]);
+            for (const k of ['rr', 'stw', 'ld', 'dr']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },
         check(game, cut, obs) {

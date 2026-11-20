@@ -3116,6 +3116,8 @@ export const EVENTS = {
         hd: "num",
         /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
         prs: "num",
+        /** kind=safe, `Ours.TowerRead` on: `Safe.Inputs.drawn`, ";"-joined `src,dmg` rows (`tower`: its damage on us over the kill window from when it would be on us); `-`: on, nothing drawn; absent: the switch is off. */
+        dr: "str",
         kill: "num",
         ra: "num",
         pr: "num",
@@ -3278,7 +3280,7 @@ export const EVENTS = {
         /** Our lane creeps within 3,000 of either, as `ce`. */
         ca: "str",
     },
-    /** Once per team per game, before its first ev=cut: every standing tower as TOWER_IDS index, x, y, attack range, hull. */
+    /** Once per team per game, before its first ev=cut: every standing tower as TOWER_IDS index, x, y, attack range, hull, attack damage, seconds per attack (the last two since `Ours.TowerRead`). */
     cut_towers: {
         team: "num",
         tw: "str",

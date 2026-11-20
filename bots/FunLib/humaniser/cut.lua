@@ -1,6 +1,8 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local f
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
@@ -13,7 +15,13 @@ local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local Sight = require(GetScriptDirectory().."/FunLib/humaniser/sight")
 local ____safe_gather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local SafeGatherSettings = ____safe_gather.SETTINGS
---- `b`'s last number: the safe read's `pressed` for this hero (the kill bar turns on it), so a cut between an enemy's swings replays at the bar the game used.
+function f(n)
+    return n == nil and -1 or math.floor(n + 0.5)
+end
+--- `b`'s number after it: a physical hit's share that lands on this hero, per mille (the tower row of `Ours.TowerRead` reads our armour).
+local function armourNow(bot)
+    return f(bot:GetActualIncomingDamage(1000, DamageType.Physical))
+end
 local function pressedNow(bot)
     return bot:WasRecentlyDamagedByAnyHero(SafeGatherSettings.PressWindow) and 1 or 0
 end
@@ -42,9 +50,6 @@ ____exports.TOWER_IDS = {
     Tower.Base2
 }
 local towersLogged = {}
-local function f(n)
-    return n == nil and -1 or math.floor(n + 0.5)
-end
 local function live(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
@@ -65,15 +70,15 @@ local function creeps(kind, bot, at, front)
     local out = {}
     for ____, c in ipairs(GetUnitList(kind) or ({})) do
         do
-            local __continue11
+            local __continue12
             repeat
                 if not live(c) or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue11 = true
+                    __continue12 = true
                     break
                 end
                 local l = c:GetLocation()
                 if not near(l, at, front) then
-                    __continue11 = true
+                    __continue12 = true
                     break
                 end
                 local ranged = (string.find(
@@ -95,9 +100,9 @@ local function creeps(kind, bot, at, front)
                     },
                     ","
                 )
-                __continue11 = true
+                __continue12 = true
             until true
-            if not __continue11 then
+            if not __continue12 then
                 break
             end
         end
@@ -107,20 +112,20 @@ end
 local function escapeReady(bot)
     for ____, name in ipairs(Threat.SETTINGS.EscapeItems) do
         do
-            local __continue16
+            local __continue17
             repeat
                 local slot = bot:FindItemSlot(name)
                 if slot < 0 or slot > 5 then
-                    __continue16 = true
+                    __continue17 = true
                     break
                 end
                 local item = bot:GetItemInSlot(slot)
                 if item ~= nil and item ~= nil and item:IsFullyCastable() then
                     return true
                 end
-                __continue16 = true
+                __continue17 = true
             until true
-            if not __continue16 then
+            if not __continue17 then
                 break
             end
         end
@@ -149,27 +154,33 @@ local function logTowers(team)
         local i = 0
         while i < #____exports.TOWER_IDS do
             do
-                local __continue23
+                local __continue24
                 repeat
                     local tw = GetTower(team, ____exports.TOWER_IDS[i + 1])
                     if not live(tw) then
-                        __continue23 = true
+                        __continue24 = true
                         break
                     end
                     local l = tw:GetLocation()
+                    local ____this_1
+                    ____this_1 = tw
+                    local ____opt_0 = ____this_1.GetSecondsPerAttack
+                    local spa = ____opt_0 and ____opt_0(____this_1) or 1
                     out[#out + 1] = table.concat(
                         {
                             i,
                             f(l.x),
                             f(l.y),
                             f(tw:GetAttackRange()),
-                            f(tw:GetBoundingRadius())
+                            f(tw:GetBoundingRadius()),
+                            f(tw:GetAttackDamage()),
+                            math.floor(spa * 100 + 0.5) / 100
                         },
                         ","
                     )
-                    __continue23 = true
+                    __continue24 = true
                 until true
-                if not __continue23 then
+                if not __continue24 then
                     break
                 end
             end
@@ -194,11 +205,11 @@ local function towersNow(team, bot, at, front, out)
         local i = 0
         while i < #____exports.TOWER_IDS do
             do
-                local __continue26
+                local __continue27
                 repeat
                     local tw = GetTower(team, ____exports.TOWER_IDS[i + 1])
                     if not live(tw) then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     mask = mask + 2 ^ i
@@ -213,9 +224,9 @@ local function towersNow(team, bot, at, front, out)
                             ","
                         )
                     end
-                    __continue26 = true
+                    __continue27 = true
                 until true
-                if not __continue26 then
+                if not __continue27 then
                     break
                 end
             end
@@ -233,10 +244,10 @@ local function units(bot, keep, short, long)
     local he = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue30
+            local __continue31
             repeat
                 if not live(e) or not e:CanBeSeen() then
-                    __continue30 = true
+                    __continue31 = true
                     break
                 end
                 local l = e:GetLocation()
@@ -245,7 +256,7 @@ local function units(bot, keep, short, long)
                     visible[e:GetPlayerID()] = true
                 end
                 if not keep(l) then
-                    __continue30 = true
+                    __continue31 = true
                     break
                 end
                 local e3 = SpellReady.DamageOn(e, bot, short)
@@ -269,9 +280,9 @@ local function units(bot, keep, short, long)
                     },
                     ","
                 )
-                __continue30 = true
+                __continue31 = true
             until true
-            if not __continue30 then
+            if not __continue31 then
                 break
             end
         end
@@ -281,15 +292,15 @@ local function units(bot, keep, short, long)
         local p = 0
         while p <= MAX_PLAYER_ID do
             do
-                local __continue35
+                local __continue36
                 repeat
                     if GetTeamForPlayer(p) ~= enemyTeam or visible[p] == true or not IsHeroAlive(p) then
-                        __continue35 = true
+                        __continue36 = true
                         break
                     end
                     local info = GetHeroLastSeenInfo(p)[1]
                     if info == nil then
-                        __continue35 = true
+                        __continue36 = true
                         break
                     end
                     hu[#hu + 1] = table.concat(
@@ -302,9 +313,9 @@ local function units(bot, keep, short, long)
                         },
                         ","
                     )
-                    __continue35 = true
+                    __continue36 = true
                 until true
-                if not __continue35 then
+                if not __continue36 then
                     break
                 end
             end
@@ -314,14 +325,14 @@ local function units(bot, keep, short, long)
     local ha = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue38
+            local __continue39
             repeat
                 if not live(a) or a == bot or a:IsIllusion() then
-                    __continue38 = true
+                    __continue39 = true
                     break
                 end
                 if not keep(a:GetLocation()) then
-                    __continue38 = true
+                    __continue39 = true
                     break
                 end
                 local l = a:GetLocation()
@@ -337,9 +348,9 @@ local function units(bot, keep, short, long)
                     },
                     ","
                 )
-                __continue38 = true
+                __continue39 = true
             until true
-            if not __continue38 then
+            if not __continue39 then
                 break
             end
         end
@@ -358,15 +369,15 @@ function ____exports.Spot(bot)
     logTowers(enemyTeam)
     local front = GetLaneFrontLocation(team, lane, 0)
     local back = GetLaneFrontLocation(team, lane, -400)
-    local ____units_result_0 = units(
+    local ____units_result_2 = units(
         bot,
         function(l) return near(l, at, front) end,
         3,
         6
     )
-    local he = ____units_result_0.he
-    local hu = ____units_result_0.hu
-    local ha = ____units_result_0.ha
+    local he = ____units_result_2.he
+    local hu = ____units_result_2.hu
+    local ha = ____units_result_2.ha
     local nearTowers = {}
     local ta = (towersNow(
         team,
@@ -400,7 +411,8 @@ function ____exports.Spot(bot)
                         f(bot:GetBoundingRadius()),
                         f(bot:GetCurrentMovementSpeed()),
                         escapeReady(bot) and 1 or 0,
-                        pressedNow(bot)
+                        pressedNow(bot),
+                        armourNow(bot)
                     },
                     ","
                 )
@@ -471,15 +483,15 @@ function ____exports.Leave(bot, i)
     local at = bot:GetLocation()
     logTowers(team)
     logTowers(enemyTeam)
-    local ____units_result_1 = units(
+    local ____units_result_3 = units(
         bot,
         function(l) return near(l, at, at) end,
         i.short,
         i.long
     )
-    local he = ____units_result_1.he
-    local hu = ____units_result_1.hu
-    local ha = ____units_result_1.ha
+    local he = ____units_result_3.he
+    local hu = ____units_result_3.hu
+    local ha = ____units_result_3.ha
     local nearTowers = {}
     local ta = (towersNow(
         team,
@@ -511,7 +523,8 @@ function ____exports.Leave(bot, i)
                         f(bot:GetBoundingRadius()),
                         f(bot:GetCurrentMovementSpeed()),
                         escapeReady(bot) and 1 or 0,
-                        pressedNow(bot)
+                        pressedNow(bot),
+                        armourNow(bot)
                     },
                     ","
                 )
@@ -608,15 +621,15 @@ function ____exports.Gate(bot, from, place, consumer)
     local at = bot:GetLocation()
     logTowers(team)
     logTowers(enemyTeam)
-    local ____units_result_2 = units(
+    local ____units_result_4 = units(
         bot,
         function(l) return nearWalk(l, from, place) end,
         3,
         6
     )
-    local he = ____units_result_2.he
-    local hu = ____units_result_2.hu
-    local ha = ____units_result_2.ha
+    local he = ____units_result_4.he
+    local hu = ____units_result_4.hu
+    local ha = ____units_result_4.ha
     local unused = {}
     local ta = (towersNow(
         team,
@@ -649,7 +662,8 @@ function ____exports.Gate(bot, from, place, consumer)
                         f(bot:GetBoundingRadius()),
                         f(bot:GetCurrentMovementSpeed()),
                         escapeReady(bot) and 1 or 0,
-                        pressedNow(bot)
+                        pressedNow(bot),
+                        armourNow(bot)
                     },
                     ","
                 )

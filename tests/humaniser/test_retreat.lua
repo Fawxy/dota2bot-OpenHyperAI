@@ -530,7 +530,7 @@ do
 	check("cut: no line with the cut off", #none == 0, #none)
 	check("cut: the leave is logged once (the episode ends the reads)", #cuts == 1 and field(cuts[1], "dec") == "threat", #cuts)
 	check("cut: the line carries the answer the rule read", field(cuts[1], "lv") == "deadly" and field(cuts[1], "why") == "kill" and tonumber(field(cuts[1], "kill")) == 600 and tonumber(field(cuts[1], "ra")) == 1 and field(cuts[1], "purp") == "free", cuts[1])
-	check("cut: the bot record ends with the press flag the kill bar turned on", tostring(field(cuts[1], "b")):match(",1$") ~= nil, field(cuts[1], "b"))
+	check("cut: the bot record ends with the press flag the kill bar turned on, then the share of a physical hit our armour lets through (per mille)", tostring(field(cuts[1], "b")):match(",1,1000$") ~= nil, field(cuts[1], "b"))
 	local _, calm = run(true, 100)
 	check("cut: a place that is not deadly is logged as under", #calm >= 1 and field(calm[1], "dec") == "under" and field(calm[1], "lv") == "safe", calm[1])
 end

@@ -1,5 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__StringIncludes(self, searchString, position)
     if not position then
         position = 1
@@ -167,7 +192,13 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local distToSegment, lanerRows, towerOnMe, pressed, exitFrame, pressedBy, exitDamage, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, pressSeen, exitSeen, cutState, frames
+local distToSegment, lanerRows, towerOnMe, enemyTowers, creepHitsOf, drawnAt, pressed, exitFrame, pressedBy, exitDamage, drawnField, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, towerFacts, TOWER_IDS, pressSeen, exitSeen, cutState, frames
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
+local Team = ____dota.Team
+local Tower = ____dota.Tower
+local UnitType = ____dota.UnitType
+local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
@@ -310,6 +341,116 @@ function towerOnMe(bot, now, place)
     end
     return false
 end
+--- Pure: a tower's damage on us over `window` s from the moment it would be on us. `hit` is one attack's damage on us, `spa` its seconds per attack;
+-- `onUs`: it targets us now. Else it turns to us when our lane creeps in its reach are dead: `creepHits`, the attacks it needs to kill them
+-- (0: none there). Other damage on those creeps is not counted, so the turn can come sooner than read.
+function ____exports.TowerDrawn(hit, spa, onUs, creepHits, window)
+    local from = onUs and 0 or creepHits * spa
+    return hit / math.max(spa, 0.1) * math.max(0, window - from)
+end
+function enemyTowers(bot, now)
+    local team = bot:GetTeam()
+    local seen = towerFacts[team]
+    if seen == nil or seen.t ~= now then
+        seen = {t = now, towers = {}}
+        local enemy = team == Team.Radiant and Team.Dire or Team.Radiant
+        for ____, id in ipairs(TOWER_IDS) do
+            do
+                local __continue46
+                repeat
+                    local tw = GetTower(enemy, id)
+                    if tw == nil or tw == nil or tw:IsNull() or not tw:IsAlive() then
+                        __continue46 = true
+                        break
+                    end
+                    local ____this_2
+                    ____this_2 = tw
+                    local ____opt_1 = ____this_2.GetSecondsPerAttack
+                    local spa = ____opt_1 and ____opt_1(____this_2)
+                    local ____seen_towers_3 = seen.towers
+                    ____seen_towers_3[#____seen_towers_3 + 1] = {
+                        unit = tw,
+                        at = tw:GetLocation(),
+                        reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach),
+                        dmg = tw:GetAttackDamage(),
+                        spa = spa ~= nil and spa > 0 and spa or 1
+                    }
+                    __continue46 = true
+                until true
+                if not __continue46 then
+                    break
+                end
+            end
+        end
+        towerFacts[team] = seen
+    end
+    return seen.towers
+end
+function creepHitsOf(tw)
+    if tw.creepHits ~= nil then
+        return tw.creepHits
+    end
+    local hits = 0
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
+        do
+            local __continue51
+            repeat
+                if c == nil or c:IsNull() or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                    __continue51 = true
+                    break
+                end
+                if dist(
+                    c:GetLocation(),
+                    tw.at
+                ) > tw.reach + c:GetBoundingRadius() then
+                    __continue51 = true
+                    break
+                end
+                hits = hits + math.ceil(c:GetHealth() / math.max(
+                    1,
+                    c:GetActualIncomingDamage(tw.dmg, DamageType.Physical)
+                ))
+                __continue51 = true
+            until true
+            if not __continue51 then
+                break
+            end
+        end
+    end
+    tw.creepHits = hits
+    return hits
+end
+function drawnAt(bot, now, place)
+    local out = {}
+    local br = bot:GetBoundingRadius()
+    for ____, tw in ipairs(enemyTowers(bot, now)) do
+        do
+            local __continue56
+            repeat
+                if dist(tw.at, place) > tw.reach + br then
+                    __continue56 = true
+                    break
+                end
+                local onUs = tw.unit:GetAttackTarget() == bot
+                local dmg = ____exports.TowerDrawn(
+                    bot:GetActualIncomingDamage(tw.dmg, DamageType.Physical),
+                    tw.spa,
+                    onUs,
+                    onUs and 0 or creepHitsOf(tw),
+                    ____exports.SETTINGS.KillWindow
+                )
+                if dmg > 0 then
+                    out[#out + 1] = {src = "tower", dmg = dmg}
+                end
+                __continue56 = true
+            until true
+            if not __continue56 then
+                break
+            end
+        end
+    end
+    return out
+end
 function pressed(bot, now)
     local pid = bot:GetPlayerID()
     local seen = pressSeen[pid]
@@ -391,46 +532,54 @@ function ____exports.FromRead(bot, r, opts)
     for ____, l in ipairs(lanerRows(bot, r)) do
         reach[#reach + 1] = l
     end
-    local ____temp_2 = bot:GetHealth()
-    local ____temp_3 = bot:GetMaxHealth()
-    local ____reach_4 = reach
-    local ____r_missing_5 = r.missing
-    local ____r_tower_6 = r.tower
-    local ____towerOnMe_result_7 = towerOnMe(
+    local ____temp_5 = bot:GetHealth()
+    local ____temp_6 = bot:GetMaxHealth()
+    local ____reach_7 = reach
+    local ____r_missing_8 = r.missing
+    local ____r_tower_9 = r.tower
+    local ____towerOnMe_result_10 = towerOnMe(
         bot,
         DotaTime(),
         r.place
     )
-    local ____exports_Landing_result_8 = ____exports.Landing(
+    local ____exports_Landing_result_11 = ____exports.Landing(
         bot,
         DotaTime()
     )
-    local ____temp_9 = #r.rows > 0 and exit or nil
-    local ____opts_away_10 = opts.away
-    local ____opts_held_11 = opts.held
-    local ____temp_1
+    local ____temp_12 = #r.rows > 0 and exit or nil
+    local ____opts_away_13 = opts.away
+    local ____opts_held_14 = opts.held
+    local ____temp_4
     if type(opts.hold) == "function" then
-        ____temp_1 = opts.hold()
+        ____temp_4 = opts.hold()
     else
-        ____temp_1 = opts.hold
+        ____temp_4 = opts.hold
     end
     return {
-        hp = ____temp_2,
-        hpMax = ____temp_3,
-        reach = ____reach_4,
-        missing = ____r_missing_5,
-        tower = ____r_tower_6,
-        towerOnMe = ____towerOnMe_result_7,
-        landing = ____exports_Landing_result_8,
-        exit = ____temp_9,
-        away = ____opts_away_10,
-        held = ____opts_held_11,
-        hold = ____temp_1,
+        hp = ____temp_5,
+        hpMax = ____temp_6,
+        reach = ____reach_7,
+        missing = ____r_missing_8,
+        tower = ____r_tower_9,
+        towerOnMe = ____towerOnMe_result_10,
+        landing = ____exports_Landing_result_11,
+        exit = ____temp_12,
+        away = ____opts_away_13,
+        held = ____opts_held_14,
+        hold = ____temp_4,
         pressed = not Ours.On("IdleBar") or pressed(
             bot,
             DotaTime()
-        )
+        ),
+        drawn = Ours.On("TowerRead") and drawnAt(bot, now, r.place) or nil
     }
+end
+function drawnField(drawn)
+    local rows = {}
+    for ____, d in ipairs(drawn) do
+        rows[#rows + 1] = (d.src .. ",") .. tostring(n0(d.dmg))
+    end
+    return table.concat(rows, ";")
 end
 --- The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`).
 function ____exports.CutFields(pid, who, place, i, a)
@@ -446,7 +595,7 @@ function ____exports.CutFields(pid, who, place, i, a)
             ","
         )
     end
-    return {
+    local ____array_16 = __TS__SparseArrayNew(
         {"pid", pid},
         {"kind", "safe"},
         {"who", who},
@@ -497,7 +646,17 @@ function ____exports.CutFields(pid, who, place, i, a)
         {
             "prs",
             b01(i.pressed == true)
-        },
+        }
+    )
+    local ____temp_15
+    if i.drawn == nil then
+        ____temp_15 = nil
+    else
+        ____temp_15 = #i.drawn == 0 and "-" or drawnField(i.drawn)
+    end
+    __TS__SparseArrayPush(
+        ____array_16,
+        {"dr", ____temp_15},
         {"lv", a.level},
         {
             "kill",
@@ -512,7 +671,8 @@ function ____exports.CutFields(pid, who, place, i, a)
             r2(a.price)
         },
         {"why", a.reason}
-    }
+    )
+    return {__TS__SparseArraySpread(____array_16)}
 end
 function cutOn()
     return Telemetry.IsEnabled() and Telemetry.Get().Cut == true
@@ -556,28 +716,28 @@ end
 function ask(bot, place, opts)
     local horizon = opts and opts.horizon or (((opts and opts.held) == true or (opts and opts.hold) == true) and Threat.SETTINGS.StayHorizon or ____exports.SETTINGS.FreshHorizon)
     local from = opts and opts.from or bot:GetLocation()
-    local ____frameReader_26 = frameReader
-    local ____bot_25 = bot
-    local ____temp_22 = opts and opts.engaged
-    if ____temp_22 == nil then
-        ____temp_22 = true
+    local ____frameReader_31 = frameReader
+    local ____bot_30 = bot
+    local ____temp_27 = opts and opts.engaged
+    if ____temp_27 == nil then
+        ____temp_27 = true
     end
-    local r = ____frameReader_26(____bot_25, horizon, ____temp_22, opts and opts.exclude)(from, place)
-    local ____exports_FromRead_37 = ____exports.FromRead
-    local ____bot_36 = bot
-    local ____temp_29 = opts and opts.away
-    if ____temp_29 == nil then
-        ____temp_29 = false
+    local r = ____frameReader_31(____bot_30, horizon, ____temp_27, opts and opts.exclude)(from, place)
+    local ____exports_FromRead_42 = ____exports.FromRead
+    local ____bot_41 = bot
+    local ____temp_34 = opts and opts.away
+    if ____temp_34 == nil then
+        ____temp_34 = false
     end
-    local ____temp_32 = opts and opts.held
-    if ____temp_32 == nil then
-        ____temp_32 = false
+    local ____temp_37 = opts and opts.held
+    if ____temp_37 == nil then
+        ____temp_37 = false
     end
-    local ____temp_35 = opts and opts.hold
-    if ____temp_35 == nil then
-        ____temp_35 = false
+    local ____temp_40 = opts and opts.hold
+    if ____temp_40 == nil then
+        ____temp_40 = false
     end
-    local i = ____exports_FromRead_37(____bot_36, r, {away = ____temp_29, held = ____temp_32, hold = ____temp_35})
+    local i = ____exports_FromRead_42(____bot_41, r, {away = ____temp_34, held = ____temp_37, hold = ____temp_40})
     local a = Safe.Decide(i)
     local who = opts and opts.who
     if who ~= nil and cutOn() and bot:IsAlive() then
@@ -667,6 +827,20 @@ function ____exports.Tick(bot)
 end
 laners = {}
 towerSeen = {}
+towerFacts = {}
+TOWER_IDS = {
+    Tower.Top1,
+    Tower.Top2,
+    Tower.Top3,
+    Tower.Mid1,
+    Tower.Mid2,
+    Tower.Mid3,
+    Tower.Bot1,
+    Tower.Bot2,
+    Tower.Bot3,
+    Tower.Base1,
+    Tower.Base2
+}
 pressSeen = {}
 exitSeen = {}
 cutState = {}
@@ -721,6 +895,9 @@ function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(towerSeen)) do
         __TS__Delete(towerSeen, k)
     end
+    for ____, k in ipairs(__TS__ObjectKeys(towerFacts)) do
+        __TS__Delete(towerFacts, k)
+    end
     for ____, k in ipairs(__TS__ObjectKeys(pressSeen)) do
         __TS__Delete(pressSeen, k)
     end
@@ -735,7 +912,7 @@ end
 -- `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
 -- decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
 function ____exports.TripGate(bot, place, consumer, from)
-    local ____ask_result_40 = ask(bot, place, {
+    local ____ask_result_45 = ask(bot, place, {
         from = from,
         horizon = ____exports.WalkHorizon,
         away = true,
@@ -743,8 +920,8 @@ function ____exports.TripGate(bot, place, consumer, from)
         hold = false,
         who = consumer
     })
-    local a = ____ask_result_40.a
-    local r = ____ask_result_40.r
+    local a = ____ask_result_45.a
+    local r = ____ask_result_45.r
     local why = a.level == "deadly" and a.reason or nil
     if Threat.Log(bot, consumer, r, why or "go") then
         Threat.NoteGateCut(bot, r.from, r.place, consumer)

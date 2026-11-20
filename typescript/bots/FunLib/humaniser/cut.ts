@@ -21,7 +21,7 @@
  * beside the gate's own ev=threat line, which is what the replay is compared with. `he`, `hu`, `ha`, `ta` and `b` keep the
  * spot's record formats.
  */
-import { Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Threat from "bots/FunLib/humaniser/threat";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
@@ -33,6 +33,11 @@ import type * as Safe from "bots/FunLib/humaniser/safe";
 import { SETTINGS as SafeGatherSettings } from "bots/FunLib/humaniser/safe_gather";
 
 /** `b`'s last number: the safe read's `pressed` for this hero (the kill bar turns on it), so a cut between an enemy's swings replays at the bar the game used. */
+/** `b`'s number after it: a physical hit's share that lands on this hero, per mille (the tower row of `Ours.TowerRead` reads our armour). */
+function armourNow(bot: Unit): number {
+    return f(bot.GetActualIncomingDamage(1000, DamageType.Physical));
+}
+
 function pressedNow(bot: Unit): number {
     return bot.WasRecentlyDamagedByAnyHero(SafeGatherSettings.PressWindow) ? 1 : 0;
 }
@@ -116,7 +121,8 @@ function logTowers(team: number): void {
         const tw = GetTower(team, TOWER_IDS[i]);
         if (!live(tw)) continue;
         const l = tw.GetLocation();
-        out.push([i, f(l.x), f(l.y), f(tw.GetAttackRange()), f(tw.GetBoundingRadius())].join(","));
+        const spa = (tw as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.() ?? 1;
+        out.push([i, f(l.x), f(l.y), f(tw.GetAttackRange()), f(tw.GetBoundingRadius()), f(tw.GetAttackDamage()), math.floor(spa * 100 + 0.5) / 100].join(","));
     }
     Telemetry.Event("cut_towers", [
         ["team", team],
@@ -205,7 +211,7 @@ export function Spot(bot: Unit): void {
         ["kind", "spot"],
         ["role", role],
         ["lane", lane],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot)].join(",")],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot), armourNow(bot)].join(",")],
         ["fr", [f(front.x), f(front.y), f(back.x), f(back.y)].join(",")],
         ["fed", live(fed) ? Telemetry.CreepId(fed) : undefined],
         ["hold", hold !== undefined ? `${f(hold.x)},${f(hold.y)}` : undefined],
@@ -254,7 +260,7 @@ export function Leave(bot: Unit, i: LeaveInputs): void {
     Telemetry.Event("cut", [
         ["pid", pid],
         ["kind", "leave"],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot)].join(",")],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot), armourNow(bot)].join(",")],
         ["he", he.join(";")],
         ["hu", hu.length > 0 ? hu.join(";") : undefined],
         ["ha", ha.length > 0 ? ha.join(";") : undefined],
@@ -325,7 +331,7 @@ export function Gate(bot: Unit, from: Vector, place: Vector, consumer: string): 
         ["pid", pid],
         ["kind", "gate"],
         ["who", consumer],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot)].join(",")],
+        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot), armourNow(bot)].join(",")],
         ["fm", `${f(from.x)},${f(from.y)}`],
         ["pl", `${f(place.x)},${f(place.y)}`],
         ["he", he.join(";")],

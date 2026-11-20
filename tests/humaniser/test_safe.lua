@@ -94,6 +94,23 @@ check("between swings (pressed, nobody hitting) ratio 1.1 held is still deadly a
 check("Line: the stay bar under a hero's hits, the lower of it and idle without; a stay under idle is never raised",
 	S.Line(true) == 1.25 and S.Line(false) == 1.0 and S.Line(false, 2.0) == 1.0 and S.Line(true, 2.0) == 2.0 and S.Line(false, 0.8) == 0.8)
 
+-- Ours.TowerRead: `drawn` present. The rows join the kill line and the flat tower rule is not asked.
+do
+	local function tower(dmg) return { { src = "tower", dmg = dmg } } end
+	check("drawn present and empty: a fresh place in tower reach, and a tower on us, are not deadly by the flag alone (control: without drawn both are)",
+		is(S.Decide(inputs({ tower = true, towerOnMe = true, drawn = {} })), "safe")
+			and is(S.Decide(inputs({ tower = true, towerOnMe = true })), "deadly", "tower"))
+	check("a tower row of 400: fresh is safe at 630 HP and deadly tower at 430 (bar 1.15); held, 430 stays and 390 is deadly",
+		is(S.Decide(inputs({ drawn = tower(400) })), "safe")
+			and is(S.Decide(inputs({ hp = 430, drawn = tower(400) })), "deadly", "tower")
+			and is(S.Decide(inputs({ hp = 430, drawn = tower(400), held = true })), "safe")
+			and is(S.Decide(inputs({ hp = 390, drawn = tower(400), held = true })), "deadly", "tower"))
+	check("the reason: the tower when the heroes alone would pass (300 + 400 on 630), the kill when they would not (611 + 100); the kill sums both",
+		is(S.Decide(inputs({ reach = { one(300) }, drawn = tower(400) })), "deadly", "tower")
+			and is(S.Decide(inputs({ reach = { one(611) }, drawn = tower(100) })), "deadly", "kill")
+			and S.Decide(inputs({ reach = { one(300) }, drawn = tower(400) })).kill == 700)
+end
+
 do
 	local none = S.Decide(inputs())
 	check("nothing in reach: kill 0, ratio math.huge, safe even at zero HP-share concerns",
