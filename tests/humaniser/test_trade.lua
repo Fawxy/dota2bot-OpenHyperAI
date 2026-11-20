@@ -455,4 +455,32 @@ do
 	check("with the swing rule on too, the held hit stays among the creeps until it fires", among.level == "hit" and among.ended == nil)
 end
 
+-- Ours.CreepRead (step 4.2b): `creepRead` on the inputs. The creeps and the tower at the swing place are rows of the candidate's own safe
+-- answers (`say`), so the count gates are not asked; our creeps' share on a target in their aggro (`oc`) joins ours.
+do
+	local SW = { cover = 0, atk = 0.3 }
+	local clear = { near = 0, kc = 0, say = here(SAFE) }
+	local counts = { swing = SW, wave = 6, creepsOnMe = 3, towerOnMe = true }
+	local on = decide(inputs(merge({ creepRead = true, cands = { cand(merge({ tw = true }, clear)) } }, counts)))
+	local off = decide(inputs(merge({ cands = { cand({ near = 0, kc = 0 }) } }, counts)))
+	check("a wave of 6, 3 creeps on us and a tower on us and at the attack point veto nothing by count (control: without the read, the tower does)",
+		on.level == "hit" and none(off, "tower"))
+	check("the swing place's answer is the veto: deadly by the creeps refuses the hit with that reason though here is safe; deadly only without a hold, a hitter is hit back",
+		none(decide(inputs({ swing = SW, creepRead = true, cands = { cand({ near = 2, kc = 0, say = here(deadly("creeps")) }) } })), "creeps")
+			and decide(inputs({ swing = SW, creepRead = true, cands = { cand({ hitting = true, near = 2, kc = 0, say = here(deadly("creeps"), SAFE) }) } })).level == "hitback")
+	check("a candidate out of a hit's reach carries no swing answer: the answer here stands in",
+		none(decide(inputs({ swing = SW, creepRead = true, safe = here(deadly("kill")), cands = { cand({ near = 0, kc = 0 }) } })), "kill"))
+	check("our creeps' share joins ours: 0.2 + 0.15 against 0.3 opens the hit; without it, unfavoured",
+		decide(inputs({ swing = SW, creepRead = true, cands = { unfavoured(merge({ oc = 0.15 }, clear)) } })).level == "hit"
+			and none(decide(inputs({ swing = SW, creepRead = true, cands = { unfavoured(clear) } })), "unfavoured"))
+	local low = { thp = 0.2, thpAbs = 120, catch = CATCH }
+	check("a kill inside a wave of 7 is the walk's answer, not a count (control: without the read, `wave`)",
+		decide(inputs({ swing = SW, creepRead = true, wave = 7, cands = { cand(merge(merge({}, low), clear)) } })).level == "kill"
+			and none(decide(inputs({ swing = SW, wave = 7, cands = { unfavoured(merge({ near = 0, kc = 0 }, low)) } })), "wave"))
+	check("a lane fight is zeroed by the walk's answer alone: a tower flag and a wave of 9 zero nothing (control: without the read, tower)",
+		T.FightZero(inputs({ creepRead = true, towerOnMe = true, wave = 9 }), cand({ tw = true })) == nil
+			and T.FightZero(inputs({ towerOnMe = true, wave = 9 }), cand({ tw = true })) == "tower"
+			and T.FightZero(inputs({ creepRead = true }), cand({ walk = deadly("creeps") })) == "creeps")
+end
+
 finish()

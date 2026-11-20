@@ -278,13 +278,15 @@ Customize.Humaniser = {
 -- TradeSwing (step 4.3): with Trade on, a hit or hit back opens only from a swing place clear of enemy lane creeps (or under our
 -- own attack order's aggro cooldown), or when it still pays with their damage counted, and never when a last hit or deny comes
 -- due before the swing lands. Off: the wave gates alone, and the executor steps out of the creeps before it orders.
+-- CreepRead (step 4.2b): with TowerRead and TradeSwing on, the creeps a swing at a hero draws are a row in the safe read at the swing place,
+-- priced to one shed order; the trade drops its wave, creeps-on-us and tower gates and sheds after a swing that drew a creep. Off: those gates.
 -- TowerRead (step 4.2a, the read half): an enemy tower is a row in the safe read's kill line (its damage on us from when it would be on
 -- us, over the kill window), not a flat deadly. Off: the flat rule.
 -- TradeHold (step 4.4): an opened hit or hit back is not asked the favoured test again before its first attack fires. Off: every frame.
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, PickSafe = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, BurstReady = true, Sustain = true, ExitWindow = true, IdleBar = true, TradeSwing = true, TradeHold = true, TowerRead = true }
+Customize.Ours = { LeaveCoreCreep = true, StackExecute = true, DoubleStack = true, JobChooser = true, CoreLastHit = true, Trade = true, CoreLastHitDire = true, SupportDeny = true, SupportDenyDire = true, SupportLastHit = true, CoreDenyYield = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, LaneSpot = true, LaneSpotTower = true, PreHit = true, LaneAggro = true, CoreContest = true, CoreHold = true, SupportPullFarm = true, PreDeny = true, PickSafe = true, LaneControl = true, LaneControlDrive = true, CorePull = true, Threat = true, Retreat = true, ArbiterShadow = true, ArbiterDrive = true, MidWater = false, BurstReady = true, Sustain = true, ExitWindow = true, IdleBar = true, TradeSwing = true, TradeHold = true, TowerRead = true, CreepRead = true }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

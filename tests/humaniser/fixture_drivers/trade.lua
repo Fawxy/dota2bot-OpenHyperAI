@@ -6,6 +6,7 @@
 --        attacks us), hc (creeps attacking us), cr (creeps within 500), dn (1: a deny is due), t (the clock), role (logged only);
 --        swg "cover:due:atk" (Ours.TradeSwing's inputs; absent: the rule is off; the candidates then carry near and kc as fields 22 and 23);
 --        thd (1: Ours.TradeHold on);
+--        crd (1: Ours.CreepRead on; the candidates then carry the swing place's safe answers, without and with a hold, as fields 24 to 29 and oc as 30);
 --        pjr "dec:tgt:ko:kt" (the pair answer), pl "id:kind:tgt:zero" (a running play; `-` no zero);
 --        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr (read for the eye, unused),hit,free,ko,kt,paid,tw,wlv,wra,wwhy,cok,cdm,csf,lo,sw" (`-` absent; sw: hit us within its attack interval, absent on older lines; wlv, wra, wwhy: Safe.At along the walk, away and with a hold; lo: lost, absent on older lines);
 --        run: "level:tgt:src:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:unseenCatchOk" with uat, utw, uth.
@@ -65,6 +66,7 @@ return function(fx)
 		i.swing = { cover = num(f[1]) or 0, due = num(f[2]), atk = num(f[3]) or 0 }
 	end
 	if bit(w.thd) then i.hold = true end
+	if bit(w.crd) then i.creepRead = true end
 	if w.pjr ~= nil and w.pjr ~= "" then
 		local f = split(w.pjr, ":")
 		i.pair = { dec = f[1], tgt = num(f[2]), ko = num(f[3]), kt = num(f[4]) }
@@ -82,6 +84,10 @@ return function(fx)
 			-- Lines from before `sw` read the 1 s flag as the stay bar too: swung is never narrower than hitting.
 			if num(f[21]) ~= nil then c.swung = bit(num(f[21])) else c.swung = c.hitting end
 			c.near, c.kc = num(f[22]), num(f[23])
+			if f[24] ~= nil and f[24] ~= "-" then
+				c.say = { hit = say(f[24] .. "," .. f[25] .. "," .. f[26]), hold = say(f[27] .. "," .. f[28] .. "," .. f[29]) }
+			end
+			c.oc = num(f[30])
 			if f[14] ~= nil and f[14] ~= "-" then c.walk = say(f[14] .. "," .. f[15] .. "," .. f[16]) end
 			if num(f[17]) ~= nil then c.catch = { ok = bit(num(f[17])), dmg = num(f[18]) or 0, first = 0, safe = num(f[19]) or 0 } end
 			table.insert(i.cands, c)

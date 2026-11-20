@@ -3007,6 +3007,8 @@ export const EVENTS = {
         swg: "str",
         /** kind=trade: 1 with `Ours.TradeHold` on (absent: off): a running hit is not asked the favoured test before its first attack fires. */
         thd: "num",
+        /** kind=trade: 1 with `Ours.CreepRead` on (absent: off): each candidate record then ends with the swing place's safe answers (level, ratio, reason without a hold, then with one; `-` when not asked) and `oc`, our creeps' share on it. */
+        crd: "num",
         /** kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
         pjr: "str",
         /**

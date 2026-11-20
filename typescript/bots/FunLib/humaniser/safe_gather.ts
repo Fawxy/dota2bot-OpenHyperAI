@@ -8,6 +8,7 @@
  * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as Deaggro from "bots/FunLib/humaniser/deaggro";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Safe from "bots/FunLib/humaniser/safe";
@@ -48,6 +49,13 @@ export const SETTINGS = {
      */
     KillWindow: 4,
     /**
+     * `Ours.CreepRead`: enemy lane creeps within this of the place or of the hero turn on a hero that attacks a hero (EC-053: 500, plus 50 for
+     * creeps moving during the order's latency; the trade's AGGRO_CLEAR).
+     */
+    AggroRadius: 550,
+    /** A drawn creep that one shed order would take counts for this long: our attack point, the order and `Deaggro.SETTINGS.ConfirmFor`. judgement until a rig reads it. */
+    ShedIn: 1.5,
+    /**
      * `Ours.ExitWindow`: a reaching hero that is not hitting us is counted over the walk out of every reacher's range from the place
      * read (`exit`) plus this many seconds to turn and react, when that is under `KillWindow`. A hero that damaged us within `PressWindow` is not
      * capped (hitting us it keeps `StayEngaged`, between swings `KillWindow`):
@@ -61,6 +69,8 @@ export interface Opts {
     held: boolean;
     /** The caller has a hold (a hit back or a join). A function is asked only when the shadow runs, for a hold that costs a read. */
     hold: boolean | ((this: void) => boolean);
+    /** `AtOpts.draws`. */
+    draws?: boolean;
 }
 
 const r1 = (v: number): number => math.floor(v * 10 + 0.5) / 10;
@@ -288,19 +298,119 @@ function physFactor(bot: Unit, now: number): number {
     return f;
 }
 
-/** `Safe.Inputs.drawn` for `place` (`Ours.TowerRead`): one row per live enemy tower whose reach holds it and that would be on us inside the kill window. */
-function drawnAt(bot: Unit, now: number, place: Vector): Safe.Drawn[] {
+/** `Safe.Inputs.drawn` for `place` (`Ours.TowerRead`): one row per live enemy tower whose reach holds it and that would be on us inside the kill window. `attacks`: the act asked for is an attack on a hero (`AtOpts.draws`). */
+function drawnAt(bot: Unit, now: number, place: Vector, attacks: boolean): Safe.Drawn[] {
     const out: Safe.Drawn[] = [];
     const br = bot.GetBoundingRadius();
     let physF: number | undefined;
     for (const tw of enemyTowers(bot, now)) {
         if (dist(tw.at, place) > tw.reach + br) continue;
         physF = physF ?? physFactor(bot, now);
-        const onUs = tw.target === bot;
+        // A tower turns at once on a hero that attacks a hero of its side inside its reach, whatever creeps stand there.
+        const onUs = attacks || tw.target === bot;
         const dmg = TowerDrawn(tw.dmg * physF, tw.spa, onUs, onUs ? 0 : creepHitsOf(tw), SETTINGS.KillWindow);
         if (dmg > 0) out.push({ src: "tower", dmg });
     }
     return out;
+}
+
+/** One enemy lane creep an attack at a place would draw: its distance from the place, its attack reach to our edge, its speed, its damage a second on us. */
+export interface DrawnCreep {
+    d: number;
+    reach: number;
+    ms: number;
+    dps: number;
+    /** One shed order takes it: it is not in attack range of the place and a creep of ours we could order on stands inside its acquisition range. */
+    shed: boolean;
+}
+
+/** Pure: the creeps' damage on us at the place, each from its arrival; one a shed order takes counts to `shedIn`, any other to the end of `window`. */
+export function CreepsDrawn(creeps: DrawnCreep[], window: number, shedIn: number): number {
+    let dmg = 0;
+    for (const c of creeps) {
+        const ta = c.d <= c.reach ? 0 : c.ms > 0 ? (c.d - c.reach) / c.ms : math.huge;
+        const end = c.shed ? math.min(window, shedIn) : window;
+        if (ta < end) dmg += c.dps * (end - ta);
+    }
+    return dmg;
+}
+
+interface CreepFact {
+    at: Vector;
+    reach: number;
+    acq: number;
+    ms: number;
+    dps: number;
+}
+interface OwnCreep {
+    at: Vector;
+    r: number;
+}
+const creepSeen: Record<number, { t: number; enemy: CreepFact[]; own: OwnCreep[] } | undefined> = {};
+
+/** The lane creeps round `bot`, read once a frame per hero: the enemy's as they would hit us, ours as shed targets. */
+function laneCreeps(bot: Unit, now: number): { enemy: CreepFact[]; own: OwnCreep[] } {
+    const pid = bot.GetPlayerID();
+    let seen = creepSeen[pid];
+    if (seen !== undefined && seen.t === now) return seen;
+    seen = { t: now, enemy: [], own: [] };
+    const physF = physFactor(bot, now);
+    const hull = bot.GetBoundingRadius();
+    for (const c of bot.GetNearbyLaneCreeps(1600, true) ?? []) {
+        if (c.IsNull() || !c.IsAlive()) continue;
+        const at = c.GetLocation() as Vector | undefined;
+        if (at === undefined) continue;
+        const spa = (c as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
+        const r = c.GetBoundingRadius();
+        seen.enemy.push({
+            at,
+            reach: c.GetAttackRange() + r + hull,
+            acq: c.GetAcquisitionRange() + r,
+            ms: c.GetCurrentMovementSpeed(),
+            dps: (c.GetAttackDamage() / (spa !== undefined && spa > 0 ? spa : 1)) * physF,
+        });
+    }
+    for (const c of bot.GetNearbyLaneCreeps(1600, false) ?? []) {
+        if (c.IsNull() || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        const at = c.GetLocation() as Vector | undefined;
+        if (at !== undefined) seen.own.push({ at, r: c.GetBoundingRadius() });
+    }
+    creepSeen[pid] = seen;
+    return seen;
+}
+
+/**
+ * `Ours.CreepRead`: what an attack on a hero from `place` draws. `near`: the enemy lane creeps within `AggroRadius` of the place or of the hero;
+ * `dmg`: their damage on us (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
+ */
+export function CreepsAt(bot: Unit, place: Vector): { near: number; dmg: number } {
+    const now = DotaTime();
+    const lc = laneCreeps(bot, now);
+    const here = bot.GetLocation();
+    const drawn: DrawnCreep[] = [];
+    const attackers: Deaggro.AttackerFact[] = [];
+    for (const c of lc.enemy) {
+        const d = dist(c.at, place);
+        if (d > SETTINGS.AggroRadius && dist(c.at, here) > SETTINGS.AggroRadius) continue;
+        drawn.push({ d, reach: c.reach, ms: c.ms, dps: c.dps, shed: false });
+        attackers.push({ kind: "lane", x: c.at.x, y: c.at.y, reach: c.acq, locked: d <= c.reach });
+    }
+    if (drawn.length === 0) return { near: 0, dmg: 0 };
+    const mine = bot.GetAttackRange() + bot.GetBoundingRadius();
+    const own: Deaggro.OwnFact[] = [];
+    for (const o of lc.own) {
+        const d = dist(o.at, place);
+        if (d <= mine + o.r) own.push({ x: o.at.x, y: o.at.y, d, r: o.r });
+    }
+    const plan = Deaggro.Plan(attackers, own);
+    if (plan.target !== undefined) {
+        const t = own[plan.target];
+        for (let k = 0; k < drawn.length; k++) {
+            const a = attackers[k];
+            drawn[k].shed = !a.locked && math.sqrt((a.x - t.x) ** 2 + (a.y - t.y) ** 2) <= a.reach + t.r;
+        }
+    }
+    return { near: drawn.length, dmg: CreepsDrawn(drawn, SETTINGS.KillWindow, SETTINGS.ShedIn) };
 }
 
 const pressSeen: Record<number, { t: number; on: boolean } | undefined> = {};
@@ -371,6 +481,13 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         for (const row of r.rows) exit = math.max(exit, math.max(0, row.run - distToSegment(row.at, r.from, r.place)) / speed);
     }
     const now = DotaTime();
+    const draws = opts.draws === true && Ours.On("CreepRead");
+    const drawn = Ours.On("TowerRead") ? drawnAt(bot, now, r.place, draws) : undefined;
+    // The creeps' row needs the tower's: without `drawn` the flat tower rule stands and no row is read.
+    if (drawn !== undefined && draws) {
+        const dmg = CreepsAt(bot, r.place).dmg;
+        if (dmg > 0) drawn.push({ src: "creeps", dmg });
+    }
     // Half-second steps up: about 50 places a frame share at most six estimates per enemy. Not for a walk away (a trip's gate):
     // the hero means to stay at its end, and only own-place reads were replayed.
     const w = Ours.On("ExitWindow") && !opts.away ? math.ceil((exit + SETTINGS.ExitTurn) * 2) / 2 : SETTINGS.KillWindow;
@@ -394,7 +511,7 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         hold: typeof opts.hold === "function" ? opts.hold() : opts.hold,
         // Ours.IdleBar off: every read is judged at the pressed bar (`Safe.BARS.stay`), as before the idle bar.
         pressed: !Ours.On("IdleBar") || pressed(bot, DotaTime()),
-        drawn: Ours.On("TowerRead") ? drawnAt(bot, now, r.place) : undefined,
+        drawn,
     };
 }
 
@@ -483,6 +600,8 @@ export interface AtOpts {
     exclude?: number;
     /** When given and cut logging is on, the answer is logged as `ev=cut kind=safe who=<who>` like a shadow, so the call replays offline. */
     who?: string;
+    /** `Ours.CreepRead`: the act asked for is an attack on a hero from the place, which draws the enemy lane creeps near it: their row joins `drawn`. */
+    draws?: boolean;
 }
 
 interface Frame {
@@ -521,18 +640,24 @@ export function At(bot: Unit, place: Vector, opts?: AtOpts): Safe.Answer {
 }
 
 /** `At`'s answer with the read it was made from (a gate logs the read's reaching and unseen heroes). */
-function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Threat.Read } {
+function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Threat.Read; i: Safe.Inputs } {
     const horizon = opts?.horizon ?? (opts?.held === true || opts?.hold === true ? Threat.SETTINGS.StayHorizon : SETTINGS.FreshHorizon);
     const from = opts?.from ?? bot.GetLocation();
     const r = frameReader(bot, horizon, opts?.engaged ?? true, opts?.exclude)(from, place);
-    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false });
+    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false, draws: opts?.draws });
     const a = Safe.Decide(i);
     const who = opts?.who;
     if (who !== undefined && cutOn() && bot.IsAlive()) {
         const [ok, err] = pcall(log, bot, who, place, i, a);
         if (!ok) Telemetry.Failed("SafeGather.At", err);
     }
-    return { a, r };
+    return { a, r, i };
+}
+
+/** `At` asked once for both bars of one place: without a hold (`who` logs this one) and with one, from one read. */
+export function AtBoth(bot: Unit, place: Vector, opts?: AtOpts): { plain: Safe.Answer; hold: Safe.Answer } {
+    const { a, i } = ask(bot, place, { ...opts, hold: false });
+    return { plain: a, hold: Safe.Decide({ ...i, hold: true }) };
 }
 
 /** Per game (the other caches' reset): the sampler, the lane memory, the shared readers and the shadow's cadence. */
@@ -543,6 +668,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(towerSeen)) delete towerSeen[k as unknown as number];
     for (const k of Object.keys(towerFacts)) delete towerFacts[k as unknown as number];
     for (const k of Object.keys(physSeen)) delete physSeen[k as unknown as number];
+    for (const k of Object.keys(creepSeen)) delete creepSeen[k as unknown as number];
     for (const k of Object.keys(pressSeen)) delete pressSeen[k as unknown as number];
     for (const k of Object.keys(exitSeen)) delete exitSeen[k as unknown as number];
     for (const k of Object.keys(cutState)) delete cutState[k];
