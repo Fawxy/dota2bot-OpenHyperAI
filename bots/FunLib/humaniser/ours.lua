@@ -97,6 +97,7 @@ ____exports.DEFAULTS = {
     Sustain = true,
     ExitWindow = true,
     IdleBar = true,
+    TowerRead = true,
     TradeSwing = true,
     TradeHold = true
 }

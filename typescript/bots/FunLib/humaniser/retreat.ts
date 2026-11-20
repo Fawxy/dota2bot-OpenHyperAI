@@ -537,7 +537,7 @@ export function LeaveWhy(bot: Unit, holds: (this: void) => "join" | "hitback" | 
     const a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
     if (TowerOnUs(bot) !== undefined) return { why: "tower", a };
     const home = RetreatState.Home(bot);
-    if (home === undefined ? hpShare(bot) < SETTINGS.HealFloor && a.kill === 0 : home && a.level !== "deadly") return { why: "heal", a };
+    if (home === undefined ? hpShare(bot) < SETTINGS.HealFloor && a.heroes === 0 : home && a.level !== "deadly") return { why: "heal", a };
     if (a.level !== "deadly") return { stay: "under", a };
     if (a.reason === "tower") return { why: "tower", a };
     if (a.ratio < Safe.BARS.hold) return { why: "lethal", a };

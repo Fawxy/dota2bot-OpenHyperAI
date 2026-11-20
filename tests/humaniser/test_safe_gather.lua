@@ -307,6 +307,7 @@ end
 -- a point is 844 (range 700 + radius 144); the hero's hull adds 24.
 do
 	local _, G, bot = world()
+	package.loaded["bots/FunLib/custom_loader"].Ours.TowerRead = false
 	local _, tw = next(TOWERS_W[3])
 	local function standAt(d) bot.loc = Vector(tw.loc.x - d, tw.loc.y) end
 	local function at(d, o) T = T + 0.1; local p = Vector(tw.loc.x - d, tw.loc.y); o = o or {}; o.from = p; return G.At(bot, p, o) end
@@ -338,6 +339,44 @@ do
 	tw.target = nil
 	standAt(600)
 	check("control, no tower on us: the held place in reach is not deadly, a fresh place in reach is", at(600, { held = true }).level ~= "deadly" and at(500).reason == "tower")
+end
+
+-- Ours.TowerRead: the tower is a row in the kill line from the moment it would be on us. A tower of 100 a hit, one hit a second, over the
+-- 4 s kill window; the hero stands 600 from it (inside its reach of 844 + our hull).
+do
+	local _, G, bot = world()
+	local _, tw = next(TOWERS_W[3])
+	tw.dmg, tw.spa = 100, 1
+	local function at(d, hp, o)
+		T = T + 0.1
+		bot.hp = hp
+		local p = Vector(tw.loc.x - d, tw.loc.y)
+		o = o or {}
+		o.from = p
+		return G.At(bot, p, o)
+	end
+	check("TowerDrawn: 100 a hit each second over 4 s is 400 when on us or with no creep, 200 behind two creep hits, nothing behind five",
+		G.TowerDrawn(100, 1, true, 3, 4) == 400 and G.TowerDrawn(100, 1, false, 0, 4) == 400 and G.TowerDrawn(100, 1, false, 2, 4) == 200
+			and G.TowerDrawn(100, 1, false, 5, 4) == 0)
+	check("no creep of ours under the tower: a fresh place there costs 400, safe at 1,000 HP (the flat rule refused it) and deadly by the tower at 430",
+		at(600, 1000).level == "safe" and at(600, 1000).kill == 400 and at(600, 430).reason == "tower" and at(600, 430).level == "deadly")
+	check("a place outside the tower's reach carries no row", at(1500, 100).kill == 0)
+	local creep = MakeCreep({ team = 2, x = tw.loc.x - 300, y = tw.loc.y, hp = 550 })
+	check("a full creep of ours under it outlasts the window: no row, even at 100 HP", at(600, 100).kill == 0 and at(600, 100).level == "safe")
+	creep.hp = 150
+	local low, ok = at(600, 210), at(600, 250)
+	check("the creep dying in two hits leaves 2 s of tower: 200, deadly at 210 HP fresh (bar 1.15) and safe at 250",
+		low.kill == 200 and low.level == "deadly" and low.reason == "tower" and ok.level == "safe")
+	creep.hp = 550
+	tw.target = bot
+	bot.loc = Vector(tw.loc.x - 600, tw.loc.y)
+	local on = at(600, 1000, { held = true, who = "leave" })
+	local l = safeLines("leave")
+	check("the tower targeting us counts from now whatever our creeps; the row is logged on the cut line",
+		on.kill == 400 and on.level == "safe" and field(l[#l], "dr") == "tower,400", l[#l])
+	check("held under the tower's fire: deadly by the tower under the line (390 HP against 400)", at(600, 390, { held = true }).reason == "tower")
+	bot.GetActualIncomingDamage = function(_, d) return d * 0.5 end
+	check("our armour halves the tower's hit: the row is 200", at(600, 1000, { held = true }).kill == 200)
 end
 
 -- The landing sampler is a Tick step, independent of telemetry.

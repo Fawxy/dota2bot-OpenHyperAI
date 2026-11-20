@@ -31,6 +31,14 @@ function ____exports.Decide(i, stay)
     for ____, r in ipairs(i.reach) do
         kill = kill + r.dmg
     end
+    local heroes = kill
+    local towers = 0
+    for ____, d in ipairs(i.drawn or ({})) do
+        kill = kill + d.dmg
+        if d.src == "tower" then
+            towers = towers + d.dmg
+        end
+    end
     local ratio = kill > 0 and i.hp / kill or math.huge
     local ____i_landing_0 = i.landing
     local hero = ____i_landing_0.hero
@@ -41,12 +49,13 @@ function ____exports.Decide(i, stay)
         return {
             level = level,
             kill = kill,
+            heroes = heroes,
             ratio = ratio,
             price = price,
             reason = reason
         }
     end
-    if i.towerOnMe or i.tower and not i.held then
+    if i.drawn == nil and (i.towerOnMe or i.tower and not i.held) then
         return answer("deadly", "tower")
     end
     local line = ____exports.Line(
@@ -55,7 +64,10 @@ function ____exports.Decide(i, stay)
     )
     local bar = i.hold and math.min(line, ____exports.BARS.hold) or (i.held and line or line * (1 + ____exports.BARS.slack))
     if ratio < bar then
-        return answer("deadly", "kill")
+        return answer(
+            "deadly",
+            towers > 0 and (kill == towers or i.hp / math.max(heroes, kill - towers) >= bar) and "tower" or "kill"
+        )
     end
     if i.away and i.missing >= ThreatSettings.MissingRefuse then
         return answer("deadly", "unknown")

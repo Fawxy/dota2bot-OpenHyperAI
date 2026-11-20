@@ -7,7 +7,8 @@
  * `At` is the one call a consumer makes: any place, the frame's shared reader, the answer returned. The landing sampler is a per-hero
  * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
-import { Unit, Vector } from "bots/ts_libs/dota";
+import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Safe from "bots/FunLib/humaniser/safe";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
@@ -222,6 +223,86 @@ function towerOnMe(bot: Unit, now: number, place: Vector): boolean {
     return false;
 }
 
+/**
+ * Pure: a tower's damage on us over `window` s from the moment it would be on us. `hit` is one attack's damage on us, `spa` its seconds per attack;
+ * `onUs`: it targets us now. Else it turns to us when our lane creeps in its reach are dead: `creepHits`, the attacks it needs to kill them
+ * (0: none there). Other damage on those creeps is not counted, so the turn can come sooner than read.
+ */
+export function TowerDrawn(hit: number, spa: number, onUs: boolean, creepHits: number, window: number): number {
+    const from = onUs ? 0 : creepHits * spa;
+    return (hit / math.max(spa, 0.1)) * math.max(0, window - from);
+}
+
+interface TowerFact {
+    unit: Unit;
+    at: Vector;
+    reach: number;
+    dmg: number;
+    spa: number;
+    target: Unit | undefined;
+    /** Attacks to kill our lane creeps in its reach; filled on first use. */
+    creepHits?: number;
+}
+const towerFacts: Record<number, { t: number; towers: TowerFact[] } | undefined> = {};
+const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
+
+/** The live enemy towers of `bot`'s team, read once a frame per team. */
+function enemyTowers(bot: Unit, now: number): TowerFact[] {
+    const team = bot.GetTeam();
+    let seen = towerFacts[team];
+    if (seen === undefined || seen.t !== now) {
+        seen = { t: now, towers: [] };
+        const enemy = team === Team.Radiant ? Team.Dire : Team.Radiant;
+        for (const id of TOWER_IDS) {
+            const tw = GetTower(enemy, id);
+            if (tw === undefined || tw === null || tw.IsNull() || !tw.IsAlive()) continue;
+            const spa = (tw as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
+            seen.towers.push({ unit: tw, at: tw.GetLocation(), reach: WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach), dmg: tw.GetAttackDamage(), spa: spa !== undefined && spa > 0 ? spa : 1, target: tw.GetAttackTarget() ?? undefined });
+        }
+        towerFacts[team] = seen;
+    }
+    return seen.towers;
+}
+
+function creepHitsOf(tw: TowerFact): number {
+    if (tw.creepHits !== undefined) return tw.creepHits;
+    let hits = 0;
+    for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+        if (c === null || c.IsNull() || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        if (dist(c.GetLocation(), tw.at) > tw.reach + c.GetBoundingRadius()) continue;
+        hits += math.ceil(c.GetHealth() / math.max(1, c.GetActualIncomingDamage(tw.dmg, DamageType.Physical)));
+    }
+    tw.creepHits = hits;
+    return hits;
+}
+
+const physSeen: Record<number, { t: number; f: number } | undefined> = {};
+
+/** The share of physical damage `bot` takes, read once a frame per hero (the lane spot asks about 50 places a frame). */
+function physFactor(bot: Unit, now: number): number {
+    const pid = bot.GetPlayerID();
+    const seen = physSeen[pid];
+    if (seen !== undefined && seen.t === now) return seen.f;
+    const f = bot.GetActualIncomingDamage(1000, DamageType.Physical) / 1000;
+    physSeen[pid] = { t: now, f };
+    return f;
+}
+
+/** `Safe.Inputs.drawn` for `place` (`Ours.TowerRead`): one row per live enemy tower whose reach holds it and that would be on us inside the kill window. */
+function drawnAt(bot: Unit, now: number, place: Vector): Safe.Drawn[] {
+    const out: Safe.Drawn[] = [];
+    const br = bot.GetBoundingRadius();
+    let physF: number | undefined;
+    for (const tw of enemyTowers(bot, now)) {
+        if (dist(tw.at, place) > tw.reach + br) continue;
+        physF = physF ?? physFactor(bot, now);
+        const onUs = tw.target === bot;
+        const dmg = TowerDrawn(tw.dmg * physF, tw.spa, onUs, onUs ? 0 : creepHitsOf(tw), SETTINGS.KillWindow);
+        if (dmg > 0) out.push({ src: "tower", dmg });
+    }
+    return out;
+}
+
 const pressSeen: Record<number, { t: number; on: boolean } | undefined> = {};
 
 /** An enemy hero damaged `bot` within `PressWindow`. Read once a frame per hero: the lane spot asks about 50 places a frame. */
@@ -313,10 +394,17 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         hold: typeof opts.hold === "function" ? opts.hold() : opts.hold,
         // Ours.IdleBar off: every read is judged at the pressed bar (`Safe.BARS.stay`), as before the idle bar.
         pressed: !Ours.On("IdleBar") || pressed(bot, DotaTime()),
+        drawn: Ours.On("TowerRead") ? drawnAt(bot, now, r.place) : undefined,
     };
 }
 
 // -------------------------------------------------------------------------------------------------------------- the cut
+
+function drawnField(drawn: Safe.Drawn[]): string {
+    const rows: string[] = [];
+    for (const d of drawn) rows.push(`${d.src},${n0(d.dmg)}`);
+    return rows.join(";");
+}
 
 /** The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`). */
 export function CutFields(pid: number, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer): Telemetry.Fields<"cut"> {
@@ -338,6 +426,7 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
         ["hld", b01(i.held)],
         ["hd", b01(i.hold)],
         ["prs", b01(i.pressed === true)],
+        ["dr", i.drawn === undefined ? undefined : i.drawn.length === 0 ? "-" : drawnField(i.drawn)],
         ["lv", a.level],
         ["kill", n0(a.kill)],
         ["ra", a.kill > 0 ? r2(a.ratio) : undefined],
@@ -452,6 +541,8 @@ export function ResetCache(): void {
     for (const k of Object.keys(samplers)) delete samplers[k as unknown as number];
     for (const k of Object.keys(laners)) delete laners[k as unknown as number];
     for (const k of Object.keys(towerSeen)) delete towerSeen[k as unknown as number];
+    for (const k of Object.keys(towerFacts)) delete towerFacts[k as unknown as number];
+    for (const k of Object.keys(physSeen)) delete physSeen[k as unknown as number];
     for (const k of Object.keys(pressSeen)) delete pressSeen[k as unknown as number];
     for (const k of Object.keys(exitSeen)) delete exitSeen[k as unknown as number];
     for (const k of Object.keys(cutState)) delete cutState[k];

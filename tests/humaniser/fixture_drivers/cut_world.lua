@@ -1,8 +1,8 @@
 -- Builds the world of a fixture cut from a game (tools/hlog/cut.js, ev=cut) for the cut drivers (lane_spot, threat_gate,
 -- retreat_leave): every API call the decision and its Threat.Read make is answered from the world; nothing else runs.
--- world: t, team, pid, lane, ours {Switch = bool}, bot {x, y, hp, mhp, range, hull, speed, esc, prs (1/0, absent on older cuts)},
+-- world: t, team, pid, lane, ours {Switch = bool}, bot {x, y, hp, mhp, range, hull, speed, esc, prs (1/0, absent on older cuts), arm},
 --        ce/ca [{id, x, y, hp, mhp, ranged, tgt, hull}], he [{pid, x, y, hp, range, hull, speed, atk, eng, e3, e6, ill}],
---        hu [{pid, x, y, tss, sp}], ha [{pid, x, y, range, hull, speed, ret}], towers [{team, i, x, y, range, hull, tgt}],
+--        hu [{pid, x, y, tss, sp}], ha [{pid, x, y, range, hull, speed, ret}], towers [{team, i, x, y, range, hull, dmg, spa, tgt}],
 --        vis {x0, y0, nx, ny, step, hex} (cell i, j at x0 + i step, y0 + j step; absent: all visible).
 --        A target is "b" (the bot), "h<pid>", "u<creep id>" or "-".
 -- Returns { bot, byCreep (by creep id), Threat, dist }; a driver sets what only its decision reads (a lane front, a walk's vision) after this.
@@ -33,6 +33,10 @@ function U:WasRecentlyDamagedByHero(e) return e.eng == true end
 -- The safe read's `pressed`: the cut's own flag (bot.prs), or on a cut from before it was logged a hero with the 1 s `eng`.
 function U:WasRecentlyDamagedByAnyHero() return self.heroHit == true end
 function U:WasRecentlyDamagedByTower() return self.dtower == true end
+-- Ours.TowerRead: a tower's hit (the cut_towers line's dmg and spa) on the bot through its armour (bot.arm, per mille); a creep takes it whole.
+function U:GetAttackDamage() return self.atk or 0 end
+function U:GetSecondsPerAttack() return self.spa or 1 end
+function U:GetActualIncomingDamage(d) return d * (self.arm or 1000) / 1000 end
 function U:FindItemSlot(name) return (self.esc and name == "item_tpscroll") and 0 or -1 end
 function U:GetItemInSlot() return { IsFullyCastable = function() return true end } end
 
@@ -55,6 +59,8 @@ return function(w)
 	FreshHumaniser({ Enable = true })
 	local ours = package.loaded["bots/FunLib/custom_loader"].Ours
 	for k, v in pairs(w.ours or {}) do ours[k] = v == true or v == 1 end
+	-- A cut from before the tower row carries no tower damage and no armour: it replays on the rules it was made under.
+	if (w.ours or {}).TowerRead == nil then ours.TowerRead = false end
 	T, CURRENT_TEAM = w.t, team
 	local Threat = require("bots/FunLib/humaniser/threat")
 	Threat.ResetCache()
@@ -65,7 +71,7 @@ return function(w)
 	local elsewhere = unit({ loc = Vector(0, 0), hp = 1 })
 	local b = w.bot
 	local bot = unit({ loc = Vector(b.x, b.y), team = team, hp = b.hp, mhp = b.mhp, range = b.range, hull = b.hull, speed = b.speed,
-		esc = b.esc == 1 or b.esc == true, pid = w.pid, lane = w.lane, hero = true, dtower = w.dt == 1, heroHit = b.prs == 1 })
+		esc = b.esc == 1 or b.esc == true, arm = b.arm, pid = w.pid, lane = w.lane, hero = true, dtower = w.dt == 1, heroHit = b.prs == 1 })
 	byHero[w.pid] = bot
 	local pending = {}
 	local function creep(c, t, list)
@@ -94,7 +100,7 @@ return function(w)
 	end
 	local towerAt = { [2] = {}, [3] = {} }
 	for _, t in ipairs(w.towers or {}) do
-		local u = unit({ loc = Vector(t.x, t.y), team = t.team, range = t.range, hull = t.hull, hp = 1 })
+		local u = unit({ loc = Vector(t.x, t.y), team = t.team, range = t.range, hull = t.hull, hp = 1, atk = t.dmg, spa = t.spa })
 		towerAt[t.team][t.i] = u
 		table.insert(t.team == team and world.ourTowers or world.theirTowers, u)
 		pending[#pending + 1] = { u, t.tgt }

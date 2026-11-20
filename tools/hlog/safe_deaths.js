@@ -110,6 +110,7 @@ function mapSafe(cut) {
             hp: Number(cut.hpa), hpMax: Number(cut.hpm), reach, missing: Number(cut.mi ?? 0), tower: tower === '1', towerOnMe: towerOnMe === '1',
             landing: { hero, creeps, tower: tw }, away: Number(cut.awy) === 1, held: Number(cut.hld) === 1, hold: Number(cut.hd) === 1,
             pressed: cut.prs === undefined ? undefined : Number(cut.prs) === 1,
+            drawn: cut.dr === undefined ? undefined : cut.dr === '-' ? [] : String(cut.dr).split(';').map((r) => { const [src, dmg] = r.split(','); return { src, dmg: Number(dmg) }; }),
         },
     };
 }

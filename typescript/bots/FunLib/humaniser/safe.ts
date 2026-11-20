@@ -57,14 +57,26 @@ export interface Inputs {
     hold: boolean;
     /** An enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s. Absent on a cut from before it was logged: a reacher's `hitting` stands in. */
     pressed?: boolean;
+    /**
+     * `Ours.TowerRead`: what units that are not heroes would deal us at the place over the kill window, one row a source. Present (empty when nothing
+     * draws) the rows join the kill line and the flat tower rule is not asked; absent: the rules before it.
+     */
+    drawn?: Drawn[];
+}
+
+export interface Drawn {
+    src: "tower" | "creeps";
+    dmg: number;
 }
 
 export type Level = "safe" | "costly" | "deadly";
 
 export interface Answer {
     level: Level;
-    /** Absolute damage the reachers can deal. */
+    /** Absolute damage the reachers and the `drawn` rows can deal. */
     kill: number;
+    /** The reachers' part of `kill`. */
+    heroes: number;
     /** hp / kill; `math.huge` when nothing can reach. */
     ratio: number;
     /** HP per second lost over the last 2 s, always reported. */
@@ -87,17 +99,24 @@ export function Line(pressed: boolean, stay: number = BARS.stay): number {
 export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
     let kill = 0;
     for (const r of i.reach) kill += r.dmg;
+    const heroes = kill;
+    let towers = 0;
+    for (const d of i.drawn ?? []) {
+        kill += d.dmg;
+        if (d.src === "tower") towers += d.dmg;
+    }
     const ratio = kill > 0 ? i.hp / kill : math.huge;
     const { hero, creeps, tower } = i.landing;
     const price = hero + creeps + tower;
-    const answer = (level: Level, reason: string): Answer => ({ level, kill, ratio, price, reason });
+    const answer = (level: Level, reason: string): Answer => ({ level, kill, heroes, ratio, price, reason });
 
     // A held place in tower reach is a hero last-hitting behind its creeps: only the tower targeting us leaves it (smoke 19/11: 88 tower leaves a game against 15).
-    if (i.towerOnMe || (i.tower && !i.held)) return answer("deadly", "tower");
+    if (i.drawn === undefined && (i.towerOnMe || (i.tower && !i.held))) return answer("deadly", "tower");
 
     const line = Line(Pressed(i), stay);
     const bar = i.hold ? math.min(line, BARS.hold) : i.held ? line : line * (1 + BARS.slack);
-    if (ratio < bar) return answer("deadly", "kill");
+    // The reason names the tower when the place would pass without its rows: retreat and the trade read `tower` as "the heroes are not the cause".
+    if (ratio < bar) return answer("deadly", towers > 0 && (kill === towers || i.hp / math.max(heroes, kill - towers) >= bar) ? "tower" : "kill");
 
     if (i.away && i.missing >= ThreatSettings.MissingRefuse) return answer("deadly", "unknown");
 

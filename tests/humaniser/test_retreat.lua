@@ -208,6 +208,19 @@ do
 	check("tower: why=tower, anchor the reach's edge", field(s, "why") == "tower" and field(s, "anchor") == "tower_edge", s)
 end
 
+-- Ours.TowerRead: the heal-floor leave asks whether a hero can reach us, not whether the kill line is empty. Under their tower behind a
+-- creep that dies in 3 s the tower's row is 50 (not deadly at 150 HP), and the hero still goes home to heal.
+do
+	local H, bot = world({ loc = Vector(2300, -5000), hp = 150 })
+	local tw = TOWERS_W[3][dota.Tower.Bot1]
+	tw.dmg, tw.spa = 50, 1
+	MakeCreep({ team = 2, x = tw.loc.x - 300, y = tw.loc.y, hp = 150 })
+	local out = capture(function() H.Retreat.Desire(bot) end)
+	local s = lines(out, "retreat")[1]
+	check("heal floor under their tower with nobody in reach: leaves to heal though the tower's row is in the kill line",
+		s ~= nil and field(s, "why") == "heal" and tonumber(field(s, "kill")) == 50, s)
+end
+
 -- The regen credit is for our tower's stand point, not the enemy tower's edge: a tango held leaves a tower_edge cost as it was.
 do
 	local function edgeCost(items)
@@ -530,7 +543,7 @@ do
 	check("cut: no line with the cut off", #none == 0, #none)
 	check("cut: the leave is logged once (the episode ends the reads)", #cuts == 1 and field(cuts[1], "dec") == "threat", #cuts)
 	check("cut: the line carries the answer the rule read", field(cuts[1], "lv") == "deadly" and field(cuts[1], "why") == "kill" and tonumber(field(cuts[1], "kill")) == 600 and tonumber(field(cuts[1], "ra")) == 1 and field(cuts[1], "purp") == "free", cuts[1])
-	check("cut: the bot record ends with the press flag the kill bar turned on", tostring(field(cuts[1], "b")):match(",1$") ~= nil, field(cuts[1], "b"))
+	check("cut: the bot record ends with the press flag the kill bar turned on, then the share of a physical hit our armour lets through (per mille)", tostring(field(cuts[1], "b")):match(",1,1000$") ~= nil, field(cuts[1], "b"))
 	local _, calm = run(true, 100)
 	check("cut: a place that is not deadly is logged as under", #calm >= 1 and field(calm[1], "dec") == "under" and field(calm[1], "lv") == "safe", calm[1])
 end
