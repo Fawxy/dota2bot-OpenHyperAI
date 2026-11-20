@@ -2668,9 +2668,11 @@ function ____exports.Think(bot)
         local last = bot:GetLastAttackTime()
         if onMe > 0 and last > (ep.shedSeen or last) then
             ep.shedSeen = last
-            if Deaggro.Shed(bot).ordered then
+            local shed = Deaggro.Shed(bot)
+            if shed.ordered then
                 return
             end
+            Telemetry.Event("deaggro", {{"pid", pid}, {"kind", "lane"}, {"result", shed.why}, {"n", onMe}})
         end
     end
     local plan = commits and "attack" or ____exports.AggroPlan(

@@ -1773,7 +1773,15 @@ export function Think(bot: Unit): void {
         const last = bot.GetLastAttackTime();
         if (onMe > 0 && last > (ep.shedSeen ?? last)) {
             ep.shedSeen = last;
-            if (Deaggro.Shed(bot).ordered) return;
+            const shed = Deaggro.Shed(bot);
+            if (shed.ordered) return;
+            // No order went out: the creeps stay on us for the window the read priced them at when it found no shed target.
+            Telemetry.Event("deaggro", [
+                ["pid", pid],
+                ["kind", "lane"],
+                ["result", shed.why],
+                ["n", onMe],
+            ]);
         }
     }
     // With the swing rule Decide has already judged the creeps near the swing place: the order goes out as answered, and there is no step out.
