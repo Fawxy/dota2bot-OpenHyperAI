@@ -56,6 +56,23 @@ do
 	check("price: the floor still releases a running walk-in", C.PriceOf(t, 2, 0.3, 0.4, 300, 380, 640, false, cap).why == "hp")
 end
 
+-- Ours.ContestRead (`read`): danger is the safe read's at the pick, so the price judges only what the creep costs.
+do
+	local function read(threats, opts)
+		opts = opts or {}
+		return C.PriceOf(threats, 2, 0.3, 0.4, 300, opts.hp or 640, 640, opts.tower == true, opts.cap, true)
+	end
+	check("read: at 42% HP with no enemy covering the stand point the walk-in is allowed (the floor refused it)",
+		read({}, { hp = 270 }).ok and price({}, { hp = 270 }).why == "hp")
+	check("read: a shallow walk-in at 53% HP is allowed", read({ ranged(746) }, { hp = 340 }).ok)
+	check("read: the cost still refuses, alone or with two heroes covering", read({ ranged(546) }).why == "cost" and read({ ranged(546), ranged(560) }).why == "cost")
+	check("read: two heroes whose summed price is under the cap pass (the read, not a head count, judges them)", read({ ranged(840), ranged(842) }).ok
+		and price({ ranged(840), ranged(842) }).why == "two")
+	check("read: a creep in the tower's ring is not refused by the price", read({}, { tower = true }).ok)
+	check("read: a running walk-in is released on cost above its slack, not on the floor",
+		read({ ranged(546) }, { hp = 380, cap = C.COST_CAP * C.WALK_SLACK }).ok and read({ ranged(400) }, { cap = C.COST_CAP * C.WALK_SLACK }).why == "cost")
+end
+
 -- Threats are read where the core swings from, its reach short of the creep on its own side: a melee enemy (zone 150 + 48
 -- + 150 = 348) 300 behind the creep covers the creep but not a core swinging from 198 on the near side (498 away).
 do

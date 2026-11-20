@@ -199,16 +199,19 @@ function safeFrame(pid: number): SafeFrame {
  */
 const PICK_HORIZON = 2;
 
-function askDeadly(bot: Unit, place: Vector, held: boolean, walkIn: boolean): boolean {
+function askDeadly(bot: Unit, place: Vector, held: boolean, walkIn: boolean, onFault = false): boolean {
     const [ok, ans] = pcall(SafeGather.At, bot, place, { held, horizon: PICK_HORIZON, who: walkIn ? "pick_in" : "pick", sampled: walkIn });
     if (!ok) {
         Telemetry.Failed("PickSafe", ans);
-        return false;
+        return onFault;
     }
     return (ans as Safe.Answer).level === "deadly";
 }
 
-/** Whether the safe read calls the place where `bot` would hit this creep deadly. A fault in the read allows the creep. */
+/**
+ * Whether the safe read calls the place where `bot` would hit this creep deadly. A fault in the read allows the creep, except a
+ * walk-in under Ours.ContestRead: there the read is the only danger test, so a fault refuses it.
+ */
 function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
     const f = safeFrame(bot.GetPlayerID());
     const known = f.creeps.get(t.creep);
@@ -219,7 +222,7 @@ function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
         if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true, false);
         deadly = f.here;
     // A last hit is a step in and out, not a place to settle: the leave bar (held), not a fresh place's (pair 19/11: 80 and 66 drops a game at the fresh bar).
-    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), true, true);
+    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), true, true, t.walk > LanePick.MAX_WALK && Contest.ReadOn());
     f.creeps.set(t.creep, deadly);
     return deadly;
 }
@@ -469,7 +472,7 @@ function cutPick(
 
 /**
  * A walk-in starts when the pick chose a last hit beyond MAX_WALK; while it runs its price is read again every scan, and a
- * price that no longer passes (a second hero came, HP fell) refuses the creep, which releases the attempt through laneFarm's
+ * price that no longer passes (the cost rose; with Ours.ContestRead off also a second hero or HP under the floor) refuses the creep, which releases the attempt through laneFarm's
  * dropLost. Any other undefined pick keeps the wait, as for every core attempt.
  */
 function contestPick(bot: Unit, chosen: Lib.Verbs.LaneTarget | undefined, current: Lib.Verbs.LaneTarget | undefined): Lib.Verbs.LaneTarget | undefined {
