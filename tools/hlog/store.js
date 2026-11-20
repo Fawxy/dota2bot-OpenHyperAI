@@ -8,7 +8,7 @@
 //   errors      game_id, t, text (Lua errors as parse.js counts them)
 //   columns     each column's kind: num while every value seen is a number, else text. Metadata only: each value keeps its
 //               own type (integers INTEGER, other numbers REAL, the rest TEXT), so a view's `x > 0` means what it says on
-//               every row; a declared text kind is the exception and stores numbers as String(v)
+//               every row; a declared text column (declared = 1) is the exception and stores numbers as String(v)
 // Views in views/*.sql hold derived logic once (an analyser's rules); they are TEMP views, made per connection.
 'use strict';
 
@@ -41,8 +41,9 @@ function include(sql, seen = []) {
         return include(fs.readFileSync(file, 'utf8'), [...seen, name]);
     });
 }
-// Bump when ingest changes what it writes or the tables' shape: the store is emptied and rebuilt on its next open.
-const INGEST_VERSION = 6;
+// Bump when ingest changes what it writes or the tables' shape (or a declared text column must become a number again):
+// the next open starts a new, empty store file.
+const INGEST_VERSION = 7;
 
 // Declared column kinds from the typed event declaration (gen_events.js writes events.json); absent file means inference only.
 const DECLARED = (() => {
@@ -51,18 +52,12 @@ const DECLARED = (() => {
     return JSON.parse(text).kinds || {};
 })();
 
-// The store's version is INGEST_VERSION plus a hash of the declared kinds, so a changed declaration rebuilds the store.
-const kindsHash = kinds => {
-    let h = 0;
-    for (const ch of JSON.stringify(kinds)) h = (h * 31 + ch.charCodeAt(0)) % 99991;
-    return h;
-};
-const versionOf = kinds => INGEST_VERSION * 100000 + kindsHash(kinds);
-
-// One store file per store version: worktrees whose events.json differs would otherwise empty and rebuild one shared store
-// in turn (about a minute each on the full log bank) while other sessions read it half full.
-const STORE_RE = /^hlog-\d+\.sqlite$/;
-const storeFile = (version = versionOf(DECLARED), dir = HOME) => path.join(dir, `hlog-${version}.sqlite`);
+// One store per ingest version, shared by every worktree: a declaration change (most events.json edits) is applied in place
+// by `applyDeclared`, and a declared text column stays text, so the store holds the union of the worktrees' declarations
+// whatever order they open it in. Keying the file on the declaration instead rebuilt the whole log bank (~12 min on 11 GB)
+// about a dozen times a day.
+const STORE_RE = /^hlog-(\d+)\.sqlite$/;
+const storeFile = (version = INGEST_VERSION, dir = HOME) => path.join(dir, `hlog-${version}.sqlite`);
 const DB = storeFile();
 const STALE_MS = 7 * 24 * 3600 * 1000;
 
@@ -99,14 +94,20 @@ const bind = v => (typeof v === 'number' && Number.isSafeInteger(v) ? BigInt(v) 
 class Store {
     /** `kinds` ({table: {col: 'num' | 'text'}}) overrides inference; the default is the typed event declaration (events.json). */
     constructor(file = DB, { kinds = DECLARED, views = VIEWS } = {}) {
+        const named = file !== ':memory:' && path.basename(file).match(STORE_RE);
+        // Opening another version's store would empty it: an old store is read with sqlite3, never rebuilt by mistake.
+        if (named && Number(named[1]) !== INGEST_VERSION) {
+            throw new Error(`${path.basename(file)} is the store of another ingest version (this hlog writes ${path.basename(storeFile())}); read it with sqlite3`);
+        }
         if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
         this.db = new DatabaseSync(file, { timeout: BUSY_MS });
         this.declared = kinds;
         this.viewsDir = views;
         this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL');
         const version = this.db.prepare('PRAGMA user_version').get().user_version;
-        if (version !== versionOf(kinds)) this.rebuild();
+        if (version !== INGEST_VERSION) this.rebuild();
         this.loadKinds();
+        this.applyDeclared();
         this.refreshViews();
         if (file !== ':memory:' && STORE_RE.test(path.basename(file))) {
             // Housekeeping only: a store that cannot be touched or swept (a race with another sweep, a locked file) still opens.
@@ -121,7 +122,7 @@ class Store {
     rebuild() {
         this.db.exec('BEGIN IMMEDIATE');
         // Two processes can open a new store file at once: the second must not empty what the first has built since.
-        if (this.db.prepare('PRAGMA user_version').get().user_version === versionOf(this.declared)) {
+        if (this.db.prepare('PRAGMA user_version').get().user_version === INGEST_VERSION) {
             this.db.exec('COMMIT');
             return;
         }
@@ -134,16 +135,74 @@ class Store {
                 human_pos INTEGER, stop_t REAL, min_t REAL, max_t REAL, ended INTEGER, bots INTEGER, events INTEGER,
                 errors INTEGER, squelches INTEGER, error_squelches INTEGER, label TEXT);
             CREATE TABLE errors (game_id INTEGER, t REAL, text TEXT);
-            CREATE TABLE columns (tbl TEXT, col TEXT, kind TEXT, PRIMARY KEY (tbl, col));
+            CREATE TABLE columns (tbl TEXT, col TEXT, kind TEXT, declared INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (tbl, col));
             CREATE INDEX games_log ON games (log_id);
             CREATE INDEX errors_game ON errors (game_id);
-            PRAGMA user_version = ${versionOf(this.declared)};
+            PRAGMA user_version = ${INGEST_VERSION};
             COMMIT`);
     }
 
     loadKinds() {
         this.kinds = new Map();
-        for (const r of this.db.prepare('SELECT tbl, col, kind FROM columns').all()) this.colsOf(r.tbl).set(r.col, r.kind);
+        this.texts = new Set(); // `${tbl}.${col}` of declared text columns
+        for (const r of this.db.prepare('SELECT tbl, col, kind, declared FROM columns').all()) {
+            this.colsOf(r.tbl).set(r.col, r.kind);
+            if (r.declared) this.texts.add(`${r.tbl}.${r.col}`.toLowerCase());
+        }
+    }
+
+    /** Declared columns of the tables already stored that this store does not hold as declared yet. */
+    undeclared() {
+        const out = [];
+        for (const [tbl, cols] of Object.entries(this.declared)) {
+            if (!this.kinds.has(tbl)) continue; // created with its declared columns on its first write
+            for (const [col, kind] of Object.entries(cols)) {
+                if (kind === 'text' ? !this.isText(tbl, col) : this.storedAs(tbl, col) === undefined) out.push([tbl, col, kind]);
+            }
+        }
+        return out;
+    }
+
+    /** Brings the stored tables up to this declaration in place; takes the write lock only when something is missing. */
+    applyDeclared() {
+        if (!this.undeclared().length) return;
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+            this.loadKinds(); // another process may have applied it while this one waited
+            for (const [tbl, col, kind] of this.undeclared()) this.declare(tbl, col, kind);
+            this.db.exec('COMMIT');
+        } catch (e) {
+            this.db.exec('ROLLBACK');
+            this.loadKinds();
+            throw e;
+        }
+    }
+
+    /**
+     * Adds a declared column, or turns a stored one into a declared text column: the numbers already in it become
+     * String(v), exactly what ingest writes into a declared text column. Runs inside the caller's write transaction.
+     */
+    declare(tbl, col, kind) {
+        if (kind !== 'text') return this.addColumn(tbl, col, kind);
+        if (this.isText(tbl, col)) return;
+        const stored = this.storedAs(tbl, col);
+        if (stored === undefined) this.addColumn(tbl, col, kind);
+        else {
+            const set = this.db.prepare(`UPDATE ${q(tbl)} SET ${q(stored)} = ? WHERE rowid = ?`);
+            for (const r of this.db.prepare(`SELECT rowid AS id, ${q(stored)} AS v FROM ${q(tbl)} WHERE typeof(${q(stored)}) IN ('integer', 'real')`).all()) {
+                set.run(String(r.v), r.id);
+            }
+        }
+        this.setKind(tbl, stored ?? col, 'text', true);
+    }
+
+    /** The stored column `col` names: SQLite column names ignore case, so one that differs only in case is the same column. */
+    storedAs(tbl, col) {
+        return [...this.colsOf(tbl).keys()].find(c => c.toLowerCase() === col.toLowerCase());
+    }
+
+    isText(tbl, col) {
+        return this.texts.has(`${tbl}.${col}`.toLowerCase());
     }
 
     colsOf(tbl) {
@@ -169,7 +228,7 @@ class Store {
         if (!rows.length) return;
         if (!this.kinds.has(tbl)) this.db.exec(`CREATE TABLE IF NOT EXISTS ${q(tbl)} (${keys.map(q).join(', ')})`);
         // Declared columns exist from the first write, so a view over a field no line has carried yet reads NULL, not an error.
-        for (const [c, kind] of Object.entries(this.declared[tbl] || {})) if (!keys.includes(c)) this.addColumn(tbl, c, kind);
+        for (const [c, kind] of Object.entries(this.declared[tbl] || {})) if (!keys.includes(c)) this.declare(tbl, c, kind);
         const cols = this.colsOf(tbl);
         const names = new Map(); // field -> column
         const seen = new Map(); // column -> kind of this log's values
@@ -188,7 +247,8 @@ class Store {
         }
         const all = [...keys, ...seen.keys()];
         const fieldOf = new Map([...names].map(([k, c]) => [c, k]));
-        const asText = new Set(all.filter(c => (this.declared[tbl] || {})[c] === 'text'));
+        // Declared text by any worktree's declaration, not only this one's: a column stays text once declared.
+        const asText = new Set(all.filter(c => this.isText(tbl, c)));
         const stmt = this.db.prepare(`INSERT INTO ${q(tbl)} (${all.map(q).join(', ')}) VALUES (${all.map(() => '?').join(', ')})`);
         for (const r of rows) stmt.run(...all.map(c => {
             const v = r[fieldOf.get(c) || c];
@@ -211,9 +271,10 @@ class Store {
         this.setKind(tbl, col, kind);
     }
 
-    setKind(tbl, col, kind) {
+    setKind(tbl, col, kind, declared = this.isText(tbl, col)) {
         this.colsOf(tbl).set(col, kind);
-        this.db.prepare('INSERT OR REPLACE INTO columns VALUES (?, ?, ?)').run(tbl, col, kind);
+        if (declared) this.texts.add(`${tbl}.${col}`.toLowerCase());
+        this.db.prepare('INSERT OR REPLACE INTO columns VALUES (?, ?, ?, ?)').run(tbl, col, kind, declared ? 1 : 0);
     }
 
     tables() {
@@ -430,4 +491,4 @@ function expand(args) {
     return out;
 }
 
-module.exports = { Store, DB, LOGS, JOBS, INGEST_VERSION, labelOf, DECLARED, versionOf, storeFile, STALE_MS, q };
+module.exports = { Store, DB, LOGS, JOBS, INGEST_VERSION, labelOf, DECLARED, storeFile, STALE_MS, q };
