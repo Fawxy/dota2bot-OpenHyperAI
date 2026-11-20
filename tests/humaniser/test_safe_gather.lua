@@ -375,6 +375,8 @@ do
 	check("the tower targeting us counts from now whatever our creeps; the row is logged on the cut line",
 		on.kill == 400 and on.level == "safe" and field(l[#l], "dr") == "tower,400", l[#l])
 	check("held under the tower's fire: deadly by the tower under the line (390 HP against 400)", at(600, 390, { held = true }).reason == "tower")
+	bot.GetActualIncomingDamage = function(_, d) return d * 0.5 end
+	check("our armour halves the tower's hit: the row is 200", at(600, 1000, { held = true }).kill == 200)
 end
 
 -- The landing sampler is a Tick step, independent of telemetry.

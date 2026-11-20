@@ -239,6 +239,7 @@ interface TowerFact {
     reach: number;
     dmg: number;
     spa: number;
+    target: Unit | undefined;
     /** Attacks to kill our lane creeps in its reach; filled on first use. */
     creepHits?: number;
 }
@@ -256,7 +257,7 @@ function enemyTowers(bot: Unit, now: number): TowerFact[] {
             const tw = GetTower(enemy, id);
             if (tw === undefined || tw === null || tw.IsNull() || !tw.IsAlive()) continue;
             const spa = (tw as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
-            seen.towers.push({ unit: tw, at: tw.GetLocation(), reach: WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach), dmg: tw.GetAttackDamage(), spa: spa !== undefined && spa > 0 ? spa : 1 });
+            seen.towers.push({ unit: tw, at: tw.GetLocation(), reach: WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach), dmg: tw.GetAttackDamage(), spa: spa !== undefined && spa > 0 ? spa : 1, target: tw.GetAttackTarget() ?? undefined });
         }
         towerFacts[team] = seen;
     }
@@ -275,14 +276,28 @@ function creepHitsOf(tw: TowerFact): number {
     return hits;
 }
 
+const physSeen: Record<number, { t: number; f: number } | undefined> = {};
+
+/** The share of physical damage `bot` takes, read once a frame per hero (the lane spot asks about 50 places a frame). */
+function physFactor(bot: Unit, now: number): number {
+    const pid = bot.GetPlayerID();
+    const seen = physSeen[pid];
+    if (seen !== undefined && seen.t === now) return seen.f;
+    const f = bot.GetActualIncomingDamage(1000, DamageType.Physical) / 1000;
+    physSeen[pid] = { t: now, f };
+    return f;
+}
+
 /** `Safe.Inputs.drawn` for `place` (`Ours.TowerRead`): one row per live enemy tower whose reach holds it and that would be on us inside the kill window. */
 function drawnAt(bot: Unit, now: number, place: Vector): Safe.Drawn[] {
     const out: Safe.Drawn[] = [];
     const br = bot.GetBoundingRadius();
+    let physF: number | undefined;
     for (const tw of enemyTowers(bot, now)) {
         if (dist(tw.at, place) > tw.reach + br) continue;
-        const onUs = tw.unit.GetAttackTarget() === bot;
-        const dmg = TowerDrawn(bot.GetActualIncomingDamage(tw.dmg, DamageType.Physical), tw.spa, onUs, onUs ? 0 : creepHitsOf(tw), SETTINGS.KillWindow);
+        physF = physF ?? physFactor(bot, now);
+        const onUs = tw.target === bot;
+        const dmg = TowerDrawn(tw.dmg * physF, tw.spa, onUs, onUs ? 0 : creepHitsOf(tw), SETTINGS.KillWindow);
         if (dmg > 0) out.push({ src: "tower", dmg });
     }
     return out;
@@ -527,6 +542,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(laners)) delete laners[k as unknown as number];
     for (const k of Object.keys(towerSeen)) delete towerSeen[k as unknown as number];
     for (const k of Object.keys(towerFacts)) delete towerFacts[k as unknown as number];
+    for (const k of Object.keys(physSeen)) delete physSeen[k as unknown as number];
     for (const k of Object.keys(pressSeen)) delete pressSeen[k as unknown as number];
     for (const k of Object.keys(exitSeen)) delete exitSeen[k as unknown as number];
     for (const k of Object.keys(cutState)) delete cutState[k];

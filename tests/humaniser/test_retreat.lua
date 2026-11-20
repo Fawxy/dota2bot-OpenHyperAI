@@ -208,6 +208,19 @@ do
 	check("tower: why=tower, anchor the reach's edge", field(s, "why") == "tower" and field(s, "anchor") == "tower_edge", s)
 end
 
+-- Ours.TowerRead: the heal-floor leave asks whether a hero can reach us, not whether the kill line is empty. Under their tower behind a
+-- creep that dies in 3 s the tower's row is 50 (not deadly at 150 HP), and the hero still goes home to heal.
+do
+	local H, bot = world({ loc = Vector(2300, -5000), hp = 150 })
+	local tw = TOWERS_W[3][dota.Tower.Bot1]
+	tw.dmg, tw.spa = 50, 1
+	MakeCreep({ team = 2, x = tw.loc.x - 300, y = tw.loc.y, hp = 150 })
+	local out = capture(function() H.Retreat.Desire(bot) end)
+	local s = lines(out, "retreat")[1]
+	check("heal floor under their tower with nobody in reach: leaves to heal though the tower's row is in the kill line",
+		s ~= nil and field(s, "why") == "heal" and tonumber(field(s, "kill")) == 50, s)
+end
+
 -- The regen credit is for our tower's stand point, not the enemy tower's edge: a tango held leaves a tower_edge cost as it was.
 do
 	local function edgeCost(items)

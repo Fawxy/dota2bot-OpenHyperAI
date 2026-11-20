@@ -918,7 +918,7 @@ function ____exports.LeaveWhy(bot, holds)
     local home = RetreatState.Home(bot)
     local ____temp_9
     if home == nil then
-        ____temp_9 = hpShare(bot) < ____exports.SETTINGS.HealFloor and a.kill == 0
+        ____temp_9 = hpShare(bot) < ____exports.SETTINGS.HealFloor and a.heroes == 0
     else
         ____temp_9 = home and a.level ~= "deadly"
     end

@@ -192,7 +192,7 @@ local function __TS__ObjectKeys(obj)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local distToSegment, lanerRows, towerOnMe, enemyTowers, creepHitsOf, drawnAt, pressed, exitFrame, pressedBy, exitDamage, drawnField, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, towerFacts, TOWER_IDS, pressSeen, exitSeen, cutState, frames
+local distToSegment, lanerRows, towerOnMe, enemyTowers, creepHitsOf, physFactor, drawnAt, pressed, exitFrame, pressedBy, exitDamage, drawnField, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, towerFacts, TOWER_IDS, physSeen, pressSeen, exitSeen, cutState, frames
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local Team = ____dota.Team
@@ -373,7 +373,8 @@ function enemyTowers(bot, now)
                         at = tw:GetLocation(),
                         reach = WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach),
                         dmg = tw:GetAttackDamage(),
-                        spa = spa ~= nil and spa > 0 and spa or 1
+                        spa = spa ~= nil and spa > 0 and spa or 1,
+                        target = tw:GetAttackTarget() or nil
                     }
                     __continue46 = true
                 until true
@@ -420,20 +421,32 @@ function creepHitsOf(tw)
     tw.creepHits = hits
     return hits
 end
+function physFactor(bot, now)
+    local pid = bot:GetPlayerID()
+    local seen = physSeen[pid]
+    if seen ~= nil and seen.t == now then
+        return seen.f
+    end
+    local f = bot:GetActualIncomingDamage(1000, DamageType.Physical) / 1000
+    physSeen[pid] = {t = now, f = f}
+    return f
+end
 function drawnAt(bot, now, place)
     local out = {}
     local br = bot:GetBoundingRadius()
+    local physF
     for ____, tw in ipairs(enemyTowers(bot, now)) do
         do
-            local __continue56
+            local __continue58
             repeat
                 if dist(tw.at, place) > tw.reach + br then
-                    __continue56 = true
+                    __continue58 = true
                     break
                 end
-                local onUs = tw.unit:GetAttackTarget() == bot
+                physF = physF or physFactor(bot, now)
+                local onUs = tw.target == bot
                 local dmg = ____exports.TowerDrawn(
-                    bot:GetActualIncomingDamage(tw.dmg, DamageType.Physical),
+                    tw.dmg * physF,
                     tw.spa,
                     onUs,
                     onUs and 0 or creepHitsOf(tw),
@@ -442,9 +455,9 @@ function drawnAt(bot, now, place)
                 if dmg > 0 then
                     out[#out + 1] = {src = "tower", dmg = dmg}
                 end
-                __continue56 = true
+                __continue58 = true
             until true
-            if not __continue56 then
+            if not __continue58 then
                 break
             end
         end
@@ -841,6 +854,7 @@ TOWER_IDS = {
     Tower.Base1,
     Tower.Base2
 }
+physSeen = {}
 pressSeen = {}
 exitSeen = {}
 cutState = {}
@@ -897,6 +911,9 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(towerFacts)) do
         __TS__Delete(towerFacts, k)
+    end
+    for ____, k in ipairs(__TS__ObjectKeys(physSeen)) do
+        __TS__Delete(physSeen, k)
     end
     for ____, k in ipairs(__TS__ObjectKeys(pressSeen)) do
         __TS__Delete(pressSeen, k)
