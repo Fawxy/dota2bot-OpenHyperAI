@@ -552,4 +552,59 @@ do
 	check("cut: the stay's reason is logged", field(first, "dec") == "under", first)
 end
 
+-- Explore roll (explore.ts): the hero's held multiplier scales the kill bar in the leave rule in both directions. RANDOM_FRACTION picks the
+-- draw from Explore.SETTINGS.Mults (0 is 0.5, 0.5 is 1.0, 0.99 is 1.75). Two heroes hitting with 250 each against 600 HP are ratio 1.2 (the
+-- held bar 1.25 leaves); 230 each is 1.3 (stays).
+do
+	-- FreshHumaniser replaces the Customize.Ours table, so the switch is set on the current one.
+	local function setRoll(v) package.loaded["bots/FunLib/custom_loader"].Ours.ExploreRoll = v end
+	local function rolled(on, fraction, est)
+		local H, bot = world()
+		setRoll(on)
+		RANDOM_FRACTION = fraction
+		noHold()
+		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
+		local out = capture(function() H.Retreat.Desire(bot) end)
+		return H, bot, out
+	end
+	local _, lowBot, lowOut = rolled(true, 0, 250)
+	check("explore: mult 0.5 keeps a hero a retreat leaves at ratio 1.2", not running(lowBot), #lines(lowOut, "retreat"))
+	check("explore control: the same read with the switch off leaves", running(select(2, rolled(false, 0, 250))))
+	local _, highBot, highOut = rolled(true, 0.99, 230)
+	check("explore: mult 1.75 leaves at ratio 1.3 (why=lethal: under hold 1 x 1.75), which the plain bar keeps", running(highBot) and field(lines(highOut, "retreat")[1], "why") == "lethal", field(lines(highOut, "retreat")[1], "why"))
+	check("explore control: ratio 1.3 with the switch off stays", not running(select(2, rolled(false, 0.99, 230))))
+	local start = lines(lowOut, "roll")[1]
+	check("explore: ev=roll start carries the draw and the unrolled verdict (ratio 1.2 was deadly: base=1, bar 1.25)",
+		field(start, "ph") == "start" and tonumber(field(start, "mult")) == 0.5 and field(start, "base") == "1"
+			and tonumber(field(start, "bar")) == 1.25 and tonumber(field(start, "ratio")) == 1.2 and field(start, "pressed") == "1", start)
+
+	local H, bot = world()
+	setRoll(true)
+	RANDOM_FRACTION = 0
+	noHold()
+	local e1, e2 = enemy(10, Vector(300, -5000), 250), enemy(11, Vector(300, -4900), 250)
+	hitting(bot, e1, e2)
+	local out = capture(function()
+		H.Retreat.Desire(bot)
+		-- A new draw would now be 1.75; the hero keeps its 0.5 while the band holds.
+		RANDOM_FRACTION = 0.99
+		for _ = 1, 6 do T = T + 0.5 H.Retreat.Desire(bot) end
+	end)
+	check("explore: the roll is held across frames (one start, no new draw, no leave at ratio 1.2)", #lines(out, "roll") == 1 and not running(bot), #lines(out, "roll"))
+	e1.loc, e2.loc = Vector(4000, -5000), Vector(4000, -4900)
+	bot.hitBy = {}
+	local gone = capture(function()
+		for _ = 1, 20 do T = T + 0.5 H.Retreat.Desire(bot) end
+	end)
+	local ended = lines(gone, "roll")[1]
+	check("explore: out of band for 8 s ends the roll (why=out, held 8 s or more)", field(ended, "ph") == "end" and field(ended, "why") == "out" and tonumber(field(ended, "secs")) >= 8, ended)
+	e1.loc, e2.loc = Vector(300, -5000), Vector(300, -4900)
+	hitting(bot, e1, e2)
+	local again = capture(function() T = T + 0.5 H.Retreat.Desire(bot) end)
+	local second = lines(again, "roll")[1]
+	check("explore: the next band entry draws afresh", field(second, "ph") == "start" and tonumber(field(second, "mult")) == 1.75, second)
+	RANDOM_FRACTION = nil
+	setRoll(nil)
+end
+
 finish()

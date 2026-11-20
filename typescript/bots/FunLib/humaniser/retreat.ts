@@ -20,6 +20,7 @@ import * as Cut from "bots/FunLib/humaniser/cut";
 import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Safe from "bots/FunLib/humaniser/safe";
+import * as Explore from "bots/FunLib/humaniser/explore";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
@@ -147,6 +148,7 @@ export function ResetCache(): void {
     fountainLogged = false;
     RetreatState.ResetCache();
     SafeGather.ResetCache();
+    Explore.ResetCache();
 }
 
 function stateOf(bot: Unit): HeroState {
@@ -534,13 +536,14 @@ export interface Leave {
  * stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
  */
 export function LeaveWhy(bot: Unit, holds: (this: void) => "join" | "hitback" | undefined = () => Trade.Holds(bot)): Leave {
-    const a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
+    let a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
+    if (Explore.Observe(bot, a)) a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
     if (TowerOnUs(bot) !== undefined) return { why: "tower", a };
     const home = RetreatState.Home(bot);
     if (home === undefined ? hpShare(bot) < SETTINGS.HealFloor && a.kill === 0 : home && a.level !== "deadly") return { why: "heal", a };
     if (a.level !== "deadly") return { stay: "under", a };
     if (a.reason === "tower") return { why: "tower", a };
-    if (a.ratio < Safe.BARS.hold) return { why: "lethal", a };
+    if (a.ratio < Safe.BARS.hold * Explore.Mult(bot)) return { why: "lethal", a };
     const hold = holds();
     if (hold !== undefined) return { stay: hold, a, hold };
     return { why: "threat", a };
@@ -610,6 +613,7 @@ export function Desire(bot: Unit): number | undefined {
     }
     if (!bot.IsAlive()) {
         if (st.ep !== undefined) end(bot, st, "died");
+        Explore.Died(bot);
         return 0;
     }
     const readAtBefore = st.readAt;

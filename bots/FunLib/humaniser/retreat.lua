@@ -234,6 +234,7 @@ local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
+local Explore = require(GetScriptDirectory().."/FunLib/humaniser/explore")
 ____exports.SETTINGS = {
     Horizon = Threat.SETTINGS.StayHorizon,
     EngagedWindow = Threat.SETTINGS.StayEngaged,
@@ -283,6 +284,7 @@ function ____exports.ResetCache()
     fountainLogged = false
     RetreatState.ResetCache()
     SafeGather.ResetCache()
+    Explore.ResetCache()
 end
 local function stateOf(bot)
     local pid = bot:GetPlayerID()
@@ -912,6 +914,13 @@ function ____exports.LeaveWhy(bot, holds)
         bot:GetLocation(),
         {held = true, who = "leave"}
     )
+    if Explore.Observe(bot, a) then
+        a = SafeGather.At(
+            bot,
+            bot:GetLocation(),
+            {held = true, who = "leave"}
+        )
+    end
     if ____exports.TowerOnUs(bot) ~= nil then
         return {why = "tower", a = a}
     end
@@ -931,7 +940,7 @@ function ____exports.LeaveWhy(bot, holds)
     if a.reason == "tower" then
         return {why = "tower", a = a}
     end
-    if a.ratio < Safe.BARS.hold then
+    if a.ratio < Safe.BARS.hold * Explore.Mult(bot) then
         return {why = "lethal", a = a}
     end
     local hold = holds()
@@ -1057,6 +1066,7 @@ function ____exports.Desire(bot)
         if st.ep ~= nil then
             ____end(bot, st, "died")
         end
+        Explore.Died(bot)
         return 0
     end
     local readAtBefore = st.readAt

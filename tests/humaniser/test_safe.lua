@@ -124,4 +124,19 @@ do
 		is(S.Decide(base), "deadly", "kill") and is(S.Decide(with), "deadly", "kill")
 			and is(S.Decide(safeBase), "safe") and is(S.Decide(safeWith), "safe"))
 end
+-- Explore roll: Inputs.mult scales the bar of every row (ratio 1.2 is deadly at the held pressed bar 1.25; 1.3 is safe), and reports the unscaled bar.
+check("mult 0.5 turns a deadly kill safe, mult 1.75 turns a safe one deadly; absent or 1 changes nothing; the unscaled bar is reported",
+	is(S.Decide(inputs({ reach = { hit(630 / 1.2) }, held = true })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { hit(630 / 1.2) }, held = true, mult = 0.5 })), "safe")
+		and is(S.Decide(inputs({ reach = { hit(630 / 1.3) }, held = true })), "safe")
+		and is(S.Decide(inputs({ reach = { hit(630 / 1.3) }, held = true, mult = 1.75 })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { hit(630 / 1.2) }, held = true, mult = 1 })), "deadly", "kill")
+		and S.Decide(inputs({ reach = { hit(630 / 1.3) }, held = true, mult = 1.75 })).bar == 1.25)
+
+check("mult scales a hold's bar and the idle bar too: ratio 0.9 stays at mult 0.75 with a hold (bar 0.75), and an idle ratio 1.1 is deadly at mult 1.35",
+	is(S.Decide(inputs({ reach = { hit(630 / 0.9) }, held = true, hold = true })), "deadly", "kill")
+		and is(S.Decide(inputs({ reach = { hit(630 / 0.9) }, held = true, hold = true, mult = 0.75 })), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.1) }, held = true })), "safe")
+		and is(S.Decide(inputs({ reach = { one(630 / 1.1) }, held = true, mult = 1.35 })), "deadly", "kill"))
+
 finish()

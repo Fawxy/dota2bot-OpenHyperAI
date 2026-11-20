@@ -151,6 +151,9 @@ export const DEFAULTS = {
     /** Step 4.4, narrowed (same proposal): a hit or hit back that has opened is not asked the favoured test again until its first attack has
      *  fired. Off: asked every frame. */
     TradeHold: true,
+    /** Experiment (explore.ts): a hero our retreat owns draws a multiplier on its safe-read kill bar per fight episode and logs it as ev=roll,
+     *  so the bar is fitted from outcomes. Off: no draw, every bar as it was. */
+    ExploreRoll: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -57,6 +57,8 @@ export interface Inputs {
     hold: boolean;
     /** An enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s. Absent on a cut from before it was logged: a reacher's `hitting` stands in. */
     pressed?: boolean;
+    /** Explore roll (`Ours.ExploreRoll`): the hero's held multiplier on its kill bar, 1 or absent when none. Scales the bar of every row, a hold's too. */
+    mult?: number;
 }
 
 export type Level = "safe" | "costly" | "deadly";
@@ -70,6 +72,12 @@ export interface Answer {
     /** HP per second lost over the last 2 s, always reported. */
     price: number;
     reason: string;
+    /** The kill bar in force before `Inputs.mult` (the logged baseline of an explore roll). */
+    bar: number;
+    /** `Pressed(i)`, so a caller can tell which bar applied. */
+    pressed: boolean;
+    /** How many enemy heroes the kill line counts. */
+    reachers: number;
 }
 
 /** Whether the hero is under a hero's hits: `pressed`, or a reacher `hitting` (the shorter flag, the only one an older cut carries). */
@@ -90,13 +98,15 @@ export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
     const ratio = kill > 0 ? i.hp / kill : math.huge;
     const { hero, creeps, tower } = i.landing;
     const price = hero + creeps + tower;
-    const answer = (level: Level, reason: string): Answer => ({ level, kill, ratio, price, reason });
+    const pressed = Pressed(i);
+    const line = Line(pressed, stay);
+    const base = i.hold ? math.min(line, BARS.hold) : i.held ? line : line * (1 + BARS.slack);
+    const bar = base * (i.mult ?? 1);
+    const answer = (level: Level, reason: string): Answer => ({ level, kill, ratio, price, reason, bar: base, pressed, reachers: i.reach.length });
 
     // A held place in tower reach is a hero last-hitting behind its creeps: only the tower targeting us leaves it (smoke 19/11: 88 tower leaves a game against 15).
     if (i.towerOnMe || (i.tower && !i.held)) return answer("deadly", "tower");
 
-    const line = Line(Pressed(i), stay);
-    const bar = i.hold ? math.min(line, BARS.hold) : i.held ? line : line * (1 + BARS.slack);
     if (ratio < bar) return answer("deadly", "kill");
 
     if (i.away && i.missing >= ThreatSettings.MissingRefuse) return answer("deadly", "unknown");

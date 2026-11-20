@@ -168,6 +168,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local distToSegment, lanerRows, towerOnMe, pressed, exitFrame, pressedBy, exitDamage, cutOn, log, frameReader, ask, r1, r2, n0, b01, dist, samplers, laners, towerSeen, pressSeen, exitSeen, cutState, frames
+local Explore = require(GetScriptDirectory().."/FunLib/humaniser/explore")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
@@ -429,7 +430,8 @@ function ____exports.FromRead(bot, r, opts)
         pressed = not Ours.On("IdleBar") or pressed(
             bot,
             DotaTime()
-        )
+        ),
+        mult = Explore.Mult(bot)
     }
 end
 --- The `ev=cut kind=safe` fields (tools/hlog/cut.js reads them back into Inputs; the place is `pl`).
@@ -497,6 +499,10 @@ function ____exports.CutFields(pid, who, place, i, a)
         {
             "prs",
             b01(i.pressed == true)
+        },
+        {
+            "xm",
+            i.mult ~= nil and i.mult ~= 1 and r2(i.mult) or nil
         },
         {"lv", a.level},
         {

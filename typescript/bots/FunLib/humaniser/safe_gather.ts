@@ -8,6 +8,7 @@
  * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
 import { Unit, Vector } from "bots/ts_libs/dota";
+import * as Explore from "bots/FunLib/humaniser/explore";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Safe from "bots/FunLib/humaniser/safe";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
@@ -313,6 +314,7 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         hold: typeof opts.hold === "function" ? opts.hold() : opts.hold,
         // Ours.IdleBar off: every read is judged at the pressed bar (`Safe.BARS.stay`), as before the idle bar.
         pressed: !Ours.On("IdleBar") || pressed(bot, DotaTime()),
+        mult: Explore.Mult(bot),
     };
 }
 
@@ -338,6 +340,7 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
         ["hld", b01(i.held)],
         ["hd", b01(i.hold)],
         ["prs", b01(i.pressed === true)],
+        ["xm", i.mult !== undefined && i.mult !== 1 ? r2(i.mult) : undefined],
         ["lv", a.level],
         ["kill", n0(a.kill)],
         ["ra", a.kill > 0 ? r2(a.ratio) : undefined],

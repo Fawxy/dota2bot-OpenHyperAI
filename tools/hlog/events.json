@@ -1214,6 +1214,21 @@
    "x": "num",
    "y": "num"
   },
+  "roll": {
+   "ph": "str",
+   "pid": "num",
+   "mult": "num",
+   "ratio": "num",
+   "kill": "num",
+   "hp": "num",
+   "hpa": "num",
+   "pressed": "bool",
+   "reach": "num",
+   "bar": "num",
+   "base": "bool",
+   "secs": "num",
+   "why": "str"
+  },
   "tr_caution": {
    "pid": "num",
    "level": "num",
@@ -1976,6 +1991,7 @@
    "hld": "num",
    "hd": "num",
    "prs": "num",
+   "xm": "num",
    "kill": "num",
    "ra": "num",
    "pr": "num",
@@ -2495,6 +2511,10 @@
    "held": "text",
    "set": "text",
    "skip": "text"
+  },
+  "ev_roll": {
+   "ph": "text",
+   "why": "text"
   },
   "ev_tr_tp_react": {
    "mode": "text"

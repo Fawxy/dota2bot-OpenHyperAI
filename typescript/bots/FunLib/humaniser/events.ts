@@ -1696,6 +1696,28 @@ export const EVENTS = {
         x: "num",
         y: "num",
     },
+    /** Explore roll (explore.ts, `Ours.ExploreRoll`): a hero our retreat owns draws a multiplier on its safe-read kill bar when it first stands in the band (an enemy hero reaches its own place and HP / kill is under 2), holds it until 8 s out of the band or death. `start`: the roll and the read it was drawn on; `end`: how long it was held. */
+    roll: {
+        /** `start` or `end`. */
+        ph: "str",
+        pid: "num",
+        /** The drawn multiplier on the kill bar: under 1 stays longer, over 1 leaves sooner. */
+        mult: "num",
+        /** On `start`: HP over the kill line, the kill line in HP, the hero's HP share and absolute HP. */
+        ratio: "num",
+        kill: "num",
+        hp: "num",
+        hpa: "num",
+        /** On `start`: 1 when an enemy hero damaged the hero in the last 3 s (the pressed bar, else the idle bar), and the count of heroes in the kill line. */
+        pressed: "bool",
+        reach: "num",
+        /** On `start`: the kill bar without the roll, and 1 when the unrolled rule calls the place deadly by the kill line right then (ratio under bar). */
+        bar: "num",
+        base: "bool",
+        /** On `end`: seconds the roll was held, and why: `out` (8 s out of band) or `died`. */
+        secs: "num",
+        why: "str",
+    },
     tr_caution: {
         pid: "num",
         level: "num",
@@ -3116,6 +3138,8 @@ export const EVENTS = {
         hd: "num",
         /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
         prs: "num",
+        /** kind=safe: the explore roll's multiplier on the kill bar (`Ours.ExploreRoll`), absent when 1. */
+        xm: "num",
         kill: "num",
         ra: "num",
         pr: "num",

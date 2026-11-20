@@ -37,23 +37,25 @@ function ____exports.Decide(i, stay)
     local creeps = ____i_landing_0.creeps
     local tower = ____i_landing_0.tower
     local price = hero + creeps + tower
+    local pressed = ____exports.Pressed(i)
+    local line = ____exports.Line(pressed, stay)
+    local base = i.hold and math.min(line, ____exports.BARS.hold) or (i.held and line or line * (1 + ____exports.BARS.slack))
+    local bar = base * (i.mult or 1)
     local function answer(level, reason)
         return {
             level = level,
             kill = kill,
             ratio = ratio,
             price = price,
-            reason = reason
+            reason = reason,
+            bar = base,
+            pressed = pressed,
+            reachers = #i.reach
         }
     end
     if i.towerOnMe or i.tower and not i.held then
         return answer("deadly", "tower")
     end
-    local line = ____exports.Line(
-        ____exports.Pressed(i),
-        stay
-    )
-    local bar = i.hold and math.min(line, ____exports.BARS.hold) or (i.held and line or line * (1 + ____exports.BARS.slack))
     if ratio < bar then
         return answer("deadly", "kill")
     end
