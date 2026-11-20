@@ -62,6 +62,8 @@ const BARS = {
     /** The pair join acts on a target within this of us (D10: about 4 s of walking), and a play's target within our reach plus this (JOIN_WALK: about 2 s, `judgement`). */
     pairReach: 1200,
     playWalk: 600,
+    /** With `Ours.JoinHold`, a pair join acts on a target it reaches within this many seconds, and is carried this long to its first swing (`judgement`: the play's 600 at lane speed). */
+    joinWalk: 2,
     /** Our range this far over the target's makes a hit free (OUTRANGE; necrolyte on dragon knight 400 and sniper on zeus 170 are free, oracle on lion 20 and dazzle on necrolyte 75 are not; `judgement`). */
     outrange: 100,
     /**
@@ -250,6 +252,8 @@ export interface Inputs {
     swing?: { cover: number; due?: number; atk: number };
     /** `Ours.TradeHold`: a running hit or hit back is not asked the favoured test again before its first attack has fired. */
     hold?: boolean;
+    /** `Ours.JoinHold`: a pair join is judged on arrival within `joinWalk` and carried to its first attack through a lapsed pair answer. */
+    joinHold?: boolean;
     /**
      * `Ours.CreepRead` (with the swing rule and `Ours.TowerRead`): the creeps and the tower at the swing place are rows of `Cand.say`, `Cand.kc` is priced
      * to the shed, and the count gates (`towerOnMe`, `Cand.tw`, `creepsOnMe`, `wave`) are not asked.
@@ -291,6 +295,22 @@ function pairOn(i: Inputs, c: Cand): boolean {
     return i.pair !== undefined && i.pair.tgt === c.pid && i.pair.ko > i.pair.kt;
 }
 
+/**
+ * `Ours.JoinHold`: the running pair join on `c` has not yet attacked and the pair is not answering against it. A lapsed answer or one that names another
+ * target does not end it. A losing answer does, whichever hero it names (it is a verdict on the fight, `tgt` only our best target), and so does a pair
+ * answer on another hero low enough to kill: the kill is not passed up for the walk. Arrival is the gate's test.
+ */
+function heldJoin(i: Inputs, c: Cand, run: Run | undefined): boolean {
+    if (i.joinHold !== true || run === undefined || run.target !== c.pid) return false;
+    if (run.level !== "join" || run.source !== "pair" || run.landed) return false;
+    const p = i.pair;
+    if (p === undefined) return true;
+    if (p.ko <= p.kt) return false;
+    if (p.tgt === c.pid) return true;
+    const other = i.cands.find((x) => x.pid === p.tgt);
+    return !(other !== undefined && other.thp <= BARS.commitHp);
+}
+
 /** `c` is hitting us as a hit back reads it: a hit in the last second, or, for the running hit back's own target, one within its attack interval. */
 function hitsUs(c: Cand, run: Run | undefined): boolean {
     return c.hitting || (c.swung && run !== undefined && run.level === "hitback" && run.target === c.pid);
@@ -327,7 +347,9 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         return undefined;
     }
     if (level === "join") {
-        if (src === "pair" ? c.d > BARS.pairReach : c.gap > BARS.playWalk) return "no_reach";
+        if (src === "pair" && i.joinHold === true) {
+            if (!Arrives(c.gap, i.ms, math.max(0, c.away), BARS.joinWalk + (slack ? BARS.slackWalk : 0))) return "no_reach";
+        } else if (src === "pair" ? c.d > BARS.pairReach : c.gap > BARS.playWalk) return "no_reach";
         return undefined;
     }
     const sw = i.swing;
@@ -375,7 +397,9 @@ function pickFor(i: Inputs, c: Cand, run: Run | undefined): Pick {
     const killable = c.thp <= BARS.commitHp || (run !== undefined && run.level === "kill");
     if (playOn(i, c) && !fail(gate(i, c, "join", "play", run))) return { level: "join", source: "play", reason: "play", rank: 5 };
     const pair = pairOn(i, c);
-    if (pair) {
+    if (!pair && heldJoin(i, c, run)) {
+        if (!fail(gate(i, c, "join", "pair", run))) return { level: "join", source: "pair", reason: "pair", rank: 4 };
+    } else if (pair) {
         if (killable && !fail(gate(i, c, "kill", "pair", run))) return { level: "kill", source: "pair", reason: "pair", rank: 4 };
         if (!fail(gate(i, c, "join", "pair", run))) return { level: "join", source: "pair", reason: "pair", rank: 4 };
     } else if (killable && !fail(gate(i, c, "kill", undefined, run))) return { level: "kill", reason: "kill", rank: 3 };
@@ -424,6 +448,7 @@ function endOf(i: Inputs, run: Run, t: Cand | undefined): string | undefined {
     if (run.level === "kill" && run.started !== undefined && run.started > BARS.chase) return "backstop";
     const hits = run.level === "hit" || run.level === "hitback";
     if (i.hold === true && hits && !run.landed && run.started !== undefined && run.started > BARS.holdCap) return "backstop";
+    if (i.joinHold === true && run.level === "join" && run.source === "pair" && !run.landed && run.started !== undefined && run.started > BARS.joinWalk + 1) return "backstop";
     if (t === undefined) {
         if (run.level !== "kill") return "target_lost";
         const u = run.unseen;
@@ -439,7 +464,7 @@ function endOf(i: Inputs, run: Run, t: Cand | undefined): string | undefined {
         if (run.soFar > (run.landed ? BARS.losing : BARS.unlandedCap)) return "losing";
     }
     if (run.level === "join") {
-        if (run.source === "pair" && !pairOn(i, t)) return "pair_end";
+        if (run.source === "pair" && !pairOn(i, t) && !heldJoin(i, t, run)) return "pair_end";
         if (run.source === "play" && !playOn(i, t)) return "play_end";
     }
     if (run.level === "kill" && t.catch !== undefined && catchState(i, run, t.catch.ok).ended) return "cannot_catch";
@@ -1035,6 +1060,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     if (swingOn) i.swing = { cover, due: cands.length > 0 ? Laning.NextDue(bot) : undefined, atk };
     if (creepOn) i.creepRead = true;
     if (Ours.On("TradeHold")) i.hold = true;
+    if (Ours.On("JoinHold")) i.joinHold = true;
     if (i.play !== undefined && i.play.zero === undefined) {
         const pc = cands.find((c) => c.pid === i.play!.tgt);
         if (pc !== undefined) i.play.zero = FightZero(i, pc);
@@ -1230,6 +1256,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["dn", i.denyDue ? 1 : 0],
         ["swg", i.swing !== undefined ? `${round6(i.swing.cover)}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
         ["thd", i.hold === true ? 1 : undefined],
+        ["jhd", i.joinHold === true ? 1 : undefined],
         ["crd", i.creepRead === true ? 1 : undefined],
         ["pjr", i.pair !== undefined ? `${i.pair.dec}:${i.pair.tgt}:${round6(i.pair.ko)}:${round6(i.pair.kt)}` : undefined],
         ["pl", i.play !== undefined ? `${i.play.id}:${i.play.kind}:${i.play.tgt}:${i.play.zero ?? "-"}` : undefined],
