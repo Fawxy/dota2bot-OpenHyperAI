@@ -426,7 +426,7 @@ function ____exports.FromRead(bot, r, opts)
         away = ____opts_away_10,
         held = ____opts_held_11,
         hold = ____temp_1,
-        pressed = pressed(
+        pressed = not Ours.On("IdleBar") or pressed(
             bot,
             DotaTime()
         )

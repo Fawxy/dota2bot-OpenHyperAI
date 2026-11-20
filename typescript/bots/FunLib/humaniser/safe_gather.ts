@@ -311,7 +311,8 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         away: opts.away,
         held: opts.held,
         hold: typeof opts.hold === "function" ? opts.hold() : opts.hold,
-        pressed: pressed(bot, DotaTime()),
+        // Ours.IdleBar off: every read is judged at the pressed bar (`Safe.BARS.stay`), as before the idle bar.
+        pressed: !Ours.On("IdleBar") || pressed(bot, DotaTime()),
     };
 }
 

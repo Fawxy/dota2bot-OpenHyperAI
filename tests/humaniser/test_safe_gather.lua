@@ -288,6 +288,11 @@ do
 		at({ held = true }).level ~= "deadly" and at({}).level == "deadly" and at({ held = false }).level == "deadly"
 			and (function() e.perSec = 260; local l = at({ held = true }).level; e.perSec = 235; return l end)() == "deadly")
 	check("a hold stays down to 1.0, so the same fresh place is not deadly with hold", at({ hold = true }).level ~= "deadly")
+	local ours = package.loaded["bots/FunLib/custom_loader"].Ours
+	ours.IdleBar = false
+	local off = at({ held = true })
+	ours.IdleBar = nil
+	check("Ours.IdleBar off: the same held place at ratio 1.06 with nobody hitting is deadly (the 1.25 bar)", off.level == "deadly" and off.reason == "kill", off.level)
 	e.perSec = 100
 	local realReader = Threat.Reader
 	Threat.Reader = function(...)
