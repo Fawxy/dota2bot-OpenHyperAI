@@ -37,6 +37,24 @@ function end(pid: number, why: string, now: number): void {
     Telemetry.Event("roll", [["kind", "safe"], ["ph", "end"], ["pid", pid], ["mult", x.mult], ["secs", r2(now - x.start)], ["why", why]]);
 }
 
+/**
+ * Whether a held roll has run out. A running retreat keeps it alive: the leave read (`Observe`) is not asked during an episode, so without
+ * this a roll ended partway through the walk it caused and the hero drew again on its return (smoke: 13 of 45 ends, the high multipliers
+ * re-rolling in 4 s against 24 to 39 s).
+ */
+function stale(bot: Unit, x: Roll, now: number): boolean {
+    if (RetreatState.Running(bot)) {
+        x.lastInBand = now;
+        return false;
+    }
+    return now - x.lastInBand >= SETTINGS.Release;
+}
+
+/** A roll is held for `bot` (a drawn 1.0 included). */
+export function Held(bot: Unit): boolean {
+    return Ours.On("ExploreRoll") && rolls[bot.GetPlayerID()] !== undefined;
+}
+
 /** The multiplier on `bot`'s kill bar: its held roll, else 1 (switch off, no roll). A roll not refreshed for `Release` s ends here too, for a hero that stopped being read. */
 export function Mult(bot: Unit): number {
     if (!Ours.On("ExploreRoll")) return 1;
@@ -44,7 +62,7 @@ export function Mult(bot: Unit): number {
     const x = rolls[pid];
     if (x === undefined) return 1;
     const now = DotaTime();
-    if (now - x.lastInBand >= SETTINGS.Release) {
+    if (stale(bot, x, now)) {
         end(pid, "out", now);
         return 1;
     }
@@ -66,7 +84,7 @@ export function Observe(bot: Unit, a: Safe.Answer): boolean {
     const now = DotaTime();
     const x = rolls[pid];
     if (!InBand(a)) {
-        if (x !== undefined && now - x.lastInBand >= SETTINGS.Release) end(pid, "out", now);
+        if (x !== undefined && stale(bot, x, now)) end(pid, "out", now);
         return false;
     }
     if (x !== undefined) {

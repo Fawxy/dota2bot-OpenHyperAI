@@ -206,6 +206,20 @@ local function ____end(pid, why, now)
         }
     )
 end
+--- Whether a held roll has run out. A running retreat keeps it alive: the leave read (`Observe`) is not asked during an episode, so without
+-- this a roll ended partway through the walk it caused and the hero drew again on its return (smoke: 13 of 45 ends, the high multipliers
+-- re-rolling in 4 s against 24 to 39 s).
+local function stale(bot, x, now)
+    if RetreatState.Running(bot) then
+        x.lastInBand = now
+        return false
+    end
+    return now - x.lastInBand >= ____exports.SETTINGS.Release
+end
+--- A roll is held for `bot` (a drawn 1.0 included).
+function ____exports.Held(bot)
+    return Ours.On("ExploreRoll") and rolls[bot:GetPlayerID()] ~= nil
+end
 --- The multiplier on `bot`'s kill bar: its held roll, else 1 (switch off, no roll). A roll not refreshed for `Release` s ends here too, for a hero that stopped being read.
 function ____exports.Mult(bot)
     if not Ours.On("ExploreRoll") then
@@ -217,7 +231,7 @@ function ____exports.Mult(bot)
         return 1
     end
     local now = DotaTime()
-    if now - x.lastInBand >= ____exports.SETTINGS.Release then
+    if stale(bot, x, now) then
         ____end(pid, "out", now)
         return 1
     end
@@ -237,7 +251,7 @@ function ____exports.Observe(bot, a)
     local now = DotaTime()
     local x = rolls[pid]
     if not ____exports.InBand(a) then
-        if x ~= nil and now - x.lastInBand >= ____exports.SETTINGS.Release then
+        if x ~= nil and stale(bot, x, now) then
             ____end(pid, "out", now)
         end
         return false
