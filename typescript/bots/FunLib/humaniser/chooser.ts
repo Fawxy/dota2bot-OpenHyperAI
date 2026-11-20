@@ -4,7 +4,7 @@
  * when it wants to run, how it does the work and when it is finished.
  * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane), PullFarm (slice support-pull-farm) and CoreCamp (slice core-next-gold), ranked per hero by states/trip_table; a running job is never interrupted by another.
  */
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
@@ -55,9 +55,11 @@ interface Job {
     Applies(this: void, bot: Unit): boolean;
     /** The job's situation lift holds now: the table's lifted place applies (only the pull has one). */
     Lifted?(this: void, bot: Unit): boolean;
+    /** The job's own task ends it on a deadly read here, after the hero's reaction time: the chooser does not end it first. */
+    guards?: boolean;
     /** Running, or a trigger still open: lower-ranked jobs do not start. */
     Claims(this: void, bot: Unit): boolean;
-    Wants(this: void, bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean;
+    Wants(this: void, bot: Unit, blocked: (bot: Unit, ask?: StartAsk) => string | undefined, host: number): boolean;
     Running(this: void, bot: Unit): boolean;
     Step(this: void, bot: Unit, host: number): boolean;
     End(this: void, bot: Unit, why: string): void;
@@ -104,6 +106,7 @@ const PULL: Job = {
 
 const CAMP: Job = {
     name: "camp",
+    guards: true,
     Applies: (bot) => CoreCamp.Owns(bot),
     Claims: (bot) => CoreCamp.Claims(bot),
     Wants: (bot, blocked, host) => CoreCamp.Wants(bot, blocked, host),
@@ -116,6 +119,7 @@ const CAMP: Job = {
 
 const PULLFARM: Job = {
     name: "pullfarm",
+    guards: true,
     Applies: (bot) => PullFarm.Applies(bot),
     Claims: (bot) => PullFarm.Claims(bot),
     Wants: (bot, blocked, host) => PullFarm.Wants(bot, blocked, host),
@@ -174,19 +178,23 @@ function hostDesire(bot: Unit): number | undefined {
         // The waiting jobs still see their triggers, so a trigger that passes during this job is skipped naming it.
         for (const j of ranked(bot)) if (j !== cur) j.Wants(bot, () => cur.name, HOST_MODE);
         if (!cur.Wants(bot, MayStart, HOST_MODE)) return undefined;
-        if (hit(bot)) {
-            cur.NoteHit(bot);
-            if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) {
-                cur.End(bot, "retreat");
-                return undefined;
-            }
+        const struck = hit(bot);
+        if (struck) cur.NoteHit(bot);
+        // Ours.TripRead: the running job ends when staying here is deadly (the leave bar), whoever is or is not hitting; a job
+        // that guards itself asks the same read in its own task.
+        let leave: boolean;
+        if (!Ours.On("TripRead")) leave = struck && bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction;
+        else leave = cur.guards !== true && SafeGather.At(bot, bot.GetLocation(), { held: true, who: "job_run" }).level === "deadly";
+        if (leave) {
+            cur.End(bot, "retreat");
+            return undefined;
         }
         return SETTINGS.JobDesire;
     }
     const jobs = ranked(bot);
     for (let i = 0; i < jobs.length; i++) {
-        const blocked = (b: Unit): string | undefined => {
-            const why = MayStart(b);
+        const blocked = (b: Unit, ask?: StartAsk): string | undefined => {
+            const why = MayStart(b, ask);
             if (why !== undefined) return why;
             for (let k = 0; k < i; k++) if (jobs[k].Claims(b)) return jobs[k].name;
             return undefined;
@@ -268,12 +276,29 @@ function hit(bot: Unit): boolean {
     return bot.WasRecentlyDamagedByAnyHero(SETTINGS.HitWithin);
 }
 
-/** Why the hero may not leave now (the lane is under attack), else undefined: low HP, a `deadly` Safe.At answer here (`enemy-near`), hit by a
- *  hero just now, or fighting or retreating. */
-export function MayStart(bot: Unit): string | undefined {
-    if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
+/** What a job tells the start gate about its trip (`Ours.TripRead`). */
+export interface StartAsk {
+    /** The job walks into a camp's neutrals and has no price for their damage: the HP floor stays for it (the safe read counts no neutrals). */
+    neutrals?: boolean;
+    /** Where the trip goes, when no gate of the job's own reads the walk: asked as a trip (`SafeGather.TripGate`, logged as `who`). */
+    at?: Vector;
+    who?: string;
+}
+
+/**
+ * Why the hero may not leave now, else undefined. `Ours.TripRead`: a `deadly` Safe.At answer here (`enemy-near`), the walk to `ask.at` when
+ * given (`kill`, `tower`, `unknown`), the HP floor only for `ask.neutrals`, or fighting or retreating. Off: low HP, the answer here, hit by a
+ * hero just now, or fighting or retreating.
+ */
+export function MayStart(bot: Unit, ask?: StartAsk): string | undefined {
+    const read = Ours.On("TripRead");
+    if ((!read || ask?.neutrals === true) && bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.MinHpFraction) return "low-hp";
     if (SafeGather.At(bot, bot.GetLocation(), { who: "job_start" }).level === "deadly") return "enemy-near";
-    if (hit(bot)) return "hit";
+    if (read && ask?.at !== undefined) {
+        const why = SafeGather.TripGate(bot, ask.at, ask.who ?? "job_trip").why;
+        if (why !== undefined) return why;
+    }
+    if (!read && hit(bot)) return "hit";
     const mode = bot.GetActiveMode();
     if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
     return undefined;

@@ -470,7 +470,7 @@ function acting(bot: Unit): boolean {
  * Every frame while the chooser asks: true while a trip runs or as one starts. `blocked` says why a start must wait (the
  * chooser's checks, or a higher job's claim); `host` is the mode that will step the trip.
  */
-export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
+export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean; at?: Vector; who?: string }) => string | undefined, host: number): boolean {
     if (!Applies(bot)) return false;
     const pid = bot.GetPlayerID();
     // Ends timed-out plays and writes settled play lines every frame, whether a trip runs or not.
@@ -503,7 +503,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         const t = tripFor(bot, kind, spawn, host, mine);
         const leave = leaveAt(bot, t);
         if (DotaTime() < leave) return false;
-        const why = blocked(bot) ?? (acting(bot) ? "acting" : undefined);
+        const why = blocked(bot, { at: t.at, who: "rune_trip" }) ?? (acting(bot) ? "acting" : undefined);
         // The leave time moves with the bot, so it can pass the slack in one frame: name what holds it now, if anything.
         if (DotaTime() > leave + SETTINGS.StartSlack && !canStillArrive(bot, t)) return skip(gateWhy[pid] ?? why ?? "late");
         if (why !== undefined) {

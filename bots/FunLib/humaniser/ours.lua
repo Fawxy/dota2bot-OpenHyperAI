@@ -99,6 +99,7 @@ ____exports.DEFAULTS = {
     IdleBar = true,
     TowerRead = true,
     CreepRead = true,
+    TripRead = true,
     TradeSwing = true,
     TradeHold = true
 }
