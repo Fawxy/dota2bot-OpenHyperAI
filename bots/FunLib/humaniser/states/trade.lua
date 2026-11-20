@@ -422,19 +422,19 @@ function playFor(bot, here)
     end
     for ____, p in ipairs(Plays.Near(here, CAND_RADIUS)) do
         do
-            local __continue222
+            local __continue223
             repeat
                 if p.by == bot then
-                    __continue222 = true
+                    __continue223 = true
                     break
                 end
                 local r = pick(p)
                 if r ~= nil then
                     return r
                 end
-                __continue222 = true
+                __continue223 = true
             until true
-            if not __continue222 then
+            if not __continue223 then
                 break
             end
         end
@@ -687,19 +687,19 @@ function stepOutPoint(bot, creeps)
     local seen = 0
     for ____, c in ipairs(creeps) do
         do
-            local __continue353
+            local __continue354
             repeat
                 local l = c:GetLocation()
                 if l == nil then
-                    __continue353 = true
+                    __continue354 = true
                     break
                 end
                 x = x + l.x
                 y = y + l.y
                 seen = seen + 1
-                __continue353 = true
+                __continue354 = true
             until true
-            if not __continue353 then
+            if not __continue354 then
                 break
             end
         end
@@ -855,14 +855,14 @@ local function gate(i, c, level, src, run)
         math.max(0, c.away),
         BARS.walkHit + (slack and BARS.slackWalk or 0)
     )
+    local held = i.hold == true and run ~= nil and not run.landed and run.level == level
     if sw == nil then
-        if not (c.free or c.ko > c.kt or level == "hitback" and c.paid) then
+        if not held and not (c.free or c.ko > c.kt or level == "hitback" and c.paid) then
             return "unfavoured"
         end
-    else
-        if not reaches then
-            return "no_reach"
-        end
+    elseif not reaches then
+        return "no_reach"
+    elseif not held then
         local unfired = run ~= nil and not run.landed
         local ____slack_1
         if slack then
@@ -1750,6 +1750,9 @@ function ____exports.Gather(bot, rs)
             atk = attackPointOf(bot)
         }
     end
+    if Ours.On("TradeHold") then
+        i.hold = true
+    end
     if i.play ~= nil and i.play.zero == nil then
         local pc = __TS__ArrayFind(
             cands,
@@ -1953,6 +1956,7 @@ function ____exports.Cut(bot, i, a)
                 "swg",
                 i.swing ~= nil and (((tostring(round6(i.swing.cover)) .. ":") .. tostring(____or(i.swing.due ~= nil and round6(i.swing.due) or nil))) .. ":") .. tostring(round6(i.swing.atk)) or nil
             },
+            {"thd", i.hold == true and 1 or nil},
             {
                 "pjr",
                 i.pair ~= nil and (((((i.pair.dec .. ":") .. tostring(i.pair.tgt)) .. ":") .. tostring(round6(i.pair.ko))) .. ":") .. tostring(round6(i.pair.kt)) or nil
@@ -2520,19 +2524,19 @@ function ____exports.Think(bot)
     local onMe = 0
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(AGGRO_CLEAR, true)) do
         do
-            local __continue343
+            local __continue344
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue343 = true
+                    __continue344 = true
                     break
                 end
                 creeps[#creeps + 1] = c
                 if c:GetAttackTarget() == bot then
                     onMe = onMe + 1
                 end
-                __continue343 = true
+                __continue344 = true
             until true
-            if not __continue343 then
+            if not __continue344 then
                 break
             end
         end

@@ -426,4 +426,26 @@ do
 	check("a hero out of reach is `no_reach`, not `aggro`, whatever the creeps", none(decide(inputs({ swing = sw(), cands = { near({ gap = 400 }) } })), "no_reach"))
 end
 
+-- Ours.TradeHold (step 4.4, narrowed): an opened hit is carried to its first swing through a flip of the favoured test.
+do
+	local function hit(i, r) return decide(inputs(merge({ cands = { unfavoured() }, run = run(r) }, i))) end
+	local offEnds = hit({})
+	local held = hit({ hold = true })
+	local swung = hit({ hold = true }, { landed = true })
+	check("an unfired running hit whose target stopped being favoured: ends unfavoured with the rule off, kept with it on, asked again once it has fired",
+		none(offEnds, "unfavoured") and offEnds.ended == "unfavoured" and held.level == "hit" and held.ended == nil
+			and none(swung, "unfavoured") and swung.ended == "unfavoured")
+	check("the hold opens nothing: a fresh unfavoured hit stays refused", none(decide(inputs({ hold = true, cands = { unfavoured() } })), "unfavoured"))
+	check("a held hit still ends on a deadly read, a due deny, the reach and the HP lost before landing",
+		none(hit({ hold = true, safe = here(deadly()) }), "kill") and none(hit({ hold = true, denyDue = true }), "deny")
+			and none(hit({ hold = true, cands = { unfavoured({ gap = 350 }) } }), "no_reach") and none(hit({ hold = true }, { soFar = 0.16 }), "losing"))
+	local hb = decide(inputs({ hold = true, cands = { unfavoured({ hitting = true, swung = true }) }, run = run() }))
+	check("a held hit is not raised to a hit back the favoured test refuses", hb.level == "hit")
+	local back = decide(inputs({ hold = true, cands = { unfavoured({ hitting = true, swung = true }) }, run = run({ level = "hitback" }) }))
+	check("an unfired hit back is held the same way", back.level == "hitback" and back.ended == nil)
+	local sw = { cover = 0, atk = 0.4 }
+	local among = decide(inputs({ hold = true, swing = sw, cands = { unfavoured({ near = 2, kc = 0.2 }) }, run = run() }))
+	check("with the swing rule on too, the held hit stays among the creeps until it fires", among.level == "hit" and among.ended == nil)
+end
+
 finish()

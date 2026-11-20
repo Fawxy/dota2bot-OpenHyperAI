@@ -5,6 +5,7 @@
 --        absent on older lines: 300), tm (1: a tower
 --        attacks us), hc (creeps attacking us), cr (creeps within 500), dn (1: a deny is due), t (the clock), role (logged only);
 --        swg "cover:due:atk" (Ours.TradeSwing's inputs; absent: the rule is off; the candidates then carry near and kc as fields 22 and 23);
+--        thd (1: Ours.TradeHold on);
 --        pjr "dec:tgt:ko:kt" (the pair answer), pl "id:kind:tgt:zero" (a running play; `-` no zero);
 --        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr (read for the eye, unused),hit,free,ko,kt,paid,tw,wlv,wra,wwhy,cok,cdm,csf,lo,sw" (`-` absent; sw: hit us within its attack interval, absent on older lines; wlv, wra, wwhy: Safe.At along the walk, away and with a hold; lo: lost, absent on older lines);
 --        run: "level:tgt:src:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:unseenCatchOk" with uat, utw, uth.
@@ -63,6 +64,7 @@ return function(fx)
 		local f = split(w.swg, ":")
 		i.swing = { cover = num(f[1]) or 0, due = num(f[2]), atk = num(f[3]) or 0 }
 	end
+	if bit(w.thd) then i.hold = true end
 	if w.pjr ~= nil and w.pjr ~= "" then
 		local f = split(w.pjr, ":")
 		i.pair = { dec = f[1], tgt = num(f[2]), ko = num(f[3]), kt = num(f[4]) }

@@ -238,6 +238,8 @@ export interface Inputs {
      * `atk`: our attack point (s).
      */
     swing?: { cover: number; due?: number; atk: number };
+    /** `Ours.TradeHold`: a running hit or hit back is not asked the favoured test again before its first attack has fired. */
+    hold?: boolean;
 }
 
 export interface How {
@@ -313,11 +315,15 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
     }
     const sw = i.swing;
     const reaches = Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0));
+    // An opened hit is carried to its first swing: the target ending its last hit (`free`) or the odds crossing their line on the walk in is not a
+    // reason to turn round. Reach, the safe read, a due deny and the HP lost before landing still end it.
+    const held = i.hold === true && run !== undefined && !run.landed && run.level === level;
     if (sw === undefined) {
-        if (!(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
-    } else {
+        if (!held && !(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
+    } else if (!reaches) {
         // Finish comes first: a hero out of reach is not asked what its swing would draw.
-        if (!reaches) return "no_reach";
+        return "no_reach";
+    } else if (!held) {
         // The swing draws the creeps near its place unless our own order's cooldown covers it: a hit is free only from a clear place, and among creeps it must
         // still pay with their damage on us counted. The cooldown covers a fresh hit only if it outlasts the walk and the swing; a running hit keeps the open's
         // answer until its first attack has fired (a creep stepping inside the radius meanwhile is not a new reason), and is asked again for each swing after.
@@ -963,6 +969,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         cands,
     };
     if (swingOn) i.swing = { cover, due: cands.length > 0 ? Laning.NextDue(bot) : undefined, atk: attackPointOf(bot) };
+    if (Ours.On("TradeHold")) i.hold = true;
     if (i.play !== undefined && i.play.zero === undefined) {
         const pc = cands.find((c) => c.pid === i.play!.tgt);
         if (pc !== undefined) i.play.zero = FightZero(i, pc);
@@ -1148,6 +1155,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["cr", i.wave],
         ["dn", i.denyDue ? 1 : 0],
         ["swg", i.swing !== undefined ? `${round6(i.swing.cover)}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
+        ["thd", i.hold === true ? 1 : undefined],
         ["pjr", i.pair !== undefined ? `${i.pair.dec}:${i.pair.tgt}:${round6(i.pair.ko)}:${round6(i.pair.kt)}` : undefined],
         ["pl", i.play !== undefined ? `${i.play.id}:${i.play.kind}:${i.play.tgt}:${i.play.zero ?? "-"}` : undefined],
         ["cd", cds.join(";")],
