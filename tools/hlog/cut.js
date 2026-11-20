@@ -240,7 +240,10 @@ const DECISIONS = {
             const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
             // An `on=ours` line (retired join-hits) is no replay: its record weighed one hero, which Decide no longer does.
             if (cut.on === 'ours') throw new Error('an on=ours join line (the retired record) is not replayable');
-            return { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            const w = { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
+            if (cut.jar !== undefined) w.ar = String(cut.jar);
+            if (cut.jav !== undefined) w.arv = Number(cut.jav);
+            return w;
         },
         check(game, cut, obs) {
             const a = obs.actions[0] || {};

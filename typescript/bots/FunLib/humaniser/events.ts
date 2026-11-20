@@ -2903,6 +2903,10 @@ export const EVENTS = {
         ko: "num",
         /** kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP. */
         kt: "num",
+        /** kind=join: each member's reach for Ours.JoinArrive, both sides, `;`-joined: pid, reach (attack range plus hull), movement speed, hull. Absent on older lines (counted whole). */
+        jar: "str",
+        /** kind=join: 1 with `Ours.JoinArrive` on (absent: off): a hero's damage counts for the share of Window left after its walk into its own range of the target. */
+        jav: "num",
         /** Older kind=join lines only (the `ours` record is retired): `hit` (an ally hit by a hero) or `ours` (an ally with a fight of its own open). */
         on: "str",
         /** Older kind=join lines only, on=ours: the enemy hero the ally's episode was on, its kind `ek`, age `oa`, whether the ally was attacking it `aa`, and `free`. */

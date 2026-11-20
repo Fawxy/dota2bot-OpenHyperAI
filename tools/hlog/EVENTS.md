@@ -1441,6 +1441,8 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `tgt` num: kind=join: our best target (the enemy our heroes do best on, by damage over its HP), -1 none.
 - `ko` num: kind=join: our best kill share, our heroes' damage on `tgt` over its HP. kind=trade (slice trade-free-cut): the bot's GetEstimatedDamageToTarget on the target over PairJoin Window, over the target's HP.
 - `kt` num: kind=join: theirs, their heroes' best kill share on one of ours. kind=trade: the target's on the bot, over the bot's HP.
+- `jar` str: kind=join: each member's reach for Ours.JoinArrive, both sides, `;`-joined: pid, reach (attack range plus hull), movement speed, hull. Absent on older lines (counted whole).
+- `jav` num: kind=join: 1 with `Ours.JoinArrive` on (absent: off): a hero's damage counts for the share of Window left after its walk into its own range of the target.
 - `on` str: Older kind=join lines only (the `ours` record is retired): `hit` (an ally hit by a hero) or `ours` (an ally with a fight of its own open).
 - `fo` num: Older kind=join lines only, on=ours: the enemy hero the ally's episode was on, its kind `ek`, age `oa`, whether the ally was attacking it `aa`, and `free`.
 - `hp` num: Older kind=trade lines (the retired core_trade.ts, D18/D19; no `lv`): CoreTrade.Decide's inputs on a fresh decision with an enemy hero in reach and no trade running. `tgt` the target; `dec` the answer: `trade`, `kill`, a respect (`tower`, `outnumbered`, `low_hp`, `behind`, `creeps`, `wave`, `burst`, `unfavoured`, `deny`) or `gap`. The bot's and the target's HP share. In today's kind=trade `hp` is our HP share and `thp` is absent (the candidates carry it).

@@ -1,0 +1,22 @@
+id: fights.join.pair-near-partner-arrive.001
+source: playtest
+ref: {note: "hand-built for oha-join-arrive (step 4.6a), no game cut"}
+status: active
+decision: pair_join
+# ours pid 0: HP 600, 500 from the target (in its reach); ours pid 1: 732 from the target, one step (60) outside its reach (0.2 s of walking)
+# theirs pid 6: HP 400; hits each of ours for 200
+world:
+  t: 120
+  pid: 0
+  ally: 0
+  ours: [{"pid":0,"x":0,"y":0,"hp":600,"mhp":600,"ret":0},{"pid":1,"x":-232,"y":0,"hp":600,"mhp":600,"ret":0}]
+  theirs: [{"pid":6,"x":500,"y":0,"hp":400,"mhp":600}]
+  dmg: [{"from":0,"to":6,"d":100},{"from":1,"to":6,"d":200},{"from":6,"to":0,"d":200},{"from":6,"to":1,"d":200}]
+  ar: "0,648,300,24;1,648,300,24;6,648,300,24"
+  arv: 1
+expect:
+  must: ["join(hero#6)"]
+  mustNot: ["out(losing)"]
+notes: >
+  Control of the far-partner case (Ours.JoinArrive): the partner is one step (60) outside its reach, 0.2 s of walking, so 0.93 of the
+  window counts and the pair still joins (our share 0.72 against theirs 0.33). The rule drops only the hero that cannot arrive.

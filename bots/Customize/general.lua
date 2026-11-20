@@ -283,6 +283,8 @@ Customize.Humaniser = {
 -- TowerRead (step 4.2a, the read half): an enemy tower is a row in the safe read's kill line (its damage on us from when it would be on
 -- us, over the kill window), not a flat deadly. Off: the flat rule.
 -- TradeHold (step 4.4): an opened hit or hit back is not asked the favoured test again before its first attack fires. Off: every frame.
+-- JoinArrive (step 4.6a): the pair join counts a hero's damage on a target for the share of the window left after its walk into its own
+-- attack range of it, both sides. Off: every hero within range counts a full window.
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
