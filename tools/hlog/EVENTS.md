@@ -1489,6 +1489,7 @@ A decision's API inputs in the frame it decided (cut.ts): `kind` names the decis
 - `rl` num: kind=sustain: HP and mana the running regen buffs still restore.
 - `ss` str: kind=sustain: the safe spot (retreat's `threat` anchor) `x,y,walk seconds,ok` (ok 0: the safe-here read there calls it deadly; read only under the kill line, else 1).
 - `dl` str: kind=sustain: regen on its way, whoever bought it (heal and mana items in the stash or on the courier) `hp,mp,eta seconds` (absent: none); `rom` 1 when a slot in 0-8 is free for one to land in.
+- `srn` str: kind=sustain: the executor's running answer (`Sustain.Inputs.run`; absent in shadow and with none running) as `kind,slot,name,seconds since its start,hp0,dur,x,y`, an absent part empty.
 - `alb` str: kind=sustain: the purchase sent with a use (rule 2's tango and ship).
 - `gd` num: kind=sustain: gold; the courier's delivery seconds when free (absent: busy or dead); the shop `name,cost,hp,mp` per `;`; seconds to the fountain and back.
 - `idl` num: kind=sustain: idle (a camp job runs), at the fountain (1/0).

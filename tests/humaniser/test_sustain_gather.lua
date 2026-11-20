@@ -186,6 +186,20 @@ check("the cut line: kind sustain, items as records, the tree walk, the safe-her
 	f.kind == "sustain" and f.hpa == 300 and f.hpm == 600 and string.find(f.it, "0,tango,3,112,0,16,0,1,0,1,1", 1, true) ~= nil
 		and f.tr == "0.5,0,0" and f.kill == 300 and f.sh == 1 and f.rc == 1 and f.nd == 2.5 and f.ak ~= nil and f.why ~= nil and f.co == 20, table.concat(dump, " "))
 
+do
+	local function srn(run)
+		local with = {}
+		for k, v in pairs(i) do with[k] = v end
+		with.run = run
+		for _, p in ipairs(G.CutFields(0, with, S.Decide(with))) do if p[1] == "srn" then return p[2] end end
+	end
+	check("the cut line carries the executor's running answer: a step-out use 1.5 s in, with its item time and place",
+		srn({ kind = "step_out_use", slot = 2, name = "flask", started = i.now - 1.5, hp0 = 280, dur = 12.5, at = { x = -500, y = -480 } })
+			== "step_out_use,2,flask,1.5,280,12.5,-500,-480", srn({ kind = "step_out_use", slot = 2, name = "flask", started = i.now - 1.5, hp0 = 280, dur = 12.5, at = { x = -500, y = -480 } }))
+	check("a walk home has no item, time or place: the parts are empty", srn({ kind = "home", started = i.now, hp0 = 300 }) == "home,,,0,300,,,", srn({ kind = "home", started = i.now, hp0 = 300 }))
+	check("control: with no running answer the field is absent", f.srn == nil)
+end
+
 -- Regen on the way is read from the game: heal and mana items in the stash (9-14) or on the courier, whoever bought them; the
 -- eta is the courier's walk to us when it is out, else to the fountain and then to us.
 do

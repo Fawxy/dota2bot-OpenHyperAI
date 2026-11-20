@@ -443,17 +443,17 @@ export function Compute(bot: Unit, role: Role, fed?: Unit, hold?: Vector): SpotI
         const at = alive(h) ? h.GetLocation() : undefined;
         if (at !== undefined) heroAt.push(at);
     }
-    const optsFor = (p: Vector, who?: string): SafeGather.AtOpts => {
+    const optsFor = (p: Vector, who?: string, sampled?: boolean): SafeGather.AtOpts => {
         let toward = false;
         for (const at of heroAt) if (len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y)) toward = true;
-        return { from: toward ? here : p, held: len(p.x - here.x, p.y - here.y) <= HELD_NEAR, who };
+        return { from: toward ? here : p, held: len(p.x - here.x, p.y - here.y) <= HELD_NEAR, who, sampled };
     };
     const answerAt = (p: Vector): Safe.Answer => {
         const key = keyOf(p);
         let a = answers[key];
         if (a === undefined) {
             const t0 = Telemetry.DeepT0();
-            a = SafeGather.At(bot, p, optsFor(p));
+            a = SafeGather.At(bot, p, optsFor(p, "spot_c", true));
             if (t0 !== undefined) Telemetry.DeepAdd("lane_spot.Compute:read", t0);
             answers[key] = a;
             readN++;

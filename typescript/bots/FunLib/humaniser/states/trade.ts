@@ -843,7 +843,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const now = DotaTime();
     const here = bot.GetLocation();
     const safeHit = SafeGather.At(bot, here, { held: true, hold: false, who: "trade" });
-    const safeHold = SafeGather.At(bot, here, { held: true, hold: true });
+    const safeHold = SafeGather.At(bot, here, { held: true, hold: true, who: "trade_hold" });
     let wave = 0;
     let creepsOnMe = 0;
     const swingOn = Ours.On("TradeSwing");
@@ -1058,7 +1058,7 @@ function runOf(bot: Unit, rs: RunState, seen: boolean, here: Vector): Run {
     const known = ls !== undefined;
     const lsr: LastSeen = ls ?? { vx: 0, vy: 0, physF: 1, magF: 1, hull: 0, thpAbs: 0 };
     const creepOn = Ours.On("TradeSwing") && Ours.On("CreepRead") && Ours.On("TowerRead");
-    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, exclude: rs.target });
+    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, exclude: rs.target, who: "trade_chase" });
     run.unseen = {
         at: distXY(here, place) <= bot.GetBoundingRadius() + hull + AT_PLACE,
         tower: towerCovers(bot, here, place),
@@ -1668,7 +1668,7 @@ function chanceTarget(bot: Unit, i: Inputs, a: Answer, now: number): Unit | unde
     // The roll is checked on the walk the join will be asked: with the creep read, an attack there (the tower at once, the creeps unshed).
     if (c.walk === undefined) {
         const creepOn = Ours.On("TradeSwing") && Ours.On("CreepRead") && Ours.On("TowerRead");
-        c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true }));
+        c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, who: "fight_roll" }));
     }
     return FightZero(i, c) === undefined ? t : undefined;
 }

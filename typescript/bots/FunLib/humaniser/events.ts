@@ -3086,6 +3086,8 @@ export const EVENTS = {
         /** kind=sustain: regen on its way, whoever bought it (heal and mana items in the stash or on the courier) `hp,mp,eta seconds` (absent: none); `rom` 1 when a slot in 0-8 is free for one to land in. */
         dl: "str",
         rom: "num",
+        /** kind=sustain: the executor's running answer (`Sustain.Inputs.run`; absent in shadow and with none running) as `kind,slot,name,seconds since its start,hp0,dur,x,y`, an absent part empty. */
+        srn: "str",
         /** kind=sustain: the purchase sent with a use (rule 2's tango and ship). */
         alb: "str",
         /** kind=sustain: gold; the courier's delivery seconds when free (absent: busy or dead); the shop `name,cost,hp,mp` per `;`; seconds to the fountain and back. */

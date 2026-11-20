@@ -32,6 +32,16 @@ const recs = (s) => (s === undefined || s === '' ? [] : String(s).split(';').fil
  * no `kill`) carries the old danger inputs: its `tree` and `safe` are left as that line can give them, so a replay of an
  * old log is a direction only.
  */
+/** `srn` (sustain_gather.ts RunText) back into Sustain.Run. */
+function runOf(s, now) {
+    const [kind, slot, name, age, hp0, dur, x, y] = s.split(',');
+    return {
+        kind, started: now - Number(age), hp0: Number(hp0),
+        ...(slot === '' ? {} : { slot: Number(slot) }), ...(name === '' ? {} : { name }),
+        ...(dur === '' ? {} : { dur: Number(dur) }), ...(x === '' ? {} : { at: { x: Number(x), y: Number(y) } }),
+    };
+}
+
 function inputsOf(c) {
     const items = recs(c.it).map(([slot, name, uses, hp, mp, dur, br, tr, rf, sh, rd]) => ({
         slot: +slot, name, charges: +uses, hp: +hp, mp: +mp, dur: +dur, breaks: br === '1', tree: tr === '1', refill: rf === '1', share: sh === '1',
@@ -57,6 +67,7 @@ function inputsOf(c) {
         home: num(c.ho), idle: num(c.idl) === 1, atFountain: num(c.af) === 1,
         allies: recs(c.als).map(([pid, missing, heals]) => ({ pid: +pid, missing: +missing, heals: +heals })),
         ...(c.rom === undefined ? {} : { room: num(c.rom) === 1 }),
+        ...(c.srn === undefined || c.srn === '' ? {} : { run: runOf(String(c.srn), num(c.t)) }),
     };
 }
 

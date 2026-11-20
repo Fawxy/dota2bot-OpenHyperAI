@@ -570,12 +570,16 @@ function cutOn(): boolean {
     return Telemetry.IsEnabled() && Telemetry.Get().Cut === true;
 }
 
-function log(bot: Unit, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer): void {
+/** `sampled`: the asker's place differs from ask to ask (`AtOpts.sampled`), so the cadence is kept per level: a line per level each `CutEvery`, whatever the place. */
+function log(bot: Unit, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer, sampled?: boolean): void {
     const key = `${a.level}:${a.reason}`;
-    const id = `${bot.GetPlayerID()}:${who}`;
+    const id = sampled === true ? `${bot.GetPlayerID()}:${who}:${a.level}` : `${bot.GetPlayerID()}:${who}`;
     const now = DotaTime();
     const last = cutState[id];
-    if (last !== undefined && last.key === key && (now - last.at < SETTINGS.CutEvery || (i.reach.length === 0 && a.price <= 0))) return;
+    if (last !== undefined) {
+        if (now - last.at < SETTINGS.CutEvery && (sampled === true || last.key === key)) return;
+        if (last.key === key && i.reach.length === 0 && a.price <= 0) return;
+    }
     cutState[id] = { key, at: now };
     Telemetry.Event("cut", CutFields(bot.GetPlayerID(), who, place, i, a));
 }
@@ -606,6 +610,8 @@ export interface AtOpts {
     exclude?: number;
     /** When given and cut logging is on, the answer is logged as `ev=cut kind=safe who=<who>` like a shadow, so the call replays offline. */
     who?: string;
+    /** With `who`: this asker asks many places a frame (a creep pick's walk-ins, the lane spot's candidates), so its lines are a sample, one per level each `CutEvery`, not one per place. */
+    sampled?: boolean;
     /** `Ours.CreepRead`: the act asked for is an attack on a hero from the place, which draws the enemy lane creeps near it: their row joins `drawn`. */
     draws?: boolean;
     /** With `draws`: the act does not stop to shed the creeps it draws (a kill or join), so none is priced as shed. */
@@ -656,10 +662,17 @@ function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Thre
     const a = Safe.Decide(i);
     const who = opts?.who;
     if (who !== undefined && cutOn() && bot.IsAlive()) {
-        const [ok, err] = pcall(log, bot, who, place, i, a);
+        const [ok, err] = pcall(log, bot, who, place, i, a, opts?.sampled);
         if (!ok) Telemetry.Failed("SafeGather.At", err);
     }
     return { a, r, i };
+}
+
+/** The cut line for an answer a consumer decided from its own read (`FromRead` then `Safe.Decide`), so it replays like an `At` call. */
+export function Note(bot: Unit, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer): void {
+    if (!cutOn() || !bot.IsAlive()) return;
+    const [ok, err] = pcall(log, bot, who, place, i, a);
+    if (!ok) Telemetry.Failed("SafeGather.Note", err);
 }
 
 /** `At` asked once for both bars of one place: without a hold (`who` logs this one) and with one, from one read. */
