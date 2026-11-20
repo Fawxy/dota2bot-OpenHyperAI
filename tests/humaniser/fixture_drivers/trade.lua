@@ -4,6 +4,7 @@
 --        ratio `-` when nothing reaches), n (enemy heroes within 1,600), ms (our speed;
 --        absent on older lines: 300), tm (1: a tower
 --        attacks us), hc (creeps attacking us), cr (creeps within 500), dn (1: a deny is due), t (the clock), role (logged only);
+--        swg "cover:due:atk" (Ours.TradeSwing's inputs; absent: the rule is off; the candidates then carry near and kc as fields 22 and 23);
 --        pjr "dec:tgt:ko:kt" (the pair answer), pl "id:kind:tgt:zero" (a running play; `-` no zero);
 --        cd: candidates, ";"-joined records "pid,thp,thpAbs,d,gap,away,arr (read for the eye, unused),hit,free,ko,kt,paid,tw,wlv,wra,wwhy,cok,cdm,csf,lo,sw" (`-` absent; sw: hit us within its attack interval, absent on older lines; wlv, wra, wwhy: Safe.At along the walk, away and with a hold; lo: lost, absent on older lines);
 --        run: "level:tgt:src:alive:offered:started:landed:soFar:catchFails:failAge:stepFor:chaseX:chaseY:unseenCatchOk" with uat, utw, uth.
@@ -58,6 +59,10 @@ return function(fx)
 		denyDue = bit(w.dn),
 		cands = {},
 	}
+	if w.swg ~= nil and w.swg ~= "" then
+		local f = split(w.swg, ":")
+		i.swing = { cover = num(f[1]) or 0, due = num(f[2]), atk = num(f[3]) or 0 }
+	end
 	if w.pjr ~= nil and w.pjr ~= "" then
 		local f = split(w.pjr, ":")
 		i.pair = { dec = f[1], tgt = num(f[2]), ko = num(f[3]), kt = num(f[4]) }
@@ -74,6 +79,7 @@ return function(fx)
 				paid = bit(num(f[12])), tw = bit(num(f[13])), lost = bit(num(f[20])) }
 			-- Lines from before `sw` read the 1 s flag as the stay bar too: swung is never narrower than hitting.
 			if num(f[21]) ~= nil then c.swung = bit(num(f[21])) else c.swung = c.hitting end
+			c.near, c.kc = num(f[22]), num(f[23])
 			if f[14] ~= nil and f[14] ~= "-" then c.walk = say(f[14] .. "," .. f[15] .. "," .. f[16]) end
 			if num(f[17]) ~= nil then c.catch = { ok = bit(num(f[17])), dmg = num(f[18]) or 0, first = 0, safe = num(f[19]) or 0 } end
 			table.insert(i.cands, c)

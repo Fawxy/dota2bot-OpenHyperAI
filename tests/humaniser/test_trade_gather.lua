@@ -17,7 +17,7 @@ package.loaded["bots/FunLib/humaniser/safe_gather"] = {
 		return (place.x == here.x and place.y == here.y) and world.here or world.walk
 	end,
 }
-package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() return world.deny end }
+package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() return world.deny end, NextDue = function() return world.due end }
 package.loaded["bots/FunLib/humaniser/pair_join"] = {
 	SETTINGS = { Window = 3, Keep = 1.5 },
 	For = function() return world.pair or {} end,
@@ -112,6 +112,40 @@ do
 	check("a hero that hit us is hitting and, in our creeps' aggro, paid; a due deny is read", i.cands[1].hitting == true and i.cands[1].paid == true and i.denyDue == true)
 	tower.attacking = nil
 	bot.hitMe = false
+end
+
+-- Slice trade-swing: the swing place is the stop at attack range (x 102 for a target at 300); a creep counts as near inside 550 of it or of us.
+do
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	local saved = C.Ours
+	creeps[1].attacking = nil
+	creeps[1].loc, creeps[2].loc = Vector(620, 0), Vector(1200, 0)
+	world.deny, world.paid, world.due = false, false, 1.2
+	world.share["1>6"], world.share["6>1"] = 20, 5
+	creeps[1].speed = 320
+	local i = Trade.Gather(bot)
+	local c = i.cands[1]
+	-- 518 from the place less its reach on us (150 + 24 + 24) at 320 a second: 1 s to arrive, so 2 of the 3 s at 50 damage per 1.7 s, over 80 HP.
+	local want = (50 / 1.7) * 2 / 80
+	check("a creep 620 from us and 518 from the swing place is near it and not in the wave; one 1,098 from the place is neither",
+		c.near == 1 and i.wave == 0, tostring(c.near) .. "/" .. tostring(i.wave))
+	check("its damage on us is counted from its arrival at the swing place (not at the hero), over our HP",
+		c.kc ~= nil and math.abs(c.kc - want) < 1e-6, tostring(c.kc) .. " want " .. tostring(want))
+	check("the swing inputs ride on the frame: no cooldown cover, the next last hit due in 1.2 s",
+		i.swing ~= nil and i.swing.cover == 0 and i.swing.due == 1.2)
+	bot.range = 600
+	enemy.range = 100
+	creeps[1].loc = Vector(400, 0)
+	local f = Trade.Gather(bot).cands[1]
+	check("a free hit among creeps has its damage shares read, since the creeps answer for the target", f.free == true and f.near == 1 and f.ko > 0)
+	C.Ours = { TradeSwing = false }
+	local off = Trade.Gather(bot)
+	check("switch off: no swing inputs, no creep read on the candidate, a free hit's shares are not asked",
+		off.swing == nil and off.cands[1].near == nil and off.cands[1].kc == nil and off.cands[1].ko == 0)
+	C.Ours = saved
+	bot.range, enemy.range = 150, 150
+	creeps[1].loc, creeps[2].loc = Vector(100, 0), Vector(100, 0)
+	world.due = nil
 end
 
 do
