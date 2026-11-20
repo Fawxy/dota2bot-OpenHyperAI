@@ -154,6 +154,10 @@ export const DEFAULTS = {
      *  enemy lane creeps (or our own attack order's cooldown covers it) or it still pays with their damage counted, and a fresh one only when no
      *  last hit or deny comes due before the swing lands; the executor orders the attack as answered. Off: the wave gates alone, and the
      *  executor steps out of the creeps before it orders. */
+    /** Plan after the collapse step 5, the lane group (docs/proposals/2026-11-20-after-the-collapse.md): with PickSafe and TowerRead on, a
+     *  walk-in last hit's price (states/contest) refuses only on cost; its HP floor, two-hero and tower-ring refusals go, and the safe read the
+     *  pick asks at the stand point is the danger test. Off: the price refuses on all four. */
+    ContestRead: true,
     TradeSwing: true,
     /** Step 4.4, narrowed (same proposal): a hit or hit back that has opened is not asked the favoured test again until its first attack has
      *  fired. Off: asked every frame. */

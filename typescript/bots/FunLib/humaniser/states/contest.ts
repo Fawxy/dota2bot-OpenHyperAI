@@ -77,6 +77,7 @@ export function PriceOf(
     maxHp: number,
     tower: boolean,
     cap: number = COST_CAP,
+    read = false,
 ): Price {
     let damage = 0;
     let heroes = 0;
@@ -92,11 +93,21 @@ export function PriceOf(
     }
     const cost = maxHp > 0 ? damage / maxHp : 1;
     let why: Why = "ok";
-    if (tower) why = "tower";
+    if (read) {
+        if (cost > cap) why = "cost";
+    } else if (tower) why = "tower";
     else if (heroes >= 2) why = "two";
     else if (cost > cap) why = "cost";
     else if (maxHp <= 0 || (hp - damage) / maxHp < HP_FLOOR) why = "hp";
     return { ok: why === "ok", why, cost, heroes, exposure };
+}
+
+/**
+ * Ours.ContestRead: the walk-in's danger (the HP floor, two heroes, the tower's ring) is the safe read's, asked by the pick at the
+ * stand point (Ours.PickSafe) with the tower as a priced row (Ours.TowerRead); without either of those the price keeps its own tests.
+ */
+export function ReadOn(): boolean {
+    return Ours.On("ContestRead") && Ours.On("PickSafe") && Ours.On("TowerRead");
 }
 
 /** A melee core under Ours.CoreLastHit with Ours.CoreContest on. */
@@ -183,6 +194,7 @@ export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget, running = false): P
         bot.GetMaxHealth(),
         towerAt(bot, at),
         running ? COST_CAP * WALK_SLACK : COST_CAP,
+        ReadOn(),
     );
 }
 

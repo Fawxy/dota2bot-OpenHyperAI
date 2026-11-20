@@ -278,6 +278,8 @@ Customize.Humaniser = {
 -- TradeSwing (step 4.3): with Trade on, a hit or hit back opens only from a swing place clear of enemy lane creeps (or under our
 -- own attack order's aggro cooldown), or when it still pays with their damage counted, and never when a last hit or deny comes
 -- due before the swing lands. Off: the wave gates alone, and the executor steps out of the creeps before it orders.
+-- ContestRead (plan after the collapse, step 5, the lane group): with PickSafe and TowerRead on, a walk-in last hit is refused by its own price only on
+-- cost; its HP floor, two-hero and tower-ring refusals go and the safe read at the stand point is the danger test. Off: all four.
 -- CreepRead (step 4.2b): with TowerRead and TradeSwing on, the creeps a swing at a hero draws are a row in the safe read at the swing place,
 -- priced to one shed order; the trade drops its wave, creeps-on-us and tower gates and sheds after a swing that drew a creep. Off: those gates.
 -- TowerRead (step 4.2a, the read half): an enemy tower is a row in the safe read's kill line (its damage on us from when it would be on

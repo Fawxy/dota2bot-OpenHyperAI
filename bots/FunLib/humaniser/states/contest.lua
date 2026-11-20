@@ -42,9 +42,12 @@ local SWING_DEFAULT = 0.5
 --- The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
 -- zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
 -- more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
-function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower, cap)
+function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower, cap, read)
     if cap == nil then
         cap = ____exports.COST_CAP
+    end
+    if read == nil then
+        read = false
     end
     local damage = 0
     local heroes = 0
@@ -72,7 +75,11 @@ function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower
     end
     local cost = maxHp > 0 and damage / maxHp or 1
     local why = "ok"
-    if tower then
+    if read then
+        if cost > cap then
+            why = "cost"
+        end
+    elseif tower then
         why = "tower"
     elseif heroes >= 2 then
         why = "two"
@@ -88,6 +95,11 @@ function ____exports.PriceOf(threats, walk, wait, swing, speed, hp, maxHp, tower
         heroes = heroes,
         exposure = exposure
     }
+end
+--- Ours.ContestRead: the walk-in's danger (the HP floor, two heroes, the tower's ring) is the safe read's, asked by the pick at the
+-- stand point (Ours.PickSafe) with the tower as a priced row (Ours.TowerRead); without either of those the price keeps its own tests.
+function ____exports.ReadOn()
+    return Ours.On("ContestRead") and Ours.On("PickSafe") and Ours.On("TowerRead")
 end
 --- A melee core under Ours.CoreLastHit with Ours.CoreContest on.
 function ____exports.Applies(bot)
@@ -112,20 +124,20 @@ local function nukeOn(bot, enemy, d)
         local i = 0
         while i < 6 do
             do
-                local __continue15
+                local __continue18
                 repeat
                     local a = enemy:GetAbilityInSlot(i)
                     if a == nil or a == nil or a:IsNull() or a:IsHidden() or a:IsPassive() or a:GetLevel() < 1 then
-                        __continue15 = true
+                        __continue18 = true
                         break
                     end
                     local raw = a:GetAbilityDamage()
                     if raw <= 0 or a:GetCooldownTimeRemaining() > 0 or a:GetManaCost() > mana then
-                        __continue15 = true
+                        __continue18 = true
                         break
                     end
                     if a:GetCastRange() + ____exports.NUKE_SLACK < d then
-                        __continue15 = true
+                        __continue18 = true
                         break
                     end
                     local ____this_1
@@ -136,9 +148,9 @@ local function nukeOn(bot, enemy, d)
                         best,
                         bot:GetActualIncomingDamage(raw, kind)
                     )
-                    __continue15 = true
+                    __continue18 = true
                 until true
-                if not __continue15 then
+                if not __continue18 then
                     break
                 end
             end
@@ -152,10 +164,10 @@ function ____exports.ThreatsAt(bot, at)
     local out = {}
     for ____, h in ipairs(bot:GetNearbyHeroes(QUERY, true, 0)) do
         do
-            local __continue20
+            local __continue23
             repeat
                 if not alive(h) then
-                    __continue20 = true
+                    __continue23 = true
                     break
                 end
                 local d = dist(
@@ -177,9 +189,9 @@ function ____exports.ThreatsAt(bot, at)
                     dps = dps,
                     nuke = nukeOn(bot, h, d)
                 }
-                __continue20 = true
+                __continue23 = true
             until true
-            if not __continue20 then
+            if not __continue23 then
                 break
             end
         end
@@ -244,7 +256,8 @@ function ____exports.PriceFor(bot, t, running)
         bot:GetHealth(),
         bot:GetMaxHealth(),
         towerAt(bot, at),
-        running and ____exports.COST_CAP * ____exports.WALK_SLACK or ____exports.COST_CAP
+        running and ____exports.COST_CAP * ____exports.WALK_SLACK or ____exports.COST_CAP,
+        ____exports.ReadOn()
     )
 end
 --- Up to WALKS_KEPT walk-ins per bot: a retarget picks the next creep before the attempt it replaces reports, so one walk-in
