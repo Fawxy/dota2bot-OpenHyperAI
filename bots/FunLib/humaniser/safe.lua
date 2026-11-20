@@ -39,6 +39,7 @@ function ____exports.Decide(i, stay)
             towers = towers + d.dmg
         end
     end
+    local creepsDrawn = kill - heroes - towers
     local ratio = kill > 0 and i.hp / kill or math.huge
     local ____i_landing_0 = i.landing
     local hero = ____i_landing_0.hero
@@ -64,9 +65,12 @@ function ____exports.Decide(i, stay)
     )
     local bar = i.hold and math.min(line, ____exports.BARS.hold) or (i.held and line or line * (1 + ____exports.BARS.slack))
     if ratio < bar then
+        local function passes(k)
+            return k <= 0 or i.hp / k >= bar
+        end
         return answer(
             "deadly",
-            towers > 0 and (kill == towers or i.hp / math.max(heroes, kill - towers) >= bar) and "tower" or "kill"
+            not passes(heroes) and "kill" or ((creepsDrawn <= 0 or not passes(heroes + towers)) and "tower" or "creeps")
         )
     end
     if i.away and i.missing >= ThreatSettings.MissingRefuse then

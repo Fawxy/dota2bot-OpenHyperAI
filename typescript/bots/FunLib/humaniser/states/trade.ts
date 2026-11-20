@@ -13,6 +13,7 @@ import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
 import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
 import * as Phase from "bots/FunLib/humaniser/transitions/phase";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as Deaggro from "bots/FunLib/humaniser/deaggro";
 import * as CreepAggro from "bots/FunLib/humaniser/creep_aggro";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Laning from "bots/FunLib/humaniser/states/laning";
@@ -189,6 +190,10 @@ interface Cand {
     /** With `Inputs.swing`: enemy lane creeps inside the aggro radius of the hero or of the swing place (the nearest point in attack range of it), and their damage on us over PairJoin's window, each from its arrival there, over our HP. */
     near?: number;
     kc?: number;
+    /** `Inputs.creepRead`: `Safe.At` at the swing place, held, with the creeps the swing draws (unless our order's cooldown covers it): without a hold (a hit) and with one (a hit back). Absent: out of a hit's reach, `Inputs.safe` stands in. */
+    say?: { hit: Say; hold: Say };
+    /** `Inputs.creepRead`: our lane creeps' damage on it over PairJoin's window over its HP, when it stands in their aggro (`paid`). */
+    oc?: number;
 }
 
 export interface Run {
@@ -245,6 +250,11 @@ export interface Inputs {
     swing?: { cover: number; due?: number; atk: number };
     /** `Ours.TradeHold`: a running hit or hit back is not asked the favoured test again before its first attack has fired. */
     hold?: boolean;
+    /**
+     * `Ours.CreepRead` (with the swing rule and `Ours.TowerRead`): the creeps and the tower at the swing place are rows of `Cand.say`, `Cand.kc` is priced
+     * to the shed, and the count gates (`towerOnMe`, `Cand.tw`, `creepsOnMe`, `wave`) are not asked.
+     */
+    creepRead?: boolean;
 }
 
 export interface How {
@@ -300,10 +310,12 @@ function catchState(i: Inputs, run: Run, ok: boolean): { fails: number; at?: num
 
 /** The gates of one level on one candidate in the bars table's order: the first that fails, or undefined. `run` is set for the running exchange's own target (the slack). */
 function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | undefined, run: Run | undefined): string | undefined {
-    if (i.towerOnMe || c.tw) return "tower";
+    const cr = i.creepRead === true;
+    if (!cr && (i.towerOnMe || c.tw)) return "tower";
     const walks = level === "kill" || level === "join";
     const slack = run !== undefined;
-    const say = walks && c.walk !== undefined ? c.walk : level === "hit" ? i.safe.hit : i.safe.hold;
+    const here = cr && !walks && c.say !== undefined ? c.say : i.safe;
+    const say = walks && c.walk !== undefined ? c.walk : level === "hit" ? here.hit : here.hold;
     if (say.level === "deadly") return say.reason;
     if (!walks && c.lost === true) return "lost";
     const wave = slack ? BARS.slackWave : 0;
@@ -311,7 +323,7 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         const cs = c.catch;
         if (cs === undefined) return "catch";
         if (!cs.ok && !(run !== undefined && run.level === "kill" && !catchState(i, run, false).ended)) return "catch";
-        if (i.wave > BARS.waveKill + wave) return "wave";
+        if (!cr && i.wave > BARS.waveKill + wave) return "wave";
         return undefined;
     }
     if (level === "join") {
@@ -334,15 +346,19 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         // still pay with their damage on us counted. The cooldown covers a fresh hit only if it outlasts the walk and the swing; a running hit keeps the open's
         // answer until its first attack has fired (a creep stepping inside the radius meanwhile is not a new reason), and is asked again for each swing after.
         const unfired = run !== undefined && !run.landed;
-        const covered = slack ? sw.cover > 0 : sw.cover > SwingIn(c.gap, i.ms, c.away) + sw.atk;
+        // The cooldown stops a new draw only: with the creep read, creeps already on us stay on us for the swing (the count gate's case, priced).
+        const covered = (slack ? sw.cover > 0 : sw.cover > SwingIn(c.gap, i.ms, c.away) + sw.atk) && !(cr && i.creepsOnMe > 0);
         const draws = !unfired && !covered && (c.near ?? 0) > 0;
         const theirs = c.kt + (draws ? (c.kc ?? 0) : 0);
-        if (!((c.free && !draws) || c.ko > theirs || (level === "hitback" && c.paid))) return c.free || c.ko > c.kt ? "aggro" : "unfavoured";
+        const ours = c.ko + (cr ? (c.oc ?? 0) : 0);
+        // With the creep read `paid` is our creeps' share in `ours`, weighed against theirs; without it, a pass.
+        if (!((c.free && !draws) || ours > theirs || (level === "hitback" && c.paid && !cr))) return c.free || ours > c.kt ? "aggro" : "unfavoured";
     }
     if (sw === undefined && run?.stepFor === undefined && !reaches) return "no_reach";
     if (i.denyDue) return "deny";
     // Finish: a last hit or deny that comes due before the swing lands would take the hero mid-walk. A running exchange yields to it when it is due (`deny`, laning's desire), not before.
     if (sw !== undefined && run === undefined && sw.due !== undefined && sw.due < SwingIn(c.gap, i.ms, c.away) + sw.atk) return "due";
+    if (cr) return undefined;
     if (i.creepsOnMe >= BARS.creeps) return "creeps";
     if (i.wave > BARS.waveHit + wave) return "wave";
     return undefined;
@@ -559,8 +575,10 @@ function noneReason(rest: { c: Cand; p: Pick }[], ended: string | undefined): st
 export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
     const run = i.run;
     for (const c of i.cands) {
-        if (!hitsUs(c, run) || c.lost === true || i.towerOnMe || c.tw) continue;
+        if (!hitsUs(c, run) || c.lost === true || (i.creepRead !== true && (i.towerOnMe || c.tw))) continue;
         if (i.safe.hold.level === "deadly") continue;
+        // With the creep read the hit back is judged at its swing place (their tower turns on an attacker at once): a hold the trade would refuse there is no hold.
+        if (i.creepRead === true && c.say !== undefined && c.say.hold.level === "deadly") continue;
         if (c.paid || c.free || c.ko > c.kt) return "hitback";
     }
     for (const c of i.cands) {
@@ -829,6 +847,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     let wave = 0;
     let creepsOnMe = 0;
     const swingOn = Ours.On("TradeSwing");
+    const creepOn = swingOn && Ours.On("CreepRead") && Ours.On("TowerRead");
     const creepReads: CreepRead[] = [];
     const heroes = bot.GetNearbyHeroes(CAND_RADIUS, true, BotMode.None);
     // With no enemy hero near there is no swing place to read creeps for: the wave count alone, as with the rule off.
@@ -852,6 +871,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
                 if (c.GetAttackTarget() === bot) creepsOnMe++;
             }
             const spa = (c as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
+            // With the creep read the swing place's creeps are SafeGather's (`CreepsAt`): only the counts are kept here.
+            if (creepOn) continue;
             creepReads.push({ at: l, dHere, dps: (c.GetAttackDamage() / (spa !== undefined && spa > 0 ? spa : CREEP_SPA)) * physF, reach: c.GetAttackRange() + c.GetBoundingRadius() + hull, ms: c.GetCurrentMovementSpeed() });
         }
     }
@@ -886,6 +907,9 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     let runSeen = false;
     // The walk answer logged as `trade_walk`: the running exchange's, else the first candidate asked.
     let walkLogged: boolean = false;
+    let swingLogged: boolean = false;
+    let ownCreeps: { at: Vector; dps: number }[] | undefined;
+    const atk = attackPointOf(bot);
     for (const h of heroes) {
         if (!valid(h)) continue;
         const pid = h.GetPlayerID();
@@ -907,7 +931,37 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         if (isRun) runSeen = true;
         let near: number | undefined;
         let kc: number | undefined;
-        if (swingOn) {
+        let say: Cand["say"];
+        let oc: number | undefined;
+        const paid = swung && CreepAggro.Paid(bot, h);
+        if (creepOn) {
+            // The favoured test weighs shares over PairJoin's window, so the creeps' share is read over it too.
+            const ca = SafeGather.CreepsAt(bot, stand, PairJoin.SETTINGS.Window);
+            near = ca.near;
+            kc = ca.dmg / math.max(1, bot.GetHealth());
+            if (isRun || Arrives(gap, ms, math.max(0, away), BARS.walkHit + BARS.slackWalk)) {
+                const covered = (isRun ? cover > 0 : cover > SwingIn(gap, ms, away) + atk) && creepsOnMe === 0;
+                const named: boolean = isRun || (rs === undefined && !swingLogged);
+                swingLogged = swingLogged || named;
+                const both = SafeGather.AtBoth(bot, stand, { held: true, draws: !covered, who: named ? "trade_swing" : undefined });
+                say = { hit: sayOf(both.plain), hold: sayOf(both.hold) };
+            }
+            if (paid) {
+                if (ownCreeps === undefined) {
+                    ownCreeps = [];
+                    for (const o of bot.GetNearbyLaneCreeps(1600, false) ?? []) {
+                        if (o.IsNull() || !o.IsAlive()) continue;
+                        const ol = o.GetLocation() as Vector | undefined;
+                        if (ol === undefined) continue;
+                        const spa = (o as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
+                        ownCreeps.push({ at: ol, dps: o.GetAttackDamage() / (spa !== undefined && spa > 0 ? spa : CREEP_SPA) });
+                    }
+                }
+                let dps = 0;
+                for (const o of ownCreeps) if (distXY(o.at, at) <= CREEP_RADIUS) dps += o.dps;
+                oc = (dps * (h.GetActualIncomingDamage(100, DamageType.Physical) / 100) * PairJoin.SETTINGS.Window) / math.max(1, h.GetHealth());
+            }
+        } else if (swingOn) {
             near = 0;
             let dmg = 0;
             for (const cr of creepReads) {
@@ -933,18 +987,20 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             free,
             ko: shares ? shareOn(bot, h) : 0,
             kt: shares ? shareOn(h, bot) : 0,
-            paid: swung && CreepAggro.Paid(bot, h),
+            paid,
             tw,
             lost: lostFor(bot, h),
             near,
             kc,
+            say,
+            oc,
         };
         lastHandles[pid] = h;
         const asked = thp <= BARS.commitHp || (pair !== undefined && pair.tgt === pid) || (play !== undefined && play.tgt === pid) || isRun;
         if (asked) {
             const named: boolean = isRun || (rs === undefined && !walkLogged);
             walkLogged = walkLogged || named;
-            c.walk = sayOf(SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, who: named ? "trade_walk" : undefined }));
+            c.walk = sayOf(SafeGather.At(bot, at, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, who: named ? "trade_walk" : undefined }));
         }
         if (thp <= BARS.commitHp || (isRun && rs!.level === "kill")) {
             const ls: LastSeen = {
@@ -976,7 +1032,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         play,
         cands,
     };
-    if (swingOn) i.swing = { cover, due: cands.length > 0 ? Laning.NextDue(bot) : undefined, atk: attackPointOf(bot) };
+    if (swingOn) i.swing = { cover, due: cands.length > 0 ? Laning.NextDue(bot) : undefined, atk };
+    if (creepOn) i.creepRead = true;
     if (Ours.On("TradeHold")) i.hold = true;
     if (i.play !== undefined && i.play.zero === undefined) {
         const pc = cands.find((c) => c.pid === i.play!.tgt);
@@ -1000,7 +1057,8 @@ function runOf(bot: Unit, rs: RunState, seen: boolean, here: Vector): Run {
     const hull = ls?.hull ?? 0;
     const known = ls !== undefined;
     const lsr: LastSeen = ls ?? { vx: 0, vy: 0, physF: 1, magF: 1, hull: 0, thpAbs: 0 };
-    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, exclude: rs.target });
+    const creepOn = Ours.On("TradeSwing") && Ours.On("CreepRead") && Ours.On("TowerRead");
+    const walk = SafeGather.At(bot, place, { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true, exclude: rs.target });
     run.unseen = {
         at: distXY(here, place) <= bot.GetBoundingRadius() + hull + AT_PLACE,
         tower: towerCovers(bot, here, place),
@@ -1042,10 +1100,11 @@ function playFor(bot: Unit, here: Vector): Inputs["play"] {
 
 /** Why a lane fight on this candidate is off the table, whoever starts it: their tower, the walk's answer (`kill`, `unknown`), a big wave. */
 export function FightZero(i: Inputs, c: Cand): string | undefined {
-    if (i.towerOnMe || c.tw) return "tower";
+    const cr = i.creepRead === true;
+    if (!cr && (i.towerOnMe || c.tw)) return "tower";
     const say = c.walk ?? i.safe.hold;
     if (say.level === "deadly") return say.reason;
-    if (i.wave > BARS.waveKill) return "wave";
+    if (!cr && i.wave > BARS.waveKill) return "wave";
     return undefined;
 }
 
@@ -1089,6 +1148,13 @@ function candText(c: Cand, ms: number): string {
         c.swung ? 1 : 0,
         or(c.near),
         or(c.kc !== undefined ? round6(c.kc) : undefined),
+        or(c.say?.hit.level),
+        or(c.say !== undefined ? sayRatio(c.say.hit) : undefined),
+        or(c.say?.hit.reason),
+        or(c.say?.hold.level),
+        or(c.say !== undefined ? sayRatio(c.say.hold) : undefined),
+        or(c.say?.hold.reason),
+        or(c.oc !== undefined ? round6(c.oc) : undefined),
     ].join(",");
 }
 
@@ -1164,6 +1230,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["dn", i.denyDue ? 1 : 0],
         ["swg", i.swing !== undefined ? `${round6(i.swing.cover)}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
         ["thd", i.hold === true ? 1 : undefined],
+        ["crd", i.creepRead === true ? 1 : undefined],
         ["pjr", i.pair !== undefined ? `${i.pair.dec}:${i.pair.tgt}:${round6(i.pair.ko)}:${round6(i.pair.kt)}` : undefined],
         ["pl", i.play !== undefined ? `${i.play.id}:${i.play.kind}:${i.play.tgt}:${i.play.zero ?? "-"}` : undefined],
         ["cd", cds.join(";")],
@@ -1230,6 +1297,8 @@ interface Episode {
     thpL?: number;
     /** The bot's GetLastAttackTime at the start (GameTime): an attack fired since raises it. */
     atkSeen?: number;
+    /** `Ours.CreepRead`: our last attack time when the creeps were last shed (at the start: when the exchange began), so each swing sheds once. */
+    shedSeen?: number;
     catchFails: number;
     catchFailAt?: number;
     stepSince?: number;
@@ -1596,7 +1665,11 @@ function chanceTarget(bot: Unit, i: Inputs, a: Answer, now: number): Unit | unde
     else for (const x of i.cands) if (c === undefined || x.d < c.d) c = x;
     const t = c !== undefined ? lastHandles[c.pid] : undefined;
     if (c === undefined || t === undefined || !rollDue(bot, c.pid, now)) return undefined;
-    if (c.walk === undefined) c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true }));
+    // The roll is checked on the walk the join will be asked: with the creep read, an attack there (the tower at once, the creeps unshed).
+    if (c.walk === undefined) {
+        const creepOn = Ours.On("TradeSwing") && Ours.On("CreepRead") && Ours.On("TowerRead");
+        c.walk = sayOf(SafeGather.At(bot, t.GetLocation(), { horizon: SafeGather.WalkHorizon, away: true, held: false, hold: true, draws: creepOn, commits: true }));
+    }
     return FightZero(i, c) === undefined ? t : undefined;
 }
 
@@ -1692,6 +1765,7 @@ export function Think(bot: Unit): void {
     if (ep.startedAt === undefined) {
         ep.startedAt = now;
         ep.atkSeen = bot.GetLastAttackTime();
+        ep.shedSeen = ep.atkSeen;
         PairJoin.Reopened(bot);
     }
     const creeps: Unit[] = [];
@@ -1702,6 +1776,24 @@ export function Think(bot: Unit): void {
         if (c.GetAttackTarget() === bot) onMe++;
     }
     ep.aggro = math.max(ep.aggro, onMe);
+    // The creeps a swing drew are shed by one order on a creep of ours once that swing has fired (their row in the safe read is priced to this order).
+    // A kill or join does not stop for it.
+    if (!commits && Ours.On("CreepRead") && Ours.On("TradeSwing") && Ours.On("TowerRead")) {
+        Deaggro.Watch(bot);
+        const last = bot.GetLastAttackTime();
+        if (onMe > 0 && last > (ep.shedSeen ?? last)) {
+            ep.shedSeen = last;
+            const shed = Deaggro.Shed(bot);
+            if (shed.ordered) return;
+            // No order went out: the creeps stay on us for the window the read priced them at when it found no shed target.
+            Telemetry.Event("deaggro", [
+                ["pid", pid],
+                ["kind", "lane"],
+                ["result", shed.why],
+                ["n", onMe],
+            ]);
+        }
+    }
     // With the swing rule Decide has already judged the creeps near the swing place: the order goes out as answered, and there is no step out.
     const plan = commits ? "attack" : AggroPlan(now, primedAt[pid], Ours.On("TradeSwing") ? 0 : creeps.length);
     if (plan === "step_out") {

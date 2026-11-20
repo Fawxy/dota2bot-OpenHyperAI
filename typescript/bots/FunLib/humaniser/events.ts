@@ -952,7 +952,8 @@ export const EVENTS = {
         /** Attackers on us at the order: `tower`, `lane` or `mixed`. */
         kind: "str",
         /** `ok` (no unlocked attacker still on us), `still_hit` (some still on us after ConfirmFor), `gone` (we died),
-         *  `stale` (the caller stopped watching). */
+         *  `stale` (the caller stopped watching). From the trade's shed after a swing, when no order went out: `locked`, `no_unit`, `none`, `open`
+         *  (`Deaggro.Shed`'s reason), with `n` the creeps on us. */
         result: "str",
         /** Attackers on us at the order; of them locked (we stood inside their attack range); covered by the order's target. */
         n: "num",
@@ -3007,6 +3008,8 @@ export const EVENTS = {
         swg: "str",
         /** kind=trade: 1 with `Ours.TradeHold` on (absent: off): a running hit is not asked the favoured test before its first attack fires. */
         thd: "num",
+        /** kind=trade: 1 with `Ours.CreepRead` on (absent: off): each candidate record then ends with the swing place's safe answers (level, ratio, reason without a hold, then with one; `-` when not asked) and `oc`, our creeps' share on it. */
+        crd: "num",
         /** kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
         pjr: "str",
         /**

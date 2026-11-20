@@ -59,7 +59,8 @@ export interface Inputs {
     pressed?: boolean;
     /**
      * `Ours.TowerRead`: what units that are not heroes would deal us at the place over the kill window, one row a source. Present (empty when nothing
-     * draws) the rows join the kill line and the flat tower rule is not asked; absent: the rules before it.
+     * draws) the rows join the kill line and the flat tower rule is not asked; absent: the rules before it. A `creeps` row (`Ours.CreepRead`) is the
+     * enemy lane creeps an attack on a hero would draw there, asked only by an act that draws them.
      */
     drawn?: Drawn[];
 }
@@ -105,6 +106,7 @@ export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
         kill += d.dmg;
         if (d.src === "tower") towers += d.dmg;
     }
+    const creepsDrawn = kill - heroes - towers;
     const ratio = kill > 0 ? i.hp / kill : math.huge;
     const { hero, creeps, tower } = i.landing;
     const price = hero + creeps + tower;
@@ -115,8 +117,12 @@ export function Decide(i: Inputs, stay: number = BARS.stay): Answer {
 
     const line = Line(Pressed(i), stay);
     const bar = i.hold ? math.min(line, BARS.hold) : i.held ? line : line * (1 + BARS.slack);
-    // The reason names the tower when the place would pass without its rows: retreat and the trade read `tower` as "the heroes are not the cause".
-    if (ratio < bar) return answer("deadly", towers > 0 && (kill === towers || i.hp / math.max(heroes, kill - towers) >= bar) ? "tower" : "kill");
+    // The reason names the first source without which the place would pass, heroes first: retreat and the trade read `tower` and `creeps` as
+    // "the heroes are not the cause".
+    if (ratio < bar) {
+        const passes = (k: number): boolean => k <= 0 || i.hp / k >= bar;
+        return answer("deadly", !passes(heroes) ? "kill" : creepsDrawn <= 0 || !passes(heroes + towers) ? "tower" : "creeps");
+    }
 
     if (i.away && i.missing >= ThreatSettings.MissingRefuse) return answer("deadly", "unknown");
 

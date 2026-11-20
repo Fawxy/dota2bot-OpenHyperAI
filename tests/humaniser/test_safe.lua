@@ -111,6 +111,22 @@ do
 			and S.Decide(inputs({ reach = { one(300) }, drawn = tower(400) })).kill == 700)
 end
 
+-- Ours.CreepRead: a `creeps` row joins the kill line like the tower's. A held place with no hero hitting is deadly under 1.0 of the line.
+do
+	local function rows(tw, cr)
+		local r = { { src = "creeps", dmg = cr } }
+		if tw ~= nil then table.insert(r, 1, { src = "tower", dmg = tw }) end
+		return r
+	end
+	check("a creeps row on 630 HP held: 300 of hero and 250 of creeps is safe, 400 of creeps is deadly by the creeps; heroes that fail alone stay the kill",
+		is(S.Decide(inputs({ held = true, reach = { one(300) }, drawn = rows(nil, 250) })), "safe")
+			and is(S.Decide(inputs({ held = true, reach = { one(300) }, drawn = rows(nil, 400) })), "deadly", "creeps")
+			and is(S.Decide(inputs({ held = true, reach = { one(650) }, drawn = rows(nil, 400) })), "deadly", "kill"))
+	check("the tower is named before the creeps: heroes and tower fail already (300 + 400): tower; they pass and the creeps tip it (300 + 200 + 200): creeps",
+		is(S.Decide(inputs({ held = true, reach = { one(300) }, drawn = rows(400, 100) })), "deadly", "tower")
+			and is(S.Decide(inputs({ held = true, reach = { one(300) }, drawn = rows(200, 200) })), "deadly", "creeps"))
+end
+
 do
 	local none = S.Decide(inputs())
 	check("nothing in reach: kill 0, ratio math.huge, safe even at zero HP-share concerns",

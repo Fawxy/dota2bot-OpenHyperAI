@@ -4,6 +4,8 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
+-- The blocks below test the rules before Ours.CreepRead; its own block turns it on.
+package.loaded["bots/FunLib/custom_loader"].Ours = { CreepRead = false }
 
 local world = { creeps = {}, pair = nil, share = {}, lanes = true }
 local RealThreat = require("bots/FunLib/humaniser/threat")
@@ -286,6 +288,58 @@ do
 	check("a fired play whose answer is a hit, not a join on it, is ended `refused` at once",
 		#ended == 1 and ended[1][1] == 90 and ended[1][2] == "refused")
 	Plays.Roll, Plays.End = roll, finish_
+end
+
+-- Ours.CreepRead: a swing that drew a creep is followed by one shed order (Deaggro.Shed) once it has fired; the next frame goes back to the target.
+do
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	local saved = C.Ours
+	C.Ours = {}
+	local SG = package.loaded["bots/FunLib/humaniser/safe_gather"]
+	local SAFE = { level = "safe", ratio = math.huge, reason = "safe", kill = 0, price = 0 }
+	SG.CreepsAt = function() return { near = 1, dmg = 0 } end
+	SG.AtBoth = function() return { plain = SAFE, hold = SAFE } end
+	local D = require("bots/FunLib/humaniser/deaggro")
+	local shed, watch, sheds = D.Shed, D.Watch, 0
+	D.Shed = function() sheds = sheds + 1 return { ordered = true, covers = 1, locked = 0 } end
+	D.Watch = function() end
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local roll = Plays.Roll
+	Plays.Roll = function() return nil end
+	local creep = hero(21, 3, 100, 100)
+	creep.IsAlive = function() return true end
+	world.creeps = { creep }
+	reset()
+	T = 500
+	bot.lastAttack = 490
+	Trade.Desire(bot)
+	Trade.Think(bot)
+	creep.attacking = bot
+	T = 500.1
+	Trade.Desire(bot)
+	Trade.Think(bot)
+	check("a creep on us before our swing has fired is not shed: the attack order stands", sheds == 0 and bot.orders ~= nil and bot.orders[#bot.orders] == enemy)
+	bot.lastAttack = 500.2
+	T = 500.3
+	local orders = #bot.orders
+	Trade.Desire(bot)
+	Trade.Think(bot)
+	check("once the swing has fired with the creep on us, one shed order goes out and no attack order that frame", sheds == 1 and #bot.orders == orders)
+	T = 500.4
+	Trade.Desire(bot)
+	Trade.Think(bot)
+	check("the same swing is shed once", sheds == 1)
+	creep.attacking = nil
+	bot.lastAttack = 501.5
+	T = 501.6
+	Trade.Desire(bot)
+	Trade.Think(bot)
+	check("a later swing with no creep on us sheds nothing", sheds == 1)
+	D.Shed, D.Watch = shed, watch
+	Plays.Roll = roll
+	SG.CreepsAt, SG.AtBoth = nil, nil
+	world.creeps = {}
+	C.Ours = saved
 end
 
 finish()

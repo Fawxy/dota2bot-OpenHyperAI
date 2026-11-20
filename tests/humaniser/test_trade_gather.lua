@@ -4,6 +4,8 @@
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
 ResetWorld()
 FreshHumaniser({ Enable = true, Telemetry = { Enable = false } })
+-- The blocks below test the rules before Ours.CreepRead; its own block turns it on.
+package.loaded["bots/FunLib/custom_loader"].Ours = { CreepRead = false }
 
 local world = { ats = {}, here = { level = "safe", ratio = 2.5, reason = "safe", kill = 0, price = 0 }, walk = { level = "safe", ratio = 3, reason = "safe", kill = 0, price = 0 },
 	deny = false, pair = nil, share = {}, paid = false }
@@ -210,6 +212,50 @@ do
 	check("an unseen kill chases the place it was last seen, moved on by its last seen velocity, and reads the place",
 		#gone.cands == 0 and gone.run.chaseAt ~= nil and gone.run.unseen ~= nil and gone.run.catch ~= nil and gone.run.chaseAt.x > 999)
 	Unit.GetNearbyHeroes = savedNear
+end
+
+-- Ours.CreepRead: Gather asks the safe read once at the swing place (held, both bars) for a candidate a hit can reach, with `draws` unless our
+-- own order's cooldown covers the swing; the creeps' share is the read's priced damage over our HP.
+do
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	local saved = C.Ours
+	C.Ours = {}
+	local SG = package.loaded["bots/FunLib/humaniser/safe_gather"]
+	local boths = {}
+	SG.CreepsAt = function() return { near = 2, dmg = 40 } end
+	SG.AtBoth = function(_, place, opts)
+		table.insert(boths, { place = place, opts = opts })
+		return { plain = { level = "deadly", ratio = 0.9, reason = "creeps", kill = 0, price = 0 }, hold = world.here }
+	end
+	bot.loc, bot.hp, bot.range, enemy.range, enemy.hp, enemy.hitMe = Vector(0, 0), 80, 150, 150, 70, nil
+	enemy.loc = Vector(300, 0)
+	world.deny, world.paid, world.pair = false, false, nil
+	world.share["1>6"], world.share["6>1"] = 20, 5
+	Trade.Reset()
+	local i = Trade.Gather(bot)
+	local c = i.cands[1]
+	local b = boths[1]
+	check("the swing place (x 102 for a target at 300) is asked once, held, drawing, named `trade_swing`; the candidate carries both answers and the creeps' share 40 / 80",
+		i.creepRead == true and #boths == 1 and math.abs(b.place.x - 102) < 1 and b.opts.held == true and b.opts.draws == true and b.opts.who == "trade_swing"
+			and c.say.hit.reason == "creeps" and c.say.hold.level == "safe" and c.near == 2 and c.kc == 0.5,
+		tostring(#boths) .. " " .. tostring(c.kc))
+	check("Decide on what was gathered: the hit is refused by the creeps at the swing place", Trade.Decide(i).reason == "creeps")
+	Trade.NotePrimed(1, DotaTime())
+	boths = {}
+	Trade.Gather(bot)
+	check("inside our own order's cooldown the swing draws nothing: the same place is asked without the creeps", #boths == 1 and boths[1].opts.draws == false)
+	creeps[1].attacking = bot
+	boths = {}
+	Trade.Gather(bot)
+	check("with a creep already on us the cooldown covers nothing: the place is asked with the creeps", #boths == 1 and boths[1].opts.draws == true)
+	creeps[1].attacking = nil
+	Trade.Reset()
+	enemy.loc = Vector(900, 0)
+	boths = {}
+	local far = Trade.Gather(bot).cands[1]
+	check("a hero a hit cannot reach in time is not asked: no swing answer", #boths == 0 and far.say == nil)
+	SG.CreepsAt, SG.AtBoth = nil, nil
+	C.Ours = saved
 end
 
 finish()

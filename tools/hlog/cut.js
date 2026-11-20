@@ -260,7 +260,7 @@ const DECISIONS = {
         world(game, cut) {
             if (cut.svh === undefined) throw new Error('a trade line from before the veto asked Safe.At (no svh): its burst read is not replayed');
             const w = { t: Number(cut.t), pid: Number(cut.pid), role: cut.role };
-            for (const k of ['hp', 'n', 'ms', 'tm', 'hc', 'cr', 'dn', 'thd', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
+            for (const k of ['hp', 'n', 'ms', 'tm', 'hc', 'cr', 'dn', 'thd', 'crd', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
             for (const k of ['svh', 'svb', 'swg', 'pjr', 'pl', 'cd', 'run']) if (cut[k] !== undefined) w[k] = String(cut[k]);
             return w;
         },
