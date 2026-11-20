@@ -101,6 +101,7 @@ ____exports.DEFAULTS = {
     CreepRead = true,
     TradeSwing = true,
     TradeHold = true,
+    JoinArrive = true,
     JoinHold = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
