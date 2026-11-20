@@ -669,6 +669,8 @@ function killChance(f: HpForecast, tHit: number, mine: number): number {
 /** How far ahead the `chance` rule compares later swings, and the gain in chance a later one needs to be waited for. */
 const CHANCE_LOOK = 0.6;
 const CHANCE_GAIN = 0.02;
+/** Beyond its attack range, how near an enemy hero to the creep hands the swing back to the expected rule (a step in; taste). */
+const CHANCE_REACH = 200;
 
 /**
  * The `chance` swing rule: the kill chance of a swing ordered now (`p`), and whether to swing (`due`): the creep survives
@@ -676,8 +678,16 @@ const CHANCE_GAIN = 0.02;
  * beats it by CHANCE_GAIN. Later swings are judged on what is known now; waiting also shows wind-ups not yet begun, which
  * this does not credit. `shift` is the bot's rolled timing error (positive: it believes its hit lands later, so swings early).
  */
-function chanceDue(bot: TaskUnit, creep: TaskCreep, b: Belief, step: number, shift: number): { due: boolean; p: number } {
+function chanceDue(bot: TaskUnit, creep: TaskCreep, b: Belief, step: number, shift: number): { due: boolean; p: number } | undefined {
     if (!b.survives) return { due: false, p: 0 };
+    // An enemy hero that can reach the creep may deny or take it on any frame (its next attack is a choice the chance does
+    // not count), so waiting for a better phase loses it (rig lane-only round 1: the mid's waits were denied). The
+    // expected rule decides then.
+    for (const h of enemyHeroes(bot, nearby(bot))) {
+        const at = h.GetLocation?.();
+        if (!(h.IsAlive?.() ?? true) || at === undefined) continue;
+        if (dist(at, creep.GetLocation()) <= (h.GetAttackRange?.() ?? 600) + CHANCE_REACH) return undefined;
+    }
     step = math.max(step, MIN_MARGIN);
     const at = math.max(0, b.tHit + shift);
     const f = hpForecast(bot, creep, at + CHANCE_LOOK + 0.1);

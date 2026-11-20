@@ -22,7 +22,8 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 the swing fires when no swing on one of the next frames (frame-gap steps to 0.6 s) has a kill chance
                 0.02 higher, the chance taken over the unknown phases of the between-swings attackers (next hit uniform
                 from attack point to one cycle, plus flight; 64 stratified samples; phases independent, UNVERIFIED);
-                message `pk` after `idps`. CHANCE_LOOK 0.6 and CHANCE_GAIN 0.02: taste.
+                message `pk` after `idps`. An enemy hero within its attack range + 200 of the creep hands the swing to
+                `expected` (no `pk`). CHANCE_LOOK 0.6, CHANCE_GAIN 0.02, CHANCE_REACH 200: taste.
                 Kill belief (game facts, each frame): own hit time = attack point / attack speed + cooldown left (with the
                 adapter's attackClock) + projectile flight for a ranged bot (dist - 39, over projectile speed); incoming
                 damage = attack projectiles in flight at the creep plus every visible attacker of either team winding up
