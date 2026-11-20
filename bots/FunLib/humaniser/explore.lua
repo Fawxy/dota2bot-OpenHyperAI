@@ -175,10 +175,10 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 ____exports.SETTINGS = {Mults = {
-    0.5,
-    0.75,
+    0.85,
     1,
-    1.35,
+    1.2,
+    1.45,
     1.75
 }, BandHi = 2, Release = 8}
 local rolls = {}
@@ -323,11 +323,11 @@ function ____exports.ResetCache()
 end
 ____exports.TRADE = {
     Aggs = {
-        0.5,
-        0.75,
+        0.7,
         1,
         1.35,
-        1.75
+        1.75,
+        2.2
     },
     Block = 45,
     NearHeroes = 1200,
@@ -510,7 +510,7 @@ local function logTrade(bot, b)
                 "ecr",
                 #bot:GetNearbyLaneCreeps(____exports.TRADE.NearCreeps, true)
             },
-            {"pn", mine > 0 and 1 or 0}
+            {"pn", mine > 1 and 1 or 0}
         }
     )
 end
@@ -522,6 +522,9 @@ function ____exports.Agg(bot)
     end
     local pid = bot:GetPlayerID()
     local now = DotaTime()
+    if now < 0 then
+        return nil
+    end
     local held = blocks[pid]
     local first = held ~= nil and held.first or now
     local blk = ____exports.BlockOf(first, now)

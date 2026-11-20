@@ -522,7 +522,7 @@ do
 	local sums = tally.sn == 1.5 and tally.rnf == 0.5 and tally.rnr == 1 and tally.sh == 0.5 and tally.ord == 2
 	local fresh = at(235, 0) and next(Explore._test.blocks[4].tally) == nil
 	check("explore trade: off draws nothing; on, the first call draws and the block holds to 44 s, redraws at 45 s and again at 90 s; the tally sums seconds by level and none's reason, counts orders, and starts empty in the next block",
-		off == nil and a0 == 0.5 and held == 0.5 and a1 == 1.75 and still == 1.75 and a2 == 0.5
+		off == nil and a0 == 0.7 and held == 0.7 and a1 == 2.2 and still == 2.2 and a2 == 0.7
 			and sums and fresh,
 		tostring(off) .. " " .. tostring(a0) .. " " .. tostring(held) .. " " .. tostring(a1) .. " " .. tostring(still) .. " " .. tostring(a2))
 	Customize.Ours.ExploreTrade = false

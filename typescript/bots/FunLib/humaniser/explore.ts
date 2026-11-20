@@ -12,8 +12,8 @@ import * as Safe from "bots/FunLib/humaniser/safe";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export const SETTINGS = {
-    /** The draw is uniform over these; the effective pressed bar (1.25) spans 0.6 to 2.2 of HP / kill. */
-    Mults: [0.5, 0.75, 1.0, 1.35, 1.75],
+    /** The draw is uniform over these. Three games of 0.5 and 0.75 settled the low end (53% and 22% of rolls died within 20 s against 3% at 1.0), so the grid sits where the curve is undecided. */
+    Mults: [0.85, 1.0, 1.2, 1.45, 1.75],
     /** In band: an enemy hero reaches the hero's own place and HP / kill is under this. */
     BandHi: 2.0,
     /** A roll ends after this many seconds out of the band. */
@@ -116,7 +116,7 @@ export function ResetCache(): void {
 
 export const TRADE = {
     /** The draw is uniform over these: a multiplier on the exchange's bars (`Trade.Decide`), higher is more willing to attack heroes. */
-    Aggs: [0.5, 0.75, 1.0, 1.35, 1.75],
+    Aggs: [0.7, 1.0, 1.35, 1.75, 2.2],
     /** Seconds a draw is held, counted from the hero's first laning frame. */
     Block: 45,
     /** The covariates' radii: heroes and a lane partner, and lane creeps. */
@@ -212,7 +212,7 @@ function logTrade(bot: Unit, b: Block): void {
     Telemetry.Event("roll", [
         ["kind", "trade"], ["ph", "start"], ["pid", bot.GetPlayerID()], ["agg", b.agg], ["blk", b.blk],
         ["hp", r2(bot.GetHealth() / math.max(1, bot.GetMaxHealth()))], ["lvl", bot.GetLevel()], ["ned", math.floor(ned)], ["ne", ne],
-        ["ocr", bot.GetNearbyLaneCreeps(TRADE.NearCreeps, false).length], ["ecr", bot.GetNearbyLaneCreeps(TRADE.NearCreeps, true).length], ["pn", mine > 0 ? 1 : 0],
+        ["ocr", bot.GetNearbyLaneCreeps(TRADE.NearCreeps, false).length], ["ecr", bot.GetNearbyLaneCreeps(TRADE.NearCreeps, true).length], ["pn", mine > 1 ? 1 : 0],
     ]);
 }
 
@@ -224,6 +224,8 @@ export function Agg(bot: Unit): number | undefined {
     if (!Ours.On("ExploreTrade")) return undefined;
     const pid = bot.GetPlayerID();
     const now = DotaTime();
+    // Before the horn there is no lane: no draw, the plain bars.
+    if (now < 0) return undefined;
     const held = blocks[pid];
     const first = held !== undefined ? held.first : now;
     const blk = BlockOf(first, now);
