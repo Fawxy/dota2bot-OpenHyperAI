@@ -53,8 +53,12 @@ export const SETTINGS = {
      * creeps moving during the order's latency; the trade's AGGRO_CLEAR).
      */
     AggroRadius: 550,
-    /** A drawn creep that one shed order would take counts for this long: our attack point, the order and `Deaggro.SETTINGS.ConfirmFor`. judgement until a rig reads it. */
-    ShedIn: 1.5,
+    /**
+     * The shed order goes out this long after the ask: the swing has to fire first. A drawn creep that reaches us sooner is locked by then (no order
+     * moves a creep with us inside its attack range) and counts over the whole window; a later one with a shed target is taken off before it hits.
+     * judgement: smoke creepread_B_dire_smoke2, 13 of 15 sheds after a swing found every creep on us locked, the other 2 came off in 0.19 s.
+     */
+    ShedIn: 1,
     /**
      * `Ours.ExitWindow`: a reaching hero that is not hitting us is counted over the walk out of every reacher's range from the place
      * read (`exit`) plus this many seconds to turn and react, when that is under `KillWindow`. A hero that damaged us within `PressWindow` is not
@@ -320,17 +324,17 @@ export interface DrawnCreep {
     reach: number;
     ms: number;
     dps: number;
-    /** One shed order takes it: it is not in attack range of the place and a creep of ours we could order on stands inside its acquisition range. */
+    /** A shed order would take it: it is not in attack range of the place and a creep of ours we could order on stands inside its acquisition range. */
     shed: boolean;
 }
 
-/** Pure: the creeps' damage on us at the place, each from its arrival; one a shed order takes counts to `shedIn`, any other to the end of `window`. */
+/** Pure: the creeps' damage on us at the place, each from its arrival to the end of `window`; one a shed order would take that arrives after `shedIn` counts nothing. */
 export function CreepsDrawn(creeps: DrawnCreep[], window: number, shedIn: number): number {
     let dmg = 0;
     for (const c of creeps) {
         const ta = c.d <= c.reach ? 0 : c.ms > 0 ? (c.d - c.reach) / c.ms : math.huge;
-        const end = c.shed ? math.min(window, shedIn) : window;
-        if (ta < end) dmg += c.dps * (end - ta);
+        if (c.shed && ta > shedIn) continue;
+        if (ta < window) dmg += c.dps * (window - ta);
     }
     return dmg;
 }
@@ -381,9 +385,9 @@ function laneCreeps(bot: Unit, now: number): { enemy: CreepFact[]; own: OwnCreep
 
 /**
  * `Ours.CreepRead`: what an attack on a hero from `place` draws. `near`: the enemy lane creeps within `AggroRadius` of the place or of the hero;
- * `dmg`: their damage on us (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
+ * `dmg`: their damage on us over `window` (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
  */
-export function CreepsAt(bot: Unit, place: Vector): { near: number; dmg: number } {
+export function CreepsAt(bot: Unit, place: Vector, window: number = SETTINGS.KillWindow): { near: number; dmg: number } {
     const now = DotaTime();
     const lc = laneCreeps(bot, now);
     const here = bot.GetLocation();
@@ -410,7 +414,7 @@ export function CreepsAt(bot: Unit, place: Vector): { near: number; dmg: number 
             drawn[k].shed = !a.locked && math.sqrt((a.x - t.x) ** 2 + (a.y - t.y) ** 2) <= a.reach + t.r;
         }
     }
-    return { near: drawn.length, dmg: CreepsDrawn(drawn, SETTINGS.KillWindow, SETTINGS.ShedIn) };
+    return { near: drawn.length, dmg: CreepsDrawn(drawn, window, SETTINGS.ShedIn) };
 }
 
 const pressSeen: Record<number, { t: number; on: boolean } | undefined> = {};

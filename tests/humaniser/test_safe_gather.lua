@@ -381,18 +381,19 @@ do
 end
 
 -- Ours.CreepRead: the enemy lane creeps an attack on a hero from the place draws, asked only with `draws`. A creep of 60 a hit each second
--- at 325 speed, 300 from the hero: it arrives when the gap past its reach (100 + its hull 16 + ours 24) is walked.
+-- at 325 speed: it arrives when the gap past its reach (100 + its hull 16 + ours 24) is walked. The shed order goes out 1 s after the ask.
 do
 	local _, G, bot = world()
 	bot.range = 600
-	check("CreepsDrawn: in reach the whole 4 s (240); 465 out arrives after 1 s (180); one a shed order takes counts to 1.5 s (30); one that cannot arrive, nothing",
-		G.CreepsDrawn({ { d = 50, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1.5) == 240
-			and G.CreepsDrawn({ { d = 465, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1.5) == 180
-			and G.CreepsDrawn({ { d = 465, reach = 140, ms = 325, dps = 60, shed = true } }, 4, 1.5) == 30
-			and G.CreepsDrawn({ { d = 2000, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1.5) == 0)
-	local creep = MakeCreep({ team = 3, x = HERE.x + 300, y = HERE.y })
+	check("CreepsDrawn: in reach the whole 4 s (240); 465 out arrives after 1 s (180); with a shed target one arriving inside 1 s still counts whole, a later one nothing; one that cannot arrive, nothing",
+		G.CreepsDrawn({ { d = 50, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1) == 240
+			and G.CreepsDrawn({ { d = 465, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1) == 180
+			and G.CreepsDrawn({ { d = 400, reach = 140, ms = 325, dps = 60, shed = true } }, 4, 1) == 60 * (4 - 0.8)
+			and G.CreepsDrawn({ { d = 530, reach = 140, ms = 325, dps = 60, shed = true } }, 4, 1) == 0
+			and G.CreepsDrawn({ { d = 2000, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1) == 0)
+	local creep = MakeCreep({ team = 3, x = HERE.x + 530, y = HERE.y })
 	creep.dmg, creep.spa = 60, 1
-	local ta = (300 - 140) / 325
+	local ta = (530 - 140) / 325
 	local function at(hp, o)
 		T = T + 0.1
 		bot.hp = hp
@@ -403,18 +404,19 @@ do
 	local drawn, quiet = at(1000, { draws = true }), at(1000)
 	check("an act that draws them counts the creep from its arrival over the window; any other ask counts no creep",
 		near(drawn.kill, 60 * (4 - ta)) and drawn.level == "safe" and quiet.kill == 0, tostring(drawn.kill))
-	local low = at(200, { draws = true })
-	check("at 200 HP with no creep of ours to shed onto the place is deadly by the creeps", low.level == "deadly" and low.reason == "creeps")
+	local low = at(150, { draws = true })
+	check("at 150 HP with no creep of ours to shed onto the place is deadly by the creeps", low.level == "deadly" and low.reason == "creeps")
 	local own = MakeCreep({ team = 2, x = HERE.x + 200, y = HERE.y })
-	local shed = at(200, { draws = true })
-	check("a creep of ours inside our attack range and the creep's acquisition range prices it to one shed order: 1.5 s, and 200 HP holds",
-		near(shed.kill, 60 * (1.5 - ta)) and shed.level == "safe", tostring(shed.kill))
+	local shed = at(150, { draws = true })
+	check("a creep of ours inside our attack range and the creep's acquisition range takes it before it arrives: no row, and 150 HP holds",
+		shed.kill == 0 and shed.level == "safe", tostring(shed.kill))
 	own.loc = Vector(HERE.x - 500, HERE.y)
-	check("a creep of ours 800 from the enemy creep is no shed target: the whole window again", near(at(1000, { draws = true }).kill, 60 * (4 - ta)))
+	check("a creep of ours 1,030 from the enemy creep is no shed target: counted again", near(at(1000, { draws = true }).kill, 60 * (4 - ta)))
 	own.loc = Vector(HERE.x + 200, HERE.y)
-	creep.loc = Vector(HERE.x + 100, HERE.y)
-	check("a creep with us inside its attack range is locked: no order moves it, the whole window", near(at(1000, { draws = true }).kill, 240))
 	creep.loc = Vector(HERE.x + 300, HERE.y)
+	check("a creep that reaches us before the order goes out is locked by then: counted from its arrival though a shed target stands there",
+		near(at(1000, { draws = true }).kill, 60 * (4 - (300 - 140) / 325)))
+	check("the window is the asker's: over 3 s the same creep is 60 less", near(G.CreepsAt(bot, HERE, 3).dmg, 60 * (3 - (300 - 140) / 325)))
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepRead = false
 	check("switch off: the same ask counts no creep", at(1000, { draws = true }).kill == 0)
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepRead = nil

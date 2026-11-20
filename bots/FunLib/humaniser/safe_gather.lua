@@ -476,14 +476,26 @@ function drawnAt(bot, now, place, attacks)
     end
     return out
 end
---- Pure: the creeps' damage on us at the place, each from its arrival; one a shed order takes counts to `shedIn`, any other to the end of `window`.
+--- Pure: the creeps' damage on us at the place, each from its arrival to the end of `window`; one a shed order would take that arrives after `shedIn` counts nothing.
 function ____exports.CreepsDrawn(creeps, window, shedIn)
     local dmg = 0
     for ____, c in ipairs(creeps) do
-        local ta = c.d <= c.reach and 0 or (c.ms > 0 and (c.d - c.reach) / c.ms or math.huge)
-        local ____end = c.shed and math.min(window, shedIn) or window
-        if ta < ____end then
-            dmg = dmg + c.dps * (____end - ta)
+        do
+            local __continue63
+            repeat
+                local ta = c.d <= c.reach and 0 or (c.ms > 0 and (c.d - c.reach) / c.ms or math.huge)
+                if c.shed and ta > shedIn then
+                    __continue63 = true
+                    break
+                end
+                if ta < window then
+                    dmg = dmg + c.dps * (window - ta)
+                end
+                __continue63 = true
+            until true
+            if not __continue63 then
+                break
+            end
         end
     end
     return dmg
@@ -499,15 +511,15 @@ function laneCreeps(bot, now)
     local hull = bot:GetBoundingRadius()
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1600, true) or ({})) do
         do
-            local __continue68
+            local __continue69
             repeat
                 if c:IsNull() or not c:IsAlive() then
-                    __continue68 = true
+                    __continue69 = true
                     break
                 end
                 local at = c:GetLocation()
                 if at == nil then
-                    __continue68 = true
+                    __continue69 = true
                     break
                 end
                 local ____this_5
@@ -523,19 +535,19 @@ function laneCreeps(bot, now)
                     ms = c:GetCurrentMovementSpeed(),
                     dps = c:GetAttackDamage() / (spa ~= nil and spa > 0 and spa or 1) * physF
                 }
-                __continue68 = true
+                __continue69 = true
             until true
-            if not __continue68 then
+            if not __continue69 then
                 break
             end
         end
     end
     for ____, c in ipairs(bot:GetNearbyLaneCreeps(1600, false) or ({})) do
         do
-            local __continue72
+            local __continue73
             repeat
                 if c:IsNull() or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
-                    __continue72 = true
+                    __continue73 = true
                     break
                 end
                 local at = c:GetLocation()
@@ -546,9 +558,9 @@ function laneCreeps(bot, now)
                         r = c:GetBoundingRadius()
                     }
                 end
-                __continue72 = true
+                __continue73 = true
             until true
-            if not __continue72 then
+            if not __continue73 then
                 break
             end
         end
@@ -557,8 +569,11 @@ function laneCreeps(bot, now)
     return seen
 end
 --- `Ours.CreepRead`: what an attack on a hero from `place` draws. `near`: the enemy lane creeps within `AggroRadius` of the place or of the hero;
--- `dmg`: their damage on us (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
-function ____exports.CreepsAt(bot, place)
+-- `dmg`: their damage on us over `window` (`CreepsDrawn`), priced to the shed: `Deaggro.Plan` over the creeps of ours inside our attack range of the place.
+function ____exports.CreepsAt(bot, place, window)
+    if window == nil then
+        window = ____exports.SETTINGS.KillWindow
+    end
     local now = DotaTime()
     local lc = laneCreeps(bot, now)
     local here = bot:GetLocation()
@@ -566,11 +581,11 @@ function ____exports.CreepsAt(bot, place)
     local attackers = {}
     for ____, c in ipairs(lc.enemy) do
         do
-            local __continue77
+            local __continue78
             repeat
                 local d = dist(c.at, place)
                 if d > ____exports.SETTINGS.AggroRadius and dist(c.at, here) > ____exports.SETTINGS.AggroRadius then
-                    __continue77 = true
+                    __continue78 = true
                     break
                 end
                 drawn[#drawn + 1] = {
@@ -587,9 +602,9 @@ function ____exports.CreepsAt(bot, place)
                     reach = c.acq,
                     locked = d <= c.reach
                 }
-                __continue77 = true
+                __continue78 = true
             until true
-            if not __continue77 then
+            if not __continue78 then
                 break
             end
         end
@@ -619,7 +634,7 @@ function ____exports.CreepsAt(bot, place)
     end
     return {
         near = #drawn,
-        dmg = ____exports.CreepsDrawn(drawn, ____exports.SETTINGS.KillWindow, ____exports.SETTINGS.ShedIn)
+        dmg = ____exports.CreepsDrawn(drawn, window, ____exports.SETTINGS.ShedIn)
     }
 end
 function pressed(bot, now)
@@ -945,7 +960,7 @@ ____exports.SETTINGS = {
     FreshHorizon = 3,
     KillWindow = 4,
     AggroRadius = 550,
-    ShedIn = 1.5,
+    ShedIn = 1,
     ExitTurn = 1
 }
 r1 = function(v) return math.floor(v * 10 + 0.5) / 10 end

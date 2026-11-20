@@ -1641,7 +1641,7 @@ function ____exports.Gather(bot, rs)
                 local oc
                 local paid = swung and CreepAggro.Paid(bot, h)
                 if creepOn then
-                    local ca = SafeGather.CreepsAt(bot, stand)
+                    local ca = SafeGather.CreepsAt(bot, stand, PairJoin.SETTINGS.Window)
                     near = ca.near
                     kc = ca.dmg / math.max(
                         1,

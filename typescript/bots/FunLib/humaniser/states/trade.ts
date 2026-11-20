@@ -929,7 +929,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         let oc: number | undefined;
         const paid = swung && CreepAggro.Paid(bot, h);
         if (creepOn) {
-            const ca = SafeGather.CreepsAt(bot, stand);
+            // The favoured test weighs shares over PairJoin's window, so the creeps' share is read over it too.
+            const ca = SafeGather.CreepsAt(bot, stand, PairJoin.SETTINGS.Window);
             near = ca.near;
             kc = ca.dmg / math.max(1, bot.GetHealth());
             if (isRun || Arrives(gap, ms, math.max(0, away), BARS.walkHit + BARS.slackWalk)) {

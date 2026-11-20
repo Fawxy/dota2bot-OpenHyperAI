@@ -147,7 +147,7 @@ export const DEFAULTS = {
      *  on us from when it would be on us to the end of the kill window), not a flat `deadly tower`. Off: the flat rule. */
     TowerRead: true,
     /** Step 4.2b (same proposal): with TowerRead and TradeSwing on, the enemy lane creeps a swing at a hero draws are a row in the safe read at the
-     *  swing place, priced to one shed order where a creep of ours can take them; the trade asks that read and not its own wave, creeps-on-us and
+     *  swing place, less those one shed order takes off before they reach us; the trade asks that read and not its own wave, creeps-on-us and
      *  tower gates, and sheds after each swing that drew a creep. Off: the count gates, and the creeps over the whole window in the favoured test. */
     CreepRead: true,
     /** Step 4.3 (docs/proposals/2026-11-20-step4-exchanges.md): with Trade on, a hit or hit back opens only when its swing place is clear of
