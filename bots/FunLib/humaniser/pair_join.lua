@@ -20,6 +20,42 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
     return result
 end
 
+local function __TS__ArrayJoin(self, separator)
+    if separator == nil then
+        separator = ","
+    end
+    local parts = {}
+    for i = 1, #self do
+        parts[i] = tostring(self[i])
+    end
+    return table.concat(parts, separator)
+end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+
 local function __TS__ObjectEntries(obj)
     local result = {}
     local len = 0
@@ -55,6 +91,7 @@ local UnitType = ____dota.UnitType
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 function live(u)
     return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil and not u:IsIllusion()
 end
@@ -75,6 +112,10 @@ function member(u, ours)
     if ours then
         m.ret = RetreatState.Running(u) and 1 or 0
     end
+    local hull = u:GetBoundingRadius()
+    m.rc = math.floor(u:GetAttackRange() + hull + 0.5)
+    m.ms = math.floor(u:GetCurrentMovementSpeed() + 0.5)
+    m.hull = math.floor(hull + 0.5)
     return m
 end
 function weigh(ally, ours)
@@ -99,7 +140,7 @@ function weigh(ally, ours)
     end
     fill(ours, theirs)
     fill(theirs, ours)
-    return {
+    local rec = {
         ally = ally:GetPlayerID(),
         ours = __TS__ArrayMap(
             ours,
@@ -111,6 +152,10 @@ function weigh(ally, ours)
         ),
         dmg = dmg
     }
+    if Ours.On("JoinArrive") then
+        rec.arrive = true
+    end
+    return rec
 end
 ____exports.SETTINGS = {
     AllyRange = 1200,
@@ -125,15 +170,29 @@ ____exports.SETTINGS = {
     AfterWindow = 8,
     AfterEvery = 1
 }
+--- The share of Window hero `f` has left to damage `o` after walking into its own attack range of it (1 when either carries no reach).
+local function arrival(f, o)
+    if f.rc == nil or f.ms == nil or o.hull == nil then
+        return 1
+    end
+    local gap = math.max(
+        0,
+        math.sqrt((f.x - o.x) ^ 2 + (f.y - o.y) ^ 2) - (f.rc + o.hull)
+    )
+    return math.max(
+        0,
+        1 - gap / math.max(1, f.ms) / ____exports.SETTINGS.Window
+    )
+end
 --- The side `from`'s best kill share on `on` over the window: the target and the share.
-local function best(from, on, dmg)
+local function best(from, on, dmg, arrive)
     local tgt = -1
     local share = 0
     for ____, o in ipairs(on) do
         local d = 0
         for ____, f in ipairs(from) do
             local ____opt_0 = dmg[f.pid]
-            d = d + (____opt_0 and ____opt_0[o.pid] or 0)
+            d = d + (____opt_0 and ____opt_0[o.pid] or 0) * (arrive and arrival(f, o) or 1)
         end
         local s = d / math.max(o.hp, 1)
         if tgt == -1 or s > share then
@@ -149,8 +208,9 @@ function ____exports.Decide(rec)
         rec.ours,
         function(____, m) return m.ret ~= 1 end
     )
-    local tgt, ko = best(ours, rec.theirs, rec.dmg)
-    local ____, kt = best(rec.theirs, ours, rec.dmg)
+    local arrive = rec.arrive == true
+    local tgt, ko = best(ours, rec.theirs, rec.dmg, arrive)
+    local ____, kt = best(rec.theirs, ours, rec.dmg, arrive)
     return {dec = ko > kt and "join" or "losing", tgt = tgt, ko = ko, kt = kt}
 end
 --- The situation's record, or undefined when no ally within AllyRange (the bot included) was hit by a hero within HitRecent,
@@ -162,15 +222,15 @@ function ____exports.Gather(bot)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue15
+            local __continue17
             repeat
                 if not live(a) then
-                    __continue15 = true
+                    __continue17 = true
                     break
                 end
                 allies[#allies + 1] = a
                 if dist(a, bot) > ____exports.SETTINGS.AllyRange then
-                    __continue15 = true
+                    __continue17 = true
                     break
                 end
                 local share = a:GetHealth() / a:GetMaxHealth()
@@ -179,9 +239,9 @@ function ____exports.Gather(bot)
                         ally = a
                     end
                 end
-                __continue15 = true
+                __continue17 = true
             until true
-            if not __continue15 then
+            if not __continue17 then
                 break
             end
         end
@@ -246,6 +306,23 @@ local function members(ms)
                 },
                 ","
             ) end
+        ),
+        ";"
+    )
+end
+local function reachOf(rec)
+    local ____array_4 = __TS__SparseArrayNew(unpack(rec.ours))
+    __TS__SparseArrayPush(
+        ____array_4,
+        unpack(rec.theirs)
+    )
+    return table.concat(
+        __TS__ArrayMap(
+            __TS__ArrayFilter(
+                {__TS__SparseArraySpread(____array_4)},
+                function(____, m) return m.rc ~= nil end
+            ),
+            function(____, m) return __TS__ArrayJoin({m.pid, m.rc, m.ms, m.hull}, ",") end
         ),
         ";"
     )
@@ -403,8 +480,8 @@ local function tickAfter(bot, now)
         return flush(pid, "stage")
     end
     if now >= w.next then
-        local ____w_samples_4 = w.samples
-        ____w_samples_4[#____w_samples_4 + 1] = sample(bot, w, now)
+        local ____w_samples_5 = w.samples
+        ____w_samples_5[#____w_samples_5 + 1] = sample(bot, w, now)
         w.next = now + ____exports.SETTINGS.AfterEvery
     end
     if now - w.start >= ____exports.SETTINGS.AfterWindow then
@@ -427,10 +504,10 @@ function ____exports.Tick(bot)
         return
     end
     local pid = bot:GetPlayerID()
-    local ____exports_For_result_5 = ____exports.For(bot)
-    local rec = ____exports_For_result_5.rec
-    local a = ____exports_For_result_5.ans
-    local fresh = ____exports_For_result_5.fresh
+    local ____exports_For_result_6 = ____exports.For(bot)
+    local rec = ____exports_For_result_6.rec
+    local a = ____exports_For_result_6.ans
+    local fresh = ____exports_For_result_6.fresh
     if not fresh then
         return
     end
@@ -469,8 +546,15 @@ function ____exports.Tick(bot)
         {
             "kt",
             math.floor(a.kt * 1000 + 0.5) / 1000
+        },
+        {
+            "jar",
+            reachOf(rec)
         }
     }
+    if rec.arrive == true then
+        fields[#fields + 1] = {"jav", 1}
+    end
     Telemetry.Event("cut", fields)
 end
 return ____exports
