@@ -134,6 +134,12 @@ export function Arrives(gap: number, ms: number, away: number, horizon: number):
     return closing > 0 && gap <= closing * horizon;
 }
 
+/** Seconds until a hero at `gap` past attack range stands in it, the target's retreat counted and its approach not (as `Arrives`). */
+export function SwingIn(gap: number, ms: number, away: number): number {
+    if (gap <= 0) return 0;
+    return gap / math.max(1, ms - math.max(0, away));
+}
+
 /** A hit with no answer coming back: the target swings at a lane creep, or our range is `outrange` or more over its. */
 export function Free(targetLastHitting: boolean, range: number, targetRange: number): boolean {
     return targetLastHitting || range >= targetRange + BARS.outrange;
@@ -175,6 +181,9 @@ interface Cand {
     hunters?: Hunter[];
     /** An exchange with it ended `losing` and neither has damaged the other since for `StayEngaged` (the executor's memory; a read, not a timer): no hit and no hit back on it. */
     lost?: boolean;
+    /** With `Inputs.swing`: enemy lane creeps inside the aggro radius of the hero or of the swing place (the nearest point in attack range of it), and their damage on us over PairJoin's window, each from its arrival there, over our HP. */
+    near?: number;
+    kc?: number;
 }
 
 export interface Run {
@@ -223,6 +232,11 @@ export interface Inputs {
     play?: { id: number; kind: string; tgt: number; zero?: string };
     cands: Cand[];
     run?: Run;
+    /**
+     * Set when `Ours.TradeSwing` is on (absent: the rules before it). `cover`: our own attack order's aggro cooldown covers a swing now, so it
+     * draws no creep; `due`: seconds until the next last hit or deny this laner would take (absent: none in sight); `atk`: our attack point (s).
+     */
+    swing?: { cover: boolean; due?: number; atk: number };
 }
 
 export interface How {
@@ -296,9 +310,19 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         if (src === "pair" ? c.d > BARS.pairReach : c.gap > BARS.playWalk) return "no_reach";
         return undefined;
     }
-    if (!(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
-    if (run?.stepFor === undefined && !Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0))) return "no_reach";
+    const sw = i.swing;
+    if (sw === undefined) {
+        if (!(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
+    } else {
+        // The swing draws the creeps near its place unless our own order's cooldown covers it: a hit is free only from a clear place, and among creeps it must still pay with their damage on us counted.
+        const draws = !sw.cover && (c.near ?? 0) > 0;
+        const theirs = c.kt + (draws ? (c.kc ?? 0) : 0);
+        if (!((c.free && !draws) || c.ko > theirs || (level === "hitback" && c.paid))) return c.free || c.ko > c.kt ? "aggro" : "unfavoured";
+    }
+    if ((sw !== undefined || run?.stepFor === undefined) && !Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0))) return "no_reach";
     if (i.denyDue) return "deny";
+    // Finish: a last hit or deny that comes due before the swing lands would take the hero mid-walk. A running exchange yields to it when it is due (`deny`, laning's desire), not before.
+    if (sw !== undefined && run === undefined && sw.due !== undefined && sw.due < SwingIn(c.gap, i.ms, c.away) + sw.atk) return "due";
     if (i.creepsOnMe >= BARS.creeps) return "creeps";
     if (i.wave > BARS.waveHit + wave) return "wave";
     return undefined;
@@ -450,6 +474,8 @@ export const ENDS: Record<string, "gate" | "think" | "later" | undefined> = {
     unfavoured: "gate",
     deny: "gate",
     creeps: "gate",
+    aggro: "gate",
+    due: "gate",
     no_clear: "think",
     target_dead: "later",
     target_lost: "later",
@@ -526,6 +552,21 @@ export function HoldsOf(i: Inputs): "hitback" | "join" | undefined {
 const CAND_RADIUS = 1600;
 /** Enemy lane creeps within this of us count as the wave and turn on a hero attacker (EC-053: lane creeps acquire a hero attacker within about 500). */
 const CREEP_RADIUS = 500;
+/**
+ * Creep aggro (EC-053, Liquipedia Lane_Creeps 7.41f): an attack order on an enemy hero draws enemy lane creeps within 500 of the
+ * ordering hero and starts a 3 s cooldown even when none are near; attack animations within 500 draw them too, except while that
+ * cooldown runs. So an order given clear of creeps buys up to 3 s of hits near them with no aggro. CLEAR adds 50 for creeps
+ * moving during the order's latency; COOLDOWN_LEFT stops relying on the cooldown 0.3 s before it ends.
+ */
+const AGGRO_CLEAR = 550;
+const AGGRO_COOLDOWN = 3;
+const COOLDOWN_LEFT = 0.3;
+/** When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there). */
+const primedAt: Record<number, number | undefined> = {};
+/** A lane creep's seconds per attack when its handle does not say (base attack time 1.0, Liquipedia Lane_Creeps). */
+const CREEP_SPA = 1;
+/** With `Ours.TradeSwing` the one creep scan reaches the aggro radius round any swing place a hit can open on: a walk of `walkHit + slackWalk` at a fast hero's speed (`judgement`: 450). */
+const SWING_SCAN = 1000;
 /** A hero hit us "recently" within this (s): Threat.SETTINGS.EngagedRecent's value. */
 const HIT_RECENT = 1;
 /** Past the hitter's seconds per attack before `swung` lapses: a projectile's flight and the frame step vary the gap between two landings (`judgement`). */
@@ -654,6 +695,22 @@ function rawDps(u: Unit): number {
     return spa !== undefined && spa > 0 ? u.GetAttackDamage() / spa : 0;
 }
 
+/** Seconds from an attack's start to its hit (or its projectile's launch): the attack point over the attack speed, as the engine's last-hit timing reads it. */
+function attackPointOf(u: Unit): number {
+    const x = u as Unit & { GetAttackPoint?(): number; GetAttackSpeed?(): number };
+    const speed = x.GetAttackSpeed?.() ?? 1;
+    return (x.GetAttackPoint?.() ?? 0) / (speed > 0 ? speed : 1);
+}
+
+/** One enemy lane creep as a swing place reads it: where it is, how far from the hero, its attack damage per second on us, its reach on us and its speed. */
+interface CreepRead {
+    at: Vector;
+    dHere: number;
+    dps: number;
+    reach: number;
+    ms: number;
+}
+
 /** One hero of ours as a hunter on a target at `place`, from the target's velocity and damage factors. */
 function hunterOf(u: Unit, place: Vector, ls: LastSeen, pid: number, seen: boolean, known: boolean): Hunter {
     const spells: { range: number; cp: number; dmg: number }[] = [];
@@ -749,10 +806,30 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     const safeHold = SafeGather.At(bot, here, { held: true, hold: true });
     let wave = 0;
     let creepsOnMe = 0;
-    for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, true)) {
-        if (!c.IsAlive()) continue;
-        wave++;
-        if (c.GetAttackTarget() === bot) creepsOnMe++;
+    const swingOn = Ours.On("TradeSwing");
+    const creepReads: CreepRead[] = [];
+    if (!swingOn) {
+        for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, true)) {
+            if (!c.IsAlive()) continue;
+            wave++;
+            if (c.GetAttackTarget() === bot) creepsOnMe++;
+        }
+    } else {
+        // One scan serves the wave count and every candidate's swing place.
+        const physF = bot.GetActualIncomingDamage(100, DamageType.Physical) / 100;
+        const hull = bot.GetBoundingRadius();
+        for (const c of bot.GetNearbyLaneCreeps(SWING_SCAN, true)) {
+            if (c.IsNull() || !c.IsAlive()) continue;
+            const l = c.GetLocation() as Vector | undefined;
+            if (l === undefined) continue;
+            const dHere = distXY(l, here);
+            if (dHere <= CREEP_RADIUS) {
+                wave++;
+                if (c.GetAttackTarget() === bot) creepsOnMe++;
+            }
+            const spa = (c as Unit & { GetSecondsPerAttack?(): number }).GetSecondsPerAttack?.();
+            creepReads.push({ at: l, dHere, dps: (c.GetAttackDamage() / (spa !== undefined && spa > 0 ? spa : CREEP_SPA)) * physF, reach: c.GetAttackRange() + c.GetBoundingRadius() + hull, ms: c.GetCurrentMovementSpeed() });
+        }
     }
     let towerOnMe = false;
     const reach = LaneConfig.TowerReach();
@@ -766,6 +843,8 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         }
     }
     const bpid = bot.GetPlayerID();
+    const primed = primedAt[bpid];
+    const cover = primed !== undefined && now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT;
     const pairRead = PairJoin.For(bot);
     let pair: Inputs["pair"] = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.ans.tgt !== -1
         ? { tgt: pairRead.ans.tgt, ko: pairRead.ans.ko, kt: pairRead.ans.kt, dec: pairRead.ans.dec }
@@ -802,6 +881,22 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         const thp = frac(h);
         const isRun = rs !== undefined && rs.target === pid;
         if (isRun) runSeen = true;
+        let near: number | undefined;
+        let kc: number | undefined;
+        if (swingOn) {
+            near = 0;
+            let dmg = 0;
+            for (const cr of creepReads) {
+                const dStand = distXY(cr.at, stand);
+                if (dStand > AGGRO_CLEAR && cr.dHere > AGGRO_CLEAR) continue;
+                near++;
+                const ta = arrive(dStand, cr.reach, cr.ms);
+                if (ta < PairJoin.SETTINGS.Window) dmg += cr.dps * (PairJoin.SETTINGS.Window - ta);
+            }
+            kc = dmg / math.max(1, bot.GetHealth());
+        }
+        // A free hit among creeps is judged on the shares (the creeps answer for the target), so they are read for it too.
+        const shares = !free || (near !== undefined && near > 0 && !cover);
         const c: Cand = {
             pid,
             thp,
@@ -812,11 +907,13 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             hitting,
             swung,
             free,
-            ko: free ? 0 : shareOn(bot, h),
-            kt: free ? 0 : shareOn(h, bot),
+            ko: shares ? shareOn(bot, h) : 0,
+            kt: shares ? shareOn(h, bot) : 0,
             paid: swung && CreepAggro.Paid(bot, h),
             tw,
             lost: lostFor(bot, h),
+            near,
+            kc,
         };
         lastHandles[pid] = h;
         const asked = thp <= BARS.commitHp || (pair !== undefined && pair.tgt === pid) || (play !== undefined && play.tgt === pid) || isRun;
@@ -855,6 +952,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
         play,
         cands,
     };
+    if (swingOn) i.swing = { cover, due: cands.length > 0 ? Laning.NextDue(bot) : undefined, atk: attackPointOf(bot) };
     if (i.play !== undefined && i.play.zero === undefined) {
         const pc = cands.find((c) => c.pid === i.play!.tgt);
         if (pc !== undefined) i.play.zero = FightZero(i, pc);
@@ -964,6 +1062,8 @@ function candText(c: Cand, ms: number): string {
         or(k !== undefined ? round6(k.safe) : undefined),
         c.lost === true ? 1 : 0,
         c.swung ? 1 : 0,
+        or(c.near),
+        or(c.kc !== undefined ? round6(c.kc) : undefined),
     ].join(",");
 }
 
@@ -1037,6 +1137,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["hc", i.creepsOnMe],
         ["cr", i.wave],
         ["dn", i.denyDue ? 1 : 0],
+        ["swg", i.swing !== undefined ? `${i.swing.cover ? 1 : 0}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
         ["pjr", i.pair !== undefined ? `${i.pair.dec}:${i.pair.tgt}:${round6(i.pair.ko)}:${round6(i.pair.kt)}` : undefined],
         ["pl", i.play !== undefined ? `${i.play.id}:${i.play.kind}:${i.play.tgt}:${i.play.zero ?? "-"}` : undefined],
         ["cd", cds.join(";")],
@@ -1078,15 +1179,6 @@ Plays.Define(LANE_FIGHT, { base: FIGHT_BASE, timeout: FIGHT_TIMEOUT, chases: tru
 
 /** Within this of its assigned lane's path the hero is in lane. */
 const LANE_WIDTH = 1200;
-/**
- * Creep aggro (EC-053, Liquipedia Lane_Creeps 7.41f): an attack order on an enemy hero draws enemy lane creeps within 500 of the
- * ordering hero and starts a 3 s cooldown even when none are near; attack animations within 500 draw them too, except while that
- * cooldown runs. So an order given clear of creeps buys up to 3 s of hits near them with no aggro. CLEAR adds 50 for creeps
- * moving during the order's latency; COOLDOWN_LEFT stops relying on the cooldown 0.3 s before it ends.
- */
-const AGGRO_CLEAR = 550;
-const AGGRO_COOLDOWN = 3;
-const COOLDOWN_LEFT = 0.3;
 /** One `ev=trade_no` per run of unanswered hits: none for the same hero within this (s), as the D24h view's onset. */
 const NO_EVERY = 5;
 /** After a loss of sight (`target_lost`), what follows within this many seconds is logged on `ev=chase`. */
@@ -1140,8 +1232,6 @@ interface Episode {
 const episodes: Record<number, Episode | undefined> = {};
 /** Which arm this frame's GetDesire took: Think follows it. */
 const ownsFrame: Record<number, boolean | undefined> = {};
-/** When this bot last gave an attack order on an enemy hero (its aggro cooldown runs from there). */
-const primedAt: Record<number, number | undefined> = {};
 /** When this bot last had a lane-fight chance, per target pid. */
 const rolledAt: Record<number, Record<number, number> | undefined> = {};
 const lastNo: Record<number, number | undefined> = {};
@@ -1586,7 +1676,8 @@ export function Think(bot: Unit): void {
         if (c.GetAttackTarget() === bot) onMe++;
     }
     ep.aggro = math.max(ep.aggro, onMe);
-    const plan = commits ? "attack" : AggroPlan(now, primedAt[pid], creeps.length);
+    // With the swing rule Decide has already judged the creeps near the swing place: the order goes out as answered, and there is no step out.
+    const plan = commits ? "attack" : AggroPlan(now, primedAt[pid], Ours.On("TradeSwing") ? 0 : creeps.length);
     if (plan === "step_out") {
         if (ep.stepSince === undefined) {
             ep.stepSince = now;

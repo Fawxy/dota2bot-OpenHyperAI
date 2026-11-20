@@ -3003,12 +3003,14 @@ export const EVENTS = {
         mi: "num",
         svh: "str",
         svb: "str",
+        /** kind=trade, with `Ours.TradeSwing` on (absent: the rule is off): `cover:due:atk`: 1 when our own attack order's aggro cooldown covers a swing now, seconds to the next last hit or deny this laner would take (`-` none in sight), our attack point in seconds. */
+        swg: "str",
         /** kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
         pjr: "str",
         /**
          * kind=trade: one record per candidate (an enemy hero within 1,600), `;`-joined, fields `,`-separated:
          * pid, thp, thpAbs, d, gap, away, arr (1/0: we reach attack range within `walkHit`, for reading; Decide recomputes it from gap, away and `ms`), hit (1/0), free, ko, kt, paid, tw (our attack point in an enemy tower's reach), then the walk answer
-         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back), then sw (1/0: it damaged us within its seconds per attack plus 0.25 s, the stay bar of a running hit back on it; absent on older lines).
+         * wlv, wra, wwhy (`Safe.At` along the walk to it, away and with a hold: level, ratio, reason; `-` when not asked; older lines: burst, heroes, unseen weight), the catch read cok, cdm, csf (ok, damage, seconds to its safety; `-` when not asked) and lo (1 when an exchange with it ended `losing` and the six quiet seconds have not passed: it vetoes hit and hit back), then sw (1/0: it damaged us within its seconds per attack plus 0.25 s, the stay bar of a running hit back on it; absent on older lines), then near and kc (with `swg`: enemy lane creeps inside the aggro radius of us or of the swing place, and their damage on us over 3 s from their arrival over our HP; `-` without it).
          */
         cd: "str",
         /**

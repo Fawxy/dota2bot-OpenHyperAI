@@ -139,6 +139,11 @@ export const DEFAULTS = {
     /** Plan after the collapse, variant D (an experiment): the safe read counts an enemy hero that is not hitting us over the
      *  walk out of every reacher's range plus `SafeGather.SETTINGS.ExitTurn`, not the full `KillWindow`. Off: `KillWindow`. */
     ExitWindow: true,
+    /** Step 4.3 (docs/proposals/2026-11-20-step4-exchanges.md): with Trade on, a hit or hit back opens only when its swing place is clear of
+     *  enemy lane creeps (or our own attack order's cooldown covers it) or it still pays with their damage counted, and a fresh one only when no
+     *  last hit or deny comes due before the swing lands; the executor orders the attack as answered. Off: the wave gates alone, and the
+     *  executor steps out of the creeps before it orders. */
+    TradeSwing: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -22,7 +22,7 @@ package.loaded["bots/FunLib/humaniser/safe_gather"] = {
 package.loaded["bots/FunLib/humaniser/transitions/phase"] = { LaningHeld = function() return world.lanes end }
 package.loaded["bots/FunLib/humaniser/states/core_last_hit"] = { Applies = function() return true end }
 package.loaded["bots/FunLib/humaniser/states/support_deny"] = { Applies = function() return false end }
-package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() return false end }
+package.loaded["bots/FunLib/humaniser/states/laning"] = { DenyDue = function() return false end, NextDue = function() return world.due end }
 package.loaded["bots/FunLib/humaniser/pair_join"] = {
 	SETTINGS = { Window = 3, Keep = 1.5 },
 	For = function() return world.pair or {} end,
@@ -221,6 +221,54 @@ do
 		early == 1 and world.walkAsks == 2, tostring(early) .. "/" .. tostring(world.walkAsks))
 	Plays.Roll = roll
 	world.share["1>6"], world.share["6>1"] = 30, 10
+end
+
+do
+	-- Slice trade-swing: enemy lane creeps inside the aggro radius of the swing place. With the rule the hit opens only if it still pays with
+	-- their damage, and Think orders the attack as answered; without it Think steps out of the creeps first.
+	local C = package.loaded["bots/FunLib/custom_loader"]
+	local saved = C.Ours
+	local creep = hero(20, 3, 100, 100)
+	creep.IsAlive = function() return true end
+	world.creeps = { creep }
+	-- No lane-fight roll here: a fired play would answer a refused hit with a join.
+	local Plays = require("bots/FunLib/humaniser/plays/plays")
+	local roll = Plays.Roll
+	Plays.Roll = function() return nil end
+	reset()
+	bot.moves = nil
+	T = 300
+	creep.atk = 5
+	local d = Trade.Desire(bot)
+	Trade.Think(bot)
+	check("with the rule, a hit that still pays with a weak creep's damage opens and Think orders the attack: no step out",
+		d == Trade.DESIRE_HIT and bot.orders ~= nil and bot.orders[1] == enemy and bot.moves == nil)
+	reset()
+	bot.moves = nil
+	T = 310
+	creep.atk = 50
+	local refused = Trade.Desire(bot)
+	check("a hit that pays only with no creeps does not open: desire 0, nothing running", refused == 0 and not Trade.Running(bot))
+	reset()
+	T = 311
+	-- The stub hero has no attack point and a 2-unit walk: only a last hit due now comes first.
+	world.due = 0
+	creep.atk = 5
+	local dueSoon = Trade.Desire(bot)
+	world.due = nil
+	check("a last hit due before the swing lands refuses the hit", dueSoon == 0 and not Trade.Running(bot))
+	C.Ours = { TradeSwing = false }
+	reset()
+	bot.moves = nil
+	T = 320
+	local off = Trade.Desire(bot)
+	Trade.Think(bot)
+	check("switch off: the hit opens on the wave gates alone and Think steps out of the creeps before it orders",
+		off == Trade.DESIRE_HIT and bot.orders == nil and bot.moves ~= nil)
+	C.Ours = saved
+	Plays.Roll = roll
+	world.creeps = {}
+	bot.moves = nil
 end
 
 do

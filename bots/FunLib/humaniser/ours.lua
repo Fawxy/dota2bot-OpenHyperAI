@@ -95,7 +95,8 @@ ____exports.DEFAULTS = {
     MidWater = false,
     BurstReady = true,
     Sustain = true,
-    ExitWindow = true
+    ExitWindow = true,
+    TradeSwing = true
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()
