@@ -237,14 +237,25 @@ do
 	check("control: the same three asks unsampled log a line at each change of level", #safeLines("plain") == 3, #safeLines("plain"))
 	T = 302.1
 	bot.hitBy[hitter] = T
+	ask("cand", HERE, true)
 	ask("cand", Vector(-1900, -5000), true)
 	ask("cand", FAR, true)
 	got = safeLines("cand")
-	check("sampled: after CutEvery the deadly level logs again (the place asked then); the quiet safe level is not repeated",
+	check("sampled: after CutEvery the deadly level logs again, the second deadly ask of the frame this time (the first was the line before); the quiet safe level is not repeated",
 		#got == 3 and field(got[3], "pl") == "-1900,-5000", #got)
+	T = 304.2
+	bot.hitBy[hitter] = T
+	ask("cand", HERE, true)
+	ask("cand", Vector(-1900, -5000), true)
+	check("sampled: a frame with fewer deadly asks than the one wanted (the third) logs nothing", #safeLines("cand") == 3, #safeLines("cand"))
+	T = 304.3
+	bot.hitBy[hitter] = T
+	ask("cand", HERE, true)
+	got = safeLines("cand")
+	check("sampled: the frame after starts again from the first ask", #got == 4 and field(got[4], "pl") == "-2000,-5000", #got)
 end
 
--- Note: an answer a consumer decided from its own read is logged like an At call, and not at all with the cut off.
+-- Note: an answer a consumer decided from its own read is logged like an At call.
 do
 	local Threat, G, bot = world()
 	local hitter = enemy(10, -1700, 150)

@@ -558,7 +558,8 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
     ];
 }
 
-const cutState: Record<string, { key: string; at: number } | undefined> = {};
+/** `skip`, `frame`, `n` (a sampled asker only): how many asks of this level to pass over before the next line, and the count in the frame being read. */
+const cutState: Record<string, { key: string; at: number; skip?: number; frame?: number; n?: number } | undefined> = {};
 
 function shadow(bot: Unit, who: string, r: Threat.Read, opts: Opts): void {
     if (!cutOn() || !bot.IsAlive()) return;
@@ -570,17 +571,33 @@ function cutOn(): boolean {
     return Telemetry.IsEnabled() && Telemetry.Get().Cut === true;
 }
 
-/** `sampled`: the asker's place differs from ask to ask (`AtOpts.sampled`), so the cadence is kept per level: a line per level each `CutEvery`, whatever the place. */
+/**
+ * `sampled`: the asker's place differs from ask to ask (`AtOpts.sampled`), so the cadence is kept per level: a line per level each
+ * `CutEvery`, whatever the place. The asks come in a fixed order each frame (the lane spot's rows nearest first), so the line taken moves
+ * one ask further down that order each time, and starts again from the first when a frame has fewer asks of the level than that.
+ */
 function log(bot: Unit, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer, sampled?: boolean): void {
     const key = `${a.level}:${a.reason}`;
     const id = sampled === true ? `${bot.GetPlayerID()}:${who}:${a.level}` : `${bot.GetPlayerID()}:${who}`;
     const now = DotaTime();
     const last = cutState[id];
+    let skip = 0;
     if (last !== undefined) {
         if (now - last.at < SETTINGS.CutEvery && (sampled === true || last.key === key)) return;
         if (last.key === key && i.reach.length === 0 && a.price <= 0) return;
+        if (sampled === true) {
+            if (last.frame !== now) {
+                // The frame before had too few asks of this level to reach the one wanted: back to the first.
+                if (last.frame !== undefined && (last.n ?? 0) <= (last.skip ?? 0)) last.skip = 0;
+                last.frame = now;
+                last.n = 0;
+            }
+            last.n = (last.n ?? 0) + 1;
+            skip = last.skip ?? 0;
+            if (last.n <= skip) return;
+        }
     }
-    cutState[id] = { key, at: now };
+    cutState[id] = sampled === true ? { key, at: now, skip: skip + 1 } : { key, at: now };
     Telemetry.Event("cut", CutFields(bot.GetPlayerID(), who, place, i, a));
 }
 

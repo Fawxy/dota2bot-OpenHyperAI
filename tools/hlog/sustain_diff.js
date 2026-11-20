@@ -27,11 +27,6 @@ const OBSERVED = { tango: 'tango', tango_single: 'tango', flask: 'salve', clarit
 const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
 const recs = (s) => (s === undefined || s === '' ? [] : String(s).split(';').filter(Boolean).map((r) => r.split(',')));
 
-/**
- * One cut line's fields back into sustain.ts's Inputs (the fields sustain_gather.ts CutFields writes). A step 2 line (`lb`,
- * no `kill`) carries the old danger inputs: its `tree` and `safe` are left as that line can give them, so a replay of an
- * old log is a direction only.
- */
 /** `srn` (sustain_gather.ts RunText) back into Sustain.Run. */
 function runOf(s, now) {
     const [kind, slot, name, age, hp0, dur, x, y] = s.split(',');
@@ -42,6 +37,11 @@ function runOf(s, now) {
     };
 }
 
+/**
+ * One cut line's fields back into sustain.ts's Inputs (the fields sustain_gather.ts CutFields writes). A step 2 line (`lb`,
+ * no `kill`) carries the old danger inputs: its `tree` and `safe` are left as that line can give them, so a replay of an
+ * old log is a direction only.
+ */
 function inputsOf(c) {
     const items = recs(c.it).map(([slot, name, uses, hp, mp, dur, br, tr, rf, sh, rd]) => ({
         slot: +slot, name, charges: +uses, hp: +hp, mp: +mp, dur: +dur, breaks: br === '1', tree: tr === '1', refill: rf === '1', share: sh === '1',
@@ -202,4 +202,4 @@ function main(argv) {
 }
 
 if (require.main === module) process.exitCode = main(process.argv);
-module.exports = { inputsOf, episodes, arrivals, diffGame, C };
+module.exports = { inputsOf, runOf, episodes, arrivals, diffGame, C };

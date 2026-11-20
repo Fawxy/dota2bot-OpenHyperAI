@@ -73,3 +73,11 @@ test('a shadow home followed by an arrival within a minute is matched; a respawn
     assert.equal(d.groups.get('ours home cannot_stay matched').n, 1);
     assert.equal(d.groups.get('ours home - trip_avoided'), undefined);
 });
+
+test("the executor's running answer (srn) reads back as Inputs.run, its start counted back from the line's time", () => {
+    const at = (srn) => inputsOf(parseLog(line(100, `cut ${CUT} srn=${srn} ak=none why=fine`))[0].events[0]).run;
+    assert.deepEqual(at('step_out_use,2,flask,1.5,280,12.5,-500,-480'),
+        { kind: 'step_out_use', started: 98.5, hp0: 280, slot: 2, name: 'flask', dur: 12.5, at: { x: -500, y: -480 } });
+    assert.deepEqual(at('home,,,0,300,,,'), { kind: 'home', started: 100, hp0: 300 });
+    assert.equal(inputsOf(parseLog(line(100, `cut ${CUT} ak=none why=fine`))[0].events[0]).run, undefined);
+});
