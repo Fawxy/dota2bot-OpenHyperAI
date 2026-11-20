@@ -174,6 +174,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.SETTINGS = {Mults = {
     0.85,
     1,
@@ -216,12 +217,39 @@ local function stale(bot, x, now)
     end
     return now - x.lastInBand >= ____exports.SETTINGS.Release
 end
+--- Confirmation arm (`Customize.Ours.SafeBarMult`, a number): every hero of the scoped team carries this multiplier on its kill bar all
+-- game, with no draw, so the bar the rolls favour can be read at game level. Undefined when unset or on the other team.
+function ____exports.Fixed()
+    if Customize.Enable == false then
+        return nil
+    end
+    local ____opt_0 = Customize.Ours
+    local v = ____opt_0 and ____opt_0.SafeBarMult
+    if type(v) ~= "number" then
+        return nil
+    end
+    local team = Ours.ScopedTeam()
+    local ____temp_2
+    if team ~= nil and GetTeam() ~= team then
+        ____temp_2 = nil
+    else
+        ____temp_2 = v
+    end
+    return ____temp_2
+end
 --- A roll is held for `bot` (a drawn 1.0 included).
 function ____exports.Held(bot)
+    if ____exports.Fixed() ~= nil then
+        return true
+    end
     return Ours.On("ExploreRoll") and rolls[bot:GetPlayerID()] ~= nil
 end
 --- The multiplier on `bot`'s kill bar: its held roll, else 1 (switch off, no roll). A roll not refreshed for `Release` s ends here too, for a hero that stopped being read.
 function ____exports.Mult(bot)
+    local fixed = ____exports.Fixed()
+    if fixed ~= nil then
+        return fixed
+    end
     if not Ours.On("ExploreRoll") then
         return 1
     end
@@ -454,10 +482,10 @@ local function logTrade(bot, b)
     local ne = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(____exports.TRADE.SeeHeroes, true, BotMode.None)) do
         do
-            local __continue37
+            local __continue42
             repeat
                 if h:IsNull() or not h:IsAlive() then
-                    __continue37 = true
+                    __continue42 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -467,9 +495,9 @@ local function logTrade(bot, b)
                 if d <= ____exports.TRADE.NearHeroes then
                     ne = ne + 1
                 end
-                __continue37 = true
+                __continue42 = true
             until true
-            if not __continue37 then
+            if not __continue42 then
                 break
             end
         end

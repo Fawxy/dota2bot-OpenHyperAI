@@ -6,6 +6,8 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+import Customize = require("bots/FunLib/custom_loader");
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Safe from "bots/FunLib/humaniser/safe";
@@ -50,13 +52,28 @@ function stale(bot: Unit, x: Roll, now: number): boolean {
     return now - x.lastInBand >= SETTINGS.Release;
 }
 
+/**
+ * Confirmation arm (`Customize.Ours.SafeBarMult`, a number): every hero of the scoped team carries this multiplier on its kill bar all
+ * game, with no draw, so the bar the rolls favour can be read at game level. Undefined when unset or on the other team.
+ */
+export function Fixed(): number | undefined {
+    if (Customize.Enable === false) return undefined;
+    const v = (Customize.Ours as unknown as { SafeBarMult?: unknown } | undefined)?.SafeBarMult;
+    if (typeof v !== "number") return undefined;
+    const team = Ours.ScopedTeam();
+    return team !== undefined && GetTeam() !== team ? undefined : v;
+}
+
 /** A roll is held for `bot` (a drawn 1.0 included). */
 export function Held(bot: Unit): boolean {
+    if (Fixed() !== undefined) return true;
     return Ours.On("ExploreRoll") && rolls[bot.GetPlayerID()] !== undefined;
 }
 
 /** The multiplier on `bot`'s kill bar: its held roll, else 1 (switch off, no roll). A roll not refreshed for `Release` s ends here too, for a hero that stopped being read. */
 export function Mult(bot: Unit): number {
+    const fixed = Fixed();
+    if (fixed !== undefined) return fixed;
     if (!Ours.On("ExploreRoll")) return 1;
     const pid = bot.GetPlayerID();
     const x = rolls[pid];
