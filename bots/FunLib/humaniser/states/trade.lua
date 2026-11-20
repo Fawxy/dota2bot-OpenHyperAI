@@ -877,11 +877,11 @@ local function gate(i, c, level, src, run)
         else
             ____slack_1 = sw.cover > ____exports.SwingIn(c.gap, i.ms, c.away) + sw.atk
         end
-        local covered = ____slack_1
+        local covered = ____slack_1 and not (cr and i.creepsOnMe > 0)
         local draws = not unfired and not covered and (c.near or 0) > 0
         local theirs = c.kt + (draws and (c.kc or 0) or 0)
         local ours = c.ko + (cr and (c.oc or 0) or 0)
-        if not (c.free and not draws or ours > theirs or level == "hitback" and c.paid) then
+        if not (c.free and not draws or ours > theirs or level == "hitback" and c.paid and not cr) then
             return (c.free or ours > c.kt) and "aggro" or "unfavoured"
         end
     end
@@ -1659,7 +1659,7 @@ function ____exports.Gather(bot, rs)
                         else
                             ____isRun_38 = cover > ____exports.SwingIn(gap, ms, away) + atk
                         end
-                        local covered = ____isRun_38
+                        local covered = ____isRun_38 and creepsOnMe == 0
                         local named = isRun or rs == nil and not swingLogged
                         swingLogged = swingLogged or named
                         local both = SafeGather.AtBoth(bot, stand, {held = true, draws = not covered, who = named and "trade_swing" or nil})

@@ -244,6 +244,11 @@ do
 	boths = {}
 	Trade.Gather(bot)
 	check("inside our own order's cooldown the swing draws nothing: the same place is asked without the creeps", #boths == 1 and boths[1].opts.draws == false)
+	creeps[1].attacking = bot
+	boths = {}
+	Trade.Gather(bot)
+	check("with a creep already on us the cooldown covers nothing: the place is asked with the creeps", #boths == 1 and boths[1].opts.draws == true)
+	creeps[1].attacking = nil
 	Trade.Reset()
 	enemy.loc = Vector(900, 0)
 	boths = {}

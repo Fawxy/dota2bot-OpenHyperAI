@@ -473,6 +473,15 @@ do
 	check("our creeps' share joins ours: 0.2 + 0.15 against 0.3 opens the hit; without it, unfavoured",
 		decide(inputs({ swing = SW, creepRead = true, cands = { unfavoured(merge({ oc = 0.15 }, clear)) } })).level == "hit"
 			and none(decide(inputs({ swing = SW, creepRead = true, cands = { unfavoured(clear) } })), "unfavoured"))
+	local paidBack = { hitting = true, paid = true, kt = 0.35, near = 3, kc = 0.2, oc = 0.1, say = here(SAFE) }
+	check("a hit back in our creeps' aggro is weighed, not passed: 0.2 + 0.1 against 0.35 + 0.2 is refused, and opens once ours is ahead (control: without the read, `paid` passes)",
+		none(decide(inputs({ swing = SW, creepRead = true, cands = { unfavoured(paidBack) } })), "unfavoured")
+			and decide(inputs({ swing = SW, creepRead = true, cands = { unfavoured(merge({ ko = 0.5 }, paidBack)) } })).level == "hitback"
+			and decide(inputs({ swing = SW, cands = { unfavoured(merge({}, paidBack)) } })).level == "hitback")
+	local covered = { swing = { cover = 2, atk = 0.3 }, creepRead = true }
+	check("our order's cooldown covers a swing among 3 creeps only while none is on us: with one on us their 0.2 joins the target's 0.2 against our 0.3",
+		decide(inputs(merge({ cands = { cand({ near = 3, kc = 0.2, say = here(SAFE) }) } }, covered))).level == "hit"
+			and none(decide(inputs(merge({ creepsOnMe = 1, cands = { cand({ near = 3, kc = 0.2, say = here(SAFE) }) } }, covered))), "aggro"))
 	local low = { thp = 0.2, thpAbs = 120, catch = CATCH }
 	check("a kill inside a wave of 7 is the walk's answer, not a count (control: without the read, `wave`)",
 		decide(inputs({ swing = SW, creepRead = true, wave = 7, cands = { cand(merge(merge({}, low), clear)) } })).level == "kill"

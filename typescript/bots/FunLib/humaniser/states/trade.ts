@@ -346,11 +346,13 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         // still pay with their damage on us counted. The cooldown covers a fresh hit only if it outlasts the walk and the swing; a running hit keeps the open's
         // answer until its first attack has fired (a creep stepping inside the radius meanwhile is not a new reason), and is asked again for each swing after.
         const unfired = run !== undefined && !run.landed;
-        const covered = slack ? sw.cover > 0 : sw.cover > SwingIn(c.gap, i.ms, c.away) + sw.atk;
+        // The cooldown stops a new draw only: with the creep read, creeps already on us stay on us for the swing (the count gate's case, priced).
+        const covered = (slack ? sw.cover > 0 : sw.cover > SwingIn(c.gap, i.ms, c.away) + sw.atk) && !(cr && i.creepsOnMe > 0);
         const draws = !unfired && !covered && (c.near ?? 0) > 0;
         const theirs = c.kt + (draws ? (c.kc ?? 0) : 0);
         const ours = c.ko + (cr ? (c.oc ?? 0) : 0);
-        if (!((c.free && !draws) || ours > theirs || (level === "hitback" && c.paid))) return c.free || ours > c.kt ? "aggro" : "unfavoured";
+        // With the creep read `paid` is our creeps' share in `ours`, weighed against theirs; without it, a pass.
+        if (!((c.free && !draws) || ours > theirs || (level === "hitback" && c.paid && !cr))) return c.free || ours > c.kt ? "aggro" : "unfavoured";
     }
     if (sw === undefined && run?.stepFor === undefined && !reaches) return "no_reach";
     if (i.denyDue) return "deny";
@@ -934,7 +936,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             near = ca.near;
             kc = ca.dmg / math.max(1, bot.GetHealth());
             if (isRun || Arrives(gap, ms, math.max(0, away), BARS.walkHit + BARS.slackWalk)) {
-                const covered = isRun ? cover > 0 : cover > SwingIn(gap, ms, away) + atk;
+                const covered = (isRun ? cover > 0 : cover > SwingIn(gap, ms, away) + atk) && creepsOnMe === 0;
                 const named: boolean = isRun || (rs === undefined && !swingLogged);
                 swingLogged = swingLogged || named;
                 const both = SafeGather.AtBoth(bot, stand, { held: true, draws: !covered, who: named ? "trade_swing" : undefined });
