@@ -297,12 +297,18 @@ function pairOn(i: Inputs, c: Cand): boolean {
 
 /**
  * `Ours.JoinHold`: the running pair join on `c` has not yet attacked and the pair is not answering against it. A lapsed answer or one that names another
- * target does not end it; a losing answer on our own target does. Arrival is the gate's test.
+ * target does not end it. A losing answer does, whichever hero it names (it is a verdict on the fight, `tgt` only our best target), and so does a pair
+ * answer on another hero low enough to kill: the kill is not passed up for the walk. Arrival is the gate's test.
  */
 function heldJoin(i: Inputs, c: Cand, run: Run | undefined): boolean {
     if (i.joinHold !== true || run === undefined || run.target !== c.pid) return false;
     if (run.level !== "join" || run.source !== "pair" || run.landed) return false;
-    return !(i.pair !== undefined && i.pair.tgt === c.pid && i.pair.ko <= i.pair.kt);
+    const p = i.pair;
+    if (p === undefined) return true;
+    if (p.ko <= p.kt) return false;
+    if (p.tgt === c.pid) return true;
+    const other = i.cands.find((x) => x.pid === p.tgt);
+    return !(other !== undefined && other.thp <= BARS.commitHp);
 }
 
 /** `c` is hitting us as a hit back reads it: a hit in the last second, or, for the running hit back's own target, one within its attack interval. */

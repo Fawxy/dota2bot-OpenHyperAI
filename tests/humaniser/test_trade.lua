@@ -508,6 +508,12 @@ do
 	check("the pair now naming another target does not end the held join", other.level == "join" and other.target == 7 and other.ended == nil)
 	local losing = join({ pair = { tgt = 7, ko = 0.2, kt = 0.5, dec = "losing" } })
 	check("control: the pair answering losing on our own target ends the join at once", none(losing, "pair_end") and losing.ended == "pair_end")
+	local losingOther = join({ pair = { tgt = 8, ko = 0.2, kt = 0.5, dec = "losing" } })
+	check("control: a losing answer that names another hero is a verdict on the fight and ends the join too", none(losingOther, "pair_end") and losingOther.ended == "pair_end")
+	local killElsewhere = decide(inputs({ joinHold = true, pair = { tgt = 8, ko = 0.5, kt = 0.2, dec = "join" },
+		cands = { unfavoured({ gap = 400, d = 1000 }), cand({ pid = 8, thp = 0.2, catch = CATCH, gap = 100, d = 700 }) },
+		run = run({ level = "join", source = "pair" }) }))
+	check("the pair's answer moving to a hero low enough to kill takes the hero off the held join", killElsewhere.level == "kill" and killElsewhere.target == 8)
 	local walk = join({}, { walk = deadly("kill") })
 	check("a held join whose walk turned deadly ends with the walk's reason", none(walk, "kill") and walk.ended == "kill")
 	local far = join({}, { gap = 900, d = 1100 })
