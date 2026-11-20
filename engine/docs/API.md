@@ -96,8 +96,7 @@ fires, slice lh-chance 20/11/2026): `expected` (default) swings once the believe
 chance to kill at least 0.02 higher. The chance is over the unknown phases of the attackers between swings: each one's
 next hit is uniform from its attack point to one cycle on (plus flight), then every cycle, with the hits of known time
 fixed and 64 stratified samples. A kill needs the creep alive one tick before ours lands and at or under our damage. The
-skill error's timing shift moves the horizon as it does under `expected`. With an enemy hero within its attack range +
-200 of the creep (it may deny or take it on any frame), the `expected` rule decides instead. A `chance` swing's message carries
+skill error's timing shift moves the horizon as it does under `expected`. A `chance` swing's message carries
 `pk=<that chance>` after `idps`.
 
 **Choosing.** Without `target`: the creep within `searchRadius` (for `lastHit`, allowed by `lastHitFilter`)

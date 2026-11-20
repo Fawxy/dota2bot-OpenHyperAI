@@ -73,22 +73,6 @@ do
     T.check("swing: no pk under the default rule", (e.message or ""):find(" pk=", 1, true) == nil)
 end
 
--- An enemy hero that can reach the creep (attack range + 200) hands the swing to the expected rule: no `pk`. One out of
--- reach leaves the chance rule on.
-do
-    local function swingWith(heroX)
-        local sim = Sim.new()
-        sim:adapter(tasks, { random = Sim.lcg(4), skill = function() return 1 end })
-        local bot = sim:addBot{ x = 0, y = 0, range = 700, damage = 50, attackPoint = 0.3, projectileSpeed = 900, fireTime = true }
-        local creep = sim:addCreep{ x = 550, y = 0, hp = 200, drain = 60, team = 3, passive = true }
-        sim:addHero{ x = heroX, y = 0, team = 3, range = 600 }
-        return run(sim, V.lastHit(bot, { target = creep, maxWait = 8, swing = "chance" }))
-    end
-    local near, far = swingWith(1300), swingWith(1500)
-    T.check("swing: an enemy hero in reach, expected rule (" .. tostring(near.message) .. ")", (near.message or ""):find(" pk=", 1, true) == nil)
-    T.check("swing: an enemy hero out of reach, chance rule (" .. tostring(far.message) .. ")", (far.message or ""):match(" pk=%d") ~= nil)
-end
-
 -- laneFarm reads `swing` at each attempt's start and passes it to the verb.
 do
     local sim = Sim.new()

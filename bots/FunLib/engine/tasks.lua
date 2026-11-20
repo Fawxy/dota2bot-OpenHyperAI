@@ -2265,8 +2265,6 @@ end
 --- How far ahead the `chance` rule compares later swings, and the gain in chance a later one needs to be waited for.
 local CHANCE_LOOK = 0.6
 local CHANCE_GAIN = 0.02
---- Beyond its attack range, how near an enemy hero to the creep hands the swing back to the expected rule (a step in; taste).
-local CHANCE_REACH = 200
 --- The `chance` swing rule: the kill chance of a swing ordered now (`p`), and whether to swing (`due`): the creep survives
 -- the seen hits, the chance is above 0, and no swing ordered on one of the next frames (`step` s apart, to CHANCE_LOOK)
 -- beats it by CHANCE_GAIN. Later swings are judged on what is known now; waiting also shows wind-ups not yet begun, which
@@ -2274,39 +2272,6 @@ local CHANCE_REACH = 200
 local function chanceDue(bot, creep, b, step, shift)
     if not b.survives then
         return {due = false, p = 0}
-    end
-    for ____, h in ipairs(enemyHeroes(
-        bot,
-        nearby(bot)
-    )) do
-        do
-            local __continue143
-            repeat
-                local ____opt_126 = h.GetLocation
-                local at = ____opt_126 and ____opt_126(h)
-                local ____opt_128 = h.IsAlive
-                local ____temp_130 = ____opt_128 and ____opt_128(h)
-                if ____temp_130 == nil then
-                    ____temp_130 = true
-                end
-                if not ____temp_130 or at == nil then
-                    __continue143 = true
-                    break
-                end
-                local ____dist_result_133 = dist(
-                    at,
-                    creep:GetLocation()
-                )
-                local ____opt_131 = h.GetAttackRange
-                if ____dist_result_133 <= (____opt_131 and ____opt_131(h) or 600) + CHANCE_REACH then
-                    return nil
-                end
-                __continue143 = true
-            until true
-            if not __continue143 then
-                break
-            end
-        end
     end
     step = math.max(step, MIN_MARGIN)
     local at = math.max(0, b.tHit + shift)
@@ -2336,20 +2301,20 @@ local function windowText(w)
     )
 end
 local function isRangedCreep(c)
-    local ____this_135
-    ____this_135 = c
-    local ____opt_134 = ____this_135.GetUnitName
-    local name = ____opt_134 and ____opt_134(____this_135)
+    local ____this_127
+    ____this_127 = c
+    local ____opt_126 = ____this_127.GetUnitName
+    local name = ____opt_126 and ____opt_126(____this_127)
     if name == nil then
         return false
     end
     return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 local function deniable(c)
-    local ____this_137
-    ____this_137 = c
-    local ____opt_136 = ____this_137.GetMaxHealth
-    local max = ____opt_136 and ____opt_136(____this_137)
+    local ____this_129
+    ____this_129 = c
+    local ____opt_128 = ____this_129.GetMaxHealth
+    local max = ____opt_128 and ____opt_128(____this_129)
     return max == nil or c:GetHealth() < max / 2
 end
 --- Of `creeps`, the one closest to dying to our hit (exact prediction, no error), preferring a ranged or siege
@@ -2375,16 +2340,16 @@ end
 --- Deny heuristic, UNVERIFIED in-game: assumes an enemy hero attacking the creep on its last live frame
 -- landed the killing blow, and that Dota hands back the same handle for the same unit so `==` matches.
 local function enemyTargeting(bot, creep)
-    local ____this_139
-    ____this_139 = bot
-    local ____opt_138 = ____this_139.GetNearbyHeroes
-    local heroes = ____opt_138 and ____opt_138(____this_139, 1200, true, 0)
+    local ____this_131
+    ____this_131 = bot
+    local ____opt_130 = ____this_131.GetNearbyHeroes
+    local heroes = ____opt_130 and ____opt_130(____this_131, 1200, true, 0)
     if heroes == nil then
         return false
     end
     for ____, h in ipairs(heroes) do
-        local ____opt_140 = h.GetAttackTarget
-        if (____opt_140 and ____opt_140(h)) == creep then
+        local ____opt_132 = h.GetAttackTarget
+        if (____opt_132 and ____opt_132(h)) == creep then
             return true
         end
     end
@@ -2405,14 +2370,14 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    local ____exports_incomingDps_result_dps_145 = ____exports.incomingDps(bot, c).dps
-    local ____math_max_144 = math.max
-    local ____this_143
-    ____this_143 = c
-    local ____opt_142 = ____this_143.GetHealthRegen
-    local dps = ____exports_incomingDps_result_dps_145 + ____math_max_144(
+    local ____exports_incomingDps_result_dps_137 = ____exports.incomingDps(bot, c).dps
+    local ____math_max_136 = math.max
+    local ____this_135
+    ____this_135 = c
+    local ____opt_134 = ____this_135.GetHealthRegen
+    local dps = ____exports_incomingDps_result_dps_137 + ____math_max_136(
         0,
-        -(____opt_142 and ____opt_142(____this_143) or 0)
+        -(____opt_134 and ____opt_134(____this_135) or 0)
     )
     local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
     if margin <= 0 then
@@ -2442,13 +2407,13 @@ function ____exports.laneTargets(bot, opts)
         bot:GetAttackRange() + 400
     )
     local within = opts.within or 1
-    local ____math_max_148 = math.max
-    local ____this_147
-    ____this_147 = bot
-    local ____opt_146 = ____this_147.GetCurrentMovementSpeed
-    local speed = ____math_max_148(
+    local ____math_max_140 = math.max
+    local ____this_139
+    ____this_139 = bot
+    local ____opt_138 = ____this_139.GetCurrentMovementSpeed
+    local speed = ____math_max_140(
         100,
-        ____opt_146 and ____opt_146(____this_147) or 300
+        ____opt_138 and ____opt_138(____this_139) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -2658,26 +2623,20 @@ local strike = __TS__Generator(function(bot, mode, opts)
                     math.floor(b.hpAtHit),
                     math.floor(b.mine)
                 )
-                local ____temp_149
-                if rule == "chance" then
-                    ____temp_149 = chanceDue(
-                        bot,
-                        creep,
-                        b,
-                        gapN > 0 and gapSum / gapN or MIN_MARGIN,
-                        rollFor(bot, creep).shift
-                    )
-                else
-                    ____temp_149 = nil
-                end
-                local c = ____temp_149
-                local ____temp_150
+                local c = rule == "chance" and chanceDue(
+                    bot,
+                    creep,
+                    b,
+                    gapN > 0 and gapSum / gapN or MIN_MARGIN,
+                    rollFor(bot, creep).shift
+                ) or nil
+                local ____temp_141
                 if c ~= nil then
-                    ____temp_150 = c.due
+                    ____temp_141 = c.due
                 else
-                    ____temp_150 = due(b)
+                    ____temp_141 = due(b)
                 end
-                if ____temp_150 then
+                if ____temp_141 then
                     opened(t, gap, "swing")
                     tHit = b.tHit
                     diag = string.format(
@@ -2725,10 +2684,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
-    local ____this_152
-    ____this_152 = bot
-    local ____opt_151 = ____this_152.GetLastAttackTime
-    local atk0 = ____opt_151 and ____opt_151(____this_152)
+    local ____this_143
+    ____this_143 = bot
+    local ____opt_142 = ____this_143.GetLastAttackTime
+    local atk0 = ____opt_142 and ____opt_142(____this_143)
     local fireAt
     local landHp
     local function out(r)
