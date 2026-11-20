@@ -880,6 +880,7 @@ function log(bot, who, place, i, a, sampled)
     local id = sampled == true and (((tostring(bot:GetPlayerID()) .. ":") .. who) .. ":") .. a.level or (tostring(bot:GetPlayerID()) .. ":") .. who
     local now = DotaTime()
     local last = cutState[id]
+    local skip = 0
     if last ~= nil then
         if now - last.at < ____exports.SETTINGS.CutEvery and (sampled == true or last.key == key) then
             return
@@ -887,8 +888,22 @@ function log(bot, who, place, i, a, sampled)
         if last.key == key and #i.reach == 0 and a.price <= 0 then
             return
         end
+        if sampled == true then
+            if last.frame ~= now then
+                if last.frame ~= nil and (last.n or 0) <= (last.skip or 0) then
+                    last.skip = 0
+                end
+                last.frame = now
+                last.n = 0
+            end
+            last.n = (last.n or 0) + 1
+            skip = last.skip or 0
+            if last.n <= skip then
+                return
+            end
+        end
     end
-    cutState[id] = {key = key, at = now}
+    cutState[id] = sampled == true and ({key = key, at = now, skip = skip + 1}) or ({key = key, at = now})
     Telemetry.Event(
         "cut",
         ____exports.CutFields(
