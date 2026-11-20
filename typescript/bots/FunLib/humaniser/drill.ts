@@ -2138,7 +2138,8 @@ function standAt(bot: Unit, p: Vector): boolean {
 
 /**
  * Where a held hero waits in its fountain: one slot per position, on an arc WAIT_RADIUS out from the fountain point toward
- * the map centre, WAIT_STEP radians apart (about 200 units). lane-trade swingon/swingon2 (20/11/2026): since patch 7.42 the
+ * the map centre, WAIT_STEP radians apart (about 200 units; a slot snapped to passable ground may sit nearer its neighbour: Dire pos 1 is
+ * about 95 from pos 3). lane-trade swingon/swingon2 (20/11/2026): since patch 7.42 the
  * Dire heroes spawn 400-700 out of the fountain, and every held one walked to the one fountain point; packed about 56 apart
  * against the fountain, the actors in the middle could not get out for the whole game. `judgement`.
  */
