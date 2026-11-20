@@ -1231,9 +1231,7 @@ export function Hold(bot: Unit): boolean {
         }
     }
     if (r === "bench" || r === "chaser") {
-        const [x, y, z] = FOUNTAIN[bot.GetTeam()];
-        const f = Vector(x, y, z);
-        if (GetUnitToLocationDistance(bot, f) > 300) bot.Action_MoveToLocation(f);
+        waitInFountain(bot);
         return true;
     }
     if (r !== "statue" && r !== "sentry" && !IdleStatue(bot)) return false;
@@ -2138,6 +2136,42 @@ function standAt(bot: Unit, p: Vector): boolean {
     return true;
 }
 
+/**
+ * Where a held hero waits in its fountain: one slot per position, on an arc WAIT_RADIUS out from the fountain point toward
+ * the map centre, WAIT_STEP radians apart (about 200 units). lane-trade swingon/swingon2 (20/11/2026): since patch 7.42 the
+ * Dire heroes spawn 400-700 out of the fountain, and every held one walked to the one fountain point; packed about 56 apart
+ * against the fountain, the actors in the middle could not get out for the whole game. `judgement`.
+ */
+const WAIT_RADIUS = 350;
+const WAIT_STEP = 0.6;
+/** A waiting hero within this of its slot gets no new order. */
+const WAIT_AT = 50;
+const waitSlots: Record<string, Vector> = {};
+
+/** The hero's waiting slot (by position; by player id before its position is known), snapped to passable ground. */
+export function WaitSlot(bot: Unit): Vector {
+    const team = bot.GetTeam();
+    const n = LaneConfig.PositionOf(bot) ?? (bot.GetPlayerID() % 5) + 1;
+    const key = `${team}:${n}`;
+    const known = waitSlots[key];
+    if (known !== undefined) return known;
+    const [x, y, z] = FOUNTAIN[team];
+    const len = math.sqrt(x * x + y * y);
+    const ux = -x / len;
+    const uy = -y / len;
+    const a = (n - 3) * WAIT_STEP;
+    const dx = math.cos(a) * ux - math.sin(a) * uy;
+    const dy = math.cos(a) * uy + math.sin(a) * ux;
+    const p = passableNear(Vector(x + WAIT_RADIUS * dx, y + WAIT_RADIUS * dy, z)) ?? Vector(x, y, z);
+    waitSlots[key] = p;
+    return p;
+}
+
+function waitInFountain(bot: Unit): void {
+    const p = WaitSlot(bot);
+    if (GetUnitToLocationDistance(bot, p) > WAIT_AT) bot.Action_MoveToLocation(p);
+}
+
 function atFountain(bot: Unit): boolean {
     const [x, y, z] = FOUNTAIN[bot.GetTeam()];
     const f = Vector(x, y, z);
@@ -2397,7 +2431,7 @@ function rigHold(bot: Unit): boolean {
     const k = keyOf(bot);
     if (st === undefined || k === undefined) {
         // Before the first rep everyone in a rig waits in its fountain.
-        atFountain(bot);
+        waitInFountain(bot);
         return true;
     }
     const rr = RigRepOf(st.rep);
@@ -2405,7 +2439,7 @@ function rigHold(bot: Unit): boolean {
     const steps = rr?.setup[k];
     if (steps === undefined || steps.length === 0) {
         st.placed[pid] = true;
-        atFountain(bot);
+        waitInFountain(bot);
         return true;
     }
     // Several steps may end in one frame (buy, sell); a step that keeps the frame stops the loop.
@@ -2908,6 +2942,7 @@ export function ResetCache(): void {
     for (const k of Object.keys(brokeOff)) delete brokeOff[k as unknown as number];
     removedLogged = false;
     rig = undefined;
+    for (const k of Object.keys(waitSlots)) delete waitSlots[k];
     for (const k of Object.keys(rigUnits)) delete rigUnits[k];
     for (const k of Object.keys(rigSpots)) delete rigSpots[k];
 }

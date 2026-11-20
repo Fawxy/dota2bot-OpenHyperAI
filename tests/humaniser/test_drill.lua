@@ -1283,4 +1283,32 @@ do
 	GetCourier, GetCourierState, GetTower = nil, nil, towerOf
 end
 
+-- Held heroes wait in their fountain at slots of their own (lane-trade swingon, 20/11/2026: on patch 7.42 every held Dire
+-- hero walked to the one fountain point and the packed actors never got out).
+do
+	local H = world("lane-trade")
+	T = 30
+	ACTIONS = {}
+	local targets = {}
+	for pos = 1, 5 do
+		local u = hero(4 + pos, DIRE, pos, 1)
+		u.loc = Vector(6400, 5800, 0)
+		CURRENT_TEAM = DIRE
+		H.Drill.Hold(u)
+		CURRENT_TEAM = RAD
+		local mv = ActionsOf(4 + pos, "MoveToLocation")
+		targets[pos] = mv[#mv] and mv[#mv].args[1]
+	end
+	local ok = true
+	for i = 1, 5 do
+		local a = targets[i]
+		if a == nil or math.sqrt((a.x - 6624) ^ 2 + (a.y - 6368) ^ 2) > 400 then ok = false end
+		for j = i + 1, 5 do
+			local b = targets[j]
+			if a == nil or b == nil or math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) < 150 then ok = false end
+		end
+	end
+	check("fountain wait: benched heroes and actors before rep 1 each walk to a slot of their own, 150+ apart, within 400 of the fountain", ok)
+end
+
 finish()
