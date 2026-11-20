@@ -2213,6 +2213,84 @@ end
 local function due(b)
     return b.survives and b.hpAtHit <= b.mine
 end
+--- The chance that our hit, landing `tHit` s from now for `mine` damage, kills the creep: over the unknown phases of the
+-- attackers between swings, each one's next hit uniform on its bracket [first, last] (`HpForecast.unphasedHits`: past its
+-- attack point, so within one cycle, plus flight) and every cycle after, with the hits of known time fixed. A kill needs
+-- the others to leave the creep alive one tick before ours lands and at or under our damage. Stratified samples, no random
+-- draw (the skill error owns the random source). Phases are independent across attackers (UNVERIFIED: lane creeps of one
+-- wave start their attacks close together).
+local CHANCE_SAMPLES = 64
+local function killChance(f, tHit, mine)
+    local at = tHit - MIN_MARGIN
+    local base = f.hp + f.regen * tHit
+    for ____, h in ipairs(f.hits) do
+        if h.t > at then
+            break
+        end
+        if h.by ~= "self" then
+            base = base - h.damage
+        end
+    end
+    local wins = 0
+    do
+        local s = 0
+        while s < CHANCE_SAMPLES do
+            local hp = base
+            do
+                local j = 0
+                while j < #f.unphasedHits do
+                    local u = f.unphasedHits[j + 1]
+                    local q = ((s + 0.5) / CHANCE_SAMPLES + j * 0.6180339887) % 1
+                    local first = u.first + q * math.max(0, u.last - u.first)
+                    if u.period > 0 then
+                        do
+                            local t = first
+                            while t <= at do
+                                hp = hp - u.damage
+                                t = t + u.period
+                            end
+                        end
+                    end
+                    j = j + 1
+                end
+            end
+            if hp > 0 and hp <= mine then
+                wins = wins + 1
+            end
+            s = s + 1
+        end
+    end
+    return wins / CHANCE_SAMPLES
+end
+--- How far ahead the `chance` rule compares later swings, and the gain in chance a later one needs to be waited for.
+local CHANCE_LOOK = 0.6
+local CHANCE_GAIN = 0.02
+--- The `chance` swing rule: the kill chance of a swing ordered now (`p`), and whether to swing (`due`): the creep survives
+-- the seen hits, the chance is above 0, and no swing ordered on one of the next frames (`step` s apart, to CHANCE_LOOK)
+-- beats it by CHANCE_GAIN. Later swings are judged on what is known now; waiting also shows wind-ups not yet begun, which
+-- this does not credit. `shift` is the bot's rolled timing error (positive: it believes its hit lands later, so swings early).
+local function chanceDue(bot, creep, b, step, shift)
+    if not b.survives then
+        return {due = false, p = 0}
+    end
+    step = math.max(step, MIN_MARGIN)
+    local at = math.max(0, b.tHit + shift)
+    local f = ____exports.hpForecast(bot, creep, at + CHANCE_LOOK + 0.1)
+    local p = killChance(f, at, b.mine)
+    if p <= 0 then
+        return {due = false, p = p}
+    end
+    do
+        local d = step
+        while d <= CHANCE_LOOK + 1e-9 do
+            if killChance(f, at + d, b.mine) > p + CHANCE_GAIN then
+                return {due = false, p = p}
+            end
+            d = d + step
+        end
+    end
+    return {due = true, p = p}
+end
 local function windowText(w)
     return string.format(
         " wo=%.2f wb=%s wn=%d wg=%.2f",
@@ -2386,6 +2464,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
     end
     local start = now()
     local maxWait = opts.maxWait or 1.5
+    local rule = opts.swing or "expected"
     local creep = opts.target
     if creep == nil then
         if bot.GetNearbyLaneCreeps == nil then
@@ -2544,7 +2623,20 @@ local strike = __TS__Generator(function(bot, mode, opts)
                     math.floor(b.hpAtHit),
                     math.floor(b.mine)
                 )
-                if due(b) then
+                local c = rule == "chance" and chanceDue(
+                    bot,
+                    creep,
+                    b,
+                    gapN > 0 and gapSum / gapN or MIN_MARGIN,
+                    rollFor(bot, creep).shift
+                ) or nil
+                local ____temp_141
+                if c ~= nil then
+                    ____temp_141 = c.due
+                else
+                    ____temp_141 = due(b)
+                end
+                if ____temp_141 then
                     opened(t, gap, "swing")
                     tHit = b.tHit
                     diag = string.format(
@@ -2558,6 +2650,9 @@ local strike = __TS__Generator(function(bot, mode, opts)
                         math.floor(observedDps),
                         math.floor(____exports.incomingDps(bot, creep).dps)
                     )
+                    if c ~= nil then
+                        diag = string.format("%s pk=%.2f", diag, c.p)
+                    end
                     local ew = enemyHeroWindups(bot, creep, b.relied)
                     if ew.n > 0 then
                         diag = string.format(
@@ -2589,10 +2684,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
-    local ____this_142
-    ____this_142 = bot
-    local ____opt_141 = ____this_142.GetLastAttackTime
-    local atk0 = ____opt_141 and ____opt_141(____this_142)
+    local ____this_143
+    ____this_143 = bot
+    local ____opt_142 = ____this_143.GetLastAttackTime
+    local atk0 = ____opt_142 and ____opt_142(____this_143)
     local fireAt
     local landHp
     local function out(r)
@@ -2957,42 +3052,48 @@ ____exports.laneFarm = __TS__Generator(function(bot, spot, opts)
                 dropped = false
                 local contested = enemyHeroNear(bot, opts.contestRadius or 1000)
                 label(t.kind)
-                local ____t_creep_9 = t.creep
-                local ____temp_10 = t.eta + 1.5
-                local ____opts_deadline_11 = opts.deadline
+                local ____t_creep_11 = t.creep
+                local ____temp_12 = t.eta + 1.5
+                local ____opts_deadline_13 = opts.deadline
                 local ____opt_7 = opts.hold
+                local ____temp_14 = ____opt_7 and ____opt_7.hold
+                local function ____temp_15()
+                    return stop() or away() > leash or retarget(t)
+                end
+                local ____opt_9 = opts.swing
                 local o = {
-                    target = ____t_creep_9,
-                    maxWait = ____temp_10,
-                    deadline = ____opts_deadline_11,
-                    hold = ____opt_7 and ____opt_7.hold,
-                    interruptIf = function() return stop() or away() > leash or retarget(t) end
+                    target = ____t_creep_11,
+                    maxWait = ____temp_12,
+                    deadline = ____opts_deadline_13,
+                    hold = ____temp_14,
+                    interruptIf = ____temp_15,
+                    swing = ____opt_9 and ____opt_9()
                 }
-                local ____temp_18
+                local ____temp_22
                 if t.kind == "prehit" then
-                    local ____attackAndConfirm_17 = attackAndConfirm
-                    local ____bot_15 = bot
-                    local function ____temp_16()
+                    local ____attackAndConfirm_21 = attackAndConfirm
+                    local ____bot_19 = bot
+                    local function ____temp_20()
                         return t.creep:IsAlive() and t.creep or nil
                     end
-                    local ____temp_14 = t.walk + ownHitTime(bot, t.creep) + PREHIT_SLACK
-                    local ____opt_12 = opts.hold
-                    ____temp_18 = __TS__DelegatedYield(____attackAndConfirm_17(
-                        ____bot_15,
-                        ____temp_16,
+                    local ____temp_18 = t.walk + ownHitTime(bot, t.creep) + PREHIT_SLACK
+                    local ____opt_16 = opts.hold
+                    ____temp_22 = __TS__DelegatedYield(____attackAndConfirm_21(
+                        ____bot_19,
+                        ____temp_20,
                         {
                             findFor = 0,
-                            confirmFor = ____temp_14,
+                            confirmFor = ____temp_18,
                             aggroConfirms = false,
-                            hold = ____opt_12 and ____opt_12.hold,
+                            hold = ____opt_16 and ____opt_16.hold,
                             deadline = opts.deadline,
                             interruptIf = function() return stop() or away() > leash end
                         }
                     ))
                 else
-                    ____temp_18 = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
+                    ____temp_22 = t.kind == "lasthit" and __TS__DelegatedYield(lastHit(bot, o)) or __TS__DelegatedYield(deny(bot, o))
                 end
-                local res = ____temp_18
+                local res = ____temp_22
                 if t.kind == "prehit" then
                     bot:Action_MoveToLocation(bot:GetLocation())
                 end

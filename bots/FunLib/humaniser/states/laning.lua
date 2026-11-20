@@ -998,6 +998,7 @@ local body = __TS__Generator(function(bot, ctx)
                 return owns
             end,
             within = ____exports.Settings().LastHitWithin,
+            swing = function() return Ours.On("LastHitChance") and "chance" or "expected" end,
             pick = function(targets, current)
                 local verbs = Tasks.Verbs()
                 local ____temp_25

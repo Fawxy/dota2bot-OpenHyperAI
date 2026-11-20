@@ -1,7 +1,8 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 4 (slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
+name / version / owner:  lastHit, deny / 5 (v5 slice lh-chance, 20/11/2026: the `swing` option and the `pk` message field;
+                v4 slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
                 cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
                 within the horizon are counted and its rate is not spread; v2 slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
                 hpt` on every message and an enemy-hero query each frame; v1 slice lane-last-hits, 03/11/2026: first
@@ -17,7 +18,11 @@ applicability:  A bot handle with GetAttackDamage and GetAttackPoint (deny: also
                 candidate, `no_target` when there is none.
 inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: laneFarm passes eta + 1.5); opts.deadline;
                 opts.searchRadius (default attack range + 300, taste); opts.hold (tag for the adapter's hold while
-                waiting); opts.interruptIf.
+                waiting); opts.interruptIf; opts.swing (`expected` default | `chance`, slice lh-chance): under `chance`
+                the swing fires when no swing on one of the next frames (frame-gap steps to 0.6 s) has a kill chance
+                0.02 higher, the chance taken over the unknown phases of the between-swings attackers (next hit uniform
+                from attack point to one cycle, plus flight; 64 stratified samples; phases independent, UNVERIFIED);
+                message `pk` after `idps`. CHANCE_LOOK 0.6 and CHANCE_GAIN 0.02: taste.
                 Kill belief (game facts, each frame): own hit time = attack point / attack speed + cooldown left (with the
                 adapter's attackClock) + projectile flight for a ranged bot (dist - 39, over projectile speed); incoming
                 damage = attack projectiles in flight at the creep plus every visible attacker of either team winding up
@@ -63,7 +68,7 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 attackers that are not heroes, one per attacker per frame, and of those the ones read winding up) and, when
                 cf > 0, `ca cc cpt cs` (the last one's GetAnimActivity, GetAnimCycle, GetAttackPoint, GetSecondsPerAttack):
                 the same check on lane creeps and towers (slice lh-unphased). Read by hlog `@lh_swings`.
-fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
+fixtures:       engine test_swing (chance against expected on random creep fights, bot stepped every 0.167 s); engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
                 enemy hero wind-ups relied on, not relied on, and under a lapse, hero watch (relied on, idle hero aimed at
                 the creep, two heroes with one wind-up frame),
