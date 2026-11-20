@@ -233,10 +233,11 @@ export interface Inputs {
     cands: Cand[];
     run?: Run;
     /**
-     * Set when `Ours.TradeSwing` is on (absent: the rules before it). `cover`: our own attack order's aggro cooldown covers a swing now, so it
-     * draws no creep; `due`: seconds until the next last hit or deny this laner would take (absent: none in sight); `atk`: our attack point (s).
+     * Set when `Ours.TradeSwing` is on (absent: the rules before it). `cover`: seconds our own attack order's aggro cooldown still covers a swing
+     * (0: none), during which it draws no creep; `due`: seconds until the next last hit or deny this laner would take (absent: none in sight);
+     * `atk`: our attack point (s).
      */
-    swing?: { cover: boolean; due?: number; atk: number };
+    swing?: { cover: number; due?: number; atk: number };
 }
 
 export interface How {
@@ -311,15 +312,22 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
         return undefined;
     }
     const sw = i.swing;
+    const reaches = Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0));
     if (sw === undefined) {
         if (!(c.free || c.ko > c.kt || (level === "hitback" && c.paid))) return "unfavoured";
     } else {
-        // The swing draws the creeps near its place unless our own order's cooldown covers it: a hit is free only from a clear place, and among creeps it must still pay with their damage on us counted.
-        const draws = !sw.cover && (c.near ?? 0) > 0;
+        // Finish comes first: a hero out of reach is not asked what its swing would draw.
+        if (!reaches) return "no_reach";
+        // The swing draws the creeps near its place unless our own order's cooldown covers it: a hit is free only from a clear place, and among creeps it must
+        // still pay with their damage on us counted. The cooldown covers a fresh hit only if it outlasts the walk and the swing; a running hit keeps the open's
+        // answer until its first attack has fired (a creep stepping inside the radius meanwhile is not a new reason), and is asked again for each swing after.
+        const unfired = run !== undefined && !run.landed;
+        const covered = slack ? sw.cover > 0 : sw.cover > SwingIn(c.gap, i.ms, c.away) + sw.atk;
+        const draws = !unfired && !covered && (c.near ?? 0) > 0;
         const theirs = c.kt + (draws ? (c.kc ?? 0) : 0);
         if (!((c.free && !draws) || c.ko > theirs || (level === "hitback" && c.paid))) return c.free || c.ko > c.kt ? "aggro" : "unfavoured";
     }
-    if ((sw !== undefined || run?.stepFor === undefined) && !Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0))) return "no_reach";
+    if (sw === undefined && run?.stepFor === undefined && !reaches) return "no_reach";
     if (i.denyDue) return "deny";
     // Finish: a last hit or deny that comes due before the swing lands would take the hero mid-walk. A running exchange yields to it when it is due (`deny`, laning's desire), not before.
     if (sw !== undefined && run === undefined && sw.due !== undefined && sw.due < SwingIn(c.gap, i.ms, c.away) + sw.atk) return "due";
@@ -808,7 +816,9 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     let creepsOnMe = 0;
     const swingOn = Ours.On("TradeSwing");
     const creepReads: CreepRead[] = [];
-    if (!swingOn) {
+    const heroes = bot.GetNearbyHeroes(CAND_RADIUS, true, BotMode.None);
+    // With no enemy hero near there is no swing place to read creeps for: the wave count alone, as with the rule off.
+    if (!swingOn || heroes.length === 0) {
         for (const c of bot.GetNearbyLaneCreeps(CREEP_RADIUS, true)) {
             if (!c.IsAlive()) continue;
             wave++;
@@ -844,7 +854,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     }
     const bpid = bot.GetPlayerID();
     const primed = primedAt[bpid];
-    const cover = primed !== undefined && now - primed < AGGRO_COOLDOWN - COOLDOWN_LEFT;
+    const cover = primed !== undefined ? math.max(0, AGGRO_COOLDOWN - COOLDOWN_LEFT - (now - primed)) : 0;
     const pairRead = PairJoin.For(bot);
     let pair: Inputs["pair"] = pairRead.ans !== undefined && pairRead.rec !== undefined && pairRead.ans.tgt !== -1
         ? { tgt: pairRead.ans.tgt, ko: pairRead.ans.ko, kt: pairRead.ans.kt, dec: pairRead.ans.dec }
@@ -862,7 +872,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
     let runSeen = false;
     // The walk answer logged as `trade_walk`: the running exchange's, else the first candidate asked.
     let walkLogged: boolean = false;
-    for (const h of bot.GetNearbyHeroes(CAND_RADIUS, true, BotMode.None)) {
+    for (const h of heroes) {
         if (!valid(h)) continue;
         const pid = h.GetPlayerID();
         const at = h.GetLocation();
@@ -896,7 +906,7 @@ export function Gather(bot: Unit, rs?: RunState): Inputs {
             kc = dmg / math.max(1, bot.GetHealth());
         }
         // A free hit among creeps is judged on the shares (the creeps answer for the target), so they are read for it too.
-        const shares = !free || (near !== undefined && near > 0 && !cover);
+        const shares = !free || (near !== undefined && near > 0);
         const c: Cand = {
             pid,
             thp,
@@ -1137,7 +1147,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
         ["hc", i.creepsOnMe],
         ["cr", i.wave],
         ["dn", i.denyDue ? 1 : 0],
-        ["swg", i.swing !== undefined ? `${i.swing.cover ? 1 : 0}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
+        ["swg", i.swing !== undefined ? `${round6(i.swing.cover)}:${or(i.swing.due !== undefined ? round6(i.swing.due) : undefined)}:${round6(i.swing.atk)}` : undefined],
         ["pjr", i.pair !== undefined ? `${i.pair.dec}:${i.pair.tgt}:${round6(i.pair.ko)}:${round6(i.pair.kt)}` : undefined],
         ["pl", i.play !== undefined ? `${i.play.id}:${i.play.kind}:${i.play.tgt}:${i.play.zero ?? "-"}` : undefined],
         ["cd", cds.join(";")],

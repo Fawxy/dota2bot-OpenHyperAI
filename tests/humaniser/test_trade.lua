@@ -386,12 +386,12 @@ end
 -- Slice trade-swing (step 4.3): `swing` on the inputs turns the rule on (absent: every case below is a plain hit). A swing draws the enemy
 -- lane creeps inside the aggro radius of the swing place (`near`) unless our own order's cooldown covers it; their damage (`kc`) joins the target's.
 do
-	local sw = function(o) return merge({ cover = false, atk = 0.4 }, o) end
+	local sw = function(o) return merge({ cover = 0, atk = 0.4 }, o) end
 	local near = function(o) return cand(merge({ near = 2, kc = 0.2 }, o)) end
 	local off = decide(inputs({ cands = { near() } }))
 	local drawn = decide(inputs({ swing = sw(), cands = { near() } }))
 	local cheap = decide(inputs({ swing = sw(), cands = { near({ kc = 0.05 }) } }))
-	local covered = decide(inputs({ swing = sw({ cover = true }), cands = { near() } }))
+	local covered = decide(inputs({ swing = sw({ cover = 2 }), cands = { near() } }))
 	local clear = decide(inputs({ swing = sw(), cands = { cand({ near = 0, kc = 0 }) } }))
 	check("a hit that pays only with no creeps (0.3 against 0.2, the creeps add 0.2) does not open: none aggro; with the creeps at 0.05 it opens; under our order's cooldown it opens; a clear place opens; without the rule it opens",
 		none(drawn, "aggro") and cheap.level == "hit" and covered.level == "hit" and clear.level == "hit" and off.level == "hit", drawn.level .. "/" .. tostring(drawn.reason))
@@ -412,7 +412,18 @@ do
 		none(soon, "due") and later.level == "hit" and running.level == "hit" and running.ended == nil, soon.level .. "/" .. tostring(soon.reason))
 	local stepping = decide(inputs({ swing = sw(), cands = { cand({ near = 0, gap = 400 }) }, run = run({ stepFor = 0.5 }) }))
 	check("no step out under the rule: a running hit out of reach ends no_reach whatever a step-out clock says", none(stepping, "no_reach"))
-	check("`aggro` and `due` are start gates", T.ENDS.aggro == "gate" and T.ENDS.due == "gate")
+	-- Review: nothing new may end a hit between its open and its first swing. A creep that steps inside the radius meanwhile is no new reason;
+	-- once our attack has fired the next swing is asked again.
+	local crept = decide(inputs({ swing = sw(), cands = { near() }, run = run({ landed = false }) }))
+	local next = decide(inputs({ swing = sw(), cands = { near() }, run = run({ landed = true }) }))
+	local nextCovered = decide(inputs({ swing = sw({ cover = 0.2 }), cands = { near() }, run = run({ landed = true }) }))
+	check("a running hit whose attack has not fired keeps the open's answer when a creep comes near; after it fired the next swing is refused (aggro) unless the cooldown still covers it",
+		crept.level == "hit" and crept.ended == nil and none(next, "aggro") and next.ended == "aggro" and nextCovered.level == "hit")
+	-- The walk and swing take 0.73 s: a cooldown with 0.3 s left does not cover a fresh hit, one with 1 s does.
+	local short = decide(inputs({ swing = sw({ cover = 0.3 }), cands = { near() } }))
+	local long = decide(inputs({ swing = sw({ cover = 1 }), cands = { near() } }))
+	check("our order's cooldown covers a fresh hit only if it outlasts the walk and the swing (0.3 s no, 1 s yes)", none(short, "aggro") and long.level == "hit")
+	check("a hero out of reach is `no_reach`, not `aggro`, whatever the creeps", none(decide(inputs({ swing = sw(), cands = { near({ gap = 400 }) } })), "no_reach"))
 end
 
 finish()

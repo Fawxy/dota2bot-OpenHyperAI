@@ -61,7 +61,7 @@ return function(fx)
 	}
 	if w.swg ~= nil and w.swg ~= "" then
 		local f = split(w.swg, ":")
-		i.swing = { cover = bit(num(f[1])), due = num(f[2]), atk = num(f[3]) or 0 }
+		i.swing = { cover = num(f[1]) or 0, due = num(f[2]), atk = num(f[3]) or 0 }
 	end
 	if w.pjr ~= nil and w.pjr ~= "" then
 		local f = split(w.pjr, ":")

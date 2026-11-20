@@ -3003,7 +3003,7 @@ export const EVENTS = {
         mi: "num",
         svh: "str",
         svb: "str",
-        /** kind=trade, with `Ours.TradeSwing` on (absent: the rule is off): `cover:due:atk`: 1 when our own attack order's aggro cooldown covers a swing now, seconds to the next last hit or deny this laner would take (`-` none in sight), our attack point in seconds. */
+        /** kind=trade, with `Ours.TradeSwing` on (absent: the rule is off): `cover:due:atk`: seconds our own attack order's aggro cooldown still covers a swing (0 none), seconds to the next last hit or deny this laner would take (`-` none in sight), our attack point in seconds. */
         swg: "str",
         /** kind=trade: the pair answer `dec:tgt:ko:kt` (not `pj`, which kind=leave keeps as a number). Absent: no pair answer. */
         pjr: "str",
