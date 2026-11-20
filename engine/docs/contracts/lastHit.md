@@ -1,7 +1,8 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 3 (slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
+name / version / owner:  lastHit, deny / 4 (slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
+                cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
                 within the horizon are counted and its rate is not spread; v2 slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
                 hpt` on every message and an enemy-hero query each frame; v1 slice lane-last-hits, 03/11/2026: first
                 contract, written as the kill belief, the outcome rule and the message fields changed) / engine (main loop)
@@ -58,7 +59,10 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 watched the creep: `hf hwf` (frames an enemy hero's attack target was the creep, and of those the frames
                 the wind-up reader read it winding up) and, when hf > 0, `ha hc hpt` (that hero's GetAnimActivity,
                 GetAnimCycle, GetAttackPoint, from the last wind-up frame once one was seen): the in-game check of the
-                UNVERIFIED wind-up reading on heroes. Read by hlog `@lh_swings`.
+                UNVERIFIED wind-up reading on heroes. Then the creep-attacker watch: `cf cwf` (readings of the creep's
+                attackers that are not heroes, one per attacker per frame, and of those the ones read winding up) and, when
+                cf > 0, `ca cc cpt cs` (the last one's GetAnimActivity, GetAnimCycle, GetAttackPoint, GetSecondsPerAttack):
+                the same check on lane creeps and towers (slice lh-unphased). Read by hlog `@lh_swings`.
 fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
                 enemy hero wind-ups relied on, not relied on, and under a lapse, hero watch (relied on, idle hero aimed at

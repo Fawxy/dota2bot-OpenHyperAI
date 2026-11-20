@@ -683,5 +683,30 @@ do
     T.check("window in pause: wo at the resume (" .. r.message .. ")", math.abs(tonumber(field(r.message, "wo")) - 1.6) < 0.05)
 end
 
+-- Slice lh-unphased: the creep-attacker watch (cf cwf ca cc cpt cs). Two allied melee creeps on the target, wind-up 0.467 of a
+-- 1 s cycle: about 47% of their readings are wind-ups, and the raw fields carry the last reading.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 650, damage = 50, attackPoint = 0.3, projectileSpeed = 900, fireTime = true }
+    local creep = sim:addCreep{ x = 600, y = 0, hp = 300, team = 3, passive = true }
+    for i = 1, 2 do
+        sim:addCreep{ x = 650, y = 60 * i, team = 2, damage = 20, attackPoint = 0.467, autoAttack = true,
+            attackTarget = creep, firstSwingAt = 0.3 * i, passive = true }
+    end
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 8 }))
+    local cf, cwf = tonumber(field(r.message, "cf")), tonumber(field(r.message, "cwf"))
+    T.check("creep watch: readings counted (" .. tostring(r.message) .. ")", cf ~= nil and cf > 20)
+    local share = (cwf or 0) / math.max(1, cf or 0)
+    T.check("creep watch: wind-up share about the attack point (" .. share .. ")", share > 0.4 and share < 0.55)
+    T.eq("creep watch: raw attack point", tonumber(field(r.message, "cpt")), 0.47)
+    T.eq("creep watch: raw seconds per attack", tonumber(field(r.message, "cs")), 1)
+    -- No attacker but heroes or none: the fields still parse.
+    local s2 = world()
+    local b2 = s2:addBot{ x = 0, y = 0, range = 150, damage = 50, attackPoint = 0.3 }
+    local c2 = s2:addCreep{ x = 100, y = 0, hp = 40, team = 3, passive = true }
+    local r2 = run(s2, V.lastHit(b2, { target = c2, maxWait = 1 }))
+    T.eq("creep watch: none on it", field(r2.message, "cf"), "0")
+end
+
 print("lasthit [" .. T.runtime() .. "]")
 T.finish()
