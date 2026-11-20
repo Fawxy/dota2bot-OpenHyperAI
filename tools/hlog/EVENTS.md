@@ -874,7 +874,7 @@ Slice retreat (retreat.ts): one start and one end per episode of our retreat, an
 
 Explore roll (explore.ts, `Ours.ExploreRoll`): a hero our retreat owns draws a multiplier on its safe-read kill bar when it first stands in the band (an enemy hero reaches its own place and HP / kill is under 2), holds it until 8 s out of the band or death. `start`: the roll and the read it was drawn on; `end`: how long it was held.
 
-`pid` num, `kill` num, `hp` num, `hpa` num, `reach` num, `base` bool, `why` str, `blk` num, `lvl` num, `ned` num, `ne` num, `ocr` num, `ecr` num, `pn` num
+`pid` num, `kill` num, `hp` num, `hpa` num, `reach` num, `base` bool, `why` str, `blk` num, `lvl` num, `ned` num, `ne` num, `ocr` num, `ecr` num, `pn` num, `sh` num, `sb` num, `sk` num, `sj` num, `rnf` num, `rnr` num, `rdn` num, `rdu` num, `rcr` num, `rwv` num, `rus` num, `rag` num, `rnt` num, `rot` num, `ord` num
 
 - `kind` str: `safe` (the safe read's kill bar, `Ours.ExploreRoll`) or `trade` (the aggression roll on the in-lane exchange, `Ours.ExploreTrade`).
 - `ph` str: `start` or `end`.
@@ -884,6 +884,7 @@ Explore roll (explore.ts, `Ours.ExploreRoll`): a hero our retreat owns draws a m
 - `bar` num: On `start`: the kill bar without the roll, and 1 when the unrolled rule calls the place deadly by the kill line right then (ratio under bar).
 - `secs` num: On `end`: seconds the roll was held, and why: `out` (8 s out of band) or `died`.
 - `agg` num: kind=trade, on `start`: the drawn aggression (a multiplier on the exchange bars: over 1 attacks heroes sooner), the 45 s block it holds for (0 from the hero's first laning frame), hero level, the nearest enemy hero's distance (-1 none within 1,600), enemy heroes within 1,200, own and enemy lane creeps within 1,000, and 1 when a lane partner is within 1,200.
+- `sn` num: kind=trade, on `end` (a block's draw replaced by the next: `agg`, `blk`, `secs` the lane seconds tallied, a frame counting at most 1 s): seconds the exchange's answer was `none` (sn), hit (sh), hitback (sb), kill (sk), join (sj); and the seconds of `none` by the gate that failed: unfavoured (rnf), no_reach (rnr), deny (rdn), due (rdu), creeps (rcr), wave (rwv), the safe read's veto kill/unknown/tower (rus), aggro (rag), no enemy hero in range (rnt), anything else (rot). `ord`: attack orders the exchange gave on an enemy hero in the block. The last block of a game has no `end`.
 
 ## tr_caution
 

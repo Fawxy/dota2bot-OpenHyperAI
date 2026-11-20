@@ -332,7 +332,7 @@ function gate(i: Inputs, c: Cand, level: Exclude<Level, "none">, src: Source | u
     }
     const sw = i.swing;
     const ag = aggOf(i);
-    const reaches = Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit + (slack ? BARS.slackWalk : 0));
+    const reaches = Arrives(c.gap, i.ms, math.max(0, c.away), BARS.walkHit * ag + (slack ? BARS.slackWalk : 0));
     // An opened hit is carried to its first swing: the target ending its last hit (`free`) or the odds crossing their line on the walk in is not a
     // reason to turn round. Reach, the safe read, a due deny and the HP lost before landing still end it. A hit back whose target stops swinging is held as
     // the hit it falls to; a hit is never held up into a hit back.
@@ -1078,7 +1078,7 @@ const bit = (b: boolean | undefined): number | undefined => (b === undefined ? u
 const or = (v: number | string | undefined): string | number => (v === undefined ? "-" : v);
 
 /** `arr` (the seventh field) is the opening read for a reader of the line: we reach attack range within `walkHit`. Decide recomputes it from gap, away and `ms`. */
-function candText(c: Cand, ms: number): string {
+function candText(c: Cand, ms: number, ag: number): string {
     const w = c.walk;
     const k = c.catch;
     return [
@@ -1088,7 +1088,7 @@ function candText(c: Cand, ms: number): string {
         math.floor(c.d),
         math.floor(c.gap),
         math.floor(c.away),
-        Arrives(c.gap, ms, math.max(0, c.away), BARS.walkHit) ? 1 : 0,
+        Arrives(c.gap, ms, math.max(0, c.away), BARS.walkHit * ag) ? 1 : 0,
         c.hitting ? 1 : 0,
         c.free ? 1 : 0,
         round6(c.ko),
@@ -1163,7 +1163,7 @@ export function Cut(bot: Unit, i: Inputs, a: Answer): void {
     for (const c of i.cands) if (c.hunters !== undefined && (lowest === undefined || c.thp < lowest.thp)) lowest = c;
     const pos = LaneConfig.PositionOf(bot);
     const cds: string[] = [];
-    for (const c of i.cands) cds.push(candText(c, i.ms));
+    for (const c of i.cands) cds.push(candText(c, i.ms, aggOf(i)));
     const u = i.run?.unseen;
     Telemetry.Event("cut", [
         ["pid", pid],
@@ -1657,6 +1657,7 @@ export function Desire(bot: Unit): number | undefined {
         }
     }
     Cut(bot, i, a);
+    Explore.Tally(bot, a.level, a.reason, now);
     return apply(bot, ep, i, a, now);
 }
 
@@ -1736,12 +1737,14 @@ export function Think(bot: Unit): void {
         primedAt[pid] = now;
         ep.primes++;
         bot.Action_AttackUnit(ep.target, false);
+        Explore.Order(bot);
         return;
     }
     if (bot.GetAttackTarget() !== ep.target) {
         // An order inside the cooldown draws nothing and does not restart it.
         if (commits) primedAt[pid] = now;
         bot.Action_AttackUnit(ep.target, false);
+        Explore.Order(bot);
     }
 }
 

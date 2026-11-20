@@ -332,8 +332,104 @@ ____exports.TRADE = {
     Block = 45,
     NearHeroes = 1200,
     NearCreeps = 1000,
-    SeeHeroes = 1600
+    SeeHeroes = 1600,
+    MaxDt = 1
 }
+local LEVEL_FIELD = {
+    none = "sn",
+    hit = "sh",
+    hitback = "sb",
+    kill = "sk",
+    join = "sj"
+}
+--- `none`'s reason as the field its seconds go to: the first gate that failed, or the end that stopped the exchange.
+local NONE_FIELD = {
+    unfavoured = "rnf",
+    no_reach = "rnr",
+    deny = "rdn",
+    due = "rdu",
+    creeps = "rcr",
+    wave = "rwv",
+    kill = "rus",
+    unknown = "rus",
+    tower = "rus",
+    aggro = "rag",
+    no_target = "rnt"
+}
+local FIELDS = {
+    "sn",
+    "sh",
+    "sb",
+    "sk",
+    "sj",
+    "rnf",
+    "rnr",
+    "rdn",
+    "rdu",
+    "rcr",
+    "rwv",
+    "rus",
+    "rag",
+    "rnt",
+    "rot",
+    "ord"
+}
+--- Ends the held block: logs its tally.
+local function endBlock(pid, b)
+    local f = {
+        {"kind", "trade"},
+        {"ph", "end"},
+        {"pid", pid},
+        {"agg", b.agg},
+        {"blk", b.blk}
+    }
+    local secs = 0
+    for ____, k in ipairs({
+        "sn",
+        "sh",
+        "sb",
+        "sk",
+        "sj"
+    }) do
+        secs = secs + (b.tally[k] or 0)
+    end
+    f[#f + 1] = {
+        "secs",
+        r2(secs)
+    }
+    for ____, k in ipairs(FIELDS) do
+        f[#f + 1] = {
+            k,
+            k == "ord" and (b.tally[k] or 0) or r2(b.tally[k] or 0)
+        }
+    end
+    Telemetry.Event("roll", f)
+end
+--- One frame's answer in the hero's block (`Ours.ExploreTrade` on, a block held): its seconds go to the level and, for `none`, to the reason's field.
+function ____exports.Tally(bot, level, why, now)
+    local b = blocks[bot:GetPlayerID()]
+    if b == nil then
+        return
+    end
+    local dt = b.last == nil and 0 or math.min(
+        ____exports.TRADE.MaxDt,
+        math.max(0, now - b.last)
+    )
+    b.last = now
+    local lf = LEVEL_FIELD[level] or "sn"
+    b.tally[lf] = (b.tally[lf] or 0) + dt
+    if level == "none" then
+        local nf = NONE_FIELD[why] or "rot"
+        b.tally[nf] = (b.tally[nf] or 0) + dt
+    end
+end
+--- The hero was ordered to attack an enemy hero by the exchange.
+function ____exports.Order(bot)
+    local b = blocks[bot:GetPlayerID()]
+    if b ~= nil then
+        b.tally.ord = (b.tally.ord or 0) + 1
+    end
+end
 blocks = {}
 --- The 45 s block index of `now` for a hero whose first laning frame was `first`.
 function ____exports.BlockOf(first, now)
@@ -358,10 +454,10 @@ local function logTrade(bot, b)
     local ne = 0
     for ____, h in ipairs(bot:GetNearbyHeroes(____exports.TRADE.SeeHeroes, true, BotMode.None)) do
         do
-            local __continue24
+            local __continue37
             repeat
                 if h:IsNull() or not h:IsAlive() then
-                    __continue24 = true
+                    __continue37 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, h)
@@ -371,9 +467,9 @@ local function logTrade(bot, b)
                 if d <= ____exports.TRADE.NearHeroes then
                     ne = ne + 1
                 end
-                __continue24 = true
+                __continue37 = true
             until true
-            if not __continue24 then
+            if not __continue37 then
                 break
             end
         end
@@ -432,10 +528,14 @@ function ____exports.Agg(bot)
     if held ~= nil and held.blk == blk then
         return held.agg
     end
+    if held ~= nil then
+        endBlock(pid, held)
+    end
     local b = {
         agg = ____exports.AggFor(LaneConfig.Draw() or RandomFloat(0, 1)),
         blk = blk,
-        first = first
+        first = first,
+        tally = {}
     }
     blocks[pid] = b
     logTrade(bot, b)

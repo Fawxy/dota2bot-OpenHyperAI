@@ -466,7 +466,7 @@ do
 			and lvl({ cands = unf() }, 1.75).level == "hit"
 			and lvl({ cands = fav() }, nil).level == "hit" and lvl({ cands = fav() }, 0.75).level == "hit"
 			and none(lvl({ cands = fav() }, 0.5), "unfavoured"))
-	local kill = function(thp) return { cand({ thp = thp, thpAbs = thp * 600, catch = CATCH, ko = 0.6, kt = 0.2 }) } end
+	local kill = function(thp) return { cand({ gap = 0, thp = thp, thpAbs = thp * 600, catch = CATCH, ko = 0.6, kt = 0.2 }) } end
 	check("kill HP share: a target at 0.5 is a kill only from agg 1.35 (bar 0.54), a target at 0.3 stops being one at agg 0.5 (bar 0.2, a hit instead), the cap is 0.7",
 		lvl({ cands = kill(0.5) }, 1).level == "hit" and lvl({ cands = kill(0.5) }, 1.35).level == "kill"
 			and lvl({ cands = kill(0.3) }, nil).level == "kill" and lvl({ cands = kill(0.3) }, 0.75).level == "kill"
@@ -481,6 +481,19 @@ do
 	check("a hit back's hold follows the same margin: kt 0.3 against ko 0.2 holds retreat only at agg 1.75",
 		T.HoldsOf(inputs({ cands = { cand({ hitting = true, ko = 0.2, kt = 0.3 }) } })) == nil
 			and T.HoldsOf(inputs({ agg = 1.75, cands = { cand({ hitting = true, ko = 0.2, kt = 0.3 }) } })) == "hitback")
+end
+
+-- The walk a hit pays for (BARS.walkHit 0.5 s at agg 1, x agg; speed 300): a hit opens at gap 200 only from agg 1.35 (0.675 s reaches 202) and at gap 100 not at 0.5
+-- (75); a running one is judged on the same walk plus its 0.5 s slack, so at gap 340 it ends no_reach at agg 1 (300) and goes on at 1.35 (352): open and end agree.
+do
+	local function lvl(o, agg) o.agg = agg return decide(inputs(o)) end
+	local at = function(gap) return { cand({ gap = gap, ko = 0.6, kt = 0.2 }) } end
+	check("walk by agg: gap 200 opens only from agg 1.35, gap 100 is refused at agg 0.5; a running hit at gap 340 ends no_reach at agg 1 and keeps at 1.35",
+		none(lvl({ cands = at(200) }, nil), "no_reach") and none(lvl({ cands = at(200) }, 1), "no_reach") and lvl({ cands = at(200) }, 1.35).level == "hit"
+			and lvl({ cands = at(100) }, 1).level == "hit" and none(lvl({ cands = at(100) }, 0.5), "no_reach")
+			and lvl({ cands = at(340), run = run({ level = "hit" }) }, 1).ended == "no_reach"
+			and lvl({ cands = at(340), run = run({ level = "hit" }) }, 1.35).level == "hit",
+		lvl({ cands = at(200) }, 1).reason .. lvl({ cands = at(200) }, 1.35).level .. lvl({ cands = at(100) }, 0.5).reason .. tostring(lvl({ cands = at(340), run = run({ level = "hit" }) }, 1).ended) .. lvl({ cands = at(340), run = run({ level = "hit" }) }, 1.35).level)
 end
 
 -- The draw (explore.ts Agg): off gives nothing and draws nothing; on holds one value for a 45 s block counted from the hero's first call and redraws in the next.
@@ -498,8 +511,19 @@ do
 	local a1 = at(145, 0.99)
 	local still = at(189, 0)
 	local a2 = at(190, 0)
-	check("explore trade: off draws nothing; on, the first call draws and the block holds to 44 s, redraws at 45 s and again at 90 s",
-		off == nil and a0 == 0.5 and held == 0.5 and a1 == 1.75 and still == 1.75 and a2 == 0.5,
+	_G.T = 191
+	local tally = Explore._test.blocks[4].tally
+	Explore.Tally(bot, "none", "unfavoured", 191)
+	Explore.Tally(bot, "none", "unfavoured", 191.5)
+	Explore.Tally(bot, "hit", "hit", 192)
+	Explore.Tally(bot, "none", "no_reach", 200)
+	Explore.Order(bot)
+	Explore.Order(bot)
+	local sums = tally.sn == 1.5 and tally.rnf == 0.5 and tally.rnr == 1 and tally.sh == 0.5 and tally.ord == 2
+	local fresh = at(235, 0) and next(Explore._test.blocks[4].tally) == nil
+	check("explore trade: off draws nothing; on, the first call draws and the block holds to 44 s, redraws at 45 s and again at 90 s; the tally sums seconds by level and none's reason, counts orders, and starts empty in the next block",
+		off == nil and a0 == 0.5 and held == 0.5 and a1 == 1.75 and still == 1.75 and a2 == 0.5
+			and sums and fresh,
 		tostring(off) .. " " .. tostring(a0) .. " " .. tostring(held) .. " " .. tostring(a1) .. " " .. tostring(still) .. " " .. tostring(a2))
 	Customize.Ours.ExploreTrade = false
 	RANDOM_FRACTION = nil

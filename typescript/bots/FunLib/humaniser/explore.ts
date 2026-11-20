@@ -123,12 +123,67 @@ export const TRADE = {
     NearHeroes: 1200,
     NearCreeps: 1000,
     SeeHeroes: 1600,
+    /** A frame is worth at most this many seconds in the tally: a hero out of lane for a while adds nothing for the gap. */
+    MaxDt: 1,
 };
+
+const LEVEL_FIELD: Record<string, string | undefined> = { none: "sn", hit: "sh", hitback: "sb", kill: "sk", join: "sj" };
+/** `none`'s reason as the field its seconds go to: the first gate that failed, or the end that stopped the exchange. */
+const NONE_FIELD: Record<string, string | undefined> = {
+    unfavoured: "rnf",
+    no_reach: "rnr",
+    deny: "rdn",
+    due: "rdu",
+    creeps: "rcr",
+    wave: "rwv",
+    kill: "rus",
+    unknown: "rus",
+    tower: "rus",
+    aggro: "rag",
+    no_target: "rnt",
+};
+const FIELDS = ["sn", "sh", "sb", "sk", "sj", "rnf", "rnr", "rdn", "rdu", "rcr", "rwv", "rus", "rag", "rnt", "rot", "ord"];
+
+/** Ends the held block: logs its tally. */
+function endBlock(pid: number, b: Block): void {
+    const f: [string, number | string][] = [["kind", "trade"], ["ph", "end"], ["pid", pid], ["agg", b.agg], ["blk", b.blk]];
+    let secs = 0;
+    for (const k of ["sn", "sh", "sb", "sk", "sj"]) secs += b.tally[k] ?? 0;
+    f.push(["secs", r2(secs)]);
+    for (const k of FIELDS) f.push([k, k === "ord" ? b.tally[k] ?? 0 : r2(b.tally[k] ?? 0)]);
+    Telemetry.Event("roll", f as any);
+}
+
+/** One frame's answer in the hero's block (`Ours.ExploreTrade` on, a block held): its seconds go to the level and, for `none`, to the reason's field. */
+export function Tally(bot: Unit, level: string, why: string, now: number): void {
+    const b = blocks[bot.GetPlayerID()];
+    if (b === undefined) return;
+    const dt = b.last === undefined ? 0 : math.min(TRADE.MaxDt, math.max(0, now - b.last));
+    b.last = now;
+    const lf = LEVEL_FIELD[level] ?? "sn";
+    b.tally[lf] = (b.tally[lf] ?? 0) + dt;
+    if (level === "none") {
+        const nf = NONE_FIELD[why] ?? "rot";
+        b.tally[nf] = (b.tally[nf] ?? 0) + dt;
+    }
+}
+
+/** The hero was ordered to attack an enemy hero by the exchange. */
+export function Order(bot: Unit): void {
+    const b = blocks[bot.GetPlayerID()];
+    if (b !== undefined) b.tally.ord = (b.tally.ord ?? 0) + 1;
+}
+
+/** Seconds per level and, for `none`, per reason bucket, and the attack orders on heroes: summed over a block from the frames Desire answered in lane. */
+type Tally = Record<string, number>;
 
 interface Block {
     agg: number;
     blk: number;
     first: number;
+    tally: Tally;
+    /** Time of the last tallied frame (a gap over `TRADE.MaxDt` counts as `MaxDt`). */
+    last?: number;
 }
 
 const blocks: Record<number, Block | undefined> = {};
@@ -173,7 +228,8 @@ export function Agg(bot: Unit): number | undefined {
     const first = held !== undefined ? held.first : now;
     const blk = BlockOf(first, now);
     if (held !== undefined && held.blk === blk) return held.agg;
-    const b: Block = { agg: AggFor(LaneConfig.Draw() ?? RandomFloat(0, 1)), blk, first };
+    if (held !== undefined) endBlock(pid, held);
+    const b: Block = { agg: AggFor(LaneConfig.Draw() ?? RandomFloat(0, 1)), blk, first, tally: {} };
     blocks[pid] = b;
     logTrade(bot, b);
     return b.agg;

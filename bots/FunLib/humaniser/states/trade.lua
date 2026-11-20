@@ -867,7 +867,7 @@ local function gate(i, c, level, src, run)
         c.gap,
         i.ms,
         math.max(0, c.away),
-        BARS.walkHit + (slack and BARS.slackWalk or 0)
+        BARS.walkHit * ag + (slack and BARS.slackWalk or 0)
     )
     local held = i.hold == true and run ~= nil and not run.landed and (run.level == level or run.level == "hitback" and level == "hit")
     if sw == nil then
@@ -1815,7 +1815,7 @@ local function ____or(v)
     return v == nil and "-" or v
 end
 --- `arr` (the seventh field) is the opening read for a reader of the line: we reach attack range within `walkHit`. Decide recomputes it from gap, away and `ms`.
-local function candText(c, ms)
+local function candText(c, ms, ag)
     local w = c.walk
     local k = c.catch
     return table.concat(
@@ -1830,7 +1830,7 @@ local function candText(c, ms)
                 c.gap,
                 ms,
                 math.max(0, c.away),
-                BARS.walkHit
+                BARS.walkHit * ag
             ) and 1 or 0,
             c.hitting and 1 or 0,
             c.free and 1 or 0,
@@ -1944,7 +1944,11 @@ function ____exports.Cut(bot, i, a)
     local pos = LaneConfig.PositionOf(bot)
     local cds = {}
     for ____, c in ipairs(i.cands) do
-        cds[#cds + 1] = candText(c, i.ms)
+        cds[#cds + 1] = candText(
+            c,
+            i.ms,
+            aggOf(i)
+        )
     end
     local ____opt_54 = i.run
     local u = ____opt_54 and ____opt_54.unseen
@@ -2492,6 +2496,7 @@ function ____exports.Desire(bot)
         end
     end
     ____exports.Cut(bot, i, a)
+    Explore.Tally(bot, a.level, a.reason, now)
     return apply(
         bot,
         ep,
@@ -2586,6 +2591,7 @@ function ____exports.Think(bot)
         primedAt[pid] = now
         ep.primes = ep.primes + 1
         bot:Action_AttackUnit(ep.target, false)
+        Explore.Order(bot)
         return
     end
     if bot:GetAttackTarget() ~= ep.target then
@@ -2593,6 +2599,7 @@ function ____exports.Think(bot)
             primedAt[pid] = now
         end
         bot:Action_AttackUnit(ep.target, false)
+        Explore.Order(bot)
     end
 end
 --- Attack mode lost the hero to another mode: a started exchange ends there (closed by the next Desire, which can name that mode).
