@@ -1204,7 +1204,7 @@ function visionProbe(bot: Unit): boolean {
 
 /** Every frame: true while the job runs or as it starts. `blocked` says why a start must wait; `host` is the mode that
  *  will step the job. */
-export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
+export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean; at?: Vector; who?: string }) => string | undefined, host: number): boolean {
     if (!Applies(bot)) return false;
     logCamps();
     readOutcome(bot);
@@ -1271,7 +1271,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
             return true;
         }
         if (minute * 60 + 60 + jobEnd() - now > awayMax()) return skip("far");
-        const why = blocked(bot);
+        const why = blocked(bot, { neutrals: true, at: stand, who: "stack_trip" });
         if (why !== undefined) {
             gateWhy[pid] = why;
             return false;
