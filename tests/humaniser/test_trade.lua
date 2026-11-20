@@ -495,4 +495,43 @@ do
 			and T.FightZero(inputs({ creepRead = true }), cand({ walk = deadly("creeps") })) == "creeps")
 end
 
+-- Ours.JoinHold (step 4.6b): a pair join is carried to its first swing through a lapsed pair answer, and opens on arrival within 2 s.
+do
+	local pair = { tgt = 7, ko = 0.5, kt = 0.2, dec = "join" }
+	local function join(i, c, r)
+		return decide(inputs(merge({ joinHold = true, cands = { unfavoured(merge({ gap = 400, d = 1000 }, c)) }, run = run(merge({ level = "join", source = "pair" }, r)) }, i)))
+	end
+	local held, off = join({}), join({ joinHold = false })
+	check("a running unlanded pair join 400 past range whose pair answer lapsed: kept with the rule on, pair_end with it off",
+		held.level == "join" and held.target == 7 and held.source == "pair" and held.ended == nil and none(off, "pair_end") and off.ended == "pair_end")
+	local other = join({ pair = { tgt = 8, ko = 0.5, kt = 0.2, dec = "join" } })
+	check("the pair now naming another target does not end the held join", other.level == "join" and other.target == 7 and other.ended == nil)
+	local losing = join({ pair = { tgt = 7, ko = 0.2, kt = 0.5, dec = "losing" } })
+	check("control: the pair answering losing on our own target ends the join at once", none(losing, "pair_end") and losing.ended == "pair_end")
+	local losingOther = join({ pair = { tgt = 8, ko = 0.2, kt = 0.5, dec = "losing" } })
+	check("control: a losing answer that names another hero is a verdict on the fight and ends the join too", none(losingOther, "pair_end") and losingOther.ended == "pair_end")
+	local killElsewhere = decide(inputs({ joinHold = true, pair = { tgt = 8, ko = 0.5, kt = 0.2, dec = "join" },
+		cands = { unfavoured({ gap = 400, d = 1000 }), cand({ pid = 8, thp = 0.2, catch = CATCH, gap = 100, d = 700 }) },
+		run = run({ level = "join", source = "pair" }) }))
+	check("the pair's answer moving to a hero low enough to kill takes the hero off the held join", killElsewhere.level == "kill" and killElsewhere.target == 8)
+	local walk = join({}, { walk = deadly("kill") })
+	check("a held join whose walk turned deadly ends with the walk's reason", none(walk, "kill") and walk.ended == "kill")
+	local far = join({}, { gap = 900, d = 1100 })
+	check("a held join beyond arrival (900 past range at 300, 2.5 s) ends no_reach", none(far, "no_reach") and far.ended == "no_reach")
+	local landed = join({}, nil, { landed = true })
+	check("a join that has attacked is asked the pair answer as today: pair_end", none(landed, "pair_end") and landed.ended == "pair_end")
+	local stuck = join({}, nil, { started = 3.1 })
+	check("an unlanded held join walking over 3 s ends on the logged backstop; the rule off does not",
+		none(stuck, "backstop") and stuck.ended == "backstop" and join({ pair = pair }, nil, { started = 3.1 }).ended == "backstop"
+			and decide(inputs({ pair = pair, cands = { unfavoured() }, run = run({ level = "join", source = "pair", started = 3.1 }) })).ended == nil)
+	local function fresh(gap, on)
+		return decide(inputs({ joinHold = on, pair = pair, cands = { unfavoured({ gap = gap, d = 1000 }) } }))
+	end
+	check("a fresh join opens within 2 s of arrival and is refused no_reach past it though under 1,200; the rule off keeps the flat 1,200",
+		fresh(500, true).level == "join" and none(fresh(700, true), "no_reach") and fresh(700, false).level == "join")
+	local killable = decide(inputs({ joinHold = true, pair = pair, cands = { cand({ thp = 0.2, catch = CATCH, gap = 400, d = 1000 }) },
+		run = run({ level = "join", source = "pair" }) }))
+	check("with the pair still answering, a killable target is still a kill before the join", killable.level == "kill" and killable.source == "pair")
+end
+
 finish()

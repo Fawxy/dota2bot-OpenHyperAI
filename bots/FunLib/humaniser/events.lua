@@ -1777,6 +1777,7 @@ ____exports.EVENTS = {
         svb = "str",
         swg = "str",
         thd = "num",
+        jhd = "num",
         crd = "num",
         pjr = "str",
         cd = "str",
