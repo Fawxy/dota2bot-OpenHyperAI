@@ -1818,6 +1818,7 @@ ____exports.EVENTS = {
         ss = "str",
         dl = "str",
         rom = "num",
+        srn = "str",
         alb = "str",
         gd = "num",
         co = "num",

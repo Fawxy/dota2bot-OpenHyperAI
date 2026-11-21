@@ -63,9 +63,9 @@ do
 	world.share["1>6"] = 20
 	local i = Trade.Gather(bot)
 	local a, b = world.ats[1], world.ats[2]
-	check("here is asked twice, held and over the stay horizon (the default): without a hold for a hit, with one for the rest; the hit's answer is named `trade`",
+	check("here is asked twice, held and over the stay horizon (the default): without a hold for a hit, with one for the rest; the answers are named `trade` and `trade_hold`",
 		#world.ats == 2 and a.place.x == 0 and a.opts.held == true and a.opts.hold == false and a.opts.who == "trade" and a.opts.horizon == nil
-			and b.opts.held == true and b.opts.hold == true and b.opts.who == nil and i.hp == 0.8 and i.n == 1
+			and b.opts.held == true and b.opts.hold == true and b.opts.who == "trade_hold" and i.hp == 0.8 and i.n == 1
 			and i.safe.hit.level == "safe" and i.safe.hold.ratio == 2.5)
 	local c = i.cands[1]
 	check("a candidate carries its distance, the gap past our range and both hulls, ",
