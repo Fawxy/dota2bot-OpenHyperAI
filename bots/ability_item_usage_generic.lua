@@ -8423,6 +8423,9 @@ function X.SetAbilityItemList(heroAbility, items, abilityLvlup)
 end
 
 X.AbilityLevelUpThink = AbilityLevelUpThink
+-- Stock mirror arm: log-only snapshots (FunLib/stock_log), no behaviour.
+do local L = require(GetScriptDirectory()..'/FunLib/stock_log'); local f = ItemUsageThink; ItemUsageThink = function() L.Tick(GetBot()); return f() end end
+
 X.BuybackUsageThink = BuybackUsageThink
 X.AbilityUsageThink = AbilityUsageThink
 X.ItemUsageThink = ItemUsageThink

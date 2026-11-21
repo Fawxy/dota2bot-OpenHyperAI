@@ -82,6 +82,8 @@ function print(...)
 
     orig_print(output)
 end
+-- Stock mirror arm: the log-only snapshots need a print this override does not drop.
+Utils.RawPrint = Utils.RawPrint or orig_print
 
 local original_GetUnitToUnitDistance = GetUnitToUnitDistance
 function GetUnitToUnitDistance(unit1, unit2)
