@@ -319,10 +319,20 @@ function ____exports.LeaveWhy(bot, holds)
     end
     return {why = "threat", a = a}
 end
-function leaveOf(bot, st, before)
+function leaveOf(bot, st, before, cut)
+    if cut == nil then
+        cut = true
+    end
     if before ~= st.readAt or st.leave == nil then
         st.leave = ____exports.LeaveWhy(bot)
-        st.leaveNew = true
+        local ____st_15 = st
+        local ____cut_14
+        if cut then
+            ____cut_14 = true
+        else
+            ____cut_14 = nil
+        end
+        ____st_15.leaveNew = ____cut_14
     end
     return st.leave
 end
@@ -1084,7 +1094,7 @@ function ____exports.Desire(bot)
             if ____temp_12 then
                 local ____opt_10 = LeavePick.For(
                     bot,
-                    leaveOf(bot, st, readAtBefore)
+                    leaveOf(bot, st, readAtBefore, false)
                 )
                 ____temp_12 = (____opt_10 and ____opt_10.pick) == "stay"
             end
@@ -1259,11 +1269,11 @@ local function leaveNow(bot)
     end
     local before = st.readAt
     readOf(bot, st, now)
-    local ____opt_14 = LeavePick.For(
+    local ____opt_16 = LeavePick.For(
         bot,
         leaveOf(bot, st, before)
     )
-    return (____opt_14 and ____opt_14.pick) == "leave"
+    return (____opt_16 and ____opt_16.pick) == "leave"
 end
 RetreatState.SetLeaveNow(leaveNow)
 --- Per frame (index Tick): a death ends the episode even when GetDesire is not asked while dead.

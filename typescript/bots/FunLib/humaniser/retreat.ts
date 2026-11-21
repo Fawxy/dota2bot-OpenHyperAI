@@ -626,7 +626,7 @@ export function Desire(bot: Unit): number | undefined {
         const res = step(bot, st, r, now);
         if (res === undefined) {
             // Ours.PricedLeaveAct: a stay pick ends a threat or priced episode (the opener stays as the partner arrives); hard leaves never.
-            if (LeavePick.Acts() && (st.ep.why === "threat" || st.ep.why === "priced") && LeavePick.For(bot, leaveOf(bot, st, readAtBefore))?.pick === "stay") {
+            if (LeavePick.Acts() && (st.ep.why === "threat" || st.ep.why === "priced") && LeavePick.For(bot, leaveOf(bot, st, readAtBefore, false))?.pick === "stay") {
                 end(bot, st, "priced");
                 return 0;
             }
@@ -674,11 +674,14 @@ export function Desire(bot: Unit): number | undefined {
     return SETTINGS.EpisodeDesire;
 }
 
-/** The leave rule's answer for the read made since `before` (asked again only on a fresh read). */
-function leaveOf(bot: Unit, st: HeroState, before: number | undefined): Leave {
+/**
+ * The leave rule's answer for the read made since `before` (asked again only on a fresh read). `cut` false (asked during an episode,
+ * Ours.PricedLeaveAct): the answer is not marked new, so `cutLeave` after the episode does not write an answer read during it.
+ */
+function leaveOf(bot: Unit, st: HeroState, before: number | undefined, cut = true): Leave {
     if (before !== st.readAt || st.leave === undefined) {
         st.leave = LeaveWhy(bot);
-        st.leaveNew = true;
+        st.leaveNew = cut ? true : undefined;
     }
     return st.leave;
 }
