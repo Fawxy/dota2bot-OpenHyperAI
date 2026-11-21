@@ -348,6 +348,30 @@ ____exports.EVENTS = {
         sum = "num"
     },
     apiprobe_dmgshape = {team = "num", args = "str"},
+    commit = {
+        pid = "num",
+        epid = "num",
+        st = "str",
+        was = "str",
+        why = "str",
+        hits = "num",
+        src = "str",
+        hp = "num",
+        bs = "num",
+        ba = "num",
+        bsum = "num",
+        bra = "num"
+    },
+    dmgcb = {
+        kind = "str",
+        n = "num",
+        ipid = "num",
+        ok = "num",
+        args = "str",
+        cb = "num",
+        poll = "num",
+        live = "num"
+    },
     apiprobe_abil = {
         team = "num",
         pid = "num",
@@ -1838,6 +1862,7 @@ ____exports.EVENTS = {
         hld = "num",
         hd = "num",
         prs = "num",
+        rcs = "str",
         dr = "str",
         kill = "num",
         ra = "num",

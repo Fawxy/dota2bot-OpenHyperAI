@@ -172,6 +172,10 @@ export const DEFAULTS = {
     /** Step 4.6b (same proposal): a pair join is judged on arrival within 2 s and carried to its first attack when the pair answer lapses or names another
      *  target; a losing answer on its own target, a deadly walk, out of arrival or a 3 s backstop still end it. Off: a flat 1,200 reach, and the answer lapsing ends it. */
     JoinHold: true,
+    /** Decision centre pilot (master docs/proposals/2026-11-21-decision-centre.md s11). Step 1, logged only: the commitment tracker
+     *  (commit.ts: each enemy hero near, poked or committed towards each of our heroes, from InstallDamageCallback, and the burst-now
+     *  split) writes ev=commit, ev=dmgcb and the safe cut's `rcs`; nothing reads it. Off: no tracker, no callback, no lines. */
+    PricedLeave: true,
 };
 
 export type Feature = keyof typeof DEFAULTS;

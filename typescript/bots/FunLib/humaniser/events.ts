@@ -542,6 +542,46 @@ export const EVENTS = {
         team: "num",
         args: "str",
     },
+    /**
+     * Ours.PricedLeave step 1 (commit.ts, logged only): one enemy hero's state towards one of our heroes changed. `pid` ours, `epid` the enemy;
+     * `st` and `was`: `gone` (not near, no hit in 3 s), `near` (within its attack range + 2 s of its move speed + both hulls, no hit in 3 s),
+     * `poked` (damaged us in the last 3 s), `committed` (two hits at least 1 s apart within 4 s, or two or more enemy heroes damaged us in the
+     * last 3 s, held while that holds). `why`: `reach`, `hit`, `second` (a hit in a separate second), `pair` (a second enemy hero hitting),
+     * `left` (out of reach), `lost` (dead or not in the enemy list). `hits` this enemy's damage events on us in the last 4 s; `src` where hit
+     * times came from (`cb` InstallDamageCallback, `poll` WasRecentlyDamagedByHero each tick, before the first callback hit of the game);
+     * `hp` ours. Burst now over 1 s (`Commit.SETTINGS.ReactWindow`): `bs` this enemy's ready-spell part (SpellReady.DamageOn less its attacks
+     * over the window), `ba` one attack, both after our resistances; `bsum` the sum of both over every enemy not `gone`; `bra` hp over bsum.
+     */
+    commit: {
+        pid: "num",
+        epid: "num",
+        st: "str",
+        was: "str",
+        why: "str",
+        hits: "num",
+        src: "str",
+        hp: "num",
+        bs: "num",
+        ba: "num",
+        bsum: "num",
+        bra: "num",
+    },
+    /**
+     * Ours.PricedLeave step 1 (commit.ts): InstallDamageCallback in a normal game. `kind`: `installed` (`n` player ids), `missing` (no such
+     * global), `shape` (the first 3 calls: `ipid` the id it was installed for, `ok` 1 when it resolved to an enemy hero damaging our hero,
+     * `args` each argument, `h:<unit>:<pid>` a handle, `n:<v>` a number, `{k=v}` a table), `sum` every 60 s: `n` calls, `ok` resolved,
+     * `cb` hits recorded from them, `poll` hits from the flag poll, `live` 1 once a callback hit has been recorded.
+     */
+    dmgcb: {
+        kind: "str",
+        n: "num",
+        ipid: "num",
+        ok: "num",
+        args: "str",
+        cb: "num",
+        poll: "num",
+        live: "num",
+    },
     /** Overrides.ApiProbe: one ability handle's reads, `own` 1 for a hero about itself (the truth) and 0 for the team's reporter
      *  about a visible enemy; written on a change (rem only by its sign) or every 10 s. `aest` is the ability's own 3 s
      *  estimate on the nearest hero of the other side. */
@@ -3127,6 +3167,8 @@ export const EVENTS = {
         hd: "num",
         /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
         prs: "num",
+        /** kind=safe, `Ours.PricedLeave` on (logged only): each `rr` reacher's commitment state from commit.ts, `pid,st` per `;` in `rr`'s order, st `n` near, `p` poked, `c` committed, `-` none tracked. A replay ignores it. */
+        rcs: "str",
         /** kind=safe, `Ours.TowerRead` on: `Safe.Inputs.drawn`, ";"-joined `src,dmg` rows (`tower`: its damage on us over the kill window from when it would be on us); `-`: on, nothing drawn; absent: the switch is off. */
         dr: "str",
         kill: "num",

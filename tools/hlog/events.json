@@ -428,6 +428,30 @@
    "team": "num",
    "args": "str"
   },
+  "commit": {
+   "pid": "num",
+   "epid": "num",
+   "st": "str",
+   "was": "str",
+   "why": "str",
+   "hits": "num",
+   "src": "str",
+   "hp": "num",
+   "bs": "num",
+   "ba": "num",
+   "bsum": "num",
+   "bra": "num"
+  },
+  "dmgcb": {
+   "kind": "str",
+   "n": "num",
+   "ipid": "num",
+   "ok": "num",
+   "args": "str",
+   "cb": "num",
+   "poll": "num",
+   "live": "num"
+  },
   "apiprobe_abil": {
    "team": "num",
    "pid": "num",
@@ -1981,6 +2005,7 @@
    "hld": "num",
    "hd": "num",
    "prs": "num",
+   "rcs": "str",
    "dr": "str",
    "kill": "num",
    "ra": "num",
@@ -2223,6 +2248,16 @@
    "ability": "text"
   },
   "ev_apiprobe_dmgshape": {
+   "args": "text"
+  },
+  "ev_commit": {
+   "st": "text",
+   "was": "text",
+   "why": "text",
+   "src": "text"
+  },
+  "ev_dmgcb": {
+   "kind": "text",
    "args": "text"
   },
   "ev_apiprobe_abil": {
@@ -2738,6 +2773,7 @@
    "rr": "text",
    "stw": "text",
    "ld": "text",
+   "rcs": "text",
    "dr": "text",
    "ord": "text",
    "tg": "text",

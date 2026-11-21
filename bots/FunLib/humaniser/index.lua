@@ -21,6 +21,7 @@ local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RegenObs = require(GetScriptDirectory().."/FunLib/humaniser/regen_obs")
 local ApiProbe = require(GetScriptDirectory().."/FunLib/humaniser/api_probe")
+local Commit = require(GetScriptDirectory().."/FunLib/humaniser/commit")
 local VisionMap = require(GetScriptDirectory().."/FunLib/humaniser/vision_map")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -263,6 +264,7 @@ local steps = {
         end
     end,
     landing = SafeGather.Tick,
+    commit = Commit.Tick,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -336,6 +338,10 @@ local function tick(bot)
     steps.orders(bot)
     steps.intent(bot)
     pcall(steps.landing, bot)
+    local commitOk, commitErr = pcall(steps.commit, bot)
+    if not commitOk then
+        Telemetry.Failed("Commit.Tick", commitErr)
+    end
     LaneControl.Tick(bot)
     steps.telemetry(bot, telemetryContext)
     pcall(CastLog.Tick, bot)

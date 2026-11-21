@@ -8,6 +8,7 @@
  * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as Commit from "bots/FunLib/humaniser/commit";
 import * as Deaggro from "bots/FunLib/humaniser/deaggro";
 import * as LaneState from "bots/FunLib/humaniser/lane_state";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -533,6 +534,9 @@ function drawnField(drawn: Safe.Drawn[]): string {
 export function CutFields(pid: number, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer): Telemetry.Fields<"cut"> {
     const rows: string[] = [];
     for (const x of i.reach) rows.push([x.pid, b01(x.hitting), n0(x.dmg), b01(x.unseen === true)].join(","));
+    // Ours.PricedLeave step 1: each reacher's commitment state beside `rr` (logged only).
+    const states: string[] = [];
+    if (Ours.On("PricedLeave")) for (const x of i.reach) states.push(`${x.pid},${Commit.Code(pid, x.pid)}`);
     return [
         ["pid", pid],
         ["kind", "safe"],
@@ -549,6 +553,7 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
         ["hld", b01(i.held)],
         ["hd", b01(i.hold)],
         ["prs", b01(i.pressed === true)],
+        ["rcs", states.length > 0 ? states.join(";") : undefined],
         ["dr", i.drawn === undefined ? undefined : i.drawn.length === 0 ? "-" : drawnField(i.drawn)],
         ["lv", a.level],
         ["kill", n0(a.kill)],

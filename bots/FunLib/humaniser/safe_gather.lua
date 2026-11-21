@@ -209,6 +209,7 @@ local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
+local Commit = require(GetScriptDirectory().."/FunLib/humaniser/commit")
 local Deaggro = require(GetScriptDirectory().."/FunLib/humaniser/deaggro")
 local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -793,6 +794,12 @@ function ____exports.CutFields(pid, who, place, i, a)
             ","
         )
     end
+    local states = {}
+    if Ours.On("PricedLeave") then
+        for ____, x in ipairs(i.reach) do
+            states[#states + 1] = (tostring(x.pid) .. ",") .. Commit.Code(pid, x.pid)
+        end
+    end
     local ____array_20 = __TS__SparseArrayNew(
         {"pid", pid},
         {"kind", "safe"},
@@ -844,6 +851,10 @@ function ____exports.CutFields(pid, who, place, i, a)
         {
             "prs",
             b01(i.pressed == true)
+        },
+        {
+            "rcs",
+            #states > 0 and table.concat(states, ";") or nil
         }
     )
     local ____temp_19

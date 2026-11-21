@@ -22,6 +22,7 @@ import * as Trainer from "bots/FunLib/humaniser/trainer/trainer";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RegenObs from "bots/FunLib/humaniser/regen_obs";
 import * as ApiProbe from "bots/FunLib/humaniser/api_probe";
+import * as Commit from "bots/FunLib/humaniser/commit";
 import * as VisionMap from "bots/FunLib/humaniser/vision_map";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -176,6 +177,7 @@ const steps = {
         if (!SustainAct.Holds(bot)) SustainGather.Tick(bot);
     },
     landing: SafeGather.Tick,
+    commit: Commit.Tick,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
     overlay: drawOverlay,
@@ -252,6 +254,9 @@ function tick(this: void, bot: Unit): void {
     steps.intent(bot);
     // The landing sampler (safe here's `landing`): once per hero per tick, with telemetry off too. See SafeGather.Tick.
     pcall(steps.landing, bot);
+    // The commitment tracker (Ours.PricedLeave step 1, logged only): its flag poll needs the 10 Hz tick. See Commit.Tick.
+    const [commitOk, commitErr] = pcall(steps.commit, bot);
+    if (!commitOk) Telemetry.Failed("Commit.Tick", commitErr);
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
     steps.telemetry(bot, telemetryContext);
