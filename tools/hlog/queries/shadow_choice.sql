@@ -11,14 +11,14 @@ WITH gm AS MATERIALIZED (
     WHERE file LIKE coalesce(:like, '%') OR label LIKE coalesce(:like, '%')
 ),
 c AS MATERIALIZED (
-    SELECT c.game_id, gm.label, c.pid, c.t, c.win, c.top, c.how, c.by, c.d_attack, c.d_team_roam, c.d_roam,
+    SELECT c.game_id, gm.label, c.pid, c.t, c.win, c.top, c.tv, c.how, c.by, c.d_attack, c.d_team_roam, c.d_roam,
         min(coalesce(lead(c.t) OVER (PARTITION BY c.game_id, c.pid ORDER BY c.t, c.seq), c.t) - c.t, 2.0) AS dt
     FROM ev_choice c JOIN gm ON gm.game_id = c.game_id
     WHERE c.kind = 'shadow' AND c.t >= coalesce(:from, 0) AND c.t <= coalesce(:until, 720)
 ),
 r AS (
     SELECT game_id, label, pid, 'lost' AS part, top AS mode, coalesce(how || ' ' || by, '?') AS cause, dt FROM c
-    WHERE top IN ('attack', 'team_roam', 'roam') AND win <> top
+    WHERE top IN ('attack', 'team_roam', 'roam') AND win <> top AND tv > 0
     UNION ALL SELECT game_id, label, pid, 'unread', 'attack', substr(d_attack, 2), dt FROM c WHERE typeof(d_attack) = 'text'
     UNION ALL SELECT game_id, label, pid, 'unread', 'team_roam', substr(d_team_roam, 2), dt FROM c WHERE typeof(d_team_roam) = 'text'
     UNION ALL SELECT game_id, label, pid, 'unread', 'roam', substr(d_roam, 2), dt FROM c WHERE typeof(d_roam) = 'text'

@@ -13,10 +13,10 @@ test('shadow choice: seconds OHA would have picked attack, team_roam or roam and
     const lines = [
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         // Team roam is OHA's top, held at 0 after its code: two seconds lost to the borrowed hold.
-        sh(100, 'win=laning d_laning=0.300 d_team_roam=0.700 d_roam=-drive d_attack=-ours top=team_roam how=zeroed by="ArbiterDrive:DriveAfter borrowed(lane)"'),
-        sh(101, 'win=laning d_laning=0.300 d_team_roam=0.700 d_roam=-drive d_attack=-ours top=team_roam how=zeroed by="ArbiterDrive:DriveAfter borrowed(lane)"'),
+        sh(100, 'win=laning d_laning=0.300 d_team_roam=0.700 d_roam=-drive d_attack=-ours top=team_roam tv=0.700 how=zeroed by="ArbiterDrive:DriveAfter borrowed(lane)"'),
+        sh(101, 'win=laning d_laning=0.300 d_team_roam=0.700 d_roam=-drive d_attack=-ours top=team_roam tv=0.700 how=zeroed by="ArbiterDrive:DriveAfter borrowed(lane)"'),
         // Probed roam would have won: zeroed before its code. The gap to the next line is capped at 2 s.
-        sh(102, 'win=laning d_laning=0.300 d_team_roam=0.700 d_roam=0.800 d_attack=-ours top=roam how=zeroed by=ArbiterDrive:DriveDecide(lane) pr=roam'),
+        sh(102, 'win=laning d_laning=0.300 d_team_roam=0.700 d_roam=0.800 d_attack=-ours top=roam tv=0.800 how=zeroed by=ArbiterDrive:DriveDecide(lane) pr=roam'),
         // Laning is OHA's top and holds: no lost seconds.
         sh(110, 'win=laning d_laning=0.900 d_team_roam=0.700 d_roam=-drive d_attack=0.100 top=laning'),
         sh(111, 'win=laning d_laning=0.900 d_team_roam=0.700 d_roam=-drive d_attack=0.100 top=laning'),
