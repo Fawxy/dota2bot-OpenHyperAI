@@ -2837,8 +2837,12 @@ export const EVENTS = {
         w: "num",
         spd: "num",
         pos: "num",
-        /** kind=leave: unconverted gold of the creeps in reach that die within 8 s. */
+        /** kind=leave: unconverted gold of the creeps in reach (our attack range + 300) due to die within 8 s; the enemy lane creeps in reach and those due (leave_pick.ts FarmRead). */
         cg: "num",
+        cin: "num",
+        cdue: "num",
+        /** kind=leave: burst now's sum, the ready spells and one attack of the enemies that reach us within 1 s (leave_pick.ts BurstNow); hard=burst when it reaches our HP. */
+        bsum: "num",
         /** kind=leave: the stay and leave values, d = sv - lv. */
         sv: "num",
         lv: "num",

@@ -201,13 +201,17 @@ function ____exports.ReadySpells(bot)
                         range = type(r) == "number" and r > 0 and r or 0
                     end
                     local dt = row ~= nil and row[3] or (a.GetDamageType ~= nil and a:GetDamageType() or DamageType.Magical)
+                    local mana = a.GetManaCost ~= nil and a:GetManaCost() or nil
+                    local cd = a.GetCooldownTimeRemaining ~= nil and a:GetCooldownTimeRemaining() or nil
                     out[#out + 1] = {
                         name = name,
                         range = range,
                         cp = a:GetCastPoint(),
                         behavior = a:GetBehavior(),
                         dmg = dmg,
-                        dtype = dt > 0 and dt or DamageType.Magical
+                        dtype = dt > 0 and dt or DamageType.Magical,
+                        mana = mana,
+                        cd = cd
                     }
                     __continue32 = true
                 until true

@@ -20,8 +20,6 @@ local function world(o)
 	ours.PricedLeave = o.priced ~= false
 	ours.PricedLeaveAct = o.act == true
 	require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end
-	-- The stub's estimated damage ignores the window, so step 1's burst-now read (test_commit) is set here: none unless `o.burst`.
-	require("bots/FunLib/humaniser/commit").BurstNow = function() return { by = { [10] = { spell = o.burst or 0, attack = 0 } }, sum = o.burst or 0 } end
 	return H, bot
 end
 
@@ -29,6 +27,18 @@ local function enemy(pid, loc, est)
 	local e = MakeUnit({ pid = pid, team = 3, loc = loc })
 	e.maxhp, e.hp, e.range, e.estDamage = 600, 600, 150, est or 0
 	return e
+end
+
+-- A ready damage spell for burst now (spell_ready ReadySpells): `dmg`, cast `range`, mana cost `mana`, castable unless `cd`.
+local function spell(o)
+	return {
+		IsNull = function() return false end, GetName = function() return o.name or "test_nuke" end, GetLevel = function() return 1 end,
+		IsHidden = function() return false end, IsFullyCastable = function() return o.cd == nil end,
+		GetSpecialValueFloat = function() return 0 end, GetAbilityDamage = function() return o.dmg end,
+		GetCastRange = function() return o.range or 600 end, GetCastPoint = function() return 0.3 end, GetBehavior = function() return 8 end,
+		GetDamageType = function() return 2 end, GetManaCost = function() return o.mana or 50 end,
+		GetCooldownTimeRemaining = function() return o.cd or -1 end,
+	}
 end
 
 -- Our exchange on `t` (the scope's first case).
@@ -71,6 +81,7 @@ local function lone(o)
 	local H, bot = world(o)
 	local e = enemy(10, Vector(300, -5000), 583)
 	e.target = bot
+	if o.burst then e.abilities = { [0] = spell({ dmg = o.burst }) } end
 	bot.hitBy = { [e] = math.huge }
 	if o.scope ~= false then exchange(e) else exchange(nil) end
 	return H, bot, e
@@ -182,6 +193,100 @@ do
 		H2.Retreat.Desire(bot2)
 	end)
 	check("episode: Act off, the episode runs on", running(bot2))
+end
+
+-- Burst now's read (review fix 2): a spell counts only castable, with its mana, and within its cast range + hulls + what the enemy
+-- closes in 1 s; the sum must reach our HP. Our HP 600; the enemy's attack (50) counts within 150 + 48 + 300.
+do
+	local LPk = require("bots/FunLib/humaniser/leave_pick")
+	local function burstAt(x, sp, mana)
+		local H, bot = world({})
+		local e = enemy(10, Vector(x, -5000), 0)
+		e.mana = mana
+		e.abilities = { [0] = spell(sp) }
+		return LPk.BurstNow(bot)
+	end
+	local b = burstAt(300, { dmg = 600 })
+	check("burst: a 600 spell in range and the attack reach our 600 HP", b.burst and b.sum == 650, b.sum)
+	b = burstAt(1000, { dmg = 600, range = 300 })
+	check("burst: out of cast range (300 + 48 + 300 closing < 1,000): no spell, no attack", not b.burst and b.sum == 0, b.sum)
+	b = burstAt(940, { dmg = 600, range = 600 })
+	check("burst: within cast range once hulls and the 1 s closing count (600 + 348 >= 940)", b.burst and b.sum == 600, b.sum)
+	b = burstAt(300, { dmg = 600, mana = 200 }, 100)
+	check("burst: no mana for the spell: the attack only", not b.burst and b.sum == 50, b.sum)
+	b = burstAt(300, { dmg = 600, cd = 5 })
+	check("burst: on cooldown: the attack only", not b.burst and b.sum == 50, b.sum)
+	b = burstAt(300, { dmg = 500 })
+	check("burst: 550 under our 600 HP is not burst", not b.burst and b.sum == 550, b.sum)
+	b = burstAt(1700, { dmg = 5000, range = 5000 })
+	check("burst: an enemy beyond BurstScan is not read", not b.burst and b.sum == 0, b.sum)
+end
+
+-- The farm read (review fix 1): the enemy creeps in reach (attack range 150 + 300) due to die in 8 s under the wave's damage, lowest
+-- first, by anyone: as the fit and the replay counted them.
+do
+	local LPk = require("bots/FunLib/humaniser/leave_pick")
+	local due = LPk.Due({ 300, 40, 60, 550 }, 40, 8)
+	check("Due: 320 damage takes the 40, 60 and... not the 300 after them (lowest first)", due[2] and due[3] and not due[1] and not due[4])
+	check("Due: no damage, none due", not LPk.Due({ 10 }, 0, 8)[1])
+	local H, bot = world({})
+	local a = MakeCreep({ team = 3, x = 200, y = -5000, hp = 60 })
+	MakeCreep({ team = 3, x = 250, y = -5000, hp = 550 })
+	MakeCreep({ team = 3, x = 900, y = -5000, hp = 40 })
+	local f = LPk.FarmRead(bot)
+	check("FarmRead: two in reach, none due with no damage on the wave", f.cn == 2 and f.cd == 0 and f.gold == 0, f.cn .. " " .. f.cd)
+	for _ = 1, 2 do
+		local c = MakeCreep({ team = 2, x = 350, y = -5000 })
+		c.dmg, c.spa = 20, 1
+	end
+	f = LPk.FarmRead(bot)
+	check("FarmRead: our two creeps (40 dps, 320 in 8 s) kill the 40 then the 60: the 60 is in reach and due, a melee's 37.5", f.cn == 2 and f.cd == 1 and f.gold == 37.5, f.cn .. " " .. f.cd .. " " .. f.gold)
+	a.hp = 400
+	f = LPk.FarmRead(bot)
+	check("FarmRead: the in-reach creeps over what is left after the 40: none due", f.cd == 0, f.cd)
+	-- Not attacking anyone's attack target: the old read counted only creeps their current attackers kill (cg 0 in game).
+	check("FarmRead: our creeps target nothing and still count", a.target == nil)
+end
+
+-- Margin and flicker (review fix 3): `hs` changing is not a real change; our heroes in reach of the target changing is. A target
+-- unseen for one read keeps the incumbent (1 s grace); longer forgets it.
+do
+	local H, bot, e = lone({ act = true })
+	local LPk = require("bots/FunLib/humaniser/leave_pick")
+	local r
+	capture(function() r = LPk.For(bot, { why = "threat" }) end)
+	check("margin: the first decision keeps M 30 (incumbent the leave rule's leave)", r.M == 30 and r.rel == 0 and r.inc == "leave", r.M)
+	e.target = nil
+	bot.hitBy = {}
+	T = T + 0.2
+	capture(function() r = LPk.For(bot, { why = "threat" }) end)
+	check("margin: hs 1 to 0 is no real change (M stays 30)", r.g.hs == 0 and r.rel == 0 and r.M == 30, r.g.hs .. " " .. r.rel)
+	local inc = r.pick
+	local ally = MakeUnit({ pid = 2, team = 2, loc = Vector(400, -5000) })
+	ally.maxhp, ally.hp = 600, 600
+	T = T + 0.2
+	capture(function() r = LPk.For(bot, { why = "threat" }) end)
+	check("margin: an ally coming within reach of the target is a real change (M 0)", r.g.n == 2 and r.rel == 1 and r.M == 0, r.g.n)
+	inc = r.pick
+	e.CanBeSeen = function() return false end
+	T = T + 0.5
+	local lost
+	capture(function() lost = LPk.For(bot, { why = "threat" }) end)
+	check("grace: the target unseen for one read keeps the last pick", lost ~= nil and lost.pick == inc, lost and lost.pick)
+	e.CanBeSeen = nil
+	T = T + 0.5
+	capture(function() r = LPk.For(bot, { why = "threat" }) end)
+	check("grace: seen again within 1 s, the incumbent stands, no real change", r.inc == inc and r.rel == 0 and r.M == 30, tostring(r.inc) .. " " .. r.rel)
+	e.CanBeSeen = function() return false end
+	T = T + 0.2
+	capture(function() LPk.For(bot, { why = "threat" }) end)
+	T = T + 1.5
+	capture(function() lost = LPk.For(bot, { why = "threat" }) end)
+	check("grace: unseen over 1 s forgets the incumbent", lost == nil)
+	e.CanBeSeen = nil
+	T = T + 0.2
+	capture(function() r = LPk.For(bot, { why = "threat" }) end)
+	check("grace: after the loss the incumbent is the leave rule's answer again", r.inc == "leave", r.inc)
 end
 
 finish()

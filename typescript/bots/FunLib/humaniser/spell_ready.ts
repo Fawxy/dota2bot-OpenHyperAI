@@ -148,6 +148,8 @@ interface CastHandle extends AbilityHandle {
     GetBehavior(): number;
     GetAbilityDamage(): number;
     GetDamageType?(): number;
+    GetManaCost?(): number;
+    GetCooldownTimeRemaining?(): number;
 }
 
 /** One damage spell a hero can cast now (ReadySpells). */
@@ -162,6 +164,9 @@ export interface ReadySpell {
     dmg: number;
     /** The SPELL_DAMAGE row's damage type, else the ability's GetDamageType, else magical. */
     dtype: number;
+    /** GetManaCost and GetCooldownTimeRemaining where the handle has them (an enemy's cooldown reads -1: IsFullyCastable carries it). */
+    mana?: number;
+    cd?: number;
 }
 
 /**
@@ -184,7 +189,9 @@ export function ReadySpells(bot: Unit): ReadySpell[] {
             range = type(r) === "number" && r > 0 ? r : 0;
         }
         const dt = row !== undefined ? row[2] : a.GetDamageType !== undefined ? a.GetDamageType() : DamageType.Magical;
-        out.push({ name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical });
+        const mana = a.GetManaCost !== undefined ? a.GetManaCost() : undefined;
+        const cd = a.GetCooldownTimeRemaining !== undefined ? a.GetCooldownTimeRemaining() : undefined;
+        out.push({ name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical, mana, cd });
     }
     return out;
 }

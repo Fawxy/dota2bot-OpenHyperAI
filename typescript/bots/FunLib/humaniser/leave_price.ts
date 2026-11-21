@@ -43,7 +43,7 @@ export interface Inputs {
     heal?: boolean;
     lethal?: boolean;
     burst?: boolean;
-    /** A real change this frame (n or the enemies in reach changed, `hs` changed bin, T died or was lost, the scope changed, an exchange or play started or ended): the margin is 0. */
+    /** A real change this read (the scope case, the target, or our heroes in reach of it changed; leave_pick.ts `For`): the margin is 0. */
     rel?: boolean;
 }
 
