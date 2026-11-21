@@ -100,6 +100,7 @@ ____exports.DEFAULTS = {
     TowerRead = true,
     CreepRead = true,
     TripRead = true,
+    ContestRead = true,
     TradeSwing = true,
     TradeHold = true,
     JoinArrive = true,

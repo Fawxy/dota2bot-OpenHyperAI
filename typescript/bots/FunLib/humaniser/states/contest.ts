@@ -22,7 +22,7 @@ export const RADIUS = 1000;
 export const COST_CAP = 0.1;
 /**
  * A running walk-in is released on cost only above COST_CAP times this (`judgement`): a price hovering at the cap would
- * otherwise throw walks away halfway. The HP floor, two heroes and the tower stay hard.
+ * otherwise throw walks away halfway. With Ours.ContestRead off, the HP floor, two heroes and the tower stay hard.
  */
 export const WALK_SLACK = 1.5;
 /** HP share the core must keep after the priced cost (`judgement`; lane aggro's draws gate at 0.45). */
@@ -63,8 +63,9 @@ export interface Price {
 
 /**
  * The walk-in's price, pure: each enemy whose zone covers the stand point hits us for the seconds we stand inside it (walking the
- * zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Two or
- * more such heroes, or the creep itself inside an enemy tower's ring, refuse it outright.
+ * zone's depth in and out at `speed`, waiting in range for the creep to become due, and our swing) plus a ready nuke. Without
+ * `read`, two or more such heroes, the creep inside an enemy tower's ring, or HP after the cost under HP_FLOOR refuse it too;
+ * with `read` (Ours.ContestRead) only the cost does, and the pick's safe read at the stand point is the danger test.
  */
 export function PriceOf(
     this: void,
@@ -77,6 +78,7 @@ export function PriceOf(
     maxHp: number,
     tower: boolean,
     cap: number = COST_CAP,
+    read = false,
 ): Price {
     let damage = 0;
     let heroes = 0;
@@ -92,11 +94,21 @@ export function PriceOf(
     }
     const cost = maxHp > 0 ? damage / maxHp : 1;
     let why: Why = "ok";
-    if (tower) why = "tower";
+    if (read) {
+        if (cost > cap) why = "cost";
+    } else if (tower) why = "tower";
     else if (heroes >= 2) why = "two";
     else if (cost > cap) why = "cost";
     else if (maxHp <= 0 || (hp - damage) / maxHp < HP_FLOOR) why = "hp";
     return { ok: why === "ok", why, cost, heroes, exposure };
+}
+
+/**
+ * Ours.ContestRead: the walk-in's danger (the HP floor, two heroes, the tower's ring) is the safe read's, asked by the pick at the
+ * stand point (Ours.PickSafe) with the tower as a priced row (Ours.TowerRead); without either of those the price keeps its own tests.
+ */
+export function ReadOn(): boolean {
+    return Ours.On("ContestRead") && Ours.On("PickSafe") && Ours.On("TowerRead");
 }
 
 /** A melee core under Ours.CoreLastHit with Ours.CoreContest on. */
@@ -183,6 +195,7 @@ export function PriceFor(bot: Unit, t: Lib.Verbs.LaneTarget, running = false): P
         bot.GetMaxHealth(),
         towerAt(bot, at),
         running ? COST_CAP * WALK_SLACK : COST_CAP,
+        ReadOn(),
     );
 }
 

@@ -154,6 +154,10 @@ export const DEFAULTS = {
      *  (and a rune trip's walk) with no HP floor or hit timer of its own, except a job with no price for a camp's neutrals (the stack); a running
      *  job ends on a deadly answer here; the core camp's start has no HP floor. Off: the floors (0.5, 0.65) and the 3 s hit timer. */
     TripRead: true,
+    /** Plan after the collapse step 5, the lane group (docs/proposals/2026-11-20-after-the-collapse.md): with PickSafe and TowerRead on, a
+     *  walk-in last hit's price (states/contest) refuses only on cost; its HP floor, two-hero and tower-ring refusals go, and the safe read the
+     *  pick asks at the stand point is the danger test. Off: the price refuses on all four. */
+    ContestRead: true,
     /** Step 4.3 (docs/proposals/2026-11-20-step4-exchanges.md): with Trade on, a hit or hit back opens only when its swing place is clear of
      *  enemy lane creeps (or our own attack order's cooldown covers it) or it still pays with their damage counted, and a fresh one only when no
      *  last hit or deny comes due before the swing lands; the executor orders the attack as answered. Off: the wave gates alone, and the
