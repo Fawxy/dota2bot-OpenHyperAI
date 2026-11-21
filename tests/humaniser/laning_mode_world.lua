@@ -79,7 +79,11 @@ function LaningLoad(opts)
 	for _, a in ipairs(opts.allies or {}) do table.insert(team, a) end
 	function GetTeamMember(i) return team[i] end
 	package.loaded['bots/FunLib/humaniser/lane_config'] = { PositionOf = function(u) return u.pos end }
-	package.loaded['bots/FunLib/humaniser/ours'] = { On = function() return opts.ours == true end }
+	-- opts.luaLaning: the Ours.LuaLaning diagnostic; every other switch is opts.ours.
+	package.loaded['bots/FunLib/humaniser/ours'] = { On = function(name)
+		if name == 'LuaLaning' then return opts.luaLaning == true end
+		return opts.ours == true
+	end }
 	package.loaded['bots/FunLib/humaniser/etiquette'] = nil
 	-- The mode file's wrapper line, with the humaniser stubbed: no job, so OHA's code always runs. A test of the gate passes its own.
 	package.loaded['bots/FunLib/humaniser/index'] = { Chooser = opts.chooser or { Gate = function(_, _, inner) return inner end } }

@@ -172,6 +172,11 @@ export const DEFAULTS = {
     /** Step 4.6b (same proposal): a pair join is judged on arrival within 2 s and carried to its first attack when the pair answer lapses or names another
      *  target; a losing answer on its own target, a deadly walk, out of arrival or a 3 s backstop still end it. Off: a flat 1,200 reach, and the answer lapsing ends it. */
     JoinHold: true,
+    /** Diagnostic (bisect 2, 22/11/2026; never merged on): mode_laning_generic's Lua Think for every bot of the scoped team,
+     *  as CoreLastHit, SupportDeny or LeaveCoreCreep give it, with nothing of ours in it. With every other switch off the
+     *  lane table runs only OHA's rows (oha_lh, oha_deny, oha_hold, oha_local, oha_pos) and laning's 0.9 last-hit desire.
+     *  Separates the swap from Valve's C++ laning from our rows. Off: Valve's laning unless another switch takes it. */
+    LuaLaning: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

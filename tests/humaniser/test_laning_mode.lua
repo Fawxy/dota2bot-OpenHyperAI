@@ -209,6 +209,19 @@ do
 	check("switch on: a pos1 bot is not taken over", Think == nil)
 end
 
+-- Ours.LuaLaning (diagnostic, bisect 2): any position gets OHA's Lua laning Think, and with nothing of ours owned its rows
+-- are OHA's own.
+do
+	LaningLoad({ pos = 1, luaLaning = true })
+	check("lua laning: a pos1 bot owns the laning Think", Think ~= nil)
+	LaningLoad({ pos = 4, luaLaning = true })
+	check("lua laning: a pos4 bot owns the laning Think", Think ~= nil)
+	local bot = load({ pos = 1, luaLaning = true })
+	GetDesire()
+	Think()
+	check("lua laning: with nothing owned the frame is OHA's position", bot.step == "oha_pos", bot.step)
+end
+
 -- Lane-only (slice lane-last-hits; drill `lane-only`): the lane-only harness holds every bot in laning above every other mode and runs
 -- only the last-hit steps and the position, never etiquette.
 do

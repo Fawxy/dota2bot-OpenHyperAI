@@ -69,7 +69,7 @@ local function CoreLeaves(creep)
 end
 -- Behaviour states (team slice 1): the `laning` state's SDK body can replace PositionThink() below.
 local States = J.Humaniser.States
-local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette
+local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette or require(GetScriptDirectory()..'/FunLib/humaniser/ours').On('LuaLaning') -- Ours.LuaLaning: diagnostic hook, OHA's Lua laning only
 LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
 function GetDesire()
