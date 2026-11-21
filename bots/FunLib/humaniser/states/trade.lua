@@ -357,7 +357,8 @@ function runOf(bot, rs, seen, here)
         hold = true,
         draws = creepOn,
         commits = true,
-        exclude = rs.target
+        exclude = rs.target,
+        who = "trade_chase"
     })
     run.unseen = {
         at = distXY(here, place) <= bot:GetBoundingRadius() + hull + AT_PLACE,
@@ -1524,7 +1525,7 @@ function ____exports.Gather(bot, rs)
     local now = DotaTime()
     local here = bot:GetLocation()
     local safeHit = SafeGather.At(bot, here, {held = true, hold = false, who = "trade"})
-    local safeHold = SafeGather.At(bot, here, {held = true, hold = true})
+    local safeHold = SafeGather.At(bot, here, {held = true, hold = true, who = "trade_hold"})
     local wave = 0
     local creepsOnMe = 0
     local swingOn = Ours.On("TradeSwing")
@@ -2575,7 +2576,8 @@ local function chanceTarget(bot, i, a, now)
                 held = false,
                 hold = true,
                 draws = creepOn,
-                commits = true
+                commits = true,
+                who = "fight_roll"
             }
         ))
     end

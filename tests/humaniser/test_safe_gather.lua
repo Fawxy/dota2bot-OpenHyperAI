@@ -216,6 +216,59 @@ do
 	check("control: no who, no line", #safeLines("probe") == 1 and #safeLines(nil) == 2)
 end
 
+-- A sampled asker (many places a frame: the pick's walk-ins, the lane spot's candidates) logs one line per level each CutEvery, not one per place.
+do
+	local _, G, bot = world()
+	local hitter = enemy(10, -1700, 150)
+	bot.hitBy = { [hitter] = T }
+	local FAR = Vector(-9000, -5000)
+	local function ask(who, place, sampled) return G.At(bot, place, { from = place, who = who, sampled = sampled }) end
+	local d1 = ask("cand", HERE, true)
+	local s1 = ask("cand", FAR, true)
+	local d2 = ask("cand", Vector(-1900, -5000), true)
+	ask("cand", FAR, true)
+	local got = safeLines("cand")
+	check("sampled: a deadly place, a safe one and a second deadly one in one frame log two lines, the first of each level",
+		d1.level == "deadly" and s1.level == "safe" and d2.level == "deadly" and #got == 2
+			and field(got[1], "pl") == "-2000,-5000" and field(got[2], "pl") == "-9000,-5000", #got)
+	ask("plain", HERE)
+	ask("plain", FAR)
+	ask("plain", Vector(-1900, -5000))
+	check("control: the same three asks unsampled log a line at each change of level", #safeLines("plain") == 3, #safeLines("plain"))
+	T = 302.1
+	bot.hitBy[hitter] = T
+	ask("cand", HERE, true)
+	ask("cand", Vector(-1900, -5000), true)
+	ask("cand", FAR, true)
+	got = safeLines("cand")
+	check("sampled: after CutEvery the deadly level logs again, the second deadly ask of the frame this time (the first was the line before); the quiet safe level is not repeated",
+		#got == 3 and field(got[3], "pl") == "-1900,-5000", #got)
+	T = 304.2
+	bot.hitBy[hitter] = T
+	ask("cand", HERE, true)
+	ask("cand", Vector(-1900, -5000), true)
+	check("sampled: a frame with fewer deadly asks than the one wanted (the third) logs nothing", #safeLines("cand") == 3, #safeLines("cand"))
+	T = 304.3
+	bot.hitBy[hitter] = T
+	ask("cand", HERE, true)
+	got = safeLines("cand")
+	check("sampled: the frame after starts again from the first ask", #got == 4 and field(got[4], "pl") == "-2000,-5000", #got)
+end
+
+-- Note: an answer a consumer decided from its own read is logged like an At call.
+do
+	local Threat, G, bot = world()
+	local hitter = enemy(10, -1700, 150)
+	bot.hitBy = { [hitter] = T }
+	local i = G.FromRead(bot, stay(Threat, bot), OPTS)
+	local a = require("bots/FunLib/humaniser/safe").Decide(i)
+	G.Note(bot, "sustain", HERE, i, a)
+	G.Note(bot, "sustain", HERE, i, a)
+	local got = safeLines("sustain")
+	check("Note logs the consumer's own answer once, with its level and kill line",
+		#got == 1 and field(got[1], "lv") == a.level and field(got[1], "kill") == tostring(math.floor(a.kill + 0.5)), got[1])
+end
+
 -- At needs no telemetry: a deadly place reads deadly, a safe place safe, and nothing is logged.
 do
 	local H = LaneFresh({ Enable = true }, { skill = 0.9, telemetry = { Enable = false } })

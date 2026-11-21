@@ -253,7 +253,10 @@ function treeOf(bot: Unit, items: Sustain.Item[], now: number, spot: Sustain.Inp
         const walk = math.max(0, t.d - (range > 0 ? range : SETTINGS.TangoRange)) / speed;
         if (walk <= 0) return { walk, safe: true };
         const r = Threat.Read(bot, here, t.loc, Threat.SETTINGS.GateHorizon);
-        return { walk, safe: Safe.Decide(SafeGather.FromRead(bot, r, { away: false, held: false, hold: false })).level !== "deadly" };
+        const si = SafeGather.FromRead(bot, r, { away: false, held: false, hold: false });
+        const sa = Safe.Decide(si);
+        SafeGather.Note(bot, "sustain_tree", t.loc, si, sa);
+        return { walk, safe: sa.level !== "deadly" };
     };
     let pick = near;
     let tree = judge(near);
@@ -272,6 +275,7 @@ function treeOf(bot: Unit, items: Sustain.Item[], now: number, spot: Sustain.Inp
 function safeHere(bot: Unit, r: Threat.Read): [Sustain.Inputs["safe"], boolean] {
     const i = SafeGather.FromRead(bot, r, { away: false, held: true, hold: false });
     const a = Safe.Decide(i);
+    SafeGather.Note(bot, "sustain", r.place, i, a);
     let hitting = false;
     let reach = 0;
     for (const x of i.reach) {
@@ -299,7 +303,7 @@ function safeSpot(bot: Unit, now: number, deep: boolean): Sustain.Inputs["safeSp
     if (spot === undefined || !deep) return spot;
     if (c.okAt === undefined || now - c.okAt >= SETTINGS.SafeEvery) {
         c.okAt = now;
-        spot.ok = SafeGather.At(bot, Vector(spot.x, spot.y, bot.GetLocation().z), { held: true }).level !== "deadly";
+        spot.ok = SafeGather.At(bot, Vector(spot.x, spot.y, bot.GetLocation().z), { held: true, who: "sustain_spot" }).level !== "deadly";
     }
     return spot;
 }
@@ -451,6 +455,11 @@ export function ItemsText(items: Sustain.Item[]): string {
     return out.join(";");
 }
 
+/** The executor's running answer as `kind,slot,name,seconds since its start,hp0,dur,x,y` (an absent part is empty). */
+export function RunText(r: Sustain.Run, now: number): string {
+    return [r.kind, r.slot ?? "", r.name ?? "", t1(now - r.started), n0(r.hp0), r.dur !== undefined ? t1(r.dur) : "", r.at !== undefined ? n0(r.at.x) : "", r.at !== undefined ? n0(r.at.y) : ""].join(",");
+}
+
 /** The `ev=cut kind=sustain` fields for these inputs and answer (tools/hlog/sustain_diff.js reads them back into Inputs). */
 export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Telemetry.Fields<"cut"> {
     const shop: string[] = [];
@@ -484,6 +493,7 @@ export function CutFields(pid: number, i: Sustain.Inputs, a: Sustain.Answer): Te
         ["idl", b01(i.idle)],
         ["af", b01(i.atFountain)],
         ["als", al.length > 0 ? al.join(";") : undefined],
+        ["srn", i.run !== undefined ? RunText(i.run, i.now) : undefined],
         ["ak", a.kind],
         ["anm", a.name],
         ["ato", a.to],

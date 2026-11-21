@@ -616,7 +616,7 @@ do
 			package.loaded["bots/FunLib/custom_loader"].Ours.PickSafe = o.switch ~= false
 			SG = require("bots/FunLib/humaniser/safe_gather")
 			SG.At = function(b, place, opts)
-				calls[#calls + 1] = { place = place, held = opts and opts.held, horizon = opts and opts.horizon, who = opts and opts.who }
+				calls[#calls + 1] = { place = place, held = opts and opts.held, horizon = opts and opts.horizon, who = opts and opts.who, sampled = opts and opts.sampled }
 				if o.throws then error("boom") end
 				return { level = o.levelAt(place) }
 			end
@@ -658,9 +658,12 @@ do
 	end
 	check("pick safe: out of range asks at the point attack range from the creep, not at the bot, by the leave bar (held) 2 s ahead", askedOut == true, #dead.calls)
 	check("pick safe: in range asks held=true at the bot's own place", askedIn == true, #dead.calls)
-	local anyWho = false
-	for _, c in ipairs(dead.calls) do if c.who ~= nil then anyWho = true end end
-	check("pick safe: the pick asks without a who (no extra safe lines of its own)", not anyWho)
+	local named = true
+	for _, c in ipairs(dead.calls) do
+		if atBot(c.place) then named = named and c.who == "pick" and c.sampled ~= true
+		else named = named and c.who == "pick_in" and c.sampled == true end
+	end
+	check("pick safe: the ask at the bot's place is logged as who=pick, each walk-in stand as who=pick_in, sampled (one line a level, not one a creep)", named and #dead.calls > 0)
 
 	local off = scenario({ levelAt = deadlyAtStand, switch = false })
 	check("pick safe off: the read is never asked and the creep is taken", #off.calls == 0 and chose(off, "lasthit"), #off.calls)

@@ -3092,6 +3092,8 @@ export const EVENTS = {
         /** kind=sustain: regen on its way, whoever bought it (heal and mana items in the stash or on the courier) `hp,mp,eta seconds` (absent: none); `rom` 1 when a slot in 0-8 is free for one to land in. */
         dl: "str",
         rom: "num",
+        /** kind=sustain: the executor's running answer (`Sustain.Inputs.run`; absent in shadow and with none running) as `kind,slot,name,seconds since its start,hp0,dur,x,y`, an absent part empty. */
+        srn: "str",
         /** kind=sustain: the purchase sent with a use (rule 2's tango and ship). */
         alb: "str",
         /** kind=sustain: gold; the courier's delivery seconds when free (absent: busy or dead); the shop `name,cost,hp,mp` per `;`; seconds to the fountain and back. */
@@ -3109,7 +3111,7 @@ export const EVENTS = {
         anm: "str",
         ato: "num",
         /**
-         * kind=safe (safe_gather.ts, in shadow: nothing acts on it; the consumer is `who`, the place read is `pl` as `x,y`, our HP and max HP are `hpa` and `hpm`, `mi` the unseen belief's weight sum):
+         * kind=safe (safe_gather.ts: the safe-here answer a consumer asked for, logged when its level or reason changes and else every `CutEvery` while a hero is in reach or the landing price is over 0; an asker of many places a frame, `pick_in` and `spot_c`, logs one line per level each `CutEvery`, a different ask of the frame each time; the consumer is `who`, the place read is `pl` as `x,y`, our HP and max HP are `hpa` and `hpm`, `mi` the unseen belief's weight sum):
          * `rr` one record per reacher, `;`-joined, `pid,hitting,dmg,unseen` (hitting 1/0: the read's engaged window, so a gate's read has none; dmg absolute, over the read's long window when hitting; unseen 1: a lane opponent last seen
          * under 10 s ago whose run reaches the place, at the damage it last had); absent: none in reach. `stw` `tower,towerOnMe` (1/0; `tower` by the tower's reach to a point; towerOnMe since 20/11/2026 only when a tower on the hero can reach the place, by its reach plus the hero's hull, so `0,1` is a place in that band; before that whatever the place), `ld` HP a second lost over the last 2 s to `hero,creeps,tower`,
          * `ex` seconds to walk out of every visible reacher's range from the place read (from the hero's own place before 20/11/2026; absent with none in reach; with Ours.ExitWindow a reacher not hitting us has its `dmg` over `ex` + 1 s in half-second steps up, at most 4 s), `awy` the walk leaves our creeps and tower, `hld` the caller holds a standing answer here,

@@ -875,15 +875,35 @@ end
 function cutOn()
     return Telemetry.IsEnabled() and Telemetry.Get().Cut == true
 end
-function log(bot, who, place, i, a)
+function log(bot, who, place, i, a, sampled)
     local key = (a.level .. ":") .. a.reason
-    local id = (tostring(bot:GetPlayerID()) .. ":") .. who
+    local id = sampled == true and (((tostring(bot:GetPlayerID()) .. ":") .. who) .. ":") .. a.level or (tostring(bot:GetPlayerID()) .. ":") .. who
     local now = DotaTime()
     local last = cutState[id]
-    if last ~= nil and last.key == key and (now - last.at < ____exports.SETTINGS.CutEvery or #i.reach == 0 and a.price <= 0) then
-        return
+    local skip = 0
+    if last ~= nil then
+        if now - last.at < ____exports.SETTINGS.CutEvery and (sampled == true or last.key == key) then
+            return
+        end
+        if last.key == key and #i.reach == 0 and a.price <= 0 then
+            return
+        end
+        if sampled == true then
+            if last.frame ~= now then
+                if last.frame ~= nil and (last.n or 0) <= (last.skip or 0) then
+                    last.skip = 0
+                end
+                last.frame = now
+                last.n = 0
+            end
+            last.n = (last.n or 0) + 1
+            skip = last.skip or 0
+            if last.n <= skip then
+                return
+            end
+        end
     end
-    cutState[id] = {key = key, at = now}
+    cutState[id] = sampled == true and ({key = key, at = now, skip = skip + 1}) or ({key = key, at = now})
     Telemetry.Event(
         "cut",
         ____exports.CutFields(
@@ -951,7 +971,8 @@ function ask(bot, place, opts)
             who,
             place,
             i,
-            a
+            a,
+            opts and opts.sampled
         )
         if not ok then
             Telemetry.Failed("SafeGather.At", err)
@@ -1089,15 +1110,32 @@ frames = {}
 function ____exports.At(bot, place, opts)
     return ask(bot, place, opts).a
 end
+--- The cut line for an answer a consumer decided from its own read (`FromRead` then `Safe.Decide`), so it replays like an `At` call.
+function ____exports.Note(bot, who, place, i, a)
+    if not cutOn() or not bot:IsAlive() then
+        return
+    end
+    local ok, err = pcall(
+        log,
+        bot,
+        who,
+        place,
+        i,
+        a
+    )
+    if not ok then
+        Telemetry.Failed("SafeGather.Note", err)
+    end
+end
 --- `At` asked once for both bars of one place: without a hold (`who` logs this one) and with one, from one read.
 function ____exports.AtBoth(bot, place, opts)
-    local ____ask_result_53 = ask(
+    local ____ask_result_55 = ask(
         bot,
         place,
         __TS__ObjectAssign({}, opts, {hold = false})
     )
-    local a = ____ask_result_53.a
-    local i = ____ask_result_53.i
+    local a = ____ask_result_55.a
+    local i = ____ask_result_55.i
     return {
         plain = a,
         hold = Safe.Decide(__TS__ObjectAssign({}, i, {hold = true}))
@@ -1140,7 +1178,7 @@ end
 -- `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
 -- decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
 function ____exports.TripGate(bot, place, consumer, from)
-    local ____ask_result_54 = ask(bot, place, {
+    local ____ask_result_56 = ask(bot, place, {
         from = from,
         horizon = ____exports.WalkHorizon,
         away = true,
@@ -1148,8 +1186,8 @@ function ____exports.TripGate(bot, place, consumer, from)
         hold = false,
         who = consumer
     })
-    local a = ____ask_result_54.a
-    local r = ____ask_result_54.r
+    local a = ____ask_result_56.a
+    local r = ____ask_result_56.r
     local why = a.level == "deadly" and a.reason or nil
     if Threat.Log(bot, consumer, r, why or "go") then
         Threat.NoteGateCut(bot, r.from, r.place, consumer)
