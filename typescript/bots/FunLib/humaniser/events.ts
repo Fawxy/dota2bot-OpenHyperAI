@@ -2699,7 +2699,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull` today. */
+        /** The decision; `pull`, or `shadow` (Ours.ChoiceShadow). */
         kind: "str",
         /** 1 when the pull started. */
         go: "num",
@@ -2759,6 +2759,61 @@ export const EVENTS = {
         // pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap
         // were forecast with it in the lane.
         pw: "num",
+        // kind=shadow (Ours.ChoiceShadow, choice_shadow.ts): one line per hero of ours about every second and on each change of active
+        // mode. A frame's values are logged on the next frame, beside the active mode Valve picked from them.
+        /** kind=shadow: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires. */
+        win: "str",
+        /** kind=shadow: the mode OHA's own computed desires pick (argmax of the `d_` numbers); absent when none was computed. */
+        top: "str",
+        /** kind=shadow: `top`'s desire. */
+        tv: "num",
+        /** kind=shadow: 1 when some mode's own desire was not computed (a `d_` field with a `-` reason), so `top` is over the rest only. */
+        inc: "num",
+        /** kind=shadow, when `top` is not `win`: `zeroed` (the gate lowered top's desire), `held` (the gate raised win's: DriveAfter's lane floor), `outbid` (win's desire is ours or holds our branch or claim), `valve` (Valve's own mode or arbitration). */
+        how: "str",
+        /** kind=shadow, with `how`: the module and switch of ours that made the difference (`ArbiterDrive:DriveDecide(<pick>)`, `ArbiterDrive:DriveAfter borrowed(<pick>)`, `ArbiterDrive:DriveAfter lane_floor`, `JobChooser:host`, `JobChooser:Hold(job)`, `Retreat:Desire`, `Trade:Desire`, `Intent:<claim>`, `CoreLastHit:bOwnsThink`, `Trade:bLaneFightsOurs`, `ArbiterDrive:DeniesOhaRune`), or `Valve:<mode>` / `Valve:arbitration`. */
+        by: "str",
+        /** kind=shadow: modes whose own desire includes a branch of ours (laning: the body's last-hit branch; team_roam: Trade's fights; rune: DeniesOhaRune). */
+        mix: "str",
+        /** kind=shadow: `<mode>=<source>` for each computed mode an Intent claim or stickiness moved (Intent.Explain's `by` not raw). */
+        clm: "str",
+        /** kind=shadow: modes whose value came from Ours.ChoiceProbe (OHA's code run where the drive zeroed it; the drive's 0 returned). */
+        pr: "str",
+        /** kind=shadow: `<mode>:<desire>` for each mode the gate returned other than its own desire (drive, hold, DriveAfter). */
+        gate: "str",
+        /** kind=shadow, under ArbiterDrive: the drive's pick last frame. */
+        pick: "str",
+        /** kind=shadow, under ArbiterDrive: the arbiter's candidates that apply, `<name>:<group>` (Arbiter.Candidates). */
+        cand: "str",
+        /** kind=shadow: the drive's lane desire (Arbiter SETTINGS.LaneDesire) while the pick is the lane. */
+        lfl: "num",
+        /** kind=shadow: our retreat desire (Retreat.Desire through the retreat file) when it answered first. */
+        rdes: "num",
+        /** kind=shadow: our trade's attack desire (Trade.Desire) when it answered first. */
+        tdes: "num",
+        /** kind=shadow: the chooser's host desire in farm (the drive's or the hold's). */
+        hdes: "num",
+        /** kind=shadow, one per mode file (`assemble_h` is assemble_with_humans): the mode's own desire as the one real call returned it (Intent-resolved), or `-<reason>` when not computed: `-drive` (Arbiter.DriveDecide before OHA's code), `-hold` (a retreat episode or a job), `-ours` (our desire answered first: retreat, attack under Trade, the chooser's host), `-valve` (no Lua GetDesire value: Valve's built-in), `-drill`, `-rig`. */
+        d_laning: "mixed",
+        d_attack: "mixed",
+        d_retreat: "mixed",
+        d_farm: "mixed",
+        d_team_roam: "mixed",
+        d_roam: "mixed",
+        d_rune: "mixed",
+        d_ward: "mixed",
+        d_assemble: "mixed",
+        d_assemble_h: "mixed",
+        d_defend_top: "mixed",
+        d_defend_mid: "mixed",
+        d_defend_bot: "mixed",
+        d_push_top: "mixed",
+        d_push_mid: "mixed",
+        d_push_bot: "mixed",
+        d_roshan: "mixed",
+        d_secret_shop: "mixed",
+        d_side_shop: "mixed",
+        d_outpost: "mixed",
     },
     gank: {
         pid: "num",

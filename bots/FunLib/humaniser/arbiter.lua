@@ -217,6 +217,10 @@ function ____exports.Drive(bot, chooserJob)
     drivePrev[pid] = p.name
     return p
 end
+--- The pick Drive last computed for this hero, without computing one (choice_shadow's line). Reads only.
+function ____exports.LastPick(bot)
+    return drivePick[bot:GetPlayerID()]
+end
 --- The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
 -- hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
 -- trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's

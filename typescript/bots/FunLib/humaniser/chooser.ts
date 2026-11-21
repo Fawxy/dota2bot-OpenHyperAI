@@ -17,6 +17,7 @@ import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Arbiter from "bots/FunLib/humaniser/arbiter";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
+import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -215,6 +216,10 @@ const EPISODE_MODES: Record<string, true> = { assemble: true, assemble_with_huma
 /** OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs. */
 const ADMITTED: Record<string, Record<string, unknown>> = { retreat: EPISODE_MODES, job: EXCEPTIONS };
 
+/** Which branch of Decide gave its last number (choice_shadow's reason); telemetry only, read by Gate. */
+let decideWhy: string | undefined;
+const HOLD_WHY: Record<string, string> = { retreat: "hold:retreat", job: "hold:job" };
+
 /**
  * A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under the arbiter's hold the host mode runs
  * and every mode the hold does not admit gets 0. A job hosted in the rune mode (the mid's 6:00 trip) leaves the chooser's
@@ -222,18 +227,27 @@ const ADMITTED: Record<string, Record<string, unknown>> = { retreat: EPISODE_MOD
  * not take it either.
  */
 export function Decide(bot: Unit, mode: string): number | undefined {
+    decideWhy = undefined;
     // A drill's in-lane hero (ours or OHA's) takes no mode that leaves its lane (humaniser/drill.ts InLaneDenies).
-    if (Drill.InLaneDenies(bot, mode)) return 0;
+    if (Drill.InLaneDenies(bot, mode)) {
+        decideWhy = "drill";
+        return 0;
+    }
     // A drill rig's cast after ready runs only the modes its release lists.
     const rig = Drill.RigDesire(bot, mode);
-    if (rig !== undefined) return rig;
+    if (rig !== undefined) {
+        decideWhy = "rig";
+        return rig;
+    }
     const jobs = Ours.On("JobChooser");
     // Rework step 7: under the drive the arbiter's pick holds an owned laner (Arbiter.DriveDecide, the inventory's tiers).
     if (Arbiter.Drives(bot)) {
         const p = Arbiter.Drive(bot, jobs ? RunningJobName(bot) : undefined);
+        decideWhy = "drive";
         return Arbiter.DriveDecide(bot, mode, p, () => (jobs ? hostDesire(bot) : undefined));
     }
     const hold = Arbiter.Hold(bot, jobs ? RunningJobName(bot) : undefined);
+    decideWhy = hold === undefined || mode === hold.host ? "host" : HOLD_WHY[hold.name];
     if (hold === undefined) return jobs && mode === HOST ? hostDesire(bot) : undefined;
     if (mode === hold.host) return mode === HOST ? hostDesire(bot) : undefined;
     return ADMITTED[hold.name][mode] !== undefined ? undefined : 0;
@@ -243,10 +257,24 @@ export function Decide(bot: Unit, mode: string): number | undefined {
 export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
         Arbiter.Shadow(bot, () => runningJob(bot)?.name);
+        // Ours.ChoiceShadow (logging only): the values this call returns are noted, never changed; off, nothing else runs.
+        const shadow = ChoiceShadow.On();
+        if (shadow) ChoiceShadow.Frame(bot, () => runningJob(bot)?.name);
         const v = Decide(bot, mode);
-        if (v !== undefined) return v;
+        if (v !== undefined) {
+            if (shadow) {
+                const why = decideWhy;
+                // Ours.ChoiceProbe (diagnostic, never scored): OHA's roam and team_roam code runs where the drive zeroes it
+                // first, for its value only; the drive's value is still returned. Its side effects are OHA's (choice_shadow).
+                const probe = why === "drive" && ChoiceShadow.PROBED[mode] === true && Ours.On("ChoiceProbe");
+                ChoiceShadow.Note(bot, mode, probe ? ChoiceShadow.Probe(inner) : undefined, v, why, probe);
+            }
+            return v;
+        }
         const d = inner();
-        return After(bot, mode, d);
+        const out = After(bot, mode, d);
+        if (shadow) ChoiceShadow.Note(bot, mode, d, out, undefined, false);
+        return out;
     };
 }
 

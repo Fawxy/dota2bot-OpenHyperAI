@@ -1342,9 +1342,9 @@ Slice support-lane: one sample per started pull per PullJob WatchLogEvery during
 
 Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it; pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost); the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`; Ours.Threat on).
 
-`pid` num, `ap` num, `rule` str
+`pid` num, `ap` num, `rule` str, `d_attack` mixed, `d_retreat` mixed, `d_farm` mixed, `d_team_roam` mixed, `d_roam` mixed, `d_rune` mixed, `d_ward` mixed, `d_assemble` mixed, `d_assemble_h` mixed, `d_defend_top` mixed, `d_defend_mid` mixed, `d_defend_bot` mixed, `d_push_top` mixed, `d_push_mid` mixed, `d_push_bot` mixed, `d_roshan` mixed, `d_secret_shop` mixed, `d_side_shop` mixed, `d_outpost` mixed
 
-- `kind` str: The decision; `pull` today.
+- `kind` str: The decision; `pull`, or `shadow` (Ours.ChoiceShadow).
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
 - `why` str: What held a wanted pull back: a start check (`enemy-near`, a higher job's name, `partner-low`, `partner-gank`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills.
@@ -1371,6 +1371,23 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `ep` num: The HP of their creeps in lane before the pulled wave and the one spawned with it.
 - `hold` num: hold 1 when our lane core could hold their wave (PullJob CoreToHold); rule which trigger wanted the pull: new (the above), old (own + mv past tgt + WantPast and st not IN, counted only with hold 1) or both; absent when neither.
 - `pw` num: pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap were forecast with it in the lane.
+- `win` str: kind=shadow (Ours.ChoiceShadow, choice_shadow.ts): one line per hero of ours about every second and on each change of active mode. A frame's values are logged on the next frame, beside the active mode Valve picked from them. kind=shadow: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires.
+- `top` str: kind=shadow: the mode OHA's own computed desires pick (argmax of the `d_` numbers); absent when none was computed.
+- `tv` num: kind=shadow: `top`'s desire.
+- `inc` num: kind=shadow: 1 when some mode's own desire was not computed (a `d_` field with a `-` reason), so `top` is over the rest only.
+- `how` str: kind=shadow, when `top` is not `win`: `zeroed` (the gate lowered top's desire), `held` (the gate raised win's: DriveAfter's lane floor), `outbid` (win's desire is ours or holds our branch or claim), `valve` (Valve's own mode or arbitration).
+- `by` str: kind=shadow, with `how`: the module and switch of ours that made the difference (`ArbiterDrive:DriveDecide(<pick>)`, `ArbiterDrive:DriveAfter borrowed(<pick>)`, `ArbiterDrive:DriveAfter lane_floor`, `JobChooser:host`, `JobChooser:Hold(job)`, `Retreat:Desire`, `Trade:Desire`, `Intent:<claim>`, `CoreLastHit:bOwnsThink`, `Trade:bLaneFightsOurs`, `ArbiterDrive:DeniesOhaRune`), or `Valve:<mode>` / `Valve:arbitration`.
+- `mix` str: kind=shadow: modes whose own desire includes a branch of ours (laning: the body's last-hit branch; team_roam: Trade's fights; rune: DeniesOhaRune).
+- `clm` str: kind=shadow: `<mode>=<source>` for each computed mode an Intent claim or stickiness moved (Intent.Explain's `by` not raw).
+- `pr` str: kind=shadow: modes whose value came from Ours.ChoiceProbe (OHA's code run where the drive zeroed it; the drive's 0 returned).
+- `gate` str: kind=shadow: `<mode>:<desire>` for each mode the gate returned other than its own desire (drive, hold, DriveAfter).
+- `pick` str: kind=shadow, under ArbiterDrive: the drive's pick last frame.
+- `cand` str: kind=shadow, under ArbiterDrive: the arbiter's candidates that apply, `<name>:<group>` (Arbiter.Candidates).
+- `lfl` num: kind=shadow: the drive's lane desire (Arbiter SETTINGS.LaneDesire) while the pick is the lane.
+- `rdes` num: kind=shadow: our retreat desire (Retreat.Desire through the retreat file) when it answered first.
+- `tdes` num: kind=shadow: our trade's attack desire (Trade.Desire) when it answered first.
+- `hdes` num: kind=shadow: the chooser's host desire in farm (the drive's or the hold's).
+- `d_laning` mixed: kind=shadow, one per mode file (`assemble_h` is assemble_with_humans): the mode's own desire as the one real call returned it (Intent-resolved), or `-<reason>` when not computed: `-drive` (Arbiter.DriveDecide before OHA's code), `-hold` (a retreat episode or a job), `-ours` (our desire answered first: retreat, attack under Trade, the chooser's host), `-valve` (no Lua GetDesire value: Valve's built-in), `-drill`, `-rig`.
 
 ## gank
 

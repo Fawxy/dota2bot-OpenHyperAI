@@ -170,6 +170,11 @@ export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
     return p;
 }
 
+/** The pick Drive last computed for this hero, without computing one (choice_shadow's line). Reads only. */
+export function LastPick(bot: Unit): Candidate | undefined {
+    return drivePick[bot.GetPlayerID()];
+}
+
 /**
  * The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
  * hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
