@@ -567,7 +567,7 @@ export const EVENTS = {
         bra: "num",
     },
     /**
-     * Ours.PricedLeave step 1 (commit.ts): InstallDamageCallback in a normal game. `kind`: `installed` (`n` player ids), `missing` (no such
+     * Ours.PricedLeave step 1 (commit.ts): InstallDamageCallback in a normal game, on our heroes' ids (it fires for damage taken). `kind`: `installed` (`n` player ids), `missing` (no such
      * global), `shape` (the first 3 calls: `ipid` the id it was installed for, `ok` 1 when it resolved to an enemy hero damaging our hero,
      * `args` each argument, `h:<unit>:<pid>` a handle, `n:<v>` a number, `{k=v}` a table), `sum` every 60 s: `n` calls, `ok` resolved,
      * `cb` hits recorded from them, `poll` hits from the flag poll, `live` 1 once a callback hit has been recorded.

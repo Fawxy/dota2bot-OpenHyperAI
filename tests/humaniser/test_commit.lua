@@ -62,16 +62,18 @@ do
 	local e = enemy(10, -1700, 0)
 	local ally = MakeUnit({ pid = 2, team = 2, loc = HERE })
 	local teamOf = GetTeamForPlayer
-	local r = C.Resolve(C.ParseArgs({ bot, e, 55 }), 1, 2, teamOf)
+	local r = C.Resolve(C.ParseArgs({ bot, e, 55 }), 2, teamOf)
 	check("(victim, attacker, damage) handles resolve to our hero hit by the enemy", r and r.victim == 1 and r.attacker == 10, r)
-	local t = C.ParseArgs({ { damage = 70, player_id = 10, unit = bot } })
-	r = C.Resolve(t, 1, 2, teamOf)
-	check("a table {damage, player_id, unit} resolves by its keys", t.dmg == 70 and r and r.victim == 1 and r.attacker == 10)
-	r = C.Resolve(C.ParseArgs({ { damage = 70, unit = bot } }), 10, 2, teamOf)
-	check("a victim with no attacker on a callback installed for an enemy's id: that enemy dealt it", r and r.attacker == 10)
-	check("no attacker on a callback installed for our own id cannot be attributed", C.Resolve(C.ParseArgs({ { damage = 70, unit = bot } }), 1, 2, teamOf) == nil)
+	-- The shape smoke dc-step1 logged: player_id is the victim's.
+	local t = C.ParseArgs({ { ability = {}, player_id = 1, attacking_unit = e, attacking_player_id = 10, damage = 72, unit = bot } })
+	r = C.Resolve(t, 2, teamOf)
+	check("the game's table resolves by attacking_unit, not player_id (the victim's)", t.dmg == 72 and r and r.victim == 1 and r.attacker == 10, r)
+	t = C.ParseArgs({ { player_id = 1, attacking_player_id = 10, damage = 72, unit = bot } })
+	r = C.Resolve(t, 2, teamOf)
+	check("attacking_player_id alone names the attacker", r and r.attacker == 10)
+	check("a table naming no attacker is not attributed", C.Resolve(C.ParseArgs({ { damage = 70, player_id = 1, unit = bot } }), 2, teamOf) == nil)
 	check("our hero hit by an ally, or an enemy hit by us, is not counted",
-		C.Resolve(C.ParseArgs({ bot, ally, 10 }), 1, 2, teamOf) == nil and C.Resolve(C.ParseArgs({ e, bot, 10 }), 1, 2, teamOf) == nil)
+		C.Resolve(C.ParseArgs({ bot, ally, 10 }), 2, teamOf) == nil and C.Resolve(C.ParseArgs({ e, bot, 10 }), 2, teamOf) == nil)
 end
 
 -- The game step: the poll before the first callback hit, then the callback; transitions logged with the burst split.
@@ -80,7 +82,7 @@ do
 	local e = enemy(10, -1700, 100)
 	e.dmg, e.spa = 60, 1.5
 	C2.Tick(bot)
-	check("the callback is installed on every hero's id once", cbs[1] ~= nil and cbs[10] ~= nil and #evs("dmgcb") == 1 and field(evs("dmgcb")[1], "kind") == "installed")
+	check("the callback is installed on our heroes' ids once, not the enemy's", cbs[1] ~= nil and cbs[10] == nil and #evs("dmgcb") == 1 and field(evs("dmgcb")[1], "kind") == "installed")
 	local c = evs("commit")
 	check("an enemy in reach is near (one line, src poll, burst over 1 s: spell 100 - 40, one attack 60)",
 		#c == 1 and field(c[1], "st") == "near" and field(c[1], "was") == "gone" and field(c[1], "src") == "poll"
@@ -95,13 +97,13 @@ do
 	check("no change, no line", #evs("commit") == 2)
 	T = 301.5
 	bot.hitBy = nil
-	cbs[10](bot, e, 55)
+	cbs[1]({ player_id = 1, unit = bot, attacking_unit = e, attacking_player_id = 10, damage = 55 })
 	C2.Tick(bot)
 	c = evs("commit")
 	-- The callback is now the source: its one hit at 301.5 alone is a poke (the poll's hit at 300.1 is not in its list), so no change.
 	check("the first callback hit makes it the source and its lone hit is still poked: no line", #c == 2, c[#c])
 	T = 302.8
-	cbs[10](bot, e, 55)
+	cbs[1]({ player_id = 1, unit = bot, attacking_unit = e, attacking_player_id = 10, damage = 55 })
 	C2.Tick(bot)
 	c = evs("commit")
 	check("a second callback hit in another second: committed (why second, hits 2)",

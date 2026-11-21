@@ -264,7 +264,7 @@ function ____exports.ParseArgs(args)
                         out.dmg = t[k]
                     end
                 end
-                for ____, k in ipairs({"player_id", "attacker_player_id", "attacker_pid", "playerid"}) do
+                for ____, k in ipairs({"attacking_player_id", "attacker_player_id"}) do
                     if type(t[k]) == "number" and out.attackerPid == nil then
                         out.attackerPid = t[k]
                     end
@@ -274,7 +274,7 @@ function ____exports.ParseArgs(args)
                         out.victim = t[k]
                     end
                 end
-                for ____, k in ipairs({"attacker", "source"}) do
+                for ____, k in ipairs({"attacking_unit", "attacker", "source"}) do
                     if isHandle(t[k]) and out.attacker == nil then
                         out.attacker = t[k]
                     end
@@ -295,9 +295,8 @@ function ____exports.ParseArgs(args)
     end
     return out
 end
---- The (our hero's pid, enemy hero's pid) a parsed event is, or undefined. `installed` is the player id the callback was installed for:
--- with a victim and no attacker it is the attacker when it is an enemy's (a callback for the damage a player deals).
-function ____exports.Resolve(p, installed, ours, teamOf)
+--- The (our hero's pid, enemy hero's pid) a parsed event is, or undefined (an attacker that is not an enemy hero, or none named).
+function ____exports.Resolve(p, ours, teamOf)
     local v = p.victim
     if v == nil or not v:IsHero() or v:IsIllusion() or v:GetTeam() ~= ours then
         return nil
@@ -308,9 +307,6 @@ function ____exports.Resolve(p, installed, ours, teamOf)
             return nil
         end
         apid = p.attacker:GetPlayerID()
-    end
-    if apid == nil and teamOf(installed) ~= ours then
-        apid = installed
     end
     if apid == nil or apid < 0 then
         return nil
@@ -373,7 +369,6 @@ local function onDamage(installed, args)
     counts.n = counts.n + 1
     local r = ____exports.Resolve(
         ____exports.ParseArgs(args),
-        installed,
         GetTeam(),
         GetTeamForPlayer
     )
@@ -405,7 +400,7 @@ local function onDamage(installed, args)
         DotaTime()
     )
 end
---- InstallDamageCallback on every hero's player id, once per team VM.
+--- InstallDamageCallback on each of our heroes' player ids (it reports the damage that hero takes), once per team VM.
 local function install()
     if installedAll then
         return
@@ -422,11 +417,11 @@ local function install()
         local pid = 0
         while pid <= MAX_PLAYER_ID do
             do
-                local __continue66
+                local __continue65
                 repeat
                     local t = GetTeamForPlayer(pid)
-                    if t ~= Team.Radiant and t ~= Team.Dire then
-                        __continue66 = true
+                    if t ~= GetTeam() then
+                        __continue65 = true
                         break
                     end
                     local ipid = pid
@@ -441,9 +436,9 @@ local function install()
                         end
                     )
                     n = n + 1
-                    __continue66 = true
+                    __continue65 = true
                 until true
-                if not __continue66 then
+                if not __continue65 then
                     break
                 end
             end
@@ -518,10 +513,10 @@ function ____exports.Tick(bot)
     local handles = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue78
+            local __continue77
             repeat
                 if e:IsIllusion() or not e:IsAlive() then
-                    __continue78 = true
+                    __continue77 = true
                     break
                 end
                 local epid = e:GetPlayerID()
@@ -534,9 +529,9 @@ function ____exports.Tick(bot)
                 local d = math.sqrt((l.x - at.x) ^ 2 + (l.y - at.y) ^ 2)
                 local reach = e:GetAttackRange() + e:GetCurrentMovementSpeed() * ____exports.SETTINGS.NearHorizon + e:GetBoundingRadius() + bot:GetBoundingRadius()
                 near[epid] = d <= reach
-                __continue78 = true
+                __continue77 = true
             until true
-            if not __continue78 then
+            if not __continue77 then
                 break
             end
         end
@@ -547,19 +542,19 @@ function ____exports.Tick(bot)
     local changed = false
     for epid, s in pairs(states) do
         do
-            local __continue82
+            local __continue81
             repeat
                 if handles[epid] == nil then
-                    __continue82 = true
+                    __continue81 = true
                     break
                 end
                 next[epid] = s.st
                 if prev[epid] ~= s.st then
                     changed = true
                 end
-                __continue82 = true
+                __continue81 = true
             until true
-            if not __continue82 then
+            if not __continue81 then
                 break
             end
         end
@@ -577,18 +572,18 @@ function ____exports.Tick(bot)
     local sum = 0
     for epid, st in pairs(next) do
         do
-            local __continue88
+            local __continue87
             repeat
                 if st == "gone" then
-                    __continue88 = true
+                    __continue87 = true
                     break
                 end
                 local b = burstOn(handles[epid], bot)
                 burst[epid] = b
                 sum = sum + (b.spell + b.attack)
-                __continue88 = true
+                __continue87 = true
             until true
-            if not __continue88 then
+            if not __continue87 then
                 break
             end
         end

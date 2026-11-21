@@ -4,8 +4,9 @@
  * times it damaged us, and what it could land on us before we react (ready spells apart from one attack). LOGGED ONLY: nothing reads it
  * to change behaviour (`ev=commit`, `ev=dmgcb`, the `rcs` column of `ev=cut kind=safe`).
  *
- * Hit times come from InstallDamageCallback (installed on every hero's player id, since whether a player's callback reports the damage
- * it deals or takes is not verified: an event counts only when it resolves to an enemy hero damaging one of our heroes). Until the first
+ * Hit times come from InstallDamageCallback, installed on each of our heroes' player ids: smoke dc-step1 (22/11/2026) showed a player's
+ * callback fires for damage that player's hero takes, with one table `{unit, player_id, attacking_unit, attacking_player_id, damage,
+ * ability}` (player_id the victim's). An event counts only when it resolves to an enemy hero damaging one of our heroes. Until the first
  * such event, and as a cross-check after it, `WasRecentlyDamagedByHero` is polled each tick; the state follows the callback once it has
  * delivered one hit this game (`src`).
  */
@@ -106,9 +107,10 @@ export function ParseArgs(args: unknown[]): Parsed {
         else if (type(a) === "table") {
             const t = a as Record<string, unknown>;
             for (const k of ["damage", "nDamage", "amount"]) if (type(t[k]) === "number" && out.dmg === undefined) out.dmg = t[k] as number;
-            for (const k of ["player_id", "attacker_player_id", "attacker_pid", "playerid"]) if (type(t[k]) === "number" && out.attackerPid === undefined) out.attackerPid = t[k] as number;
+            // `player_id` is the victim's (smoke dc-step1), so it is never read as the attacker.
+            for (const k of ["attacking_player_id", "attacker_player_id"]) if (type(t[k]) === "number" && out.attackerPid === undefined) out.attackerPid = t[k] as number;
             for (const k of ["unit", "victim", "target"]) if (isHandle(t[k]) && out.victim === undefined) out.victim = t[k] as Unit;
-            for (const k of ["attacker", "source"]) if (isHandle(t[k]) && out.attacker === undefined) out.attacker = t[k] as Unit;
+            for (const k of ["attacking_unit", "attacker", "source"]) if (isHandle(t[k]) && out.attacker === undefined) out.attacker = t[k] as Unit;
         }
     }
     if (units.length >= 2) {
@@ -122,10 +124,9 @@ export function ParseArgs(args: unknown[]): Parsed {
 }
 
 /**
- * The (our hero's pid, enemy hero's pid) a parsed event is, or undefined. `installed` is the player id the callback was installed for:
- * with a victim and no attacker it is the attacker when it is an enemy's (a callback for the damage a player deals).
+ * The (our hero's pid, enemy hero's pid) a parsed event is, or undefined (an attacker that is not an enemy hero, or none named).
  */
-export function Resolve(p: Parsed, installed: number, ours: number, teamOf: (this: void, pid: number) => number): { victim: number; attacker: number } | undefined {
+export function Resolve(p: Parsed, ours: number, teamOf: (this: void, pid: number) => number): { victim: number; attacker: number } | undefined {
     const v = p.victim;
     if (v === undefined || !v.IsHero() || v.IsIllusion() || v.GetTeam() !== ours) return undefined;
     let apid = p.attackerPid;
@@ -133,7 +134,6 @@ export function Resolve(p: Parsed, installed: number, ours: number, teamOf: (thi
         if (!p.attacker.IsHero() || p.attacker.IsIllusion()) return undefined;
         apid = p.attacker.GetPlayerID();
     }
-    if (apid === undefined && teamOf(installed) !== ours) apid = installed;
     if (apid === undefined || apid < 0) return undefined;
     const at = teamOf(apid);
     if (at === ours || (at !== Team.Radiant && at !== Team.Dire)) return undefined;
@@ -181,7 +181,7 @@ function describe(args: unknown[]): string {
 
 function onDamage(this: void, installed: number, args: unknown[]): void {
     counts.n++;
-    const r = Resolve(ParseArgs(args), installed, GetTeam(), GetTeamForPlayer);
+    const r = Resolve(ParseArgs(args), GetTeam(), GetTeamForPlayer);
     if (shapes < SETTINGS.ShapeLines) {
         shapes++;
         Telemetry.Event("dmgcb", [["kind", "shape"], ["ipid", installed], ["ok", r !== undefined ? 1 : 0], ["args", describe(args)]]);
@@ -193,7 +193,7 @@ function onDamage(this: void, installed: number, args: unknown[]): void {
     push(cbHits, r.victim, r.attacker, DotaTime());
 }
 
-/** InstallDamageCallback on every hero's player id, once per team VM. */
+/** InstallDamageCallback on each of our heroes' player ids (it reports the damage that hero takes), once per team VM. */
 function install(): void {
     if (installedAll) return;
     installedAll = true;
@@ -206,7 +206,7 @@ function install(): void {
     let n = 0;
     for (let pid = 0; pid <= MAX_PLAYER_ID; pid++) {
         const t = GetTeamForPlayer(pid);
-        if (t !== Team.Radiant && t !== Team.Dire) continue;
+        if (t !== GetTeam()) continue;
         const ipid = pid;
         installDamage(ipid, (...args: unknown[]) => {
             const [ok, err] = pcall(onDamage, ipid, args);
