@@ -262,6 +262,18 @@ end
 function ____exports.Forget(bot)
     states[bot:GetPlayerID()] = nil
 end
+--- An episode ended under Act: the incumbent stays (the margin), but the last pick no longer answers in the grace, so no stale leave
+-- starts the next episode, and the next decision writes its line (a start always has its `ev=choice`).
+function ____exports.Ended(bot)
+    local st = states[bot:GetPlayerID()]
+    if st == nil then
+        return
+    end
+    st.res = nil
+    st.ans = nil
+    st.lw = nil
+    st.loggedPick = nil
+end
 --- The pick acts (`Ours.PricedLeaveAct`, which needs `Ours.PricedLeave`).
 function ____exports.Acts()
     return Ours.On("PricedLeave") and Ours.On("PricedLeaveAct")
@@ -284,10 +296,10 @@ function ____exports.ScopeOf(bot)
     end
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue12
+            local __continue14
             repeat
                 if not seen(a) or a == bot or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.JoinReach or not Trade.Running(a) then
-                    __continue12 = true
+                    __continue14 = true
                     break
                 end
                 local ____opt_2 = Trade.EpisodeOf(a:GetPlayerID())
@@ -295,9 +307,9 @@ function ____exports.ScopeOf(bot)
                 if seen(t) and GetUnitToUnitDistance(bot, t) <= ____exports.SETTINGS.JoinReach then
                     return {sc = "ally", t = t}
                 end
-                __continue12 = true
+                __continue14 = true
             until true
-            if not __continue12 then
+            if not __continue14 then
                 break
             end
         end
@@ -425,19 +437,19 @@ function ____exports.FarmRead(bot)
     end
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue54
+            local __continue56
             repeat
                 if not seen(a) or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.WaveReach then
-                    __continue54 = true
+                    __continue56 = true
                     break
                 end
                 local t = a:GetAttackTarget()
                 if t ~= nil and t ~= nil and not t:IsNull() and not t:IsHero() and engages(a) then
                     dps = dps + a:GetAttackDamage() / spa(a)
                 end
-                __continue54 = true
+                __continue56 = true
             until true
-            if not __continue54 then
+            if not __continue56 then
                 break
             end
         end
@@ -454,17 +466,17 @@ function ____exports.FarmRead(bot)
         local i = 0
         while i < #wave do
             do
-                local __continue60
+                local __continue62
                 repeat
                     if not inReach[i + 1] or not due[i + 1] then
-                        __continue60 = true
+                        __continue62 = true
                         break
                     end
                     out.cd = out.cd + 1
                     out.gold = out.gold + (P.LASTHIT_BY_KIND[creepKind(wave[i + 1]:GetUnitName())] or P.LASTHIT)
-                    __continue60 = true
+                    __continue62 = true
                 until true
-                if not __continue60 then
+                if not __continue62 then
                     break
                 end
             end
@@ -483,39 +495,39 @@ function ____exports.BurstNow(bot)
     local sum = 0
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue63
+            local __continue65
             repeat
                 if not seen(e) or e:IsIllusion() then
-                    __continue63 = true
+                    __continue65 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, e)
                 if d > ____exports.SETTINGS.BurstScan then
-                    __continue63 = true
+                    __continue65 = true
                     break
                 end
                 local pad = bot:GetBoundingRadius() + e:GetBoundingRadius() + e:GetCurrentMovementSpeed() * win
                 local mana = e:GetMana()
                 for ____, s in ipairs(SpellReady.ReadySpells(e)) do
                     do
-                        local __continue66
+                        local __continue68
                         repeat
                             if s.mana ~= nil and s.mana > mana then
-                                __continue66 = true
+                                __continue68 = true
                                 break
                             end
                             if s.cd ~= nil and s.cd > 0 then
-                                __continue66 = true
+                                __continue68 = true
                                 break
                             end
                             if d > s.range + pad then
-                                __continue66 = true
+                                __continue68 = true
                                 break
                             end
                             sum = sum + bot:GetActualIncomingDamage(s.dmg, s.dtype)
-                            __continue66 = true
+                            __continue68 = true
                         until true
-                        if not __continue66 then
+                        if not __continue68 then
                             break
                         end
                     end
@@ -526,9 +538,9 @@ function ____exports.BurstNow(bot)
                         DamageType.Physical
                     )
                 end
-                __continue63 = true
+                __continue65 = true
             until true
-            if not __continue63 then
+            if not __continue65 then
                 break
             end
         end
@@ -560,10 +572,10 @@ function ____exports.Gather(bot, lw)
     local ne = 0
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue78
+            local __continue80
             repeat
                 if not seen(e) or e:IsIllusion() then
-                    __continue78 = true
+                    __continue80 = true
                     break
                 end
                 local d = GetUnitToUnitDistance(bot, e)
@@ -574,26 +586,26 @@ function ____exports.Gather(bot, lw)
                     by[e:GetPlayerID()] = true
                     hs = hs + 1
                 end
-                __continue78 = true
+                __continue80 = true
             until true
-            if not __continue78 then
+            if not __continue80 then
                 break
             end
         end
     end
     for ____, epid in ipairs(Commit.HitterIds(pid, ____exports.SETTINGS.HitWindow)) do
         do
-            local __continue83
+            local __continue85
             repeat
                 if by[epid] == true then
-                    __continue83 = true
+                    __continue85 = true
                     break
                 end
                 by[epid] = true
                 hs = hs + 1
-                __continue83 = true
+                __continue85 = true
             until true
-            if not __continue83 then
+            if not __continue85 then
                 break
             end
         end
@@ -601,18 +613,18 @@ function ____exports.Gather(bot, lw)
     local n = 1
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue86
+            local __continue88
             repeat
                 if not seen(a) or a == bot or a:IsIllusion() then
-                    __continue86 = true
+                    __continue88 = true
                     break
                 end
                 if GetUnitToUnitDistance(a, s.t) <= P.REACH then
                     n = n + 1
                 end
-                __continue86 = true
+                __continue88 = true
             until true
-            if not __continue86 then
+            if not __continue88 then
                 break
             end
         end
@@ -795,7 +807,7 @@ function ____exports.For(bot, lw)
     local pid = bot:GetPlayerID()
     local st = states[pid]
     if st ~= nil and st.lw == lw then
-        return st.res
+        return st.ans
     end
     local now = DotaTime()
     local band = inBand(lw)
@@ -811,16 +823,18 @@ function ____exports.For(bot, lw)
             st.lostAt = st.lostAt or now
             if now - st.lostAt <= ____exports.SETTINGS.LostGrace then
                 st.lw = lw
+                local ____st_19 = st
                 local ____band_18
                 if band then
                     ____band_18 = st.res
                 else
                     ____band_18 = nil
                 end
-                return ____band_18
+                ____st_19.ans = ____band_18
+                return st.ans
             end
         end
-        states[pid] = {lw = lw, res = nil}
+        states[pid] = {lw = lw}
         return nil
     end
     if st == nil or st.inc == nil then
@@ -839,6 +853,7 @@ function ____exports.For(bot, lw)
     )
     st.inc = r.pick
     st.res = r
+    st.ans = r
     states[pid] = st
     log(
         bot,

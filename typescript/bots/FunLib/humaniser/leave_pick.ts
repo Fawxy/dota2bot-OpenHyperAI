@@ -69,6 +69,10 @@ export interface Pick extends LeavePrice.Result {
 
 interface HeroState {
     lw?: LeaveAnswer;
+    /** What `For` answered for `lw`: a second caller with the same answer in the frame gets the same (smoke dc-step2-smoke2: out of
+     *  the band in the grace, LeaveNow got nothing and Desire then the incumbent's stale leave pick, 23 `why=priced` starts with no line). */
+    ans?: Pick;
+    /** The last decision (the incumbent's pick, which the grace keeps in the band). */
     res?: Pick;
     inc?: LeavePrice.Pick;
     key?: string;
@@ -88,6 +92,19 @@ export function ResetCache(): void {
 /** The incumbent is forgotten (an episode started or ended outside the decider's sight, in shadow). */
 export function Forget(bot: Unit): void {
     states[bot.GetPlayerID()] = undefined;
+}
+
+/**
+ * An episode ended under Act: the incumbent stays (the margin), but the last pick no longer answers in the grace, so no stale leave
+ * starts the next episode, and the next decision writes its line (a start always has its `ev=choice`).
+ */
+export function Ended(bot: Unit): void {
+    const st = states[bot.GetPlayerID()];
+    if (st === undefined) return;
+    st.res = undefined;
+    st.ans = undefined;
+    st.lw = undefined;
+    st.loggedPick = undefined;
 }
 
 /** The pick acts (`Ours.PricedLeaveAct`, which needs `Ours.PricedLeave`). */
@@ -359,7 +376,7 @@ function log(bot: Unit, st: HeroState, r: Pick, act: boolean, now: number): void
 export function For(bot: Unit, lw: LeaveAnswer): Pick | undefined {
     const pid = bot.GetPlayerID();
     let st = states[pid];
-    if (st !== undefined && st.lw === lw) return st.res;
+    if (st !== undefined && st.lw === lw) return st.ans;
     const now = DotaTime();
     const band = inBand(lw);
     const g = band ? Gather(bot, lw) : undefined;
@@ -370,10 +387,11 @@ export function For(bot: Unit, lw: LeaveAnswer): Pick | undefined {
             st.lostAt = st.lostAt ?? now;
             if (now - st.lostAt <= SETTINGS.LostGrace) {
                 st.lw = lw;
-                return band ? st.res : undefined;
+                st.ans = band ? st.res : undefined;
+                return st.ans;
             }
         }
-        states[pid] = { lw, res: undefined };
+        states[pid] = { lw };
         return undefined;
     }
     if (st === undefined || st.inc === undefined) st = { inc: lw.why !== undefined ? "leave" : "stay" };
@@ -388,6 +406,7 @@ export function For(bot: Unit, lw: LeaveAnswer): Pick | undefined {
     const r: Pick = { ...LeavePrice.Decide(g, st.inc), g };
     st.inc = r.pick;
     st.res = r;
+    st.ans = r;
     states[pid] = st;
     log(bot, st, r, Acts(), DotaTime());
     return r;

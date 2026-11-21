@@ -850,6 +850,8 @@ local function ____end(bot, st, res)
     RetreatState.SetHealing(bot, false)
     if not LeavePick.Acts() then
         LeavePick.Forget(bot)
+    else
+        LeavePick.Ended(bot)
     end
     local max = math.max(
         1,

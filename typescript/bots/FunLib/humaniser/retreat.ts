@@ -459,6 +459,7 @@ function end(bot: Unit, st: HeroState, res: string): void {
     RetreatState.SetRunning(bot, false);
     RetreatState.SetHealing(bot, false);
     if (!LeavePick.Acts()) LeavePick.Forget(bot);
+    else LeavePick.Ended(bot);
     const max = math.max(1, bot.GetMaxHealth());
     Telemetry.Event("retreat", [
         ["ph", "end"],

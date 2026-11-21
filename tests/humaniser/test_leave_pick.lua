@@ -289,4 +289,75 @@ do
 	check("grace: after the loss the incumbent is the leave rule's answer again", r.inc == "leave", r.inc)
 end
 
+-- Flicker (smoke dc-step2-smoke2: 23 of 24 `why=priced` starts on a place not deadly, in pairs, none with its ev=choice line): out of
+-- the band within the 1 s grace, `For` answers nothing to the first caller in the frame (LeaveNow) and must answer the same to the
+-- second (Desire) with the same answer, not the incumbent's stale leave pick.
+do
+	local H, bot = world({ act = true })
+	local e = enemy(10, Vector(300, -5000), 0)
+	exchange(e)
+	local LPk = require("bots/FunLib/humaniser/leave_pick")
+	local r1, r2, r3
+	capture(function()
+		r1 = LPk.For(bot, { why = "lethal" })
+		T = T + 0.3
+		local under = { stay = "under" }
+		r2 = LPk.For(bot, under)
+		r3 = LPk.For(bot, under)
+	end)
+	check("flicker: a lethal answer in scope is a hard leave", r1 ~= nil and r1.pick == "leave" and r1.hard == "lethal")
+	check("flicker: out of the band in the grace, the first caller gets nothing", r2 == nil)
+	check("flicker: the second caller with the same answer gets nothing too (no stale leave pick)", r3 == nil, r3 and r3.pick)
+end
+
+-- After an episode ends (Ended), the grace keeps the incumbent but not its pick: a lost scope answers nothing (the leave rule stands),
+-- and the next decision writes its line though the pick repeats within LogEvery.
+do
+	local H, bot = pair({ act = true })
+	local LPk = require("bots/FunLib/humaniser/leave_pick")
+	local r, lost
+	capture(function()
+		r = LPk.For(bot, { why = "threat" })
+		LPk.Ended(bot)
+		exchange(nil)
+		T = T + 0.3
+		lost = LPk.For(bot, { why = "threat" })
+	end)
+	check("ended: the pair's decision is a leave", r.pick == "leave")
+	check("ended: in the grace after the end, no stale leave pick", lost == nil, lost and lost.pick)
+	local H2, bot2 = pair({ act = true })
+	LPk = require("bots/FunLib/humaniser/leave_pick") -- the world reloads the modules
+	local out2 = capture(function()
+		LPk.For(bot2, { why = "threat" })
+		LPk.Ended(bot2)
+		T = T + 0.3
+		r = LPk.For(bot2, { why = "threat" })
+	end)
+	check("ended: the next decision keeps the incumbent and writes its line (within LogEvery)", r ~= nil and r.inc == "leave" and #only(out2, "choice") == 2, #only(out2, "choice"))
+end
+
+-- The pair in the retreat: a lethal episode in an exchange ends once the kill line is gone; the next two reads (each LeaveNow then
+-- Desire, as the arbiter and mode ask) start no episode and write no `why=priced` start.
+do
+	local H, bot = world({ act = true })
+	local e = enemy(10, Vector(300, -5000), 640)
+	exchange(e)
+	local out = capture(function()
+		leaveNow(bot)
+		H.Retreat.Desire(bot)
+		e.estDamage = 0
+		for _ = 1, 3 do
+			T = T + 0.4
+			leaveNow(bot)
+			H.Retreat.Desire(bot)
+		end
+	end)
+	local starts = only(out, "retreat", "start")
+	local ends = only(out, "retreat", "end")
+	local priced = 0
+	for _, s in ipairs(starts) do if field(s, "why") == "priced" then priced = priced + 1 end end
+	check("flicker: the lethal episode starts and ends", #ends >= 1 and field(starts[1], "why") == "lethal", #ends)
+	check("flicker: no why=priced start after it", priced == 0 and not running(bot), priced)
+end
+
 finish()
