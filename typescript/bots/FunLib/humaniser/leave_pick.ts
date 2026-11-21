@@ -181,7 +181,15 @@ export function Gather(bot: Unit, lw: LeaveAnswer): Gathered | undefined {
     };
     // Burst now and the farm only where a price is asked (their reads loop over units).
     if (!g.tower && !g.heal && !g.lethal) {
-        g.burst = Commit.BurstNow(bot).sum >= bot.GetHealth();
+        // Only enemies within REACH: BurstNow sums every visible enemy, and Valve's estimate ignores distance (smoke dc-step2:
+        // 17 burst leaves, some over a hit back with the summed enemies far apart).
+        const b = Commit.BurstNow(bot).by;
+        let sum = 0;
+        for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            const x = seen(e) && !e.IsIllusion() && GetUnitToUnitDistance(bot, e) <= P.REACH ? b[e.GetPlayerID()] : undefined;
+            if (x !== undefined) sum += x.spell + x.attack;
+        }
+        g.burst = sum >= bot.GetHealth();
         if (!g.burst) g.cg = farmGold(bot);
     }
     return g;

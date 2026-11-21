@@ -21,7 +21,7 @@ local function world(o)
 	ours.PricedLeaveAct = o.act == true
 	require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end
 	-- The stub's estimated damage ignores the window, so step 1's burst-now read (test_commit) is set here: none unless `o.burst`.
-	require("bots/FunLib/humaniser/commit").BurstNow = function() return { by = {}, sum = o.burst or 0 } end
+	require("bots/FunLib/humaniser/commit").BurstNow = function() return { by = { [10] = { spell = o.burst or 0, attack = 0 } }, sum = o.burst or 0 } end
 	return H, bot
 end
 

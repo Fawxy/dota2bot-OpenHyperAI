@@ -468,7 +468,15 @@ function ____exports.Gather(bot, lw)
         lethal = lw.why == "lethal"
     }
     if not g.tower and not g.heal and not g.lethal then
-        g.burst = Commit.BurstNow(bot).sum >= bot:GetHealth()
+        local b = Commit.BurstNow(bot).by
+        local sum = 0
+        for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+            local x = seen(e) and not e:IsIllusion() and GetUnitToUnitDistance(bot, e) <= P.REACH and b[e:GetPlayerID()] or nil
+            if x ~= nil then
+                sum = sum + (x.spell + x.attack)
+            end
+        end
+        g.burst = sum >= bot:GetHealth()
         if not g.burst then
             g.cg = farmGold(bot)
         end
