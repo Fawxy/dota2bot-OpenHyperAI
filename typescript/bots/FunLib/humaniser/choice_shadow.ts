@@ -155,7 +155,8 @@ function emit(bot: Unit, h: Hero, act: string, now: number, job: string | undefi
     const mixSet: Record<string, true> = {};
     for (const m of mix) mixSet[m] = true;
     let top: string | undefined;
-    let tv = -math.huge;
+    // A mode at 0 picks nothing: OHA's top needs a positive desire.
+    let tv = 0;
     let inc = 0;
     const gate: string[] = [];
     const probed: string[] = [];

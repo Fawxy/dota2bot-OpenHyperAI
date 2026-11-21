@@ -166,7 +166,7 @@ local function emit(bot, h, act, now, job)
         mixSet[m] = true
     end
     local top
-    local tv = -math.huge
+    local tv = 0
     local inc = 0
     local gate = {}
     local probed = {}
