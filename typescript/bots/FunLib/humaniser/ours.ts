@@ -176,6 +176,11 @@ export const DEFAULTS = {
      *  (commit.ts: each enemy hero near, poked or committed towards each of our heroes, from InstallDamageCallback, and the burst-now
      *  split) writes ev=commit, ev=dmgcb and the safe cut's `rcs`; nothing reads it. Off: no tracker, no callback, no lines. */
     PricedLeave: true,
+    /** Decision centre pilot step 2 (master docs/proposals/decision-centre/step2-3-decider.md, leave_pick.ts): needs PricedLeave. In scope
+     *  (an exchange, a play, an ally's exchange within 1,200) the priced leave decides `threat` leaves and their holds: a leave pick starts
+     *  the episode (the arbiter reads it the same frame, RetreatState.LeaveNow), a stay pick holds or ends a threat/priced episode. Off:
+     *  the decider runs in shadow (PricedLeave logs `ev=choice kind=leave act=0`) and the leave rule decides, exactly as before. */
+    PricedLeaveAct: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

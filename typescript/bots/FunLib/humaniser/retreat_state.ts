@@ -57,6 +57,20 @@ export function SetHealing(bot: Unit, on: boolean): void {
     healing[bot.GetPlayerID()] = on ? true : (undefined as any);
 }
 
+/**
+ * The priced leave's pick this frame (Ours.PricedLeaveAct): true when, with no episode running yet, it leaves now. retreat.ts fills the
+ * slot at load (no import cycle); the arbiter reads it so the episode the retreat starts this frame is the pick this frame, not the next.
+ */
+let leaveNow: (this: void, bot: Unit) => boolean = () => false;
+
+export function LeaveNow(bot: Unit): boolean {
+    return leaveNow(bot);
+}
+
+export function SetLeaveNow(fn: (this: void, bot: Unit) => boolean): void {
+    leaveNow = fn;
+}
+
 export function ResetCache(): void {
     for (const k of Object.keys(running)) delete running[k as unknown as number];
     for (const k of Object.keys(home)) delete home[k as unknown as number];

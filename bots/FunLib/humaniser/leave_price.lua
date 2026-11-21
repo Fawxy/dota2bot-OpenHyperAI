@@ -48,12 +48,12 @@ function ____exports.Walk(pos, w, ms, lam)
     )
     return conv(pos) * P.LASTHIT * lam * back
 end
---- Stay or leave. Hard leaves first (tower, heal, burst), with no price. Else stay = P_k(T, n) K + F - P_ds D, leave = P_k(T, n - 1) K
+--- Stay or leave. Hard leaves first (tower, heal, lethal, burst), with no price. Else stay = P_k(T, n) K + F - P_ds D, leave = P_k(T, n - 1) K
 -- - W - P_dl D, d = stay - leave; an incumbent stay keeps staying while d > -M, an incumbent leave stays only when d > M, no
 -- incumbent picks the larger. M is `SETTINGS.Margin`, 0 on a real change (`i.rel`).
 function ____exports.Decide(i, inc)
     local rel = i.rel == true and 1 or 0
-    local hard = i.tower == true and "tower" or (i.heal == true and "heal" or (i.burst == true and "burst" or nil))
+    local hard = i.tower == true and "tower" or (i.heal == true and "heal" or (i.lethal == true and "lethal" or (i.burst == true and "burst" or nil)))
     if hard ~= nil then
         return {
             pick = "leave",

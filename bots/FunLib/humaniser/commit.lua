@@ -512,6 +512,37 @@ function ____exports.Hitters(pid, windowSec)
         windowSec
     )
 end
+--- The player ids `Hitters` counts (step 2's `hs` joins them with the attack targets, each once).
+function ____exports.HitterIds(pid, windowSec)
+    local by = (cbLive and cbHits or pollHits)[pid]
+    local out = {}
+    if by == nil then
+        return out
+    end
+    local now = DotaTime()
+    for epid, hits in pairs(by) do
+        do
+            local __continue80
+            repeat
+                if not IsHeroAlive(epid) then
+                    __continue80 = true
+                    break
+                end
+                for ____, t in ipairs(hits) do
+                    if t <= now and now - t <= windowSec then
+                        out[#out + 1] = epid
+                        break
+                    end
+                end
+                __continue80 = true
+            until true
+            if not __continue80 then
+                break
+            end
+        end
+    end
+    return out
+end
 --- The burst now on `bot` (`ReactWindow`, 1 s): per visible living enemy hero, its ready-spell part and one attack (the `bs`/`ba` split),
 -- and their sum. Takes the handle, not a pid: the reads need our hero's resistances. A fogged enemy has no handle and is left out.
 function ____exports.BurstNow(bot)
@@ -519,18 +550,18 @@ function ____exports.BurstNow(bot)
     local sum = 0
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue79
+            local __continue86
             repeat
                 if e:IsIllusion() or not e:IsAlive() then
-                    __continue79 = true
+                    __continue86 = true
                     break
                 end
                 local b = burstOn(e, bot)
                 by[e:GetPlayerID()] = b
                 sum = sum + (b.spell + b.attack)
-                __continue79 = true
+                __continue86 = true
             until true
-            if not __continue79 then
+            if not __continue86 then
                 break
             end
         end
@@ -544,17 +575,17 @@ local function livingEnemies(ours)
         local p = 0
         while p <= MAX_PLAYER_ID do
             do
-                local __continue83
+                local __continue90
                 repeat
                     local t = GetTeamForPlayer(p)
                     if t == ours or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(p) then
-                        __continue83 = true
+                        __continue90 = true
                         break
                     end
                     out[#out + 1] = p
-                    __continue83 = true
+                    __continue90 = true
                 until true
-                if not __continue83 then
+                if not __continue90 then
                     break
                 end
             end
@@ -629,16 +660,16 @@ function ____exports.Tick(bot)
     local handles = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue92
+            local __continue99
             repeat
                 if e:IsIllusion() or not e:IsAlive() then
-                    __continue92 = true
+                    __continue99 = true
                     break
                 end
                 handles[e:GetPlayerID()] = e
-                __continue92 = true
+                __continue99 = true
             until true
-            if not __continue92 then
+            if not __continue99 then
                 break
             end
         end
@@ -703,19 +734,19 @@ function ____exports.Tick(bot)
     local sum = 0
     for epid in pairs(next) do
         do
-            local __continue108
+            local __continue115
             repeat
                 local e = handles[epid]
                 if e == nil then
-                    __continue108 = true
+                    __continue115 = true
                     break
                 end
                 local b = burstOn(e, bot)
                 burst[epid] = b
                 sum = sum + (b.spell + b.attack)
-                __continue108 = true
+                __continue115 = true
             until true
-            if not __continue108 then
+            if not __continue115 then
                 break
             end
         end

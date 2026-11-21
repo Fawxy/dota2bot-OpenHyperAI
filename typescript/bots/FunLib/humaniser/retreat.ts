@@ -20,6 +20,7 @@ import * as Cut from "bots/FunLib/humaniser/cut";
 import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Safe from "bots/FunLib/humaniser/safe";
+import * as LeavePick from "bots/FunLib/humaniser/leave_pick";
 
 export const SETTINGS = {
     /** The read's horizon for staying (s): what can hit us before we can step away. judgement. */
@@ -84,7 +85,8 @@ export const SETTINGS = {
 const FOUNTAIN: Record<number, [number, number, number]> = { [Team.Radiant]: [-6619, -6336, 384], [Team.Dire]: [6624, 6368, 392] };
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
 
-export type Why = "threat" | "lethal" | "tower" | "heal" | "forced";
+/** `priced`: the priced leave (Ours.PricedLeaveAct) left where the leave rule held. */
+export type Why = "threat" | "lethal" | "tower" | "heal" | "forced" | "priced";
 type AnchorKind = "tower_edge" | "tower" | "ally" | "fountain";
 
 interface Anchor {
@@ -125,6 +127,8 @@ interface HeroState {
     stayLogged?: boolean;
     /** The leave decision made with the last fresh read, so a frame that reuses that read asks nothing again. */
     leave?: Leave;
+    /** `leave` was decided afresh and its cut line is still to write (the arbiter's `LeaveNow` can decide it before Desire runs). */
+    leaveNew?: boolean;
     /** ev=cut kind=leave: the answer and the time of the last line (the cut's own rate limit; the decision never reads them). */
     cutDec?: string;
     cutAt?: number;
@@ -147,6 +151,7 @@ export function ResetCache(): void {
     fountainLogged = false;
     RetreatState.ResetCache();
     SafeGather.ResetCache();
+    LeavePick.ResetCache();
 }
 
 function stateOf(bot: Unit): HeroState {
@@ -405,6 +410,8 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, a: Safe.Answe
     st.ep = { id: episodes, start: now, why, anchor, hp0: hp, lastHp: bot.GetHealth(), dmgh: 0, twr: false, wave: false };
     RetreatState.SetRunning(bot, true);
     RetreatState.SetHealing(bot, why === "heal");
+    // In shadow the decider does not follow an episode, so its incumbent starts again after one.
+    if (!LeavePick.Acts()) LeavePick.Forget(bot);
     // Our retreat ends a running job with a cause (retreat left Chooser.EXCEPTIONS' role of taking the hero mid-job).
     Chooser.Abort(bot, "retreat");
     Lane_.CampJobAbort(bot, "retreat");
@@ -451,6 +458,7 @@ function end(bot: Unit, st: HeroState, res: string): void {
     st.orderTo = undefined;
     RetreatState.SetRunning(bot, false);
     RetreatState.SetHealing(bot, false);
+    if (!LeavePick.Acts()) LeavePick.Forget(bot);
     const max = math.max(1, bot.GetMaxHealth());
     Telemetry.Event("retreat", [
         ["ph", "end"],
@@ -616,7 +624,14 @@ export function Desire(bot: Unit): number | undefined {
     const r = readOf(bot, st, now);
     if (st.ep !== undefined) {
         const res = step(bot, st, r, now);
-        if (res === undefined) return SETTINGS.EpisodeDesire;
+        if (res === undefined) {
+            // Ours.PricedLeaveAct: a stay pick ends a threat or priced episode (the opener stays as the partner arrives); hard leaves never.
+            if (LeavePick.Acts() && (st.ep.why === "threat" || st.ep.why === "priced") && LeavePick.For(bot, leaveOf(bot, st, readAtBefore))?.pick === "stay") {
+                end(bot, st, "priced");
+                return 0;
+            }
+            return SETTINGS.EpisodeDesire;
+        }
         end(bot, st, res);
         return 0;
     }
@@ -631,23 +646,58 @@ export function Desire(bot: Unit): number | undefined {
     }
     // retreat-heal: the chase drops the cast to the drill's HP before any leave, so the heal walk is forced.
     if (Drill.RetreatHeld(bot, hpShare(bot))) return 0;
-    let l = st.leave;
-    const fresh = readAtBefore !== st.readAt || l === undefined;
-    if (fresh) {
-        l = LeaveWhy(bot);
-        st.leave = l;
-        cutLeave(bot, st, r, purp, l, now);
+    const leave = leaveOf(bot, st, readAtBefore);
+    if (st.leaveNew === true) {
+        st.leaveNew = undefined;
+        cutLeave(bot, st, r, purp, leave, now);
     }
-    const leave = l!;
     if (leave.stay === "under") st.stayLogged = undefined;
     else if (leave.stay !== undefined && st.stayLogged !== true) {
         st.stayLogged = true;
         Telemetry.Event("retreat", [["ph", "stay"], ["why", leave.stay], ["pid", bot.GetPlayerID()], ["lv", leave.a.level], ["ra", r2(leave.a.ratio)], ["kill", math.floor(leave.a.kill + 0.5)], ["hp", r2(hpShare(bot))]]);
     }
+    // Ours.PricedLeave: in scope the priced leave decides (shadow: it only logs). Outside the scope or the band the leave rule stands.
+    const priced = Ours.On("PricedLeave") ? LeavePick.For(bot, leave) : undefined;
+    if (priced !== undefined && LeavePick.Acts()) {
+        if (priced.pick === "leave") {
+            start(bot, st, leave.why ?? "priced", r, leave.a, purp);
+            return SETTINGS.EpisodeDesire;
+        }
+        if (leave.why !== undefined && st.stayLogged !== true) {
+            st.stayLogged = true;
+            Telemetry.Event("retreat", [["ph", "stay"], ["why", "priced"], ["pid", bot.GetPlayerID()], ["lv", leave.a.level], ["ra", r2(leave.a.ratio)], ["kill", math.floor(leave.a.kill + 0.5)], ["hp", r2(hpShare(bot))]]);
+        }
+        return 0;
+    }
     if (leave.why === undefined) return 0;
     start(bot, st, leave.why, r, leave.a, purp);
     return SETTINGS.EpisodeDesire;
 }
+
+/** The leave rule's answer for the read made since `before` (asked again only on a fresh read). */
+function leaveOf(bot: Unit, st: HeroState, before: number | undefined): Leave {
+    if (before !== st.readAt || st.leave === undefined) {
+        st.leave = LeaveWhy(bot);
+        st.leaveNew = true;
+    }
+    return st.leave;
+}
+
+/**
+ * RetreatState.LeaveNow (Ours.PricedLeaveAct): the priced leave's pick is leave for an owned hero with no episode yet, so the arbiter
+ * takes the episode Desire starts this frame. Decides with the same read and answer Desire uses, whichever asks first.
+ */
+function leaveNow(bot: Unit): boolean {
+    if (!LeavePick.Acts() || !RetreatState.Owns(bot) || !bot.IsAlive()) return false;
+    const st = stateOf(bot);
+    const now = DotaTime();
+    if (st.ep !== undefined || (Drill.ForcedAt("retreat", now) !== undefined && Drill.RoleOf(bot) === "cast")) return false;
+    if (Drill.RetreatHeld(bot, hpShare(bot))) return false;
+    const before = st.readAt;
+    readOf(bot, st, now);
+    return LeavePick.For(bot, leaveOf(bot, st, before))?.pick === "leave";
+}
+RetreatState.SetLeaveNow(leaveNow);
 
 /** Per frame (index Tick): a death ends the episode even when GetDesire is not asked while dead. */
 export function Tick(bot: Unit): void {

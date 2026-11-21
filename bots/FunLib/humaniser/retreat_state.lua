@@ -235,6 +235,17 @@ function ____exports.SetHealing(bot, on)
     end
     healing[____temp_5] = ____on_4
 end
+--- The priced leave's pick this frame (Ours.PricedLeaveAct): true when, with no episode running yet, it leaves now. retreat.ts fills the
+-- slot at load (no import cycle); the arbiter reads it so the episode the retreat starts this frame is the pick this frame, not the next.
+local function leaveNow()
+    return false
+end
+function ____exports.LeaveNow(bot)
+    return leaveNow(bot)
+end
+function ____exports.SetLeaveNow(fn)
+    leaveNow = fn
+end
 function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(running)) do
         __TS__Delete(running, k)

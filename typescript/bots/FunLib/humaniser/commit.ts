@@ -276,6 +276,24 @@ export function Hitters(pid: number, windowSec: number): number {
     return CountHitters(live, DotaTime(), windowSec);
 }
 
+/** The player ids `Hitters` counts (step 2's `hs` joins them with the attack targets, each once). */
+export function HitterIds(pid: number, windowSec: number): number[] {
+    const by = (cbLive ? cbHits : pollHits)[pid];
+    const out: number[] = [];
+    if (by === undefined) return out;
+    const now = DotaTime();
+    for (const [epid, hits] of pairs(by)) {
+        if (!IsHeroAlive(epid)) continue;
+        for (const t of hits!) {
+            if (t <= now && now - t <= windowSec) {
+                out.push(epid);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
 /**
  * The burst now on `bot` (`ReactWindow`, 1 s): per visible living enemy hero, its ready-spell part and one attack (the `bs`/`ba` split),
  * and their sum. Takes the handle, not a pid: the reads need our hero's resistances. A fogged enemy has no handle and is left out.

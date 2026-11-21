@@ -2,7 +2,7 @@
  * The priced leave (decision centre pilot steps 2 and 3, `Ours.PricedLeave`; master docs/proposals/decision-centre/step2-3-decider.md
  * s5): in scope (an exchange, a play or an ally's exchange on a target T), stay or leave by the price of each over the next `HORIZON`
  * seconds, from the fitted prices and tables in `dc_prices.ts`. PURE so far: `Decide` takes plain values and returns the pick with the
- * fields of its `ev=choice kind=leave` line. Gathering the inputs, the incumbent per hero and the wiring into the retreat come later.
+ * fields of its `ev=choice kind=leave` line. The gather, the incumbent per hero and the line are `leave_pick.ts`.
  */
 import * as P from "bots/FunLib/humaniser/dc_prices";
 
@@ -38,9 +38,10 @@ export interface Inputs {
     cg: number;
     /** Creeps a second dying in our lane (`SETTINGS.CreepRate` when unknown). */
     lam?: number;
-    /** Hard leaves: a tower on us, the heal rule, burst now. */
+    /** Hard leaves: a tower on us, the heal rule, the kill line under the hold ratio (`lethal`; direction log, step 3 replay), burst now. */
     tower?: boolean;
     heal?: boolean;
+    lethal?: boolean;
     burst?: boolean;
     /** A real change this frame (n or the enemies in reach changed, `hs` changed bin, T died or was lost, the scope changed, an exchange or play started or ended): the margin is 0. */
     rel?: boolean;
@@ -49,7 +50,7 @@ export interface Inputs {
 /** The pick and every value of the `ev=choice kind=leave` line. Prices are absent on a hard leave. */
 export interface Result {
     pick: Pick;
-    /** `tower`, `heal` or `burst` on a hard leave. */
+    /** `tower`, `heal`, `lethal` or `burst` on a hard leave. */
     hard?: string;
     inc?: Pick;
     rel: number;
@@ -103,13 +104,13 @@ export function Walk(pos: number, w: number, ms: number, lam: number): number {
 }
 
 /**
- * Stay or leave. Hard leaves first (tower, heal, burst), with no price. Else stay = P_k(T, n) K + F - P_ds D, leave = P_k(T, n - 1) K
+ * Stay or leave. Hard leaves first (tower, heal, lethal, burst), with no price. Else stay = P_k(T, n) K + F - P_ds D, leave = P_k(T, n - 1) K
  * - W - P_dl D, d = stay - leave; an incumbent stay keeps staying while d > -M, an incumbent leave stays only when d > M, no
  * incumbent picks the larger. M is `SETTINGS.Margin`, 0 on a real change (`i.rel`).
  */
 export function Decide(i: Inputs, inc?: Pick): Result {
     const rel = i.rel === true ? 1 : 0;
-    const hard = i.tower === true ? "tower" : i.heal === true ? "heal" : i.burst === true ? "burst" : undefined;
+    const hard = i.tower === true ? "tower" : i.heal === true ? "heal" : i.lethal === true ? "lethal" : i.burst === true ? "burst" : undefined;
     if (hard !== undefined) return { pick: "leave", hard, inc, rel, M: 0 };
     const M = rel === 1 ? 0 : SETTINGS.Margin;
     const pks = PKill(i.thp, i.n);

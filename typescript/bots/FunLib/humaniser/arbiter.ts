@@ -89,7 +89,7 @@ function lastHitNow(bot: Unit): boolean {
 }
 
 function retreatCandidate(bot: Unit): Candidate {
-    return { name: "retreat", group: 1, host: "retreat", applies: RetreatState.Running(bot) };
+    return { name: "retreat", group: 1, host: "retreat", applies: RetreatState.Running(bot) || RetreatState.LeaveNow(bot) };
 }
 
 /** A pull lever of the controller lifts the running pull job to group 4; any other job is group 6. */

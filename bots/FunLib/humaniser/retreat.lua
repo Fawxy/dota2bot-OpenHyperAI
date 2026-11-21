@@ -216,6 +216,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local hpShare, enemyOf, valid, leaveOf, TOWER_IDS
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Shop = ____dota.Shop
 local Team = ____dota.Team
@@ -234,6 +235,97 @@ local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
+local LeavePick = require(GetScriptDirectory().."/FunLib/humaniser/leave_pick")
+function hpShare(bot)
+    return bot:GetHealth() / math.max(
+        1,
+        bot:GetMaxHealth()
+    )
+end
+function enemyOf(team)
+    return team == Team.Radiant and Team.Dire or Team.Radiant
+end
+function valid(u)
+    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
+end
+--- An enemy tower whose reach holds `bot` and that is attacking it now or hit it in the last half second.
+function ____exports.TowerOnUs(bot)
+    local enemy = enemyOf(bot:GetTeam())
+    local br = bot:GetBoundingRadius()
+    for ____, id in ipairs(TOWER_IDS) do
+        do
+            local __continue18
+            repeat
+                local tw = GetTower(enemy, id)
+                if not valid(tw) then
+                    __continue18 = true
+                    break
+                end
+                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
+                    __continue18 = true
+                    break
+                end
+                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
+                    return tw
+                end
+                __continue18 = true
+            until true
+            if not __continue18 then
+                break
+            end
+        end
+    end
+    return nil
+end
+--- The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once; the walk home where the place is not
+-- deadly, when sustain's rule 2 says so for a hero it carries (`RetreatState.Home`), else at the heal floor with nobody in reach;
+-- else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
+-- under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
+-- stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
+function ____exports.LeaveWhy(bot, holds)
+    if holds == nil then
+        holds = function() return Trade.Holds(bot) end
+    end
+    local a = SafeGather.At(
+        bot,
+        bot:GetLocation(),
+        {held = true, who = "leave"}
+    )
+    if ____exports.TowerOnUs(bot) ~= nil then
+        return {why = "tower", a = a}
+    end
+    local home = RetreatState.Home(bot)
+    local ____temp_9
+    if home == nil then
+        ____temp_9 = hpShare(bot) < ____exports.SETTINGS.HealFloor and a.heroes == 0
+    else
+        ____temp_9 = home and a.level ~= "deadly"
+    end
+    if ____temp_9 then
+        return {why = "heal", a = a}
+    end
+    if a.level ~= "deadly" then
+        return {stay = "under", a = a}
+    end
+    if a.reason == "tower" then
+        return {why = "tower", a = a}
+    end
+    if a.ratio < Safe.BARS.hold then
+        return {why = "lethal", a = a}
+    end
+    local hold = holds()
+    if hold ~= nil then
+        return {stay = hold, a = a, hold = hold}
+    end
+    return {why = "threat", a = a}
+end
+function leaveOf(bot, st, before)
+    if before ~= st.readAt or st.leave == nil then
+        st.leave = ____exports.LeaveWhy(bot)
+        st.leaveNew = true
+    end
+    return st.leave
+end
 ____exports.SETTINGS = {
     Horizon = Threat.SETTINGS.StayHorizon,
     EngagedWindow = Threat.SETTINGS.StayEngaged,
@@ -259,7 +351,7 @@ ____exports.SETTINGS = {
 }
 --- Valve's fountain spots (as drill.ts); GetShopLocation(team, SHOP_HOME) is logged beside them at load.
 local FOUNTAIN = {[Team.Radiant] = {-6619, -6336, 384}, [Team.Dire] = {6624, 6368, 392}}
-local TOWER_IDS = {
+TOWER_IDS = {
     Tower.Top1,
     Tower.Top2,
     Tower.Top3,
@@ -283,6 +375,7 @@ function ____exports.ResetCache()
     fountainLogged = false
     RetreatState.ResetCache()
     SafeGather.ResetCache()
+    LeavePick.ResetCache()
 end
 local function stateOf(bot)
     local pid = bot:GetPlayerID()
@@ -295,18 +388,6 @@ local function stateOf(bot)
 end
 local function dist(a, b)
     return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
-end
-local function hpShare(bot)
-    return bot:GetHealth() / math.max(
-        1,
-        bot:GetMaxHealth()
-    )
-end
-local function enemyOf(team)
-    return team == Team.Radiant and Team.Dire or Team.Radiant
-end
-local function valid(u)
-    return u ~= nil and u ~= nil and not u:IsNull() and u:IsAlive() and u:GetLocation() ~= nil
 end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
@@ -355,35 +436,6 @@ local function logFountain()
             }
         )
     end
-end
---- An enemy tower whose reach holds `bot` and that is attacking it now or hit it in the last half second.
-function ____exports.TowerOnUs(bot)
-    local enemy = enemyOf(bot:GetTeam())
-    local br = bot:GetBoundingRadius()
-    for ____, id in ipairs(TOWER_IDS) do
-        do
-            local __continue18
-            repeat
-                local tw = GetTower(enemy, id)
-                if not valid(tw) then
-                    __continue18 = true
-                    break
-                end
-                if GetUnitToUnitDistance(bot, tw) > WorldFacts.TowerReach(tw, Threat.SETTINGS.TowerReach) + br then
-                    __continue18 = true
-                    break
-                end
-                if tw:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(0.5) then
-                    return tw
-                end
-                __continue18 = true
-            until true
-            if not __continue18 then
-                break
-            end
-        end
-    end
-    return nil
 end
 --- What the hero is doing, for the episode's start line: busy (a pull, stack, camp or pull farm job, or a last hit on a creep in hand), committed (a rune walk), else free. Telemetry only.
 local function purposeOf(bot)
@@ -696,6 +748,9 @@ local function start(bot, st, why, r, a, purp, spot, rep)
     }
     RetreatState.SetRunning(bot, true)
     RetreatState.SetHealing(bot, why == "heal")
+    if not LeavePick.Acts() then
+        LeavePick.Forget(bot)
+    end
     Chooser.Abort(bot, "retreat")
     Lane_.CampJobAbort(bot, "retreat")
     FarmPattern.Abort(bot, "retreat")
@@ -783,6 +838,9 @@ local function ____end(bot, st, res)
     st.orderTo = nil
     RetreatState.SetRunning(bot, false)
     RetreatState.SetHealing(bot, false)
+    if not LeavePick.Acts() then
+        LeavePick.Forget(bot)
+    end
     local max = math.max(
         1,
         bot:GetMaxHealth()
@@ -897,48 +955,6 @@ local function step(bot, st, r, now)
         return "gone"
     end
     return a.level ~= "deadly" and "safe" or nil
-end
---- The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once; the walk home where the place is not
--- deadly, when sustain's rule 2 says so for a hero it carries (`RetreatState.Home`), else at the heal floor with nobody in reach;
--- else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
--- under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
--- stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
-function ____exports.LeaveWhy(bot, holds)
-    if holds == nil then
-        holds = function() return Trade.Holds(bot) end
-    end
-    local a = SafeGather.At(
-        bot,
-        bot:GetLocation(),
-        {held = true, who = "leave"}
-    )
-    if ____exports.TowerOnUs(bot) ~= nil then
-        return {why = "tower", a = a}
-    end
-    local home = RetreatState.Home(bot)
-    local ____temp_9
-    if home == nil then
-        ____temp_9 = hpShare(bot) < ____exports.SETTINGS.HealFloor and a.heroes == 0
-    else
-        ____temp_9 = home and a.level ~= "deadly"
-    end
-    if ____temp_9 then
-        return {why = "heal", a = a}
-    end
-    if a.level ~= "deadly" then
-        return {stay = "under", a = a}
-    end
-    if a.reason == "tower" then
-        return {why = "tower", a = a}
-    end
-    if a.ratio < Safe.BARS.hold then
-        return {why = "lethal", a = a}
-    end
-    local hold = holds()
-    if hold ~= nil then
-        return {stay = hold, a = a, hold = hold}
-    end
-    return {why = "threat", a = a}
 end
 --- The retreat-walk drill's cast: walk to the rep's start spot, then the forced episode, then stand. Undefined when not in it.
 local function drillDesire(bot, st, now)
@@ -1064,6 +1080,18 @@ function ____exports.Desire(bot)
     if st.ep ~= nil then
         local res = step(bot, st, r, now)
         if res == nil then
+            local ____temp_12 = LeavePick.Acts() and (st.ep.why == "threat" or st.ep.why == "priced")
+            if ____temp_12 then
+                local ____opt_10 = LeavePick.For(
+                    bot,
+                    leaveOf(bot, st, readAtBefore)
+                )
+                ____temp_12 = (____opt_10 and ____opt_10.pick) == "stay"
+            end
+            if ____temp_12 then
+                ____end(bot, st, "priced")
+                return 0
+            end
             return ____exports.SETTINGS.EpisodeDesire
         end
         ____end(bot, st, res)
@@ -1110,21 +1138,18 @@ function ____exports.Desire(bot)
     ) then
         return 0
     end
-    local l = st.leave
-    local fresh = readAtBefore ~= st.readAt or l == nil
-    if fresh then
-        l = ____exports.LeaveWhy(bot)
-        st.leave = l
+    local leave = leaveOf(bot, st, readAtBefore)
+    if st.leaveNew == true then
+        st.leaveNew = nil
         cutLeave(
             bot,
             st,
             r,
             purp,
-            l,
+            leave,
             now
         )
     end
-    local leave = l
     if leave.stay == "under" then
         st.stayLogged = nil
     elseif leave.stay ~= nil and st.stayLogged ~= true then
@@ -1154,6 +1179,54 @@ function ____exports.Desire(bot)
             }
         )
     end
+    local ____Ours_On_result_13
+    if Ours.On("PricedLeave") then
+        ____Ours_On_result_13 = LeavePick.For(bot, leave)
+    else
+        ____Ours_On_result_13 = nil
+    end
+    local priced = ____Ours_On_result_13
+    if priced ~= nil and LeavePick.Acts() then
+        if priced.pick == "leave" then
+            start(
+                bot,
+                st,
+                leave.why or "priced",
+                r,
+                leave.a,
+                purp
+            )
+            return ____exports.SETTINGS.EpisodeDesire
+        end
+        if leave.why ~= nil and st.stayLogged ~= true then
+            st.stayLogged = true
+            Telemetry.Event(
+                "retreat",
+                {
+                    {"ph", "stay"},
+                    {"why", "priced"},
+                    {
+                        "pid",
+                        bot:GetPlayerID()
+                    },
+                    {"lv", leave.a.level},
+                    {
+                        "ra",
+                        r2(leave.a.ratio)
+                    },
+                    {
+                        "kill",
+                        math.floor(leave.a.kill + 0.5)
+                    },
+                    {
+                        "hp",
+                        r2(hpShare(bot))
+                    }
+                }
+            )
+        end
+        return 0
+    end
     if leave.why == nil then
         return 0
     end
@@ -1167,6 +1240,32 @@ function ____exports.Desire(bot)
     )
     return ____exports.SETTINGS.EpisodeDesire
 end
+--- RetreatState.LeaveNow (Ours.PricedLeaveAct): the priced leave's pick is leave for an owned hero with no episode yet, so the arbiter
+-- takes the episode Desire starts this frame. Decides with the same read and answer Desire uses, whichever asks first.
+local function leaveNow(bot)
+    if not LeavePick.Acts() or not RetreatState.Owns(bot) or not bot:IsAlive() then
+        return false
+    end
+    local st = stateOf(bot)
+    local now = DotaTime()
+    if st.ep ~= nil or Drill.ForcedAt("retreat", now) ~= nil and Drill.RoleOf(bot) == "cast" then
+        return false
+    end
+    if Drill.RetreatHeld(
+        bot,
+        hpShare(bot)
+    ) then
+        return false
+    end
+    local before = st.readAt
+    readOf(bot, st, now)
+    local ____opt_14 = LeavePick.For(
+        bot,
+        leaveOf(bot, st, before)
+    )
+    return (____opt_14 and ____opt_14.pick) == "leave"
+end
+RetreatState.SetLeaveNow(leaveNow)
 --- Per frame (index Tick): a death ends the episode even when GetDesire is not asked while dead.
 function ____exports.Tick(bot)
     local st = states[bot:GetPlayerID()]

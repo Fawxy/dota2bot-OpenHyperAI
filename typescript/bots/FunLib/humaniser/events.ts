@@ -1670,7 +1670,7 @@ export const EVENTS = {
         kind: "str",
         /** The episode number. */
         ep: "num",
-        /** On `start`: `threat`, `lethal`, `tower`, `heal` or `forced`. On `stay`: `join` while our pair joins the fight (`Ours.PairJoin`), `hitback` while Trade.Holds says the hit back runs. Older logs: `stand`, or absent for the retired RetreatOdds hold. */
+        /** On `start`: `threat`, `lethal`, `tower`, `heal`, `forced`, or `priced` (`Ours.PricedLeaveAct`: the priced leave left where the leave rule held). On `stay`: `priced` (the priced leave stays where the leave rule said `threat`), `join` while our pair joins the fight (`Ours.PairJoin`), `hitback` while Trade.Holds says the hit back runs. Older logs: `stand`, or absent for the retired RetreatOdds hold. */
         why: "str",
         /** The hero's HP share at the line. */
         hp: "num",
@@ -1716,7 +1716,7 @@ export const EVENTS = {
         spot: "str",
         /** In a drill, the rep. */
         rep: "num",
-        /** On `end`: `gone` (nobody in reach), `safe` (the band's dwell), `healed` (older logs only: the retired HealStop), `anchor`, `died` or `cut`. */
+        /** On `end`: `gone` (nobody in reach), `safe` (the band's dwell), `healed` (older logs only: the retired HealStop), `anchor`, `died`, `cut`, or `priced` (`Ours.PricedLeaveAct`: the priced leave picked stay mid-episode). */
         res: "str",
         /** Seconds the episode lasted. */
         secs: "num",
@@ -2804,6 +2804,53 @@ export const EVENTS = {
         // pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap
         // were forecast with it in the lane.
         pw: "num",
+        // kind=leave (Ours.PricedLeave, leave_pick.ts; master docs/proposals/decision-centre/step2-3-decider.md s5): the priced leave's
+        // decision in scope, on a pick change, a release or a hard leave, else every 2 s. Gold on the team net-worth difference over 8 s.
+        /** kind=leave: `stay` or `leave`. */
+        pick: "str",
+        /** kind=leave: 1 when the pick acts (`Ours.PricedLeaveAct`), 0 in shadow. */
+        act: "num",
+        /** kind=leave: a hard leave with no price: `tower`, `heal`, `lethal` or `burst`. */
+        hard: "str",
+        /** kind=leave: the incumbent pick the margin protected. */
+        inc: "str",
+        /** kind=leave: 1 on a real change (n, enemies in reach, the hs bin, the target or the scope case changed): margin 0. */
+        rel: "num",
+        /** kind=leave: the margin used (gold). */
+        mg: "num",
+        /** kind=leave: the scope case: `trade` (our exchange), `play`, `ally` (an ally's exchange within 1,200). */
+        sc: "str",
+        /** kind=leave: the target's player id. */
+        tpid: "num",
+        /** kind=leave: the leave rule's own answer (`threat`, `lethal`, `tower`, `heal`, `join`, `hitback`). */
+        lw: "str",
+        /** kind=leave: our HP and the target's, percent. */
+        hp: "num",
+        thp: "num",
+        /** kind=leave: enemies hitting us (attack target us within 1,600 plus callback hits in 1 s, each once), and step 1's 3 s count. */
+        hs: "num",
+        nh: "num",
+        /** kind=leave: seen enemy heroes within 800 of us; our alive heroes within 800 of the target, us included. */
+        ne: "num",
+        n: "num",
+        /** kind=leave: the walk to our nearest standing tower, our speed, our position. */
+        w: "num",
+        spd: "num",
+        pos: "num",
+        /** kind=leave: unconverted gold of the creeps in reach that die within 8 s. */
+        cg: "num",
+        /** kind=leave: the stay and leave values, d = sv - lv. */
+        sv: "num",
+        lv: "num",
+        d: "num",
+        /** kind=leave: P(kill) with n and n - 1, P(death) on stay and leave. */
+        pks: "num",
+        pkl: "num",
+        pds: "num",
+        pdl: "num",
+        /** kind=leave: the farm in reach (converted) and the walk's lost farm. */
+        fm: "num",
+        wk: "num",
     },
     gank: {
         pid: "num",
