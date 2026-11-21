@@ -2699,7 +2699,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull` today. */
+        /** The decision; `pull`, or `shadow` (Ours.ChoiceShadow). */
         kind: "str",
         /** 1 when the pull started. */
         go: "num",
@@ -2759,6 +2759,78 @@ export const EVENTS = {
         // pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap
         // were forecast with it in the lane.
         pw: "num",
+        // kind=shadow (Ours.ChoiceShadow, choice_shadow.ts): one line per hero of ours about every second and on each change of active
+        // mode. A frame's values are logged on the next frame, beside the active mode Valve picked from them.
+        /** kind=shadow: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires. */
+        win: "str",
+        /** kind=shadow: the mode OHA's own computed desires pick (argmax of the `d_` numbers); absent when none was computed. */
+        top: "str",
+        /** kind=shadow: `top`'s desire. */
+        tv: "num",
+        /** kind=shadow, when `top` is not `win`: `zeroed` (the gate lowered top's desire), `held` (the gate raised win's: DriveAfter's lane floor), `outbid` (win's desire is ours, set by the gate before OHA's code, or carries an Intent claim), `valve` (Valve's own mode or arbitration; a branch of ours inside win's own body, `mix`, is already in win's desire, so it is never the cause). */
+        how: "str",
+        /** kind=shadow, with `how`: the module and switch of ours that made the difference (`ArbiterDrive:DriveDecide(<pick>)`, `ArbiterDrive:DriveAfter borrowed(<pick>)`, `ArbiterDrive:DriveAfter lane_floor`, `JobChooser:host`, `JobChooser:Hold(job)`, `Retreat:Hold(episode)`, `Retreat:Desire`, `Trade:Desire`, `Intent:<claim>`, `Drill:InLaneDenies`, `Drill:RigDesire`), or `Valve:<mode>` / `Valve:arbitration`. */
+        by: "str",
+        /** kind=shadow: modes where a branch of ours inside the mode's own GetDesire acted in the frame's call (laning: the body's bOwnsThink last hit at 0.9 or a drill's lane-only hold, marked by ChoiceShadow.MarkMix; team_roam: Trade.OwnsFights skipped OHA's fight branches; rune: DeniesOhaRune). Context only, never `by`. */
+        mix: "str",
+        /** kind=shadow: `<mode>=<source>` for each computed mode an Intent claim or stickiness moved (Intent.Explain's `by` not raw), read at the mode's call. */
+        clm: "str",
+        /** kind=shadow: modes whose value came from Ours.ChoiceProbe (OHA's code run where the drive zeroed it; the drive's 0 returned). */
+        pr: "str",
+        /** kind=shadow: `<mode>:<desire>` for each mode the gate returned other than its own desire (drive, hold, DriveAfter). */
+        gate: "str",
+        /** kind=shadow, under ArbiterDrive: the drive's pick in the frame of the values (Arbiter.PickThisFrame, read at the frame's calls). */
+        pick: "str",
+        /** kind=shadow, under ArbiterDrive: the arbiter's candidates that apply in that frame, `<name>:<group>` (Arbiter.Candidates). */
+        cand: "str",
+        /** kind=shadow: the drive's lane desire (Arbiter SETTINGS.LaneDesire) while the pick is the lane. */
+        lfl: "num",
+        /** kind=shadow: our retreat desire (Retreat.Desire through the retreat file) when it answered first. */
+        rdes: "num",
+        /** kind=shadow: our trade's attack desire (Trade.Desire) when it answered first. */
+        tdes: "num",
+        /** kind=shadow: the chooser's host desire, in farm (its only host, Chooser HOST): on the hold path, or under the drive when farm is the pick's host or the pick is OHA's (DriveDecide's farmHost); absent when the drive zeroes farm for another pick. */
+        hdes: "num",
+        /** kind=shadow: mode_laning_generic's own desire as the one real call returned it (Intent-resolved), or `-<reason>` when its OHA code was not computed: `-drive` (Arbiter.DriveDecide set it before OHA's code), `-hold` (a retreat episode or a job), `-ours` (our desire answered first: retreat, attack under Trade, the chooser's host), `-valve` (no fresh Lua value: Valve's built-in or a non-number), `-probe` (Ours.ChoiceProbe ran the code and it errored or gave no number), `-drill`, `-rig`. */
+        d_laning: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_attack_generic. */
+        d_attack: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_retreat_generic. */
+        d_retreat: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_farm_generic. */
+        d_farm: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_team_roam_generic. */
+        d_team_roam: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_roam_generic. */
+        d_roam: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_rune_generic. */
+        d_rune: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_ward_generic. */
+        d_ward: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_assemble_generic. */
+        d_assemble: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_assemble_with_humans_generic. */
+        d_assemble_h: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_defend_tower_top_generic. */
+        d_defend_top: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_defend_tower_mid_generic. */
+        d_defend_mid: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_defend_tower_bot_generic. */
+        d_defend_bot: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_push_tower_top_generic. */
+        d_push_top: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_push_tower_mid_generic. */
+        d_push_mid: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_push_tower_bot_generic. */
+        d_push_bot: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_roshan_generic. */
+        d_roshan: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_secret_shop_generic. */
+        d_secret_shop: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_side_shop_generic. */
+        d_side_shop: "mixed",
+        /** kind=shadow: as `d_laning`, for mode_outpost_generic. */
+        d_outpost: "mixed",
     },
     gank: {
         pid: "num",

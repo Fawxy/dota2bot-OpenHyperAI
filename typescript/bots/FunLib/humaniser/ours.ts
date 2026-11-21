@@ -172,6 +172,14 @@ export const DEFAULTS = {
     /** Step 4.6b (same proposal): a pair join is judged on arrival within 2 s and carried to its first attack when the pair answer lapses or names another
      *  target; a losing answer on its own target, a deadly walk, out of arrival or a 3 s backstop still end it. Off: a flat 1,200 reach, and the answer lapsing ends it. */
     JoinHold: true,
+    /** Shadow choice line (choice_shadow.ts, 22/11/2026): per hero of ours, ev=choice kind=shadow ~1 Hz and on each change of
+     *  active mode: each OHA mode's own desire as the one real call returned it, OHA's argmax, the mode Valve picked and the module of
+     *  ours that made the difference. Logging only: the gate's return values and OHA's calls are unchanged. Off: no line. */
+    ChoiceShadow: false,
+    /** Diagnostic only, never for scored games (needs ChoiceShadow): roam and team_roam's OHA code runs where the drive zeroes them
+     *  before it, for the shadow line's value; the drive's 0 is still returned, but the bodies' side effects (item swaps, roam
+     *  latches, Intent's sample) happen. Off: those bodies are not run while the drive zeroes them. */
+    ChoiceProbe: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

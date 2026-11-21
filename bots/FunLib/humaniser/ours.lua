@@ -104,7 +104,9 @@ ____exports.DEFAULTS = {
     TradeSwing = true,
     TradeHold = true,
     JoinArrive = true,
-    JoinHold = true
+    JoinHold = true,
+    ChoiceShadow = false,
+    ChoiceProbe = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

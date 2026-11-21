@@ -170,6 +170,12 @@ export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
     return p;
 }
 
+/** The pick Drive computed for this hero this frame, without computing one (choice_shadow's line). Reads only. */
+export function PickThisFrame(bot: Unit): Candidate | undefined {
+    const pid = bot.GetPlayerID();
+    return driveAt[pid] === DotaTime() ? drivePick[pid] : undefined;
+}
+
 /**
  * The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
  * hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a

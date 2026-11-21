@@ -24,6 +24,7 @@ local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
+local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
 function runningJob(bot)
     for ____, j in ipairs(JOBS) do
         if j.Running(bot) then
@@ -43,21 +44,21 @@ function ____exports.After(bot, mode, desire)
         return desire
     end
     local jobs = Ours.On("JobChooser")
-    local ____Arbiter_DriveAfter_20 = Arbiter.DriveAfter
-    local ____bot_18 = bot
-    local ____mode_19 = mode
-    local ____Arbiter_Drive_17 = Arbiter.Drive
-    local ____bot_16 = bot
-    local ____jobs_15
+    local ____Arbiter_DriveAfter_26 = Arbiter.DriveAfter
+    local ____bot_24 = bot
+    local ____mode_25 = mode
+    local ____Arbiter_Drive_23 = Arbiter.Drive
+    local ____bot_22 = bot
+    local ____jobs_21
     if jobs then
-        ____jobs_15 = ____exports.RunningJobName(bot)
+        ____jobs_21 = ____exports.RunningJobName(bot)
     else
-        ____jobs_15 = nil
+        ____jobs_21 = nil
     end
-    return ____Arbiter_DriveAfter_20(
-        ____bot_18,
-        ____mode_19,
-        ____Arbiter_Drive_17(____bot_16, ____jobs_15),
+    return ____Arbiter_DriveAfter_26(
+        ____bot_24,
+        ____mode_25,
+        ____Arbiter_Drive_23(____bot_22, ____jobs_21),
         desire
     )
 end
@@ -308,16 +309,22 @@ end
 local EPISODE_MODES = {assemble = true, assemble_with_humans = true}
 --- OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs.
 local ADMITTED = {retreat = EPISODE_MODES, job = ____exports.EXCEPTIONS}
+--- Which branch of Decide gave its last number (choice_shadow's reason); telemetry only, read by Gate.
+local decideWhy
+local HOLD_WHY = {retreat = "hold:retreat", job = "hold:job"}
 --- A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under the arbiter's hold the host mode runs
 -- and every mode the hold does not admit gets 0. A job hosted in the rune mode (the mid's 6:00 trip) leaves the chooser's
 -- host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
 -- not take it either.
 function ____exports.Decide(bot, mode)
+    decideWhy = nil
     if Drill.InLaneDenies(bot, mode) then
+        decideWhy = "drill"
         return 0
     end
     local rig = Drill.RigDesire(bot, mode)
     if rig ~= nil then
+        decideWhy = "rig"
         return rig
     end
     local jobs = Ours.On("JobChooser")
@@ -331,6 +338,7 @@ function ____exports.Decide(bot, mode)
             ____jobs_3 = nil
         end
         local p = ____Arbiter_Drive_5(____bot_4, ____jobs_3)
+        decideWhy = "drive"
         return Arbiter.DriveDecide(
             bot,
             mode,
@@ -355,6 +363,7 @@ function ____exports.Decide(bot, mode)
         ____jobs_7 = nil
     end
     local hold = ____Arbiter_Hold_9(____bot_8, ____jobs_7)
+    decideWhy = (hold == nil or mode == hold.host) and "host" or HOLD_WHY[hold.name]
     if hold == nil then
         local ____temp_10
         if jobs and mode == ____exports.HOST then
@@ -391,12 +400,54 @@ function ____exports.Gate(bot, mode, inner)
                 return ____opt_13 and ____opt_13.name
             end
         )
+        local shadow = ChoiceShadow.On()
+        if shadow then
+            ChoiceShadow.Frame(
+                bot,
+                function()
+                    local ____opt_15 = runningJob(bot)
+                    return ____opt_15 and ____opt_15.name
+                end
+            )
+        end
         local v = ____exports.Decide(bot, mode)
         if v ~= nil then
+            if shadow then
+                local why = decideWhy
+                local probe = why == "drive" and ChoiceShadow.PROBED[mode] == true and Ours.On("ChoiceProbe")
+                local ____ChoiceShadow_Note_20 = ChoiceShadow.Note
+                local ____bot_18 = bot
+                local ____mode_19 = mode
+                local ____probe_17
+                if probe then
+                    ____probe_17 = ChoiceShadow.Probe(inner)
+                else
+                    ____probe_17 = nil
+                end
+                ____ChoiceShadow_Note_20(
+                    ____bot_18,
+                    ____mode_19,
+                    ____probe_17,
+                    v,
+                    why,
+                    probe
+                )
+            end
             return v
         end
         local d = inner()
-        return ____exports.After(bot, mode, d)
+        local out = ____exports.After(bot, mode, d)
+        if shadow then
+            ChoiceShadow.Note(
+                bot,
+                mode,
+                d,
+                out,
+                nil,
+                false
+            )
+        end
+        return out
     end
 end
 --- Wraps the host file's Think, switch on: the job steps without entering OHA's code, so its defend-ping and run aborts cannot
@@ -409,13 +460,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_21
+        local ____table_Step_result_27
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_21 = nil
+            ____table_Step_result_27 = nil
         else
-            ____table_Step_result_21 = inner()
+            ____table_Step_result_27 = inner()
         end
-        return ____table_Step_result_21
+        return ____table_Step_result_27
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -437,9 +488,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_26 = runningJob(bot)
-    if ____opt_26 ~= nil then
-        ____opt_26.End(bot, why)
+    local ____opt_32 = runningJob(bot)
+    if ____opt_32 ~= nil then
+        ____opt_32.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

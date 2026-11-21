@@ -105,7 +105,8 @@ function GetDesire()
 	-- A lane-only drill hero (humaniser/drill.ts): the bot stays in lane through the laning phase and does nothing but hold,
 	-- last-hit and deny (Think below). Above every other mode, as a drill's bench in mode_farm_generic.
 	-- Our retreat (slice retreat) takes a lane-only hero while its episode runs: the chase drill's cast retreats live.
-	if bOwnsThink and J.Humaniser.Overrides.LaneOnly(bot) and J.IsInLaningPhase() and not J.Humaniser.Retreat.Running(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
+	-- Ours.ChoiceShadow's hook (logging only): MarkMix notes that a branch of ours set the value returned.
+	if bOwnsThink and J.Humaniser.Overrides.LaneOnly(bot) and J.IsInLaningPhase() and not J.Humaniser.Retreat.Running(bot) then J.Humaniser.ChoiceShadow.MarkMix(bot) return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
 
 	-- if DotaTime() > 20 and DotaTime() - skipLaningState.lastCheckTime < skipLaningState.checkGap then
 	-- 	if skipLaningState.count > 6 then
@@ -152,6 +153,7 @@ function GetDesire()
 				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
 				and not J.Humaniser.Trade.LastHitYields(bot) -- nor a retreat, kill or join our laner is already in (Ours.Trade)
 				then
+					J.Humaniser.ChoiceShadow.MarkMix(bot)
 					return 0.9
 				end
 			end

@@ -217,6 +217,17 @@ function ____exports.Drive(bot, chooserJob)
     drivePrev[pid] = p.name
     return p
 end
+--- The pick Drive computed for this hero this frame, without computing one (choice_shadow's line). Reads only.
+function ____exports.PickThisFrame(bot)
+    local pid = bot:GetPlayerID()
+    local ____temp_0
+    if driveAt[pid] == DotaTime() then
+        ____temp_0 = drivePick[pid]
+    else
+        ____temp_0 = nil
+    end
+    return ____temp_0
+end
 --- The lane and our trade share the hero by their own desires, whatever the pick (OWNERSHIP H2: a trade yields to a last
 -- hit, a kill or fight does not, `Trade.LastHitYields`): the lane's last-hit lift does not end a running trade, and a
 -- trade does not hold laning at 0. Review 13/11/2026: the pick alone swapped them, since the lift reads the laning body's
@@ -251,13 +262,13 @@ function ____exports.DriveDecide(_bot, mode, p, farmHost)
         return 0
     end
     if mode == p.host then
-        local ____temp_0
+        local ____temp_1
         if mode == "farm" then
-            ____temp_0 = farmHost()
+            ____temp_1 = farmHost()
         else
-            ____temp_0 = nil
+            ____temp_1 = nil
         end
-        return ____temp_0
+        return ____temp_1
     end
     if mode == "laning" and p.name == "trade" then
         return nil
@@ -266,13 +277,13 @@ function ____exports.DriveDecide(_bot, mode, p, farmHost)
         return nil
     end
     if BORROWED[mode] ~= nil then
-        local ____temp_1
+        local ____temp_2
         if p.group > 5 then
-            ____temp_1 = nil
+            ____temp_2 = nil
         else
-            ____temp_1 = 0
+            ____temp_2 = 0
         end
-        return ____temp_1
+        return ____temp_2
     end
     if mode == "farm" then
         return p.group > 6 and (farmHost() or 0) or 0
@@ -287,26 +298,26 @@ end
 -- mode's own GetDesire, which opens a trade or a fight).
 function ____exports.DriveAfter(bot, mode, p, desire)
     if mode == "laning" and p.name == "lane" then
-        local ____temp_2
+        local ____temp_3
         if type(desire) == "number" and desire > ____exports.SETTINGS.LaneDesire then
-            ____temp_2 = desire
+            ____temp_3 = desire
         else
-            ____temp_2 = ____exports.SETTINGS.LaneDesire
+            ____temp_3 = ____exports.SETTINGS.LaneDesire
         end
-        return ____temp_2
+        return ____temp_3
     end
     if mode == "laning" and laneAndTrade(p) then
         return desire
     end
     local borrowed = BORROWED[mode]
     if borrowed ~= nil and mode ~= p.host then
-        local ____borrowed_result_3
+        local ____borrowed_result_4
         if borrowed(bot) then
-            ____borrowed_result_3 = desire
+            ____borrowed_result_4 = desire
         else
-            ____borrowed_result_3 = 0
+            ____borrowed_result_4 = 0
         end
-        return ____borrowed_result_3
+        return ____borrowed_result_4
     end
     return desire
 end
