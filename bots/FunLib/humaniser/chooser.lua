@@ -64,10 +64,12 @@ end
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
---- Why the hero may not leave now (the lane is under attack), else undefined: low HP, a `deadly` Safe.At answer here (`enemy-near`), hit by a
+--- Why the hero may not leave now, else undefined. `Ours.TripRead`: a `deadly` Safe.At answer here (`enemy-near`), the walk to `ask.at` when
+-- given (`kill`, `tower`, `unknown`), the HP floor only for `ask.neutrals`, or fighting or retreating. Off: low HP, the answer here, hit by a
 -- hero just now, or fighting or retreating.
-function ____exports.MayStart(bot)
-    if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
+function ____exports.MayStart(bot, ask)
+    local read = Ours.On("TripRead")
+    if (not read or (ask and ask.neutrals) == true) and bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
         return "low-hp"
     end
     if SafeGather.At(
@@ -77,7 +79,13 @@ function ____exports.MayStart(bot)
     ).level == "deadly" then
         return "enemy-near"
     end
-    if hit(bot) then
+    if read and (ask and ask.at) ~= nil then
+        local why = SafeGather.TripGate(bot, ask.at, ask.who or "job_trip").why
+        if why ~= nil then
+            return why
+        end
+    end
+    if not read and hit(bot) then
         return "hit"
     end
     local mode = bot:GetActiveMode()
@@ -136,6 +144,7 @@ local PULL = {
 }
 local CAMP = {
     name = "camp",
+    guards = true,
     Applies = function(bot) return CoreCamp.Owns(bot) end,
     Claims = function(bot) return CoreCamp.Claims(bot) end,
     Wants = function(bot, blocked, host) return CoreCamp.Wants(bot, blocked, host) end,
@@ -147,6 +156,7 @@ local CAMP = {
 }
 local PULLFARM = {
     name = "pullfarm",
+    guards = true,
     Applies = function(bot) return PullFarm.Applies(bot) end,
     Claims = function(bot) return PullFarm.Claims(bot) end,
     Wants = function(bot, blocked, host) return PullFarm.Wants(bot, blocked, host) end,
@@ -220,8 +230,9 @@ function ____exports.Running(bot)
     return runningJob(bot) ~= nil
 end
 --- The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
--- value separates danger from a healthy hero (slice file, "Retreat"), so the job ends when a hero hit it just now and HP is
--- under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
+-- value separates danger from a healthy hero (slice file, "Retreat"), so the job ends itself: with `Ours.TripRead` on a deadly safe-read answer
+-- where the hero stands (held; no reaction hold, one deadly frame ends it), unless the job has its own guard (`Job.guards`); off, when a
+-- hero hit it just now and HP is under MinHpFraction. Neutrals alone never count. A benched hero stays with the host file's own bench. Jobs are asked in
 -- rank order; a start waits while a higher-ranked job claims the hero (`why=<job>` in the waiting job's skip line).
 local function hostDesire(bot)
     if StackJob.Benched(bot) then
@@ -241,12 +252,23 @@ local function hostDesire(bot)
         if not cur.Wants(bot, ____exports.MayStart, ____exports.HOST_MODE) then
             return nil
         end
-        if hit(bot) then
+        local struck = hit(bot)
+        if struck then
             cur.NoteHit(bot)
-            if bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction then
-                cur.End(bot, "retreat")
-                return nil
-            end
+        end
+        local leave
+        if not Ours.On("TripRead") then
+            leave = struck and bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.MinHpFraction
+        else
+            leave = cur.guards ~= true and SafeGather.At(
+                bot,
+                bot:GetLocation(),
+                {held = true, who = "job_run"}
+            ).level == "deadly"
+        end
+        if leave then
+            cur.End(bot, "retreat")
+            return nil
         end
         return ____exports.SETTINGS.JobDesire
     end
@@ -254,8 +276,8 @@ local function hostDesire(bot)
     do
         local i = 0
         while i < #jobs do
-            local function blocked(b)
-                local why = ____exports.MayStart(b)
+            local function blocked(b, ask)
+                local why = ____exports.MayStart(b, ask)
                 if why ~= nil then
                     return why
                 end
@@ -415,9 +437,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_22 = runningJob(bot)
-    if ____opt_22 ~= nil then
-        ____opt_22.End(bot, why)
+    local ____opt_26 = runningJob(bot)
+    if ____opt_26 ~= nil then
+        ____opt_26.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

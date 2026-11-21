@@ -35,6 +35,8 @@ local function world(o)
 	-- The 6:00 rune claim (slice rune-rotation) holds the pos4's 5:5x stack back; these tests run the stack alone unless rune = true.
 	Customize.Ours = Customize.Ours or {}
 	Customize.Ours.RuneRotation = o.rune == true
+	-- Ours.TripRead (the start and running end on the safe read): on unless a test asks for the old floors and hit timer.
+	if o.tripRead ~= nil then Customize.Ours.TripRead = o.tripRead end
 	-- This file tests the stack job with the arbiter's drive off; the drive is test_arbiter_drive's.
 	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	T = o.t or 200
@@ -1032,23 +1034,61 @@ do
 	local lines = stackLines(capture(function() bot.heroHitAt = T frame(H, bot) end))
 	check("hero hit mid-job, on: no line, the job runs on", #lines == 0 and H.StackJob.Running(bot), lines[1])
 
-	H, bot = world({ t = 3 * 60 + 15 })
+	H, bot = world({ t = 3 * 60 + 15, tripRead = false })
 	bot.heroHitAt = 1e9
 	lines = stackLines(capture(function() while T < 3 * 60 + 58 do frame(H, bot) end end))
-	check("hero hit before the start, on: one skip why=hit", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "hit", lines[1])
+	check("TripRead off: hero hit before the start: one skip why=hit", #lines == 1 and field(lines[1], "res") == "skip" and field(lines[1], "why") == "hit", lines[1])
+	H, bot = world({ t = 3 * 60 + 15 })
+	bot.heroHitAt = 1e9
+	neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+	lines = stackLines(capture(function() while T < 3 * 60 + 50 do frame(H, bot) end end))
+	check("TripRead: a hero hit with nobody able to kill it is no reason to skip: the job starts", H.StackJob.Running(bot) and #lines == 0, lines[1])
+
+	-- The walk to the camp is asked as a trip: a hero that can kill us waiting at the camp, out of reach of where we stand.
+	local function killerAtCamp(o)
+		local Hk, bk = world(o)
+		local camp = SPAWNERS[idxOf("good_1")].location
+		neutrals(camp, 3)
+		MakeUnit({ pid = 10, team = 3, loc = Vector(camp.x + 100, camp.y) }).estDamage = 5000
+		local ls = stackLines(capture(function() while T < 3 * 60 + 50 do frame(Hk, bk) end end))
+		return Hk.StackJob.Running(bk), ls
+	end
+	local ranOn, onLines = killerAtCamp({ t = 3 * 60 + 15 })
+	check("TripRead: a hero at the camp that can kill us refuses the stack's walk: skip why=kill",
+		not ranOn and #onLines == 1 and field(onLines[1], "res") == "skip" and field(onLines[1], "why") == "kill", onLines[1])
+	local ranOff = killerAtCamp({ t = 3 * 60 + 15, tripRead = false })
+	check("TripRead off: the stack's walk is not asked: the job starts", ranOff)
 
 	-- Retreat first: at 0.976 (the lowest banked ending) retreat's own desire beats the job's through Valve's arbitration.
 	H, bot = running()
 	local retreat = H.Chooser.Gate(bot, "retreat", function() return 0.976 end)()
 	check("retreat passes the gate and beats the job", retreat == 0.976 and retreat > H.Chooser.SETTINGS.JobDesire, retreat)
 
-	H, bot = running()
+	local function runningOff()
+		local H0, b0 = world({ t = 3 * 60 + 15, tripRead = false })
+		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
+		capture(function() while T < 3 * 60 + 50 do frame(H0, b0) end end)
+		return H0, b0
+	end
+	H, bot = runningOff()
 	bot.heroHitAt = T
 	bot.hp = 49
 	local d
 	lines = stackLines(capture(function() d = H.Chooser.Decide(bot, "farm") end))
-	check("hero hit at 49% HP: farm's next Decide is undefined", d == nil, d)
-	check("hero hit at 49% HP: failed, cancelled:retreat", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:retreat", lines[1])
+	check("TripRead off: hero hit at 49% HP: farm's next Decide is undefined", d == nil, d)
+	check("TripRead off: hero hit at 49% HP: failed, cancelled:retreat", field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:retreat", lines[1])
+
+	-- TripRead: the running job ends on the safe read here, not on a hit under half HP.
+	H, bot = running()
+	bot.heroHitAt = T
+	bot.hp = 49
+	lines = stackLines(capture(function() d = H.Chooser.Decide(bot, "farm") end))
+	check("TripRead: hero hit at 49% HP with nobody who can kill it: the job runs on", d == H.Chooser.SETTINGS.JobDesire and #lines == 0 and H.StackJob.Running(bot), lines[1])
+	H, bot = running()
+	MakeUnit({ pid = 10, team = 3, loc = Vector(bot.loc.x + 300, bot.loc.y) }).estDamage = 5000
+	lines = stackLines(capture(function() d = H.Chooser.Decide(bot, "farm") end))
+	check("TripRead: at full HP and not hit, a hero in reach that can kill us ends the job: cancelled:retreat",
+		d == nil and field(lines[1], "res") == "failed" and field(lines[1], "why") == "cancelled:retreat", lines[1])
 
 	H, bot = running()
 	bot.heroHitAt = T
@@ -1096,7 +1136,27 @@ do
 		end))
 		check("start refused on: " .. why, #ls == 1 and field(ls[1], "res") == "skip" and field(ls[1], "why") == why and not H1.StackJob.Running(b1), ls[1])
 	end
+	-- The stack walks into the camp's neutrals with no price for them: its HP floor stays under TripRead.
 	refused(function(b) b.hp = 40 end, "low-hp")
+	check("TripRead: the floor is the neutral jobs' only: a job that names no neutrals may start at 40% HP, the stack's ask may not",
+		(function()
+			local H2, b2 = world({ t = 100 })
+			b2.hp = 40
+			return H2.Chooser.MayStart(b2) == nil and H2.Chooser.MayStart(b2, { neutrals = true }) == "low-hp"
+		end)())
+	check("TripRead: a trip whose walk is deadly is refused with the trip gate's reason, at full HP",
+		(function()
+			local H2, b2 = world({ t = 100 })
+			local at = Vector(b2.loc.x + 3000, b2.loc.y)
+			MakeUnit({ pid = 10, team = 3, loc = Vector(at.x + 200, at.y) }).estDamage = 5000
+			return H2.Chooser.MayStart(b2) == nil and H2.Chooser.MayStart(b2, { at = at, who = "rune_trip" }) == "kill"
+		end)())
+	check("TripRead off: the floor holds every job at 40% HP",
+		(function()
+			local H2, b2 = world({ t = 100, tripRead = false })
+			b2.hp = 40
+			return H2.Chooser.MayStart(b2) == "low-hp"
+		end)())
 	refused(function(b) MakeUnit({ pid = 10, team = 3, loc = Vector(b.loc.x + 300, b.loc.y) }).estDamage = 5000 end, "enemy-near")
 	refused(function(b) b.mode = dota.BotMode.Attack end, "busy")
 
@@ -1115,7 +1175,7 @@ do
 	local function jobLines(ls) local r = {} for _, l in ipairs(ls) do if l:find(" ev=job ", 1, true) then table.insert(r, l) end end return r end
 	for _, on in ipairs({ true, false }) do
 		local arm = on and "on" or "off"
-		local H1, b1 = world({ t = 3 * 60 + 15, ours = { StackExecute = true, JobChooser = on } })
+		local H1, b1 = world({ t = 3 * 60 + 15, ours = { StackExecute = true, JobChooser = on, TripRead = false } })
 		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 		local ls = capture(function()
 			while T < 3 * 60 + 50 do frame(H1, b1) end
