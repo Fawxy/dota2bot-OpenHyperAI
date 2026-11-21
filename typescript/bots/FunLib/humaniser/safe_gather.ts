@@ -534,9 +534,14 @@ function drawnField(drawn: Safe.Drawn[]): string {
 export function CutFields(pid: number, who: string, place: Vector, i: Safe.Inputs, a: Safe.Answer): Telemetry.Fields<"cut"> {
     const rows: string[] = [];
     for (const x of i.reach) rows.push([x.pid, b01(x.hitting), n0(x.dmg), b01(x.unseen === true)].join(","));
-    // Ours.PricedLeave step 1: each reacher's commitment state beside `rr` (logged only).
-    const states: string[] = [];
-    if (Ours.On("PricedLeave")) for (const x of i.reach) states.push(`${x.pid},${Commit.Code(pid, x.pid)}`);
+    // Ours.PricedLeave step 1: the hitter count and each reacher's commitment state beside `rr` (logged only).
+    let rcs: string | undefined;
+    if (Ours.On("PricedLeave")) {
+        const states: string[] = [];
+        for (const x of i.reach) states.push(`${x.pid},${Commit.Code(pid, x.pid)}`);
+        const nh = Commit.Nh(pid);
+        if (nh !== undefined || states.length > 0) rcs = `${nh ?? "-"}|${states.join(";")}`;
+    }
     return [
         ["pid", pid],
         ["kind", "safe"],
@@ -553,7 +558,7 @@ export function CutFields(pid: number, who: string, place: Vector, i: Safe.Input
         ["hld", b01(i.held)],
         ["hd", b01(i.hold)],
         ["prs", b01(i.pressed === true)],
-        ["rcs", states.length > 0 ? states.join(";") : undefined],
+        ["rcs", rcs],
         ["dr", i.drawn === undefined ? undefined : i.drawn.length === 0 ? "-" : drawnField(i.drawn)],
         ["lv", a.level],
         ["kill", n0(a.kill)],

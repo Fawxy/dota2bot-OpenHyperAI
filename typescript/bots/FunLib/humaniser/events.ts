@@ -544,13 +544,17 @@ export const EVENTS = {
     },
     /**
      * Ours.PricedLeave step 1 (commit.ts, logged only): one enemy hero's state towards one of our heroes changed. `pid` ours, `epid` the enemy;
-     * `st` and `was`: `gone` (not near, no hit in 3 s), `near` (within its attack range + 2 s of its move speed + both hulls, no hit in 3 s),
+     * `st` and `was`: `gone` (not near, no hit in 3 s), `near` (seen within its attack range + 2 s of its move speed + both hulls in the last 1 s, no hit in 3 s),
      * `poked` (damaged us in the last 3 s), `committed` (two hits at least 1 s apart within 4 s, or two or more enemy heroes damaged us in the
      * last 3 s, held while that holds). `why`: `reach`, `hit`, `second` (a hit in a separate second), `pair` (a second enemy hero hitting),
-     * `left` (out of reach), `lost` (dead or not in the enemy list). `hits` this enemy's damage events on us in the last 4 s; `src` where hit
-     * times came from (`cb` InstallDamageCallback, `poll` WasRecentlyDamagedByHero each tick, before the first callback hit of the game);
-     * `hp` ours. Burst now over 1 s (`Commit.SETTINGS.ReactWindow`): `bs` this enemy's ready-spell part (SpellReady.DamageOn less its attacks
-     * over the window), `ba` one attack, both after our resistances; `bsum` the sum of both over every enemy not `gone`; `bra` hp over bsum.
+     * `left` (out of reach over 1 s, no hit in 3 s), `fog` (the same while unseen: near is held 1 s past the last tick seen in reach),
+     * `edead` (the enemy died), `dead` (our hero died: every tracked enemy goes gone, once). Enemies are keyed by player id, seen or not:
+     * one hitting from fog keeps its hit state (bs/ba empty). `hits` this enemy's hit times on us in the last 4 s: damage events with
+     * src cb, but with src poll the 10 Hz ticks on which WasRecentlyDamagedByHero was set (sampled, not events). `nh` the hitter count:
+     * how many living enemy heroes have a hit time on us in the last 3 s (window `Commit.SETTINGS.PokeWindow`; `Commit.Hitters(pid, w)` reads it for any window w; the same for every line of one hero's tick; step 2 indexes by
+     * 0, 1, 2+). `src` where hit times came from (`cb` InstallDamageCallback, `poll` the flag each tick, before the first callback hit
+     * of the game; the switch tick logs no commit line, only `ev=dmgcb kind=switch`); `hp` ours. Burst now over 1 s (`Commit.SETTINGS.ReactWindow`): `bs` this enemy's ready-spell part (SpellReady.DamageOn less its attacks
+     * over the window), `ba` one attack, both after our resistances; `bsum` the sum of both over every visible enemy tracked; `bra` hp over bsum.
      */
     commit: {
         pid: "num",
@@ -559,6 +563,7 @@ export const EVENTS = {
         was: "str",
         why: "str",
         hits: "num",
+        nh: "num",
         src: "str",
         hp: "num",
         bs: "num",
@@ -570,7 +575,7 @@ export const EVENTS = {
      * Ours.PricedLeave step 1 (commit.ts): InstallDamageCallback in a normal game, on our heroes' ids (it fires for damage taken). `kind`: `installed` (`n` player ids), `missing` (no such
      * global), `shape` (the first 3 calls: `ipid` the id it was installed for, `ok` 1 when it resolved to an enemy hero damaging our hero,
      * `args` each argument, `h:<unit>:<pid>` a handle, `n:<v>` a number, `{k=v}` a table), `sum` every 60 s: `n` calls, `ok` resolved,
-     * `cb` hits recorded from them, `poll` hits from the flag poll, `live` 1 once a callback hit has been recorded.
+     * `cb` hits recorded from them, `poll` hits from the flag poll, `live` 1 once a callback hit has been recorded; `switch` (`ipid` our hero whose hit source moved from the poll to the callback this tick: that tick's state jump is not logged as commit lines).
      */
     dmgcb: {
         kind: "str",
@@ -3167,7 +3172,7 @@ export const EVENTS = {
         hd: "num",
         /** kind=safe: an enemy hero damaged us in the last `SafeGather.SETTINGS.PressWindow` s (1/0): the kill bar is `stay` with it, `idle` without. */
         prs: "num",
-        /** kind=safe, `Ours.PricedLeave` on (logged only): each `rr` reacher's commitment state from commit.ts, `pid,st` per `;` in `rr`'s order, st `n` near, `p` poked, `c` committed, `-` none tracked. A replay ignores it. */
+        /** kind=safe, `Ours.PricedLeave` on (logged only), from commit.ts: `<nh>|<rows>`. `nh` the hitter count (living enemy heroes with a damage event on us in the last 3 s, `-` before the tracker's first tick for this hero); rows each `rr` reacher's state, `pid,st` per `;` in `rr`'s order, st `n` near, `p` poked, `c` committed, `-` none tracked. As of the tracker's last tick: Commit.Tick runs first in the Humaniser tick, so a read asked later in that tick is current and one asked from a mode between ticks is up to 0.1 s old. A replay ignores it. */
         rcs: "str",
         /** kind=safe, `Ours.TowerRead` on: `Safe.Inputs.drawn`, ";"-joined `src,dmg` rows (`tower`: its damage on us over the kill window from when it would be on us); `-`: on, nothing drawn; absent: the switch is off. */
         dr: "str",

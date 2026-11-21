@@ -355,6 +355,7 @@ ____exports.EVENTS = {
         was = "str",
         why = "str",
         hits = "num",
+        nh = "num",
         src = "str",
         hp = "num",
         bs = "num",

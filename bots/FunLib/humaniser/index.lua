@@ -315,6 +315,10 @@ local function tick(bot)
         return
     end
     steps.feed(bot)
+    local commitOk, commitErr = pcall(steps.commit, bot)
+    if not commitOk then
+        Telemetry.Failed("Commit.Tick", commitErr)
+    end
     Chat.EnsureInstalled(bot)
     Chat.FlushDeferred(function(tag, line) return HDebug.Log(tag, line) end)
     Difficulty.Init()
@@ -338,10 +342,6 @@ local function tick(bot)
     steps.orders(bot)
     steps.intent(bot)
     pcall(steps.landing, bot)
-    local commitOk, commitErr = pcall(steps.commit, bot)
-    if not commitOk then
-        Telemetry.Failed("Commit.Tick", commitErr)
-    end
     LaneControl.Tick(bot)
     steps.telemetry(bot, telemetryContext)
     pcall(CastLog.Tick, bot)

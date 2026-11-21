@@ -794,10 +794,15 @@ function ____exports.CutFields(pid, who, place, i, a)
             ","
         )
     end
-    local states = {}
+    local rcs
     if Ours.On("PricedLeave") then
+        local states = {}
         for ____, x in ipairs(i.reach) do
             states[#states + 1] = (tostring(x.pid) .. ",") .. Commit.Code(pid, x.pid)
+        end
+        local nh = Commit.Nh(pid)
+        if nh ~= nil or #states > 0 then
+            rcs = (tostring(nh or "-") .. "|") .. table.concat(states, ";")
         end
     end
     local ____array_20 = __TS__SparseArrayNew(
@@ -852,10 +857,7 @@ function ____exports.CutFields(pid, who, place, i, a)
             "prs",
             b01(i.pressed == true)
         },
-        {
-            "rcs",
-            #states > 0 and table.concat(states, ";") or nil
-        }
+        {"rcs", rcs}
     )
     local ____temp_19
     if i.drawn == nil then

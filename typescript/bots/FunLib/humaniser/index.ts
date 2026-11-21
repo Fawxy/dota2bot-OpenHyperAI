@@ -232,6 +232,10 @@ function tick(this: void, bot: Unit): void {
         return;
     }
     steps.feed(bot);
+    // The commitment tracker (Ours.PricedLeave step 1, logged only): its flag poll needs the 10 Hz tick. First, so the safe cuts this
+    // tick's steps log carry this tick's state (`rcs`); it reads nothing the steps below write. See Commit.Tick.
+    const [commitOk, commitErr] = pcall(steps.commit, bot);
+    if (!commitOk) Telemetry.Failed("Commit.Tick", commitErr);
     Chat.EnsureInstalled(bot);
     Chat.FlushDeferred((tag, line) => HDebug.Log(tag, line));
     Difficulty.Init();
@@ -254,9 +258,6 @@ function tick(this: void, bot: Unit): void {
     steps.intent(bot);
     // The landing sampler (safe here's `landing`): once per hero per tick, with telemetry off too. See SafeGather.Tick.
     pcall(steps.landing, bot);
-    // The commitment tracker (Ours.PricedLeave step 1, logged only): its flag poll needs the 10 Hz tick. See Commit.Tick.
-    const [commitOk, commitErr] = pcall(steps.commit, bot);
-    if (!commitOk) Telemetry.Failed("Commit.Tick", commitErr);
     // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
     LaneControl.Tick(bot);
     steps.telemetry(bot, telemetryContext);

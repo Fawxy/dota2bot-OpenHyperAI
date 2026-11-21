@@ -170,6 +170,7 @@ ____exports.SETTINGS = {
     SecondGap = 1,
     ReactWindow = 1,
     NearHorizon = 2,
+    NearHold = 1,
     Keep = 6,
     SumEvery = 60,
     ShapeLines = 3
@@ -211,17 +212,26 @@ function ____exports.HitState(hits, now, pokers)
     end
     return {st = "poked", why = "hit"}
 end
---- Every enemy's state towards one hero from its hit times (`hitsBy` by enemy pid) and which enemies are near: hit evidence first, then `near`, else `gone`.
-function ____exports.States(hitsBy, near, now)
-    local pokers = 0
+--- How many distinct enemy heroes in `hitsBy` have at least one hit time in [now - `window`, now]. With `window` `PokeWindow` (3 s) it is
+-- `nh`, the `pokers` of HitState; step 2's chance tables index by it (0, 1, 2+).
+function ____exports.CountHitters(hitsBy, now, window)
+    if window == nil then
+        window = ____exports.SETTINGS.PokeWindow
+    end
+    local n = 0
     for ____, hits in pairs(hitsBy) do
         for ____, t in ipairs(hits) do
-            if t <= now and now - t <= ____exports.SETTINGS.PokeWindow then
-                pokers = pokers + 1
+            if t <= now and now - t <= window then
+                n = n + 1
                 break
             end
         end
     end
+    return n
+end
+--- Every enemy's state towards one hero from its hit times (`hitsBy` by enemy pid) and which enemies are near: hit evidence first, then `near`, else `gone`.
+function ____exports.States(hitsBy, near, now)
+    local pokers = ____exports.CountHitters(hitsBy, now)
     local out = {}
     for epid, hits in pairs(hitsBy) do
         local h = ____exports.HitState(hits, now, pokers)
@@ -329,6 +339,12 @@ local counts = {n = 0, ok = 0, cb = 0, poll = 0}
 local sumAt
 local lastPoll = {}
 local current = {}
+--- Per our pid: the hitter count `nh` as last ticked (`rcs`).
+local currentNh = {}
+--- Per our pid, per enemy pid: until when `near` holds (`NearHold` past the last tick it was seen in reach).
+local nearUntil = {}
+--- Per our pid: the hit source its last tick used, so the poll-to-callback switch is not logged as a game event.
+local lastSrc = {}
 local function push(store, victim, attacker, t)
     local by = store[victim] or ({})
     store[victim] = by
@@ -401,6 +417,9 @@ local function onDamage(installed, args)
     )
 end
 --- InstallDamageCallback on each of our heroes' player ids (it reports the damage that hero takes), once per team VM.
+-- Clash: `Overrides.ApiProbe` (api_probe.ts, a probe run, off in normal games) installs its own callback on every hero id. Whether the
+-- API keeps one callback per id (the later install wins and the other goes silent) is not known, so a game with the probe on may
+-- leave this tracker on the poll or the probe blind; `ev=dmgcb kind=sum` (`n` 0, `live` 0) shows the first. Run them apart.
 local function install()
     if installedAll then
         return
@@ -417,11 +436,11 @@ local function install()
         local pid = 0
         while pid <= MAX_PLAYER_ID do
             do
-                local __continue65
+                local __continue66
                 repeat
                     local t = GetTeamForPlayer(pid)
                     if t ~= GetTeam() then
-                        __continue65 = true
+                        __continue66 = true
                         break
                     end
                     local ipid = pid
@@ -436,9 +455,9 @@ local function install()
                         end
                     )
                     n = n + 1
-                    __continue65 = true
+                    __continue66 = true
                 until true
-                if not __continue65 then
+                if not __continue66 then
                     break
                 end
             end
@@ -463,15 +482,95 @@ local function burstOn(e, bot)
     )
     return ____exports.SplitBurst(total, spa > 0 and one * w / spa or 0, one)
 end
---- Our hero's view of one enemy as last ticked (`rc` on the safe cut): `n` near, `p` poked, `c` committed, `-` gone or never seen.
+--- Our hero's view of one enemy as last ticked (`rcs` on the safe cut): `n` near, `p` poked, `c` committed, `-` gone or never seen.
 function ____exports.Code(ourPid, epid)
     local ____opt_2 = current[ourPid]
     local st = ____opt_2 and ____opt_2[epid]
     return st == "near" and "n" or (st == "poked" and "p" or (st == "committed" and "c" or "-"))
 end
+--- The hitter count `nh` towards our hero as last ticked (`rcs`), or undefined before its first tick.
+function ____exports.Nh(ourPid)
+    return currentNh[ourPid]
+end
+--- How many distinct living enemy heroes hit our hero `pid` within the last `windowSec` seconds, fogged ones included (hit times are kept
+-- by player id from the source the tracker uses now: the callback once live, else the flag poll, which records visible enemies only).
+-- Hit times are kept `Keep` (6 s), so a longer window reads as 6 s. Reads the store directly: current between ticks too.
+function ____exports.Hitters(pid, windowSec)
+    local by = (cbLive and cbHits or pollHits)[pid]
+    if by == nil then
+        return 0
+    end
+    local live = {}
+    for epid, hits in pairs(by) do
+        if IsHeroAlive(epid) then
+            live[epid] = hits
+        end
+    end
+    return ____exports.CountHitters(
+        live,
+        DotaTime(),
+        windowSec
+    )
+end
+--- The burst now on `bot` (`ReactWindow`, 1 s): per visible living enemy hero, its ready-spell part and one attack (the `bs`/`ba` split),
+-- and their sum. Takes the handle, not a pid: the reads need our hero's resistances. A fogged enemy has no handle and is left out.
+function ____exports.BurstNow(bot)
+    local by = {}
+    local sum = 0
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue79
+            repeat
+                if e:IsIllusion() or not e:IsAlive() then
+                    __continue79 = true
+                    break
+                end
+                local b = burstOn(e, bot)
+                by[e:GetPlayerID()] = b
+                sum = sum + (b.spell + b.attack)
+                __continue79 = true
+            until true
+            if not __continue79 then
+                break
+            end
+        end
+    end
+    return {by = by, sum = sum}
+end
+--- The living enemy heroes' player ids, visible or not (GetTeamForPlayer and IsHeroAlive read through fog).
+local function livingEnemies(ours)
+    local out = {}
+    do
+        local p = 0
+        while p <= MAX_PLAYER_ID do
+            do
+                local __continue83
+                repeat
+                    local t = GetTeamForPlayer(p)
+                    if t == ours or t ~= Team.Radiant and t ~= Team.Dire or not IsHeroAlive(p) then
+                        __continue83 = true
+                        break
+                    end
+                    out[#out + 1] = p
+                    __continue83 = true
+                until true
+                if not __continue83 then
+                    break
+                end
+            end
+            p = p + 1
+        end
+    end
+    return out
+end
 --- The tracker's step, once per hero per Humaniser tick (10 Hz): installs the callback, polls the damage flags, and logs each enemy's
 -- state change towards `bot` as `ev=commit`. A lower rate loses the poll's hit times (a 1 s gap between two hits needs a few samples a
--- second) and delays a transition's line. Nothing reads the state but `Code` (a log column).
+-- second) and delays a transition's line. Nothing reads the state but `Code` and `Nh` (log columns).
+-- 
+-- The state is keyed on every living enemy hero's player id, seen or not: an enemy hitting us from fog keeps its hit-based state (the
+-- callback names it). Only the reads that need a visible handle are skipped for a fogged enemy: the flag poll, the reach test (its
+-- `near` holds `NearHold` past the last tick it was seen in reach) and the burst read (`bs`/`ba` empty, left out of `bsum`). No API gives
+-- a fogged enemy's current position (GetHeroLastSeenInfo is the last seen one, which the hold already covers).
 function ____exports.Tick(bot)
     if not Ours.On("PricedLeave") then
         return
@@ -497,8 +596,25 @@ function ____exports.Tick(bot)
     end
     local pid = bot:GetPlayerID()
     local prev = current[pid] or ({})
+    local hp = bot:GetHealth()
     if not bot:IsAlive() then
+        if Telemetry.IsEnabled() then
+            for epid, was in pairs(prev) do
+                Telemetry.Event("commit", {
+                    {"pid", pid},
+                    {"epid", epid},
+                    {"st", "gone"},
+                    {"was", was},
+                    {"why", "dead"},
+                    {"nh", currentNh[pid]},
+                    {"src", lastSrc[pid]},
+                    {"hp", hp}
+                })
+            end
+        end
         current[pid] = {}
+        currentNh[pid] = nil
+        nearUntil[pid] = {}
         lastPoll[pid] = nil
         return
     end
@@ -509,54 +625,62 @@ function ____exports.Tick(bot)
     )
     lastPoll[pid] = now
     local at = bot:GetLocation()
-    local near = {}
+    local ourHull = bot:GetBoundingRadius()
     local handles = {}
-    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue77
+            local __continue92
             repeat
                 if e:IsIllusion() or not e:IsAlive() then
-                    __continue77 = true
+                    __continue92 = true
                     break
                 end
-                local epid = e:GetPlayerID()
-                handles[epid] = e
-                if bot:WasRecentlyDamagedByHero(e, w) then
-                    counts.poll = counts.poll + 1
-                    push(pollHits, pid, epid, now)
-                end
-                local l = e:GetLocation()
-                local d = math.sqrt((l.x - at.x) ^ 2 + (l.y - at.y) ^ 2)
-                local reach = e:GetAttackRange() + e:GetCurrentMovementSpeed() * ____exports.SETTINGS.NearHorizon + e:GetBoundingRadius() + bot:GetBoundingRadius()
-                near[epid] = d <= reach
-                __continue77 = true
+                handles[e:GetPlayerID()] = e
+                __continue92 = true
             until true
-            if not __continue77 then
+            if not __continue92 then
                 break
             end
         end
     end
+    local ____until = nearUntil[pid] or ({})
+    nearUntil[pid] = ____until
     local src = cbLive and "cb" or "poll"
-    local states = ____exports.States((cbLive and cbHits or pollHits)[pid] or ({}), near, now)
+    local near = {}
+    local alive = {}
+    local hitsBy = {}
+    for ____, epid in ipairs(livingEnemies(bot:GetTeam())) do
+        alive[epid] = true
+        local e = handles[epid]
+        if e ~= nil then
+            if bot:WasRecentlyDamagedByHero(e, w) then
+                counts.poll = counts.poll + 1
+                push(pollHits, pid, epid, now)
+            end
+            local l = e:GetLocation()
+            local d = math.sqrt((l.x - at.x) ^ 2 + (l.y - at.y) ^ 2)
+            local reach = e:GetAttackRange() + e:GetCurrentMovementSpeed() * ____exports.SETTINGS.NearHorizon + e:GetBoundingRadius() + ourHull
+            if d <= reach then
+                ____until[epid] = now + ____exports.SETTINGS.NearHold
+            end
+        end
+        near[epid] = (____until[epid] or -math.huge) >= now
+        local ____opt_4 = (cbLive and cbHits or pollHits)[pid]
+        hitsBy[epid] = ____opt_4 and ____opt_4[epid]
+    end
+    for epid in pairs(____until) do
+        if alive[epid] ~= true then
+            ____until[epid] = nil
+        end
+    end
+    local nh = ____exports.CountHitters(hitsBy, now)
+    local states = ____exports.States(hitsBy, near, now)
     local next = {}
     local changed = false
     for epid, s in pairs(states) do
-        do
-            local __continue81
-            repeat
-                if handles[epid] == nil then
-                    __continue81 = true
-                    break
-                end
-                next[epid] = s.st
-                if prev[epid] ~= s.st then
-                    changed = true
-                end
-                __continue81 = true
-            until true
-            if not __continue81 then
-                break
-            end
+        next[epid] = s.st
+        if prev[epid] ~= s.st then
+            changed = true
         end
     end
     for epid in pairs(prev) do
@@ -565,34 +689,40 @@ function ____exports.Tick(bot)
         end
     end
     current[pid] = next
+    currentNh[pid] = nh
+    local switched = lastSrc[pid] == "poll" and src == "cb"
+    lastSrc[pid] = src
+    if switched then
+        Telemetry.Event("dmgcb", {{"kind", "switch"}, {"ipid", pid}})
+        return
+    end
     if not changed or not Telemetry.IsEnabled() then
         return
     end
     local burst = {}
     local sum = 0
-    for epid, st in pairs(next) do
+    for epid in pairs(next) do
         do
-            local __continue87
+            local __continue108
             repeat
-                if st == "gone" then
-                    __continue87 = true
+                local e = handles[epid]
+                if e == nil then
+                    __continue108 = true
                     break
                 end
-                local b = burstOn(handles[epid], bot)
+                local b = burstOn(e, bot)
                 burst[epid] = b
                 sum = sum + (b.spell + b.attack)
-                __continue87 = true
+                __continue108 = true
             until true
-            if not __continue87 then
+            if not __continue108 then
                 break
             end
         end
     end
-    local hp = bot:GetHealth()
-    local byPid = (cbLive and cbHits or pollHits)[pid] or ({})
     local function emit(epid, st, was, why)
         local hits = 0
-        for ____, t in ipairs(byPid[epid] or ({})) do
+        for ____, t in ipairs(hitsBy[epid] or ({})) do
             if now - t <= ____exports.SETTINGS.CommitWindow then
                 hits = hits + 1
             end
@@ -607,6 +737,7 @@ function ____exports.Tick(bot)
                 {"was", was},
                 {"why", why},
                 {"hits", hits},
+                {"nh", nh},
                 {"src", src},
                 {"hp", hp},
                 {
@@ -636,7 +767,7 @@ function ____exports.Tick(bot)
     end
     for epid, was in pairs(prev) do
         if next[epid] == nil then
-            emit(epid, "gone", was, handles[epid] == nil and "lost" or "left")
+            emit(epid, "gone", was, alive[epid] ~= true and "edead" or (handles[epid] == nil and "fog" or "left"))
         end
     end
 end
@@ -650,6 +781,15 @@ function ____exports.Reset()
     end
     for k in pairs(current) do
         __TS__Delete(current, k)
+    end
+    for k in pairs(currentNh) do
+        __TS__Delete(currentNh, k)
+    end
+    for k in pairs(nearUntil) do
+        __TS__Delete(nearUntil, k)
+    end
+    for k in pairs(lastSrc) do
+        __TS__Delete(lastSrc, k)
     end
     for k in pairs(lastPoll) do
         __TS__Delete(lastPoll, k)

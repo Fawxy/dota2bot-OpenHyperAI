@@ -338,7 +338,10 @@ do
 	check("Intent.Resolve error reported", e[1] and field(e[1], "where") == "Intent.Resolve", e[1])
 	local ok2 = pcall(H.Tick, b)
 	check("Tick error swallowed", ok2)
-	check("Tick error reported", events("lua_error")[2] and field(events("lua_error")[2], "where") == "Tick", events("lua_error")[2])
+	-- Guarded steps that run first (Commit.Tick) report their own error before the unguarded one escapes to Tick's guard.
+	local tickErr
+	for _, l in ipairs(events("lua_error")) do if field(l, "where") == "Tick" then tickErr = l end end
+	check("Tick error reported", tickErr ~= nil, events("lua_error")[2])
 
 	local off = fresh({ Enable = true, LuaErrors = false })
 	check("LuaErrors = false leaves hooks unwrapped", not pcall(off.Intent.Resolve, b, BotMode.Laning, 0.42))
