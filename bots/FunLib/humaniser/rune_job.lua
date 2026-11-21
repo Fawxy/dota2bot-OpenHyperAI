@@ -1039,7 +1039,7 @@ function ____exports.Wants(bot, blocked, host)
                 if DotaTime() < leave then
                     return false
                 end
-                local why = blocked(bot) or (acting(bot) and "acting" or nil)
+                local why = blocked(bot, {at = t.at, who = "rune_trip"}) or (acting(bot) and "acting" or nil)
                 if DotaTime() > leave + ____exports.SETTINGS.StartSlack and not canStillArrive(bot, t) then
                     return skip(gateWhy[pid] or why or "late")
                 end

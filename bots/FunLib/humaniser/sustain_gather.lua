@@ -408,10 +408,16 @@ local function treeOf(bot, items, now, spot)
             return {walk = walk, safe = true}
         end
         local r = Threat.Read(bot, here, t.loc, Threat.SETTINGS.GateHorizon)
-        return {
-            walk = walk,
-            safe = Safe.Decide(SafeGather.FromRead(bot, r, {away = false, held = false, hold = false})).level ~= "deadly"
-        }
+        local si = SafeGather.FromRead(bot, r, {away = false, held = false, hold = false})
+        local sa = Safe.Decide(si)
+        SafeGather.Note(
+            bot,
+            "sustain_tree",
+            t.loc,
+            si,
+            sa
+        )
+        return {walk = walk, safe = sa.level ~= "deadly"}
     end
     local pick = near
     local tree = judge(near)
@@ -429,6 +435,13 @@ end
 local function safeHere(bot, r)
     local i = SafeGather.FromRead(bot, r, {away = false, held = true, hold = false})
     local a = Safe.Decide(i)
+    SafeGather.Note(
+        bot,
+        "sustain",
+        r.place,
+        i,
+        a
+    )
     local hitting = false
     local reach = 0
     for ____, x in ipairs(i.reach) do
@@ -473,7 +486,7 @@ local function safeSpot(bot, now, deep)
                 spot.y,
                 bot:GetLocation().z
             ),
-            {held = true}
+            {held = true, who = "sustain_spot"}
         ).level ~= "deadly"
     end
     return spot
@@ -760,6 +773,22 @@ function ____exports.ItemsText(items)
     end
     return table.concat(out, ";")
 end
+--- The executor's running answer as `kind,slot,name,seconds since its start,hp0,dur,x,y` (an absent part is empty).
+function ____exports.RunText(r, now)
+    return table.concat(
+        {
+            r.kind,
+            r.slot or "",
+            r.name or "",
+            t1(now - r.started),
+            n0(r.hp0),
+            r.dur ~= nil and t1(r.dur) or "",
+            r.at ~= nil and n0(r.at.x) or "",
+            r.at ~= nil and n0(r.at.y) or ""
+        },
+        ","
+    )
+end
 --- The `ev=cut kind=sustain` fields for these inputs and answer (tools/hlog/sustain_diff.js reads them back into Inputs).
 function ____exports.CutFields(pid, i, a)
     local shop = {}
@@ -880,6 +909,10 @@ function ____exports.CutFields(pid, i, a)
         {
             "als",
             #al > 0 and table.concat(al, ";") or nil
+        },
+        {
+            "srn",
+            i.run ~= nil and ____exports.RunText(i.run, i.now) or nil
         },
         {"ak", a.kind},
         {"anm", a.name},

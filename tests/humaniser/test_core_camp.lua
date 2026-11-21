@@ -353,6 +353,18 @@ do
 	check("a hero in reach that cannot kill: the trip starts", #lines(out2, "core_camp", "start") == 1, table.concat(lines(out2, "core_camp"), " | "))
 end
 
+-- Ours.TripRead: the start has no HP floor of its own. At 60% HP with nobody near a weak camp the trip starts; with the switch off the 0.65 floor holds it.
+do
+	local function at60(tripRead)
+		local H, core = world({ camps = { { "small", SMALL } } })
+		package.loaded["bots/FunLib/custom_loader"].Ours.TripRead = tripRead
+		core.hp = core.maxhp * 0.6
+		return #lines(run(H, core, 305), "core_camp", "start")
+	end
+	check("TripRead: a core at 60% HP starts its camp trip", at60(nil) == 1)
+	check("TripRead off: the 0.65 floor holds it", at60(false) == 0)
+end
+
 -- The gate tally: each planning second of a minute counted by what held it, flushed when the minute turns.
 do
 	local H, core = world({ t = 294.5, camps = { { "small", SMALL } }, enemyAt = Vector(300, -6600), clash = 8 })

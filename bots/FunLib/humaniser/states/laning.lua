@@ -276,11 +276,11 @@ function safeFrame(pid)
     end
     return f
 end
-function askDeadly(bot, place, held, onFault)
+function askDeadly(bot, place, held, walkIn, onFault)
     if onFault == nil then
         onFault = false
     end
-    local ok, ans = pcall(SafeGather.At, bot, place, {held = held, horizon = PICK_HORIZON})
+    local ok, ans = pcall(SafeGather.At, bot, place, {held = held, horizon = PICK_HORIZON, who = walkIn and "pick_in" or "pick", sampled = walkIn})
     if not ok then
         Telemetry.Failed("PickSafe", ans)
         return onFault
@@ -299,7 +299,8 @@ function deadlyAt(bot, t)
             f.here = askDeadly(
                 bot,
                 bot:GetLocation(),
-                true
+                true,
+                false
             )
         end
         deadly = f.here
@@ -311,6 +312,7 @@ function deadlyAt(bot, t)
                 t.creep:GetLocation(),
                 bot:GetAttackRange()
             ),
+            true,
             true,
             t.walk > LanePick.MAX_WALK and Contest.ReadOn()
         )

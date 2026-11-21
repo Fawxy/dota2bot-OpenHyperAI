@@ -31,7 +31,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = { StackExecute = false, DoubleStack = false, RuneRotation = true, JobChooser = true, RuneSpawn = o.spawn ~= false, MidWater = o.water == true,
-		ArbiterDrive = o.drive == true }
+		ArbiterDrive = o.drive == true, TripRead = o.tripRead }
 	T = o.t or 315
 	CURRENT_TEAM = RAD
 	status = {}
@@ -244,10 +244,27 @@ do
 	check("the mid takes the rune at its spot through the rune mode", midLine ~= nil and field(midLine, "phase") == "take" and field(midLine, "res") == "ok", midLine)
 end
 
--- The planned support's start gate drops it (low HP at its leave time): the spot goes to the other support, skipped as
--- plan-other at the plan, which starts late, walks straight in and still takes the rune (rspchk2: 3 of 10 plans uncovered).
+-- Ours.TripRead: low HP alone does not drop the planned support: with nobody able to kill it on the walk it takes its rune.
 do
 	local H = world()
+	SPAWN_AT = P2
+	local mid = hero(2, 2, Vector(-600, 300))
+	local p4 = hero(3, 4, Vector(1500, -3500))
+	local p5 = hero(4, 5, Vector(-1000, -2500))
+	p4.hp, p4.maxhp = 10, 100
+	local out = run(H, { mid, p4, p5 }, 368)
+	local p4Line
+	for _, l in ipairs(lines(out, "rune_job")) do
+		if field(l, "pid") == "3" and field(l, "kind") == "power" then p4Line = l end
+	end
+	check("TripRead: pos4 at 10% HP with no enemy on its walk keeps the plan and takes the rune",
+		#lines(out, "rune_plan") == 1 and field(p4Line, "res") == "ok" and field(p4Line, "phase") == "take", p4Line)
+end
+
+-- The planned support's start gate drops it (low HP at its leave time, with the old floor: TripRead off): the spot goes to the other support, skipped as
+-- plan-other at the plan, which starts late, walks straight in and still takes the rune (rspchk2: 3 of 10 plans uncovered).
+do
+	local H = world({ tripRead = false })
 	SPAWN_AT = P2
 	local mid = hero(2, 2, Vector(-600, 300))
 	local p4 = hero(3, 4, Vector(1500, -3500))
@@ -271,7 +288,7 @@ end
 
 -- No support to hand the spot to: the plan logs the drop and nobody else is sent.
 do
-	local H = world()
+	local H = world({ tripRead = false })
 	SPAWN_AT = P2
 	local mid = hero(2, 2, Vector(-600, 300))
 	local p4 = hero(3, 4, Vector(1500, -3500))

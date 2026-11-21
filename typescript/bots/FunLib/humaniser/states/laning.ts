@@ -199,8 +199,8 @@ function safeFrame(pid: number): SafeFrame {
  */
 const PICK_HORIZON = 2;
 
-function askDeadly(bot: Unit, place: Vector, held: boolean, onFault = false): boolean {
-    const [ok, ans] = pcall(SafeGather.At, bot, place, { held, horizon: PICK_HORIZON });
+function askDeadly(bot: Unit, place: Vector, held: boolean, walkIn: boolean, onFault = false): boolean {
+    const [ok, ans] = pcall(SafeGather.At, bot, place, { held, horizon: PICK_HORIZON, who: walkIn ? "pick_in" : "pick", sampled: walkIn });
     if (!ok) {
         Telemetry.Failed("PickSafe", ans);
         return onFault;
@@ -219,10 +219,10 @@ function deadlyAt(bot: Unit, t: Lib.Verbs.LaneTarget): boolean {
     let deadly: boolean;
     if (t.walk <= 0) {
         // Every creep already in range is hit from where the hero stands: one ask answers them all.
-        if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true);
+        if (f.here === undefined) f.here = askDeadly(bot, bot.GetLocation(), true, false);
         deadly = f.here;
     // A last hit is a step in and out, not a place to settle: the leave bar (held), not a fresh place's (pair 19/11: 80 and 66 drops a game at the fresh bar).
-    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), true, t.walk > LanePick.MAX_WALK && Contest.ReadOn());
+    } else deadly = askDeadly(bot, Contest.StandPoint(bot.GetLocation(), t.creep.GetLocation() as unknown as Vector, bot.GetAttackRange()), true, true, t.walk > LanePick.MAX_WALK && Contest.ReadOn());
     f.creeps.set(t.creep, deadly);
     return deadly;
 }

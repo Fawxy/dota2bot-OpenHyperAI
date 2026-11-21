@@ -1410,7 +1410,7 @@ local function inLaneGate(bot, now)
     if mode ~= BotMode.Laning and mode ~= BotMode.None then
         return "mode"
     end
-    if hpOf(bot) < s.StartHP then
+    if not Ours.On("TripRead") and hpOf(bot) < s.StartHP then
         return "low-hp"
     end
     local front = GetLaneFrontLocation(

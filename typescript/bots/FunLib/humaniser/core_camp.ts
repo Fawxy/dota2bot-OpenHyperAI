@@ -816,7 +816,8 @@ function inLaneGate(bot: Unit, now: number): string | undefined {
     if (now < s.From) return "time";
     const mode = bot.GetActiveMode();
     if (mode !== BotMode.Laning && mode !== BotMode.None) return "mode";
-    if (hpOf(bot) < s.StartHP) return "low-hp";
+    // Ours.TripRead: no floor of its own; the trip gate reads the walk and the plan's clear prices the neutrals.
+    if (!Ours.On("TripRead") && hpOf(bot) < s.StartHP) return "low-hp";
     const front = GetLaneFrontLocation(bot.GetTeam(), bot.GetAssignedLane(), 0);
     if (dist(bot.GetLocation(), front) > s.FrontRadius) return "far";
     // Only creeps at the core hold it: a wave fighting at the front is priced by the forecast (cngchk3: the front clause held

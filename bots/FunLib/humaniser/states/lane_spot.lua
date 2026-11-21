@@ -533,7 +533,7 @@ function ____exports.Compute(bot, role, fed, hold)
             heroAt[#heroAt + 1] = at
         end
     end
-    local function optsFor(p, who)
+    local function optsFor(p, who, sampled)
         local toward = false
         for ____, at in ipairs(heroAt) do
             if len(p.x - at.x, p.y - at.y) < len(here.x - at.x, here.y - at.y) then
@@ -543,7 +543,8 @@ function ____exports.Compute(bot, role, fed, hold)
         return {
             from = toward and here or p,
             held = len(p.x - here.x, p.y - here.y) <= HELD_NEAR,
-            who = who
+            who = who,
+            sampled = sampled
         }
     end
     local function answerAt(p)
@@ -554,7 +555,7 @@ function ____exports.Compute(bot, role, fed, hold)
             a = SafeGather.At(
                 bot,
                 p,
-                optsFor(p)
+                optsFor(p, "spot_c", true)
             )
             if t0 ~= nil then
                 Telemetry.DeepAdd("lane_spot.Compute:read", t0)
