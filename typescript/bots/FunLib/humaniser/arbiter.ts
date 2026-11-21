@@ -170,9 +170,10 @@ export function Drive(bot: Unit, chooserJob: string | undefined): Candidate {
     return p;
 }
 
-/** The pick Drive last computed for this hero, without computing one (choice_shadow's line). Reads only. */
-export function LastPick(bot: Unit): Candidate | undefined {
-    return drivePick[bot.GetPlayerID()];
+/** The pick Drive computed for this hero this frame, without computing one (choice_shadow's line). Reads only. */
+export function PickThisFrame(bot: Unit): Candidate | undefined {
+    const pid = bot.GetPlayerID();
+    return driveAt[pid] === DotaTime() ? drivePick[pid] : undefined;
 }
 
 /**

@@ -68,7 +68,7 @@ check("line: the active mode is the winner", l:find("win=laning", 1, true) ~= ni
 check("line: roam not computed, the drive's reason", l:find("d_roam=-drive", 1, true) ~= nil, l)
 check("line: team_roam's own desire, held at 0 after its code", l:find("d_team_roam=0.700", 1, true) ~= nil
 	and l:find("team_roam:0.00", 1, true) ~= nil, l)
-check("line: OHA's top over computed modes is team_roam, incomplete", l:find("top=team_roam", 1, true) ~= nil and l:find("inc=1", 1, true) ~= nil, l)
+check("line: OHA's top over computed modes is team_roam", l:find("top=team_roam", 1, true) ~= nil and l:find("inc=", 1, true) == nil, l)
 check("line: the borrowed hold named", l:find('by="ArbiterDrive:DriveAfter borrowed(lane)"', 1, true) ~= nil and l:find("how=zeroed", 1, true) ~= nil, l)
 check("line: the drive's pick and lane desire", l:find("pick=lane", 1, true) ~= nil and l:find("lfl=0.550", 1, true) ~= nil, l)
 
@@ -81,24 +81,64 @@ check("probe: roam's own value, marked probed", p:find("d_roam=0.800", 1, true) 
 check("probe: roam would have won, zeroed by the drive before its code", p:find("top=roam", 1, true) ~= nil
 	and p:find('by=ArbiterDrive:DriveDecide(lane)', 1, true) ~= nil, p)
 
--- Off the drive: OHA's modes run, and our laning branch outbids team roam.
-do
-	local H, bot = world({ ChoiceShadow = true, ArbiterDrive = false, CoreLastHit = true })
+-- Runs `frames` frames of the laning and team_roam gates (stubs `lane(f)` and `roam(f)`); every shadow line printed.
+local function frames(H, bot, n, lane, roam, step, between)
 	local printed, old = {}, print
 	print = function(s) table.insert(printed, tostring(s)) end
 	local ok, err = pcall(function()
-		for f = 1, 2 do
-			H.Chooser.Gate(bot, "laning", function() return 0.9 end)()
-			H.Chooser.Gate(bot, "team_roam", function() return 0.7 end)()
-			T = T + 0.1
+		for f = 1, n do
+			if between then between(f) end
+			H.Chooser.Gate(bot, "laning", function() return lane(f) end)()
+			H.Chooser.Gate(bot, "team_roam", function() return roam(f) end)()
+			T = T + (step or 0.1)
 		end
 	end)
 	print = old
 	if not ok then error(err, 0) end
-	local line = ""
-	for _, s in ipairs(printed) do if s:find("kind=shadow", 1, true) then line = s end end
+	local lines = {}
+	for _, s in ipairs(printed) do if s:find("kind=shadow", 1, true) then lines[#lines + 1] = s end end
+	return lines
+end
+
+-- Off the drive: laning's own branch fired (MarkMix) and wins at its own desire: nothing to name.
+do
+	local H, bot = world({ ChoiceShadow = true, ArbiterDrive = false, CoreLastHit = true })
+	local lines = frames(H, bot, 2, function() H.ChoiceShadow.MarkMix(bot) return 0.9 end, function() return 0.7 end)
+	local line = lines[#lines] or ""
 	check("drive off: laning wins at its own desire, no difference to name", line:find("top=laning", 1, true) ~= nil
 		and line:find("how=", 1, true) == nil, line)
-	check("drive off: laning marked as holding our branch", line:find("mix=laning", 1, true) ~= nil, line)
+	check("drive off: laning's branch marked as fired", line:find("mix=laning", 1, true) ~= nil, line)
+end
+
+-- Mix attribution: laning's branch fired but laning's desire (with it) is under team roam's, and Valve held laning anyway:
+-- the branch cannot have made the difference, so the line names Valve's arbitration. A frame where it did not fire has no mix.
+do
+	local H, bot = world({ ChoiceShadow = true, ArbiterDrive = false, CoreLastHit = true })
+	local lines = frames(H, bot, 3, function(f)
+		if f == 1 then H.ChoiceShadow.MarkMix(bot) end
+		return 0.3
+	end, function() return 0.7 end, 1.0)
+	local a, b = lines[1] or "", lines[2] or ""
+	check("mix: laning's fired branch logged", a:find("mix=laning", 1, true) ~= nil, a)
+	check("mix: under top, the branch is not the cause", a:find("top=team_roam", 1, true) ~= nil
+		and a:find("how=valve by=Valve:arbitration", 1, true) ~= nil and a:find("CoreLastHit", 1, true) == nil, a)
+	check("mix: a frame without the branch has no laning mix", b ~= "" and b:find("mix=laning", 1, true) == nil, b)
+end
+
+-- Snapshot: on the frame Arbiter.Shadow's tick lands it computes the new frame's pick before the line goes out; the line
+-- still names the pick and candidates of the frame its values came from.
+do
+	local H, bot = world({ ChoiceShadow = true })
+	local Trade = require("bots/FunLib/humaniser/states/trade")
+	local running = false
+	Trade.Running = function() return running end
+	local lines = frames(H, bot, 2, function() return 0.3 end, function() return 0.7 end, 0.3, function(f) running = f == 2 end)
+	local Arbiter = require("bots/FunLib/humaniser/arbiter")
+	T = T - 0.3 -- back to the second frame
+	local now = Arbiter.PickThisFrame(bot)
+	local l1 = lines[1] or ""
+	check("snapshot: the next frame's pick differs (the test bites)", now ~= nil and now.name ~= "lane", now and now.name or "nil")
+	check("snapshot: the line names its own frame's pick and candidates", l1:find("pick=lane", 1, true) ~= nil
+		and l1:find("cand=lane:", 1, true) ~= nil and l1:find("trade:", 1, true) == nil, l1)
 end
 finish()

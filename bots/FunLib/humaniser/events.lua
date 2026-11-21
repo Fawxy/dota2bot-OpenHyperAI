@@ -1640,7 +1640,6 @@ ____exports.EVENTS = {
         win = "str",
         top = "str",
         tv = "num",
-        inc = "num",
         how = "str",
         by = "str",
         mix = "str",
