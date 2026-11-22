@@ -1,0 +1,123 @@
+[HEV] t=-90 ev=bot pid=3 hero=jakiro team=2 schema=2 humaniser=0 build=stock-cb814c6c pos=4 ours=stock
+[HEV] t=-90 ev=bot pid=4 hero=earthshaker team=2 schema=2 humaniser=0 build=stock-cb814c6c pos=5 ours=stock
+[HEV] t=-90 ev=bot pid=1 hero=pudge team=2 schema=2 humaniser=0 build=stock-cb814c6c pos=2 ours=stock
+[HEV] t=-90 ev=bot pid=2 hero=sniper team=2 schema=2 humaniser=0 build=stock-cb814c6c pos=3 ours=stock
+[HEV] t=-90 ev=bot pid=0 hero=luna team=2 schema=2 humaniser=0 build=stock-cb814c6c pos=1 ours=stock
+[HEV] t=90 ev=snap pid=2 x=-6408 y=5136 alive=1 hp=100 deaths=0 mode=laning
+[HEV] t=91 ev=snap pid=2 x=-6432 y=5121 alive=1 hp=100 deaths=0 mode=laning
+[HEV] t=92 ev=snap pid=2 x=-6432 y=5121 alive=1 hp=100 deaths=0 mode=laning
+[HEV] t=93 ev=snap pid=2 x=-6432 y=5121 alive=1 hp=100 deaths=0 mode=laning
+[HEV] t=94 ev=snap pid=2 x=-6432 y=5121 alive=1 hp=100 deaths=0 mode=laning
+[HEV] t=95 ev=snap pid=2 x=-6384 y=5152 alive=1 hp=100 deaths=0 mode=laning tid=h9
+[HEV] t=96 ev=snap pid=2 x=-6354 y=5175 alive=1 hp=100 deaths=0 mode=laning tid=h9
+[HEV] t=97 ev=snap pid=2 x=-6337 y=5183 alive=1 hp=100 deaths=0 mode=laning tid=h9
+[HEV] t=98 ev=snap pid=2 x=-6310 y=5135 alive=1 hp=100 deaths=0 mode=laning
+[HEV] t=99 ev=snap pid=2 x=-6104 y=5092 alive=1 hp=100 deaths=0 mode=attack
+[HEV] t=100 ev=snap pid=2 x=-5959 y=5103 alive=1 hp=95 deaths=0 mode=farm
+[HEV] t=101 ev=snap pid=2 x=-5985 y=4819 alive=1 hp=94 deaths=0 mode=farm
+[HEV] t=102 ev=snap pid=2 x=-5999 y=4658 alive=1 hp=94 deaths=0 mode=team_roam
+[HEV] t=103 ev=snap pid=2 x=-6033 y=4778 alive=1 hp=94 deaths=0 mode=attack
+[HEV] t=104 ev=snap pid=2 x=-5917 y=5016 alive=1 hp=93 deaths=0 mode=attack tid=h9
+[HEV] t=105 ev=snap pid=2 x=-5864 y=5083 alive=1 hp=92 deaths=0 mode=attack
+[HEV] t=106 ev=snap pid=2 x=-5905 y=4946 alive=1 hp=92 deaths=0 mode=farm
+[HEV] t=107 ev=snap pid=2 x=-5989 y=4674 alive=1 hp=93 deaths=0 mode=farm
+[HEV] t=108 ev=snap pid=2 x=-5925 y=4412 alive=1 hp=93 deaths=0 mode=attack
+[HEV] t=109 ev=snap pid=2 x=-5767 y=4294 alive=1 hp=93 deaths=0 mode=attack
+[HEV] t=110 ev=snap pid=2 x=-5847 y=4346 alive=1 hp=94 deaths=0 mode=attack
+[HEV] t=140 ev=snap pid=1 x=-96 y=12 alive=1 hp=91 deaths=0 mode=laning
+[HEV] t=141 ev=snap pid=1 x=-225 y=-134 alive=1 hp=90 deaths=0 mode=laning
+[HEV] t=142 ev=snap pid=1 x=-206 y=-185 alive=1 hp=86 deaths=0 mode=laning
+[HEV] t=143 ev=snap pid=1 x=-280 y=-189 alive=1 hp=87 deaths=0 mode=laning
+[HEV] t=144 ev=snap pid=1 x=-269 y=-174 alive=1 hp=82 deaths=0 mode=laning
+[HEV] t=145 ev=snap pid=1 x=-183 y=-187 alive=1 hp=83 deaths=0 mode=laning
+[HEV] t=146 ev=snap pid=1 x=-90 y=-178 alive=1 hp=83 deaths=0 mode=team_roam
+[HEV] t=147 ev=snap pid=1 x=-81 y=-85 alive=1 hp=84 deaths=0 mode=laning
+[HEV] t=148 ev=snap pid=1 x=-80 y=-76 alive=1 hp=84 deaths=0 mode=laning
+[HEV] t=149 ev=snap pid=1 x=-75 y=61 alive=1 hp=85 deaths=0 mode=laning
+[HEV] t=150 ev=snap pid=1 x=175 y=166 alive=1 hp=86 deaths=0 mode=laning
+[HEV] t=151 ev=snap pid=1 x=61 y=80 alive=1 hp=72 deaths=0 mode=retreat
+[HEV] t=152 ev=snap pid=1 x=-107 y=-46 alive=1 hp=72 deaths=0 mode=retreat
+[HEV] t=153 ev=snap pid=1 x=-201 y=-163 alive=1 hp=66 deaths=0 mode=retreat
+[HEV] t=154 ev=snap pid=1 x=-200 y=-163 alive=1 hp=67 deaths=0 mode=team_roam
+[HEV] t=155 ev=snap pid=1 x=-359 y=-170 alive=1 hp=66 deaths=0 mode=laning
+[HEV] t=156 ev=snap pid=1 x=-367 y=-237 alive=1 hp=67 deaths=0 mode=laning
+[HEV] t=157 ev=snap pid=1 x=-242 y=-423 alive=1 hp=67 deaths=0 mode=laning
+[HEV] t=158 ev=snap pid=1 x=-290 y=-322 alive=1 hp=68 deaths=0 mode=laning
+[HEV] t=159 ev=snap pid=1 x=-476 y=-427 alive=1 hp=69 deaths=0 mode=laning
+[HEV] t=160 ev=snap pid=1 x=-375 y=-280 alive=1 hp=64 deaths=0 mode=roam
+[HEV] t=161 ev=snap pid=1 x=-375 y=-280 alive=1 hp=65 deaths=0 mode=laning
+[HEV] t=162 ev=snap pid=1 x=-571 y=-409 alive=1 hp=60 deaths=0 mode=laning
+[HEV] t=163 ev=snap pid=1 x=-586 y=-336 alive=1 hp=60 deaths=0 mode=roam
+[HEV] t=164 ev=snap pid=1 x=-564 y=-356 alive=1 hp=61 deaths=0 mode=team_roam
+[HEV] t=165 ev=snap pid=1 x=-403 y=-260 alive=1 hp=57 deaths=0 mode=team_roam
+[HEV] t=166 ev=snap pid=1 x=-426 y=-361 alive=1 hp=55 deaths=0 mode=laning
+[HEV] t=167 ev=snap pid=1 x=-491 y=-308 alive=1 hp=56 deaths=0 mode=laning
+[HEV] t=168 ev=snap pid=1 x=-530 y=-398 alive=1 hp=57 deaths=0 mode=laning
+[HEV] t=169 ev=snap pid=1 x=-637 y=-447 alive=1 hp=57 deaths=0 mode=laning
+[HEV] t=170 ev=snap pid=1 x=-508 y=-526 alive=1 hp=57 deaths=0 mode=laning
+[HEV] t=305 ev=snap pid=0 x=5200 y=-4214 alive=1 hp=28 deaths=0 mode=roam
+[HEV] t=306 ev=snap pid=0 x=5521 y=-4178 alive=1 hp=29 deaths=0 mode=roam
+[HEV] t=307 ev=snap pid=0 x=5832 y=-4084 alive=1 hp=29 deaths=0 mode=roam
+[HEV] t=308 ev=snap pid=0 x=6103 y=-3944 alive=1 hp=29 deaths=0 mode=roam
+[HEV] t=309 ev=snap pid=0 x=6115 y=-3858 alive=1 hp=30 deaths=0 mode=laning
+[HEV] t=310 ev=snap pid=0 x=6143 y=-3764 alive=1 hp=32 deaths=0 mode=laning
+[HEV] t=311 ev=snap pid=0 x=6027 y=-3850 alive=1 hp=13 deaths=0 mode=retreat
+[HEV] t=312 ev=snap pid=0 x=5812 y=-4093 alive=1 hp=14 deaths=0 mode=retreat
+[HEV] t=313 ev=snap pid=0 x=5533 y=-4226 alive=1 hp=14 deaths=0 mode=roam
+[HEV] t=314 ev=snap pid=0 x=5301 y=-4430 alive=1 hp=15 deaths=0 mode=retreat
+[HEV] t=315 ev=snap pid=0 x=5084 y=-4672 alive=1 hp=15 deaths=0 mode=roam
+[HEV] t=316 ev=snap pid=0 x=4873 y=-4656 alive=1 hp=16 deaths=0 mode=retreat
+[HEV] t=317 ev=snap pid=0 x=4609 y=-4600 alive=1 hp=8 deaths=0 mode=retreat
+[HEV] t=318 ev=snap pid=0 x=4303 y=-4492 alive=1 hp=9 deaths=0 mode=retreat
+[HEV] t=319 ev=snap pid=0 x=3998 y=-4379 alive=1 hp=10 deaths=0 mode=retreat
+[HEV] t=320 ev=snap pid=0 x=3711 y=-4478 alive=1 hp=12 deaths=0 mode=retreat
+[HEV] t=321 ev=snap pid=0 x=3421 y=-4623 alive=1 hp=13 deaths=0 mode=retreat
+[HEV] t=322 ev=snap pid=0 x=3101 y=-4675 alive=1 hp=14 deaths=0 mode=retreat
+[HEV] t=323 ev=snap pid=0 x=2781 y=-4733 alive=1 hp=16 deaths=0 mode=retreat
+[HEV] t=324 ev=snap pid=0 x=2461 y=-4786 alive=1 hp=12 deaths=0 mode=retreat
+[HEV] t=325 ev=snap pid=0 x=2212 y=-4783 alive=1 hp=2 deaths=0 mode=retreat
+[HEV] t=326 ev=snap pid=0 x=2028 y=-4782 alive=1 hp=4 deaths=0 mode=retreat
+[HEV] t=327 ev=snap pid=0 x=1703 y=-4779 alive=1 hp=5 deaths=0 mode=retreat
+[HEV] t=328 ev=snap pid=0 x=1378 y=-4777 alive=1 hp=6 deaths=0 mode=retreat
+[HEV] t=329 ev=snap pid=0 x=1055 y=-4801 alive=1 hp=8 deaths=0 mode=retreat
+[HEV] t=350.467 ev=snap pid=0 x=-7104 y=-6088 alive=1 hp=100 deaths=1 mode=retreat
+[HEV] t=530.167 ev=snap pid=1 x=3037 y=-3633 alive=1 hp=94 deaths=1 mode=laning
+[HEV] t=531.167 ev=snap pid=1 x=2768 y=-3451 alive=1 hp=95 deaths=1 mode=laning
+[HEV] t=532.167 ev=snap pid=1 x=2508 y=-3268 alive=1 hp=96 deaths=1 mode=laning
+[HEV] t=533.167 ev=snap pid=1 x=2276 y=-3042 alive=1 hp=96 deaths=1 mode=laning
+[HEV] t=534.167 ev=snap pid=1 x=2065 y=-2794 alive=1 hp=97 deaths=1 mode=laning
+[HEV] t=535.167 ev=snap pid=1 x=1857 y=-2545 alive=1 hp=97 deaths=1 mode=laning
+[HEV] t=536.167 ev=snap pid=1 x=1642 y=-2301 alive=1 hp=98 deaths=1 mode=laning
+[HEV] t=537.167 ev=snap pid=1 x=1427 y=-2058 alive=1 hp=99 deaths=1 mode=laning
+[HEV] t=538.167 ev=snap pid=1 x=1211 y=-1815 alive=1 hp=99 deaths=1 mode=laning
+[HEV] t=539.167 ev=snap pid=1 x=1165 y=-1512 alive=1 hp=100 deaths=1 mode=rune
+[HEV] t=540.167 ev=snap pid=1 x=1147 y=-1220 alive=1 hp=100 deaths=1 mode=item
+[HEV] t=541.167 ev=snap pid=1 x=949 y=-1110 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=542.167 ev=snap pid=1 x=672 y=-941 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=543.167 ev=snap pid=1 x=386 y=-786 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=544.167 ev=snap pid=1 x=234 y=-703 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=545.167 ev=snap pid=1 x=209 y=-621 alive=1 hp=100 deaths=1 mode=attack tid=h6
+[HEV] t=546.167 ev=snap pid=1 x=209 y=-621 alive=1 hp=100 deaths=1 mode=attack tid=h6
+[HEV] t=547.167 ev=snap pid=1 x=209 y=-621 alive=1 hp=100 deaths=1 mode=attack tid=h6
+[HEV] t=548.900 ev=snap pid=1 x=358 y=-658 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=549.900 ev=snap pid=1 x=358 y=-658 alive=1 hp=100 deaths=1 mode=attack tid=h6
+[HEV] t=550.900 ev=snap pid=1 x=589 y=-729 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=551.900 ev=snap pid=1 x=904 y=-794 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=552.900 ev=snap pid=1 x=1147 y=-617 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=553.900 ev=snap pid=1 x=1368 y=-379 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=554.900 ev=snap pid=1 x=1608 y=-161 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=555.900 ev=snap pid=1 x=1766 y=-28 alive=1 hp=100 deaths=1 mode=attack
+[HEV] t=556.900 ev=snap pid=1 x=1851 y=33 alive=1 hp=100 deaths=1 mode=roam
+[HEV] t=557.900 ev=snap pid=1 x=1903 y=50 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=558.900 ev=snap pid=1 x=1650 y=135 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=559.900 ev=snap pid=1 x=1349 y=101 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=560.900 ev=snap pid=1 x=1102 y=-92 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=561.900 ev=snap pid=1 x=784 y=-59 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=562.900 ev=snap pid=1 x=465 y=3 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=563.900 ev=snap pid=1 x=173 y=-25 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=564.900 ev=snap pid=1 x=-73 y=-183 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=565.900 ev=snap pid=1 x=-162 y=-237 alive=1 hp=100 deaths=1 mode=team_roam
+[HEV] t=566.900 ev=snap pid=1 x=-183 y=-240 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=567.900 ev=snap pid=1 x=-504 y=-294 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=568.900 ev=snap pid=1 x=-637 y=-219 alive=1 hp=100 deaths=1 mode=laning
+[HEV] t=569.900 ev=snap pid=1 x=-372 y=-369 alive=1 hp=100 deaths=1 mode=laning
