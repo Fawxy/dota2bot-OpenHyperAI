@@ -1,4 +1,4 @@
--- Kill chances (ROADMAP row 1 step 1, docs/proposals/2026-11-17-kill-chances.md): one row per hunter-chance, read per side by
+-- Kill chances (ROADMAP row 1 step 1, the `kill-chances` proposal (master tag `pre-process-v5`)): one row per hunter-chance, read per side by
 -- kill_chances.js. From ev_snap by whole second (each hero's last snapshot in the second), lineup heroes pos 1-5:
 --   chance     a hero alive at 40% HP or less with an opposing hero alive at 40% or more within 1,000, at a second up to
 --              :until - 12 (708, 11:48, with until 720); one chance per low hero per run of such seconds, a new one after

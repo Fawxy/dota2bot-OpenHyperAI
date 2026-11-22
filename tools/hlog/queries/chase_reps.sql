@@ -1,4 +1,4 @@
--- retreat-linger chase reps (slice retreat, master docs/team/specs/2026-11-10-retreat-read-engaged.md): one row per chase rep
+-- retreat-linger chase reps (slice retreat, the `2026-11-10-retreat-read-engaged` spec (master tag `pre-process-v5`)): one row per chase rep
 -- (`ev=drill ph=rep input=on`) of a retreat-linger game whose file matches :like (null = all), for the cast (the `ph=role role=cast`
 -- hero). A rep runs from its start to the next rep's start (60 s without one). Both arms (read on, old limits) read on one truth.
 --   low      the cast's lowest HP (%) in the rep

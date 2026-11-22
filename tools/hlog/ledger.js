@@ -1,4 +1,4 @@
-// The loss ledger (rework step 6, docs/proposals/2026-11-13-rework.md s6): for the games of one or more runs, every death to
+// The loss ledger (rework step 6, the `rework` proposal (master tag `pre-process-v5`) s6): for the games of one or more runs, every death to
 // --until and every last hit of the gap at --at assigned to exactly one cause, ours against OHA, summing to the gap.
 // Usage: node ledger.js <run> [<run> ...] [--null <run> ...] [--noise [--games 10]] [--at 600] [--until 720]
 //                       [--rows deaths|creeps] [--by lane|pos] [--json] [--no-ingest]

@@ -1,4 +1,4 @@
--- Pair episodes (docs/proposals/2026-11-18-fighting-together.md "Tools"; D10, D19): one row per pair fight, read per side by
+-- Pair episodes (the `fighting-together` proposal (master tag `pre-process-v5`) "Tools"; D10, D19): one row per pair fight, read per side by
 -- pair_episodes.js. From ev_snap by whole second (each hero's last snapshot in the second), lineup heroes pos 1-5:
 --   hit        a second in which a hero's snapshot `tid` names an enemy lineup hero (the target)
 --   fight      one side's attack run on one target (fragment ep_attack); `t0`, `t1` its first and last hit seconds, `t0` up to

@@ -269,7 +269,7 @@ function coreLane(store, file, gameNo) {
 }
 
 /**
- * L.1 creep-economy keys per team (`_r` Radiant, `_d` Dire) at 10:00, from the views creep_share and creep_guard (GOALS.md L.1,
+ * L.1 creep-economy keys per team (`_r` Radiant, `_d` Dire) at 10:00, from the views creep_share and creep_guard (the former GOALS.md L.1,
  * LOGGING.md): `share`, `team_lhdn` (team last hits + denies), `core_lh`, `core_dn`, `sup_lh`, `sup_dn` (pos 4-5), `deaths_t` (counts a hero still dead
  * at 10:00), `not_in_share`. Undefined for a team with no row (share and not_in_share are NULL on logs from before 406ee95).
  */

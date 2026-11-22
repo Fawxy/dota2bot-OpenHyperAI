@@ -1,4 +1,4 @@
--- retreat-linger windows (slice retreat, master docs/team/specs/2026-11-10-retreat-read-bars.md): one row per
+-- retreat-linger windows (slice retreat, the `2026-11-10-retreat-read-bars` spec (master tag `pre-process-v5`)): one row per
 -- `ev=drill ph=linger_go` (the HP trigger) in games whose file matches :like, joined to its `ph=linger` (t0: the chaser first
 -- stands at the stand-off, the window's clock; null when it never did) and `ph=linger_end` by (game, chaser pid, rep).
 --   rep, tgo, t0, thp, dgo, res, secs_to_contact (from t0), dmin (since the stand-off), dmax, dend (last seen), uns (seconds the

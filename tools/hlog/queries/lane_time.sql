@@ -1,4 +1,4 @@
--- How each lineup hero spent its lane, one row per game and hero (slice lane-activity; method: docs/team/research/core-time-diagnosis.md).
+-- How each lineup hero spent its lane, one row per game and hero (slice lane-activity; method: `core-time-diagnosis` (master tag `pre-process-v5`)).
 -- Params: like (LIKE pattern on games.file, default every game), from and until (seconds, default 90 and 600).
 -- Second counts are snaps from the view lane_activity (about 1 per second). hero, creep, retreat, lane, other: seconds per activity.
 -- low_lane: seconds in laning below 35% HP; spike: seconds at the last-hit desire.

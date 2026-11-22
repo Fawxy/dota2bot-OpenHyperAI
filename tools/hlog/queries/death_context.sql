@@ -1,5 +1,5 @@
 -- What a core did in the 30 s before each death before :until (default 600), one row per death of @core_deaths (same rule and
--- cause, fragment core_death). Lane positioning step 0 (docs/proposals/2026-11-03-lane-positioning.md): did the core die standing
+-- cause, fragment core_death). Lane positioning step 0 (the `lane-positioning` proposal (master tag `pre-process-v5`)): did the core die standing
 -- in lane in reach of enemy heroes, creeps or a tower, or during actions? Counts are snapshots (about one per second) in the window:
 --   secs       snapshots alive in the window
 --   low        hp 25-40%;  retreat  in retreat mode;  swaps  mode changes between snapshots

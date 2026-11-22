@@ -1,4 +1,4 @@
-// Pair episodes per side (docs/proposals/2026-11-18-fighting-together.md "Tools"; D10, D19): queries/pair_episodes.sql for the
+// Pair episodes per side (the `fighting-together` proposal (master tag `pre-process-v5`) "Tools"; D10, D19): queries/pair_episodes.sql for the
 // games of one or more runs, read per game for each hitting side: `ours` our pairs on an OHA hero, `oha` OHA's on ours. Ours is
 // the seat in the label, as ledger.js.
 // Usage: node pair_episodes.js <run> [<run> ...] [--null <run> ...] [--until 720] [--rows] [--json] [--no-ingest]

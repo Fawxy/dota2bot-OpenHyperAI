@@ -1,5 +1,5 @@
 // Grades the offlane core's "missing hero" rule (CoreCamp.MissingOf, used by the lane controller's pull candidate) against where
-// the enemy heroes really were. Offline, banked logs only (docs/proposals/2026-11-09-fights-and-retreat.md 5.2).
+// the enemy heroes really were. Offline, banked logs only (the `fights-and-retreat` proposal (master tag `pre-process-v5`) 5.2).
 //
 //   node tools/hlog/missing_grade.js [--game N ...] [--window 15] [--near 800] [--rows core|support-pull|stack|refused] [--site] [--min-game N] [--json]
 //

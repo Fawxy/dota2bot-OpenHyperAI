@@ -1,4 +1,4 @@
--- Farm at a pull (slice lane-farm-logs; plan docs/proposals/2026-11-04-lane-stage-farm.md pieces 3 and 4): one row per `ok`
+-- Farm at a pull (slice lane-farm-logs; plan the `lane-stage-farm` proposal (master tag `pre-process-v5`) pieces 3 and 4): one row per `ok`
 -- ev=pull_job in games whose file matches :like, with who took the camp's neutrals and the pulled wave. The rule and its
 -- columns are fragment pull_farm's (shared with view pull_waves); :win is its neutral window (default 45 s, `judgement`).
 WITH
