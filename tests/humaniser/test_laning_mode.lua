@@ -43,6 +43,19 @@ do
 	check("owned laning: a core of ours already retreating keeps the retreat over a killable creep", not near(GetDesire(), 0.9), GetDesire())
 end
 
+-- Ours.NoLastHitLift (diagnostic): the desire lift alone goes; the Lua Think still takes the creep.
+do
+	local c = creep({ hp = 40, loc = Vector(100, 0) })
+	local bot = load({ pos = 3, owned = true, noLift = true, enemyCreeps = { c } })
+	check("no lift: a killable creep leaves laning at its ordinary desire", near(GetDesire(), 0.446), GetDesire())
+	Think()
+	check("no lift: the killable creep is still attacked", last(bot) ~= nil and last(bot).name == "AttackUnit" and last(bot).args[1] == c)
+	bot = load({ pos = 3, owned = true, noLift = true, enemyCreeps = { creep({ hp = 60, loc = Vector(500, 0) }) } })
+	check("no lift: a nearly killable creep out of range leaves laning at its ordinary desire", near(GetDesire(), 0.446), GetDesire())
+	Think()
+	check("no lift: the walk to it is unchanged", last(bot) ~= nil and last(bot).name == "MoveToUnit")
+end
+
 do
 	-- 60 HP against 50 damage: within 1.7x, so a move-to creep; it is in range (100 < 150 * 0.8).
 	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })

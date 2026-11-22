@@ -172,6 +172,9 @@ export const DEFAULTS = {
     /** Step 4.6b (same proposal): a pair join is judged on arrival within 2 s and carried to its first attack when the pair answer lapses or names another
      *  target; a losing answer on its own target, a deadly walk, out of arrival or a 3 s backstop still end it. Off: a flat 1,200 reach, and the answer lapsing ends it. */
     JoinHold: true,
+    /** Diagnostic (lift test, 22/11/2026; never merged on): with it on, mode_laning_generic's Lua laning does not bid 0.9 for a last hit (killable,
+     *  or within 1.7 hits' damage and 800); its Think still takes or walks to the creep when laning runs at its ordinary desire. Off: the lift. */
+    NoLastHitLift: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;
