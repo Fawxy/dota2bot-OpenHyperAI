@@ -1749,20 +1749,6 @@
    "th": "num",
    "shd": "num"
   },
-  "yield": {
-   "pid": "num",
-   "ph": "str",
-   "kind": "str",
-   "mode": "str",
-   "ed": "num",
-   "tpid": "num",
-   "hp": "num",
-   "why": "str",
-   "secs": "num",
-   "n": "num",
-   "atk": "num",
-   "hero": "num"
-  },
   "choice": {
    "pid": "num",
    "kind": "str",
@@ -2704,12 +2690,6 @@
   "ev_pull_watch": {
    "ph": "text",
    "nt": "text"
-  },
-  "ev_yield": {
-   "ph": "text",
-   "kind": "text",
-   "mode": "text",
-   "why": "text"
   },
   "ev_choice": {
    "kind": "text",

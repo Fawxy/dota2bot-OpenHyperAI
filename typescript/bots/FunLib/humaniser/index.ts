@@ -51,8 +51,6 @@ import * as States from "bots/FunLib/humaniser/states/index";
 export { States };
 import * as Trade from "bots/FunLib/humaniser/states/trade";
 export { Trade };
-import * as YieldProbe from "bots/FunLib/humaniser/yield_probe";
-export { YieldProbe };
 import * as LaneControl from "bots/FunLib/humaniser/lane_control";
 export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";

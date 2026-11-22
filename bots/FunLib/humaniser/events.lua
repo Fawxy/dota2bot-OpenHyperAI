@@ -1606,20 +1606,6 @@ ____exports.EVENTS = {
         th = "num",
         shd = "num"
     },
-    yield = {
-        pid = "num",
-        ph = "str",
-        kind = "str",
-        mode = "str",
-        ed = "num",
-        tpid = "num",
-        hp = "num",
-        why = "str",
-        secs = "num",
-        n = "num",
-        atk = "num",
-        hero = "num"
-    },
     choice = {
         pid = "num",
         kind = "str",
