@@ -1,8 +1,8 @@
 -- Pair episodes (docs/proposals/2026-11-18-fighting-together.md "Tools"; D10, D19): one row per pair fight, read per side by
 -- pair_episodes.js. From ev_snap by whole second (each hero's last snapshot in the second), lineup heroes pos 1-5:
 --   hit        a second in which a hero's snapshot `tid` names an enemy lineup hero (the target)
---   fight      a run of one side's hits on one target, a new one after more than 5 s without a hit; `t0`, `t1` its first and
---              last hit seconds, `t0` up to :until - 12
+--   fight      one side's attack run on one target (fragment ep_attack); `t0`, `t1` its first and last hit seconds, `t0` up to
+--              :until - 12
 --   pair       a fight in which, at some hit second, a second hero of the hitting side is alive within 1,200 of the target;
 --              only these are rows. `p1` hit at t0 (ties: the lower pid); `p2` the partner, of the side's other heroes ever
 --              within 1,200 of the target at a hit second: the first to hit it, else the first in reach (ties: lower pid)
@@ -15,31 +15,15 @@
 -- Params: like (a path fragment), until (720 in pair_episodes.js; the fragment's default is 600).
 -- ensure: ev_snap(pid, t, tid, hp, alive, mode, x, y, deaths)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+ep_win AS (SELECT -1e9 AS lo, coalesce(:until, 600) + 0.5 AS hi),
 -- include: core_death
-hs AS MATERIALIZED (
-    SELECT game_id, pid, team, pos, sec, x, y, hp, alive, mode, tid FROM (
-        SELECT s.game_id, s.pid, l.team, l.pos, CAST(round(s.t) AS INTEGER) AS sec, s.x, s.y, s.hp, s.alive, s.mode,
-            CAST(s.tid AS TEXT) AS tid,
-            row_number() OVER (PARTITION BY s.game_id, s.pid, CAST(round(s.t) AS INTEGER) ORDER BY s.seq DESC) AS rn
-        FROM gm CROSS JOIN ev_snap s ON s.game_id = gm.game_id CROSS JOIN lineup l ON l.game_id = s.game_id AND l.pid = s.pid
-        WHERE s.t <= coalesce(:until, 600) + 0.5 AND s.x IS NOT NULL
-    ) WHERE rn = 1
-),
+-- include: ep_attack
+hs AS MATERIALIZED (SELECT game_id, pid, team, pos, sec, x, y, hp, alive, mode, tid FROM ep_sec WHERE pos IS NOT NULL),
 hit AS MATERIALIZED (
-    SELECT h.game_id, h.pid AS apid, h.team, h.sec, l.pid AS tpid
-    FROM hs h JOIN lineup l ON l.game_id = h.game_id AND h.tid = 'h' || l.pid AND l.team <> h.team
-    WHERE h.alive = 1
+    SELECT h.game_id, h.apid, h.team, h.sec, h.tpid
+    FROM ep_hit h JOIN lineup la ON la.game_id = h.game_id AND la.pid = h.apid JOIN lineup lt ON lt.game_id = h.game_id AND lt.pid = h.tpid
 ),
-hsec AS (SELECT DISTINCT game_id, team, tpid, sec FROM hit),
-runs AS (
-    SELECT game_id, team, tpid, sec,
-        sum(CASE WHEN prev IS NULL OR sec - prev > 5 THEN 1 ELSE 0 END) OVER (PARTITION BY game_id, team, tpid ORDER BY sec) AS k
-    FROM (SELECT hsec.*, lag(sec) OVER (PARTITION BY game_id, team, tpid ORDER BY sec) AS prev FROM hsec)
-),
-fi AS MATERIALIZED (
-    SELECT game_id, team, tpid, k, min(sec) AS t0, max(sec) AS t1 FROM runs GROUP BY game_id, team, tpid, k
-    HAVING min(sec) <= coalesce(:until, 600) - 12
-),
+fi AS MATERIALIZED (SELECT game_id, team, tpid, t0, t1 FROM ep_run WHERE t0 <= coalesce(:until, 600) - 12),
 fh AS MATERIALIZED (
     SELECT fi.game_id, fi.team, fi.tpid, fi.t0, h.apid, h.sec
     FROM fi JOIN hit h ON h.game_id = fi.game_id AND h.team = fi.team AND h.tpid = fi.tpid AND h.sec BETWEEN fi.t0 AND fi.t1

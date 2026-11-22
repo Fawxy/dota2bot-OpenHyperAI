@@ -7,7 +7,7 @@
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: lane_rules
 x AS (SELECT 1)
-SELECT (SELECT count(*) FROM lr_gl) AS games, side,
+SELECT (SELECT count(DISTINCT game_id) FROM lr_s0) AS games, side,
     CASE WHEN pos = 2 THEN 'mid' WHEN pos IN (1, 3) THEN 'side' ELSE 'sup' END AS role,
     count(*) AS n, sum(hb) AS answered,
     CAST(round(avg(CASE WHEN hb THEN my_lost - h_lost END)) AS INTEGER) AS swing_answered,

@@ -6,19 +6,17 @@
 -- the spot's MAX_BACK) from where the hero stood at the start. Forward walking, the hard limits and the lane cost of standing
 -- off the spot are all ignored, so the bound is loose.
 --   starts      job starts;  in_lane  those whose snapshot nearest the start is within :width of the lane path
---   trip_s      mean seconds from start to the job's `phase=end` (all starts)
+--   trip_s      mean seconds of the job trip (fragment ep_job; all starts)
 --   corr_s      mean corridor seconds over the in-lane starts, ending at the job's end when that comes first
 --   per_trip    corridor seconds over all starts (an out-of-lane start or an open one counts 0): the plan's per-trip measure
 --   ge2         in-lane starts with 2 s or more
 --   open        in-lane starts with no exit snapshot within 45 s (left out of corr_s)
 -- Params: like, from, until, width, back.
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: ep_job
 st AS MATERIALIZED (
-    SELECT j.game_id, j.pid, j.job, j.t AS t0,
-        (SELECT min(e.t) FROM ev_job e WHERE e.game_id = j.game_id AND e.pid = j.pid AND e.job = j.job
-            AND e.phase = 'end' AND e.t >= j.t) AS t1
-    FROM ev_job j JOIN gm ON gm.game_id = j.game_id
-    WHERE j.phase = 'start' AND j.t >= coalesce(:from, 60) AND j.t <= coalesce(:until, 600)
+    SELECT game_id, pid, job, t0, t1 FROM ep_job
+    WHERE src = 'job' AND t0 >= coalesce(:from, 60) AND t0 <= coalesce(:until, 600)
 ),
 s AS MATERIALIZED (
     SELECT st.game_id, st.pid, st.t0, sn.t, sn.x, sn.y, sn.ld,

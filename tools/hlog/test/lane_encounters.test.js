@@ -36,8 +36,9 @@ test('lane encounters: numbers and enemy HP at the start, a kill near the hero, 
     lines.push(snap(230, 1, { x: -7000, y: -7000, deaths: 1 }));
     // Encounter 3: off every lane (2,000 from the nearest path): not an in-lane encounter.
     for (let t = 300; t <= 302; t++) lines.push(snap(t, 1, { x: 3000, ed: 300, ld: 2000 }));
-    // Outside :until: not read.
+    // Outside :until: not read. The enemies log on to the end too: a hero whose snapshots stop is dead (fragment ep_death).
     lines.push(snap(700, 1, { ed: 300 }), snap(701, 1, { ed: 300 }));
+    lines.push(snap(701, 6, { x: 7000, y: 7000, deaths: 1 }), snap(701, 7, { x: 7000, y: 7000 }));
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-enc-')), 'a.log');
     fs.writeFileSync(f, lines.join('\n') + '\n');
     const s = new Store(':memory:');
