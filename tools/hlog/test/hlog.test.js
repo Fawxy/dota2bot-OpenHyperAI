@@ -588,3 +588,14 @@ test('squelch notices are counted per game; only one right after an error line c
     assert.strictEqual(g.squelches, 2);
     assert.strictEqual(g.errorSquelches, 1);
 });
+
+test('summary: a stock bot line with no skill prints - in the skill column instead of throwing', () => {
+    const lines = [
+        '[HEV] t=-90 ev=bot pid=1 hero=pudge team=2 schema=2 humaniser=0 build=stock-cb814c6c pos=3 ours=stock',
+        snapAt(1, 0), snapAt(1, 30, { lh: 2 }),
+    ];
+    const game = parseLog(lines.join('\n'))[0];
+    const row = report.summary(game).split('\n').find(l => /^pudge\[1\]/.test(l));
+    assert.ok(row, report.summary(game));
+    assert.match(row, /^pudge\[1\]\s+rad\s+-\s/);
+});
