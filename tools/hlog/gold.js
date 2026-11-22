@@ -2,8 +2,9 @@
 // exactly to the change. Measured jumps, not counts times a price: per hero, every change in `nw` between consecutive
 // ev=snap rows is assigned to one line.
 // Usage: node gold.js <run> [<run> ...] [--null <run> ...] [--at 600] [--arm <name>] [--by pos|arm] [--json] [--no-ingest]
-//   <run> is a label prefix (bis1 takes bis1_*; name bis1r too). Labels: `h2h742_A_rad_3`, and the bisect form
-//   `bis1_B_offrad_2` (arm `off`, seat glued on: rad or dire). Ours is the seat in the label, OHA the other team.
+//   <run> is a label prefix (bis1 takes bis1_*; name bis1r too). Labels: `h2h742_A_rad_3`, the bisect form
+//   `bis1_B_offrad_2` (arm `off`, seat glued on: rad or dire) and the batch arm form `h2hlift1_B_off-dir_10` (seat after
+//   a hyphen: rad, dir or dire). Ours is the seat in the label, OHA the other team.
 //   --null <runs>  OHA against OHA runs: adds `mirror` (both seats' mean), `we` (ours - mirror) and `they` (mirror - OHA).
 //   --arm <name>   only games of that arm (the label's word before the seat).
 //   --by pos       one table per hero position (ev=bot pos), one hero a side, per game.
@@ -60,10 +61,11 @@ function args(argv) {
 
 /**
  * `h2h742_A_rad_3` -> { run: 'h2h742', lineup: 'A', arm: '', seat: 2 }; `bis1_B_offrad_2` -> arm `off`, seat 2 (the arm word
- * has the seat glued on, which ledger.js's `_rad_` test never sees); `bis1r_C_noTdire_1` -> arm `noT`, seat 3.
+ * has the seat glued on, which ledger.js's `_rad_` test never sees); `bis1r_C_noTdire_1` -> arm `noT`, seat 3;
+ * `h2hlift1_B_off-dir_10` (batch.js arms `off-rad`, `off-dir`) -> arm `off`, seat 3.
  */
 function parseLabel(label) {
-    const m = label.match(/^(.*?)_([A-Z])_(?:ours_)?([A-Za-z]*?)(rad|dire)_(\d+)$/) || label.match(/^(.*?)()_?()(rad|dire)_(\d+)$/);
+    const m = label.match(/^(.*?)_([A-Z])_(?:ours_)?([A-Za-z]*?)-?(rad|dire?)_(\d+)$/) ||label.match(/^(.*?)()_?()(rad|dire)_(\d+)$/);
     if (!m) return undefined;
     return { run: m[1], lineup: m[2], arm: m[3], seat: m[4] === 'rad' ? 2 : 3, n: Number(m[5]) };
 }
