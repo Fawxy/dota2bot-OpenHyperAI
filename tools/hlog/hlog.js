@@ -39,13 +39,16 @@ function table(rows, wide) {
     return [line(cols), ...cells.map(line), `(${rows.length} rows)`].join('\n');
 }
 
+// Params that are game times: `--p from=5:00` is 300, as `--from 5:00` is.
+const TIME_PARAMS = new Set(['from', 'to', 't', 'until', 'at']);
+
 function params(argv) {
     const out = {};
     argv.forEach((a, i) => {
         if (a !== '--p') return;
         const [k, ...v] = argv[i + 1].split('=');
         const s = v.join('=');
-        out[k] = /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
+        out[k] = TIME_PARAMS.has(k) && s !== '' ? secs(s) : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
     });
     return out;
 }
@@ -243,6 +246,7 @@ function events(store, file, o) {
 function main(argv) {
     const opt = k => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
     const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind']);
+    const flags = new Set([...valued, '--json', '--wide', '--no-ingest', '--all']);
     const pos = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
     const [cmd, ...rest] = pos;
     let store;
@@ -261,6 +265,13 @@ function main(argv) {
         return r;
     };
     try {
+        // An option that is misspelt or has no value would otherwise be ignored, and the answer read as the one asked for.
+        argv.forEach((a, i) => {
+            if (!a.startsWith('--')) return;
+            if (!flags.has(a)) throw new Error(`no option ${a}; see the usage (run with no command)`);
+            if (valued.has(a) && (argv[i + 1] === undefined || argv[i + 1].startsWith('--'))) throw new Error(`${a} needs a value`);
+        });
+        for (const k of ['game', 'pid']) if (opt(k) !== undefined && !/^\d+$/.test(opt(k))) throw new Error(`--${k} ${opt(k)} is no number`);
         store = new Store(opt('db') || DB);
         if (cmd === 'ingest') {
             const r = report(store.ingestAll(rest.length ? rest : [logs, ...(opt('logs') ? [] : [JOBS])].filter(d => fs.existsSync(d)), progress));

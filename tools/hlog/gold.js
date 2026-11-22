@@ -33,6 +33,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Store, DB, LOGS, JOBS, labelOf } = require('./store');
+const { parseLabel } = require('./label');
 
 const DEATHS_SQL = `WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE game_id = :g),
 -- include: ep_death
@@ -63,20 +64,6 @@ function args(argv) {
         else into.push(a);
     }
     return o;
-}
-
-/**
- * `h2h742_A_rad_3` -> { run: 'h2h742', lineup: 'A', arm: '', seat: 2 }; `bis1_B_offrad_2` -> arm `off`, seat 2 (the arm word
- * has the seat glued on, which ledger.js's `_rad_` test never sees); `bis1r_C_noTdire_1` -> arm `noT`, seat 3;
- * `h2hlift1_B_off-dir_10` (batch.js arms `off-rad`, `off-dir`) -> arm `off`, seat 3. With no seat, `stockbase2_A_stock_7`
- * -> arm `stock`, seat 2, mirror: a mirror game, Radiant standing for ours.
- */
-function parseLabel(label) {
-    const m = label.match(/^(.*?)_([A-Z])_(?:ours_)?([A-Za-z]*?)-?(rad|dire?)_(\d+)$/) ||label.match(/^(.*?)()_?()(rad|dire)_(\d+)$/);
-    if (m) return { run: m[1], lineup: m[2], arm: m[3], seat: m[4] === 'rad' ? 2 : 3, n: Number(m[5]) };
-    const w = label.match(/^(.*?)_([A-Z])_([A-Za-z][\w-]*?)_(\d+)$/);
-    if (w) return { run: w[1], lineup: w[2], arm: w[3], seat: 2, n: Number(w[4]), mirror: true };
-    return undefined;
 }
 
 /** Ingests only the logs of these runs (the store caches an unchanged log), local and remote-job layouts. */
