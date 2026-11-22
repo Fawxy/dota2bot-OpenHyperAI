@@ -1,0 +1,109 @@
+[HEV] t=-90.000 ev=bot pid=1 hero=sven team=2 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=1 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-90.000 ev=bot pid=2 hero=witch_doctor team=2 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=5 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-90.000 ev=bot pid=0 hero=warlock team=2 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=4 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-90.000 ev=bot pid=3 hero=tiny team=2 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=3 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-90.000 ev=bot pid=4 hero=lion team=2 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=2 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-89.933 ev=bot pid=5 hero=bristleback team=3 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=3 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-89.933 ev=bot pid=6 hero=omniknight team=3 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=5 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-89.933 ev=bot pid=9 hero=oracle team=3 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=2 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-89.933 ev=bot pid=7 hero=skeleton_king team=3 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=1 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=-89.933 ev=bot pid=8 hero=lich team=3 schema=2 skill=1 ally=0 notice=0 react=0 ping=0 chat=0 jitter=0 lapse=0 lapseMax=0.800 minReact=0 deference=0 build=ab62e5f8 pos=4 ours=ArbiterDrive:0,ArbiterShadow:0,BurstReady:0,ContestRead:0,CoreCampTrip:0,CoreContest:0,CoreDenyYield:0,CoreHold:0,CoreLastHit:0,CoreLastHitDire:0,CorePull:0,CreepRead:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,JoinArrive:0,JoinHold:0,LaneAggro:0,LaneControl:0,LaneControlDrive:0,LaneSpot:0,LaneSpotTower:0,LeaveCoreCreep:0,MidWater:0,NoLastHitLift:0,PickSafe:0,PreDeny:0,PreHit:0,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportDenyDire:0,SupportLastHit:0,SupportPull:0,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,Trade:0,TradeHold:0,TradeSwing:0,TripRead:0
+[HEV] t=262.167 ev=snap pid=5 x=6196 y=-3556 alive=1 hp=91 deaths=0 mode=attack
+[HEV] t=262.167 ev=snap pid=8 x=6594 y=-3282 alive=1 hp=75 deaths=0 mode=attack
+[HEV] t=262.200 ev=snap pid=2 x=4101 y=-5970 alive=1 hp=88 deaths=0 mode=farm
+[HEV] t=263.167 ev=snap pid=5 x=6148 y=-3716 alive=1 hp=91 deaths=0 mode=attack
+[HEV] t=263.167 ev=snap pid=8 x=6483 y=-3459 alive=1 hp=83 deaths=0 mode=attack
+[HEV] t=263.200 ev=snap pid=2 x=3900 y=-6090 alive=1 hp=86 deaths=0 mode=team_roam
+[HEV] t=264.167 ev=snap pid=5 x=6014 y=-3905 alive=1 hp=92 deaths=0 mode=attack tid=h1
+[HEV] t=264.167 ev=snap pid=8 x=6312 y=-3643 alive=1 hp=82 deaths=0 mode=attack tid=h1
+[HEV] t=264.200 ev=snap pid=2 x=3949 y=-6074 alive=1 hp=86 deaths=0 mode=laning
+[HEV] t=265.167 ev=snap pid=5 x=5764 y=-3996 alive=1 hp=92 deaths=0 mode=attack
+[HEV] t=265.167 ev=snap pid=8 x=6181 y=-3822 alive=1 hp=81 deaths=0 mode=attack
+[HEV] t=265.200 ev=snap pid=2 x=4246 y=-6032 alive=1 hp=87 deaths=0 mode=team_roam
+[HEV] t=266.167 ev=snap pid=5 x=5645 y=-4170 alive=1 hp=93 deaths=0 mode=attack
+[HEV] t=266.167 ev=snap pid=8 x=6043 y=-4009 alive=1 hp=81 deaths=0 mode=attack
+[HEV] t=266.200 ev=snap pid=2 x=4539 y=-5971 alive=1 hp=87 deaths=0 mode=team_roam
+[HEV] t=267.167 ev=snap pid=5 x=5417 y=-4357 alive=1 hp=93 deaths=0 mode=attack
+[HEV] t=267.167 ev=snap pid=8 x=5852 y=-4219 alive=1 hp=81 deaths=0 mode=attack
+[HEV] t=267.200 ev=snap pid=2 x=4821 y=-5873 alive=1 hp=88 deaths=0 mode=laning
+[HEV] t=268.167 ev=snap pid=5 x=5210 y=-4566 alive=1 hp=94 deaths=0 mode=attack
+[HEV] t=268.167 ev=snap pid=8 x=5618 y=-4385 alive=1 hp=82 deaths=0 mode=attack
+[HEV] t=268.200 ev=snap pid=2 x=5092 y=-5745 alive=1 hp=88 deaths=0 mode=laning
+[HEV] t=269.167 ev=snap pid=5 x=4990 y=-4759 alive=1 hp=95 deaths=0 mode=attack
+[HEV] t=269.167 ev=snap pid=8 x=5373 y=-4539 alive=1 hp=82 deaths=0 mode=attack
+[HEV] t=269.200 ev=snap pid=2 x=5335 y=-5604 alive=1 hp=89 deaths=0 mode=team_roam
+[HEV] t=270.167 ev=snap pid=5 x=4789 y=-4970 alive=1 hp=95 deaths=0 mode=attack
+[HEV] t=270.167 ev=snap pid=8 x=5146 y=-4719 alive=1 hp=83 deaths=0 mode=attack
+[HEV] t=270.200 ev=snap pid=2 x=5283 y=-5360 alive=1 hp=89 deaths=0 mode=attack
+[HEV] t=271.167 ev=snap pid=5 x=4601 y=-5185 alive=1 hp=94 deaths=0 mode=attack tid=h1
+[HEV] t=271.167 ev=snap pid=8 x=4966 y=-4880 alive=1 hp=83 deaths=0 mode=attack
+[HEV] t=271.200 ev=snap pid=2 x=5276 y=-5180 alive=1 hp=84 deaths=0 mode=attack
+[HEV] t=272.167 ev=snap pid=5 x=4550 y=-5213 alive=1 hp=93 deaths=0 mode=attack
+[HEV] t=272.167 ev=snap pid=8 x=4885 y=-4933 alive=1 hp=83 deaths=0 mode=attack tid=h1
+[HEV] t=272.200 ev=snap pid=2 x=5182 y=-5093 alive=1 hp=85 deaths=0 mode=evasive tid=h5
+[HEV] t=273.167 ev=snap pid=5 x=4482 y=-5270 alive=1 hp=89 deaths=0 mode=attack
+[HEV] t=273.167 ev=snap pid=8 x=4757 y=-5019 alive=1 hp=84 deaths=0 mode=attack
+[HEV] t=273.200 ev=snap pid=2 x=5151 y=-5083 alive=1 hp=85 deaths=0 mode=retreat
+[HEV] t=274.167 ev=snap pid=5 x=4452 y=-5295 alive=1 hp=81 deaths=0 mode=attack
+[HEV] t=274.167 ev=snap pid=8 x=4580 y=-5137 alive=1 hp=74 deaths=0 mode=attack
+[HEV] t=274.200 ev=snap pid=2 x=4942 y=-5091 alive=1 hp=77 deaths=0 mode=team_roam tid=h5
+[HEV] t=275.167 ev=snap pid=5 x=4491 y=-5334 alive=1 hp=84 deaths=0 mode=attack
+[HEV] t=275.167 ev=snap pid=8 x=4583 y=-5227 alive=1 hp=75 deaths=0 mode=attack tid=h2
+[HEV] t=275.200 ev=snap pid=2 x=4683 y=-5024 alive=1 hp=65 deaths=0 mode=retreat
+[HEV] t=276.167 ev=snap pid=5 x=4527 y=-5132 alive=1 hp=83 deaths=0 mode=attack
+[HEV] t=276.167 ev=snap pid=8 x=4652 y=-5263 alive=1 hp=75 deaths=0 mode=laning
+[HEV] t=276.200 ev=snap pid=2 x=4494 y=-4812 alive=1 hp=58 deaths=0 mode=retreat
+[HEV] t=277.167 ev=snap pid=5 x=4471 y=-4874 alive=1 hp=79 deaths=0 mode=attack tid=h2
+[HEV] t=277.167 ev=snap pid=8 x=4679 y=-5251 alive=1 hp=76 deaths=0 mode=attack
+[HEV] t=277.200 ev=snap pid=2 x=4337 y=-4611 alive=1 hp=58 deaths=0 mode=retreat
+[HEV] t=278.167 ev=snap pid=5 x=4443 y=-4822 alive=1 hp=78 deaths=0 mode=attack
+[HEV] t=278.167 ev=snap pid=8 x=4516 y=-5014 alive=1 hp=75 deaths=0 mode=attack
+[HEV] t=278.200 ev=snap pid=2 x=4112 y=-4518 alive=1 hp=43 deaths=0 mode=retreat
+[HEV] t=279.167 ev=snap pid=5 x=4294 y=-4574 alive=1 hp=75 deaths=0 mode=attack
+[HEV] t=279.167 ev=snap pid=8 x=4377 y=-4766 alive=1 hp=71 deaths=0 mode=attack
+[HEV] t=279.200 ev=snap pid=2 x=3857 y=-4519 alive=1 hp=43 deaths=0 mode=retreat
+[HEV] t=280.167 ev=snap pid=5 x=4121 y=-4517 alive=1 hp=74 deaths=0 mode=attack
+[HEV] t=280.167 ev=snap pid=8 x=4348 y=-4684 alive=1 hp=72 deaths=0 mode=attack
+[HEV] t=280.700 ev=snap pid=2 x=3944 y=-4488 alive=1 hp=44 deaths=0 mode=retreat
+[HEV] t=281.167 ev=snap pid=5 x=4003 y=-4514 alive=1 hp=73 deaths=0 mode=laning
+[HEV] t=281.167 ev=snap pid=8 x=4342 y=-4666 alive=1 hp=70 deaths=0 mode=attack
+[HEV] t=282.167 ev=snap pid=5 x=4252 y=-4570 alive=1 hp=72 deaths=0 mode=team_roam tid=u192
+[HEV] t=282.167 ev=snap pid=8 x=4229 y=-4480 alive=1 hp=65 deaths=0 mode=laning
+[HEV] t=283.167 ev=snap pid=5 x=4349 y=-4537 alive=1 hp=70 deaths=0 mode=laning
+[HEV] t=283.167 ev=snap pid=8 x=4311 y=-4578 alive=1 hp=62 deaths=0 mode=retreat
+[HEV] t=284.167 ev=snap pid=5 x=4380 y=-4760 alive=1 hp=70 deaths=0 mode=laning
+[HEV] t=284.167 ev=snap pid=8 x=4411 y=-4402 alive=1 hp=58 deaths=0 mode=retreat
+[HEV] t=285.167 ev=snap pid=8 x=4644 y=-4331 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=286.167 ev=snap pid=8 x=4913 y=-4437 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=287.167 ev=snap pid=8 x=5147 y=-4592 alive=1 hp=60 deaths=0 mode=laning
+[HEV] t=288.167 ev=snap pid=8 x=5340 y=-4809 alive=1 hp=60 deaths=0 mode=laning
+[HEV] t=289.167 ev=snap pid=8 x=5542 y=-4982 alive=1 hp=58 deaths=0 mode=laning
+[HEV] t=290.167 ev=snap pid=8 x=5801 y=-4855 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=291.167 ev=snap pid=8 x=5990 y=-4646 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=292.167 ev=snap pid=8 x=6078 y=-4372 alive=1 hp=60 deaths=0 mode=laning
+[HEV] t=293.167 ev=snap pid=8 x=6123 y=-4125 alive=1 hp=58 deaths=0 mode=laning
+[HEV] t=294.167 ev=snap pid=8 x=6134 y=-4029 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=295.167 ev=snap pid=8 x=6125 y=-3781 alive=1 hp=57 deaths=0 mode=laning
+[HEV] t=296.167 ev=snap pid=8 x=6125 y=-3781 alive=1 hp=58 deaths=0 mode=laning
+[HEV] t=297.167 ev=snap pid=8 x=6125 y=-3781 alive=1 hp=58 deaths=0 mode=laning
+[HEV] t=298.167 ev=snap pid=8 x=6125 y=-3781 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=299.167 ev=snap pid=8 x=6236 y=-3797 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=299.200 ev=snap pid=2 x=-6776 y=-6272 alive=1 hp=100 deaths=1 mode=rune
+[HEV] t=300.167 ev=snap pid=8 x=6523 y=-3839 alive=1 hp=59 deaths=0 mode=laning
+[HEV] t=301.167 ev=snap pid=8 x=6435 y=-3829 alive=1 hp=60 deaths=0 mode=laning
+[HEV] t=302.167 ev=snap pid=8 x=6211 y=-3818 alive=1 hp=60 deaths=0 mode=laning
+[HEV] t=303.167 ev=snap pid=8 x=6261 y=-3982 alive=1 hp=61 deaths=0 mode=laning
+[HEV] t=304.167 ev=snap pid=8 x=6122 y=-4285 alive=1 hp=61 deaths=0 mode=laning
+[HEV] t=305.167 ev=snap pid=8 x=6111 y=-4316 alive=1 hp=64 deaths=0 mode=laning
+[HEV] t=306.167 ev=snap pid=8 x=6111 y=-4316 alive=1 hp=64 deaths=0 mode=laning
+[HEV] t=307.167 ev=snap pid=8 x=6022 y=-4307 alive=1 hp=64 deaths=0 mode=laning
+[HEV] t=308.167 ev=snap pid=8 x=6022 y=-4307 alive=1 hp=65 deaths=0 mode=laning
+[HEV] t=309.167 ev=snap pid=8 x=6082 y=-4451 alive=1 hp=65 deaths=0 mode=laning
+[HEV] t=310.167 ev=snap pid=8 x=6066 y=-4397 alive=1 hp=58 deaths=0 mode=laning
+[HEV] t=311.167 ev=snap pid=8 x=6071 y=-4330 alive=1 hp=49 deaths=0 mode=roam
+[HEV] t=312.167 ev=snap pid=8 x=6089 y=-4097 alive=1 hp=43 deaths=0 mode=roam
+[HEV] t=313.167 ev=snap pid=8 x=5963 y=-4056 alive=1 hp=32 deaths=0 mode=retreat
+[HEV] t=314.167 ev=snap pid=8 x=5699 y=-3862 alive=1 hp=23 deaths=0 mode=retreat
+[HEV] t=315.167 ev=snap pid=8 x=5540 y=-3604 alive=1 hp=15 deaths=0 mode=retreat
+[HEV] t=316.167 ev=snap pid=8 x=5585 y=-3278 alive=1 hp=5 deaths=0 mode=retreat
+[HEV] t=337.567 ev=snap pid=8 x=6362 y=5944 alive=1 hp=100 deaths=1 mode=retreat

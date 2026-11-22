@@ -9,6 +9,8 @@
 //   node hlog.js events <log> --pid N|--hero h [--from t --to t --ev a,b --all --game N]  one hero's events in a window, oldest first
 //   node hlog.js timeline <log | label> [--lane top|mid|bot --hero h --pid N --from t --to t --kind a,b --game N]
 //                                                        what happened, oldest first: episodes, modes, casts, creeps (@timeline)
+//   node hlog.js timeline <batch> --count [--ref arm --pos 1-3 --lane l --from t --to t]
+//                                                        the batch's arms compared on counted measures, with the reference arm's noise floor (summary.js)
 //   node hlog.js list [word]                             named queries and views: params and first sentence (word filters)
 //   node hlog.js schema [ev]                             tables, rows and columns (kind, non-null count, an example)
 //   node hlog.js prune                                   drop logs whose file is gone
@@ -245,8 +247,8 @@ function events(store, file, o) {
 
 function main(argv) {
     const opt = k => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind']);
-    const flags = new Set([...valued, '--json', '--wide', '--no-ingest', '--all']);
+    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind', '--ref', '--pos']);
+    const flags = new Set([...valued, '--json', '--wide', '--no-ingest', '--all', '--count']);
     const pos = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
     const [cmd, ...rest] = pos;
     let store;
@@ -286,6 +288,15 @@ function main(argv) {
         } else if (cmd === 'events' && rest[0]) {
             store.ingest(rest[0]);
             console.log(events(store, rest[0], { game: opt('game'), pid: opt('pid'), hero: opt('hero'), from: opt('from'), to: opt('to'), ev: opt('ev'), all: argv.includes('--all') }));
+        } else if (cmd === 'timeline' && rest[0] && argv.includes('--count')) {
+            sync();
+            store.refreshViews();
+            const { countBatch, text, parsePos } = require('./summary');
+            const lane = opt('lane');
+            if (lane !== undefined && !TIMELINE_LANES.includes(lane)) throw new Error(`no lane ${lane}; one of: ${TIMELINE_LANES.join(' ')}`);
+            const o = { ref: opt('ref') ?? 'off', from: secs(opt('from')) ?? 0, to: secs(opt('to')) ?? 600, pos: parsePos(opt('pos')), lane };
+            const s = countBatch(store, rest[0], o);
+            say(s, text(s, { ...o, batch: rest[0], fromText: clock(o.from), toText: clock(o.to) }));
         } else if (cmd === 'timeline' && rest[0]) {
             // A path needs only its own log; a label has to be looked up among all of them.
             if (fs.existsSync(rest[0])) store.ingest(rest[0]);

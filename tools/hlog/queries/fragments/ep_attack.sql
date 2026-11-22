@@ -1,7 +1,7 @@
 -- Fragment (`-- include: ep_attack`): hero attacks on heroes, which exchanges and kill attempts are cut from. Needs what
 -- ep_second needs. CTEs:
 --   ep_hit(game_id, apid, team, sec, tpid)   a second in which a hero's attack target (snapshot `tid`) is an enemy hero
---   ep_run(game_id, team, tpid, t0, t1)      one side's attacks on one target, a new run after more than 5 s without one
+--   ep_run(game_id, team, tpid, t0, t1)      one side's attacks on one target, a new run when attack seconds are more than 5 s apart
 -- A spell names no target in the logs, so a cast alone is no attack. A log without `tid` has none (the timeline's not_logged row says so).
 -- Ends with a comma.
 -- include: ep_second
