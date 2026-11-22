@@ -1,15 +1,14 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
 -- The decider in the farm host (decider.ts, plan s3 step 7): with nothing held, farm's own desire and Think pass through; a row that
 -- applies holds the hero at the hard strength and its verb replaces farm's Think until it finishes; one ev=choice kind=decider line
--- per change of what is held or of the mode Valve gave the hero; switch off, farm's code runs whatever a row says.
+-- per change of what is held or of the mode Valve gave the hero; no verb step while the bot cannot act.
 local dota = require("bots/ts_libs/dota/index")
 local BotMode = dota.BotMode
 
-local function world(on)
+local CAN_ACT = function() return false end -- the cannotAct check: the bot can always act
+
+local function world()
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
-	local C = package.loaded["bots/FunLib/custom_loader"]
-	C.Ours = C.Ours or {}
-	C.Ours.Decider = on
 	H.Decider.Reset()
 	for k in pairs(H.Decider.ROWS) do H.Decider.ROWS[k] = nil end
 	T = 300
@@ -47,9 +46,9 @@ local function row(on)
 end
 
 do
-	local H, bot = world(true)
+	local H, bot = world()
 	local f = farm()
-	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think)
+	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think, CAN_ACT)
 	local v
 	local lines = capture(function()
 		v = desire()
@@ -66,11 +65,11 @@ do
 end
 
 do
-	local H, bot = world(true)
+	local H, bot = world()
 	local on = { applies = true, steps = 0, finishAt = 2 }
 	H.Decider.ROWS[1] = row(on)
 	local f = farm()
-	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think)
+	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think, CAN_ACT)
 	local v1, v2, v3
 	local lines = capture(function()
 		v1 = desire()
@@ -93,15 +92,19 @@ do
 end
 
 do
-	local H, bot = world(false)
-	H.Decider.ROWS[1] = row({ applies = true, steps = 0, finishAt = 1 })
+	local H, bot = world()
+	local on = { applies = true, steps = 0, finishAt = 5 }
+	H.Decider.ROWS[1] = row(on)
 	local f = farm()
-	local v
-	local lines = capture(function()
-		v = H.Decider.Host(bot, f.GetDesire)()
-		H.Decider.HostThink(bot, f.Think)()
+	local stunned = true
+	local think = H.Decider.HostThink(bot, f.Think, function() return stunned end)
+	capture(function()
+		H.Decider.Host(bot, f.GetDesire)()
+		think()
+		stunned = false
+		think()
 	end)
-	check("switch off: farm's code runs though a row applies, and no line", v == 0.4 and f.think == 1 and #lines == 0,
-		tostring(v) .. " " .. f.think .. " " .. #lines)
+	check("a held row's verb is not stepped while the bot cannot act, nor is farm's Think", on.steps == 1 and f.think == 0,
+		"steps " .. on.steps .. " farm thinks " .. f.think)
 end
 finish()

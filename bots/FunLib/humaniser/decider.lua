@@ -1,7 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
-local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
 -- hero as retreating; under OHA's retreat latch (1.1). The value inside that band is judgement.
@@ -56,24 +55,21 @@ end
 --- Wraps the host file's GetDesire: a held row's strength, else the inner desire unchanged.
 function ____exports.Host(bot, inner)
     return function()
-        if not Ours.On("Decider") then
-            return inner()
-        end
         local s = stateOf(bot)
         s.held = pick(bot)
-        note(bot, s)
+        pcall(function() return note(bot, s) end)
         return s.held ~= nil and ____exports.HARD or inner()
     end
 end
---- Wraps the host file's Think: a held row's verb, else the inner Think.
-function ____exports.HostThink(bot, inner)
+--- Wraps the host file's Think: a held row's verb, not stepped while the bot cannot act (as Chooser.HostThink), else the inner Think.
+function ____exports.HostThink(bot, inner, cannotAct)
     return function()
-        if not Ours.On("Decider") then
-            return inner()
-        end
         local row = stateOf(bot).held
         if row == nil then
             return inner()
+        end
+        if cannotAct(bot) then
+            return nil
         end
         if row.step(bot) then
             stateOf(bot).held = nil

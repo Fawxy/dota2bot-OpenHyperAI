@@ -2699,7 +2699,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (Ours.Decider: one line per change of `held` or `win`). */
+        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",

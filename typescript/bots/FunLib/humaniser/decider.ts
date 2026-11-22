@@ -1,15 +1,18 @@
 /**
  * The decider (plan s3, docs/proposals/2026-11-23-laning-plan-after-the-bisect.md): one per hero of ours, hosted in farm's mode
- * file. Rows are behaviours in doctrine order; the first that applies holds the hero, else the decider yields and farm's own
- * desire and Think run untouched (stock's, or today's per-mode code while it lasts). Desire exists here only as the wire to
- * the engine: a row names no number.
+ * file, on both teams. Rows are behaviours in doctrine order, each behind its own Ours switch (so Ours.Team scopes it); the
+ * first that applies holds the hero, else the decider yields and farm's own desire and Think run untouched (stock's, or
+ * today's per-mode code while it lasts). Desire exists here only as the wire to the engine: a row names no number.
  *
  * Built so far: the yield and the hard hold. The soft hold, worth with an incumbent margin and the label hook arrive with the
  * first row that needs each (plan s3).
+ *
+ * The decider wraps outside Chooser's gate in farm's file: while a row holds, farm's gated code does not run, so the job
+ * chooser and the shadow line say nothing for that time. A row is re-picked every round and is not told when another mode
+ * takes the hero, so its verb must cope with being cut off between any two steps.
  */
 import { Unit } from "bots/ts_libs/dota";
 import * as HDebug from "bots/FunLib/humaniser/debug";
-import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export interface Row {
@@ -76,20 +79,19 @@ function note(bot: Unit, s: HeroState): void {
 /** Wraps the host file's GetDesire: a held row's strength, else the inner desire unchanged. */
 export function Host(bot: Unit, inner: () => any): () => any {
     return () => {
-        if (!Ours.On("Decider")) return inner();
         const s = stateOf(bot);
         s.held = pick(bot);
-        note(bot, s);
+        pcall(() => note(bot, s));
         return s.held !== undefined ? HARD : inner();
     };
 }
 
-/** Wraps the host file's Think: a held row's verb, else the inner Think. */
-export function HostThink(bot: Unit, inner: () => any): () => any {
+/** Wraps the host file's Think: a held row's verb, not stepped while the bot cannot act (as Chooser.HostThink), else the inner Think. */
+export function HostThink(bot: Unit, inner: () => any, cannotAct: (this: void, bot: Unit) => boolean): () => any {
     return () => {
-        if (!Ours.On("Decider")) return inner();
         const row = stateOf(bot).held;
         if (row === undefined) return inner();
+        if (cannotAct(bot)) return undefined;
         if (row.step(bot)) stateOf(bot).held = undefined;
         return undefined;
     };
