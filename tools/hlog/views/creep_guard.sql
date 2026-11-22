@@ -1,4 +1,4 @@
--- Guard-rail counts for the L.1 creep-economy share (GOALS.md L.1), per game and team at 10:00 (last ev=snap of each hero at t < 600,
+-- Guard-rail counts for the L.1 creep-economy share (the former GOALS.md L.1), per game and team at 10:00 (last ev=snap of each hero at t < 600,
 -- the window creep_share uses).
 -- team_lh, team_dn: last hits and denies of the team's heroes; core_lh, core_dn: the lineup pos 1-3 heroes only; sup_lh, sup_dn: the
 -- lineup pos 4-5 heroes only (slice l1-support-deny); deaths: hero deaths,

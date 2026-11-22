@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Trade ends against their open (step 4.1 of docs/proposals/2026-11-20-step4-exchanges.md): for every trade episode (one `ev=trade` line)
+// Trade ends against their open (step 4.1 of the `step4-exchanges` proposal (master tag `pre-process-v5`)): for every trade episode (one `ev=trade` line)
 // of the runs, replay the end reason's gate on the episode's first cut line (the last `ev=cut kind=trade` with no running exchange, on the
 // episode's target, at or before its start) and report, per level it opened as: episodes, taken, ends already true at open, and reopens on
 // the same target within 5 s, split by how the earlier episode ended.

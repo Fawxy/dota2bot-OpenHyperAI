@@ -1,4 +1,4 @@
-// Kill chances per side (ROADMAP row 1, docs/proposals/2026-11-17-kill-chances.md): queries/kill_chances.sql for the games of
+// Kill chances per side (ROADMAP row 1, the `kill-chances` proposal (master tag `pre-process-v5`)): queries/kill_chances.sql for the games of
 // one or more runs, read per game for each hunting side: `ours` the chances our heroes have (an OHA hero low), `oha` OHA's
 // against us. Ours is the seat in the label, as ledger.js.
 // Usage: node kill_chances.js <run> [<run> ...] [--null <run> ...] [--until 720] [--rows] [--json] [--no-ingest]

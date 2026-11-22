@@ -3,20 +3,20 @@
 ## Role in the master project (read first)
 
 This repo is the **host and baseline** of the `dota-bots-humaniser` master project, not the product. Rules for every session are in
-the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../../`); open work `docs/team/ROADMAP.md`, goals
-`docs/team/GOALS.md`, plan `docs/proposals/2026-10-29-development-approach.md` there.
+the master `../../CLAUDE.md` (from a `worktrees/oha-<slice>` worktree also `../../`); open work `docs/team/ROADMAP.md`, the plan
+`docs/proposals/2026-11-23-laning-plan-after-the-bisect.md` there.
 
-- **Goal:** dynamic bot games with high-MMR/pro elements (map movement, encounters judged sensibly, support jobs, rotations,
-  objective follow-ups, awareness of the human teammate). Mechanical is fine; human imitation is not the aim. End state: our own bot script on our `lua-tasks`
-  engine with **no OHA code left**.
-- **Until then** OHA plays every behaviour we have not replaced, and is the baseline. Each slice **replaces** one OHA decision end
-  to end behind a kill switch `Ours.<Feature>` whose OFF arm is OHA; we never scale OHA's desires. Our code lives in
-  `typescript/bots/FunLib/humaniser/`.
+- **Goal:** as the master `CLAUDE.md` states it: bots that make advantageous decisions, laning first. Our bot script runs on
+  our `lua-tasks` engine; OHA and Valve's built-in modes play what we leave them.
+- **Stock is the baseline and the default.** The direction is one decider per hero that yields to stock unless it has a
+  decision (the plan, section 3). A feature has a kill switch `Ours.<Feature>` whose off arm is stock, and merges switched on
+  only when its arm beats the reference arm (the plan, section 5); we never scale OHA's desires. The per-mode code in
+  `typescript/bots/FunLib/humaniser/` is as built and is not extended.
 - **Change OHA behaviour code only** to fix bugs that block or distort tests, to keep tests valid (telemetry, the
   `Customize/override.lua` loader) or to add a hook. Do not improve OHA behaviour we will replace. The patch-update tasks below
   are maintenance of the host and do not change this.
 - **Process:** work in a `worktrees/oha-<slice>` worktree off `team-bots`; load the master skill `bot-structure` before changing bot
-  code (hook points: master `docs/team/OWNERSHIP.md`). Games run only through dotactl (skill `dotactl`). Merge into `team-bots`
+  code (who runs a hero in which mode: master `docs/team/WHO-DECIDES.md`). Games run only through dotactl (skill `dotactl`). Merge into `team-bots`
   with `git merge --no-ff`; the merge message is the slice record (master `docs/templates/slice.md`) with a `Check:` or
   `No check: <reason>` line, and a `Review:` verdict when it changes bot runtime code (git hook); then push `team-bots` to
   `origin` (fast-forward only).

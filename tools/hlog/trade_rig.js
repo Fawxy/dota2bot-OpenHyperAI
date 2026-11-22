@@ -1,4 +1,4 @@
-// The lane trade rig's reps (drill `lane-trade`, humaniser/drill.ts; master docs/proposals/2026-11-18-trade-from-the-stand.md
+// The lane trade rig's reps (drill `lane-trade`, humaniser/drill.ts; the `trade-from-the-stand` proposal (master tag `pre-process-v5`)
 // step 2): one row per trade a cast opened (`ev=trade` kind `hit` or `hitback`; `trade` on older logs; taken: result done or kill) inside a ready rig rep, from its
 // release to the next rep's start. The trade's open is its end line's time less `dur`. The rig's own truth, the cast's `watch`
 // lines: `ph=atk` (an attack fired at an enemy hero) and `ph=chit` (an enemy lane creep's attack fired at the cast). Per trade:

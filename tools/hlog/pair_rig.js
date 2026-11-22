@@ -1,4 +1,4 @@
-// The two-hero kill rig's reps (drill `pair-kill`, humaniser/drill.ts; docs/proposals/2026-11-18-fighting-together.md "Tools";
+// The two-hero kill rig's reps (drill `pair-kill`, humaniser/drill.ts; the `fighting-together` proposal (master tag `pre-process-v5`) "Tools";
 // D10, D19): one row per rep in which both cast heroes reached ready, read from the later release to the rep's end, from
 // whole snapshots (`tid`, `mode`) and the target's death (fragment ep_death). Per rep:
 //   target     the enemy hero either cast hit first (`h<pid>`); none when neither hit an enemy hero

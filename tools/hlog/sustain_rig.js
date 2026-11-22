@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// The sustain rig's reps (drill `sustain`, humaniser/drill.ts SUSTAIN_TASKS; master docs/proposals/2026-11-19-sustain-design.md
+// The sustain rig's reps (drill `sustain`, humaniser/drill.ts SUSTAIN_TASKS; the `sustain-design` proposal (master tag `pre-process-v5`)
 // check 3): did each forced answer get carried out? One row per hero and ready rep (`ev=drill ph=ready ok=1`, its `task`), read
 // from the release to the rep's end (`rend`):
 //   tango, salve, bottle  the item used: an `ev=sustain` attempt of ours with it (`k` use or step_out_use) that did not end

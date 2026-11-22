@@ -1,4 +1,4 @@
-// Dynamic-game metrics (GOALS O3/O4, O1 guard rails) from ev=snap and ev=lasthit, for 5v5 bot games where all ten
+// Dynamic-game metrics (the former GOALS.md O3/O4, O1 guard rails) from ev=snap and ev=lasthit, for 5v5 bot games where all ten
 // bots log snapshots. Definitions: docs/team/slices/15-dynamic-metrics.md (master repo). Geometry, the encounter rule and the
 // rotation rule follow the replay moment index (research/replay-index/moments.js) so bot and replay moments compare.
 // Every metric reads the log store (docs/team/slices/retire-dynamic-a.md, -b.md and -c.md): the named queries `@dynamic_heroes`,

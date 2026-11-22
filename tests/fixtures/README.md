@@ -6,7 +6,7 @@ fixture here offline, in seconds, against the real bot code in fengari. The form
 
 ```
 cd tests/humaniser
-npm run fixtures            # every active fixture; prints fixture_pass_rate (GOALS KR 0.3); exit 1 on any failure
+npm run fixtures            # every active fixture; prints fixture_pass_rate (the former GOALS.md KR 0.3); exit 1 on any failure
 npm run fixtures:controls   # negative controls (below)
 node fixtures.js f4 --json  # fixtures whose path contains "f4", or by id; JSON output
 node fixtures.js --root <dir>   # run against the bots/ under <dir> instead of this checkout
@@ -78,4 +78,4 @@ Covered: F1 caution scale (2), F3 (1), F4 (4), F5 (2), F6 (4), F7 arrival credit
 allies (6), F8 abandon, tower aggro (4), F9 missing enemy, mid rune (3). Not covered yet: F2 (attack-mode claims that reach
 no mode; nothing to observe offline), F1 `lane:cover` x1.25 stacking, F7 full-window regen and the missing-enemy margin,
 F8 followers joining at margin 0.8, F9 pulls or stacks after a rune rotation, rotation re-checks, a core taking its
-support's pull camp. "F1-F9 100%" (GOALS E.3) means 100% of these fixtures, not of every sub-finding.
+support's pull camp. "F1-F9 100%" (the former GOALS.md E.3) means 100% of these fixtures, not of every sub-finding.

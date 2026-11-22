@@ -1,5 +1,5 @@
 // Log store: test logs ingested once into SQLite so a question about a game, or many, is one SQL query
-// (docs/proposals/2026-10-30-log-query-layer.md). Derived and disposable: the .log stays the evidence; delete the file to
+// (the `log-query-layer` proposal (master tag `pre-process-v5`)). Derived and disposable: the .log stays the evidence; delete the file to
 // rebuild. Tables:
 //   logs        one row per ingested file (size, mtime, sha1: the cache key)
 //   games       one row per game parse.js splits a log into, with the run's dotactl facts copied in (seed, set, lineup, ...)

@@ -8,7 +8,7 @@
 // cleared before :00 spawns too: `true` 0, `block` `respawn`), `log` our res/fres, and when it did not
 // spawn, what stood in its spawn box at :59.9 (`grade`): the blockers. The replay has no boxes; the log's `ev=camp` lines
 // (bot eecba6b on) give them, and a log without them uses `camp_boxes.json` (the same lines, saved once; static map data).
-// `nin`/`fnin`: stacks already in the camp, since it was last empty, before this minute (KR S.2a's tiers, `GOALS.md`
+// `nin`/`fnin`: stacks already in the camp, since it was last empty, before this minute (KR S.2a's tiers, the former GOALS.md
 // 01/11/2026: 0 is a fresh camp). `--tiers` prints, per camp or pair, attempts and replay-stacked by `nin` 0, 1, 2, 3+. `woff`/`fwoff`: the hit's offset from Valve's window (bot logs from the window fields on; 0 inside).
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 

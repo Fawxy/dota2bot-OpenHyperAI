@@ -1,4 +1,4 @@
--- A pull scored per wave (docs/proposals/2026-11-05-pull-effect.md s2; slice support-lane `reading`): one row per `ok`
+-- A pull scored per wave (the `pull-effect` proposal (master tag `pre-process-v5`) s2; slice support-lane `reading`): one row per `ok`
 -- ev=pull_job (`grp` ok_div when `diverted`, as view pull_attempts: dt >= 0.75, div where a line has no dt; else ok_undiv)
 -- and one control row per lane slot that wanted a pull and got none (`grp` none: ev=choice kind=pull want=1 go=0 with no
 -- ev=pull_job of either team on that lane within 20 s of the slot; one row per game, team, lane and slot).

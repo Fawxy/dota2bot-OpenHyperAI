@@ -1,4 +1,4 @@
--- Creep-economy share per game and team over the first 10:00 (KR L.1, GOALS.md). One row per game_id and logging team.
+-- Creep-economy share per game and team over the first 10:00 (KR L.1, the former GOALS.md). One row per game_id and logging team.
 -- taken = enemy creeps we last hit (own_lh) + our own creeps we denied (own_deny); enemy_deny = enemy creeps an enemy hero denied
 -- (left out of the denominator); den = enemy-side rows - enemy_deny + own-side rows (enemy last hits on our creeps, tower and
 -- creep kills stay in as misses); share = taken / den. Window t < 600. Needs logs from 406ee95 on: older logs have no own-side
