@@ -65,4 +65,10 @@ test('q: a like or file param naming a run label resolves to that log', () => {
     const byLabel = q('like=probe_B_on_1');
     assert.match(byLabel.stderr, /is a label: using/);
     assert.match(byLabel.stdout, /"n": ?1/);
+    const fragment = q('like=-probe_');
+    assert.match(fragment.stderr, /has no %: using %-probe_%/);
+    assert.match(fragment.stdout, /"n": ?1/);
+    const none = q('like=-nosuchrun_');
+    assert.match(none.stderr, /matches no log/);
+    assert.match(none.stdout, /"n": ?0/);
 });

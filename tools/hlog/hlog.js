@@ -57,7 +57,8 @@ function params(argv) {
 
 /**
  * A `like` or `file` param naming a run label (games.label) instead of a log path becomes that log's path, so
- * `--p like=%h2hX_C_dire_3%` works as well as a path fragment. A label in several logs is an error naming them.
+ * `--p like=%h2hX_C_dire_3%` works as well as a path fragment. A label in several logs is an error naming them. A `like`
+ * with no % that is no label is read as a fragment (%like%), and one matching nothing says so.
  */
 function labelToFile(store, p) {
     for (const k of ['like', 'file']) {
@@ -67,6 +68,12 @@ function labelToFile(store, p) {
         const files = store.query('SELECT DISTINCT file FROM games WHERE label LIKE :v', { v: p[k] }).map(r => r.file);
         if (files.length > 1) throw new Error(`${k}=${p[k]} matches the labels of ${files.length} logs; name one label, or a path fragment (SELECT file, label FROM games WHERE label LIKE '...')`);
         if (files.length === 1) { console.error(`${k}=${p[k]} is a label: using ${files[0]}`); p[k] = files[0]; }
+        // A fragment with no wildcard matches nothing as a LIKE pattern and says nothing: read it as %fragment%.
+        else if (k === 'like' && !p[k].includes('%')) {
+            const n = store.query('SELECT count(DISTINCT file) AS n FROM games WHERE file LIKE :v', { v: `%${p[k]}%` })[0].n;
+            if (n) { console.error(`like=${p[k]} has no %: using %${p[k]}% (${n} logs)`); p[k] = `%${p[k]}%`; }
+            else console.error(`like=${p[k]} matches no log, as a path fragment or a label`);
+        }
     }
     return p;
 }
