@@ -159,7 +159,8 @@ const num = (x, share) => (Number.isFinite(x) ? (share ? x.toFixed(2) : Math.abs
 function text(s, o) {
     const out = [`${o.batch}: per-game means over the window ${o.fromText} to ${o.toText}, positions ${o.pos.join(',')}${o.lane ? `, lane ${o.lane}` : ''}; `
         + `diff ± is 1.96 standard errors of the difference of two means (Welch); floor is the same measure for the ${o.ref} arm's own two sides `
-        + `(its test side minus its opp side, same ± rule); * marks a diff whose interval excludes 0 and which lies outside the floor's interval`];
+        + `(its test side minus its opp side, same ± rule); * marks a diff whose interval excludes 0 and which lies outside the floor's interval; `
+        + `a share is the mean of each game's share, not the pooled one; the reference arm's own means are the ref columns`];
     if (s.skipped) out.push(`skipped ${s.skipped} games with no seat (stock or mirror)`);
     for (const p of s.problems) out.push(p);
     for (const b of s.blocks) {
