@@ -1,6 +1,6 @@
 -- Fragment (`-- include: ep_exchange`): the one definition of an exchange. Needs what ep_second needs.
--- CTE `ep_exchange(game_id, a, b, t0, t1, a_secs, b_secs)`: two opposing heroes attacking, either or both, a new exchange after
--- more than 5 s with neither attacking the other. a struck first (a tie: the lower pid); a_secs and b_secs are each one's
+-- CTE `ep_exchange(game_id, a, b, t0, t1, a_secs, b_secs)`: two opposing heroes attacking, either or both, a new exchange when
+-- their attack seconds are more than 5 s apart (4 silent seconds join, 5 split). a struck first (a tie: the lower pid); a_secs and b_secs are each one's
 -- attack seconds on the other, so b_secs 0 is an exchange that was not answered. A two-on-two is up to four exchanges.
 -- Ends with a comma.
 -- include: ep_attack

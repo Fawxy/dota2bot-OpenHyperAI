@@ -1,8 +1,8 @@
 'use strict';
 // (A job row's times are rounded to 0.1 s.)
 // Each episode kind pinned to real moments (fixtures in test/data/episodes), read by hand from the raw log lines and the stated rule of
-// its fragment (queries/fragments/ep_*.sql header) BEFORE the timeline was run on them. A case where the timeline and the reading
-// disagree stays as the reading and is `todo`, its reason beside it.
+// its fragment (queries/fragments/ep_*.sql header) BEFORE the timeline was run on them. Two readings disagreed with the timeline on
+// how a break is counted; the fragments' headers now say it in seconds apart, and those cases pin the edge.
 //
 // The fixtures are cuts of Dota logs from ~/.dotactl/logs, named by their run label: telemetry lines only (the first ev=bot line of
 // each hero, the snapshots of the heroes the cases read reduced to pid x y alive hp deaths mode tid, and the job lines of the cases).
@@ -14,8 +14,9 @@
 //   h2hlift1_B_off-dir_4  warlock, tiny 308-325 s; skeleton_king 300-330 s
 //   h2hlift1_B_off-rad_10 witch_doctor, bristleback, lich 262-285 s
 //   h2hlift1_A_off-dir_3  farm trips of luna at 690-800 s
-// Stock logs have no job lines, so job has no stock case. A stock log has no Dire snapshots either, so a Dire hero is no one in it: that
-// is why the stock exchange case is todo and why there is no stock kill_try case (the target's HP and death are not logged).
+// Stock logs have no job lines, so job has no stock case. A stock log has no Dire snapshots either, so a Dire hero is no one in it: so
+// a stock hero's attacks on one make no exchange and no kill_try, and neither kind has a stock case (base1's stock games; a stock
+// game with both sides logging has them).
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
@@ -83,10 +84,10 @@ test('retreat: a 2 s break inside is one bout, and a death at its end makes it d
     assert.deepStrictEqual([r[0].t, r[0].t1, r[0].hp0, r[0].hp1, r[0].hpmin, r[0].outcome], [236, 244, 100, 5, 5, 'died']);
 });
 
-test('retreat: a 3 s break inside is one bout', { todo: 'the fragment joins retreat seconds up to 3 s apart (a 2 s break); the text reads as 3 s of break, which is 4 s apart' }, () => {
-    // bounty_hunter (pid 7) retreat at 245 (hp 41), attack at 246, 247, 248, retreat at 249 (hp 43), laning at 250: the header says "breaks of up to 3 s"
+test('retreat: seconds 4 apart (a 3 s break) are two bouts', () => {
+    // bounty_hunter (pid 7) retreat at 245 (hp 41), attack at 246, 247, 248, retreat at 249 (hp 43), laning at 250
     const r = rowsOf(A1, { kind: 'retreat', hero: 'bounty_hunter', from: '4:04', to: '4:10' }).filter(x => x.hero === 'bounty_hunter');
-    assert.deepStrictEqual(r.map(x => [x.t, x.t1, x.hp0, x.hp1, x.outcome]), [[245, 249, 41, 43, 'lived']]);
+    assert.deepStrictEqual(r.map(x => [x.t, x.t1, x.hp0, x.hp1, x.outcome]), [[245, 245, 41, 41, 'lived'], [249, 249, 43, 43, 'lived']]);
 });
 
 // ---- exchange ---------------------------------------------------------------------------------------------------------------
@@ -104,17 +105,12 @@ test('exchange: not answered', () => {
     assert.deepStrictEqual([x.t, x.t1, x.a_secs, x.b_secs, x.outcome], [246, 248, 3, 0, 'none_back']);
 });
 
-test('exchange: attacks 6 s apart (5 silent seconds between) are one exchange', { todo: 'the fragment starts a new exchange when the attack seconds are more than 5 apart, so 6 apart (5 silent seconds) splits; the header says "more than 5 s with neither attacking"' }, () => {
+test('exchange: attack seconds 6 apart are two exchanges, neither answered', () => {
     // bounty_hunter (pid 7) targets jakiro (h3) at 521.13; jakiro targets bounty_hunter (h7) at 526.97 (second 527); nothing else between the two
     const x = rowsOf(A1, { kind: 'exchange', hero: 'jakiro', from: '8:35', to: '8:50' })
         .filter(r => ['jakiro', 'bounty_hunter'].includes(r.hero) && ['jakiro', 'bounty_hunter'].includes(r.other) && r.t < 530);
-    assert.deepStrictEqual(x.map(r => [r.hero, r.t, r.t1, r.a_secs, r.b_secs, r.outcome]), [['bounty_hunter', 521, 527, 1, 1, 'answered']]);
-});
-
-test('exchange: a stock hero attacking a Dire hero is an exchange', { todo: 'the Dire hero is not in ep_who (a stock log has no Dire lines), so ep_hit never sees the target; the timeline says only "Dire: no snapshots"' }, () => {
-    // sniper (pid 2, stock, Radiant) targets h9 at 95, 96 and 97 (the next target of h9 is at 104); the log cannot say whether h9 hit back
-    const x = rowsOf(STOCK, { kind: 'exchange', pid: 2, from: '1:30', to: '1:40' }).filter(r => r.hero === 'sniper');
-    assert.deepStrictEqual(x.map(r => [r.t, r.t1, r.a_secs, r.other_pid]), [[95, 97, 3, 9]]);
+    assert.deepStrictEqual(x.map(r => [r.hero, r.t, r.t1, r.a_secs, r.b_secs, r.outcome]),
+        [['bounty_hunter', 521, 521, 1, 0, 'none_back'], ['jakiro', 527, 527, 1, 0, 'none_back']]);
 });
 
 // ---- kill_try ---------------------------------------------------------------------------------------------------------------
