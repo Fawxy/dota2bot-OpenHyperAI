@@ -1,5 +1,17 @@
-// Invariant checks over one parsed game. Each returns { id, level: pass|warn|fail|skip, summary, details }.
+// Two sets of checks over parsed games.
+// runChecks: invariants of one game (analyse.js, er.js); each returns { id, level: pass|warn|fail|skip, summary, details }.
+// TRIPWIRES: plain outcomes every full game owes, whoever decides (plan of 23/11/2026, step 2). batch.js runs them on
+//   every batch; they read what happened, never our own reads, so they judge older logs and both teams. A design that
+//   breaks one edits its line in the same merge.
+// Usage: node checks.js <manifest | run> ...     prints only failures; exit 0 none, 1 some, 2 no games or bad usage
+//   <run> is a batch name with a manifest in ~/.dotactl/batches, else a label prefix of the banked local and remote logs.
 'use strict';
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { parseLog } = require('./parse');
+const { readManifest } = require('./manifest');
 
 // Logged values are rounded to 3 dp and sampled on frame boundaries.
 const EPS = 0.01;
@@ -501,4 +513,214 @@ function runChecks(game) {
     return ALL.map(check => check(game));
 }
 
-module.exports = { runChecks, laneFightStats, fmtT, profileAt, delayBounds, modesDuring, expectedModes, modeChurn, BLIP_DWELL, LANING_ROAM_CAP };
+// Tripwires. The margins are from 782 banked team-games with every switch of ours off (679 games, 06/11 to 23/11/2026).
+const HORN_BY = 30;
+const RUNE_JUMP = 20; // net worth in one snapshot interval: a bounty pays each hero 40, passive gold about 1.5 a second
+const RUNE_HEROES = 3; // of five, so that one or two spending in that second do not hide the team's gold
+const STARTING_GOLD = 600; // game fact; the most any banked hero held at the horn is 335
+const RESPAWN_MAX = 100; // game fact: a dead hero logs nothing, and no respawn is longer
+const EARLY_DEATH = 30; // the waves meet about now
+const BASE_STAY = 60; // judgement; the longest stay of a switches-off hero is 37
+const LANE_BY = 300;
+const LANE_LEVEL = 2;
+const LANE_LAST_HITS = 15; // judgement; the lowest switches-off team had 21
+const TEAM_NAMES = { 2: 'Radiant', 3: 'Dire' };
+const EXAMPLES = 3;
+
+const lastBy = (b, t) => b.snaps.filter(s => s.t <= t).pop();
+const logging = heroes => heroes.filter(b => b.snaps.length > 0);
+
+function luaErrors(game) {
+    const r = scriptErrors(game);
+    return r.level === 'fail' ? `${r.summary}: ${r.details[0].slice(0, 200)}` : undefined;
+}
+
+function bothLog(game, heroes) {
+    const seen = logging(heroes);
+    if (seen.length !== 5) return `${seen.length} of 5 heroes logged`;
+    for (const b of seen) {
+        const times = [...b.snaps.map(s => s.t), game.maxT];
+        for (let i = 1; i < times.length; i++) {
+            if (times[i] - times[i - 1] > RESPAWN_MAX) return `${name(game, b.pid)} silent ${(times[i] - times[i - 1]).toFixed(0)} s from ${fmtT(times[i - 1])}`;
+        }
+    }
+    return undefined;
+}
+
+function startItems(game, heroes) {
+    const idle = logging(heroes).filter(b => {
+        const s = lastBy(b, -0.01);
+        return s && !(s.gold < STARTING_GOLD);
+    });
+    return idle.length ? `${idle.map(b => name(game, b.pid)).join(', ')} had not spent at the horn` : undefined;
+}
+
+/** A hero is paid by a jump in net worth with no last hit or kill of its own in that interval. */
+function hornRunes(game, heroes) {
+    const seen = logging(heroes);
+    if (seen.length === 0) return undefined; // both_log says it
+    if (!seen.some(b => b.snaps.some(s => typeof s.nw === 'number'))) return 'no net worth in the log, so not judged';
+    const paid = seen.filter(b => b.snaps.some((s, i) => {
+        const p = b.snaps[i - 1];
+        return p && s.t > -1 && s.t <= HORN_BY && s.lh === p.lh && s.kills === p.kills && s.nw - p.nw >= RUNE_JUMP;
+    }));
+    if (paid.length >= RUNE_HEROES) return undefined;
+    const modes = countBy(seen.map(b => lastBy(b, 0)).filter(Boolean), s => s.mode).map(([m, n]) => `${m} ${n}`).join(', ');
+    return `${paid.length} of ${seen.length} paid by ${fmtT(HORN_BY)}; modes at 0:00: ${modes}`;
+}
+
+function earlyDeath(game, heroes) {
+    for (const b of logging(heroes)) {
+        for (let i = 1; i < b.snaps.length; i++) {
+            const p = b.snaps[i - 1];
+            if (p.t >= EARLY_DEATH) break;
+            if (b.snaps[i].deaths > p.deaths) return `${name(game, b.pid)} died at ${fmtT(p.t)} in ${p.mode}`;
+        }
+    }
+    return undefined;
+}
+
+function inBase(game, heroes) {
+    const stays = [];
+    for (const b of logging(heroes)) {
+        let from;
+        let longest;
+        for (const s of b.snaps) {
+            if (s.t < 0 || s.alive !== 1 || !nearFountain(s)) {
+                from = undefined;
+                continue;
+            }
+            from = from || s;
+            const secs = s.t - from.t;
+            if (secs >= BASE_STAY && (!longest || secs > longest.secs)) longest = { secs, at: from.t, mode: s.mode };
+        }
+        if (longest) stays.push(`${name(game, b.pid)} ${longest.secs.toFixed(0)} s from ${fmtT(longest.at)} in ${longest.mode}`);
+    }
+    return stays.length ? stays.join(', ') : undefined;
+}
+
+function laneXp(game, heroes) {
+    const low = logging(heroes).filter(b => {
+        const s = lastBy(b, LANE_BY);
+        return s && !(s.lvl >= LANE_LEVEL);
+    });
+    return low.length ? `${low.map(b => name(game, b.pid)).join(', ')} under level ${LANE_LEVEL}` : undefined;
+}
+
+function laneFarm(game, heroes) {
+    const at = logging(heroes).map(b => lastBy(b, LANE_BY)).filter(Boolean);
+    if (at.length === 0) return undefined; // both_log says it
+    const n = at.reduce((a, s) => a + (s.lh || 0), 0);
+    return n < LANE_LAST_HITS ? `${n} last hits` : undefined;
+}
+
+// `from`: the game time a game must have reached to be judged. `game`: judged once a game, not once a team.
+// prettier-ignore
+const TRIPWIRES = [
+    { id: 'lua_errors',  from: -Infinity,   find: luaErrors,  game: true, what: 'no Lua error' },
+    { id: 'both_log',    from: -Infinity,   find: bothLog,    what: 'five heroes a team log all game' },
+    { id: 'start_items', from: 0,           find: startItems, what: 'every hero has spent at the horn' },
+    { id: 'horn_runes',  from: HORN_BY,     find: hornRunes,  what: 'the team has 0:00 bounty gold by 0:30' },
+    { id: 'early_death', from: EARLY_DEATH, find: earlyDeath, what: 'nobody dies before the waves meet (0:30)' },
+    { id: 'in_base',     from: BASE_STAY,   find: inBase,     what: 'nobody alive stays a minute in base' },
+    { id: 'lane_xp',     from: LANE_BY,     find: laneXp,     what: 'every hero is level 2 by 5:00' },
+    { id: 'lane_farm',   from: LANE_BY,     find: laneFarm,   what: 'the team has 15 last hits by 5:00' },
+];
+
+/** One game's failed tripwires: { id, what, why, team, side }. `side` is `ours` when the team has a switch of ours on. */
+function tripwires(game) {
+    const bots = Object.values(game.bots);
+    const teams = [2, 3].map(team => {
+        const heroes = bots.filter(b => b.team === team);
+        const ours = heroes.some(b => b.profiles.some(p => /:1(,|$)/.test(String(p.ours || ''))));
+        return { team, heroes, side: ours ? 'ours' : 'off' };
+    });
+    const out = [];
+    for (const { id, what, from, find, game: once } of TRIPWIRES) {
+        if (game.maxT < from) continue;
+        for (const { team, heroes, side } of once ? [{ heroes: bots, side: 'game' }] : teams) {
+            const why = find(game, heroes);
+            if (why) out.push({ id, what, why, team, side });
+        }
+    }
+    return out;
+}
+
+/**
+ * A batch's failures as printable lines, grouped by wire, arm and side: { failures, lines }, both empty when all pass.
+ * `games` are manifest rows ({ label, arm, log }); each log's last game is judged.
+ */
+function tripReport(games) {
+    const groups = new Map();
+    const perArm = new Map();
+    let failures = 0;
+    for (const g of games) {
+        const arm = g.arm ? ` arm=${g.arm}` : '';
+        perArm.set(arm, (perArm.get(arm) || 0) + 1);
+        let found;
+        try {
+            const game = parseLog(fs.readFileSync(g.log, 'utf8')).pop();
+            found = game ? tripwires(game) : [{ id: 'unreadable', what: 'the log holds a game', why: 'no game in the log', side: 'game' }];
+        } catch (e) {
+            found = [{ id: 'unreadable', what: 'the log can be judged', why: e.message, side: 'game' }];
+        }
+        for (const f of found) {
+            failures++;
+            const head = `TRIPWIRE ${f.id}${arm} ${f.side}`;
+            if (!groups.has(head)) groups.set(head, { arm, what: f.what, labels: new Set(), examples: [] });
+            const group = groups.get(head);
+            group.labels.add(g.label);
+            group.examples.push(`  ${g.label}${f.team ? ` ${TEAM_NAMES[f.team]}` : ''}: ${f.why}`);
+        }
+    }
+    const lines = [];
+    for (const [head, g] of groups) {
+        lines.push(`${head}: ${g.labels.size} of ${perArm.get(g.arm)} games (${g.what})`, ...g.examples.slice(0, EXAMPLES));
+        if (g.examples.length > EXAMPLES) lines.push(`  and ${g.examples.length - EXAMPLES} more`);
+    }
+    return { failures, lines };
+}
+
+/** The games a command-line argument names: a manifest, a batch with one, or a run's banked logs (newest per label). */
+function gamesFor(arg) {
+    if (fs.existsSync(arg) && fs.statSync(arg).isFile()) return readManifest(arg);
+    const manifest = path.join(os.homedir(), '.dotactl', 'batches', `${arg}.manifest`);
+    if (fs.existsSync(manifest)) return readManifest(manifest);
+    const { LOGS, JOBS, labelOf } = require('./store');
+    const list = dir => (fs.existsSync(dir) ? fs.readdirSync(dir).map(f => path.join(dir, f)) : []);
+    const files = [...list(LOGS).filter(f => f.endsWith('.log')), ...list(JOBS).map(d => path.join(d, 'game.log')).filter(f => fs.existsSync(f))];
+    const newest = new Map();
+    for (const log of files) {
+        const label = labelOf(log);
+        if (!label || !(label === arg || label.startsWith(`${arg}_`))) continue;
+        const mtime = fs.statSync(log).mtimeMs;
+        if (!newest.has(label) || mtime > newest.get(label).mtime) newest.set(label, { label, log, mtime });
+    }
+    return [...newest.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function main(argv) {
+    const help = argv.includes('--help') || argv.includes('-h');
+    if (help || argv.length === 0 || argv.some(a => a.startsWith('-'))) {
+        const head = fs.readFileSync(__filename, 'utf8').split(/\r?\n/);
+        console.log(head.slice(0, head.indexOf("'use strict';")).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        for (const w of TRIPWIRES) console.log(`  ${w.id.padEnd(12)} ${w.what}`);
+        return help ? 0 : 2;
+    }
+    const games = [];
+    for (const arg of argv) {
+        const found = gamesFor(arg);
+        if (found.length === 0) {
+            console.error(`no games for ${arg}`);
+            return 2;
+        }
+        games.push(...found);
+    }
+    const { failures, lines } = tripReport(games);
+    for (const line of lines) console.log(line);
+    return failures ? 1 : 0;
+}
+
+module.exports = { TRIPWIRES, tripwires, tripReport, runChecks, laneFightStats, fmtT, profileAt, delayBounds, modesDuring, expectedModes, modeChurn, BLIP_DWELL, LANING_ROAM_CAP };
+
+if (require.main === module) process.exitCode = main(process.argv.slice(2));

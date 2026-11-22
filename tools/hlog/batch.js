@@ -1,5 +1,5 @@
-// One batch of paired games from a JSON spec: one-shot `dotactl run` per game, arms interleaved, then lineup_check and the log
-// bank. Run it as a background shell job (skill eval-run, "Running a batch"); it never holds the client between games.
+// One batch of paired games from a JSON spec: one-shot `dotactl run` per game, arms interleaved, then lineup_check, the log
+// bank and the tripwires. Run it as a background shell job (skill eval-run); it never holds the client between games.
 // Usage: node batch.js <spec.json> [--dry-run]
 //
 // Spec (paths relative to the master root unless absolute):
@@ -33,6 +33,10 @@
 //
 // Resumable: a label already `status=ok` is skipped. A failed game is retried once, then the batch stops (exit 1). The curfew stops it (exit 3); a
 // usage error is exit 2. Labels are <name>_<lineup>_<arm>_<rep>.
+//
+// Tripwires (checks.js TRIPWIRES): run on every finished game of the batch, whether lineup_check passed it or not; only
+// failures print. They keep no game out of the bank; a batch with one exits 4 (1 when lineup_check failed a game too).
+// A drill batch has none: its heroes are placed, so a full game's outcomes are not owed.
 'use strict';
 
 const fs = require('fs');
@@ -43,6 +47,7 @@ const { readManifest } = require('./manifest');
 const { checkGame, SEEDS } = require('./lineup_check');
 const bank = require('./bank');
 const { decide } = require('./decide');
+const { tripReport } = require('./checks');
 
 const MASTER = path.resolve(__dirname, '../../../..');
 const BATCHES = path.join(os.homedir(), '.dotactl', 'batches');
@@ -311,8 +316,10 @@ async function main(argv) {
     const entries = bank.entriesFor(manifest, { validUntil: spec.validUntil, note: spec.note }).filter(e => ok.includes(e.label));
     bank.add(entries);
     console.log(`banked ${entries.length}; ${bad} failed lineup_check`);
+    const trips = spec.drill ? { failures: 0, lines: [] } : tripReport(readManifest(manifest));
+    for (const line of trips.lines) console.log(line);
     console.log('done');
-    process.exit(bad ? 1 : 0);
+    process.exit(bad ? 1 : trips.failures ? 4 : 0);
 }
 
 // `--help`: the comment block that opens this file.
