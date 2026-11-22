@@ -4,13 +4,13 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { plan, planSummary, runArgs, seconds } = require('../batch');
+const { plan, planSummary, runArgs, pinCommits, seconds } = require('../batch');
 const bank = require('../bank');
 const { readManifest, expandPath } = require('../manifest');
 const { health, bar, cond } = require('../er');
 
 const OFF = ['Humaniser.Enable=false', 'Humaniser.States.Enable=false'];
-const SPEC = { name: 's1', worktree: 'w', build: 'abc1234', lineups: ['A', 'B', 'C', 'A', 'B'], until: '20:00',
+const SPEC = { name: 's1', commit: 'HEAD', build: 'abc1234', lineups: ['A', 'B', 'C', 'A', 'B'], until: '20:00',
     arms: { on: { set: [], states: true }, off: { set: OFF, states: false } } };
 
 test('batch plan: slice 1 order (s1.sh): arms alternate per rep, seeds per lineup', () => {
@@ -37,13 +37,14 @@ test('batch runArgs: a spec drill becomes --drill', () => {
     assert.ok(!runArgs(SPEC, g, false).includes('--drill'));
 });
 
-test('batch runArgs: --build only when asked, one --set per key', () => {
-    const [on, off] = plan(SPEC);
-    const a = runArgs(SPEC, on, true);
-    assert.ok(a.includes('--build'));
+test('batch runArgs: each game runs its arm\'s commit, one --set per key', () => {
+    const spec = { ...SPEC, arms: { ...SPEC.arms, on: { ...SPEC.arms.on, commit: 'c'.repeat(40) } } };
+    const [on, off] = plan(spec);
+    const a = runArgs(spec, on);
+    assert.deepStrictEqual(a.slice(0, 3), ['run', '--commit', 'c'.repeat(40)]);
     assert.deepStrictEqual(a.slice(a.indexOf('--seed'), a.indexOf('--seed') + 2), ['--seed', '30']);
-    const b = runArgs(SPEC, off, false);
-    assert.ok(!b.includes('--build'));
+    const b = runArgs(spec, off);
+    assert.strictEqual(b[b.indexOf('--commit') + 1], 'HEAD');
     assert.deepStrictEqual(b.filter((x, i) => b[i - 1] === '--set'), OFF);
     assert.strictEqual(seconds('20:00'), 1200);
     assert.strictEqual(seconds(600), 600);
@@ -197,16 +198,28 @@ function runBatch(spec, fakePlan, dir) {
         bank: read(path.join(home, '.dotactl', 'bank.jsonl')).map(JSON.parse) };
 }
 
+test('batch pinCommits: arms run a full sha, and lineup_check expects the snapshot\'s short sha unless a build is named', () => {
+    const shas = { main: { sha: 'a'.repeat(40), short: 'aaaaaaaa' }, f1: { sha: 'b'.repeat(40), short: 'bbbbbbbb' } };
+    const resolve = rev => shas[rev];
+    const spec = { commit: 'main', arms: { off: { set: OFF }, f1: { commit: 'f1' }, named: { build: 'x+dirty' } } };
+    const pinned = pinCommits(spec, resolve);
+    assert.deepStrictEqual(Object.values(pinned.arms).map(a => [a.commit, a.build]),
+        [['a'.repeat(40), 'aaaaaaaa'], ['b'.repeat(40), 'bbbbbbbb'], ['a'.repeat(40), 'x+dirty']]);
+    assert.deepStrictEqual(pinned.arms.off.set, OFF);
+    assert.strictEqual(pinCommits({ ...spec, build: 'old' }, resolve).arms.f1.build, 'old', 'a spec build still wins');
+    assert.throws(() => pinCommits({ arms: { on: {} } }, resolve), /arm on has no commit/);
+    assert.throws(() => pinCommits({ commit: 'gone', arms: { on: {} } }, resolve), /no commit gone/);
+});
+
 const BSPEC = { ...SPEC, name: 'bt', lineups: ['A', 'B'], until: '1:00' };
 
-test('batch main: a failed game is retried once, --build only until the first success, valid games banked', () => {
+test('batch main: a failed game is retried once, every game runs the pinned sha, valid games banked', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-'));
     const r = runBatch(BSPEC, ['fail', 'ok', 'fail', 'ok', 'ok', 'ok'], dir);
     assert.strictEqual(r.status, 0, r.out);
-    assert.deepStrictEqual(r.calls.map(a => a.includes('--build')), [true, true, false, false, false, false],
-        'the retried first game builds again');
+    const head = spawnSync('git', ['-C', __dirname, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+    assert.ok(r.calls.every(a => a[a.indexOf('--commit') + 1] === head), 'spec commit HEAD resolved once to its full sha');
     assert.deepStrictEqual(r.calls.map(a => a[a.indexOf('--label') + 1]), ['bt_A_on_1', 'bt_A_on_1', 'bt_A_off_1', 'bt_A_off_1', 'bt_B_off_2', 'bt_B_on_2']);
-    assert.ok(r.calls.every(a => path.isAbsolute(a[a.indexOf('--worktree') + 1])), 'worktree passed as an absolute path');
     assert.strictEqual(r.manifest.filter(l => l.startsWith('status=fail')).length, 2);
     assert.deepStrictEqual(r.bank.map(e => e.label).sort(), ['bt_A_off_1', 'bt_A_on_1', 'bt_B_off_2', 'bt_B_on_2']);
 });
@@ -221,7 +234,6 @@ test('batch main: two failures stop the batch (exit 1); a re-run resumes after t
     const again = runBatch(BSPEC, [], dir);
     assert.strictEqual(again.status, 0, again.out);
     assert.deepStrictEqual(again.calls.map(a => a[a.indexOf('--label') + 1]), ['bt_A_off_1', 'bt_B_off_2', 'bt_B_on_2']);
-    assert.ok(again.calls[0].includes('--build'), 'the first game of a resumed run builds');
     assert.strictEqual(again.bank.length, 4);
 });
 
@@ -234,6 +246,11 @@ test('batch main: the curfew stops it with exit 3; a usage error is exit 2', () 
     assert.strictEqual(spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js')]).status, 2);
     const bad = path.join(dir, 'bad.json');
     fs.writeFileSync(bad, JSON.stringify({ name: 'x' }));
+    assert.strictEqual(spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js'), bad]).status, 2);
+    fs.writeFileSync(bad, JSON.stringify({ ...BSPEC, commit: 'no-such-rev' }));
+    assert.match(spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js'), bad], { encoding: 'utf8' }).stderr, /no commit no-such-rev/);
+    // A dotactl that does not exist: were the spec accepted, its games would fail (exit 1), never queue a real one.
+    fs.writeFileSync(bad, JSON.stringify({ ...BSPEC, worktree: 'w', dotactl: path.join(dir, 'none.js') }));
     assert.strictEqual(spawnSync(process.execPath, [path.resolve(__dirname, '../batch.js'), bad]).status, 2);
 });
 
