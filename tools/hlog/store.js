@@ -287,6 +287,10 @@ class Store {
     drop(logId) {
         const id = Number(logId);
         const games = `SELECT game_id FROM games WHERE log_id = ${id}`;
+        // Game ids are rowids and can be reused, so rows left behind would read as another game's.
+        for (const t of ['hero_sec', 'hero_sec_games']) {
+            if (this.hasTable(t)) this.db.exec(`DELETE FROM ${t} WHERE game_id IN (${games})`);
+        }
         for (const t of [...this.tables(), 'errors']) {
             this.db.exec(t.startsWith('dx_') ? `DELETE FROM ${q(t)} WHERE log_id = ${id}` : `DELETE FROM ${q(t)} WHERE game_id IN (${games})`);
         }
@@ -453,8 +457,68 @@ class Store {
         }
     }
 
+    hasTable(name) {
+        return this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name) !== undefined;
+    }
+
+    /** The stamp of the fill rules: any change to the fill SQL, a fragment it includes or the lane polylines changes it. */
+    heroSecVersion() {
+        const text = include(fs.readFileSync(path.join(FRAGMENTS, 'hero_sec_fill.sql'), 'utf8'))
+            + fs.readFileSync(path.join(VIEWS, 'lane_segments.sql'), 'utf8');
+        return crypto.createHash('sha1').update(text).digest('hex').slice(0, 12);
+    }
+
+    /**
+     * Brings `hero_sec` (one row per game, hero and whole second; see fragments/hero_sec_fill.sql) up to date for the games
+     * whose file matches `like` (default all) and, when given, whose game number is `game`: a game with no rows stamped by the
+     * current rules is (re)filled, the others are skipped. Created on first use, so an existing store needs no re-ingest.
+     * Columns carry no type, as in the ev_ tables: an INTEGER-typed game_id would stop a join to ev_snap from using its index.
+     * Returns the number of games filled.
+     */
+    fillHeroSec({ like = '%', game = null } = {}, onGame = () => {}) {
+        const version = this.heroSecVersion();
+        this.db.exec(`CREATE TABLE IF NOT EXISTS hero_sec (game_id, pid, team, pos, hero, sec, x, y, hp, mode, live, life, lane, hits, near, en900, al900);
+            CREATE TABLE IF NOT EXISTS hero_sec_games (game_id INTEGER PRIMARY KEY, version TEXT);
+            CREATE INDEX IF NOT EXISTS hero_sec_pid ON hero_sec (game_id, pid, sec);
+            CREATE INDEX IF NOT EXISTS hero_sec_sec ON hero_sec (game_id, sec)`);
+        const sql = include(fs.readFileSync(path.join(FRAGMENTS, 'hero_sec_fill.sql'), 'utf8'));
+        this.ensure(sql);
+        const pending = () => this.db.prepare(`SELECT g.game_id FROM games g LEFT JOIN hero_sec_games h ON h.game_id = g.game_id
+            WHERE g.file LIKE :like AND (:game IS NULL OR g.game = :game) AND h.version IS NOT :version ORDER BY g.game_id`)
+            .all({ like, game, version }).map(r => Number(r.game_id));
+        const BATCH = 10;
+        let filled = 0;
+        while (pending().length) {
+            this.db.exec('BEGIN IMMEDIATE');
+            try {
+                // Another process may have filled these while this one waited for the lock.
+                const todo = pending().slice(0, BATCH);
+                this.db.exec('CREATE TEMP TABLE IF NOT EXISTS hs_todo (game_id INTEGER PRIMARY KEY); DELETE FROM hs_todo');
+                const ins = this.db.prepare('INSERT INTO hs_todo VALUES (?)');
+                for (const id of todo) ins.run(id);
+                this.db.exec(`DELETE FROM hero_sec WHERE game_id IN (SELECT game_id FROM hs_todo);
+                    DELETE FROM hero_sec_games WHERE game_id IN (SELECT game_id FROM hs_todo)`);
+                this.db.exec(sql);
+                const stamp = this.db.prepare('INSERT INTO hero_sec_games VALUES (?, ?)');
+                for (const id of todo) stamp.run(id, version);
+                this.db.exec('COMMIT');
+                filled += todo.length;
+                onGame(filled);
+            } catch (e) {
+                this.db.exec('ROLLBACK');
+                throw e;
+            }
+        }
+        return filled;
+    }
+
     query(sql, ...args) {
         sql = include(sql);
+        if (/\bhero_sec\b/.test(sql)) {
+            // Named params say which games to fill (`like`, `game`: the named queries' own), none says all of them.
+            const p = args[0] && typeof args[0] === 'object' ? args[0] : {};
+            this.fillHeroSec({ like: typeof p.like === 'string' ? p.like : typeof p.file === 'string' ? p.file : '%', game: p.game ?? null });
+        }
         if (sql.includes('-- ensure:')) this.ensure(sql);
         return this.db.prepare(sql).all(...args);
     }
