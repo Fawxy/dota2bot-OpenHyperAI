@@ -4,7 +4,9 @@
 // Usage: node gold.js <run> [<run> ...] [--null <run> ...] [--at 600] [--arm <name>] [--by pos|arm] [--json] [--no-ingest]
 //   <run> is a label prefix (bis1 takes bis1_*; name bis1r too). Labels: `h2h742_A_rad_3`, the bisect form
 //   `bis1_B_offrad_2` (arm `off`, seat glued on: rad or dire) and the batch arm form `h2hlift1_B_off-dir_10` (seat after
-//   a hyphen: rad, dir or dire). Ours is the seat in the label, OHA the other team.
+//   a hyphen: rad, dir or dire). Ours is the seat in the label, OHA the other team. A label with no seat
+//   (`stockbase2_A_stock_7`, batch.js on mirror arms) is a mirror game: Radiant stands for ours, Dire for OHA; under --null
+//   the seats are averaged, so the stand-in does not matter there.
 //   --null <runs>  OHA against OHA runs: adds `mirror` (both seats' mean), `we` (ours - mirror) and `they` (mirror - OHA).
 //   --arm <name>   only games of that arm (the label's word before the seat).
 //   --by pos       one table per hero position (ev=bot pos), one hero a side, per game.
@@ -66,12 +68,15 @@ function args(argv) {
 /**
  * `h2h742_A_rad_3` -> { run: 'h2h742', lineup: 'A', arm: '', seat: 2 }; `bis1_B_offrad_2` -> arm `off`, seat 2 (the arm word
  * has the seat glued on, which ledger.js's `_rad_` test never sees); `bis1r_C_noTdire_1` -> arm `noT`, seat 3;
- * `h2hlift1_B_off-dir_10` (batch.js arms `off-rad`, `off-dir`) -> arm `off`, seat 3.
+ * `h2hlift1_B_off-dir_10` (batch.js arms `off-rad`, `off-dir`) -> arm `off`, seat 3. With no seat, `stockbase2_A_stock_7`
+ * -> arm `stock`, seat 2, mirror: a mirror game, Radiant standing for ours.
  */
 function parseLabel(label) {
     const m = label.match(/^(.*?)_([A-Z])_(?:ours_)?([A-Za-z]*?)-?(rad|dire?)_(\d+)$/) ||label.match(/^(.*?)()_?()(rad|dire)_(\d+)$/);
-    if (!m) return undefined;
-    return { run: m[1], lineup: m[2], arm: m[3], seat: m[4] === 'rad' ? 2 : 3, n: Number(m[5]) };
+    if (m) return { run: m[1], lineup: m[2], arm: m[3], seat: m[4] === 'rad' ? 2 : 3, n: Number(m[5]) };
+    const w = label.match(/^(.*?)_([A-Z])_([A-Za-z][\w-]*?)_(\d+)$/);
+    if (w) return { run: w[1], lineup: w[2], arm: w[3], seat: 2, n: Number(w[4]), mirror: true };
+    return undefined;
 }
 
 /** Ingests only the logs of these runs (the store caches an unchanged log), local and remote-job layouts. */
@@ -96,7 +101,7 @@ function games(store, runs, { arm } = {}) {
         { p: `${run.replace(/_/g, '\\_')}\\_%` });
         for (const r of rows) {
             const p = parseLabel(r.label);
-            if (!p) { skipped.push({ label: r.label, why: 'no rad/dire seat in the label' }); continue; }
+            if (!p) { skipped.push({ label: r.label, why: 'no <lineup>_<arm>[seat]_<n> in the label' }); continue; }
             if (arm !== undefined && p.arm !== arm) continue;
             out.push({ ...r, ...p });
         }
@@ -443,7 +448,8 @@ if (require.main === module) {
     for (const s of [...result.skipped, ...(nul ? nul.skipped : [])]) console.error(`skipped ${s.label}: ${s.why}`);
     if (!result.games.length) throw new Error('no games');
     const head = `${result.games.length} games${nul ? `, mirror ${nul.games.length} games` : ''}; per game, ours / OHA, gap = ours - OHA; first snapshot to ${o.at} s`
-        + (nul ? '; mirror = OHA against OHA, both seats; we = ours - mirror, they = mirror - OHA' : '');
+        + (nul ? '; mirror = OHA against OHA, both seats; we = ours - mirror, they = mirror - OHA' : '')
+        + (result.games.some((g) => g.mirror) ? `; ${result.games.filter((g) => g.mirror).length} mirror games (no seat in the label): ours = Radiant, OHA = Dire` : '');
     if (o.by === 'arm') {
         const { arms, table } = armTable(result);
         if (o.json) console.log(JSON.stringify({ arms, table }));

@@ -266,7 +266,7 @@ function summary(game) {
         rows.push([
             `${b.hero || '?'}[${b.pid}]${b.human ? ' (human)' : ''}`,
             b.team === 2 ? 'rad' : b.team === 3 ? 'dire' : '?',
-            p ? p.skill.toFixed(2) : '-',
+            p && typeof p.skill === 'number' ? p.skill.toFixed(2) : '-',
             b.human ? '-' : b.allyOfHuman === undefined ? '?' : b.allyOfHuman ? 'yes' : 'no',
             last ? `${last.lh}/${last.dn}` : '-',
             by('mode', b.pid).length,

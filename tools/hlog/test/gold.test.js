@@ -82,3 +82,29 @@ test('bisect labels carry the arm with the seat glued on', () => {
     assert.deepStrictEqual(parseLabel('bis1_B_BFrad_2'), { run: 'bis1', lineup: 'B', arm: 'BF', seat: 2, n: 2 });
     assert.deepStrictEqual(parseLabel('h2h742_A_dire_3'), { run: 'h2h742', lineup: 'A', arm: '', seat: 3, n: 3 });
 });
+
+test('a label with no seat is a mirror game: Radiant stands for ours, and the label says so', () => {
+    assert.deepStrictEqual(parseLabel('stockbase2_A_stock_7'), { run: 'stockbase2', lineup: 'A', arm: 'stock', seat: 2, n: 7, mirror: true });
+    assert.deepStrictEqual(parseLabel('stockbase2_C_off_9'), { run: 'stockbase2', lineup: 'C', arm: 'off', seat: 2, n: 9, mirror: true });
+    assert.strictEqual(parseLabel('h2h742_A_rad_3').mirror, undefined);
+    assert.strictEqual(parseLabel('stock-events_smoke'), undefined);
+});
+
+test('a mirror game is read, not skipped, and gives the same totals as the same log under a Radiant seat', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-gold-'));
+    const s = new Store(':memory:');
+    for (const name of ['2026-11-22T00-00-00-mirtest_A_stock_1.log', '2026-11-22T00-00-01-radtest_A_rad_1.log']) {
+        const f = path.join(dir, name);
+        fs.writeFileSync(f, build().join('\n') + '\n');
+        s.ingest(f);
+    }
+    const m = games(s, ['mirtest']);
+    assert.strictEqual(m.skipped.length, 0);
+    assert.strictEqual(m.games.length, 1);
+    assert.strictEqual(m.games[0].mirror, true);
+    const r = games(s, ['radtest']).games[0];
+    const a = gameResult(s, m.games[0], 60);
+    const b = gameResult(s, r, 60);
+    assert.deepStrictEqual(a.ours.lines, b.ours.lines);
+    assert.deepStrictEqual(a.oha.lines, b.oha.lines);
+});
