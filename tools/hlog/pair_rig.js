@@ -1,6 +1,6 @@
 // The two-hero kill rig's reps (drill `pair-kill`, humaniser/drill.ts; docs/proposals/2026-11-18-fighting-together.md "Tools";
 // D10, D19): one row per rep in which both cast heroes reached ready, read from the later release to the rep's end, from
-// whole snapshots (`tid`, `mode`, the target's `alive` and `deaths`). Per rep:
+// whole snapshots (`tid`, `mode`) and the target's death (fragment ep_death). Per rep:
 //   target     the enemy hero either cast hit first (`h<pid>`); none when neither hit an enemy hero
 //   hit1/hit2  the pos1's and the pos5's first hit on it, seconds after release (null: never); `gap` between them
 //   split      a cast hit another enemy hero in the rep
@@ -21,7 +21,11 @@ const BOTH_GAP = 2;
 const STOP_GAP = 3;
 const CONTROLS = ['outnum'];
 
-const SNAPS = `SELECT pid, t, tid, mode, alive, deaths FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
+const SNAPS = `SELECT pid, t, tid, mode FROM ev_snap WHERE game_id = :g AND pid = :p AND t >= :a AND t <= :b ORDER BY t`;
+const DEATH = `WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE game_id = :g),
+-- include: ep_death
+done AS (SELECT 1)
+SELECT t FROM ep_death WHERE pid = :p AND t >= :a AND t <= :b ORDER BY t LIMIT 1`;
 
 /** The rep rows of the games whose file matches `like`. */
 function reps(store, like) {
@@ -65,14 +69,10 @@ function read(store, v, a, b) {
     row.killed = 0;
     row.kt = null;
     if (row.target) {
-        const ts = store.query(SNAPS, { g: v.game_id, p: Number(row.target.slice(1)), a: t0 - 1, b: t1 });
-        for (let i = 1; i < ts.length; i++) {
-            if (ts[i].alive === 0 || ts[i].deaths > ts[i - 1].deaths) {
-                row.killed = 1;
-                // A dead hero writes no snapshots: the first one after a death is its respawn, so the kill is its last alive one.
-                row.kt = round1((ts[i].alive === 0 ? ts[i].t : ts[i - 1].t) - t0);
-                break;
-            }
+        const died = store.query(DEATH, { g: v.game_id, p: Number(row.target.slice(1)), a: t0 - 1, b: t1 })[0];
+        if (died) {
+            row.killed = 1;
+            row.kt = round1(died.t - t0);
         }
     }
     row.last1 = ha.length ? round1(ha[ha.length - 1].t - t0) : null;

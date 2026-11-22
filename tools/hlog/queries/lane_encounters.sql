@@ -2,7 +2,7 @@
 -- replaces team roam's lane fights. An encounter is a run of a lineup hero's live snaps from :from to :until (default 90-600)
 -- with an enemy hero within 800 (`ed`), gaps up to 3 s, at least 2 snaps. At its first snap: allies and enemies alive within 1,200
 -- of the hero (lineup snaps within 0.6 s), the lowest such enemy's HP and the hero's own. Outcome, to 5 s after its last snap:
--- died (the hero's death, dated at the snapshot before the dead gap, as fragment hero_death), kill (an enemy hero died within
+-- died (the hero's death, fragment ep_death), kill (an enemy hero died within
 -- 1,600 of the hero's mean position: a kill near it, not necessarily its own), hp_drop (the hero's HP-% range inside it).
 -- Only encounters whose first snapshot is within :width (default 1,200, fight_read's lane width) of a lane path by the snapshot's
 -- `ld` (nearest lane, not necessarily the hero's own; a build without `ld` keeps every encounter).
@@ -14,11 +14,9 @@ sn AS MATERIALIZED (
     FROM ev_snap s JOIN gm ON gm.game_id = s.game_id JOIN lineup l ON l.game_id = s.game_id AND l.pid = s.pid
     WHERE s.t BETWEEN coalesce(:from, 90) - 10 AND coalesce(:until, 600) + 40 AND s.x IS NOT NULL
 ),
+-- include: ep_death
 dd AS MATERIALIZED (
-    SELECT game_id, pid, team, pt AS t, px AS x, py AS y FROM (
-        SELECT *, lag(t) OVER w AS pt, lag(x) OVER w AS px, lag(y) OVER w AS py, lag(deaths) OVER w AS pd
-        FROM sn WINDOW w AS (PARTITION BY game_id, pid ORDER BY t))
-    WHERE deaths > pd AND t - pt > 2.5
+    SELECT e.game_id, e.pid, l.team, e.t, e.x, e.y FROM ep_death e JOIN lineup l ON l.game_id = e.game_id AND l.pid = e.pid
 ),
 a AS (
     SELECT *, (ed IS NOT NULL AND ed <= 800) AS near, mode IN ('team_roam', 'roam') AS fm

@@ -32,13 +32,16 @@ const VIEWS = path.join(__dirname, 'views');
 const FRAGMENTS = path.join(__dirname, 'queries', 'fragments');
 
 /** Expands `-- include: <name>` lines with queries/fragments/<name>.sql (CTEs several queries share; fragments may include
- *  others), so a rule a view cannot hold (one that needs the query's parameters) still has one copy. */
-function include(sql, seen = []) {
+ *  others), so a rule a view cannot hold (one that needs the query's parameters) still has one copy. A fragment lands once
+ *  in a query, at its first include: each names what it needs, and two may need the same one. */
+function include(sql, seen = [], done = new Set()) {
     return sql.replace(/^-- include: (\w+)[^\S\n]*$/gm, (_, name) => {
         if (seen.includes(name)) throw new Error(`fragment ${name} includes itself (${[...seen, name].join(' > ')})`);
+        if (done.has(name)) return '';
         const file = path.join(FRAGMENTS, `${name}.sql`);
         if (!fs.existsSync(file)) throw new Error(`no fragment ${name} (queries/fragments/${name}.sql)`);
-        return include(fs.readFileSync(file, 'utf8'), [...seen, name]);
+        done.add(name);
+        return include(fs.readFileSync(file, 'utf8'), [...seen, name], done);
     });
 }
 // Bump when ingest changes what it writes or the tables' shape (or a declared text column must become a number again):

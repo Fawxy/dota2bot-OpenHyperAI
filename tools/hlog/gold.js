@@ -20,7 +20,7 @@
 //   2. income = max(0, d - p + L); loss = d - p - income. A |loss| under 2.5 and an income under 2.5 are rounding: passive.
 //   3. Income goes to the interval's causes in this order: lane creeps and neutrals the hero last-hit (ev=creep_death /
 //      neutral_death by=pid, each taking that game's mean for a clean single-cause interval), a bounty rune picked up by
-//      the team, then the rest to kill (own kills rose) or assist (an enemy hero died within 1500 of the hero). With no
+//      the team, then the rest to kill (own kills rose) or assist (an enemy hero died, fragment ep_death, within 1500 of the hero). With no
 //      kill or assist the creeps and rune share all of it (the rune first at its mean). Nothing to name it: other_income.
 //   4. A loss goes to consumable first (up to L), then death (own deaths rose), else other_loss.
 //   4b. A fall with no consumable of its own takes an unspent one from the neighbouring interval (the inv row can land a snapshot off).
@@ -32,6 +32,10 @@ const fs = require('fs');
 const path = require('path');
 const { Store, DB, LOGS, JOBS, labelOf } = require('./store');
 
+const DEATHS_SQL = `WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE game_id = :g),
+-- include: ep_death
+done AS (SELECT 1)
+SELECT pid, t, x, y FROM ep_death WHERE t <= :at ORDER BY t`;
 const PASSIVE = 1.46;
 const SLACK = 2.5;
 const CONSUMABLE = { tango: 30, flask: 100, clarity: 60, faerie_fire: 65, enchanted_mango: 65, smoke_of_deceit: 50, ward_observer: 0, ward_sentry: 50, tpscroll: 100, dust: 80, blood_grenade: 50 };
@@ -297,12 +301,10 @@ function analyseGame(store, g, at) {
     for (const h of heroes) if (snaps.get(h.pid).length < 2) return { skip: `hero ${h.pid} has under 2 snapshots` };
     const lastT = Math.min(...heroes.map((h) => snaps.get(h.pid).at(-1).t));
     if (lastT < at - 30) return { skip: `game ends at ${lastT.toFixed(0)} s, before --at ${at}` };
-    // A dead hero logs no snapshots: a death is one long interval, and the enemy's last snapshot before it dates the death.
-    const enemyDeaths = [];
-    for (const h of heroes) {
-        const s = snaps.get(h.pid);
-        for (let i = 1; i < s.length; i++) if (s[i].deaths > s[i - 1].deaths) enemyDeaths.push({ team: h.team, t: s[i - 1].t, x: s[i - 1].x, y: s[i - 1].y });
-    }
+    const teamOf = new Map(heroes.map((h) => [h.pid, h.team]));
+    const enemyDeaths = store.query(DEATHS_SQL, { g: g.game_id, at })
+        .filter((d) => teamOf.has(d.pid))
+        .map((d) => ({ team: teamOf.get(d.pid), t: d.t, x: d.x, y: d.y }));
     const ctx = { creeps, runes, items: itemsOf, enemyDeaths, nearby };
     const per = heroes.map((h) => ({ hero: h, ivs: intervals(snaps.get(h.pid), ctx, h) }));
     // The inventory row can land one snapshot off the nw fall: a fall with no consumable of its own takes a neighbour's unspent one.

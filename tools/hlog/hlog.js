@@ -5,6 +5,8 @@
 //   node hlog.js q "<sql>" | @<name> [--p k=v ...]       run SQL, or queries/<name>.sql with named params (:k)
 //   node hlog.js digest <log> [--game N]                 one game in a few lines: run facts, event counts, errors, marks
 //   node hlog.js events <log> --pid N|--hero h [--from t --to t --ev a,b --all --game N]  one hero's events in a window, oldest first
+//   node hlog.js timeline <log | label> [--lane top|mid|bot --hero h --pid N --from t --to t --kind a,b --game N]
+//                                                        what happened, oldest first: episodes, modes, casts, creeps (@timeline)
 //   node hlog.js list [word]                             named queries and views: params and first sentence (word filters)
 //   node hlog.js schema [ev]                             tables, rows and columns (kind, non-null count, an example)
 //   node hlog.js prune                                   drop logs whose file is gone
@@ -139,6 +141,63 @@ function schema(store, ev) {
     return rows;
 }
 
+/** A game time given as seconds or m:ss, as seconds. */
+function secs(v) {
+    if (v === undefined) return undefined;
+    const m = String(v).match(/^(-)?(\d+):(\d+(?:\.\d+)?)$/);
+    const n = m ? (m[1] ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : Number(v);
+    if (Number.isNaN(n)) throw new Error(`${v} is no game time (seconds or m:ss)`);
+    return n;
+}
+
+const clock = t => `${t < 0 ? '-' : ''}${Math.floor(Math.abs(t) / 60)}:${String(Math.floor(Math.abs(t) % 60)).padStart(2, '0')}`;
+const TIMELINE_KINDS = ['death', 'retreat', 'exchange', 'kill_try', 'job', 'visit', 'mode', 'cast', 'creep', 'state'];
+const TIMELINE_LANES = ['top', 'mid', 'bot', 'base', 'other'];
+
+/** The log a timeline is asked for: a path, else the one log whose run label it is. */
+function logOf(store, target) {
+    if (fs.existsSync(target)) return path.resolve(target);
+    const files = store.query('SELECT DISTINCT file FROM games WHERE label = ?', target).map(r => r.file);
+    if (files.length !== 1) throw new Error(`${target} is no log and the label of ${files.length} logs: give a path, or one game's whole label`);
+    return files[0];
+}
+
+/**
+ * The text view of @timeline for one game: `time [side][pos] hero kind detail`, oldest first, what the log lacks on top.
+ * o: game (default the log's last), lane, hero (either party), pid, from and to (s or m:ss), kind (comma separated).
+ * A misspelt filter is an error: an empty answer would read as nothing happened.
+ */
+function timelineRows(store, file, o) {
+    const game = o.game === undefined ? null : Number(o.game);
+    const g = store.query('SELECT game_id FROM games WHERE file = :file AND (:game IS NULL OR game = :game) ORDER BY game DESC LIMIT 1', { file, game })[0];
+    if (!g) throw new Error(`no game ${o.game ?? ''} in ${file}`);
+    if (o.lane !== undefined && !TIMELINE_LANES.includes(o.lane)) throw new Error(`no lane ${o.lane}; one of: ${TIMELINE_LANES.join(' ')}`);
+    const bad = (o.kind ? o.kind.split(',') : []).filter(k => !TIMELINE_KINDS.includes(k));
+    if (bad.length) throw new Error(`no kind ${bad.join(', ')}; of: ${TIMELINE_KINDS.join(' ')}`);
+    if (o.hero !== undefined) {
+        const names = store.query('SELECT hero FROM hero_names WHERE game_id = ?', g.game_id).map(r => r.hero);
+        if (!names.includes(o.hero)) throw new Error(`no hero ${o.hero} in that game; of: ${names.join(' ')}`);
+    }
+    return store.query(sqlOf('@timeline'), {
+        like: file, game, lane: o.lane ?? null, hero: o.hero ?? null, kind: o.kind ?? null,
+        pid: o.pid === undefined ? null : Number(o.pid), from: secs(o.from) ?? null, to: secs(o.to) ?? null,
+    });
+}
+
+function timelineText(rows, o) {
+    const seat = r => `${r.team === 2 ? 'R' : r.team === 3 ? 'D' : '?'}${r.pos ?? ''}`;
+    const events = rows.filter(r => r.t !== null);
+    const width = Math.max(0, ...events.map(r => String(r.hero).length));
+    const out = rows.filter(r => r.t === null).map(r => `not logged: ${r.detail}`);
+    for (const r of events) {
+        const when = r.t1 === null || r.t1 === r.t ? clock(r.t) : `${clock(r.t)}-${clock(r.t1)}`;
+        const place = o.lane ? '' : `${r.lane.padEnd(6)}`;
+        out.push(`${when.padEnd(12)}${place}${seat(r).padEnd(3)}${String(r.hero).padEnd(width + 1)}${r.kind.padEnd(9)}${r.detail}`);
+    }
+    if (!events.length) out.push('(nothing in that window)');
+    return out.join('\n');
+}
+
 // Per-frame or per-second lines that drown a window; `events --all` keeps them, `--ev` names any of them back in.
 const NOISY = ['lane_pos', 'lane_read', 'notice', 'inv', 'lanefight_watch', 'intent_cadence'];
 // A snapshot in `events` prints these fields only (`@hero_at` gives the whole one).
@@ -150,7 +209,6 @@ const SNAP_SHORT = ['hp', 'mp', 'x', 'y', 'mode', 'by', 'act', 'tid', 'lh', 'dea
  * separated: only those, and an event with no pid column is then included for every pid), all (keep the noisy events).
  */
 function events(store, file, o) {
-    const secs = v => (v === undefined ? undefined : /:/.test(v) ? Math.sign(parseFloat(v) || 1) * (Math.abs(parseInt(v, 10)) * 60 + parseFloat(v.split(':')[1])) : Number(v));
     const games = store.query('SELECT game_id, game FROM games WHERE file = ? ORDER BY game', path.resolve(file));
     const g = o.game === undefined ? games[games.length - 1] : games.find(r => r.game === Number(o.game));
     if (!g) throw new Error(`no game ${o.game ?? ''} in ${file}`);
@@ -182,7 +240,7 @@ function events(store, file, o) {
 
 function main(argv) {
     const opt = k => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev']);
+    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind']);
     const pos = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
     const [cmd, ...rest] = pos;
     let store;
@@ -215,6 +273,14 @@ function main(argv) {
         } else if (cmd === 'events' && rest[0]) {
             store.ingest(rest[0]);
             console.log(events(store, rest[0], { game: opt('game'), pid: opt('pid'), hero: opt('hero'), from: opt('from'), to: opt('to'), ev: opt('ev'), all: argv.includes('--all') }));
+        } else if (cmd === 'timeline' && rest[0]) {
+            // A path needs only its own log; a label has to be looked up among all of them.
+            if (fs.existsSync(rest[0])) store.ingest(rest[0]);
+            else sync();
+            store.refreshViews();
+            const o = Object.fromEntries(['game', 'lane', 'hero', 'pid', 'from', 'to', 'kind'].map(k => [k, opt(k)]));
+            const rows = timelineRows(store, logOf(store, rest[0]), o);
+            say(rows, timelineText(rows, o));
         } else if (cmd === 'digest' && rest[0]) {
             console.log(digest(store, rest[0], opt('game') === undefined ? undefined : Number(opt('game'))));
         } else if (cmd === 'schema') {
@@ -224,7 +290,7 @@ function main(argv) {
             const gone = store.prune();
             console.error(`pruned ${gone.length}`);
         } else {
-            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 12).map(l => l.slice(3)).join('\n'));
+            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 14).map(l => l.slice(3)).join('\n'));
             process.exitCode = 2;
         }
     } catch (e) {
@@ -245,4 +311,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { table, digest, schema, list, events };
+module.exports = { table, digest, schema, list, events, secs, timelineRows, timelineText };

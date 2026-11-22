@@ -247,11 +247,12 @@ test('the second game of a log is read on its own', () => {
 
 test('the game end counts snapshots without a position, as the series does', () => {
     // Radiant's last snapshot (t=900) has no x: end is 900, not 660, and Dire's snapshots stopping at 700 make it dead at the end.
+    // Radiant's own hero is alive at 900 (fragment ep_death reads every snapshot with a deaths counter), so one death.
     const rad = bot(0, 2, () => ({ p: MID }), 0, 700);
     rad.snaps.push({ ev: 'snap', t: 900, pid: 0, alive: 1, deaths: 0, lh: 0 });
     const m = metricsOf(game([rad, bot(5, 3, () => ({ p: [6000, 6000] }), 0, 700)]));
     assert.strictEqual(m.end, 900);
-    assert.strictEqual(m.deaths_total, 2);
+    assert.strictEqual(m.deaths_total, 1);
 });
 
 test('standing still outside base for 10+ s is one idle episode; in base, fountain or dead it is not', () => {

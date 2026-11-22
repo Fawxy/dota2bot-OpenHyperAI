@@ -16,7 +16,7 @@
 -- D2: a second in mode retreat at 80% HP or more with no enemy hero within 1,500, outside 1,500 of our fountain; one case per
 --    onset (5 s gap), secs = such seconds in the 30 s from it, 2 or more (a 1 s flicker is no retreat). Every case is a
 --    violation (cause oha_retreat or ours_retreat by side: the mode name does not tell whose code ran).
--- D3: each retreat-mode run (gaps of 3 s or less, 2 s or more long). viol tower: it entered an enemy tower's reach it did not
+-- D3: each retreat bout (fragment ep_retreat) 2 s or more long. viol tower: it entered an enemy tower's reach it did not
 --    start in; viol no_stop: 10 s or more of it at 50% HP or more after the last second with an enemy within 1,500 (the
 --    whole run when none came near; `fountain` when it reached 1,500 of our fountain). A tail second counts only while our
 --    own lane's front (ev=front, its latest line; the lane from team and pos as GetAssignedLane gives it) is nearer than our
@@ -67,7 +67,7 @@ lr_who AS MATERIALIZED (
         FROM ev_bot b JOIN gm ON gm.game_id = b.game_id WHERE b.team IS NOT NULL AND b.pos IS NOT NULL
     ) WHERE rn = 1
 ),
--- Every snapshot second, HP 0 ones too (a killed hero logs a few where it fell), for dating deaths.
+-- Every snapshot second, HP 0 ones too.
 lr_s0 AS MATERIALIZED (
     SELECT s.game_id, s.pid, w.team, w.pos, w.side, CAST(round(s.t) AS INTEGER) AS sec, max(s.seq) AS seq, s.x, s.y, s.hp,
         coalesce(s.hit, 0) AS hit, s.mode, s.lvl, coalesce(s.ar, 550) AS ar, s.ld, s.deaths, s.tid, s.hv, coalesce(s.ah, 0) AS ah,
@@ -77,33 +77,13 @@ lr_s0 AS MATERIALIZED (
     WHERE s.t >= 0 AND s.t <= coalesce(:until, 720) + 15 AND s.alive IS NOT 0 AND typeof(s.x) IN ('integer', 'real')
     GROUP BY s.game_id, s.pid, CAST(round(s.t) AS INTEGER)
 ),
-lr_gl AS MATERIALIZED (SELECT game_id, max(sec) AS gl FROM lr_s0 GROUP BY game_id),
-lr_s1 AS MATERIALIZED (
-    SELECT lr_s0.*, lag(x) OVER w AS px, lag(y) OVER w AS py, lag(sec) OVER w AS psec, lead(sec) OVER w AS nsec, lead(deaths) OVER w AS nd
-    FROM lr_s0 WINDOW w AS (PARTITION BY game_id, pid ORDER BY sec)
-),
--- A death ends a hero's snapshots for more than 3 s (bots log nothing while dead): its deaths counter is higher after the
--- gap, or the gap runs to the game's last snapshot (hero_death's `lastsnap`). A killed hero can log snapshots at its fountain
--- with HP rising from 0 before the gap; a jump there (more than 1,500 in 3 s or less, landing within 1,500 of the fountain,
--- up to 8 s before the gap) cuts them off. The death is dated at the last snapshot with HP above 0 before the cut, and the
--- seconds from it to the gap are dropped.
-lr_end AS (
-    SELECT s.game_id, s.pid, s.sec AS esec FROM lr_s1 s JOIN lr_gl g ON g.game_id = s.game_id
-    WHERE (s.nd > s.deaths AND s.nsec - s.sec > 3) OR (s.nsec IS NULL AND g.gl - s.sec > 3)
-),
-lr_jump AS (
-    SELECT game_id, pid, sec AS jsec FROM lr_s1
-    WHERE psec IS NOT NULL AND sec - psec <= 3 AND (x - px) * (x - px) + (y - py) * (y - py) > 1500 * 1500 AND fnt2 <= 1500 * 1500
-),
-lr_cut AS (
-    SELECT e.game_id, e.pid, e.esec,
-        coalesce((SELECT min(j.jsec) FROM lr_jump j WHERE j.game_id = e.game_id AND j.pid = e.pid AND j.jsec <= e.esec AND j.jsec >= e.esec - 8), e.esec + 1) AS cut
-    FROM lr_end e
-),
+ep_win AS (SELECT 0 AS lo, coalesce(:until, 720) + 15 AS hi),
+-- include: ep_retreat
+-- The shared deaths that fall in the window, in whole seconds; the seconds from dsec to esec are dropped.
 lr_death AS MATERIALIZED (
-    SELECT c.game_id, c.pid, c.esec,
-        coalesce((SELECT max(s.sec) FROM lr_s0 s WHERE s.game_id = c.game_id AND s.pid = c.pid AND s.hp > 0 AND s.sec < c.cut AND s.sec >= c.esec - 20), c.esec) AS dsec
-    FROM lr_cut c
+    SELECT d.game_id, d.pid, d.gsec AS esec, d.dsec
+    FROM ep_gap d JOIN lr_who w ON w.game_id = d.game_id AND w.pid = d.pid
+    WHERE d.gsec >= 0 AND d.dsec <= coalesce(:until, 720) + 15
 ),
 lr_s AS MATERIALIZED (
     SELECT s.* FROM lr_s0 s
@@ -159,11 +139,11 @@ lr_d2 AS (
     FROM lr_d2s o WHERE (o.prev IS NULL OR o.sec - o.prev > 5) AND o.sec <= coalesce(:until, 720)
 ),
 lr_d2v AS (SELECT * FROM lr_d2 WHERE secs >= 2),
-lr_r0 AS (
-    SELECT f.*, CASE WHEN lag(f.sec) OVER w IS NULL OR f.sec - lag(f.sec) OVER w > 3 THEN 1 ELSE 0 END AS nw
-    FROM lr_f f WHERE f.mode = 'retreat' WINDOW w AS (PARTITION BY f.game_id, f.pid ORDER BY f.sec)
+lr_r1 AS (
+    SELECT f.*, b.t0 AS ep
+    FROM lr_f f JOIN ep_retreat b ON b.game_id = f.game_id AND b.pid = f.pid AND f.sec BETWEEN b.t0 AND b.t1
+    WHERE f.mode = 'retreat'
 ),
-lr_r1 AS (SELECT r.*, sum(r.nw) OVER (PARTITION BY r.game_id, r.pid ORDER BY r.sec) AS ep FROM lr_r0 r),
 lr_r2 AS (
     SELECT r.*, max(CASE WHEN r.en_d <= 1500 THEN r.sec END) OVER e AS last_thr,
         first_value(r.en_tw2) OVER (PARTITION BY r.game_id, r.pid, r.ep ORDER BY r.sec) AS tw0,
