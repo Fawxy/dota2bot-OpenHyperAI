@@ -106,7 +106,8 @@ ____exports.DEFAULTS = {
     JoinArrive = true,
     JoinHold = true,
     ChoiceShadow = false,
-    ChoiceProbe = false
+    ChoiceProbe = false,
+    Decider = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
 function ____exports.Describe()

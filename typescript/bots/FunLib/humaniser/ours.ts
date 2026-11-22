@@ -180,6 +180,9 @@ export const DEFAULTS = {
      *  before it, for the shadow line's value; the drive's 0 is still returned, but the bodies' side effects (item swaps, roam
      *  latches, Intent's sample) happen. Off: those bodies are not run while the drive zeroes them. */
     ChoiceProbe: false,
+    /** Step 7 (plan s3): the decider hosted in farm (decider.ts) holds a hero when a row applies and yields farm's own desire and
+     *  Think otherwise; ev=choice kind=decider on each change. No rows yet, so on is a pass-through. Off: farm's file as before. */
+    Decider: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

@@ -2699,8 +2699,10 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, or `shadow` (Ours.ChoiceShadow). */
+        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (Ours.Decider: one line per change of `held` or `win`). */
         kind: "str",
+        /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
+        held: "str",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */
@@ -2761,7 +2763,7 @@ export const EVENTS = {
         pw: "num",
         // kind=shadow (Ours.ChoiceShadow, choice_shadow.ts): one line per hero of ours about every second and on each change of active
         // mode. A frame's values are logged on the next frame, beside the active mode Valve picked from them.
-        /** kind=shadow: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires. */
+        /** kind=shadow and decider: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires (decider: the last round's). */
         win: "str",
         /** kind=shadow: the mode OHA's own computed desires pick (argmax of the `d_` numbers); absent when none was computed. */
         top: "str",
