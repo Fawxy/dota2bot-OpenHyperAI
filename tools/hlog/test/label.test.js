@@ -27,5 +27,5 @@ test('runLabel: every label shape in the logs, as batch, lineup, arm, seat and r
 
 test('parseLabel keeps what gold.js and gate.js read: the run, lineup, arm, numeric seat and repetition', () => {
     assert.deepStrictEqual(parseLabel('h2hlift1_B_off-dir_10'), { run: 'h2hlift1', lineup: 'B', arm: 'off', seat: 3, n: 10 });
-    assert.strictEqual(parseLabel('base1_A_stock_1'), undefined);
+    assert.deepStrictEqual(parseLabel('base1_A_stock_1'), { run: 'base1', lineup: 'A', arm: 'stock', seat: 2, n: 1, mirror: true });
 });

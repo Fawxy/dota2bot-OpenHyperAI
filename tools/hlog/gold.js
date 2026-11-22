@@ -4,7 +4,9 @@
 // Usage: node gold.js <run> [<run> ...] [--null <run> ...] [--at 600] [--arm <name>] [--by pos|arm] [--json] [--no-ingest]
 //   <run> is a label prefix (bis1 takes bis1_*; name bis1r too). Labels: `h2h742_A_rad_3`, the bisect form
 //   `bis1_B_offrad_2` (arm `off`, seat glued on: rad or dire) and the batch arm form `h2hlift1_B_off-dir_10` (seat after
-//   a hyphen: rad, dir or dire). Ours is the seat in the label, OHA the other team.
+//   a hyphen: rad, dir or dire). Ours is the seat in the label, OHA the other team. A label with no seat
+//   (`stockbase2_A_stock_7`, batch.js on mirror arms) is a mirror game: Radiant stands for ours, Dire for OHA; under --null
+//   the seats are averaged, so the stand-in does not matter there.
 //   --null <runs>  OHA against OHA runs: adds `mirror` (both seats' mean), `we` (ours - mirror) and `they` (mirror - OHA).
 //   --arm <name>   only games of that arm (the label's word before the seat).
 //   --by pos       one table per hero position (ev=bot pos), one hero a side, per game.
@@ -86,7 +88,7 @@ function games(store, runs, { arm } = {}) {
         { p: `${run.replace(/_/g, '\\_')}\\_%` });
         for (const r of rows) {
             const p = parseLabel(r.label);
-            if (!p) { skipped.push({ label: r.label, why: 'no rad/dire seat in the label' }); continue; }
+            if (!p) { skipped.push({ label: r.label, why: 'no <lineup>_<arm>[seat]_<n> in the label' }); continue; }
             if (arm !== undefined && p.arm !== arm) continue;
             out.push({ ...r, ...p });
         }
@@ -433,7 +435,8 @@ if (require.main === module) {
     for (const s of [...result.skipped, ...(nul ? nul.skipped : [])]) console.error(`skipped ${s.label}: ${s.why}`);
     if (!result.games.length) throw new Error('no games');
     const head = `${result.games.length} games${nul ? `, mirror ${nul.games.length} games` : ''}; per game, ours / OHA, gap = ours - OHA; first snapshot to ${o.at} s`
-        + (nul ? '; mirror = OHA against OHA, both seats; we = ours - mirror, they = mirror - OHA' : '');
+        + (nul ? '; mirror = OHA against OHA, both seats; we = ours - mirror, they = mirror - OHA' : '')
+        + (result.games.some((g) => g.mirror) ? `; ${result.games.filter((g) => g.mirror).length} mirror games (no seat in the label): ours = Radiant, OHA = Dire` : '');
     if (o.by === 'arm') {
         const { arms, table } = armTable(result);
         if (o.json) console.log(JSON.stringify({ arms, table }));
