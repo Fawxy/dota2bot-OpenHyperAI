@@ -158,6 +158,8 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 | `frozen_bots` | **WARN:** a live bot outside fountain range doesn't move for 10 s. Independent of Intent's stuck detector. |
 | `trainer_selftest` | **FAIL:** with at least 20 self-test verdicts, under 85% `PERFECT`+`OK` or at least 5% `MISSED_EASY`. |
 
+**Tripwires** (`TRIPWIRES` in the same file): the outcomes every full game owes. `batch.js` runs them on every batch and prints only failures; `node tools/hlog/checks.js <manifest|run>` runs them on banked games and `--help` lists them.
+
 **Mode churn** (summary section): OHA's `mode_team_roam_generic.lua` wants 1.5 whenever `X.GetLastHitCreep()` finds a killable creep, and `CapForLanePush` holds that to 0.72 in the laning phase. Every last-hit attempt is therefore a short team_roam visit out of laning. The analyser calls a team_roam visit entered from laning at exactly 0.72 and left within 2 s (to any mode) a *blip*. The section lists, per bot, total switches, blips, blips/min, other switches/min and the top three non-blip mode pairs. Blips are upstream behaviour, not a humaniser fault.
 
 **Hands-off regression run:** an all-bot lobby (spectate, `host_timescale 4`, about 15 minutes of game time), then `analyse.js --check`. That covers errors, stalls, perception bounds, thrash and freezes. Etiquette, orders and pings need a human on the team.
