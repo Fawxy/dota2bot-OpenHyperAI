@@ -3,6 +3,8 @@
 // Usage:
 //   node hlog.js ingest [log | dir | manifest ...]      ingest (default ~/.dotactl/logs and remote/jobs) and prune gone logs
 //   node hlog.js q "<sql>" | @<name> [--p k=v ...]       run SQL, or queries/<name>.sql with named params (:k)
+//   (table hero_sec: one row per hero and whole second, indexed on game_id, pid, sec; SQL naming it fills the games --p like
+//    names first, used in the SQL or not; `q @hero_seconds` reads it)
 //   node hlog.js digest <log> [--game N]                 one game in a few lines: run facts, event counts, errors, marks
 //   node hlog.js events <log> --pid N|--hero h [--from t --to t --ev a,b --all --game N]  one hero's events in a window, oldest first
 //   node hlog.js timeline <log | label> [--lane top|mid|bot --hero h --pid N --from t --to t --kind a,b --game N]
@@ -290,7 +292,7 @@ function main(argv) {
             const gone = store.prune();
             console.error(`pruned ${gone.length}`);
         } else {
-            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 14).map(l => l.slice(3)).join('\n'));
+            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 16).map(l => l.slice(3)).join('\n'));
             process.exitCode = 2;
         }
     } catch (e) {
