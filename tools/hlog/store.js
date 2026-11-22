@@ -461,6 +461,13 @@ class Store {
         return this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name) !== undefined;
     }
 
+    heroSecTables() {
+        this.db.exec(`CREATE TABLE IF NOT EXISTS hero_sec (game_id, pid, team, pos, hero, sec, x, y, hp, mode, live, life, lane, hits, near, en900, al900);
+            CREATE TABLE IF NOT EXISTS hero_sec_games (game_id INTEGER PRIMARY KEY, version TEXT);
+            CREATE INDEX IF NOT EXISTS hero_sec_pid ON hero_sec (game_id, pid, sec);
+            CREATE INDEX IF NOT EXISTS hero_sec_sec ON hero_sec (game_id, sec)`);
+    }
+
     /** The stamp of the fill rules: any change to the fill SQL, a fragment it includes or the lane polylines changes it. */
     heroSecVersion() {
         const text = include(fs.readFileSync(path.join(FRAGMENTS, 'hero_sec_fill.sql'), 'utf8'))
@@ -477,10 +484,7 @@ class Store {
      */
     fillHeroSec({ like = '%', game = null } = {}, onGame = () => {}) {
         const version = this.heroSecVersion();
-        this.db.exec(`CREATE TABLE IF NOT EXISTS hero_sec (game_id, pid, team, pos, hero, sec, x, y, hp, mode, live, life, lane, hits, near, en900, al900);
-            CREATE TABLE IF NOT EXISTS hero_sec_games (game_id INTEGER PRIMARY KEY, version TEXT);
-            CREATE INDEX IF NOT EXISTS hero_sec_pid ON hero_sec (game_id, pid, sec);
-            CREATE INDEX IF NOT EXISTS hero_sec_sec ON hero_sec (game_id, sec)`);
+        this.heroSecTables();
         const sql = include(fs.readFileSync(path.join(FRAGMENTS, 'hero_sec_fill.sql'), 'utf8'));
         this.ensure(sql);
         const pending = () => this.db.prepare(`SELECT g.game_id FROM games g LEFT JOIN hero_sec_games h ON h.game_id = g.game_id
@@ -488,6 +492,8 @@ class Store {
             .all({ like, game, version }).map(r => Number(r.game_id));
         const BATCH = 10;
         let filled = 0;
+        const total = pending().length;
+        if (total > BATCH) console.error(`hero_sec: filling ${total} games (about 0.3 s each)`);
         while (pending().length) {
             this.db.exec('BEGIN IMMEDIATE');
             try {
@@ -515,9 +521,21 @@ class Store {
     query(sql, ...args) {
         sql = include(sql);
         if (/\bhero_sec\b/.test(sql)) {
-            // Named params say which games to fill (`like`, `game`: the named queries' own), none says all of them.
+            // Only the games a `like` or `file` param names are filled: filling a whole store takes minutes and locks it, so SQL
+            // with neither reads what is there and is told on stderr when that is not everything.
             const p = args[0] && typeof args[0] === 'object' ? args[0] : {};
-            this.fillHeroSec({ like: typeof p.like === 'string' ? p.like : typeof p.file === 'string' ? p.file : '%', game: p.game ?? null });
+            const like = typeof p.like === 'string' ? p.like : typeof p.file === 'string' ? p.file : null;
+            if (like !== null) {
+                this.fillHeroSec({ like, game: p.game ?? null });
+                // `like` and `game` may be there only to say which games to fill; SQLite refuses a param the SQL does not name.
+                const used = Object.fromEntries(Object.entries(p).filter(([k]) => !['like', 'file', 'game'].includes(k) || new RegExp(`:${k}\\b`).test(sql)));
+                args = [used, ...args.slice(1)].filter((a, i) => i > 0 || Object.keys(a).length > 0);
+            } else {
+                this.heroSecTables();
+                const r = this.db.prepare(`SELECT count(*) AS n, sum(h.version IS :v) AS ok FROM games g LEFT JOIN hero_sec_games h ON h.game_id = g.game_id`)
+                    .get({ v: this.heroSecVersion() });
+                if (r.n > (r.ok || 0)) console.error(`hero_sec holds ${r.ok || 0} of ${r.n} games; pass --p like=<run or path fragment> (use it in the SQL or not) to fill the games you read`);
+            }
         }
         if (sql.includes('-- ensure:')) this.ensure(sql);
         return this.db.prepare(sql).all(...args);

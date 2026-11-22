@@ -42,7 +42,7 @@ function setup(lines = gameLines()) {
 
 const row = (store, pid, sec) => ({ ...store.query('SELECT * FROM hero_sec WHERE pid = :pid AND sec = :sec', { pid, sec })[0] });
 
-test('hero_sec holds ep_sec row for row, filled by the first query that names it', () => {
+test('hero_sec holds ep_sec row for row, filled by the first query that names it and its games', () => {
     const { store } = setup();
     const frag = store.query(`WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games),
 ep_win AS (SELECT -1e9 AS lo, 1e9 AS hi),
@@ -51,8 +51,15 @@ done AS (SELECT 1)
 SELECT pid, team, pos, sec, x, y, hp, mode, live, life FROM ep_sec ORDER BY pid, sec`).map(r => ({ ...r }));
     assert.ok(frag.length > 400);
     assert.ok(frag.some(r => r.life === 1), 'axe has died once by its respawn');
-    const hs = store.query('SELECT pid, team, pos, sec, x, y, hp, mode, live, life FROM hero_sec ORDER BY pid, sec').map(r => ({ ...r }));
+    // `like` names the games to fill though the SQL does not use it
+    const hs = store.query('SELECT pid, team, pos, sec, x, y, hp, mode, live, life FROM hero_sec ORDER BY pid, sec', { like: '%' }).map(r => ({ ...r }));
     assert.deepStrictEqual(hs, frag);
+});
+
+test('SQL with no like or file param fills nothing: a whole store is not filled by accident', () => {
+    const { store } = setup();
+    assert.strictEqual(store.query('SELECT count(*) AS n FROM hero_sec')[0].n, 0);
+    assert.ok(store.query('SELECT count(*) AS n FROM hero_sec', { like: '%' })[0].n > 400);
 });
 
 test('hits is the enemy hero attacked that second; a pid of 0 is a target, not NULL', () => {
@@ -97,7 +104,7 @@ test('a re-ingested log leaves no rows of what it held before', () => {
     assert.strictEqual(store.ingest(file), true);
     // the new game takes the old game's id, so a stale stamp would also keep it from being refilled
     assert.strictEqual(store.query('SELECT count(*) AS n FROM hero_sec WHERE pid = 5')[0].n, 0);
-    assert.strictEqual(store.query('SELECT count(DISTINCT pid) AS n FROM hero_sec')[0].n, 2);
+    assert.strictEqual(store.query('SELECT count(DISTINCT pid) AS n FROM hero_sec', { like: '%' })[0].n, 2);
     assert.strictEqual(store.query('SELECT count(*) AS n FROM hero_sec_games g JOIN games m USING (game_id)')[0].n, 1);
 });
 
