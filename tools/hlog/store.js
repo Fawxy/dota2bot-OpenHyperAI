@@ -18,6 +18,7 @@ const os = require('os');
 const path = require('path');
 const { parseLog, parseFields } = require('./parse');
 const { readManifest } = require('./manifest');
+const { runLabel } = require('./label');
 
 // node:sqlite is still flagged experimental on Node 22-24; its one-time warning is noise in every CLI call.
 const emitWarning = process.emitWarning;
@@ -42,7 +43,7 @@ function include(sql, seen = [], done = new Set()) {
         if (!fs.existsSync(file)) throw new Error(`no fragment ${name} (queries/fragments/${name}.sql)`);
         done.add(name);
         return include(fs.readFileSync(file, 'utf8'), [...seen, name], done);
-    });
+    }).replace(/,(\s*\n(?:\s*--[^\n]*\n)*)(?=SELECT\b)/g, '$1'); // fragments end with a comma: it is no use before a final SELECT
 }
 // Bump when ingest changes what it writes or the tables' shape (or a declared text column must become a number again):
 // the next open starts a new, empty store file.
@@ -107,6 +108,11 @@ class Store {
         this.declared = kinds;
         this.viewsDir = views;
         this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL');
+        // run_label_part(label, field): view run_label's columns; a function, not a table, so it needs no re-ingest.
+        this.db.function('run_label_part', { deterministic: true }, (label, field) => {
+            const v = runLabel(label)[field];
+            return typeof v === 'number' ? BigInt(v) : v;
+        });
         const version = this.db.prepare('PRAGMA user_version').get().user_version;
         if (version !== INGEST_VERSION) this.rebuild();
         this.loadKinds();
