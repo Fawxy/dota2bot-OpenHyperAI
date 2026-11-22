@@ -3,9 +3,10 @@
 // Usage: node batch.js <spec.json> [--dry-run]
 //
 // Spec (paths relative to the master root unless absolute):
-//   { "name": "s1", "worktree": "oha-health", "build": "b2d2ba9",
+//   { "name": "s1", "commit": "b2d2ba9",                          the bot commit every arm runs (dotactl --commit: its snapshot)
 //     "lineups": ["A", "B", "C", "A", "B"],                       one rep per entry
-//     "arms": { "on":  { "set": [], "states": true },             arm order rotates by one each rep
+//     "arms": { "on":  { "set": [], "states": true },             arm order rotates by one each rep; an arm may name
+//                                                                 its own "commit" (two builds compared) and "build"
 //               "off": { "set": ["Humaniser.Enable=false", "Humaniser.States.Enable=false"], "states": false } },
 //     "until": "20:00", "timescale": 8, "mode": "bots", "args": [],   args: extra dotactl run arguments
 //     "validUntil": 600, "note": "...",                           optional, copied into the bank entries
@@ -18,7 +19,7 @@
 // Remote (dotactl serve on another machine, REQUESTS D7): "remote": true reads { host, token, client } from
 //   ~/.dotactl/remote-client.json; each arm names a pushed commit instead of --set (remote jobs take none):
 //   "arms": { "on": { "branch": "remote/<client>/x-on", "sha": "<40 hex>", "states": true, "ours": { "X": true } }, ... }.
-//   No worktree or --build. An arm may name its own `build` (the stamp lineup_check expects, default the spec's): the
+//   No commit. An arm may name its own `build` (the stamp lineup_check expects, default the spec's): the
 //   stamp file bots/FunLib/humaniser/build_info.lua is git-ignored, so build the arm's tree, `git add -f` that file, commit
 //   and push; the stamp is then `<parent sha>+dirty` (two arms built from different trees carry different stamps). A game's game.log is saved to ~/.dotactl/logs/<time>-<label>.log
 //   so hlog ingests it; a failed job is retried once like a local run. "record": true asks the host to keep the SourceTV
@@ -26,8 +27,11 @@
 //   `"drill": "<name>"` runs a drill the host's recipes.json knows (the job carries only the name; its steps are the host's; a local run gets `--drill`). `until` is still required and replaces the drill's default.
 //
 // Manifest: ~/.dotactl/batches/<name>.manifest, one `status=ok|fail label=... seed= arm= lineup= log=...` line per game.
-// Resumable: a label already `status=ok` is skipped. `--build` goes to the first game this run starts. A failed game is retried
-// once (with `--build` again if that game was the build), then the batch stops (exit 1). The curfew stops it (exit 3); a
+// Local commits: each arm's commit (its own, else the spec's) is resolved to a full sha once when the batch starts and printed,
+// and every game passes `--commit <sha>`; name a sha, not a branch, so a resumed batch runs what it began with. The build
+// stamp lineup_check expects is the arm's own `build`, else the spec's, else the commit's short sha (the snapshot's stamp).
+//
+// Resumable: a label already `status=ok` is skipped. A failed game is retried once, then the batch stops (exit 1). The curfew stops it (exit 3); a
 // usage error is exit 2. Labels are <name>_<lineup>_<arm>_<rep>.
 'use strict';
 
@@ -48,7 +52,7 @@ function seconds(until) {
     return m ? Number(m[1]) * 60 + Number(m[2]) : Number(until);
 }
 
-/** The games of a spec in run order: { label, rep, lineup, seed, arm, set }. */
+/** The games of a spec in run order: { label, rep, lineup, seed, arm, set, commit }. */
 function plan(spec) {
     const arms = Object.keys(spec.arms);
     const games = [];
@@ -56,7 +60,7 @@ function plan(spec) {
         const rep = i + 1;
         const order = arms.map((_, k) => arms[(k + i) % arms.length]);
         for (const arm of order) {
-            games.push({ label: `${spec.name}_${lineup}_${arm}_${rep}`, rep, lineup, seed: SEEDS[lineup], arm, set: spec.arms[arm].set || [] });
+            games.push({ label: `${spec.name}_${lineup}_${arm}_${rep}`, rep, lineup, seed: SEEDS[lineup], arm, set: spec.arms[arm].set || [], commit: spec.arms[arm].commit || spec.commit });
         }
     });
     return games;
@@ -68,11 +72,38 @@ function planSummary(spec, games) {
     return `${games.length} games: ${spec.lineups.length} reps x ${arms.length} arm${arms.length === 1 ? '' : 's'} (${arms.join(', ')})`;
 }
 
+/** git in this checkout (any checkout of the bot repo shares its commits). */
+function git(args) {
+    return spawnSync('git', ['-C', path.resolve(__dirname, '../..'), ...args], { encoding: 'utf8' });
+}
+
+/** The commit's full sha and short sha (the build stamp its snapshot carries), or undefined when the repo has no such commit. */
+function revParse(rev) {
+    const r = git(['rev-parse', '--verify', '--quiet', '--end-of-options', `${rev}^{commit}`]);
+    if (r.status !== 0) return undefined;
+    const sha = r.stdout.trim();
+    return { sha, short: git(['rev-parse', '--short', sha]).stdout.trim() };
+}
+
+/**
+ * A local spec with every arm's commit resolved to a full sha and its expected build stamp filled in (see the header).
+ * Throws on a commit the repo lacks. `resolve` is for tests.
+ */
+function pinCommits(spec, resolve = revParse) {
+    const arms = {};
+    for (const [name, arm] of Object.entries(spec.arms)) {
+        const rev = arm.commit || spec.commit;
+        if (!rev) throw new Error(`arm ${name} has no commit (spec "commit" or the arm's own)`);
+        const c = resolve(rev);
+        if (!c) throw new Error(`arm ${name}: no commit ${rev} in the bot repo`);
+        arms[name] = { ...arm, commit: c.sha, build: arm.build || spec.build || c.short };
+    }
+    return { ...spec, arms };
+}
+
 /** dotactl run arguments for one game. */
-function runArgs(spec, game, build) {
-    // dotactl resolves a bare name under repos/, so pass the worktree as an absolute path (a name means worktrees/<name>).
-    const args = ['run', '--worktree', path.isAbsolute(spec.worktree) ? spec.worktree : path.resolve(MASTER, 'worktrees', spec.worktree)];
-    if (build) args.push('--build');
+function runArgs(spec, game) {
+    const args = ['run', '--commit', game.commit];
     args.push('--mode', spec.mode || 'bots', '--seed', String(game.seed), '--timescale', String(spec.timescale || 8),
         '--until', String(spec.until), '--no-analyse', '--label', game.label);
     if (spec.drill) args.push('--drill', spec.drill);
@@ -184,8 +215,12 @@ async function main(argv) {
         console.error('usage: node batch.js <spec.json> [--dry-run]');
         process.exit(2);
     }
-    const spec = JSON.parse(fs.readFileSync(specFile, 'utf8'));
-    for (const k of ['name', spec.remote ? 'arms' : 'worktree', 'build', 'lineups', 'arms', 'until']) {
+    let spec = JSON.parse(fs.readFileSync(specFile, 'utf8'));
+    if (spec.worktree !== undefined) {
+        console.error('spec "worktree" is gone: games run from a commit\'s snapshot; name it as "commit" (see --help)');
+        process.exit(2);
+    }
+    for (const k of ['name', ...(spec.remote ? ['build'] : []), 'lineups', 'arms', 'until']) {
         if (spec[k] === undefined) {
             console.error(`spec lacks ${k}`);
             process.exit(2);
@@ -200,10 +235,17 @@ async function main(argv) {
     }
     const dotactl = path.resolve(MASTER, spec.dotactl || 'repos/dotactl/dotactl.js');
     const manifest = path.join(BATCHES, `${spec.name}.manifest`);
+    if (!spec.remote) {
+        try { spec = pinCommits(spec); } catch (e) {
+            console.error(`spec: ${e.message}`);
+            process.exit(2);
+        }
+        for (const [name, arm] of Object.entries(spec.arms)) console.log(`arm ${name}: commit ${arm.commit} (build ${arm.build})`);
+    }
     const games = plan(spec);
     console.log(planSummary(spec, games));
     if (argv.includes('--dry-run')) {
-        games.forEach((g, i) => console.log(`${g.label.padEnd(14)} ${spec.remote ? `POST /jobs ${JSON.stringify(remoteJob(spec, g))}` : `node dotactl.js ${runArgs(spec, g, i === 0).join(' ')}`}`));
+        games.forEach(g => console.log(`${g.label.padEnd(14)} ${spec.remote ? `POST /jobs ${JSON.stringify(remoteJob(spec, g))}` : `node dotactl.js ${runArgs(spec, g).join(' ')}`}`));
         return;
     }
     let cfg;
@@ -217,7 +259,6 @@ async function main(argv) {
     fs.mkdirSync(BATCHES, { recursive: true });
     if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, '');
     const done = () => new Set(readManifest(manifest).map(g => g.label));
-    let built = false;
     for (const game of games) {
         if (done().has(game.label)) continue;
         // On resume and after every game; a look is only checked when the arms are level, so mid-pair it never stops.
@@ -240,7 +281,7 @@ async function main(argv) {
                 if (attempt >= 2) process.exit(1);
                 continue;
             }
-            const r = spawnSync(process.execPath, [dotactl, ...runArgs(spec, game, !built)], { cwd: MASTER, encoding: 'utf8', maxBuffer: 1 << 26 });
+            const r = spawnSync(process.execPath, [dotactl, ...runArgs(spec, game)], { cwd: MASTER, encoding: 'utf8', maxBuffer: 1 << 26 });
             const out = `${r.stdout || ''}${r.stderr || ''}`;
             fs.writeFileSync(path.join(BATCHES, `${spec.name}-last.out`), out);
             if (/closed by the user/i.test(out)) {
@@ -249,7 +290,6 @@ async function main(argv) {
             }
             const log = ((out.match(/^log: (.+)$/m) || [])[1] || '').trim().replace(/\\/g, '/');
             if (r.status === 0 && log) {
-                built = true;
                 fs.appendFileSync(manifest, manifestLine('ok', game, `log="${log}"`) + '\n');
                 console.log(`ok ${game.label} ${(out.match(/lineup: .*/) || [''])[0].slice(0, 120)}`);
                 break;
@@ -287,4 +327,4 @@ function printHelp() {
 if (require.main === module && (process.argv.includes('--help') || process.argv.includes('-h'))) printHelp();
 else if (require.main === module) main(process.argv.slice(2)).catch(e => { console.error(e); process.exit(1); });
 
-module.exports = { plan, planSummary, runArgs, seconds, remoteJob, runRemote, judge, decided };
+module.exports = { plan, planSummary, runArgs, pinCommits, seconds, remoteJob, runRemote, judge, decided };
