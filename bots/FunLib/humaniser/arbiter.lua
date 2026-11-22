@@ -103,15 +103,18 @@ function ____exports.LeverOf(bot)
 end
 --- A hero of ours the arbiter reasons about, one no drill holds: from its first laning read to an end event
 -- (Phase.LaningHeld); with `Ours.ArbiterDrive`, never a drill's lane-only hero (its laning holds it at 1.2, only the thing
--- under test acts).
+-- under test acts), and not before laning starts (`SETTINGS.DriveFrom`): until then the 0:00 runes are OHA's rune mode's,
+-- its walk before the horn and its take at the river spot (D21).
 function ____exports.Owned(bot)
     if Drill.Held(bot) then
         return false
     end
-    if Ours.On("ArbiterDrive") and Overrides.LaneOnly(bot) then
+    local drive = Ours.On("ArbiterDrive")
+    if drive and Overrides.LaneOnly(bot) then
         return false
     end
-    return Phase.LaningHeld(bot)
+    local held = Phase.LaningHeld(bot)
+    return held and (not drive or DotaTime() > ____exports.SETTINGS.DriveFrom)
 end
 local owned = ____exports.Owned
 --- The lane picker's body is in a last-hit attempt right now: its stored phase label, fresh within a second of its last scan.
@@ -193,7 +196,7 @@ function ____exports.Hold(bot, chooserJob)
         jobCandidate(bot, chooserJob, nil)
     })
 end
-____exports.SETTINGS = {LaneDesire = 0.55}
+____exports.SETTINGS = {DriveFrom = 10, LaneDesire = 0.55}
 local drivePrev = {}
 local driveAt = {}
 local drivePick = {}

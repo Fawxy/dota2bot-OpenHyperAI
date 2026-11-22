@@ -71,12 +71,16 @@ export function LeverOf(bot: Unit): string | undefined {
 /**
  * A hero of ours the arbiter reasons about, one no drill holds: from its first laning read to an end event
  * (Phase.LaningHeld); with `Ours.ArbiterDrive`, never a drill's lane-only hero (its laning holds it at 1.2, only the thing
- * under test acts).
+ * under test acts), and not before laning starts (`SETTINGS.DriveFrom`): until then the 0:00 runes are OHA's rune mode's,
+ * its walk before the horn and its take at the river spot (D21).
  */
 export function Owned(bot: Unit): boolean {
     if (Drill.Held(bot)) return false;
-    if (Ours.On("ArbiterDrive") && Overrides.LaneOnly(bot)) return false;
-    return Phase.LaningHeld(bot);
+    const drive = Ours.On("ArbiterDrive");
+    if (drive && Overrides.LaneOnly(bot)) return false;
+    // Asked before the clock: the hold still starts at the hero's first read, for everything else that reads it.
+    const held = Phase.LaningHeld(bot);
+    return held && (!drive || DotaTime() > SETTINGS.DriveFrom);
 }
 const owned = Owned;
 
@@ -134,6 +138,11 @@ export function Hold(bot: Unit, chooserJob: string | undefined): Candidate | und
 // --- The drive (rework step 7, Ours.ArbiterDrive): the pick holds every owned laner. ---
 
 export const SETTINGS = {
+    /**
+     * The game second after which the drive holds a hero. Derived: mode_laning_generic's own desire is 0 before 0:00 and
+     * 0.268, under its rune mode's, up to 0:10; it is a laner's 0.446 from then.
+     */
+    DriveFrom: 10,
     /**
      * The laning mode's desire while the lane is the pick. Over the Valve built-in mode that took a hero no file wanted
      * (fix6, 12/11/2026: mode 28 at 0.475, which no mode file gates); under a trade's opening desire (states/trade
