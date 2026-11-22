@@ -100,6 +100,29 @@ do
 	end)
 end
 
+-- The horn (D21, 0:00): until laning starts the hero is OHA's, so its rune mode walks it to the runes and takes the river
+-- spot's bounty (h2h742: none of 150 of our heroes got one under the drive). The control: past 0:10 the drive holds it.
+do
+	local H, bot = world(true)
+	local Arb = require("bots/FunLib/humaniser/arbiter")
+	capture(function()
+		for _, at in ipairs({ -80, -1, 0.5, 10 }) do
+			T = at
+			check("horn " .. at .. ": the drive does not hold the hero", not Arb.Drives(bot))
+			local v = gated(H, bot, "laning", 0)
+			check("horn " .. at .. ": laning is not floored over the rune mode", v == 0, tostring(v))
+			v = gated(H, bot, "rune", 0.5)
+			check("horn " .. at .. ": the rune mode's desire stands", v == 0.5, tostring(v))
+			check("horn " .. at .. ": the river spot's bounty is not denied", Arb.DeniesOhaRune(bot) == false)
+		end
+		T = 11
+		check("after the horn: the drive holds the hero", Arb.Drives(bot))
+		local v = gated(H, bot, "laning", 0.268)
+		check("after the horn: laning at the lane desire", v == Arb.SETTINGS.LaneDesire, tostring(v))
+		check("after the horn: OHA's river-rune reasons denied", Arb.DeniesOhaRune(bot) == true)
+	end)
+end
+
 -- Interrupt picks: the retreat keeps only itself and the human interface; a trade hosts attack; a last hit under way
 -- holds the fight modes and the admitted modes off.
 do
