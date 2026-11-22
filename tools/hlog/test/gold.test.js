@@ -71,6 +71,12 @@ test('the lines sum exactly to the net-worth change, per side and per hero', () 
     assert.ok(Math.abs(rs.find((x) => x.row === 'sum_of_lines').ours - rs.find((x) => x.row === 'nw_change').ours) < 1e-9);
 });
 
+test('batch arm labels join the arm and the seat with a hyphen, Dire as dir', () => {
+    assert.deepStrictEqual(parseLabel('h2hlift1_B_off-dir_10'), { run: 'h2hlift1', lineup: 'B', arm: 'off', seat: 3, n: 10 });
+    assert.deepStrictEqual(parseLabel('h2hlift1_A_off-rad_1'), { run: 'h2hlift1', lineup: 'A', arm: 'off', seat: 2, n: 1 });
+    assert.deepStrictEqual(parseLabel('h2hlift1_A_owncorenolift-dir_3'), { run: 'h2hlift1', lineup: 'A', arm: 'owncorenolift', seat: 3, n: 3 });
+});
+
 test('bisect labels carry the arm with the seat glued on', () => {
     assert.deepStrictEqual(parseLabel('bis1r_C_noTdire_1'), { run: 'bis1r', lineup: 'C', arm: 'noT', seat: 3, n: 1 });
     assert.deepStrictEqual(parseLabel('bis1_B_BFrad_2'), { run: 'bis1', lineup: 'B', arm: 'BF', seat: 2, n: 2 });
