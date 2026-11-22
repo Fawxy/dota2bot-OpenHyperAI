@@ -180,6 +180,8 @@ export const DEFAULTS = {
      *  before it, for the shadow line's value; the drive's 0 is still returned, but the bodies' side effects (item swaps, roam
      *  latches, Intent's sample) happen. Off: those bodies are not run while the drive zeroes them. */
     ChoiceProbe: false,
+    /** Spike oha-yield-spike only (throwaway): hand the hero to Valve's attack in a probe window (humaniser/yield_probe). */
+    YieldProbe: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

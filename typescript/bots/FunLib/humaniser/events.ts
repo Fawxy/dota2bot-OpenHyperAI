@@ -2697,6 +2697,23 @@ export const EVENTS = {
     // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
     // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`;
     // Ours.Threat on).
+    /** Spike oha-yield-spike (throwaway, humaniser/yield_probe): `ph=kind` once per hero (`kind` own|zero|nil); `ph=start` a probe
+     *  window opens (`mode` active, `ed` nearest enemy hero `tpid`, `hp` share); `ph=end` it closes (`why` time|dead, `mode` active,
+     *  `n` frames sampled, `atk` of them in attack mode, `hero` with a hero as attack target, `secs`). */
+    yield: {
+        pid: "num",
+        ph: "str",
+        kind: "str",
+        mode: "str",
+        ed: "num",
+        tpid: "num",
+        hp: "num",
+        why: "str",
+        secs: "num",
+        n: "num",
+        atk: "num",
+        hero: "num",
+    },
     choice: {
         pid: "num",
         /** The decision; `pull`, or `shadow` (Ours.ChoiceShadow). */

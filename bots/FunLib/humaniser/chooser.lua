@@ -25,6 +25,7 @@ local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
+local YieldProbe = require(GetScriptDirectory().."/FunLib/humaniser/yield_probe")
 function runningJob(bot)
     for ____, j in ipairs(JOBS) do
         if j.Running(bot) then
@@ -393,6 +394,9 @@ end
 --- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
 function ____exports.Gate(bot, mode, inner)
     return function()
+        if YieldProbe.Zeroes(bot) then
+            return 0
+        end
         Arbiter.Shadow(
             bot,
             function()

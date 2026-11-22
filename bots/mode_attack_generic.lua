@@ -16,7 +16,12 @@ end
 -- Laners in lane (Ours.Trade), OWNERSHIP H13: our attack desire and Think while the
 -- laner lanes (hit, hit back, kill, join: states/trade), OHA's Lua port outside lane. Decided once at load: defining GetDesire removes Valve's attack desire for the whole game, so the port covers the rest.
 local Trade = require( GetScriptDirectory()..'/FunLib/humaniser/index' ).Trade
-if Trade.Owns(bot) then
+-- Spike oha-yield-spike (throwaway): `own` and `nil` define only GetDesire; Think stays Valve's.
+local YieldProbe = require( GetScriptDirectory()..'/FunLib/humaniser/index' ).YieldProbe
+local yieldKind = local_mode_attack_generic == nil and YieldProbe.KindOf(bot) or nil
+if yieldKind == 'own' or yieldKind == 'nil' then
+	function GetDesire() return YieldProbe.AttackDesire(bot, yieldKind) end
+elseif Trade.Owns(bot) then
 	local Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
 	local port = local_mode_attack_generic or dofile( GetScriptDirectory().."/FunLib/override_generic/mode_attack_generic" )
 	local function Desire()

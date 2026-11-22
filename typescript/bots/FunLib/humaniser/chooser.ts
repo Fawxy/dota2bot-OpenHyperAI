@@ -18,6 +18,7 @@ import * as Arbiter from "bots/FunLib/humaniser/arbiter";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
+import * as YieldProbe from "bots/FunLib/humaniser/yield_probe";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -256,6 +257,7 @@ export function Decide(bot: Unit, mode: string): number | undefined {
 /** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. */
 export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
+        if (YieldProbe.Zeroes(bot)) return 0;
         Arbiter.Shadow(bot, () => runningJob(bot)?.name);
         // Ours.ChoiceShadow (logging only): the values this call returns are noted, never changed; off, nothing else runs.
         const shadow = ChoiceShadow.On();
