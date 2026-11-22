@@ -126,6 +126,10 @@ Customize.Fretbots = {
 -- This won't be very effective for FPS improvement because Valve has a lot of compute on their side that your PC have to handle for Local Hosting.
 Customize.ThinkLess = 1;
 
+-- Stock mirror arm, test harness only (as team-bots): RoleByHero gives all-bot teams positions by hero weight, not slot
+-- order, so dota_bot_populate's lineups play the same lanes in every arm (hero_selection.lua).
+Customize.Overrides = { RoleByHero = true }
+
 return Customize
 
 
