@@ -17,7 +17,6 @@ import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Cut from "bots/FunLib/humaniser/cut";
-import * as Trade from "bots/FunLib/humaniser/states/trade";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Safe from "bots/FunLib/humaniser/safe";
 
@@ -515,25 +514,23 @@ function step(bot: Unit, st: HeroState, r: Threat.Read, now: number): string | u
     return a.level !== "deadly" ? "safe" : undefined;
 }
 
-/** Why the leave rule did not leave: the place is not deadly, or our pair is joining the fight (PairJoin), or we are hitting back (Trade.Holds). */
-export type Stay = "under" | "join" | "hitback";
+/** Why the leave rule did not leave: the place is not deadly. */
+export type Stay = "under";
 
-/** What `LeaveWhy` decided and read: the reason to leave or to stay, `At`'s answer, and what `Trade.Holds` said (only asked when the answer is a kill over `BARS.hold`). */
+/** What `LeaveWhy` decided and read: the reason to leave or to stay, and `At`'s answer. */
 export interface Leave {
     why?: Why;
     stay?: Stay;
     a: Safe.Answer;
-    hold?: "join" | "hitback";
 }
 
 /**
  * The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once; the walk home where the place is not
  * deadly, when sustain's rule 2 says so for a hero it carries (`RetreatState.Home`), else at the heal floor with nobody in reach;
  * else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
- * under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
- * stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
+ * under `Safe.BARS.hold`, and `threat` between that and the bar. A `costly` place is never left for.
  */
-export function LeaveWhy(bot: Unit, holds: (this: void) => "join" | "hitback" | undefined = () => Trade.Holds(bot)): Leave {
+export function LeaveWhy(bot: Unit): Leave {
     const a = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "leave" });
     if (TowerOnUs(bot) !== undefined) return { why: "tower", a };
     const home = RetreatState.Home(bot);
@@ -541,8 +538,6 @@ export function LeaveWhy(bot: Unit, holds: (this: void) => "join" | "hitback" | 
     if (a.level !== "deadly") return { stay: "under", a };
     if (a.reason === "tower") return { why: "tower", a };
     if (a.ratio < Safe.BARS.hold) return { why: "lethal", a };
-    const hold = holds();
-    if (hold !== undefined) return { stay: hold, a, hold };
     return { why: "threat", a };
 }
 
@@ -585,8 +580,6 @@ function cutLeave(bot: Unit, st: HeroState, r: Threat.Read, purp: string, l: Lea
     pcall(Cut.Leave, bot, {
         r, dec, purp,
         a: l.a,
-        pj: l.hold === "join",
-        hb: l.hold === "hitback",
         short: math.min(SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
         long: SETTINGS.EngagedWindow,
     });

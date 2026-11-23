@@ -50,11 +50,6 @@ local function CanTakeLastHit(creep)
 	return J.GetPosition(bot) <= 2 or not CoreCanTake(creep)
 end
 local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
--- Ours.LeaveCoreCreep (slice 3): a support leaves a creep an allied core can take. Valve's C++ laning cannot be filtered, so
--- the bot runs this file's Think() and our predicate replaces every other last-hit gate (AllyLastHit's included).
-local Etiquette = J.Humaniser.Etiquette
-local bEtiquette = Etiquette.Applies(bot)
-if bEtiquette then fLastHitFilter = function(creep) return Etiquette.MayLastHit(bot, creep) end end
 local Lane = J.Humaniser.Lane
 -- Task 14 self-test: this bot times its last hits from the trainer's own start window.
 local Trainer = J.Humaniser.Trainer
@@ -67,9 +62,10 @@ local function CoreLeaves(creep)
 	if bHumaniserOwned then return not CoreCanTake(creep) end
 	return not J.IsThereNonSelfCoreNearby(700)
 end
--- Behaviour states (team slice 1): the `laning` state's SDK body can replace PositionThink() below.
+-- Behaviour states (team slice 1): a bot whose states the layer may own runs this file's Think(), whose lane table
+-- (states/lane_table) can put a row of ours before OHA's steps.
 local States = J.Humaniser.States
-local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette
+local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot)
 LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
 
 function GetDesire()
@@ -151,7 +147,6 @@ function GetDesire()
 			if J.IsValid(hitCreep) then
 				if (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
-				and not J.Humaniser.Trade.LastHitYields(bot) -- nor a retreat, kill or join our laner is already in (Ours.Trade)
 				then
 					J.Humaniser.ChoiceShadow.MarkMix(bot)
 					return 0.9
@@ -307,14 +302,8 @@ local Telemetry = J.Humaniser.Telemetry
 Telemetry.NoteLaneThink(bot, bOwnsThink)
 
 if bOwnsThink then
-	States.SetLaneSpot(bot, PositionTarget)
 	-- The steps of the lane table (states/lane_table) that are OHA's own; the table decides their order against ours.
 	local laneCtx = {
-		etiquette = function()
-			-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
-			if bEtiquette and Etiquette.LeavesTarget(bot) and not States.SupportOwnsAttack(bot) then PositionThink() return true end
-			return false
-		end,
 		ohaLastHit = LastHitThink,
 		ohaDeny = DenyThink,
 		ohaHold = function()

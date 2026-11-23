@@ -22,7 +22,6 @@ function FarmWorld(o)
 	-- FarmPattern's own trips: slice core-next-gold's CoreCamp owns lane-stage trips of our cores when its switch is on.
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = C.Ours or {}
-	if o.coreCamp ~= true then C.Ours.CoreCampTrip = false end
 	-- farm:hold on retreat is Ours.Retreat's OFF arm.
 	if o.retreat ~= true then C.Ours.Retreat = false end
 	-- `ours: {Threat: false}` in a fixture's world: a switch set the way the fixture's finding needs it.

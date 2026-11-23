@@ -15,6 +15,7 @@
  * Also the step's other telemetry: `ev=sustain_buy` (OHA's lane regen purchases with their rule, `Bought`), `ev=sustain_courier` (a
  * courier state change). Who started a regen buff is item_use.ts's `Used` (regen_obs `by`).
  */
+import type * as Lib from "bots/FunLib/engine/tasks";
 import { Item, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Sustain from "bots/FunLib/humaniser/sustain";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -23,7 +24,7 @@ import * as Safe from "bots/FunLib/humaniser/safe";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Retreat from "bots/FunLib/humaniser/retreat";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
-import * as Laning from "bots/FunLib/humaniser/states/laning";
+import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 declare function GetTreeLocation(tree: number): Vector;
 declare function GetCourier(n: number): Unit | undefined;
@@ -34,6 +35,28 @@ declare const COURIER_STATE_AT_BASE: number;
 declare const COURIER_STATE_DEAD: number;
 declare const COURIER_STATE_MOVING: number;
 declare const COURIER_STATE_DELIVERING_ITEMS: number;
+
+/**
+ * Sustain's `nextDue` (rule 3): seconds until the soonest last hit or deny on offer comes due (laneTargets' `due`, within
+ * `NextDueWithin`); undefined with no creep near. Once per bot per game time.
+ */
+const nextDueAt: Record<number, { t: number; due?: number } | undefined> = {};
+export const NextDueWithin = 30;
+export function NextDue(bot: Unit): number | undefined {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const memo = nextDueAt[pid];
+    if (memo !== undefined && memo.t === now) return memo.due;
+    let due: number | undefined;
+    const verbs = Tasks.Verbs();
+    if (verbs !== undefined) {
+        for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: NextDueWithin })) {
+            if (due === undefined || t.due < due) due = t.due;
+        }
+    }
+    nextDueAt[pid] = { t: now, due };
+    return due;
+}
 
 interface SpecItem {
     GetSpecialValueFloat(name: string): number;
@@ -423,7 +446,7 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
         items,
         tree,
         // The next hit matters only to a tango walk: read with a tree in hand (laneTargets walks the wave).
-        nextDue: tree !== undefined ? Laning.NextDue(bot) : undefined,
+        nextDue: tree !== undefined ? NextDue(bot) : undefined,
         hitRecently: bot.WasRecentlyDamagedByAnyHero(2),
         safe,
         regenLeft: rl,

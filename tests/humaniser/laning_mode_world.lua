@@ -45,7 +45,7 @@ function LaningHero(o)
 	return h
 end
 
--- opts: pos, owned (the state layer may own the bot), humanTeam (a team with a human: AllyLastHit owns the laning), ours (Ours.LeaveCoreCreep), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg,
+-- opts: pos, owned (the state layer may own the bot), humanTeam (a team with a human: AllyLastHit owns the laning), enemyCreeps, allyCreeps, allies (bot heroes nearby), dmg,
 -- modeFile (default bots/mode_laning_generic.lua).
 function LaningLoad(opts)
 	DotaTime = function() return opts.t or 120 end
@@ -73,33 +73,14 @@ function LaningLoad(opts)
 	bot.SetTarget = function() end
 	function GetBot() return bot end
 
-	-- The real Etiquette predicate (slice 3), on Ours.LeaveCoreCreep = opts.ours, positions from the world, over the bot
-	-- and its allied heroes as the team.
+	-- The bot and its allied heroes as the team, positions from the world.
 	local team = { bot }
 	for _, a in ipairs(opts.allies or {}) do table.insert(team, a) end
 	function GetTeamMember(i) return team[i] end
 	package.loaded['bots/FunLib/humaniser/lane_config'] = { PositionOf = function(u) return u.pos end }
-	package.loaded['bots/FunLib/humaniser/ours'] = { On = function() return opts.ours == true end }
-	package.loaded['bots/FunLib/humaniser/etiquette'] = nil
 	-- The mode file's wrapper line, with the humaniser stubbed: no job, so OHA's code always runs. A test of the gate passes its own.
 	package.loaded['bots/FunLib/humaniser/index'] = { Chooser = opts.chooser or { Gate = function(_, _, inner) return inner end } }
-	-- A fixture's negative control runs an older bots/ without the module; the old mode file never reads it then.
-	local okEtiquette, Etiquette = pcall(require, 'bots/FunLib/humaniser/etiquette')
-	if not okEtiquette then Etiquette = { Applies = function() return false end } end
 
-	-- The lane table's own collaborators: no support hit, aggro or drill unless the world says so.
-	package.loaded["bots/FunLib/humaniser/states/laning"] = {
-		OwnsSupportHits = function() return opts.supportStep == true end,
-		HitOffered = function() return opts.supportStep == true end,
-		OwnsSpot = function() return false end,
-	}
-	for _, m in ipairs({ "lane_aggro", "states/wave_hold", "states/core_last_hit", "drill" }) do
-		package.loaded["bots/FunLib/humaniser/" .. m] = {
-			Owns = function() return false end, Pending = function() return false end, Step = function() return false end,
-			StepOpen = function() return false end, LaneHold = function() return false end, LaneAggro = function() return false end,
-			Applies = function() return false end,
-		}
-	end
 	package.loaded["bots/FunLib/humaniser/overrides"] = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end }
 	-- Sustain's walk row: no heal attempt walks unless the world says so.
 	package.loaded["bots/FunLib/humaniser/sustain_act"] = {
@@ -127,45 +108,24 @@ function LaningLoad(opts)
 			Choose = function(_, list) return list[1] end,
 			NoteAttempt = function(_, c) table.insert(attempts, c) end,
 		},
-		Etiquette = Etiquette,
 		Intent = { Resolve = function(_, _, d) return d end },
 		-- bot.step: the step name the last Think reported (ev=snap step=).
 		Telemetry = { NoteLaneThink = function() end, NoteLaneStep = function(_, s) bot.step = s end },
 		-- Slice lane-last-hits: opts.laneOnly makes the bot lane-only, as a drill does (humaniser/drill.ts); the bot is required.
 		Overrides = { LaneOnly = function(b) return opts.laneOnly == true and b ~= nil end },
 		Retreat = { Running = function() return opts.retreatRunning == true end },
-		-- Slice core-in-lane: opts.retreating is a core of ours already in retreat.
-		Trade = { LastHitYields = function() return opts.retreating == true end },
 		-- Ours.ChoiceShadow's hook: bot.mixMarks counts the returns from our branch.
 		ChoiceShadow = { MarkMix = function() bot.mixMarks = (bot.mixMarks or 0) + 1 end },
 		States = {
-			MayOwn = function() return opts.owned == true end, SetLaneSpot = function() end,
-			Step = function() bot.bodySteps = (bot.bodySteps or 0) + 1 return opts.stepActs == true end, BodyLastHits = function() return false end,
-			BodyBusy = function() return false end,
-			-- The real lane table (states/lane_table) over the stubs above. Ours.SupportDeny (slice l1-support-deny): opts.supportStep
-			-- makes the body run for a support with a hit on offer, so its `support_hit` row acts; opts.bodyDenies makes the body own
-			-- the support's lane hits (its denies), opts.bodyLastHits its claimed last hits too (Ours.SupportLastHit).
+			MayOwn = function() return opts.owned == true end,
+			-- The real lane table (states/lane_table) over the stubs above.
 			LaneStep = function(b, cb)
 				return LaneTable.Walk(b, {
 					enabled = function() return true end,
-					bodyRunning = function() return opts.supportStep == true end,
-					bodyLabel = function() return nil end,
-					stepBody = function()
-						bot.bodySteps = (bot.bodySteps or 0) + 1
-						if opts.supportStep then bot.supportStepped = true return true end
-						return opts.stepActs == true
-					end,
-					bodyBusy = function() return false end,
-					bodyLastHits = function() return false end,
-					bodySupportHits = function() return opts.bodyDenies == true end,
-					bodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,
-					etiquette = cb.etiquette, ohaLastHit = cb.ohaLastHit, ohaDeny = cb.ohaDeny,
+					ohaLastHit = cb.ohaLastHit, ohaDeny = cb.ohaDeny,
 					ohaHold = cb.ohaHold, ohaLocal = cb.ohaLocal, ohaPosition = cb.ohaPosition,
 				})
 			end,
-			BodySupportHits = function() return opts.bodyDenies == true end,
-			BodySupportLastHits = function() return opts.bodyDenies == true and opts.bodyLastHits == true end,
-			SupportOwnsAttack = function() return opts.ownsAttack == true end,
 		},
 	}
 	local J = setmetatable({

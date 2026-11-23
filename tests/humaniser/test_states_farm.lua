@@ -32,7 +32,6 @@ local function world(o)
 	-- FarmPattern's own trips: CoreCamp (slice core-next-gold) owns our cores' lane-stage trips when its switch is on.
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = C.Ours or {}
-	C.Ours.CoreCampTrip = false
 	T = o.t
 	CURRENT_TEAM = 2
 	OBSERVER = 1

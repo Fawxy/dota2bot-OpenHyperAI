@@ -1179,7 +1179,7 @@ function ____exports.CreepsNow(team, lane)
         true
     )
 end
---- By team * 10 + lane. Callers on one frame (lane_control's decide reads, forecasts and pulls the same view) share it:
+--- By team * 10 + lane. Callers on one frame (the pull's reads and forecasts of the same view) share it:
 -- nothing a view reads changes inside a frame, and a plain run is a function of the view and the creep speed.
 local frameViews = {}
 --- `team`'s view of `lane` at the whole second now: the start creeps and T1 HP a run begins from (once a frame).

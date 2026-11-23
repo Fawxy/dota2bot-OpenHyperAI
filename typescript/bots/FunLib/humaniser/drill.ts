@@ -63,12 +63,6 @@ export interface Entry {
     castSpots?: string[];
     /** Heroes that play lane-only (as `castLaneOnly`); checked after `statue`. */
     laneOnly?: Sides;
-    /** Lane-only heroes also run the wave hold (states/wave_hold, under its switches) and the hold's own draw; no other lane
-     *  aggro draw starts. Its control arm is the same drill with `Ours.CoreHold` off. */
-    laneHold?: boolean;
-    /** Lane-only cores also run lane aggro's draws (the feed under the lane controller's word, tower), as a
-     *  lane-only core otherwise does not. */
-    laneAggro?: boolean;
     /** Heroes that play in-lane: everything as in a game, ours or OHA's, but no mode, item or spell that leaves the lane (the
      *  lane ladder, master `docs/proposals/2026-11-19-lane-ladder.md`). A cast with `castInLane` is held the same way. */
     inLane?: Sides;
@@ -175,29 +169,6 @@ function sustainReps(): RigRep[] {
  * recipe when it needs reset steps or a later `--until`).
  */
 export const TABLE: Record<string, Entry> = {
-    // Lane positioning's drill, step 1: the Radiant safe-lane core alone in its lane with natural waves (one rep each).
-    "lane-spot": { note: "Radiant pos1 lane-only, everyone else benched", cast: SAFE_CORE, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
-    // Step 2: the Dire offlaner (the same lane) stands in range as a statue.
-    "lane-spot-statue": {
-        note: "Radiant pos1 lane-only, Dire pos3 a statue in its lane, everyone else benched",
-        cast: SAFE_CORE,
-        statue: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-    },
-    // Step 3: the enemy laner active, both lane-only.
-    "lane-spot-duel": { note: "Radiant pos1 and Dire pos3 lane-only, everyone else benched", cast: { r: [1], d: [3] }, others: "bench", castLaneOnly: true, rep: { every: 30, from: 0 } },
-    // The contest walk-in's price: the Dire pos3 stands as a statue but hits back, so `cc` (the priced HP-%) is graded
-    // against `dh` (the HP-% lost) on an opponent that acts.
-    "lane-spot-sentry": {
-        note: "Radiant pos1 lane-only, Dire pos3 a sentry in its lane (a statue that attacks an enemy hero inside its zone), everyone else benched",
-        cast: SAFE_CORE,
-        sentry: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-    },
     // The lone-hero stand (slice mid-stand, D11 against D1; the stand rule is `Safe.At` since oha-safe-behave; switch `Ours.Retreat`). half: execution. Facts the stand reads:
     // exactly one enemy hero in reach (forced: the Dire mid stands at a fixed point on its side of the mid river, everyone
     // else benched); it is not hitting the cast (a rig statue never attacks or casts); its estimated damage over 3 s is
@@ -224,35 +195,6 @@ export const TABLE: Record<string, Entry> = {
             keeps: ["levelup"],
             release: { modes: ["laning", "retreat", "idle"] },
             reps: [{ name: "lone", setup: { r2: ["stand home"], d2: ["stand foe"] }, ready: { lone: [1700, 0.35, 1], hpAtLeast: 0.5 } }],
-        },
-    },
-    // The tower pre-hit (K1, `Ours.PreHit`). half: execution. One cast per lane: the Radiant pos1, pos2 and pos3 under their
-    // own T1s (seed 30: Luna bot and Sniper mid ranged, Pudge top melee), read apart by lane. Facts the pre-hit reads: our tower
-    // attacking an enemy lane creep (forced: at +1 s of each rep the recipe clears both teams' lane creeps within 1,100 of each
-    // Radiant T1 and heals the casts and those T1s (off4: unhealed, the top T1 fell at 5:21; a dead one fails `notower`),
-    // at +2 s makes three melee and one ranged Dire creep 580 up the lane from each T1, the side
-    // the Dire waves come from, so a small wave is held under each tower with only the tower on it before the natural waves
-    // arrive (off1: a lane-wide kill of our creeps let the Dire waves pile up and take the bot T1 by 4:00; off2: a clear at
-    // +10 s met the natural Dire wave at +3 to +7 s with the cast still a statue); the creep within the cast's walk (forced:
-    // each cast stands at its wave's front, 200 up the lane from its T1, in setup; checked `towerCreep`); the cast in laning
-    // mode in its lane, no enemy hero near (everyone else benched; checked `clear`); every hero level 3 (recipe), so it is
-    // not one-shot. Read after release: per rep and lane, the tower-hit creeps the cast took, its pre-hits and the ledger's
-    // `prehit_tower` (scratch readout until a view exists).
-    "tower-prehit": {
-        note: "rig: Radiant pos1, pos2 and pos3 each at the front of a small Dire wave made under its own T1 each rep (both sides' creeps there cleared first), only the tower on it, level 3; ready: the tower hitting an enemy creep within 700, no enemy hero within 2,000; then laning; 30 s reps from 0:30; seed 30",
-        cast: { r: [1, 2, 3] },
-        others: "bench",
-        rep: { every: 30, from: 30 },
-        rig: {
-            half: "execution",
-            switch: "PreHit",
-            window: 600,
-            spots: { bot: ["r:bot1", 200, 0], mid: ["r:mid1", 140, 140], top: ["r:top1", 0, 200] },
-            timeout: 28,
-            keeps: ["levelup"],
-            release: { modes: ["laning", "idle"] },
-            idle: 0.3,
-            reps: [{ name: "tower", setup: { r1: ["stand bot"], r2: ["stand mid"], r3: ["stand top"] }, ready: { towerCreep: 700, clear: 2000 } }],
         },
     },
     // Slice retreat (master slices/retreat.md "Drill"): the forced retreat from fixed points. Each rep the Radiant pos1 walks
@@ -328,180 +270,6 @@ export const TABLE: Record<string, Entry> = {
         castLaneOnly: true,
         rep: { every: 90, from: 60, control: 4 },
     },
-    // Slice hit-back (D24's hit-back half). half: decision. Rebuilt off
-    // the lane (rig1, rig2 at the lane front: ready 6 of 20, the wave and the HP gap sat right by chance). Facts the hit back
-    // reads: an enemy hero damaged the cast within 1 s (forced: an actor attacks it); that hero inside our creeps' aggro (the
-    // rep's `aggro`, read in place of the creep test by the hit back and the hold alike: `creep_aggro.Paid`; on1: the hold
-    // read the empty map, so our retreat left every 1v1 the hold keeps in games); the hitter out of reach but within the walk-in (`far`)
-    // or the cast 16+ points under it (`behind`), the two starts the trade rule alone refuses (no_target, behind); the trade's
-    // other respects clear (no tower or creep near the side spot, 1v1, HP over half); the laning stage (window 600) and the cast
-    // in its lane (the side spot is 763 from the bot lane, rig2 `ld`). Seed 8 (lineup B): the cast Sven (melee, reach about
-    // 300); the far hitter Lich (range 550) comes straight at the cast and attacks from 500, so 200 past its reach without
-    // stepping in (not via `sidenear`: it snapped to 338 from `side` in rig2); the behind hitter Bristleback (melee) stands
-    // in reach. Controls: `free` (as far, the fact false), `stand` (Lich beside, never attacking). A leave-together rep (`pair`) was dropped (user 12/11/2026: the cast's own retreat left before the partner
-    // did, or the hitters did). 120 s reps from 0:00, five inside 10:00, so rep 5 is a second `far` (the cast's heal walk from the
-    // side spot and back is about 60 s). Release: laning (last hits compete), attack (the trade), retreat, idle.
-    "retreat-hitback": {
-        note: "rig: Radiant pos1 off our bot lane, hit by the Dire pos4 from 200 past its reach at 90%+ HP (far), by the Dire pos3 in reach at 72% (behind), as far with no creep aggro (free), the pos4 beside it not attacking (stand); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
-        cast: SAFE_CORE,
-        others: "bench",
-        rep: { every: 120, from: 0 },
-        rig: {
-            half: "decision",
-            switch: "Trade",
-            window: 600,
-            spots: {
-                // The heal rig's spots: off the lane and clear of camps.
-                side: ["r:bot1", -2750, 700],
-                sidenear: ["r:bot1", -2250, 700],
-                beside: ["r:bot1", -2600, 700],
-            },
-            timeout: 100,
-            keeps: ["levelup"],
-            release: { modes: ["laning", "attack", "retreat", "idle"] },
-            reps: [
-                {
-                    name: "far",
-                    aggro: true,
-                    setup: { r1: ["heal", "stand side"], d4: ["heal", "attack r1 from 500 until hp 0.6", "leave"] },
-                    ready: { hit: true, past: [100, 300], hpAtLeast: 0.9 },
-                },
-                {
-                    name: "behind",
-                    aggro: true,
-                    setup: { r1: ["heal", "stand side until hp 0.72", "stand side"], d3: ["heal", "walk sidenear", "attack r1 until hp 0.72", "attack r1 until hp 0.55", "leave"] },
-                    ready: { hit: true, behind: 0.16, hpAtLeast: 0.55 },
-                },
-                {
-                    name: "free",
-                    aggro: false,
-                    setup: { r1: ["heal", "stand side"], d4: ["heal", "attack r1 from 500 until hp 0.6", "leave"] },
-                    ready: { hit: true, past: [100, 300], hpAtLeast: 0.9 },
-                },
-                {
-                    name: "stand",
-                    aggro: true,
-                    setup: { r1: ["heal", "stand side"], d4: ["heal", "stand beside"] },
-                    ready: { near: 800 },
-                },
-            ],
-        },
-    },
-    // Slice pair-join-on (D10's join). half: execution. The join's facts (PairJoin.Decide): one of ours hit by an enemy hero
-    // within 1 s (forced: the Dire pos4 actor attacks the Radiant pos1 from 500 north); another of ours within 1,200 of it (forced:
-    // the pos5 stands 400 south of it); enemy heroes in sight within 1,000 of the hit hero (the head count is no part of the rule: the kill shares carry the numbers)
-    // (forced: the rest bench); our best 3 s kill share over theirs (forced by numbers: two healed heroes against one healed
-    // hero; checked with the same estimate the rule reads). Ready: `pair` and `ahead` for both casts, HP at half or more.
-    // Read after release: each cast's `ev=trade kind=join` taken (`result` done or kill) and the pos1 starts no `threat`
-    // retreat while its join runs. Control (`alone`): the pos5 stands 2,500 off, so there is no pair (D1 and D24 alone).
-    // The common start (join cuts of smoke pairjoin smoke1+2, 105 with the joiner not the hit hero): the hitter 820 from the
-    // hit hero (median; 5 of 105 under 300), the joiner 1,034 from it (19 under 700). rig1 had a melee hitter in reach of both,
-    // where the trade rule already fights (both casts traded in every ready pair rep with the switch off), so the hitter is a
-    // ranged one 500 north of the pos1 (its 550 range hits from there; rig2: `attack ... from 500` east of the side spot never
-    // settled, the terrain snaps points there, so it never hit) and the pos5 400 south of the pos1, about 900 from it. Spots: hit-back's side spot off our bot lane (763
-    // from the lane: in lane for the trade). Seed 8 (lineup B): Sven and Witch Doctor against Lich (range 550). 120 s reps from 0:00 (heal walk and back), five inside 10:00. Release: laning,
-    // attack (the join), retreat, idle.
-    "pair-join": {
-        note: "rig: Radiant pos1 off our bot lane with the pos5 400 south of it, the Dire pos4 attacks the pos1 from 500 north to half HP (2v1, our kill share ahead); control: the pos5 2,500 off (alone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
-        cast: { r: [1, 5] },
-        others: "bench",
-        rep: { every: 120, from: 0 },
-        rig: {
-            half: "execution",
-            switch: "Trade",
-            window: 600,
-            spots: {
-                side: ["r:bot1", -2750, 700],
-                behind: ["r:bot1", -2750, 300],
-                foe: ["r:bot1", -2750, 1200],
-                away: ["r:bot1", -2750, 3200],
-            },
-            timeout: 90, // on2: after a rep where the Lich died it walks in from the fountain and hit after 60 s in 3 of 4 pair reps
-            keeps: ["levelup"],
-            release: { modes: ["laning", "attack", "retreat", "idle"] },
-            reps: [
-                {
-                    name: "pair",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], d4: ["heal", "walk foe", "attack r1 until hp 0.5", "leave"] },
-                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "pair",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], d4: ["heal", "walk foe", "attack r1 until hp 0.5", "leave"] },
-                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "alone",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand away"], d4: ["heal", "walk foe", "attack r1 until hp 0.5", "leave"] },
-                    ready: { hit: true, hpAtLeast: 0.5 },
-                },
-            ],
-        },
-    },
-    // Slice heal-items' drill as a rig, now sustain's (`Ours.Sustain`; HealItems retired in sustain step 4). half: decision. Facts it reads: the
-    // cast's HP share (25% or under; a control rep 60%), the regen it holds (a salve, or a tango and no salve), whether an
-    // enemy hero is in reach (none within 1,600, or the attacker standing by within 1,200), our lane front nearer than our
-    // fountain (the waves, untouched). Forced: HP by the Dire pos3 attacking the statue cast until its share; items bought by
-    // the cast at its fountain during setup (gold from the recipe); reach by where the attacker stands after. Both heal in
-    // their fountain first (no console control sets a bot's HP: probe 12/11/2026, SCENARIOS.md; fix3: the attacker lost HP
-    // standing beside a camp and died). Spots: 2,850 west of our bot T1, 700 off the lane (our creeps would hit the attacker),
-    // over 1,000 from every camp box (fix3: `near` 621 from the small camp by T1). The attack stops 5 points under the ready
-    // bar (fix5: stopping at the bar, the cast regenerated over it while the attacker walked out of reach). Release: our
-    // retreat, else it stands (`idle`; fix6: a Valve built-in mode took the control rep's cast). Window: the laning stage, so
-    // every rep ends by 10:00 (rigB: from 14:40 OHA's retreat took the cast and `idle` outbid it): four 135 s reps from 1:00,
-    // one of each kind a game; rigB before 10:00 was ready in 46 to 71 s and walked home in 37 to 40 s, and the 95 s timeout
-    // leaves a ready rep that walk. Acceptance takes three games on one seed.
-    // Slice trade-reach (D19's commit, now `Ours.Trade`). half: execution. The commit's facts (the kill level of states/trade Decide: its
-    // kill): an enemy hero at the commit bar (40%; forced: the Radiant pos5 actor hits it to 25%, then walks 1,400 west past
-    // it, out of the cast's 1,200 and seeing along the strip) standing 100-550 past the cast's trade reach (forced: a statue
-    // 600 west of the cast on its strip 700 off the lane; Sven's reach is about 298), in sight (on1: a statue 650 north stood
-    // behind trees, seen 138 of 530 s, and every commit ended `target_lost`; fix2: an away spot 1,850 west was out of reach, the pos5 stopped 410 short and no rep was ready), the cast in lane in the laning stage with HP over
-    // the target's (hit-back's side spot, 763 off our bot lane; healed each rep), burst on the walk under the bar. Read after release:
-    // the cast's `ev=trade kind=kill` on the low hero, taken (result done or kill), and its snapshot `tid` on it within 3 s;
-    // the cast's `ed` (nearest visible enemy) says whether the statue was in sight. The banked start: the low hero in retreat
-    // in 8 of 13 and ours in `laning` in 9; the statue stands for the walk-in only (a fleeing target is the game's). Control
-    // (`outnum`): the Dire pos3 stands 950 west of the cast too, beyond the Lich, two against one. The old rule refused on the head count, which no longer exists: the answer is the walk read's burst and the unseen weight, so this rep may commit. Spots resolve passable (`ph=spot`): side (2180, -5609), low (1474, -5644); the pos3 must stand over 200 from low, since the pos5's attack takes the visible enemy nearest that spot (rig3: at 1309 it hit the pos3; on2: 300 west snapped 249 to 1578, beside the Lich), and within 1,200 of side (1160 resolves unmoved, about 1,020 off). Every rep needs no other hero of ours within 1,200 (`alliesAtMost`; fix3: the pos5 walking off counted, ally 2). Seed 8 (lineup B): Sven and Witch Doctor
-    // against Lich and Bristleback. The Lich takes no `heal` step (its HP is the pos5's attack each rep; healed, a Lich that
-    // lived through a rep walks to its fountain and back, about 110 s); a killed one respawns and walks in, about 60 s, then
-    // the attack and the walk off, so 120 s reps with a 95 s timeout, five inside 10:00. Reach reps need the low hero alone
-    // within 1,200 (`foesAtMost`: the control's pos3 walks home through it). Release: laning, attack (the kill), retreat, idle.
-    "kill-reach": {
-        note: "rig: Radiant pos1 off our bot lane, the Dire pos4 a statue 600 west of it on the same strip hit to 25% HP by the Radiant pos5, which then walks 1,400 west; control: the Dire pos3 also stands 950 west, beyond the Lich (two against one; the head count is gone, so the walk's burst decides); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
-        cast: SAFE_CORE,
-        others: "bench",
-        rep: { every: 120, from: 0 },
-        rig: {
-            half: "execution",
-            switch: "Trade",
-            window: 600,
-            spots: {
-                side: ["r:bot1", -2750, 700],
-                low: ["r:bot1", -3350, 700],
-                foe: ["r:bot1", -3700, 700],
-                away: ["r:bot1", -4150, 700],
-            },
-            timeout: 95,
-            keeps: ["levelup"],
-            release: { modes: ["laning", "attack", "retreat", "idle"] },
-            reps: [
-                {
-                    name: "reach",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"] },
-                    ready: { low: [0.35, 100, 550], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "reach",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"] },
-                    ready: { low: [0.35, 100, 550], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "outnum",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "attack d4 until hp 0.25", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
-                    ready: { low: [0.35, 100, 550], foes: 2, alliesAtMost: 0, hpAtLeast: 0.5 },
-                },
-            ],
-        },
-    },
     // Slice burst-truth (D1, D2: the burst read's truth). half: decision, a model graded on facts: what a lone enemy hero with
     // its spells ready deals in 3 s against the read (GetEstimatedDamageToTarget, `Threat.Read`'s burst; with every spell
     // castable the read's own figure; for an enemy the raw figure ignores cooldown and mana, so only the ready case is
@@ -537,157 +305,6 @@ export const TABLE: Record<string, Entry> = {
                         d2: ["heal", "walk foe", "burst r2 for 6 using oracle_purifying_flames oracle_fortunes_end zuus_arc_lightning zuus_lightning_bolt", "leave"],
                     },
                     ready: { near: 1000, hpAtLeast: 0.9 },
-                },
-            ],
-        },
-    },
-    // Slice pair-kill-rig (fighting-together "Tools"; D10, D19): the two-hero kill rig, the graded lines for kill-chances S2
-    // (commit and join as plays) and S3 (release and abort). half: execution. Two of ours near one enemy hero: do both attack
-    // it within a short gap, does it die, and when it lives do both stop together (view pair_rig.js). The banked start
-    // (pair_episodes.js rows on 50 games, fights of 3 s+): a support hitting first with a core partner, 5.1 a game, the partner
-    // hitting 42% (OHA 72%); a target fallen to 40%, 2.2, both hitting 83% but killing 30% (OHA 47%); 2v2 4.8 (54%, OHA 78%).
-    // Kinds: `low`, the Lich hit to 30% by the Radiant pos4 actor (which walks off) and standing (both see a kill commit's
-    // facts); `flee`, the same Lich runs to its fountain once it falls to 20%; `hitback`, the Lich (not healed: a heal walk
-    // is about 110 s) attacks our support until it is nearly dead (D10's join facts, the enemy fighting back); `two`, `low`
-    // with Bristleback standing beside it (2v2); control `outnum`, Omniknight beside them too (three against two; the head count is gone, so the burst decides); the foes stand north-east of the Lich, off the Radiant creeps' path (fix1: creeps killed a statue on it) and nearer Sven for
-    // night sight (fix2, fix6: at 790 and 810 Bristleback was fogged). Snapped to passable ground (rig7 `ph=spot`) they stand
-    // 216 (foe) and 291 (foe2) from the Lich's spot, 101 apart and 607 and 666 from Sven: foe is only just past RIG_PLACED
-    // of the Lich's (fix5: with the Lich dead the Warlock took Bristleback, 124 off, for it), and the two foes are inside it
-    // of each other's, so `wait d3` and `wait d5` can each end on the other statue. Bristleback stands nearer our heroes
-    // than the Lich (judgement: the rig grades the Lich).
-    // Spots: kill-reach's open strip; our support 400 south of the core, about 720 from the Lich (inside Witch Doctor's
-    // reach, the core about 300 past its own). Seed 8: Sven and Witch Doctor against Lich, Bristleback, Omniknight; the
-    // Warlock is the actor. Release adds `team_roam` to kill-reach's list: a support's own commit runs there on OHA's
-    // lane_fight while the older layer existed, so the rig saw what games saw. Abilities and items stay held
-    // (execution first; the cast read decides whether casting is graded). The switch is S2's, which nothing reads yet: the
-    // off arm is today's code.
-    "pair-kill": {
-        note: "rig: Radiant pos1 and pos5 off our bot lane, the Dire pos4 hit to 30% by the Radiant pos4 (which walks off) standing 600 west (low), running at 20% (flee), or attacking our pos5 (hitback); 2v2 with the Dire pos3 beside it (two); control: the Dire pos5 too (outnum); then laning, attack, team_roam, retreat; five 120 s reps from 0:00; seed 8",
-        cast: { r: [1, 5] },
-        others: "bench",
-        rep: { every: 120, from: 0 },
-        rig: {
-            half: "execution",
-            switch: "PairPlay",
-            window: 600,
-            spots: {
-                side: ["r:bot1", -2750, 700],
-                behind: ["r:bot1", -2750, 300],
-                low: ["r:bot1", -3350, 700],
-                foe: ["r:bot1", -3130, 860],
-                foe2: ["r:bot1", -3280, 1060],
-                away: ["r:bot1", -4150, 700],
-            },
-            timeout: 95,
-            keeps: ["levelup"],
-            release: { modes: ["laning", "attack", "team_roam", "retreat", "idle"] },
-            reps: [
-                {
-                    name: "low",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"] },
-                    ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "flee",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low until hp 0.2", "leave"] },
-                    ready: { low: [0.35, -2000, 550], foesAtMost: 1, alliesAtMost: 1, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "hitback",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["leave"], d4: ["attack r5 until hp 0.05", "stand low"] },
-                    ready: { pair: [1200, 1000], ahead: true, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "two",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "wait d3", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
-                    ready: { low: [0.35, -2000, 550], foes: 2, foesAtMost: 2, alliesAtMost: 1, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "outnum",
-                    setup: { r1: ["heal", "stand side"], r5: ["heal", "stand behind"], r4: ["heal", "walk away", "wait r1", "wait r5", "wait d3", "wait d5", "attack d4 until hp 0.3", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"], d5: ["heal", "stand foe2"] },
-                    ready: { low: [0.35, -2000, 550], foes: 3, alliesAtMost: 1, hpAtLeast: 0.5 },
-                },
-            ],
-        },
-    },
-    // Plan trade-from-the-stand step 2 (master docs/proposals/2026-11-18-trade-from-the-stand.md; D18): the lane trade rig, the
-    // "before" for steps 3 and 4. half: execution. One core of ours per lane against one enemy hero the rig drives, waves
-    // untouched, everyone else benched: the Radiant pos2 in mid against the Dire pos2, the Radiant pos1 in our safe lane against
-    // the Dire pos3 (seed 30: Sniper, ranged, against Zeus; Luna against Sand King. Seed 8: Sven, melee, against Bristleback;
-    // Lion against Oracle. The lineups hold no melee Radiant mid, so the melee core lanes in its own lane). Facts a trade reads,
-    // each forced or checked: one enemy hero near and none of ours (benched; `near`, `foesAtMost`, `alliesAtMost`); both at full
-    // HP each rep (recipe: rig_hp_all about 5 s before each rep; `hpAtLeast`); the cast in its lane (setup `front`, its
-    // last-hit place behind its own creeps; released into laning, attack and retreat as in games, OHA's ability use too, so step
-    // 3d can read OHA's casts at the target). The enemy hero by rep kind: `stand` holds its last-hit place; `lasthit` walks up to
-    // each of our lane creeps near it that its next hits kill, swings and walks back; `hitback`, as lasthit, and attacks the
-    // cast while the cast hits it. A graded rep is a trade the cast opens after release (`ev=trade`, view trade_rig.js); the
-    // rig's own truth is `watch`'s lines (the cast's attacks fired at an enemy hero, enemy creeps' attacks fired at it). The
-    // switch is step 3a's, which nothing reads yet: the off arm is today's code.
-    "lane-trade": {
-        note: "rig: Radiant pos2 mid against the Dire pos2, Radiant pos1 in our safe lane against the Dire pos3, waves untouched, everyone else benched; the enemy hero holds its last-hit place (stand), walks up to our dying creeps and back (lasthit), or as lasthit and hits back (hitback); full HP each rep; then laning, attack, retreat with OHA's casts; 30 s reps from 1:00; seeds 30 (Sniper) and 8 (Sven)",
-        cast: { r: [1, 2] },
-        others: "bench",
-        rep: { every: 30, from: 60 },
-        rig: {
-            half: "execution",
-            switch: "TradeNoStep",
-            window: 600,
-            spots: {},
-            timeout: 15,
-            keeps: ["levelup"],
-            watch: true,
-            release: { modes: ["laning", "attack", "retreat", "idle"], abilities: true },
-            reps: [
-                { name: "stand", setup: { r1: ["front"], r2: ["front"], d2: ["front"], d3: ["front"] }, ready: { near: 1500, foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.9 } },
-                { name: "lasthit", setup: { r1: ["front"], r2: ["front"], d2: ["lasthit"], d3: ["lasthit"] }, ready: { near: 1500, foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.9 } },
-                { name: "hitback", setup: { r1: ["front"], r2: ["front"], d2: ["hitback"], d3: ["hitback"] }, ready: { near: 1500, foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.9 } },
-            ],
-        },
-    },
-    // Slice support-lane-fight (kill-chances S1, now `Ours.Trade`). half: execution. kill-reach with the roles swapped:
-    // the cast is the Radiant pos5 (Witch Doctor on seed 8, range 600, so its harass reach is about 948 and its commit's walk
-    // about 1,548; `low` measures past the core's reach, about 748), the Radiant pos1 hits the Lich and walks off. Kinds: `bar`,
-    // the Lich at 25-38% inside the support's reach (off: the trade's 25% cut, so no commit); `reach`, the Lich 200-500 past
-    // the core's reach, past the support's own (off: no walk); control `outnum`, the Dire pos3 beside it (the head count is gone, so the burst decides). The hit stops at 33%
-    // so the off arm's 25% cut is not met by the actor (Sven's hit is about a tenth of the Lich's HP). Spots on kill-reach's
-    // strip: low 800 west of side, far 1,200 (200 short of away). foe 250 east of the cast (rig1: 1,100 west resolved onto far,
-    // 200 from low, where the actor's target pick reaches; rig3: 500 west, 587 from the cast, was out of its sight behind trees
-    // most frames, so `foes` flickered); the actor hits only once the pos3 stands there
-    // (`wait d3`, pair-kill's step; rig1-2: the control was never ready, the Lich regenerating past 38% while the pos3 walked in).
-    "support-kill-reach": {
-        note: "rig: Radiant pos5 off our bot lane, the Dire pos4 a statue 800 (bar) or 1,200 (reach) west of it on the same strip hit to 33% HP by the Radiant pos1, which then walks 1,400 west; control: the Dire pos3 also stands 1,100 west, beyond the Lich (two against one; the head count is gone); then laning, attack, retreat; five 120 s reps from 0:00; seed 8",
-        cast: { r: [5] },
-        others: "bench",
-        rep: { every: 120, from: 0 },
-        rig: {
-            half: "execution",
-            switch: "Trade",
-            window: 600,
-            spots: {
-                side: ["r:bot1", -2750, 700],
-                low: ["r:bot1", -3550, 700],
-                far: ["r:bot1", -3950, 700],
-                foe: ["r:bot1", -2500, 700],
-                away: ["r:bot1", -4150, 700],
-            },
-            timeout: 95,
-            keeps: ["levelup"],
-            release: { modes: ["laning", "attack", "retreat", "idle"] },
-            reps: [
-                {
-                    name: "bar",
-                    setup: { r5: ["heal", "stand side"], r1: ["heal", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"] },
-                    ready: { low: [0.38, -400, 200], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "reach",
-                    setup: { r5: ["heal", "stand side"], r1: ["heal", "attack d4 until hp 0.33", "leave away"], d4: ["stand far"] },
-                    ready: { low: [0.38, 200, 500], foesAtMost: 1, alliesAtMost: 0, hpAtLeast: 0.5 },
-                },
-                {
-                    name: "outnum",
-                    setup: { r5: ["heal", "stand side"], r1: ["heal", "wait d3", "attack d4 until hp 0.33", "leave away"], d4: ["stand low"], d3: ["heal", "stand foe"] },
-                    ready: { low: [0.38, -400, 200], foes: 2, alliesAtMost: 0, hpAtLeast: 0.5 },
                 },
             ],
         },
@@ -828,24 +445,11 @@ export const TABLE: Record<string, Entry> = {
         forces: "stack",
         overrides: { StackFar: true, Sweep: true },
     },
-    // Lane controller drills (slice file lane-controller.md "Drills"). Prediction step 0: nobody acts, every lane's waves meet
-    // untouched; the controller still decides and checks each team-lane wave (rule R1, levers `nobody`), so `@lane_ctl` scores
-    // its plain forecast against the untouched world. No cast, so no rep line: the waves are the reps.
-    "lane-still": { note: "every hero benched; the controller's forecast against untouched waves", cast: {}, others: "bench", rep: { every: 30, from: 0 } },
     // Pull execution and effect: the Radiant pos5 pulls the wave of each input-on rep (the minute's wave) and is a statue
     // otherwise; the :30 waves are the control. Only the pull job runs for it; the controller's word is not asked.
     pull: {
         note: "Radiant pos5 pulls each minute's wave, a statue otherwise; the :30 wave unpulled (control); everyone else benched",
         cast: { r: [5] },
-        others: "bench",
-        castIdle: "statue",
-        rep: { every: 30, from: 60, control: 2 },
-        forces: "pull",
-    },
-    // Slice 4a's pull: the Radiant offlane pos3 pulls its hard camp on the same reps.
-    "core-pull": {
-        note: "Radiant pos3 pulls its hard camp each minute's wave, a statue otherwise; the :30 wave unpulled; everyone else benched",
-        cast: { r: [3] },
         others: "bench",
         castIdle: "statue",
         rep: { every: 30, from: 60, control: 2 },
@@ -863,102 +467,6 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, control: 2 },
         forces: "pull",
     },
-    "shove-statue": {
-        note: "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), Dire pos3 a statue in the lane, everyone else benched",
-        cast: SAFE_CORE,
-        statue: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceShove: "r:bot" },
-    },
-    // The forced shove (slice 1's harness, slice 4b's crash target): the Radiant safe-lane core alone, lane-only, in mode
-    // `shove`; each wave a rep.
-    // The wave hold (slice core-in-lane), user 08/11/2026: does the core keep their wave out of our T1's fire once ours is gone?
-    // The pull drill's pos5 takes each minute's wave away from the Radiant safe lane, so theirs walks in on the Radiant pos1,
-    // lane-only with the hold; the :30 wave unpulled is the control in the game, and the same drill with Ours.CoreHold off
-    // (`--set Ours.CoreHold=false`) is the arm where their creeps go under our tower.
-    hold: {
-        note: "Radiant pos5 pulls each minute's wave, a statue otherwise; Radiant pos1 lane-only with the wave hold; the :30 wave unpulled; everyone else benched",
-        cast: { r: [5] },
-        laneOnly: { r: [1] },
-        laneHold: true,
-        others: "bench",
-        castIdle: "statue",
-        rep: { every: 30, from: 60, control: 2 },
-        forces: "pull",
-    },
-    shove: {
-        note: "Radiant pos1 lane-only in a forced shove (ForceShove r:bot), everyone else benched",
-        cast: SAFE_CORE,
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceShove: "r:bot" },
-    },
-    // Lever-size drills: each input arm forces one lever on the Radiant safe lane every wave; its control arm is the same
-    // game with no lever, read in pairs wave by wave (same seed, hlog @lever_pair).
-    "lever-setup": {
-        note: "Radiant pos1 lane-only, the setup forced every wave (ForceLever r:bot=setup), everyone else benched",
-        cast: SAFE_CORE,
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:bot=setup" },
-    },
-    "lever-none": {
-        note: "Radiant pos1 lane-only, no lever every wave (ForceLever r:bot=none; lever-setup's control), everyone else benched",
-        cast: SAFE_CORE,
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:bot=none" },
-    },
-    // Slice lh-draw step 2: the deny feed on every wave the lane controller does not shove, against an enemy that hits back
-    // (deaths or HP lost on feeds would bring the danger checks in). No forced lever: the controller decides live.
-    "feed-every": {
-        note: "Radiant pos1 lane-only with lane aggro, the lane controller live, Dire pos3 a sentry in the lane, everyone else benched",
-        cast: SAFE_CORE,
-        sentry: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        laneAggro: true,
-        rep: { every: 30, from: 0 },
-    },
-    "lever-feed": {
-        note: "Radiant pos1 lane-only with lane aggro, the feed forced every wave (ForceLever r:bot=feed), Dire pos3 a statue in the lane (the feed orders an attack on a visible enemy hero), everyone else benched",
-        cast: SAFE_CORE,
-        statue: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        laneAggro: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:bot=feed" },
-    },
-    // Slice threat (design s7 slice 1): the missing belief's prediction drill. The Radiant offlane pos3 holds its lane (the
-    // lane controller reads its hard-camp pull gate each wave); the Dire pos5 is a statue that stands each rep at one known
-    // spot: beside the camp the pos3 pulls (on its walk), benched (the control), beside Dire's offlane pull camp across the
-    // map, in its own lane in sight. Reps of 90 s give the walk across the map time before the next wave's read; to 10:00 so
-    // reads fall both sides of the belief's 4:00 weight change.
-    "threat-missing": {
-        note: "Radiant pos3 lane-only in its lane; Dire pos5 a statue at a spot per rep (by the pos3's pull camp, bench, Dire offlane camp, its lane); everyone else benched",
-        cast: { r: [3] },
-        statue: { d: [5] },
-        spots: { d: { 5: ["pull:r:off", "bench", "pull:d:off", "lane"] } },
-        others: "bench",
-        castLaneOnly: true,
-        rep: { every: 90, from: 30 },
-    },
-    // Core next gold without the level gate: the Radiant pos1 and pos3 alone, a trip whenever an open camp's priced HP and
-    // time fit (CampForce: the decision's wave, gap and net gates off, the HP, threat and missing gates on), so the clear's
-    // HP price at levels 2-5 is graded on each trip (hpc against hpm, by lvl and src) before any game.
-    "core-camp": {
-        note: "Radiant pos1 and pos3 play, a camp trip whenever a camp's priced HP and time fit (CampForce), everyone else benched",
-        cast: { r: [1, 3] },
-        others: "bench",
-        rep: { every: 30, from: 0 },
-        overrides: { CampForce: true },
-    },
     // Slice threat: the support's pull start on the read (PullJob.Wants). The pos5 plays its lane (pulls when the controller
     // says so); the Dire pos3 stands on the lane side of the pos5's pull camp on odd reps, in the lane's sight (the gate holds
     // on `reach`; the fog side, thrdr3c 09/11/2026, is unseen from the lane and a hero last seen 1,300 away in lane weighs
@@ -973,16 +481,6 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         rep: { every: 120, from: 30 },
         forces: "pull",
-    },
-    "lever-feed-off": {
-        note: "Radiant pos1 lane-only with lane aggro, no lever every wave (ForceLever r:bot=none; lever-feed's control), Dire pos3 a statue in the lane, everyone else benched",
-        cast: SAFE_CORE,
-        statue: { d: [3] },
-        others: "bench",
-        castLaneOnly: true,
-        laneAggro: true,
-        rep: { every: 30, from: 0 },
-        overrides: { ForceLever: "r:bot=none" },
     },
 };
 
@@ -1149,15 +647,6 @@ function forbidCast(bot: Unit): void {
     Telemetry.Event("drill", [["ph", "forbid"], ["name", Name()], ["pid", pid], ["ability", a.GetName()]]);
 }
 
-/** A lane-only hero of an entry with `laneHold`: the wave hold may act for it. */
-export function LaneHold(bot: Unit): boolean {
-    return Active()?.laneHold === true && LaneOnly(bot);
-}
-
-/** A lane-only hero of an entry with `laneAggro`: lane aggro's draws may act for it. */
-export function LaneAggro(bot: Unit): boolean {
-    return Active()?.laneAggro === true && LaneOnly(bot);
-}
 
 /** An Overrides key the active drill implies, or undefined. */
 export function Implied(key: string): unknown {
@@ -1671,8 +1160,6 @@ export interface RigRep {
     readyBy?: Record<string, RigReady>;
     /** Per cast hero: the task its setup forces, logged as `task=` on its ready line. */
     tasks?: Record<string, string>;
-    /** The creep-aggro fact for the rep (slice hit-back): whether an enemy hero stands inside our lane creeps' aggro (`RigCreepAggro`). */
-    aggro?: boolean;
 }
 
 export interface Rig {
@@ -1793,16 +1280,6 @@ function rigState(): RigState | undefined {
         rig = { rep: n, start: d!.rep.from + (n - 1) * d!.rep.every, step: {}, placed: {}, phase: {}, bought: {}, waiting: {}, idleAt: {}, hpMet: {}, mpMet: {}, atk: {}, inPlace: {}, burst: {}, readyAt: {}, tracedAt: {}, swing: {}, answer: {}, watchAt: {} };
     }
     return rig;
-}
-
-/**
- * A fact the rig supplies in place of the game's (read through creep_aggro.Paid, by the hit back and the hold). While a rig
- * rep runs whose kind sets `aggro`: whether an enemy hero stands inside our lane creeps' aggro; otherwise undefined and
- * the caller reads the game. Off the lane no creep is near, so the rep says.
- */
-export function RigCreepAggro(): boolean | undefined {
-    const st = rigState();
-    return st === undefined ? undefined : RigRepOf(st.rep)?.aggro;
 }
 
 /** A hero listed in the rig's setup that is not cast: an actor. */

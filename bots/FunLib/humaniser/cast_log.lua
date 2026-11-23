@@ -80,7 +80,6 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 --- A dead hero has no tick to drain its queue; casts past this many are dropped.
 local PENDING_MAX = 16
@@ -121,17 +120,9 @@ local function log(bot, p)
     local pid = bot:GetPlayerID()
     local loc = e.location
     local hasLoc = loc ~= nil and loc ~= nil and type(loc.x) == "number" and type(loc.y) == "number" and (loc.x ~= 0 or loc.y ~= 0)
-    local ep = Trade.EpisodeOf(pid)
-    local t = ep and ep.target
-    local seen = t ~= nil and not t:IsNull() and t:CanBeSeen()
     local name = nameOf(e.ability)
     local first = keysLogged[pid] ~= true
     keysLogged[pid] = true
-    local el
-    if hasLoc and seen then
-        local tl = t:GetLocation()
-        el = math.floor(math.sqrt((tl.x - loc.x) * (tl.x - loc.x) + (tl.y - loc.y) * (tl.y - loc.y)))
-    end
     Telemetry.Event(
         "cast",
         {
@@ -148,14 +139,6 @@ local function log(bot, p)
             {
                 "y",
                 hasLoc and math.floor(loc.y) or nil
-            },
-            {"el", el},
-            {"ek", ep and ep.kind},
-            {"etg", ep and ep.tpid},
-            {"es", ep ~= nil and (seen and 1 or 0) or nil},
-            {
-                "ed",
-                seen and bot:IsAlive() and math.floor(GetUnitToUnitDistance(bot, t)) or nil
             },
             {
                 "lag",

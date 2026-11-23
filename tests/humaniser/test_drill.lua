@@ -3,10 +3,13 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- plays, the rest are benched, statues or lane-only; reps log ev=drill ph=rep once per team; roles log ph=role.
 local RAD, DIRE = 2, 3
 
+local RETIRED = dofile(HARNESS_DIR .. "/drill_retired.lua")
+
 local function world(drill)
 	local H = LaneFresh({ Enable = true }, { enable = true, skill = 1, telemetry = { Enable = true } })
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = drill and { Drill = drill } or nil
+	if drill ~= nil and RETIRED[drill] ~= nil then H.Drill.TABLE[drill] = RETIRED[drill] end
 	H.Drill.ResetCache()
 	return H, Customize
 end
@@ -58,47 +61,6 @@ do
 	local lines = capture(function() H.Drill.Tick(b) H.Drill.Tick(b) end)
 	check("unknown drill: one line", #lines == 1 and field(lines[1], "ph") == "unknown" and field(lines[1], "name") == "nope", lines[1])
 	check("unknown drill: plays", H.Drill.RoleOf(b) == "play")
-end
-
--- hold: the Radiant pos5 is the cast (the pull), the Radiant pos1 lane-only with the wave hold, everyone else benched.
-do
-	local H = world("hold")
-	local core = hero(0, RAD, 1, 3)
-	local sup = hero(4, RAD, 5, 3)
-	local mid = hero(2, RAD, 2, 2)
-	local off = hero(7, DIRE, 3, 3)
-	check("hold: pos5 cast, forced pull", H.Drill.RoleOf(sup) == "cast" and H.Drill.ForcedJob(sup) == "pull" and not H.Drill.LaneOnly(sup) and not H.Drill.LaneHold(sup))
-	check("hold: pos1 lane-only with the hold", H.Drill.RoleOf(core) == "laneonly" and H.Drill.LaneOnly(core) and H.Drill.LaneHold(core) and not H.Drill.Held(core))
-	check("hold: no forced job for the lane-only core", H.Drill.ForcedJob(core) == nil)
-	check("hold: others benched, no hold", H.Drill.RoleOf(mid) == "bench" and H.Drill.RoleOf(off) == "bench" and not H.Drill.LaneHold(off))
-end
-do
-	local H = world("lane-spot-statue")
-	check("lane-spot-statue: no hold for the lane-only cast", not H.Drill.LaneHold(hero(0, RAD, 1, 3)))
-end
-
--- Lever drills: the feed pair runs lane aggro for the lane-only cast (else lane-only skips the feed), the setup pair does
--- not; each pair differs only in the forced lever.
-do
-	local core = hero(0, RAD, 1, 3)
-	local F, O, S = world("lever-feed"), world("lever-feed-off"), world("lever-setup")
-	check("lever-feed: the lane-only cast runs lane aggro", F.Drill.LaneOnly(core) and F.Drill.LaneAggro(core))
-	check("lever-feed: the Dire pos3 a statue in both arms (the feed orders an attack on a visible enemy hero)",
-		F.Drill.RoleOf(hero(7, DIRE, 3, 3)) == "statue" and O.Drill.RoleOf(hero(7, DIRE, 3, 3)) == "statue" and not F.Drill.LaneAggro(hero(7, DIRE, 3, 3)))
-	check("lever-setup: no lane aggro", S.Drill.LaneOnly(core) and not S.Drill.LaneAggro(core))
-	check("lever-feed pair: the feed forced, its control none", F.Drill.Implied("ForceLever") == "r:bot=feed" and O.Drill.Implied("ForceLever") == "r:bot=none" and O.Drill.LaneAggro(core))
-end
-
--- core-camp: the shipped CampForce default ("") lets the drill force trips; an explicit false (a --set) still wins. The
--- default was false, which hid the drill's CampForce.
-do
-	local H, Customize = world("core-camp")
-	local Ov = require("bots/FunLib/humaniser/overrides")
-	Customize.Overrides.CampForce = ""
-	check("core-camp: the shipped default lets the drill force the trip", Ov.CampForce() == true)
-	check("core-camp: pos1 and pos3 play, the rest benched", H.Drill.RoleOf(hero(0, RAD, 1, 3)) == "cast" and H.Drill.RoleOf(hero(2, RAD, 3, 1)) == "cast" and H.Drill.RoleOf(hero(3, RAD, 4, 1)) == "bench")
-	Customize.Overrides.CampForce = false
-	check("core-camp: an explicit false wins over the drill", Ov.CampForce() == false)
 end
 
 -- lane-spot-sentry: the Dire pos3 is held like a statue (never casts) but attacks an enemy hero that walks into its zone
@@ -234,33 +196,6 @@ do
 	-- drill pull ldr1 (~/.dotactl/logs/2026-11-07T18-07-29-drill_pull_ldr1.log, t=360): both benched mids walked to the 6:00 rune.
 	check("pull: a benched mid is never the rune plan's mid", not H.RuneJob.MidWants(hero(2, RAD, 2, 2)))
 	check("pull: no drill, nothing forced", world(nil).Drill.ForcedAt("pull", 60) == nil)
-end
-
--- lane-still: no cast, every hero benched, no rep line.
-do
-	local H = world("lane-still")
-	local b = hero(0, RAD, 1, 3)
-	check("lane-still: benched", H.Drill.RoleOf(b) == "bench" and H.Drill.RoleOf(hero(9, DIRE, 5, 1)) == "bench")
-	GAME_STATE = 8
-	T = 40
-	local reps = 0
-	for _, l in ipairs(capture(function() H.Drill.Tick(b) end)) do if field(l, "ph") == "rep" then reps = reps + 1 end end
-	check("lane-still: no rep line", reps == 0)
-end
-
--- shove: the drill implies ForceShove r:bot, an explicit --set wins.
-do
-	local H, C = world("shove")
-	check("shove: implies ForceShove", H.Overrides.Get("ForceShove") == "r:bot" and H.Drill.LaneOnly(hero(0, RAD, 1, 3)))
-	-- drill shove ldr4 (~/.dotactl/logs/2026-11-07T18-21-47-drill_shove_ldr4.log): general.lua's default ForceShove = "" hid
-	-- the drill's value; no shove swing ran.
-	C.Overrides.ForceShove = ""
-	check("shove: general.lua's empty default does not shadow the drill", H.Overrides.Get("ForceShove") == "r:bot")
-	C.Overrides.Drill = nil
-	check("shove: no drill, the empty default stays", H.Overrides.Get("ForceShove") == "")
-	C.Overrides.Drill = "shove"
-	C.Overrides.ForceShove = "all"
-	check("shove: --set wins", H.Overrides.Get("ForceShove") == "all")
 end
 
 -- Slice threat: a statue with a spot list stands at the rep's spot, cycling (threat-missing: the Dire pos5 by the pos3's pull
@@ -678,8 +613,8 @@ do
 end
 
 -- Slice hit-back's rig (retreat-hitback), rebuilt off the lane: the cast stands at the side spot; `far` is ready only on a
--- hit from 100-300 past its trade reach at 90%+ HP, `behind` only 16+ points under its hitter; the rep supplies the creep-aggro
--- fact (`RigCreepAggro`); the far hitter attacks from 500 without stepping in.
+-- hit from 100-300 past its trade reach at 90%+ HP, `behind` only 16+ points under its hitter; the far hitter attacks from
+-- 500 without stepping in.
 do
 	local dota = require("bots/ts_libs/dota/index")
 	local H = world("retreat-hitback")
@@ -699,7 +634,6 @@ do
 
 	-- Rep 1 `far`.
 	T = 5
-	check("hitback rig: the rep's creep-aggro fact is supplied (far: true)", H.Drill.RigCreepAggro() == true)
 	capture(function() tick(cast) end)
 	local side = lastMoveTo(1)
 	check("hitback rig: the cast walks to the side spot, off the lane", side ~= nil and math.abs(side.y - -5000) > 300, side and (side.x .. "," .. side.y))
@@ -759,13 +693,7 @@ do
 	r = ready(capture(function() tick(cast) end))
 	check("hitback rig behind: 23 points under its hitter in reach: ready", r ~= nil and field(r, "ok") == "1" and field(r, "var") == "behind", r)
 	cast.hitBy[d3] = nil
-
-	T = 245
-	check("hitback rig: the free control supplies the fact false", H.Drill.RigCreepAggro() == false)
-
 	CREEPS[2], CREEPS[3] = {}, {}
-	local Hn = world(nil)
-	check("no drill: no creep-aggro fact, the game decides", Hn.Drill.RigCreepAggro() == nil)
 end
 
 -- tower-prehit's ready check: an own tower near the cast attacking an enemy lane creep within the distance.
@@ -825,9 +753,6 @@ do
 		if field(l, "pid") == "0" and field(l, "fail") ~= nil then fails[#fails + 1] = field(l, "fail") end
 	end
 	check("tower-prehit: a dead tower fails notower", fails[#fails] == "notower", fails)
-
-	local t = H.Drill.TABLE["tower-prehit"].rig
-	check("tower-prehit: execution rig on PreHit with the towerCreep check, one cast per lane", t.half == "execution" and t.switch == "PreHit" and t.reps[1].ready.towerCreep == 700 and #H.Drill.TABLE["tower-prehit"].cast.r == 3)
 end
 
 -- kill-reach's ready checks (slice trade-reach): a low enemy hero past the cast's trade reach (298 for a 150-range hero with
@@ -861,14 +786,6 @@ do
 	ok, n, a = H.Drill.LowFacts(bot, nil)
 	check("kill-reach: the pos5 1,100 off is an ally near", a == 1, a)
 	GetUnitList = old
-	local t = H.Drill.TABLE["kill-reach"].rig
-	check("kill-reach: execution rig on Trade, two reach reps to one two-against-one control", t.half == "execution" and t.switch == "Trade" and #t.reps == 3 and t.reps[3].ready.foes == 2)
-	-- The spots' offsets on one anchor (they resolve within 100 of these, ph=spot, except where marked in the rig's comment):
-	-- the control's pos3 over 200 from the Lich's spot (the pos5's attack takes the enemy nearest it) with a margin, and
-	-- within 1,200 of the cast with a margin.
-	local sp = t.spots
-	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
-	check("kill-reach: the pos3 300+ from the Lich's spot, under 1,100 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") <= 1100, tostring(dx("foe", "low")) .. " " .. tostring(dx("foe", "side")))
 end
 
 -- burst-read (slice burst-truth): the actor refills mana before it walks in, casts its listed spells as they come up (in
@@ -1002,27 +919,6 @@ do
 	rd = lines("ready", ls)[1]
 	check("sight-probe: its spot in sight and nobody there (sight 2): invalid at the timeout", field(rd, "ok") == "0" and field(rd, "fail") == "unseen" and field(rd, "sight") == "d4:2", rd)
 	HEIGHT, FOGGED = nil, nil
-end
-
--- support-kill-reach (slice support-lane-fight): the spots against a 600-range support's reaches. `low`'s bands are past the
--- core's reach (600 + 48 + 100 = 748): the bar rep's Lich stands inside the support's harass reach (948, so under 200 past),
--- the reach rep's past it and inside its commit's walk (1,548, so 200 to 800 past).
-do
-	local H = world("support-kill-reach")
-	local t = H.Drill.TABLE["support-kill-reach"].rig
-	check("support-kill-reach: execution rig on Trade, cast the Radiant pos5", t.half == "execution" and t.switch == "Trade"
-		and H.Drill.TABLE["support-kill-reach"].cast.r[1] == 5 and #t.reps == 3 and t.reps[3].ready.foes == 2)
-	local sp = t.spots
-	local function dx(a, b) return math.abs(sp[a][2] - sp[b][2]) end
-	local past = function(d) return d - 748 end
-	check("support-kill-reach: the bar rep's Lich inside the harass reach, inside its band", past(dx("low", "side")) <= 200 and past(dx("low", "side")) >= t.reps[1].ready.low[2])
-	check("support-kill-reach: the reach rep's Lich past the harass reach, inside the walk and its band",
-		past(dx("far", "side")) > 200 and dx("far", "side") <= 1548 and past(dx("far", "side")) <= t.reps[2].ready.low[3])
-	check("support-kill-reach: the actor's away spot over 1,200 from the cast", dx("away", "side") > 1200)
-	check("support-kill-reach: the pos3 300+ from the Lich's spot, under 1,200 from the cast", dx("foe", "low") >= 300 and dx("foe", "side") < 1200)
-	check("support-kill-reach: the actor stops over the trade's 25% cut", t.reps[1].setup.r1[2] == "attack d4 until hp 0.33")
-	check("support-kill-reach: in the control the actor waits for the pos3 before it hits", t.reps[3].setup.r1[2] == "wait d3" and t.reps[3].setup.r1[3] == "attack d4 until hp 0.33")
-	check("support-kill-reach: the pos3 beyond the actor's 200 target pick from the Lich", dx("foe", "low") > 250)
 end
 
 -- lane-trade (plan trade-from-the-stand step 2): the enemy actor's three kinds. Rep 1 `stand` holds its last-hit place and

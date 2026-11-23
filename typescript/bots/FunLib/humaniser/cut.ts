@@ -4,22 +4,18 @@
  * under tests/humaniser/fixture_drivers/ serves that world back to the real code. One `ev=cut` line per decision sample,
  * `kind` naming the decision; one `ev=cut_towers` line per team the first time it cuts (tower places do not move).
  *
- * `spot` (LaneSpot.Compute and the Threat.Read it makes): what neither ev=snap nor ev=lane_pos holds. Visible enemy heroes
- * with GetEstimatedDamageToTarget over Read's two windows, our team's last sighting of each unseen one, our vision around the
- * bot (only while an enemy is unseen), the lane creeps of both teams near the bot and the lane fronts. Lists are `;`-joined
- * records of `,`-joined numbers in the order the field's comment gives (lane creeps on ev=cut_creeps, the same frame); a target is `b` (this bot), `h<pid>`, `u<CreepId>`
- * or `-`.
- *
- * `leave` (retreat's LeaveWhy, beside the answer it logs as `dec`): the world of the bot's own place (heroes with damage over the
- * short and long windows, towers, vision, creeps) that `SafeGather.At` reads, plus what the rule read past it: the answer's `lv`,
- * `why`, `kill` and `ra`, what Trade.Holds said (`pj`, `hb`) and a tower's damage on the bot (`dt`). The same hero, tower and
- * vision records as the spot, with no lane front; its cut_creeps line carries `kind=leave`.
+ * `leave` (retreat's LeaveWhy, beside the answer it logs as `dec`): the world of the bot's own place that `SafeGather.At` reads:
+ * visible enemy heroes with their damage over the short and long windows, our team's last sighting of each unseen one, towers,
+ * our vision around the bot (only while an enemy is unseen) and the lane creeps of both teams near it (on ev=cut_creeps
+ * `kind=leave`, the same frame); plus what the rule read past it: the answer's `lv`, `why`, `kill` and `ra`, and a tower's damage
+ * on the bot (`dt`). Lists are `;`-joined records of `,`-joined numbers in the order the field's comment gives; a target is `b`
+ * (this bot), `h<pid>`, `u<CreepId>` or `-`.
  *
  * `gate` (SafeGather.TripGate: the start gate of a trip, the walk from `fm` to `pl`): the same machinery over a walk instead of the
  * bot's lane. Visible heroes and allies within CUT_R of the walk's box (a hero reaches the walk within the 4 s horizon from
  * 3,000 at most), the unseen heroes, and IsLocationVisible at the walk points Threat reads (`vw`, one bit per point, no grid). Logged
  * beside the gate's own ev=threat line, which is what the replay is compared with. `he`, `hu`, `ha`, `ta` and `b` keep the
- * spot's record formats.
+ * leave's record formats.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -27,7 +23,6 @@ import * as Threat from "bots/FunLib/humaniser/threat";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as LanePush from "bots/FunLib/humaniser/lane_push";
-import * as Laning from "bots/FunLib/humaniser/states/laning";
 import * as Sight from "bots/FunLib/humaniser/sight";
 import type * as Safe from "bots/FunLib/humaniser/safe";
 import { SETTINGS as SafeGatherSettings } from "bots/FunLib/humaniser/safe_gather";
@@ -42,10 +37,7 @@ function pressedNow(bot: Unit): number {
     return bot.WasRecentlyDamagedByAnyHero(SafeGatherSettings.PressWindow) ? 1 : 0;
 }
 
-/**
- * Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
- * walking back to lane reads its walk to a spot by the front (smoke 1: 5 of 60 cuts lost a hero 3,500 from the bot).
- */
+/** Units further than this from the places a cut reads are left out (a hero reaches a walk within the 4 s horizon from 3,000 at most). */
 const CUT_R = 3000;
 
 function near(l: Vector, a: Vector, b: Vector): boolean {
@@ -99,7 +91,7 @@ function escapeReady(bot: Unit): boolean {
 }
 
 /**
- * IsLocationVisible on a grid over the box around the bot and its lane front (GRID_PAD past both), as `x0,y0,nx,ny,step,hex`:
+ * IsLocationVisible on a grid over the box around `at` and `front` (GRID_PAD past both), as `x0,y0,nx,ny,step,hex`:
  * bit i of the hex is cell (i % nx, floor(i / nx)) from the south-west corner (x0, y0).
  */
 function visionGrid(at: Vector, front: Vector): string {
@@ -152,7 +144,7 @@ interface Units {
 /**
  * The enemy heroes in sight and our other heroes at the places `keep` takes (the decision's own area), and every unseen enemy
  * with a sighting. `he`'s two damage figures are SpellReady.DamageOn over `short` and `long` seconds, the windows the
- * decision's Threat.Read counts a hero over (3 and 6 for the spot and the gate, 2 and 6 for the leave).
+ * decision's Threat.Read counts a hero over (3 and 6 for the gate, 2 and 6 for the leave).
  */
 function units(bot: Unit, keep: (this: void, l: Vector) => boolean, short: number, long: number): Units {
     const enemyTeam = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
@@ -190,57 +182,13 @@ function units(bot: Unit, keep: (this: void, l: Vector) => boolean, short: numbe
     return { he, hu, ha };
 }
 
-/** The spot's inputs this frame, beside its ev=lane_pos line. */
-export function Spot(bot: Unit): void {
-    const pid = bot.GetPlayerID();
-    const team = bot.GetTeam();
-    const enemyTeam = team === Team.Radiant ? Team.Dire : Team.Radiant;
-    const lane = bot.GetAssignedLane();
-    const at = bot.GetLocation();
-    const [role, fed, hold] = Laning.SpotInputs(bot);
-    logTowers(team);
-    logTowers(enemyTeam);
-
-    const front = GetLaneFrontLocation(team, lane, 0);
-    const back = GetLaneFrontLocation(team, lane, -400);
-    const { he, hu, ha } = units(bot, (l) => near(l, at, front), 3, 6);
-    const nearTowers: string[] = [];
-    const ta = `${towersNow(team, bot, at, front, nearTowers)},${towersNow(enemyTeam, bot, at, front, nearTowers)}`;
-    Telemetry.Event("cut", [
-        ["pid", pid],
-        ["kind", "spot"],
-        ["role", role],
-        ["lane", lane],
-        ["b", [f(at.x), f(at.y), f(bot.GetHealth()), f(bot.GetMaxHealth()), f(bot.GetAttackRange()), f(bot.GetBoundingRadius()), f(bot.GetCurrentMovementSpeed()), escapeReady(bot) ? 1 : 0, pressedNow(bot), armourNow(bot)].join(",")],
-        ["fr", [f(front.x), f(front.y), f(back.x), f(back.y)].join(",")],
-        ["fed", live(fed) ? Telemetry.CreepId(fed) : undefined],
-        ["hold", hold !== undefined ? `${f(hold.x)},${f(hold.y)}` : undefined],
-        ["he", he.join(";")],
-        ["hu", hu.length > 0 ? hu.join(";") : undefined],
-        ["ha", ha.length > 0 ? ha.join(";") : undefined],
-        ["ta", ta],
-        ["tt", nearTowers.join(";")],
-        ["vis", hu.length > 0 ? visionGrid(at, front) : undefined],
-    ]);
-    // Its own line: with both waves near, one line would pass the length Dota's console prints whole.
-    Telemetry.Event("cut_creeps", [
-        ["pid", pid],
-        ["ce", creeps(UnitType.EnemyCreeps, bot, at, front)],
-        ["ca", creeps(UnitType.AlliedCreeps, bot, at, front)],
-    ]);
-}
-
 export interface LeaveInputs {
     r: Threat.Read;
-    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under`, `join`, `hitback` (stay). */
+    /** What the game decided: `lethal`, `tower`, `heal`, `threat` (leave) or `under` (stay). */
     dec: string;
     purp: string;
     /** The safe-here answer the rule read (SafeGather.At, held, at the bot's place). */
     a: Safe.Answer;
-    /** Trade.Holds held a join for the bot (D10's join: LeaveWhy stays `join`). */
-    pj: boolean;
-    /** Trade.Holds held for the bot (D24's hit back: LeaveWhy stays `hitback`). */
-    hb: boolean;
     /** The damage windows of the read: `he`'s e3 and e6. */
     short: number;
     long: number;
@@ -273,8 +221,6 @@ export function Leave(bot: Unit, i: LeaveInputs): void {
         ["why", i.a.reason],
         ["kill", f(i.a.kill)],
         ["ra", i.a.kill > 0 ? math.floor(i.a.ratio * 100 + 0.5) / 100 : undefined],
-        ["pj", i.pj ? 1 : undefined],
-        ["hb", i.hb ? 1 : undefined],
         ["dt", bot.WasRecentlyDamagedByTower(0.5) ? 1 : 0],
     ]);
     Telemetry.Event("cut_creeps", [

@@ -1,5 +1,5 @@
 -- Sustain (design 2026-11-19-sustain-design.md, steps 2 and 3): Gather reads the decision's Inputs from the game. The reads it
--- borrows (Threat.Read, SafeGather.FromRead, Laning.NextDue, Retreat.SafeSpot, CampJobs.Active) are replaced on their module
+-- borrows (Threat.Read, SafeGather.FromRead, its own NextDue, Retreat.SafeSpot, CampJobs.Active) are replaced on their module
 -- tables, so these checks are Gather's own: the items read from their special values and whether they can be cast now, a
 -- running buff's rest, the safe-here read here and over the tree walk, the shop from what was read, the courier, and the cut line.
 dofile(HARNESS_DIR .. "/dota_stubs.lua")
@@ -10,7 +10,6 @@ local UnitType = require("bots/ts_libs/dota/index").UnitType
 local Threat = require("bots/FunLib/humaniser/threat")
 local Retreat = require("bots/FunLib/humaniser/retreat")
 local SafeGather = require("bots/FunLib/humaniser/safe_gather")
-local Laning = require("bots/FunLib/humaniser/states/laning")
 local CampJobs = require("bots/FunLib/humaniser/camp_jobs")
 
 -- A read is told by its place: here (the stay read) or the tree's (the walk). FromRead hands back the Safe inputs each carries.
@@ -30,7 +29,7 @@ SafeGather.FromRead = function(_, r) return r.safe end
 -- The safe spot's own read (rule 2's wait): deadly when the test sets it.
 local spotDeadly = false
 SafeGather.At = function() return { level = spotDeadly and "deadly" or "safe" } end
-Laning.NextDue = function() return 2.5 end
+G.NextDue = function() return 2.5 end
 Retreat.SafeSpot = function() return { at = Vector(-500, -500), secs = 2.5 } end
 Retreat.Fountain = function() return Vector(-6000, 0) end
 CampJobs.Active = function() return false end

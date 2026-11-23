@@ -155,158 +155,177 @@ local function __TS__Delete(target, key)
     target[key] = nil
     return true
 end
+
+local function __TS__ArraySort(self, compareFn)
+    if compareFn ~= nil then
+        table.sort(
+            self,
+            function(a, b) return compareFn(nil, a, b) < 0 end
+        )
+    else
+        table.sort(self)
+    end
+    return self
+end
+
+local function __TS__ArrayEvery(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if not callbackfn(thisArg, self[i], i - 1, self) then
+            return false
+        end
+    end
+    return true
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local Team = ____dota.Team
-local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
-local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
-local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
---- Path units and seconds. RiseMin and the window are `fitted` (the offline score on 329 banked 5v5 games, the slice file's
--- (2c) Facts rows); Speed is derived live; DueNear and GiveUp are `judgement`.
+local DamageType = ____dota.DamageType
+local UnitType = ____dota.UnitType
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 ____exports.SETTINGS = {
-    DueNear = 300,
-    RiseMin = 2,
-    WindowBefore = 5,
-    ArriveWindow = 10,
-    GiveUp = 60,
-    Speed = 325
+    CampRadius = 700,
+    ClearHP = {small = 0.12, medium = 0.2, large = 0.35, ancient = 0.6},
+    HPRefLevel = 6,
+    HPLevelStep = 0.8,
+    HPLevelScale = {0.6, 3.2},
+    StackedClearMul = 0.8,
+    ArriveHP = 0.4,
+    SwitchSec = 0.6,
+    DefaultSPA = 1.7
 }
-local function fresh(ts)
-    return {
-        ts = ts,
-        seen = false,
-        wSecs = 0,
-        ownNear = 0,
-        recent = {}
-    }
-end
---- Resolves the wave and follows the next one; after a GiveUp (60 s, two waves) the current wave, not one already 30 s old.
-local function resolve(st, w, ew, cycle, t)
-    st.resolved = {ts = w.ts, ew = ew, due = w.due}
-    st.track = fresh(math.max(
-        w.ts + cycle,
-        math.floor(t / cycle) * cycle
-    ))
-    return st.resolved
-end
---- One second of the rule for the wave `st` follows (idempotent within a second); `cycle` the wave cycle (30 s). Returns the
--- resolution this second made, if any.
-function ____exports.Step(st, i, cycle)
-    local s = ____exports.SETTINGS
-    local t = math.floor(i.now)
-    if st.at == t then
-        return nil
-    end
-    st.at = t
-    if st.track == nil then
-        st.track = fresh(math.floor(t / cycle) * cycle)
-    end
-    local w = st.track
-    if t < w.ts then
-        return nil
-    end
-    local raw = i.spawn + i.dir * i.speed * (t - w.ts)
-    local passed = i.lead ~= nil and i.dir * (raw - i.lead) > 0
-    local spot = passed and i.lead or raw
-    local own = i.lead ~= nil and math.abs(i.lead - spot) <= s.DueNear
-    if w.due == nil then
-        if i.lead ~= nil and i.dir * (raw - i.lead) >= -s.DueNear then
-            w.due = t
-            local b = unpack(#w.recent > s.WindowBefore and table.remove(w.recent, 1) or ({i.count}))
-            w.base = b
-            for ____, ____value in ipairs(w.recent) do
-                local c = ____value[1]
-                local o = ____value[2]
-                w.wSecs = w.wSecs + 1
-                if c - b >= s.RiseMin then
-                    w.seen = true
-                end
-                if o then
-                    w.ownNear = w.ownNear + 1
-                end
-            end
-            w.recent = {}
-        else
-            local ____w_recent_0 = w.recent
-            ____w_recent_0[#____w_recent_0 + 1] = {i.count, own}
-            if #w.recent > s.WindowBefore + 1 then
-                table.remove(w.recent, 1)
-            end
-            return t >= w.ts + s.GiveUp and resolve(
-                st,
-                w,
-                "u",
-                cycle,
-                t
-            ) or nil
-        end
-    end
-    if t <= w.due + s.ArriveWindow then
-        w.wSecs = w.wSecs + 1
-        if i.count - w.base >= s.RiseMin then
-            w.seen = true
-        end
-        if own then
-            w.ownNear = w.ownNear + 1
-        end
-    end
-    if t >= w.due + s.ArriveWindow then
-        return resolve(
-            st,
-            w,
-            w.seen and "p" or (w.ownNear * 2 >= w.wSecs and "a" or "u"),
-            cycle,
-            t
-        )
-    end
-    return nil
-end
---- The resolved fact not yet read, cleared by this call (one wave read takes it).
-function ____exports.Take(st)
-    local r = st.resolved
-    st.resolved = nil
-    return r
-end
-local states = {}
+--- Each camp's neutrals as last seen untouched, by team then camp.
+local lastSeen = {}
 function ____exports.ResetCache()
-    for k in pairs(states) do
-        __TS__Delete(states, k)
+    for k in pairs(lastSeen) do
+        __TS__Delete(lastSeen, k)
     end
 end
-function ____exports.StateOf(team, lane)
-    local key = (tostring(team) .. ":") .. tostring(lane)
-    local st = states[key]
-    if st == nil then
-        st = {}
-        states[key] = st
-    end
-    return st
-end
---- The tracker's second for `team`'s side of `lane` (the calling script must be `team`'s); a frame within a stepped second
--- costs nothing. Returns the resolution this second made, if any.
-function ____exports.Tick(team, lane, now)
-    local st = ____exports.StateOf(team, lane)
-    if st.at == math.floor(now) then
-        return nil
-    end
-    local path, ____, own, enemy = LanePush.CreepsNow(team, lane)
-    if path == nil then
-        return nil
-    end
-    local e = team == Team.Radiant and Team.Dire or Team.Radiant
-    local spawn, dir = LanePush.SpawnOf(path, e)
-    return ____exports.Step(
-        st,
-        {
-            now = now,
-            spawn = spawn,
-            dir = dir,
-            speed = WorldFacts.Latest("lane_creep_speed", ____exports.SETTINGS.Speed),
-            lead = LanePush.LeadOf(own, team),
-            count = #enemy
-        },
-        LaneConfig.Settings().Timing.WaveCycle
+local function clamp(v, r)
+    return math.max(
+        r[1],
+        math.min(r[2], v)
     )
+end
+local function dist(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+local function spaOf(u)
+    local ____this_1
+    ____this_1 = u
+    local ____opt_0 = ____this_1.GetSecondsPerAttack
+    local spa = ____opt_0 and ____opt_0(____this_1)
+    return spa ~= nil and spa > 0 and spa or ____exports.SETTINGS.DefaultSPA
+end
+local function priorClearHP(____type, level, stacks)
+    local s = ____exports.SETTINGS
+    local scale = clamp(s.HPLevelStep ^ (level - s.HPRefLevel), s.HPLevelScale)
+    return (s.ClearHP[____type] or s.ClearHP.medium) * scale * (1 + s.StackedClearMul * stacks)
+end
+--- The fraction of its max HP `bot` loses clearing `camp`. The neutrals die one at a time in the order that loses the least HP
+-- (most damage a second per second of kill time first); each hits until it dies; SwitchSec between kills; the core's regen
+-- offsets the loss. Spells and cleave are not in it.
+local function clearHP(bot, camp)
+    local hit = bot:GetAttackDamage() / spaOf(bot)
+    local foes = {}
+    for ____, n in ipairs(camp) do
+        foes[#foes + 1] = {
+            kill = n.hp / math.max(hit * n.take, 1) + ____exports.SETTINGS.SwitchSec,
+            dps = bot:GetActualIncomingDamage(n.dmg, DamageType.Physical) / math.max(n.spa, 0.1)
+        }
+    end
+    __TS__ArraySort(
+        foes,
+        function(____, a, b) return b.dps / b.kill - a.dps / a.kill end
+    )
+    local t = 0
+    local taken = 0
+    for ____, f in ipairs(foes) do
+        t = t + f.kill
+        taken = taken + f.dps * t
+    end
+    return math.max(
+        0,
+        taken - bot:GetHealthRegen() * t
+    ) / math.max(
+        bot:GetMaxHealth(),
+        1
+    )
+end
+--- The camp's live neutrals (the API returns none in fog). Kept as its make-up only when untouched (every one at full HP),
+-- and never replaced by fewer: a read of a half-cleared or half-seen camp would price it at what is left.
+local function liveNeutrals(team, idx, center)
+    local live = {}
+    local untouched = true
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
+        do
+            local __continue15
+            repeat
+                if u == nil or u == nil or not u:IsAlive() then
+                    __continue15 = true
+                    break
+                end
+                local at = u:GetLocation()
+                if at == nil or at == nil or dist(at, center) > ____exports.SETTINGS.CampRadius then
+                    __continue15 = true
+                    break
+                end
+                local full = u:GetHealth() >= u:GetMaxHealth()
+                live[#live + 1] = {
+                    hp = u:GetHealth(),
+                    take = u:GetActualIncomingDamage(100, DamageType.Physical) / 100,
+                    dmg = u:GetAttackDamage(),
+                    spa = spaOf(u),
+                    full = full
+                }
+                if not full then
+                    untouched = false
+                end
+                __continue15 = true
+            until true
+            if not __continue15 then
+                break
+            end
+        end
+    end
+    local ____opt_2 = lastSeen[team]
+    local old = ____opt_2 and ____opt_2[idx]
+    if #live > 0 and untouched and (old == nil or #live >= #old) then
+        lastSeen[team] = lastSeen[team] or ({})
+        lastSeen[team][idx] = live
+    end
+    return live
+end
+--- The clear's HP fraction: from the live neutrals, else the last untouched sighting scaled by `stacks`, else the type's table.
+local function clearPrice(bot, spawner, stacks)
+    local live = liveNeutrals(
+        bot:GetTeam(),
+        spawner.idx,
+        Camps.BoxCenter(spawner)
+    )
+    local ____opt_4 = lastSeen[bot:GetTeam()]
+    local seen = ____opt_4 and ____opt_4[spawner.idx]
+    local partial = seen ~= nil and #live < #seen and __TS__ArrayEvery(
+        live,
+        function(____, n) return n.full end
+    )
+    if #live > 0 and not partial then
+        return clearHP(bot, live)
+    end
+    if seen ~= nil then
+        return clearHP(bot, seen) * (1 + ____exports.SETTINGS.StackedClearMul * stacks)
+    end
+    return priorClearHP(
+        spawner.type,
+        bot:GetLevel(),
+        stacks
+    )
+end
+--- Whether `core` could clear camp `idx` holding `stacks` stacks and keep ArriveHP of its max HP from full.
+function ____exports.CanClear(core, idx, stacks)
+    local spawner = Camps.SpawnerByIdx(idx)
+    if spawner == nil then
+        return false
+    end
+    return 1 - clearPrice(core, spawner, stacks) >= ____exports.SETTINGS.ArriveHP
 end
 return ____exports

@@ -11,7 +11,6 @@ local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
-local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
 local Sight = require(GetScriptDirectory().."/FunLib/humaniser/sight")
 local ____safe_gather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local SafeGatherSettings = ____safe_gather.SETTINGS
@@ -25,8 +24,7 @@ end
 local function pressedNow(bot)
     return bot:WasRecentlyDamagedByAnyHero(SafeGatherSettings.PressWindow) and 1 or 0
 end
---- Units further than this from both the bot and its lane front are left out: Compute queries 1,600 from the bot, but a bot
--- walking back to lane reads its walk to a spot by the front (smoke 1: 5 of 60 cuts lost a hero 3,500 from the bot).
+--- Units further than this from the places a cut reads are left out (a hero reaches a walk within the 4 s horizon from 3,000 at most).
 local CUT_R = 3000
 local function near(l, a, b)
     return math.abs(l.x - a.x) <= CUT_R and math.abs(l.y - a.y) <= CUT_R or math.abs(l.x - b.x) <= CUT_R and math.abs(l.y - b.y) <= CUT_R
@@ -132,7 +130,7 @@ local function escapeReady(bot)
     end
     return false
 end
---- IsLocationVisible on a grid over the box around the bot and its lane front (GRID_PAD past both), as `x0,y0,nx,ny,step,hex`:
+--- IsLocationVisible on a grid over the box around `at` and `front` (GRID_PAD past both), as `x0,y0,nx,ny,step,hex`:
 -- bit i of the hex is cell (i % nx, floor(i / nx)) from the south-west corner (x0, y0).
 local function visionGrid(at, front)
     return Sight.VisionGridBox(
@@ -237,7 +235,7 @@ local function towersNow(team, bot, at, front, out)
 end
 --- The enemy heroes in sight and our other heroes at the places `keep` takes (the decision's own area), and every unseen enemy
 -- with a sighting. `he`'s two damage figures are SpellReady.DamageOn over `short` and `long` seconds, the windows the
--- decision's Threat.Read counts a hero over (3 and 6 for the spot and the gate, 2 and 6 for the leave).
+-- decision's Threat.Read counts a hero over (3 and 6 for the gate, 2 and 6 for the leave).
 local function units(bot, keep, short, long)
     local enemyTeam = bot:GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
     local visible = {}
@@ -357,124 +355,6 @@ local function units(bot, keep, short, long)
     end
     return {he = he, hu = hu, ha = ha}
 end
---- The spot's inputs this frame, beside its ev=lane_pos line.
-function ____exports.Spot(bot)
-    local pid = bot:GetPlayerID()
-    local team = bot:GetTeam()
-    local enemyTeam = team == Team.Radiant and Team.Dire or Team.Radiant
-    local lane = bot:GetAssignedLane()
-    local at = bot:GetLocation()
-    local role, fed, hold = Laning.SpotInputs(bot)
-    logTowers(team)
-    logTowers(enemyTeam)
-    local front = GetLaneFrontLocation(team, lane, 0)
-    local back = GetLaneFrontLocation(team, lane, -400)
-    local ____units_result_2 = units(
-        bot,
-        function(l) return near(l, at, front) end,
-        3,
-        6
-    )
-    local he = ____units_result_2.he
-    local hu = ____units_result_2.hu
-    local ha = ____units_result_2.ha
-    local nearTowers = {}
-    local ta = (towersNow(
-        team,
-        bot,
-        at,
-        front,
-        nearTowers
-    ) .. ",") .. towersNow(
-        enemyTeam,
-        bot,
-        at,
-        front,
-        nearTowers
-    )
-    Telemetry.Event(
-        "cut",
-        {
-            {"pid", pid},
-            {"kind", "spot"},
-            {"role", role},
-            {"lane", lane},
-            {
-                "b",
-                table.concat(
-                    {
-                        f(at.x),
-                        f(at.y),
-                        f(bot:GetHealth()),
-                        f(bot:GetMaxHealth()),
-                        f(bot:GetAttackRange()),
-                        f(bot:GetBoundingRadius()),
-                        f(bot:GetCurrentMovementSpeed()),
-                        escapeReady(bot) and 1 or 0,
-                        pressedNow(bot),
-                        armourNow(bot)
-                    },
-                    ","
-                )
-            },
-            {
-                "fr",
-                table.concat(
-                    {
-                        f(front.x),
-                        f(front.y),
-                        f(back.x),
-                        f(back.y)
-                    },
-                    ","
-                )
-            },
-            {
-                "fed",
-                live(fed) and Telemetry.CreepId(fed) or nil
-            },
-            {
-                "hold",
-                hold ~= nil and (tostring(f(hold.x)) .. ",") .. tostring(f(hold.y)) or nil
-            },
-            {
-                "he",
-                table.concat(he, ";")
-            },
-            {
-                "hu",
-                #hu > 0 and table.concat(hu, ";") or nil
-            },
-            {
-                "ha",
-                #ha > 0 and table.concat(ha, ";") or nil
-            },
-            {"ta", ta},
-            {
-                "tt",
-                table.concat(nearTowers, ";")
-            },
-            {
-                "vis",
-                #hu > 0 and visionGrid(at, front) or nil
-            }
-        }
-    )
-    Telemetry.Event(
-        "cut_creeps",
-        {
-            {"pid", pid},
-            {
-                "ce",
-                creeps(UnitType.EnemyCreeps, bot, at, front)
-            },
-            {
-                "ca",
-                creeps(UnitType.AlliedCreeps, bot, at, front)
-            }
-        }
-    )
-end
 --- The leave decision's inputs this frame, with the answer the game gave. Reads only: nothing the decision uses changes.
 function ____exports.Leave(bot, i)
     local pid = bot:GetPlayerID()
@@ -483,15 +363,15 @@ function ____exports.Leave(bot, i)
     local at = bot:GetLocation()
     logTowers(team)
     logTowers(enemyTeam)
-    local ____units_result_3 = units(
+    local ____units_result_2 = units(
         bot,
         function(l) return near(l, at, at) end,
         i.short,
         i.long
     )
-    local he = ____units_result_3.he
-    local hu = ____units_result_3.hu
-    local ha = ____units_result_3.ha
+    local he = ____units_result_2.he
+    local hu = ____units_result_2.hu
+    local ha = ____units_result_2.ha
     local nearTowers = {}
     local ta = (towersNow(
         team,
@@ -562,8 +442,6 @@ function ____exports.Leave(bot, i)
                 "ra",
                 i.a.kill > 0 and math.floor(i.a.ratio * 100 + 0.5) / 100 or nil
             },
-            {"pj", i.pj and 1 or nil},
-            {"hb", i.hb and 1 or nil},
             {
                 "dt",
                 bot:WasRecentlyDamagedByTower(0.5) and 1 or 0
@@ -621,15 +499,15 @@ function ____exports.Gate(bot, from, place, consumer)
     local at = bot:GetLocation()
     logTowers(team)
     logTowers(enemyTeam)
-    local ____units_result_4 = units(
+    local ____units_result_3 = units(
         bot,
         function(l) return nearWalk(l, from, place) end,
         3,
         6
     )
-    local he = ____units_result_4.he
-    local hu = ____units_result_4.hu
-    local ha = ____units_result_4.ha
+    local he = ____units_result_3.he
+    local hu = ____units_result_3.hu
+    local ha = ____units_result_3.ha
     local unused = {}
     local ta = (towersNow(
         team,

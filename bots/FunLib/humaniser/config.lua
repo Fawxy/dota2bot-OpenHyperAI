@@ -58,10 +58,9 @@ ____exports.DEFAULTS = {
     States = {
         Enable = false,
         Shadow = true,
-        Own = {laning = {2}},
+        Own = {},
         Teams = "allies",
-        ShadowTeams = "allies",
-        LanePosEvery = 1
+        ShadowTeams = "allies"
     }
 }
 local function merge(defaults, overrides)

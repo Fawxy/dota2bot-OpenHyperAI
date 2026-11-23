@@ -7,31 +7,6 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
     end
     return result
 end
-
-local function __TS__CountVarargs(...)
-    return select("#", ...)
-end
-
-local function __TS__SparseArrayNew(...)
-    local sparseArray = {...}
-    sparseArray.sparseLength = __TS__CountVarargs(...)
-    return sparseArray
-end
-
-local function __TS__SparseArrayPush(sparseArray, ...)
-    local args = {...}
-    local argsLen = __TS__CountVarargs(...)
-    local listLen = sparseArray.sparseLength
-    for i = 1, argsLen do
-        sparseArray[listLen + i] = args[i]
-    end
-    sparseArray.sparseLength = listLen + argsLen
-end
-
-local function __TS__SparseArraySpread(sparseArray)
-    local _unpack = unpack or table.unpack
-    return _unpack(sparseArray, 1, sparseArray.sparseLength)
-end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ownList, ownTeam, owns, lib, installed
@@ -42,13 +17,7 @@ local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
-local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
-local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
-local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
-local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
 local LaneTable = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_table")
-local LaneMetrics = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_metrics")
 local Shadow = require(GetScriptDirectory().."/FunLib/humaniser/states/shadow")
 local CampJob = require(GetScriptDirectory().."/FunLib/humaniser/states/camp_job")
 local Rotate = require(GetScriptDirectory().."/FunLib/humaniser/states/rotate")
@@ -57,10 +26,6 @@ local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Farm = require(GetScriptDirectory().."/FunLib/humaniser/states/farm")
 local Gank = require(GetScriptDirectory().."/FunLib/humaniser/states/gank")
 local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
-local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
-local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
-local WaveHold = require(GetScriptDirectory().."/FunLib/humaniser/states/wave_hold")
-local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
 function ____exports.Settings()
     return Config.Get().States
 end
@@ -75,9 +40,6 @@ function ownTeam(bot)
     return ____exports.Settings().Teams == "all" or Difficulty.IsAllyOfHuman(bot)
 end
 function owns(bot, state)
-    if state == Laning.NAME and (CoreLastHit.Applies(bot) or SupportDeny.Applies(bot)) then
-        return true
-    end
     if not ownTeam(bot) then
         return false
     end
@@ -123,36 +85,6 @@ function ____exports.Step(bot, mode)
     local l = lib()
     return l ~= nil and l.States.Step(bot, mode)
 end
---- True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own.
-function ____exports.BodyLastHits(bot)
-    if not ____exports.IsEnabled() or not Laning.OwnsLastHit(bot) then
-        return false
-    end
-    local ____opt_30 = Tasks.Loaded()
-    local cur = ____opt_30 and ____opt_30.States.Current(bot)
-    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
-end
---- True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
--- skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
--- that never landed, `missed` with the creep alive seconds later).
-function ____exports.BodyBusy(bot)
-    if not ____exports.BodyLastHits(bot) then
-        return false
-    end
-    local ____opt_32 = Tasks.Current(bot)
-    local label = ____opt_32 and ____opt_32.label
-    return label == "lasthit" or label == "deny"
-end
---- Whether the wave hold's read runs for this core (slice hold-through-swing): where the lane table's `aggro` or `drill_hold`
--- row would act it, the laning body running (a lane-only drill core, only with `laneHold`). Swing frames count: the read
--- gives no order.
-function ____exports.HoldHosted(bot)
-    if not ____exports.BodyLastHits(bot) then
-        return false
-    end
-    return not Drill.LaneOnly(bot) or Drill.LaneHold(bot)
-end
-local LANE_POS_EVERY = 1
 local function shadowTeam(bot)
     return ____exports.Settings().Shadow == true and (____exports.Settings().ShadowTeams == "all" or ownTeam(bot))
 end
@@ -170,7 +102,7 @@ local function ownsAny()
 end
 --- Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think).
 function ____exports.MayOwn(bot)
-    return ____exports.IsEnabled() and (ownTeam(bot) and ownsAny() or CoreLastHit.Applies(bot) or SupportDeny.Applies(bot))
+    return ____exports.IsEnabled() and ownTeam(bot) and ownsAny()
 end
 --- States by name in registration order; registering an existing name replaces it in place.
 local registry = {}
@@ -191,10 +123,6 @@ function ____exports.Registered()
         function(____, r) return r.name end
     )
 end
-____exports.Register(
-    Laning.NAME,
-    function(bot) return Laning.Spec(bot) end
-)
 for ____, ____value in ipairs(Shadow.SPECS) do
     local name = ____value[1]
     local make = ____value[2]
@@ -232,110 +160,12 @@ local function guarded(spec)
 end
 installed = false
 local defined = {}
-local lanePosAt = {}
-local function lanePos(bot, l)
-    local cur = l.States.Current(bot)
-    if cur == nil or cur.name ~= Laning.NAME then
-        return
-    end
-    local pid = bot:GetPlayerID()
-    local now = DotaTime()
-    if now - (lanePosAt[pid] or -math.huge) < (____exports.Settings().LanePosEvery or LANE_POS_EVERY) then
-        return
-    end
-    lanePosAt[pid] = now
-    local spot = Laning.Spot(bot)
-    local task = Tasks.Current(bot)
-    local info = Laning.SpotInfo(bot)
-    local nok, nuke = pcall(LaneSpot.NearestNuke, bot)
-    local ne, nk, nr = unpack(nok and nuke ~= nil and nuke or ({nil, nil, nil}))
-    local ____Telemetry_Event_27 = Telemetry.Event
-    local ____array_26 = __TS__SparseArrayNew(
-        {"pid", pid},
-        {
-            "d",
-            spot ~= nil and math.floor(GetUnitToLocationDistance(bot, spot)) or nil
-        },
-        {"owned", cur.owned},
-        {"running", cur.running}
-    )
-    local ____cur_running_5
-    if cur.running then
-        ____cur_running_5 = task and task.label
-    else
-        ____cur_running_5 = nil
-    end
-    __TS__SparseArrayPush(
-        ____array_26,
-        {"label", ____cur_running_5},
-        {
-            "mode",
-            bot:GetActiveMode()
-        },
-        {"spot", info ~= nil and info.anchor or "oha"},
-        {"pushed", info and info.pushed},
-        {"why", info and info.why},
-        {
-            "hm",
-            info ~= nil and math.floor(info.margin) or nil
-        },
-        {"ut", info and info.covered},
-        {
-            "sx",
-            spot ~= nil and math.floor(spot.x) or nil
-        },
-        {
-            "sy",
-            spot ~= nil and math.floor(spot.y) or nil
-        },
-        {
-            "hph",
-            LaneMetrics.HeroLost(bot)
-        },
-        {
-            "ne",
-            ne ~= nil and math.floor(ne) or nil
-        },
-        {"nk", nk},
-        {
-            "nr",
-            nr ~= nil and math.floor(nr) or nil
-        },
-        {
-            "cl",
-            (info and info.clash) ~= nil and math.floor(info.clash) or nil
-        },
-        {
-            "fo",
-            (info and info.far) ~= nil and math.floor(info.far) or nil
-        },
-        {"rn", info and info.rn},
-        {"sl", info and info.sl},
-        {
-            "sr",
-            (info and info.sr) ~= nil and math.floor(info.sr * 100 + 0.5) / 100 or nil
-        },
-        {"pl", info and info.pl},
-        {
-            "pq",
-            (info and info.pq) ~= nil and math.floor(info.pq * 100 + 0.5) / 100 or nil
-        }
-    )
-    ____Telemetry_Event_27(
-        "lane_pos",
-        {__TS__SparseArraySpread(____array_26)}
-    )
-    if info ~= nil and Telemetry.IsEnabled() and Telemetry.Get().Cut == true then
-        pcall(Cut.Spot, bot)
-    end
-end
 --- Every frame from Humaniser.Tick, before Tasks.Tick.
 function ____exports.Tick(bot)
     if not ____exports.IsEnabled() then
         return
     end
-    LaneAggro.Tick(bot)
-    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) and not CoreLastHit.Applies(bot) and not SupportDeny.Applies(bot) then
+    if not shadowTeam(bot) and not (ownTeam(bot) and ownsAny()) then
         return
     end
     local l = lib()
@@ -354,14 +184,6 @@ function ____exports.Tick(bot)
         )
     end
     l.States.Tick(bot)
-    LaneMetrics.Tick(bot)
-    WaveHold.Watch(
-        bot,
-        ____exports.HoldHosted(bot),
-        ____exports.BodyBusy(bot)
-    )
-    WaveHold.Tick(bot)
-    lanePos(bot, l)
 end
 --- Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own).
 function ____exports.Owns(bot, state)
@@ -369,8 +191,8 @@ function ____exports.Owns(bot, state)
 end
 --- Steps the bot's farm-hosted state only when it is one of `names`, so one executor never runs another's body.
 local function stepFarm(bot, names)
-    local ____opt_28 = lib()
-    local cur = ____opt_28 and ____opt_28.States.Current(bot)
+    local ____opt_3 = lib()
+    local cur = ____opt_3 and ____opt_3.States.Current(bot)
     return cur ~= nil and names[cur.name] == true and ____exports.Step(bot, BotMode.Farm)
 end
 local FARM_STATES = {[Farm.NAME] = true}
@@ -397,28 +219,6 @@ function ____exports.WisdomOwned(bot)
     end
     return ____exports.Owns(bot, Rotate.NAME) and Rotate.OnTrip(bot) or Rotate.ShrineTaken(bot:GetTeam())
 end
-local function laningRunning(bot)
-    local ____opt_34 = Tasks.Loaded()
-    local cur = ____opt_34 and ____opt_34.States.Current(bot)
-    return cur ~= nil and cur.name == Laning.NAME and cur.owned and cur.running
-end
---- True while the laning body runs for this support and owns its lane hits (Ours.SupportDeny): the Lua Think skips DenyThink.
-function ____exports.BodySupportHits(bot)
-    return ____exports.IsEnabled() and Laning.OwnsSupportHits(bot) and laningRunning(bot)
-end
---- BodySupportHits with Ours.SupportLastHit: the body takes the support's claimed last hits too, so the Lua Think skips LastHitThink.
-function ____exports.BodySupportLastHits(bot)
-    return ____exports.BodySupportHits(bot) and SupportDeny.LastHits(bot)
-end
---- The support's attack is the body's own last hit (its attempt's creep): Ours.LeaveCoreCreep's cancel of a swing on a creep a
--- core could reach must not cancel a creep the claims gave the support (its core busy on another).
-function ____exports.SupportOwnsAttack(bot)
-    if not ____exports.BodySupportLastHits(bot) then
-        return false
-    end
-    local target = bot:GetAttackTarget()
-    return target ~= nil and target ~= nil and LanePick.Attempting(bot:GetPlayerID()) == target
-end
 local laneCtx = {}
 --- mode_laning_generic's Think for a bot that owns it: the name of the lane table row that acted (states/lane_table). With
 -- the state layer off, every predicate of ours is false and only the host's rows run.
@@ -426,42 +226,24 @@ function ____exports.LaneStep(bot, cb)
     local pid = bot:GetPlayerID()
     local c = laneCtx[pid]
     if c == nil or c.cb ~= cb then
-        c = {
-            cb = cb,
-            ctx = {
-                enabled = ____exports.IsEnabled,
-                bodyRunning = function() return laningRunning(bot) end,
-                bodyLabel = function()
-                    local ____opt_36 = Tasks.Current(bot)
-                    return ____opt_36 and ____opt_36.label
-                end,
-                stepBody = function() return ____exports.Step(bot, BotMode.Laning) end,
-                bodyBusy = function() return ____exports.BodyBusy(bot) end,
-                bodyLastHits = function() return ____exports.BodyLastHits(bot) end,
-                bodySupportHits = function() return ____exports.BodySupportHits(bot) end,
-                bodySupportLastHits = function() return ____exports.BodySupportLastHits(bot) end,
-                etiquette = cb.etiquette,
-                ohaLastHit = cb.ohaLastHit,
-                ohaDeny = cb.ohaDeny,
-                ohaHold = cb.ohaHold,
-                ohaLocal = cb.ohaLocal,
-                ohaPosition = cb.ohaPosition
-            }
-        }
+        c = {cb = cb, ctx = {
+            enabled = ____exports.IsEnabled,
+            ohaLastHit = cb.ohaLastHit,
+            ohaDeny = cb.ohaDeny,
+            ohaHold = cb.ohaHold,
+            ohaLocal = cb.ohaLocal,
+            ohaPosition = cb.ohaPosition
+        }}
         laneCtx[pid] = c
     end
     return LaneTable.Walk(bot, c.ctx)
-end
---- mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run).
-function ____exports.SetLaneSpot(bot, fn)
-    Laning.SetSpot(bot, fn)
 end
 function ____exports.Describe(bot)
     if not ____exports.IsEnabled() then
         return nil
     end
-    local ____opt_38 = Tasks.Loaded()
-    local cur = ____opt_38 and ____opt_38.States.Current(bot)
+    local ____opt_5 = Tasks.Loaded()
+    local cur = ____opt_5 and ____opt_5.States.Current(bot)
     return cur == nil and "-" or (((cur.name .. (cur.owned and "*" or "")) .. (cur.running and " run" or "")) .. " n=") .. tostring(cur.starts)
 end
 return ____exports

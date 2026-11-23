@@ -25,35 +25,27 @@ import * as ApiProbe from "bots/FunLib/humaniser/api_probe";
 import * as VisionMap from "bots/FunLib/humaniser/vision_map";
 import * as Perception from "bots/FunLib/humaniser/perception";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Etiquette from "bots/FunLib/humaniser/etiquette";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
-import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as RunePickup from "bots/FunLib/humaniser/rune_pickup";
 import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
-import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
-import * as Arbiter from "bots/FunLib/humaniser/arbiter";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Utils from "bots/FunLib/utils";
 
-export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, Etiquette, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, CampClaims, Chooser, Decider, Overrides, Drill, CoreCamp, Arbiter, ChoiceShadow };
+export { Config, HDebug, Chat, Difficulty, Profile, Orders, AllyLastHit, Pings, Commands, Lane, Transitions, Intent, LastHitSkill, FarmPattern, Trainer, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
 export { Tasks };
 import * as States from "bots/FunLib/humaniser/states/index";
 export { States };
-import * as Trade from "bots/FunLib/humaniser/states/trade";
-export { Trade };
-import * as LaneControl from "bots/FunLib/humaniser/lane_control";
-export { LaneControl };
 import * as Retreat from "bots/FunLib/humaniser/retreat";
 export { Retreat };
 import * as SustainGather from "bots/FunLib/humaniser/sustain_gather";
@@ -63,7 +55,6 @@ export { SustainAct };
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 export { SafeGather };
-import * as PairJoin from "bots/FunLib/humaniser/pair_join";
 import * as CastLog from "bots/FunLib/humaniser/cast_log";
 
 const OVERLAY_REFRESH = 0.25;
@@ -242,7 +233,6 @@ function tick(this: void, bot: Unit): void {
     logStart(bot);
     Drill.Tick(bot);
     Retreat.Tick(bot);
-    PairJoin.Tick(bot);
     steps.pings(bot);
     steps.commands(bot);
     steps.lane(bot);
@@ -254,8 +244,6 @@ function tick(this: void, bot: Unit): void {
     steps.intent(bot);
     // The landing sampler (safe here's `landing`): once per hero per tick, with telemetry off too. See SafeGather.Tick.
     pcall(steps.landing, bot);
-    // Lane controller slice 2a: shadow decisions only (ev=lane_ctl); nothing reads them yet.
-    LaneControl.Tick(bot);
     steps.telemetry(bot, telemetryContext);
     // Slice chase-log: our casts (ev=cast), logged a tick after the callback queues them.
     pcall(CastLog.Tick, bot);
@@ -295,20 +283,13 @@ if (Telemetry.GuardsEnabled()) {
         PreferStackedCamp: none,
     });
     Telemetry.GuardModule("Transitions", Transitions, { Tick: none, MidRunesOn: no, MidRuneFocus: () => $multi(false, false, undefined), MidRuneYield: none, MidRuneSkip: none, RuneTarget: none, HoldsRune: no, MidRuneDesire: zero, RotationYield: none, PickLaneWard: none, ConfirmLaneWard: none });
-    Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, SetLaneSpot: none, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no, BodyLastHits: no, BodyBusy: no, BodySupportHits: no, BodySupportLastHits: no, SupportOwnsAttack: no });
-    // An error hands the attack mode to OHA's port (undefined desire, port Think) and leaves laning's 0.9 as it was.
-    Telemetry.GuardModule("Trade", Trade, { Owns: no, Desire: none, OwnsFrame: no, Think: none, OnEnd: none, LastHitYields: no, OwnsLaneRun: no, OwnsFights: no, Holds: none });
+    Telemetry.GuardModule("States", States, { Tick: none, Step: no, MayOwn: no, Describe: none, IsEnabled: no, WisdomOwned: no, Owns: no });
     Telemetry.GuardModule("FarmPattern", FarmPattern, { Desire: zero, Think: no, OnEnd: none, Abort: none });
-    Telemetry.GuardModule("PairJoin", PairJoin, { Tick: none });
-    // A predicate error leaves the creep to the core (the etiquette answer) rather than take it.
-    Telemetry.GuardModule("Etiquette", Etiquette, { Applies: no, CoreCanTake: () => true, MayLastHit: no, LeavesTarget: no });
     // An error leaves the farm mode to OHA (no job desire, no owned Think).
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
-    Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, InLane: no, InLaneDenies: no, ForbidsItem: no, ForbidsCast: no, LaneHold: no, LaneAggro: no, IdleStatue: no, Owns: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
-    // An error leaves the complete-items TP and the rune mode to OHA.
-    Telemetry.GuardModule("Arbiter", Arbiter, { DeniesItemsTp: no, DeniesOhaRune: no });
-    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, After: (_b: unknown, _m: unknown, d: unknown) => d, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
+    Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, InLane: no, InLaneDenies: no, ForbidsItem: no, ForbidsCast: no, IdleStatue: no, Owns: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
+    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     Telemetry.GuardModule("AllyLastHit", AllyLastHit, { FilterCreeps: arg2, MayLastHit: () => $multi(true, "free: error") });
     Telemetry.GuardModule("Orders", Orders, {
         FilterAvoided: arg2,
@@ -318,8 +299,6 @@ if (Telemetry.GuardsEnabled()) {
         DesireFloor: zero,
     });
     Telemetry.GuardModule("Commands", Commands, { ShouldUseOrderedSmoke: no });
-    // A controller error drops that wave's ev=lane_ctl line; no bot action reads it.
-    Telemetry.GuardModule("LaneControl", LaneControl, { Tick: none });
     // An error hands the hero to OHA's retreat desire for that call (undefined) and a Think that issues nothing.
     // Telemetry only: an error drops the purchase's ev=sustain_buy line.
     Telemetry.GuardModule("SustainGather", SustainGather, { Bought: none });

@@ -2,19 +2,18 @@
  * Hero job chooser (slice job-chooser, design docs/proposals/2026-11-02-job-chooser-design.md): whether a job may start or
  * must stop, which mode hosts it, and every contact with OHA. OHA's files call only this module, never a job; a job says
  * when it wants to run, how it does the work and when it is finished.
- * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane), PullFarm (slice support-pull-farm) and CoreCamp (slice core-next-gold), ranked per hero by states/trip_table; a running job is never interrupted by another.
+ * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane) and PullFarm (slice support-pull-farm), ranked per hero by states/trip_table; a running job is never interrupted by another.
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
-import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
 import * as Drill from "bots/FunLib/humaniser/drill";
-import * as Arbiter from "bots/FunLib/humaniser/arbiter";
+import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
@@ -54,8 +53,6 @@ interface Job {
     name: TripTable.TripKind;
     /** Whether the job is one this hero may do at all; its place among the others is states/trip_table's. */
     Applies(this: void, bot: Unit): boolean;
-    /** The job's situation lift holds now: the table's lifted place applies (only the pull has one). */
-    Lifted?(this: void, bot: Unit): boolean;
     /** The job's own task ends it on a deadly read here, after the hero's reaction time: the chooser does not end it first. */
     guards?: boolean;
     /** Running, or a trigger still open: lower-ranked jobs do not start. */
@@ -95,7 +92,6 @@ const RUNE: Job = {
 const PULL: Job = {
     name: "pull",
     Applies: (bot) => PullJob.Applies(bot),
-    Lifted: (bot) => PullJob.Lifted(bot),
     Claims: (bot) => PullJob.Claims(bot),
     Wants: (bot, blocked, host) => PullJob.Wants(bot, blocked, host),
     Running: (bot) => PullJob.Running(bot),
@@ -103,19 +99,6 @@ const PULL: Job = {
     End: (bot, why) => PullJob.End(bot, why),
     NoteHit: (bot) => PullJob.NoteHit(bot),
     NoteIdleHeld: (bot) => PullJob.NoteIdleHeld(bot),
-};
-
-const CAMP: Job = {
-    name: "camp",
-    guards: true,
-    Applies: (bot) => CoreCamp.Owns(bot),
-    Claims: (bot) => CoreCamp.Claims(bot),
-    Wants: (bot, blocked, host) => CoreCamp.Wants(bot, blocked, host),
-    Running: (bot) => CoreCamp.Running(bot),
-    Step: (bot, host) => CoreCamp.Step(bot, host),
-    End: (bot, why) => CoreCamp.End(bot, why),
-    NoteHit: (bot) => CoreCamp.NoteHit(bot),
-    NoteIdleHeld: (bot) => CoreCamp.NoteIdleHeld(bot),
 };
 
 const PULLFARM: Job = {
@@ -131,7 +114,7 @@ const PULLFARM: Job = {
     NoteIdleHeld: (bot) => PullFarm.NoteIdleHeld(bot),
 };
 
-const JOBS: Job[] = [STACK, RUNE, PULL, PULLFARM, CAMP];
+const JOBS: Job[] = [STACK, RUNE, PULL, PULLFARM];
 
 /** The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order). */
 function ranked(bot: Unit): Job[] {
@@ -142,7 +125,7 @@ function ranked(bot: Unit): Job[] {
     for (const j of JOBS) {
         if (only !== undefined && j.name !== only) continue;
         if (!j.Applies(bot)) continue;
-        const p = TripTable.RankOf(j.name, pos, j.Lifted !== undefined && j.Lifted(bot));
+        const p = TripTable.RankOf(j.name, pos);
         if (p !== undefined) out.push([j, p]);
     }
     for (let i = 1; i < out.length; i++) {
@@ -213,15 +196,31 @@ function hostDesire(bot: Unit): number | undefined {
  *  up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1). */
 const EPISODE_MODES: Record<string, true> = { assemble: true, assemble_with_humans: true };
 
-/** OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs. */
+/** OHA's modes that keep their own desire beside the host's while the hold of that name runs. */
 const ADMITTED: Record<string, Record<string, unknown>> = { retreat: EPISODE_MODES, job: EXCEPTIONS };
+
+/** What holds the hero, and the mode that hosts it. */
+interface Hold {
+    name: "retreat" | "job";
+    host: string;
+}
+
+/**
+ * Our retreat's episode, else the chooser's running job (hosted in the rune mode for the mid's rune trip, else farm). Not
+ * limited to laning heroes: an episode or a job is its own claim on the hero (a drill's cast runs jobs while held).
+ */
+function holdOf(bot: Unit, job: string | undefined): Hold | undefined {
+    if (RetreatState.Running(bot)) return { name: "retreat", host: "retreat" };
+    if (job !== undefined) return { name: "job", host: RuneJob.HostOf(bot) === BotMode.Rune ? "rune" : "farm" };
+    return undefined;
+}
 
 /** Which branch of Decide gave its last number (choice_shadow's reason); telemetry only, read by Gate. */
 let decideWhy: string | undefined;
 const HOLD_WHY: Record<string, string> = { retreat: "hold:retreat", job: "hold:job" };
 
 /**
- * A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under the arbiter's hold the host mode runs
+ * A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under a hold the host mode runs
  * and every mode the hold does not admit gets 0. A job hosted in the rune mode (the mid's 6:00 trip) leaves the chooser's
  * host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
  * not take it either.
@@ -240,13 +239,7 @@ export function Decide(bot: Unit, mode: string): number | undefined {
         return rig;
     }
     const jobs = Ours.On("JobChooser");
-    // Rework step 7: under the drive the arbiter's pick holds an owned laner (Arbiter.DriveDecide, the inventory's tiers).
-    if (Arbiter.Drives(bot)) {
-        const p = Arbiter.Drive(bot, jobs ? RunningJobName(bot) : undefined);
-        decideWhy = "drive";
-        return Arbiter.DriveDecide(bot, mode, p, () => (jobs ? hostDesire(bot) : undefined));
-    }
-    const hold = Arbiter.Hold(bot, jobs ? RunningJobName(bot) : undefined);
+    const hold = holdOf(bot, jobs ? RunningJobName(bot) : undefined);
     decideWhy = hold === undefined || mode === hold.host ? "host" : HOLD_WHY[hold.name];
     if (hold === undefined) return jobs && mode === HOST ? hostDesire(bot) : undefined;
     if (mode === hold.host) return mode === HOST ? hostDesire(bot) : undefined;
@@ -256,33 +249,18 @@ export function Decide(bot: Unit, mode: string): number | undefined {
 /** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. */
 export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
-        Arbiter.Shadow(bot, () => runningJob(bot)?.name);
         // Ours.ChoiceShadow (logging only): the values this call returns are noted, never changed; off, nothing else runs.
         const shadow = ChoiceShadow.On();
-        if (shadow) ChoiceShadow.Frame(bot, () => runningJob(bot)?.name);
+        if (shadow) ChoiceShadow.Frame(bot);
         const v = Decide(bot, mode);
         if (v !== undefined) {
-            if (shadow) {
-                const why = decideWhy;
-                // Ours.ChoiceProbe (diagnostic, never scored): OHA's roam and team_roam code runs where the drive zeroes it
-                // first, for its value only; the drive's value is still returned. Its side effects are OHA's (choice_shadow).
-                const probe = why === "drive" && ChoiceShadow.PROBED[mode] === true && Ours.On("ChoiceProbe");
-                ChoiceShadow.Note(bot, mode, probe ? ChoiceShadow.Probe(inner) : undefined, v, why, probe);
-            }
+            if (shadow) ChoiceShadow.Note(bot, mode, undefined, v, decideWhy);
             return v;
         }
         const d = inner();
-        const out = After(bot, mode, d);
-        if (shadow) ChoiceShadow.Note(bot, mode, d, out, undefined, false);
-        return out;
+        if (shadow) ChoiceShadow.Note(bot, mode, d, d, undefined);
+        return d;
     };
-}
-
-/** Under the drive, the arbiter's word on what OHA's code for `mode` returned (Arbiter.DriveAfter); else that value. */
-export function After(bot: Unit, mode: string, desire: any): any {
-    if (!Arbiter.Drives(bot)) return desire;
-    const jobs = Ours.On("JobChooser");
-    return Arbiter.DriveAfter(bot, mode, Arbiter.Drive(bot, jobs ? RunningJobName(bot) : undefined), desire);
 }
 
 /**

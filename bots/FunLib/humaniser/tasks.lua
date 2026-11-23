@@ -9,8 +9,7 @@ local JobVerbs = require(GetScriptDirectory().."/FunLib/humaniser/job_verbs")
 local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
 local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
-local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
-local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/states/support_deny")
+local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
@@ -45,9 +44,6 @@ local function mayTake(bot, creep, f)
         return false
     end
     if string.sub(reason, 1, 5) == "take:" then
-        return true
-    end
-    if SupportDeny.Applies(bot) and SupportDeny.LastHits(bot) then
         return true
     end
     local pos = LaneConfig.PositionOf(bot)
@@ -142,7 +138,7 @@ local function loadBundle(ours)
         lib.init(adapter)
         JobVerbs.Bind(lib, adapter)
         local verbs = lib.Verbs
-        LanePick.SetOffers(function(bot) return verbs.laneTargets(bot, {within = 1}) end);
+        LaneOffers.SetOffers(function(bot) return verbs.laneTargets(bot, {within = 1}) end);
         (rawPrint or print)(support .. "ok")
     else
         (rawPrint or print)((support .. "fail ") .. tostring(res))

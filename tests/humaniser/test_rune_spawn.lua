@@ -31,7 +31,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = { StackExecute = false, DoubleStack = false, RuneRotation = true, JobChooser = true, RuneSpawn = o.spawn ~= false, MidWater = o.water == true,
-		ArbiterDrive = o.drive == true, TripRead = o.tripRead }
+		TripRead = o.tripRead }
 	T = o.t or 315
 	CURRENT_TEAM = RAD
 	status = {}
@@ -176,23 +176,22 @@ do
 	check("water: from the plan's time the 6:00 plan owns the mid", H.RuneJob.MidWaterOwns(mid) == false)
 end
 
--- Under the arbiter's drive the water trip holds the mid in the rune mode: the pick is the job, laning waits.
+-- The running water trip holds the mid in the rune mode: the rune mode's own desire runs, laning waits.
 do
-	local H = world({ t = 100, water = true, drive = true })
+	local H = world({ t = 100, water = true })
 	SPAWN_AT = P1
 	local mid = hero(2, 2, Vector(-600, 300))
 	mid.lane, mid.mode = dota.Lane.Mid, LANING
-	local Arb = require("bots/FunLib/humaniser/arbiter")
 	capture(function() while H.RuneJob.HostOf(mid) == nil and T < 120 do frame(H, { mid }, 120) end end)
-	check("water under the drive: the trip started", H.RuneJob.HostOf(mid) == dota.BotMode.Rune and Arb.Drives(mid), T)
+	check("water hosted in rune: the trip started", H.RuneJob.HostOf(mid) == dota.BotMode.Rune, T)
 	capture(function()
 		frame(H, { mid }, 120)
-		check("water under the drive: the pick is the job hosted in rune", Arb.Drive(mid, "rune").name == "job" and Arb.Drive(mid, "rune").host == "rune")
-		check("water under the drive: laning waits", H.Chooser.Gate(mid, "laning", function() return 0.9 end)() == 0)
+		check("water hosted in rune: laning waits", H.Chooser.Gate(mid, "laning", function() return 0.9 end)() == 0)
+		check("water hosted in rune: the rune mode's own desire runs", H.Chooser.Gate(mid, "rune", function() return 0.9 end)() == 0.9)
 	end)
 	local out = run(H, { mid }, 135, 120)
 	local l = lines(out, "rune_job")[1]
-	check("water under the drive: it took the rune", l ~= nil and field(l, "res") == "ok", l)
+	check("water hosted in rune: it took the rune", l ~= nil and field(l, "res") == "ok", l)
 end
 
 -- Switch off: no water trip, and the river before the plan is OHA's.

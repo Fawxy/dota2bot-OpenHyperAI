@@ -30,8 +30,6 @@ local ON = { name = "defaults (control)", cfg = { Enable = true } }
 
 local function fresh(entry, skill)
 	local H = LaneFresh(entry.cfg, { enable = entry.humaniser ~= false, skill = skill or 0.9, debug = true })
-	-- The regression entries are the lane with the arbiter's drive off; the drive is test_arbiter_drive's.
-	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	return H
 end
 
@@ -196,7 +194,9 @@ for _, gone in ipairs({ "bLaneLaning", "Lane.PreThink", "Lane.Think", "Lane.MayD
 	"Lane.SupersedesHarass", "Lane.HarassThink", "Lane.OwnsLaning" }) do
 	check("laning mode has no human-team lane path: " .. gone, laningSrc:find(gone, 1, true) == nil)
 end
-check("laning mode: Think() is defined only when 04, 07, the 14 self-test, the state layer or Ours.LeaveCoreCreep (slice 3) owns the bot or upstream already did", laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot) or bEtiquette\n", 1, true) ~= nil and laningSrc:find("if bOwnsThink then\n\tStates.SetLaneSpot(bot, PositionTarget)\n", 1, true) ~= nil and laningSrc:find("\t\tTelemetry.NoteLaneStep(bot, States.LaneStep(bot, laneCtx))\n\tend\nend\n", 1, true) ~= nil)
+check("laning mode: Think() is defined only when 04, 07, the 14 self-test or the state layer owns the bot or upstream already did, and walks the lane table",
+	laningSrc:find("local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot)\n", 1, true) ~= nil
+		and laningSrc:find("\t\tTelemetry.NoteLaneStep(bot, States.LaneStep(bot, laneCtx))\n\tend\nend\n", 1, true) ~= nil)
 check("laning mode: the lane table is walked by States.LaneStep, the host's steps handed over as callbacks (the body's own placement is the table's `body` row, test_lane_table)", laningSrc:find("ohaPosition = function() PositionThink() return true end,", 1, true) ~= nil)
 for _, call in ipairs({ "J.Humaniser.Lane.CampJobDesire(bot)", "J.Humaniser.Lane.CampJobOnEnd(bot)",
 	"if not runMode and J.Humaniser.Lane.CampJobThink(bot) then return end", "J.Humaniser.Lane.CampJobAbort(bot, \"run\")", "J.Humaniser.Lane.PreferStackedCamp(bot, availableCamp) or preferedCamp" }) do

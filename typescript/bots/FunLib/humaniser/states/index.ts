@@ -4,19 +4,13 @@
  * host Think() hook and telemetry. Off (Enable = false) means no selection, no telemetry and no tasks.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as Laning from "bots/FunLib/humaniser/states/laning";
-import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
-import * as CoreLastHit from "bots/FunLib/humaniser/states/core_last_hit";
-import * as SupportDeny from "bots/FunLib/humaniser/states/support_deny";
-import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
 import * as LaneTable from "bots/FunLib/humaniser/states/lane_table";
-import * as LaneMetrics from "bots/FunLib/humaniser/states/lane_metrics";
 import * as Shadow from "bots/FunLib/humaniser/states/shadow";
 import * as CampJob from "bots/FunLib/humaniser/states/camp_job";
 import * as Rotate from "bots/FunLib/humaniser/states/rotate";
@@ -25,10 +19,6 @@ import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Farm from "bots/FunLib/humaniser/states/farm";
 import * as Gank from "bots/FunLib/humaniser/states/gank";
 import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
-import * as LaneAggro from "bots/FunLib/humaniser/lane_aggro";
-import * as Drill from "bots/FunLib/humaniser/drill";
-import * as WaveHold from "bots/FunLib/humaniser/states/wave_hold";
-import * as Cut from "bots/FunLib/humaniser/cut";
 
 export interface StatesSettings {
     Enable: boolean;
@@ -40,11 +30,7 @@ export interface StatesSettings {
     Teams: "allies" | "all";
     /** Who is shadowed (states chosen and logged, nothing owned beyond Teams): "allies" or "all". */
     ShadowTeams: "allies" | "all";
-    /** Seconds between `lane_pos` telemetry lines per bot in the laning state. */
-    LanePosEvery: number;
 }
-
-const LANE_POS_EVERY = 1;
 
 export function Settings(): StatesSettings {
     return Config.Get().States as StatesSettings;
@@ -76,15 +62,12 @@ function ownsAny(): boolean {
 
 /** Whether the layer may ever own a state for this bot; for load-time decisions (mode_laning_generic's Think). */
 export function MayOwn(bot: Unit): boolean {
-    return IsEnabled() && ((ownTeam(bot) && ownsAny()) || CoreLastHit.Applies(bot) || SupportDeny.Applies(bot));
+    return IsEnabled() && ownTeam(bot) && ownsAny();
 }
 
 // Ownership is also gated by team here, not only at Tick: shadowed bots outside Teams are ticked too, and a
 // Dire bot whose laning Think is Valve's C++ one must never get a task.
 function owns(bot: Unit, state: string): boolean {
-    // Ours.CoreLastHit owns laning for pos1-3 (both teams unless Ours.CoreLastHitDire is false), Ours.SupportDeny for pos4-5;
-    // MayOwn gives those bots this file's Lua Think.
-    if (state === Laning.NAME && (CoreLastHit.Applies(bot) || SupportDeny.Applies(bot))) return true;
     if (!ownTeam(bot)) return false;
     const list = ownList(state);
     if (list === undefined) return false;
@@ -114,7 +97,6 @@ export function Registered(): string[] {
     return registry.map((r) => r.name);
 }
 
-Register(Laning.NAME, (bot) => Laning.Spec(bot));
 for (const [name, make] of Shadow.SPECS) Register(name, make);
 // Owned job states (team slices 7-9) replace the shadow specs of the same name; unowned bots keep the shadow scores.
 Register(CampJob.PULL, (bot) => CampJob.Spec(bot, CampJob.PULL, owns, Shadow.PullScore));
@@ -132,7 +114,6 @@ function guarded(spec: Lib.StateSpec): Lib.StateSpec {
 
 let installed = false;
 const defined: Record<number, number | undefined> = {};
-const lanePosAt: Record<number, number | undefined> = {};
 
 function lib(): ReturnType<typeof Tasks.Loaded> {
     const l = Tasks.Loaded();
@@ -150,54 +131,10 @@ function lib(): ReturnType<typeof Tasks.Loaded> {
     return l;
 }
 
-function lanePos(bot: Unit, l: NonNullable<ReturnType<typeof Tasks.Loaded>>): void {
-    const cur = l.States.Current(bot as unknown as Lib.TaskUnit);
-    if (cur === undefined || cur.name !== Laning.NAME) return;
-    const pid = bot.GetPlayerID();
-    const now = DotaTime();
-    if (now - (lanePosAt[pid] ?? -math.huge) < (Settings().LanePosEvery ?? LANE_POS_EVERY)) return;
-    lanePosAt[pid] = now;
-    const spot = Laning.Spot(bot);
-    const task = Tasks.Current(bot);
-    const info = Laning.SpotInfo(bot);
-    // Telemetry only: an ability handle the API answers oddly must not cost the frame.
-    const [nok, nuke] = pcall(LaneSpot.NearestNuke, bot);
-    const [ne, nk, nr] = nok && nuke !== undefined ? nuke : [undefined, undefined, undefined];
-    Telemetry.Event("lane_pos", [
-        ["pid", pid],
-        ["d", spot !== undefined ? math.floor(GetUnitToLocationDistance(bot, spot)) : undefined],
-        ["owned", cur.owned],
-        ["running", cur.running],
-        ["label", cur.running ? task?.label : undefined],
-        ["mode", bot.GetActiveMode()],
-        ["spot", info !== undefined ? info.anchor : "oha"],
-        ["pushed", info?.pushed],
-        ["why", info?.why],
-        ["hm", info !== undefined ? math.floor(info.margin) : undefined],
-        ["ut", info?.covered],
-        ["sx", spot !== undefined ? math.floor(spot.x) : undefined],
-        ["sy", spot !== undefined ? math.floor(spot.y) : undefined],
-        ["hph", LaneMetrics.HeroLost(bot)],
-        ["ne", ne !== undefined ? math.floor(ne) : undefined],
-        ["nk", nk],
-        ["nr", nr !== undefined ? math.floor(nr) : undefined],
-        ["cl", info?.clash !== undefined ? math.floor(info.clash) : undefined],
-        ["fo", info?.far !== undefined ? math.floor(info.far) : undefined],
-        ["rn", info?.rn],
-        ["sl", info?.sl],
-        ["sr", info?.sr !== undefined ? math.floor(info.sr * 100 + 0.5) / 100 : undefined],
-        ["pl", info?.pl],
-        ["pq", info?.pq !== undefined ? math.floor(info.pq * 100 + 0.5) / 100 : undefined],
-    ]);
-    // Same frame as Compute (Spot caches per frame), so the line holds the state that spot was computed from.
-    if (info !== undefined && Telemetry.IsEnabled() && Telemetry.Get().Cut === true) pcall(Cut.Spot, bot);
-}
-
 /** Every frame from Humaniser.Tick, before Tasks.Tick. */
 export function Tick(bot: Unit): void {
     if (!IsEnabled()) return;
-    LaneAggro.Tick(bot);
-    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny()) && !CoreLastHit.Applies(bot) && !SupportDeny.Applies(bot)) return;
+    if (!shadowTeam(bot) && !(ownTeam(bot) && ownsAny())) return;
     const l = lib();
     if (l === undefined) return;
     const pid = bot.GetPlayerID();
@@ -209,10 +146,6 @@ export function Tick(bot: Unit): void {
         );
     }
     l.States.Tick(bot as unknown as Lib.TaskUnit);
-    LaneMetrics.Tick(bot);
-    WaveHold.Watch(bot, HoldHosted(bot), BodyBusy(bot));
-    WaveHold.Tick(bot);
-    lanePos(bot, l);
 }
 
 /** Whether the layer runs `state`'s body for this bot now (enabled, team rule, position listed in Own). */
@@ -259,54 +192,8 @@ export function Step(bot: Unit, mode: number): boolean {
     return l !== undefined && l.States.Step(bot as unknown as Lib.TaskUnit, mode);
 }
 
-/** True while the laning body runs for this bot and owns its last hits: the Lua Think skips its own. */
-export function BodyLastHits(bot: Unit): boolean {
-    if (!IsEnabled() || !Laning.OwnsLastHit(bot)) return false;
-    const cur = Tasks.Loaded()?.States.Current(bot as unknown as Lib.TaskUnit);
-    return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
-}
-
-/**
- * True while the laning body is in a last-hit or deny attempt: mode_laning_generic then steps the body first and
- * skips its own techniques and harass, whose orders on the frames between would cancel the swing (G5: swings
- * that never landed, `missed` with the creep alive seconds later).
- */
-export function BodyBusy(bot: Unit): boolean {
-    if (!BodyLastHits(bot)) return false;
-    const label = Tasks.Current(bot)?.label;
-    return label === "lasthit" || label === "deny";
-}
-
-function laningRunning(bot: Unit): boolean {
-    const cur = Tasks.Loaded()?.States.Current(bot as unknown as Lib.TaskUnit);
-    return cur !== undefined && cur.name === Laning.NAME && cur.owned && cur.running;
-}
-
-/** True while the laning body runs for this support and owns its lane hits (Ours.SupportDeny): the Lua Think skips DenyThink. */
-export function BodySupportHits(bot: Unit): boolean {
-    return IsEnabled() && Laning.OwnsSupportHits(bot) && laningRunning(bot);
-}
-
-/** BodySupportHits with Ours.SupportLastHit: the body takes the support's claimed last hits too, so the Lua Think skips LastHitThink. */
-export function BodySupportLastHits(bot: Unit): boolean {
-    return BodySupportHits(bot) && SupportDeny.LastHits(bot);
-}
-
-/**
- * The support's attack is the body's own last hit (its attempt's creep): Ours.LeaveCoreCreep's cancel of a swing on a creep a
- * core could reach must not cancel a creep the claims gave the support (its core busy on another).
- */
-export function SupportOwnsAttack(bot: Unit): boolean {
-    if (!BodySupportLastHits(bot)) return false;
-    const target = bot.GetAttackTarget();
-    return target !== undefined && target !== null && (LanePick.Attempting(bot.GetPlayerID()) as unknown) === target;
-}
-
 /** The Lua callbacks of mode_laning_generic's Think that LaneStep walks (states/lane_table Ctx). */
-export type LaneCallbacks = Pick<
-    LaneTable.Ctx,
-    "etiquette" | "ohaLastHit" | "ohaDeny" | "ohaHold" | "ohaLocal" | "ohaPosition"
->;
+export type LaneCallbacks = Pick<LaneTable.Ctx, "ohaLastHit" | "ohaDeny" | "ohaHold" | "ohaLocal" | "ohaPosition">;
 
 const laneCtx: Record<number, { cb: LaneCallbacks; ctx: LaneTable.Ctx } | undefined> = {};
 
@@ -322,14 +209,6 @@ export function LaneStep(bot: Unit, cb: LaneCallbacks): string {
             cb,
             ctx: {
                 enabled: IsEnabled,
-                bodyRunning: () => laningRunning(bot),
-                bodyLabel: () => Tasks.Current(bot)?.label,
-                stepBody: () => Step(bot, BotMode.Laning),
-                bodyBusy: () => BodyBusy(bot),
-                bodyLastHits: () => BodyLastHits(bot),
-                bodySupportHits: () => BodySupportHits(bot),
-                bodySupportLastHits: () => BodySupportLastHits(bot),
-                etiquette: cb.etiquette,
                 ohaLastHit: cb.ohaLastHit,
                 ohaDeny: cb.ohaDeny,
                 ohaHold: cb.ohaHold,
@@ -340,21 +219,6 @@ export function LaneStep(bot: Unit, cb: LaneCallbacks): string {
         laneCtx[pid] = c;
     }
     return LaneTable.Walk(bot, c.ctx);
-}
-
-/**
- * Whether the wave hold's read runs for this core (slice hold-through-swing): where the lane table's `aggro` or `drill_hold`
- * row would act it, the laning body running (a lane-only drill core, only with `laneHold`). Swing frames count: the read
- * gives no order.
- */
-export function HoldHosted(bot: Unit): boolean {
-    if (!BodyLastHits(bot)) return false;
-    return !Drill.LaneOnly(bot) || Drill.LaneHold(bot);
-}
-
-/** mode_laning_generic.lua hands over its PositionThink target (nil until its GetDesire has run). */
-export function SetLaneSpot(bot: Unit, fn: (this: void) => Vector | undefined): void {
-    Laning.SetSpot(bot, fn);
 }
 
 export function Describe(bot: Unit): string | undefined {

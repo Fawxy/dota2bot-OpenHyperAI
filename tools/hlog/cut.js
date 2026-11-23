@@ -2,10 +2,10 @@
 'use strict';
 // Fixture cuts (rework step 8): turns an ev=cut line (bot cut.ts) into a decision fixture's world, and checks that the
 // cut replays what the game decided.
-//   node cut.js <log> --pid P --t 5:12 [--kind spot|gate|leave|join|trade|safe|pick] [--who CONSUMER] [--game N] [--id ID]   print a fixture
-//       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. core_camp)
+//   node cut.js <log> --pid P --t 5:12 [--kind leave|gate|safe] [--who CONSUMER] [--game N] [--id ID]   print a fixture
+//       (YAML) for the cut at or just before t (--who: a gate cut's consumer, e.g. pull_farm)
 //   node cut.js <log> --check [--kind K] [--who W] [--game N] [--sample 20 | --all] [--json]   replay up to 20 cuts of each
-//       answer the game gave (spot: the ev=lane_pos why, sx, sy, pl; gate: its ev=threat dec; leave: the cut's dec); --all
+//       answer the game gave (gate: its ev=threat dec; leave: the cut's dec; safe: its lv and why); --all
 //       checks every cut and judges the bar (95% of each answer)
 //       --jobs N replays on N worker threads (default min(6, cores); 1 replays in this process; fewer than 400 cuts,
 //       40 with --fresh, always do)
@@ -13,7 +13,8 @@
 //   node cut.js <log> --list [--kind K] [--who W] [--answer A] [--pid P] [--engaged 0|1]   one line per cut: time, pid, answer,
 //       HP, heroes, whether an enemy hero in it is hitting the bot (the cut's engaged flag) and the burst (their damage, over 6 s
 //       for a hitting hero else 3 s, over the bot's HP: the threat read's); --engaged keeps the cuts with (1) or without (0) one
-// --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped).
+// --game: which game of the log (1-based; default the last, so a remote job's stub game 1 is skipped). The lane body's kinds
+// (spot, join, trade, pick) went with it on 23/11/2026; their banked lines report `no world builder`.
 const fs = require('fs'), path = require('path'), os = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const { newState, doString, getGlobal } = require('../../tests/humaniser/harness');
@@ -21,8 +22,6 @@ const { newState, doString, getGlobal } = require('../../tests/humaniser/harness
 const FIELD_RE = /(\w+)=("([^"]*)"|\S+)/g;
 /** The game clock goes back by more than this between games of one log (parse.js GAME_SPLIT_REGRESSION). */
 const GAME_SPLIT = 30;
-/** A replayed spot this close to the logged one (logged coordinates are floored) is the same spot. */
-const SAME_SPOT = 5;
 
 /** Raw field strings: a hex vision grid of digits must not become a number. */
 function fields(text) {
@@ -31,7 +30,7 @@ function fields(text) {
     return out;
 }
 
-/** The log's games, each { cuts, creeps, lanePos, threats, bots, towers } keyed for joining by pid and t (threats also by consumer). */
+/** The log's games, each { cuts, creeps, threats, bots, towers } keyed for joining by pid and t (threats also by consumer). */
 function readGames(text) {
     const games = [];
     let g, last = -Infinity;
@@ -44,22 +43,14 @@ function readGames(text) {
         if (!Number.isFinite(t)) continue;
         if (g === undefined || t < last - GAME_SPLIT) {
             // Tower places do not move: a pregame line split off by a clock jump still serves the game after it.
-            g = { cuts: [], trades: [], creeps: new Map(), lanePos: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
+            g = { cuts: [], creeps: new Map(), threats: new Map(), bots: new Map(g?.bots || []), towers: new Map(g?.towers || []) };
             games.push(g);
         }
         last = t;
         const key = `${f.pid}@${f.t}`;
-        // The one trade decision's line is `kind=trade` (`trade2` on logs from before the old decision went); the retired decision's
-        // `kind=trade` line has no `lv`, so it is set apart as `trade_old` and the retired `keep` line is left alone: neither replays.
-        if (f.ev === 'cut') {
-            if (f.kind === 'trade2') f.kind = 'trade';
-            else if (f.kind === 'trade' && f.lv === undefined) f.kind = 'trade_old';
-            g.cuts.push(f);
-        }
-        // A kind's creeps line is keyed apart: two cuts of one hero in one frame must not share creeps (the spot's carry no kind).
-        else if (f.ev === 'trade') g.trades.push(f);
+        if (f.ev === 'cut') g.cuts.push(f);
+        // A kind's creeps line is keyed apart: two cuts of one hero in one frame must not share creeps.
         else if (f.ev === 'cut_creeps') g.creeps.set(f.kind ? `${key}@${f.kind}` : key, f);
-        else if (f.ev === 'lane_pos') g.lanePos.set(key, f);
         else if (f.ev === 'threat') g.threats.set(`${key}@${f.who}`, f);
         else if (f.ev === 'bot' && !g.bots.has(f.pid)) g.bots.set(f.pid, f);
         else if (f.ev === 'cut_towers' && !g.towers.has(f.team)) g.towers.set(f.team, f);
@@ -113,10 +104,10 @@ function botOf(game, cut) {
     return bot;
 }
 
-/** The records the spot's and the leave's worlds share: the bot, heroes, creeps, towers and vision of one cut. */
+/** The leave's world: the bot, heroes, creeps, towers and vision of one cut. */
 function commonWorld(game, cut) {
     const key = `${cut.pid}@${cut.t}`;
-    const cc = game.creeps.get(cut.kind === 'spot' ? key : `${key}@${cut.kind}`);
+    const cc = game.creeps.get(`${key}@${cut.kind}`);
     if (!cc) throw new Error(`no ev=cut_creeps for pid ${cut.pid} at ${cut.t}`);
     const bot = botOf(game, cut);
     const team = Number(bot.team);
@@ -132,7 +123,7 @@ function commonWorld(game, cut) {
     return w;
 }
 
-// Threat.Gate's consumers (ev=threat `who`); core_pull and lane_ctl call Threat.Log directly and have no gate cut.
+// SafeGather.TripGate's consumers (ev=threat `who`); core_camp, core_pull and lane_ctl are on banked logs only.
 const GATE_WHO = new Set(['core_camp', 'pull_farm', 'pull_job', 'sup_job', 'farm_trip']);
 
 /** Gate decisions logged with no gate cut beside them: a cut that throws is swallowed by the game's pcall and shows only so. */
@@ -147,35 +138,6 @@ function uncutGates(game, who) {
  * { error }, `brief` is the rest of a --list line.
  */
 const DECISIONS = {
-    spot: {
-        driver: 'lane_spot',
-        world(game, cut) {
-            const w = commonWorld(game, cut);
-            const [fx, fy, fbx, fby] = nums(cut.fr);
-            Object.assign(w, { role: cut.role, lane: Number(cut.lane), front: { x: fx, y: fy, bx: fbx, by: fby } });
-            if (cut.fed !== undefined) w.fed = Number(cut.fed);
-            if (cut.hold !== undefined) { const [x, y] = nums(cut.hold); w.hold = { x, y }; }
-            return w;
-        },
-        check(game, cut, obs) {
-            const lp = game.lanePos.get(`${cut.pid}@${cut.t}`);
-            if (!lp) return { error: 'no ev=lane_pos beside it' };
-            const verb = v => (obs.actions.find(a => a.verb === v) || {}).target;
-            const d = Math.hypot(obs.fact.x - Number(lp.sx), obs.fact.y - Number(lp.sy));
-            const why = verb('stand') === lp.why, rp = (verb('read') ?? 'off') === (lp.pl ?? lp.rp ?? 'off');
-            return { same: d <= SAME_SPOT && why && rp, d, why, rp, got: `${verb('stand')}/${verb('read')}`, want: `${lp.why}/${lp.pl ?? lp.rp}`, detail: `off by ${d.toFixed(0)}` };
-        },
-        answer: (game, cut) => (game.lanePos.get(`${cut.pid}@${cut.t}`) || {}).why ?? '?',
-        brief(game, cut) {
-            const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
-            return `${cut.role}, read ${lp.pl ?? lp.rp ?? 'off'}`;
-        },
-        id: (cut) => `lane.spot.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note(game, cut) {
-            const lp = game.lanePos.get(`${cut.pid}@${cut.t}`) || {};
-            return `The game chose ${lp.why}/${lp.pl ?? lp.rp} at (${lp.sx}, ${lp.sy})`;
-        },
-    },
     gate: {
         driver: 'threat_gate',
         world(game, cut) {
@@ -216,7 +178,7 @@ const DECISIONS = {
         driver: 'retreat_leave',
         world(game, cut) {
             const w = commonWorld(game, cut);
-            Object.assign(w, { dt: Number(cut.dt), pj: Number(cut.pj) === 1 ? 1 : 0, hb: Number(cut.hb) === 1 ? 1 : 0 });
+            w.dt = Number(cut.dt);
             return w;
         },
         check(game, cut, obs) {
@@ -229,54 +191,6 @@ const DECISIONS = {
         brief: (game, cut) => `${cut.lv}(${cut.why}) kill ${cut.kill} ratio ${cut.ra === undefined ? '-' : cut.ra}, ${cut.purp}`,
         id: (cut) => `retreat.leave.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.dec} (${cut.lv}(${cut.why}), kill ${cut.kill}, ratio ${cut.ra === undefined ? '-' : cut.ra}, ${cut.purp})`,
-    },
-    join: {
-        driver: 'pair_join',
-        world(game, cut) {
-            const side = (s, ours) => (s ? s.split(';') : []).map(r => {
-                const [pid, x, y, hp, mhp, ret] = nums(r);
-                return ours ? { pid, x, y, hp, mhp, ret } : { pid, x, y, hp, mhp };
-            });
-            const dmg = (cut.dm ? cut.dm.split(';') : []).map(r => { const [from, to, d] = nums(r); return { from, to, d }; });
-            // An `on=ours` line (retired join-hits) is no replay: its record weighed one hero, which Decide no longer does.
-            if (cut.on === 'ours') throw new Error('an on=ours join line (the retired record) is not replayable');
-            const w = { t: Number(cut.t), pid: Number(cut.pid), ally: Number(cut.al), ours: side(cut.po, true), theirs: side(cut.pt, false), dmg };
-            if (cut.jar !== undefined) w.ar = String(cut.jar);
-            if (cut.jav !== undefined) w.arv = Number(cut.jav);
-            return w;
-        },
-        check(game, cut, obs) {
-            const a = obs.actions[0] || {};
-            const got = a.verb === 'join' ? `join(${a.target})` : `out(${a.target})`;
-            const want = cut.dec === 'join' ? `join(hero#${cut.tgt})` : `out(${cut.dec})`;
-            return { same: got === want, got, want };
-        },
-        answer: (game, cut) => cut.dec,
-        brief: (game, cut) => `ally ${cut.al}, ${cut.po.split(';').length}v${cut.pt.split(';').length}, ours ${cut.ko} theirs ${cut.kt}`,
-        id: (cut) => `fights.join.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${cut.dec} on ${cut.tgt} (ours ${cut.ko}, theirs ${cut.kt})`,
-    },
-    // The one trade decision (states/trade.ts Decide): every input rides on the line, the answer is `lv`/`tgt`/`why`, with `ed` the end of a running exchange.
-    // A line with no `ms` (the step-4 smoke game) replays with the driver's default speed.
-    trade: {
-        driver: 'trade',
-        world(game, cut) {
-            if (cut.svh === undefined) throw new Error('a trade line from before the veto asked Safe.At (no svh): its burst read is not replayed');
-            const w = { t: Number(cut.t), pid: Number(cut.pid), role: cut.role };
-            for (const k of ['hp', 'n', 'ms', 'tm', 'hc', 'cr', 'dn', 'thd', 'jhd', 'crd', 'uat', 'utw', 'uth']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
-            for (const k of ['svh', 'svb', 'swg', 'pjr', 'pl', 'cd', 'run']) if (cut[k] !== undefined) w[k] = String(cut[k]);
-            return w;
-        },
-        check(game, cut, obs) {
-            const main = obs.actions[0] || {};
-            const ended = obs.actions.find(a => a.verb === 'end');
-            const got = `${main.verb}(${main.target})${ended ? `/end(${ended.target})` : ''}`;
-            return { same: got === tradeAnswer(cut), got, want: tradeAnswer(cut) };
-        },
-        answer: (game, cut) => (cut.lv === 'none' ? `none(${cut.why})` : cut.lv),
-        brief: (game, cut) => `${cut.role} hp ${cut.hp}, safe here ${cut.svh} / hold ${cut.svb}, ${String(cut.cd || '').split(';').filter(Boolean).length} candidates${cut.run ? `, running ${String(cut.run).split(':')[0]}` : ''}, why ${cut.why}`,
-        id: (cut) => `lane.trade.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${tradeAnswer(cut)} (hp ${cut.hp}, safe here ${cut.svh} / hold ${cut.svb}, creeps on us ${cut.hc}, wave ${cut.cr})`,
     },
     // The safe-here read in shadow (safe_gather.ts Shadow): every input rides on the line (`rr`, `mi`, `stw`, `ld`, `awy`, `hld`, `hd`, hp as `hpa` and `hpm`),
     // the answer is `lv` and `why`. Pure Decide, so no map, towers or creeps are needed. Rounded fields (damage and HP to 1, the weight to 0.001, the landing to 0.01) can
@@ -300,33 +214,7 @@ const DECISIONS = {
         id: (cut) => `safe.${cut.who}.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
         note: (game, cut) => `The game chose ${cut.lv}(${cut.why}) at ${cut.who} (hp ${cut.hpa} of ${cut.hpm}, kill ${cut.kill})`,
     },
-    // The laning body's creep pick (laning.ts choose, LanePick.Choose): the offered creeps, the wait, the pre-hit and the order ride on the line; `mine`, the walk-in
-    // limit `far` and the idle swing found are the game's answers, taken as logged. The answer is `ans` (the offer's place, `pre`, `idle`, `none`) and its kind `ak`.
-    pick: {
-        driver: 'pick',
-        world(game, cut) {
-            const w = { t: Number(cut.t), pid: Number(cut.pid) };
-            for (const k of ['cur']) if (cut[k] !== undefined) w[k] = Number(cut[k]);
-            for (const k of ['ord', 'tg', 'pre', 'far', 'idle']) if (cut[k] !== undefined) w[k] = String(cut[k]);
-            return w;
-        },
-        check(game, cut, obs) {
-            const a = obs.actions[0] || {};
-            const got = `${a.verb}(${a.target})`;
-            const want = `${cut.ans}(${cut.ak})`;
-            return { same: got === want, got, want };
-        },
-        answer: (game, cut) => (cut.ans === 'none' ? 'none' : `${cut.ans === 'pre' || cut.ans === 'idle' ? cut.ans : 'offer'}(${cut.ak})`),
-        brief: (game, cut) => `pos ${cut.pos}, ${cut.tg ? String(cut.tg).split(';').length : 0} offered${cut.cur !== undefined ? `, waiting on ${cut.cur}` : ''}${cut.pre !== undefined ? ', pre-hit offered' : ''}, took ${cut.ans}`,
-        id: (cut) => `lane.pick.cut-${cut.pid}-${Math.floor(Number(cut.t))}.001`,
-        note: (game, cut) => `The game chose ${cut.ans}(${cut.ak}) of ${cut.tg ? String(cut.tg).split(';').length : 0} offered (order ${cut.ord})`,
-    },
 };
-
-/** A trade cut's answer as the driver observes it: `lv(hero#tgt)` or `none(why)`, then `/end(ed)` when a running exchange ended. */
-function tradeAnswer(cut) {
-    return `${cut.lv === 'none' ? `none(${cut.why})` : `${cut.lv}(hero#${cut.tgt})`}${cut.ed !== undefined ? `/end(${cut.ed})` : ''}`;
-}
 
 /** The fixture world for one ev=cut line, or throws naming what the log lacks. */
 function worldOf(game, cut) {
@@ -489,18 +377,7 @@ function barMisses(byAnswer) {
 function factsOf(w) {
     const d = (u, p) => Math.round(Math.hypot(u.x - p.x, u.y - p.y));
     const b = w.bot;
-    // A join world is the fight itself: each hero's HP and its distance from the hit ally.
-    if (b === undefined && Array.isArray(w.ours)) {
-        const al = w.ours.find(m => m.pid === w.ally) || w.ours[0];
-        return [...w.ours.map(m => `# ours pid ${m.pid}${m.pid === w.ally ? ' (the hit ally)' : ''}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally${m.ret === 1 ? ', retreating' : ''}`),
-            ...w.theirs.map(m => `# theirs pid ${m.pid}: HP ${m.hp} of ${m.mhp}, ${d(m, al)} from the ally`)];
-    }
     if (b === undefined && w.hpa !== undefined) return [`# ${w.who} pid ${w.pid}: HP ${w.hpa} of ${w.hpm}; reachers (pid,hitting,dmg,unseen) ${w.rr || 'none'}; unseen weight ${w.mi}; tower ${w.stw}; landing ${w.ld}`];
-    if (b === undefined && w.ord !== undefined) return [`# pid ${w.pid}: order ${w.ord}; offered (n,kind,eta,due,walk,dies,ranged,mine) ${w.tg || 'none'}; waiting on ${w.cur ?? 'nothing'}; pre-hit ${w.pre ?? 'none'}; far ${w.far ?? 'not given'}; idle ${w.idle ?? 'not asked'}`];
-    // A trade world is the one decision's inputs: the hero and its candidates.
-    if (b === undefined && w.cd !== undefined) return [`# ${w.role} pid ${w.pid}: HP ${Math.round(100 * w.hp)}%; safe here (level,ratio,reason) ${w.svh}, with a hold ${w.svb}; creeps on it ${w.hc}, wave ${w.cr}; tower on it ${w.tm}`
-        + `${w.run ? `; running ${String(w.run).split(':').slice(0, 2).join(' on ')}` : ''}`,
-        ...String(w.cd).split(';').filter(Boolean).map(r => { const f = r.split(','); return `# candidate pid ${f[0]}: HP ${Math.round(100 * f[1])}%, ${f[3]} away (gap ${f[4]}), ${f[7] === '1' ? 'hitting, ' : ''}${f[8] === '1' ? 'free, ' : ''}ko ${f[9]} kt ${f[10]}`; })];
     const at = w.place ? `, ${d(b, w.place)} from the place` : '';
     const out = [`# bot pid ${w.pid}: HP ${Math.round(100 * b.hp / b.mhp)}% (${b.hp} of ${b.mhp})${at}`];
     for (const [label, list] of [['enemy', w.he], ['unseen', w.hu], ['ally', w.ha]]) {
@@ -538,7 +415,7 @@ async function main(argv) {
         process.exit(log ? 0 : 1);
     }
     const games = readGames(fs.readFileSync(log, 'utf8'));
-    const kind = opt('--kind', 'spot');
+    const kind = opt('--kind', 'leave');
     const gi = opt('--game') !== undefined ? Number(opt('--game')) - 1 : games.length - 1;
     const game = games[gi];
     const cuts = game ? game.cuts.filter(c => c.kind === kind) : [];
@@ -552,7 +429,7 @@ async function main(argv) {
         for (const cut of pool) {
             const a = d.answer(game, cut);
             if ((answer !== undefined && a !== answer) || (pid !== undefined && cut.pid !== pid)) continue;
-            // A join cut carries its fight, not the bot's place and reads: its brief is the line.
+            // A cut with no bot record (safe) has its brief as the line.
             if (cut.b === undefined) { console.log(`${mmss(Number(cut.t))} t=${cut.t} pid ${cut.pid} ${a}: ${d.brief(game, cut)}`); continue; }
             const [, , hp, mhp] = nums(cut.b);
             const he = heroRecords(cut.he);
@@ -572,11 +449,9 @@ async function main(argv) {
         const ok = rows.filter(x => x.r.same).length, errs = rows.filter(x => x.r.error);
         const summary = { cuts: pool.length, checked: rows.length, same: ok, errors: errs.length, byDecision: tally(game, rows) };
         summary.barMisses = barMisses(summary.byDecision);
-        if (kind === 'spot') Object.assign(summary, { why: rows.filter(x => x.r.why).length, read: rows.filter(x => x.r.rp).length, near: rows.filter(x => x.r.d <= SAME_SPOT).length });
         if (kind === 'gate') summary.uncut = uncutGates(game, who);
         if (argv.includes('--json')) { console.log(JSON.stringify({ summary, rows }, null, 1)); return; }
-        if (kind === 'spot') console.log(`cuts ${summary.cuts}, checked ${summary.checked}: same spot, limit and read ${ok}; spot within ${SAME_SPOT} ${summary.near}, limit ${summary.why}, read ${summary.read}; errors ${summary.errors}`);
-        else console.log(`kind ${kind}: cuts ${summary.cuts}, checked ${summary.checked}: same as the game decided ${ok}; errors ${summary.errors}`
+        console.log(`kind ${kind}: cuts ${summary.cuts}, checked ${summary.checked}: same as the game decided ${ok}; errors ${summary.errors}`
             + (kind === 'gate' ? `; gate decisions without a cut ${summary.uncut}` : ''));
         console.log(`  by the game's answer (same/checked): ${Object.entries(summary.byDecision).map(([k, v]) => `${k} ${v}`).join(', ')}`);
         const judged = argv.includes('--all') ? 'bar (95% of each answer)' : 'on this sample, the bar (95% of each answer; judge it with --all)';
@@ -605,8 +480,8 @@ async function main(argv) {
 
 /**
  * Fewer cuts than this are replayed in-process: starting a worker (it reads the log and loads the bot's modules, about 1 s) costs more
- * than it saves. A kept replay takes 1 to 4 ms by kind, a fresh one 18 ms; measured 20/11/2026, workers lost at 373 trade cuts and
- * won at 1,040 pick cuts.
+ * than it saves. A kept replay takes 1 to 4 ms by kind, a fresh one 18 ms; measured 20/11/2026 (on the lane body's trade and pick cuts),
+ * workers lost at 373 cuts and won at 1,040.
  */
 const MIN_PARALLEL = { keep: 400, fresh: 40 };
 

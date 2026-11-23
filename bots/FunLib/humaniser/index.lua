@@ -24,33 +24,26 @@ local ApiProbe = require(GetScriptDirectory().."/FunLib/humaniser/api_probe")
 local VisionMap = require(GetScriptDirectory().."/FunLib/humaniser/vision_map")
 local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Etiquette = require(GetScriptDirectory().."/FunLib/humaniser/etiquette")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
-local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local RunePickup = require(GetScriptDirectory().."/FunLib/humaniser/rune_pickup")
 local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
-local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
-local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
-local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
-local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
 local SustainAct = require(GetScriptDirectory().."/FunLib/humaniser/sustain_act")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
-local PairJoin = require(GetScriptDirectory().."/FunLib/humaniser/pair_join")
 local CastLog = require(GetScriptDirectory().."/FunLib/humaniser/cast_log")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
@@ -69,7 +62,6 @@ ____exports.FarmPattern = FarmPattern
 ____exports.Trainer = Trainer
 ____exports.Telemetry = Telemetry
 ____exports.Ours = Ours
-____exports.Etiquette = Etiquette
 ____exports.StackJob = StackJob
 ____exports.RuneJob = RuneJob
 ____exports.RunePickup = RunePickup
@@ -77,18 +69,13 @@ ____exports.RunePlan = RunePlan
 ____exports.Plays = Plays
 ____exports.PullJob = PullJob
 ____exports.PullFarm = PullFarm
-____exports.CampClaims = CampClaims
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
 ____exports.Drill = Drill
-____exports.CoreCamp = CoreCamp
-____exports.Arbiter = Arbiter
 ____exports.ChoiceShadow = ChoiceShadow
 ____exports.Tasks = Tasks
 ____exports.States = States
-____exports.Trade = Trade
-____exports.LaneControl = LaneControl
 ____exports.Retreat = Retreat
 ____exports.SustainGather = SustainGather
 ____exports.SustainAct = SustainAct
@@ -330,7 +317,6 @@ local function tick(bot)
     logStart(bot)
     Drill.Tick(bot)
     Retreat.Tick(bot)
-    PairJoin.Tick(bot)
     steps.pings(bot)
     steps.commands(bot)
     steps.lane(bot)
@@ -340,7 +326,6 @@ local function tick(bot)
     steps.orders(bot)
     steps.intent(bot)
     pcall(steps.landing, bot)
-    LaneControl.Tick(bot)
     steps.telemetry(bot, telemetryContext)
     pcall(CastLog.Tick, bot)
     pcall(steps.regen, bot)
@@ -405,40 +390,12 @@ if Telemetry.GuardsEnabled() then
         Tick = none,
         Step = no,
         MayOwn = no,
-        SetLaneSpot = none,
         Describe = none,
         IsEnabled = no,
         WisdomOwned = no,
-        Owns = no,
-        BodyLastHits = no,
-        BodyBusy = no,
-        BodySupportHits = no,
-        BodySupportLastHits = no,
-        SupportOwnsAttack = no
-    })
-    Telemetry.GuardModule("Trade", Trade, {
-        Owns = no,
-        Desire = none,
-        OwnsFrame = no,
-        Think = none,
-        OnEnd = none,
-        LastHitYields = no,
-        OwnsLaneRun = no,
-        OwnsFights = no,
-        Holds = none
+        Owns = no
     })
     Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
-    Telemetry.GuardModule("PairJoin", PairJoin, {Tick = none})
-    Telemetry.GuardModule(
-        "Etiquette",
-        Etiquette,
-        {
-            Applies = no,
-            CoreCanTake = function() return true end,
-            MayLastHit = no,
-            LeavesTarget = no
-        }
-    )
     Telemetry.GuardModule(
         "StackJob",
         StackJob,
@@ -467,8 +424,6 @@ if Telemetry.GuardsEnabled() then
             InLaneDenies = no,
             ForbidsItem = no,
             ForbidsCast = no,
-            LaneHold = no,
-            LaneAggro = no,
             IdleStatue = no,
             Owns = no,
             ForcedJob = none,
@@ -481,24 +436,18 @@ if Telemetry.GuardsEnabled() then
             Active = none
         }
     )
-    Telemetry.GuardModule("Arbiter", Arbiter, {DeniesItemsTp = no, DeniesOhaRune = no})
-    Telemetry.GuardModule(
-        "Chooser",
-        Chooser,
-        {
-            RunningJobName = none,
-            Decide = none,
-            After = function(_b, _m, d) return d end,
-            FarmDesire = zero,
-            FarmThink = no,
-            Abort = none,
-            HoldsRun = no,
-            HoldsIdle = no,
-            HoldsCasts = no,
-            Benched = no,
-            Bench = no
-        }
-    )
+    Telemetry.GuardModule("Chooser", Chooser, {
+        RunningJobName = none,
+        Decide = none,
+        FarmDesire = zero,
+        FarmThink = no,
+        Abort = none,
+        HoldsRun = no,
+        HoldsIdle = no,
+        HoldsCasts = no,
+        Benched = no,
+        Bench = no
+    })
     Telemetry.GuardModule(
         "AllyLastHit",
         AllyLastHit,
@@ -515,7 +464,6 @@ if Telemetry.GuardsEnabled() then
         DesireFloor = zero
     })
     Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
-    Telemetry.GuardModule("LaneControl", LaneControl, {Tick = none})
     Telemetry.GuardModule("SustainGather", SustainGather, {Bought = none})
     Telemetry.GuardModule("SustainAct", SustainAct, {
         ItemThink = none,

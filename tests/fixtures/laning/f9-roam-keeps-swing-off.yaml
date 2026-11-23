@@ -7,12 +7,12 @@ control: {commit: f5be4cb, outcome: pass}
 conditions: {phase: laning, role: pos5}
 world:
   t: 120
-  ours: false
   bot: {pos: 5, x: 0, y: 0, range: 150, dmg: 50, target: 1}
   creeps: [{id: 1, team: enemy, hp: 300, x: 100, y: 0}]
   allies: [{id: 2, pos: 1, x: 250, y: 0, range: 150}]
 expect:
   mustNot: ["hold"]
 notes: >
-  Guard for the OFF arm: with the switch off team_roam's Think leaves the swing alone, as before slice 3. Also the
-  sibling that shows lane.lasthit.roam-cancels-swing.001's hold comes from the switch, not from the world.
+  Guard for the stock arm: team_roam's Think leaves a support's swing at a creep its core can take alone. Its sibling
+  (the ON arm, lane.lasthit.roam-cancels-swing.001) was deleted with Ours.LeaveCoreCreep on 23/11/2026 (bot repo tag
+  pre-lane-body-cut).
