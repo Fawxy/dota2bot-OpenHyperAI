@@ -146,8 +146,11 @@ do
 	H.Decider.ROWS[1] = row({ applies = true, steps = 0, finishAt = 99 })
 	local f = farm()
 	local desire = H.Decider.Host(bot, f.GetDesire)
-	local tie, farmHigh, stale, staleRival
+	local zero, tie, farmHigh, stale, staleRival
 	capture(function()
+		gated(H, bot, { retreat = 0, laning = 0, team_roam = 0 })
+		zero = desire()
+		T = T + 0.1
 		gated(H, bot, { retreat = 0.5, team_roam = 0.5 })
 		tie = desire()
 		T = T + 0.1
@@ -161,13 +164,26 @@ do
 		gated(H, bot, { retreat = 0.5, laning = 0.1 })
 		staleRival = desire()
 	end)
-	check("retreat level with another mode: the row holds", tie == H.Decider.HARD, tostring(tie))
+	check("every mode at 0, retreat too: retreat does not lead, the row holds", zero == H.Decider.HARD, tostring(zero))
+	check("retreat level with another mode: Valve's tie-break is not known, so the row lets go to stock", tie == 0.4, tostring(tie))
 	check("farm's own value is not a rival (hidden while the row holds): retreat leading the rest lets go", farmHigh == 0.4,
 		tostring(farmHigh))
 	check("a retreat value (0.5) not returned this round or the last is not read, though over every fresh one: the row holds", stale == H.Decider.HARD,
 		tostring(stale))
 	check("a rival not asked this round or the last (roam 0.8) is not read: a fresh retreat over the fresh rest lets go",
 		staleRival == 0.4, tostring(staleRival))
+end
+
+do
+	local H, bot = world()
+	local f = farm()
+	local v
+	local lines = capture(function()
+		gated(H, bot, { retreat = 0.9, laning = 0.1 })
+		v = H.Decider.Host(bot, f.GetDesire)()
+	end)
+	check("no row: a leading retreat is not a let-go; farm's own desire and a line without let", v == 0.4 and #lines == 1
+		and lines[1]:find("held=-", 1, true) and not lines[1]:find("let=", 1, true), tostring(v) .. " " .. table.concat(lines, " | "))
 end
 
 finish()

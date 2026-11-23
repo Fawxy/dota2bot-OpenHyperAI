@@ -18,7 +18,8 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 ____exports.HARD = 0.98
 --- Doctrine order: the first row that applies holds. Empty: the pass-through.
 ____exports.ROWS = {}
---- The mode file that hosts the decider. Its own desire is not computed while a row holds, so it never takes part in the retreat read.
+--- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
+-- and counting it only when fresh (the round after a yield) would make the hold flicker every other round.
 local HOST = "farm"
 --- judgement: a mode's value older than this is from neither this round nor the last (Valve asks every mode every round), so
 -- its file was not asked and its value is not a rival.
@@ -45,39 +46,46 @@ end
 -- own desire falls through) is not known, so it is forgotten.
 function ____exports.NoteDesire(bot, mode, v)
     local seen = stateOf(bot).seen
-    if type(v) == "number" then
+    if type(v) ~= "number" then
+        seen[mode] = nil
+        return
+    end
+    local n = seen[mode]
+    if n == nil then
         seen[mode] = {
             v = v,
             t = DotaTime()
         }
     else
-        seen[mode] = nil
+        n.v = v
+        n.t = DotaTime()
     end
 end
 --- Plan s3, user 23/11/2026: stock would retreat when the retreat file's desire leads every other mode the hold outbids. Each
--- value is the file's latest, this round's or the last, as Valve's order of calls gives it, so the read can lag the
--- retreat call by one round. Valve-only modes (attack for most heroes, item, evasive) have no file and are not seen: a
--- let-go they would have outbid only yields to stock. Returns the leading retreat value, else undefined.
+-- value is the file's latest within FRESH, as Valve's order of calls gives it, so the read can lag the retreat call by a
+-- round. Valve-only modes (attack for most heroes, item, evasive) have no file and are not seen. Every error of this read
+-- should only yield to stock, so a tie with a rival lets go (Valve's tie-break is not known); a retreat at 0 never leads.
+-- Returns the leading retreat value, else undefined.
 local function retreatLeads(s)
     local now = DotaTime()
     local r = s.seen.retreat
-    if r == nil or now - r.t > FRESH then
+    if r == nil or r.v <= 0 or now - r.t > FRESH then
         return nil
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue13
+            local __continue14
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue13 = true
+                    __continue14 = true
                     break
                 end
-                if n.v >= r.v then
+                if n.v > r.v then
                     return nil
                 end
-                __continue13 = true
+                __continue14 = true
             until true
-            if not __continue13 then
+            if not __continue14 then
                 break
             end
         end

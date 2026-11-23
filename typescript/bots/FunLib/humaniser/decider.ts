@@ -33,7 +33,10 @@ export const HARD = 0.98;
 /** Doctrine order: the first row that applies holds. Empty: the pass-through. */
 export const ROWS: Row[] = [];
 
-/** The mode file that hosts the decider. Its own desire is not computed while a row holds, so it never takes part in the retreat read. */
+/**
+ * The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
+ * and counting it only when fresh (the round after a yield) would make the hold flicker every other round.
+ */
 const HOST = "farm";
 
 /**
@@ -82,23 +85,32 @@ function pick(bot: Unit): Row | undefined {
  */
 export function NoteDesire(bot: Unit, mode: string, v: any): void {
     const seen = stateOf(bot).seen;
-    if (type(v) === "number") seen[mode] = { v: v as number, t: DotaTime() };
-    else seen[mode] = undefined as any;
+    if (type(v) !== "number") {
+        seen[mode] = undefined as any;
+        return;
+    }
+    const n = seen[mode];
+    if (n === undefined) seen[mode] = { v: v as number, t: DotaTime() };
+    else {
+        n.v = v as number;
+        n.t = DotaTime();
+    }
 }
 
 /**
  * Plan s3, user 23/11/2026: stock would retreat when the retreat file's desire leads every other mode the hold outbids. Each
- * value is the file's latest, this round's or the last, as Valve's order of calls gives it, so the read can lag the
- * retreat call by one round. Valve-only modes (attack for most heroes, item, evasive) have no file and are not seen: a
- * let-go they would have outbid only yields to stock. Returns the leading retreat value, else undefined.
+ * value is the file's latest within FRESH, as Valve's order of calls gives it, so the read can lag the retreat call by a
+ * round. Valve-only modes (attack for most heroes, item, evasive) have no file and are not seen. Every error of this read
+ * should only yield to stock, so a tie with a rival lets go (Valve's tie-break is not known); a retreat at 0 never leads.
+ * Returns the leading retreat value, else undefined.
  */
 function retreatLeads(s: HeroState): number | undefined {
     const now = DotaTime();
     const r = s.seen["retreat"];
-    if (r === undefined || now - r.t > FRESH) return undefined;
+    if (r === undefined || r.v <= 0 || now - r.t > FRESH) return undefined;
     for (const [mode, n] of pairs(s.seen)) {
         if (mode === "retreat" || mode === HOST || now - n.t > FRESH) continue;
-        if (n.v >= r.v) return undefined;
+        if (n.v > r.v) return undefined;
     }
     return r.v;
 }
