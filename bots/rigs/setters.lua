@@ -193,4 +193,65 @@ Convars:RegisterCommand("rig_neutrals", function(_, x, y, r)
 		table.concat(names, ",")))
 end, "rig: count the live neutrals in a circle", FCVAR_CHEAT)
 
+-- A camp's watch for the stacked pull's rig (families proposal s5 case 3, round 3), one think per camp for the rest of the
+-- game: at :59.5 and :00.5 the neutrals in the box circle with their HP shares (`watch_min`: what a stack meets and makes);
+-- each lane creep of `team` that came within `r` of the camp and leaves past r + 300 alive, with its HP share (`watch_off`:
+-- the pulled wave's survivors walking back); and when the last of that team's creeps leaves or dies, the neutrals still
+-- alive within r with their HP shares (`watch_end`).
+local function hps(us)
+	local t = {}
+	for _, u in ipairs(us) do table.insert(t, string.format("%.2f", u:GetHealth() / math.max(1, u:GetMaxHealth()))) end
+	return table.concat(t, ",")
+end
+
+local function laneCreeps(team, c, r)
+	local out = {}
+	for _, u in ipairs(FindUnitsInRadius(team, c, nil, r, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC, 0, 0, false)) do
+		if u:IsAlive() and u:GetClassname() == "npc_dota_creep_lane" then table.insert(out, u) end
+	end
+	return out
+end
+
+Convars:RegisterCommand("rig_camp_watch", function(_, x, y, team, r, box)
+	local ok, err = pcall(function()
+		local c = Vector(tonumber(x), tonumber(y), 0)
+		team = tonumber(team)
+		r = tonumber(r) or 900
+		box = tonumber(box) or 500
+		local tag = string.format("x=%s y=%s", tostring(x), tostring(y))
+		local inside, fighting = {}, false
+		local lastMark = -1
+		HeroList:GetAllHeroes()[1]:SetContextThink("rig_watch_" .. tostring(x) .. "_" .. tostring(y), function()
+			local t = GameRules:GetDOTATime(false, false)
+			local sec = t % 60
+			local mark = math.floor(t * 2 + 0.5)
+			if (sec >= 59.5 or sec < 0.75) and mark ~= lastMark and (math.abs(sec - 59.5) < 0.2 or math.abs(sec - 0.5) < 0.2) then
+				lastMark = mark
+				local ns = campNeutrals(c, box)
+				say(string.format("watch_min %s t=%.1f n=%d hp=%s", tag, t, #ns, hps(ns)))
+			end
+			local near = laneCreeps(team, c, r)
+			for _, u in ipairs(near) do inside[u:entindex()] = u end
+			for id, u in pairs(inside) do
+				if u:IsNull() or not u:IsAlive() then
+					inside[id] = nil
+				elseif (u:GetAbsOrigin() - c):Length2D() > r + 300 then
+					say(string.format("watch_off %s t=%.1f hp=%.2f", tag, t, u:GetHealth() / math.max(1, u:GetMaxHealth())))
+					inside[id] = nil
+				end
+			end
+			local any = next(inside) ~= nil
+			if any then fighting = true end
+			if fighting and not any then
+				fighting = false
+				local ns = campNeutrals(c, r)
+				say(string.format("watch_end %s t=%.1f n=%d hp=%s", tag, t, #ns, hps(ns)))
+			end
+			return 0.1
+		end, 0)
+		say(string.format("watch armed %s team=%d r=%d", tag, team, r))
+	end)
+	if not ok then say("watch error " .. tostring(err)) end
+end, "rig: watch a camp for the stacked pull's rig", FCVAR_CHEAT)
+
 say("setters registered")
