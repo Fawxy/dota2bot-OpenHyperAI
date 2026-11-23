@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { plan, planSummary, runArgs, pinCommits, seconds } = require('../batch');
+const { plan, planSummary, runArgs, pinCommits, pinRemote, seconds } = require('../batch');
 const bank = require('../bank');
 const { readManifest, expandPath } = require('../manifest');
 const { health, bar, cond } = require('../er');
@@ -197,6 +197,14 @@ function runBatch(spec, fakePlan, dir) {
         manifest: read(path.join(home, '.dotactl', 'batches', `${spec.name}.manifest`)),
         bank: read(path.join(home, '.dotactl', 'bank.jsonl')).map(JSON.parse) };
 }
+
+test('batch pinRemote: lineup_check expects the stamp the host writes for the arm\'s commit unless a build is named', () => {
+    const sha = 'c0ffee12' + 'd'.repeat(32);
+    const spec = { remote: true, arms: { on: { branch: 'remote/lion/on', sha }, own: { branch: 'remote/lion/own', sha, build: 'abc+dirty' } } };
+    assert.deepStrictEqual(Object.values(pinRemote(spec).arms).map(a => a.build), ['c0ffee12', 'abc+dirty']);
+    assert.strictEqual(pinRemote({ ...spec, build: 'old' }).arms.on.build, 'old');
+    assert.throws(() => pinRemote({ arms: { on: { branch: 'remote/lion/on', sha: 'c0ffee1' } } }), /arm on needs a full "sha"/);
+});
 
 test('batch pinCommits: arms run a full sha, and lineup_check expects the snapshot\'s short sha unless a build is named', () => {
     const shas = { main: { sha: 'a'.repeat(40), short: 'aaaaaaaa' }, f1: { sha: 'b'.repeat(40), short: 'bbbbbbbb' } };
