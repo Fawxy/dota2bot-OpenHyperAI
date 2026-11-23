@@ -471,6 +471,18 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, on: 4 },
         forces: "pull",
     },
+    // The stacked pull's rig (families proposal s5 case 3): both pos5s pull every third minute's wave (1:00, 4:00 ...), so the
+    // camp is killed at :45 of the minute after a pull, refilled by the next minute's own spawn, and stacked over the spawn
+    // before the pulled wave (`rig_stack_minute`, bots/rigs/setters.lua; `dota_spawn_neutrals` refills no camp killed that
+    // minute, pullstk3). The 1:00 pull meets an unstacked camp.
+    "pull-stack": {
+        note: "both pos5s pull every third minute's wave in their safe lanes (1:00, 4:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast: { r: [5], d: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 6 },
+        forces: "pull",
+    },
     // The statue steps (lane controller "Drills" steps): the same drills with the Dire laners that face the cast standing in
     // their lane as statues (never attack, cast or use items), so the lane has an enemy that is there but does not act.
     // Radiant pos5 pulls in the Radiant safe lane, which Dire's offlane pos3 and pos4 hold.
