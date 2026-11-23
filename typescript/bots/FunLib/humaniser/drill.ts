@@ -80,8 +80,9 @@ export interface Entry {
      *  the lane (a pull drill's puller between pulls). Only the forced job is asked (`ForcedJob`). */
     castIdle?: "statue";
     /** The rep clock (DotaTime seconds): a rep every `every` from `from`; with `control` n, every nth rep withholds the
-     *  input (`input=off`, the control in the same game). */
-    rep: { every: number; from: number; control?: number };
+     *  input (`input=off`, the control in the same game); with `on` n, only reps 1, n + 1, 2n + 1 ... carry it and the
+     *  rest withhold it (room for a forced action's effect to play out before the next). */
+    rep: { every: number; from: number; control?: number; on?: number };
     /** The context the drill forces each rep (`RepTimes(context)`); absent when reps are natural (each lane wave). */
     forces?: string;
     /** Overrides keys the drill implies (`Overrides.Get` falls back to them; an explicit `--set` wins). */
@@ -453,6 +454,19 @@ export const TABLE: Record<string, Entry> = {
         others: "bench",
         castIdle: "statue",
         rep: { every: 30, from: 60, control: 2 },
+        forces: "pull",
+    },
+    // The pull rig with time for the pulled wave's fight to end (families proposal s5 step 2): only every other minute's wave is
+    // pulled (1:00, 3:00 ...), so the camp is reset in the minute between (`--every "2:00@2:45 ent_fire npc_dota_creep_neutral
+    // Kill" --every "2:00@2:52 dota_spawn_neutrals"`, set with `--set Overrides.Drill=pull-long`): in `pull` the :45 kill cut
+    // the fight in 7 of 8 pulls with 3 to 5 of our creeps still at the camp (pullrig2, 23/11/2026). The :30 waves are the
+    // control as in `pull`; the unpulled minute wave between walks past a camp still fighting.
+    "pull-long": {
+        note: "Radiant pos5 pulls every other minute's wave (1:00, 3:00 ...), a statue otherwise; the other waves unpulled; everyone else benched",
+        cast: { r: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 4 },
         forces: "pull",
     },
     // The statue steps (lane controller "Drills" steps): the same drills with the Dire laners that face the cast standing in
@@ -2332,6 +2346,7 @@ export function RepTimes(context: string): number[] | undefined {
 }
 
 function controlRep(d: Entry, n: number): boolean {
+    if (d.rep.on !== undefined && d.rep.on > 0) return (n - 1) % d.rep.on !== 0;
     return d.rep.control !== undefined && d.rep.control > 0 && n % d.rep.control === 0;
 }
 

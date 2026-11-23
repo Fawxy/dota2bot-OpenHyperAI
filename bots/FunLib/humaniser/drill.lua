@@ -1875,6 +1875,9 @@ function pairFacts(bot, ally, foe)
     }
 end
 function controlRep(d, n)
+    if d.rep.on ~= nil and d.rep.on > 0 then
+        return (n - 1) % d.rep.on ~= 0
+    end
     return d.rep.control ~= nil and d.rep.control > 0 and n % d.rep.control == 0
 end
 --- The rep (1-based) that `t` falls in, or 0 before the first.
@@ -2241,6 +2244,14 @@ ____exports.TABLE = {
         others = "bench",
         castIdle = "statue",
         rep = {every = 30, from = 60, control = 2},
+        forces = "pull"
+    },
+    ["pull-long"] = {
+        note = "Radiant pos5 pulls every other minute's wave (1:00, 3:00 ...), a statue otherwise; the other waves unpulled; everyone else benched",
+        cast = {r = {5}},
+        others = "bench",
+        castIdle = "statue",
+        rep = {every = 30, from = 60, on = 4},
         forces = "pull"
     },
     ["pull-statue"] = {
