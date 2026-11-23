@@ -2657,6 +2657,15 @@ export const EVENTS = {
         // once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
         shs: "num",
         shh: "num",
+        // The stay (Ours.SupportPullStay), only on a pull that ended ok and stayed: st its end (`done` none of our creeps and no
+        // neutral left at the camp, `left` neutrals left uncleared, `cleared`, `timeout:late` the backstop, `dead`, or the cut:
+        // `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got.
+        st: "str",
+        ss: "num",
+        sdt: "num",
+        sdk: "num",
+        slt: "num",
+        slk: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything

@@ -22,6 +22,10 @@ export const DEFAULTS = {
     /** The whole-wave pull, a row of the decider (pull_job.ts, doctrine D17): the lane's pos5 (else pos4) pulls our wave into the
      *  lane's first pull camp when the pull's forecast wants it. Off: the trigger is logged as a shadow and stock plays. */
     SupportPull: false,
+    /** The pull's stay (families proposal s5, case 2; on oha-pull-row only, judged with the pull as one group): after an ok pull
+     *  the puller stays at the camp, denies our pulled creeps and last-hits the neutrals they finish (JobVerbs.stayCamp).
+     *  Needs SupportPull. Off: the decider yields the puller once the pull ends. */
+    SupportPullStay: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

@@ -1736,7 +1736,13 @@
    "wa": "num",
    "nm": "num",
    "shs": "num",
-   "shh": "num"
+   "shh": "num",
+   "st": "str",
+   "ss": "num",
+   "sdt": "num",
+   "sdk": "num",
+   "slt": "num",
+   "slk": "num"
   },
   "pull_watch": {
    "pid": "num",
@@ -2706,7 +2712,8 @@
    "res": "text",
    "why": "text",
    "label": "text",
-   "hr": "text"
+   "hr": "text",
+   "st": "text"
   },
   "ev_pull_watch": {
    "ph": "text",

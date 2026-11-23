@@ -1593,7 +1593,13 @@ ____exports.EVENTS = {
         wa = "num",
         nm = "num",
         shs = "num",
-        shh = "num"
+        shh = "num",
+        st = "str",
+        ss = "num",
+        sdt = "num",
+        sdk = "num",
+        slt = "num",
+        slk = "num"
     },
     pull_watch = {
         pid = "num",
