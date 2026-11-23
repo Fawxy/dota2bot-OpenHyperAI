@@ -61,22 +61,22 @@ function ____exports.On(feature)
 end
 Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.DEFAULTS = {
-    StackExecute = true,
-    DoubleStack = true,
-    JobChooser = true,
-    RuneRotation = true,
-    RuneSpawn = true,
-    SupportPull = true,
-    SupportPullFarm = true,
-    Threat = true,
-    Retreat = true,
+    StackExecute = false,
+    DoubleStack = false,
+    JobChooser = false,
+    RuneRotation = false,
+    RuneSpawn = false,
+    SupportPull = false,
+    SupportPullFarm = false,
+    Threat = false,
+    Retreat = false,
     MidWater = false,
-    BurstReady = true,
-    Sustain = true,
-    ExitWindow = true,
-    IdleBar = true,
-    TowerRead = true,
-    TripRead = true,
+    BurstReady = false,
+    Sustain = false,
+    ExitWindow = false,
+    IdleBar = false,
+    TowerRead = false,
+    TripRead = false,
     ChoiceShadow = false
 }
 --- Every switch's value as `Name:1|0` in name order (telemetry: which arm a game ran when no --set shows it).
