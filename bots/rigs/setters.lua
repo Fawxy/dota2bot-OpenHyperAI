@@ -163,7 +163,9 @@ end
 -- The stack by the game's own minute spawn (rig_stack's forced spawn added none in pullstk1: the pull met 3 neutrals, as
 -- unstacked): from :59.0 of the coming minute to :00.6 the camp's neutrals are held out of its box, then left to walk home.
 -- The units held are those in the circle at :59.0, so a set stacked earlier goes out with them.
-Convars:RegisterCommand("rig_stack_minute", function(_, x, y, r, dx, dy)
+-- The think runs on a hero: a plain `map dota` game has no game-mode entity to host it (GetGameModeEntity, pullstk2:
+-- "error in error handling" on every call).
+local function stackMinute(x, y, r, dx, dy)
 	local c = Vector(tonumber(x), tonumber(y), 0)
 	local off = Vector(tonumber(dx) or 0, tonumber(dy) or 800, 0)
 	r = tonumber(r) or 500
@@ -172,7 +174,7 @@ Convars:RegisterCommand("rig_stack_minute", function(_, x, y, r, dx, dy)
 	if now > from then from = from + 60 end
 	local held
 	local name = "rig_stack_" .. tostring(x) .. "_" .. tostring(y)
-	GameRules:GetGameModeEntity():SetContextThink(name, function()
+	HeroList:GetAllHeroes()[1]:SetContextThink(name, function()
 		local t = GameRules:GetDOTATime(false, false)
 		if t < from then return 0.1 end
 		if held == nil then held = campNeutrals(c, r) end
@@ -186,6 +188,11 @@ Convars:RegisterCommand("rig_stack_minute", function(_, x, y, r, dx, dy)
 		return 0.05
 	end, 0)
 	say(string.format("stack_minute armed x=%s y=%s from=%.0f", tostring(x), tostring(y), from))
+end
+
+Convars:RegisterCommand("rig_stack_minute", function(_, ...)
+	local ok, err = pcall(stackMinute, ...)
+	if not ok then say("stack_minute error " .. tostring(err)) end
 end, "rig: hold a camp's neutrals out of its box over the coming minute's spawn", FCVAR_CHEAT)
 
 Convars:RegisterCommand("rig_neutrals", function(_, x, y, r)
