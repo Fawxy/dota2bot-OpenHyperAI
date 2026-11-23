@@ -2699,10 +2699,12 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held` or `win`). */
+        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
+        /** kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise. */
+        let: "str",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */
@@ -2797,7 +2799,7 @@ export const EVENTS = {
         d_laning: "mixed",
         /** kind=shadow: as `d_laning`, for mode_attack_generic. */
         d_attack: "mixed",
-        /** kind=shadow: as `d_laning`, for mode_retreat_generic. */
+        /** kind=shadow: as `d_laning`, for mode_retreat_generic. kind=decider, with `let`: the retreat file's last value, the one that led. */
         d_retreat: "mixed",
         /** kind=shadow: as `d_laning`, for mode_farm_generic. */
         d_farm: "mixed",

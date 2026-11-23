@@ -107,4 +107,67 @@ do
 	check("a held row's verb is not stepped while the bot cannot act, nor is farm's Think", on.steps == 1 and f.think == 0,
 		"steps " .. on.steps .. " farm thinks " .. f.think)
 end
+
+-- Plan s3 (user 23/11/2026): a row lets go when stock would retreat, read from the values the mode files returned through
+-- Chooser's gate. `gated` sets each mode's value as its file returns it this round.
+local function gated(H, bot, values)
+	for mode, v in pairs(values) do H.Chooser.Gate(bot, mode, function() return v end)() end
+end
+
+do
+	local H, bot = world()
+	local on = { applies = true, steps = 0, finishAt = 99 }
+	H.Decider.ROWS[1] = row(on)
+	local f = farm()
+	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think, CAN_ACT)
+	local held, let, back
+	local lines = capture(function()
+		gated(H, bot, { retreat = 0.3, laning = 0.45 })
+		held = desire()
+		T = T + 0.1
+		gated(H, bot, { retreat = 0.6, laning = 0.45 })
+		let = desire()
+		think()
+		T = T + 0.1
+		gated(H, bot, { retreat = 0.4, laning = 0.45 })
+		back = desire()
+	end)
+	check("retreat under laning: the row holds", held == H.Decider.HARD, tostring(held))
+	check("retreat leads every other mode: the decider yields farm's own desire and Think, the verb is not stepped",
+		let == 0.4 and f.think == 1 and on.steps == 0, tostring(let) .. " farm thinks " .. f.think .. " steps " .. on.steps)
+	check("retreat falls back under laning: the row holds again", back == H.Decider.HARD, tostring(back))
+	check("the let-go line says let=retreat and the retreat value that led", #lines == 3 and lines[2]:find("held=-", 1, true)
+		and lines[2]:find("let=retreat", 1, true) and lines[2]:find("d_retreat=0.6", 1, true)
+		and not lines[3]:find("let=", 1, true), table.concat(lines, " | "))
+end
+
+do
+	local H, bot = world()
+	H.Decider.ROWS[1] = row({ applies = true, steps = 0, finishAt = 99 })
+	local f = farm()
+	local desire = H.Decider.Host(bot, f.GetDesire)
+	local tie, farmHigh, stale, staleRival
+	capture(function()
+		gated(H, bot, { retreat = 0.5, team_roam = 0.5 })
+		tie = desire()
+		T = T + 0.1
+		gated(H, bot, { retreat = 0.5, team_roam = 0.2, farm = 0.9 })
+		farmHigh = desire()
+		T = T + 2
+		gated(H, bot, { laning = 0.1 })
+		stale = desire()
+		gated(H, bot, { roam = 0.8 })
+		T = T + 2
+		gated(H, bot, { retreat = 0.5, laning = 0.1 })
+		staleRival = desire()
+	end)
+	check("retreat level with another mode: the row holds", tie == H.Decider.HARD, tostring(tie))
+	check("farm's own value is not a rival (hidden while the row holds): retreat leading the rest lets go", farmHigh == 0.4,
+		tostring(farmHigh))
+	check("a retreat value (0.5) not returned this round or the last is not read, though over every fresh one: the row holds", stale == H.Decider.HARD,
+		tostring(stale))
+	check("a rival not asked this round or the last (roam 0.8) is not read: a fresh retreat over the fresh rest lets go",
+		staleRival == 0.4, tostring(staleRival))
+end
+
 finish()

@@ -17,6 +17,7 @@ import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
+import * as Decider from "bots/FunLib/humaniser/decider";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -246,7 +247,8 @@ export function Decide(bot: Unit, mode: string): number | undefined {
     return ADMITTED[hold.name][mode] !== undefined ? undefined : 0;
 }
 
-/** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. */
+/** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. What it returns is
+ *  noted for the decider's retreat read (Decider.NoteDesire). */
 export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
         // Ours.ChoiceShadow (logging only): the values this call returns are noted, never changed; off, nothing else runs.
@@ -255,10 +257,12 @@ export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
         const v = Decide(bot, mode);
         if (v !== undefined) {
             if (shadow) ChoiceShadow.Note(bot, mode, undefined, v, decideWhy);
+            Decider.NoteDesire(bot, mode, v);
             return v;
         }
         const d = inner();
         if (shadow) ChoiceShadow.Note(bot, mode, d, d, undefined);
+        Decider.NoteDesire(bot, mode, d);
         return d;
     };
 }

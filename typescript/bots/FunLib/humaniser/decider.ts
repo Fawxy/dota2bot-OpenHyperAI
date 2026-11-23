@@ -4,8 +4,8 @@
  * first that applies holds the hero, else the decider yields and farm's own desire and Think run untouched (stock's, or
  * today's per-mode code while it lasts). Desire exists here only as the wire to the engine: a row names no number.
  *
- * Built so far: the yield and the hard hold. The soft hold, worth with an incumbent margin and the label hook arrive with the
- * first row that needs each (plan s3).
+ * Built so far: the yield, the hard hold, and letting go when stock would retreat. The soft hold, worth with an incumbent
+ * margin and the label hook arrive with the first row that needs each (plan s3).
  *
  * The decider wraps outside Chooser's gate in farm's file: while a row holds, farm's gated code does not run, so the job
  * chooser and the shadow line say nothing for that time. A row is re-picked every round and is not told when another mode
@@ -33,11 +33,30 @@ export const HARD = 0.98;
 /** Doctrine order: the first row that applies holds. Empty: the pass-through. */
 export const ROWS: Row[] = [];
 
+/** The mode file that hosts the decider. Its own desire is not computed while a row holds, so it never takes part in the retreat read. */
+const HOST = "farm";
+
+/**
+ * judgement: a mode's value older than this is from neither this round nor the last (Valve asks every mode every round), so
+ * its file was not asked and its value is not a rival.
+ */
+const FRESH = 0.5;
+
+interface Seen {
+    v: number;
+    t: number;
+}
+
 interface HeroState {
     held?: Row;
+    /** Set when a row applied but stock would retreat: the retreat file's value that led. */
+    letAt?: number;
+    /** Each gated mode file's last returned desire (NoteDesire). */
+    seen: Record<string, Seen>;
     /** What the last line said, so a line goes out only on a change. */
     lineHeld?: string;
     lineWin?: string;
+    lineLet?: boolean;
 }
 
 const heroes: Record<number, HeroState> = {};
@@ -46,7 +65,7 @@ function stateOf(bot: Unit): HeroState {
     const pid = bot.GetPlayerID();
     let s = heroes[pid];
     if (s === undefined) {
-        s = {};
+        s = { seen: {} };
         heroes[pid] = s;
     }
     return s;
@@ -58,6 +77,33 @@ function pick(bot: Unit): Row | undefined {
 }
 
 /**
+ * Chooser.Gate, for every gated mode file: the desire `mode`'s file returned to Valve. A value that is not a number (Valve's
+ * own desire falls through) is not known, so it is forgotten.
+ */
+export function NoteDesire(bot: Unit, mode: string, v: any): void {
+    const seen = stateOf(bot).seen;
+    if (type(v) === "number") seen[mode] = { v: v as number, t: DotaTime() };
+    else seen[mode] = undefined as any;
+}
+
+/**
+ * Plan s3, user 23/11/2026: stock would retreat when the retreat file's desire leads every other mode the hold outbids. Each
+ * value is the file's latest, this round's or the last, as Valve's order of calls gives it, so the read can lag the
+ * retreat call by one round. Valve-only modes (attack for most heroes, item, evasive) have no file and are not seen: a
+ * let-go they would have outbid only yields to stock. Returns the leading retreat value, else undefined.
+ */
+function retreatLeads(s: HeroState): number | undefined {
+    const now = DotaTime();
+    const r = s.seen["retreat"];
+    if (r === undefined || now - r.t > FRESH) return undefined;
+    for (const [mode, n] of pairs(s.seen)) {
+        if (mode === "retreat" || mode === HOST || now - n.t > FRESH) continue;
+        if (n.v >= r.v) return undefined;
+    }
+    return r.v;
+}
+
+/**
  * `win` is the mode Valve gave the hero from the last round's desires, read at this round's farm call: Valve asks every mode
  * once a round, so the hold or yield decided now shows up in the next line.
  */
@@ -65,22 +111,28 @@ function note(bot: Unit, s: HeroState): void {
     if (!Telemetry.IsEnabled()) return;
     const held = s.held?.name ?? "-";
     const win = HDebug.ModeName(bot.GetActiveMode());
-    if (held === s.lineHeld && win === s.lineWin) return;
+    const let_ = s.letAt !== undefined;
+    if (held === s.lineHeld && win === s.lineWin && let_ === s.lineLet) return;
     s.lineHeld = held;
     s.lineWin = win;
-    Telemetry.Event("choice", [
+    s.lineLet = let_;
+    const fields: Telemetry.Fields<"choice"> = [
         ["pid", bot.GetPlayerID()],
         ["kind", "decider"],
         ["held", held],
         ["win", win],
-    ]);
+    ];
+    if (s.letAt !== undefined) fields.push(["let", "retreat"], ["d_retreat", s.letAt]);
+    Telemetry.Event("choice", fields);
 }
 
-/** Wraps the host file's GetDesire: a held row's strength, else the inner desire unchanged. */
+/** Wraps the host file's GetDesire: a held row's strength, else the inner desire unchanged. A row does not hold while stock would retreat. */
 export function Host(bot: Unit, inner: () => any): () => any {
     return () => {
         const s = stateOf(bot);
-        s.held = pick(bot);
+        const row = pick(bot);
+        s.letAt = row !== undefined ? retreatLeads(s) : undefined;
+        s.held = s.letAt === undefined ? row : undefined;
         pcall(() => note(bot, s));
         return s.held !== undefined ? HARD : inner();
     };
