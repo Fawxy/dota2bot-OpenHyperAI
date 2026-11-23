@@ -199,7 +199,7 @@ Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, 
 
 ### Job verbs (`job_verbs.ts`)
 Generic, skill-scaled bodies for the support clock. Each takes its geometry and times
-as a plan; the host (OHA `camp_jobs`/`camps`/`stacking`, `GetNeutralSpawners()`, rotation) supplies the data and
+as a plan; the host (`camps`/`stacking`, `GetNeutralSpawners()`, rotation) supplies the data and
 decides *when* to start; the verb executes. `JobVerbs.*(bot, plan, hooks?)` report phases through `{ label?, urgent? }`
 (pass the task's `ctx.label`/`ctx.urgent`); `Tasks.Jobs()` returns the module once the engine bundle has loaded (it is
 bound to the bundle and its adapter by `JobVerbs.Bind`). Moved from the engine's `jobs.ts` in slice 0b; tests

@@ -193,7 +193,7 @@ Customize.Ours = { StackExecute = true, DoubleStack = true, JobChooser = true, R
 Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
--- { ["Humaniser.States.Enable"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
+-- { ["Ours.Sustain"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
 -- Numeric parts index arrays, so "Radiant_Heros.1" sets Customize.Radiant_Heros[1] (lineup lock).
 do
     local path = GetScriptDirectory() == 'bots' and 'bots.Customize.override' or GetScriptDirectory()..'/Customize/override'

@@ -53,10 +53,6 @@ local function lines(all, ev)
 end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 
-local function react(bot)
-	return require("bots/FunLib/humaniser/profile").ThreatHold(bot)
-end
-
 local function running(bot) return require("bots/FunLib/humaniser/retreat_state").Running(bot) end
 
 -- A deadly place is left at once, with no reaction time: two heroes hitting us with 300 damage each against 600 HP are ratio 1.0, under
