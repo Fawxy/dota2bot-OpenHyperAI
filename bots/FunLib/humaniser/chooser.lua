@@ -9,59 +9,21 @@ local function __TS__ArrayMap(self, callbackfn, thisArg)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local runningJob, hit, JOBS
+local hit
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
-local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
-local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
+local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
-function runningJob(bot)
-    for ____, j in ipairs(JOBS) do
-        if j.Running(bot) then
-            return j
-        end
-    end
-    return nil
-end
---- The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose).
-function ____exports.RunningJobName(bot)
-    local ____opt_1 = runningJob(bot)
-    return ____opt_1 and ____opt_1.name
-end
---- Under the drive, the arbiter's word on what OHA's code for `mode` returned (Arbiter.DriveAfter); else that value.
-function ____exports.After(bot, mode, desire)
-    if not Arbiter.Drives(bot) then
-        return desire
-    end
-    local jobs = Ours.On("JobChooser")
-    local ____Arbiter_DriveAfter_26 = Arbiter.DriveAfter
-    local ____bot_24 = bot
-    local ____mode_25 = mode
-    local ____Arbiter_Drive_23 = Arbiter.Drive
-    local ____bot_22 = bot
-    local ____jobs_21
-    if jobs then
-        ____jobs_21 = ____exports.RunningJobName(bot)
-    else
-        ____jobs_21 = nil
-    end
-    return ____Arbiter_DriveAfter_26(
-        ____bot_24,
-        ____mode_25,
-        ____Arbiter_Drive_23(____bot_22, ____jobs_21),
-        desire
-    )
-end
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -134,7 +96,6 @@ local RUNE = {
 local PULL = {
     name = "pull",
     Applies = function(bot) return PullJob.Applies(bot) end,
-    Lifted = function(bot) return PullJob.Lifted(bot) end,
     Claims = function(bot) return PullJob.Claims(bot) end,
     Wants = function(bot, blocked, host) return PullJob.Wants(bot, blocked, host) end,
     Running = function(bot) return PullJob.Running(bot) end,
@@ -142,18 +103,6 @@ local PULL = {
     End = function(bot, why) return PullJob.End(bot, why) end,
     NoteHit = function(bot) return PullJob.NoteHit(bot) end,
     NoteIdleHeld = function(bot) return PullJob.NoteIdleHeld(bot) end
-}
-local CAMP = {
-    name = "camp",
-    guards = true,
-    Applies = function(bot) return CoreCamp.Owns(bot) end,
-    Claims = function(bot) return CoreCamp.Claims(bot) end,
-    Wants = function(bot, blocked, host) return CoreCamp.Wants(bot, blocked, host) end,
-    Running = function(bot) return CoreCamp.Running(bot) end,
-    Step = function(bot, host) return CoreCamp.Step(bot, host) end,
-    End = function(bot, why) return CoreCamp.End(bot, why) end,
-    NoteHit = function(bot) return CoreCamp.NoteHit(bot) end,
-    NoteIdleHeld = function(bot) return CoreCamp.NoteIdleHeld(bot) end
 }
 local PULLFARM = {
     name = "pullfarm",
@@ -167,13 +116,7 @@ local PULLFARM = {
     NoteHit = function(bot) return PullFarm.NoteHit(bot) end,
     NoteIdleHeld = function(bot) return PullFarm.NoteIdleHeld(bot) end
 }
-JOBS = {
-    STACK,
-    RUNE,
-    PULL,
-    PULLFARM,
-    CAMP
-}
+local JOBS = {STACK, RUNE, PULL, PULLFARM}
 --- The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order).
 local function ranked(bot)
     local out = {}
@@ -181,27 +124,23 @@ local function ranked(bot)
     local pos = LaneConfig.PositionOf(bot)
     for ____, j in ipairs(JOBS) do
         do
-            local __continue44
+            local __continue35
             repeat
                 if only ~= nil and j.name ~= only then
-                    __continue44 = true
+                    __continue35 = true
                     break
                 end
                 if not j.Applies(bot) then
-                    __continue44 = true
+                    __continue35 = true
                     break
                 end
-                local p = TripTable.RankOf(
-                    j.name,
-                    pos,
-                    j.Lifted ~= nil and j.Lifted(bot)
-                )
+                local p = TripTable.RankOf(j.name, pos)
                 if p ~= nil then
                     out[#out + 1] = {j, p}
                 end
-                __continue44 = true
+                __continue35 = true
             until true
-            if not __continue44 then
+            if not __continue35 then
                 break
             end
         end
@@ -225,6 +164,19 @@ local function ranked(bot)
         out,
         function(____, e) return e[1] end
     )
+end
+local function runningJob(bot)
+    for ____, j in ipairs(JOBS) do
+        if j.Running(bot) then
+            return j
+        end
+    end
+    return nil
+end
+--- The name of the job running for this hero, or undefined (slice retreat reads it as the hero's purpose).
+function ____exports.RunningJobName(bot)
+    local ____opt_1 = runningJob(bot)
+    return ____opt_1 and ____opt_1.name
 end
 --- Any of our jobs runs for this hero.
 function ____exports.Running(bot)
@@ -307,12 +259,26 @@ end
 --- While our retreat's episode runs, only the retreat mode (the hold's host) and the human's order modes, listed here, may hold the hero: OHA's modes post
 -- up to 2.88, and roam's tango branch (1.00) took it five times in 8 s at 10-15% HP with the enemy in reach (rtwatch1).
 local EPISODE_MODES = {assemble = true, assemble_with_humans = true}
---- OHA's modes that keep their own desire beside the host's while the arbiter's hold of that name runs.
+--- OHA's modes that keep their own desire beside the host's while the hold of that name runs.
 local ADMITTED = {retreat = EPISODE_MODES, job = ____exports.EXCEPTIONS}
+--- Our retreat's episode, else the chooser's running job (hosted in the rune mode for the mid's rune trip, else farm). Not
+-- limited to laning heroes: an episode or a job is its own claim on the hero (a drill's cast runs jobs while held).
+local function holdOf(bot, job)
+    if RetreatState.Running(bot) then
+        return {name = "retreat", host = "retreat"}
+    end
+    if job ~= nil then
+        return {
+            name = "job",
+            host = RuneJob.HostOf(bot) == BotMode.Rune and "rune" or "farm"
+        }
+    end
+    return nil
+end
 --- Which branch of Decide gave its last number (choice_shadow's reason); telemetry only, read by Gate.
 local decideWhy
 local HOLD_WHY = {retreat = "hold:retreat", job = "hold:job"}
---- A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under the arbiter's hold the host mode runs
+--- A number replaces OHA's desire for `mode`; undefined lets OHA's code run. Under a hold the host mode runs
 -- and every mode the hold does not admit gets 0. A job hosted in the rune mode (the mid's 6:00 trip) leaves the chooser's
 -- host at 0: gating the rune mode handed the mid to the attack mode 9 of 10 trips (rspchk1), and OHA's farm desire must
 -- not take it either.
@@ -328,126 +294,73 @@ function ____exports.Decide(bot, mode)
         return rig
     end
     local jobs = Ours.On("JobChooser")
-    if Arbiter.Drives(bot) then
-        local ____Arbiter_Drive_5 = Arbiter.Drive
-        local ____bot_4 = bot
-        local ____jobs_3
-        if jobs then
-            ____jobs_3 = ____exports.RunningJobName(bot)
-        else
-            ____jobs_3 = nil
-        end
-        local p = ____Arbiter_Drive_5(____bot_4, ____jobs_3)
-        decideWhy = "drive"
-        return Arbiter.DriveDecide(
-            bot,
-            mode,
-            p,
-            function()
-                local ____jobs_6
-                if jobs then
-                    ____jobs_6 = hostDesire(bot)
-                else
-                    ____jobs_6 = nil
-                end
-                return ____jobs_6
-            end
-        )
-    end
-    local ____Arbiter_Hold_9 = Arbiter.Hold
-    local ____bot_8 = bot
-    local ____jobs_7
+    local ____holdOf_5 = holdOf
+    local ____bot_4 = bot
+    local ____jobs_3
     if jobs then
-        ____jobs_7 = ____exports.RunningJobName(bot)
+        ____jobs_3 = ____exports.RunningJobName(bot)
     else
-        ____jobs_7 = nil
+        ____jobs_3 = nil
     end
-    local hold = ____Arbiter_Hold_9(____bot_8, ____jobs_7)
+    local hold = ____holdOf_5(____bot_4, ____jobs_3)
     decideWhy = (hold == nil or mode == hold.host) and "host" or HOLD_WHY[hold.name]
     if hold == nil then
-        local ____temp_10
+        local ____temp_6
         if jobs and mode == ____exports.HOST then
-            ____temp_10 = hostDesire(bot)
+            ____temp_6 = hostDesire(bot)
         else
-            ____temp_10 = nil
+            ____temp_6 = nil
         end
-        return ____temp_10
+        return ____temp_6
     end
     if mode == hold.host then
-        local ____temp_11
+        local ____temp_7
         if mode == ____exports.HOST then
-            ____temp_11 = hostDesire(bot)
+            ____temp_7 = hostDesire(bot)
         else
-            ____temp_11 = nil
+            ____temp_7 = nil
         end
-        return ____temp_11
+        return ____temp_7
     end
-    local ____temp_12
+    local ____temp_8
     if ADMITTED[hold.name][mode] ~= nil then
-        ____temp_12 = nil
+        ____temp_8 = nil
     else
-        ____temp_12 = 0
+        ____temp_8 = 0
     end
-    return ____temp_12
+    return ____temp_8
 end
 --- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
 function ____exports.Gate(bot, mode, inner)
     return function()
-        Arbiter.Shadow(
-            bot,
-            function()
-                local ____opt_13 = runningJob(bot)
-                return ____opt_13 and ____opt_13.name
-            end
-        )
         local shadow = ChoiceShadow.On()
         if shadow then
-            ChoiceShadow.Frame(
-                bot,
-                function()
-                    local ____opt_15 = runningJob(bot)
-                    return ____opt_15 and ____opt_15.name
-                end
-            )
+            ChoiceShadow.Frame(bot)
         end
         local v = ____exports.Decide(bot, mode)
         if v ~= nil then
             if shadow then
-                local why = decideWhy
-                local probe = why == "drive" and ChoiceShadow.PROBED[mode] == true and Ours.On("ChoiceProbe")
-                local ____ChoiceShadow_Note_20 = ChoiceShadow.Note
-                local ____bot_18 = bot
-                local ____mode_19 = mode
-                local ____probe_17
-                if probe then
-                    ____probe_17 = ChoiceShadow.Probe(inner)
-                else
-                    ____probe_17 = nil
-                end
-                ____ChoiceShadow_Note_20(
-                    ____bot_18,
-                    ____mode_19,
-                    ____probe_17,
+                ChoiceShadow.Note(
+                    bot,
+                    mode,
+                    nil,
                     v,
-                    why,
-                    probe
+                    decideWhy
                 )
             end
             return v
         end
         local d = inner()
-        local out = ____exports.After(bot, mode, d)
         if shadow then
             ChoiceShadow.Note(
                 bot,
                 mode,
                 d,
-                out,
-                nil,
-                false
+                d,
+                nil
             )
         end
-        return out
+        return d
     end
 end
 --- Wraps the host file's Think, switch on: the job steps without entering OHA's code, so its defend-ping and run aborts cannot
@@ -460,13 +373,13 @@ function ____exports.HostThink(bot, mode, inner, cannotAct)
         if cannotAct(bot) then
             return nil
         end
-        local ____table_Step_result_27
+        local ____table_Step_result_9
         if (runningJob(bot) or STACK).Step(bot, ____exports.HOST_MODE) then
-            ____table_Step_result_27 = nil
+            ____table_Step_result_9 = nil
         else
-            ____table_Step_result_27 = inner()
+            ____table_Step_result_9 = inner()
         end
-        return ____table_Step_result_27
+        return ____table_Step_result_9
     end
 end
 --- mode_farm_generic GetDesire hook, switch off: the job's desire while it runs or as it starts, else 0 (OHA decides). A hero
@@ -488,9 +401,9 @@ function ____exports.FarmThink(bot)
 end
 --- OHA's farm-mode run (or any host abort) ends the job; its line reports `cancelled:<why>`.
 function ____exports.Abort(bot, why)
-    local ____opt_32 = runningJob(bot)
-    if ____opt_32 ~= nil then
-        ____opt_32.End(bot, why)
+    local ____opt_14 = runningJob(bot)
+    if ____opt_14 ~= nil then
+        ____opt_14.End(bot, why)
     end
 end
 --- mode_farm_generic's ShouldRun: neutrals hitting the hero during its job are not a reason to run; the job's exit is its

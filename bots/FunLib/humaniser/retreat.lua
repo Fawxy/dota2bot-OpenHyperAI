@@ -231,7 +231,6 @@ local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_patter
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
-local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 ____exports.SETTINGS = {
@@ -901,12 +900,8 @@ end
 --- The leave rule (design 2026-11-19-safe-here-design.md s3): a tower on us leaves at once; the walk home where the place is not
 -- deadly, when sustain's rule 2 says so for a hero it carries (`RetreatState.Home`), else at the heal floor with nobody in reach;
 -- else the safe-here answer for the place the hero holds. Deadly by a tower leaves; deadly by the kill line leaves `lethal`
--- under `Safe.BARS.hold`, and between that and the bar leaves `threat` unless `holds` (Trade.Holds: a hit back or a join) says to
--- stay. A `costly` place is never left for. `holds` is asked only then, as it gathers the trade decision's inputs.
-function ____exports.LeaveWhy(bot, holds)
-    if holds == nil then
-        holds = function() return Trade.Holds(bot) end
-    end
+-- under `Safe.BARS.hold`, and `threat` between that and the bar. A `costly` place is never left for.
+function ____exports.LeaveWhy(bot)
     local a = SafeGather.At(
         bot,
         bot:GetLocation(),
@@ -933,10 +928,6 @@ function ____exports.LeaveWhy(bot, holds)
     end
     if a.ratio < Safe.BARS.hold then
         return {why = "lethal", a = a}
-    end
-    local hold = holds()
-    if hold ~= nil then
-        return {stay = hold, a = a, hold = hold}
     end
     return {why = "threat", a = a}
 end
@@ -1027,8 +1018,6 @@ local function cutLeave(bot, st, r, purp, l, now)
             dec = dec,
             purp = purp,
             a = l.a,
-            pj = l.hold == "join",
-            hb = l.hold == "hitback",
             short = math.min(____exports.SETTINGS.Horizon, Threat.SETTINGS.BurstWindow),
             long = ____exports.SETTINGS.EngagedWindow
         }

@@ -1,5 +1,5 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
--- Smoke: every state scorer (laning, pull, stack, rotate, farm, gank), the layer's selection and the rune/roam bodies
+-- Smoke: every state scorer (pull, stack, rotate, farm, gank), the layer's selection and the rune/roam bodies
 -- run for ten bots on both teams, every position owned, from the pre-horn to 15:00 (farm-hosted bodies need farm's
 -- Think and are covered by their own tests). Catches nil errors in scorers for positions and phases the per-state
 -- tests do not visit; a scorer error is logged by the SDK ("score <name> error: ...") and counted here.
@@ -11,7 +11,7 @@ package.loaded[BUNDLE] = nil
 local all = { 1, 2, 3, 4, 5 }
 local H = LaneFresh({ Enable = true }, { skill = 0.7, debug = true, telemetry = { Enable = true }, transitions = { Enable = true },
 	states = { Enable = true, Shadow = true, Teams = "all", ShadowTeams = "all",
-		Own = { laning = all, stack = all, pull = all, rotate = all, farm = all, gank = all }, Rotate = { Power = true } } })
+		Own = { stack = all, pull = all, rotate = all, farm = all, gank = all }, Rotate = { Power = true } } })
 T = -60
 CURRENT_TEAM = 2
 OBSERVER = 1
@@ -29,6 +29,11 @@ for team = 2, 3 do
 	end
 end
 for _, u in ipairs(bots) do H.Lane.Config.SkillOf(u) end
+-- A probe state that never scores: its scorer's calls show the selection ran for every bot (no state may win in this world).
+local probed = {}
+H.States.Register("probe", function(bot)
+	return { name = "probe", kind = "posture", host = BotMode.Laning, score = function() probed[bot:GetPlayerID()] = true return nil end, body = function() end }
+end)
 
 local errors, lines = {}, {}
 local old = print
@@ -54,5 +59,7 @@ end)
 print = old
 check("smoke: no exception through 15:00", ok, err)
 check("smoke: no scorer or hook errors", #errors == 0, errors[1])
-check("smoke: states were selected", #lines > 0)
+local n = 0
+for _ in pairs(probed) do n = n + 1 end
+check("smoke: the selection asked the scorers for all ten bots", n == 10, n)
 finish()

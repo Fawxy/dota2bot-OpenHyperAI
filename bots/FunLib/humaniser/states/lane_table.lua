@@ -1,11 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
-local WaveHold = require(GetScriptDirectory().."/FunLib/humaniser/states/wave_hold")
-local CoreLastHit = require(GetScriptDirectory().."/FunLib/humaniser/states/core_last_hit")
-local LaneAggro = require(GetScriptDirectory().."/FunLib/humaniser/lane_aggro")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
-local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local SustainAct = require(GetScriptDirectory().."/FunLib/humaniser/sustain_act")
@@ -23,8 +18,6 @@ local function ranks(n, ...)
     end
     return r
 end
-local supports = {4, 5}
-local cores = {1, 2, 3}
 local all = {
     1,
     2,
@@ -32,20 +25,8 @@ local all = {
     4,
     5
 }
---- The engine body's last-hit or deny swing in progress must not be overridden by the rows below (slice 4).
-local bodyHit = {
-    name = "body_hit",
-    rank = ranks(
-        10,
-        unpack(all)
-    ),
-    drill = true,
-    wants = function(_bot, ctx) return ctx.bodyBusy() end,
-    run = function(_bot, ctx) return ctx.stepBody() end
-}
 --- Sustain step 3 (D6, `Ours.Sustain`): a heal attempt that walks (a tango's tree, a step out to the safe spot, an ally out of
--- cast range) holds the frame until its use starts, so the rows below do not undo the walk. After a swing in progress; before
--- the support's hits, which sustain's next-due read already waited for (a tango walk starts only if it ends before the next hit).
+-- cast range) holds the frame until its use starts, so the rows below do not undo the walk.
 local sustain = {
     name = "sustain",
     rank = ranks(
@@ -56,111 +37,6 @@ local sustain = {
     wants = function(bot, ctx) return ctx.enabled() and SustainAct.Walking(bot) end,
     run = function(bot) return SustainAct.Step(bot) end
 }
---- User rule 02/11/2026: the support's lane hits before anything else (denies, and since slice support-lane-hits the last hits
--- its claims give it). Wants the frame while the body is in an attempt or would start one now; its scan picks the creep.
-local supportHit = {
-    name = "support_hit",
-    rank = ranks(
-        20,
-        unpack(supports)
-    ),
-    drill = true,
-    wants = function(bot, ctx)
-        if not ctx.enabled() or not Laning.OwnsSupportHits(bot) or not ctx.bodyRunning() then
-            return false
-        end
-        local label = ctx.bodyLabel()
-        return label == "deny" or label == "lasthit" or Laning.HitOffered(bot)
-    end,
-    run = function(_bot, ctx) return ctx.stepBody() end
-}
---- Slice lane-aggro: with its lane core away a support draws creeps itself (feed, drag); after its lane hits, before the hold,
--- and only while the body runs (so never inside another state's frame).
-local supportAggro = {
-    name = "support_aggro",
-    rank = ranks(
-        30,
-        unpack(supports)
-    ),
-    drill = true,
-    wants = function(bot, ctx) return ctx.enabled() and Laning.OwnsSupportHits(bot) and ctx.bodyRunning() and (LaneAggro.Owns(bot) or LaneAggro.Pending(bot)) end,
-    run = function(bot) return LaneAggro.Step(bot) end
-}
---- Slice support-spot: with no lane hit to take, the body holds the support on our lane spot (states/lane_spot, role support)
--- instead of OHA's harass and PositionThink. Harass is not a lane row: it runs in our attack mode (states/trade), which
--- outbids laning while a harass is on.
-local supportHold = {
-    name = "support_hold",
-    rank = ranks(
-        40,
-        unpack(supports)
-    ),
-    drill = true,
-    wants = function(bot, ctx) return ctx.enabled() and Laning.OwnsSupportHits(bot) and Laning.OwnsSpot(bot) and ctx.bodyRunning() end,
-    run = function(_bot, ctx) return ctx.stepBody() end
-}
---- A drill's lane-only core with the wave hold (drill entry `laneHold`): the hold and the draw it started; no other lane aggro
--- draw starts (StepOpen steps only an open one).
-local drillHold = {
-    name = "drill_hold",
-    rank = ranks(
-        50,
-        unpack(cores)
-    ),
-    drill = true,
-    drillOnly = true,
-    wants = function(bot, ctx) return ctx.enabled() and Drill.LaneHold(bot) and ctx.bodyLastHits() end,
-    run = function(bot)
-        WaveHold.Act(bot)
-        return LaneAggro.StepOpen(bot)
-    end
-}
---- A drill's lane-only core with lane aggro (drill entry `laneAggro`): lane aggro's draws, as `aggro` outside drills.
-local drillAggro = {
-    name = "drill_aggro",
-    rank = ranks(
-        60,
-        unpack(cores)
-    ),
-    drill = true,
-    drillOnly = true,
-    wants = function(bot, ctx) return ctx.enabled() and Drill.LaneAggro(bot) and ctx.bodyLastHits() end,
-    run = function(bot) return LaneAggro.Step(bot) end
-}
---- Slice lane-aggro: a core's draw (lane_aggro feed, drag) while the laning body runs for it, after the body's running swing and
--- before OHA's techniques. A support draws through `support_aggro` instead.
-local aggro = {
-    name = "aggro",
-    scans = true,
-    rank = ranks(
-        70,
-        unpack(cores)
-    ),
-    drill = false,
-    wants = function(_bot, ctx) return ctx.enabled() end,
-    run = function(bot, ctx)
-        if not ctx.bodyLastHits() then
-            return CoreLastHit.Applies(bot) and LaneAggro.StepOpen(bot)
-        end
-        WaveHold.Act(bot)
-        return LaneAggro.Step(bot)
-    end
-}
---- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled by the move.
-local etiquette = {
-    name = "etiquette",
-    host = true,
-    scans = true,
-    rank = ranks(
-        80,
-        unpack(all)
-    ),
-    drill = false,
-    wants = function() return true end,
-    run = function(_bot, ctx) return ctx.etiquette() end
-}
---- With etiquette on, a last hit near a protected human is only allowed when the human will miss it, so taking it before a deny
--- is intended. Where the body owns last hits (team slice 4) it takes them and the denies itself.
 local ohaLastHit = {
     name = "oha_lh",
     host = true,
@@ -170,7 +46,7 @@ local ohaLastHit = {
         unpack(all)
     ),
     drill = true,
-    wants = function(_bot, ctx) return not ctx.bodyLastHits() and not ctx.bodySupportLastHits() end,
+    wants = function() return true end,
     run = function(_bot, ctx) return ctx.ohaLastHit() end
 }
 local ohaDeny = {
@@ -182,7 +58,7 @@ local ohaDeny = {
         unpack(all)
     ),
     drill = true,
-    wants = function(_bot, ctx) return not ctx.bodyLastHits() and not ctx.bodySupportHits() end,
+    wants = function() return true end,
     run = function(_bot, ctx) return ctx.ohaDeny() end
 }
 --- Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait.
@@ -195,7 +71,7 @@ local ohaHold = {
         unpack(all)
     ),
     drill = true,
-    wants = function(_bot, ctx) return not ctx.bodyLastHits() end,
+    wants = function() return true end,
     run = function(_bot, ctx) return ctx.ohaHold() end
 }
 --- The optional local override's Think: runs beside the rows and never ends the frame.
@@ -214,19 +90,6 @@ local ohaLocal = {
         return false
     end
 }
---- The body's step for a frame no row above took. A support whose body owns its lane hits but not its harass keeps OHA's
--- positioning: the body's hold would cancel its Valve attacks on heroes (docs/team/research/core-time-diagnosis.md).
-local body = {
-    name = "body",
-    scans = true,
-    rank = ranks(
-        130,
-        unpack(all)
-    ),
-    drill = true,
-    wants = function(_bot, ctx) return not ctx.bodySupportHits() end,
-    run = function(_bot, ctx) return ctx.stepBody() end
-}
 --- OHA's PositionThink: the fallback that always acts.
 local ohaPos = {
     name = "oha_pos",
@@ -240,20 +103,11 @@ local ohaPos = {
     run = function(_bot, ctx) return ctx.ohaPosition() end
 }
 ____exports.ROWS = {
-    bodyHit,
     sustain,
-    supportHit,
-    supportAggro,
-    supportHold,
-    drillHold,
-    drillAggro,
-    aggro,
-    etiquette,
     ohaLastHit,
     ohaDeny,
     ohaHold,
     ohaLocal,
-    body,
     ohaPos
 }
 for ____, r in ipairs(____exports.ROWS) do
@@ -275,16 +129,16 @@ local function build(pos, laneOnly)
     local out = {}
     for ____, r in ipairs(____exports.ROWS) do
         do
-            local __continue43
+            local __continue23
             repeat
-                if r.rank[pos] == nil or laneOnly and not r.drill or not laneOnly and r.drillOnly == true then
-                    __continue43 = true
+                if r.rank[pos] == nil or laneOnly and not r.drill then
+                    __continue23 = true
                     break
                 end
                 out[#out + 1] = r
-                __continue43 = true
+                __continue23 = true
             until true
-            if not __continue43 then
+            if not __continue23 then
                 break
             end
         end
@@ -371,7 +225,7 @@ function ____exports.Walk(bot, ctx)
     local acted = order[#order].name
     for ____, r in ipairs(order) do
         do
-            local __continue58
+            local __continue38
             repeat
                 local t0 = Telemetry.DeepT0()
                 local wants = r.wants(bot, ctx)
@@ -379,7 +233,7 @@ function ____exports.Walk(bot, ctx)
                     Telemetry.DeepAdd(("lane_table.Walk:" .. r.name) .. ".wants", t0)
                 end
                 if not wants then
-                    __continue58 = true
+                    __continue38 = true
                     break
                 end
                 local t1 = Telemetry.DeepT0()
@@ -396,9 +250,9 @@ function ____exports.Walk(bot, ctx)
                     n = ____n_1 + 1
                     skipScratch[____n_1 + 1] = r.name
                 end
-                __continue58 = true
+                __continue38 = true
             until true
-            if not __continue58 then
+            if not __continue38 then
                 break
             end
         end

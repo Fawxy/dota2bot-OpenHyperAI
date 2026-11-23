@@ -37,8 +37,6 @@ local function world(o)
 	Customize.Ours.RuneRotation = o.rune == true
 	-- Ours.TripRead (the start and running end on the safe read): on unless a test asks for the old floors and hit timer.
 	if o.tripRead ~= nil then Customize.Ours.TripRead = o.tripRead end
-	-- This file tests the stack job with the arbiter's drive off; the drive is test_arbiter_drive's.
-	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	T = o.t or 200
 	CURRENT_TEAM = 2
 	FOGGED = o.fogged
@@ -464,30 +462,6 @@ do
 	check("CheckBotIdleState logs ev=oha_idle", body ~= nil and body:find("J.Humaniser.Telemetry.NoteOhaIdle(bot, bHeld)", 1, true) ~= nil)
 end
 
--- Slice lane-control 3: the lane controller's live decision gives this support's pull the stack minute (yields 3): the
--- minute is skipped why=lane before the walk; a decision without the yield, or for another support, leaves it alone.
-do
-	local function yielded(yields, who)
-		local H, bot = world({ t = 3 * 60 + 15 })
-		local Ctl = H.LaneControl
-		local Cust = package.loaded["bots/FunLib/custom_loader"]
-		Cust.Ours.LaneControl, Cust.Ours.LaneControlDrive = true, true
-		Ctl.ResetCache()
-		Ctl.Remember(bot:GetTeam(), bot:GetAssignedLane(), { wave = 210, at = 3 * 60 + 15, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { who or tostring(bot:GetPlayerID()) }, cx = 0, cy = 0, yields = yields })
-		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
-		local lines = stackLines(capture(function() while T < 3 * 60 + 40 do frame(H, bot) end end))
-		Ctl.ResetCache()
-		Cust.Ours.LaneControl, Cust.Ours.LaneControlDrive = nil, nil
-		return lines
-	end
-	local l = yielded(3)
-	check("lane yield: one skip why=lane", #l == 1 and field(l[1], "res") == "skip" and field(l[1], "why") == "lane", l[1])
-	l = yielded(nil)
-	check("no yield: no lane skip", #l == 0 or field(l[1], "why") ~= "lane", l[1])
-	l = yielded(3, "99")
-	check("another support's pull: no lane skip", #l == 0 or field(l[1], "why") ~= "lane", l[1])
-end
-
 -- Gate: an enemy hero near the pos5 for the whole window skips the minute with that reason; OHA's run aborts a job.
 do
 	local H, bot = world({ t = 3 * 60 + 15 })
@@ -611,8 +585,8 @@ do
 	check('usage: spells and items held for the stack job and the bench', spells == 1 and items == 1, spells .. ' ' .. items)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
 	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then\n"))
-	-- cil4: with only the two trade triggers skipped, the tower branches still ran our cores out of their lane.
-	check('farm: our core in lane skips every ShouldRun branch (Ours.Trade)', has(farm, 'shouldRunTime = (J.Humaniser.Trade.OwnsLaneRun(bot) or J.Humaniser.Retreat.Owns(bot)) and 0 or X.ShouldRun(bot);'))
+	-- A hero in our retreat skips every ShouldRun branch: the episode decides where it goes.
+	check('farm: a hero our retreat owns skips every ShouldRun branch', has(farm, 'shouldRunTime = J.Humaniser.Retreat.Owns(bot) and 0 or X.ShouldRun(bot);'))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
 	local abort = farm:find('J.Humaniser.Chooser.Abort(bot, "defend-ping")', 1, true)
@@ -765,8 +739,8 @@ end
 
 -- The pos5's double waits for a carry who can clear camp A (user mark review 06/11/2026, log 2026-11-05T18-13-16-bug-hunt_
 -- observe_team-bots_e3fcbd4 t=222.5 pid 2 and t=223.4 pid 7, marks 6, 7, 10: Venge and WD stacked the safe
--- lane's hard camp at 3:5x before their carry could farm it). With the clear test (CoreCamp.CanClear, its HP price checked
--- in test_core_camp) saying no, the minute stacks good_1 alone with dwhy=carry; saying yes, the double runs.
+-- lane's hard camp at 3:5x before their carry could farm it). With the clear test (CampClear.CanClear, test_camp_clear)
+-- saying no, the minute stacks good_1 alone with dwhy=carry; saying yes, the double runs.
 do
 	local lines = stackRun({ double = true, setup = function(H)
 		local c = MakeUnit({ pid = 1, team = 2, level = 1 }) c.pos = 1

@@ -39,8 +39,6 @@ do
 	check("unowned laning: a pos 3 keeps upstream's desire", not near(GetDesire(), 0.9), GetDesire())
 	load({ pos = 3, owned = true, enemyCreeps = { creep({ hp = 400 }) } })
 	check("owned laning: nothing killable, no 0.9", not near(GetDesire(), 0.9), GetDesire())
-	load({ pos = 3, owned = true, retreating = true, enemyCreeps = { c } })
-	check("owned laning: a core of ours already retreating keeps the retreat over a killable creep", not near(GetDesire(), 0.9), GetDesire())
 end
 
 do
@@ -117,52 +115,6 @@ do
 	check("humaniser off: upstream's early swing is kept", a ~= nil and a.name == "AttackUnit" and a.args[1] == enemyCreep, a and a.name)
 end
 
--- Ours.SupportDeny (slice l1-support-deny): the support's own lane steps run before every OHA step, and while the laning
--- body owns the support's denies OHA's DenyThink stands aside; its last hit stays OHA's.
-do
-	local e = creep({ hp = 40, loc = Vector(100, 0) })
-	local bot = load({ pos = 5, owned = true, ours = true, enemyCreeps = { e }, supportStep = true })
-	GetDesire()
-	Think()
-	check("support step: it acts and no OHA step issues an order", bot.supportStepped == true and #bot.actions == 0, #bot.actions)
-	local own = creep({ hp = 40, loc = Vector(100, 0), team = 2 })
-	bot = load({ pos = 5, owned = true, ours = true, allyCreeps = { own }, bodyDenies = true })
-	GetDesire()
-	Think()
-	local hit = false
-	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == own then hit = true end end
-	check("body owns denies: OHA's DenyThink does not swing at the own creep", not hit)
-	bot = load({ pos = 5, owned = true, ours = true, allyCreeps = { own }, bodyDenies = false })
-	GetDesire()
-	Think()
-	hit = false
-	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == own then hit = true end end
-	check("body off: OHA's DenyThink still denies", hit)
-	local free = creep({ hp = 40, loc = Vector(100, 0) })
-	bot = load({ pos = 5, owned = true, ours = true, enemyCreeps = { free }, bodyDenies = true })
-	GetDesire()
-	Think()
-	hit = false
-	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == free then hit = true end end
-	check("body owns denies only (SupportLastHit off): the support's last hit with no core near stays OHA's", hit)
-	bot = load({ pos = 5, owned = true, ours = true, enemyCreeps = { free }, bodyDenies = true, bodyLastHits = true })
-	GetDesire()
-	Think()
-	hit = false
-	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == free then hit = true end end
-	check("body owns the support's last hits (SupportLastHit): OHA's LastHitThink does not swing at the free creep", not hit)
-	-- Core-time diagnosis (02/11/2026): the body's hold cancels a hero's own attacks, so a deny-only support keeps OHA's
-	-- positioning: the frame ends in PositionThink and the body is not stepped, even where it would act.
-	bot = load({ pos = 5, owned = true, ours = true, bodyDenies = true, stepActs = true })
-	GetDesire()
-	Think()
-	check("body owns denies: OHA's PositionThink keeps the support's position", (bot.bodySteps or 0) == 0 and last(bot) ~= nil and last(bot).name == "MoveToLocation", bot.bodySteps)
-	bot = load({ pos = 1, owned = true, stepActs = true })
-	GetDesire()
-	Think()
-	check("not deny-only: the body's step still replaces PositionThink", bot.bodySteps == 1 and #bot.actions == 0, #bot.actions)
-end
-
 -- Slice step-telemetry: the step Think reports is the one whose order ended the frame (ev=snap step=).
 do
 	local function stepOf(opts)
@@ -174,53 +126,21 @@ do
 	local killable = creep({ hp = 40, loc = Vector(100, 0) })
 	local nearly = creep({ hp = 60, loc = Vector(100, 0) })
 	local own = creep({ hp = 40, loc = Vector(-100, 0) })
-	check("step: the support's lane steps", stepOf({ pos = 5, owned = true, ours = true, enemyCreeps = { killable }, supportStep = true }) == "support_hit")
 	check("step: OHA's last hit", stepOf({ pos = 1, owned = true, enemyCreeps = { killable } }) == "oha_lh")
 	check("step: OHA's deny while the enemy creep is not killable yet", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly }, allyCreeps = { own } }) == "oha_deny")
 	check("step: OHA's hold for the hit", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly } }) == "oha_hold")
-	check("step: the body's step", stepOf({ pos = 1, owned = true, stepActs = true }) == "body")
-	check("step: the body acting nothing leaves OHA's position", stepOf({ pos = 1, owned = true }) == "oha_pos")
-	local s, bot = stepOf({ pos = 5, owned = true, ours = true, bodyDenies = true, stepActs = true })
-	check("step: a deny-only support is OHA's position, the body not stepped", s == "oha_pos" and (bot.bodySteps or 0) == 0, s)
-	check("step: lane-only, the body acting nothing leaves OHA's position", stepOf({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { creep({ hp = 400, loc = Vector(100, 0) }) } }) == "oha_pos")
-end
-
--- OHA's hold for a last hit is that frame's own wait: a frame where the last-hit step did not run (the support's body took its hits)
--- must not hold on the wait of the frame before.
-do
-	local nearly = creep({ hp = 60, loc = Vector(100, 0) })
-	local bot = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly } })
-	GetDesire()
-	Think()
-	check("hold: a creep not killable yet is waited on", bot.step == "oha_hold", bot.step)
-	bot.opts.bodyDenies, bot.opts.bodyLastHits = true, true
-	GetDesire()
-	Think()
-	check("hold: the next frame, with the body owning the hits, does not wait on the old one", bot.step == "oha_pos", bot.step)
-end
-
--- Ours.LeaveCoreCreep (slice 3): the switch alone makes a support own this Think(); off, it is Valve's (OHA) as before.
-do
-	LaningLoad({ pos = 5, ours = false })
-	check("switch off: a pos5 bot does not own the laning Think", Think == nil)
-	LaningLoad({ pos = 5, ours = true })
-	check("switch on: a pos5 bot owns the laning Think", Think ~= nil)
-	LaningLoad({ pos = 1, ours = true })
-	check("switch on: a pos1 bot is not taken over", Think == nil)
+	check("step: nothing to hit, OHA's position", stepOf({ pos = 1, owned = true }) == "oha_pos")
+	check("step: lane-only, nothing to hit, OHA's position", stepOf({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { creep({ hp = 400, loc = Vector(100, 0) }) } }) == "oha_pos")
 end
 
 -- Lane-only (slice lane-last-hits; drill `lane-only`): the lane-only harness holds every bot in laning above every other mode and runs
--- only the last-hit steps and the position, never etiquette.
+-- only the last-hit steps and the position.
 do
 	local c = creep({ hp = 400, loc = Vector(100, 0) })
 	local bot = load({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { c } })
 	check("lane-only: laning bids above absolute with nothing killable", GetDesire() > 1, GetDesire())
 	Think()
-	check("lane-only: the body is stepped and, acting nothing, OHA's position moves the bot", bot.bodySteps == 1 and last(bot) ~= nil and last(bot).name == "MoveToLocation", bot.bodySteps)
-	bot = load({ pos = 3, owned = true, laneOnly = true, stepActs = true, enemyCreeps = { c } })
-	GetDesire()
-	Think()
-	check("lane-only: a body step that acts ends the frame", bot.bodySteps == 1 and #bot.actions == 0, #bot.actions)
+	check("lane-only: nothing killable, OHA's position moves the bot", last(bot) ~= nil and last(bot).name == "MoveToLocation")
 	load({ pos = 3, owned = true, enemyCreeps = { c } })
 	check("not lane-only: laning keeps upstream's desire with nothing killable", GetDesire() < 1, GetDesire())
 	-- The chase drill's cast retreats live: our retreat's 0.95 must be able to beat laning while its episode runs.

@@ -368,37 +368,12 @@ do
 	check("IN at their T1, their wave much bigger: stays (why=lane)", field(stay, "go") == "0" and field(stay, "why") == "lane", stay)
 end
 
--- With our lane core there to hold their wave, the earlier trigger also wants the pull (user 06/11/2026: the hold catches
--- the overshoot); with none, only the new one. Here the 30 s forecast is past the target but the clash with the pulled wave
--- gone is not.
+-- Here the 30 s forecast is past the target but the clash with the pulled wave gone is not: the support stays (why=lane).
 do
-	local P = package.loaded["bots/FunLib/humaniser/lane_push"]
-	local function first(withCore, coreAway, onJob)
-		local w = world({ reading = OUT, gone = { own = 900, ap = 1000, ep = 1000 } })
-		local path = P.PathOf(Lane.Bot)
-		local t1, dir = P.OwnT1(path, 2)
-		local pt = P.PointAt(path, t1 + dir * 900)
-		w.core.loc = coreAway and Vector(pt[1] + 2500, pt[2]) or Vector(pt[1], pt[2])
-		local WH = require("bots/FunLib/humaniser/states/wave_hold")
-		local owns = WH.Owns
-		WH.Owns = function(u) return withCore and u == w.core end
-		local CH = require("bots/FunLib/humaniser/chooser")
-		local running = CH.Running
-		CH.Running = function(u) return onJob == true and u == w.core or running(u) end
-		local out = run(w, 75)
-		WH.Owns, CH.Running = owns, running
-		return lines(out, "choice")[1]
-	end
-	local held = first(true)
-	check("core to hold: the earlier rule's pull goes, hold=1 rule=old", field(held, "go") == "1" and field(held, "hold") == "1"
-		and field(held, "rule") == "old", held)
-	local alone = first(false)
-	check("no core to hold: the new rule only, stays (why=lane, hold=0)", field(alone, "go") == "0" and field(alone, "why") == "lane"
-		and field(alone, "hold") == "0" and field(alone, "rule") == nil, alone)
-	local far = first(true, true)
-	check("core out of the hold's reach of the target point: no core to hold", field(far, "go") == "0" and field(far, "hold") == "0", far)
-	local busy = first(true, false, true)
-	check("core on one of our jobs (a camp, a rune): no core to hold", field(busy, "go") == "0" and field(busy, "hold") == "0", busy)
+	local w = world({ reading = OUT, gone = { own = 900, ap = 1000, ep = 1000 } })
+	local c = lines(run(w, 75), "choice")[1]
+	check("the clash with the pulled wave gone is short of the target: stays (why=lane), no rule", field(c, "go") == "0" and field(c, "why") == "lane"
+		and field(c, "rule") == nil, c)
 end
 
 -- What Wants asks of the lane: our team's view of the bot's lane, the wave spawned on the 30 s before the slot, read
@@ -693,132 +668,11 @@ do
 	check("shed: no creep on the neutral, no shed", plain ~= nil and field(plain, "shs") == nil, plain)
 end
 
--- Slice lane-control 3: the pull's rank. With the lane controller's decision for the pulled wave naming this support's pull
--- and the pull ending FitMargin (5) or more before the next rune trip's leave (claimed from 5:00 for the 6:00 spawn), the
--- pull is Lifted (the trip table's lifted place, above the trip and the stack); otherwise it keeps its usual place.
+-- Only the supports pull (the trip table): a pos3 is no puller.
 do
-	local cust = package.loaded["bots/FunLib/custom_loader"]
-	local function rank(o)
-		local w = world({ reading = OUT, t = 301 })
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.RuneRotation = true, true, true
-		local far = o.runeFar or 0
-		GetRuneSpawnLocation = function() return Vector(w.sup.loc.x + far, w.sup.loc.y) end
-		local win = w.H.PullJob.Window(w.sup, T)
-		w.H.LaneControl.ResetCache()
-		if o.decide ~= false then
-			w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 })
-		end
-		assert(w.H.PullJob.Applies(w.sup), "the pull applies in this world: a false Lifted is a real read")
-		local p = w.H.PullJob.Lifted(w.sup)
-		w.H.LaneControl.ResetCache()
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil
-		return p, win
-	end
-	local p, win = rank({})
-	check("fits before the rune trip: is lifted", p == true, tostring(p) .. " key " .. tostring(win and win.key))
-	check("no decision: not lifted", rank({ decide = false }) == false)
-	check("another support's pull: not lifted", rank({ who = "9" }) == false)
-	-- 12,000 away the trip leaves about 48 s before its spawn, inside the pull.
-	check("does not fit before the trip: not lifted", rank({ runeFar = 12000 }) == false)
-	GetRuneSpawnLocation = nil
-end
-
--- Slice lane-control 4a: the offlane pos3 pulls its hard camp only when the lane controller's decision names it (rule ctl);
--- it never pulls on the support's own triggers, and with CorePull off it is no puller. This world's lane stands in for the
--- offlane (LaneOfKind stubbed), the pulling unit is the pos3.
-do
-	local function corePull(o)
-		local w = world({ reading = OUT })
-		local Camps = w.H.Lane.Camps
-		local cust = package.loaded["bots/FunLib/custom_loader"]
-		local kind = Camps.LaneOfKind
-		Camps.LaneOfKind = function(team, k) if k == "off" then return Lane.Bot end return kind(team, k) end
-		w.sup.pos = 3
-		-- 3,250 out (a 13 s walk at 300): the leave falls before the pulled wave's read at 62, the start still in time.
-		if o.decide == "late" then w.sup.loc = Vector(w.stand.x + 3250, w.stand.y) end
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = true, true, o.on ~= false
-		w.H.LaneControl.ResetCache()
-		local win = w.H.PullJob.Window(w.sup, T)
-		local d = { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R3", mode = "safe", intent = "back", levers = { "pull" }, who = { o.who or "5" }, cx = 0, cy = 0 }
-		if o.decide == true then w.H.LaneControl.Remember(2, Lane.Bot, d) end
-		local applies = w.H.PullJob.Applies(w.sup)
-		local out
-		if o.decide == "late" then
-			-- No decision until the pulled wave's read second (its spawn + ReadAt 2), as in game.
-			local readAt = d.wave + w.H.LaneControl.SETTINGS.ReadAt
-			out = capture(function()
-				while T < 75 do
-					if T >= readAt and w.H.LaneControl.DecisionFor(2, Lane.Bot, d.wave) == nil then w.H.LaneControl.Remember(2, Lane.Bot, d) end
-					frame(w)
-				end
-			end)
-		else
-			out = run(w, 75)
-		end
-		Camps.LaneOfKind = kind
-		w.H.LaneControl.ResetCache()
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive, cust.Ours.CorePull = nil, nil, nil
-		return applies, lines(out, "choice")[1], lines(out, "job")[1]
-	end
-	local applies, choice, job = corePull({ decide = true })
-	check("core pull: named by the decision, the pos3 starts the pull", applies and choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "ctl"
-		and job ~= nil and field(job, "phase") == "start", choice)
-	applies, choice, job = corePull({})
-	check("core pull: no decision, no pull on the support's triggers", applies and choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "no_ctl" and job == nil, choice)
-	-- lctl8 (~/.dotactl/logs/2026-11-07T03-58-22-lctl8_A_on_1.log, pid 9 from t=449): the pos3's leave falls before the pulled
-	-- wave's read (cycle second 2); it waits for the read and, the decision naming it, still pulls.
-	applies, choice, job = corePull({ decide = "late" })
-	check("core pull: the decision read after the leave time still starts the pull", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "ctl" and job ~= nil, choice)
-	applies, choice, job = corePull({ decide = true, who = "9" })
-	check("core pull: the decision names another puller", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "ctl" and job == nil, choice)
-	applies = corePull({ decide = true, on = false })
-	check("core pull: CorePull off, the pos3 is no puller", not applies)
-	-- The pos3 off the offlane (this world's lane as the safe lane) is no puller.
 	local w = world({ reading = OUT })
 	w.sup.pos = 3
-	check("core pull: a safe-lane pos3 is no puller", not w.H.PullJob.Applies(w.sup))
-end
-
--- Their wave absent between reads (LaneControl.PullBreak) takes the pull out of the decision only while
--- its slot is unsettled (PullJob.Settled). A pull the controller wanted that waits at a gate re-reads the decision and refuses
--- `why=ew`; a pull that has started (handled at its start) is settled and the break leaves it alone with no break line.
-do
-	local cust = package.loaded["bots/FunLib/custom_loader"]
-	local function ctlWorld(o)
-		local w = world(o)
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = true, true
-		-- The pull's rank under the controller reads the support's calendar, whose rune trips need the spawn point.
-		GetRuneSpawnLocation = function() return Vector(w.sup.loc.x, w.sup.loc.y) end
-		w.H.LaneControl.ResetCache()
-		local win = w.H.PullJob.Window(w.sup, T)
-		local wave = w.H.PullJob.PulledSpawn(win.key)
-		w.H.LaneControl.Remember(2, Lane.Bot, { wave = wave, at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "5" }, cx = 0, cy = 0 })
-		return w, wave
-	end
-	local function done(w) w.H.LaneControl.ResetCache() cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil GetRuneSpawnLocation = nil end
-	-- Waiting at the partner gate (core low, an enemy beside it) when their wave resolves absent.
-	local w, wave = ctlWorld({ reading = OUT, coreHp = 30 })
-	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
-	enemy.lane, enemy.pos = Lane.Bot, 3
-	-- Past the leave time (the unblocked pull below starts by 75) and before the late limit (partner-low's `late` falls near 80).
-	local out = run(w, 75)
-	check("ew break: waiting at a gate, nothing settled yet, no choice line", #lines(out, "choice") == 0 and not w.H.PullJob.Settled(5, wave))
-	local broke
-	out = capture(function() broke = w.H.LaneControl.PullBreak(2, Lane.Bot, T, wave, w.H.PullJob.Settled) end)
-	check("ew break: the waiting pull is broken, one break line", broke and #lines(out, "lane_ctl") == 1 and field(lines(out, "lane_ctl")[1], "why") == "ew", out[1])
-	out = run(w, 77)
-	local choice = lines(out, "choice")
-	check("ew break: the job re-reads the decision and refuses why=ew, the slot settled, no job", #choice == 1 and field(choice[1], "go") == "0"
-		and field(choice[1], "why") == "ew" and #lines(out, "job") == 0 and w.H.PullJob.Settled(5, wave), choice[1])
-	done(w)
-	-- The pull started before their wave resolved absent: settled, left alone, nothing logged.
-	w, wave = ctlWorld({ reading = OUT })
-	out = run(w, 75)
-	check("ew break: the pull started under rule ctl", #lines(out, "job") == 1 and field(lines(out, "choice")[1], "rule") == "ctl", lines(out, "choice")[1])
-	out = capture(function() broke = w.H.LaneControl.PullBreak(2, Lane.Bot, T, wave, w.H.PullJob.Settled) end)
-	check("ew break: a started pull is settled: no break, no line, still wanted", not broke and #out == 0 and w.H.PullJob.Settled(5, wave)
-		and w.H.PullJob.CtlWants(w.H.LaneControl.DecisionFor(2, Lane.Bot, wave), 5))
-	done(w)
+	check("a pos3 is no puller", not w.H.PullJob.Applies(w.sup))
 end
 
 -- A slot drifts by a fraction of a second as the camp's timing is re-read (neutral-speed-at-order); the bookkeeping keys by the
@@ -832,7 +686,7 @@ do
 	check("same wave: nothing handled yet", not P.SameWave(nil, 376.4))
 end
 
--- Drill `pull` (humaniser/drill.ts): the rep of the pulled wave decides, not the controller; a control rep stays (why=drill).
+-- Drill `pull` (humaniser/drill.ts): the rep of the pulled wave decides; a control rep stays (why=drill).
 do
 	local function drilled(o)
 		local w = world({ reading = OUT })
@@ -843,23 +697,16 @@ do
 		local control = tab.rep.control
 		-- control 1 withholds every rep.
 		if o.off then tab.rep.control = 1 end
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = true, true
-		w.H.LaneControl.ResetCache()
-		local win = w.H.PullJob.Window(w.sup, T)
-		-- The controller's decision names another puller; the drill does not ask it.
-		w.H.LaneControl.Remember(2, Lane.Bot, { wave = w.H.PullJob.PulledSpawn(win.key), at = T, rule = "R1", mode = "safe", intent = "back", levers = { "pull" }, who = { "9" }, cx = 0, cy = 0 })
 		local role = w.H.Drill.RoleOf(w.sup)
 		local out = run(w, 75)
 		tab.rep.control = control
 		cust.Overrides = nil
 		w.H.Drill.ResetCache()
-		w.H.LaneControl.ResetCache()
-		cust.Ours.LaneControl, cust.Ours.LaneControlDrive = nil, nil
 		return role, lines(out, "choice")[1], lines(out, "job")[1]
 	end
 	local role, choice, job = drilled({})
 	check("drill pull: the pos5 is the cast", role == "cast", role)
-	check("drill pull: an input-on rep pulls (rule drill), the controller not asked", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "drill" and job ~= nil, choice)
+	check("drill pull: an input-on rep pulls (rule drill)", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "drill" and job ~= nil, choice)
 	role, choice, job = drilled({ off = true })
 	check("drill pull: a control rep stays (why=drill)", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "drill" and job == nil, choice)
 end

@@ -10,7 +10,7 @@ local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
-local Laning = require(GetScriptDirectory().."/FunLib/humaniser/states/laning")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 function ____exports.CourierOf(bot)
     do
         local n = 0
@@ -47,6 +47,29 @@ function noteCourier(bot)
             }
         }
     )
+end
+--- Sustain's `nextDue` (rule 3): seconds until the soonest last hit or deny on offer comes due (laneTargets' `due`, within
+-- `NextDueWithin`); undefined with no creep near. Once per bot per game time.
+local nextDueAt = {}
+____exports.NextDueWithin = 30
+function ____exports.NextDue(bot)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local memo = nextDueAt[pid]
+    if memo ~= nil and memo.t == now then
+        return memo.due
+    end
+    local due
+    local verbs = Tasks.Verbs()
+    if verbs ~= nil then
+        for ____, t in ipairs(verbs.laneTargets(bot, {within = ____exports.NextDueWithin})) do
+            if due == nil or t.due < due then
+                due = t.due
+            end
+        end
+    end
+    nextDueAt[pid] = {t = now, due = due}
+    return due
 end
 --- `breaks`: salve and clarity end on damage from a hero (their descriptions; regen_obs `early` ends agree); a tango does not.
 -- The bottle's is not confirmed: true is the cautious reading (a use only with no hero hitting or in reach) until a rig says.
@@ -258,24 +281,24 @@ function ____exports.Items(bot)
         local s = 0
         while s <= 8 do
             do
-                local __continue15
+                local __continue21
                 repeat
                     local item = bot:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue15 = true
+                        __continue21 = true
                         break
                     end
                     local it = readItem(s, item)
                     if it == nil then
-                        __continue15 = true
+                        __continue21 = true
                         break
                     end
                     out[#out + 1] = it
                     local name = item:GetName()
                     now[name] = (now[name] or 0) + (item:GetCurrentCharges() or 0)
-                    __continue15 = true
+                    __continue21 = true
                 until true
-                if not __continue15 then
+                if not __continue21 then
                     break
                 end
             end
@@ -304,24 +327,24 @@ local function regenLeft(bot)
     local done = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue21
+            local __continue27
             repeat
                 if spec.mod == nil or done[spec.mod] or not bot:HasModifier(spec.mod) then
-                    __continue21 = true
+                    __continue27 = true
                     break
                 end
                 local l = learned[name]
                 if l == nil or l.hpRate + l.mpRate == 0 then
-                    __continue21 = true
+                    __continue27 = true
                     break
                 end
                 done[spec.mod] = true
                 local left = bot:GetModifierRemainingDuration(bot:GetModifierByName(spec.mod))
                 hp = hp + left * l.hpRate
                 mp = mp + left * l.mpRate
-                __continue21 = true
+                __continue27 = true
             until true
-            if not __continue21 then
+            if not __continue27 then
                 break
             end
         end
@@ -368,11 +391,11 @@ local function treeOf(bot, items, now, spot)
     local back
     for ____, tree in ipairs(bot:GetNearbyTrees(____exports.SETTINGS.TreeScan) or ({})) do
         do
-            local __continue33
+            local __continue39
             repeat
                 local loc = GetTreeLocation(tree)
                 if not IsLocationVisible(loc) or not IsLocationPassable(loc) then
-                    __continue33 = true
+                    __continue39 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(bot, loc)
@@ -385,9 +408,9 @@ local function treeOf(bot, items, now, spot)
                         back = {id = tree, loc = loc, d = d, via = via}
                     end
                 end
-                __continue33 = true
+                __continue39 = true
             until true
-            if not __continue33 then
+            if not __continue39 then
                 break
             end
         end
@@ -602,11 +625,11 @@ local function shopOf()
     local out = {}
     for name, spec in pairs(____exports.ITEMS) do
         do
-            local __continue72
+            local __continue78
             repeat
                 local l = learned[name]
                 if not spec.shop or l == nil or GetItemStockCount(name) <= 0 then
-                    __continue72 = true
+                    __continue78 = true
                     break
                 end
                 local n = math.max(1, l.pack)
@@ -616,9 +639,9 @@ local function shopOf()
                     hp = l.hp * n,
                     mp = l.mp * n
                 }
-                __continue72 = true
+                __continue78 = true
             until true
-            if not __continue72 then
+            if not __continue78 then
                 break
             end
         end
@@ -632,11 +655,11 @@ local function healsOf(a)
         local s = 0
         while s <= 8 do
             do
-                local __continue75
+                local __continue81
                 repeat
                     local item = a:GetItemInSlot(s)
                     if item == nil or item == nil then
-                        __continue75 = true
+                        __continue81 = true
                         break
                     end
                     local spec = ____exports.ITEMS[item:GetName()]
@@ -646,9 +669,9 @@ local function healsOf(a)
                             item:GetCurrentCharges() or 0
                         )
                     end
-                    __continue75 = true
+                    __continue81 = true
                 until true
-                if not __continue75 then
+                if not __continue81 then
                     break
                 end
             end
@@ -689,10 +712,10 @@ function ____exports.Gather(bot, run)
     local allies = {}
     for ____, a in ipairs(GetUnitList(UnitType.AlliedHeroes) or ({})) do
         do
-            local __continue79
+            local __continue85
             repeat
                 if not valid(a) or a == bot or a:IsIllusion() or GetUnitToUnitDistance(bot, a) > ____exports.SETTINGS.AllyRadius then
-                    __continue79 = true
+                    __continue85 = true
                     break
                 end
                 allies[#allies + 1] = {
@@ -700,9 +723,9 @@ function ____exports.Gather(bot, run)
                     missing = a:GetMaxHealth() - a:GetHealth(),
                     heals = healsOf(a)
                 }
-                __continue79 = true
+                __continue85 = true
             until true
-            if not __continue79 then
+            if not __continue85 then
                 break
             end
         end
@@ -716,7 +739,7 @@ function ____exports.Gather(bot, run)
     local ____tree_13 = tree
     local ____temp_6
     if tree ~= nil then
-        ____temp_6 = Laning.NextDue(bot)
+        ____temp_6 = ____exports.NextDue(bot)
     else
         ____temp_6 = nil
     end

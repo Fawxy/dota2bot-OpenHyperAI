@@ -757,7 +757,7 @@ let towersRead = false;
 /**
  * Each lane's T1s on its path from the towers' own places, once per game at the first ask (towers do not move); the lane
  * data's places, traced on 7.41, are the fallback (each a world fact `lane_t1_<lane>_<team>`). Fills the paths' `towers` in place, so every
- * reader of a path (OwnT1, the run, the tower rule, core_camp) sees the live places.
+ * reader of a path (OwnT1, the run, the tower rule) sees the live places.
  */
 function readTowers(): void {
     if (towersRead) return;
@@ -823,7 +823,7 @@ interface FrameView {
     smp?: Sample[];
     steps?: number[];
 }
-/** By team * 10 + lane. Callers on one frame (lane_control's decide reads, forecasts and pulls the same view) share it:
+/** By team * 10 + lane. Callers on one frame (the pull's reads and forecasts of the same view) share it:
  *  nothing a view reads changes inside a frame, and a plain run is a function of the view and the creep speed. */
 let frameViews = new LuaMap<number, FrameView>();
 

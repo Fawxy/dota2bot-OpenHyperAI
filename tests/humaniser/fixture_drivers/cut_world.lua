@@ -1,4 +1,4 @@
--- Builds the world of a fixture cut from a game (tools/hlog/cut.js, ev=cut) for the cut drivers (lane_spot, threat_gate,
+-- Builds the world of a fixture cut from a game (tools/hlog/cut.js, ev=cut) for the cut drivers (threat_gate,
 -- retreat_leave): every API call the decision and its Threat.Read make is answered from the world; nothing else runs.
 -- world: t, team, pid, lane, ours {Switch = bool}, bot {x, y, hp, mhp, range, hull, speed, esc, prs (1/0, absent on older cuts), arm},
 --        ce/ca [{id, x, y, hp, mhp, ranged, tgt, hull}], he [{pid, x, y, hp, range, hull, speed, atk, eng, e3, e6, ill}],

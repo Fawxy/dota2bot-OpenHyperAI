@@ -191,7 +191,6 @@ local LaneHooks = require(GetScriptDirectory().."/FunLib/humaniser/lane_hooks")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
-local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
@@ -1214,7 +1213,7 @@ local function postClaims(bot, trip)
 end
 --- mode_farm_generic GetDesire: the trip's desire, 0 when the bot is not on (and does not start) a trip.
 function ____exports.Desire(bot)
-    if not ____exports.IsActive() or CoreCamp.Owns(bot) then
+    if not ____exports.IsActive() then
         return 0
     end
     local pid = bot:GetPlayerID()
@@ -1260,7 +1259,7 @@ local function overlay(bot, trip, now)
 end
 --- mode_farm_generic Think: true when the trip owns this frame.
 function ____exports.Think(bot)
-    if not ____exports.IsActive() or CoreCamp.Owns(bot) and trips[bot:GetPlayerID()] == nil then
+    if not ____exports.IsActive() then
         return false
     end
     local trip = trips[bot:GetPlayerID()]

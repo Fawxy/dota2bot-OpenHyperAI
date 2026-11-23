@@ -790,6 +790,7 @@ local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local CampClear = require(GetScriptDirectory().."/FunLib/humaniser/camp_clear")
 local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -1511,15 +1512,14 @@ local function resolvePair(p, team)
         stand = stand
     }
 end
---- CoreCamp's clear test (core, spawner idx, stacks) -> the core could clear it; set by core_camp, which imports this
--- module. Unset, the double runs as before.
-local carryClear
+--- The clear test (core, spawner idx, stacks) -> the core could clear it; tests replace it.
+local carryClear = CampClear.CanClear
 function ____exports.SetCarryClear(f)
     carryClear = f
 end
 --- Whether `team`'s pos1 could clear camp A of `d` with one more stack in it; true when there is no pos1 or no model.
 local function carryClears(team, d)
-    if not ____exports.SETTINGS.DoubleNeedsCarry or carryClear == nil then
+    if not ____exports.SETTINGS.DoubleNeedsCarry then
         return true
     end
     do
@@ -2321,15 +2321,6 @@ function ____exports.Wants(bot, blocked, host)
                     log(bot, minute, {{"res", "skip"}, {"why", why}})
                     return false
                 end
-                local LaneControl = require(GetScriptDirectory().."/FunLib/humaniser/lane_control")
-                if LaneControl.YieldsStack(
-                    bot:GetTeam(),
-                    bot:GetAssignedLane(),
-                    pid,
-                    minute
-                ) then
-                    return skip("lane")
-                end
                 if data == nil or stand == nil or Tasks.Jobs() == nil then
                     return skip("no-camp")
                 end
@@ -2472,11 +2463,11 @@ function ____exports.CalendarEntries(bot, now)
     local a = running[pid]
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue258
+            local __continue257
             repeat
                 local ____end = minute * 60 + 60 + jobEnd()
                 if now >= ____end then
-                    __continue258 = true
+                    __continue257 = true
                     break
                 end
                 if a ~= nil and a.minute == minute then
@@ -2489,12 +2480,12 @@ function ____exports.CalendarEntries(bot, now)
                         fixed = false,
                         running = true
                     }
-                    __continue258 = true
+                    __continue257 = true
                     break
                 end
                 local ____opt_38 = handled[pid]
                 if (____opt_38 and ____opt_38[minute]) == true or now >= minute * 60 + 60 then
-                    __continue258 = true
+                    __continue257 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -2522,7 +2513,7 @@ function ____exports.CalendarEntries(bot, now)
                     }) or ({nil, nil}))
                 end
                 if data == nil or stand == nil then
-                    __continue258 = true
+                    __continue257 = true
                     break
                 end
                 local walk = travel(bot, stand)
@@ -2557,9 +2548,9 @@ function ____exports.CalendarEntries(bot, now)
                     back = ____end + walk,
                     fixed = false
                 }
-                __continue258 = true
+                __continue257 = true
             until true
-            if not __continue258 then
+            if not __continue257 then
                 break
             end
         end

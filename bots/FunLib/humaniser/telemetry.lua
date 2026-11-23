@@ -58,7 +58,7 @@ local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local LanePick = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_pick")
+local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local LaneRead = require(GetScriptDirectory().."/FunLib/humaniser/lane_read")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
@@ -1132,7 +1132,7 @@ local function optionFields(bot)
     if DotaTime() > OPTIONS_UNTIL or not bot:IsAlive() or Difficulty.IsAllyOfHuman(bot) then
         return {}
     end
-    local ol, od = LanePick.Options(bot)
+    local ol, od = LaneOffers.Options(bot)
     local nearest
     for ____, h in ipairs(bot:GetNearbyHeroes(ENEMY_RADIUS, true, BotMode.None) or ({})) do
         if h:IsAlive() then
@@ -1356,13 +1356,6 @@ local function botFields(bot, ctx, since)
     fields[#fields + 1] = {
         "xpn",
         bot:GetXPNeededToLevel()
-    }
-    fields[#fields + 1] = {
-        "lf",
-        LanePick.Describe(
-            bot:GetPlayerID(),
-            DotaTime()
-        )
     }
     for ____, f in ipairs(guardedOptionFields(bot)) do
         fields[#fields + 1] = f

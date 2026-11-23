@@ -416,7 +416,6 @@ do
 	check("a place outside the tower's reach carries no row", at(1500, 100).kill == 0)
 	local creep = MakeCreep({ team = 2, x = tw.loc.x - 300, y = tw.loc.y, hp = 550 })
 	check("a full creep of ours under it outlasts the window: no row, even at 100 HP", at(600, 100).kill == 0 and at(600, 100).level == "safe")
-	check("an attack on a hero from there turns the tower on us at once, whatever the creep: the row is 400", at(600, 1000, { draws = true }).kill == 400)
 	creep.hp = 150
 	local low, ok = at(600, 210), at(600, 250)
 	check("the creep dying in two hits leaves 2 s of tower: 200, deadly at 210 HP fresh (bar 1.15) and safe at 250",
@@ -431,50 +430,6 @@ do
 	check("held under the tower's fire: deadly by the tower under the line (390 HP against 400)", at(600, 390, { held = true }).reason == "tower")
 	bot.GetActualIncomingDamage = function(_, d) return d * 0.5 end
 	check("our armour halves the tower's hit: the row is 200", at(600, 1000, { held = true }).kill == 200)
-end
-
--- Ours.CreepRead: the enemy lane creeps an attack on a hero from the place draws, asked only with `draws`. A creep of 60 a hit each second
--- at 325 speed: it arrives when the gap past its reach (100 + its hull 16 + ours 24) is walked. The shed order goes out 1 s after the ask.
-do
-	local _, G, bot = world()
-	bot.range = 600
-	check("CreepsDrawn: in reach the whole 4 s (240); 465 out arrives after 1 s (180); with a shed target one arriving inside 1 s still counts whole, a later one nothing; one that cannot arrive, nothing",
-		G.CreepsDrawn({ { d = 50, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1) == 240
-			and G.CreepsDrawn({ { d = 465, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1) == 180
-			and G.CreepsDrawn({ { d = 400, reach = 140, ms = 325, dps = 60, shed = true } }, 4, 1) == 60 * (4 - 0.8)
-			and G.CreepsDrawn({ { d = 530, reach = 140, ms = 325, dps = 60, shed = true } }, 4, 1) == 0
-			and G.CreepsDrawn({ { d = 2000, reach = 140, ms = 325, dps = 60, shed = false } }, 4, 1) == 0)
-	local creep = MakeCreep({ team = 3, x = HERE.x + 530, y = HERE.y })
-	creep.dmg, creep.spa = 60, 1
-	local ta = (530 - 140) / 325
-	local function at(hp, o)
-		T = T + 0.1
-		bot.hp = hp
-		o = o or {}
-		o.held = true
-		return G.At(bot, HERE, o)
-	end
-	local drawn, quiet = at(1000, { draws = true }), at(1000)
-	check("an act that draws them counts the creep from its arrival over the window; any other ask counts no creep",
-		near(drawn.kill, 60 * (4 - ta)) and drawn.level == "safe" and quiet.kill == 0, tostring(drawn.kill))
-	local low = at(150, { draws = true })
-	check("at 150 HP with no creep of ours to shed onto the place is deadly by the creeps", low.level == "deadly" and low.reason == "creeps")
-	local own = MakeCreep({ team = 2, x = HERE.x + 200, y = HERE.y })
-	local shed = at(150, { draws = true })
-	check("a creep of ours inside our attack range and the creep's acquisition range takes it before it arrives: no row, and 150 HP holds",
-		shed.kill == 0 and shed.level == "safe", tostring(shed.kill))
-	check("an act that will not stop to shed (a kill or join) counts it though the shed target stands there",
-		near(at(1000, { draws = true, commits = true }).kill, 60 * (4 - ta)))
-	own.loc = Vector(HERE.x - 500, HERE.y)
-	check("a creep of ours 1,030 from the enemy creep is no shed target: counted again", near(at(1000, { draws = true }).kill, 60 * (4 - ta)))
-	own.loc = Vector(HERE.x + 200, HERE.y)
-	creep.loc = Vector(HERE.x + 300, HERE.y)
-	check("a creep that reaches us before the order goes out is locked by then: counted from its arrival though a shed target stands there",
-		near(at(1000, { draws = true }).kill, 60 * (4 - (300 - 140) / 325)))
-	check("the window is the asker's: over 3 s the same creep is 60 less", near(G.CreepsAt(bot, HERE, 3).dmg, 60 * (3 - (300 - 140) / 325)))
-	package.loaded["bots/FunLib/custom_loader"].Ours.CreepRead = false
-	check("switch off: the same ask counts no creep", at(1000, { draws = true }).kill == 0)
-	package.loaded["bots/FunLib/custom_loader"].Ours.CreepRead = nil
 end
 
 -- The landing sampler is a Tick step, independent of telemetry.

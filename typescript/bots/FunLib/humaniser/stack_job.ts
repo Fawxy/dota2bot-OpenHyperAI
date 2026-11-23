@@ -11,6 +11,7 @@ import type * as Lib from "bots/FunLib/engine/tasks";
 import { Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import * as Camps from "bots/FunLib/humaniser/camps";
+import * as CampClear from "bots/FunLib/humaniser/camp_clear";
 import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -63,7 +64,7 @@ export const SETTINGS = {
     /** Seconds kept spare on the walk from A to B's hit (the order goes out the hit's lead early); judgement. */
     DoubleSlack: 0.5,
     /** The pos5's safe-lane double waits until its team's pos1 can clear camp A (the hard camp) once it holds one more stack
-     *  (CoreCamp's clear model, `SetCarryClear`); until then the pos5 stacks camp B (the pull camp) alone, which feeds its
+     *  (camp_clear's model, `CampClear.CanClear`); until then the pos5 stacks camp B (the pull camp) alone, which feeds its
      *  pulls (user mark review, 06/11/2026: a pos5 stacking the hard camp at 3:5x before the carry can farm it). */
     DoubleNeedsCarry: true,
     /** `Fits` counts the walk to B from where camp A is hit: within attack range plus this of A's origin, not the stand.
@@ -453,16 +454,15 @@ function resolvePair(p: Pair, team: number): Double | undefined {
     return { b, a, fsec: p.fsec + late, sec: p.sec, stand };
 }
 
-/** CoreCamp's clear test (core, spawner idx, stacks) -> the core could clear it; set by core_camp, which imports this
- *  module. Unset, the double runs as before. */
-let carryClear: ((core: Unit, idx: number, stacks: number) => boolean) | undefined;
+/** The clear test (core, spawner idx, stacks) -> the core could clear it; tests replace it. */
+let carryClear: (core: Unit, idx: number, stacks: number) => boolean = CampClear.CanClear;
 export function SetCarryClear(f: (core: Unit, idx: number, stacks: number) => boolean): void {
     carryClear = f;
 }
 
 /** Whether `team`'s pos1 could clear camp A of `d` with one more stack in it; true when there is no pos1 or no model. */
 function carryClears(team: number, d: Double): boolean {
-    if (!SETTINGS.DoubleNeedsCarry || carryClear === undefined) return true;
+    if (!SETTINGS.DoubleNeedsCarry) return true;
     for (let i = 1; i <= 5; i++) {
         const u = GetTeamMember(i);
         if (u === undefined || u === null || u.GetTeam() !== team || LaneConfig.PositionOf(u) !== 1) continue;
@@ -1235,10 +1235,6 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
             ]);
             return false;
         };
-        // Slice lane-control 3: the lane controller's live decision gave this minute's support to the lane (a pull its lane
-        // needs more than the stack, design s5.4); the minute is skipped before the walk.
-        const LaneControl = require("bots/FunLib/humaniser/lane_control") as typeof import("bots/FunLib/humaniser/lane_control");
-        if (LaneControl.YieldsStack(bot.GetTeam(), bot.GetAssignedLane(), pid, minute)) return skip("lane");
         if (data === undefined || stand === undefined || Tasks.Jobs() === undefined) return skip("no-camp");
         // A double starts from camp A: its stand point and hit second set the start.
         const fd = pos4 ? pair : Ours.On("DoubleStack") ? Partner(data) : undefined;

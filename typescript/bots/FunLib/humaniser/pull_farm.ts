@@ -1,22 +1,19 @@
 /**
  * Support pull farm (slice support-pull-farm, switch Ours.SupportPullFarm; plan docs/proposals/2026-11-05-pull-effect.md piece 3):
  * after an `ok` pull the support stays on the camp it pulled into and clears the neutrals that are left, with the pulled wave
- * fighting them, when the site is safe. A core whose camp trip (CoreCamp) comes to the camp takes it over: the support gives
- * it up and goes back to lane. The job chooser hosts it, after PullJob in rank. It applies to every puller PullJob takes
+ * fighting them, when the site is safe. A core of ours standing on the camp takes it over: the support gives it up and
+ * goes back to lane. The job chooser hosts it, after PullJob in rank. It applies to every puller PullJob takes
  * (the pos5, or a lone pos4 on its lane's pull camp: the off-lane's large camp) and takes the neutrals' last hits so the
  * camp's madstone goes to it (SETTINGS LastHit, user 06/11/2026).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { DamageType, DroppedItem, Unit, UnitType, Vector } from "bots/ts_libs/dota";
-import * as CampClaims from "bots/FunLib/humaniser/camp_claims";
 import * as Camps from "bots/FunLib/humaniser/camps";
-import * as CoreCamp from "bots/FunLib/humaniser/core_camp";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Profile from "bots/FunLib/humaniser/profile";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
-import * as LaneSpot from "bots/FunLib/humaniser/states/lane_spot";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -131,11 +128,38 @@ function coreThere(bot: Unit, center: Vector): boolean {
     return false;
 }
 
+/**
+ * How close `self` may stand to an enemy hero with `Ours.Threat` off: its attack reach to us plus 1.5 s of its movement, at
+ * least 800 (the melee margin). From the lane spot's calibration (lposchk2: idle cores 400-600 from a melee enemy lost 0.5
+ * HP-% a second, beyond 800 0.09). `judgement`.
+ */
+function heroReach(self: Unit, enemy: Unit): number {
+    return math.max(800, enemy.GetAttackRange() + enemy.GetBoundingRadius() + self.GetBoundingRadius() + 1.5 * enemy.GetCurrentMovementSpeed());
+}
+
+function distToSegment(p: Vector, a: Vector, b: Vector): number {
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const len2 = vx * vx + vy * vy;
+    const u = len2 > 0 ? math.max(0, math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)) : 0;
+    return math.sqrt((p.x - (a.x + u * vx)) ** 2 + (p.y - (a.y + u * vy)) ** 2);
+}
+
+/** `Ours.Threat` off: a visible enemy hero whose reach (plus 600, `judgement`) touches the walk to `at` or the camp itself. */
+function threatOnWay(bot: Unit, at: Vector): boolean {
+    const here = bot.GetLocation();
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
+        const loc = locOf(e);
+        if (loc !== undefined && distToSegment(loc, here, at) <= heroReach(bot, e) + 600) return true;
+    }
+    return false;
+}
+
 /** Why the support may not start on the camp now, or undefined. */
 function startGate(bot: Unit, camp: Camps.Spawner, center: Vector, blocked: (bot: Unit) => string | undefined): string | undefined {
     const state = PullJob.CampStateOf(camp);
     if (state.n === 0) return "no-neutrals";
-    if (CampClaims.On("core", camp.idx) !== undefined) return "core-coming";
     if (coreThere(bot, center)) return "core-there";
     const dmg = PullJob.CampDamage(bot, state, camp.type, SETTINGS.ClearSeconds);
     if (bot.GetHealth() - dmg < bot.GetMaxHealth() * SETTINGS.ClearReserve) return "camp-dmg";
@@ -143,7 +167,7 @@ function startGate(bot: Unit, camp: Camps.Spawner, center: Vector, blocked: (bot
     if (Ours.On("Threat")) {
         const why = SafeGather.TripGate(bot, center, "pull_farm").why;
         if (why !== undefined) return why;
-    } else if (CoreCamp.ThreatOnWay(bot, center)) return "threat";
+    } else if (threatOnWay(bot, center)) return "threat";
     return blocked(bot) ?? PullJob.PartnerThreat(bot);
 }
 
@@ -173,7 +197,6 @@ function jobLine(bot: Unit, f: Farm, phase: string, why: string): void {
 /** Why the farm must stop now (the task's guard, every frame), or undefined. The walk back ignores heroes: laning decides. */
 function guard(bot: Unit, f: Farm): string | undefined {
     if (f.returning === true) return undefined;
-    if (CampClaims.On("core", f.camp) !== undefined) return "yield";
     if (hpShare(bot) < SETTINGS.AbortHP) return "hp";
     let near = false;
     if (Ours.On("Threat")) near = SafeGather.At(bot, bot.GetLocation(), { held: true, who: "pull_farm_trip" }).level === "deadly";
@@ -181,7 +204,7 @@ function guard(bot: Unit, f: Farm): string | undefined {
         for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
             if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
             const at = locOf(e);
-            if (at !== undefined && dist(at, bot.GetLocation()) <= LaneSpot.HeroReach(bot, e)) near = true;
+            if (at !== undefined && dist(at, bot.GetLocation()) <= heroReach(bot, e)) near = true;
         }
     if (!near) {
         f.threatSince = undefined;
@@ -192,7 +215,6 @@ function guard(bot: Unit, f: Farm): string | undefined {
     return now - f.threatSince >= Profile.ThreatHold(bot) ? "threat" : undefined;
 }
 
-// CANDIDATE(walkBack): core_camp's `walkBack` is the same walk to the lane front; the rule of two is met, a shared verb waits for a third consumer.
 function* walkBack(bot: Unit, f: Farm, ctx: Lib.Ctx): Lib.TaskBody {
     ctx.label("return");
     f.returning = true;
@@ -335,7 +357,6 @@ function campLeft(center: Vector): number {
 
 function finish(bot: Unit, f: Farm, r: Lib.Result, label: string | undefined): void {
     running[bot.GetPlayerID()] = undefined;
-    CampClaims.Set("pullfarm", bot.GetPlayerID(), undefined);
     const why = r.success ? (r.message ?? "ok") : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
     jobLine(bot, f, "end", why);
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x * 10 + 0.5) / 10 : undefined);
@@ -398,7 +419,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     const why = ago > SETTINGS.StartWithin ? lastWhy[pid] ?? "late" : startGate(bot, camp, center, blocked);
     if (why !== undefined) {
         lastWhy[pid] = why;
-        if (ago > SETTINGS.StartWithin || why === "no-neutrals" || why === "core-coming" || why === "core-there") {
+        if (ago > SETTINGS.StartWithin || why === "no-neutrals" || why === "core-there") {
             handled[pid] = pull.at;
             lastWhy[pid] = undefined;
             Telemetry.Event("pull_clear", [["phase", "skip"], ...fields(bot, f, pull.camp), ["why", why]]);
@@ -415,7 +436,6 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         return false;
     }
     running[pid] = f;
-    CampClaims.Set("pullfarm", pid, f.camp);
     jobLine(bot, f, "start", "trigger");
     Telemetry.Event("pull_clear", [["phase", "start"], ...fields(bot, f, f.camp), ["hp0", math.floor(f.hp0 * 100 + 0.5) / 100]]);
     return true;

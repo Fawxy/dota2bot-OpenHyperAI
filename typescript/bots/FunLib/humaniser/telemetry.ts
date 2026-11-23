@@ -17,7 +17,7 @@ import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as LanePick from "bots/FunLib/humaniser/states/lane_pick";
+import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
@@ -764,7 +764,7 @@ const ENEMY_RADIUS = 1200;
  */
 function optionFields(bot: Unit): BotPair[] {
     if (DotaTime() > OPTIONS_UNTIL || !bot.IsAlive() || Difficulty.IsAllyOfHuman(bot)) return [];
-    const [ol, od] = LanePick.Options(bot as unknown as Parameters<typeof LanePick.Options>[0]);
+    const [ol, od] = LaneOffers.Options(bot as unknown as Parameters<typeof LaneOffers.Options>[0]);
     let nearest: number | undefined;
     for (const h of bot.GetNearbyHeroes(ENEMY_RADIUS, true, BotMode.None) ?? []) {
         if (h.IsAlive()) {
@@ -875,7 +875,6 @@ function botFields(bot: Unit, ctx: BotContext | undefined, since: number): BotPa
     fields.push(["gold", bot.GetGold()]);
     fields.push(["nw", bot.GetNetWorth()]);
     fields.push(["xpn", (bot as unknown as StatsUnit).GetXPNeededToLevel()]);
-    fields.push(["lf", LanePick.Describe(bot.GetPlayerID(), DotaTime())]);
     for (const f of guardedOptionFields(bot)) fields.push(f);
     for (const f of guardedDamageFields(bot)) fields.push(f);
     fields.push(["rdy", guardedReady(bot)]);

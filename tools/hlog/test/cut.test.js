@@ -9,14 +9,14 @@ const { readGames, worldOf, checkOne, checkMany, uncutGates, sampleByAnswer, bar
 const hev = (s) => `11/13 15:33:39 [VScript] [HEV] ${s}`;
 // Smoke 1's shape: the towers line is written in the pregame, and a clock jump to 0:00 later splits the log's games.
 const LOG = [
-    hev('t=-90.000 ev=bot pid=1 team=2 ours=LaneSpot:1,LaneSpotTower:1'),
+    hev('t=-90.000 ev=bot pid=1 team=2 ours=Retreat:1,TowerRead:1'),
     hev('t=-14.800 ev=cut_towers team=2 tw=0,-6336,1856,700,144;3,-1544,-1408,700,144'),
     hev('t=-14.800 ev=cut_towers team=3 tw=3,524,652,700,144;6,6269,-2240,700,144'),
     hev('t=-60.000 ev=snap pid=1'),
-    hev('t=200.000 ev=cut pid=1 kind=spot role=core lane=2 b=-2000,-1800,500,600,600,24,300,0 fr=-1200,-1000,-1500,-1250 '
+    hev('t=200.000 ev=cut pid=1 kind=leave b=-2000,-1800,500,600,600,24,300,0 dec=under purp=free lv=safe why=safe kill=0 dt=0 '
         + 'he=6,-900,-700,550,500,24,290,1,0,120,240,0 hu=7,3000,2000,12.5,305 ta=9,8 tt=2,3,h6 '
         + 'vis=-3600,-3400,14,12,250,ffff'),
-    hev('t=200.000 ev=cut_creeps pid=1 ce=11,-1100,-900,300,550,0,u12,16 ca=12,-1250,-1050,400,550,1,u11,16'),
+    hev('t=200.000 ev=cut_creeps pid=1 kind=leave ce=11,-1100,-900,300,550,0,u12,16 ca=12,-1250,-1050,400,550,1,u11,16'),
 ].join('\n');
 
 test('a towers line from before a clock jump still serves the game after it, and dead towers drop out by the mask', () => {
@@ -28,7 +28,7 @@ test('a towers line from before a clock jump still serves the game after it, and
     assert.deepStrictEqual(w.towers.map((t) => `${t.team}:${t.i}`), ['2:0', '2:3', '3:3']);
     assert.strictEqual(w.towers.find((t) => t.team === 2 && t.i === 3).tgt, 'h6');
     assert.strictEqual(w.team, 2);
-    assert.strictEqual(w.ours.LaneSpotTower, true);
+    assert.strictEqual(w.ours.TowerRead, true);
 });
 
 test('the world carries every record the driver serves: engaged hero, unseen hero, creep targets, the grid', () => {
@@ -45,7 +45,7 @@ test('the world carries every record the driver serves: engaged hero, unseen her
 test('a cut missing its creeps line is reported, not replayed on a world without creeps', () => {
     const g = readGames(LOG.split('\n').filter((l) => !l.includes('cut_creeps')).join('\n'))[1];
     assert.throws(() => worldOf(g, g.cuts[0]), /no ev=cut_creeps/);
-    assert.match(checkOne(g, g.cuts[0]).error, /no ev=lane_pos|no ev=cut_creeps/);
+    assert.match(checkOne(g, g.cuts[0]).error, /no ev=cut_creeps/);
 });
 
 // kind=leave: retreat's leave rule replayed through the retreat_leave driver on a made-up world (the real map's towers).
@@ -72,14 +72,6 @@ test('leave: the held bar decides between a stay and a leave on the same hitter'
     assert.ok(kept.same && left.same);
 });
 
-test('leave: a hit back or a join holds a deadly place down to ratio 1.0, and under it nothing holds', () => {
-    const hit = replayOf({ ...at(340), dec: 'hitback', extra: 'hb=1' });
-    const join = replayOf({ ...at(340), dec: 'join', extra: 'pj=1' });
-    const lethal = replayOf({ ...at(250), dec: 'lethal', extra: 'hb=1' });
-    assert.deepStrictEqual([hit.got, join.got, lethal.got], ['stay(hitback)', 'stay(join)', 'leave(lethal)']);
-    assert.ok(hit.same && join.same && lethal.same);
-});
-
 test('leave: a tower on us leaves at once; a held place in its reach that it does not target, and the same hero out of every tower, stay', () => {
     const near = '200,300,500,600,600,24,300,0';
     const away = '-3000,-3000,500,600,600,24,300,0';
@@ -93,16 +85,6 @@ test('leave: a tower on us leaves at once; a held place in its reach that it doe
 test('leave: a mismatch with the game is reported, with what each side decided', () => {
     const r = replayOf({ ...at(400), dec: 'threat' });
     assert.deepStrictEqual([r.same, r.got, r.want], [false, 'stay(under)', 'leave(threat)']);
-});
-
-test('two cuts of one hero in one frame keep their own creeps', () => {
-    const spot = LOG.split('\n');
-    const leave = leaveLog({ ...at(400), dec: 'under', ca: '5,-1500,-1860,300,300,1,-,8' }).split('\n');
-    const text = [...spot.slice(0, 5), leave[3], spot[5], leave[4]].join('\n');
-    const g = readGames(text).pop();
-    const [spotCut, leaveCut] = [g.cuts.find((c) => c.kind === 'spot'), g.cuts.find((c) => c.kind === 'leave')];
-    assert.strictEqual(worldOf(g, spotCut).ce[0].id, 11);
-    assert.deepStrictEqual([worldOf(g, leaveCut).ce.length, worldOf(g, leaveCut).ca[0].id], [0, 5]);
 });
 
 // Gate cuts: a Radiant core at (-200, 200) walking to a camp at (800, 900), a tower pair that puts the camp near the enemy's but outside its
@@ -219,18 +201,6 @@ test('--list shows whether an enemy hero in the cut is hitting and the burst ove
     assert.strictEqual(list('--engaged', '1'), '');
 });
 
-// kind=trade: today's line has `lv`; a `trade2` line is the same decision under its earlier name; the retired decision's line (no `lv`) is
-// set apart as `trade_old` and does not replay.
-test('trade: a trade2 line reads as trade and replays; the retired decision\'s line is set apart', () => {
-    const now = 't=200.000 ev=cut pid=1 kind=trade2 role=core hp=1 svh=safe,5,safe svb=safe,5,safe n=1 tm=0 hc=0 cr=1 dn=0 cd=7,0.7,420,300,100,0,1,0,0,0.3,0.2,0,0,-,-,-,-,-,-,0 lv=hit tgt=7 why=hit';
-    const old = 't=201.000 ev=cut pid=1 kind=trade role=core tgt=6 hp=0.6 thp=0.5 en=1 ally=1 cr=0 hc=0 tw=0 kh=0.4 lf=1 d=400 rch=648 tlh=0 dec=trade';
-    const g = readGames([hev(now), hev(old)].join('\n')).pop();
-    assert.deepStrictEqual(g.cuts.map(c => c.kind), ['trade', 'trade_old']);
-    const r = checkOne(g, g.cuts[0]);
-    assert.ok(r.same, JSON.stringify(r));
-    assert.ok(checkOne(g, g.cuts[1]).error);
-});
-
 // kind=safe: the shadow line replays through Safe.Decide; a line whose recorded answer is not what Decide gives is reported as different.
 test('safe: a logged line replays to its level and reason, and a changed answer is told apart', () => {
     const line = (extra) => hev(`t=200.000 ev=cut pid=1 kind=safe who=leave pl=-2000,-5000 hpa=630 hpm=1000 mi=0 stw=0,0 ld=0,0,0 awy=0 hld=0 hd=0 ${extra}`);
@@ -243,29 +213,12 @@ test('safe: a logged line replays to its level and reason, and a changed answer 
     assert.strictEqual(checkOne(g, g.cuts[0]).got, 'deadly(kill)');
 });
 
-// kind=pick: the body's creep pick replays through LanePick.Choose with `mine`, `far` and the idle swing as the game answered them.
-test('pick: a logged line replays to its answer (ranged bias, the role filter, the walk-in limit, a pre-hit), and a wrong answer is told apart', () => {
-    const line = (extra) => hev(`t=200.000 ev=cut pid=1 kind=pick pos=1 ord=lasthit,pre_hit,deny,idle_swing ${extra}`);
-    const g = readGames([
-        line('tg=1,lasthit,0.6,0.6,0,-1,0,1;2,lasthit,0.9,0.9,0,-1,1,1 ans=2 ak=lasthit'),
-        line('tg=1,deny,0,0,0,-1,0,1;2,lasthit,0.8,0.8,0,-1,0,0 ans=1 ak=deny'),
-        line('tg=1,lasthit,0.6,0.6,0,-1,0,1;2,lasthit,0.9,0.9,0,-1,1,1 ans=1 ak=lasthit'),
-        line('tg=1,deny,0,0,0,-1,0,1 pre=-1,0,0,9 ans=pre ak=prehit'),
-        line('tg=1,lasthit,0.5,0.5,1.5,5,0,1 far=1,1 ans=1 ak=lasthit'),
-        line('tg=1,lasthit,0.5,0.5,1.5,5,0,1 far=1,0 ans=none ak=none'),
-        line('tg=1,lasthit,0.5,0.5,2,1,0,1 idle=-1,prehit,0,0,0,-1,0 ans=idle ak=prehit'),
-    ].join('\n')).pop();
-    assert.deepStrictEqual(g.cuts.map(c => checkOne(g, c).same), [true, true, false, true, true, true, true]);
-    assert.strictEqual(checkOne(g, g.cuts[2]).got, '2(lasthit)');
-    assert.strictEqual(checkOne(g, g.cuts[2]).want, '1(lasthit)');
-});
-
-// A banked slice (tower-on-me smoke, 6:52 to 7:07, pids 6, 7 and 8, spot and leave cuts): replayed in order without the module
-// reset, safe_gather's per-hero memory from one cut changes 3 spot and 2 leave answers after it. The default replay must still
-// answer every cut as a fresh reload does; a module that adds memory no Reset* clears shows here (or in a --fresh comparison).
+// A banked slice (tower-on-me smoke, 6:52 to 7:07, pids 6, 7 and 8, leave cuts; its spot cuts went with the lane body): replayed in
+// order without the module reset, safe_gather's per-hero memory from one cut changed 2 leave answers after it. The default replay
+// must still answer every cut as a fresh reload does; a module that adds memory no Reset* clears shows here (or in a --fresh comparison).
 test('the default replay (modules kept, their state reset) answers each cut of a banked slice as a fresh reload does', () => {
     const g = readGames(fs.readFileSync(path.join(__dirname, 'data', 'cut_slice.log'), 'utf8')).pop();
-    for (const kind of ['spot', 'leave']) {
+    for (const kind of ['leave']) {
         const cuts = g.cuts.filter(c => c.kind === kind);
         assert.ok(cuts.length >= 10, `${kind}: the slice holds its cuts`);
         const fresh = cuts.map(c => checkOne(g, c, undefined, true));

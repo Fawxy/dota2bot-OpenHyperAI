@@ -1,6 +1,6 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
 -- Slice threat: Threat.Read (the missing belief's minute weights, a hero's own speed for its run, reach over the horizon,
--- the enemy tower, lethal), the gates that read it under Ours.Threat and their OFF arm, and ev=threat's rate limit.
+-- the enemy tower, lethal), the trip gate that reads it (SafeGather.TripGate) and ev=threat's rate limit.
 local dota = require("bots/ts_libs/dota/index")
 local Lane = dota.Lane
 
@@ -109,30 +109,30 @@ do
 	check("tower: outside", Threat.Read(bot, HERE, Vector(1700, -5000), 2).tower == false)
 end
 
--- The core camp gate with the switch on: an early lone missing hero no longer holds the trip; the OFF arm (MissingOf) still
--- counts it. After 4:00 both hold.
-for _, case in ipairs({ { t = 200, off = false, held = 0 }, { t = 200, off = true, held = 1 }, { t = 300, off = false, held = 1 } }) do
-	local H, _, bot, e = world({ t = case.t, off = case.off })
+-- The trip gate: an early lone missing hero does not hold a trip; after 4:00 it does.
+local function gate(bot) return require("bots/FunLib/humaniser/safe_gather").TripGate(bot, CAMP, "pull") end
+for _, case in ipairs({ { t = 200, held = false }, { t = 300, held = true } }) do
+	local _, _, bot, e = world({ t = case.t })
 	hide(e, Vector(-500, -7000), 10)
-	local n
-	capture(function() n = H.CoreCamp.MissingGate(bot, CAMP, "core_pull") end)
-	check(string.format("gate t=%d off=%s: held %d", case.t, tostring(case.off), case.held), n == case.held, n)
+	local g
+	capture(function() g = gate(bot) end)
+	check(string.format("gate t=%d: held %s", case.t, tostring(case.held)), (g.why ~= nil) == case.held and (not case.held or g.r.mpids[1] == e.pid), g.why)
 end
 
 -- ev=threat: one line per consumer while the decision holds, again after LogEvery or at once when it changes.
 do
-	local H, _, bot, e = world()
+	local _, _, bot, e = world()
 	hide(e, Vector(-500, -7000), 10)
 	local out = capture(function()
-		H.CoreCamp.MissingGate(bot, CAMP, "core_pull")
+		gate(bot)
 		T = T + 1
-		H.CoreCamp.MissingGate(bot, CAMP, "core_pull")
+		gate(bot)
 		e.alive = false
-		H.CoreCamp.MissingGate(bot, CAMP, "core_pull")
+		gate(bot)
 		T = T + 1
-		H.CoreCamp.MissingGate(bot, CAMP, "core_pull")
+		gate(bot)
 		T = T + 6
-		H.CoreCamp.MissingGate(bot, CAMP, "core_pull")
+		gate(bot)
 	end)
 	local l = threatLines(out)
 	check("log: held, then go on the change, then go again after LogEvery", #l == 3 and field(l[1], "dec") == "unknown" and field(l[2], "dec") == "go" and field(l[3], "dec") == "go", #l)
@@ -202,18 +202,6 @@ do
 	hide(e, mid, 10)
 	local m = Threat.Read(bot, mid, mid, 4)
 	check("prior: the middle bucket weighs a quarter", near(m.missing, 0.125) and m.depth >= 0.5 and m.depth < 0.65, m.missing .. " depth " .. m.depth)
-end
-
--- R6 on the read (lane_control CoreThreat): under the switch the core is in danger when Safe.At says deadly here (two heroes 900 away that deal 800
--- of its 600 HP in 2 s); two that deal nothing are not, where the OFF arm counts the heroes within 1,200 and does. A support in lane clears it either way.
-for _, case in ipairs({ { off = false, dmg = 400, danger = true }, { off = false, dmg = 0, danger = false }, { off = true, dmg = 0, danger = true } }) do
-	local _, _, bot, e = world({ off = case.off })
-	local Ctl = require("bots/FunLib/humaniser/lane_control")
-	e.loc, e.range, e.estDamage = Vector(HERE.x + 900, HERE.y), 600, case.dmg
-	local e2 = MakeUnit({ pid = 11, team = 3, loc = Vector(HERE.x - 900, HERE.y) })
-	e2.range, e2.estDamage = 600, case.dmg
-	check("R6 off=" .. tostring(case.off) .. " dmg=" .. case.dmg .. ": two heroes at 900", Ctl.CoreThreat(bot, false) == case.danger)
-	check("R6 off=" .. tostring(case.off) .. " dmg=" .. case.dmg .. ": a support in lane clears it", Ctl.CoreThreat(bot, true) == false)
 end
 
 -- One reader over several walks (the lane spot's use) answers each as a read of its own would: what it keeps between

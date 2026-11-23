@@ -22,12 +22,8 @@ const VERBS = {
     team_roam: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
     retreat_desire: [],
     core_trip: ['noTrip', 'trip'],
-    support_claim: ['claim', 'noClaim'],
-    lane_spot: ['stand', 'anchor', 'read'],
     retreat_leave: ['leave', 'stay'],
     threat_gate: ['go', 'hold'],
-    pair_join: ['join', 'out', 'act', 'hold', 'none'],
-    trade: ['none', 'hit', 'hitback', 'kill', 'join', 'end', 'hold', 'chance', 'opens', 'endkinds'],
 };
 
 function listFixtures(dir) {

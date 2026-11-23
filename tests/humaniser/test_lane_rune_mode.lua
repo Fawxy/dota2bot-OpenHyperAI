@@ -78,7 +78,6 @@ local function load(contest, opts)
 		States = { Step = function() return false end, WisdomOwned = function() return false end },
 		RuneJob = { Owns = function() return opts.runeJobOwns == true end, MidWants = function() return false end, MidStep = function() return false end,
 			MidWaterOwns = function() return opts.midWater == true end },
-		Arbiter = { DeniesOhaRune = function() return opts.held == true end },
 		RunePlan = { OwnsMid = function() return false end },
 		RunePickup = { On = function() return false end },
 	}
@@ -130,19 +129,11 @@ do
 	load(0, { midWater = true })
 	check("mid's river runes owned by its water trips: no OHA power desire", GetDesire() == 0)
 
-	-- Rework step 7: OHA's own power desire is denied to a hero the arbiter holds; our contest beside it stands.
-	load(0, { held = true })
-	check("held by the arbiter: no OHA power desire", GetDesire() == 0)
-	load(0.6, { held = true })
-	check("held by the arbiter: our rune contest stands", near(GetDesire(), 0.6))
-
-	-- fact3 (2026-11-13T00-28-17 drill_arbiter-wait, pid 3, t=175-320): a mid with a bottle and an unseen power spot.
+	-- fact3 (13/11/2026, pid 3, t=175-320): a mid with a bottle and an unseen power spot.
 	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_UNKNOWN }
 	load(0, { T = 200, bottle = true })
 	local bottle = GetDesire()
 	check("fact3: OHA's bottle branch sends the mid to an unseen spot", bottle > 0.55, bottle)
-	load(0, { T = 200, bottle = true, held = true })
-	check("fact3: not a mid the arbiter holds", GetDesire() == 0)
 	load(0, { T = 200, bottle = true, midWater = true })
 	check("fact3: not a mid whose water trips own the river", GetDesire() == 0)
 	RUNE_STATUS = { [RUNE_POWERUP_1] = RUNE_STATUS_AVAILABLE }
@@ -165,8 +156,6 @@ local function realHumaniser(transitions)
 	local C = package.loaded["bots/FunLib/custom_loader"]
 	C.Ours = C.Ours or {}
 	C.Ours.RuneRotation = false
-	-- OHA's own rune desire is the off path of the arbiter's drive; the held cases above stub DeniesOhaRune.
-	C.Ours.ArbiterDrive = false
 	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return T < 600 end })
 	return H
 end

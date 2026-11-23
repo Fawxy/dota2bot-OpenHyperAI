@@ -6,43 +6,12 @@
 import Customize = require("bots/FunLib/custom_loader");
 
 export const DEFAULTS = {
-    /** Slice 3: pos4/pos5 leave a lane creep an allied core can take (Etiquette). */
-    LeaveCoreCreep: true,
     /** Slice 4: the pos5 stacks its nearest camp on a placeholder trigger (StackJob). */
     StackExecute: true,
     /** Slice double-stack: the stack job hits a listed partner camp first, so one minute stacks two camps (StackJob). */
     DoubleStack: true,
     /** Slice job-chooser: while our job runs, OHA's modes outside the exceptions list cannot take the hero (Chooser). */
     JobChooser: true,
-    /**
-     * Slice 5: pos1-3 take lane last hits and denies through the laning state's body (states/core_last_hit). On by user
-     * decision 02/11/2026 although ER-008/009/010 FAILed against OHA (share flat, more deaths): our code ends up enabled.
-     */
-    CoreLastHit: true,
-    /**
-     * Slice oha-trade (design 2026-11-19-trade-decision-design.md): the hero-on-hero exchange in lane is one decision (states/trade):
-     * hit, hit back, kill and join for every laner our laning body holds (CoreLastHit or SupportDeny), the attack mode's desire and
-     * Think in lane, team roam's fight branches, farm's ShouldRun and retreat's hold. Off: OHA's attack port, team roam's own fights,
-     * farm's ShouldRun and no retreat hold.
-     */
-    Trade: true,
-    /** Slice 5 re-run: with CoreLastHit on, false keeps the Dire cores on Valve's laning (Radiant only), so one side stays identical in both arms. */
-    CoreLastHitDire: true,
-    /** Slice l1-support-deny: pos4-5 go for every own creep they can deny, before anything else in lane (states/support_deny). */
-    SupportDeny: true,
-    /** With SupportDeny on, false keeps the Dire supports on OHA's deny (Radiant only), as CoreLastHitDire. */
-    SupportDenyDire: true,
-    /** Slice support-lane-hits: with SupportDeny on, the support's body also takes the last hits no allied core will take
-     *  (states/lane_claims), in place of OHA's last hits; false keeps those OHA's (denies only, sub-switch for debugging). */
-    SupportLastHit: true,
-    /** User 06/11/2026 (bug-hunt mark 11): a core leaves a deny an allied support's laning body is in an attempt on and goes for
-     *  the next last hit or deny (states/lane_claims DenyYield); false: a core takes every creep (sub-switch for debugging). */
-    CoreDenyYield: true,
-    /**
-     * Slice pre-hit: with CoreLastHit on, a core hits an enemy creep our tower is attacking when the tower would otherwise take
-     * it from above the core's kill range and one hit makes a window (states/pre_hit); false: the core only last-hits.
-     */
-    PreHit: true,
     /** Slice rune-rotation: pos4 to the 6:00 power rune and its 7:00 shrine, pos5 to the 6:00 rune when it has no stack (RuneJob). */
     RuneRotation: true,
     /** Slice rune-spawn: the team's 6:00 power rune (spot plan, hidden wait, timed walk, plays) and the 0:00 river bounty's
@@ -51,78 +20,19 @@ export const DEFAULTS = {
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: true,
-    /**
-     * Slice lane-positioning: with CoreLastHit on, a pos1-3 stands on our lane spot (states/lane_spot: creep rings widened
-     * below half HP, tower ring at every level, XP limit) instead of OHA's PositionTarget; since slice support-spot, with
-     * SupportDeny on, a pos4-5 too, instead of OHA's PositionThink.
-     */
-    LaneSpot: true,
-    /** With LaneSpot on, our own towers relax a core's creep rings in their range above 25% HP (states/lane_spot Cover): enemy
-     *  creeps attacking something else there keep a small ring. Heroes are Safe.At's alone. Supports, and off: the open-lane rings. */
-    LaneSpotTower: true,
-    /**
-     * Slice lane-aggro: an in-lane core (and a support whose lane core is away) draws enemy lane creeps on purpose
-     * (lane_aggro): `feed` walks the enemy wave onto our ranged creep for our deny, `drag` walks a creep about to die away
-     * from an enemy hero for a safe last hit. Off: no draws, and OHA-era lane_tech keeps its aggro pull.
-     */
-    LaneAggro: true,
-    /**
-     * With CoreLastHit on, a melee pos1-3 walks in from its lane spot (up to 2.5 s) for a last hit on a
-     * creep dying inside one enemy hero's reach when the walk-in's HP price passes (states/contest), and walks back. Off: the
-     * reach rule's 1 s walk for every laner.
-     */
-    CoreContest: true,
-    /**
-     * Slice core-in-lane: with CoreLastHit and LaneSpot on, an in-lane core whose wave is gone holds their incoming wave at the
-     * lane's target point (states/wave_hold, lane_spot input `hold`), or under an enemy hero's threat with time to spare drags
-     * it behind our T1 to our next wave (lane_aggro `back`, needs LaneAggro). Off: the spot ignores their walking wave.
-     */
-    CoreHold: true,
-    /** Slice core-next-gold: with CoreLastHit and JobChooser on, an in-lane pos1-3 leaves for a camp of its own jungle when the
-     *  lane forecast prices the camp above the lane gold lost while away (CoreCamp, a chooser job); FarmPattern starts no trip
-     *  for it in the laning phase. */
-    CoreCampTrip: true,
     /** Slice support-pull-farm: with SupportPull and JobChooser on, the support that pulled stays on the camp and clears the
-     *  neutrals the wave left (PullFarm, a chooser job) when the site is safe, and gives the camp up to a core whose camp trip
-     *  comes; a core may then price the pulled camp. Off: the support walks back to lane after its pull, a core never takes a
-     *  pulled camp. */
+     *  neutrals the wave left (PullFarm, a chooser job) when the site is safe, and gives the camp up to a core of ours standing
+     *  on it. Off: the support walks back to lane after its pull. */
     SupportPullFarm: true,
-    /** Slice idle-swing (lane controller design s5.6): an owned laner with no last hit, deny or pre-hit on offer hits our lane
-     *  creep below half HP that no enemy hero reaches before our hits kill it (states/idle_swing), both laners on one creep.
-     *  Off: the laner stands. A forced shove (Overrides.ForceShove) does not need it. */
-    PreDeny: true,
-    /** Slice pick-safe (safe-here design): the lane creep pick does not take a creep whose hit place the shared safe read
-     *  (safe_gather At) calls deadly, as it does not take a creep that is not its claim; a running attempt on one is released.
-     *  Off: the pick has no danger check. */
-    PickSafe: true,
-    /** Slice lane-control 2a (lane controller design s5.1-s5.3): once per wave per team and lane, the controller's reading,
-     *  mode, intent and chosen levers as ev=lane_ctl (lane_control); LaneControlDrive decides whether bots act on it. Off: no reading,
-     *  no line and no driving. */
-    LaneControl: true,
-    /** Slice lane-control 2b (design s7 step 2b): under LaneControl, the controller's decision drives the levers: the idle
-     *  swing's mode and setup, lane aggro's feed and the support's pull read it, each keeping its own gates. Off: shadow
-     *  (2a), each lever on its own trigger. */
-    LaneControlDrive: true,
-    /** Slice lane-control 4a (design s5.7): the offlane pos3 may pull its hard camp when the controller names it (from 6:00
-     *  first, before it only with the pos4 away or unable), with no enemy hero missing near the walk and the lane gold lost
-     *  while away at most LaneControl CorePullWorth. Needs SupportPull and LaneControlDrive. Off: only supports pull. */
-    CorePull: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
-     *  gates of the core camp trip, the offlane pos3's pull and the support's pull farm read Threat.Read (the missing belief, a
-     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: CoreCamp MissingOf and ThreatOnWay. */
+     *  gates of the support's pull farm and the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
+     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: pull_farm's ThreatOnWay. */
     Threat: true,
     /** Slice retreat (design s5.4, master slices/retreat.md): a laning bot hero's retreat is ours (retreat.ts: leave when
      *  Safe.At calls the place deadly, the anchor by route cost, the stop on a place Safe.At does not call deadly); OHA's retreat desire, farm's ShouldRun and the
      *  areas' retreat nudges are off for it, and every other hero in retreat mode takes the plain walk. Off: OHA's retreat
      *  and Valve's walk. */
     Retreat: true,
-    /** Slice arbiter-shadow (design docs/proposals/2026-11-11-arbiter.md): per owned hero, the arbiter's pick as ev=arb beside
-     *  Valve's active mode (arbiter.ts). Logging only, no desire changes. Off: no line. */
-    ArbiterShadow: true,
-    /** Rework step 7 (docs/proposals/2026-11-13-rework.md s7): the arbiter's pick holds every owned laner, from its first
-     *  laning read to an end event; OHA's modes are ours, borrowed, admitted or denied by the inventory (chooser.ts Decide).
-     *  Off: only the retreat episode and the running job hold, as before. */
-    ArbiterDrive: true,
     /** Slice rune-verb (rework s7): under the 6:00 plan's switches, the mid's water spawns (2:00, 4:00) are its own trips, one
      *  per spawn (rune_job MidWants), and OHA's power and water branch stands aside for it until the plan takes over. Off: OHA's. */
     MidWater: false,
@@ -146,40 +56,14 @@ export const DEFAULTS = {
     /** Step 4.2a (docs/proposals/2026-11-20-step4-exchanges.md), the read half: an enemy tower is a row in the safe read's kill line (its damage
      *  on us from when it would be on us to the end of the kill window), not a flat `deadly tower`. Off: the flat rule. */
     TowerRead: true,
-    /** Step 4.2b (same proposal): with TowerRead and TradeSwing on, the enemy lane creeps a swing at a hero draws are a row in the safe read at the
-     *  swing place, less those one shed order takes off before they reach us; the trade asks that read and not its own wave, creeps-on-us and
-     *  tower gates, and sheds after each swing that drew a creep. Off: the count gates, and the creeps over the whole window in the favoured test. */
-    CreepRead: true,
     /** Plan after the collapse step 5, group 1 (docs/proposals/2026-11-20-after-the-collapse.md): a chooser job's start asks the safe read here
      *  (and a rune trip's walk) with no HP floor or hit timer of its own, except a job with no price for a camp's neutrals (the stack); a running
      *  job ends on a deadly answer here; the core camp's start has no HP floor. Off: the floors (0.5, 0.65) and the 3 s hit timer. */
     TripRead: true,
-    /** Plan after the collapse step 5, the lane group (docs/proposals/2026-11-20-after-the-collapse.md): with PickSafe and TowerRead on, a
-     *  walk-in last hit's price (states/contest) refuses only on cost; its HP floor, two-hero and tower-ring refusals go, and the safe read the
-     *  pick asks at the stand point is the danger test. Off: the price refuses on all four. */
-    ContestRead: true,
-    /** Step 4.3 (docs/proposals/2026-11-20-step4-exchanges.md): with Trade on, a hit or hit back opens only when its swing place is clear of
-     *  enemy lane creeps (or our own attack order's cooldown covers it) or it still pays with their damage counted, and a fresh one only when no
-     *  last hit or deny comes due before the swing lands; the executor orders the attack as answered. Off: the wave gates alone, and the
-     *  executor steps out of the creeps before it orders. */
-    TradeSwing: true,
-    /** Step 4.4, narrowed (same proposal): a hit or hit back that has opened is not asked the favoured test again until its first attack has
-     *  fired. Off: asked every frame. */
-    TradeHold: true,
-    /** Step 4.6a (docs/proposals/2026-11-20-step4-exchanges.md): the pair join's worth counts a hero's damage on a target for the share of the
-     *  damage window left after its walk into its own attack range of it, both sides. Off: every hero within range counts a full window. */
-    JoinArrive: true,
-    /** Step 4.6b (same proposal): a pair join is judged on arrival within 2 s and carried to its first attack when the pair answer lapses or names another
-     *  target; a losing answer on its own target, a deadly walk, out of arrival or a 3 s backstop still end it. Off: a flat 1,200 reach, and the answer lapsing ends it. */
-    JoinHold: true,
     /** Shadow choice line (choice_shadow.ts, 22/11/2026): per hero of ours, ev=choice kind=shadow ~1 Hz and on each change of
      *  active mode: each OHA mode's own desire as the one real call returned it, OHA's argmax, the mode Valve picked and the module of
      *  ours that made the difference. Logging only: the gate's return values and OHA's calls are unchanged. Off: no line. */
     ChoiceShadow: false,
-    /** Diagnostic only, never for scored games (needs ChoiceShadow): roam and team_roam's OHA code runs where the drive zeroes them
-     *  before it, for the shadow line's value; the drive's 0 is still returned, but the bodies' side effects (item swaps, roam
-     *  latches, Intent's sample) happen. Off: those bodies are not run while the drive zeroes them. */
-    ChoiceProbe: false,
 };
 
 export type Feature = keyof typeof DEFAULTS;

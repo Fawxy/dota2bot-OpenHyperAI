@@ -9,7 +9,7 @@ local FRONT, SMALL = Vector(0, -5000), Vector(0, -6200)
 local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { dire_bot = { { 3250, -5000 }, { -7000, -5000 } } } } },
 	{ skill = 0.9, telemetry = { Enable = true } })
 -- FarmPattern's own trips: CoreCamp (slice core-next-gold) owns our cores' lane-stage trips when its switch is on.
-package.loaded["bots/FunLib/custom_loader"].Ours = { CoreCampTrip = false }
+package.loaded["bots/FunLib/custom_loader"].Ours = {}
 HLOG_LINES = {}
 H.Telemetry.SetSink(function(line) table.insert(HLOG_LINES, line) end)
 CURRENT_TEAM, OBSERVER = 2, 1

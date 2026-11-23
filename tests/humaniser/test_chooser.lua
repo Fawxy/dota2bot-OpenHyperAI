@@ -8,8 +8,6 @@ local EXCEPTED = { "retreat", "assemble", "assemble_with_humans", "attack" }
 local function world(ours)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	if ours ~= nil then package.loaded["bots/FunLib/custom_loader"].Ours = ours end
-	-- This file tests the gate with the arbiter's drive off; the drive is test_arbiter_drive's.
-	do local C = package.loaded["bots/FunLib/custom_loader"]; C.Ours = C.Ours or {}; C.Ours.ArbiterDrive = false end
 	T = 200
 	H.StackJob.ResetCache()
 	return H, MakeUnit({ pid = 5, team = 2, loc = Vector(0, 0, 0) })
@@ -82,11 +80,13 @@ do
 		local _, n = src:gsub("C%.Gate%(", "")
 		check(m .. ": one wrapper", n == 1, n)
 		if m == "attack" then
-			-- Two branches define GetDesire (Ours.CoreTrade, then the buggy-hero override); one guarded wrapper after both.
-			local block = src:find("elseif local_mode_attack_generic ~= nil then", 1, true)
+			-- Only the buggy-hero override defines GetDesire (else Valve's attack runs); one guarded wrapper after it.
+			local block = src:find("if local_mode_attack_generic ~= nil then", 1, true)
 			local def = src:find("function GetDesire()", block or 1, true)
 			local guard = src:find("if GetDesire ~= nil then", 1, true)
-			check("attack: wrapper after both branches' GetDesire, only where one is defined", block ~= nil and def ~= nil and guard ~= nil and at ~= nil and block < def and def < guard and guard < at)
+			local _, defs = src:gsub("function GetDesire%(", "")
+			check("attack: one GetDesire, in the override's branch, the wrapper after it only where it is defined",
+				defs == 1 and block ~= nil and def ~= nil and guard ~= nil and at ~= nil and block < def and def < guard and guard < at)
 		else
 			local e = src:find("telemetry').Entry", 1, true)
 			check(m .. ": wrapper above its telemetry line", at ~= nil and e ~= nil and at < e)
@@ -112,8 +112,8 @@ for _, ours in ipairs({ {}, { JobChooser = false } }) do
 	check("episode over: roam's own desire runs again", v == 0.5, tostring(v))
 end
 
--- Slice arbiter-fold: the two holds the gate enforces, through the arbiter. An episode outranks a running job, and a job
--- hosted in the rune mode leaves the chooser's own host at 0.
+-- The two holds the gate enforces: an episode outranks a running job, and a job hosted in the rune mode leaves the chooser's
+-- own host at 0.
 do
 	local H, bot = world()
 	local RetreatState = require("bots/FunLib/humaniser/retreat_state")
@@ -172,7 +172,7 @@ do
 			H[m[1]].Applies = function() return true end
 			H[m[1]].Wants = function() table.insert(seen, m[2]) return false end
 		end
-		H.PullJob.Applies, H.PullFarm.Applies, H.CoreCamp.Owns = never, never, never
+		H.PullJob.Applies, H.PullFarm.Applies = never, never
 		H.Chooser.Gate(bot, "farm", function() return 0.5 end)()
 		return table.concat(seen, ",")
 	end

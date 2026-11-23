@@ -498,15 +498,12 @@ local locOf, dist, madstones, campLeft, running, pickUp
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local DamageType = ____dota.DamageType
 local UnitType = ____dota.UnitType
-local CampClaims = require(GetScriptDirectory().."/FunLib/humaniser/camp_claims")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
-local CoreCamp = require(GetScriptDirectory().."/FunLib/humaniser/core_camp")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
-local LaneSpot = require(GetScriptDirectory().."/FunLib/humaniser/states/lane_spot")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
@@ -528,10 +525,10 @@ function madstones(center)
     local out = __TS__New(Map)
     for ____, d in ipairs(GetDroppedItemList() or ({})) do
         do
-            local __continue64
+            local __continue69
             repeat
                 if d == nil or d == nil or d.item == nil or d.item == nil or d.location == nil then
-                    __continue64 = true
+                    __continue69 = true
                     break
                 end
                 if (string.find(
@@ -540,16 +537,16 @@ function madstones(center)
                     1,
                     true
                 )) == nil or dist(d.location, center) > ____exports.SETTINGS.PickRadius then
-                    __continue64 = true
+                    __continue69 = true
                     break
                 end
                 out:set(
                     (tostring(math.floor(d.location.x)) .. ",") .. tostring(math.floor(d.location.y)),
                     d
                 )
-                __continue64 = true
+                __continue69 = true
             until true
-            if not __continue64 then
+            if not __continue69 then
                 break
             end
         end
@@ -614,19 +611,19 @@ function campLeft(center)
     local n = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
         do
-            local __continue80
+            local __continue85
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue80 = true
+                    __continue85 = true
                     break
                 end
                 local at = locOf(u)
                 if at ~= nil and dist(at, center) <= ____exports.SETTINGS.CampRadius then
                     n = n + 1
                 end
-                __continue80 = true
+                __continue85 = true
             until true
-            if not __continue80 then
+            if not __continue85 then
                 break
             end
         end
@@ -703,14 +700,54 @@ local function coreThere(bot, center)
     end
     return false
 end
+--- How close `self` may stand to an enemy hero with `Ours.Threat` off: its attack reach to us plus 1.5 s of its movement, at
+-- least 800 (the melee margin). From the lane spot's calibration (lposchk2: idle cores 400-600 from a melee enemy lost 0.5
+-- HP-% a second, beyond 800 0.09). `judgement`.
+local function heroReach(____self, enemy)
+    return math.max(
+        800,
+        enemy:GetAttackRange() + enemy:GetBoundingRadius() + ____self:GetBoundingRadius() + 1.5 * enemy:GetCurrentMovementSpeed()
+    )
+end
+local function distToSegment(p, a, b)
+    local vx = b.x - a.x
+    local vy = b.y - a.y
+    local len2 = vx * vx + vy * vy
+    local u = len2 > 0 and math.max(
+        0,
+        math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2)
+    ) or 0
+    return math.sqrt((p.x - (a.x + u * vx)) ^ 2 + (p.y - (a.y + u * vy)) ^ 2)
+end
+--- `Ours.Threat` off: a visible enemy hero whose reach (plus 600, `judgement`) touches the walk to `at` or the camp itself.
+local function threatOnWay(bot, at)
+    local here = bot:GetLocation()
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue19
+            repeat
+                if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
+                    __continue19 = true
+                    break
+                end
+                local loc = locOf(e)
+                if loc ~= nil and distToSegment(loc, here, at) <= heroReach(bot, e) + 600 then
+                    return true
+                end
+                __continue19 = true
+            until true
+            if not __continue19 then
+                break
+            end
+        end
+    end
+    return false
+end
 --- Why the support may not start on the camp now, or undefined.
 local function startGate(bot, camp, center, blocked)
     local state = PullJob.CampStateOf(camp)
     if state.n == 0 then
         return "no-neutrals"
-    end
-    if CampClaims.On("core", camp.idx) ~= nil then
-        return "core-coming"
     end
     if coreThere(bot, center) then
         return "core-there"
@@ -724,7 +761,7 @@ local function startGate(bot, camp, center, blocked)
         if why ~= nil then
             return why
         end
-    elseif CoreCamp.ThreatOnWay(bot, center) then
+    elseif threatOnWay(bot, center) then
         return "threat"
     end
     return blocked(bot) or PullJob.PartnerThreat(bot)
@@ -770,9 +807,6 @@ local function guard(bot, f)
     if f.returning == true then
         return nil
     end
-    if CampClaims.On("core", f.camp) ~= nil then
-        return "yield"
-    end
     if hpShare(bot) < ____exports.SETTINGS.AbortHP then
         return "hp"
     end
@@ -786,22 +820,22 @@ local function guard(bot, f)
     else
         for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
             do
-                local __continue32
+                local __continue37
                 repeat
                     if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                        __continue32 = true
+                        __continue37 = true
                         break
                     end
                     local at = locOf(e)
                     if at ~= nil and dist(
                         at,
                         bot:GetLocation()
-                    ) <= LaneSpot.HeroReach(bot, e) then
+                    ) <= heroReach(bot, e) then
                         near = true
                     end
-                    __continue32 = true
+                    __continue37 = true
                 until true
-                if not __continue32 then
+                if not __continue37 then
                     break
                 end
             end
@@ -854,7 +888,7 @@ local function madstoneCharges(bot)
         local slot = 0
         while slot <= 16 do
             do
-                local __continue44
+                local __continue49
                 repeat
                     local it = bot:GetItemInSlot(slot)
                     if it == nil or it == nil or (string.find(
@@ -863,7 +897,7 @@ local function madstoneCharges(bot)
                         1,
                         true
                     )) == nil then
-                        __continue44 = true
+                        __continue49 = true
                         break
                     end
                     local ____math_max_9 = math.max
@@ -872,9 +906,9 @@ local function madstoneCharges(bot)
                         1,
                         ____opt_7 and ____opt_7(it) or 1
                     )
-                    __continue44 = true
+                    __continue49 = true
                 until true
-                if not __continue44 then
+                if not __continue49 then
                     break
                 end
             end
@@ -952,11 +986,6 @@ local body = __TS__Generator(function(bot, f, ctx)
 end)
 local function finish(bot, f, r, label)
     running[bot:GetPlayerID()] = nil
-    CampClaims.Set(
-        "pullfarm",
-        bot:GetPlayerID(),
-        nil
-    )
     local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
     jobLine(bot, f, "end", why)
     local function r1(x)
@@ -1063,7 +1092,7 @@ function ____exports.Wants(bot, blocked, host)
     local why = ago > ____exports.SETTINGS.StartWithin and (lastWhy[pid] or "late") or startGate(bot, camp, center, blocked)
     if why ~= nil then
         lastWhy[pid] = why
-        if ago > ____exports.SETTINGS.StartWithin or why == "no-neutrals" or why == "core-coming" or why == "core-there" then
+        if ago > ____exports.SETTINGS.StartWithin or why == "no-neutrals" or why == "core-there" then
             handled[pid] = pull.at
             lastWhy[pid] = nil
             local ____Telemetry_Event_13 = Telemetry.Event
@@ -1107,7 +1136,6 @@ function ____exports.Wants(bot, blocked, host)
         return false
     end
     running[pid] = f
-    CampClaims.Set("pullfarm", pid, f.camp)
     jobLine(bot, f, "start", "trigger")
     local ____Telemetry_Event_17 = Telemetry.Event
     local ____array_16 = __TS__SparseArrayNew(

@@ -44,7 +44,6 @@ local function world(o)
 	H.Lane.Camps.ResetCache()
 	H.PullJob.ResetCache()
 	H.PullFarm.ResetCache()
-	H.CampClaims.ResetCache()
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullFarm = o.farm ~= false
 	local data = H.Lane.Camps.ByIdx(1)
 	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
@@ -129,7 +128,6 @@ do
 		and field(start, "camp") == "1" and field(start, "n0") == "2" and tonumber(field(start, "ago")) <= 1, start)
 	check("farm: both neutrals killed", neutrals[1].hp == 0 and neutrals[2].hp == 0)
 	check("farm: ended back at the lane front with nothing left", fin ~= nil and field(fin, "why") == "back" and field(fin, "nl") == "0" and field(fin, "died") == "0", fin)
-	check("farm: the claim is released at the end", w.H.CampClaims.On("pullfarm", 1) == nil)
 end
 
 -- Off: the support goes back to lane after the pull, no farm line.
@@ -137,45 +135,6 @@ do
 	local w, all, _, ended, take = afterPull({ farm = false })
 	take(run(w, ended + 20))
 	check("off: no pull_clear line and no farm job", #lines(all, "pull_clear") == 0 and not w.H.PullFarm.Running(w.sup))
-end
-
--- A core's camp trip is already on the camp: the support gives it up (a skip line naming it), the core's claim is not disturbed.
-do
-	local w = world({ reading = OUT, visible = true })
-	w.H.CampClaims.Set("core", 1, 1)
-	local neutrals = { MakeNeutral({ x = SMALL.x, y = SMALL.y, hp = 300, maxhp = 300 }), MakeNeutral({ x = SMALL.x + 20, y = SMALL.y, hp = 300, maxhp = 300 }) }
-	neutrals[1].target = w.sup
-	local wave, ended = {}, nil
-	local all = {}
-	for _, l in ipairs(capture(function()
-		while T < 140 and ended == nil do
-			frame(w)
-			if #wave == 0 and w.H.PullJob.Running(w.sup) then
-				for i = 1, 4 do wave[i] = MakeCreep({ team = 2, x = 0, y = 0 }) end
-				wave[1].target = neutrals[1]
-			end
-			for _, c in ipairs(wave) do c.loc = Vector(w.sup.loc.x, w.sup.loc.y) end
-			if #wave > 0 and not w.H.PullJob.Running(w.sup) then ended = T end
-		end
-		while T < ended + 20 do frame(w) end
-	end)) do table.insert(all, l) end
-	local skip = lines(all, "pull_clear")[1]
-	check("core coming: one skip line why=core-coming, no start", skip ~= nil and field(skip, "phase") == "skip" and field(skip, "why") == "core-coming" and #lines(all, "pull_clear") == 1, skip)
-	check("core coming: the neutrals are left to the core", neutrals[1].hp == 300 and neutrals[2].hp == 300)
-end
-
--- A core's trip begins mid-farm: the support ends the farm `interrupted:yield` and the camp is the core's.
-do
-	local w, all, neutrals, ended, take = afterPull({ left = 3 })
-	for _, n in ipairs(neutrals) do n.hp = 100000 end
-	take(run(w, ended + 4))
-	check("yield: the farm is running before the core comes", w.H.PullFarm.Running(w.sup))
-	w.H.CampClaims.Set("core", 1, 1)
-	take(run(w, T + 1))
-	local fin
-	for _, l in ipairs(lines(all, "pull_clear")) do if field(l, "phase") == "end" then fin = l end end
-	check("yield: the farm ended interrupted:yield with neutrals left", fin ~= nil and field(fin, "why") == "interrupted:yield" and tonumber(field(fin, "nl")) >= 1, fin)
-	check("yield: the claim is released", w.H.CampClaims.On("pullfarm", 1) == nil)
 end
 
 -- An enemy hero by the camp who can kill us: no start, one skip line naming the reason.

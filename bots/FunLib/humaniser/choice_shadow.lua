@@ -13,14 +13,12 @@ end
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
-local Arbiter = require(GetScriptDirectory().."/FunLib/humaniser/arbiter")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Trade = require(GetScriptDirectory().."/FunLib/humaniser/states/trade")
---- Whether the line or the probe needs the gate's notes (both need ChoiceShadow).
+--- Whether the line needs the gate's notes.
 function ____exports.On()
     return Ours.On("ChoiceShadow")
 end
@@ -47,8 +45,6 @@ local MODES = {
     {"side_shop", "side_shop", BotMode.SideShop},
     {"outpost", "outpost", nil}
 }
---- The modes Ours.ChoiceProbe asks where the drive zeroes them before their code.
-____exports.PROBED = {roam = true, team_roam = true}
 --- judgement: seconds between lines per hero when the active mode does not change.
 local PERIOD = 1
 --- judgement: a mode's note older than this is not this frame's (Valve asks every mode every frame).
@@ -57,14 +53,7 @@ local heroes = {}
 local function heroOf(pid)
     local h = heroes[pid]
     if h == nil then
-        h = {
-            frame = -math.huge,
-            notes = {},
-            at = -math.huge,
-            snapFrame = -math.huge,
-            snap = {},
-            laneMark = false
-        }
+        h = {frame = -math.huge, notes = {}, at = -math.huge, laneMark = false}
         heroes[pid] = h
     end
     return h
@@ -75,17 +64,10 @@ for ____, ____value in ipairs(MODES) do
     local botMode = ____value[3]
     BOT_MODE[mode] = botMode
 end
---- Whether the inner value of `mode` is our desire, not OHA's (retreat's own episode, the trade's attack desire). Neutral,
--- but RetreatState.Owns reaches Phase.LaningHeld here, earlier in the frame than without the line, so its first read's
--- `arb ph=own` line may come out in another order beside the frame's other lines.
+--- Whether the inner value of `mode` is our desire, not OHA's (retreat's own episode). Neutral, but RetreatState.Owns is
+-- read here earlier in the frame than without the line, so a line its first read logs may come out in another order.
 local function oursFirst(bot, mode)
-    if mode == "retreat" then
-        return RetreatState.Owns(bot)
-    end
-    if mode == "attack" then
-        return Trade.OwnsFrame(bot)
-    end
-    return false
+    return mode == "retreat" and RetreatState.Owns(bot)
 end
 --- Hook from mode_laning_generic's GetDesire (switch on only): its branch of ours (bOwnsThink's last hit at 0.9, a drill's
 -- lane-only hold) set the value it is returning.
@@ -97,24 +79,14 @@ function ____exports.MarkMix(bot)
         heroOf(bot:GetPlayerID()).laneMark = true
     end)
 end
---- Whether a branch of ours inside `mode`'s own GetDesire acted in the call just made (`ran`: OHA's code ran): laning's
--- MarkMix; team_roam: Trade's fights skip OHA's fight branches; rune: DeniesOhaRune denies OHA's trips.
-local function mixOf(bot, h, mode, ran)
-    if mode == "laning" then
-        local m = h.laneMark
-        h.laneMark = false
-        return ran and m
-    end
-    if not ran then
+--- Whether a branch of ours inside `mode`'s own GetDesire acted in the call just made (`ran`: OHA's code ran): laning's MarkMix.
+local function mixOf(h, mode, ran)
+    if mode ~= "laning" then
         return false
     end
-    if mode == "team_roam" then
-        return Trade.OwnsFights(bot)
-    end
-    if mode == "rune" then
-        return Arbiter.DeniesOhaRune(bot)
-    end
-    return false
+    local m = h.laneMark
+    h.laneMark = false
+    return ran and m
 end
 --- The source of an Intent claim on the mode's value (Intent.Explain's `by`), when not raw.
 local function claimOf(bot, botMode)
@@ -125,55 +97,17 @@ local function claimOf(bot, botMode)
     local src = string.match(e, " by (.+)$")
     return src ~= nil and src ~= "raw" and src or nil
 end
---- The drive's pick once Decide has computed it this frame, and the candidates that apply beside it (read only).
-local function snapshot(bot, h)
-    if h.snapFrame ~= h.frame then
-        h.snapFrame = h.frame
-        h.snap = {}
-    end
-    if h.snap.pick ~= nil or not Arbiter.Drives(bot) then
-        return
-    end
-    local p = Arbiter.PickThisFrame(bot)
-    if p == nil then
-        return
-    end
-    local cands = {}
-    local ____Arbiter_Candidates_2 = Arbiter.Candidates
-    local ____bot_1 = bot
-    local ____temp_0
-    if h.jobName ~= nil then
-        ____temp_0 = h.jobName()
-    else
-        ____temp_0 = nil
-    end
-    for ____, c in ipairs(____Arbiter_Candidates_2(____bot_1, ____temp_0)) do
-        if c.applies then
-            cands[#cands + 1] = (c.name .. ":") .. tostring(c.group)
-        end
-    end
-    h.snap = {
-        pick = p.name,
-        host = p.host,
-        group = p.group,
-        cand = table.concat(cands, ",")
-    }
-end
 --- Called by Chooser.Gate once per mode call, switch on: `inner` is what OHA's code returned (undefined when the gate did
 -- not ask it: `why` names the gate's branch), `out` what the gate returns. Everything the line reads is taken here, in the
 -- frame of the values.
-function ____exports.Note(bot, mode, inner, out, why, probed)
+function ____exports.Note(bot, mode, inner, out, why)
     pcall(function()
         local h = heroOf(bot:GetPlayerID())
-        snapshot(bot, h)
         local n = {
             t = DotaTime(),
-            out = out,
-            probed = probed
+            out = out
         }
-        if probed and type(inner) ~= "number" then
-            n.why = "probe"
-        elseif why ~= nil and not probed then
+        if why ~= nil then
             n.why = why
         elseif type(inner) ~= "number" then
             n.why = "valve"
@@ -182,30 +116,16 @@ function ____exports.Note(bot, mode, inner, out, why, probed)
         else
             n.v = inner
         end
-        if mixOf(bot, h, mode, why == nil or probed) then
+        if mixOf(h, mode, why == nil) then
             n.mix = true
         end
-        if n.v ~= nil and not probed then
+        if n.v ~= nil then
             n.clm = claimOf(bot, BOT_MODE[mode])
         end
         h.notes[mode] = n
     end)
 end
---- Runs OHA's body for a probed mode; its value or undefined. The caller returns the drive's value whatever this does.
-function ____exports.Probe(inner)
-    local ok, v = pcall(inner)
-    local ____ok_3
-    if ok then
-        ____ok_3 = v
-    else
-        ____ok_3 = nil
-    end
-    return ____ok_3
-end
-local function whyModule(why, pick)
-    if why == "drive" then
-        return ("ArbiterDrive:DriveDecide(" .. (pick or "?")) .. ")"
-    end
+local function whyModule(why)
     if why == "hold:job" then
         return "JobChooser:Hold(job)"
     end
@@ -226,13 +146,10 @@ end
 local EPS = 0.000001
 local function emit(bot, h, act)
     local pid = bot:GetPlayerID()
-    local snap = h.snapFrame == h.frame and h.snap or ({})
-    local pick = snap.pick
     local fields = {{"pid", pid}, {"kind", "shadow"}, {"win", act}}
     local top
     local tv = 0
     local gate = {}
-    local probed = {}
     local claims = {}
     local mix = {}
     local byName = {}
@@ -259,9 +176,6 @@ local function emit(bot, h, act)
                 tv = n.v
                 top = name
             end
-            if n.probed then
-                probed[#probed + 1] = name
-            end
             if n.clm ~= nil then
                 claims[#claims + 1] = (name .. "=") .. n.clm
             end
@@ -273,21 +187,13 @@ local function emit(bot, h, act)
     local how
     local by
     if top ~= nil and top ~= act then
-        local T = byName[top]
         local W = byName[act]
-        local wOut = W ~= nil and type(W.out) == "number" and W.out or nil
-        if type(T.out) == "number" and T.out < T.v - EPS and (wOut == nil or T.v > wOut + EPS) then
-            how = "zeroed"
-            by = T.probed and whyModule("drive", pick) or ("ArbiterDrive:DriveAfter borrowed(" .. (pick or "?")) .. ")"
-        elseif W == nil then
+        if W == nil then
             how = "valve"
             by = "Valve:" .. act
-        elseif W.v == nil and W.why ~= nil and W.why ~= "valve" and W.why ~= "probe" then
+        elseif W.v == nil and W.why ~= nil and W.why ~= "valve" then
             how = "outbid"
-            by = W.why == "ours" and (act == "retreat" and "Retreat:Desire" or (act == "attack" and "Trade:Desire" or act)) or whyModule(W.why, pick)
-        elseif W.v ~= nil and wOut ~= nil and wOut > W.v + EPS then
-            how = "held"
-            by = act == "laning" and "ArbiterDrive:DriveAfter lane_floor" or ("ArbiterDrive:DriveAfter(" .. act) .. ")"
+            by = W.why == "ours" and (act == "retreat" and "Retreat:Desire" or act) or whyModule(W.why)
         elseif W.clm ~= nil then
             how = "outbid"
             by = "Intent:" .. W.clm
@@ -312,36 +218,22 @@ local function emit(bot, h, act)
         #claims > 0 and table.concat(claims, ",") or nil
     }
     fields[#fields + 1] = {
-        "pr",
-        #probed > 0 and table.concat(probed, ",") or nil
-    }
-    fields[#fields + 1] = {
         "gate",
         #gate > 0 and table.concat(gate, ",") or nil
     }
-    if pick ~= nil then
-        fields[#fields + 1] = {"pick", pick}
-        fields[#fields + 1] = {"cand", snap.cand}
-        fields[#fields + 1] = {"lfl", pick == "lane" and Arbiter.SETTINGS.LaneDesire or nil}
-    end
     local r = byName.retreat
     if r ~= nil and r.why == "ours" and type(r.out) == "number" then
         fields[#fields + 1] = {"rdes", r.out}
     end
-    local a = byName.attack
-    if a ~= nil and a.why == "ours" and type(a.out) == "number" then
-        fields[#fields + 1] = {"tdes", a.out}
-    end
     local f = byName.farm
-    local farmHost = f ~= nil and f.v == nil and (f.why == "host" or f.why == "drive" and pick ~= nil and (snap.host == "farm" or (snap.group or 0) > 6))
-    if farmHost and type(f.out) == "number" then
+    if f ~= nil and f.v == nil and f.why == "host" and type(f.out) == "number" then
         fields[#fields + 1] = {"hdes", f.out}
     end
     Telemetry.EventUntyped("choice", fields)
 end
 --- Called first in every gate call, switch on: on a hero's first call of a new frame the last frame's notes are complete,
 -- and the active mode is Valve's choice from them; a line goes out on a change of that mode or every PERIOD.
-function ____exports.Frame(bot, jobName)
+function ____exports.Frame(bot)
     pcall(function()
         local h = heroOf(bot:GetPlayerID())
         local now = DotaTime()
@@ -358,7 +250,6 @@ function ____exports.Frame(bot, jobName)
             end
         end
         h.frame = now
-        h.jobName = jobName
     end)
 end
 --- Tests: forget every hero.

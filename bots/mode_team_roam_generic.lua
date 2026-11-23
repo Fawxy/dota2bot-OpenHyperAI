@@ -46,11 +46,6 @@ local IsAvoidingAbilityZone = false
 
 local hTargetCreep = nil
 
--- Slice lane-fight (Ours.Trade, OWNERSHIP H9): set at the top of GetDesire, before anything reads it. True while this
--- laner's in-lane fights are our attack mode's: the fight branches below (help a targeted core, help an ally, the target finders)
--- are skipped and their targets cleared; the item, avoid-zone, special-unit, tower-creep and last-hit branches stay.
-local bLaneFightsOurs = false
-
 -- Target stickiness + desire clamp
 local TARGET_LOCK_SEC = 1.2
 local targetLockUntil = -90
@@ -79,10 +74,6 @@ function GetDesire()
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 
-    bLaneFightsOurs = J.Humaniser.Trade.OwnsFights(bot)
-    if bLaneFightsOurs then
-        targetUnit, ShouldHelpAlly, ShouldHelpWhenCoreIsTargeted = nil, false, false
-    end
     local res = GetDesireHelper()
     res = CapForLanePush(res)
 
@@ -117,9 +108,7 @@ function GetDesireHelper()
     ItemOpsDesire()
 
     local target
-    if not bLaneFightsOurs then
-        target, ShouldHelpWhenCoreIsTargeted = X.ConsiderHelpWhenCoreIsTargeted()
-    end
+    target, ShouldHelpWhenCoreIsTargeted = X.ConsiderHelpWhenCoreIsTargeted()
     if ShouldHelpWhenCoreIsTargeted then
         SetStickyTarget(target)
         targetUnit = target
@@ -129,9 +118,7 @@ function GetDesireHelper()
     nearbyAllies = J.GetAlliesNearLoc(bot:GetLocation(), 2200)
     nearbyEnemies = J.GetEnemiesNearLoc(bot:GetLocation(), 2000)
 
-    if not bLaneFightsOurs then
-        target, ShouldHelpAlly = ConsiderHelpAlly()
-    end
+    target, ShouldHelpAlly = ConsiderHelpAlly()
     if ShouldHelpAlly then
         SetStickyTarget(target)
         targetUnit = target
@@ -174,7 +161,7 @@ function GetDesireHelper()
     and bot:GetActiveMode() ~= BOT_MODE_ROAM then
         return BOT_ACTION_DESIRE_NONE
     elseif #nearbyAllies >= #nearbyEnemies then
-        if IsHeroCore and not bLaneFightsOurs then
+        if IsHeroCore then
             local botTarget, targetDesire = X.CarryFindTarget()
             if botTarget ~= nil and not X.IsIntoAvoidZone(botTarget) then
                 targetUnit = botTarget
@@ -182,7 +169,7 @@ function GetDesireHelper()
                 return RemapValClamped(J.GetHP(bot), 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
             end
         end
-        if IsSupport and not bLaneFightsOurs then
+        if IsSupport then
             local botTarget, targetDesire = X.SupportFindTarget()
             if botTarget ~= nil and not X.IsIntoAvoidZone(botTarget) then
                 targetUnit = botTarget
@@ -220,12 +207,8 @@ function X.IsIntoAvoidZone(target)
 end
 
 function X.GetLastHitCreep()
-	-- Ours.LeaveCoreCreep (slice 3): for a support, our predicate per creep replaces the "no last hits near any core" exit
-	-- and the humaniser's AllyLastHit check below.
-	local Etiquette = J.Humaniser.Etiquette
-	local bEtiquette = Etiquette.Applies(bot)
 	if J.IsRetreating(bot)
-	or (not bEtiquette and not J.IsCore(bot) and J.IsThereCoreNearby(800))
+	or (not J.IsCore(bot) and J.IsThereCoreNearby(800))
 	or J.IsInTeamFight(bot, 1200)
 	then
 		return nil
@@ -239,7 +222,7 @@ function X.GetLastHitCreep()
 		and J.IsInRange(bot, creep, bot:GetAttackRange() + 300)
 		and not J.IsRoshan(creep)
 		and not J.IsTormentor(creep)
-		and (bEtiquette and Etiquette.MayLastHit(bot, creep) or not bEtiquette and J.Humaniser.AllyLastHit.MayLastHit(bot, creep))
+		and J.Humaniser.AllyLastHit.MayLastHit(bot, creep)
 		then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
 			if J.Humaniser.LastHitSkill.WillKill(bot, creep, bot:GetAttackDamage()-1, nDelay, false)
@@ -322,12 +305,6 @@ function Think()
     -- if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "team_roam") then return end
 
     ItemOpsThink()
-
-	-- Ours.LeaveCoreCreep: a swing or auto-attack on a creep a core can take is cancelled.
-	if J.Humaniser.Etiquette.LeavesTarget(bot) then
-		bot:Action_MoveToLocation(bot:GetLocation())
-		return
-	end
 
 	if J.IsValid(hTargetCreep) then
 		bot:Action_AttackUnit(hTargetCreep, true)

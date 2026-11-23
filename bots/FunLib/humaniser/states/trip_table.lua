@@ -15,16 +15,9 @@ ____exports.TRIPS = {
         rank = by(
             nil,
             nil,
-            30,
+            nil,
             30,
             30
-        ),
-        lifted = by(
-            nil,
-            nil,
-            10,
-            10,
-            10
         )
     },
     {
@@ -52,19 +45,9 @@ ____exports.TRIPS = {
         rank = by(
             nil,
             nil,
-            40,
+            nil,
             40,
             40
-        )
-    },
-    {
-        kind = "camp",
-        rank = by(
-            60,
-            60,
-            60,
-            nil,
-            nil
         )
     }
 }
@@ -79,29 +62,22 @@ end
 local function isPos(pos)
     return pos ~= nil and pos >= 1 and pos <= 5 and pos == math.floor(pos)
 end
---- The trip's place for a position (the lifted column when `lifted` and the row has one); undefined: never, or no position.
-function ____exports.RankOf(kind, pos, lifted)
+--- The trip's place for a position; undefined: never, or no position.
+function ____exports.RankOf(kind, pos)
     local row = rowOf(kind)
     if row == nil or not isPos(pos) then
         return nil
-    end
-    if lifted == true and row.lifted ~= nil then
-        return row.lifted[pos]
     end
     return row.rank[pos]
 end
 function ____exports.Does(kind, pos)
     return ____exports.RankOf(kind, pos) ~= nil
 end
---- The trips a position does, best first; `lifted` says per kind whether its lifted column applies.
-function ____exports.Order(pos, lifted)
+--- The trips a position does, best first.
+function ____exports.Order(pos)
     local rows = {}
     for ____, r in ipairs(____exports.TRIPS) do
-        local rank = ____exports.RankOf(
-            r.kind,
-            pos,
-            lifted(r.kind)
-        )
+        local rank = ____exports.RankOf(r.kind, pos)
         if rank ~= nil then
             rows[#rows + 1] = {r.kind, rank}
         end

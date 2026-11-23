@@ -1,6 +1,6 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
 -- Slice retreat (master docs/team/slices/retreat.md): our retreat for a laning hero. The leave rule (Safe.At at the hero's own place:
--- deadly leaves at once, a hit back or join holds it down to Safe.BARS.hold; a tower on us and the heal floor at once), the anchor by
+-- deadly leaves at once; a tower on us and the heal floor at once), the anchor by
 -- route cost, the stop on a fresh place (Safe.BARS.stay x 1.15) or nobody in reach, an ally in retreat counting no help, the areas'
 -- retreat nudges off for an owned hero, and the OFF arm. HP 600 unless set: a kill line of 600 is ratio 1.0, 460 is 1.3, 400 is 1.5.
 local dota = require("bots/ts_libs/dota/index")
@@ -57,7 +57,6 @@ local function react(bot)
 	return require("bots/FunLib/humaniser/profile").ThreatHold(bot)
 end
 
-local function noHold() require("bots/FunLib/humaniser/states/trade").Holds = function() return nil end end
 local function running(bot) return require("bots/FunLib/humaniser/retreat_state").Running(bot) end
 
 -- A deadly place is left at once, with no reaction time: two heroes hitting us with 300 damage each against 600 HP are ratio 1.0, under
@@ -66,7 +65,6 @@ local function running(bot) return require("bots/FunLib/humaniser/retreat_state"
 do
 	local function two(est)
 		local H, bot = world()
-		noHold()
 		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
 		local out = capture(function() H.Retreat.Desire(bot) end)
 		return bot, out
@@ -87,7 +85,6 @@ end
 do
 	local function lone(est, hits)
 		local H, bot = world()
-		noHold()
 		local e = enemy(10, Vector(300, -5000), est)
 		if hits then hitting(bot, e) end
 		local out = capture(function() H.Retreat.Desire(bot) end)
@@ -106,7 +103,6 @@ end
 do
 	local function engagedWorld(hp, engaged)
 		local H, bot = world({ hp = hp })
-		noHold()
 		local e = enemy(10, Vector(300, -5000), 0)
 		e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 30 * dur end
 		local function hit() if engaged then bot.hitBy = { [e] = T - 0.2 } end end
@@ -135,7 +131,6 @@ end
 -- in the gap and walk back into the next swing; with no hit for longer than that it does.
 do
 	local H, bot = world()
-	noHold()
 	local e = enemy(10, Vector(300, -5000), 0)
 	e.GetEstimatedDamageToTarget = function(_, _, _, dur) return 115 * dur end
 	bot.hitBy, bot.heroHitAt = { [e] = T }, T
@@ -148,34 +143,6 @@ do
 	end)
 	local l = lines(out, "retreat")
 	check("swing gap: one episode, res=safe", #l == 2 and field(l[#l], "res") == "safe", #l)
-end
-
--- The hit back (D24) and the join (D10) hold a deadly place down to Safe.BARS.hold (ratio 1.0): Trade.Holds is asked only when the
--- answer is deadly by the kill line and not under that; under it the hero leaves `lethal` whatever Holds says.
-do
-	local asked = 0
-	local function run(holds, est)
-		local H, bot = world({ hp = 540 })
-		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
-		asked = 0
-		require("bots/FunLib/humaniser/states/trade").Holds = function() asked = asked + 1 return holds end
-		local out = capture(function() H.Retreat.Desire(bot) T = T + 0.2 H.Retreat.Desire(bot) end)
-		return running(bot), out
-	end
-	local on, out = run("hitback", 250)
-	local stay
-	for _, l in ipairs(out) do if l:find("ph=stay", 1, true) then stay = l end end
-	check("hit back: ratio 1.08 with the hit back holding, no leave", not on and asked > 0, tostring(on) .. " asked=" .. asked)
-	check("hit back: one ph=stay why=hitback line, with the answer", stay ~= nil and field(stay, "why") == "hitback" and field(stay, "lv") == "deadly", stay)
-	check("hit back: the same read with no hit back holding leaves", (run(nil, 250)))
-	run("hitback", 100)
-	check("hit back: not asked while the place is not deadly (ratio 2.7)", asked == 0)
-	local lethalOn, lethalOut = run("hitback", 2000)
-	check("hit back: ratio under 1.0 leaves lethal and never asks", lethalOn and asked == 0 and field(lines(lethalOut, "retreat")[1], "why") == "lethal", asked)
-	local joinOn, joinOut = run("join", 250)
-	local joinStay
-	for _, l in ipairs(joinOut) do if l:find("ph=stay", 1, true) then joinStay = l end end
-	check("join hold: no leave, one ph=stay why=join line", not joinOn and joinStay ~= nil and field(joinStay, "why") == "join", joinStay)
 end
 
 -- Lethal leaves at once; an escape item ready (or a faster bot out of their range) is not lethal.
@@ -420,7 +387,6 @@ end
 -- episode in the first place (the leave test above), so the two bars differ.
 do
 	local H, bot = world()
-	noHold()
 	local e1 = enemy(10, Vector(300, -5000), 300)
 	local e2 = enemy(11, Vector(300, -4900), 300)
 	hitting(bot, e1, e2)
@@ -442,7 +408,6 @@ end
 -- D2: once no enemy hero can reach us the episode ends on that read (res=gone), short of its anchor. Control: both in reach keep it.
 do
 	local H, bot = world()
-	noHold()
 	local e1 = enemy(10, Vector(300, -5000), 300)
 	local e2 = enemy(11, Vector(300, -4900), 300)
 	hitting(bot, e1, e2)
@@ -523,7 +488,6 @@ end
 do
 	local function run(cut, est)
 		local H, bot = world({ telemetry = { Enable = true, Cut = cut } })
-		noHold()
 		hitting(bot, enemy(10, Vector(300, -5000), est), enemy(11, Vector(300, -4900), est))
 		bot.heroHitAt = T
 		local desires = {}
