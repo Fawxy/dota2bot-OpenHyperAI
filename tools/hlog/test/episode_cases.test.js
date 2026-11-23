@@ -65,7 +65,7 @@ test('death: a stock log dates the death at the last snapshot and names no attac
     // luna (pid 0, Radiant, the only team logged) retreating at hp 8 at 329.00, no snapshot after; no Dire hero is logged, so no one is recorded as hitting it
     const [d] = rowsOf(STOCK, { kind: 'death', hero: 'luna', from: '5:20', to: '5:35' });
     assert.strictEqual(d.t, 329);
-    assert.strictEqual(d.detail, 'died in retreat');
+    assert.strictEqual(d.detail, 'died in retreat: unexplained');
     assert.strictEqual(d.side, null);
 });
 

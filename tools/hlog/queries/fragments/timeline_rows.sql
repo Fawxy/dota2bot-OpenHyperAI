@@ -9,6 +9,8 @@
 -- ensure: ev_own_creep_death(team, kind, by)
 -- ensure: ev_neutral_death(team, by)
 -- ensure: ev_choice(pid, kind, want, go, why, src, lane, slot)
+-- ensure: ev_creep_death(team, kind, x, y, by, tw)
+-- ensure: ev_own_creep_death(team, kind, x, y, by)
 gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id, g.file, g.game, r.batch, r.lineup, r.arm, r.seat_team, r.seat, r.rep
     FROM games g JOIN run_label r ON r.game_id = g.game_id
@@ -42,16 +44,22 @@ tl_by_kill AS MATERIALIZED (
         ORDER BY 1, 2, 3, 4, 5
     ) GROUP BY game_id, team, tpid, t0
 ),
+-- A death's cause is the loss ledger's rule (fragment death_cause), on every death, a hero still dead at the log's end included.
+dc_in AS MATERIALIZED (
+    SELECT d.game_id, d.pid, w.team, w.pos, d.t, d.x, d.y FROM ep_death d JOIN ep_who w ON w.game_id = d.game_id AND w.pid = d.pid
+),
+-- include: death_cause
 tl_death AS (
     SELECT d.game_id, d.pid, d.t, NULL AS t1, 'death' AS kind,
-        'died in ' || coalesce(s.mode, '?') || coalesce('; attacked by ' || b.names, '')
+        'died in ' || coalesce(s.mode, '?') || coalesce(': ' || c.cause, '') || coalesce('; attacked by ' || b.names, '')
             || CASE WHEN d.open THEN '; still dead at the log''s end' ELSE '' END AS detail,
         coalesce(b.list, '') AS others, NULL AS in_lane,
         NULL AS other_pid, 'died' AS outcome, NULL AS a_secs, NULL AS b_secs, NULL AS hpmin,
-        NULL AS what, NULL AS why, NULL AS slot
+        NULL AS what, c.cause AS why, NULL AS slot
     FROM ep_death d
     LEFT JOIN ep_sec s ON s.game_id = d.game_id AND s.pid = d.pid AND s.sec = CAST(round(d.t) AS INTEGER)
     LEFT JOIN tl_by_death b ON b.game_id = d.game_id AND b.pid = d.pid AND b.t = d.t
+    LEFT JOIN death_cause c ON c.game_id = d.game_id AND c.pid = d.pid AND c.t = d.t
 ),
 tl_ret AS (
     SELECT r.*, EXISTS (SELECT 1 FROM ep_gap d WHERE d.game_id = r.game_id AND d.pid = r.pid AND d.dsec BETWEEN r.t0 AND r.t1 + 3) AS died
@@ -169,20 +177,45 @@ tl_cast AS (
     SELECT c.game_id, c.pid, c.t, NULL, 'cast', c.ab, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
     FROM gm CROSS JOIN ev_cast c ON c.game_id = gm.game_id WHERE c.ab IS NOT NULL
 ),
+-- Lane creep deaths have one fate each (view creep_fate). A creep is in both teams' logs when each had a hero near: as the
+-- enemy side of the team that could last-hit it, and the own side of its own team. So one row per death: a hero's last hit
+-- (own_lh) and deny (own_deny) on the hero who got it; an enemy creep nobody got (other) from the log of the team that could
+-- have last-hit it; a creep of our own nobody got (lost) only when the other team's log has no enemy-side death of it (same
+-- kind, within 1 s and 250, as creep_fate pairs denies), since then it is that log's own_lh or other row. enemy_deny is the
+-- denier's own_deny row seen from the other side: never a row.
+tl_fate AS MATERIALIZED (SELECT * FROM creep_fate WHERE game_id IN (SELECT game_id FROM gm)),
+tl_fate_lane AS MATERIALIZED (SELECT * FROM creep_lane WHERE game_id IN (SELECT game_id FROM gm)),
 -- `by` is a pid only on a creep a hero got.
 tl_got AS (
-    SELECT c.game_id, c.t, c.team, c."by" AS got, 'last hit ' || coalesce(c.kind, 'creep') AS what
-    FROM gm CROSS JOIN ev_creep_death c ON c.game_id = gm.game_id
+    SELECT game_id, t, team, pid AS got, CASE fate WHEN 'own_lh' THEN 'last hit ' ELSE 'deny ' END || coalesce(kind, 'creep') AS detail,
+        fate, kind
+    FROM tl_fate WHERE fate IN ('own_lh', 'own_deny')
     UNION ALL
-    SELECT c.game_id, c.t, c.team, c."by", 'deny ' || coalesce(c.kind, 'creep')
-    FROM gm CROSS JOIN ev_own_creep_death c ON c.game_id = gm.game_id
-    UNION ALL
-    SELECT c.game_id, c.t, c.team, c."by", 'last hit neutral'
+    SELECT c.game_id, c.t, c.team, c."by", 'last hit neutral', 'own_lh', 'neutral'
     FROM gm CROSS JOIN ev_neutral_death c ON c.game_id = gm.game_id
 ),
 tl_creep AS (
-    SELECT c.game_id, w.pid, c.t, NULL, 'creep', c.what, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+    SELECT c.game_id, w.pid, c.t, NULL, 'creep', c.detail, '', NULL, NULL, c.fate, NULL, NULL, NULL, c.kind, NULL, NULL
     FROM tl_got c JOIN ep_who w ON w.game_id = c.game_id AND w.team = c.team AND CAST(c.got AS TEXT) = CAST(w.pid AS TEXT)
+),
+-- Creeps nobody got: no hero, so a team of their own (the logging team) and the lane of the death's place (view creep_lane).
+-- why, for other: tower (tw = 1: one of the logging team's towers hit it the frame before; under it, not surely killed by it),
+-- open (tw = 0), NULL (a build before the field); as view lane_waste's place.
+tl_nobody AS (
+    SELECT f.game_id, NULL AS pid, f.t, NULL AS t1, 'creep' AS kind,
+        CASE f.fate WHEN 'other' THEN 'enemy ' || coalesce(f.kind, 'creep') || ': nobody got it'
+                || CASE WHEN f.tw = 1 THEN ', under our tower' ELSE '' END
+            ELSE 'our ' || coalesce(f.kind, 'creep') || ': lost, no enemy hero logged it' END AS detail,
+        '' AS others, coalesce(l.lane, 'other') AS in_lane, NULL AS other_pid, f.fate AS outcome, NULL AS a_secs, NULL AS b_secs,
+        NULL AS hpmin, f.kind AS what,
+        CASE WHEN f.fate = 'other' THEN CASE f.tw WHEN 1 THEN 'tower' WHEN 0 THEN 'open' END END AS why, NULL AS slot, f.team
+    FROM tl_fate f
+    LEFT JOIN tl_fate_lane l ON l.game_id = f.game_id AND l.seq = f.seq
+    WHERE (f.side = 'enemy' AND f.fate = 'other')
+        OR (f.side = 'own' AND f.fate = 'lost' AND NOT EXISTS (
+            SELECT 1 FROM tl_fate e WHERE e.game_id = f.game_id AND e.side = 'enemy' AND e.fate IN ('own_lh', 'other')
+                AND e.team <> f.team AND e.kind IS f.kind AND e.t BETWEEN f.t - 1 AND f.t + 1
+                AND (e.x - f.x) * (e.x - f.x) + (e.y - f.y) * (e.y - f.y) <= 62500))
 ),
 tl_state AS (
     SELECT s.game_id, s.pid, s.sec, NULL, 'state',
@@ -217,6 +250,13 @@ tl_in AS MATERIALIZED (
         AND (:pid IS NULL OR a.pid = :pid OR a.other_pid = :pid
             OR instr(',' || a.others || ',', ',' || (SELECT w2.hero FROM ep_who w2 WHERE w2.game_id = a.game_id AND w2.pid = :pid) || ',') > 0)
         AND (:hero IS NULL OR w.hero = :hero OR instr(',' || a.others || ',', ',' || :hero || ',') > 0)
+    UNION ALL
+    -- A row with no hero is no hero's: --hero and --pid leave it out.
+    SELECT n.game_id, n.pid, n.t, n.t1, n.kind, n.detail, n.others, n.in_lane, n.other_pid, n.outcome, n.a_secs, n.b_secs,
+        n.hpmin, n.what, n.why, n.slot, n.team, NULL, NULL, CAST(round(n.t) AS INTEGER)
+    FROM tl_nobody n
+    WHERE n.t <= coalesce(:to, 1e9) AND n.t >= coalesce(:from, -1e9) AND :pid IS NULL AND :hero IS NULL
+        AND (:kind IS NULL OR instr(',' || :kind || ',', ',creep,') > 0)
 ),
 -- A moment a half second past the last live one (a death, a cast) takes the second before's place.
 tl_row AS (
