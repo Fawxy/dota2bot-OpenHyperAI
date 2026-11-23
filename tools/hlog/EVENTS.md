@@ -1349,8 +1349,8 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
-- `why` str: What held a wanted pull back: a start check (`enemy-near`, a higher job's name, `partner-low`, `partner-gank`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills.
-- `src` str: Who decided: `own` or `ping`.
+- `why` str: What held a wanted pull back: a start check (`enemy-near`, a higher job's name, `partner-low`, `partner-gank`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills.
+- `src` str: Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them).
 - `lane` num: The lane.
 - `slot` num: The planned hit second.
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.

@@ -703,4 +703,37 @@ do
 	check("drill pull: a control rep stays (why=drill)", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "drill" and job == nil, choice)
 end
 
+-- The shadow (plan s5): a puller whose pull is switched off logs the slot the on arm's puller decides, with the same want,
+-- once per wave, and nothing is ordered. The on arm's own line is the comparison, from the same world.
+do
+	local function shadowed(w, untilT)
+		return capture(function()
+			while T < untilT do
+				w.H.PullJob.Shadow(w.sup)
+				frame(w)
+			end
+		end)
+	end
+	local on = lines(run(world({ reading = OUT }), 75), "choice")[1]
+	local w = world({ reading = OUT, on = false })
+	local n0 = #ACTIONS
+	local off = lines(shadowed(w, 75), "choice")
+	check("shadow: switched off, one line for the slot the on arm decided, wanted, not started", #off == 1 and field(off[1], "slot") == field(on, "slot")
+		and field(off[1], "want") == "1" and field(off[1], "go") == "0" and field(off[1], "why") == "off" and field(off[1], "src") == "shadow"
+		and field(off[1], "pa") == field(on, "pa") and field(on, "src") == "own", off[1])
+	check("shadow: no job, no order, the hero stays in lane", not w.H.PullJob.Running(w.sup) and w.sup.mode == LANING and #ACTIONS == n0, #ACTIONS - n0)
+	check("shadow: the lane read once for the slot", w.reads == 1, w.reads)
+	local nextWave = lines(shadowed(w, 105), "choice")
+	check("shadow: the next wave's slot gets its own line", #nextWave == 1 and tonumber(field(nextWave[1], "slot")) == tonumber(field(on, "slot")) + 30, nextWave[1])
+	w = world({ reading = { state = "IN", clash = 7000, move = -500, q = 0.3, own = 500, tower = false }, on = false })
+	off = lines(shadowed(w, 75), "choice")
+	check("shadow: a lane coming in is logged as not wanted", #off == 1 and field(off[1], "want") == "0" and field(off[1], "why") == "off", off[1])
+	w = world({ reading = OUT })
+	local both = lines(shadowed(w, 75), "choice")
+	check("shadow: silent where the pull is switched on", #both == 1 and field(both[1], "src") == "own" and field(both[1], "go") == "1", #both)
+	w = world({ reading = OUT, on = false })
+	w.sup.pos = 3
+	check("shadow: silent for a hero that is not the lane's puller", #lines(shadowed(w, 75), "choice") == 0)
+end
+
 finish()

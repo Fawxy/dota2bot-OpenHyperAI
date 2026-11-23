@@ -1,7 +1,9 @@
 -- A pull scored per wave (the `pull-effect` proposal (master tag `pre-process-v5`) s2; slice support-lane `reading`): one row per `ok`
 -- ev=pull_job (`grp` ok_div when `diverted`, as view pull_attempts: dt >= 0.75, div where a line has no dt; else ok_undiv)
 -- and one control row per lane slot that wanted a pull and got none (`grp` none: ev=choice kind=pull want=1 go=0 with no
--- ev=pull_job of either team on that lane within 20 s of the slot; one row per game, team, lane and slot).
+-- ev=pull_job of that team on that lane within 20 s of the slot; one row per game, team, lane and slot). The other team's
+-- pull on the same lane id does not hide the row: the two pullers of a lane read slots under a second apart, and a
+-- switched-off team's row (src=shadow) must stay beside the pulling team's.
 -- The pulled wave (pull rows only; fragment pull_farm, as @pull_farm with its 45 s neutral window): n_puller, n_ours,
 --   own_died, own_denied, them_took, them_core.
 -- Their wave at our side: enemy lane creeps in the pulling team's creep_fate that died from the slot to slot + 75 s
@@ -41,7 +43,8 @@ slots AS MATERIALIZED (
     SELECT c.game_id, min(c.seq), min(c.pid), tm.team, c.lane, NULL, c.slot, 'none'
     FROM ev_choice c JOIN tm ON tm.game_id = c.game_id AND tm.pid = c.pid
     WHERE c.kind = 'pull' AND c.want = 1 AND c.go = 0
-        AND NOT EXISTS (SELECT 1 FROM ev_pull_job j WHERE j.game_id = c.game_id AND j.lane = c.lane AND abs(j.slot - c.slot) < 20)
+        AND NOT EXISTS (SELECT 1 FROM ev_pull_job j JOIN tm tj ON tj.game_id = j.game_id AND tj.pid = j.pid
+            WHERE j.game_id = c.game_id AND tj.team = tm.team AND j.lane = c.lane AND abs(j.slot - c.slot) < 20)
     GROUP BY c.game_id, tm.team, c.lane, c.slot
 ),
 rd AS MATERIALIZED (
