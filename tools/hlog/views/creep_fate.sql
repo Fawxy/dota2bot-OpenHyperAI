@@ -15,35 +15,8 @@
 -- enough for a frame at 8x and narrow enough that two creeps of one kind in a wave rarely compete.
 -- ensure: ev_creep_death(team, kind, x, y, by, tw)
 -- ensure: ev_own_creep_death(team, kind, x, y, by)
-WITH cand AS (
-    SELECT c.game_id, c.seq AS cseq, o.seq AS oseq, o."by" AS denier,
-        abs(o.t - c.t) AS dt, (o.x - c.x) * (o.x - c.x) + (o.y - c.y) * (o.y - c.y) AS d2
-    FROM ev_creep_death c
-    JOIN ev_own_creep_death o ON o.game_id = c.game_id AND o.team <> c.team AND o.kind = c.kind
-        AND o.t BETWEEN c.t - 1.0 AND c.t + 1.0
-        AND (o.x - c.x) * (o.x - c.x) + (o.y - c.y) * (o.y - c.y) <= 62500
-    WHERE CAST(c."by" AS TEXT) = 'none' AND CAST(o."by" AS TEXT) <> 'none'
-),
-by_c AS (
-    SELECT *, row_number() OVER (PARTITION BY game_id, cseq ORDER BY d2, dt, oseq) AS rc FROM cand
-),
-by_o AS (
-    SELECT *, row_number() OVER (PARTITION BY game_id, oseq ORDER BY d2, dt, cseq) AS ro FROM by_c WHERE rc = 1
-),
-pairs AS (
-    SELECT game_id, cseq, denier FROM by_o WHERE ro = 1
-)
-SELECT c.game_id, c.seq, c.t, c.team, 'enemy' AS side, c.kind, c.x, c.y,
-    CASE WHEN CAST(c."by" AS TEXT) NOT IN ('none', 'deny') THEN 'own_lh'
-         WHEN p.cseq IS NOT NULL OR CAST(c."by" AS TEXT) = 'deny' THEN 'enemy_deny'
-         ELSE 'other' END AS fate,
-    CASE WHEN CAST(c."by" AS TEXT) NOT IN ('none', 'deny') THEN c."by" ELSE p.denier END AS pid,
-    c.tw
-FROM ev_creep_death c
-LEFT JOIN pairs p ON p.game_id = c.game_id AND p.cseq = c.seq
-UNION ALL
-SELECT o.game_id, o.seq, o.t, o.team, 'own', o.kind, o.x, o.y,
-    CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN 'own_deny' ELSE 'lost' END,
-    CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN o."by" END,
-    NULL
-FROM ev_own_creep_death o
+-- The rule is fragment creep_fate_rows (shared with the timeline, which reads only its own games).
+WITH cf_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death),
+cf_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death),
+-- include: creep_fate_rows
+SELECT * FROM creep_fate_rows
