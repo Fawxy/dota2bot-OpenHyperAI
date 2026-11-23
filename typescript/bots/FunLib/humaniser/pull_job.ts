@@ -238,9 +238,10 @@ export function IsPuller(bot: Unit): boolean {
     return bot.IsBot() && TripTable.Does("pull", LaneConfig.PositionOf(bot)) && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
 }
 
-/** The row is switched on for this lane's puller (Ours.Team scopes it, so the other team's puller is shadowed). */
+/** The row is switched on for this lane's puller (Ours.Team scopes it, so the other team's puller is shadowed). A hero a drill
+ *  benches or stands as a statue is the drill's: the chooser never asked its jobs, and the row is not asked either. */
 function rowOn(bot: Unit): boolean {
-    return Ours.On("SupportPull") && IsPuller(bot);
+    return Ours.On("SupportPull") && IsPuller(bot) && !Drill.Held(bot);
 }
 
 /** The next hit second at or after `from` among `seconds` of each minute (camp_jobs' NextAggroTime). */
@@ -945,7 +946,7 @@ function dueSlot(bot: Unit, now: number): Due | undefined {
  * puller may stand elsewhere, so the two arms' slots match by wave, not by second.
  */
 export function Shadow(bot: Unit): void {
-    if (!Telemetry.IsEnabled() || !IsPuller(bot) || rowOn(bot)) return;
+    if (!Telemetry.IsEnabled() || !IsPuller(bot) || rowOn(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
     const due = dueSlot(bot, DotaTime());
     if (due === undefined) return;

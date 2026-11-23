@@ -683,18 +683,25 @@ do
 		local control = tab.rep.control
 		-- control 1 withholds every rep.
 		if o.off then tab.rep.control = 1 end
+		-- `o.pos`: the lane's puller is a pos4, which the drill benches.
+		if o.pos then w.sup.pos = o.pos end
+		local puller = w.H.PullJob.IsPuller(w.sup)
 		local role = w.H.Drill.RoleOf(w.sup)
 		local out = run(w, 75)
 		tab.rep.control = control
 		cust.Overrides = nil
 		w.H.Drill.ResetCache()
-		return role, lines(out, "choice")[1], lines(out, "job")[1]
+		return role, lines(out, "choice")[1], lines(out, "job")[1], puller
 	end
 	local role, choice, job = drilled({})
 	check("drill pull: the pos5 is the cast", role == "cast", role)
 	check("drill pull: an input-on rep pulls (rule drill)", choice ~= nil and field(choice, "go") == "1" and field(choice, "rule") == "drill" and job ~= nil, choice)
 	role, choice, job = drilled({ off = true })
 	check("drill pull: a control rep stays (why=drill)", choice ~= nil and field(choice, "go") == "0" and field(choice, "why") == "drill" and job == nil, choice)
+	-- pullrig1: the three benched pullers each wrote an input-on line (why=late from their fountains) and could have started.
+	local puller
+	role, choice, job, puller = drilled({ pos = 4 })
+	check("drill pull: a benched puller is not asked", puller and role == "bench" and choice == nil and job == nil, tostring(role) .. " " .. tostring(choice))
 end
 
 -- The shadow (plan s5): a puller whose pull is switched off logs the slot the on arm's puller decides, with the same want,

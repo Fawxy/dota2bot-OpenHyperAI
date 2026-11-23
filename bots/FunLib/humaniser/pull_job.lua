@@ -1040,9 +1040,10 @@ function ____exports.IsPuller(bot)
         LaneConfig.PositionOf(bot)
     ) and isSupport(bot) and pullerOfLane(bot) and campFor(bot) ~= nil
 end
---- The row is switched on for this lane's puller (Ours.Team scopes it, so the other team's puller is shadowed).
+--- The row is switched on for this lane's puller (Ours.Team scopes it, so the other team's puller is shadowed). A hero a drill
+-- benches or stands as a statue is the drill's: the chooser never asked its jobs, and the row is not asked either.
 local function rowOn(bot)
-    return Ours.On("SupportPull") and ____exports.IsPuller(bot)
+    return Ours.On("SupportPull") and ____exports.IsPuller(bot) and not Drill.Held(bot)
 end
 --- The next hit second at or after `from` among `seconds` of each minute (camp_jobs' NextAggroTime).
 function ____exports.NextSlot(from, seconds, period)
@@ -1758,7 +1759,7 @@ end
 -- ordered or started. A shadowed slot is where a puller standing where stock left it would have had to leave; the on arm's
 -- puller may stand elsewhere, so the two arms' slots match by wave, not by second.
 function ____exports.Shadow(bot)
-    if not Telemetry.IsEnabled() or not ____exports.IsPuller(bot) or rowOn(bot) then
+    if not Telemetry.IsEnabled() or not ____exports.IsPuller(bot) or rowOn(bot) or Drill.Held(bot) then
         return
     end
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
