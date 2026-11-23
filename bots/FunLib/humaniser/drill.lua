@@ -2200,11 +2200,11 @@ ____exports.TABLE = {
             window = 600,
             spots = {
                 rnear = {"r:fountain", 7214, 1876},
-                rmid = {"r:fountain", 6614, 2326},
+                rmid = {"r:fountain", 7914, 2176},
                 rfar = {"r:fountain", 5814, 2076},
                 dnear = {"d:fountain", -7621, -2137},
                 dmid = {"d:fountain", -7021, -2587},
-                dfar = {"d:fountain", -8621, -3037}
+                dfar = {"d:fountain", -6171, -1637}
             },
             timeout = 60,
             release = {modes = {"farm", "idle"}},

@@ -422,7 +422,8 @@ export const TABLE: Record<string, Entry> = {
     // rune is up and the row's pass read finds the detour within budget; then the decider (farm's host) and idle. Everyone
     // else benched. Reps every 120 s from 3:30 so the 7:30 rep ends inside the window (rdrig1: 240 s reps ended at 11:30, past
     // it); the 5:30 rep is ready only when the 4:00 rune still lies there (the off arm). rfar moved off unreachable ground
-    // (rdrig1: the Radiant pos5 stood 200 short of (1595, -3560), `setup`). Read: the cast's ev=rune_pickup and its ev=job job=rune_detour end in the rep.
+    // (rdrig1: the Radiant pos5 stood 200 short of (1595, -3560), `setup`); rmid likewise (rdrig2: 306 short of (-5, -4010)); dfar to
+    // the lane side of the rune (rdrig2: behind it from the lane, the detour over budget, `bounty`). Read: the cast's ev=rune_pickup and its ev=job job=rune_detour end in the rep.
     "rune-detour": {
         note: "rig: each side's pos5 at a spot by its own jungle bounty before the 4:00 and 8:00 spawns (near, mid, far), everyone else benched; released to farm (the decider) and idle; 120 s reps from 3:30",
         cast: { r: [5], d: [5] },
@@ -434,11 +435,11 @@ export const TABLE: Record<string, Entry> = {
             window: 600,
             spots: {
                 rnear: ["r:fountain", 7214, 1876],
-                rmid: ["r:fountain", 6614, 2326],
+                rmid: ["r:fountain", 7914, 2176],
                 rfar: ["r:fountain", 5814, 2076],
                 dnear: ["d:fountain", -7621, -2137],
                 dmid: ["d:fountain", -7021, -2587],
-                dfar: ["d:fountain", -8621, -3037],
+                dfar: ["d:fountain", -6171, -1637],
             },
             timeout: 60,
             release: { modes: ["farm", "idle"] },
