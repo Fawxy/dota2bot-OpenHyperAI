@@ -179,7 +179,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, SupportPull = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { Team = "radiant", StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, SupportPull = true, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
