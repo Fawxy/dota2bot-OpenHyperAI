@@ -9,8 +9,8 @@
 //              theirs); tower = e_tower / e_dead; deny = o_deny / o_dead. A game with no death in a window has no rate.
 //   Pairs      an --on game against the --off game of the same run, lineup and repetition, on the on game's seat team. The
 //              mean difference, its sd and the 95% interval (Student t). --first reads only each lane's first wanted slot.
-//   Null       with no on arm: two reference games of one run, lineup and team, differenced in repetition order (the spread a
-//              pair shows when nothing differs).
+//   Null       with no on arm: two reference games of one lineup and team (across the runs named), differenced in label
+//              order (the spread a pair shows when nothing differs).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -58,17 +58,17 @@ function pairs(games, on, off) {
     return out;
 }
 
-/** Reference games of one run, lineup and team, taken two at a time in repetition order. */
+/** Reference games of one lineup and team across the runs named, taken two at a time in label order. */
 function nullPairs(games, off) {
     const groups = new Map();
     for (const g of games) {
         if (g.arm !== off) continue;
-        const k = `${g.batch}:${g.lineup}:${g.team}`;
+        const k = `${g.lineup}:${g.team}`;
         groups.set(k, [...(groups.get(k) || []), g]);
     }
     const out = [];
     for (const list of groups.values()) {
-        list.sort((x, y) => x.rep - y.rep);
+        list.sort((x, y) => (x.label < y.label ? -1 : 1));
         for (let i = 0; i + 1 < list.length; i += 2) out.push({ on: list[i + 1], off: list[i] });
     }
     return out;
