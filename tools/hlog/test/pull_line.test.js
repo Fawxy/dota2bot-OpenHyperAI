@@ -88,6 +88,30 @@ test('wanted slots: one per team, lane and pulled wave whichever line names it; 
     assert.deepStrictEqual(narrow.map(r => [r.wanted, r.o_dead]), [[1, 1]]);
 });
 
+test('the wanted wave\'s own creeps: named by lane and born wherever and whenever they die, each taken by its mutual-nearest sighting in the other log', () => {
+    let cid = 0;
+    const wcd = (t, x, y, by, born = 180.1, lane = 'bot', kind = 'melee') =>
+        line(t, `wave_creep_death team=2 kind=${kind} x=${x} y=${y} hp=0.05 by=${by} cid=${++cid} lane=${lane} born=${born}`);
+    const out = run([...bots,
+        // slot 200 pulls the wave that spawned at 3:00 (floor(199 / 30) = 6).
+        want(190, 5, 200),
+        // at the bot pull camp (camp 8, -721, -7696), seen by nobody of theirs: other, at a camp.
+        wcd(215, -700, -7650, 'none'),
+        // in lane: their pos 1's last hit; our deny; their tower's.
+        wcd(230, 0, -6000, 'none'), theirView(230.2, 10, 6),
+        wcd(231, 100, -6000, 5), theirView(231.1, 100, 'none'),
+        wcd(232, 300, -6000, 'none'), theirView(232.1, 300, 'none', 1),
+        // two at once 200 apart: one sighting their pos 5's last hit, the other no one's; each pairs with its own.
+        wcd(240, 1000, -6000, 'none'), wcd(240, 1200, -6000, 'none'), theirView(240.1, 1010, 8), theirView(240.1, 1190, 'none'),
+        // 120 s after the slot, past the window: still the wave's, their pos 1's.
+        wcd(320, 2000, -6000, 'none'), theirView(320.1, 2000, 6),
+        // not the wave: the next one, and the same spawn on the top lane.
+        wcd(250, 0, -6000, 'none', 210.1), wcd(250, -6000, 6000, 'none', 180.1, 'top'),
+    ]);
+    assert.deepStrictEqual(out.map(r => [r.team, r.lane, r.w_n, r.w_lh, r.w_lh_core, r.w_deny, r.w_tower, r.w_other, r.w_camp]),
+        [[2, 3, 7, 3, 2, 1, 1, 2, 1]]);
+});
+
 const { teamGames, pairs, nullPairs, diffStats } = require('../pull_line');
 
 test('pairs: an on game\'s seat team against the off game of its run, lineup and repetition; the interval is Student t on the differences', () => {

@@ -17,15 +17,24 @@
 -- The funnel: wanted slots; started (an ev=pull_job of that team and lane on the slot's wave); hit (its hit=1); diverted (res
 --   ok and dt, or div where a line has no dt, at least 0.75, as view pull_attempts); first_slot the first wanted slot.
 -- A creep that died with no hero of either team within 1,500 is in neither log.
--- No death line says which wave a creep came from, so the wanted wave's own creeps cannot be picked out. :lead 15 with
--- :win 55 is the nearest the logs give: a diverted wave dies at its camp from about 15 to 55 s after the slot (pullrow1), and
--- an unpulled one reaches the lane's fight in about that time; the window still holds about a wave and a third.
+-- The wanted wave's own creeps (logs from team-bots c87cd648 on; 0 in older ones): each wanted slot's wave, by the pulling
+-- team's ev=wave_creep_death (every own lane creep's death, anywhere) whose lane is the slot's and whose born second falls in
+-- the slot's wave (floor(born / 30) = floor((slot - 1) / 30)), however long after the slot it died. Who took each: the other
+-- team's creep_death of the same kind within 1 s and 250 units, mutual nearest (`seen`, unwindowed); else our deny from
+-- its own `by`; else `other`. Off the line's window, so overlapping windows do not merge two waves.
+--   w_n all of them; w_lh the other team's last hits (the named line is w_lh / w_n); w_lh_core those by its pos 1-3; w_deny
+--   ours; w_tower no hero and their tower on it; w_other the rest (neutrals, creeps, spells, nobody of theirs near);
+--   w_camp those that died within 700 of a neutral camp's spawn point (`judgement`: no lane death came within 1,000 in the wave line's smoke, 0bfb851e, pulls off), any fate.
+--   A line over half health is counted (a creep killed from there in one frame, or, rarely, a change of owner).
+-- The window ledger (o_*, e_*) predates the wave line: :lead 15 with :win 55 was its nearest to the wanted wave's creeps.
 -- ensure: ev_choice(pid, kind, want, lane, slot)
 -- ensure: ev_pull_job(pid, lane, slot, res, hit, div, dt)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw)
 -- ensure: ev_own_creep_death(team, kind, x, y, by)
 -- ensure: ev_bot(pid, team, pos)
+-- ensure: ev_wave_creep_death(team, kind, x, y, by, lane, born)
 WITH
+-- include: camp_spawns
 gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos FROM ev_bot WHERE team IS NOT NULL AND game_id IN (SELECT game_id FROM gm) GROUP BY 1, 2),
 wanted AS MATERIALIZED (
@@ -60,6 +69,42 @@ own AS MATERIALIZED (
     SELECT o.game_id, o.seq, o.t, o.team AS owner, o.kind, o.x, o.y, CAST(o."by" AS TEXT) AS who
     FROM ev_own_creep_death o JOIN gm ON gm.game_id = o.game_id
     WHERE o.team IN (2, 3) AND o.t < coalesce(:to, 525) + coalesce(:win, 75)
+),
+-- The wanted waves' own creeps, and each one's sighting in the other team's log (`sw`: creep_death unwindowed).
+wc AS MATERIALIZED (
+    SELECT w.game_id, w.seq, w.t, w.team AS owner, w.kind, w.x, w.y, CAST(w."by" AS TEXT) AS who, ws.slot, ws.lane
+    FROM ev_wave_creep_death w
+    JOIN ws ON ws.game_id = w.game_id AND ws.team = w.team
+        AND ws.lane = CASE w.lane WHEN 'top' THEN 1 WHEN 'mid' THEN 2 WHEN 'bot' THEN 3 END
+        AND ws.wave = CAST(w.born / 30 AS INTEGER)
+    WHERE w.born IS NOT NULL
+),
+sw AS MATERIALIZED (
+    SELECT c.game_id, c.seq, c.t, 5 - c.team AS owner, c.kind, c.x, c.y, CAST(c."by" AS TEXT) AS who, coalesce(c.tw, 0) AS tw
+    FROM ev_creep_death c WHERE c.team IN (2, 3) AND c.game_id IN (SELECT game_id FROM wc)
+),
+wpair AS MATERIALIZED (
+    SELECT * FROM (
+        SELECT w.game_id, w.seq AS wseq, s.who, s.tw,
+            row_number() OVER (PARTITION BY w.game_id, w.seq ORDER BY (s.x - w.x) * (s.x - w.x) + (s.y - w.y) * (s.y - w.y), abs(s.t - w.t), s.seq) AS rw,
+            row_number() OVER (PARTITION BY s.game_id, s.seq ORDER BY (s.x - w.x) * (s.x - w.x) + (s.y - w.y) * (s.y - w.y), abs(s.t - w.t), w.seq) AS rs
+        FROM wc w JOIN sw s ON s.game_id = w.game_id AND s.owner = w.owner AND s.kind = w.kind
+            AND s.t BETWEEN w.t - 1 AND w.t + 1 AND (s.x - w.x) * (s.x - w.x) + (s.y - w.y) * (s.y - w.y) <= 62500
+    ) WHERE rw = 1 AND rs = 1
+),
+wfate AS (
+    SELECT w.game_id, w.owner AS team, w.lane,
+        CASE WHEN p.who IS NOT NULL AND p.who NOT IN ('none', 'deny') THEN 'lh'
+             WHEN w.who <> 'none' OR p.who = 'deny' THEN 'deny'
+             WHEN p.tw = 1 THEN 'tower' ELSE 'other' END AS fate,
+        (SELECT b.pos FROM tm b WHERE b.game_id = w.game_id AND CAST(b.pid AS TEXT) = p.who) AS pos,
+        EXISTS (SELECT 1 FROM camps k WHERE (k.x - w.x) * (k.x - w.x) + (k.y - w.y) * (k.y - w.y) <= 490000) AS camp
+    FROM wc w LEFT JOIN wpair p ON p.game_id = w.game_id AND p.wseq = w.seq
+),
+wave_ledger AS (
+    SELECT game_id, team, lane, count(*) AS w_n, sum(fate = 'lh') AS w_lh, sum(fate = 'lh' AND pos BETWEEN 1 AND 3) AS w_lh_core,
+        sum(fate = 'deny') AS w_deny, sum(fate = 'tower') AS w_tower, sum(fate = 'other') AS w_other, sum(camp) AS w_camp
+    FROM wfate GROUP BY 1, 2, 3
 ),
 -- Each deny in the owner's log names the one death in the other log nearest to it (a wave's creeps die close together).
 denied AS MATERIALIZED (
@@ -112,7 +157,10 @@ SELECT f.game_id, g.file, f.team, f.lane, f.wanted, f.started, f.hit, f.diverted
     coalesce(l.o_dead, 0) AS o_dead, coalesce(l.o_lh, 0) AS o_lh, coalesce(l.o_lh_core, 0) AS o_lh_core, coalesce(l.o_deny, 0) AS o_deny,
     coalesce(l.o_tower, 0) AS o_tower, coalesce(l.o_other, 0) AS o_other,
     coalesce(l.e_dead, 0) AS e_dead, coalesce(l.e_lh, 0) AS e_lh, coalesce(l.e_lh_core, 0) AS e_lh_core, coalesce(l.e_deny, 0) AS e_deny,
-    coalesce(l.e_tower, 0) AS e_tower, coalesce(l.e_other, 0) AS e_other
+    coalesce(l.e_tower, 0) AS e_tower, coalesce(l.e_other, 0) AS e_other,
+    coalesce(v.w_n, 0) AS w_n, coalesce(v.w_lh, 0) AS w_lh, coalesce(v.w_lh_core, 0) AS w_lh_core, coalesce(v.w_deny, 0) AS w_deny,
+    coalesce(v.w_tower, 0) AS w_tower, coalesce(v.w_other, 0) AS w_other, coalesce(v.w_camp, 0) AS w_camp
 FROM funnel f JOIN gm g ON g.game_id = f.game_id
 LEFT JOIN ledger l ON l.game_id = f.game_id AND l.team = f.team AND l.lane = f.lane
+LEFT JOIN wave_ledger v ON v.game_id = f.game_id AND v.team = f.team AND v.lane = f.lane
 ORDER BY g.file, f.team, f.lane
