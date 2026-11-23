@@ -465,4 +465,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { parseLabel, games, analyseGame, gameResult, run, rows, armTable, items, itemChanges, LINES, PASSIVE };
+module.exports = { parseLabel, ingestRuns, games, analyseGame, gameResult, run, rows, armTable, items, itemChanges, LINES, PASSIVE };
