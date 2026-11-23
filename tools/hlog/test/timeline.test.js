@@ -126,8 +126,8 @@ test('timeline: what the log cannot show is a row, whatever the lane, hero or wi
     const lack = timelineRows(store, file, { lane: 'top', from: 0, to: 1, hero: 'lich' }).filter(r => r.kind === 'not_logged').map(r => r.detail);
     assert.deepStrictEqual(lack.sort(), [
         'Dire: no attack target (tid) in the log, so its attacks are not seen',
-        'Dire: no casts in the log', 'Dire: no creep deaths in the log',
-        'Radiant: no casts in the log', 'Radiant: no creep deaths in the log',
+        'Dire: no casts in the log', 'Dire: no creep deaths in the log', 'Dire: no decisions in the log',
+        'Radiant: no casts in the log', 'Radiant: no creep deaths in the log', 'Radiant: no decisions in the log',
     ]);
     // A kind filter keeps only what it asked about.
     assert.deepStrictEqual(timelineRows(store, file, { kind: 'retreat' }).filter(r => r.kind === 'not_logged'), []);
@@ -330,4 +330,102 @@ test('CLI: m:ss as well as seconds in --p times, --pid, and an argument that can
         assert.ok(r.stderr.length > 0);
     }
     assert.strictEqual(run('q', '@timeline', '--p', 'batch=base1', '--p', 'from=soon').status, 1);
+});
+
+/**
+ * Radiant lich (pid 1) pulls in the bot lane (lane 3); Dire jakiro (pid 6) is a switched-off puller in the top lane (lane 1),
+ * writing shadow lines. Each lich slot is one case:
+ *   77   not wanted (lane)
+ *   107  wanted and held back twice: busy, then enemy-near (the last line is the row)
+ *   137  started at 120, trip ends ok at 140; a later go=0 line for the same slot does not replace it
+ *   167  started at 150, trip cut at 158 (cancelled:retreat)
+ *   197  started at 180, no end logged
+ *   227  go=1 at 210, but only a stack job starts then: not its trip
+ *   257  not wanted (lane)
+ * jakiro: slot 77 wanted (off), slot 107 not wanted; the same slot as lich's 107 stays its own row. lich's `deny` line at slot
+ * 107 is another kind's row; its `decider` and `shadow` lines are no decisions.
+ */
+function decisionLines({ dire = true } = {}) {
+    const pull = (t, pid, lane, slot, f) => line(t, `choice pid=${pid} kind=pull lane=${lane} slot=${slot} ${f}`);
+    const job = (t, f) => line(t, `job pid=1 ${f}`);
+    const out = [
+        line(-90, 'bot pid=1 hero=lich team=2 pos=5'),
+        line(-90, 'bot pid=6 hero=jakiro team=3 pos=5'),
+        pull(60, 1, 3, 77, 'want=0 go=0 why=lane src=own'),
+        pull(90, 1, 3, 107, 'want=1 go=0 why=busy src=own'),
+        pull(95, 1, 3, 107, 'want=1 go=0 why=enemy-near src=own'),
+        line(96, 'choice pid=1 kind=deny lane=3 slot=107 want=1 go=0 why=far src=own'),
+        line(97, 'choice pid=1 kind=decider held=- win=farm'),
+        line(98, 'choice pid=1 kind=shadow want=1 go=0'),
+        pull(120, 1, 3, 137, 'want=1 go=1 src=own'), job(120, 'job=pull phase=start why=trigger'),
+        pull(125, 1, 3, 137, 'want=1 go=0 why=busy src=own'),
+        job(140, 'job=pull phase=end why=ok'),
+        pull(150, 1, 3, 167, 'want=1 go=1 src=own'), job(150, 'job=pull phase=start why=trigger'),
+        job(158, 'job=pull phase=end why=cancelled:retreat'),
+        pull(180, 1, 3, 197, 'want=1 go=1 src=own'), job(180, 'job=pull phase=start why=trigger'),
+        pull(210, 1, 3, 227, 'want=1 go=1 src=own'), job(210, 'job=stack phase=start why=trigger'),
+        pull(240, 1, 3, 257, 'want=0 go=0 why=lane src=own'),
+    ];
+    if (dire) out.push(pull(61, 6, 1, 77, 'want=1 go=0 why=off src=shadow'), pull(91, 6, 1, 107, 'want=0 go=0 why=off src=shadow'));
+    return out.sort((a, b) => Number(a.match(/t=(-?[\d.]+)/)[1]) - Number(b.match(/t=(-?[\d.]+)/)[1]));
+}
+
+test('timeline decisions: one row per opportunity, its outcome from the choice line and the trip it started', () => {
+    const { store, file } = storeOf(decisionLines());
+    const rows = only(timelineRows(store, file, { kind: 'decision' }), 'decision');
+    assert.deepStrictEqual(rows.map(r => pick(r, ['hero', 'what', 'slot', 't', 't1', 'lane', 'outcome', 'why', 'secs'])), [
+        { hero: 'lich', what: 'pull', slot: 77, t: 60, t1: null, lane: 'bot', outcome: 'unwanted', why: 'lane', secs: null },
+        { hero: 'jakiro', what: 'pull', slot: 77, t: 61, t1: null, lane: 'top', outcome: 'off', why: null, secs: null },
+        { hero: 'jakiro', what: 'pull', slot: 107, t: 91, t1: null, lane: 'top', outcome: 'unwanted', why: 'off', secs: null },
+        { hero: 'lich', what: 'pull', slot: 107, t: 95, t1: null, lane: 'bot', outcome: 'refused', why: 'enemy-near', secs: null },
+        { hero: 'lich', what: 'deny', slot: 107, t: 96, t1: null, lane: 'bot', outcome: 'refused', why: 'far', secs: null },
+        { hero: 'lich', what: 'pull', slot: 137, t: 120, t1: 140, lane: 'bot', outcome: 'done', why: null, secs: 20 },
+        { hero: 'lich', what: 'pull', slot: 167, t: 150, t1: 158, lane: 'bot', outcome: 'cut', why: 'cancelled:retreat', secs: 8 },
+        { hero: 'lich', what: 'pull', slot: 197, t: 180, t1: null, lane: 'bot', outcome: 'no_end', why: null, secs: null },
+        { hero: 'lich', what: 'pull', slot: 227, t: 210, t1: null, lane: 'bot', outcome: 'no_start', why: null, secs: null },
+        { hero: 'lich', what: 'pull', slot: 257, t: 240, t1: null, lane: 'bot', outcome: 'unwanted', why: 'lane', secs: null },
+    ]);
+    assert.deepStrictEqual(timelineText(timelineRows(store, file, { kind: 'decision', from: 95, to: 160 }), {}).split('\n').map(l => l.replace(/\s+/g, ' ')), [
+        '1:35 bot R5 lich decision pull: refused (enemy-near), slot 1:47',
+        '1:36 bot R5 lich decision deny: refused (far), slot 1:47',
+        '2:00-2:20 bot R5 lich decision pull: done, slot 2:17',
+        '2:30-2:38 bot R5 lich decision pull: cut (cancelled:retreat), slot 2:47',
+    ]);
+    store.close();
+});
+
+test('timeline decisions: a team with no choice lines says so, for kind decision only', () => {
+    const { store, file, dir } = storeOf(decisionLines({ dire: false }));
+    const lack = o => timelineRows(store, file, o).filter(r => r.kind === 'not_logged').map(r => r.detail);
+    assert.deepStrictEqual(lack({ kind: 'decision' }), ['Dire: no decisions in the log']);
+    assert.deepStrictEqual(lack({ kind: 'job' }), []);
+    store.close();
+    const r = spawnSync(process.execPath, [HLOG, 'timeline', file, '--kind', 'decision', '--db', path.join(dir, 's.sqlite')], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /not logged: Dire: no decisions in the log/);
+    assert.match(r.stdout, /3:30 +bot +R5 lich +decision pull: go, no job start logged, slot 3:47/);
+});
+
+test('@decisions: outcomes and reasons by arm and side, each a share of its side\'s opportunities', () => {
+    const { store } = storeOf(decisionLines(), 'dec1_A_onrad_1');
+    const sql = fs.readFileSync(path.join(__dirname, '../queries/decisions.sql'), 'utf8');
+    const rows = p => store.query(sql, { batch: 'dec1', ...p }).map(r => [r.arm, r.side, r.what, r.outcome, r.why, r.n, r.share, r.games]);
+    assert.deepStrictEqual(rows({}), [
+        ['on', 'opp', 'pull', 'unwanted', 'off', 1, 0.5, 1],
+        ['on', 'opp', 'pull', 'off', null, 1, 0.5, 1],
+        ['on', 'test', 'deny', 'refused', 'far', 1, 1, 1],
+        ['on', 'test', 'pull', 'unwanted', 'lane', 2, 0.286, 1],
+        ['on', 'test', 'pull', 'refused', 'enemy-near', 1, 0.143, 1],
+        ['on', 'test', 'pull', 'no_start', null, 1, 0.143, 1],
+        ['on', 'test', 'pull', 'done', null, 1, 0.143, 1],
+        ['on', 'test', 'pull', 'cut', 'cancelled:retreat', 1, 0.143, 1],
+        ['on', 'test', 'pull', 'no_end', null, 1, 0.143, 1],
+    ]);
+    // A window keeps the decisions taken in it (a trip that crosses its edge too), and what narrows to one kind.
+    assert.deepStrictEqual(rows({ what: 'pull', from: 130, to: 200 }).map(r => r.slice(1, 7)), [
+        ['test', 'pull', 'done', null, 1, 0.333],
+        ['test', 'pull', 'cut', 'cancelled:retreat', 1, 0.333],
+        ['test', 'pull', 'no_end', null, 1, 0.333],
+    ]);
+    store.close();
 });
