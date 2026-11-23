@@ -1576,9 +1576,12 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
     // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
     // of our creeps this way (hlog `creep_fate` joins it to their `creep_death`), because an enemy hero's GetDenies reads 0.
+    // With no list this frame every tracked creep would read as gone at full health (wave_creep_death has no health gate).
+    const allied = GetUnitList(UnitType.AlliedCreeps);
+    if (allied === null || allied === undefined) return;
     const ownAlive = new LuaTable<Unit, boolean>();
     const ownList: Unit[] = [];
-    for (const u of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+    for (const u of allied) {
         if (u === null || u === undefined || !u.IsAlive()) continue;
         ownList.push(u);
         ownAlive.set(u, true);

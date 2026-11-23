@@ -2471,21 +2471,25 @@ local function trackCreepDeaths(bot, now)
     for ____, u in ipairs(alive) do
         see(c.creeps, u, laneKindOf)
     end
+    local allied = GetUnitList(UnitType.AlliedCreeps)
+    if allied == nil or allied == nil then
+        return
+    end
     local ownAlive = {}
     local ownList = {}
-    for ____, u in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
+    for ____, u in ipairs(allied) do
         do
-            local __continue342
+            local __continue343
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue342 = true
+                    __continue343 = true
                     break
                 end
                 ownList[#ownList + 1] = u
                 ownAlive[u] = true
-                __continue342 = true
+                __continue343 = true
             until true
-            if not __continue342 then
+            if not __continue343 then
                 break
             end
         end
@@ -2494,10 +2498,10 @@ local function trackCreepDeaths(bot, now)
     local ownDeaths = {}
     for creep, seen in pairs(c.own) do
         do
-            local __continue345
+            local __continue346
             repeat
                 if ownAlive[creep] == true then
-                    __continue345 = true
+                    __continue346 = true
                     break
                 end
                 c.own[creep] = nil
@@ -2513,9 +2517,9 @@ local function trackCreepDeaths(bot, now)
                 if seen.hp <= DEATH_MAX_HP and nd <= DEATH_NEAR then
                     ownDeaths[#ownDeaths + 1] = d
                 end
-                __continue345 = true
+                __continue346 = true
             until true
-            if not __continue345 then
+            if not __continue346 then
                 break
             end
         end
@@ -2617,15 +2621,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue365
+                local __continue366
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue365 = true
+                        __continue366 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue365 = true
+                        __continue366 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -2664,9 +2668,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue365 = true
+                    __continue366 = true
                 until true
-                if not __continue365 then
+                if not __continue366 then
                     break
                 end
             end

@@ -298,6 +298,19 @@ do
 	e = events("wave_creep_death")
 	check("a denied creep carries its denier", #e == 3 and field(e[3], "by") == "2" and field(e[3], "lane") == "top", e[3])
 	check("and is still an own_creep_death", #events("own_creep_death") == 1, #events("own_creep_death"))
+	-- A frame whose allied list is missing is skipped: the creeps tracked are not read as gone at full health.
+	local held = creep("npc_dota_creep_goodguys_melee", Vector(0, -5900), 100, OWN)
+	tick(H, { sup }, 100)
+	local list = GetUnitList
+	GetUnitList = function(kind) if kind == UnitType.AlliedCreeps then return nil end return list(kind) end
+	tick(H, { sup }, 100.1)
+	GetUnitList = list
+	tick(H, { sup }, 100.2)
+	check("no death from a missing list", #events("wave_creep_death") == 3, #events("wave_creep_death"))
+	kill(held)
+	tick(H, { sup }, 100.3)
+	e = events("wave_creep_death")
+	check("and the creep is still tracked with its birth", #e == 4 and tonumber(field(e[4], "born")) == 100, e[4])
 	GetAmountAlongLane = keep
 end
 
