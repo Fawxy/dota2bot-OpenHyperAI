@@ -5,6 +5,13 @@ local Customize = package.loaded["bots/FunLib/custom_loader"]
 -- The shipped defaults, not the suites' (dota_stubs.lua FreshHumaniser turns the features on).
 package.loaded["bots/FunLib/humaniser/ours"] = nil
 local Ours = require("bots/FunLib/humaniser/ours")
+-- A game reads general.lua's block, which sets every key, so DEFAULTS alone do not say what ships (review).
+package.loaded["bots.Customize.general"] = nil
+local shipped = require("bots.Customize.general").Ours
+local stray = {}
+for name in pairs(Ours.DEFAULTS) do if shipped[name] ~= false then stray[#stray + 1] = name end end
+for name in pairs(shipped) do if Ours.DEFAULTS[name] == nil then stray[#stray + 1] = name end end
+check("ours: general.lua's block has every DEFAULTS key and no other, all off", #stray == 0, table.concat(stray, ","))
 Customize.Ours = { Retreat = false, MidWater = true, SupportPull = true }
 -- One entry per DEFAULTS key in name order; a slice adding a switch adds it here.
 check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,MidWater:1,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportPull:1,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,TripRead:0", Ours.Describe())
