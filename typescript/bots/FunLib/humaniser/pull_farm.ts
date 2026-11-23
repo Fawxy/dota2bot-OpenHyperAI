@@ -12,13 +12,15 @@ import * as Camps from "bots/FunLib/humaniser/camps";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Profile from "bots/FunLib/humaniser/profile";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 // All `judgement` (slice file).
+/** How long a threat reading must hold before the hero leaves on it: a debounce against a one-frame reading (`judgement`). */
+const THREAT_HOLD = 0.17;
+
 export const SETTINGS = {
     /** The farm starts within this many seconds of the pull's end, else the pull's neutrals are gone or the wave has moved on. */
     StartWithin: 12,
@@ -212,7 +214,7 @@ function guard(bot: Unit, f: Farm): string | undefined {
     }
     const now = DotaTime();
     f.threatSince = f.threatSince ?? now;
-    return now - f.threatSince >= Profile.ThreatHold(bot) ? "threat" : undefined;
+    return now - f.threatSince >= THREAT_HOLD ? "threat" : undefined;
 }
 
 function* walkBack(bot: Unit, f: Farm, ctx: Lib.Ctx): Lib.TaskBody {

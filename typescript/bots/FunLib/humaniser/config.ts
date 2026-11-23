@@ -15,66 +15,13 @@ export const DEFAULTS = {
      * names as frame steps run on the others. 1 runs every step every frame.
      */
     TickEvery: 3,
-    ValveWeight: 0.5,
-    FretWeight: 0.5,
-    SkillOverride: undefined as number | undefined,
-    /**
-     * FretBots bridge. FretBots runs in a separate VScript context, so its difficulty must be inferred.
-     * FretBotsLevelOverride: force the FretBots level the bots believe (0..10), for when the mirror is wrong.
-     * BridgeModifier: if set, FretBots writes difficulty*10 and allyScale*100 as stack counts on this modifier
-     * (applied by FretBots/Settings.lua). Off by default because changing stacks on a built-in modifier is untested.
-     */
-    FretBridge: {
-        FretBotsLevelOverride: undefined as number | undefined,
-        BridgeModifier: undefined as string | undefined,
-    },
-    // Skill 1 is no handicap of ours (user 12/11/2026): every High end is 0. The Low ends are the difficulty workstream's.
-    Profile: {
-        PersonalMin: 0.85,
-        PersonalMax: 1.15,
-        NoticeLow: 0.55,
-        NoticeHigh: 0,
-        ReactLow: 0.5,
-        ReactHigh: 0,
-        // Reading a ping or typed chat takes far longer than a visual reaction.
-        PingLow: 2.0,
-        PingHigh: 0,
-        ChatLow: 2.0,
-        ChatHigh: 0,
-        JitterLow: 0.45,
-        JitterHigh: 0,
-        LapseLow: 0.15,
-        LapseHigh: 0,
-        LapseMinExtra: 0.3,
-        LapseMaxExtra: 0.8,
-        AimErrorLow: 250,
-        AimErrorHigh: 0,
-        // A floor on the react delay at every skill; 0 since skill 1 reacts on the frame.
-        MinReact: 0,
-    },
-    Orders: {
-        DesireFloor: 0.85,
-        AckCooldown: 20,
-    },
-    Perception: { Enable: true } as Record<string, any>,
-    AllyLastHit: { Enable: true } as Record<string, any>,
-    Pings: { Enable: true } as Record<string, any>,
-    Commands: { Enable: true } as Record<string, any>,
-    Lane: { Enable: true } as Record<string, any>,
-    Transitions: { Enable: true } as Record<string, any>,
-    Intent: { Enable: true } as Record<string, any>,
-    LastHitSkill: { Enable: true } as Record<string, any>,
-    FarmPattern: { Enable: true } as Record<string, any>,
-    Trainer: { LastHit: { Enable: true } } as Record<string, any>,
     /**
      * [HEV] event lines for tools/hlog. Off unless Customize turns it on; never changes behaviour.
      * Runs even with Enable = false (A/B games); only Customize.Enable = false turns it off with the rest.
      */
     Telemetry: { Enable: false } as Record<string, any>,
-    // tasks: coroutine task runner spike (see humaniser/tasks.ts). Stack: run camp stacks as a task (stack_task.ts).
-    Tasks: { Enable: true, Demo: false, Stack: false } as Record<string, any>,
-    // Behaviour-state layer on the SDK's States (humaniser/states). Off: no selection, telemetry or tasks.
-    States: { Enable: false, Shadow: true, Own: {}, Teams: "allies", ShadowTeams: "allies" } as Record<string, any>,
+    /** The engine's task runner (humaniser/tasks.ts), which the jobs run on. */
+    Tasks: { Enable: true } as Record<string, any>,
 };
 
 export type HumaniserConfig = typeof DEFAULTS;
@@ -95,9 +42,6 @@ let cached: HumaniserConfig | undefined;
 export function Get(): HumaniserConfig {
     if (cached === undefined) {
         const merged = merge(DEFAULTS, Customize.Humaniser) as HumaniserConfig;
-        // A States.Own list replaces the default one, so removing a position in Customize really removes it.
-        const own = (Customize.Humaniser as any)?.States?.Own;
-        if (own !== undefined) merged.States = { ...merged.States, Own: own };
         // Customize.Enable = false turns off every custom setting, humaniser and telemetry included.
         if (Customize.Enable === false) {
             merged.Enable = false;
@@ -120,10 +64,4 @@ export function Now(): number {
 
 export function IsEnabled(): boolean {
     return Get().Enable === true;
-}
-
-/** True when the humaniser and the named sub-feature are both enabled. */
-export function IsFeatureEnabled(feature: "Perception" | "AllyLastHit" | "Pings" | "Commands" | "Lane" | "Transitions" | "Intent" | "LastHitSkill" | "FarmPattern"): boolean {
-    const cfg = Get();
-    return cfg.Enable === true && cfg[feature] !== undefined && cfg[feature].Enable === true;
 }

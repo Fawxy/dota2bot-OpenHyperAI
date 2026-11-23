@@ -9,7 +9,7 @@ local function world()
 	CURRENT_TEAM = 2
 	SPAWNERS = { { team = 2, type = "large", location = Vector(LARGE.x, LARGE.y, 0), min = Vector(LARGE.x - 150, LARGE.y - 150, 0),
 		max = Vector(LARGE.x + 150, LARGE.y + 150, 0), speed = 0 } }
-	H.Lane.Camps.ResetCache()
+	require("bots/FunLib/humaniser/camps").ResetCache()
 	local CC = require("bots/FunLib/humaniser/camp_clear")
 	CC.ResetCache()
 	-- 40 damage a second, 600 HP, no regen.

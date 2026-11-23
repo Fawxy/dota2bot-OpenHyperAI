@@ -215,9 +215,6 @@ local ____native_2Doperators = require(GetScriptDirectory().."/ts_libs/utils/nat
 local add = ____native_2Doperators.add
 local ____utils = require(GetScriptDirectory().."/FunLib/utils")
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
-local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
-local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
-local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function getDefendState(bot)
     if not bot._defend then
         bot._defend = {
@@ -915,12 +912,6 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     if #closeEnemiesDefend > 0 and #closeAlliesDefend >= #closeEnemiesDefend then
         return math.min(0.3, BotModeDesire.Moderate)
     end
-    local defendMode = lane == Lane.Top and BotMode.DefendTowerTop or (lane == Lane.Bot and BotMode.DefendTowerBot or BotMode.DefendTowerMid)
-    local orderFloor = Orders.DesireFloor(bot, defendMode, lane)
-    if orderFloor > 0 then
-        bot.laneToDefend = lane
-        return orderFloor
-    end
     local teamIsPushing = false
     do
         local i = 1
@@ -1065,7 +1056,7 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     end
     local pingFloor = 0
     local human, humanPing = jmz.GetHumanPing()
-    if not Pings.IsActive() and human and humanPing and not humanPing.normal_ping and DotaTime() > 0 then
+    if human and humanPing and not humanPing.normal_ping and DotaTime() > 0 then
         local isPinged, pingedLane = jmz.IsPingCloseToValidTower(gameState.team, humanPing, 800, 5)
         if isPinged and lane == pingedLane and GameTime() < humanPing.time + PING_DELTA then
             bot.laneToDefend = lane
@@ -1229,12 +1220,7 @@ function ____exports.GetDefendDesire(bot, lane)
     ) or bot:IsIllusion() then
         return BotModeDesire.None
     end
-    local mode = lane == Lane.Top and BotMode.DefendTowerTop or (lane == Lane.Bot and BotMode.DefendTowerBot or BotMode.DefendTowerMid)
-    local res = Intent.Resolve(
-        bot,
-        mode,
-        ____exports.GetDefendDesireHelper(bot, lane)
-    )
+    local res = ____exports.GetDefendDesireHelper(bot, lane)
     bot.defendDesire = res
     return res
 end

@@ -29,7 +29,7 @@ local function fresh()
 	CREEPS, ENEMIES, OWN, NEUTRALS = {}, {}, {}, {}
 	CURRENT_TEAM = 2
 	local H = FreshHumaniser({ Enable = false, Telemetry = { Enable = true } })
-	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end })
+	H.LaneConfig.SetHelpers({ GetPosition = function(u) return u.pos end })
 	lines = {}
 	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 	return H

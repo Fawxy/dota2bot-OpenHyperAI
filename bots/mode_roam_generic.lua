@@ -54,7 +54,7 @@ function GetDesire()
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- J.Utils.SetCachedVars(cacheKey, res)
-	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_ROAM, res)
+	return res
 end
 function GetDesireHelper()
 	botName = bot:GetUnitName()
@@ -140,8 +140,6 @@ end
 
 function Think()
     if J.CanNotUseAction(bot) then return end
-	-- Behaviour states (team slice 11): a roam-hosted state body (a planned gank) acts first.
-	if J.Humaniser.States.Step(bot, BOT_MODE_ROAM) then return end
 	if J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "roam") then return end
 
 	nInRangeEnemy = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE)

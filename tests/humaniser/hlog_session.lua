@@ -36,11 +36,7 @@ H.Chat.EnsureInstalled(bots[1])
 local function tick(t)
 	T = t
 	for _, b in ipairs(bots) do
-		H.Commands.Tick(b)
-		H.Orders.GetFor(b)
 		H.Telemetry.Tick(b)
-		-- Bots that accepted the defend order switch to it, as the mode files would.
-		if H.Orders.GetFor(b) ~= nil then b.mode = BotMode.DefendTowerMid end
 	end
 end
 local function say(text)
@@ -48,7 +44,7 @@ local function say(text)
 end
 
 for i = 0, 50 do tick(i * 0.1) end
-say("!def mid")
+for _, b in ipairs(bots) do b.mode = BotMode.DefendTowerMid end
 for i = 51, 120 do tick(i * 0.1) end
 say("!mark bots went mid")
 for i = 121, 160 do tick(i * 0.1) end

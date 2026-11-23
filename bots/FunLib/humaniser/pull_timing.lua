@@ -29,7 +29,6 @@ local UnitType = ____dota.UnitType
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
-local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
 function settings()
     return LaneConfig.Settings().PullTiming
 end
@@ -311,7 +310,7 @@ function ____exports.LiveRead(timing, aggroAt, now)
         do
             local __continue31
             repeat
-                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                if c == nil or c == nil or not c:IsAlive() or not LaneConfig.IsLaneCreepName(c:GetUnitName()) then
                     __continue31 = true
                     break
                 end
@@ -370,7 +369,7 @@ function ____exports.WaveAlongs(timing, aggroAt, now)
         do
             local __continue40
             repeat
-                if c == nil or c == nil or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                if c == nil or c == nil or not c:IsAlive() or not LaneConfig.IsLaneCreepName(c:GetUnitName()) then
                     __continue40 = true
                     break
                 end

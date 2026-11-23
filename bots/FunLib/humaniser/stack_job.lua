@@ -791,7 +791,6 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local CampClear = require(GetScriptDirectory().."/FunLib/humaniser/camp_clear")
-local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
@@ -1083,7 +1082,7 @@ function firstRes(f)
 end
 function recordOutcome(campIdx, minute, res)
     if res == "stacked" or res == "unseen" then
-        Stacking.NoteStackOutcome(campIdx, minute, nil, true)
+        Stacking.NoteStackOutcome(campIdx, minute, true)
     end
 end
 function atOpen(why)
@@ -1269,7 +1268,7 @@ function sample59(bot, a)
         end
         if f.n59 == nil and DotaTime() >= a.minute * 60 + 59.5 then
             f.n59 = describe(bot, f.units, f.campIdx)
-            f.box59 = CampJobs.Exec.NeutralsInBox(bot, f.campIdx)
+            f.box59 = Stacking.NeutralsInBox(bot, f.campIdx)
         end
     end
     if a.tgt2 == nil and a.aggro ~= nil and DotaTime() >= a.minute * 60 + a.aggro + 2 then
@@ -1298,7 +1297,7 @@ function sample59(bot, a)
             pulled = pulled + 1
         end
     end
-    a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+    a.box59 = Stacking.NeutralsInBox(bot, a.campIdx)
     a.tgt59 = targetDist(a) or -1
     local strict = 0
     for ____, c in ipairs(bot:GetNearbyNeutralCreeps(
@@ -1804,7 +1803,7 @@ local function campFor(bot, sp, stand, others, pile)
         origin = sp.location,
         margin = r.BoxMargin,
         search = r.NeutralSearch,
-        confirmed = function() return CampJobs.Exec.NeutralTargets(bot) end,
+        confirmed = function() return Stacking.NeutralTargets(bot) end,
         approach = approach
     }
     if pile ~= nil then
@@ -1931,7 +1930,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
         end,
         onAggro = function(info)
             if f ~= nil and f.aggro == nil then
-                f.before = CampJobs.Exec.NeutralsInBox(bot, f.campIdx)
+                f.before = Stacking.NeutralsInBox(bot, f.campIdx)
                 f.aggro = info.confirmedAt - start
                 f.hitd = math.floor(GetUnitToLocationDistance(bot, fsp.location))
                 f.units = campNeutrals(bot, f.campIdx, info.target)
@@ -1939,7 +1938,7 @@ function ____exports.Plan(bot, data, stand, minute, a)
             end
             a.target = info.target
             a.campUnits = campNeutrals(bot, data.campIdx, a.target, a)
-            a.before = f == nil and CampJobs.Exec.NeutralsInBox(bot, data.campIdx) or #a.campUnits
+            a.before = f == nil and Stacking.NeutralsInBox(bot, data.campIdx) or #a.campUnits
             a.aggro = info.confirmedAt - start
             a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location))
         end
@@ -1973,22 +1972,22 @@ local function readOutcome(bot)
     local now = DotaTime()
     local f = a.first ~= nil and a.first.aggro ~= nil and a.first or nil
     if bot:IsAlive() then
-        if f ~= nil and f.seen == nil and CampJobs.Exec.BoxInSight(bot, f.campIdx) then
+        if f ~= nil and f.seen == nil and Stacking.BoxInSight(bot, f.campIdx) then
             f.seen = 1
         end
         if now >= a.minute * 60 + 60 + LaneConfig.Settings().Timing.StackOutcomeAt then
-            if CampJobs.Exec.BoxInSight(bot, a.campIdx) then
+            if Stacking.BoxInSight(bot, a.campIdx) then
                 a.chk = a.chk or sec(a)
                 a.after = math.max(
                     a.after or 0,
-                    CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+                    Stacking.NeutralsInBox(bot, a.campIdx)
                 )
                 a.fresh = math.max(
                     a.fresh or 0,
                     freshInBox(bot, a, a.campIdx)
                 )
             end
-            if f ~= nil and CampJobs.Exec.BoxInSight(bot, f.campIdx) then
+            if f ~= nil and Stacking.BoxInSight(bot, f.campIdx) then
                 f.chk = f.chk or sec(a)
                 f.fresh = math.max(
                     f.fresh or 0,
@@ -2090,7 +2089,7 @@ local function look(bot, a)
         end
     end
     a.near = near
-    a.inbox = CampJobs.Exec.NeutralsInBox(bot, a.campIdx)
+    a.inbox = Stacking.NeutralsInBox(bot, a.campIdx)
     a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location))
     a.vis = IsLocationVisible(sp.location) and 1 or 0
 end

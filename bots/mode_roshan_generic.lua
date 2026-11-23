@@ -20,14 +20,10 @@ local initDPSFlag = false
 
 local Roshan
 
-local bOrderDriven = false
-
 function GetDesire()
-	bOrderDriven = false
 	local res = GetDesireHelper()
-	-- An order already got its acknowledgement from the order's spokesperson.
-	if res > 0.6 and not bOrderDriven then J.ModeAnnounce(bot, 'say_roshan', 30) end
-	return J.Humaniser.Intent.Resolve(bot, BOT_MODE_ROSHAN, res)
+	if res > 0.6 then J.ModeAnnounce(bot, 'say_roshan', 30) end
+	return res
 end
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
@@ -146,22 +142,10 @@ function GetDesireHelper()
         return BOT_ACTION_DESIRE_NONE
     end
 
-    -- Humaniser ROSHAN order (ping or !rosh): not gated on shouldKillRoshan/initDPSFlag (issue #164),
-    -- but still yields to enemies at the pit and the bot's own HP.
-    if J.Humaniser.Orders.OrderFloor(bot, BOT_MODE_ROSHAN) > 0
-    and J.IsRoshanAlive()
-    and J.GetHP(bot) > 0.3
-    and #J.GetLastSeenEnemiesNearLoc(J.GetCurrentRoshanLocation(), 1600) < 2
-    then
-        bOrderDriven = true
-        return J.Humaniser.Orders.DesireFloor(bot, BOT_MODE_ROSHAN)
-    end
-
     if shouldKillRoshan
     and initDPSFlag
     then
-        local human, humanPing = nil, nil
-        if not J.Humaniser.Pings.IsActive() then human, humanPing = J.GetHumanPing() end
+        local human, humanPing = J.GetHumanPing()
         if human ~= nil and DotaTime() > 5.0 then
             if humanPing ~= nil
             and humanPing.normal_ping

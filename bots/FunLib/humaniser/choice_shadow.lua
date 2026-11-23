@@ -14,7 +14,6 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
-local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -88,15 +87,6 @@ local function mixOf(h, mode, ran)
     h.laneMark = false
     return ran and m
 end
---- The source of an Intent claim on the mode's value (Intent.Explain's `by`), when not raw.
-local function claimOf(bot, botMode)
-    if botMode == nil then
-        return nil
-    end
-    local e = Intent.Explain(bot, botMode)
-    local src = string.match(e, " by (.+)$")
-    return src ~= nil and src ~= "raw" and src or nil
-end
 --- Called by Chooser.Gate once per mode call, switch on: `inner` is what OHA's code returned (undefined when the gate did
 -- not ask it: `why` names the gate's branch), `out` what the gate returns. Everything the line reads is taken here, in the
 -- frame of the values.
@@ -118,9 +108,6 @@ function ____exports.Note(bot, mode, inner, out, why)
         end
         if mixOf(h, mode, why == nil) then
             n.mix = true
-        end
-        if n.v ~= nil then
-            n.clm = claimOf(bot, BOT_MODE[mode])
         end
         h.notes[mode] = n
     end)
@@ -150,7 +137,6 @@ local function emit(bot, h, act)
     local top
     local tv = 0
     local gate = {}
-    local claims = {}
     local mix = {}
     local byName = {}
     for ____, ____value in ipairs(MODES) do
@@ -176,9 +162,6 @@ local function emit(bot, h, act)
                 tv = n.v
                 top = name
             end
-            if n.clm ~= nil then
-                claims[#claims + 1] = (name .. "=") .. n.clm
-            end
         end
         if n ~= nil and n.v ~= nil and type(n.out) == "number" and math.abs(n.out - n.v) > EPS then
             gate[#gate + 1] = (name .. ":") .. string.format("%.2f", n.out)
@@ -194,9 +177,6 @@ local function emit(bot, h, act)
         elseif W.v == nil and W.why ~= nil and W.why ~= "valve" then
             how = "outbid"
             by = W.why == "ours" and (act == "retreat" and "Retreat:Desire" or act) or whyModule(W.why)
-        elseif W.clm ~= nil then
-            how = "outbid"
-            by = "Intent:" .. W.clm
         else
             how = "valve"
             by = "Valve:arbitration"
@@ -212,10 +192,6 @@ local function emit(bot, h, act)
     fields[#fields + 1] = {
         "mix",
         #mix > 0 and table.concat(mix, ",") or nil
-    }
-    fields[#fields + 1] = {
-        "clm",
-        #claims > 0 and table.concat(claims, ",") or nil
     }
     fields[#fields + 1] = {
         "gate",

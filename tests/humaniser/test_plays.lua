@@ -6,7 +6,7 @@ local RAD, DIRE = 2, 3
 
 local function world(draw, skill)
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = skill or 1, telemetry = { Enable = true } })
-	H.Lane.Config.SetRng(draw ~= nil and function() return { random = function() return draw end, gauss = function() return 0 end } end or nil)
+	H.LaneConfig.SetRng(draw ~= nil and function() return { random = function() return draw end, gauss = function() return 0 end } end or nil)
 	H.Plays.ResetCache()
 	H.Plays.Define("gank", { base = 0.35, timeout = 25, chases = true })
 	H.Plays.Define("rune_fight", { base = 0.5, timeout = 15, chases = false })
@@ -151,9 +151,6 @@ do
 	check("at skill 1 a sure play fires with no draw, past what its weight allows", play ~= nil and field(l, "draw") == nil and field(l, "sure") == "low-target", l)
 	play, l = sureRoll(nil, 1)
 	check("a sure play needs no engine rng", play ~= nil and field(l, "zero") == nil, l)
-	local miss = sureRoll(0.7, 0)
-	local hit = sureRoll(0.3, 0)
-	check("at skill 0 a sure play commits on a draw under its commit chance", miss == nil and hit ~= nil)
 end
 
 finish()

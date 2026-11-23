@@ -502,7 +502,6 @@ local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
@@ -633,6 +632,8 @@ end
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end
+--- How long a threat reading must hold before the hero leaves on it: a debounce against a one-frame reading (`judgement`).
+local THREAT_HOLD = 0.17
 ____exports.SETTINGS = {
     StartWithin = 12,
     MaxFarm = 35,
@@ -847,7 +848,7 @@ local function guard(bot, f)
     end
     local now = DotaTime()
     f.threatSince = f.threatSince or now
-    return now - f.threatSince >= Profile.ThreatHold(bot) and "threat" or nil
+    return now - f.threatSince >= THREAT_HOLD and "threat" or nil
 end
 local walkBack = __TS__Generator(function(bot, f, ctx)
     ctx.label("return")

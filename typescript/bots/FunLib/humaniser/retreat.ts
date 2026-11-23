@@ -12,8 +12,6 @@ import * as Threat from "bots/FunLib/humaniser/threat";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
-import * as Lane_ from "bots/FunLib/humaniser/lane";
-import * as FarmPattern from "bots/FunLib/humaniser/farm_pattern";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Cut from "bots/FunLib/humaniser/cut";
@@ -214,7 +212,7 @@ export function TowerOnUs(bot: Unit): Unit | undefined {
 function purposeOf(bot: Unit): string {
     const job = Chooser.RunningJobName(bot);
     if (job === "rune") return "committed";
-    if (job !== undefined || Lane_.CampJobDesire(bot) > 0) return "busy";
+    if (job !== undefined) return "busy";
     const target = bot.GetAttackTarget();
     if (valid(target) && target.IsCreep()) return "busy";
     return "free";
@@ -406,8 +404,6 @@ function start(bot: Unit, st: HeroState, why: Why, r: Threat.Read, a: Safe.Answe
     RetreatState.SetHealing(bot, why === "heal");
     // Our retreat ends a running job with a cause (retreat left Chooser.EXCEPTIONS' role of taking the hero mid-job).
     Chooser.Abort(bot, "retreat");
-    Lane_.CampJobAbort(bot, "retreat");
-    FarmPattern.Abort(bot, "retreat");
     const here = bot.GetLocation();
     Telemetry.Event("retreat", [
         ["ph", "start"],

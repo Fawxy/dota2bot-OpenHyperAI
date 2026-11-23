@@ -61,19 +61,6 @@ local ohaDeny = {
     wants = function() return true end,
     run = function(_bot, ctx) return ctx.ohaDeny() end
 }
---- Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait.
-local ohaHold = {
-    name = "oha_hold",
-    host = true,
-    scans = true,
-    rank = ranks(
-        110,
-        unpack(all)
-    ),
-    drill = true,
-    wants = function() return true end,
-    run = function(_bot, ctx) return ctx.ohaHold() end
-}
 --- The optional local override's Think: runs beside the rows and never ends the frame.
 local ohaLocal = {
     name = "oha_local",
@@ -106,7 +93,6 @@ ____exports.ROWS = {
     sustain,
     ohaLastHit,
     ohaDeny,
-    ohaHold,
     ohaLocal,
     ohaPos
 }
@@ -129,16 +115,16 @@ local function build(pos, laneOnly)
     local out = {}
     for ____, r in ipairs(____exports.ROWS) do
         do
-            local __continue23
+            local __continue21
             repeat
                 if r.rank[pos] == nil or laneOnly and not r.drill then
-                    __continue23 = true
+                    __continue21 = true
                     break
                 end
                 out[#out + 1] = r
-                __continue23 = true
+                __continue21 = true
             until true
-            if not __continue23 then
+            if not __continue21 then
                 break
             end
         end
@@ -225,7 +211,7 @@ function ____exports.Walk(bot, ctx)
     local acted = order[#order].name
     for ____, r in ipairs(order) do
         do
-            local __continue38
+            local __continue36
             repeat
                 local t0 = Telemetry.DeepT0()
                 local wants = r.wants(bot, ctx)
@@ -233,7 +219,7 @@ function ____exports.Walk(bot, ctx)
                     Telemetry.DeepAdd(("lane_table.Walk:" .. r.name) .. ".wants", t0)
                 end
                 if not wants then
-                    __continue38 = true
+                    __continue36 = true
                     break
                 end
                 local t1 = Telemetry.DeepT0()
@@ -250,9 +236,9 @@ function ____exports.Walk(bot, ctx)
                     n = ____n_1 + 1
                     skipScratch[____n_1 + 1] = r.name
                 end
-                __continue38 = true
+                __continue36 = true
             until true
-            if not __continue38 then
+            if not __continue36 then
                 break
             end
         end

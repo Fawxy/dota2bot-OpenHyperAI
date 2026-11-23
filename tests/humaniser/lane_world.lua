@@ -298,17 +298,12 @@ function LaneFresh(laneCfg, extra)
 	-- lane_push shares one view a frame: a fresh world at a DotaTime already seen must not get the last world's.
 	local lp = package.loaded["bots/FunLib/humaniser/lane_push"]
 	if lp ~= nil then lp.ResetFrames() end
-	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, SkillOverride = extra.skill, TickEvery = extra.tickEvery, Lane = laneCfg,
-		Telemetry = extra.telemetry, Intent = extra.intent, Transitions = extra.transitions, FarmPattern = extra.farm, States = extra.states })
-	-- The old camp-job pulls are Ours.SupportPull's OFF arm; this world tests them unless a test asks for the pull job.
+	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, TickEvery = extra.tickEvery, Lane = laneCfg, Telemetry = extra.telemetry })
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPull = extra.supportPull == true
 	-- PullFarm follows every ok pull and takes the hero to the camp, so worlds that test the pull alone leave it off.
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullFarm = extra.pullFarm == true
-	-- lane_tech's aggro pull is Ours.LaneAggro's OFF arm, so this world tests it unless a test asks for ours.
-	package.loaded["bots/FunLib/custom_loader"].Ours.LaneAggro = extra.laneAggro == true
-	-- The areas' retreat nudges (caution's scale, job and farm holds, the commit cap) are Ours.Retreat's OFF arm.
 	package.loaded["bots/FunLib/custom_loader"].Ours.Retreat = extra.retreat == true
-	H.Lane.SetHelpers({
+	H.LaneConfig.SetHelpers({
 		GetPosition = function(u) return u.pos end,
 		IsInLaningPhase = function() return LANING ~= false end,
 		WillKillTarget = function(t, dmg) return t.hp <= dmg end,
@@ -321,30 +316,11 @@ function LaneFresh(laneCfg, extra)
 		IsValidBuilding = function(u) return u ~= nil and u.alive end,
 		GetHP = function(u) return u:GetHealth() / u:GetMaxHealth() end,
 	})
-	H.Lane.Config.ResetSettings()
-	H.Lane.Hooks.ResetHooks()
-	H.Lane.Camps.ResetCache()
-	H.Lane.LaneState.ResetCache()
-	H.Lane.LaneRoles.ResetCache()
-	H.Lane.LanePlan.ResetCache()
-	H.Lane.LanePlanner.ResetCache()
-	H.Lane.LaneTech.ResetCache()
-	H.Lane.CampJobs.ResetCache()
-	H.Lane.Stacking.ResetCache()
-	H.Lane.Counter.ResetCache()
-	-- ResetHooks dropped the probes registered at module load.
-	H.Lane.CampJobs.RegisterProbes()
-	H.Lane.Stacking.RegisterProbes()
-	H.Lane.LaneMid.RegisterProbes()
-	H.Lane.Counter.RegisterProbes()
-	H.Transitions.Rotation.RegisterProbes()
-	H.Transitions.Caution.ResetCache()
-	H.Transitions.Caution.RegisterProbes()
+	H.LaneConfig.ResetSettings()
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	require("bots/FunLib/humaniser/stacking").ResetCache()
 	TELEPORTS, TELEPORT_READS = {}, 0
 	WARDS = { [2] = {}, [3] = {} }
-	H.Transitions.LaneWard.ResetCache()
-	H.Transitions.Teleports.ResetCache()
-	H.Transitions.Phase.ResetCache()
-	H.Transitions.MidRunes.ResetCache()
+	require("bots/FunLib/humaniser/laning_held").ResetCache()
 	return H
 end

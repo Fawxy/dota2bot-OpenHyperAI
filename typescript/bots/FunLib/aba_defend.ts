@@ -12,9 +12,6 @@ import Customize = require("bots/Customize/general");
 import { Barracks, BotActionDesire, BotMode, BotModeDesire, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { add } from "bots/ts_libs/utils/native-operators";
 import { GetLocationToLocationDistance } from "./utils";
-import * as Orders from "bots/FunLib/humaniser/orders";
-import * as Pings from "bots/FunLib/humaniser/pings";
-import * as Intent from "bots/FunLib/humaniser/intent";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
@@ -611,8 +608,7 @@ export function GetDefendDesire(bot: Unit, lane: Lane): BotModeDesire {
     // }
 
     // 2) compute and publish
-    const mode = lane === Lane.Top ? BotMode.DefendTowerTop : lane === Lane.Bot ? BotMode.DefendTowerBot : BotMode.DefendTowerMid;
-    const res = Intent.Resolve(bot, mode, GetDefendDesireHelper(bot, lane)) as BotModeDesire;
+    const res = GetDefendDesireHelper(bot, lane);
     // jmz.Utils.SetCachedVars(cacheKey, res);
     (bot as any).defendDesire = res;
     return res;
@@ -660,14 +656,6 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     const closeAlliesDefend = jmz.GetAlliesNearLoc(bot.GetLocation(), 900);
     if (closeEnemiesDefend.length > 0 && closeAlliesDefend.length >= closeEnemiesDefend.length) {
         return math.min(0.3, BotModeDesire.Moderate) as BotModeDesire;
-    }
-
-    // Humaniser DEFEND order (ping or !def): stay for the order's duration even if the lane looks covered.
-    const defendMode = lane === Lane.Top ? BotMode.DefendTowerTop : lane === Lane.Bot ? BotMode.DefendTowerBot : BotMode.DefendTowerMid;
-    const orderFloor = Orders.DesireFloor(bot, defendMode, lane);
-    if (orderFloor > 0) {
-        (bot as any).laneToDefend = lane;
-        return orderFloor as BotModeDesire;
     }
 
     // Don't abandon a team push to defend a tower from creeps.
@@ -792,7 +780,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     // Human priority ping (use a hint floor instead of early-return)
     let pingFloor = 0;
     const [human, humanPing] = jmz.GetHumanPing();
-    if (!Pings.IsActive() && human && humanPing && !humanPing.normal_ping && DotaTime() > 0) {
+    if (human && humanPing && !humanPing.normal_ping && DotaTime() > 0) {
         const [isPinged, pingedLane] = jmz.IsPingCloseToValidTower(gameState.team, humanPing, 800, 5.0);
         if (isPinged && lane === pingedLane && GameTime() < humanPing.time + PING_DELTA) {
             (bot as any).laneToDefend = lane;

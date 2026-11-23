@@ -9,8 +9,8 @@ end
 local function world(list)
 	local H = LaneFresh({ Enable = true })
 	SPAWNERS = list
-	H.Lane.Camps.ResetCache()
-	return H.Lane.Camps, H
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	return require("bots/FunLib/humaniser/camps"), H
 end
 
 do
@@ -190,8 +190,8 @@ local function mapWorld(extra, deadT1, drop)
 		w[d[1]][id] = mapTower(MAP_TOWERS[d[1]][id][1], MAP_TOWERS[d[1]][id][2], false)
 	end
 	TOWERS_W = w
-	H.Lane.Camps.ResetCache()
-	return H.Lane.Camps, names
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	return require("bots/FunLib/humaniser/camps"), names
 end
 
 local function withMapLanes(fn)
@@ -282,6 +282,12 @@ withMapLanes(function()
 	check("dead off T1: no off-lane pull camp", campNamesFor(C, names, RAD, Lane.Top) == "" and campNamesFor(C, names, DIRE, Lane.Bot) == "")
 end)
 
+-- Where a stack waits: just outside the box on the exit side.
+function stackStand(spawner, job)
+	local C = require("bots/FunLib/humaniser/camps")
+	return C.StandPoint(spawner, job.stack.exitPath[1], require("bots/FunLib/humaniser/lane_config").Settings().Radii.StandOffset)
+end
+
 withMapLanes(function()
 	-- console.9055745679: stacks of the Radiant top medium (warlock) and the Dire triangle hard camp (grimstroke, witch
 	-- doctor) walked off only ~300-400 units. Real 7.41 spawn boxes (trigger bounds from the map's camp models).
@@ -291,16 +297,16 @@ withMapLanes(function()
 		{ team = DIRE, type = "large", location = Vector(1064, 2580, 0), min = Vector(637, 2142, 0), max = Vector(1539, 2931, 0) },
 		{ team = RAD, type = "ancient", location = Vector(-5015, -96, 0), min = Vector(-5349, -592, 0), max = Vector(-4245, 385, 0) },
 	}
-	H.Lane.Camps.ResetCache()
-	local radii = H.Lane.Config.Settings().Radii
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	local radii = H.LaneConfig.Settings().Radii
 	for idx, name in ipairs({ "radiant top medium", "dire triangle large", "radiant ancient" }) do
-		local job = H.Lane.Camps.ByIdx(idx)
-		local s = H.Lane.Camps.SpawnerByIdx(idx)
-		local stand = H.Lane.Stacking.StandPoint(s, job)
+		local job = require("bots/FunLib/humaniser/camps").ByIdx(idx)
+		local s = require("bots/FunLib/humaniser/camps").SpawnerByIdx(idx)
+		local stand = stackStand(s, job)
 		local exit = job.stack.exitPath[1]
 		local walk = math.sqrt((exit.x - stand.x) ^ 2 + (exit.y - stand.y) ^ 2)
 		check(name .. ": stack walk-off covers StackExit past the stand point's box edge", walk >= radii.StackExit - radii.StandOffset - 1, walk)
-		check(name .. ": stack exit well clear of the box", not H.Lane.Camps.InBox(idx, exit, 600), exit.x .. "," .. exit.y)
+		check(name .. ": stack exit well clear of the box", not require("bots/FunLib/humaniser/camps").InBox(idx, exit, 600), exit.x .. "," .. exit.y)
 	end
 end)
 
@@ -318,14 +324,14 @@ local function realDireCamps()
 	local w = { [RAD] = {}, [DIRE] = {} }
 	for team, ts in pairs(MAP_TOWERS) do for id, p in pairs(ts) do w[team][id] = mapTower(p[1], p[2]) end end
 	TOWERS_W = w
-	H.Lane.Camps.ResetCache()
+	require("bots/FunLib/humaniser/camps").ResetCache()
 	return H
 end
 
 withMapLanes(function()
 	local H = realDireCamps()
-	local C = H.Lane.Camps
-	local radii = H.Lane.Config.Settings().Radii
+	local C = require("bots/FunLib/humaniser/camps")
+	local radii = H.LaneConfig.Settings().Radii
 	local function fromOrigin(idx, p)
 		local o = C.SpawnerByIdx(idx).location
 		return math.sqrt((p.x - o.x) ^ 2 + (p.y - o.y) ^ 2)
@@ -334,14 +340,9 @@ withMapLanes(function()
 	local reach = radii.NeutralSearch - 250
 	check("evil_2 resolves as the Dire safe small pull camp", C.ByIdx(1).key == "dire_safe_small" and C.ByIdx(1).pull ~= nil)
 	for idx, name in ipairs({ "evil_2 small", "evil_8 ancient", "evil_7 large" }) do
-		local d = fromOrigin(idx, H.Lane.Stacking.StandPoint(C.SpawnerByIdx(idx), C.ByIdx(idx)))
+		local d = fromOrigin(idx, stackStand(C.SpawnerByIdx(idx), C.ByIdx(idx)))
 		check(name .. ": stack stand within reach of the spawner origin", d <= reach + 1e-6, d)
 	end
-	local bot = MakeUnit({ pid = 8, team = DIRE, loc = Vector(-6263, 4529, 0) })
-	check("precondition: evil_2 pull job starts", H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 }))
-	local stand = H.Lane.CampJobs.Current(bot).stand
-	-- PathNoise at skill 1 moves the stand up to 20.
-	check("evil_2 pull stand within reach of the spawner origin", fromOrigin(1, stand) <= reach + 20, fromOrigin(1, stand))
 end)
 
 withMapLanes(function()
@@ -349,12 +350,12 @@ withMapLanes(function()
 	-- lane is east: the walk-off ended at x 8608, 350 past the box, and its ranged trolls stayed in it (after=3 twice).
 	local H = realDireCamps()
 	IMPASSABLE = function(v) return v.x > 8448 end
-	H.Lane.Camps.ResetCache()
-	local C = H.Lane.Camps
-	local radii = H.Lane.Config.Settings().Radii
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	local C = require("bots/FunLib/humaniser/camps")
+	local radii = H.LaneConfig.Settings().Radii
 	local s = C.SpawnerByIdx(3)
 	local exit = C.ByIdx(3).stack.exitPath[1]
-	local stand = H.Lane.Stacking.StandPoint(s, C.ByIdx(3))
+	local stand = stackStand(s, C.ByIdx(3))
 	check("evil_7 stack exit stays on the map", exit.x <= 8448, exit.x)
 	check("evil_7 stack exit well clear of the box", not C.InBox(3, exit, 600), exit.x .. "," .. exit.y)
 	local walk = math.sqrt((exit.x - stand.x) ^ 2 + (exit.y - stand.y) ^ 2)
@@ -373,45 +374,9 @@ local function asDireCaller(fn)
 end
 
 asDireCaller(function(H)
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	check("dire caller: own amounts already in dire frame", near(C.ToTeamAmount(DIRE, 0.3), 0.3) and near(C.ToAbsAmount(DIRE, 0.3), 0.3))
 	check("dire caller: radiant amounts mirrored", near(C.ToTeamAmount(RAD, 0.3), 0.7))
 end)
-
--- !hpt / !hcamp through the chat hub
-local function chatTest(debug)
-	local H = LaneFresh({ Enable = true }, { debug = debug })
-	SPAWNERS = { spawner(RAD, "small", -1600, -5000), spawner(RAD, "large", 100, 100) }
-	H.Lane.Camps.ResetCache()
-	local human = MakeUnit({ pid = 0, team = 2, bot = false, loc = Vector(-1500, -4900, 7) })
-	local bot = MakeUnit({ pid = 1, team = 2, bot = true })
-	local printed = {}
-	local old = print
-	print = function(s) table.insert(printed, s) end
-	H.Tick(bot)
-	for _, text in ipairs({ "!hpt", "!hcamp" }) do
-		T = T + 0.5
-		for _, cb in ipairs(CHAT_CALLBACKS) do cb({ player_id = 0, string = text, team_only = false }) end
-	end
-	T = T + 0.5
-	for _, cb in ipairs(CHAT_CALLBACKS) do cb({ player_id = 1, string = "!hpt", team_only = false }) end
-	print = old
-	local lane = {}
-	for _, l in ipairs(printed) do if l:find("[H:lane]", 1, true) then table.insert(lane, l) end end
-	return lane
-end
-
-do
-	local off = chatTest(false)
-	check("debug off logs nothing", #off == 0, off[1])
-	local on = chatTest(true)
-	local hpt, hcamp
-	for _, l in ipairs(on) do
-		if l:find("hpt", 1, true) then hpt = (hpt and "dup" or l) end
-		if l:find("hcamp", 1, true) then hcamp = l end
-	end
-	check("hpt logs a Vector literal once (bot issuer ignored)", hpt == "[H:lane] hpt Vector(-1500, -4900, 7)", hpt)
-	check("hcamp logs nearest spawner", hcamp and hcamp:find("idx=1 team=2 type=small", 1, true) and hcamp:find("job=radiant_safe_small source=seed derived=true", 1, true), hcamp)
-end
 
 finish()

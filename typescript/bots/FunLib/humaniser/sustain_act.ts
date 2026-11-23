@@ -9,8 +9,8 @@
  *
  * Where the orders run: an order with no walk (a self cast, a tango with the tree in range) from ItemUsageThink, in any mode,
  * as OHA's own item use does. A walk (a tango's tree, a step out to the safe spot, an ally out of cast range) starts only
- * while the laning mode or a camp job's supply step will yield the frame, and is carried on by the lane table's `sustain`
- * row (`Walking`/`Step`) or the supply step (`Yield`), so the body's own move does not undo it. One attempt runs at a time;
+ * while the laning mode holds the hero, and is carried on by the lane table's `sustain` row (`Walking`/`Step`), so the
+ * body's own move does not undo it. One attempt runs at a time;
  * rule 1 (an instant heal under hits) may replace a running one. Each attempt logs `ev=sustain` at its end.
  */
 import { BotMode, Item, Unit, UnitType, Vector } from "bots/ts_libs/dota";
@@ -18,10 +18,9 @@ import * as Sustain from "bots/FunLib/humaniser/sustain";
 import * as SustainGather from "bots/FunLib/humaniser/sustain_gather";
 import * as ItemUse from "bots/FunLib/humaniser/item_use";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Phase from "bots/FunLib/humaniser/transitions/phase";
+import * as Phase from "bots/FunLib/humaniser/laning_held";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
-import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 
@@ -54,8 +53,6 @@ export const SETTINGS = {
     StartWait: 1.5,
     /** A step out drinks within this of the safe spot. judgement: a move order's own arrival tolerance. */
     Arrive: 100,
-    /** The supply step yielded within this (s): a walk started from a camp job is still being carried. */
-    YieldFresh: 0.3,
     /** A delivery not in slots 0-8 by its eta plus this ends `late` (s): the courier's walk is estimated on a straight line. judgement. */
     LateSlack: 20,
     /** The courier's delivery order is given again at most this often while it is not delivering (s). judgement. */
@@ -109,9 +106,6 @@ interface Delivery {
 }
 const deliveries: Record<number, Delivery | undefined> = {};
 const decidedAt: Record<number, number | undefined> = {};
-const yieldedAt: Record<number, number | undefined> = {};
-/** When the camp job's supply step last asked (it yields only with time to spare). */
-const askedAt: Record<number, number | undefined> = {};
 const refusedAt: Record<number, number | undefined> = {};
 
 /** A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold). */
@@ -184,21 +178,9 @@ function allyOf(pid: number): Unit | undefined {
     return undefined;
 }
 
-/** A walk can be carried now: the laning mode holds the hero (its `sustain` row steps it), or a camp job's supply step yields. */
-function carried(bot: Unit, now: number): boolean {
-    if (bot.GetActiveMode() === BotMode.Laning) return true;
-    const y = yieldedAt[bot.GetPlayerID()];
-    return y !== undefined && now - y <= SETTINGS.YieldFresh;
-}
-
-/**
- * A walk may start: as `carried`, or a camp job runs whose supply step is asking now (it asks only with time to spare; smoke
- * 4: a job phase that never asked cut and restarted one tango walk every 0.5 s).
- */
-function canWalk(bot: Unit, now: number): boolean {
-    if (carried(bot, now)) return true;
-    const asked = askedAt[bot.GetPlayerID()];
-    return CampJobs.Active(bot) && asked !== undefined && now - asked <= SETTINGS.YieldFresh;
+/** A walk can be carried now: the laning mode holds the hero (its `sustain` row steps it). */
+function carried(bot: Unit): boolean {
+    return bot.GetActiveMode() === BotMode.Laning;
 }
 
 const r1 = (v: number): number => math.floor(v * 10 + 0.5) / 10;
@@ -328,7 +310,7 @@ function startWait(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: numbe
     if (ans.at === undefined) return false;
     const spot = Vector(ans.at.x, ans.at.y, bot.GetLocation().z);
     const walk = GetUnitToLocationDistance(bot, spot) / math.max(100, bot.GetCurrentMovementSpeed());
-    if (GetUnitToLocationDistance(bot, spot) > SETTINGS.Arrive && !canWalk(bot, now)) return false;
+    if (GetUnitToLocationDistance(bot, spot) > SETTINGS.Arrive && !carried(bot)) return false;
     const a: Act = { kind: "wait", item: "", slot: -1, why: ans.reason, at: now, hp0: i.hp, mp0: i.mp, charges0: 0, walk, deadline: math.huge, spot };
     acts[bot.GetPlayerID()] = a;
     order(bot, a);
@@ -390,7 +372,7 @@ function start(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): 
         a.to = ans.to;
         a.walk = math.max(0, GetUnitToUnitDistance(bot, ally) - (item as unknown as RangeItem).GetCastRange()) / math.max(100, bot.GetCurrentMovementSpeed());
     }
-    if (a.walk > 0 && !canWalk(bot, now)) return false;
+    if (a.walk > 0 && !carried(bot)) return false;
     a.deadline = now + a.walk + SETTINGS.StartWait;
     acts[bot.GetPlayerID()] = a;
     order(bot, a);
@@ -417,7 +399,7 @@ function carry(bot: Unit, i: Sustain.Inputs, ans: Sustain.Answer, now: number): 
 /** One frame of a running attempt: true once it has ended. */
 function progress(bot: Unit, a: Act, now: number): boolean {
     if (a.kind === "wait") {
-        if (!carried(bot, now) && now > a.at) {
+        if (!carried(bot) && now > a.at) {
             end(bot, "cut");
             return true;
         }
@@ -439,7 +421,7 @@ function progress(bot: Unit, a: Act, now: number): boolean {
         return true;
     }
     if (a.kind === "step_out_use") {
-        if (a.drunk !== true && !carried(bot, now) && now > a.at) {
+        if (a.drunk !== true && !carried(bot) && now > a.at) {
             end(bot, "cut");
             return true;
         }
@@ -466,7 +448,7 @@ function progress(bot: Unit, a: Act, now: number): boolean {
         end(bot, "started");
         return true;
     }
-    if (a.walk > 0 && !carried(bot, now) && now > a.at) {
+    if (a.walk > 0 && !carried(bot) && now > a.at) {
         end(bot, "cut");
         return true;
     }
@@ -475,7 +457,7 @@ function progress(bot: Unit, a: Act, now: number): boolean {
         return true;
     }
     // An order with no walk is given again each frame until its charge goes: a stun or a mode's move in between swallows it
-    // (smoke 2: 5 of 11 wand uses under hits missed, the next one landed). A walk's order is the lane row's or the supply's.
+    // (smoke 2: 5 of 11 wand uses under hits missed, the next one landed). A walk's order is the lane row's.
     if (a.walk <= 0) order(bot, a);
     return false;
 }
@@ -542,20 +524,10 @@ export function Step(bot: Unit): boolean {
     return true;
 }
 
-/** camp_jobs' supply step under `Ours.Sustain`: true while an attempt walks, its order given, so the job leaves the frame to it. */
-export function Yield(bot: Unit): boolean {
-    askedAt[bot.GetPlayerID()] = DotaTime();
-    if (!Walking(bot)) return false;
-    yieldedAt[bot.GetPlayerID()] = DotaTime();
-    return Step(bot);
-}
-
 /** Per game: the attempts and the cadence. */
 export function ResetCache(): void {
     for (const k of Object.keys(acts)) delete acts[k as unknown as number];
     for (const k of Object.keys(decidedAt)) delete decidedAt[k as unknown as number];
-    for (const k of Object.keys(yieldedAt)) delete yieldedAt[k as unknown as number];
-    for (const k of Object.keys(askedAt)) delete askedAt[k as unknown as number];
     for (const k of Object.keys(deliveries)) delete deliveries[k as unknown as number];
     for (const k of Object.keys(refusedAt)) delete refusedAt[k as unknown as number];
 }

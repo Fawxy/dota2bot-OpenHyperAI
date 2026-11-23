@@ -1,67 +1,12 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
--- Lua Library inline imports
-local function __TS__ObjectAssign(target, ...)
-    local sources = {...}
-    for i = 1, #sources do
-        local source = sources[i]
-        for key in pairs(source) do
-            target[key] = source[key]
-        end
-    end
-    return target
-end
--- End of Lua Library inline imports
 local ____exports = {}
 local Customize = require(GetScriptDirectory().."/FunLib/custom_loader")
 ____exports.DEFAULTS = {
     Enable = true,
     Debug = false,
     TickEvery = 3,
-    ValveWeight = 0.5,
-    FretWeight = 0.5,
-    SkillOverride = nil,
-    FretBridge = {FretBotsLevelOverride = nil, BridgeModifier = nil},
-    Profile = {
-        PersonalMin = 0.85,
-        PersonalMax = 1.15,
-        NoticeLow = 0.55,
-        NoticeHigh = 0,
-        ReactLow = 0.5,
-        ReactHigh = 0,
-        PingLow = 2,
-        PingHigh = 0,
-        ChatLow = 2,
-        ChatHigh = 0,
-        JitterLow = 0.45,
-        JitterHigh = 0,
-        LapseLow = 0.15,
-        LapseHigh = 0,
-        LapseMinExtra = 0.3,
-        LapseMaxExtra = 0.8,
-        AimErrorLow = 250,
-        AimErrorHigh = 0,
-        MinReact = 0
-    },
-    Orders = {DesireFloor = 0.85, AckCooldown = 20},
-    Perception = {Enable = true},
-    AllyLastHit = {Enable = true},
-    Pings = {Enable = true},
-    Commands = {Enable = true},
-    Lane = {Enable = true},
-    Transitions = {Enable = true},
-    Intent = {Enable = true},
-    LastHitSkill = {Enable = true},
-    FarmPattern = {Enable = true},
-    Trainer = {LastHit = {Enable = true}},
     Telemetry = {Enable = false},
-    Tasks = {Enable = true, Demo = false, Stack = false},
-    States = {
-        Enable = false,
-        Shadow = true,
-        Own = {},
-        Teams = "allies",
-        ShadowTeams = "allies"
-    }
+    Tasks = {Enable = true}
 }
 local function merge(defaults, overrides)
     if overrides == nil or overrides == nil or type(overrides) ~= "table" then
@@ -88,18 +33,6 @@ local cached
 function ____exports.Get()
     if cached == nil then
         local merged = merge(____exports.DEFAULTS, Customize.Humaniser)
-        local ____opt_4 = Customize.Humaniser
-        if ____opt_4 ~= nil then
-            ____opt_4 = ____opt_4.States
-        end
-        local ____opt_result_6
-        if ____opt_4 ~= nil then
-            ____opt_result_6 = ____opt_4.Own
-        end
-        local own = ____opt_result_6
-        if own ~= nil then
-            merged.States = __TS__ObjectAssign({}, merged.States, {Own = own})
-        end
         if Customize.Enable == false then
             merged.Enable = false
             merged.Telemetry = ____exports.DEFAULTS.Telemetry
@@ -112,19 +45,14 @@ end
 -- games fake "10:00 in" this way, since the real clock can't be set). Only for "which part of the game is it" reads;
 -- anything synced to world timers (camp spawns, runes, waves) and relative timers must keep raw DotaTime().
 function ____exports.Now()
-    local ____opt_7 = Customize.Overrides
-    if ____opt_7 ~= nil then
-        ____opt_7 = ____opt_7.ClockOffset
+    local ____opt_2 = Customize.Overrides
+    if ____opt_2 ~= nil then
+        ____opt_2 = ____opt_2.ClockOffset
     end
-    local offset = ____opt_7
+    local offset = ____opt_2
     return DotaTime() + (type(offset) == "number" and offset or 0)
 end
 function ____exports.IsEnabled()
     return ____exports.Get().Enable == true
-end
---- True when the humaniser and the named sub-feature are both enabled.
-function ____exports.IsFeatureEnabled(feature)
-    local cfg = ____exports.Get()
-    return cfg.Enable == true and cfg[feature] ~= nil and cfg[feature].Enable == true
 end
 return ____exports

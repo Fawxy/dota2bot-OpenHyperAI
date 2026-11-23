@@ -18,6 +18,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Decider from "bots/FunLib/humaniser/decider";
+import * as DesireLog from "bots/FunLib/humaniser/desire_log";
 
 // All judgement; values moved unchanged from StackJob.
 export const SETTINGS = {
@@ -261,6 +262,7 @@ export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
             return v;
         }
         const d = inner();
+        DesireLog.Note(bot, mode, d);
         if (shadow) ChoiceShadow.Note(bot, mode, d, d, undefined);
         Decider.NoteDesire(bot, mode, d);
         return d;

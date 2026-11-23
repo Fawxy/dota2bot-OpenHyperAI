@@ -8,7 +8,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as Runes from "bots/FunLib/humaniser/game_rules";
 
 declare function GetRuneStatus(this: void, rune: number): number;
 declare function GetRuneSpawnLocation(this: void, rune: number): { x: number; y: number; z: number };

@@ -31,7 +31,6 @@ local function ctx(o)
 		enabled = function() return o.enabled ~= false end,
 		ohaLastHit = host("oha_lh", o.ohaLastHit == true),
 		ohaDeny = host("oha_deny", o.ohaDeny == true),
-		ohaHold = host("oha_hold", o.ohaHold == true),
 		ohaLocal = host("oha_local", o.ohaLocal == true),
 		ohaPosition = host("oha_pos", true),
 	}
@@ -44,8 +43,8 @@ local function walk(bot, c) return LaneTable.Walk(bot, c) end
 -- The contract: each position's order, written out. A later row shows up as a diff of these lists.
 do
 	for pos = 1, 5 do
-		check("order, position " .. pos, names(LaneTable.Order(pos, false)) == "sustain,oha_lh,oha_deny,oha_hold,oha_local,oha_pos", names(LaneTable.Order(pos, false)))
-		check("order, position " .. pos .. ", lane-only", names(LaneTable.Order(pos, true)) == "sustain,oha_lh,oha_deny,oha_hold,oha_pos", names(LaneTable.Order(pos, true)))
+		check("order, position " .. pos, names(LaneTable.Order(pos, false)) == "sustain,oha_lh,oha_deny,oha_local,oha_pos", names(LaneTable.Order(pos, false)))
+		check("order, position " .. pos .. ", lane-only", names(LaneTable.Order(pos, true)) == "sustain,oha_lh,oha_deny,oha_pos", names(LaneTable.Order(pos, true)))
 	end
 	check("an unknown position takes position 1's order", LaneTable.Order(nil, false) == LaneTable.Order(1, false))
 end
@@ -73,7 +72,7 @@ do
 		local log = {}
 		local row = walk(bot, ctx({ log = log }))
 		check("position " .. bot.pos .. ": nothing acts, the host rows run in order and the position acts",
-			row == "oha_pos" and table.concat(log, ",") == "oha_lh,oha_deny,oha_hold,oha_local,oha_pos", table.concat(log, ","))
+			row == "oha_pos" and table.concat(log, ",") == "oha_lh,oha_deny,oha_local,oha_pos", table.concat(log, ","))
 	end
 	local log = {}
 	check("the first host step that acts ends the frame", walk(core, ctx({ ohaDeny = true, log = log })) == "oha_deny" and table.concat(log, ",") == "oha_lh,oha_deny")
@@ -84,7 +83,7 @@ do
 	world.laneOnly = true
 	walk(core, ctx({ ohaLocal = true, log = log }))
 	world.laneOnly = false
-	check("lane-only: the local override does not run", table.concat(log, ",") == "oha_lh,oha_deny,oha_hold,oha_pos", table.concat(log, ","))
+	check("lane-only: the local override does not run", table.concat(log, ",") == "oha_lh,oha_deny,oha_pos", table.concat(log, ","))
 end
 
 -- The cut line: a change of row at once, the same row quiet for 5 s, then again; a row of ours that wanted the frame and gave no

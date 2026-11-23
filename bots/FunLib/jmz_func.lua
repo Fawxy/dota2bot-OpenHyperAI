@@ -35,44 +35,10 @@ J.Chat = require( GetScriptDirectory()..'/FunLib/aba_chat' )
 J.Utils = require( GetScriptDirectory()..'/FunLib/utils' )
 J.Customize = require(GetScriptDirectory()..'/FunLib/custom_loader')
 J.Humaniser = require( GetScriptDirectory()..'/FunLib/humaniser/index' )
--- Orders cannot require jmz_func (circular), so ModeAnnounce is injected; resolved at call time.
-J.Humaniser.Orders.SetAnnouncer(function(bot, key, cooldown, args) J.ModeAnnounce(bot, key, cooldown, args) end)
-J.Humaniser.AllyLastHit.SetHelpers({ GetPosition = function(unit) return J.GetPosition(unit) end, IsInLaningPhase = function() return J.IsInLaningPhase() end })
-J.Humaniser.LastHitSkill.SetHelpers({ WillKillTarget = function(target, dmg, dmgType, delay) return J.WillKillTarget(target, dmg, dmgType, delay) end })
-J.Humaniser.Trainer.SetHelpers({ GetAttackProDelayTime = function(subject, creep) return J.GetAttackProDelayTime(subject, creep) end, IsInLaningPhase = function() return J.IsInLaningPhase() end })
-J.Humaniser.Pings.SetHelpers({
-	roshanLocation = function() return J.GetCurrentRoshanLocation() end,
-	reservedSpots = function()
-		if J.tHumaniserRuneSpots == nil then
-			J.tHumaniserRuneSpots = {}
-			for _, nRune in pairs({ RUNE_POWERUP_1, RUNE_POWERUP_2, RUNE_BOUNTY_1, RUNE_BOUNTY_2, RUNE_BOUNTY_3, RUNE_BOUNTY_4 }) do
-				table.insert(J.tHumaniserRuneSpots, GetRuneSpawnLocation(nRune))
-			end
-		end
-		local spots = { RadiantTormentorLoc, DireTormentorLoc }
-		for _, v in ipairs(J.tHumaniserRuneSpots) do table.insert(spots, v) end
-		return spots
-	end,
-})
-J.Humaniser.Lane.SetHelpers({
+-- The humaniser cannot require jmz_func (circular), so the J.* helpers it reads are injected.
+J.Humaniser.LaneConfig.SetHelpers({
 	GetPosition = function(unit) return J.GetPosition(unit) end,
 	IsInLaningPhase = function() return J.IsInLaningPhase() end,
-	WillKillTarget = function(target, dmg, dmgType, delay) return J.WillKillTarget(target, dmg, dmgType, delay) end,
-	GetAttackProDelayTime = function(attacker, target) return J.GetAttackProDelayTime(attacker, target) end,
-	WeAreStronger = function(bot, radius) return J.WeAreStronger(bot, radius) end,
-	NextPowerRuneTime = function() return J.GetNextPowerRuneSpawnTime() end,
-	IsValidHero = function(u) return J.IsValidHero(u) end,
-	IsSuspiciousIllusion = function(u) return J.IsSuspiciousIllusion(u) end,
-	CannotBeKilled = function(bot, u) return J.CannotBeKilled(bot, u) end,
-	IsValidBuilding = function(u) return J.IsValidBuilding(u) end,
-	GetHP = function(u) return J.GetHP(u) end,
-	HeroDisplayName = function(u)
-		local names = J.Chat['tHeroNameList'][u:GetUnitName()]
-		if names == nil then return nil end
-		local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
-		if Localization.GetLocale() == 'zh' then return names.sCnName end
-		return names.sEnName
-	end,
 })
 
 
@@ -1884,15 +1850,6 @@ function J.IsStunProjectileSpell( sAbilityName )
 end
 
 
--- Humaniser perception (task 03): the reactive predicates below only see events the bot has had time to react to.
--- Every call passes straight through when perception is off.
-local HPerception = require( GetScriptDirectory()..'/FunLib/humaniser/perception' )
-
-function J.GetIncomingTrackingProjectiles( nUnit )
-	return HPerception.GetIncomingTrackingProjectiles( nUnit )
-end
-
-
 function J.IsWillBeCastUnitTargetSpell( bot, nRadius )
 
 	if nRadius > 1600 then nRadius = 1600 end
@@ -1914,16 +1871,13 @@ function J.IsWillBeCastUnitTargetSpell( bot, nRadius )
 					if J.IsInRange( npcEnemy, bot, 330 )
 						or not J.IsProjectileUnitSpell( sAbilityName )
 					then
-						local bKnown = HPerception.IsCastKnown( npcEnemy, sAbilityName )
 						if not J.IsHumanPlayer( npcEnemy )
 						then
-							if bKnown then return true end
+							return true
 						else
 							local nCycle = npcEnemy:GetAnimCycle()
 							local nPoint = nAbility:GetCastPoint()
-							local bOptimal = nCycle > 0.1 and nPoint * ( 1 - nCycle ) < 0.27 --极限时机0.26
-							-- Humanised: react as soon as the cast is known; only skilled bots hold for the optimal window.
-							if bKnown and ( bOptimal or ( HPerception.IsActive() and not HPerception.WaitsForOptimalWindow() ) )
+							if nCycle > 0.1 and nPoint * ( 1 - nCycle ) < 0.27 --极限时机0.26
 							then
 								return true
 							end
@@ -1956,7 +1910,7 @@ function J.IsWillBeCastPointSpell( bot, nRadius )
 					or nAbility:GetBehavior() == ABILITY_BEHAVIOR_NO_TARGET
 					or nAbility:GetBehavior() == 48
 				then
-					if HPerception.IsCastKnown( npcEnemy, nAbility:GetName() ) then return true end
+					return true
 				end
 			end
 		end
@@ -1970,7 +1924,7 @@ end
 --可躲避敌方非攻击弹道
 function J.IsProjectileIncoming( bot, range )
 
-	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
+	local incProj = bot:GetIncomingTrackingProjectiles()
 	for _, p in pairs( incProj )
 	do
 		if p.is_dodgeable
@@ -1995,7 +1949,7 @@ end
 --可反弹敌方非攻击弹道
 function J.IsUnitTargetProjectileIncoming( bot, range )
 
-	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
+	local incProj = bot:GetIncomingTrackingProjectiles()
 	for _, p in pairs( incProj )
 	do
 		if not p.is_attack
@@ -2024,7 +1978,7 @@ end
 --将被眩晕的弹道
 function J.IsStunProjectileIncoming( bot, range )
 
-	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
+	local incProj = bot:GetIncomingTrackingProjectiles()
 	for _, p in pairs( incProj )
 	do
 		if not p.is_attack
@@ -2044,7 +1998,7 @@ end
 --攻击弹道
 function J.IsAttackProjectileIncoming( bot, range )
 
-	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
+	local incProj = bot:GetIncomingTrackingProjectiles()
 	for _, p in pairs( incProj )
 	do
 		if p.is_attack
@@ -2062,7 +2016,7 @@ end
 --非攻击敌方弹道
 function J.IsNotAttackProjectileIncoming( bot, range )
 
-	local incProj = HPerception.GetIncomingTrackingProjectiles( bot )
+	local incProj = bot:GetIncomingTrackingProjectiles()
 	for _, p in pairs( incProj )
 	do
 		if not p.is_attack
@@ -5602,13 +5556,6 @@ function J.AdjustLocationWithOffsetTowardsFountain(loc, distance)
 	return J.Utils.GetOffsetLocationTowardsTargetLocation(loc, J.GetTeamFountain(), distance)
 end
 
--- Next power/water rune spawn (2-minute rhythm from 2:00), shared with mode_rune_generic.lua.
-function J.GetNextPowerRuneSpawnTime()
-	local t = DotaTime()
-	if t < 120 then return 120 end
-	return (math.floor(t / 120) + 1) * 120
-end
-
 function J.IsInLaningPhase()
 	local nTime = DotaTime()
 	local bTurbo = J.IsModeTurbo()
@@ -6017,8 +5964,7 @@ end
 -- Push safety and defend priority logic moved to TS sources:
 -- aba_push.ts (GetPushDesireHelper) and aba_defend.ts (GetDefendDesireHelper)
 
--- args: values for the line's string.format placeholders (optional).
-function J.ModeAnnounce(bot, locKey, cooldown, args)
+function J.ModeAnnounce(bot, locKey, cooldown)
 	local Localization = require( GetScriptDirectory()..'/FunLib/localization' )
 	if bot.lastModeChatTime == nil then bot.lastModeChatTime = {} end
 	local lastTime = bot.lastModeChatTime[locKey] or -999
@@ -6026,9 +5972,7 @@ function J.ModeAnnounce(bot, locKey, cooldown, args)
 	bot.lastModeChatTime[locKey] = GameTime()
 	local msgs = Localization.Get(locKey)
 	if msgs ~= nil and #msgs > 0 then
-		local msg = msgs[RandomInt(1, #msgs)]
-		if args ~= nil then msg = string.format(msg, (unpack or table.unpack)(args)) end
-		bot:ActionImmediate_Chat(msg, false)
+		bot:ActionImmediate_Chat(msgs[RandomInt(1, #msgs)], false)
 	end
 end
 

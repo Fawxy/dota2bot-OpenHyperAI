@@ -4,7 +4,6 @@ dofile(HARNESS_DIR .. "/dota_stubs.lua")
 -- since the TS test bodies live in the engine's test bundle.
 local BUNDLE = "bots/FunLib/engine/tasks"
 local ASSEMBLE, RETREAT = BOT_MODE_ASSEMBLE, BOT_MODE_RETREAT
-local RAW = 0.1
 
 local function capture(fn)
 	local lines, realPrint = {}, print
@@ -26,24 +25,15 @@ local function Fresh(cfg, botOpts)
 	T = 10
 	package.loaded[BUNDLE] = nil
 	cfg = cfg or { Enable = true }
-	-- H.Tick would otherwise run the lane layer, which needs a lane world these tests don't stub.
-	cfg.Lane = cfg.Lane or { Enable = false }
-	cfg.Transitions = cfg.Transitions or { Enable = false }
 	local H = FreshHumaniser(cfg)
 	local o = botOpts or {}
 	o.pid, o.mode = o.pid or 1, o.mode or ASSEMBLE
 	return H, MakeUnit(o)
 end
 
--- H.Tick tracks the active mode, so Resolve may add a stickiness bonus; only a task claim lifts it to 0.6.
-local function noTaskClaim(H, bot)
-	local d = H.Intent.Resolve(bot, ASSEMBLE, RAW)
-	return d < 0.6 and H.Intent.Explain(bot, ASSEMBLE):find("task:", 1, true) == nil, d
-end
-
 local function waitBody(H, bot, secs) return function() return H.Tasks.Verbs().wait(bot, secs) end end
 
--- Defaults: one support line, the task's claim lifts its host mode while it steps, and lapses after.
+-- Defaults: one support line, and the task steps under its host mode to its end.
 do
 	local H, bot
 	local started, stepped
@@ -60,22 +50,13 @@ do
 	check("Step runs the host's task", stepped == true)
 	check("Step under another mode does nothing", H.Tasks.Step(bot, RETREAT) == false)
 
-	local I = H.Intent
-	local lifted = I.Resolve(bot, ASSEMBLE, RAW)
-	check("task claim floors the host mode", lifted >= 0.6, lifted)
-	check("Explain names the task", I.Explain(bot, ASSEMBLE):find("by task:hold", 1, true) ~= nil, I.Explain(bot, ASSEMBLE))
 	check("Describe shows the running task", H.Tasks.Describe(bot) == "hold step=1", H.Tasks.Describe(bot))
-
-	-- Without `until`, a task that stops stepping loses its claim after ClaimTTL (0.5).
-	T = T + H.Intent.Get().ClaimTTL + 0.1
-	check("unstepped task's claim lapses", near(I.Resolve(bot, ASSEMBLE, RAW), RAW), I.Resolve(bot, ASSEMBLE, RAW))
 
 	H.Tasks.Step(bot, ASSEMBLE)
 	T = T + 1
 	H.Tasks.Step(bot, ASSEMBLE)
 	check("finished task reported ok", H.Tasks.Describe(bot) == "- last=hold ok", H.Tasks.Describe(bot))
 	T = T + 0.3
-	check("raw desire after the task ends", near(I.Resolve(bot, ASSEMBLE, RAW), RAW), I.Resolve(bot, ASSEMBLE, RAW))
 	check("Step after the task ends does nothing", H.Tasks.Step(bot, ASSEMBLE) == false)
 end
 
@@ -95,7 +76,7 @@ do
 	check("walkTo ends on arrival", H.Tasks.Describe(bot) == "- last=walk ok", H.Tasks.Describe(bot))
 end
 
--- A mode switch preempts the task on the humaniser's Tick and drops its claim.
+-- A mode switch preempts the task on the humaniser's Tick.
 do
 	local H, bot = Fresh()
 	H.Tasks.Start(bot, { name = "hold", host = ASSEMBLE }, waitBody(H, bot, 5))
@@ -104,11 +85,10 @@ do
 	H.Tick(bot)
 	check("task gone after a mode switch", H.Tasks.Step(bot, ASSEMBLE) == false)
 	check("Describe shows preempted", H.Tasks.Describe(bot) == "- last=hold preempted", H.Tasks.Describe(bot))
-	check("preempted task's claim released", near(H.Intent.Resolve(bot, ASSEMBLE, RAW), RAW), H.Intent.Resolve(bot, ASSEMBLE, RAW))
 end
 
--- Etiquette: the adapter's lastHitFilter is AllyLastHit.MayLastHit, so a lastHit task near an active protected
--- human ends with "etiquette"; once the human has been idle long enough (Polite: 6 s) the same task proceeds.
+-- The adapter's lastHitFilter: a support's lastHit task ends with "etiquette" while an allied core can take the creep
+-- itself (within its attack range + 150), and proceeds when none can.
 do
 	ACTIVITY_IDLE = 1500
 	LANE_BOT = 3
@@ -120,7 +100,7 @@ do
 	function Unit:GetAnimActivity() return self.anim or ACTIVITY_IDLE end
 	function Unit:GetExtrapolatedLocation() return self.heading or self.loc end
 	function Unit:GetAssignedLane() return self.lane or LANE_BOT end
-	function Unit:GetNearbyHeroes() return {} end
+	function Unit:GetNearbyHeroes() return ALLIES or {} end
 	function Unit:GetNearbyLaneCreeps() return ENEMY_CREEPS end
 	function Unit:GetAttackDamage() return 50 end
 	function Unit:GetAttackPoint() return 0.3 end
@@ -135,26 +115,28 @@ do
 	function Creep:IsNull() return false end
 
 	local function setup()
-		local H, bot = Fresh({ Enable = true, SkillOverride = 0, AllyLastHit = { Enable = true } }, { pid = 1, loc = Vector(-200, 0) })
+		local H, bot = Fresh({ Enable = true }, { pid = 1, loc = Vector(-200, 0) })
 		T = 100
 		bot.pos = 5
-		H.AllyLastHit.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return true end })
-		local human = MakeUnit({ pid = 0, bot = false, loc = Vector(0, 0), mode = ASSEMBLE })
-		human.pos, human.range, human.lastAttack = 1, 150, T - 1
+		H.LaneConfig.SetHelpers({ GetPosition = function(u) return u.pos end, IsInLaningPhase = function() return true end })
+		local core = MakeUnit({ pid = 2, loc = Vector(0, 0), mode = ASSEMBLE })
+		core.pos, core.range = 1, 150
+		ALLIES = { bot, core }
 		-- Above one hit's damage, so an allowed task keeps waiting for the creep's HP to drop.
 		ENEMY_CREEPS = { setmetatable({ team = 3, loc = Vector(100, 0), hp = 80 }, Creep) }
 		H.Tasks.Start(bot, { name = "lh", host = ASSEMBLE }, function() return H.Tasks.Verbs().lastHit(bot) end)
-		return H, bot, human
+		return H, bot, core
 	end
 
 	local H, bot = setup()
 	H.Tasks.Step(bot, ASSEMBLE)
-	check("lastHit vetoed by etiquette", H.Tasks.Describe(bot) == "- last=lh etiquette", H.Tasks.Describe(bot))
+	check("lastHit left to a core in reach", H.Tasks.Describe(bot) == "- last=lh etiquette", H.Tasks.Describe(bot))
 
-	local H2, bot2, human2 = setup()
-	human2.lastAttack = T - 7
+	local H2, bot2, core2 = setup()
+	core2.loc = Vector(2000, 0)
 	H2.Tasks.Step(bot2, ASSEMBLE)
-	check("lastHit proceeds when etiquette allows", H2.Tasks.Describe(bot2) == "lh step=1", H2.Tasks.Describe(bot2))
+	check("lastHit proceeds with no core in reach", H2.Tasks.Describe(bot2) == "lh step=1", H2.Tasks.Describe(bot2))
+	ALLIES = nil
 end
 
 -- Kill switches: nothing starts, nothing is claimed, the bundle is never required and nothing is printed.
@@ -172,7 +154,6 @@ for _, case in ipairs({
 	end)
 	check(case.name .. ": Start false", started == false, started)
 	check(case.name .. ": Step false", stepped == false, stepped)
-	check(case.name .. ": no claim", noTaskClaim(H, bot))
 	check(case.name .. ": bundle never required", package.loaded[BUNDLE] == nil)
 	check(case.name .. ": nothing printed", #taskLines(lines) == 0, lines[1])
 	check(case.name .. ": no Verbs or Describe", H.Tasks.Verbs() == nil and H.Tasks.Describe(bot) == nil)
@@ -198,13 +179,12 @@ do
 	check("broken bundle raises nothing", ok, err)
 	check("broken bundle: one fail line", #support == 1 and support[1]:find("^%[H:tasks%] support coroutine=table bundle=fail .*no bundle here") ~= nil, support[1])
 	check("broken bundle: Start false", started == false, started)
-	check("broken bundle: no claim", noTaskClaim(H, bot))
 end
 
 -- WO-022: tasks.ts registers the bundle's Skill as the LaneConfig draw source; with tasks off nothing loads.
 do
 	local H = Fresh({ Enable = true })
-	local C = H.Lane.Config
+	local C = H.LaneConfig
 	local lines = capture(function()
 		check("Skill wiring: Roll loads the bundle", C.Roll(1.1) == true)
 	end)
@@ -219,7 +199,7 @@ end
 
 do
 	local H = Fresh({ Enable = true, Tasks = { Enable = false } })
-	local C = H.Lane.Config
+	local C = H.LaneConfig
 	local seq, i = { 0.1, math.exp(-2), 1.0 }, 0
 	local realRandomFloat = RandomFloat
 	RandomFloat = function() i = i + 1; return seq[i] end

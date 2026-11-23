@@ -23,7 +23,6 @@ import * as Threat from "bots/FunLib/humaniser/threat";
 import * as Safe from "bots/FunLib/humaniser/safe";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Retreat from "bots/FunLib/humaniser/retreat";
-import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 
 declare function GetTreeLocation(tree: number): Vector;
@@ -458,7 +457,7 @@ export function Gather(bot: Unit, run?: Sustain.Run): Sustain.Inputs {
         courier: courierEta(bot, courier, fountain),
         shop: shopOf(),
         home: (2 * dist(here, fountain)) / speed,
-        idle: CampJobs.Active(bot),
+        idle: false,
         atFountain: bot.HasModifier("modifier_fountain_aura_buff"),
         allies,
         run,

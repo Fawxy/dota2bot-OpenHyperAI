@@ -6,23 +6,8 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import * as Config from "bots/FunLib/humaniser/config";
-import * as Profile from "bots/FunLib/humaniser/profile";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 
-export type LaneFlag =
-    | "Plan"
-    | "Block"
-    | "FullPull"
-    | "StackPull"
-    | "AggroPull"
-    | "Freeze"
-    | "Shove"
-    | "Stack"
-    | "Mid"
-    | "CounterPlay"
-    | "Telegraph"
-    | "Forecast";
-export type Technique = "block" | "full_pull" | "stack_pull" | "aggro_pull" | "freeze" | "shove" | "stack";
 export type CurveName =
     | "JitterSigma"
     | "AttemptRate"
@@ -35,19 +20,6 @@ export type CurveName =
     | "SureCommit";
 
 export const DEFAULTS = {
-    Enable: true,
-    Plan: true,
-    Block: true,
-    FullPull: true,
-    StackPull: true,
-    AggroPull: true,
-    Freeze: true,
-    Shove: true,
-    Stack: true,
-    Mid: true,
-    CounterPlay: true,
-    Telegraph: true,
-    Forecast: true,
     ForecastModel: { K: 0.4, TypeWeight: { melee: 1.0, ranged: 1.6, siege: 1.0 }, PowerFloor: 550 },
     Gates: {
         Block: 0.3,
@@ -278,40 +250,6 @@ export const DEFAULTS = {
 
 export type LaneSettings = typeof DEFAULTS;
 
-const FLAG_OF: Record<Technique, LaneFlag> = {
-    block: "Block",
-    full_pull: "FullPull",
-    stack_pull: "StackPull",
-    aggro_pull: "AggroPull",
-    freeze: "Freeze",
-    shove: "Shove",
-    stack: "Stack",
-};
-
-const GATE_OF: Record<Technique, string | undefined> = {
-    block: "Block",
-    full_pull: "FullPull",
-    stack_pull: "StackPull",
-    aggro_pull: "AggroPull",
-    freeze: "Freeze",
-    shove: "Shove",
-    stack: undefined,
-};
-
-// Telegraph only produces chat lines, so it never keeps the lane system active on its own.
-const CONSUMER_FLAGS: LaneFlag[] = [
-    "Plan",
-    "Block",
-    "FullPull",
-    "StackPull",
-    "AggroPull",
-    "Freeze",
-    "Shove",
-    "Stack",
-    "Mid",
-    "CounterPlay",
-];
-
 function isArray(t: any): boolean {
     return t[1] !== undefined;
 }
@@ -344,35 +282,13 @@ export function TowerAttackRange(): number {
 }
 
 export function Settings(): LaneSettings {
-    if (cached === undefined) cached = merge(DEFAULTS, Config.Get().Lane) as LaneSettings;
+    // A test or a scenario may override a tunable under Customize.Humaniser.Lane.
+    if (cached === undefined) cached = merge(DEFAULTS, (Config.Get() as Record<string, any>).Lane) as LaneSettings;
     return cached;
 }
 
 export function ResetSettings(): void {
     cached = undefined;
-}
-
-export function IsEnabled(): boolean {
-    return Config.IsFeatureEnabled("Lane");
-}
-
-export function IsOn(flag: LaneFlag): boolean {
-    return IsEnabled() && Settings()[flag] === true;
-}
-
-export function IsActive(): boolean {
-    if (!IsEnabled()) return false;
-    for (const flag of CONSUMER_FLAGS) if (Settings()[flag] === true) return true;
-    return false;
-}
-
-export function GateFor(tech: Technique): number {
-    const gate = GATE_OF[tech];
-    return gate === undefined ? 0 : (Settings().Gates as Record<string, number>)[gate] ?? 0;
-}
-
-export function Knows(tech: Technique, skill: number): boolean {
-    return IsOn(FLAG_OF[tech]) && skill >= GateFor(tech);
 }
 
 function clamp01(v: number): number {
@@ -427,24 +343,9 @@ export function Roll(chance: number): boolean {
     return (r !== undefined ? r.random() : RandomFloat(0, 1)) < chance;
 }
 
-export function SkillOf(bot: Unit): number {
-    return Profile.Get(bot).skill;
-}
-
 export interface LaneHelpers {
     GetPosition?: (this: void, unit: Unit) => number;
     IsInLaningPhase?: (this: void) => boolean;
-    WillKillTarget?: (this: void, target: Unit, dmg: number, dmgType: number, delay: number) => boolean;
-    GetAttackProDelayTime?: (this: void, attacker: Unit, target: Unit) => number;
-    WeAreStronger?: (this: void, bot: Unit, radius: number) => boolean;
-    NextPowerRuneTime?: (this: void) => number;
-    IsValidHero?: (this: void, u: Unit) => boolean;
-    IsSuspiciousIllusion?: (this: void, u: Unit) => boolean;
-    CannotBeKilled?: (this: void, bot: Unit, target: Unit) => boolean;
-    IsValidBuilding?: (this: void, u: Unit) => boolean;
-    GetHP?: (this: void, u: Unit) => number;
-    /** The hero's localised display name, or undefined when unknown. */
-    HeroDisplayName?: (this: void, u: Unit) => string | undefined;
 }
 
 let helpers: LaneHelpers = {};
@@ -483,4 +384,17 @@ export function InLaningPhase(): boolean {
     phaseAt = now;
     phaseBot = bot;
     return phaseValue;
+}
+
+export function IsLaneCreepName(name: string): boolean {
+    const has = (part: string): boolean => string.find(name, part, 1, true)[0] !== undefined;
+    return has("creep_goodguys") || has("creep_badguys") || has("goodguys_siege") || has("badguys_siege");
+}
+
+/** True when the bot's team has at least one human player. */
+export function IsAllyOfHuman(bot: Unit): boolean {
+    for (const pid of GetTeamPlayers(bot.GetTeam())) {
+        if (!IsPlayerBot(pid)) return true;
+    }
+    return false;
 }

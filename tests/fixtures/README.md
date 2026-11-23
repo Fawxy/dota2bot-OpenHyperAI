@@ -40,12 +40,6 @@ does produce the action when the condition is absent; otherwise it passes when t
 ## Drivers and their verbs
 | decision | runs | verbs and values |
 |---|---|---|
-| `laning_mode` | `mode_laning_generic` GetDesire + Think, stub humaniser (`laning_mode_world.lua`): tests the mode file's own logic; `CoreCanReach`, `WillKill` and `MayLastHit` are stubs | `lastHit(creep#)`, `deny(creep#)`, `hold`, `move`, `attempt(creep#)`; `desire.laning` |
-| `team_roam` | `mode_team_roam_generic` Think alone (no GetDesire), in the `laning_mode` stub world | as `laning_mode`, no desire |
-| `retreat_desire` | Transitions caution tick, then Intent.Resolve on retreat (hook H3), `lane_world.lua` | `desire.retreat`, `fact.base`, `fact.caution` |
-| `core_trip` | `FarmPattern.StartGate` then `Desire` (`farm_world.lua`) | `noTrip(<reason>)`, `trip(camp#)` |
-| `support_claim` | `states/lane_claims` `SupportClaim` for one creep, the cores' `laneTargets` and laning attempts given (`lane_world_fixture.lua`) | `claim(<deny\|free\|busy>)`, `noClaim` |
-| `lane_spot` | `LaneSpot.Compute` and its `Threat.Read`, on a world cut from a game (`tools/hlog/cut.js` from `ev=cut kind=spot`; real map and lane paths) | `stand(<why>)` (pref, kill, unknown, creep, hp, tower, xp), `anchor(<anchor>)`, `read(<safe\|costly\|deadly>)` (`Safe.At` at the preferred point); `fact.x`, `fact.y`, `fact.pushed`, `fact.ratio`, `fact.pref` |
 | `threat_gate` | `SafeGather.TripGate` (Safe.At over a trip's walk, 4 s, away) on a world cut from a game (`ev=cut kind=gate`, `cut.js --kind gate --who CONSUMER`; vision at the walk points as logged) | `go`, `hold(<kill\|tower\|unknown>)`; `fact.reach`, `fact.missing`, `fact.mcut`, `fact.burst`, `fact.allies`, `fact.tower` |
 | `retreat_leave` | `retreat.LeaveWhy` (`SafeGather.At` at the hero's own place) on a world cut from a game (`ev=cut kind=leave`, `cut.js --kind leave`; what `Trade.Holds` said as logged) | `leave(<lethal\|tower\|heal\|threat>)`, `stay(<under\|join\|hitback>)`; `fact.ratio`, `fact.kill`, `fact.reach`, `fact.hp` |
 | `pair_join` | `PairJoin.Decide` (D10) on a fight cut from a game (`ev=cut kind=join`, `cut.js --kind join`): both sides, their HP, the 3 s damage estimates both ways | `join(hero#<pid>)`, `out(losing)`; `fact.ko`, `fact.kt`, `fact.ours`, `fact.theirs` |

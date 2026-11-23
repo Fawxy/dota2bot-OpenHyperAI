@@ -346,7 +346,7 @@ do
 	check("switch off: no plan and no hide", #lines(out, "rune_plan") == 0 and field(lines(out, "rune_job")[1], "hid") == nil)
 end
 
-local function draws(H, x) H.Lane.Config.SetRng(function() return { random = function() return x end, gauss = function() return 0 end } end) end
+local function draws(H, x) H.LaneConfig.SetRng(function() return { random = function() return x end, gauss = function() return 0 end } end) end
 meta.Action_AttackUnit = function(self, u) table.insert(ACTIONS, { pid = self.pid, kind = "AttackUnit", args = { u } }) end
 
 -- After the trip: a gank chance on the nearest enemy hero in reach. A low draw fires it and the support goes in; the play

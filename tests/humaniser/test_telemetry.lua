@@ -76,7 +76,7 @@ do
 	check("profile reported once", #events("bot") == 1, #events("bot"))
 end
 
--- A last hit is attributed to the etiquette decision on the creep the bot was attacking the frame before.
+-- A last hit names the creep the bot was attacking the frame before.
 do
 	local H = fresh()
 	local b = MakeUnit({ pid = 1 })
@@ -84,27 +84,13 @@ do
 	H.Telemetry.Tick(b)
 	b.target = c
 	T = 0.1
-	H.Telemetry.NoteLastHitDecision(b, c, false, "skip: core")
 	H.Telemetry.Tick(b)
 	b.lh, b.target = 1, nil
 	T = 0.2
 	H.Telemetry.Tick(b)
 	local lh = events("lasthit")
 	check("lasthit emitted", #lh == 1, #lh)
-	check("lasthit carries decision", lh[1] and field(lh[1], "dec") == "skip: core", lh[1])
 	check("lasthit creep", lh[1] and field(lh[1], "creep") == "npc_dota_creep_badguys_melee", lh[1])
-
-	-- A decision older than DecisionMaxAge says nothing about this kill.
-	local c2 = creep("npc_dota_creep_badguys_ranged")
-	b.target = c2
-	H.Telemetry.NoteLastHitDecision(b, c2, false, "skip: core")
-	T = 0.3
-	H.Telemetry.Tick(b)
-	b.lh = 2
-	T = 2
-	H.Telemetry.Tick(b)
-	lh = events("lasthit")
-	check("stale decision not attributed", lh[2] and field(lh[2], "dec") == nil, lh[2])
 end
 
 -- ER-001 b04_C_off_1 t=340.4 (BACKLOG 0.14): the killed creep's handle was removed before the frame that saw the last hit, so
@@ -121,7 +107,6 @@ do
 	H.Telemetry.Tick(b)
 	b.target = c
 	T = 0.1
-	H.Telemetry.NoteLastHitDecision(b, c, false, "skip: core")
 	H.Telemetry.Tick(b)
 	c.removed, b.lh, b.target = true, 1, nil
 	T = 0.2
@@ -129,7 +114,6 @@ do
 	check("a removed last-hit creep does not raise", ok, err)
 	local lh = events("lasthit")
 	check("its last hit is still logged with the name read while it lived", #lh == 1 and field(lh[1], "creep") == "npc_dota_creep_badguys_melee", lh[1])
-	check("and its decision", lh[1] and field(lh[1], "dec") == "skip: core", lh[1])
 	b.lh = 2
 	T = 0.3
 	ok, err = pcall(H.Telemetry.Tick, b)
@@ -332,16 +316,19 @@ do
 	local H = fresh()
 	local b = MakeUnit({ pid = 1, mode = BotMode.Laning })
 	b.GetPlayerID = function() error("handle went stale") end
-	local ok, d = pcall(H.Intent.Resolve, b, BotMode.Laning, 0.42)
-	check("Intent.Resolve error falls back to raw desire", ok and d == 0.42, tostring(ok) .. " " .. tostring(d))
+	b.GetTeam = b.GetPlayerID
+	local ok, d = pcall(H.States.MayOwn, b)
+	check("a hook's error falls back to its off value", ok and d == false, tostring(ok) .. " " .. tostring(d))
 	local e = events("lua_error")
-	check("Intent.Resolve error reported", e[1] and field(e[1], "where") == "Intent.Resolve", e[1])
+	check("the hook's error is reported", e[1] and field(e[1], "where") == "States.MayOwn", e[1])
 	local ok2 = pcall(H.Tick, b)
 	check("Tick error swallowed", ok2)
-	check("Tick error reported", events("lua_error")[2] and field(events("lua_error")[2], "where") == "Tick", events("lua_error")[2])
+	local tickErr
+	for _, l in ipairs(events("lua_error")) do if field(l, "where") == "Tick" then tickErr = l end end
+	check("Tick error reported", tickErr ~= nil, events("lua_error")[2])
 
 	local off = fresh({ Enable = true, LuaErrors = false })
-	check("LuaErrors = false leaves hooks unwrapped", not pcall(off.Intent.Resolve, b, BotMode.Laning, 0.42))
+	check("LuaErrors = false leaves hooks unwrapped", not pcall(off.States.MayOwn, b))
 end
 
 -- Humaniser off (A/B game): telemetry still snapshots and logs mode switches; the humaniser itself stays inert.
@@ -365,38 +352,12 @@ do
 	check("snapshots with humaniser off", #events("snap") == 3, #events("snap"))
 	check("mode switch with humaniser off", #events("mode") == 1 and field(events("mode")[1], "to") == "farm", events("mode")[1])
 	local bot = events("bot")[1]
-	check("bot line says humaniser off, no profile", bot and field(bot, "humaniser") == "0" and field(bot, "skill") ~= nil and field(bot, "notice") == nil, bot)
+	check("bot line says humaniser off", bot and field(bot, "humaniser") == "0", bot)
 	check("no profile RNG drawn", draws == 0, draws)
 	check("no chat callback installed", #CHAT_CALLBACKS == 0, #CHAT_CALLBACKS)
-	check("Intent.Resolve passes raw through", H.Intent.Resolve(b, BotMode.Farm, 0.31) == 0.31)
 	check("no humaniser start line", #events("notice") == 0)
 end
 
--- lane_eq: one sample per team and lane per wave cycle, once the cycle is EqSampleAt seconds old.
-do
-	local dota = require("bots/ts_libs/dota/index")
-	local Lane = dota.Lane
-	dofile(HARNESS_DIR .. "/lane_world.lua")
-	local H = LaneFresh({ Enable = true }, { telemetry = { Enable = true } })
-	lines = {}
-	H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
-	CURRENT_TEAM = 2
-	LANE_FRONT[2][Lane.Bot], LANE_FRONT[3][Lane.Bot] = 0.55, 0.55
-	local S = H.Lane.LaneState
-	for _, t in ipairs({ 65, 71, 72 }) do
-		T = t
-		S.Get(2, Lane.Bot)
-		S.Get(3, Lane.Bot)
-	end
-	local e = events("lane_eq")
-	check("lane_eq once per team and lane in the cycle", #e == 2, #e)
-	check("lane_eq at or after cycle second 10", e[1] and field(e[1], "t") == "71", e[1])
-	check("lane_eq carries the forecast inputs", e[1] and field(e[1], "team") == "2" and field(e[1], "lane") == tostring(Lane.Bot)
-		and field(e[1], "kind") and field(e[1], "eq") and field(e[1], "imb") and field(e[1], "feq") and field(e[1], "a") and field(e[1], "e"), e[1])
-	T = 101
-	S.Get(2, Lane.Bot)
-	check("lane_eq again in the next cycle", #events("lane_eq") == 3, #events("lane_eq"))
-end
 
 -- Slice lane-activity: what the bot could do this second, up to 12:00, for a live bot that is no human's ally.
 do
@@ -453,6 +414,7 @@ do
 end
 
 -- Slice snap-creeps: creep counts by the aggro radius (inclusive) and attack range, nearest of each side, live creeps only.
+dofile(HARNESS_DIR .. "/lane_world.lua")
 do
 	local H = fresh()
 	local b = MakeUnit({ pid = 1, team = 2, mode = BotMode.Laning, range = 500 })
@@ -597,7 +559,7 @@ do
 	package.preload["bots/FunLib/humaniser/build_info"] = function() return { build = "abc1234+dirty" } end
 	local H = fresh()
 	package.preload["bots/FunLib/humaniser/build_info"] = nil
-	H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end })
+	H.LaneConfig.SetHelpers({ GetPosition = function(u) return u.pos end })
 	GetHeroKills = function(pid) return pid == 1 and 2 or 0 end
 	GetHeroDeaths = function(pid) return pid == 1 and 3 or 0 end
 	local b = MakeUnit({ pid = 1, mode = BotMode.Laning })

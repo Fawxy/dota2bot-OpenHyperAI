@@ -4,15 +4,10 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
-local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 local JobVerbs = require(GetScriptDirectory().."/FunLib/humaniser/job_verbs")
-local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
-local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
-local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local attempted = false
@@ -24,12 +19,28 @@ end
 local function oursOn()
     return Ours.On("StackExecute") or Ours.On("RuneRotation") or Ours.On("SupportPull")
 end
+--- A core counts as able to take a creep this far past its attack range (`judgement`).
+local CORE_REACH_BUFFER = 150
+--- ... or when its position this far ahead (s) is nearer the creep by more than the epsilon (it is walking to it).
+local APPROACH_LOOKAHEAD = 0.5
+local APPROACH_EPSILON = 25
+local function coreCanReach(core, creep)
+    local dist = GetUnitToUnitDistance(core, creep)
+    if dist <= core:GetAttackRange() + CORE_REACH_BUFFER then
+        return true
+    end
+    local ahead = GetUnitToLocationDistance(
+        creep,
+        core:GetExtrapolatedLocation(APPROACH_LOOKAHEAD)
+    )
+    return ahead < dist - APPROACH_EPSILON
+end
 --- An allied core (position 1-3, not the bot) within 1600 that can take the creep itself.
 local function CoreCanTake(bot, creep, allies)
     for ____, ally in ipairs(allies) do
         if ally ~= bot and ally:IsAlive() then
             local pos = LaneConfig.PositionOf(ally)
-            if pos ~= nil and pos <= 3 and AllyLastHit.CoreCanReach(ally, creep) then
+            if pos ~= nil and pos <= 3 and coreCanReach(ally, creep) then
                 return true
             end
         end
@@ -39,12 +50,8 @@ end
 --- One table per bot, cleared on a new frame (no allocation per frame).
 local filterCache = {}
 local function mayTake(bot, creep, f)
-    local allowed, reason = AllyLastHit.MayLastHit(bot, creep)
-    if not allowed then
+    if creep == nil or creep == nil or creep:IsNull() then
         return false
-    end
-    if string.sub(reason, 1, 5) == "take:" then
-        return true
     end
     local pos = LaneConfig.PositionOf(bot)
     if pos == nil or pos <= 2 then
@@ -55,30 +62,11 @@ local function mayTake(bot, creep, f)
     end
     return not CoreCanTake(bot, creep, f.allies)
 end
+--- Skill 1 (the adapter gives no `skill`, which the engine reads as 1): no reaction delay, jitter, aim error or lapse.
+local SKILL_ONE = {react = 0, jitter = 0, aimError = 0, lapse = 0}
 local adapter = {
-    claim = function(bot, c)
-        local ____Intent_Claim_6 = Intent.Claim
-        local ____bot_5 = bot
-        local ____c_source_1 = c.source
-        local ____c_tier_2 = c.tier
-        local ____c_mode_3 = c.mode
-        local ____c_floor_4 = c.floor
-        local ____temp_0
-        if c.urgent == true then
-            ____temp_0 = true
-        else
-            ____temp_0 = nil
-        end
-        return ____Intent_Claim_6(____bot_5, {
-            source = ____c_source_1,
-            tier = ____c_tier_2,
-            mode = ____c_mode_3,
-            floor = ____c_floor_4,
-            unsticks = ____temp_0
-        })
-    end,
-    release = function(bot, source, mode) return Intent.Release(bot, source, mode) end,
-    hold = function(bot, tag) return Intent.Hold(bot, tag) end,
+    claim = function() return nil end,
+    release = function() return nil end,
     lastHitFilter = function(bot, creep)
         local pid = bot:GetPlayerID()
         local now = DotaTime()
@@ -102,12 +90,8 @@ local adapter = {
         by[creep] = allowed
         return allowed
     end,
-    skill = function(bot) return Difficulty.GetSkill(bot) end,
-    profile = function(bot)
-        local p = Profile.Get(bot)
-        return {react = p.reactBase, jitter = p.jitter, aimError = p.aimError, lapse = p.lapseChance}
-    end,
-    lastHitError = function(bot) return LastHitSkill.ErrorWidth(bot) end,
+    profile = function() return SKILL_ONE end,
+    lastHitError = function() return 0 end,
     random = function() return RandomFloat(0, 1) end,
     attackClock = function() return GameTime() end,
     now = function() return DotaTime() end,
@@ -150,8 +134,8 @@ function ____exports.Loaded()
     return loadBundle()
 end
 LaneConfig.SetRng(function()
-    local ____opt_7 = loadBundle()
-    return ____opt_7 and ____opt_7.Skill
+    local ____opt_0 = loadBundle()
+    return ____opt_0 and ____opt_0.Skill
 end)
 --- True once the bundle has loaded and tasks are enabled.
 function ____exports.IsActive()
@@ -167,20 +151,20 @@ function ____exports.Step(bot, mode)
     return l ~= nil and l.Tasks.Step(bot, mode)
 end
 function ____exports.Tick(bot)
-    local ____opt_9 = loadBundle()
-    if ____opt_9 ~= nil then
-        ____opt_9.Tasks.Tick(bot)
+    local ____opt_2 = loadBundle()
+    if ____opt_2 ~= nil then
+        ____opt_2.Tasks.Tick(bot)
     end
 end
 --- Never loads the bundle: no task can be running before one was started.
 function ____exports.Current(bot)
-    local ____IsActive_result_11
+    local ____IsActive_result_4
     if ____exports.IsActive() then
-        ____IsActive_result_11 = lib.Tasks.Current(bot)
+        ____IsActive_result_4 = lib.Tasks.Current(bot)
     else
-        ____IsActive_result_11 = nil
+        ____IsActive_result_4 = nil
     end
-    return ____IsActive_result_11
+    return ____IsActive_result_4
 end
 function ____exports.Cancel(bot, reason, message)
     if ____exports.IsActive() then
@@ -198,12 +182,12 @@ function ____exports.Label(bot, label)
     end
 end
 function ____exports.Describe(bot)
-    local ____opt_16 = loadBundle()
-    return ____opt_16 and ____opt_16.Tasks.Describe(bot)
+    local ____opt_9 = loadBundle()
+    return ____opt_9 and ____opt_9.Tasks.Describe(bot)
 end
 function ____exports.Verbs()
-    local ____opt_18 = loadBundle()
-    return ____opt_18 and ____opt_18.Verbs
+    local ____opt_11 = loadBundle()
+    return ____opt_11 and ____opt_11.Verbs
 end
 --- The job verbs (bot code on the engine's verbs), or undefined when tasks are off or the bundle failed to load.
 function ____exports.Jobs()
@@ -221,9 +205,9 @@ ____exports.ForOurs = {
         return l ~= nil and l.Tasks.Step(bot, mode)
     end,
     Tick = function(bot)
-        local ____opt_20 = loadBundle(true)
-        if ____opt_20 ~= nil then
-            ____opt_20.Tasks.Tick(bot)
+        local ____opt_13 = loadBundle(true)
+        if ____opt_13 ~= nil then
+            ____opt_13.Tasks.Tick(bot)
         end
     end,
     Cancel = function(bot, reason, message)
