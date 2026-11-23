@@ -9,7 +9,6 @@ local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
-local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 function ____exports.CourierOf(bot)
     do
@@ -763,7 +762,7 @@ function ____exports.Gather(bot, run)
         courier = courierEta(bot, courier, fountain),
         shop = shopOf(),
         home = 2 * dist(here, fountain) / speed,
-        idle = CampJobs.Active(bot),
+        idle = false,
         atFountain = bot:HasModifier("modifier_fountain_aura_buff"),
         allies = allies,
         run = run

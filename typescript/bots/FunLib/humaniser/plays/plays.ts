@@ -236,7 +236,7 @@ export function InputsOf(c: Chance): Inputs {
         tower: target !== undefined ? FR.TowerDistance(target.GetTeam(), target.GetLocation()) : math.huge,
         forecast: c.forecast,
         reach: target !== undefined ? FR.Dist(c.by.GetLocation(), target.GetLocation()) : undefined,
-        skill: LaneConfig.SkillOf(c.by),
+        skill: 1,
     };
 }
 

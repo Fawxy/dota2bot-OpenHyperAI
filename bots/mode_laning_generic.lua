@@ -29,44 +29,10 @@ local isChangePosMessageDone     = false
 
 if Utils.BuggyHeroesDueToValveTooLazy[botName] then local_mode_laning_generic = dofile( GetScriptDirectory().."/FunLib/override_generic/mode_laning_generic" ) end
 
--- Humaniser ally last-hit etiquette. Valve's C++ laning cannot be filtered, so allies of humans get OHA's
--- Think() below for the whole game. Decided once at load: Think() cannot hand control back to Valve later.
-local AllyLastHit = J.Humaniser.AllyLastHit
-local bHumaniserLaning = AllyLastHit.OwnsLaning(bot)
-
--- An allied core (not this bot) that can take this creep itself: judged from the creep, so a core 800 away but in
--- range of it keeps it, and one beside the bot but far from the creep does not.
-local function CoreCanTake(creep)
-	for _, ally in pairs(J.GetNearbyHeroes(bot, 1600, false, BOT_MODE_NONE) or {}) do
-		if ally ~= bot and J.IsCore(ally) and AllyLastHit.CoreCanReach(ally, creep) then return true end
-	end
-	return false
-end
-
-local function CanTakeLastHit(creep)
-	local bMay, sReason = AllyLastHit.MayLastHit(bot, creep)
-	if not bMay then return false end
-	if string.sub(sReason, 1, 5) == 'take:' then return true end
-	return J.GetPosition(bot) <= 2 or not CoreCanTake(creep)
-end
-local fLastHitFilter = bHumaniserLaning and CanTakeLastHit or nil
-local Lane = J.Humaniser.Lane
--- Task 14 self-test: this bot times its last hits from the trainer's own start window.
-local Trainer = J.Humaniser.Trainer
-local bTrainerSelfTest = Trainer.IsSelfTestBot(bot)
--- Humaniser last-hit accuracy (task 10) only acts where OHA owns this Think(); Valve's C++ laning cannot be changed.
-local LastHitSkill = J.Humaniser.LastHitSkill
-local bHumaniserOwned = bHumaniserLaning
--- A creep no allied core will take: judged from the creep where the humaniser owns laning, else upstream's 700 radius.
-local function CoreLeaves(creep)
-	if bHumaniserOwned then return not CoreCanTake(creep) end
-	return not J.IsThereNonSelfCoreNearby(700)
-end
--- Behaviour states (team slice 1): a bot whose states the layer may own runs this file's Think(), whose lane table
--- (states/lane_table) can put a row of ours before OHA's steps.
-local States = J.Humaniser.States
-local bOwnsThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bHumaniserLaning or bTrainerSelfTest or States.MayOwn(bot)
-LastHitSkill.NoteLaningOwner(bot, bOwnsThink)
+-- Who runs this file's Think: OHA's own cases, and a hero the humaniser asks it for (States.MayOwn: an ally of a human
+-- under Ours.Sustain or in a drill). Decided once at load: a defined Think replaces Valve's laning for the whole game.
+local bOhaThink = local_mode_laning_generic ~= nil or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5))
+local bOwnsThink = bOhaThink or J.Humaniser.States.MayOwn(bot)
 
 function GetDesire()
 	PickOneAnnouncer()
@@ -98,9 +64,9 @@ function GetDesire()
 	if GetGameMode() == 23 then currentTime = currentTime * 1.65 end
 	if currentTime < 0 then return BOT_ACTION_DESIRE_NONE end
 
-	-- A lane-only drill hero (humaniser/drill.ts): the bot stays in lane through the laning phase and does nothing but hold,
-	-- last-hit and deny (Think below). Above every other mode, as a drill's bench in mode_farm_generic.
-	-- Our retreat (slice retreat) takes a lane-only hero while its episode runs: the chase drill's cast retreats live.
+	-- A lane-only drill hero (humaniser/drill.ts): the bot stays in lane through the laning phase and does nothing but
+	-- last-hit, deny and hold its spot (Think below). Above every other mode, as a drill's bench in mode_farm_generic.
+	-- Our retreat takes a lane-only hero while its episode runs: the chase drill's cast retreats live.
 	-- Ours.ChoiceShadow's hook (logging only): MarkMix notes that a branch of ours set the value returned.
 	if bOwnsThink and J.Humaniser.Overrides.LaneOnly(bot) and J.IsInLaningPhase() and not J.Humaniser.Retreat.Running(bot) then J.Humaniser.ChoiceShadow.MarkMix(bot) return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end
 
@@ -139,16 +105,14 @@ function GetDesire()
 	-- 	return 0.2
 	-- end
 
-	-- Wherever this file's Think() runs the laning (upstream's cases and the humaniser's), a dying creep is laning's to take.
 	if bOwnsThink then
 		-- last hit
 		if J.IsInLaningPhase() then
-			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
+			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps)
 			if J.IsValid(hitCreep) then
-				if (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
-				and not Lane.CampJobActive(bot) -- a running pull (farm mode, 0.7) must not be cut by a last hit at the meet point
+				if J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				then
-					J.Humaniser.ChoiceShadow.MarkMix(bot)
+					if not bOhaThink then J.Humaniser.ChoiceShadow.MarkMix(bot) end
 					return 0.9
 				end
 			end
@@ -169,10 +133,6 @@ function GetDesire()
 	return 0.01
 end
 
--- Humaniser intent arbitration (task 09): claims and stickiness applied on top of the desire above.
-local GetDesireRaw = GetDesire
-function GetDesire() return J.Humaniser.Intent.Resolve(bot, BOT_MODE_LANING, GetDesireRaw()) end
-
 function GetFurthestEnemyAttackRange(enemyList)
 	local attackRange = 0
 	for _, enemy in pairs(enemyList) do
@@ -187,25 +147,20 @@ function GetFurthestEnemyAttackRange(enemyList)
 	return attackRange
 end
 
-function GetBestLastHitCreep(hCreepList, fFilter)
+function GetBestLastHitCreep(hCreepList)
 	local dmgDelta = attackDamage * 0.7
 
 	local moveToCreep = nil
-	local bChoose = LastHitSkill.IsActiveFor(bot)
-	local killable = {}
 	for _, creep in pairs(hCreepList) do
-		if J.IsValid(creep) and J.CanBeAttacked(creep) and (fFilter == nil or fFilter(creep)) then
+		if J.IsValid(creep) and J.CanBeAttacked(creep) then
 			local nDelay = J.GetAttackProDelayTime(bot, creep)
-			if LastHitSkill.WillKill(bot, creep, attackDamage, nDelay, false) then
-				if not bChoose then return creep, false end
-				table.insert(killable, creep)
-			elseif LastHitSkill.WillKill(bot, creep, attackDamage + dmgDelta, nDelay, false) then
+			if J.WillKillTarget(creep, attackDamage, DAMAGE_TYPE_PHYSICAL, nDelay) then
+				return creep, false
+			end
+			if J.WillKillTarget(creep, attackDamage + dmgDelta, DAMAGE_TYPE_PHYSICAL, nDelay) then
 				moveToCreep = creep
 			end
 		end
-	end
-	if #killable > 0 then
-		return LastHitSkill.Choose(bot, killable), false
 	end
 	if moveToCreep then
 		return moveToCreep, true
@@ -220,7 +175,7 @@ function GetBestDenyCreep(hCreepList)
 		if J.IsValid(creep)
 		and J.GetHP(creep) < 0.49
 		and J.CanBeAttacked(creep)
-		and LastHitSkill.WillKill(bot, creep, attackDamage, 0, true)
+		and creep:GetHealth() <= attackDamage
 		then
 			return creep
 		end
@@ -229,56 +184,31 @@ function GetBestDenyCreep(hCreepList)
 	return nil
 end
 
-local bHoldingForLastHit = false
-local HOLD_MAX = 1.5
-local holdCreep, holdSince = nil, 0
-local function HoldingFor(creep)
-	if holdCreep ~= creep then holdCreep, holdSince = creep, DotaTime() end
-	return DotaTime() - holdSince < HOLD_MAX
-end
-
--- Laning Think() steps, each returning true when it issued an action. Kept separate so later humaniser work
--- (lane management) can add steps without rewriting Think().
+-- OHA's Think as steps, each returning true when it gave the frame's order, so the lane table (states/lane_table)
+-- can run a row of ours (sustain's walk) before them. In its order they are OHA's Think unchanged.
 local function LastHitThink()
-	if bTrainerSelfTest then
-		if Trainer.SelfTestHolding(bot) then return true end
-		local creep = Trainer.SelfTestTarget(bot)
-		if not J.IsValid(creep) then return false end
-		bot:SetTarget(creep)
-		bot:Action_AttackUnit(creep, true)
-		return true
-	end
-	local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps, fLastHitFilter)
+	local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
 	if not J.IsValid(hitCreep) then return false end
-	if not (fLastHitFilter or J.GetPosition(bot) <= 2 or CoreLeaves(hitCreep)) then return false end
+	if not (J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)) then return false end
 	if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
 	or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
 		bot:Action_MoveToUnit(hitCreep)
-	elseif moveToCreep and bHumaniserOwned and HoldingFor(hitCreep) then
-		-- In range of a creep that is not killable yet: swinging now lands early and leaves it for the enemy's deny.
-		-- Wait for it (at most HOLD_MAX, for a creep nothing is hitting), letting a deny go first.
-		bHoldingForLastHit = true
-		return false
 	else
 		bot:SetTarget(hitCreep)
 		bot:Action_AttackUnit(hitCreep, true)
-		LastHitSkill.NoteAttempt(bot, hitCreep)
 	end
 	return true
 end
 
 local function DenyThink()
-	if bTrainerSelfTest then return false end
 	local denyCreep = GetBestDenyCreep(nAllyCreeps)
 	if not J.IsValid(denyCreep) then return false end
 	bot:SetTarget(denyCreep)
 	bot:Action_AttackUnit(denyCreep, true)
-	LastHitSkill.NoteAttempt(bot, denyCreep)
 	return true
 end
 
-local function PositionTarget()
-	if botAssignedLane == nil then return nil end
+local function PositionThink()
 	local fLaneFrontAmount = GetLaneFrontAmount(GetTeam(), botAssignedLane, false)
 	local fLaneFrontAmount_enemy = GetLaneFrontAmount(GetOpposingTeam(), botAssignedLane, false)
 
@@ -289,12 +219,8 @@ local function PositionTarget()
 		target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
 	end
 
-	return target_loc
-end
-
-local function PositionThink()
-	local target_loc = PositionTarget()
-	if target_loc ~= nil then bot:Action_MoveToLocation(target_loc + RandomVector(50)) end
+	bot:Action_MoveToLocation(target_loc + RandomVector(50))
+	return true
 end
 
 -- Telemetry only (ev=snap step=): the lane table returns the name of the row that acted, which no decision reads.
@@ -302,25 +228,17 @@ local Telemetry = J.Humaniser.Telemetry
 Telemetry.NoteLaneThink(bot, bOwnsThink)
 
 if bOwnsThink then
-	-- The steps of the lane table (states/lane_table) that are OHA's own; the table decides their order against ours.
 	local laneCtx = {
 		ohaLastHit = LastHitThink,
 		ohaDeny = DenyThink,
-		ohaHold = function()
-			if not bHoldingForLastHit then return false end
-			bot:Action_MoveToLocation(bot:GetLocation())
-			return true
-		end,
 		ohaLocal = function()
 			if local_mode_laning_generic then local_mode_laning_generic.Think() end
 			return false
 		end,
-		ohaPosition = function() PositionThink() return true end,
+		ohaPosition = PositionThink,
 	}
 	function Think()
-		-- Set by LastHitThink on the frame it runs, so a frame that skips it cannot hold on an earlier frame's wait.
-		bHoldingForLastHit = false
-		Telemetry.NoteLaneStep(bot, States.LaneStep(bot, laneCtx))
+		Telemetry.NoteLaneStep(bot, J.Humaniser.States.LaneStep(bot, laneCtx))
 	end
 end
 

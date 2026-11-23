@@ -5,7 +5,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Phase from "bots/FunLib/humaniser/transitions/phase";
+import * as Phase from "bots/FunLib/humaniser/laning_held";
 
 const running: Record<number, boolean> = {};
 

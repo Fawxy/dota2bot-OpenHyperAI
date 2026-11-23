@@ -14,11 +14,10 @@ import * as FR from "bots/FunLib/humaniser/fight_readings";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
-import * as Rotate from "bots/FunLib/humaniser/states/rotate";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
-import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as Runes from "bots/FunLib/humaniser/game_rules";
 
 declare function GetRuneSpawnLocation(this: void, rune: number): Vector;
 declare function GetRuneStatus(this: void, rune: number): number;
@@ -27,6 +26,17 @@ declare function GetRuneType(this: void, rune: number): number;
 type Kind = "power" | "wisdom" | "contest" | "water";
 
 // All judgement (slice file, Decisions).
+/** mode_rune_generic's shrine spots (7.38+: Shrines of Wisdom, one in each team's offlane jungle). */
+const SHRINE: Record<number, [number, number, number]> = {
+    [Team.Radiant]: [-7948.152344, 768.207825, 256],
+    [Team.Dire]: [8029.234375, -1125.811768, 256],
+};
+
+function ShrineFor(team: number): Vector {
+    const s = SHRINE[team] ?? SHRINE[Team.Radiant];
+    return Vector(s[0], s[1], s[2]);
+}
+
 export const SETTINGS = {
     /** Spawns each position goes for. Power at 6:00, the shrine at 7:00 (transitions/runes RUNE_RULES). */
     Trips: { [4]: [["power", Runes.RUNE_RULES.power.first], ["wisdom", Runes.RUNE_RULES.wisdom.first]], [5]: [["power", Runes.RUNE_RULES.power.first], ["contest", Runes.RUNE_RULES.wisdom.first]] } as Record<number, [Kind, number][]>,
@@ -205,7 +215,7 @@ export function CalendarEntries(bot: Unit, now: number): { kind: "rune"; key: nu
 function calendarLeave(bot: Unit, kind: Kind, spawn: number, now: number): number | false | undefined {
     if (kind === "contest") {
         const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
-        return leaveAt(bot, { kind, spawn, at: Rotate.ShrineFor(enemy), via: edgeVia(enemy), left: now, host: 0 });
+        return leaveAt(bot, { kind, spawn, at: ShrineFor(enemy), via: edgeVia(enemy), left: now, host: 0 });
     }
     if (planned(kind, spawn)) {
         if (now < RunePlan.SETTINGS.PlanAt) return undefined;
@@ -374,10 +384,10 @@ function closestOn(a: Vector, b: Vector, p: Vector): Vector {
 }
 
 function tripFor(bot: Unit, kind: Kind, spawn: number, host: number, mine?: number): Trip {
-    if (kind === "wisdom") return { kind, spawn, at: Rotate.ShrineFor(bot.GetTeam()), left: DotaTime(), host };
+    if (kind === "wisdom") return { kind, spawn, at: ShrineFor(bot.GetTeam()), left: DotaTime(), host };
     if (kind === "contest") {
         const enemy = bot.GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
-        const at = Rotate.ShrineFor(enemy);
+        const at = ShrineFor(enemy);
         const towers = FR.TowerSpots(enemy);
         const here = bot.GetLocation();
         const path = PathVia(bot, at);

@@ -41,12 +41,12 @@ local function world(o)
 	OBSERVER = 1
 	SPAWNERS = { { team = 2, type = "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
-	H.Lane.Camps.ResetCache()
+	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
 	H.PullFarm.ResetCache()
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullFarm = o.farm ~= false
-	local data = H.Lane.Camps.ByIdx(1)
-	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
+	local data = require("bots/FunLib/humaniser/camps").ByIdx(1)
+	local stand = require("bots/FunLib/humaniser/camps").BoxEdgePoint(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
 	sup.lane, sup.pos = Lane.Bot, 5
 	getmetatable(sup).__index.GetNetWorth = function(self) return self.gold or 0 end

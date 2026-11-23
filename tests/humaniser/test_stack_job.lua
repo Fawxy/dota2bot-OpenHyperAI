@@ -45,7 +45,7 @@ local function world(o)
 		table.insert(SPAWNERS, { team = s[2], type = s[3], location = Vector(s[4], s[5], 0), min = Vector(s[4] - 150, s[5] - 150, 0),
 			max = Vector(s[4] + 150, s[5] + 150, 0), speed = 0 })
 	end
-	H.Lane.Camps.ResetCache()
+	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.StackJob.ResetCache()
 	local bot = MakeUnit({ pid = 5, team = 2, loc = o.at or SAFE_T1[RAD] })
 	bot.pos = o.pos or 5
@@ -106,8 +106,8 @@ end
 -- E1: geometry and timing per camp, both teams.
 do
 	local H = world()
-	local C, S = H.Lane.Camps, H.Lane.Stacking
-	local R = H.Lane.Config.Settings().Radii
+	local C, S = require("bots/FunLib/humaniser/camps"), require("bots/FunLib/humaniser/stacking")
+	local R = H.LaneConfig.Settings().Radii
 	for _, team in ipairs({ RAD, DIRE }) do
 		local cands = H.StackJob.Candidates(team)
 		check("candidates found for team " .. team, #cands >= 8, #cands)
@@ -136,7 +136,7 @@ end
 -- Hand-set walk-offs (user 30/10/2026): good_1 runs east along the bottom lane, evil_2 west along the top lane.
 do
 	local H = world()
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	for _, c in ipairs({ { "good_1", 1 }, { "evil_2", -1 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local data = C.ByIdx(sp.idx, sp.team)
@@ -148,7 +148,7 @@ do
 end
 do
 	local H = world()
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	local sp = C.SpawnerByIdx(idxOf("evil_1"))
 	local data = C.ByIdx(sp.idx, sp.team)
 	local exit = H.StackJob.ExitPath(sp, data)[1]
@@ -161,7 +161,7 @@ end
 -- north-west towards mid; south-west since 01/11/2026, where its stand sees the camp (visprobe1/2).
 do
 	local H = world()
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	local sp = C.SpawnerByIdx(idxOf("evil_13"))
 	local data = C.ByIdx(sp.idx, sp.team)
 	local exit = H.StackJob.ExitPath(sp, data)[1]
@@ -175,7 +175,7 @@ end
 -- north-east (vision probe test below) and walks off north, clear of evil_13's box.
 do
 	local H = world({})
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	local e7 = C.SpawnerByIdx(idxOf("evil_7"))
 	local ex = H.StackJob.ExitPath(e7, C.ByIdx(e7.idx, e7.team))[1]
 	check("evil_7: walk-off north, west of evil_13's box", ex.y > e7.location.y + 800 and ex.x < 8192, ex.x .. "," .. ex.y)
@@ -195,7 +195,7 @@ do
 	local Customize = package.loaded["bots/FunLib/custom_loader"]
 	Customize.Overrides = Customize.Overrides or {}
 	Customize.Overrides.ShrineLane = true
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	for _, c in ipairs({ { "good_13", 1 }, { "evil_7", -1 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local exit = H.StackJob.ExitPath(sp, C.ByIdx(sp.idx, sp.team))[1]
@@ -263,7 +263,7 @@ do
 	check("one line for the minute", #lines == 1, #lines)
 	check("stacked", field(l, "res") == "stacked", l)
 	check("camp good_1", tonumber(field(l, "camp")) == idxOf("good_1"), l)
-	local from, to = H.Lane.Stacking.Window(idxOf("good_1"))
+	local from, to = require("bots/FunLib/humaniser/stacking").Window(idxOf("good_1"))
 	local aggro = tonumber(field(l, "aggro"))
 	check("hit inside the window (1 s slack for the confirm)", aggro ~= nil and aggro >= from - 0.5 and aggro <= to + 1, l)
 	check("before 3, after 6", field(l, "before") == "3" and field(l, "after") == "6", l)
@@ -362,7 +362,7 @@ do
 	local lines = stackRun({ onFrame = function(H, bot)
 		if st == nil then
 			local sp = SPAWNERS[idxOf("good_1")]
-			st = H.StackJob.Stand(H.Lane.Camps.SpawnerByIdx(idxOf("good_1")), H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
+			st = H.StackJob.Stand(require("bots/FunLib/humaniser/camps").SpawnerByIdx(idxOf("good_1")), require("bots/FunLib/humaniser/camps").ByIdx(idxOf("good_1"), RAD))
 		end
 		if T < 3 * 60 + 52 and dist(bot.loc, st) < 300 then bot.loc = Vector(st.x, st.y + 300) end
 	end })
@@ -403,10 +403,10 @@ do
 		if endT == nil and l:find(" ev=job ", 1, true) and field(l, "phase") == "end" then endT = tonumber(l:match("t=(%S+)")) end
 		if l:find("ev=stack ", 1, true) then line = l end
 	end
-	local exitUntil = H.Lane.Config.Settings().Timing.StackExitUntil
+	local exitUntil = H.LaneConfig.Settings().Timing.StackExitUntil
 	check("job ends by :00 + StackExitUntil", endT ~= nil and endT <= 4 * 60 + exitUntil + 0.3, tostring(endT))
 	check("outcome read after the job: stacked, chk at or after StackOutcomeAt", field(line, "res") == "stacked"
-		and tonumber(field(line, "chk") or "") ~= nil and tonumber(field(line, "chk")) >= 60 + H.Lane.Config.Settings().Timing.StackOutcomeAt, line)
+		and tonumber(field(line, "chk") or "") ~= nil and tonumber(field(line, "chk")) >= 60 + H.LaneConfig.Settings().Timing.StackOutcomeAt, line)
 end
 
 -- The hero dies while its outcome is still read (box out of sight): the line is written at once as unseen, not at the
@@ -515,7 +515,7 @@ do
 		neutrals(SPAWNERS[idxOf("good_1")].location, 3)
 		local data, stand = H.StackJob.Nearest(RAD, SAFE_T1[RAD])
 		local walk = dist(bot.loc, stand) / bot:GetCurrentMovementSpeed()
-		local free = 3 * 60 + H.Lane.Stacking.AggroSec(data) - walk - slackOf(H)
+		local free = 3 * 60 + require("bots/FunLib/humaniser/stacking").AggroSec(data) - walk - slackOf(H)
 		local lines = stackLines(capture(function()
 			while T < 3 * 60 + 50 do
 				if T < free then bot.mode = dota.BotMode.Attack end
@@ -569,10 +569,10 @@ do
 	local function has(text, needle) return text:find(needle, 1, true) ~= nil end
 	local farm = source('bots/mode_farm_generic.lua')
 	local desire = farm:find('J.Humaniser.Chooser.FarmDesire(bot)', 1, true)
-	check('farm: stack desire before the camp-job desire', desire ~= nil and desire < farm:find('J.Humaniser.Lane.CampJobDesire(bot)', 1, true))
+	check('farm: stack desire before OHA\'s own', desire ~= nil and desire < farm:find('if not bInitDone', 1, true))
 	check('farm: stack desire returned when owned', has(farm, 'if nStackDesire > 0 then return nStackDesire end'))
 	local think = farm:find('J.Humaniser.Chooser.FarmThink(bot)', 1, true)
-	check('farm: stack Think first', think ~= nil and think < farm:find('J.Humaniser.Lane.CampJobThink(bot)', 1, true))
+	check('farm: stack Think first', think ~= nil and think < farm:find('J.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm")', 1, true))
 	check('farm: OHA run aborts the job', has(farm, 'J.Humaniser.Chooser.Abort(bot, "run")'))
 	-- A drill's benched hero or statue wins farm before OHA's run and defend-ping checks, and its Think comes first.
 	local bench = farm:find('if J.Humaniser.Chooser.Benched(bot) then return BOT_MODE_DESIRE_ABSOLUTE * 1.2 end', 1, true)
@@ -584,7 +584,7 @@ do
 	local _, items = usage:gsub('if J.Humaniser.Chooser.HoldsCasts%(bot, true%) then return end', '')
 	check('usage: spells and items held for the stack job and the bench', spells == 1 and items == 1, spells .. ' ' .. items)
 	-- OHA's creep clause in ShouldRun skips a running stack job (probe s4p4: 5 of 9 attempts cancelled after the hit).
-	check('farm: creep clause holds for the stack job', has(farm, "and not J.Humaniser.Lane.CampJobHoldsRetreat(bot)\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then\n"))
+	check('farm: creep clause holds for the stack job', has(farm, "and J.GetHP(botTarget) > J.GetHP(bot) - 0.15\n\tand not J.Humaniser.Chooser.HoldsRun(bot) then\n"))
 	-- A hero in our retreat skips every ShouldRun branch: the episode decides where it goes.
 	check('farm: a hero our retreat owns skips every ShouldRun branch', has(farm, 'shouldRunTime = J.Humaniser.Retreat.Owns(bot) and 0 or X.ShouldRun(bot);'))
 	-- A defend ping zeroes farm before the hook (probe s4p2: three `preempted:stalled`); the job ends with its reason.
@@ -605,7 +605,7 @@ end
 -- minute that stacks both camps.
 do
 	local H, bot = world({ double = true })
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	local function partner(name)
 		local sp = C.SpawnerByIdx(idxOf(name))
 		local p = H.StackJob.Partner(C.ByIdx(sp.idx, sp.team))
@@ -662,10 +662,10 @@ do
 	-- from A's origin towards B, a 550-range hero hits A there and fits; a melee one hits from 300 and does not.
 	do
 		local d = seen[RAD]["good_8>good_7"]
-		local a, b = H.Lane.Camps.SpawnerByIdx(d.a.campIdx).location, H.Lane.Camps.SpawnerByIdx(d.b.campIdx).location
+		local a, b = require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.a.campIdx).location, require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.b.campIdx).location
 		local ab = dist(a, b)
 		local near = { b = d.b, a = d.a, fsec = d.fsec, sec = d.sec, stand = Vector(a.x + (b.x - a.x) * 650 / ab, a.y + (b.y - a.y) * 650 / ab, 0) }
-		local half = (H.Lane.Camps.SpawnerByIdx(d.b.campIdx).max.x - H.Lane.Camps.SpawnerByIdx(d.b.campIdx).min.x) / 2
+		local half = (require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.b.campIdx).max.x - require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.b.campIdx).min.x) / 2
 		-- The speed at which a 550-range hero's walk from the stand takes the whole gap less the slack.
 		bot.speed = math.max(1, ab - 650 - 550 - half) / (d.sec - d.fsec - 0.5) + 1
 		bot.range = 550
@@ -684,7 +684,7 @@ do
 		bot.speed = nil
 	end
 	for k, d in pairs(seen[RAD]) do
-		local spa, spb = H.Lane.Camps.SpawnerByIdx(d.a.campIdx), H.Lane.Camps.SpawnerByIdx(d.b.campIdx)
+		local spa, spb = require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.a.campIdx), require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.b.campIdx)
 		check(k .. ": A's stand faces B", dist(d.stand, spb.location) < dist(spa.location, spb.location), k)
 		check(k .. ": A's hit by :54, before B's", d.fsec <= 54 and d.fsec < d.sec, k)
 	end
@@ -699,7 +699,7 @@ do
 	local H, bot = world({ t = 5 * 60 + 15, double = true, at = Vector(-6336, 1856), pos = 4 })
 	local d = H.StackJob.PairFor(RAD, 5)
 	check("pos4 minute 5: good_8 then good_7", MAP[d.a.campIdx][1] == "good_8" and MAP[d.b.campIdx][1] == "good_7")
-	local a, b = H.Lane.Camps.SpawnerByIdx(d.a.campIdx).location, H.Lane.Camps.SpawnerByIdx(d.b.campIdx).location
+	local a, b = require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.a.campIdx).location, require("bots/FunLib/humaniser/camps").SpawnerByIdx(d.b.campIdx).location
 	MakeNeutral({ x = a.x, y = a.y }) MakeNeutral({ x = a.x + 20, y = a.y })
 	neutrals(b, 3)
 	local lines = stackLines(capture(function()
@@ -767,10 +767,10 @@ do
 	-- Nothing walks the hero to camp A after the job: from B's walk-off A is out of StackSight, so its outcome is unseen.
 	check("double: B stacked, A unseen from B's walk-off", field(l, "res") == "stacked" and field(l, "fres") == "unseen" and field(l, "fseen") == "0", l)
 	-- The core camp's price and the camp cap read `Stacking.StackCount`: a landed hit counts, seen or not.
-	check("double: both camps on the stack record, the unseen A assumed", field(l, "scount") == "1" and field(l, "fscount") == "1" and H.Lane.Stacking.StackCount(idxOf("good_2")) == 1 and H.Lane.Stacking.StackCount(idxOf("good_1")) == 1, l)
+	check("double: both camps on the stack record, the unseen A assumed", field(l, "scount") == "1" and field(l, "fscount") == "1" and require("bots/FunLib/humaniser/stacking").StackCount(idxOf("good_2")) == 1 and require("bots/FunLib/humaniser/stacking").StackCount(idxOf("good_1")) == 1, l)
 	local fag, ag = tonumber(field(l, "faggro")), tonumber(field(l, "aggro"))
 	check("double: A hit before B", fag ~= nil and ag ~= nil and fag < ag, l)
-	local pd = H.StackJob.Partner(H.Lane.Camps.ByIdx(idxOf("good_1"), RAD))
+	local pd = H.StackJob.Partner(require("bots/FunLib/humaniser/camps").ByIdx(idxOf("good_1"), RAD))
 	check("double: A hit within 1 s of its second, B within -1 to +1.5 s of its own (the confirm)", math.abs(fag - pd.fsec) <= 1 and ag >= pd.sec - 1 and ag <= pd.sec + 1.5, l)
 	check("double: A before 2, B before 3", field(l, "fbefore") == "2" and field(l, "before") == "3", l)
 	-- trk/ftrk (user replay review of shsolo4b): each pulled neutral's furthest distance and the second it gave up.
@@ -945,7 +945,7 @@ end
 -- Sweep (01/11/2026): good_15's single stack hits 1 s before Valve's window middle, good_13's 0.5 s (dsvA); others unchanged.
 do
 	local H = world()
-	local C, S = H.Lane.Camps, H.Lane.Stacking
+	local C, S = require("bots/FunLib/humaniser/camps"), require("bots/FunLib/humaniser/stacking")
 	for _, c in ipairs({ { "good_15", RAD, 1 }, { "good_13", RAD, 0.5 }, { "evil_7", DIRE, 0 }, { "evil_4", DIRE, 0 }, { "evil_5", DIRE, 0 }, { "good_9", RAD, 0 }, { "good_1", RAD, 0 }, { "evil_6", DIRE, 0 } }) do
 		local d = C.ByIdx(idxOf(c[1]), c[2])
 		check(c[1] .. ": single hit " .. c[3] .. " s before the window middle", math.abs(S.AggroSec(d) - H.StackJob.SingleSec(d) - c[3]) < 1e-6, H.StackJob.SingleSec(d))
@@ -984,7 +984,7 @@ end
 -- Vision probe (visprobe1, 01/11/2026): five camps stand on a side that sees their neutrals, and walk off that way.
 do
 	local H = world()
-	local C = H.Lane.Camps
+	local C = require("bots/FunLib/humaniser/camps")
 	for _, c in ipairs({ { "good_5", RAD, 0, -1 }, { "good_9", RAD, 1, 0 }, { "evil_4", DIRE, -1, 0 }, { "evil_5", DIRE, 0.71, 0.71 }, { "evil_7", DIRE, 0.71, 0.71 } }) do
 		local sp = C.SpawnerByIdx(idxOf(c[1]))
 		local stand = H.StackJob.Stand(sp, C.ByIdx(idxOf(c[1]), c[2]))

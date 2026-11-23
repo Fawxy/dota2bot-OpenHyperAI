@@ -24,6 +24,7 @@ local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_st
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
+local DesireLog = require(GetScriptDirectory().."/FunLib/humaniser/desire_log")
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -351,6 +352,7 @@ function ____exports.Gate(bot, mode, inner)
             return v
         end
         local d = inner()
+        DesireLog.Note(bot, mode, d)
         if shadow then
             ChoiceShadow.Note(
                 bot,

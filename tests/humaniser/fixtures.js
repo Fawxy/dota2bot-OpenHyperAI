@@ -18,10 +18,6 @@ const STATUSES = ['active', 'quarantined', 'retired'];
 // Each driver's action verbs (tests/fixtures/README.md). A term with another verb is a schema error, so a misspelled
 // verb in mustNot cannot pass by never matching.
 const VERBS = {
-    laning_mode: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
-    team_roam: ['lastHit', 'deny', 'hold', 'move', 'attempt'],
-    retreat_desire: [],
-    core_trip: ['noTrip', 'trip'],
     retreat_leave: ['leave', 'stay'],
     threat_gate: ['go', 'hold'],
 };

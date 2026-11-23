@@ -3,21 +3,16 @@
  *
  * The bundle is required lazily under pcall, only once the humaniser and Tasks.Enable are on: a static require
  * would let a bundle that fails to load in Dota's VM break the whole humaniser module, even with Enable = false.
- * Claims go through Intent without `until`, so ClaimTTL applies and a task that stops stepping loses its claim.
+ * No task of ours posts a claim: the jobs hold their host mode through the chooser.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
-import * as Intent from "bots/FunLib/humaniser/intent";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
-import * as AllyLastHit from "bots/FunLib/humaniser/ally_last_hit";
-import * as Difficulty from "bots/FunLib/humaniser/difficulty";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
-import * as LastHitSkill from "bots/FunLib/humaniser/last_hit_skill";
 import * as Ours from "bots/FunLib/humaniser/ours";
-import * as Profile from "bots/FunLib/humaniser/profile";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as Utils from "bots/FunLib/utils";
 
@@ -35,12 +30,25 @@ function oursOn(): boolean {
     return Ours.On("StackExecute") || Ours.On("RuneRotation") || Ours.On("SupportPull");
 }
 
+/** A core counts as able to take a creep this far past its attack range (`judgement`). */
+const CORE_REACH_BUFFER = 150;
+/** ... or when its position this far ahead (s) is nearer the creep by more than the epsilon (it is walking to it). */
+const APPROACH_LOOKAHEAD = 0.5;
+const APPROACH_EPSILON = 25;
+
+function coreCanReach(core: Unit, creep: Unit): boolean {
+    const dist = GetUnitToUnitDistance(core, creep);
+    if (dist <= core.GetAttackRange() + CORE_REACH_BUFFER) return true;
+    const ahead = GetUnitToLocationDistance(creep, (core as Unit & { GetExtrapolatedLocation(seconds: number): Vector }).GetExtrapolatedLocation(APPROACH_LOOKAHEAD));
+    return ahead < dist - APPROACH_EPSILON;
+}
+
 /** An allied core (position 1-3, not the bot) within 1600 that can take the creep itself. */
 function CoreCanTake(bot: Unit, creep: Unit, allies: Unit[]): boolean {
     for (const ally of allies) {
         if (ally !== bot && ally.IsAlive()) {
             const pos = LaneConfig.PositionOf(ally);
-            if (pos !== undefined && pos <= 3 && AllyLastHit.CoreCanReach(ally, creep)) return true;
+            if (pos !== undefined && pos <= 3 && coreCanReach(ally, creep)) return true;
         }
     }
     return false;
@@ -55,27 +63,20 @@ interface FilterFrame {
 const filterCache: Record<number, FilterFrame | undefined> = {};
 
 function mayTake(bot: Unit, creep: Unit, f: FilterFrame): boolean {
-    const [allowed, reason] = AllyLastHit.MayLastHit(bot, creep);
-    if (!allowed) return false;
-    // mode_laning_generic's CanTakeLastHit: past etiquette, a non-mid/safe bot leaves the creep to a core.
-    if (string.sub(reason, 1, 5) === "take:") return true;
+    if (creep === undefined || creep === null || creep.IsNull()) return false;
+    // A bot outside positions 1 and 2 leaves the creep to a core that can take it.
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined || pos <= 2) return true;
     if (f.allies === undefined) f.allies = bot.GetNearbyHeroes(1600, false, BotMode.None);
     return !CoreCanTake(bot, creep, f.allies);
 }
 
+/** Skill 1 (the adapter gives no `skill`, which the engine reads as 1): no reaction delay, jitter, aim error or lapse. */
+const SKILL_ONE = { react: 0, jitter: 0, aimError: 0, lapse: 0 };
+
 const adapter: Lib.Adapter = {
-    claim: (bot, c) =>
-        Intent.Claim(bot as unknown as Unit, {
-            source: c.source,
-            tier: c.tier as Intent.Tier,
-            mode: c.mode as BotMode,
-            floor: c.floor,
-            unsticks: c.urgent === true ? true : undefined,
-        }),
-    release: (bot, source, mode) => Intent.Release(bot as unknown as Unit, source, mode as BotMode),
-    hold: (bot, tag) => Intent.Hold(bot as unknown as Unit, tag),
+    claim: () => undefined,
+    release: () => undefined,
     lastHitFilter: (bot, creep) => {
         // laneTargets asks for every creep every frame; one answer per bot, creep and frame.
         const pid = bot.GetPlayerID();
@@ -96,12 +97,8 @@ const adapter: Lib.Adapter = {
         by.set(creep, allowed);
         return allowed;
     },
-    skill: bot => Difficulty.GetSkill(bot as unknown as Unit),
-    profile: bot => {
-        const p = Profile.Get(bot as unknown as Unit);
-        return { react: p.reactBase, jitter: p.jitter, aimError: p.aimError, lapse: p.lapseChance };
-    },
-    lastHitError: bot => LastHitSkill.ErrorWidth(bot as unknown as Unit),
+    profile: () => SKILL_ONE,
+    lastHitError: () => 0,
     random: () => RandomFloat(0, 1),
     // GetLastAttackTime is on the GameTime clock.
     attackClock: () => GameTime(),

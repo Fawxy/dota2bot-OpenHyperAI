@@ -11,23 +11,6 @@ end
 
 local Utils = require( GetScriptDirectory()..'/FunLib/utils')
 
--- Humaniser perception (task 03). Required on first use so these overrides have no load-order
--- dependency on the humaniser modules; every hook passes straight through when perception is off.
-local HPerception = nil
-local function Perception()
-	if HPerception == nil then HPerception = require( GetScriptDirectory()..'/FunLib/humaniser/perception' ) end
-	return HPerception
-end
-
-local orig_GetUnitList = GetUnitList
-function GetUnitList(nType)
-	local units = orig_GetUnitList(nType)
-	if units ~= nil and (nType == UNIT_LIST_ENEMY_HEROES or nType == UNIT_LIST_ENEMIES) then
-		return Perception().FilterUnitList(units, nType == UNIT_LIST_ENEMIES)
-	end
-	return units
-end
-
 -- Override this func for the script to use
 local orig_GetTeamPlayers = GetTeamPlayers
 local direTeamPlaters = nil
@@ -231,9 +214,6 @@ function CDOTA_Bot_Script:IsChanneling()
 		-- print("Stack Trace:", debug.traceback())
 		return false
 	end
-	if self:GetTeam() ~= GetTeam() then
-		return Perception().FilterChanneling(self, originalIsChanneling(self))
-	end
     return originalIsChanneling(self)
 end
 
@@ -254,11 +234,7 @@ function CDOTA_Bot_Script:GetNearbyHeroes(nRadius, bEnemies, nMode)
 		-- print("Stack Trace:", debug.traceback())
 		return nil
 	end
-    local heroes = originalGetNearbyHeroes(self, math.min(nRadius, 1600), bEnemies, nMode)
-	if bEnemies and heroes ~= nil then
-		return Perception().FilterNearbyEnemies(self, heroes)
-	end
-    return heroes
+    return originalGetNearbyHeroes(self, math.min(nRadius, 1600), bEnemies, nMode)
 end
 
 local originalIsMagicImmune = CDOTA_Bot_Script.IsMagicImmune

@@ -8,7 +8,7 @@
  * Tick step (`Tick`), independent of telemetry; `FromRead` and `At` only read it.
  */
 import { DamageType, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
-import * as LaneState from "bots/FunLib/humaniser/lane_state";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Safe from "bots/FunLib/humaniser/safe";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
@@ -268,7 +268,7 @@ function creepHitsOf(tw: TowerFact): number {
     if (tw.creepHits !== undefined) return tw.creepHits;
     let hits = 0;
     for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {
-        if (c === null || c.IsNull() || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        if (c === null || c.IsNull() || !c.IsAlive() || !LaneConfig.IsLaneCreepName(c.GetUnitName())) continue;
         if (dist(c.GetLocation(), tw.at) > tw.reach + c.GetBoundingRadius()) continue;
         hits += math.ceil(c.GetHealth() / math.max(1, c.GetActualIncomingDamage(tw.dmg, DamageType.Physical)));
     }

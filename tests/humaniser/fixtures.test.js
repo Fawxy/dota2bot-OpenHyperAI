@@ -31,7 +31,7 @@ test('judge: a failed must and a held mustNot are both reported; an unobserved v
 });
 
 test('validate: required fields, source, status, retired reason, control shape', () => {
-    const ok = { id: 'a', source: 'log', ref: {}, status: 'active', decision: 'laning_mode', world: {}, expect: { must: ['hold'] } };
+    const ok = { id: 'a', source: 'log', ref: {}, status: 'active', decision: 'threat_gate', world: {}, expect: { must: ['hold'] } };
     assert.deepStrictEqual(validate(ok), []);
     assert.ok(validate({ ...ok, source: 'hunch' }).some(p => /source/.test(p)));
     assert.ok(validate({ ...ok, status: 'retired' }).some(p => /reason/.test(p)));
@@ -53,10 +53,10 @@ test('toLua: tables keep string keys, arrays stay arrays', () => {
 });
 
 test('validate: action verbs must be the driver\'s, and a skill range two ordered numbers in 0-1', () => {
-    const ok = { id: 'a', source: 'log', ref: {}, status: 'active', decision: 'laning_mode', world: {}, expect: { mustNot: ['deny(creep#2)'] } };
+    const ok = { id: 'a', source: 'log', ref: {}, status: 'active', decision: 'threat_gate', world: {}, expect: { mustNot: ['hold(kill)'] } };
     assert.deepStrictEqual(validate(ok), []);
-    assert.ok(validate({ ...ok, expect: { mustNot: ['deyn(creep#2)'] } }).some(p => /verb deyn/.test(p)));
-    assert.deepStrictEqual(validate({ ...ok, expect: { must: ['desire.laning >= 0.9'] } }), []);
+    assert.ok(validate({ ...ok, expect: { mustNot: ['hlod(kill)'] } }).some(p => /verb hlod/.test(p)));
+    assert.deepStrictEqual(validate({ ...ok, expect: { must: ['fact.reach >= 0.9'] } }), []);
     assert.ok(validate({ ...ok, conditions: { skill: [1, 0.2] } }).some(p => /skill/.test(p)));
     assert.ok(validate({ ...ok, conditions: { skill: [0.2] } }).some(p => /skill/.test(p)));
 });

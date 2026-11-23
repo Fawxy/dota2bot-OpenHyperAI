@@ -89,26 +89,7 @@ function LaningLoad(opts)
 	}
 	package.loaded["bots/FunLib/humaniser/states/lane_table"] = nil
 	local LaneTable = require("bots/FunLib/humaniser/states/lane_table")
-	local attempts = {}
 	local humaniser = {
-		AllyLastHit = {
-			OwnsLaning = function() return opts.etiquette == true or opts.humanTeam == true end,
-			MayLastHit = function() return true, "free:test" end,
-			Settings = function() return {} end,
-			CoreCanReach = function(core, c) return dist(core:GetLocation(), c:GetLocation()) <= core:GetAttackRange() + 150 end,
-		},
-		Lane = {
-			CampJobActive = function() return false end,
-		},
-		Trainer = { IsSelfTestBot = function() return false end },
-		LastHitSkill = {
-			NoteLaningOwner = function() end,
-			IsActiveFor = function() return false end,
-			WillKill = function(_, c, dmg) return c:GetHealth() <= dmg end,
-			Choose = function(_, list) return list[1] end,
-			NoteAttempt = function(_, c) table.insert(attempts, c) end,
-		},
-		Intent = { Resolve = function(_, _, d) return d end },
 		-- bot.step: the step name the last Think reported (ev=snap step=).
 		Telemetry = { NoteLaneThink = function() end, NoteLaneStep = function(_, s) bot.step = s end },
 		-- Slice lane-last-hits: opts.laneOnly makes the bot lane-only, as a drill does (humaniser/drill.ts); the bot is required.
@@ -123,7 +104,7 @@ function LaningLoad(opts)
 				return LaneTable.Walk(b, {
 					enabled = function() return true end,
 					ohaLastHit = cb.ohaLastHit, ohaDeny = cb.ohaDeny,
-					ohaHold = cb.ohaHold, ohaLocal = cb.ohaLocal, ohaPosition = cb.ohaPosition,
+					ohaLocal = cb.ohaLocal, ohaPosition = cb.ohaPosition,
 				})
 			end,
 		},
@@ -136,6 +117,7 @@ function LaningLoad(opts)
 		IsValidHero = function(u) return u ~= nil end,
 		CanBeAttacked = function() return true end,
 		GetAttackProDelayTime = function() return 0 end,
+		WillKillTarget = function(c, dmg) return c:GetHealth() <= dmg end,
 		IsCore = function(u) return u.pos ~= nil and u.pos <= 3 end,
 		GetNearbyHeroes = function(u, r, enemy) return u:GetNearbyHeroes(r, enemy) end,
 		IsThereNonSelfCoreNearby = function(r)
@@ -169,6 +151,6 @@ function LaningLoad(opts)
 	dofile = realDofile
 	if not ok then error(err, 0) end
 	PickOneAnnouncer, AnnounceMessages = function() end, function() end
-	return bot, attempts
+	return bot
 end
 

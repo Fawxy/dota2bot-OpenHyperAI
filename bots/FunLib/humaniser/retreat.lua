@@ -226,8 +226,6 @@ local Threat = require(GetScriptDirectory().."/FunLib/humaniser/threat")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
-local Lane_ = require(GetScriptDirectory().."/FunLib/humaniser/lane")
-local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Cut = require(GetScriptDirectory().."/FunLib/humaniser/cut")
@@ -390,7 +388,7 @@ local function purposeOf(bot)
     if job == "rune" then
         return "committed"
     end
-    if job ~= nil or Lane_.CampJobDesire(bot) > 0 then
+    if job ~= nil then
         return "busy"
     end
     local target = bot:GetAttackTarget()
@@ -696,8 +694,6 @@ local function start(bot, st, why, r, a, purp, spot, rep)
     RetreatState.SetRunning(bot, true)
     RetreatState.SetHealing(bot, why == "heal")
     Chooser.Abort(bot, "retreat")
-    Lane_.CampJobAbort(bot, "retreat")
-    FarmPattern.Abort(bot, "retreat")
     local here = bot:GetLocation()
     local ____Telemetry_Event_8 = Telemetry.Event
     local ____array_7 = __TS__SparseArrayNew(

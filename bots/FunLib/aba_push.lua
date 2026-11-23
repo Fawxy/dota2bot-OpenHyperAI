@@ -46,9 +46,6 @@ local getCachedAlliesNearLoc = ____global_cache.getCachedAlliesNearLoc
 local getCachedEnemiesNearLoc = ____global_cache.getCachedEnemiesNearLoc
 local autoCleanupCache = ____global_cache.autoCleanupCache
 local getCachedData = ____global_cache.getCachedData
-local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
-local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
-local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
 function updateGameStateCache()
     local now = DotaTime()
     if gameStateCache and now - gameStateCache.lastUpdate < PUSH_CACHE_TTL then
@@ -158,12 +155,6 @@ function ____exports.GetPushDesireHelper(bot, lane)
     if enemiesAtAncient >= 1 then
         return BotModeDesire.ExtraLow
     end
-    local pushMode = lane == Lane.Top and BotMode.PushTowerTop or (lane == Lane.Bot and BotMode.PushTowerBot or BotMode.PushTowerMid)
-    local orderFloor = Orders.DesireFloor(bot, pushMode, lane)
-    if orderFloor > 0 then
-        bot.laneToPush = lane
-        return orderFloor
-    end
     if #alliesHere <= 1 and gameState.aliveEnemyCount >= 3 then
         return BotModeDesire.None
     end
@@ -224,7 +215,7 @@ function ____exports.GetPushDesireHelper(bot, lane)
         nMaxDesire = 0.75
     end
     local human, humanPing = jmz.GetHumanPing()
-    if not Pings.IsActive() and human ~= nil and humanPing ~= nil and not humanPing.normal_ping and DotaTime() > 0 then
+    if human ~= nil and humanPing ~= nil and not humanPing.normal_ping and DotaTime() > 0 then
         local isPinged, pingedLane = jmz.IsPingCloseToValidTower(
             GetOpposingTeam(),
             humanPing,
@@ -622,12 +613,7 @@ function ____exports.GetPushDesire(bot, lane)
     if bot:GetLevel() < 3 then
         return BotModeDesire.None
     end
-    local mode = lane == Lane.Top and BotMode.PushTowerTop or (lane == Lane.Bot and BotMode.PushTowerBot or BotMode.PushTowerMid)
-    local res = Intent.Resolve(
-        bot,
-        mode,
-        ____exports.GetPushDesireHelper(bot, lane)
-    )
+    local res = ____exports.GetPushDesireHelper(bot, lane)
     bot.pushDesire = res
     return res
 end
@@ -828,24 +814,24 @@ function ____exports.PushThink(bot, lane)
     local towerDistanceToFountain = bTowerNearby and GetUnitToLocationDistance(nEnemyTowers[1], vTeamFountain) or 0
     for ____, creep in ipairs(nCreeps) do
         do
-            local __continue121
+            local __continue120
             repeat
                 if not jmz.IsValid(creep) or not jmz.CanBeAttacked(creep) then
-                    __continue121 = true
+                    __continue120 = true
                     break
                 end
                 if jmz.IsTormentor(creep) or jmz.IsRoshan(creep) then
-                    __continue121 = true
+                    __continue120 = true
                     break
                 end
                 if bTowerNearby and GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain then
-                    __continue121 = true
+                    __continue120 = true
                     break
                 end
                 bot:Action_AttackUnit(creep, true)
                 return
             until true
-            if not __continue121 then
+            if not __continue120 then
                 break
             end
         end

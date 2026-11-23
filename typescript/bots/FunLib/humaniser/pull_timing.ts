@@ -8,7 +8,6 @@ import { Lane, Team, UnitType, Vector } from "bots/ts_libs/dota";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Camps from "bots/FunLib/humaniser/camps";
-import * as LaneState from "bots/FunLib/humaniser/lane_state";
 
 export type TimingSource = "wave" | "live" | "seed";
 
@@ -192,7 +191,7 @@ export function LiveRead(timing: PullTiming, aggroAt: number, now: number): Live
     let n = 0;
     const kind = timing.team === undefined || timing.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
     for (const c of GetUnitList(kind) ?? []) {
-        if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        if (c === null || c === undefined || !c.IsAlive() || !LaneConfig.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
         if (off > cfg.LiveMaxOffset || math.abs(along - expected) > window) continue;
         if (front === undefined || along > front) front = along;
@@ -219,7 +218,7 @@ export function WaveAlongs(timing: PullTiming, aggroAt: number, now: number): nu
     const window = cfg.LiveWindow * v;
     const kind = timing.team === undefined || timing.team === GetTeam() ? UnitType.AlliedCreeps : UnitType.EnemyCreeps;
     for (const c of GetUnitList(kind) ?? []) {
-        if (c === null || c === undefined || !c.IsAlive() || !LaneState.IsLaneCreepName(c.GetUnitName())) continue;
+        if (c === null || c === undefined || !c.IsAlive() || !LaneConfig.IsLaneCreepName(c.GetUnitName())) continue;
         const [along, off] = Along(timing.lanePath, c.GetLocation());
         if (off <= cfg.LiveMaxOffset && math.abs(along - expected) <= window) out.push(along);
     }

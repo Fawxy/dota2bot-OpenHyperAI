@@ -209,7 +209,7 @@ local DamageType = ____dota.DamageType
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
-local LaneState = require(GetScriptDirectory().."/FunLib/humaniser/lane_state")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Safe = require(GetScriptDirectory().."/FunLib/humaniser/safe")
 local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
@@ -407,7 +407,7 @@ function creepHitsOf(tw)
         do
             local __continue51
             repeat
-                if c == nil or c:IsNull() or not c:IsAlive() or not LaneState.IsLaneCreepName(c:GetUnitName()) then
+                if c == nil or c:IsNull() or not c:IsAlive() or not LaneConfig.IsLaneCreepName(c:GetUnitName()) then
                     __continue51 = true
                     break
                 end

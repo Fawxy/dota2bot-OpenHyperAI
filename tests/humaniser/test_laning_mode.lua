@@ -42,77 +42,14 @@ do
 end
 
 do
-	-- 60 HP against 50 damage: within 1.7x, so a move-to creep; it is in range (100 < 150 * 0.8).
-	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
-	local allyCreep = creep({ hp = 40, loc = Vector(-100, 0) })
-	allyCreep.GetHealth = function() return 40 end
-	local bot, attempts = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { enemyCreep }, allyCreeps = { allyCreep } })
-	GetDesire()
-	Think()
-	local a = last(bot)
-	check("nearly killable in range: the deny goes through instead of an early swing", a ~= nil and a.name == "AttackUnit" and a.args[1] == allyCreep, a and a.name)
-	local attempted = false
-	for _, c in ipairs(attempts) do if c == enemyCreep then attempted = true end end
-	check("no attempt is counted on the nearly-killable creep", not attempted, #attempts)
-	enemyCreep.hp = 45
-	GetDesire()
-	Think()
-	a = last(bot)
-	check("killable on the next frame: it is attacked", a ~= nil and a.name == "AttackUnit" and a.args[1] == enemyCreep, a and a.name)
-end
-
-do
-	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
-	local bot = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { enemyCreep } })
-	GetDesire()
-	Think()
-	local a = last(bot)
-	check("nearly killable in range, nothing to deny: the bot holds, no attack", a ~= nil and a.name == "MoveToLocation" and #bot.actions == 1, a and a.name)
-end
-
-do
-	-- A bot support (pos 5) at x=0; a bot core 800 away at x=800 but within its range + 150 of a creep at x=700.
-	local c = creep({ hp = 40, loc = Vector(100, 0) })
-	local core = hero({ pos = 1, pid = 2, loc = Vector(800, 0), range = 600 })
-	local bot = load({ pos = 5, owned = true, humanTeam = true, enemyCreeps = { c }, allies = { core } })
-	GetDesire()
-	Think()
-	local hit = false
-	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == c then hit = true end end
-	check("support leaves a creep its core 800 away can reach", not hit)
-	core.loc = Vector(1500, 0)
-	bot.actions = {}
-	GetDesire()
-	Think()
-	hit = false
-	for _, a in ipairs(bot.actions) do if a.name == "AttackUnit" and a.args[1] == c then hit = true end end
-	check("support takes a creep its core cannot reach", hit)
-end
-
-do
-	-- Final review fix: the hold is capped. A creep nobody is hitting never turns killable; after HoldMax the bot swings.
-	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
-	local bot = load({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { enemyCreep } })
-	GetDesire()
-	Think()
-	check("hold: the first frame holds", last(bot).name == "MoveToLocation")
-	DotaTime = function() return 121.6 end
-	GameTime = DotaTime
-	GetDesire()
-	Think()
-	local a = last(bot)
-	check("hold: past HoldMax the bot swings at the creep", a.name == "AttackUnit" and a.args[1] == enemyCreep, a.name)
-end
-
-do
-	-- Final review fix: with the humaniser off, upstream's own owned case (pos 1 with a human pos 5) keeps upstream's
-	-- early swing and its 700-radius core check.
+	-- 60 HP against 50 damage: within 1.7x, so a move-to creep; it is in range (100 < 150 * 0.8). OHA's own owned case
+	-- (pos 1 with a human pos 5) swings early, as upstream does.
 	local enemyCreep = creep({ hp = 60, loc = Vector(100, 0) })
 	local bot = load({ pos = 1, owned = false, humanPos5 = true, enemyCreeps = { enemyCreep } })
 	GetDesire()
 	Think()
 	local a = last(bot)
-	check("humaniser off: upstream's early swing is kept", a ~= nil and a.name == "AttackUnit" and a.args[1] == enemyCreep, a and a.name)
+	check("OHA's owned case: upstream's early swing", a ~= nil and a.name == "AttackUnit" and a.args[1] == enemyCreep, a and a.name)
 end
 
 -- Slice step-telemetry: the step Think reports is the one whose order ended the frame (ev=snap step=).
@@ -124,11 +61,10 @@ do
 		return bot.step, bot
 	end
 	local killable = creep({ hp = 40, loc = Vector(100, 0) })
-	local nearly = creep({ hp = 60, loc = Vector(100, 0) })
 	local own = creep({ hp = 40, loc = Vector(-100, 0) })
 	check("step: OHA's last hit", stepOf({ pos = 1, owned = true, enemyCreeps = { killable } }) == "oha_lh")
-	check("step: OHA's deny while the enemy creep is not killable yet", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly }, allyCreeps = { own } }) == "oha_deny")
-	check("step: OHA's hold for the hit", stepOf({ pos = 1, owned = true, humanTeam = true, enemyCreeps = { nearly } }) == "oha_hold")
+	check("step: OHA's deny with no enemy creep to hit", stepOf({ pos = 1, owned = true, allyCreeps = { own } }) == "oha_deny")
+	check("step: sustain's walk before OHA's steps", stepOf({ pos = 1, owned = true, sustainWalk = true, enemyCreeps = { killable } }) == "sustain")
 	check("step: nothing to hit, OHA's position", stepOf({ pos = 1, owned = true }) == "oha_pos")
 	check("step: lane-only, nothing to hit, OHA's position", stepOf({ pos = 3, owned = true, laneOnly = true, enemyCreeps = { creep({ hp = 400, loc = Vector(100, 0) }) } }) == "oha_pos")
 end

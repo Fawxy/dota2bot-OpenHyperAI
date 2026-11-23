@@ -12,7 +12,6 @@ import { Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampClear from "bots/FunLib/humaniser/camp_clear";
-import * as CampJobs from "bots/FunLib/humaniser/camp_jobs";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -646,7 +645,7 @@ function campFor(bot: Unit, sp: Camps.Spawner, stand: Vector, others?: () => Uni
         origin: sp.location as unknown as Lib.Vec,
         margin: r.BoxMargin,
         search: r.NeutralSearch,
-        confirmed: () => CampJobs.Exec.NeutralTargets(bot),
+        confirmed: () => Stacking.NeutralTargets(bot),
         approach: approach as unknown as Lib.Vec,
     };
     if (pile !== undefined) {
@@ -715,7 +714,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
         },
         onAggro: info => {
             if (f !== undefined && f.aggro === undefined) {
-                f.before = CampJobs.Exec.NeutralsInBox(bot, f.campIdx);
+                f.before = Stacking.NeutralsInBox(bot, f.campIdx);
                 f.aggro = info.confirmedAt - start;
                 f.hitd = math.floor(GetUnitToLocationDistance(bot, fsp!.location));
                 f.units = campNeutrals(bot, f.campIdx, info.target as unknown as Unit | undefined);
@@ -723,7 +722,7 @@ export function Plan(bot: Unit, data: Camps.CampJobData, stand: Vector, minute: 
             }
             a.target = info.target as unknown as Unit | undefined;
             a.campUnits = campNeutrals(bot, data.campIdx, a.target, a);
-            a.before = f === undefined ? CampJobs.Exec.NeutralsInBox(bot, data.campIdx) : a.campUnits.length;
+            a.before = f === undefined ? Stacking.NeutralsInBox(bot, data.campIdx) : a.campUnits.length;
             a.aggro = info.confirmedAt - start;
             a.hitd = math.floor(GetUnitToLocationDistance(bot, sp.location));
         },
@@ -758,14 +757,14 @@ function readOutcome(bot: Unit): void {
     const now = DotaTime();
     const f = a.first !== undefined && a.first.aggro !== undefined ? a.first : undefined;
     if (bot.IsAlive()) {
-        if (f !== undefined && f.seen === undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) f.seen = 1;
+        if (f !== undefined && f.seen === undefined && Stacking.BoxInSight(bot, f.campIdx)) f.seen = 1;
         if (now >= a.minute * 60 + 60 + LaneConfig.Settings().Timing.StackOutcomeAt) {
-            if (CampJobs.Exec.BoxInSight(bot, a.campIdx)) {
+            if (Stacking.BoxInSight(bot, a.campIdx)) {
                 a.chk = a.chk ?? sec(a);
-                a.after = math.max(a.after ?? 0, CampJobs.Exec.NeutralsInBox(bot, a.campIdx));
+                a.after = math.max(a.after ?? 0, Stacking.NeutralsInBox(bot, a.campIdx));
                 a.fresh = math.max(a.fresh ?? 0, freshInBox(bot, a, a.campIdx));
             }
-            if (f !== undefined && CampJobs.Exec.BoxInSight(bot, f.campIdx)) {
+            if (f !== undefined && Stacking.BoxInSight(bot, f.campIdx)) {
                 f.chk = f.chk ?? sec(a);
                 f.fresh = math.max(f.fresh ?? 0, freshInBox(bot, a, f.campIdx));
             }
@@ -953,7 +952,7 @@ function look(bot: Unit, a: Attempt): void {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen()) near++;
     }
     a.near = near;
-    a.inbox = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
+    a.inbox = Stacking.NeutralsInBox(bot, a.campIdx);
     a.dist = math.floor(GetUnitToLocationDistance(bot, sp.location));
     a.vis = IsLocationVisible(sp.location) ? 1 : 0;
 }
@@ -996,7 +995,7 @@ function firstRes(f: FirstCamp): string {
  * fog, so a stack out of sight is known only from the landed hit). `not_stacked` and `failed` leave an earlier record.
  */
 function recordOutcome(campIdx: number, minute: number, res: string): void {
-    if (res === "stacked" || res === "unseen") Stacking.NoteStackOutcome(campIdx, minute, undefined, true);
+    if (res === "stacked" || res === "unseen") Stacking.NoteStackOutcome(campIdx, minute, true);
 }
 
 /** The start gates (`Wants`' `blocked`) an end can name: `cancelled:hit`, `interrupted:threat`, `interrupted:hp`... */
@@ -1361,7 +1360,7 @@ function sample59(bot: Unit, a: Attempt): void {
         if (f.n2 === undefined && DotaTime() >= a.minute * 60 + f.aggro + 2) f.n2 = describe(bot, f.units, f.campIdx);
         if (f.n59 === undefined && DotaTime() >= a.minute * 60 + 59.5) {
             f.n59 = describe(bot, f.units, f.campIdx);
-            f.box59 = CampJobs.Exec.NeutralsInBox(bot, f.campIdx);
+            f.box59 = Stacking.NeutralsInBox(bot, f.campIdx);
         }
     }
     if (a.tgt2 === undefined && a.aggro !== undefined && DotaTime() >= a.minute * 60 + a.aggro + 2) {
@@ -1377,7 +1376,7 @@ function sample59(bot: Unit, a: Attempt): void {
     for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.NeutralSearch, false) ?? []) {
         if (c !== null && c !== undefined && c.IsAlive() && c.CanBeSeen() && !Camps.InBox(a.campIdx, c.GetLocation(), margin)) pulled++;
     }
-    a.box59 = CampJobs.Exec.NeutralsInBox(bot, a.campIdx);
+    a.box59 = Stacking.NeutralsInBox(bot, a.campIdx);
     a.tgt59 = targetDist(a) ?? -1;
     let strict = 0;
     for (const c of bot.GetNearbyNeutralCreeps(LaneConfig.Settings().Radii.StackCountScan, false) ?? []) {

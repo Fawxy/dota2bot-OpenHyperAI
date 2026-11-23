@@ -1,28 +1,15 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
-local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
-local GameState = ____dota.GameState
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
-local Difficulty = require(GetScriptDirectory().."/FunLib/humaniser/difficulty")
-local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
-local Orders = require(GetScriptDirectory().."/FunLib/humaniser/orders")
-local AllyLastHit = require(GetScriptDirectory().."/FunLib/humaniser/ally_last_hit")
-local Pings = require(GetScriptDirectory().."/FunLib/humaniser/pings")
-local Commands = require(GetScriptDirectory().."/FunLib/humaniser/commands")
-local Lane = require(GetScriptDirectory().."/FunLib/humaniser/lane")
-local Transitions = require(GetScriptDirectory().."/FunLib/humaniser/transitions/transitions")
-local Intent = require(GetScriptDirectory().."/FunLib/humaniser/intent")
-local LastHitSkill = require(GetScriptDirectory().."/FunLib/humaniser/last_hit_skill")
-local FarmPattern = require(GetScriptDirectory().."/FunLib/humaniser/farm_pattern")
-local Trainer = require(GetScriptDirectory().."/FunLib/humaniser/trainer/trainer")
+local DesireLog = require(GetScriptDirectory().."/FunLib/humaniser/desire_log")
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RegenObs = require(GetScriptDirectory().."/FunLib/humaniser/regen_obs")
 local ApiProbe = require(GetScriptDirectory().."/FunLib/humaniser/api_probe")
 local VisionMap = require(GetScriptDirectory().."/FunLib/humaniser/vision_map")
-local Perception = require(GetScriptDirectory().."/FunLib/humaniser/perception")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
@@ -36,30 +23,17 @@ local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
-local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local States = require(GetScriptDirectory().."/FunLib/humaniser/states/index")
 local Retreat = require(GetScriptDirectory().."/FunLib/humaniser/retreat")
 local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
 local SustainAct = require(GetScriptDirectory().."/FunLib/humaniser/sustain_act")
-local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local CastLog = require(GetScriptDirectory().."/FunLib/humaniser/cast_log")
 ____exports.Config = Config
 ____exports.HDebug = HDebug
 ____exports.Chat = Chat
-____exports.Difficulty = Difficulty
-____exports.Profile = Profile
-____exports.Orders = Orders
-____exports.AllyLastHit = AllyLastHit
-____exports.Pings = Pings
-____exports.Commands = Commands
-____exports.Lane = Lane
-____exports.Transitions = Transitions
-____exports.Intent = Intent
-____exports.LastHitSkill = LastHitSkill
-____exports.FarmPattern = FarmPattern
-____exports.Trainer = Trainer
+____exports.LaneConfig = LaneConfig
 ____exports.Telemetry = Telemetry
 ____exports.Ours = Ours
 ____exports.StackJob = StackJob
@@ -81,77 +55,17 @@ ____exports.SustainGather = SustainGather
 ____exports.SustainAct = SustainAct
 ____exports.SafeGather = SafeGather
 local OVERLAY_REFRESH = 0.25
-local startLogged = {}
 local overlayAt = {}
-local testHandlerTeams = {}
 function ____exports.IsEnabled()
     return Config.IsEnabled()
 end
-local function teamMemberByPID(team, pid)
-    local players = GetTeamPlayers(team)
-    do
-        local i = 1
-        while i <= #players do
-            local member = GetTeamMember(i)
-            if member ~= nil and member ~= nil and member:GetPlayerID() == pid then
-                return member
-            end
-            i = i + 1
-        end
-    end
-    return nil
-end
---- Debug-only smoke test for the Orders bus: "!htest gather" posts a GATHER at the issuer.
-local function makeTestCommandHandler(team)
-    return function(msg)
-        if not Config.Get().Debug or IsPlayerBot(msg.pid) then
-            return
-        end
-        if string.lower(msg.text) ~= "!htest gather" then
-            return
-        end
-        local issuer = teamMemberByPID(team, msg.pid)
-        if issuer == nil then
-            return
-        end
-        Orders.Post(
-            team,
-            {
-                type = "GATHER",
-                sourceKey = (("htest:" .. tostring(msg.pid)) .. ":") .. string.format("%.2f", msg.time),
-                issuerPID = msg.pid,
-                location = issuer:GetLocation(),
-                duration = 8,
-                maxResponders = 2
-            }
-        )
-        HDebug.Log(
-            "orders",
-            "htest gather posted by " .. tostring(msg.pid)
-        )
-    end
-end
-local function logStart(bot)
-    local pid = bot:GetPlayerID()
-    if startLogged[pid] == true or GetGameState() ~= GameState.GameInProgress then
-        return
-    end
-    startLogged[pid] = true
-    local fret = Difficulty.GetFret(bot)
-    local profile = Profile.Get(bot)
-    local rawPrint = Utils.RawPrint
-    local line = (((((((((((((((("[Humaniser] pid=" .. tostring(pid)) .. " ") .. bot:GetUnitName()) .. " valve=") .. tostring(bot:GetDifficulty())) .. " fret=") .. tostring(fret.active)) .. "/") .. tostring(fret.level)) .. "/") .. tostring(fret.allyScale)) .. "(") .. fret.source) .. ") allyOfHuman=") .. tostring(Difficulty.IsAllyOfHuman(bot))) .. " skill=") .. string.format("%.2f", profile.skill);
-    (rawPrint or print)(line)
-end
 local function telemetryContext(bot)
-    local order = Orders.GetFor(bot)
     return {
-        by = Intent.IsActive() and Intent.Explain(
+        by = DesireLog.Explain(
             bot,
             bot:GetActiveMode()
-        ) or nil,
-        order = order ~= nil and Orders.Describe(order) or nil,
-        competing = Intent.IsActive() and Intent.Competing(bot) or nil
+        ),
+        competing = DesireLog.Competing(bot)
     }
 end
 local function drawOverlay(bot)
@@ -162,60 +76,14 @@ local function drawOverlay(bot)
     local now = GameTime()
     if now - (overlayAt[pid] or -1) >= OVERLAY_REFRESH then
         overlayAt[pid] = now
-        local profile = Profile.Get(bot)
-        local fret = Difficulty.GetFret(bot)
         HDebug.Text(
             bot,
-            "skill",
-            (string.format("%.2f", profile.skill) .. " fret=") .. (fret.active and ((((tostring(fret.level) .. "x") .. tostring(fret.allyScale)) .. "(") .. fret.source) .. ")" or "off")
-        )
-        HDebug.Text(
-            bot,
-            "delay",
-            (("notice=" .. string.format("%.2f", profile.noticeBase)) .. " react=") .. string.format("%.2f", profile.reactBase)
-        )
-        local order = Orders.GetFor(bot)
-        HDebug.Text(
-            bot,
-            "order",
-            order ~= nil and Orders.Describe(order) or "-"
-        )
-        local avoid = Orders.GetAccepted(bot, "AVOID")
-        HDebug.Text(
-            bot,
-            "avoid",
-            avoid ~= nil and Orders.Describe(avoid) or "-"
-        )
-        if Transitions.IsActive() then
-            HDebug.Text(
+            "desire",
+            DesireLog.Explain(
                 bot,
-                "phase",
-                Transitions.Overlay(bot)
+                bot:GetActiveMode()
             )
-        end
-        if Intent.IsActive() then
-            HDebug.Text(
-                bot,
-                "intent",
-                Intent.Explain(
-                    bot,
-                    bot:GetActiveMode()
-                )
-            )
-        end
-        if LastHitSkill.IsActiveFor(bot) then
-            local cs = LastHitSkill.Counts(bot)
-            HDebug.Text(
-                bot,
-                "cs",
-                string.format(
-                    "e=%.3f attempts=%d misses=%d",
-                    LastHitSkill.ErrorWidth(bot),
-                    cs.attempts,
-                    cs.misses
-                )
-            )
-        end
+        )
         if Tasks.IsActive() then
             HDebug.Text(
                 bot,
@@ -223,29 +91,11 @@ local function drawOverlay(bot)
                 Tasks.Describe(bot) or "-"
             )
         end
-        if States.IsEnabled() then
-            HDebug.Text(
-                bot,
-                "state",
-                States.Describe(bot) or "-"
-            )
-        end
     end
     HDebug.Draw(bot)
 end
-CampJobs.SetSustain(
-    function(bot) return SustainAct.Holds(bot) end,
-    function(bot) return SustainAct.Yield(bot) end
-)
 local steps = {
     feed = Camps.FeedNeutralSpeeds,
-    pings = Pings.Tick,
-    commands = Commands.Tick,
-    lane = Lane.Tick,
-    trainer = Trainer.Tick,
-    lastHit = LastHitSkill.Tick,
-    orders = Orders.GetFor,
-    intent = Intent.Tick,
     telemetry = Telemetry.Tick,
     regen = RegenObs.Tick,
     sustain = function(bot)
@@ -279,9 +129,6 @@ local function frameSteps(bot)
     if Drill.Active() ~= nil then
         Drill.Tick(bot)
     end
-    if Trainer.IsEnabled() then
-        steps.trainer(bot)
-    end
     steps.telemetry(bot, telemetryContext, true)
     steps.overlay(bot)
 end
@@ -306,25 +153,8 @@ local function tick(bot)
     steps.feed(bot)
     Chat.EnsureInstalled(bot)
     Chat.FlushDeferred(function(tag, line) return HDebug.Log(tag, line) end)
-    Difficulty.Init()
-    if testHandlerTeams[bot:GetTeam()] ~= true then
-        testHandlerTeams[bot:GetTeam()] = true
-        Chat.Subscribe(
-            "htest:" .. tostring(bot:GetTeam()),
-            makeTestCommandHandler(bot:GetTeam())
-        )
-    end
-    logStart(bot)
     Drill.Tick(bot)
     Retreat.Tick(bot)
-    steps.pings(bot)
-    steps.commands(bot)
-    steps.lane(bot)
-    Transitions.Tick(bot)
-    steps.trainer(bot)
-    steps.lastHit(bot)
-    steps.orders(bot)
-    steps.intent(bot)
     pcall(steps.landing, bot)
     steps.telemetry(bot, telemetryContext)
     pcall(CastLog.Tick, bot)
@@ -332,7 +162,6 @@ local function tick(bot)
     pcall(steps.sustain, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
-    States.Tick(bot)
     steps.tasks(bot)
     HDebug.SharedStateProbe(bot)
     steps.overlay(bot)
@@ -346,56 +175,8 @@ end
 local function zero()
     return 0
 end
-local function arg1(a)
-    return a
-end
-local function arg2(_a, b)
-    return b
-end
 if Telemetry.GuardsEnabled() then
-    Telemetry.GuardModule(
-        "Intent",
-        Intent,
-        {Resolve = function(_bot, _mode, raw) return raw end}
-    )
-    Telemetry.GuardModule("Lane", Lane, {
-        CampJobDesire = zero,
-        CampJobRawDesire = arg2,
-        CampJobThink = no,
-        CampJobOnEnd = none,
-        CampJobAbort = none,
-        CampJobHoldsRetreat = no,
-        CampJobHoldsCasts = no,
-        RuneContestDesire = zero,
-        PreferStackedCamp = none
-    })
-    Telemetry.GuardModule(
-        "Transitions",
-        Transitions,
-        {
-            Tick = none,
-            MidRunesOn = no,
-            MidRuneFocus = function() return false, false, nil end,
-            MidRuneYield = none,
-            MidRuneSkip = none,
-            RuneTarget = none,
-            HoldsRune = no,
-            MidRuneDesire = zero,
-            RotationYield = none,
-            PickLaneWard = none,
-            ConfirmLaneWard = none
-        }
-    )
-    Telemetry.GuardModule("States", States, {
-        Tick = none,
-        Step = no,
-        MayOwn = no,
-        Describe = none,
-        IsEnabled = no,
-        WisdomOwned = no,
-        Owns = no
-    })
-    Telemetry.GuardModule("FarmPattern", FarmPattern, {Desire = zero, Think = no, OnEnd = none, Abort = none})
+    Telemetry.GuardModule("States", States, {MayOwn = no, WisdomOwned = no})
     Telemetry.GuardModule(
         "StackJob",
         StackJob,
@@ -448,22 +229,6 @@ if Telemetry.GuardsEnabled() then
         Benched = no,
         Bench = no
     })
-    Telemetry.GuardModule(
-        "AllyLastHit",
-        AllyLastHit,
-        {
-            FilterCreeps = arg2,
-            MayLastHit = function() return true, "free: error" end
-        }
-    )
-    Telemetry.GuardModule("Orders", Orders, {
-        FilterAvoided = arg2,
-        AvoidsLocation = no,
-        CapRetreatDesire = arg2,
-        OrderFloor = zero,
-        DesireFloor = zero
-    })
-    Telemetry.GuardModule("Commands", Commands, {ShouldUseOrderedSmoke = no})
     Telemetry.GuardModule("SustainGather", SustainGather, {Bought = none})
     Telemetry.GuardModule("SustainAct", SustainAct, {
         ItemThink = none,
@@ -473,7 +238,6 @@ if Telemetry.GuardsEnabled() then
         OwnsCourier = no,
         Walking = no,
         Step = no,
-        Yield = no,
         ResetCache = none
     })
     Telemetry.GuardModule("Retreat", Retreat, {
@@ -487,17 +251,6 @@ if Telemetry.GuardsEnabled() then
         TowerOnUs = none,
         ResetCache = none
     })
-    Telemetry.GuardModule(
-        "Perception",
-        Perception,
-        {
-            FilterNearbyEnemies = arg2,
-            FilterUnitList = arg1,
-            FilterChanneling = arg2,
-            IsCastKnown = function() return true end,
-            GetIncomingTrackingProjectiles = function(target) return target:GetIncomingTrackingProjectiles() end
-        }
-    )
 end
 if Telemetry.GuardsEnabled() then
     for k, fn in pairs(steps) do

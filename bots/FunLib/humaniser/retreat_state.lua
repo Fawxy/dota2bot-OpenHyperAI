@@ -169,7 +169,7 @@ end
 local ____exports = {}
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
+local Phase = require(GetScriptDirectory().."/FunLib/humaniser/laning_held")
 local running = {}
 --- With `Ours.Retreat` on, a bot hero in its laning phase: our retreat decides when it leaves, where to and when it stops. A
 -- drill's held hero (bench, statue, sentry, chaser) is the drill's: our retreat outbid its hold (drills rtwalk2, rtchase2).

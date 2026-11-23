@@ -12,12 +12,12 @@ end
 
 -- No override file (the normal case): the bundled defaults stand.
 local base = freshCustomize(nil)
-check("no override file keeps States.Enable", base.Humaniser.States.Enable == true)
+check("no override file keeps Tasks.Enable", base.Humaniser.Tasks.Enable == true)
 
 -- dotactl's dotted keys land on nested tables, creating missing ones, and leave siblings alone.
-local c = freshCustomize({ ["Humaniser.States.Enable"] = false, ["Overrides.ClockOffset"] = 600, ["Scenario.LoneEnemy"] = "bot" })
-check("dotted key overrides a nested default", c.Humaniser.States.Enable == false)
-check("sibling keys survive", c.Humaniser.States.Shadow == true and c.Humaniser.Telemetry.Enable == true)
+local c = freshCustomize({ ["Humaniser.Tasks.Enable"] = false, ["Overrides.ClockOffset"] = 600, ["Scenario.LoneEnemy"] = "bot" })
+check("dotted key overrides a nested default", c.Humaniser.Tasks.Enable == false)
+check("sibling keys survive", c.Humaniser.TickEvery == 3 and c.Humaniser.Telemetry.Enable == true)
 check("missing parent table is created", c.Scenario ~= nil and c.Scenario.LoneEnemy == "bot")
 
 -- The phase clock follows the offset, while raw DotaTime() and the world-timed code don't.

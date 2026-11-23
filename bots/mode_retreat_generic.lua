@@ -121,14 +121,14 @@ function GetDesire()
     -- Slice retreat (Ours.Retreat): our desire for a laning hero it owns; nil lets OHA's run.
     local ours = J.Humaniser.Retreat.Desire(bot)
     if ours ~= nil then
-        return J.Humaniser.Intent.Resolve(bot, BOT_MODE_RETREAT, J.Humaniser.Orders.CapRetreatDesire(bot, ours))
+        return ours
     end
     -- local cacheKey = 'GetRetreatDesire'..tostring(bot:GetPlayerID())
     -- local cachedVar = J.Utils.GetCachedVars(cacheKey, 0.35 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
     local res = GetDesireHelper()
     -- J.Utils.SetCachedVars(cacheKey, res)
-    return J.Humaniser.Intent.Resolve(bot, BOT_MODE_RETREAT, J.Humaniser.Orders.CapRetreatDesire(bot, res))
+    return res
 end
 
 function GetDesireHelper()

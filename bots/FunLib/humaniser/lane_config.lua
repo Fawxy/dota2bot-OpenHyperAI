@@ -3,7 +3,6 @@ local ____exports = {}
 local isArray, merge, cached, phaseAt
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
-local Profile = require(GetScriptDirectory().."/FunLib/humaniser/profile")
 local WorldFacts = require(GetScriptDirectory().."/FunLib/humaniser/world_facts")
 function isArray(t)
     return t[1] ~= nil
@@ -39,19 +38,6 @@ function ____exports.Settings()
     return cached
 end
 ____exports.DEFAULTS = {
-    Enable = true,
-    Plan = true,
-    Block = true,
-    FullPull = true,
-    StackPull = true,
-    AggroPull = true,
-    Freeze = true,
-    Shove = true,
-    Stack = true,
-    Mid = true,
-    CounterPlay = true,
-    Telegraph = true,
-    Forecast = true,
     ForecastModel = {K = 0.4, TypeWeight = {melee = 1, ranged = 1.6, siege = 1}, PowerFloor = 550},
     Gates = {
         Block = 0.3,
@@ -249,36 +235,6 @@ ____exports.DEFAULTS = {
     },
     Orders = {FreezeShove = 90, PullNoPull = 120, Stack = 60}
 }
-local FLAG_OF = {
-    block = "Block",
-    full_pull = "FullPull",
-    stack_pull = "StackPull",
-    aggro_pull = "AggroPull",
-    freeze = "Freeze",
-    shove = "Shove",
-    stack = "Stack"
-}
-local GATE_OF = {
-    block = "Block",
-    full_pull = "FullPull",
-    stack_pull = "StackPull",
-    aggro_pull = "AggroPull",
-    freeze = "Freeze",
-    shove = "Shove",
-    stack = nil
-}
-local CONSUMER_FLAGS = {
-    "Plan",
-    "Block",
-    "FullPull",
-    "StackPull",
-    "AggroPull",
-    "Freeze",
-    "Shove",
-    "Stack",
-    "Mid",
-    "CounterPlay"
-}
 --- How far from an enemy tower a hero's centre can be attacked: the tower's attack range and radius plus the hero's radius
 -- (the edges meet; 868 in 7.41), read from the game (world_facts), the Thresholds constants when a read fails.
 function ____exports.TowerReach()
@@ -291,30 +247,6 @@ function ____exports.TowerAttackRange()
 end
 function ____exports.ResetSettings()
     cached = nil
-end
-function ____exports.IsEnabled()
-    return Config.IsFeatureEnabled("Lane")
-end
-function ____exports.IsOn(flag)
-    return ____exports.IsEnabled() and ____exports.Settings()[flag] == true
-end
-function ____exports.IsActive()
-    if not ____exports.IsEnabled() then
-        return false
-    end
-    for ____, flag in ipairs(CONSUMER_FLAGS) do
-        if ____exports.Settings()[flag] == true then
-            return true
-        end
-    end
-    return false
-end
-function ____exports.GateFor(tech)
-    local gate = GATE_OF[tech]
-    return gate == nil and 0 or (____exports.Settings().Gates[gate] or 0)
-end
-function ____exports.Knows(tech, skill)
-    return ____exports.IsOn(FLAG_OF[tech]) and skill >= ____exports.GateFor(tech)
 end
 local function clamp01(v)
     return v < 0 and 0 or (v > 1 and 1 or v)
@@ -359,9 +291,6 @@ function ____exports.Roll(chance)
     local r = rng()
     return (r ~= nil and r.random() or RandomFloat(0, 1)) < chance
 end
-function ____exports.SkillOf(bot)
-    return Profile.Get(bot).skill
-end
 local helpers = {}
 function ____exports.SetHelpers(h)
     helpers = h
@@ -395,5 +324,20 @@ function ____exports.InLaningPhase()
     phaseAt = now
     phaseBot = bot
     return phaseValue
+end
+function ____exports.IsLaneCreepName(name)
+    local function has(part)
+        return (string.find(name, part, 1, true)) ~= nil
+    end
+    return has("creep_goodguys") or has("creep_badguys") or has("goodguys_siege") or has("badguys_siege")
+end
+--- True when the bot's team has at least one human player.
+function ____exports.IsAllyOfHuman(bot)
+    for ____, pid in ipairs(GetTeamPlayers(bot:GetTeam())) do
+        if not IsPlayerBot(pid) then
+            return true
+        end
+    end
+    return false
 end
 return ____exports

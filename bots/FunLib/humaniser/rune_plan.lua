@@ -53,7 +53,7 @@ local FR = require(GetScriptDirectory().."/FunLib/humaniser/fight_readings")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-local Runes = require(GetScriptDirectory().."/FunLib/humaniser/transitions/runes")
+local Runes = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 function logPlan(team, p)
     local ____Telemetry_Event_5 = Telemetry.Event
     local ____array_4 = __TS__SparseArrayNew({"team", team})

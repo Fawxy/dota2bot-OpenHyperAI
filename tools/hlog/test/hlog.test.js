@@ -176,11 +176,7 @@ test('real Lua telemetry from a scripted session analyses cleanly', () => {
     assert.deepStrictEqual(Object.keys(game.bots).map(Number).sort(), [0, 1, 2]);
     assert.strictEqual(game.marks.length, 1);
     assert.strictEqual(game.marks[0].text, 'bots went mid');
-    const accepts = game.events.filter(e => e.ev === 'order_accept');
-    assert.ok(accepts.length >= 1, 'a bot accepted the !def order');
-    const r = levels(game);
-    assert.strictEqual(r.order_read_delay.level, 'pass', r.order_read_delay.details.join('; '));
-    assert.strictEqual(r.order_followed.level, 'pass', r.order_followed.details.join('; '));
+    assert.ok(game.events.some(e => e.ev === 'mode' && e.to === 'defend_mid'), 'the scripted mode switch is logged');
     assert.match(report.markView(game, 1, 20), /defend_mid/);
 });
 
@@ -380,24 +376,6 @@ test('farm_trips: a trip handed to a fight by Valve attack mode is a planned end
     const r = levels(game).farm_trips;
     assert.strictEqual(r.details.length, 1, r.details.join('; '));
     assert.match(r.details[0], /preempted -> rune 1x/);
-});
-test('real FarmPattern telemetry: trips summarised per core, a trip lost to another mode is flagged with the winner', () => {
-    const games = parseLog(luaSession('hlog_farm_session.lua'));
-    assert.strictEqual(games.length, 1);
-    const game = games[0];
-    const ends = game.events.filter(e => e.ev === 'farm_trip_end');
-    assert.deepStrictEqual(ends.map(e => e.why), ['back', 'preempted']);
-    assert.strictEqual(ends[1].to, 'rune');
-    const r = levels(game).farm_trips;
-    assert.strictEqual(r.level, 'warn', r.summary);
-    assert.strictEqual(r.details.length, 1, r.details.join('; '));
-    assert.match(r.details[0], /preempted -> rune 1x, first at 8:27/);
-    // Trip 1 left its camp unfinished, so trip 2 starts with the pace grown by LateGrowth (1.15).
-    const row = report.summary(game).split('\n').find(l => /^pid1 /.test(l));
-    assert.ok(row, report.summary(game));
-    assert.match(row, /^pid1\s+2\s+2\s+0\/0\s+\S+\s+late 1\s+back 1, preempted 1\s+1\.15\s+wave 16$/);
-    const gate = game.events.find(e => e.ev === 'farm_gate');
-    assert.strictEqual(gate.why, 'wave', 'the 9:05 check logs the live wave');
 });
 test('forecast fit recovers K from lane_eq pairs', () => {
     const ev = (t, eq, imb) => ({ ev: 'lane_eq', t, team: 2, lane: 1, kind: 'safe', eq, imb });

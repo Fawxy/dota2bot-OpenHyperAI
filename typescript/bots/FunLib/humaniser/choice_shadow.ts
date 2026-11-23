@@ -7,7 +7,6 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as HDebug from "bots/FunLib/humaniser/debug";
-import * as Intent from "bots/FunLib/humaniser/intent";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as RetreatState from "bots/FunLib/humaniser/retreat_state";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -51,8 +50,6 @@ interface Note {
     why?: string;
     /** A branch of ours inside the mode's own GetDesire acted in this call (mixOf, read at the call). */
     mix?: boolean;
-    /** The Intent claim or stickiness on the value (Intent.Explain's `by`, not raw), read at the call. */
-    clm?: string;
 }
 
 interface Hero {
@@ -105,14 +102,6 @@ function mixOf(h: Hero, mode: string, ran: boolean): boolean {
     return ran && m;
 }
 
-/** The source of an Intent claim on the mode's value (Intent.Explain's `by`), when not raw. */
-function claimOf(bot: Unit, botMode: number | undefined): string | undefined {
-    if (botMode === undefined) return undefined;
-    const e = Intent.Explain(bot, botMode);
-    const [src] = string.match(e, " by (.+)$");
-    return src !== undefined && src !== "raw" ? src : undefined;
-}
-
 /**
  * Called by Chooser.Gate once per mode call, switch on: `inner` is what OHA's code returned (undefined when the gate did
  * not ask it: `why` names the gate's branch), `out` what the gate returns. Everything the line reads is taken here, in the
@@ -128,7 +117,6 @@ export function Note(bot: Unit, mode: string, inner: any, out: any, why: string 
         else n.v = inner;
         // Our value stands in `out` for ours-first modes; keep it for the candidates' fields.
         if (mixOf(h, mode, why === undefined)) n.mix = true;
-        if (n.v !== undefined) n.clm = claimOf(bot, BOT_MODE[mode]);
         h.notes[mode] = n;
     });
 }
@@ -151,7 +139,6 @@ function emit(bot: Unit, h: Hero, act: string): void {
     // A mode at 0 picks nothing: OHA's top needs a positive desire.
     let tv = 0;
     const gate: string[] = [];
-    const claims: string[] = [];
     const mix: string[] = [];
     const byName: Record<string, Note | undefined> = {};
     for (const [mode, name] of MODES) {
@@ -169,7 +156,6 @@ function emit(bot: Unit, h: Hero, act: string): void {
                 tv = n.v;
                 top = name;
             }
-            if (n.clm !== undefined) claims.push(`${name}=${n.clm}`);
         }
         // The `d_` reasons already say which modes the gate set before their code; this lists the computed ones it moved.
         if (n !== undefined && n.v !== undefined && type(n.out) === "number" && math.abs(n.out - n.v) > EPS) gate.push(`${name}:${string.format("%.2f", n.out)}`);
@@ -184,9 +170,6 @@ function emit(bot: Unit, h: Hero, act: string): void {
         } else if (W.v === undefined && W.why !== undefined && W.why !== "valve") {
             how = "outbid";
             by = W.why === "ours" ? (act === "retreat" ? "Retreat:Desire" : act) : whyModule(W.why);
-        } else if (W.clm !== undefined) {
-            how = "outbid";
-            by = `Intent:${W.clm}`;
         } else {
             // A branch of ours inside win's own body (`mix`) is already in win's desire, which is under top's: it cannot
             // have made the difference, so the line falls to Valve's arbitration.
@@ -196,7 +179,6 @@ function emit(bot: Unit, h: Hero, act: string): void {
     }
     fields.push(["top", top], ["tv", top !== undefined ? tv : undefined], ["how", how], ["by", by]);
     fields.push(["mix", mix.length > 0 ? mix.join(",") : undefined]);
-    fields.push(["clm", claims.length > 0 ? claims.join(",") : undefined]);
     fields.push(["gate", gate.length > 0 ? gate.join(",") : undefined]);
     const r = byName["retreat"];
     if (r !== undefined && r.why === "ours" && type(r.out) === "number") fields.push(["rdes", r.out]);

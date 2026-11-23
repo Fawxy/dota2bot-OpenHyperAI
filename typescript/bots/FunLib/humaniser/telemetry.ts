@@ -12,8 +12,6 @@ import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as HDebug from "bots/FunLib/humaniser/debug";
-import * as Difficulty from "bots/FunLib/humaniser/difficulty";
-import * as Profile from "bots/FunLib/humaniser/profile";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as WorldFacts from "bots/FunLib/humaniser/world_facts";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -21,7 +19,7 @@ import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Utils from "bots/FunLib/utils";
 import type { BOT, EVENTS, EventName, UNIT } from "bots/FunLib/humaniser/events";
-import * as Runes from "bots/FunLib/humaniser/transitions/runes";
+import * as Runes from "bots/FunLib/humaniser/game_rules";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 
 export const SCHEMA = 2;
@@ -36,8 +34,6 @@ const BUILD: string = (() => {
 export const DEFAULTS = {
     Enable: false,
     SnapshotInterval: 1.0,
-    // Etiquette decisions older than this are not attributed to a last hit.
-    DecisionMaxAge: 1.0,
     MarkAck: true,
     // Runs the humaniser entry points under xpcall and reports errors as ev=lua_error (read once, at load).
     LuaErrors: true,
@@ -73,12 +69,6 @@ interface StatsUnit {
     GetXPNeededToLevel(): number;
 }
 
-interface Decision {
-    allowed: boolean;
-    reason: string;
-    at: number;
-}
-
 interface BotState {
     mode?: number;
     modeSince: number;
@@ -89,8 +79,6 @@ interface BotState {
     // Read while the target was live (BACKLOG 0.14): by the frame that sees the last hit it may be a removed entity.
     prevTargetName?: string;
     profileKey?: string;
-    // Etiquette decisions by creep handle; weak so dead creeps are collected.
-    decisions: LuaTable<Unit, Decision>;
     markCursor: Record<number, number>;
     ended: boolean;
     // Hero events (BACKLOG 0.6): last frame's modifier and item edges.
@@ -544,7 +532,7 @@ const states: Record<number, BotState> = {};
 function stateFor(pid: number): BotState {
     let s = states[pid];
     if (s === undefined) {
-        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, decisions: weakKeys(), markCursor: {}, ended: false, smoked: false, aegis: false, laneStepAt: -math.huge };
+        s = { modeSince: 0, snapAt: -math.huge, lastHits: -1, denies: -1, markCursor: {}, ended: false, smoked: false, aegis: false, laneStepAt: -math.huge };
         states[pid] = s;
     }
     return s;
@@ -586,19 +574,6 @@ function laneStepField(bot: Unit, since: number): string {
 }
 
 const guardedLaneStep = Guard("Telemetry.LaneStep", laneStepField, () => undefined);
-
-/** Called from AllyLastHit.MayLastHit for every enemy creep it judges. */
-export function NoteLastHitDecision(bot: Unit, creep: Unit, allowed: boolean, reason: string): void {
-    if (!IsEnabled()) return;
-    const decisions = stateFor(bot.GetPlayerID()).decisions;
-    const d = decisions.get(creep);
-    if (d === undefined) decisions.set(creep, { allowed, reason, at: DotaTime() });
-    else {
-        d.allowed = allowed;
-        d.reason = reason;
-        d.at = DotaTime();
-    }
-}
 
 // Marks queued by the chat handler per team; each bot reports its own state for every mark it has not seen.
 const marksByTeam: Record<number, MarkRecord[]> = {};
@@ -759,11 +734,10 @@ const ENEMY_RADIUS = 1200;
 
 /**
  * What the bot could do this second, whoever plays its laning: `ol`/`od` offers, attack range, nearest enemy hero.
- * With the snapshot's mode and `tgt` it says what the bot chose against what it had. Reads facts only. Skipped for an ally of a
- * human, where the offers would run the etiquette filter, whose decisions log themselves.
+ * With the snapshot's mode and `tgt` it says what the bot chose against what it had. Reads facts only.
  */
 function optionFields(bot: Unit): BotPair[] {
-    if (DotaTime() > OPTIONS_UNTIL || !bot.IsAlive() || Difficulty.IsAllyOfHuman(bot)) return [];
+    if (DotaTime() > OPTIONS_UNTIL || !bot.IsAlive()) return [];
     const [ol, od] = LaneOffers.Options(bot as unknown as Parameters<typeof LaneOffers.Options>[0]);
     let nearest: number | undefined;
     for (const h of bot.GetNearbyHeroes(ENEMY_RADIUS, true, BotMode.None) ?? []) {
@@ -916,29 +890,8 @@ function trackInventory(bot: Unit, s: BotState): void {
 const guardedInventory = Guard("Telemetry.Inventory", trackInventory);
 
 function maybeProfile(bot: Unit, s: BotState): void {
-    // Profile.Get draws RandomFloat, which a humaniser-off game must not do; skill is read-only.
-    if (!Config.IsEnabled()) {
-        const offKey = "off|" + tostring(LaneConfig.PositionOf(bot));
-        if (s.profileKey === offKey) return;
-        s.profileKey = offKey;
-        Event("bot", [
-            ["pid", bot.GetPlayerID()],
-            ["hero", heroName(bot)],
-            ["team", bot.GetTeam()],
-            ["schema", SCHEMA],
-            ["humaniser", false],
-            ["skill", Difficulty.GetSkill(bot)],
-            ["ally", Difficulty.IsAllyOfHuman(bot)],
-            ["build", BUILD],
-            ["pos", LaneConfig.PositionOf(bot)],
-            ["ours", Ours.Describe()],
-        ]);
-        return;
-    }
-    const p = Profile.Get(bot);
-    const cfg = Config.Get().Profile;
-    // pos is part of the key: positions settle after the first tick (role assignment, a human's !pos swap).
-    const key = string.format("%.3f|%.3f|%.3f|%s", p.skill, p.noticeBase, p.reactBase, tostring(LaneConfig.PositionOf(bot)));
+    // pos is the key: positions settle after the first tick (role assignment).
+    const key = tostring(LaneConfig.PositionOf(bot));
     if (key === s.profileKey) return;
     s.profileKey = key;
     Event("bot", [
@@ -946,41 +899,27 @@ function maybeProfile(bot: Unit, s: BotState): void {
         ["hero", heroName(bot)],
         ["team", bot.GetTeam()],
         ["schema", SCHEMA],
-        ["skill", p.skill],
-        ["ally", Difficulty.IsAllyOfHuman(bot)],
-        ["notice", p.noticeBase],
-        ["react", p.reactBase],
-        ["ping", p.pingBase],
-        ["chat", p.chatBase],
-        ["jitter", p.jitter],
-        ["lapse", p.lapseChance],
-        ["lapseMax", cfg.LapseMaxExtra],
-        ["minReact", cfg.MinReact],
-        ["deference", p.deference],
+        ["humaniser", Config.IsEnabled() ? undefined : false],
+        ["ally", LaneConfig.IsAllyOfHuman(bot)],
         ["build", BUILD],
         ["pos", LaneConfig.PositionOf(bot)],
         ["ours", Ours.Describe()],
     ]);
 }
 
-function trackCounters(unit: Unit, s: BotState, human: boolean, now: number): void {
+function trackCounters(unit: Unit, s: BotState, human: boolean): void {
     const stats = unit as unknown as StatsUnit;
     const lh = stats.GetLastHits();
     const dn = stats.GetDenies();
     if (s.lastHits >= 0 && lh > s.lastHits) {
         const current = unit.GetAttackTarget() ?? undefined;
-        const creep = s.prevTarget ?? current;
         // Never call into prevTarget here: the engine may have removed the killed creep already.
         const creepName = s.prevTarget !== undefined ? s.prevTargetName : current?.GetUnitName();
-        const d = creep !== undefined ? s.decisions.get(creep) : undefined;
-        const fresh = d !== undefined && now - d.at <= Get().DecisionMaxAge;
         Event("lasthit", [
             ["pid", unit.GetPlayerID()],
             ["human", human],
             ["n", lh - s.lastHits],
             ["creep", creepName],
-            ["dec", fresh ? d!.reason : undefined],
-            ["decAge", fresh ? now - d!.at : undefined],
         ]);
     }
     if (s.denies >= 0 && dn > s.denies)
@@ -1677,7 +1616,7 @@ function snapHumans(bot: Unit, now: number): void {
                 ["human", true],
             ]);
         }
-        trackCounters(member, hs, true, now);
+        trackCounters(member, hs, true);
         const slow = now - hs.snapAt >= Get().SnapshotInterval;
         guardedHero(member, hs, now, slow);
         if (slow) {
@@ -1715,7 +1654,7 @@ export function Tick(bot: Unit, provider?: ContextProvider, frameOnly?: boolean)
     }
     maybeProfile(bot, s);
     trackMode(bot, s, now, provider);
-    trackCounters(bot, s, false, now);
+    trackCounters(bot, s, false);
     reportMarks(bot, s, provider);
     const slow = now - s.snapAt >= Get().SnapshotInterval;
     guardedHero(bot, s, now, slow);

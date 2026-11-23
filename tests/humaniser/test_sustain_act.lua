@@ -9,18 +9,16 @@ H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 local A = require("bots/FunLib/humaniser/sustain_act")
 local G = require("bots/FunLib/humaniser/sustain_gather")
 local S = require("bots/FunLib/humaniser/sustain")
-local Phase = require("bots/FunLib/humaniser/transitions/phase")
+local Phase = require("bots/FunLib/humaniser/laning_held")
 local Drill = require("bots/FunLib/humaniser/drill")
 local Overrides = require("bots/FunLib/humaniser/overrides")
-local CampJobs = require("bots/FunLib/humaniser/camp_jobs")
 local BotMode = require("bots/ts_libs/dota/index").BotMode
 
-local world = { held = true, job = false }
+local world = { held = true }
 Phase.LaningHeld = function() return world.held end
 Drill.Held = function() return false end
 Drill.RigHoldsCasts = function() return nil end
 Overrides.LaneOnly = function() return false end
-CampJobs.Active = function() return world.job end
 BOT_ACTION_TYPE_USE_ABILITY = 6
 
 local INPUTS = { hp = 300, mp = 100, items = {}, tree = { walk = 0, safe = true }, safeSpot = { x = -500, y = 0, walk = 2 } }
@@ -56,7 +54,7 @@ local function reset()
 	bot.orders, bot.moves, lines = {}, {}, {}
 	H.Telemetry.SetSink(function(l) table.insert(lines, l) end)
 	bot.mode, bot.hitByHero, bot.action, bot.loc = BotMode.Laning, false, nil, Vector(0, 0)
-	world.held, world.job, world.running = true, false, nil
+	world.held, world.running = true, nil
 end
 local function ended()
 	for i = #lines, 1, -1 do
@@ -123,19 +121,8 @@ do
 	reset()
 	bot.slots = { [1] = itemOf("item_tango", 3) }
 	bot.mode = BotMode.Farm
-	world.job = true
 	T = 300
-	check("a camp job runs but its supply step has not asked: no walk starts", (function() A.ItemThink(bot) return #bot.orders == 0 end)())
-	T = 300.6
-	A.Yield(bot)
-	A.ItemThink(bot)
-	check("a camp job runs: the walk starts, and the supply's yield carries it", bot.orders[1] == "tree:item_tango:7" and A.Yield(bot))
-	T = 300.7
-	A.ItemThink(bot)
-	check("yielded within 0.3 s: still running", ended() == nil and A.Walking(bot))
-	T = 304
-	A.ItemThink(bot)
-	check("nothing by the deadline (walk + 1.5 s): missed or cut", ended() == "cut" or ended() == "missed")
+	check("outside the laning mode no walk starts", (function() A.ItemThink(bot) return #bot.orders == 0 end)())
 	INPUTS.tree = { walk = 0, safe = true }
 end
 

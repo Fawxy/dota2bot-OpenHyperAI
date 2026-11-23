@@ -453,7 +453,7 @@ function ____exports.InputsOf(c)
             c.by:GetLocation(),
             target:GetLocation()
         ) or nil,
-        skill = LaneConfig.SkillOf(c.by)
+        skill = 1
     }
 end
 local function r2(x)

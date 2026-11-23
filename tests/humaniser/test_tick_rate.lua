@@ -26,7 +26,7 @@ end
 ResetWorld()
 CURRENT_TEAM = 2
 local H = FreshHumaniser({ Enable = false, TickEvery = 3, Telemetry = { Enable = true } })
-H.Lane.SetHelpers({ GetPosition = function(u) return u.pos end })
+H.LaneConfig.SetHelpers({ GetPosition = function(u) return u.pos end })
 local lines = {}
 H.Telemetry.SetSink(function(line) table.insert(lines, line) end)
 local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })

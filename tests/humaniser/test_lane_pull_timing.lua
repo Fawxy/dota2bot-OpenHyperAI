@@ -21,9 +21,9 @@ local function world(opts)
 	OBSERVER = 1
 	SPAWNERS = { { team = 2, type = "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
-	H.Lane.Camps.ResetCache()
-	local data = H.Lane.Camps.ByIdx(1)
-	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	local data = require("bots/FunLib/humaniser/camps").ByIdx(1)
+	local stand = require("bots/FunLib/humaniser/camps").BoxEdgePoint(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), data.pull.path[1], 150)
 	local u = MakeUnit({ pid = 5, team = 2, bot = true, loc = stand })
 	u.lane, u.pos = Lane.Bot, 5
 	-- As in test_lane_camp_jobs: the core this support owns the camp job for, and one enemy laner elsewhere.
@@ -46,57 +46,9 @@ local function expected(data, meet)
 	return (meet.x - PATH[1][1]) / 325 - AHEAD - walk / 300 - 1.5
 end
 
-do
-	local H, bot, data = world()
-	local want = expected(data, data.pull.meetPoint)
-	check("precondition: derived second differs from the :15 seed", math.abs(want - 15) > 2, want)
-	check("full pull starts", H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 }))
-	local job = H.Lane.CampJobs.Current(bot)
-	check("full pull planned from the wave", within(job.plannedSec, want, 1e-3), job.plannedSec)
-	check("full pull logged as wave-timed", job.timing == "wave")
-	check("watch waits for the :60 wave at the meet point", within(job.waveAt, 60 + (data.pull.meetPoint.x - PATH[1][1]) / 325 - AHEAD, 1e-3), job.waveAt)
-end
 
 do
-	-- At 1:10 the plan puts the :60 wave (10 + AHEAD) * 325 along. Two creeps 550 and 750 further on: the wave's body is
-	-- 650 (2 s) early, its front creep 750 (2.3 s); the aggro moves by the body (camp 1 hit early on the front creep,
-	-- replay pdg3_C).
-	local H, bot, data = world()
-	local want = expected(data, data.pull.meetPoint)
-	local plan = (10 + AHEAD) * 325
-	MakeCreep({ team = 2, x = PATH[1][1] + plan + 750, y = -5000 })
-	MakeCreep({ team = 2, x = PATH[1][1] + plan + 550, y = -5000 })
-	H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 })
-	local job = H.Lane.CampJobs.Current(bot)
-	check("wave seen ahead of schedule pulls earlier by its body, not its front creep", within(job.plannedSec, want - 2, 1e-3), job.plannedSec)
-	check("live-shifted pull logged as live", job.timing == "live")
-	check("the slot stays the unshifted aggro", within(job.slot - job.baseAggro, 2, 1e-3))
-end
-
-do
-	-- The previous wave far up the lane is not the pulled wave.
-	local H, bot, data = world()
-	MakeCreep({ team = 2, x = 3000, y = -5000 })
-	H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 })
-	local job = H.Lane.CampJobs.Current(bot)
-	check("an old wave elsewhere on the lane does not shift the pull", within(job.plannedSec, expected(data, data.pull.meetPoint), 1e-3) and job.timing == "wave")
-end
-
-do
-	-- No lane path override: the stub lane is ~1,100 off the real 7.41 Radiant bot path, so the meet point is not on it.
-	local H, bot = world({ timing = {} })
-	H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 })
-	local job = H.Lane.CampJobs.Current(bot)
-	check("meet point off the lane path falls back to the seed", job.plannedSec == 15 and job.timing == "seed", job.plannedSec)
-	check("seed pull has no wave arrival", job.waveAt == nil)
-
-	H, bot = world({ timing = { FromWave = false, LanePaths = { radiant_bot = PATH } } })
-	H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 })
-	check("FromWave off keeps the seed", H.Lane.CampJobs.Current(bot).plannedSec == 15)
-end
-
-do
-	local PT = LaneFresh({ Enable = true }).Lane.PullTiming
+	local PT = LaneFresh({ Enable = true }) and require("bots/FunLib/humaniser/pull_timing")
 	CURRENT_TEAM = 2
 	local t = PT.For(2, Lane.Bot, nil, "small", { Vector(4050, -6139) }, { 15, 45 })
 	check("missing spawner origin falls back to the seed", t.source == "seed" and t.seconds[1] == 15)
@@ -117,7 +69,7 @@ do
 	-- safe, mid neither. The same camp geometry on each lane, timed with and without the offsets.
 	local function sec(team, lane, ahead)
 		local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_top = PATH, radiant_bot = PATH, radiant_mid = PATH,
-			dire_top = PATH, dire_bot = PATH }, WaveAhead = ahead } }).Lane.PullTiming
+			dire_top = PATH, dire_bot = PATH }, WaveAhead = ahead } }) and require("bots/FunLib/humaniser/pull_timing")
 		CURRENT_TEAM = team
 		return PT.For(team, lane, Vector(-1600, -6200), "small", { Vector(-1600, -5000) }, { 15, 45 }).seconds[1]
 	end
@@ -129,33 +81,12 @@ do
 		.. " " .. earlier(3, Lane.Bot) .. " " .. earlier(2, Lane.Mid))
 end
 
-do
-	-- Watch outlasts WatchSec (1 s here) until WatchAfterWave (3 s) past the wave's arrival.
-	local H, bot = world({ timingCfg = { WatchSec = 1 } })
-	H.Lane.CampJobs.Start(bot, { kind = "full_pull", campIdx = 1 })
-	local job = H.Lane.CampJobs.Current(bot)
-	job.phase, job.watchFrom, job.acted = "watch", job.aggroAt + 3, true
-	bot.loc = job.path[#job.path]
-	local function runTo(t)
-		while T < t do
-			T = math.min(t, T + 0.25)
-			if H.Lane.CampJobDesire(bot) > 0 then H.Lane.CampJobThink(bot) end
-		end
-	end
-	T = job.watchFrom
-	runTo(job.watchFrom + 1.5)
-	check("watch holds past WatchSec while the wave is still coming", job.phase == "watch", job.phase)
-	runTo(job.waveAt + 2.9)
-	check("watch still holding just before WatchAfterWave", job.phase == "watch", job.phase)
-	runTo(job.waveAt + 3.1)
-	check("watch ends WatchAfterWave after the wave arrives", job.phase == "done", job.phase)
-end
 
 do
 	-- The creep timer: the hit puts the neutrals (their walk after it) at the meet point as the front creep is `past`
 	-- beyond it, from each creep's place at 325 a second; the slot stands until the front creep and one behind it are
 	-- read; one read per LiveEvery. Three creeps 150 apart, the front one 1,000 short of the meet point.
-	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH, dire_bot = PATH }, WaveAhead = { safe = AHEAD, off = 0 } } }).Lane.PullTiming
+	local PT = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH, dire_bot = PATH }, WaveAhead = { safe = AHEAD, off = 0 } } }) and require("bots/FunLib/humaniser/pull_timing")
 	CURRENT_TEAM = 2
 	CREEPS[2], CREEPS[3] = {}, {}
 	local meet = Vector(-1600, -5000)

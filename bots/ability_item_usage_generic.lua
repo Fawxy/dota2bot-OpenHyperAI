@@ -6951,12 +6951,6 @@ X.ConsiderItemDesire['item_smoke_of_deceit'] = function(item)
 		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
 	end
 
-	-- Humaniser !smoke: the designated holder pops smoke once the group has gathered.
-	if J.Humaniser.Commands.ShouldUseOrderedSmoke(bot)
-	then
-		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Smoke Of Deceit (ordered)'
-	end
-
 	if (nInRangeEnemy ~= nil and #nInRangeEnemy == 0)
 	or (nInRangeTower ~= nil and #nInRangeTower == 0)
 	then
@@ -8400,7 +8394,6 @@ function ItemUsageThink()
 	-- Humaniser Sustain (Ours.Sustain): a held laner's heal and mana items, before the cast holds (sustain_act.ts Holds has the drill's).
 	if J.Humaniser.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then J.Humaniser.SustainAct.ItemThink(bot) end
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
-	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).
 	if J.Humaniser.Chooser.HoldsCasts(bot, true) then return end
@@ -8413,7 +8406,6 @@ end
 function AbilityUsageThink()
 	if RefreshBotHandle() then return end
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
-	if J.Humaniser.Lane.CampJobHoldsCasts(bot) then return end
 	-- Slice 4: no spells or items while the stack job runs (a cask before the hit drew the camp early, s4solo2), nor
 	-- for a drill's benched hero, statue or lane-only hero (humaniser/drill.ts).
 	if J.Humaniser.Chooser.HoldsCasts(bot) then return end

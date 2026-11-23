@@ -16,12 +16,11 @@ type Pred = (this: void) => boolean;
 
 /** What lives in Lua or in states/index.ts, handed over so this file imports neither (an import cycle). */
 export interface Ctx {
-    /** States.IsEnabled(): off, every row of ours stands aside and only the host rows (`oha_*`) run. */
+    /** Off (the bot script's custom settings disabled), every row of ours stands aside and only the host rows (`oha_*`) run. */
     enabled: Pred;
     /** The host's steps (mode_laning_generic.lua): true when the step acted. */
     ohaLastHit: Pred;
     ohaDeny: Pred;
-    ohaHold: Pred;
     ohaLocal: Pred;
     ohaPosition: Pred;
 }
@@ -79,17 +78,6 @@ const ohaDeny: Row = {
     run: (_bot, ctx) => ctx.ohaDeny(),
 };
 
-/** Holds still for a creep OHA's last hit chose to wait on; acts only on a frame `oha_lh` set that wait. */
-const ohaHold: Row = {
-    name: "oha_hold",
-    host: true,
-    scans: true,
-    rank: ranks(110, ...all),
-    drill: true,
-    wants: () => true,
-    run: (_bot, ctx) => ctx.ohaHold(),
-};
-
 /** The optional local override's Think: runs beside the rows and never ends the frame. */
 const ohaLocal: Row = {
     name: "oha_local",
@@ -114,7 +102,7 @@ const ohaPos: Row = {
     run: (_bot, ctx) => ctx.ohaPosition(),
 };
 
-export const ROWS: Row[] = [sustain, ohaLastHit, ohaDeny, ohaHold, ohaLocal, ohaPos];
+export const ROWS: Row[] = [sustain, ohaLastHit, ohaDeny, ohaLocal, ohaPos];
 
 // An error in a row of ours is reported and the row stands aside, so the rows after it (the host's last hit, deny and position)
 // still run. A failed `wants` on a host row answers true: ours does not own the frame.

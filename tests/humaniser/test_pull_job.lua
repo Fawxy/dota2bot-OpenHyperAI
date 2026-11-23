@@ -41,10 +41,10 @@ local function world(o)
 	OBSERVER = 1
 	SPAWNERS = { { team = 2, type = "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
-	H.Lane.Camps.ResetCache()
+	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
-	local data = H.Lane.Camps.ByIdx(1)
-	local stand = H.Lane.Camps.BoxEdgePoint(H.Lane.Camps.SpawnerByIdx(1), data.pull.path[1], 150)
+	local data = require("bots/FunLib/humaniser/camps").ByIdx(1)
+	local stand = require("bots/FunLib/humaniser/camps").BoxEdgePoint(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
 	sup.lane, sup.pos = Lane.Bot, 5
 	-- The pull verb's hit lead reads the puller's wind-up (GetAttackPoint, on this unit only: the shared stub's absence
@@ -152,8 +152,8 @@ do
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
-	local far = math.sqrt((meet.x - SMALL.x) ^ 2 + (meet.y - SMALL.y) ^ 2) > w.H.Lane.Config.Settings().Radii.MeetWatch
+	local meet = require("bots/FunLib/humaniser/camps").ByIdx(1).pull.meetPoint
+	local far = math.sqrt((meet.x - SMALL.x) ^ 2 + (meet.y - SMALL.y) ^ 2) > w.H.LaneConfig.Settings().Radii.MeetWatch
 	local wave, ended = {}, nil
 	capture(function()
 		while T < 140 and ended == nil do
@@ -180,7 +180,7 @@ do
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
 	local stays = MakeNeutral({ x = SMALL.x + 50, y = SMALL.y })
-	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+	local meet = require("bots/FunLib/humaniser/camps").ByIdx(1).pull.meetPoint
 	MakeNeutral({ x = meet.x + 200, y = meet.y + 200 })
 	local hitAt, ended = nil, nil
 	local out = capture(function()
@@ -478,14 +478,6 @@ do
 	check("pos4 in its own lane with no pull camp there: does not apply", not w.H.PullJob.Applies(four))
 end
 
--- The old camp-job pulls: refused for a bot the job applies to (a human's order still runs), and back with the switch off.
-do
-	local w = world({ reading = OUT })
-	check("switch on: old full pull refused", not w.H.Lane.CampJobs.Start(w.sup, { kind = "full_pull", campIdx = 1 }))
-	check("switch on: a human-ordered pull still starts", w.H.Lane.CampJobs.Start(w.sup, { kind = "full_pull", campIdx = 1, forced = true }))
-	w = world({ reading = OUT, on = false })
-	check("switch off: no pull job, the old full pull starts", not w.H.PullJob.Applies(w.sup) and w.H.Lane.CampJobs.Start(w.sup, { kind = "full_pull", campIdx = 1 }))
-end
 
 -- An empty camp the team sees whole is not pulled, unless a spawn minute comes before the hit (pw3: `no-camp` 19 of 89
 -- starts); out of sight, an empty box says nothing and the pull goes (the first test above).
@@ -506,7 +498,7 @@ do
 		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
 	-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the origin in sight, part of the
 	-- box in fog, one full-HP neutral returned of a freshly spawned camp: the count is a floor, so no `one` or `empty` yet.
-	check("the live read logs full (the test world sees every point)", w.H.PullJob.CampStateOf(w.H.Lane.Camps.SpawnerByIdx(w.H.Lane.Camps.PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
+	check("the live read logs full (the test world sees every point)", w.H.PullJob.CampStateOf(require("bots/FunLib/humaniser/camps").SpawnerByIdx(require("bots/FunLib/humaniser/camps").PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
 end
 
 -- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
@@ -639,7 +631,7 @@ local function shedPull(engage)
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
 	kobold.target = w.sup
-	local meet = w.H.Lane.Camps.ByIdx(1).pull.meetPoint
+	local meet = require("bots/FunLib/humaniser/camps").ByIdx(1).pull.meetPoint
 	local creep, far, ended
 	local out = capture(function()
 		while T < 140 and ended == nil do

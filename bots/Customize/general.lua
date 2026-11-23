@@ -126,9 +126,8 @@ Customize.Fretbots = {
 -- This won't be very effective for FPS improvement because Valve has a lot of compute on their side that your PC have to handle for Local Hosting.
 Customize.ThinkLess = 1;
 
--- Humaniser: makes bots perceive and react at human speed and behave like teammates.
--- Every sub-feature has its own Enable flag; with Enable = false behaviour matches upstream OHA.
--- Full defaults and tuning curves live in FunLib/humaniser/config.lua; anything set here overrides them.
+-- Our code beside OHA (FunLib/humaniser): the decisions under Customize.Ours below, the logging, the test harness.
+-- Enable = false turns all of it off but the logging; defaults in FunLib/humaniser/config.lua.
 Customize.Humaniser = {
     Enable = true,
     -- Draws per-bot debug text on screen and enables HDebug.Log output. Requires sv_cheats 1 to see draws.
@@ -136,61 +135,6 @@ Customize.Humaniser = {
     -- Our per-frame Tick runs its steps on every TickEvery-th frame (3 = ten times a game second); the few steps that
     -- need every frame still run on the others. 1 = every step every frame.
     TickEvery = 3,
-    -- Bot skill in [0, 1] combines Valve lobby difficulty and FretBots difficulty with these weights.
-    ValveWeight = 0.5,
-    FretWeight = 0.5,
-    -- A number in [0, 1] forces every bot's skill. nil = use difficulty. Held at 1 for all work until the Difficulty
-    -- roadmap section tunes skill (user 04/11/2026); lobby difficulty and FretBots are ignored while it is set.
-    SkillOverride = 1,
-    FretBridge = {
-        -- Force the FretBots level (0-10) bots assume, if the chat-vote mirror gets it wrong. nil = detect.
-        FretBotsLevelOverride = nil,
-        -- Experimental: a modifier FretBots stamps with the applied difficulty. nil = off.
-        BridgeModifier = nil,
-    },
-    Perception = { Enable = true },
-    AllyLastHit = { Enable = true },
-    Pings = { Enable = true },
-    Commands = { Enable = true },
-    -- Lane management (task 07). Each flag switches one behaviour; Enable = false restores upstream laning.
-    Lane = {
-        Enable = true,
-        Plan = true, Block = true, FullPull = true, StackPull = true,
-        AggroPull = true, Freeze = true, Shove = true, Stack = true,
-        Mid = true, CounterPlay = true, Telegraph = true,
-    },
-    -- Lane safety and laning-phase transitions (task 12). Enable = false restores upstream behaviour for all of it.
-    Transitions = {
-        Enable = true,
-        MidRunes = true,  -- the mid laner walks to and takes power runes
-        Rotation = true,  -- a spare pos 4/5 rotates to the power rune beside our mid
-        Caution = true,   -- an alone core or a lane with a missing enemy plays safer (independent of Teleports)
-        Teleports = true, -- bots back off from an enemy TP into their lane (independent of Caution)
-        LaneWard = true,  -- the lane support wards the gank path between about 2:30 and 4:30
-    },
-    -- Intent arbitration (task 09): one priority order for features that change mode desires, a short
-    -- stickiness bonus for the active mode, and a stuck-mode detector. Tuning in FunLib/humaniser/intent.lua.
-    Intent = { Enable = true },
-    -- Last-hit accuracy (task 10): low-skill bots misjudge last hits and try fewer denies. Skill 1.0 is upstream.
-    -- Only acts where OHA owns laning Think().
-    -- RequireOwnedLaning = false also applies it to team roam's last-hit grab for bots on Valve laning.
-    LastHitSkill = { Enable = true, RequireOwnedLaning = true },
-    -- Core farm pattern: pos 1-3 take a camp between waves (or stack one), back for the next wave; 5:00-20:00.
-    -- Tuning in FunLib/humaniser/farm_pattern.lua. Stacks also need Lane.Enable and Lane.Stack.
-    FarmPattern = { Enable = true },
-    -- Last-hit trainer (task 14): practice feedback for the human. Nothing runs in game until "!trainer on".
-    Trainer = {
-        LastHit = {
-            Enable = true,
-            Bar = true,
-            OutcomeOnly = false, -- true if the human's swing timing can't be read (spike fallback)
-            ScreenText = true, -- false sends verdicts and summaries to team chat instead (spike fallback)
-            Denies = true, Chat = 'off', -- 'off' | 'misses' | 'all'
-            EasyWindow = 0.3, Checkpoints = { 300, 600 },
-            -- Calibration: the lowest-PID bot on each team times its last hits from the trainer's window.
-            SelfTest = false,
-        },
-    },
     -- Machine-readable "[HEV]" event lines (decisions, mode switches, last hits, 1 s snapshots) for
     -- tools/hlog. Launch Dota with -condebug to write them to game/dota/console.log. "!mark <note>" in
     -- chat records a mark and every bot's state at that moment. Never changes bot behaviour.
@@ -207,15 +151,8 @@ Customize.Humaniser = {
         LuaErrors = true,
         LuaErrorRepeat = 10,
     },
-    -- tasks: the engine's coroutine task runner (FunLib/engine, built from engine/). Demo gates the GATHER demo task.
-    Tasks = { Enable = true, Demo = false },
-    -- Behaviour states (humaniser/states, on the engine's States; needs Tasks.Enable). Enable = false restores OHA
-    -- exactly. Shadow: choose and log a state for every bot in Teams; Own: state -> positions our body runs
-    -- (replaces the default list). Teams: who may own ('allies' = allies of a human, or 'all'); ShadowTeams: who
-    -- is shadowed ('allies' or 'all'). A shadowed bot outside Teams only logs its state; nothing it does changes.
-    States = { Enable = true, Shadow = true, Own = { stack = { 4, 5 }, rotate = { 4 } }, Teams = 'allies', ShadowTeams = 'all',
-        -- Rotate.Power: an owned rotate state also walks OHA's power-rune rotations (transitions/rotation decides; slice 9).
-        Rotate = { Power = false } },
+    -- The engine's coroutine task runner (FunLib/engine, built from engine/), which the jobs run on.
+    Tasks = { Enable = true },
 }
 
 -- Decisions taken over from OHA, one kill switch each (false = OHA's own decision). Defaults: FunLib/humaniser/ours.lua.
@@ -223,11 +160,11 @@ Customize.Humaniser = {
 -- ROADMAP 7b); bot repo tag pre-lane-body-cut holds it.
 -- StackExecute (slice 4): the pos5 stacks its nearest camp at minutes 3, 5 and 7 (placeholder trigger).
 -- RuneRotation (slice rune-rotation): pos4 to the 6:00 power rune and its own 7:00 wisdom shrine, pos5 to the 6:00 rune when
--- it has no stack that minute; hosted by the job chooser (needs JobChooser). Off: OHA's rune mode and the rotation nudges.
+-- it has no stack that minute; hosted by the job chooser (needs JobChooser). Off: OHA's rune mode.
 -- RuneSpawn (slice rune-spawn): the team's 6:00 power rune as one plan (mid and supports) with the plays rolled from it, and the
--- give-up on a 0:00 river bounty that a pickup does not take (rune_pickup). Off: OHA's rune mode and its own pickup guard.
+-- give-up on a 0:00 river bounty that a pickup does not take (rune_pickup). Off: OHA's rune mode.
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
--- (hosted by the job chooser, needs JobChooser). Off: the old camp-job pulls (task 07 lane planner).
+-- (hosted by the job chooser, needs JobChooser). Off: no pull.
 -- SupportPullFarm (slice support-pull-farm): with SupportPull and JobChooser on, the support that pulled clears the neutrals the
 -- wave left on the camp when the site is safe, and gives the camp up to a core of ours standing on it. Off: it walks back to lane.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
@@ -242,7 +179,7 @@ Customize.Humaniser = {
 -- ChoiceShadow (shadow choice line): per hero of ours, ev=choice kind=shadow: OHA's own desires as the real call returned them, their
 -- argmax, the mode Valve picked and the module of ours that made the difference. Logging only. Off: no line.
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
--- team, whose contexts then run OHA's path (the Customize.Humaniser features stay on both teams). Set it per run with
+-- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
 Customize.Ours = { StackExecute = true, DoubleStack = true, JobChooser = true, RuneRotation = true, RuneSpawn = true, SupportPull = true, SupportPullFarm = true, Threat = true, Retreat = true, MidWater = false, BurstReady = true, Sustain = true, ExitWindow = true, IdleBar = true, TowerRead = true, TripRead = true, ChoiceShadow = false }
 

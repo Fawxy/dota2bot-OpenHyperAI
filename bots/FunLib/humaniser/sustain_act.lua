@@ -185,10 +185,9 @@ local Sustain = require(GetScriptDirectory().."/FunLib/humaniser/sustain")
 local SustainGather = require(GetScriptDirectory().."/FunLib/humaniser/sustain_gather")
 local ItemUse = require(GetScriptDirectory().."/FunLib/humaniser/item_use")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
-local Phase = require(GetScriptDirectory().."/FunLib/humaniser/transitions/phase")
+local Phase = require(GetScriptDirectory().."/FunLib/humaniser/laning_held")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
-local CampJobs = require(GetScriptDirectory().."/FunLib/humaniser/camp_jobs")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_state")
 function rigOwns(bot, what)
@@ -288,7 +287,6 @@ ____exports.SETTINGS = {
     DecideHit = 0.1,
     StartWait = 1.5,
     Arrive = 100,
-    YieldFresh = 0.3,
     LateSlack = 20,
     CourierEvery = 2,
     RefuseGap = 2
@@ -298,9 +296,6 @@ local SELF = {item_flask = true, item_clarity = true}
 local acts = {}
 deliveries = {}
 local decidedAt = {}
-local yieldedAt = {}
---- When the camp job's supply step last asked (it yields only with time to spare).
-local askedAt = {}
 local refusedAt = {}
 --- A hero sustain carries: the switch, a laner we hold, and no drill hold on its items (a lane-only cast without `castItems`, a rig's hold).
 function ____exports.Holds(bot)
@@ -389,22 +384,9 @@ local function allyOf(pid)
     end
     return nil
 end
---- A walk can be carried now: the laning mode holds the hero (its `sustain` row steps it), or a camp job's supply step yields.
-local function carried(bot, now)
-    if bot:GetActiveMode() == BotMode.Laning then
-        return true
-    end
-    local y = yieldedAt[bot:GetPlayerID()]
-    return y ~= nil and now - y <= ____exports.SETTINGS.YieldFresh
-end
---- A walk may start: as `carried`, or a camp job runs whose supply step is asking now (it asks only with time to spare; smoke
--- 4: a job phase that never asked cut and restarted one tango walk every 0.5 s).
-local function canWalk(bot, now)
-    if carried(bot, now) then
-        return true
-    end
-    local asked = askedAt[bot:GetPlayerID()]
-    return CampJobs.Active(bot) and asked ~= nil and now - asked <= ____exports.SETTINGS.YieldFresh
+--- A walk can be carried now: the laning mode holds the hero (its `sustain` row steps it).
+local function carried(bot)
+    return bot:GetActiveMode() == BotMode.Laning
 end
 r1 = function(v) return math.floor(v * 10 + 0.5) / 10 end
 n0 = function(v) return math.floor(v + 0.5) end
@@ -574,7 +556,7 @@ local function startWait(bot, i, ans, now)
         100,
         bot:GetCurrentMovementSpeed()
     )
-    if GetUnitToLocationDistance(bot, spot) > ____exports.SETTINGS.Arrive and not canWalk(bot, now) then
+    if GetUnitToLocationDistance(bot, spot) > ____exports.SETTINGS.Arrive and not carried(bot) then
         return false
     end
     local a = {
@@ -688,7 +670,7 @@ local function start(bot, i, ans, now)
             bot:GetCurrentMovementSpeed()
         )
     end
-    if a.walk > 0 and not canWalk(bot, now) then
+    if a.walk > 0 and not carried(bot) then
         return false
     end
     a.deadline = now + a.walk + ____exports.SETTINGS.StartWait
@@ -733,7 +715,7 @@ end
 --- One frame of a running attempt: true once it has ended.
 local function progress(bot, a, now)
     if a.kind == "wait" then
-        if not carried(bot, now) and now > a.at then
+        if not carried(bot) and now > a.at then
             ____end(bot, "cut")
             return true
         end
@@ -761,7 +743,7 @@ local function progress(bot, a, now)
         return true
     end
     if a.kind == "step_out_use" then
-        if a.drunk ~= true and not carried(bot, now) and now > a.at then
+        if a.drunk ~= true and not carried(bot) and now > a.at then
             ____end(bot, "cut")
             return true
         end
@@ -796,7 +778,7 @@ local function progress(bot, a, now)
         ____end(bot, "started")
         return true
     end
-    if a.walk > 0 and not carried(bot, now) and now > a.at then
+    if a.walk > 0 and not carried(bot) and now > a.at then
         ____end(bot, "cut")
         return true
     end
@@ -876,15 +858,6 @@ function ____exports.Step(bot)
     order(bot, a)
     return true
 end
---- camp_jobs' supply step under `Ours.Sustain`: true while an attempt walks, its order given, so the job leaves the frame to it.
-function ____exports.Yield(bot)
-    askedAt[bot:GetPlayerID()] = DotaTime()
-    if not ____exports.Walking(bot) then
-        return false
-    end
-    yieldedAt[bot:GetPlayerID()] = DotaTime()
-    return ____exports.Step(bot)
-end
 --- Per game: the attempts and the cadence.
 function ____exports.ResetCache()
     for ____, k in ipairs(__TS__ObjectKeys(acts)) do
@@ -892,12 +865,6 @@ function ____exports.ResetCache()
     end
     for ____, k in ipairs(__TS__ObjectKeys(decidedAt)) do
         __TS__Delete(decidedAt, k)
-    end
-    for ____, k in ipairs(__TS__ObjectKeys(yieldedAt)) do
-        __TS__Delete(yieldedAt, k)
-    end
-    for ____, k in ipairs(__TS__ObjectKeys(askedAt)) do
-        __TS__Delete(askedAt, k)
     end
     for ____, k in ipairs(__TS__ObjectKeys(deliveries)) do
         __TS__Delete(deliveries, k)
