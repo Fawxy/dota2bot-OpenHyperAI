@@ -161,9 +161,9 @@ do
 	local out = walk(R, a, true)
 	local ends = lines(out, "phase=end")
 	check("a gold jump in the walk reads took=1", #ends == 1 and ends[1]:find("took=1", 1, true) ~= nil, table.concat(out, " | "))
-	local more
-	capture(function() T = T + 1 more = R.ROW.applies(a) end)
-	check("a taken rune is not walked to again", more == false)
+	local o2 = walk(R, a, true)
+	local o3 = walk(R, a, true)
+	check("taken, the status still up (runes piled on the spot): it keeps walking while each walk takes one", #lines(o2, "phase=start") == 1 and #lines(o3, "phase=start") == 1, table.concat(o3, " | "))
 
 	H = world(true)
 	R = H.RuneDetour

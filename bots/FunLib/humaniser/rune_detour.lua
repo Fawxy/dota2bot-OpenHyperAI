@@ -19,12 +19,12 @@ ____exports.SETTINGS = {
     Until = 600,
     Slack = 4,
     TookGold = 20,
-    Starts = 2
+    Misses = 2
 }
 --- The task's host: the decider's (farm).
 local HOST = BotMode.Farm
 local passes = {}
---- pid -> the spawn this hero last went for and how many walks it started for it.
+--- pid -> the spawn this hero last went for and how many of its walks for it ended untaken.
 local went = {}
 --- pid -> its walk while it runs.
 local running = {}
@@ -203,7 +203,7 @@ local function observe(bot, src, now)
         p = nil
     end
     local w = went[pid]
-    if r == nil or w ~= nil and w.spawn == r.spawn and (w.done or w.n >= ____exports.SETTINGS.Starts) then
+    if r == nil or w ~= nil and w.spawn == r.spawn and w.misses >= ____exports.SETTINGS.Misses then
         return nil
     end
     if p == nil then
@@ -244,10 +244,9 @@ local function finish(bot, ex, res)
     if w ~= nil then
         noteGold(bot, w)
     end
-    local took = w ~= nil and w.jump >= ____exports.SETTINGS.TookGold
     local g = went[pid]
-    if g ~= nil and (took or res.success) then
-        g.done = true
+    if g ~= nil and not (w ~= nil and w.jump >= ____exports.SETTINGS.TookGold) then
+        g.misses = g.misses + 1
     end
     local cut = not res.success and res.reason == "preempted" and (Decider.LetGo(bot) and "retreat" or HDebug.ModeName(bot:GetActiveMode())) or nil
     jobLine(
@@ -308,9 +307,7 @@ local function rowApplies(bot)
     )
     local g = went[pid]
     if g == nil or g.spawn ~= r.spawn then
-        went[pid] = {spawn = r.spawn, n = 1, done = false}
-    else
-        g.n = g.n + 1
+        went[pid] = {spawn = r.spawn, misses = 0}
     end
     passes[pid] = nil
     local ____choiceLine_2 = choiceLine

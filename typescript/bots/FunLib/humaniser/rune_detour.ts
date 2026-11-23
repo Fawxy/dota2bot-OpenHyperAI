@@ -10,8 +10,11 @@
  * why=off`, `want` as the row would have read it). A started walk runs as `ev=job job=rune_detour` (engine `pickUpRune`);
  * its end's `why` is the engine verb's (`ok` when GetRuneStatus left available at the rune). That status can stay available after a
  * pickup (rdon1, 23/11/2026: the Radiant pos5's gold rose 47 at its 4:00 rune, the status stayed available to 8:00), so the walk
- * also reads its own gold: `took=1` when one step's gain is at least TookGold. A walk that ends untaken with the rune still up
- * may start again, Starts a spawn at most.
+ * also reads its own gold: `took=1` when one step's gain is at least TookGold. The status reads available until the spot's last
+ * rune is gone (an untaken bounty stays when the next spawns, so runes pile up on a spot), so while it reads available after a
+ * walk the hero walks again and takes every rune lying there (user 24/11/2026; round 1, rdon2 to rdon4: three ready reps by a
+ * second rune refused after a take). Only walks that end untaken count: Misses a spawn at most, so a rune that cannot be taken
+ * does not hold the hero.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Rune, Unit, Vector } from "bots/ts_libs/dota";
@@ -41,8 +44,8 @@ export const SETTINGS = {
     Slack: 4,
     /** A gold gain this large between two steps of the walk is the pickup (judgement: a 4:00 bounty is about 40 at face). */
     TookGold: 20,
-    /** Walks a hero may start for one spawn (a walk that ends untaken with the rune still up may go once more; judgement). */
-    Starts: 2,
+    /** Walks for one spawn that may end untaken (no gold jump) before the hero stops going for that spot (judgement). */
+    Misses: 2,
 };
 
 /** The task's host: the decider's (farm). */
@@ -69,8 +72,8 @@ interface Read {
 }
 
 const passes: Record<number, Pass | undefined> = {};
-/** pid -> the spawn this hero last went for and how many walks it started for it. */
-const went: Record<number, { spawn: number; n: number; done: boolean } | undefined> = {};
+/** pid -> the spawn this hero last went for and how many of its walks for it ended untaken. */
+const went: Record<number, { spawn: number; misses: number } | undefined> = {};
 
 interface Walk {
     rune: number;
@@ -194,7 +197,7 @@ function observe(bot: Unit, src: string, now: number): Read | undefined {
         p = undefined;
     }
     const w = went[pid];
-    if (r === undefined || (w !== undefined && w.spawn === r.spawn && (w.done || w.n >= SETTINGS.Starts))) return undefined;
+    if (r === undefined || (w !== undefined && w.spawn === r.spawn && w.misses >= SETTINGS.Misses)) return undefined;
     if (p === undefined) {
         p = { spawn: r.spawn, rune: r.rune, ex: r.ex, dr: r.dr, want: false };
         passes[pid] = p;
@@ -223,9 +226,8 @@ function finish(bot: Unit, ex: number, res: Lib.Result): void {
     const w = running[pid];
     running[pid] = undefined;
     if (w !== undefined) noteGold(bot, w);
-    const took = w !== undefined && w.jump >= SETTINGS.TookGold;
     const g = went[pid];
-    if (g !== undefined && (took || res.success)) g.done = true;
+    if (g !== undefined && !(w !== undefined && w.jump >= SETTINGS.TookGold)) g.misses++;
     const cut = !res.success && res.reason === "preempted" ? (Decider.LetGo(bot) ? "retreat" : HDebug.ModeName(bot.GetActiveMode())) : undefined;
     jobLine(bot, "end", res.success ? "ok" : res.reason, ex, cut, w);
 }
@@ -257,8 +259,7 @@ function rowApplies(bot: Unit): boolean {
         Tasks.Verbs()!.pickUpRune(bot as unknown as Lib.TaskUnit, r.rune, { at: r.at, timeout })
     );
     const g = went[pid];
-    if (g === undefined || g.spawn !== r.spawn) went[pid] = { spawn: r.spawn, n: 1, done: false };
-    else g.n++;
+    if (g === undefined || g.spawn !== r.spawn) went[pid] = { spawn: r.spawn, misses: 0 };
     passes[pid] = undefined;
     choiceLine(bot, p, ok, ok ? undefined : "refused", "own");
     if (!ok) return false;
