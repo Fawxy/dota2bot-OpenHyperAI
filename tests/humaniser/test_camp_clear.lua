@@ -59,4 +59,16 @@ do
 	check("control: with no sighting of the second, the one in sight is the camp", CC.CanClear(core, 1, 0) == true)
 end
 
+-- A camp seen once and now in fog is its last sighting times 1 + 0.8 a stack: one neutral (0.255 of HP) clears with no
+-- stack (where the level 3 table refuses) and not with two (0.66).
+do
+	local CC, core = world()
+	core.level = 3
+	local n = neutral(0)
+	CC.CanClear(core, 1, 0)
+	n.loc = Vector(99999, 99999)
+	check("seen in fog: priced as last seen, not by the table", CC.CanClear(core, 1, 0) == true)
+	check("seen in fog: two stacks on it refuse", CC.CanClear(core, 1, 2) == false)
+end
+
 finish()
