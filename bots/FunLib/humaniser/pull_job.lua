@@ -391,18 +391,18 @@ function laneCreepsNear(p, radius)
     local out = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue102
+            local __continue103
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue102 = true
+                    __continue103 = true
                     break
                 end
                 if GetUnitToLocationDistance(c, p.meet) <= radius or GetUnitToLocationDistance(c, p.spawner.location) <= radius then
                     out[#out + 1] = c
                 end
-                __continue102 = true
+                __continue103 = true
             until true
-            if not __continue102 then
+            if not __continue103 then
                 break
             end
         end
@@ -437,10 +437,10 @@ function taggedState(bot, p, ours)
     local s = {alive = 0, onPuller = 0, onCreep = 0}
     for ____, u in ipairs(p.tagged or ({})) do
         do
-            local __continue134
+            local __continue135
             repeat
                 if stale(u) then
-                    __continue134 = true
+                    __continue135 = true
                     break
                 end
                 s.alive = s.alive + 1
@@ -467,9 +467,9 @@ function taggedState(bot, p, ours)
                 if s.farthest == nil or h > s.farthest then
                     s.farthest = h
                 end
-                __continue134 = true
+                __continue135 = true
             until true
-            if not __continue134 then
+            if not __continue135 then
                 break
             end
         end
@@ -481,19 +481,19 @@ function trackTagged(bot, p)
     if p.wa == nil and p.early ~= nil then
         for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
             do
-                local __continue145
+                local __continue146
                 repeat
                     if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) or __TS__ArrayIndexOf(p.early, c) >= 0 then
-                        __continue145 = true
+                        __continue146 = true
                         break
                     end
                     if GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
                         p.wa = now
                         break
                     end
-                    __continue145 = true
+                    __continue146 = true
                 until true
-                if not __continue145 then
+                if not __continue146 then
                     break
                 end
             end
@@ -520,10 +520,10 @@ function trackTagged(bot, p)
     local home = 0
     for ____, u in ipairs(p.tagged) do
         do
-            local __continue152
+            local __continue153
             repeat
                 if stale(u) then
-                    __continue152 = true
+                    __continue153 = true
                     break
                 end
                 local ____opt_26 = p.starts
@@ -538,7 +538,7 @@ function trackTagged(bot, p)
                 )
                 p.peaks:set(u, peak)
                 if peak <= ____exports.SETTINGS.Left then
-                    __continue152 = true
+                    __continue153 = true
                     break
                 end
                 if p.g4 == nil then
@@ -549,9 +549,9 @@ function trackTagged(bot, p)
                 if h < peak - ____exports.SETTINGS.HomeMargin and (t == nil or t == nil) then
                     home = home + 1
                 end
-                __continue152 = true
+                __continue153 = true
             until true
-            if not __continue152 then
+            if not __continue153 then
                 break
             end
         end
@@ -614,19 +614,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue173
+            local __continue174
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue173 = true
+                    __continue174 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue173 = true
+                __continue174 = true
             until true
-            if not __continue173 then
+            if not __continue174 then
                 break
             end
         end
@@ -651,15 +651,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue183
+            local __continue184
             repeat
                 if not u:IsAlive() then
-                    __continue183 = true
+                    __continue184 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue183 = true
+                    __continue184 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -686,9 +686,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue183 = true
+                __continue184 = true
             until true
-            if not __continue183 then
+            if not __continue184 then
                 break
             end
         end
@@ -889,11 +889,15 @@ local function campFor(bot)
         lane
     )[1]
 end
-function ____exports.Applies(bot)
-    return Ours.On("SupportPull") and Ours.On("JobChooser") and bot:IsBot() and TripTable.Does(
+--- The hero that would pull for its lane, whatever the switches say.
+local function puller(bot)
+    return bot:IsBot() and TripTable.Does(
         "pull",
         LaneConfig.PositionOf(bot)
     ) and isSupport(bot) and pullerOfLane(bot) and campFor(bot) ~= nil
+end
+function ____exports.Applies(bot)
+    return Ours.On("SupportPull") and Ours.On("JobChooser") and puller(bot)
 end
 function ____exports.Claims(bot)
     return ____exports.Running(bot)
@@ -973,19 +977,19 @@ function ____exports.CampStateOf(spawner)
     }
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue28
+            local __continue29
             repeat
                 if not u:IsAlive() then
-                    __continue28 = true
+                    __continue29 = true
                     break
                 end
                 local p = u:GetLocation()
                 if p == nil or p == nil then
-                    __continue28 = true
+                    __continue29 = true
                     break
                 end
                 if p.x < lo.x - m or p.x > hi.x + m or p.y < lo.y - m or p.y > hi.y + m then
-                    __continue28 = true
+                    __continue29 = true
                     break
                 end
                 s.n = s.n + 1
@@ -995,9 +999,9 @@ function ____exports.CampStateOf(spawner)
                 s.hp = s.hp + u:GetHealth()
                 local ____s_units_1 = s.units
                 ____s_units_1[#____s_units_1 + 1] = u
-                __continue28 = true
+                __continue29 = true
             until true
-            if not __continue28 then
+            if not __continue29 then
                 break
             end
         end
@@ -1050,24 +1054,24 @@ local function bailPoint(bot)
     local k = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue45
+            local __continue46
             repeat
                 if not u:IsAlive() or u:GetAttackTarget() ~= bot or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.BailScan then
-                    __continue45 = true
+                    __continue46 = true
                     break
                 end
                 local l = u:GetLocation()
                 if l == nil or l == nil then
-                    __continue45 = true
+                    __continue46 = true
                     break
                 end
                 dps = dps + u:GetEstimatedDamageToTarget(true, bot, 1, DamageType.All)
                 cx = cx + l.x
                 cy = cy + l.y
                 k = k + 1
-                __continue45 = true
+                __continue46 = true
             until true
-            if not __continue45 then
+            if not __continue46 then
                 break
             end
         end
@@ -1109,15 +1113,15 @@ local function shedPoint(bot, pull)
     local range = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue55
+            local __continue56
             repeat
                 if not u:IsAlive() or u:GetAttackTarget() ~= bot or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.BailScan then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 local l = u:GetLocation()
                 if l == nil or l == nil then
-                    __continue55 = true
+                    __continue56 = true
                     break
                 end
                 cx = cx + l.x
@@ -1127,9 +1131,9 @@ local function shedPoint(bot, pull)
                     range,
                     u:GetAttackRange()
                 )
-                __continue55 = true
+                __continue56 = true
             until true
-            if not __continue55 then
+            if not __continue56 then
                 break
             end
         end
@@ -1195,30 +1199,30 @@ function ____exports.PartnerThreat(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue75
+                local __continue76
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m == bot or not m:IsAlive() or isSupport(m) or m:GetAssignedLane() ~= lane then
-                        __continue75 = true
+                        __continue76 = true
                         break
                     end
                     local pids = {}
                     local n = 0
                     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
                         do
-                            local __continue77
+                            local __continue78
                             repeat
                                 if not e:IsAlive() or e:IsIllusion() or GetUnitToUnitDistance(e, m) > ____exports.SETTINGS.PartnerRadius then
-                                    __continue77 = true
+                                    __continue78 = true
                                     break
                                 end
                                 if pids[e:GetPlayerID()] ~= true then
                                     n = n + 1
                                 end
                                 pids[e:GetPlayerID()] = true
-                                __continue77 = true
+                                __continue78 = true
                             until true
-                            if not __continue77 then
+                            if not __continue78 then
                                 break
                             end
                         end
@@ -1229,9 +1233,9 @@ function ____exports.PartnerThreat(bot)
                     if n > 0 and m:GetHealth() < m:GetMaxHealth() * ____exports.SETTINGS.PartnerHp then
                         return "partner-low"
                     end
-                    __continue75 = true
+                    __continue76 = true
                 until true
-                if not __continue75 then
+                if not __continue76 then
                     break
                 end
             end
@@ -1245,10 +1249,10 @@ local function siteThreat(p, camp)
     local near
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue84
+            local __continue85
             repeat
                 if not e:IsAlive() or e:IsIllusion() then
-                    __continue84 = true
+                    __continue85 = true
                     break
                 end
                 local d = math.min(
@@ -1258,9 +1262,9 @@ local function siteThreat(p, camp)
                 if near == nil or d < near then
                     near = d
                 end
-                __continue84 = true
+                __continue85 = true
             until true
-            if not __continue84 then
+            if not __continue85 then
                 break
             end
         end
@@ -1310,7 +1314,10 @@ local function campFields(s)
     return {__TS__SparseArraySpread(____array_3)}
 end
 --- `slot` the plan's hit second, so the line joins its `pull_job` line.
-local function choiceLine(bot, d, slot, go, why, camp)
+local function choiceLine(bot, d, slot, go, why, camp, src)
+    if src == nil then
+        src = "own"
+    end
     local r = d.reading
     local function r1(x)
         return x ~= nil and math.floor(x + 0.5) or nil
@@ -1325,7 +1332,7 @@ local function choiceLine(bot, d, slot, go, why, camp)
         {"go", go and 1 or 0},
         {"want", d.want and 1 or 0},
         {"why", why},
-        {"src", "own"},
+        {"src", src},
         {
             "lane",
             bot:GetAssignedLane()
@@ -1554,19 +1561,19 @@ local function sample(bot, p)
     local radii = LaneConfig.Settings().Radii
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue110
+            local __continue111
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue110 = true
+                    __continue111 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, p.plan.meet)
                 if p.near == nil or d < p.near then
                     p.near = d
                 end
-                __continue110 = true
+                __continue111 = true
             until true
-            if not __continue110 then
+            if not __continue111 then
                 break
             end
         end
@@ -1587,18 +1594,18 @@ local function tagCamp(bot, p)
     local tagged = ____exports.CampStateOf(p.plan.spawner).units
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue122
+            local __continue123
             repeat
                 if not u:IsAlive() or __TS__ArrayIndexOf(tagged, u) >= 0 or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.TagRadius then
-                    __continue122 = true
+                    __continue123 = true
                     break
                 end
                 if u:GetAttackTarget() == bot then
                     tagged[#tagged + 1] = u
                 end
-                __continue122 = true
+                __continue123 = true
             until true
-            if not __continue122 then
+            if not __continue123 then
                 break
             end
         end
@@ -1682,26 +1689,13 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
         hooks
     ))
 end)
---- Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
--- time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
--- action until it could no longer reach the camp by the hit's late limit.
-function ____exports.Wants(bot, blocked, host)
-    if not ____exports.Applies(bot) then
-        return false
-    end
+--- The slot this puller would have to leave for now, with the lane's read of it: undefined before the leave time and once
+-- the slot's wave is handled. The lane is read once per wave, on the first frame at or after the leave time.
+local function dueSlot(bot, now)
     local pid = bot:GetPlayerID()
-    Tasks.Tick(bot)
-    if running[pid] ~= nil then
-        return true
-    end
-    trail(bot, false)
-    if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
-        return false
-    end
-    local now = DotaTime()
     local p = planFor(bot, now)
     if p == nil or ____exports.SameWave(handled[pid], p.slot) then
-        return false
+        return nil
     end
     local walk = travel(bot, p)
     local timer = timers[pid]
@@ -1715,7 +1709,7 @@ function ____exports.Wants(bot, blocked, host)
     end
     local hitAt = PullTiming.Read(timer, now)
     if now < hitAt - walk - ____exports.SETTINGS.Early then
-        return false
+        return nil
     end
     local d = decided[pid]
     if d == nil or not ____exports.SameWave(d.slot, p.slot) then
@@ -1756,6 +1750,69 @@ function ____exports.Wants(bot, blocked, host)
         decided[pid] = d
         gateWhy[pid] = nil
     end
+    return {
+        p = p,
+        timer = timer,
+        hitAt = hitAt,
+        walk = walk,
+        d = d
+    }
+end
+--- Plan s5's denominator in the arm that does not pull: for a lane's puller whose pull is switched off, the same read of each
+-- slot at the same leave time, written as the line Wants writes (`go=0 why=off src=shadow`). It reads and logs; nothing is
+-- ordered or started. A shadowed slot is where a puller standing where stock left it would have had to leave; the on arm's
+-- puller may stand elsewhere, so the two arms' slots match by wave, not by second.
+function ____exports.Shadow(bot)
+    if not Telemetry.IsEnabled() or not puller(bot) or ____exports.Applies(bot) then
+        return
+    end
+    if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
+        return
+    end
+    local due = dueSlot(
+        bot,
+        DotaTime()
+    )
+    if due == nil then
+        return
+    end
+    handled[bot:GetPlayerID()] = due.p.slot
+    choiceLine(
+        bot,
+        due.d,
+        due.p.slot,
+        false,
+        "off",
+        ____exports.CampStateOf(due.p.spawner),
+        "shadow"
+    )
+end
+--- Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
+-- time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
+-- action until it could no longer reach the camp by the hit's late limit.
+function ____exports.Wants(bot, blocked, host)
+    if not ____exports.Applies(bot) then
+        return false
+    end
+    local pid = bot:GetPlayerID()
+    Tasks.Tick(bot)
+    if running[pid] ~= nil then
+        return true
+    end
+    trail(bot, false)
+    if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
+        return false
+    end
+    local now = DotaTime()
+    local due = dueSlot(bot, now)
+    if due == nil then
+        return false
+    end
+    local p = due.p
+    local timer = due.timer
+    local hitAt = due.hitAt
+    local walk = due.walk
+    local d = due.d
     local camp = ____exports.CampStateOf(p.spawner)
     local function done(go, why)
         handled[pid] = p.slot

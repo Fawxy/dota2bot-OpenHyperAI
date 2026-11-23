@@ -244,8 +244,13 @@ function campFor(bot: Unit): Camps.CampJobData | undefined {
     return Camps.PullCampsFor(bot.GetTeam(), lane)[0];
 }
 
+/** The hero that would pull for its lane, whatever the switches say. */
+function puller(bot: Unit): boolean {
+    return bot.IsBot() && TripTable.Does("pull", LaneConfig.PositionOf(bot)) && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
+}
+
 export function Applies(bot: Unit): boolean {
-    return Ours.On("SupportPull") && Ours.On("JobChooser") && bot.IsBot() && TripTable.Does("pull", LaneConfig.PositionOf(bot)) && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
+    return Ours.On("SupportPull") && Ours.On("JobChooser") && puller(bot);
 }
 
 export function Claims(bot: Unit): boolean {
@@ -493,7 +498,7 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
 }
 
 /** `slot` the plan's hit second, so the line joins its `pull_job` line. */
-function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState): void {
+function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState, src = "own"): void {
     const r = d.reading;
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
     Telemetry.Event("choice", [
@@ -502,7 +507,7 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
         ["go", go ? 1 : 0],
         ["want", d.want ? 1 : 0],
         ["why", why],
-        ["src", "own"],
+        ["src", src],
         ["lane", bot.GetAssignedLane()],
         ["slot", slot],
         ["st", r?.state],
@@ -911,21 +916,22 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
     return yield* Tasks.Jobs()!.pull(bot as unknown as Lib.TaskUnit, verbPlan(bot, p, aggroAt), hooks);
 }
 
+interface Due {
+    p: Plan;
+    timer: PullTiming.CreepTimer;
+    hitAt: number;
+    walk: number;
+    d: Decision;
+}
+
 /**
- * Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
- * time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
- * action until it could no longer reach the camp by the hit's late limit.
+ * The slot this puller would have to leave for now, with the lane's read of it: undefined before the leave time and once
+ * the slot's wave is handled. The lane is read once per wave, on the first frame at or after the leave time.
  */
-export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
-    if (!Applies(bot)) return false;
+function dueSlot(bot: Unit, now: number): Due | undefined {
     const pid = bot.GetPlayerID();
-    Tasks.Tick(bot);
-    if (running[pid] !== undefined) return true;
-    trail(bot, false);
-    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
-    const now = DotaTime();
     const p = planFor(bot, now);
-    if (p === undefined || SameWave(handled[pid], p.slot)) return false;
+    if (p === undefined || SameWave(handled[pid], p.slot)) return undefined;
     const walk = travel(bot, p);
     // Once our wave is out its creeps time the hit (pull_timing's CreepTimer); the leave time, the late check and the hit all
     // use that second (pw2: 12 starts planned against the slot failed `late` while still walking, the wave being early).
@@ -935,7 +941,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         timers[pid] = timer;
     }
     const hitAt = PullTiming.Read(timer, now);
-    if (now < hitAt - walk - SETTINGS.Early) return false;
+    if (now < hitAt - walk - SETTINGS.Early) return undefined;
     let d = decided[pid];
     if (d === undefined || !SameWave(d.slot, p.slot)) {
         const reading = LanePush.Read(bot.GetTeam(), bot.GetAssignedLane());
@@ -952,6 +958,40 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
         decided[pid] = d;
         gateWhy[pid] = undefined;
     }
+    return { p, timer, hitAt, walk, d };
+}
+
+/**
+ * Plan s5's denominator in the arm that does not pull: for a lane's puller whose pull is switched off, the same read of each
+ * slot at the same leave time, written as the line Wants writes (`go=0 why=off src=shadow`). It reads and logs; nothing is
+ * ordered or started. A shadowed slot is where a puller standing where stock left it would have had to leave; the on arm's
+ * puller may stand elsewhere, so the two arms' slots match by wave, not by second.
+ */
+export function Shadow(bot: Unit): void {
+    if (!Telemetry.IsEnabled() || !puller(bot) || Applies(bot)) return;
+    if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
+    const due = dueSlot(bot, DotaTime());
+    if (due === undefined) return;
+    handled[bot.GetPlayerID()] = due.p.slot;
+    choiceLine(bot, due.d, due.p.slot, false, "off", CampStateOf(due.p.spawner), "shadow");
+}
+
+/**
+ * Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
+ * time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
+ * action until it could no longer reach the camp by the hit's late limit.
+ */
+export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
+    if (!Applies(bot)) return false;
+    const pid = bot.GetPlayerID();
+    Tasks.Tick(bot);
+    if (running[pid] !== undefined) return true;
+    trail(bot, false);
+    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    const now = DotaTime();
+    const due = dueSlot(bot, now);
+    if (due === undefined) return false;
+    const { p, timer, hitAt, walk, d } = due;
     const camp = CampStateOf(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
         handled[pid] = p.slot;

@@ -104,6 +104,7 @@ local steps = {
         end
     end,
     landing = SafeGather.Tick,
+    pullShadow = PullJob.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -160,6 +161,7 @@ local function tick(bot)
     pcall(CastLog.Tick, bot)
     pcall(steps.regen, bot)
     pcall(steps.sustain, bot)
+    pcall(steps.pullShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)

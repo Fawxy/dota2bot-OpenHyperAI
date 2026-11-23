@@ -78,6 +78,7 @@ const steps = {
         if (!SustainAct.Holds(bot)) SustainGather.Tick(bot);
     },
     landing: SafeGather.Tick,
+    pullShadow: PullJob.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
     overlay: drawOverlay,
@@ -143,6 +144,8 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.regen, bot);
     // Sustain: the decision in shadow (ev=cut kind=sustain) for a hero sustain_act.ts does not carry; reads and logs, no order.
     pcall(steps.sustain, bot);
+    // The pull's trigger where the pull is switched off (ev=choice kind=pull src=shadow): reads and logs, no order.
+    pcall(steps.pullShadow, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
     pcall(VisionMap.Tick, bot);
