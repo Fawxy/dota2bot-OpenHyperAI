@@ -91,3 +91,15 @@ test('a pull row leaves the pulled wave (within 800 of the camp spawn) out of ou
     ], 'SELECT * FROM pull_waves');
     assert.deepStrictEqual(out.map(r => [r.own_died, r.o_dead]), [[1, 1]]);
 });
+
+test('a pull by one team does not hide the other team\'s wanted slot on the same lane id; its own wanted line on that slot stays hidden', () => {
+    const out = run([...bots,
+        line(0, 'bot pid=8 hero=h8 team=3 pos=5'),
+        line(195, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=200 res=ok why=ok dt=1'),
+        line(190, 'choice pid=5 kind=pull go=1 want=1 lane=3 slot=200'),
+        line(191, 'choice pid=8 kind=pull go=0 want=1 why=off src=shadow lane=3 slot=200.6'),
+        // the pulling team's other support, wanted and not started on the pulled slot: still not a control.
+        line(192, 'choice pid=3 kind=pull go=0 want=1 lane=3 slot=200.2'),
+    ], 'SELECT * FROM pull_waves ORDER BY team');
+    assert.deepStrictEqual(out.map(r => [r.team, r.pid, r.slot, r.grp]), [[2, 5, 200, 'ok_div'], [3, 8, 200.6, 'none']]);
+});
