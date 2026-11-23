@@ -177,7 +177,15 @@ local function stackMinute(x, y, r, dx, dy)
 	HeroList:GetAllHeroes()[1]:SetContextThink(name, function()
 		local t = GameRules:GetDOTATime(false, false)
 		if t < from then return 0.1 end
-		if held == nil then held = campNeutrals(c, r) end
+		if held == nil then
+			held = campNeutrals(c, r)
+			local near, nd = 0, 1e9
+			for _, u in ipairs(campNeutrals(c, 2000)) do
+				near = near + 1
+				nd = math.min(nd, (u:GetAbsOrigin() - c):Length2D())
+			end
+			say(string.format("stack_minute x=%s y=%s t=%.2f in=%d within2000=%d nearest=%.0f", tostring(x), tostring(y), t, #held, near, nd))
+		end
 		if t > from + 1.6 then
 			say(string.format("stack_minute x=%s y=%s held=%d at=%.1f", tostring(x), tostring(y), #held, from))
 			return nil
