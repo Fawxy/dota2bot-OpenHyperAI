@@ -132,25 +132,6 @@ Convars:RegisterCommand("rig_charges", function(_, item, n, team)
 	say(string.format("charges item=%s n=%s heroes=%d", tostring(item), tostring(n), #hs))
 end, "rig: set the charges of an item on every hero holding it", FCVAR_CHEAT)
 
--- A stack without a stacker: the camp's neutrals are moved out of the spawn box and a spawn is forced into the empty box,
--- so the moved set walks home onto a fresh one (a forced spawn on a full camp adds none, pullstack1). The spawn goes a
--- frame later through the console so the box is already empty; every other camp is full after the rig's reset and
--- takes none. A neutral moved out walks back like one stacked by a hero.
-Convars:RegisterCommand("rig_stack", function(_, x, y, r, dx, dy)
-	local c = Vector(tonumber(x), tonumber(y), 0)
-	local off = Vector(tonumber(dx) or 0, tonumber(dy) or 800, 0)
-	local n = 0
-	for _, u in ipairs(FindUnitsInRadius(DOTA_TEAM_NEUTRALS, c, nil, tonumber(r) or 500, DOTA_UNIT_TARGET_TEAM_FRIENDLY,
-		DOTA_UNIT_TARGET_BASIC, DOTA_UNIT_TARGET_FLAG_INVULNERABLE, 0, false)) do
-		if u:IsAlive() and u:GetTeamNumber() == DOTA_TEAM_NEUTRALS then
-			FindClearSpaceForUnit(u, u:GetAbsOrigin() + off, true)
-			n = n + 1
-		end
-	end
-	SendToServerConsole("dota_spawn_neutrals")
-	say(string.format("stack x=%s y=%s moved=%d", tostring(x), tostring(y), n))
-end, "rig: move a camp's neutrals out of its box and force a spawn into it", FCVAR_CHEAT)
-
 local function campNeutrals(c, r)
 	local out = {}
 	for _, u in ipairs(FindUnitsInRadius(DOTA_TEAM_NEUTRALS, c, nil, r, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC,
@@ -160,8 +141,9 @@ local function campNeutrals(c, r)
 	return out
 end
 
--- The stack by the game's own minute spawn (rig_stack's forced spawn added none in pullstk1: the pull met 3 neutrals, as
--- unstacked): from :59.0 of the coming minute to :00.6 the camp's neutrals are held out of its box, then left to walk home.
+-- A stack without a stacker, by the game's own minute spawn: from :59.0 of the coming minute to :00.6 the camp's neutrals
+-- are held out of its box, then left to walk home (the camp held 6 or 7 after it, pullstk6). Moving them out and forcing a
+-- spawn adds none: `dota_spawn_neutrals` only arms the next :00 spawn (pullstk1, pullstk3).
 -- The units held are those in the circle at :59.0, so a set stacked earlier goes out with them.
 -- The think runs on a hero: a plain `map dota` game has no game-mode entity to host it (GetGameModeEntity, pullstk2:
 -- "error in error handling" on every call).
