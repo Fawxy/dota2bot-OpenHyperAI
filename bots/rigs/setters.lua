@@ -132,4 +132,23 @@ Convars:RegisterCommand("rig_charges", function(_, item, n, team)
 	say(string.format("charges item=%s n=%s heroes=%d", tostring(item), tostring(n), #hs))
 end, "rig: set the charges of an item on every hero holding it", FCVAR_CHEAT)
 
+-- A stack without a stacker: the camp's neutrals are moved out of the spawn box and a spawn is forced into the empty box,
+-- so the moved set walks home onto a fresh one (a forced spawn on a full camp adds none, pullstack1). The spawn goes a
+-- frame later through the console so the box is already empty; every other camp is full after the rig's reset and
+-- takes none. A neutral moved out walks back like one stacked by a hero.
+Convars:RegisterCommand("rig_stack", function(_, x, y, r, dx, dy)
+	local c = Vector(tonumber(x), tonumber(y), 0)
+	local off = Vector(tonumber(dx) or 0, tonumber(dy) or 800, 0)
+	local n = 0
+	for _, u in ipairs(FindUnitsInRadius(DOTA_TEAM_NEUTRALS, c, nil, tonumber(r) or 500, DOTA_UNIT_TARGET_TEAM_FRIENDLY,
+		DOTA_UNIT_TARGET_BASIC, DOTA_UNIT_TARGET_FLAG_INVULNERABLE, 0, false)) do
+		if u:IsAlive() and u:GetTeamNumber() == DOTA_TEAM_NEUTRALS then
+			FindClearSpaceForUnit(u, u:GetAbsOrigin() + off, true)
+			n = n + 1
+		end
+	end
+	SendToServerConsole("dota_spawn_neutrals")
+	say(string.format("stack x=%s y=%s moved=%d", tostring(x), tostring(y), n))
+end, "rig: move a camp's neutrals out of its box and force a spawn into it", FCVAR_CHEAT)
+
 say("setters registered")
