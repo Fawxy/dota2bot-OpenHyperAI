@@ -460,10 +460,12 @@ export const TABLE: Record<string, Entry> = {
     // pulled (1:00, 3:00 ...), so the camp is reset in the minute between (`--every "2:00@2:45 ent_fire npc_dota_creep_neutral
     // Kill" --every "2:00@2:52 dota_spawn_neutrals"`, set with `--set Overrides.Drill=pull-long`): in `pull` the :45 kill cut
     // the fight in 7 of 8 pulls with 3 to 5 of our creeps still at the camp (pullrig2, 23/11/2026). The :30 waves are the
-    // control as in `pull`; the unpulled minute wave between walks past a camp still fighting.
+    // control as in `pull`; the unpulled minute wave between walks past a camp still fighting. Both pos5s pull (user
+    // 24/11/2026): the safe lanes do not meet, and Dire's small camp (697 from its lane, Radiant's 1,198) is a second camp, read
+    // apart (`q @pull_rig --p team=3`).
     "pull-long": {
-        note: "Radiant pos5 pulls every other minute's wave (1:00, 3:00 ...), a statue otherwise; the other waves unpulled; everyone else benched",
-        cast: { r: [5] },
+        note: "both pos5s pull every other minute's wave in their safe lanes (1:00, 3:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast: { r: [5], d: [5] },
         others: "bench",
         castIdle: "statue",
         rep: { every: 30, from: 60, on: 4 },

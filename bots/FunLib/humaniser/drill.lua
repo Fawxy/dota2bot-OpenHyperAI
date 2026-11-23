@@ -2247,8 +2247,8 @@ ____exports.TABLE = {
         forces = "pull"
     },
     ["pull-long"] = {
-        note = "Radiant pos5 pulls every other minute's wave (1:00, 3:00 ...), a statue otherwise; the other waves unpulled; everyone else benched",
-        cast = {r = {5}},
+        note = "both pos5s pull every other minute's wave in their safe lanes (1:00, 3:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast = {r = {5}, d = {5}},
         others = "bench",
         castIdle = "statue",
         rep = {every = 30, from = 60, on = 4},
