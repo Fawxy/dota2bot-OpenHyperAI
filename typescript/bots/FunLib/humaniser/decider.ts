@@ -30,7 +30,7 @@ export interface Row {
  */
 export const HARD = 0.98;
 
-/** Doctrine order: the first row that applies holds. Empty: the pass-through. */
+/** Doctrine order: the first row that applies holds. Empty: the pass-through. index.ts fills it, so no row is imported here. */
 export const ROWS: Row[] = [];
 
 /**
@@ -159,6 +159,11 @@ export function HostThink(bot: Unit, inner: () => any, cannotAct: (this: void, b
         if (row.step(bot)) stateOf(bot).held = undefined;
         return undefined;
     };
+}
+
+/** The decider is yielding this hero to stock's retreat although a row applied (a cut row names it as its end's reason). */
+export function LetGo(bot: Unit): boolean {
+    return stateOf(bot).letAt !== undefined;
 }
 
 /** Tests: forget every hero. */

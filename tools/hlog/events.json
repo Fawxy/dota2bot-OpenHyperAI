@@ -886,7 +886,9 @@
    "phase": "str",
    "why": "str",
    "host": "num",
-   "hit": "num"
+   "hit": "num",
+   "cut": "str",
+   "hp": "num"
   },
   "stack": {
    "pid": "num",
@@ -2415,7 +2417,8 @@
   "ev_job": {
    "job": "text",
    "phase": "text",
-   "why": "text"
+   "why": "text",
+   "cut": "text"
   },
   "ev_stack": {
    "res": "text",

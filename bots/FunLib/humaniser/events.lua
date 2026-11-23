@@ -786,7 +786,9 @@ ____exports.EVENTS = {
         phase = "str",
         why = "str",
         host = "num",
-        hit = "num"
+        hit = "num",
+        cut = "str",
+        hp = "num"
     },
     stack = {
         pid = "num",

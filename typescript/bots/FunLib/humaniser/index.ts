@@ -19,7 +19,6 @@ import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as RunePickup from "bots/FunLib/humaniser/rune_pickup";
 import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
-import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
@@ -27,7 +26,7 @@ import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, Chooser, Decider, Overrides, Drill, ChoiceShadow };
+export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -178,6 +177,14 @@ if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
 Telemetry.PerfDeepInstall();
+// The decider's rows, in doctrine order. A row's error yields the hero to stock for that call (not applying; finished).
+if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
+    if (Telemetry.GuardsEnabled()) {
+        PullJob.ROW.applies = Telemetry.Guard("PullRow.applies", PullJob.ROW.applies, no);
+        PullJob.ROW.step = Telemetry.Guard("PullRow.step", PullJob.ROW.step, () => true);
+    }
+    Decider.ROWS.push(PullJob.ROW);
+}
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 
 export function Tick(bot: Unit): void {

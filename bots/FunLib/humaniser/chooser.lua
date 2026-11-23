@@ -15,7 +15,6 @@ local BotMode = ____dota.BotMode
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
-local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
@@ -95,30 +94,7 @@ local RUNE = {
     NoteHit = function(bot) return RuneJob.NoteHit(bot) end,
     NoteIdleHeld = function(bot) return RuneJob.NoteIdleHeld(bot) end
 }
-local PULL = {
-    name = "pull",
-    Applies = function(bot) return PullJob.Applies(bot) end,
-    Claims = function(bot) return PullJob.Claims(bot) end,
-    Wants = function(bot, blocked, host) return PullJob.Wants(bot, blocked, host) end,
-    Running = function(bot) return PullJob.Running(bot) end,
-    Step = function(bot, host) return PullJob.Step(bot, host) end,
-    End = function(bot, why) return PullJob.End(bot, why) end,
-    NoteHit = function(bot) return PullJob.NoteHit(bot) end,
-    NoteIdleHeld = function(bot) return PullJob.NoteIdleHeld(bot) end
-}
-local PULLFARM = {
-    name = "pullfarm",
-    guards = true,
-    Applies = function(bot) return PullFarm.Applies(bot) end,
-    Claims = function(bot) return PullFarm.Claims(bot) end,
-    Wants = function(bot, blocked, host) return PullFarm.Wants(bot, blocked, host) end,
-    Running = function(bot) return PullFarm.Running(bot) end,
-    Step = function(bot, host) return PullFarm.Step(bot, host) end,
-    End = function(bot, why) return PullFarm.End(bot, why) end,
-    NoteHit = function(bot) return PullFarm.NoteHit(bot) end,
-    NoteIdleHeld = function(bot) return PullFarm.NoteIdleHeld(bot) end
-}
-local JOBS = {STACK, RUNE, PULL, PULLFARM}
+local JOBS = {STACK, RUNE}
 --- The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order).
 local function ranked(bot)
     local out = {}
@@ -126,23 +102,23 @@ local function ranked(bot)
     local pos = LaneConfig.PositionOf(bot)
     for ____, j in ipairs(JOBS) do
         do
-            local __continue35
+            local __continue19
             repeat
                 if only ~= nil and j.name ~= only then
-                    __continue35 = true
+                    __continue19 = true
                     break
                 end
                 if not j.Applies(bot) then
-                    __continue35 = true
+                    __continue19 = true
                     break
                 end
                 local p = TripTable.RankOf(j.name, pos)
                 if p ~= nil then
                     out[#out + 1] = {j, p}
                 end
-                __continue35 = true
+                __continue19 = true
             until true
-            if not __continue35 then
+            if not __continue19 then
                 break
             end
         end
@@ -180,9 +156,9 @@ function ____exports.RunningJobName(bot)
     local ____opt_1 = runningJob(bot)
     return ____opt_1 and ____opt_1.name
 end
---- Any of our jobs runs for this hero.
+--- Any of our jobs, or the decider's pull, runs for this hero.
 function ____exports.Running(bot)
-    return runningJob(bot) ~= nil
+    return runningJob(bot) ~= nil or PullJob.Running(bot)
 end
 --- The host's desire, switch on. Retreat at 0.92 or above wins through Valve's arbitration without help; below that no desire
 -- value separates danger from a healthy hero (slice file, "Retreat"), so the job ends itself: with `Ours.TripRead` on a deadly safe-read answer
@@ -447,7 +423,11 @@ function ____exports.HoldsIdle(bot)
     end
     local cur = runningJob(bot)
     if cur == nil then
-        return Drill.IdleStatue(bot)
+        if not PullJob.Running(bot) then
+            return Drill.IdleStatue(bot)
+        end
+        PullJob.NoteIdleHeld(bot)
+        return true
     end
     cur.NoteIdleHeld(bot)
     return true

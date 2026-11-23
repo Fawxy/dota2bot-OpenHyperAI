@@ -172,7 +172,6 @@ do
 			H[m[1]].Applies = function() return true end
 			H[m[1]].Wants = function() table.insert(seen, m[2]) return false end
 		end
-		H.PullJob.Applies, H.PullFarm.Applies = never, never
 		H.Chooser.Gate(bot, "farm", function() return 0.5 end)()
 		return table.concat(seen, ",")
 	end

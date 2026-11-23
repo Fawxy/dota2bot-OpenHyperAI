@@ -2,13 +2,14 @@
  * Hero job chooser (slice job-chooser, design docs/proposals/2026-11-02-job-chooser-design.md): whether a job may start or
  * must stop, which mode hosts it, and every contact with OHA. OHA's files call only this module, never a job; a job says
  * when it wants to run, how it does the work and when it is finished.
- * Jobs: StackJob, RuneJob (slice rune-rotation), PullJob (slice support-lane) and PullFarm (slice support-pull-farm), ranked per hero by states/trip_table; a running job is never interrupted by another.
+ * Jobs: StackJob and RuneJob (slice rune-rotation), ranked per hero by states/trip_table; a running job is never interrupted by another.
+ * The pull is a row of the decider (pull_job.ts), not a job here: the hooks OHA's files call for a held hero (HoldsRun, HoldsCasts,
+ * HoldsIdle) count its run too.
  */
 import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
-import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
@@ -91,32 +92,7 @@ const RUNE: Job = {
     NoteIdleHeld: (bot) => RuneJob.NoteIdleHeld(bot),
 };
 
-const PULL: Job = {
-    name: "pull",
-    Applies: (bot) => PullJob.Applies(bot),
-    Claims: (bot) => PullJob.Claims(bot),
-    Wants: (bot, blocked, host) => PullJob.Wants(bot, blocked, host),
-    Running: (bot) => PullJob.Running(bot),
-    Step: (bot, host) => PullJob.Step(bot, host),
-    End: (bot, why) => PullJob.End(bot, why),
-    NoteHit: (bot) => PullJob.NoteHit(bot),
-    NoteIdleHeld: (bot) => PullJob.NoteIdleHeld(bot),
-};
-
-const PULLFARM: Job = {
-    name: "pullfarm",
-    guards: true,
-    Applies: (bot) => PullFarm.Applies(bot),
-    Claims: (bot) => PullFarm.Claims(bot),
-    Wants: (bot, blocked, host) => PullFarm.Wants(bot, blocked, host),
-    Running: (bot) => PullFarm.Running(bot),
-    Step: (bot, host) => PullFarm.Step(bot, host),
-    End: (bot, why) => PullFarm.End(bot, why),
-    NoteHit: (bot) => PullFarm.NoteHit(bot),
-    NoteIdleHeld: (bot) => PullFarm.NoteIdleHeld(bot),
-};
-
-const JOBS: Job[] = [STACK, RUNE, PULL, PULLFARM];
+const JOBS: Job[] = [STACK, RUNE];
 
 /** The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order). */
 function ranked(bot: Unit): Job[] {
@@ -146,9 +122,9 @@ export function RunningJobName(bot: Unit): string | undefined {
     return runningJob(bot)?.name;
 }
 
-/** Any of our jobs runs for this hero. */
+/** Any of our jobs, or the decider's pull, runs for this hero. */
 export function Running(bot: Unit): boolean {
-    return runningJob(bot) !== undefined;
+    return runningJob(bot) !== undefined || PullJob.Running(bot);
 }
 
 /**
@@ -375,7 +351,11 @@ export function HoldsIdle(bot: Unit): boolean {
     // A drill's benched hero waits in its fountain and a statue sways on its spot: both stand still by design.
     if (StackJob.Benched(bot)) return true;
     const cur = runningJob(bot);
-    if (cur === undefined) return Drill.IdleStatue(bot);
+    if (cur === undefined) {
+        if (!PullJob.Running(bot)) return Drill.IdleStatue(bot);
+        PullJob.NoteIdleHeld(bot);
+        return true;
+    }
     cur.NoteIdleHeld(bot);
     return true;
 }

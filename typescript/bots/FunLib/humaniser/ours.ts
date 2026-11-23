@@ -19,16 +19,12 @@ export const DEFAULTS = {
     /** Slice rune-spawn: the team's 6:00 power rune (spot plan, hidden wait, timed walk, plays) and the 0:00 river bounty's
      *  pickup give-up (rune_pickup). Needs JobChooser and RuneRotation for the supports' side. */
     RuneSpawn: false,
-    /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
-     *  the old camp-job pulls stop for those bots. Needs JobChooser. */
+    /** The whole-wave pull, a row of the decider (pull_job.ts, doctrine D17): the lane's pos5 (else pos4) pulls our wave into the
+     *  lane's first pull camp when the pull's forecast wants it. Off: the trigger is logged as a shadow and stock plays. */
     SupportPull: false,
-    /** Slice support-pull-farm: with SupportPull and JobChooser on, the support that pulled stays on the camp and clears the
-     *  neutrals the wave left (PullFarm, a chooser job) when the site is safe, and gives the camp up to a core of ours standing
-     *  on it. Off: the support walks back to lane after its pull. */
-    SupportPullFarm: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
-     *  gates of the support's pull farm and the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
-     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: pull_farm's ThreatOnWay. */
+     *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
+     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
     Threat: false,
     /** Slice retreat (design s5.4, master slices/retreat.md): a laning bot hero's retreat is ours (retreat.ts: leave when
      *  Safe.At calls the place deadly, the anchor by route cost, the stop on a place Safe.At does not call deadly); OHA's retreat desire, farm's ShouldRun and the

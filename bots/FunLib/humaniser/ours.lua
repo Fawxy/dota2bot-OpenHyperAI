@@ -67,7 +67,6 @@ ____exports.DEFAULTS = {
     RuneRotation = false,
     RuneSpawn = false,
     SupportPull = false,
-    SupportPullFarm = false,
     Threat = false,
     Retreat = false,
     MidWater = false,

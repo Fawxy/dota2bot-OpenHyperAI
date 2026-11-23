@@ -1,9 +1,9 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
--- Slice support-lane: PullJob (Ours.SupportPull) under the job chooser. The lane push reading is stubbed per world, so these
--- tests cover the job's decision and hand-off, not the fight model (test_lane_push.lua).
+-- The whole-wave pull (Ours.SupportPull) as a row of the decider. The lane push reading is stubbed per world, so these
+-- tests cover the row's decision, its hold and its hand-back, not the fight model (test_lane_push.lua).
 
 local dota = require("bots/ts_libs/dota/index")
-local Lane, FARM, LANING = dota.Lane, dota.BotMode.Farm, dota.BotMode.Laning
+local Lane, FARM, LANING, RETREAT = dota.Lane, dota.BotMode.Farm, dota.BotMode.Laning, dota.BotMode.Retreat
 
 -- As test_lane_pull_timing: Radiant bot lane along y = -5000, the small camp south of it, wave-timed pulls at 300 speed.
 local SMALL = Vector(-1600, -6200)
@@ -23,7 +23,8 @@ local function capture(fn)
 end
 local function lines(all, ev)
 	local r = {}
-	for _, l in ipairs(all) do if l:find("ev=" .. ev .. " ", 1, true) then table.insert(r, l) end end
+	-- `choice`: the pull's lines; the decider's own (kind=decider) are read where a test names them.
+	for _, l in ipairs(all) do if l:find("ev=" .. ev .. " ", 1, true) and not (ev == "choice" and l:find("kind=decider", 1, true)) then table.insert(r, l) end end
 	return r
 end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
@@ -69,11 +70,15 @@ end
 local function frame(w, dt)
 	local H, bot = w.H, w.sup
 	local n0 = #ACTIONS
-	if H.Chooser.Gate(bot, "farm", function() return 0 end)() > 0 then
+	-- mode_farm_generic's wiring: the decider wraps the chooser's gate. `w.retreat`: the retreat file's desire that frame
+	-- (stock would retreat when it leads), and the hero is then in the retreat mode.
+	if w.retreat then H.Decider.NoteDesire(bot, "retreat", w.retreat) end
+	w.desire = H.Decider.Host(bot, H.Chooser.Gate(bot, "farm", function() return 0 end))()
+	if w.desire > 0 then
 		bot.mode = FARM
-		H.Chooser.HostThink(bot, "farm", function() return false end, function() return false end)()
+		H.Decider.HostThink(bot, H.Chooser.HostThink(bot, "farm", function() return false end, function() return false end), function() return false end)()
 	else
-		bot.mode = LANING
+		bot.mode = w.retreat and RETREAT or LANING
 	end
 	for i = #ACTIONS, n0 + 1, -1 do
 		local a = ACTIONS[i]
@@ -93,8 +98,8 @@ do
 	check("OUT: one choice line, go=1 want=1, the reading's fields", #choice == 1 and field(choice[1], "go") == "1" and field(choice[1], "want") == "1"
 		and field(choice[1], "st") == "OUT" and field(choice[1], "own") == "3160" and field(choice[1], "tgt") == "900" and field(choice[1], "kind") == "pull", choice[1])
 	local starts = lines(out, "job")
-	check("OUT: the chooser started a pull job", #starts == 1 and field(starts[1], "job") == "pull" and field(starts[1], "phase") == "start", starts[1])
-	check("OUT: running under the farm host", w.H.PullJob.Running(w.sup) and w.sup.mode == FARM)
+	check("OUT: the row started a pull job", #starts == 1 and field(starts[1], "job") == "pull" and field(starts[1], "phase") == "start", starts[1])
+	check("OUT: running under the farm host on the decider's hard hold", w.H.PullJob.Running(w.sup) and w.sup.mode == FARM and w.desire == w.H.Decider.HARD, w.desire)
 	check("OUT: the lane read once for the slot", w.reads == 1, w.reads)
 	-- No neutrals in this world: the verb ends at the camp with no camp to hit, and the attempt is logged (before the next
 	-- slot's pull, about 30 s later, could end too).
@@ -260,11 +265,12 @@ do
 	end
 	local on, early = startAt(0), startAt(-4)
 	check("early wave: the pull starts 4 s earlier than on time", on ~= nil and early ~= nil and math.abs((on - early) - 4) < 0.15, tostring(on) .. " " .. tostring(early))
-	-- Held back (partner low) until 6 s after that early leave time: past the moved hit's late limit (leave + Early 2 +
-	-- JobStartLate 2), short of the unshifted slot's (4 s later): the pull is skipped as late, not started.
-	local w = world({ reading = OUT, coreHp = 30 })
-	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
+	-- Held back (a hero that can kill the puller where it stands) until 6 s after that early leave time: past the moved hit's
+	-- late limit (leave + Early 2 + JobStartLate 2), short of the unshifted slot's (4 s later): the pull is skipped as late.
+	local w = world({ reading = OUT })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(-1600, -6600) })
 	enemy.lane, enemy.pos = Lane.Bot, 3
+	enemy.estDamage = 5000
 	local out = stubAlongs(waveBehind(function() return -4 end), function()
 		return capture(function()
 			while T < 90 do
@@ -275,7 +281,7 @@ do
 	end)
 	local choice = lines(out, "choice")
 	check("early wave, held back past the moved hit's late limit: no start, the hold named", #lines(out, "job") == 0 and #choice == 1
-		and field(choice[1], "go") == "0" and field(choice[1], "why") == "partner-low", choice[1])
+		and field(choice[1], "go") == "0" and field(choice[1], "why") == "enemy-near", choice[1])
 end
 
 -- A pull with the camp's one neutral on the puller and the wave stubbed by `o.alongs` (default waveBehind(0)); `o.onFrame`
@@ -393,79 +399,67 @@ do
 		and field(c, "pw") == "1", c)
 end
 
--- Wanted, but the core is low with an enemy beside it until the pull would be late: skipped, naming the partner.
+-- The row keeps no private danger rule: a low core with an enemy beside it does not hold the pull (the old partner check),
+-- nor does an enemy hero by the camp who cannot kill the puller (the old enemy-site rule; its distance is still logged). The
+-- shared danger read does: a hero who can kill the puller where it stands holds the start as `enemy-near`.
 do
 	local w = world({ reading = OUT, coreHp = 30 })
 	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(300, -5000) })
 	enemy.lane, enemy.pos = Lane.Bot, 3
 	local out = run(w, 80)
 	local choice = lines(out, "choice")
-	check("partner low: go=0 want=1 why=partner-low, no job", #choice == 1 and field(choice[1], "go") == "0" and field(choice[1], "want") == "1"
-		and field(choice[1], "why") == "partner-low" and #lines(out, "job") == 0, choice[1])
+	check("partner low: the pull starts", #choice == 1 and field(choice[1], "go") == "1" and #lines(out, "job") >= 1, choice[1])
 end
-
--- An enemy hero beside the camp (the user's ptm1_A 4:21: a pull walked into the enemy offlaner): skipped, with its distance;
--- the same hero far away lets the pull start. Under Ours.Threat (slice threat) the start reads the camp on the shared gate
--- (`kill` when the hero can kill the walk, Safe.At deadly; `ev=threat who=pull_job`); one that cannot kill does not hold it; off, the pull's
--- own enemy-site rule (within 1,200 of the site).
 for _, case in ipairs({
-	-- It also reaches the support itself, so the job's own start check (`blocked`, Safe.At here) holds it first as `enemy-near`; the camp's walk
-	-- read is made all the same and logs dec=kill.
-	{ "threat on, enemy at the camp", Vector(-1600, -6600), "0", true, "enemy-near", 5000 },
-	{ "threat on, enemy at the camp who cannot kill", Vector(-1600, -6600), "1", true, nil, 0, true },
-	{ "threat on, enemy 2,500 from the camp", Vector(-1600, -9100), "1", true },
-	{ "threat off, enemy at the camp", Vector(-1600, -6600), "0", false, "enemy-site" },
-	{ "threat off, enemy 1,500 from the site", Vector(-1600, -8100), "1", false },
+	{ "a hero at the camp who can kill the puller", "0", 5000 },
+	{ "a hero at the camp who cannot kill", "1", 0 },
 }) do
 	local w = world({ reading = OUT })
-	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = case[4]
-	local enemy = MakeUnit({ pid = 10, team = 3, loc = case[2] })
+	local enemy = MakeUnit({ pid = 10, team = 3, loc = Vector(-1600, -6600) })
 	enemy.lane, enemy.pos = Lane.Bot, 3
-	enemy.estDamage = case[6]
+	enemy.estDamage = case[3]
 	local out = run(w, 80)
-	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = nil
 	local choice = lines(out, "choice")
 	local se = tonumber(field(choice[1], "se") or "")
-	if case[3] == "0" then
-		local reads = lines(out, "threat")
-		check(case[1] .. ": go=0 why=" .. case[5] .. ", se logged, no job", #choice == 1 and field(choice[1], "go") == "0"
-			and field(choice[1], "why") == case[5] and se ~= nil and se <= 1200 and #lines(out, "job") == 0, choice[1])
-		check(case[1] .. ": the gate read logged by pull_job only under the switch",
-			(case[4] and #reads >= 1 and field(reads[1], "who") == "pull_job" and field(reads[1], "dec") == "kill") or (not case[4] and #reads == 0), reads[1])
-	elseif case[7] then
-		check(case[1] .. ": pull started with the hero by the camp", #lines(out, "job") >= 1 and field(choice[1], "go") == "1" and se ~= nil and se <= 1200, choice[1])
+	if case[2] == "0" then
+		check(case[1] .. ": go=0 why=enemy-near, se logged, no job", #choice == 1 and field(choice[1], "go") == "0"
+			and field(choice[1], "why") == "enemy-near" and se ~= nil and se <= 1200 and #lines(out, "job") == 0, choice[1])
 	else
-		check(case[1] .. ": pull started, se logged over 1,200", #lines(out, "job") >= 1 and field(choice[1], "go") == "1"
-			and se ~= nil and se > 1200, choice[1])
+		check(case[1] .. ": the pull starts, se logged", #lines(out, "job") >= 1 and field(choice[1], "go") == "1" and se ~= nil and se <= 1200, choice[1])
 	end
 end
 
--- The `missing` path through Wants: three heroes last seen by the camp and unseen now (the camp in fog) weigh 0.6 before
--- 4:00 on a flat prior (the prior itself is graded in test_threat; at this camp's depth it would give 0.1 each), so the
--- start holds on `missing` with a `who=pull_job dec=missing` read.
+-- The row needs no other switch: with the job chooser off it still holds the hero and pulls.
 do
 	local w = world({ reading = OUT })
-	local Threat = require("bots/FunLib/humaniser/threat")
-	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = true
-	local depth, dist = Threat.SETTINGS.DepthFactor, Threat.SETTINGS.DistFactor
-	Threat.SETTINGS.DepthFactor = { { 1.01, 1 } }
-	Threat.SETTINGS.DistFactor = { { math.huge, 1 } }
-	Threat.ResetCache()
-	for i, pid in ipairs({ 10, 11, 12 }) do
-		local e = MakeUnit({ pid = pid, team = 3, loc = Vector(-1600, -6600) })
-		e.lane, e.pos = Lane.Bot, i
-		e.hiddenFrom = { [OBSERVER] = true }
-		LAST_SEEN[pid] = { location = Vector(-1600 + 100 * i, -6600), time_since_seen = 10 }
-	end
-	local out = run(w, 80)
-	Threat.SETTINGS.DepthFactor, Threat.SETTINGS.DistFactor = depth, dist
-	package.loaded["bots/FunLib/custom_loader"].Ours.Threat = nil
-	for _, pid in ipairs({ 10, 11, 12 }) do LAST_SEEN[pid] = nil end
-	local choice, reads = lines(out, "choice"), lines(out, "threat")
-	check("threat on, three heroes unseen by the camp: go=0 why=unknown, no job", #choice == 1 and field(choice[1], "go") == "0"
-		and field(choice[1], "why") == "unknown" and #lines(out, "job") == 0, choice[1])
-	check("threat on, unseen heroes: the gate read dec=unknown, miss 0.6", #reads >= 1 and field(reads[1], "who") == "pull_job"
-		and field(reads[1], "dec") == "unknown" and math.abs(tonumber(field(reads[1], "miss") or 0) - 0.6) < 0.01, reads[1])
+	package.loaded["bots/FunLib/custom_loader"].Ours.JobChooser = false
+	local out = run(w, 75)
+	package.loaded["bots/FunLib/custom_loader"].Ours.JobChooser = nil
+	check("job chooser off: the pull starts and holds the hero", w.H.PullJob.Running(w.sup) and w.sup.mode == FARM and #lines(out, "job") == 1, lines(out, "choice")[1])
+end
+
+-- Stock would retreat while a pull runs: the decider lets go, the hero is not stepped, and the engine ends the pull once the
+-- host has been without the hero for a second. Its end line names retreat and the HP; the wave is not pulled again.
+do
+	local w = world({ reading = OUT })
+	local out = capture(function()
+		while T < 75 and not w.H.PullJob.Running(w.sup) do frame(w) end
+		w.sup.hp = 240
+		w.retreat = 0.8
+		local n0 = #ACTIONS
+		while T < 80 do frame(w) end
+		w.cutActions = #ACTIONS - n0
+		w.retreat = nil
+		while T < 90 do frame(w) end
+	end)
+	local jobs = lines(out, "job")
+	check("cut by retreat: no order from the pull while stock retreats", w.cutActions == 0, w.cutActions)
+	check("cut by retreat: one start, one end naming retreat and the HP share", #jobs == 2 and field(jobs[2], "phase") == "end"
+		and field(jobs[2], "cut") == "retreat" and tonumber(field(jobs[2], "hp")) == 0.4, jobs[2])
+	check("cut by retreat: the wave is not pulled again once the retreat is over", not w.H.PullJob.Running(w.sup) and w.sup.mode == LANING and #lines(out, "choice") == 1)
+	local let = {}
+	for _, l in ipairs(out) do if l:find("kind=decider", 1, true) and field(l, "let") == "retreat" then let[#let + 1] = l end end
+	check("cut by retreat: the decider's line says it let go", #let >= 1 and field(let[1], "held") == "-", let[1])
 end
 
 -- Both supports in the bot lane: the pos5 pulls, the pos4 does not apply.
@@ -473,9 +467,9 @@ do
 	local w = world({ reading = OUT })
 	local four = MakeUnit({ pid = 4, team = 2, bot = true, loc = Vector(0, -5000) })
 	four.lane, four.pos = Lane.Bot, 4
-	check("shared lane: pos5 applies, pos4 does not", w.H.PullJob.Applies(w.sup) and not w.H.PullJob.Applies(four))
+	check("shared lane: pos5 is the puller, pos4 is not", w.H.PullJob.IsPuller(w.sup) and not w.H.PullJob.IsPuller(four))
 	four.lane = Lane.Top
-	check("pos4 in its own lane with no pull camp there: does not apply", not w.H.PullJob.Applies(four))
+	check("pos4 in its own lane with no pull camp there: no puller", not w.H.PullJob.IsPuller(four))
 end
 
 
@@ -664,7 +658,7 @@ end
 do
 	local w = world({ reading = OUT })
 	w.sup.pos = 3
-	check("a pos3 is no puller", not w.H.PullJob.Applies(w.sup))
+	check("a pos3 is no puller", not w.H.PullJob.IsPuller(w.sup))
 end
 
 -- A slot drifts by a fraction of a second as the camp's timing is re-read (neutral-speed-at-order); the bookkeeping keys by the
