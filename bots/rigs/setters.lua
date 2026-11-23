@@ -151,4 +151,49 @@ Convars:RegisterCommand("rig_stack", function(_, x, y, r, dx, dy)
 	say(string.format("stack x=%s y=%s moved=%d", tostring(x), tostring(y), n))
 end, "rig: move a camp's neutrals out of its box and force a spawn into it", FCVAR_CHEAT)
 
+local function campNeutrals(c, r)
+	local out = {}
+	for _, u in ipairs(FindUnitsInRadius(DOTA_TEAM_NEUTRALS, c, nil, r, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC,
+		DOTA_UNIT_TARGET_FLAG_INVULNERABLE, 0, false)) do
+		if u:IsAlive() and u:GetTeamNumber() == DOTA_TEAM_NEUTRALS then table.insert(out, u) end
+	end
+	return out
+end
+
+-- The stack by the game's own minute spawn (rig_stack's forced spawn added none in pullstk1: the pull met 3 neutrals, as
+-- unstacked): from :59.0 of the coming minute to :00.6 the camp's neutrals are held out of its box, then left to walk home.
+-- The units held are those in the circle at :59.0, so a set stacked earlier goes out with them.
+Convars:RegisterCommand("rig_stack_minute", function(_, x, y, r, dx, dy)
+	local c = Vector(tonumber(x), tonumber(y), 0)
+	local off = Vector(tonumber(dx) or 0, tonumber(dy) or 800, 0)
+	r = tonumber(r) or 500
+	local now = GameRules:GetDOTATime(false, false)
+	local from = math.floor(now / 60) * 60 + 59
+	if now > from then from = from + 60 end
+	local held
+	local name = "rig_stack_" .. tostring(x) .. "_" .. tostring(y)
+	GameRules:GetGameModeEntity():SetContextThink(name, function()
+		local t = GameRules:GetDOTATime(false, false)
+		if t < from then return 0.1 end
+		if held == nil then held = campNeutrals(c, r) end
+		if t > from + 1.6 then
+			say(string.format("stack_minute x=%s y=%s held=%d at=%.1f", tostring(x), tostring(y), #held, from))
+			return nil
+		end
+		for _, u in ipairs(held) do
+			if u:IsAlive() and (u:GetAbsOrigin() - c):Length2D() < 600 then FindClearSpaceForUnit(u, c + off, true) end
+		end
+		return 0.05
+	end, 0)
+	say(string.format("stack_minute armed x=%s y=%s from=%.0f", tostring(x), tostring(y), from))
+end, "rig: hold a camp's neutrals out of its box over the coming minute's spawn", FCVAR_CHEAT)
+
+Convars:RegisterCommand("rig_neutrals", function(_, x, y, r)
+	local us = campNeutrals(Vector(tonumber(x), tonumber(y), 0), tonumber(r) or 500)
+	local names = {}
+	for _, u in ipairs(us) do table.insert(names, (u:GetUnitName():gsub("npc_dota_neutral_", ""))) end
+	say(string.format("neutrals x=%s y=%s t=%.1f n=%d %s", tostring(x), tostring(y), GameRules:GetDOTATime(false, false), #us,
+		table.concat(names, ",")))
+end, "rig: count the live neutrals in a circle", FCVAR_CHEAT)
+
 say("setters registered")
