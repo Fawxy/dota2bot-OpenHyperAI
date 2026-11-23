@@ -161,6 +161,11 @@ export function HostThink(bot: Unit, inner: () => any, cannotAct: (this: void, b
     };
 }
 
+/** The decider is yielding this hero to stock's retreat although a row applied (a cut row names it as its end's reason). */
+export function LetGo(bot: Unit): boolean {
+    return stateOf(bot).letAt !== undefined;
+}
+
 /** Tests: forget every hero. */
 export function Reset(): void {
     for (const [k] of pairs(heroes)) heroes[k] = undefined as any;

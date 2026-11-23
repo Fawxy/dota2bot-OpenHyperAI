@@ -21,13 +21,14 @@ import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
+import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, PullFarm, Chooser, Decider, Overrides, Drill, ChoiceShadow };
+export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, RuneDetour, PullFarm, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -79,6 +80,7 @@ const steps = {
     },
     landing: SafeGather.Tick,
     pullShadow: PullJob.Shadow,
+    runeDetourShadow: RuneDetour.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
     overlay: drawOverlay,
@@ -146,6 +148,8 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.sustain, bot);
     // The pull's trigger where the pull is switched off (ev=choice kind=pull src=shadow): reads and logs, no order.
     pcall(steps.pullShadow, bot);
+    // The rune detour's pass where the row is switched off (ev=choice kind=rune_detour src=shadow): reads and logs, no order.
+    pcall(steps.runeDetourShadow, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
     pcall(VisionMap.Tick, bot);
@@ -178,6 +182,14 @@ if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
 Telemetry.PerfDeepInstall();
+// The decider's rows, in doctrine order. A row's error yields the hero to stock for that call (not applying; finished).
+if (Decider.ROWS.indexOf(RuneDetour.ROW) < 0) {
+    if (Telemetry.GuardsEnabled()) {
+        RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no);
+        RuneDetour.ROW.step = Telemetry.Guard("RuneDetourRow.step", RuneDetour.ROW.step, () => true);
+    }
+    Decider.ROWS.push(RuneDetour.ROW);
+}
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 
 export function Tick(bot: Unit): void {

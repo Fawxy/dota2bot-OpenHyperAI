@@ -161,6 +161,10 @@ function ____exports.HostThink(bot, inner, cannotAct)
         return nil
     end
 end
+--- The decider is yielding this hero to stock's retreat although a row applied (a cut row names it as its end's reason).
+function ____exports.LetGo(bot)
+    return stateOf(bot).letAt ~= nil
+end
 --- Tests: forget every hero.
 function ____exports.Reset()
     for k in pairs(heroes) do

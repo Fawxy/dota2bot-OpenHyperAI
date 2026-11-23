@@ -1237,7 +1237,7 @@ export const EVENTS = {
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
         pid: "num",
-        /** `stack`, `rune` or `pull`. */
+        /** `stack`, `rune`, `pull` or `rune_detour`. */
         job: "str",
         /** `start` (`why=trigger`) or `end`. */
         phase: "str",
@@ -1247,6 +1247,12 @@ export const EVENTS = {
         host: "num",
         /** 1 when hero damage landed during the job. */
         hit: "num",
+        /** On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name. */
+        cut: "str",
+        /** With `cut=retreat`: the hero's HP share then. */
+        hp: "num",
+        /** `job=rune_detour`: the seconds the path by the rune was read to add when the walk started. */
+        ex: "num",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {
@@ -2722,7 +2728,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -2740,6 +2746,12 @@ export const EVENTS = {
         lane: "num",
         /** The planned hit second. */
         slot: "num",
+        /** `kind=rune_detour`: the own jungle bounty's rune id. */
+        rune: "num",
+        /** `kind=rune_detour`: the smallest detour the pass read (s): the walk by the rune to the lane front, less the walk there. */
+        ex: "num",
+        /** `kind=rune_detour`: the distance to the rune at that read. */
+        dr: "num",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */
