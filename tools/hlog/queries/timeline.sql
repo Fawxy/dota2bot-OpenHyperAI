@@ -6,16 +6,21 @@
 --   kill_try   ep_kill       a kill attempt; `hero` is its first attacker
 --   job        ep_job        a job trip
 --   visit      ep_visit      a lane visit
+-- Our decisions:
+--   decision   an opportunity one of our heroes judged (`ev=choice`, any kind but `shadow` and `decider`): one row per hero,
+--              choice kind, lane and slot, from its last line unless a line started it; t the line's time, t1 the end of the
+--              trip it started (job of the same name starting within 1 s)
 -- To read between them:
 --   mode       a mode other than retreat held 3 s or more (from the snapshots, so stock logs have it too)
 --   cast       an ability cast (no target is logged)
 --   creep      a last hit or a deny
 --   state      every 15 s: HP, mode, the nearest living enemy, allies within 1,200
 --   not_logged what this log cannot show, so that none is not read as zero: first, whatever the lane, hero or window
--- Columns: file, game, t, t1 (NULL: a moment, or a trip with no end), lane (at t: top, mid, bot, base or other; a visit's own),
+-- Columns: file, game, t, t1 (NULL: a moment, or a trip with no end), lane (at t: top, mid, bot, base or other; a visit's own;
+-- a decision's from its line's assigned lane: 1 top, 2 mid, 3 bot),
 -- team, pos, pid, hero, kind, detail, who (every hero in the row, as `,luna,lich,`), then the countable ones:
---   team, pos, pid, hero   the row's own hero: death the one who died, retreat, job, visit, mode, cast, creep and state the one
---                          doing it, exchange the one who struck first, kill_try its first attacker
+--   team, pos, pid, hero   the row's own hero: death the one who died, retreat, job, visit, decision, mode, cast, creep and state
+--                          the one doing it (deciding), exchange the one who struck first, kill_try its first attacker
 --   secs        t1 - t in whole seconds (NULL for a moment, and for a job with no end); an exchange of one second is 0
 --   other_pid, other   the other hero: exchange the one struck, kill_try the target; NULL otherwise
 --   a_secs, b_secs     exchange: attack seconds by `hero` on `other`, and back (b_secs 0: not answered)
@@ -23,10 +28,15 @@
 --               kill_try, job, visit), NULL where no snapshot is in that second. A death has hp0 only
 --   hpmin       the lowest HP percent: retreat the row hero's; kill_try the target's
 --   outcome     death `died`; retreat `died` or `lived`; exchange `answered` or `none_back`; kill_try `killed` or `lived`;
---               job its end reason (`ended` if none logged, `no_end` with no end); visit `dead` or the mode it ended in
+--               job its end reason (`ended` if none logged, `no_end` with no end); visit `dead` or the mode it ended in;
+--               decision `unwanted` (want=0), `off` (a switched-off puller's shadow line, src=shadow, that wanted it), `refused`
+--               (wanted, not started), `done` (its trip ended `ok`), `cut` (any other end), `no_end` (no end logged),
+--               `no_start` (go=1 but no job start of its name logged)
 --   d0, d1      game units from the row hero to its nearest live enemy hero at t and at t1, for the same episodes; NULL if none
 --   batch, lineup, arm, seat, rep   the run label read (view run_label); side `test` when the row's team is the label's seat
 --               (rad is team 2, dire team 3), `opp` for the other team, NULL when the label has no seat
+--   what, why, slot   decision only (NULL otherwise): the choice's kind (`pull`); unwanted and refused the choice's why, cut the
+--               trip's end reason, else NULL; the opportunity's own time (the choice's slot). `q @decisions` counts them
 -- A row is in the window when any part of it is; a lane's rows are those that began there. A death is in a window whose `to`
 -- is its second (its time is a fraction past it).
 -- Params: like (a path fragment or run label) or batch (the exact run name: `base1` is not `h2hbase1`), one is required;
