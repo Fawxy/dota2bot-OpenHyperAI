@@ -22,7 +22,8 @@ ____exports.SOFT = 0.49
 --- judgement: the most an OHA Lua mode file may return while a soft row holds (plan s3: the gate caps them beneath it).
 ____exports.CAP = 0.48
 --- Not capped under a soft hold: retreat (stock's way out; when it leads, the retreat read lets go) and attack's own file
--- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to). The host's value is the decider's.
+-- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
+-- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
 --- Doctrine order: the first row that applies holds. Empty: the pass-through.
 ____exports.ROWS = {}
@@ -161,8 +162,13 @@ function ____exports.Host(bot, inner)
 end
 --- Chooser.Gate, for every gated mode file, after NoteDesire saw the value as returned: while a soft row holds, an OHA Lua
 -- mode's desire above CAP is returned as CAP, so only the Valve-only modes, retreat and attack's file outbid the hold. The
--- hold is the one decided at the last farm call, so a file Valve asks before farm in the round a soft hold starts is not
--- yet capped (one round). Anything else, and any value that is not a number, passes unchanged.
+-- hold is the one decided at the last farm call, so files Valve asks before farm lag by one round: uncapped in the round a
+-- soft hold starts, still capped in the round it lets go or stops applying. The cap follows `held`, so the lag cannot
+-- flicker on its own. Anything else, and any value that is not a number, passes unchanged.
+-- 
+-- Known effect, not stock's: retreat is uncapped, so a retreat value between SOFT and the highest raw Lua mode wins the hero
+-- from the hold although the retreat read (raw values) keeps holding; stock would have run that Lua mode. Plan s3 accepts
+-- it ("retreat excepted"); the first soft row's smoke counts it.
 function ____exports.Cap(bot, mode, v)
     local s = heroes[bot:GetPlayerID()]
     local ____temp_4

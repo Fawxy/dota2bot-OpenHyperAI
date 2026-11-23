@@ -249,7 +249,8 @@ export function Decide(bot: Unit, mode: string): number | undefined {
 }
 
 /** Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. What it returns is
- *  noted for the decider's retreat read (Decider.NoteDesire), then capped under a soft hold (Decider.Cap). */
+ *  noted for the decider's retreat read (Decider.NoteDesire), then capped under a soft hold (Decider.Cap). The shadow line
+ *  and DesireLog note the value before the cap: under a soft hold, not what Valve saw. */
 export function Gate(bot: Unit, mode: string, inner: () => any): () => any {
     return () => {
         // Ours.ChoiceShadow (logging only): the values this call returns are noted, never changed; off, nothing else runs.
