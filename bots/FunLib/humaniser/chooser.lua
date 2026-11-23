@@ -24,6 +24,7 @@ local RetreatState = require(GetScriptDirectory().."/FunLib/humaniser/retreat_st
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
+local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 function hit(bot)
     return bot:WasRecentlyDamagedByAnyHero(____exports.SETTINGS.HitWithin)
 end
@@ -330,7 +331,8 @@ function ____exports.Decide(bot, mode)
     end
     return ____temp_8
 end
---- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode.
+--- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. What it returns is
+-- noted for the decider's retreat read (Decider.NoteDesire).
 function ____exports.Gate(bot, mode, inner)
     return function()
         local shadow = ChoiceShadow.On()
@@ -348,6 +350,7 @@ function ____exports.Gate(bot, mode, inner)
                     decideWhy
                 )
             end
+            Decider.NoteDesire(bot, mode, v)
             return v
         end
         local d = inner()
@@ -360,6 +363,7 @@ function ____exports.Gate(bot, mode, inner)
                 nil
             )
         end
+        Decider.NoteDesire(bot, mode, d)
         return d
     end
 end

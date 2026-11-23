@@ -1344,8 +1344,9 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 `pid` num, `ap` num, `rule` str
 
-- `kind` str: The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held` or `win`).
+- `kind` str: The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
+- `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
 - `why` str: What held a wanted pull back: a start check (`enemy-near`, a higher job's name, `partner-low`, `partner-gank`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills.
@@ -1389,7 +1390,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `hdes` num: kind=shadow: the chooser's host desire, in farm (its only host, Chooser HOST): on the hold path, or under the drive when farm is the pick's host or the pick is OHA's (DriveDecide's farmHost); absent when the drive zeroes farm for another pick.
 - `d_laning` mixed: kind=shadow: mode_laning_generic's own desire as the one real call returned it (Intent-resolved), or `-<reason>` when its OHA code was not computed: `-drive` (Arbiter.DriveDecide set it before OHA's code), `-hold` (a retreat episode or a job), `-ours` (our desire answered first: retreat, attack under Trade, the chooser's host), `-valve` (no fresh Lua value: Valve's built-in or a non-number), `-probe` (Ours.ChoiceProbe ran the code and it errored or gave no number), `-drill`, `-rig`.
 - `d_attack` mixed: kind=shadow: as `d_laning`, for mode_attack_generic.
-- `d_retreat` mixed: kind=shadow: as `d_laning`, for mode_retreat_generic.
+- `d_retreat` mixed: kind=shadow: as `d_laning`, for mode_retreat_generic. kind=decider, with `let`: the retreat file's last value, the one that led.
 - `d_farm` mixed: kind=shadow: as `d_laning`, for mode_farm_generic.
 - `d_team_roam` mixed: kind=shadow: as `d_laning`, for mode_team_roam_generic.
 - `d_roam` mixed: kind=shadow: as `d_laning`, for mode_roam_generic.
