@@ -9,8 +9,6 @@
 -- ensure: ev_own_creep_death(team, kind, by)
 -- ensure: ev_neutral_death(team, by)
 -- ensure: ev_choice(pid, kind, want, go, why, src, lane, slot)
--- ensure: ev_creep_death(team, kind, x, y, by, tw)
--- ensure: ev_own_creep_death(team, kind, x, y, by)
 gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id, g.file, g.game, r.batch, r.lineup, r.arm, r.seat_team, r.seat, r.rep
     FROM games g JOIN run_label r ON r.game_id = g.game_id
@@ -45,9 +43,13 @@ tl_by_kill AS MATERIALIZED (
     ) GROUP BY game_id, team, tpid, t0
 ),
 -- A death's cause is the loss ledger's rule (fragment death_cause), on every death, a hero still dead at the log's end included.
+-- A kind filter without death or creep skips that kind's work (a constant WHERE: SQLite tests it once, before any row).
 dc_in AS MATERIALIZED (
     SELECT d.game_id, d.pid, w.team, w.pos, d.t, d.x, d.y FROM ep_death d JOIN ep_who w ON w.game_id = d.game_id AND w.pid = d.pid
+    WHERE :kind IS NULL OR instr(',' || :kind || ',', ',death,') > 0
 ),
+-- ep_who's pos is view lineup's (the hero a team's pos names), so its heroes with a pos are lineup's rows for these games.
+dc_lineup AS MATERIALIZED (SELECT game_id, team, pos, pid FROM ep_who WHERE pos IS NOT NULL AND game_id IN (SELECT game_id FROM dc_in)),
 -- include: death_cause
 tl_death AS (
     SELECT d.game_id, d.pid, d.t, NULL AS t1, 'death' AS kind,
@@ -60,6 +62,7 @@ tl_death AS (
     LEFT JOIN ep_sec s ON s.game_id = d.game_id AND s.pid = d.pid AND s.sec = CAST(round(d.t) AS INTEGER)
     LEFT JOIN tl_by_death b ON b.game_id = d.game_id AND b.pid = d.pid AND b.t = d.t
     LEFT JOIN death_cause c ON c.game_id = d.game_id AND c.pid = d.pid AND c.t = d.t
+    WHERE :kind IS NULL OR instr(',' || :kind || ',', ',death,') > 0
 ),
 tl_ret AS (
     SELECT r.*, EXISTS (SELECT 1 FROM ep_gap d WHERE d.game_id = r.game_id AND d.pid = r.pid AND d.dsec BETWEEN r.t0 AND r.t1 + 3) AS died
@@ -177,14 +180,18 @@ tl_cast AS (
     SELECT c.game_id, c.pid, c.t, NULL, 'cast', c.ab, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
     FROM gm CROSS JOIN ev_cast c ON c.game_id = gm.game_id WHERE c.ab IS NOT NULL
 ),
--- Lane creep deaths have one fate each (view creep_fate). A creep is in both teams' logs when each had a hero near: as the
+-- Lane creep deaths have one fate each (view creep_fate's rule, fragment creep_fate_rows, for the games read). A creep is in both teams' logs when each had a hero near: as the
 -- enemy side of the team that could last-hit it, and the own side of its own team. So one row per death: a hero's last hit
 -- (own_lh) and deny (own_deny) on the hero who got it; an enemy creep nobody got (other) from the log of the team that could
 -- have last-hit it; a creep of our own nobody got (lost) only when the other team's log has no enemy-side death of it (same
 -- kind, within 1 s and 250, as creep_fate pairs denies), since then it is that log's own_lh or other row. enemy_deny is the
 -- denier's own_deny row seen from the other side: never a row.
-tl_fate AS MATERIALIZED (SELECT * FROM creep_fate WHERE game_id IN (SELECT game_id FROM gm)),
-tl_fate_lane AS MATERIALIZED (SELECT * FROM creep_lane WHERE game_id IN (SELECT game_id FROM gm)),
+cf_gm AS MATERIALIZED (SELECT game_id FROM gm WHERE :kind IS NULL OR instr(',' || :kind || ',', ',creep,') > 0),
+cf_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
+cf_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
+-- include: creep_fate_rows
+tl_fate AS MATERIALIZED (SELECT * FROM creep_fate_rows),
+tl_fate_lane AS MATERIALIZED (SELECT * FROM creep_lane WHERE game_id IN (SELECT game_id FROM cf_gm)),
 -- `by` is a pid only on a creep a hero got.
 tl_got AS (
     SELECT game_id, t, team, pid AS got, CASE fate WHEN 'own_lh' THEN 'last hit ' ELSE 'deny ' END || coalesce(kind, 'creep') AS detail,

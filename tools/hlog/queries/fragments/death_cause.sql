@@ -1,6 +1,8 @@
 -- Fragment (`-- include: death_cause`): the one rule that gives a hero death one cause from what happened in the 10 s before it
 -- (the loss ledger's, rework step 6). Read by @ledger_deaths and the timeline's death rows. The including query defines
--- `dc_in(game_id, pid, team, pos, t, x, y)` first: the deaths to judge, x, y where the hero was at t. CTE
+-- first `dc_in(game_id, pid, team, pos, t, x, y)`, the deaths to judge (x, y where the hero was at t), and
+-- `dc_lineup(game_id, team, pos, pid)`, view lineup's rows for at least their games (read whole, view lineup is every game of
+-- the store: a cost that grows with it). CTE
 -- `death_cause(game_id, pid, team, pos, t, x, y, tower5, creeps, hc, attackers, allies, hp10, cause)`. First match wins:
 --   tower              an enemy tower targeted the hero in its last 5 s (it stood in their tower's range)
 --   outnumbered_alone  two or more enemy heroes attacked it, no ally in the fight (below)
@@ -24,7 +26,7 @@ dc_vs AS MATERIALIZED (
 ),
 dc_ta AS MATERIALIZED (
     SELECT dd.game_id, dd.pid, dd.t, count(DISTINCT s.pid) AS n
-    FROM dc_in dd JOIN lineup l ON l.game_id = dd.game_id AND l.team <> dd.team
+    FROM dc_in dd JOIN dc_lineup l ON l.game_id = dd.game_id AND l.team <> dd.team
     JOIN ev_snap s ON s.game_id = l.game_id AND s.pid = l.pid AND s.t BETWEEN dd.t - 10 AND dd.t + 0.5
     WHERE CAST(s.tid AS TEXT) = 'h' || dd.pid
     GROUP BY dd.game_id, dd.pid, dd.t
@@ -41,7 +43,7 @@ dc_al AS MATERIALIZED (
     SELECT game_id, pid, t, count(*) AS n FROM (
         SELECT hs.game_id, hs.pid, hs.t, a.pid AS apid, count(DISTINCT hs.vt) AS k, hn.n
         FROM dc_hs hs JOIN dc_hn hn ON hn.game_id = hs.game_id AND hn.pid = hs.pid AND hn.t = hs.t
-        JOIN lineup l ON l.game_id = hs.game_id AND l.team = (SELECT team FROM dc_in dd WHERE dd.game_id = hs.game_id AND dd.pid = hs.pid AND dd.t = hs.t)
+        JOIN dc_lineup l ON l.game_id = hs.game_id AND l.team = (SELECT team FROM dc_in dd WHERE dd.game_id = hs.game_id AND dd.pid = hs.pid AND dd.t = hs.t)
             AND l.pid <> hs.pid
         JOIN ev_snap a ON a.game_id = l.game_id AND a.pid = l.pid AND a.t BETWEEN hs.vt - 0.6 AND hs.vt + 0.6
         WHERE a.alive IS NOT 0 AND (a.x - hs.x) * (a.x - hs.x) + (a.y - hs.y) * (a.y - hs.y) <= 1200 * 1200
@@ -49,7 +51,7 @@ dc_al AS MATERIALIZED (
     ) WHERE 2 * k >= n GROUP BY game_id, pid, t
     UNION ALL
     SELECT dd.game_id, dd.pid, dd.t, count(DISTINCT s.pid)
-    FROM dc_in dd JOIN lineup l ON l.game_id = dd.game_id AND l.team = dd.team AND l.pid <> dd.pid
+    FROM dc_in dd JOIN dc_lineup l ON l.game_id = dd.game_id AND l.team = dd.team AND l.pid <> dd.pid
     JOIN ev_snap s ON s.game_id = l.game_id AND s.pid = l.pid AND s.t BETWEEN dd.t - 1 AND dd.t + 0.5
     WHERE NOT EXISTS (SELECT 1 FROM dc_hn hn WHERE hn.game_id = dd.game_id AND hn.pid = dd.pid AND hn.t = dd.t)
       AND s.alive IS NOT 0 AND (s.x - dd.x) * (s.x - dd.x) + (s.y - dd.y) * (s.y - dd.y) <= 1200 * 1200
@@ -59,7 +61,7 @@ dc_al AS MATERIALIZED (
 dc_pr AS MATERIALIZED (
     SELECT dd.game_id, dd.pid, dd.t, count(DISTINCT e.pid) AS n
     FROM dc_in dd JOIN ev_snap v ON v.game_id = dd.game_id AND v.pid = dd.pid AND v.t BETWEEN dd.t - 10 AND dd.t AND coalesce(v.hit, 0) > 0
-    JOIN lineup l ON l.game_id = dd.game_id AND l.team <> dd.team
+    JOIN dc_lineup l ON l.game_id = dd.game_id AND l.team <> dd.team
     JOIN ev_snap e ON e.game_id = l.game_id AND e.pid = l.pid AND e.t BETWEEN v.t - 0.6 AND v.t + 0.6
     WHERE e.alive IS NOT 0 AND (e.x - v.x) * (e.x - v.x) + (e.y - v.y) * (e.y - v.y) <= 1000 * 1000
     GROUP BY dd.game_id, dd.pid, dd.t

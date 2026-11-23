@@ -55,7 +55,7 @@
 -- is its second (its time is a fraction past it).
 -- Params: like (a path fragment or run label) or batch (the exact run name: `base1` is not `h2hbase1`), one is required;
 -- arm (with batch or like), game (default each log's last), lane, hero (either party), pid (either party), from, to
--- (seconds or m:ss), kind (comma separated).
+-- (seconds or m:ss), kind (comma separated; one without death or creep does no death-cause or creep-fate work).
 WITH
 -- include: timeline_rows
 SELECT * FROM timeline_rows ORDER BY file, t IS NOT NULL, t, pid, kind

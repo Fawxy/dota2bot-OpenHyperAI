@@ -5,6 +5,7 @@
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: core_death
 dc_in AS MATERIALIZED (SELECT game_id, pid, team, pos, t, x, y FROM cd),
+dc_lineup AS MATERIALIZED (SELECT * FROM lineup),
 -- include: death_cause
 SELECT gm.file, f.game_id, f.team, f.pos, f.pid, f.t, f.attackers, f.allies, f.hp10, f.cause
 FROM death_cause f JOIN gm ON gm.game_id = f.game_id
