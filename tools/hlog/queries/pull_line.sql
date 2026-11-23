@@ -1,5 +1,5 @@
 -- ROADMAP 8a's line and its ledger (plan s5): per game, team and lane, every lane creep that died in the :win seconds
--- (default 75) from a slot that team's pull trigger wanted (ev=choice kind=pull want=1: the pulling team's own line or a
+-- (default 75; from :lead seconds after the slot, default 0) from a slot that team's pull trigger wanted (ev=choice kind=pull want=1: the pulling team's own line or a
 -- switched-off team's src=shadow line), both sides, by who took it. Games whose file matches :like.
 -- A wanted slot is one per team, lane and pulled wave (floor((slot - 1) / 30): the two arms read one wave at different
 -- seconds), with slot < :to (default 525, so a window ends by 10:00). Windows of consecutive slots overlap, so a death
@@ -17,6 +17,9 @@
 -- The funnel: wanted slots; started (an ev=pull_job of that team and lane on the slot's wave); hit (its hit=1); diverted (res
 --   ok and dt, or div where a line has no dt, at least 0.75, as view pull_attempts); first_slot the first wanted slot.
 -- A creep that died with no hero of either team within 1,500 is in neither log.
+-- No death line says which wave a creep came from, so the wanted wave's own creeps cannot be picked out. :lead 15 with
+-- :win 55 is the nearest the logs give: a diverted wave dies at its camp from about 15 to 55 s after the slot (pullrow1), and
+-- an unpulled one reaches the lane's fight in about that time; the window still holds about a wave and a third.
 -- ensure: ev_choice(pid, kind, want, lane, slot)
 -- ensure: ev_pull_job(pid, lane, slot, res, hit, div, dt)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw)
@@ -87,7 +90,7 @@ inwin AS (
     FROM funnel f JOIN dead d ON d.game_id = f.game_id
         AND CASE WHEN d.y - d.x > 4000 THEN 1 WHEN d.y - d.x < -4000 THEN 3 ELSE 2 END = f.lane
     WHERE EXISTS (SELECT 1 FROM ws w WHERE w.game_id = f.game_id AND w.team = f.team AND w.lane = f.lane
-        AND d.t >= w.slot AND d.t < w.slot + coalesce(:win, 75))
+        AND d.t >= w.slot + coalesce(:lead, 0) AND d.t < w.slot + coalesce(:win, 75))
 ),
 ledger AS (
     SELECT game_id, team, lane,

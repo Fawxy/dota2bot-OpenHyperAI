@@ -16,7 +16,7 @@ function run(lines, params = {}) {
     const s = new Store(':memory:');
     s.ingest(f);
     s.refreshViews();
-    const out = s.query(sql, { like: null, to: null, win: null, first: null, ...params });
+    const out = s.query(sql, { like: null, to: null, win: null, lead: null, first: null, ...params });
     s.db.close();
     return out;
 }
@@ -83,6 +83,9 @@ test('wanted slots: one per team, lane and pulled wave whichever line names it; 
         [[2, 3, 2, 1, 1, 200.4, 2, 2, 0, 0], [3, 1, 0, 0, 0, 200.9, 0, 0, 1, 1]]);
     const first = run([...bots, want(190, 5, 200), want(250, 5, 260), theirView(262, 0, 6), theirView(330, 0, 6)], { first: 1 });
     assert.deepStrictEqual(first.map(r => [r.wanted, r.o_dead]), [[1, 1]]);
+    // a narrowed window, 15 to 55 s after the slot: of deaths at slot + 10, + 20 and + 60 only the middle one counts.
+    const narrow = run([...bots, want(190, 5, 200), theirView(210, 0, 6), theirView(220, 0, 6), theirView(260, 0, 6)], { lead: 15, win: 55 });
+    assert.deepStrictEqual(narrow.map(r => [r.wanted, r.o_dead]), [[1, 1]]);
 });
 
 const { teamGames, pairs, nullPairs, diffStats } = require('../pull_line');

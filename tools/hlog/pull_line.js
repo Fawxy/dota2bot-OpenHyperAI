@@ -1,6 +1,7 @@
 // ROADMAP 8a's line across a batch (plan s5): enemy last hits per creep of ours that died in the 75 s from a slot the pull's
 // trigger wanted, with the other lines of that ledger and the funnel, per arm and as paired on-minus-off differences.
-// Usage: node pull_line.js <run> [<run> ...] [--first] [--to 525] [--on on] [--off off] [--json] [--no-ingest]
+// Usage: node pull_line.js <run> [<run> ...] [--first] [--to 525] [--lead 0] [--win 75] [--on on] [--off off] [--json] [--no-ingest]
+//   --lead 15 --win 55 narrows each window towards the wanted wave's own deaths (the query's header says how far).
 //   Rows come from queries/pull_line.sql (its header defines every column), summed over a team's lanes in a game.
 //   Arms       a game's test team is its label's seat (`<run>_<lineup>_<arm>rad|dire_<rep>`); an arm with no seat (the
 //              reference arm: every switch off, so both teams are reference) gives a row per team.
@@ -121,11 +122,13 @@ function report(games, { on, off }) {
 }
 
 function main(argv) {
-    const o = { runs: [], on: 'on', off: 'off', to: null, first: null };
+    const o = { runs: [], on: 'on', off: 'off', to: null, first: null, lead: null, win: null };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--first') o.first = 1;
         else if (a === '--to') o.to = Number(argv[++i]);
+        else if (a === '--lead') o.lead = Number(argv[++i]);
+        else if (a === '--win') o.win = Number(argv[++i]);
         else if (a === '--on') o.on = argv[++i];
         else if (a === '--off') o.off = argv[++i];
         else if (a === '--json') o.json = true;
@@ -145,7 +148,7 @@ function main(argv) {
         const gs = store.query(`SELECT g.game_id, g.label FROM games g WHERE g.label LIKE :p ESCAPE '\\'
             AND g.game = (SELECT max(g2.game) FROM games g2 WHERE g2.file = g.file)`, { p: `${run.replace(/_/g, '\\_')}\\_%` });
         const labels = new Map(gs.map((g) => [g.game_id, g.label]));
-        const rows = store.query(SQL, { like: `%${run}_%`, to: o.to, win: null, first: o.first });
+        const rows = store.query(SQL, { like: `%${run}_%`, to: o.to, win: o.win, lead: o.lead, first: o.first });
         all.push(...teamGames(rows, labels));
     }
     store.close();
