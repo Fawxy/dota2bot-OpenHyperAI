@@ -268,11 +268,15 @@ function GetDesireHelper()
     if J.IsInLaningPhase() or botHP < 0.35 then
         local creepDamage = 0
         local nEnemyCreeps = bot:GetNearbyCreeps(1200, true)
+        -- Hook (slice pull-row): a pull takes its camp's hits on purpose and has its own bail for them. In pullrow_smoke1 this
+        -- branch returned 0.75 to 0.89 two seconds after the hit of 11 of 14 pulls, at any HP, and the decider let go to it.
+        local bPulling = J.Humaniser.Chooser.PullsNeutrals(bot)
         for _, creep in pairs(nEnemyCreeps) do
             if J.IsValid(creep)
                 and not J.IsRoshan(creep)
                 and not J.IsTormentor(creep)
                 and creep:GetAttackTarget() == bot
+                and not (bPulling and creep:GetTeam() == TEAM_NEUTRAL)
             then
                 creepDamage = creepDamage + bot:GetActualIncomingDamage(creep:GetAttackDamage() * creep:GetAttackSpeed() * 3.0, DAMAGE_TYPE_PHYSICAL)
             end

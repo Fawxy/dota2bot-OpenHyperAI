@@ -393,6 +393,11 @@ end
 function ____exports.HoldsRun(bot)
     return ____exports.Running(bot)
 end
+--- mode_retreat_generic's creep-damage branch: while the decider's pull runs, the neutrals hitting the hero are the pull's
+-- own doing and not a reason for stock's retreat (the pull's verb bails from them itself). Lane creeps and heroes still count.
+function ____exports.PullsNeutrals(bot)
+    return PullJob.Running(bot)
+end
 --- ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
 -- branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
 -- neutrals walked back into the box (user replay and s4solo2); a TP scroll on the walk stalled the job (s4solo2 5:4x).

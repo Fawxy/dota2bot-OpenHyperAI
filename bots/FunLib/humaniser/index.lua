@@ -250,6 +250,7 @@ if Telemetry.GuardsEnabled() then
         FarmThink = no,
         Abort = none,
         HoldsRun = no,
+        PullsNeutrals = no,
         HoldsIdle = no,
         HoldsCasts = no,
         Benched = no,
