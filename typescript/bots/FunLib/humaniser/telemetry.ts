@@ -613,6 +613,20 @@ function absAlong(lane: Lane, loc: Vector): { amount: number; distance: number }
     return { amount: Camps.ToTeamAmount(Team.Radiant, r.amount), distance: r.distance };
 }
 
+/** The name of the lane nearest a place: `top`, `mid` or `bot`. */
+function nearestLane(loc: Vector): string {
+    let name = "";
+    let best = math.huge;
+    for (const [lane, n] of LANES) {
+        const dist = GetAmountAlongLane(lane, loc).distance;
+        if (dist < best) {
+            best = dist;
+            name = n;
+        }
+    }
+    return name;
+}
+
 /** ln (nearest lane), s (absolute amount along it) and ld (distance from it) for one hero. */
 function laneFields(loc: Vector): LanePair[] {
     let best: { amount: number; distance: number } | undefined;
@@ -1282,6 +1296,8 @@ interface CreepTrack {
     creeps: LuaTable<Unit, CreepSeen>;
     // Own lane creeps seen last frame (slice creep-economy): a death near an own hero is ev=own_creep_death.
     own: LuaTable<Unit, CreepSeen>;
+    /** Each own lane creep's lane and first-seen second, stamped once (ev=wave_creep_death names its wave by them). */
+    born: LuaTable<Unit, Born>;
     ownDenies: Record<number, number>;
     // Handles logged as deaths: one seen alive again was a creep that left vision (ev=creep_revive, the WO-025 G2 gate).
     dead: LuaTable<Unit, CreepSeen>;
@@ -1299,6 +1315,10 @@ interface CreepTrack {
     neutrals: LuaTable<Unit, CreepSeen>;
     /** Neutrals logged as deaths: one seen alive again left vision (ev=creep_revive, kind neutral or ancient). */
     deadNeutrals: LuaTable<Unit, CreepSeen>;
+}
+interface Born {
+    lane: string;
+    t: number;
 }
 const creepTracks: Record<number, CreepTrack> = {};
 /** A creep that vanishes above this health share left vision; it did not die. */
@@ -1380,7 +1400,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), own: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable() };
+        c = { creeps: new LuaTable(), own: new LuaTable(), born: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable() };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -1563,18 +1583,18 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         ownList.push(u);
         ownAlive.set(u, true);
     }
+    // A team sees its own creeps everywhere, so a listed one that is gone died (or changed owner): `gone` has every one, the
+    // wave reader's; `ownDeaths` keeps own_creep_death's old gates.
+    const gone: [CreepDeath, number][] = [];
     const ownDeaths: CreepDeath[] = [];
     for (const [creep, seen] of c.own) {
         if (ownAlive.get(creep) === true) continue;
         c.own.delete(creep);
-        if (seen.hp > DEATH_MAX_HP) continue;
         const d: CreepDeath = { creep, seen };
-        for (const h of heroes) {
-            if (deathDistance(h, d) <= DEATH_NEAR) {
-                ownDeaths.push(d);
-                break;
-            }
-        }
+        let nd = math.huge;
+        for (const h of heroes) nd = math.min(nd, deathDistance(h, d));
+        gone.push([d, nd]);
+        if (seen.hp <= DEATH_MAX_HP && nd <= DEATH_NEAR) ownDeaths.push(d);
     }
     for (const h of heroes) {
         const [ok, dn] = pcall(() => (h as unknown as StatsUnit).GetDenies());
@@ -1591,7 +1611,29 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["by", d.by ?? "none"],
             ["cid", CreepId(d.creep)],
         ]);
-    for (const u of ownList) see(c.own, u, laneKindOf);
+    for (const [d, nd] of gone) {
+        const b = c.born.get(d.creep);
+        c.born.delete(d.creep);
+        const fields: Fields<"wave_creep_death"> = [
+            ["team", team],
+            ["kind", d.seen.kind],
+            ["x", math.floor(d.seen.x)],
+            ["y", math.floor(d.seen.y)],
+            ["hp", d.seen.hp],
+            ["by", d.by ?? "none"],
+            ["cid", CreepId(d.creep)],
+        ];
+        if (b !== undefined) {
+            fields.push(["lane", b.lane]);
+            fields.push(["born", b.t]);
+        }
+        if (nd < math.huge) fields.push(["nd", math.floor(nd)]);
+        Event("wave_creep_death", fields);
+    }
+    for (const u of ownList) {
+        see(c.own, u, laneKindOf);
+        if (c.born.get(u) === undefined && c.own.get(u) !== undefined) c.born.set(u, { lane: nearestLane(u.GetLocation()), t: math.floor(now * 10 + 0.5) / 10 });
+    }
 }
 
 const guardedWorld = Guard("Telemetry.World", trackWorld);
