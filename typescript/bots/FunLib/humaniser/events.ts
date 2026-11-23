@@ -353,6 +353,29 @@ export const EVENTS = {
         /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
         cid: "num",
     },
+    /** Every own lane creep that left the team's unit list, wherever it was and at any health: a team always sees its own creeps, so this is its death (or, at high `hp`, a change of owner). The wave reader's line: a creep's wave is its `lane` and `born` (spawns are every 30 s, so `floor(born / 30) * 30`), so a wanted pull slot's own creeps are named with no line at the slot. Same frame job and window as `own_creep_death` (0:00 to `Telemetry.CreepDeathUntil`), both arms. Who took it comes from the other team's `creep_death`, paired by kind, time and place (separate VMs: `cid` is not shared). */
+    wave_creep_death: {
+        /** The logging team, which owns the creep. */
+        team: "num",
+        /** `melee`, `ranged` or `siege`. */
+        kind: "str",
+        /** The creep's x as last frame read it. */
+        x: "num",
+        /** The creep's y as last frame read it. */
+        y: "num",
+        /** The creep's HP share as last frame read it. */
+        hp: "num",
+        /** As on `own_creep_death`: our denier's pid, else `none`. Only deaths `own_creep_death` also logs can carry a pid. */
+        by: "mixed",
+        /** The creep's id for this log, the same as on its `own_creep_death`. */
+        cid: "num",
+        /** The lane nearest the creep when first seen (`top`, `mid`, `bot`). Absent when the creep was first seen this frame. */
+        lane: "str",
+        /** DotaTime when the team first saw the creep, to 0.1 s: its spawn, give or take a frame. Absent with `lane`. */
+        born: "num",
+        /** Distance to the nearest living own hero; absent with none. `own_creep_death` keeps 1,500 or less at 50% HP or less. */
+        nd: "num",
+    },
     /** The human player's state, printed every frame (noisy). Bots log `snap` instead. */
     player: {
         pid: "num",
