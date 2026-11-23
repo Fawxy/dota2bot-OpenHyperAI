@@ -1253,6 +1253,10 @@ export const EVENTS = {
         hp: "num",
         /** `job=rune_detour`: the seconds the path by the rune was read to add when the walk started. */
         ex: "num",
+        /** `job=rune_detour` end: 1 when one step's gold gain reached RuneDetour TookGold (the pickup; GetRuneStatus can stay available after one). */
+        took: "num",
+        /** `job=rune_detour` end: the largest gold gain between two steps of the walk. */
+        gj: "num",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {

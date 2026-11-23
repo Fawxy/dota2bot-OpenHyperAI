@@ -651,6 +651,8 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `cut` str: On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name.
 - `hp` num: With `cut=retreat`: the hero's HP share then.
 - `ex` num: `job=rune_detour`: the seconds the path by the rune was read to add when the walk started.
+- `took` num: `job=rune_detour` end: 1 when one step's gold gain reached RuneDetour TookGold (the pickup; GetRuneStatus can stay available after one).
+- `gj` num: `job=rune_detour` end: the largest gold gain between two steps of the walk.
 
 ## stack
 

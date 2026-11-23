@@ -17,14 +17,16 @@ ____exports.SETTINGS = {
     Radius = 1800,
     LaneR = 1100,
     Until = 600,
-    Slack = 4
+    Slack = 4,
+    TookGold = 20,
+    Starts = 2
 }
 --- The task's host: the decider's (farm).
 local HOST = BotMode.Farm
 local passes = {}
---- pid -> the spawn this hero already went for (one walk a spawn).
+--- pid -> the spawn this hero last went for and how many walks it started for it.
 local went = {}
---- pid -> the rune this hero's walk is for, while it runs.
+--- pid -> its walk while it runs.
 local running = {}
 function ____exports.ResetCache()
     for k in pairs(passes) do
@@ -113,8 +115,8 @@ local function block(bot, r)
     if mode == BotMode.Attack or mode == BotMode.Retreat then
         return "busy"
     end
-    for pid, rune in pairs(running) do
-        if rune == r.rune and pid ~= bot:GetPlayerID() then
+    for pid, w in pairs(running) do
+        if w.rune == r.rune and pid ~= bot:GetPlayerID() then
             return "ally"
         end
     end
@@ -153,7 +155,7 @@ local function choiceLine(bot, p, go, why, src)
         }
     )
 end
-local function jobLine(bot, phase, why, ex, cut)
+local function jobLine(bot, phase, why, ex, cut, w)
     Telemetry.Event(
         "job",
         {
@@ -169,9 +171,19 @@ local function jobLine(bot, phase, why, ex, cut)
                 "ex",
                 ex ~= nil and math.floor(ex * 10 + 0.5) / 10 or nil
             },
-            {"cut", cut}
+            {"cut", cut},
+            {"took", w ~= nil and (w.jump >= ____exports.SETTINGS.TookGold and 1 or 0) or nil},
+            {"gj", w ~= nil and w.jump or nil}
         }
     )
+end
+--- Each step of the walk and at its end: the largest gold gain between two reads.
+local function noteGold(bot, w)
+    local g = bot:GetGold()
+    if g - w.gold > w.jump then
+        w.jump = g - w.gold
+    end
+    w.gold = g
 end
 --- One read of the pass for `bot`: opens, updates or closes its Pass. Returns the read when the pass is open and has not been
 -- logged, else undefined. A closed pass writes its line with `src`.
@@ -190,7 +202,8 @@ local function observe(bot, src, now)
         passes[pid] = nil
         p = nil
     end
-    if r == nil or went[pid] == r.spawn then
+    local w = went[pid]
+    if r == nil or w ~= nil and w.spawn == r.spawn and (w.done or w.n >= ____exports.SETTINGS.Starts) then
         return nil
     end
     if p == nil then
@@ -225,14 +238,25 @@ function ____exports.Shadow(bot)
     end
 end
 local function finish(bot, ex, res)
-    running[bot:GetPlayerID()] = nil
+    local pid = bot:GetPlayerID()
+    local w = running[pid]
+    running[pid] = nil
+    if w ~= nil then
+        noteGold(bot, w)
+    end
+    local took = w ~= nil and w.jump >= ____exports.SETTINGS.TookGold
+    local g = went[pid]
+    if g ~= nil and (took or res.success) then
+        g.done = true
+    end
     local cut = not res.success and res.reason == "preempted" and (Decider.LetGo(bot) and "retreat" or HDebug.ModeName(bot:GetActiveMode())) or nil
     jobLine(
         bot,
         "end",
         res.success and "ok" or res.reason,
         ex,
-        cut
+        cut,
+        w
     )
 end
 --- The row's `applies`: true while a walk runs or as one starts.
@@ -282,7 +306,12 @@ local function rowApplies(bot)
         },
         function() return Tasks.Verbs().pickUpRune(bot, r.rune, {at = r.at, timeout = timeout}) end
     )
-    went[pid] = r.spawn
+    local g = went[pid]
+    if g == nil or g.spawn ~= r.spawn then
+        went[pid] = {spawn = r.spawn, n = 1, done = false}
+    else
+        g.n = g.n + 1
+    end
     passes[pid] = nil
     local ____choiceLine_2 = choiceLine
     local ____bot_1 = bot
@@ -302,12 +331,20 @@ local function rowApplies(bot)
     if not ok then
         return false
     end
-    running[pid] = r.rune
+    running[pid] = {
+        rune = r.rune,
+        gold = bot:GetGold(),
+        jump = 0
+    }
     jobLine(bot, "start", "pass", ex)
     return true
 end
 --- The row's verb: one frame of the walk; true once it has ended.
 local function rowStep(bot)
+    local w = running[bot:GetPlayerID()]
+    if w ~= nil then
+        noteGold(bot, w)
+    end
     Tasks.Step(bot, HOST)
     return running[bot:GetPlayerID()] == nil
 end

@@ -8,7 +8,10 @@
  * writes one `ev=choice kind=rune_detour` line: as it starts the walk (`go=1`), or as it ends untaken (`go=0`, `why` what
  * held it: `detour`, `danger`, `busy`, `ally`). Switched off, the same read is logged as the shadow (`src=shadow go=0
  * why=off`, `want` as the row would have read it). A started walk runs as `ev=job job=rune_detour` (engine `pickUpRune`);
- * its end's `why` is `ok` on a pickup.
+ * its end's `why` is the engine verb's (`ok` when GetRuneStatus left available at the rune). That status can stay available after a
+ * pickup (rdon1, 23/11/2026: the Radiant pos5's gold rose 47 at its 4:00 rune, the status stayed available to 8:00), so the walk
+ * also reads its own gold: `took=1` when one step's gain is at least TookGold. A walk that ends untaken with the rune still up
+ * may start again, Starts a spawn at most.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Rune, Unit, Vector } from "bots/ts_libs/dota";
@@ -36,6 +39,10 @@ export const SETTINGS = {
     Until: 600,
     /** The walk's cap: its predicted seconds plus this (judgement), then the job ends `timeout`. */
     Slack: 4,
+    /** A gold gain this large between two steps of the walk is the pickup (judgement: a 4:00 bounty is about 40 at face). */
+    TookGold: 20,
+    /** Walks a hero may start for one spawn (a walk that ends untaken with the rune still up may go once more; judgement). */
+    Starts: 2,
 };
 
 /** The task's host: the decider's (farm). */
@@ -62,10 +69,17 @@ interface Read {
 }
 
 const passes: Record<number, Pass | undefined> = {};
-/** pid -> the spawn this hero already went for (one walk a spawn). */
-const went: Record<number, number | undefined> = {};
-/** pid -> the rune this hero's walk is for, while it runs. */
-const running: Record<number, number | undefined> = {};
+/** pid -> the spawn this hero last went for and how many walks it started for it. */
+const went: Record<number, { spawn: number; n: number; done: boolean } | undefined> = {};
+
+interface Walk {
+    rune: number;
+    gold: number;
+    /** The largest gain between two steps. */
+    jump: number;
+}
+/** pid -> its walk while it runs. */
+const running: Record<number, Walk | undefined> = {};
 
 export function ResetCache(): void {
     for (const [k] of pairs(passes)) passes[k as number] = undefined;
@@ -124,7 +138,7 @@ export function ReadPass(bot: Unit, now: number = DotaTime()): Read | undefined 
 function block(bot: Unit, r: Read): string | undefined {
     const mode = bot.GetActiveMode();
     if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
-    for (const [pid, rune] of pairs(running)) if (rune === r.rune && pid !== bot.GetPlayerID()) return "ally";
+    for (const [pid, w] of pairs(running)) if (w.rune === r.rune && pid !== bot.GetPlayerID()) return "ally";
     if (SafeGather.At(bot, r.at, { who: "rune_detour" }).level === "deadly") return "danger";
     return undefined;
 }
@@ -145,7 +159,7 @@ function choiceLine(bot: Unit, p: Pass, go: boolean, why: string | undefined, sr
     ]);
 }
 
-function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: string): void {
+function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: string, w?: Walk): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "rune_detour"],
@@ -154,7 +168,16 @@ function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: strin
         ["host", HOST],
         ["ex", ex !== undefined ? math.floor(ex * 10 + 0.5) / 10 : undefined],
         ["cut", cut],
+        ["took", w !== undefined ? (w.jump >= SETTINGS.TookGold ? 1 : 0) : undefined],
+        ["gj", w !== undefined ? w.jump : undefined],
     ]);
+}
+
+/** Each step of the walk and at its end: the largest gold gain between two reads. */
+function noteGold(bot: Unit, w: Walk): void {
+    const g = bot.GetGold();
+    if (g - w.gold > w.jump) w.jump = g - w.gold;
+    w.gold = g;
 }
 
 /**
@@ -170,7 +193,8 @@ function observe(bot: Unit, src: string, now: number): Read | undefined {
         passes[pid] = undefined;
         p = undefined;
     }
-    if (r === undefined || went[pid] === r.spawn) return undefined;
+    const w = went[pid];
+    if (r === undefined || (w !== undefined && w.spawn === r.spawn && (w.done || w.n >= SETTINGS.Starts))) return undefined;
     if (p === undefined) {
         p = { spawn: r.spawn, rune: r.rune, ex: r.ex, dr: r.dr, want: false };
         passes[pid] = p;
@@ -195,9 +219,15 @@ export function Shadow(bot: Unit): void {
 }
 
 function finish(bot: Unit, ex: number, res: Lib.Result): void {
-    running[bot.GetPlayerID()] = undefined;
+    const pid = bot.GetPlayerID();
+    const w = running[pid];
+    running[pid] = undefined;
+    if (w !== undefined) noteGold(bot, w);
+    const took = w !== undefined && w.jump >= SETTINGS.TookGold;
+    const g = went[pid];
+    if (g !== undefined && (took || res.success)) g.done = true;
     const cut = !res.success && res.reason === "preempted" ? (Decider.LetGo(bot) ? "retreat" : HDebug.ModeName(bot.GetActiveMode())) : undefined;
-    jobLine(bot, "end", res.success ? "ok" : res.reason, ex, cut);
+    jobLine(bot, "end", res.success ? "ok" : res.reason, ex, cut, w);
 }
 
 /** The row's `applies`: true while a walk runs or as one starts. */
@@ -226,17 +256,21 @@ function rowApplies(bot: Unit): boolean {
     const ok = Tasks.Start(bot, { name: "rune_detour", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (res) => finish(bot, ex, res) }, () =>
         Tasks.Verbs()!.pickUpRune(bot as unknown as Lib.TaskUnit, r.rune, { at: r.at, timeout })
     );
-    went[pid] = r.spawn;
+    const g = went[pid];
+    if (g === undefined || g.spawn !== r.spawn) went[pid] = { spawn: r.spawn, n: 1, done: false };
+    else g.n++;
     passes[pid] = undefined;
     choiceLine(bot, p, ok, ok ? undefined : "refused", "own");
     if (!ok) return false;
-    running[pid] = r.rune;
+    running[pid] = { rune: r.rune, gold: bot.GetGold(), jump: 0 };
     jobLine(bot, "start", "pass", ex);
     return true;
 }
 
 /** The row's verb: one frame of the walk; true once it has ended. */
 function rowStep(bot: Unit): boolean {
+    const w = running[bot.GetPlayerID()];
+    if (w !== undefined) noteGold(bot, w);
     Tasks.Step(bot, HOST);
     return running[bot.GetPlayerID()] === undefined;
 }

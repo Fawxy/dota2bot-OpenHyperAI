@@ -801,7 +801,9 @@ ____exports.EVENTS = {
         hit = "num",
         cut = "str",
         hp = "num",
-        ex = "num"
+        ex = "num",
+        took = "num",
+        gj = "num"
     },
     stack = {
         pid = "num",

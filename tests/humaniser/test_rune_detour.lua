@@ -45,6 +45,8 @@ local function hero(o)
 	o.team = o.team or RAD
 	local u = MakeUnit(o)
 	u.lane = o.lane or Lane.Bot
+	u.GetGold = function(self) return self.gold or 0 end
+	u.Action_PickUpRune = function() end
 	return u
 end
 
@@ -134,7 +136,45 @@ do
 		T = 260
 		more = R.ROW.applies(a)
 	end)
-	check("one walk a spawn: the same hero does not start again", more == false and #lines(out2, "kind=rune_detour") == 0, table.concat(out2, "\n"))
+	check("an untaken walk may start once more for its spawn", more == true and #lines(out2, "phase=start") == 1, table.concat(out2, "\n"))
+end
+
+do
+	-- GetRuneStatus can stay available after a pickup (rdon1): the walk reads its own gold. A walk that ends untaken with the
+	-- rune still up starts once more; a gold jump marks it taken and no walk follows.
+	local function walk(R, a, jump)
+		local out = capture(function()
+			R.ROW.applies(a)
+			for i = 1, 40 do
+				T = T + 0.1
+				if jump and i == 5 then a.gold = a.gold + 45 end
+				R.ROW.step(a)
+			end
+		end)
+		return out
+	end
+	local H = world(true)
+	local R = H.RuneDetour
+	local a = hero({ pid = 7, loc = Vector(0, -2600) })
+	a.mode = BotMode.Farm
+	a.gold = 600
+	local out = walk(R, a, true)
+	local ends = lines(out, "phase=end")
+	check("a gold jump in the walk reads took=1", #ends == 1 and ends[1]:find("took=1", 1, true) ~= nil, table.concat(out, " | "))
+	local more
+	capture(function() T = T + 1 more = R.ROW.applies(a) end)
+	check("a taken rune is not walked to again", more == false)
+
+	H = world(true)
+	R = H.RuneDetour
+	local b = hero({ pid = 8, loc = Vector(0, -2600) })
+	b.mode = BotMode.Farm
+	b.gold = 600
+	local o1 = walk(R, b, false)
+	local o2 = walk(R, b, false)
+	local o3 = walk(R, b, false)
+	check("an untaken walk ends took=0", #lines(o1, "took=0") == 1, table.concat(o1, " | "))
+	check("it starts once more, then no third time", #lines(o2, "phase=start") == 1 and #lines(o3, "phase=start") == 0, table.concat(o3, " | "))
 end
 
 finish()
