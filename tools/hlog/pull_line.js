@@ -102,7 +102,7 @@ function report(games, { on, off }) {
         const k = `${g.arm} ${side(g)}`;
         groups.set(k, [...(groups.get(k) || []), g]);
     }
-    out.push('arm side    team-games  wanted started hit diverted | ours dead: enemy-lh deny tower other | theirs dead: our-lh (cores) deny tower other | lh/dead  core/dead  (per team-game, rates pooled)');
+    out.push('arm side    team-games  wanted started hero-hit diverted | ours dead: enemy-lh deny tower other | theirs dead: our-lh (cores) deny tower other | lh/dead  core/dead  (per team-game, rates pooled)');
     for (const [k, list] of [...groups].sort()) {
         const p = pooled(list);
         const per = (c) => f1(p[c] / p.games);

@@ -84,3 +84,28 @@ test('wanted slots: one per team, lane and pulled wave whichever line names it; 
     const first = run([...bots, want(190, 5, 200), want(250, 5, 260), theirView(262, 0, 6), theirView(330, 0, 6)], { first: 1 });
     assert.deepStrictEqual(first.map(r => [r.wanted, r.o_dead]), [[1, 1]]);
 });
+
+const { teamGames, pairs, nullPairs, diffStats } = require('../pull_line');
+
+test('pairs: an on game\'s seat team against the off game of its run, lineup and repetition; the interval is Student t on the differences', () => {
+    const row = (game_id, team, lane, o_dead, o_lh) => ({ game_id, team, lane, wanted: 1, started: 0, hit: 0, diverted: 0, o_dead, o_lh, o_lh_core: 0, o_deny: 0, o_tower: 0, o_other: 0,
+        e_dead: 10, e_lh: 0, e_lh_core: 5, e_deny: 0, e_tower: 0, e_other: 0 });
+    const labels = new Map([[1, 'x1_A_off_1'], [2, 'x1_A_onrad_1'], [3, 'x1_A_ondire_1'], [4, 'x1_B_off_2'], [5, 'x1_B_onrad_2'], [6, 'x2_A_off_1']]);
+    const games = teamGames([
+        // the off game of A: Radiant 0.5 over two lanes, Dire 0.4.
+        row(1, 2, 1, 10, 6), row(1, 2, 3, 10, 4), row(1, 3, 1, 10, 4),
+        // on Radiant 0.3 (its Dire, the other side, is not a pair); on Dire 0.3.
+        row(2, 2, 3, 10, 3), row(2, 3, 1, 10, 9), row(3, 3, 1, 10, 3), row(3, 2, 1, 10, 9),
+        // B: off 0.5, on 0.2; another run's off game of A pairs with nothing here.
+        row(4, 2, 3, 10, 5), row(5, 2, 3, 10, 2), row(6, 2, 3, 10, 0),
+        // a game the runs do not name.
+        row(9, 2, 3, 10, 0),
+    ], labels);
+    const ps = pairs(games, 'on', 'off');
+    assert.deepStrictEqual(ps.map((p) => [p.on.label, p.on.team, p.off.label, Number((p.on.lh - p.off.lh).toFixed(2))]),
+        [['x1_A_onrad_1', 2, 'x1_A_off_1', -0.2], ['x1_A_ondire_1', 3, 'x1_A_off_1', -0.1], ['x1_B_onrad_2', 2, 'x1_B_off_2', -0.3]]);
+    const s = diffStats(ps, 'lh');
+    // mean -0.2, sd 0.1, t(2 df) 4.303: half-width 4.303 * 0.1 / sqrt(3).
+    assert.deepStrictEqual([s.n, s.mean.toFixed(3), s.sd.toFixed(3), s.half.toFixed(3)], [3, '-0.200', '0.100', '0.248']);
+    assert.deepStrictEqual(nullPairs(games, 'off').map((p) => [p.on.label, p.off.label, p.on.team]), [['x2_A_off_1', 'x1_A_off_1', 2]]);
+});
