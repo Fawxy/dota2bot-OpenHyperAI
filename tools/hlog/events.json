@@ -1692,6 +1692,13 @@
    "fd": "num",
    "mi": "num"
   },
+  "pull_camp_seed": {
+   "key": "str",
+   "idx": "num",
+   "td": "num",
+   "ld": "num",
+   "ok": "num"
+  },
   "pull_job": {
    "pid": "num",
    "pos": "num",
@@ -2707,6 +2714,9 @@
    "why": "text",
    "res": "text",
    "label": "text"
+  },
+  "ev_pull_camp_seed": {
+   "key": "text"
   },
   "ev_pull_job": {
    "res": "text",

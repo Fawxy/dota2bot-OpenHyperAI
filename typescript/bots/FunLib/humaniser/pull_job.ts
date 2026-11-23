@@ -1004,6 +1004,7 @@ function dueSlot(bot: Unit, now: number): Due | undefined {
  * puller may stand elsewhere, so the two arms' slots match by wave, not by second.
  */
 export function Shadow(bot: Unit): void {
+    logSeeds();
     if (!Telemetry.IsEnabled() || !IsPuller(bot) || rowOn(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
     const due = dueSlot(bot, DotaTime());
@@ -1036,7 +1037,19 @@ function startBlock(bot: Unit, camp: CampState, now: number, hitAt: number): str
  * A pull the decider let go of (stock's retreat) or another mode took is ended by the engine once the host has been without
  * the hero for `preemptAfter`; its wave is handled, so it does not start again.
  */
+let seedsLogged = false;
+
+/** Once a game, the seeded pull camps' resolution (`ev=pull_camp_seed`), once the spawner list is in. */
+function logSeeds(): void {
+    if (seedsLogged || !Telemetry.IsEnabled()) return;
+    const reads = Camps.SeedReads();
+    if (reads.length === 0) return;
+    seedsLogged = true;
+    for (const r of reads) Telemetry.Event("pull_camp_seed", [["key", r.key], ["idx", r.idx], ["td", r.td], ["ld", r.ld], ["ok", r.ok ? 1 : 0]]);
+}
+
 function rowApplies(bot: Unit): boolean {
+    logSeeds();
     if (!rowOn(bot)) return false;
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);

@@ -1549,6 +1549,13 @@ ____exports.EVENTS = {
         fd = "num",
         mi = "num"
     },
+    pull_camp_seed = {
+        key = "str",
+        idx = "num",
+        td = "num",
+        ld = "num",
+        ok = "num"
+    },
     pull_job = {
         pid = "num",
         pos = "num",

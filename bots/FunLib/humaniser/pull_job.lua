@@ -358,7 +358,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local campDmgGate, ourTower, share, laneCreepsNear, onNeutral, sample, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, Step, End, running, HOST
+local campDmgGate, ourTower, share, laneCreepsNear, onNeutral, sample, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, logSeeds, Step, End, running, HOST, seedsLogged
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
@@ -915,6 +915,25 @@ function taggedFields(bot, p, ours)
             r0(s.farthest)
         }
     }
+end
+function logSeeds()
+    if seedsLogged or not Telemetry.IsEnabled() then
+        return
+    end
+    local reads = Camps.SeedReads()
+    if #reads == 0 then
+        return
+    end
+    seedsLogged = true
+    for ____, r in ipairs(reads) do
+        Telemetry.Event("pull_camp_seed", {
+            {"key", r.key},
+            {"idx", r.idx},
+            {"td", r.td},
+            {"ld", r.ld},
+            {"ok", r.ok and 1 or 0}
+        })
+    end
 end
 function Step(bot)
     local p = running[bot:GetPlayerID()]
@@ -1840,6 +1859,7 @@ end
 -- ordered or started. A shadowed slot is where a puller standing where stock left it would have had to leave; the on arm's
 -- puller may stand elsewhere, so the two arms' slots match by wave, not by second.
 function ____exports.Shadow(bot)
+    logSeeds()
     if not Telemetry.IsEnabled() or not ____exports.IsPuller(bot) or rowOn(bot) or Drill.Held(bot) then
         return
     end
@@ -1887,11 +1907,9 @@ local function startBlock(bot, camp, now, hitAt)
     end
     return campDmgGate(bot, camp.dmg) or (acting(bot) and "acting" or nil)
 end
---- The row's `applies`, asked every scoring round: true while a pull runs or as one starts. The lane is read once per slot at
--- the leave time; a wanted pull then waits on `startBlock` until it could no longer reach the camp by the hit's late limit.
--- A pull the decider let go of (stock's retreat) or another mode took is ended by the engine once the host has been without
--- the hero for `preemptAfter`; its wave is handled, so it does not start again.
+seedsLogged = false
 local function rowApplies(bot)
+    logSeeds()
     if not rowOn(bot) then
         return false
     end

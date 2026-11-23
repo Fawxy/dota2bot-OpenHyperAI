@@ -350,8 +350,26 @@ function stackFor(s: Spawner, entry: CampDataEntry | undefined): { aggroSec: num
     };
 }
 
+/** How a seeded lane entry (CAMP_DATA with `laneKind`) resolved: the nearest spawner of its type and team to the lane's
+ *  tower, its distance to that tower (`td`) and to the lane (`ld`), and whether it became the entry's pull camp. */
+export interface SeedRead {
+    key: string;
+    idx?: number;
+    td?: number;
+    ld?: number;
+    ok: boolean;
+}
+let seedReads: SeedRead[] = [];
+
+/** The seeded lane entries' resolution (Resolve), for a once-per-game log line. */
+export function SeedReads(): SeedRead[] {
+    Resolve();
+    return seedReads;
+}
+
 export function Resolve(): CampJobData[] {
     if (resolveCache !== undefined) return resolveCache;
+    seedReads = [];
     const spawners = Spawners();
     const jobs: Record<number, Record<number, CampJobData>> = { [Team.Radiant]: {}, [Team.Dire]: {} };
 
@@ -386,6 +404,19 @@ export function Resolve(): CampJobData[] {
         const campTeam = campTeamOf(entry);
         let best: Spawner | undefined;
         let bestDist = math.huge;
+        const read: SeedRead = { key: entry.key ?? "?", ok: false };
+        let nearD = math.huge;
+        for (const s of spawners) {
+            if (own[s.idx] !== undefined || s.team !== campTeam || s.type !== entry.type) continue;
+            const d = dist2D(s.location, tower);
+            if (d < nearD) {
+                nearD = d;
+                read.idx = s.idx;
+                read.td = math.floor(d);
+                read.ld = math.floor(dist2D(s.location, DeriveMeetPoint(entry.team, lane, s.location)));
+            }
+        }
+        seedReads.push(read);
         for (const s of spawners) {
             if (own[s.idx] !== undefined || s.team !== campTeam || s.type !== entry.type) continue;
             const d = dist2D(s.location, tower);
@@ -396,6 +427,7 @@ export function Resolve(): CampJobData[] {
             best = s;
         }
         if (best === undefined) continue;
+        read.ok = true;
         const nearest = DeriveMeetPoint(entry.team, lane, best.location);
         const meet = entry.meetBack !== undefined ? ShiftAlongLane(entry.team, lane, nearest, -entry.meetBack) : nearest;
         own[best.idx] = {

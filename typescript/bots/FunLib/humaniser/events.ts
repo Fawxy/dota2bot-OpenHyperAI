@@ -2566,6 +2566,19 @@ export const EVENTS = {
         /** Madstone charges gained in its item slots over the farm. */
         mi: "num",
     },
+    /** Once a game: how each seeded lane pull camp (camps_data with `laneKind`) resolved, the pull's camp choice's input. */
+    pull_camp_seed: {
+        /** The camps_data entry. */
+        key: "str",
+        /** The nearest spawner of its type and team to the lane's tower (`ev=camp` `idx`); absent with none. */
+        idx: "num",
+        /** Its distance to that tower (the limit is `PullCampMaxTowerDist`, or the entry's `maxTowerDist`). */
+        td: "num",
+        /** Its distance to the lane (the limit is `PullCampMaxLaneDist`). */
+        ld: "num",
+        /** 1 when it became the entry's pull camp. */
+        ok: "num",
+    },
     /** One line per pull the support's pull job started (`Ours.SupportPull`). Views `pull_attempts`, `pull_waves` and `pull_watch_cases` read it. */
     pull_job: {
         pid: "num",
