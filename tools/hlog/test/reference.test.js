@@ -39,3 +39,16 @@ test("a run's logs are its label prefix only: h2h742 takes neither h2h742-first 
     assert.deepStrictEqual(logsOf('h2h742', dir), ['2026-11-19T08-18-17-h2h742_A_rad_1.log']);
     fs.rmSync(dir, { recursive: true });
 });
+
+test('--release names the release; without it the gate reference is used, with its own title', () => {
+    const { parseArgs, describeRelease } = require('../reference');
+    assert.deepStrictEqual(parseArgs(['push', 'h2h742', 'h2h742m']), { cmd: 'push', release: 'gate-reference', runs: ['h2h742', 'h2h742m'] });
+    assert.deepStrictEqual(parseArgs(['push', '--release', 'logs-stockbase2', 'stockbase2']), { cmd: 'push', release: 'logs-stockbase2', runs: ['stockbase2'] });
+    assert.deepStrictEqual(parseArgs(['fetch', '--release', 'logs-x']), { cmd: 'fetch', release: 'logs-x', runs: [] });
+    assert.throws(() => parseArgs(['fetch', '--release']), /needs a tag/);
+    assert.throws(() => parseArgs(['push', '--release', '--x', 'r']), /needs a tag/);
+    assert.strictEqual(describeRelease('gate-reference', ['h2h742'], 30)[0], 'Gate reference logs');
+    const [title, notes] = describeRelease('logs-stockbase2', ['stockbase2'], 30);
+    assert.strictEqual(title, 'Logs: stockbase2');
+    assert.match(notes, /30 dotactl logs.*fetch --release logs-stockbase2/);
+});
