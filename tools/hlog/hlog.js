@@ -8,7 +8,7 @@
 //   node hlog.js digest <log> [--game N]                 one game in a few lines: run facts, event counts, errors, marks
 //   node hlog.js events <log> --pid N|--hero h [--from t --to t --ev a,b --all --game N]  one hero's events in a window, oldest first
 //   node hlog.js timeline <log | label> [--lane top|mid|bot --hero h --pid N --from t --to t --kind a,b --game N]
-//                                                        what happened, oldest first: episodes, modes, casts, creeps (@timeline)
+//                                                        what happened, oldest first: episodes, our decisions, modes, casts, creep deaths (@timeline)
 //   node hlog.js timeline <batch> --count [--ref arm --pos 1-3 --lane l --from t --to t]
 //                                                        the batch's arms compared on counted measures, with the reference arm's noise floor (summary.js)
 //   node hlog.js list [word]                             named queries and views: params and first sentence (word filters)
@@ -165,7 +165,7 @@ function secs(v) {
 }
 
 const clock = t => `${t < 0 ? '-' : ''}${Math.floor(Math.abs(t) / 60)}:${String(Math.floor(Math.abs(t) % 60)).padStart(2, '0')}`;
-const TIMELINE_KINDS = ['death', 'retreat', 'exchange', 'kill_try', 'job', 'visit', 'mode', 'cast', 'creep', 'state'];
+const TIMELINE_KINDS = ['death', 'retreat', 'exchange', 'kill_try', 'job', 'visit', 'decision', 'mode', 'cast', 'creep', 'state'];
 const TIMELINE_LANES = ['top', 'mid', 'bot', 'base', 'other'];
 
 /** The log a timeline is asked for: a path, else the one log whose run label it is. */
@@ -201,12 +201,13 @@ function timelineRows(store, file, o) {
 function timelineText(rows, o) {
     const seat = r => `${r.team === 2 ? 'R' : r.team === 3 ? 'D' : '?'}${r.pos ?? ''}`;
     const events = rows.filter(r => r.t !== null);
-    const width = Math.max(0, ...events.map(r => String(r.hero).length));
+    const hero = r => r.hero ?? '-';
+    const width = Math.max(0, ...events.map(r => String(hero(r)).length));
     const out = rows.filter(r => r.t === null).map(r => `not logged: ${r.detail}`);
     for (const r of events) {
         const when = r.t1 === null || r.t1 === r.t ? clock(r.t) : `${clock(r.t)}-${clock(r.t1)}`;
         const place = o.lane ? '' : `${r.lane.padEnd(6)}`;
-        out.push(`${when.padEnd(12)}${place}${seat(r).padEnd(3)}${String(r.hero).padEnd(width + 1)}${r.kind.padEnd(9)}${r.detail}`);
+        out.push(`${when.padEnd(12)}${place}${seat(r).padEnd(3)}${String(hero(r)).padEnd(width + 1)}${r.kind.padEnd(9)}${r.detail}`);
     }
     if (!events.length) out.push('(nothing in that window)');
     return out.join('\n');

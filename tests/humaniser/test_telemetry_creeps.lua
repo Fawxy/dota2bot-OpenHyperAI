@@ -257,6 +257,63 @@ do
 	check("nothing after CreepDeathUntil", #events("own_creep_death") == 2, #events("own_creep_death"))
 end
 
+-- ev=wave_creep_death (the pull's wave reader): every own lane creep that leaves the list, far from every hero and at any
+-- health, with the lane and second it was first seen in; own_creep_death keeps its gates.
+do
+	local keep = GetAmountAlongLane
+	-- The bot lane runs along y = -6000, the top along y = 6000.
+	GetAmountAlongLane = function(lane, loc)
+		local y = lane == dota.Lane.Bot and -6000 or lane == dota.Lane.Top and 6000 or 0
+		return { amount = 0.5, distance = math.abs(loc.y - y) }
+	end
+	local H = fresh()
+	local sup = MakeUnit({ pid = 2, loc = Vector(0, -6000) })
+	sup.pos = 5
+	local early = creep("npc_dota_creep_goodguys_melee", Vector(-6000, -5900), 100, OWN)
+	tick(H, { sup }, 30.1)
+	local late = creep("npc_dota_creep_goodguys_ranged", Vector(-6000, -5900), 100, OWN)
+	local top = creep("npc_dota_creep_goodguys_melee", Vector(-6000, 5900), 100, OWN)
+	tick(H, { sup }, 60.1)
+	-- Both bot creeps walk to the camp, 5,000 from the support, and die there; the top one is denied beside its hero.
+	early.loc, early.hp = Vector(5000, -6000), 40
+	late.loc, late.hp = Vector(5000, -6000), 80
+	tick(H, { sup }, 90)
+	kill(early)
+	kill(late)
+	tick(H, { sup }, 90.1)
+	local e = events("wave_creep_death")
+	check("both far deaths logged, the healthy one too", #e == 2, #e)
+	local byCid = {}
+	for _, l in ipairs(e) do byCid[field(l, "kind")] = l end
+	check("lane from where it was first seen", field(byCid.melee, "lane") == "bot" and field(byCid.ranged, "lane") == "bot", e[1])
+	check("born names each creep's wave", tonumber(field(byCid.melee, "born")) == 30.1 and tonumber(field(byCid.ranged, "born")) == 60.1, e[1])
+	check("distance to the nearest hero", tonumber(field(byCid.melee, "nd")) == 5000, field(byCid.melee, "nd"))
+	check("far deaths are not own_creep_death", #events("own_creep_death") == 0, #events("own_creep_death"))
+	sup.loc = Vector(-6000, 5800)
+	top.hp = 20
+	tick(H, { sup }, 95)
+	kill(top)
+	sup.dn = 1
+	tick(H, { sup }, 95.1)
+	e = events("wave_creep_death")
+	check("a denied creep carries its denier", #e == 3 and field(e[3], "by") == "2" and field(e[3], "lane") == "top", e[3])
+	check("and is still an own_creep_death", #events("own_creep_death") == 1, #events("own_creep_death"))
+	-- A frame whose allied list is missing is skipped: the creeps tracked are not read as gone at full health.
+	local held = creep("npc_dota_creep_goodguys_melee", Vector(0, -5900), 100, OWN)
+	tick(H, { sup }, 100)
+	local list = GetUnitList
+	GetUnitList = function(kind) if kind == UnitType.AlliedCreeps then return nil end return list(kind) end
+	tick(H, { sup }, 100.1)
+	GetUnitList = list
+	tick(H, { sup }, 100.2)
+	check("no death from a missing list", #events("wave_creep_death") == 3, #events("wave_creep_death"))
+	kill(held)
+	tick(H, { sup }, 100.3)
+	e = events("wave_creep_death")
+	check("and the creep is still tracked with its birth", #e == 4 and tonumber(field(e[4], "born")) == 100, e[4])
+	GetAmountAlongLane = keep
+end
+
 
 -- A neutral listed with no location (the engine gives a fogged or dying handle none): the creep read skips it, no error
 -- (cnghar2_B_harness_5 t=624.0: `lua_error` in Telemetry.Creeps).

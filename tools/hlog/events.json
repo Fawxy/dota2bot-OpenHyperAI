@@ -228,6 +228,18 @@
    "by": "mixed",
    "cid": "num"
   },
+  "wave_creep_death": {
+   "team": "num",
+   "kind": "str",
+   "x": "num",
+   "y": "num",
+   "hp": "num",
+   "by": "mixed",
+   "cid": "num",
+   "lane": "str",
+   "born": "num",
+   "nd": "num"
+  },
   "player": {
    "pid": "num",
    "hero": "str",
@@ -2204,6 +2216,10 @@
   },
   "ev_own_creep_death": {
    "kind": "text"
+  },
+  "ev_wave_creep_death": {
+   "kind": "text",
+   "lane": "text"
   },
   "ev_player": {
    "hero": "text"

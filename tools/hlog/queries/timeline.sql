@@ -1,21 +1,31 @@
 -- The timeline: one row per thing that happened (time, hero, kind, detail), by lane, hero, time and kind.
 -- `node hlog.js timeline` is its text view. The six episodes have one definition each, in the fragment named:
---   death      ep_death      the hero's last living moment, with who attacked it in the 10 s before
+--   death      ep_death      the hero's last living moment, with who attacked it in the 10 s before and its cause (the loss
+--                            ledger's rule, fragment death_cause)
 --   retreat    ep_retreat    a retreat bout
 --   exchange   ep_exchange   two opposing heroes attacking; `hero` struck first
 --   kill_try   ep_kill       a kill attempt; `hero` is its first attacker
 --   job        ep_job        a job trip
 --   visit      ep_visit      a lane visit
+-- Our decisions:
+--   decision   an opportunity one of our heroes judged (`ev=choice`, any kind but `shadow` and `decider`): one row per hero,
+--              choice kind, lane and slot, from its last line unless a line started it; t the line's time, t1 the end of the
+--              trip it started (job of the same name starting within 1 s)
 -- To read between them:
 --   mode       a mode other than retreat held 3 s or more (from the snapshots, so stock logs have it too)
 --   cast       an ability cast (no target is logged)
---   creep      a last hit or a deny
+--   creep      a lane creep death, one row per death whichever team logged it (view creep_fate): a hero's last hit or deny,
+--              or one nobody got (no hero: see team); and a hero's last hit on a neutral
 --   state      every 15 s: HP, mode, the nearest living enemy, allies within 1,200
 --   not_logged what this log cannot show, so that none is not read as zero: first, whatever the lane, hero or window
--- Columns: file, game, t, t1 (NULL: a moment, or a trip with no end), lane (at t: top, mid, bot, base or other; a visit's own),
+-- Columns: file, game, t, t1 (NULL: a moment, or a trip with no end), lane (at t: top, mid, bot, base or other; a visit's own;
+-- a decision's from its line's assigned lane: 1 top, 2 mid, 3 bot; a creep nobody got from its death's place),
 -- team, pos, pid, hero, kind, detail, who (every hero in the row, as `,luna,lich,`), then the countable ones:
---   team, pos, pid, hero   the row's own hero: death the one who died, retreat, job, visit, mode, cast, creep and state the one
---                          doing it, exchange the one who struck first, kill_try its first attacker
+--   team, pos, pid, hero   the row's own hero: death the one who died, retreat, job, visit, decision, mode, cast, creep and state
+--                          the one doing it (deciding), exchange the one who struck first, kill_try its first attacker.
+--                          A creep nobody got has no hero (pos, pid, hero and who NULL; `-` in the text view) and its team is
+--                          the log's that it came from: the team that could have last-hit it (outcome other), or, for one only
+--                          its own team logged, the creep's own team (lost). --hero and --pid leave these rows out; --lane keeps them
 --   secs        t1 - t in whole seconds (NULL for a moment, and for a job with no end); an exchange of one second is 0
 --   other_pid, other   the other hero: exchange the one struck, kill_try the target; NULL otherwise
 --   a_secs, b_secs     exchange: attack seconds by `hero` on `other`, and back (b_secs 0: not answered)
@@ -23,15 +33,29 @@
 --               kill_try, job, visit), NULL where no snapshot is in that second. A death has hp0 only
 --   hpmin       the lowest HP percent: retreat the row hero's; kill_try the target's
 --   outcome     death `died`; retreat `died` or `lived`; exchange `answered` or `none_back`; kill_try `killed` or `lived`;
---               job its end reason (`ended` if none logged, `no_end` with no end); visit `dead` or the mode it ended in
+--               job its end reason (`ended` if none logged, `no_end` with no end); visit `dead` or the mode it ended in;
+--               decision `unwanted` (want=0), `off` (a switched-off puller's shadow line, src=shadow, that wanted it), `refused`
+--               (wanted, not started), `done` (its trip ended `ok`), `cut` (any other end), `no_end` (no end logged),
+--               `no_start` (go=1 but no job start of its name logged);
+--               creep, view creep_fate's fate: `own_lh` (the hero's last hit; a neutral's too), `own_deny` (the hero's deny),
+--               `other` (an enemy creep nobody got), `lost` (our own creep nobody got, that no enemy log has). An enemy deny is
+--               the denier's own_deny row, and a creep both teams logged is the enemy log's row (own_lh or other), so no death
+--               is counted twice
 --   d0, d1      game units from the row hero to its nearest live enemy hero at t and at t1, for the same episodes; NULL if none
 --   batch, lineup, arm, seat, rep   the run label read (view run_label); side `test` when the row's team is the label's seat
 --               (rad is team 2, dire team 3), `opp` for the other team, NULL when the label has no seat
+--   what, why, slot   decision: the choice's kind (`pull`); unwanted and refused the choice's why, cut the trip's end reason,
+--               else NULL; the opportunity's own time (the choice's slot). `q @decisions` counts them.
+--               death: why the cause: tower, outnumbered_alone, outnumbered, duel, even_numbers, creeps, unexplained (NULL with no
+--               snapshot in its last 10 s), as @ledger_deaths gives it.
+--               creep: what the creep's kind (melee, ranged, siege; `neutral`); why, for outcome other only, `tower` (one of the
+--               row team's towers hit it the frame before: under it, not surely killed by it), `open` (none did), NULL on builds
+--               before the field. NULL otherwise
 -- A row is in the window when any part of it is; a lane's rows are those that began there. A death is in a window whose `to`
 -- is its second (its time is a fraction past it).
 -- Params: like (a path fragment or run label) or batch (the exact run name: `base1` is not `h2hbase1`), one is required;
 -- arm (with batch or like), game (default each log's last), lane, hero (either party), pid (either party), from, to
--- (seconds or m:ss), kind (comma separated).
+-- (seconds or m:ss), kind (comma separated; one without death or creep does no death-cause or creep-fate work).
 WITH
 -- include: timeline_rows
 SELECT * FROM timeline_rows ORDER BY file, t IS NOT NULL, t, pid, kind

@@ -107,7 +107,7 @@ test('timeline: rows by kind, the window takes any overlap, a lane, a hero as ei
     const kinds = rows({}).reduce((n, r) => ({ ...n, [r.kind]: (n[r.kind] || 0) + 1 }), {});
     assert.deepStrictEqual(Object.keys(kinds).sort(), ['death', 'exchange', 'job', 'kill_try', 'mode', 'not_logged', 'retreat', 'state', 'visit']);
     const death = rows({ kind: 'death' }).find(r => r.kind === 'death');
-    assert.strictEqual(death.detail, 'died in laning; attacked by luna, lich');
+    assert.strictEqual(death.detail, 'died in laning: outnumbered_alone; attacked by luna, lich');
     assert.strictEqual(death.lane, 'bot');
     assert.deepStrictEqual(rows({ kind: 'retreat', from: '0:22', to: 23 }).filter(r => r.t !== null).map(r => [r.t, r.t1]), [[20, 30]]);
     assert.deepStrictEqual(rows({ kind: 'kill_try' }).filter(r => r.t !== null).map(r => [r.hero, r.t, r.detail]), [
@@ -126,8 +126,8 @@ test('timeline: what the log cannot show is a row, whatever the lane, hero or wi
     const lack = timelineRows(store, file, { lane: 'top', from: 0, to: 1, hero: 'lich' }).filter(r => r.kind === 'not_logged').map(r => r.detail);
     assert.deepStrictEqual(lack.sort(), [
         'Dire: no attack target (tid) in the log, so its attacks are not seen',
-        'Dire: no casts in the log', 'Dire: no creep deaths in the log',
-        'Radiant: no casts in the log', 'Radiant: no creep deaths in the log',
+        'Dire: no casts in the log', 'Dire: no creep deaths in the log', 'Dire: no decisions in the log',
+        'Radiant: no casts in the log', 'Radiant: no creep deaths in the log', 'Radiant: no decisions in the log',
     ]);
     // A kind filter keeps only what it asked about.
     assert.deepStrictEqual(timelineRows(store, file, { kind: 'retreat' }).filter(r => r.kind === 'not_logged'), []);
@@ -149,7 +149,7 @@ test('timeline text: one line a row, oldest first; no gap line when the kinds as
     assert.deepStrictEqual(text.map(l => l.replace(/\s+/g, ' ')), [
         '0:20-0:30 bot R1 luna retreat hp 100 to 100 (low 100)',
         '0:45-0:46 bot R1 luna retreat hp 100 to 100 (low 100)',
-        '1:42 bot D1 axe death died in laning; attacked by luna, lich',
+        '1:42 bot D1 axe death died in laning: outnumbered_alone; attacked by luna, lich',
     ]);
     store.close();
 });
@@ -330,4 +330,200 @@ test('CLI: m:ss as well as seconds in --p times, --pid, and an argument that can
         assert.ok(r.stderr.length > 0);
     }
     assert.strictEqual(run('q', '@timeline', '--p', 'batch=base1', '--p', 'from=soon').status, 1);
+});
+
+/**
+ * Radiant lich (pid 1) pulls in the bot lane (lane 3); Dire jakiro (pid 6) is a switched-off puller in the top lane (lane 1),
+ * writing shadow lines. Each lich slot is one case:
+ *   77   not wanted (lane)
+ *   107  wanted and held back twice: busy, then enemy-near (the last line is the row)
+ *   137  started at 120, trip ends ok at 140; a later go=0 line for the same slot does not replace it
+ *   167  started at 150, trip cut at 158 (cancelled:retreat)
+ *   197  started at 180, no end logged
+ *   227  go=1 at 210, but only a stack job starts then: not its trip
+ *   257  not wanted (lane)
+ * jakiro: slot 77 wanted (off), slot 107 not wanted; the same slot as lich's 107 stays its own row. lich's `deny` line at slot
+ * 107 is another kind's row; its `decider` and `shadow` lines are no decisions.
+ */
+function decisionLines({ dire = true } = {}) {
+    const pull = (t, pid, lane, slot, f) => line(t, `choice pid=${pid} kind=pull lane=${lane} slot=${slot} ${f}`);
+    const job = (t, f) => line(t, `job pid=1 ${f}`);
+    const out = [
+        line(-90, 'bot pid=1 hero=lich team=2 pos=5'),
+        line(-90, 'bot pid=6 hero=jakiro team=3 pos=5'),
+        pull(60, 1, 3, 77, 'want=0 go=0 why=lane src=own'),
+        pull(90, 1, 3, 107, 'want=1 go=0 why=busy src=own'),
+        pull(95, 1, 3, 107, 'want=1 go=0 why=enemy-near src=own'),
+        line(96, 'choice pid=1 kind=deny lane=3 slot=107 want=1 go=0 why=far src=own'),
+        line(97, 'choice pid=1 kind=decider held=- win=farm'),
+        line(98, 'choice pid=1 kind=shadow want=1 go=0'),
+        pull(120, 1, 3, 137, 'want=1 go=1 src=own'), job(120, 'job=pull phase=start why=trigger'),
+        pull(125, 1, 3, 137, 'want=1 go=0 why=busy src=own'),
+        job(140, 'job=pull phase=end why=ok'),
+        pull(150, 1, 3, 167, 'want=1 go=1 src=own'), job(150, 'job=pull phase=start why=trigger'),
+        job(158, 'job=pull phase=end why=cancelled:retreat'),
+        pull(180, 1, 3, 197, 'want=1 go=1 src=own'), job(180, 'job=pull phase=start why=trigger'),
+        pull(210, 1, 3, 227, 'want=1 go=1 src=own'), job(210, 'job=stack phase=start why=trigger'),
+        pull(240, 1, 3, 257, 'want=0 go=0 why=lane src=own'),
+    ];
+    if (dire) out.push(pull(61, 6, 1, 77, 'want=1 go=0 why=off src=shadow'), pull(91, 6, 1, 107, 'want=0 go=0 why=off src=shadow'));
+    return out.sort((a, b) => Number(a.match(/t=(-?[\d.]+)/)[1]) - Number(b.match(/t=(-?[\d.]+)/)[1]));
+}
+
+test('timeline decisions: one row per opportunity, its outcome from the choice line and the trip it started', () => {
+    const { store, file } = storeOf(decisionLines());
+    const rows = only(timelineRows(store, file, { kind: 'decision' }), 'decision');
+    assert.deepStrictEqual(rows.map(r => pick(r, ['hero', 'what', 'slot', 't', 't1', 'lane', 'outcome', 'why', 'secs'])), [
+        { hero: 'lich', what: 'pull', slot: 77, t: 60, t1: null, lane: 'bot', outcome: 'unwanted', why: 'lane', secs: null },
+        { hero: 'jakiro', what: 'pull', slot: 77, t: 61, t1: null, lane: 'top', outcome: 'off', why: null, secs: null },
+        { hero: 'jakiro', what: 'pull', slot: 107, t: 91, t1: null, lane: 'top', outcome: 'unwanted', why: 'off', secs: null },
+        { hero: 'lich', what: 'pull', slot: 107, t: 95, t1: null, lane: 'bot', outcome: 'refused', why: 'enemy-near', secs: null },
+        { hero: 'lich', what: 'deny', slot: 107, t: 96, t1: null, lane: 'bot', outcome: 'refused', why: 'far', secs: null },
+        { hero: 'lich', what: 'pull', slot: 137, t: 120, t1: 140, lane: 'bot', outcome: 'done', why: null, secs: 20 },
+        { hero: 'lich', what: 'pull', slot: 167, t: 150, t1: 158, lane: 'bot', outcome: 'cut', why: 'cancelled:retreat', secs: 8 },
+        { hero: 'lich', what: 'pull', slot: 197, t: 180, t1: null, lane: 'bot', outcome: 'no_end', why: null, secs: null },
+        { hero: 'lich', what: 'pull', slot: 227, t: 210, t1: null, lane: 'bot', outcome: 'no_start', why: null, secs: null },
+        { hero: 'lich', what: 'pull', slot: 257, t: 240, t1: null, lane: 'bot', outcome: 'unwanted', why: 'lane', secs: null },
+    ]);
+    assert.deepStrictEqual(timelineText(timelineRows(store, file, { kind: 'decision', from: 95, to: 160 }), {}).split('\n').map(l => l.replace(/\s+/g, ' ')), [
+        '1:35 bot R5 lich decision pull: refused (enemy-near), slot 1:47',
+        '1:36 bot R5 lich decision deny: refused (far), slot 1:47',
+        '2:00-2:20 bot R5 lich decision pull: done, slot 2:17',
+        '2:30-2:38 bot R5 lich decision pull: cut (cancelled:retreat), slot 2:47',
+    ]);
+    store.close();
+});
+
+test('timeline decisions: a team with no choice lines says so, for kind decision only', () => {
+    const { store, file, dir } = storeOf(decisionLines({ dire: false }));
+    const lack = o => timelineRows(store, file, o).filter(r => r.kind === 'not_logged').map(r => r.detail);
+    assert.deepStrictEqual(lack({ kind: 'decision' }), ['Dire: no decisions in the log']);
+    assert.deepStrictEqual(lack({ kind: 'job' }), []);
+    store.close();
+    const r = spawnSync(process.execPath, [HLOG, 'timeline', file, '--kind', 'decision', '--db', path.join(dir, 's.sqlite')], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /not logged: Dire: no decisions in the log/);
+    assert.match(r.stdout, /3:30 +bot +R5 lich +decision pull: go, no job start logged, slot 3:47/);
+});
+
+test('@decisions: outcomes and reasons by arm and side, each a share of its side\'s opportunities', () => {
+    const { store } = storeOf(decisionLines(), 'dec1_A_onrad_1');
+    const sql = fs.readFileSync(path.join(__dirname, '../queries/decisions.sql'), 'utf8');
+    const rows = p => store.query(sql, { batch: 'dec1', ...p }).map(r => [r.arm, r.side, r.what, r.outcome, r.why, r.n, r.share, r.games]);
+    assert.deepStrictEqual(rows({}), [
+        ['on', 'opp', 'pull', 'unwanted', 'off', 1, 0.5, 1],
+        ['on', 'opp', 'pull', 'off', null, 1, 0.5, 1],
+        ['on', 'test', 'deny', 'refused', 'far', 1, 1, 1],
+        ['on', 'test', 'pull', 'unwanted', 'lane', 2, 0.286, 1],
+        ['on', 'test', 'pull', 'refused', 'enemy-near', 1, 0.143, 1],
+        ['on', 'test', 'pull', 'no_start', null, 1, 0.143, 1],
+        ['on', 'test', 'pull', 'done', null, 1, 0.143, 1],
+        ['on', 'test', 'pull', 'cut', 'cancelled:retreat', 1, 0.143, 1],
+        ['on', 'test', 'pull', 'no_end', null, 1, 0.143, 1],
+    ]);
+    // A window keeps the decisions taken in it (a trip that crosses its edge too), and what narrows to one kind.
+    assert.deepStrictEqual(rows({ what: 'pull', from: 130, to: 200 }).map(r => r.slice(1, 7)), [
+        ['test', 'pull', 'done', null, 1, 0.333],
+        ['test', 'pull', 'cut', 'cancelled:retreat', 1, 0.333],
+        ['test', 'pull', 'no_end', null, 1, 0.333],
+    ]);
+    store.close();
+});
+
+/**
+ * Ten heroes, h0-h4 Radiant (pos 1-5) and h5-h9 Dire, each alone at its own spot 1,500 from the next; seven die, one per cause:
+ *   h0  100  two enemy heroes on it alone, and a tower on it at 97: tower (first match, over outnumbered_alone)
+ *   h1  150  two enemy heroes on it alone: outnumbered_alone
+ *   h2  200  three enemy heroes, h3 beside it while it is hit: outnumbered (3 > 1 + 1)
+ *   h3  250  one enemy hero on it alone: duel
+ *   h4  300  one enemy hero, h0 (back from its fountain) beside it while it is hit: even_numbers
+ *   h5  350  creeps on it, no hero: creeps
+ *   h6  400  nothing seen: unexplained
+ * A dead hero logs nothing for 20 s, then stands at its fountain.
+ */
+function causeLines() {
+    const DEATHS = {
+        0: { T: 100, ah: 2, hit: true, towerAt: 97 }, 1: { T: 150, ah: 2, hit: true }, 2: { T: 200, ah: 3, hit: true },
+        3: { T: 250, ah: 1, hit: true }, 4: { T: 300, ah: 1, hit: true }, 5: { T: 350, ac: 1 }, 6: { T: 400 },
+    };
+    const BESIDE = { 3: [2, 190, 200], 0: [4, 290, 300] };
+    const home = pid => [-6000 + 1500 * pid, 0];
+    const fountain = pid => (pid < 5 ? [-6850, -6461] : DIRE_FOUNTAIN);
+    const out = [];
+    for (let pid = 0; pid < 10; pid++) out.push(line(-90, `bot pid=${pid} hero=h${pid} team=${pid < 5 ? 2 : 3} pos=${pid % 5 + 1}`));
+    for (let t = 0; t <= 450; t++) {
+        for (let pid = 0; pid < 10; pid++) {
+            const d = DEATHS[pid];
+            if (d && t > d.T && t < d.T + 20) continue;
+            const b = BESIDE[pid];
+            const p = b && t >= b[1] && t <= b[2] ? [home(b[0])[0] + 300, 0] : d && t > d.T ? fountain(pid) : home(pid);
+            const win = d && t >= d.T - 10 && t <= d.T;
+            const hit = win && d.hit && t >= d.T - 8 ? 1 : 0;
+            out.push(line(t, `snap pid=${pid} x=${p[0]} y=${p[1]} alive=1 hp=${win ? 40 : 100} deaths=${d && t > d.T ? 1 : 0} mode=laning`
+                + ` hit=${hit} ah=${hit ? d.ah : 0} at=${d && d.towerAt === t ? 1 : 0} ac=${win ? d.ac ?? 0 : 0} an=0 hc=0`));
+        }
+    }
+    return out;
+}
+
+test('timeline deaths: each death\'s cause is the loss ledger\'s, first match first', () => {
+    const { store, file } = storeOf(causeLines(), 'dc1_A_onrad_1');
+    const rows = only(timelineRows(store, file, { kind: 'death' }), 'death');
+    assert.deepStrictEqual(rows.map(r => [r.hero, r.t, r.why]), [
+        ['h0', 100, 'tower'], ['h1', 150, 'outnumbered_alone'], ['h2', 200, 'outnumbered'], ['h3', 250, 'duel'],
+        ['h4', 300, 'even_numbers'], ['h5', 350, 'creeps'], ['h6', 400, 'unexplained'],
+    ]);
+    assert.strictEqual(rows[0].detail, 'died in laning: tower');
+    const ledger = store.query(fs.readFileSync(path.join(__dirname, '../queries/ledger_deaths.sql'), 'utf8'),
+        { like: file, until: 720, pos_lo: 1, pos_hi: 5 }).map(r => [`h${r.pid}`, r.t, r.cause]);
+    assert.deepStrictEqual(ledger, rows.map(r => [r.hero, r.t, r.why]));
+    store.close();
+});
+
+/**
+ * gameLines' bot lane, with both teams logging lane creep deaths (Radiant's enemy creeps are Dire's own):
+ *   30  luna (pid 0) last-hits a Dire melee; Dire logs it too, lost
+ *   40  a Dire ranged nobody got, under a Radiant tower; Dire logs it too, lost
+ *   50  axe (pid 5) denies a Dire melee; Radiant logs it nobody's, which creep_fate names enemy_deny
+ *   60  a Dire siege lost in mid, no Radiant hero near to log it
+ *   70  a Dire melee nobody got away from a tower, only in Radiant's log
+ *   80  lich (pid 1) last-hits a neutral
+ */
+function creepLines() {
+    const cd = (t, kind, x, by, tw) => line(t, `creep_death team=2 kind=${kind} x=${x} y=-6200 hp=0.1 by=${by} tw=${tw}`);
+    const own = (t, kind, x, y, by) => line(t, `own_creep_death team=3 kind=${kind} x=${x} y=${y} hp=0.1 by=${by}`);
+    return [
+        ...gameLines(),
+        cd(30, 'melee', 3100, 0, 0), own(30.2, 'melee', 3120, -6210, 'none'),
+        cd(40, 'ranged', 3200, 'none', 1), own(40, 'ranged', 3200, -6200, 'none'),
+        cd(50, 'melee', 3300, 'none', 0), own(50, 'melee', 3300, -6200, 5),
+        own(60, 'siege', 0, 0, 'none'),
+        cd(70, 'melee', 3000, 'none', 0),
+        line(80, 'neutral_death team=2 by=1'),
+    ].sort((a, b) => Number(a.match(/t=(-?[\d.]+)/)[1]) - Number(b.match(/t=(-?[\d.]+)/)[1]));
+}
+
+test('timeline creeps: one row per lane creep death whichever team logged it, nobody-got rows on a team with no hero', () => {
+    const { store, file } = storeOf(creepLines());
+    const rows = o => only(timelineRows(store, file, { kind: 'creep', ...o }), 'creep');
+    assert.deepStrictEqual(rows({}).map(r => pick(r, ['t', 'team', 'hero', 'lane', 'outcome', 'what', 'why'])), [
+        { t: 30, team: 2, hero: 'luna', lane: 'bot', outcome: 'own_lh', what: 'melee', why: null },
+        { t: 40, team: 2, hero: null, lane: 'bot', outcome: 'other', what: 'ranged', why: 'tower' },
+        { t: 50, team: 3, hero: 'axe', lane: 'bot', outcome: 'own_deny', what: 'melee', why: null },
+        { t: 60, team: 3, hero: null, lane: 'mid', outcome: 'lost', what: 'siege', why: null },
+        { t: 70, team: 2, hero: null, lane: 'bot', outcome: 'other', what: 'melee', why: 'open' },
+        { t: 80, team: 2, hero: 'lich', lane: 'bot', outcome: 'own_lh', what: 'neutral', why: null },
+    ]);
+    assert.strictEqual(store.query('SELECT count(*) AS n FROM creep_fate')[0].n, 8);
+    // A row with no hero is no hero's, and keeps its own lane.
+    assert.deepStrictEqual(rows({ hero: 'luna' }).map(r => r.t), [30]);
+    assert.deepStrictEqual(rows({ pid: 5 }).map(r => r.t), [50]);
+    assert.deepStrictEqual(rows({ lane: 'mid' }).map(r => r.t), [60]);
+    assert.deepStrictEqual(rows({ lane: 'bot', from: 35, to: 75 }).map(r => r.t), [40, 50, 70]);
+    assert.deepStrictEqual(timelineText(timelineRows(store, file, { kind: 'creep', from: 40, to: 60 }).filter(r => r.t !== null), {}).split('\n').map(l => l.replace(/\s+/g, ' ')), [
+        '0:40 bot R - creep enemy ranged: nobody got it, under our tower',
+        '0:50 bot D1 axe creep deny melee',
+        '1:00 mid D - creep our siege: lost, no enemy hero logged it',
+    ]);
+    store.close();
 });

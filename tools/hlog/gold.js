@@ -30,10 +30,7 @@
 //      more heroes of a team within 2 s are bounty_rune parts marked (inferred); other unexplained income says what is near it.
 //   5. passive is the plug: d minus every other line, so lines sum to d exactly.
 'use strict';
-const fs = require('fs');
-const path = require('path');
-const { Store, DB, LOGS, JOBS, labelOf } = require('./store');
-const { parseLabel } = require('./label');
+const sides = require('./sides');
 
 const DEATHS_SQL = `WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE game_id = :g),
 -- include: ep_death
@@ -46,55 +43,8 @@ const FALLBACK = { lane_melee: 40, lane_ranged: 30, lane_siege: 70, lane_other: 
 const INCOME = ['passive', 'lane_creep', 'neutral', 'kill', 'assist', 'bounty_rune', 'other_income'];
 const LOSS = ['death', 'consumable', 'other_loss'];
 const LINES = [...INCOME, ...LOSS];
-const ARMS = ['off', 'J', 'T', 'B', 'BF', 'noT', 'noF', 'noA', 'noC', 'noJ', 'all'];
+const SHAPE = { lines: LINES, change: 'nwChange', changeRow: 'nw_change' };
 const AT_WINDOW = [-1, 0.5]; // seconds either side of a snapshot interval where a creep death or rune pickup still belongs to it
-
-function args(argv) {
-    const o = { runs: [], null: [], at: 600, json: false };
-    let into = o.runs;
-    for (let i = 0; i < argv.length; i++) {
-        const a = argv[i];
-        if (a === '--null') into = o.null;
-        else if (a === '--at') o.at = Number(argv[++i]);
-        else if (a === '--arm') o.arm = argv[++i];
-        else if (a === '--by') o.by = argv[++i];
-        else if (a === '--json') o.json = true;
-        else if (a === '--no-ingest') o.noIngest = true;
-        else if (a === '--help' || a === '-h') o.help = true;
-        else into.push(a);
-    }
-    return o;
-}
-
-/** Ingests only the logs of these runs (the store caches an unchanged log), local and remote-job layouts. */
-function ingestRuns(store, runs) {
-    const wanted = (label) => label && runs.some((r) => label.startsWith(`${r}_`));
-    const files = [];
-    for (const f of fs.existsSync(LOGS) ? fs.readdirSync(LOGS) : []) if (f.endsWith('.log') && wanted(labelOf(path.join(LOGS, f)))) files.push(path.join(LOGS, f));
-    for (const d of fs.existsSync(JOBS) ? fs.readdirSync(JOBS) : []) {
-        const f = path.join(JOBS, d, 'game.log');
-        if (fs.existsSync(f) && wanted(labelOf(f))) files.push(f);
-    }
-    for (const f of files) store.ingest(f);
-}
-
-/** Each log's last game for the runs, with parsed label; a game with no readable seat is returned in `skipped`. */
-function games(store, runs, { arm } = {}) {
-    const out = [];
-    const skipped = [];
-    for (const run of runs) {
-        const rows = store.query(`SELECT g.game_id, g.file, g.label FROM games g
-            WHERE g.label LIKE :p ESCAPE '\\' AND g.game = (SELECT max(g2.game) FROM games g2 WHERE g2.file = g.file) ORDER BY g.label`,
-        { p: `${run.replace(/_/g, '\\_')}\\_%` });
-        for (const r of rows) {
-            const p = parseLabel(r.label);
-            if (!p) { skipped.push({ label: r.label, why: 'no <lineup>_<arm>[seat]_<n> in the label' }); continue; }
-            if (arm !== undefined && p.arm !== arm) continue;
-            out.push({ ...r, ...p });
-        }
-    }
-    return { games: out, skipped };
-}
 
 function items(text) {
     const m = {};
@@ -336,133 +286,26 @@ function reclassifyTeamSync(out) {
     }
 }
 
-/** One game as { ours: team totals, oha: team totals } plus per-position hero rows. */
-function gameResult(store, g, at) {
-    const a = analyseGame(store, g, at);
-    if (a.skip) return { skip: a.skip };
-    const side = (team) => (team === g.seat ? 'ours' : 'oha');
-    const res = { label: g.label, arm: g.arm, ours: totals(), oha: totals(), pos: {}, est: a.est };
-    for (const { hero, rec } of a.heroes) {
-        const t = res[side(hero.team)];
-        fold(t, rec);
-        const key = `${side(hero.team)}:${hero.pos}`;
-        res.pos[key] = totals();
-        fold(res.pos[key], rec);
-    }
-    return res;
-}
-const totals = () => ({ nwChange: 0, lines: Object.fromEntries(LINES.map((l) => [l, 0])), parts: {}, unmatchedLh: 0 });
-function fold(t, rec) {
-    t.nwChange += rec.nwChange;
-    t.unmatchedLh += rec.unmatchedLh;
-    for (const l of LINES) t.lines[l] += rec.lines[l];
-    for (const [k, v] of Object.entries(rec.parts)) t.parts[k] = (t.parts[k] || 0) + v;
-}
-
-function run(store, runs, o) {
-    const { games: gs, skipped } = games(store, runs, o);
-    const results = [];
-    for (const g of gs) {
-        const r = gameResult(store, g, o.at);
-        if (r.skip) skipped.push({ label: g.label, why: r.skip });
-        else results.push(r);
-    }
-    return { games: results, skipped };
-}
-
-const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
-
-/** Rows: the net-worth change, each line with its parts, the sum of the lines, as per-game means of `pick(game)` totals. */
-function rows(result, nul, pickOurs = (g) => g.ours, pickOha = (g) => g.oha, wider = []) {
-    const keys = new Set();
-    const all = [...result.games, ...(nul ? nul.games : [])];
-    for (const g of all) for (const t of [g.ours, g.oha]) for (const k of Object.keys(t.parts)) keys.add(k);
-    for (const t of wider) for (const k of Object.keys(t.parts)) keys.add(k);
-    const spec = [{ row: 'nw_change', get: (t) => t.nwChange }];
-    for (const l of LINES) {
-        spec.push({ row: l, get: (t) => t.lines[l] });
-        for (const k of [...keys].filter((k) => k.startsWith(`${l}:`)).sort()) spec.push({ row: `  ${k.slice(l.length + 1)}`, get: (t) => t.parts[k] || 0, part: true });
-    }
-    spec.push({ row: 'sum_of_lines', get: (t) => LINES.reduce((a, l) => a + t.lines[l], 0) });
-    return spec.map(({ row, get, part }) => {
-        const ours = avg(result.games.map((g) => get(pickOurs(g))));
-        const oha = avg(result.games.map((g) => get(pickOha(g))));
-        const r = { row, ours, oha, gap: ours - oha, part: !!part };
-        if (nul) {
-            r.mirror = avg(nul.games.flatMap((g) => [get(g.ours), get(g.oha)]));
-            r.we = ours - r.mirror;
-            r.they = r.mirror - oha;
-        }
-        return r;
+if (require.main === module) {
+    sides.main(process.argv.slice(2), {
+        file: __filename,
+        shape: SHAPE,
+        analyse: analyseGame,
+        tail: (result) => `last hits with no creep_death/neutral_death row: ${sides.f1(sides.avg(result.games.map((g) => g.ours.unmatchedLh)))} ours, ${sides.f1(sides.avg(result.games.map((g) => g.oha.unmatchedLh)))} OHA per game`,
     });
 }
 
-const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
-function printRows(rs, head) {
-    const cols = Object.keys(rs[0]).filter((k) => k !== 'row' && k !== 'part');
-    console.log(head);
-    console.log(`${'line'.padEnd(26)} ${cols.map((c) => c.padStart(8)).join(' ')}`);
-    for (const r of rs) console.log(`${r.row.padEnd(26)} ${cols.map((c) => f1(r[c]).padStart(8)).join(' ')}`);
-    const chg = rs.find((r) => r.row === 'nw_change');
-    const sum = rs.find((r) => r.row === 'sum_of_lines');
-    console.log(`check: sum_of_lines - nw_change = ${cols.map((c) => `${c} ${(sum[c] - chg[c]).toFixed(6)}`).join(', ')}`);
-}
-
-function armTable(result) {
-    const by = new Map();
-    for (const g of result.games) (by.get(g.arm) || by.set(g.arm, []).get(g.arm)).push(g);
-    const arms = [...by.keys()].sort((a, b) => (ARMS.indexOf(a) + 1 || 99) - (ARMS.indexOf(b) + 1 || 99));
-    const keys = result.games.flatMap((g) => [g.ours, g.oha]);
-    const per = arms.map((a) => rows({ games: by.get(a) }, undefined, undefined, undefined, keys));
-    const names = per[0].map((r) => r.row);
-    const table = names.map((n) => ({ row: n, ...Object.fromEntries(arms.map((a, j) => [a, per[j].find((r) => r.row === n).gap])) }));
-    table.push({ row: 'ours_nw_change', ...Object.fromEntries(arms.map((a, j) => [a, per[j].find((r) => r.row === 'nw_change').ours])) });
-    table.push({ row: 'check_sum_minus_change', ...Object.fromEntries(arms.map((a, j) => [a, per[j].find((r) => r.row === 'sum_of_lines').gap - per[j].find((r) => r.row === 'nw_change').gap])) });
-    table.push({ row: 'games', ...Object.fromEntries(arms.map((a) => [a, by.get(a).length])) });
-    return { arms, table };
-}
-
-if (require.main === module) {
-    const o = args(process.argv.slice(2));
-    if (o.help || !o.runs.length) {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));
-        process.exit(o.runs.length || o.help ? 0 : 2);
-    }
-    const store = new Store(DB);
-    if (!o.noIngest) ingestRuns(store, [...o.runs, ...o.null]);
-    const result = run(store, o.runs, o);
-    const nul = o.null.length ? run(store, o.null, { ...o, arm: undefined }) : undefined;
-    for (const s of [...result.skipped, ...(nul ? nul.skipped : [])]) console.error(`skipped ${s.label}: ${s.why}`);
-    if (!result.games.length) throw new Error('no games');
-    const head = `${result.games.length} games${nul ? `, mirror ${nul.games.length} games` : ''}; per game, ours / OHA, gap = ours - OHA; first snapshot to ${o.at} s`
-        + (nul ? '; mirror = OHA against OHA, both seats; we = ours - mirror, they = mirror - OHA' : '')
-        + (result.games.some((g) => g.mirror) ? `; ${result.games.filter((g) => g.mirror).length} mirror games (no seat in the label): ours = Radiant, OHA = Dire` : '');
-    if (o.by === 'arm') {
-        const { arms, table } = armTable(result);
-        if (o.json) console.log(JSON.stringify({ arms, table }));
-        else {
-            console.log(`${result.games.length} games; gap = ours - OHA per game, first snapshot to ${o.at} s`);
-            console.log(`${'line'.padEnd(26)} ${arms.map((a) => a.padStart(7)).join(' ')}`);
-            for (const r of table) console.log(`${r.row.padEnd(26)} ${arms.map((a) => f1(r[a]).padStart(7)).join(' ')}`);
-        }
-    } else if (o.by === 'pos') {
-        const out = {};
-        for (const pos of [1, 2, 3, 4, 5]) {
-            const sel = (side) => (g) => g.pos[`${side}:${pos}`] || totals();
-            const m = nul ? { games: nul.games.map((g) => ({ ours: g.pos[`ours:${pos}`] || totals(), oha: g.pos[`oha:${pos}`] || totals() })) } : undefined;
-            const withParts = { games: result.games.map((g) => ({ ours: sel('ours')(g), oha: sel('oha')(g) })) };
-            out[pos] = rows(withParts, m);
-            if (!o.json) printRows(out[pos], `== pos ${pos}: one hero a side; ${head}`);
-        }
-        if (o.json) console.log(JSON.stringify(out));
-    } else {
-        const rs = rows(result, nul);
-        if (o.json) console.log(JSON.stringify({ games: result.games.length, skipped: result.skipped, rows: rs, unmatchedLh: avg(result.games.map((g) => g.ours.unmatchedLh + g.oha.unmatchedLh)) }));
-        else {
-            printRows(rs, head);
-            console.log(`last hits with no creep_death/neutral_death row: ${f1(avg(result.games.map((g) => g.ours.unmatchedLh)))} ours, ${f1(avg(result.games.map((g) => g.oha.unmatchedLh)))} OHA per game`);
-        }
-    }
-}
-
-module.exports = { parseLabel, ingestRuns, games, analyseGame, gameResult, run, rows, armTable, items, itemChanges, LINES, PASSIVE };
+module.exports = {
+    parseLabel: sides.parseLabel,
+    games: sides.games,
+    analyseGame,
+    gameResult: (store, g, at) => sides.gameResult(store, g, at, SHAPE, analyseGame),
+    run: (store, runs, o) => sides.run(store, runs, o, SHAPE, analyseGame),
+    rows: (...a) => sides.rows(SHAPE, ...a),
+    armTable: (result) => sides.armTable(SHAPE, result),
+    items,
+    itemChanges,
+    LINES,
+    PASSIVE,
+    SHAPE,
+};
