@@ -22,6 +22,9 @@ export const DEFAULTS = {
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: false,
+    /** The support's solo deny, a row of the decider (support_deny.ts, doctrine D12): a side-lane pos 4/5 denies any of our lane
+     *  creeps in its reach. Off: the offer is logged as a shadow and stock plays. */
+    SupportDeny: false,
     /** Slice support-pull-farm: with SupportPull and JobChooser on, the support that pulled stays on the camp and clears the
      *  neutrals the wave left (PullFarm, a chooser job) when the site is safe, and gives the camp up to a core of ours standing
      *  on it. Off: the support walks back to lane after its pull. */

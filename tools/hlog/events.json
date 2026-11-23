@@ -898,7 +898,8 @@
    "phase": "str",
    "why": "str",
    "host": "num",
-   "hit": "num"
+   "hit": "num",
+   "cut": "str"
   },
   "stack": {
    "pid": "num",
@@ -1828,7 +1829,10 @@
    "d_roshan": "mixed",
    "d_secret_shop": "mixed",
    "d_side_shop": "mixed",
-   "d_outpost": "mixed"
+   "d_outpost": "mixed",
+   "walk": "num",
+   "due": "num",
+   "dies": "num"
   },
   "gank": {
    "pid": "num",
@@ -2431,7 +2435,8 @@
   "ev_job": {
    "job": "text",
    "phase": "text",
-   "why": "text"
+   "why": "text",
+   "cut": "text"
   },
   "ev_stack": {
    "res": "text",

@@ -14,7 +14,7 @@ for name in pairs(shipped) do if Ours.DEFAULTS[name] == nil then stray[#stray + 
 check("ours: general.lua's block has every DEFAULTS key and no other, all off", #stray == 0, table.concat(stray, ","))
 Customize.Ours = { Retreat = false, MidWater = true, SupportPull = true }
 -- One entry per DEFAULTS key in name order; a slice adding a switch adds it here.
-check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,MidWater:1,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportPull:1,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,TripRead:0", Ours.Describe())
+check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,MidWater:1,Retreat:0,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportDeny:0,SupportPull:1,SupportPullFarm:0,Sustain:0,Threat:0,TowerRead:0,TripRead:0", Ours.Describe())
 Customize.Ours = {}
 check("ours: a missing key takes its default, and every default is off", not Ours.Describe():find(":1", 1, true), Ours.Describe())
 Customize.Enable = nil

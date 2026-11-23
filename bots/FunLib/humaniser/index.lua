@@ -1,4 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
@@ -18,6 +44,7 @@ local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
+local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/support_deny")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
@@ -260,6 +287,18 @@ if Telemetry.GuardsEnabled() then
     end
 end
 Telemetry.PerfDeepInstall()
+if __TS__ArrayIndexOf(Decider.ROWS, SupportDeny.ROW) < 0 then
+    if Telemetry.GuardsEnabled() then
+        SupportDeny.ROW.applies = Telemetry.Guard("DenyRow.applies", SupportDeny.ROW.applies, no)
+        SupportDeny.ROW.step = Telemetry.Guard(
+            "DenyRow.step",
+            SupportDeny.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_0 = Decider.ROWS
+    ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = SupportDeny.ROW
+end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)
     guardedTick(bot)

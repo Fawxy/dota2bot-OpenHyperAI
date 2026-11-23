@@ -16,7 +16,7 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
 -- hero as retreating; under OHA's retreat latch (1.1). The value inside that band is judgement.
 ____exports.HARD = 0.98
---- Doctrine order: the first row that applies holds. Empty: the pass-through.
+--- Doctrine order: the first row that applies holds. Empty: the pass-through. index.ts fills it, so no row is imported here.
 ____exports.ROWS = {}
 --- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
 -- and counting it only when fresh (the round after a yield) would make the hold flicker every other round.
@@ -160,6 +160,10 @@ function ____exports.HostThink(bot, inner, cannotAct)
         end
         return nil
     end
+end
+--- The decider is yielding this hero to stock's retreat although a row applied (a cut row names it as its end's reason).
+function ____exports.LetGo(bot)
+    return stateOf(bot).letAt ~= nil
 end
 --- Tests: forget every hero.
 function ____exports.Reset()

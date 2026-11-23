@@ -21,6 +21,7 @@ import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
+import * as SupportDeny from "bots/FunLib/humaniser/support_deny";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
@@ -178,6 +179,14 @@ if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
 Telemetry.PerfDeepInstall();
+// The decider's rows, in doctrine order. A row's error yields the hero to stock for that call (not applying; finished).
+if (Decider.ROWS.indexOf(SupportDeny.ROW) < 0) {
+    if (Telemetry.GuardsEnabled()) {
+        SupportDeny.ROW.applies = Telemetry.Guard("DenyRow.applies", SupportDeny.ROW.applies, no);
+        SupportDeny.ROW.step = Telemetry.Guard("DenyRow.step", SupportDeny.ROW.step, () => true);
+    }
+    Decider.ROWS.push(SupportDeny.ROW);
+}
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 
 export function Tick(bot: Unit): void {
