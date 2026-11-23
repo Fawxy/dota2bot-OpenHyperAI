@@ -138,5 +138,13 @@ function FreshHumaniser(customHumaniser)
 	if customHumaniser.TickEvery == nil then customHumaniser.TickEvery = 1 end
 	Customize.Humaniser = customHumaniser
 	package.loaded["bots/FunLib/custom_loader"] = Customize
-	return require("bots/FunLib/humaniser/index")
+	local index = require("bots/FunLib/humaniser/index")
+	-- Every Ours switch ships off (plan s7); the suites test the features, so a key a test does not set is on here, as
+	-- the suites were written. Set through DEFAULTS, not Customize.Ours, because tests replace that table whole.
+	-- test_ours_describe.lua reads the shipped defaults.
+	local defaults = require("bots/FunLib/humaniser/ours").DEFAULTS
+	for name in pairs(defaults) do defaults[name] = not SUITE_OFF[name] end
+	Customize.Ours = {}
+	return index
 end
+SUITE_OFF = { MidWater = true, ChoiceShadow = true }
