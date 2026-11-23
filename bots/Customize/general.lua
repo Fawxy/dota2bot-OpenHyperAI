@@ -190,7 +190,9 @@ Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false
 -- lane or lane-only, the reps and the forced context; dotactl --drill <name> sets it; drills replaced the old Solo,
 -- StackEvery and LaneOnly knobs). StackFar: no 25 s away skip (slice double-stack: execution apart from getting there;
 -- scenario and drill games only; drill stack implies it).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "" }
+-- PullCamp (camp type, "" = off): the pull takes its lane's first pull camp of this type, not the first (a rig's knob: "large" is the
+-- hard camp).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", PullCamp = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Ours.Sustain"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

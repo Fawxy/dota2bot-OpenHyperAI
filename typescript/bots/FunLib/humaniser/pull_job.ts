@@ -18,6 +18,7 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as Drill from "bots/FunLib/humaniser/drill";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
@@ -239,10 +240,14 @@ function pullerOfLane(bot: Unit): boolean {
     return true;
 }
 
+/** The lane's first pull camp; with `Overrides.PullCamp` (a rig's camp type, e.g. `large` for the hard camp) the first of that type. */
 function campFor(bot: Unit): Camps.CampJobData | undefined {
     const lane = bot.GetAssignedLane();
     if (lane !== Lane.Top && lane !== Lane.Bot) return undefined;
-    return Camps.PullCampsFor(bot.GetTeam(), lane)[0];
+    const camps = Camps.PullCampsFor(bot.GetTeam(), lane);
+    const kind = Overrides.Get("PullCamp");
+    if (typeof kind === "string" && kind !== "") return camps.find((c) => c.type === kind);
+    return camps[0];
 }
 
 /** The hero that would pull for its lane, whatever the switches say. */
