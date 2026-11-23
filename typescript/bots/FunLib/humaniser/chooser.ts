@@ -98,10 +98,9 @@ const JOBS: Job[] = [STACK, RUNE];
 function ranked(bot: Unit): Job[] {
     const out: [Job, number][] = [];
     // A drill's idle-statue cast runs only its forced job (humaniser/drill.ts ForcedJob).
-    const only = Drill.ForcedJob(bot);
     const pos = LaneConfig.PositionOf(bot);
     for (const j of JOBS) {
-        if (only !== undefined && j.name !== only) continue;
+        if (!Drill.AllowsJob(bot, j.name)) continue;
         if (!j.Applies(bot)) continue;
         const p = TripTable.RankOf(j.name, pos);
         if (p !== undefined) out.push([j, p]);

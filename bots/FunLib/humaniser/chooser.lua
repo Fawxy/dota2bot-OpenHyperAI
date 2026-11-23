@@ -98,13 +98,12 @@ local JOBS = {STACK, RUNE}
 --- The jobs that apply to this hero, best place in the trip table first (a tie keeps JOBS order).
 local function ranked(bot)
     local out = {}
-    local only = Drill.ForcedJob(bot)
     local pos = LaneConfig.PositionOf(bot)
     for ____, j in ipairs(JOBS) do
         do
             local __continue19
             repeat
-                if only ~= nil and j.name ~= only then
+                if not Drill.AllowsJob(bot, j.name) then
                     __continue19 = true
                     break
                 end

@@ -85,6 +85,10 @@ export interface Entry {
     rep: { every: number; from: number; control?: number; on?: number };
     /** The context the drill forces each rep (`RepTimes(context)`); absent when reps are natural (each lane wave). */
     forces?: string;
+    /** Chooser jobs an idle-statue cast may run beside its forced one (`AllowsJob`). */
+    also?: string[];
+    /** The stack job's minutes (its hit at x:5x), and that it stacks the lane's pull camp, not the nearest (StackJob). */
+    stackMinutes?: number[];
     /** Overrides keys the drill implies (`Overrides.Get` falls back to them; an explicit `--set` wins). */
     overrides?: Record<string, unknown>;
     /** A rig (drills from 11/11/2026): each rep is setup, ready, release (see `Rig`). */
@@ -483,6 +487,18 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, on: 6 },
         forces: "pull",
     },
+    // The stacked pull's chain (families proposal s5 case 3, round 2): as pull-stack, but the pos5s' own stack job (switch
+    // Ours.StackExecute) stacks the lane's pull camp at 3:5x, 6:5x and 9:5x, ahead of each pulled wave, instead of the setter.
+    "pull-stack-verb": {
+        note: "both pos5s stack their safe lane's pull camp the minute before each pulled wave (3:5x, 6:5x ...) and pull every third minute's wave (1:00, 4:00 ...), statues otherwise; everyone else benched",
+        cast: { r: [5], d: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 6 },
+        forces: "pull",
+        also: ["stack"],
+        stackMinutes: [3, 6, 9, 12],
+    },
     // The statue steps (lane controller "Drills" steps): the same drills with the Dire laners that face the cast standing in
     // their lane as statues (never attack, cast or use items), so the lane has an enemy that is there but does not act.
     // Radiant pos5 pulls in the Radiant safe lane, which Dire's offlane pos3 and pos4 hold.
@@ -713,6 +729,12 @@ export function IdleStatue(bot: Unit): boolean {
 export function ForcedJob(bot: Unit): string | undefined {
     const d = Active();
     return d !== undefined && d.castIdle !== undefined && RoleOf(bot) === "cast" ? d.forces : undefined;
+}
+
+/** Whether a cast restricted to its forced job (`ForcedJob`) may run the chooser job `name` too. */
+export function AllowsJob(bot: Unit, name: string): boolean {
+    const only = ForcedJob(bot);
+    return only === undefined || only === name || (Active()?.also ?? []).includes(name);
 }
 
 /** For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a

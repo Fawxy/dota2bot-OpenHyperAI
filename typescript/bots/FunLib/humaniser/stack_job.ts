@@ -8,7 +8,7 @@
  */
 import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Team, Unit, Vector } from "bots/ts_libs/dota";
+import { Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampClear from "bots/FunLib/humaniser/camp_clear";
@@ -120,6 +120,8 @@ function awayMax(): number {
 
 /** The minutes with an attempt: TriggerMinutes, or the rep minutes of a drill that forces the stack (drill `stack`). */
 export function Minutes(): number[] {
+    const fixed = Drill.Active()?.stackMinutes;
+    if (fixed !== undefined) return fixed;
     const reps = Drill.RepTimes("stack");
     if (reps === undefined) return SETTINGS.TriggerMinutes;
     return reps.map(t => math.floor(t / 60));
@@ -610,6 +612,14 @@ export function Candidates(team: number): Camps.CampJobData[] {
         if (data !== undefined && data.stack !== undefined) out.push(data);
     }
     return out;
+}
+
+/** The lane's first pull camp as a stack camp, with its stand point (a drill with `stackMinutes`: the stacked pull's rig). */
+function pullCamp(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Vector | undefined]> {
+    const lane = bot.GetAssignedLane() as Lane;
+    const c = Camps.PullCampsFor(bot.GetTeam(), lane)[0];
+    const data = c !== undefined ? Candidates(bot.GetTeam()).find((d) => d.campIdx === c.campIdx) : undefined;
+    return $multi(data, data !== undefined ? Stand(Camps.SpawnerByIdx(data.campIdx)!, data) : undefined);
 }
 
 /** The candidate whose stand point is nearest `loc`, with that stand point. */
@@ -1225,6 +1235,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
         const pair = job?.[1];
         let [data, stand] = override("Sweep") === true ? SweepNext(bot) : Nearest(bot.GetTeam(), bot.GetLocation());
         if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
+        if (Drill.Active()?.stackMinutes !== undefined) [data, stand] = pullCamp(bot);
         const skip = (why: string) => {
             handled[pid][minute] = true;
             gateWhy[pid] = undefined;
@@ -1318,6 +1329,7 @@ export function CalendarEntries(bot: Unit, now: number): { kind: "stack"; key: n
         const pos4 = LaneConfig.PositionOf(bot) === 4;
         const job = pos4 ? Pos4For(bot.GetTeam(), minute) : undefined;
         if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
+        if (Drill.Active()?.stackMinutes !== undefined) [data, stand] = pullCamp(bot);
         if (data === undefined || stand === undefined) continue;
         const walk = travel(bot, stand);
         let leave = minute * 60 + SingleSec(data) - walk - SETTINGS.Lead;
