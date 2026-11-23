@@ -420,12 +420,14 @@ export const TABLE: Record<string, Entry> = {
     // The rune detour (D23, rune_detour.ts; families proposal s7): each side's pos5 walks to a spot by its own jungle's bounty
     // 30 s before the 4:00 and 8:00 spawns (near: 200 from it; mid: about 900; far: about 1,500), out of its lane; ready once the
     // rune is up and the row's pass read finds the detour within budget; then the decider (farm's host) and idle. Everyone
-    // else benched. Read: the cast's ev=rune_pickup and its ev=job job=rune_detour end in the rep.
+    // else benched. Reps every 120 s from 3:30 so the 7:30 rep ends inside the window (rdrig1: 240 s reps ended at 11:30, past
+    // it); the 5:30 rep is ready only when the 4:00 rune still lies there (the off arm). rfar moved off unreachable ground
+    // (rdrig1: the Radiant pos5 stood 200 short of (1595, -3560), `setup`). Read: the cast's ev=rune_pickup and its ev=job job=rune_detour end in the rep.
     "rune-detour": {
-        note: "rig: each side's pos5 at a spot by its own jungle bounty before the 4:00 and 8:00 spawns (near, mid, far), everyone else benched; released to farm (the decider) and idle; 240 s reps from 3:30",
+        note: "rig: each side's pos5 at a spot by its own jungle bounty before the 4:00 and 8:00 spawns (near, mid, far), everyone else benched; released to farm (the decider) and idle; 120 s reps from 3:30",
         cast: { r: [5], d: [5] },
         others: "bench",
-        rep: { every: 240, from: 210 },
+        rep: { every: 120, from: 210 },
         rig: {
             half: "execution",
             switch: "RuneDetour",
@@ -433,7 +435,7 @@ export const TABLE: Record<string, Entry> = {
             spots: {
                 rnear: ["r:fountain", 7214, 1876],
                 rmid: ["r:fountain", 6614, 2326],
-                rfar: ["r:fountain", 8214, 2776],
+                rfar: ["r:fountain", 5814, 2076],
                 dnear: ["d:fountain", -7621, -2137],
                 dmid: ["d:fountain", -7021, -2587],
                 dfar: ["d:fountain", -8621, -3037],
@@ -442,7 +444,8 @@ export const TABLE: Record<string, Entry> = {
             release: { modes: ["farm", "idle"] },
             reps: [
                 { name: "a", setup: { r5: ["stand rnear"], d5: ["stand dmid"] }, ready: { bounty: true } },
-                { name: "b", setup: { r5: ["stand rfar"], d5: ["stand dnear"] }, ready: { bounty: true } },
+                { name: "b", setup: { r5: ["stand rmid"], d5: ["stand dfar"] }, ready: { bounty: true } },
+                { name: "c", setup: { r5: ["stand rfar"], d5: ["stand dnear"] }, ready: { bounty: true } },
             ],
         },
     },

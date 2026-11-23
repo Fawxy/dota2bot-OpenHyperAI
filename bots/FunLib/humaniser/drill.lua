@@ -2190,10 +2190,10 @@ ____exports.TABLE = {
         }
     },
     ["rune-detour"] = {
-        note = "rig: each side's pos5 at a spot by its own jungle bounty before the 4:00 and 8:00 spawns (near, mid, far), everyone else benched; released to farm (the decider) and idle; 240 s reps from 3:30",
+        note = "rig: each side's pos5 at a spot by its own jungle bounty before the 4:00 and 8:00 spawns (near, mid, far), everyone else benched; released to farm (the decider) and idle; 120 s reps from 3:30",
         cast = {r = {5}, d = {5}},
         others = "bench",
-        rep = {every = 240, from = 210},
+        rep = {every = 120, from = 210},
         rig = {
             half = "execution",
             switch = "RuneDetour",
@@ -2201,14 +2201,14 @@ ____exports.TABLE = {
             spots = {
                 rnear = {"r:fountain", 7214, 1876},
                 rmid = {"r:fountain", 6614, 2326},
-                rfar = {"r:fountain", 8214, 2776},
+                rfar = {"r:fountain", 5814, 2076},
                 dnear = {"d:fountain", -7621, -2137},
                 dmid = {"d:fountain", -7021, -2587},
                 dfar = {"d:fountain", -8621, -3037}
             },
             timeout = 60,
             release = {modes = {"farm", "idle"}},
-            reps = {{name = "a", setup = {r5 = {"stand rnear"}, d5 = {"stand dmid"}}, ready = {bounty = true}}, {name = "b", setup = {r5 = {"stand rfar"}, d5 = {"stand dnear"}}, ready = {bounty = true}}}
+            reps = {{name = "a", setup = {r5 = {"stand rnear"}, d5 = {"stand dmid"}}, ready = {bounty = true}}, {name = "b", setup = {r5 = {"stand rmid"}, d5 = {"stand dfar"}}, ready = {bounty = true}}, {name = "c", setup = {r5 = {"stand rfar"}, d5 = {"stand dnear"}}, ready = {bounty = true}}}
         }
     },
     ["ladder-solo"] = {
