@@ -1622,6 +1622,7 @@ ____exports.EVENTS = {
         pid = "num",
         kind = "str",
         held = "str",
+        hs = "str",
         let = "str",
         go = "num",
         want = "num",

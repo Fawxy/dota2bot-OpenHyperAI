@@ -16,6 +16,15 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
 -- hero as retreating; under OHA's retreat latch (1.1). The value inside that band is judgement.
 ____exports.HARD = 0.98
+--- Plan s3: above laning's desire (0.45) and under every entry of Valve's attack (none of 7,419 in h2hoha742 under 0.5), so
+-- attack, item, evasive and defend-ally outbid a soft hold when they want the hero. The value inside that band is judgement.
+____exports.SOFT = 0.49
+--- judgement: the most an OHA Lua mode file may return while a soft row holds (plan s3: the gate caps them beneath it).
+____exports.CAP = 0.48
+--- Not capped under a soft hold: retreat (stock's way out; when it leads, the retreat read lets go) and attack's own file
+-- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
+-- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
+local UNCAPPED = {retreat = true, attack = true, farm = true}
 --- Doctrine order: the first row that applies holds. Empty: the pass-through.
 ____exports.ROWS = {}
 --- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
@@ -117,6 +126,9 @@ local function note(bot, s)
         {"held", held},
         {"win", win}
     }
+    if s.held ~= nil then
+        fields[#fields + 1] = {"hs", s.held.soft == true and "soft" or "hard"}
+    end
     if s.letAt ~= nil then
         __TS__ArrayPush(fields, {"let", "retreat"}, {"d_retreat", s.letAt})
     end
@@ -142,8 +154,34 @@ function ____exports.Host(bot, inner)
         end
         s.held = ____temp_3
         pcall(function() return note(bot, s) end)
-        return s.held ~= nil and ____exports.HARD or inner()
+        if s.held == nil then
+            return inner()
+        end
+        return s.held.soft == true and ____exports.SOFT or ____exports.HARD
     end
+end
+--- Chooser.Gate, for every gated mode file, after NoteDesire saw the value as returned: while a soft row holds, an OHA Lua
+-- mode's desire above CAP is returned as CAP, so only the Valve-only modes, retreat and attack's file outbid the hold. The
+-- hold is the one decided at the last farm call, so files Valve asks before farm lag by one round: uncapped in the round a
+-- soft hold starts, still capped in the round it lets go or stops applying. The cap follows `held`, so the lag cannot
+-- flicker on its own. Anything else, and any value that is not a number, passes unchanged.
+-- 
+-- Known effect, not stock's: retreat is uncapped, so a retreat value between SOFT and the highest raw Lua mode wins the hero
+-- from the hold although the retreat read (raw values) keeps holding; stock would have run that Lua mode. Plan s3 accepts
+-- it ("retreat excepted"); the first soft row's smoke counts it.
+function ____exports.Cap(bot, mode, v)
+    local s = heroes[bot:GetPlayerID()]
+    local ____temp_4
+    if s == nil then
+        ____temp_4 = nil
+    else
+        ____temp_4 = s.held
+    end
+    local held = ____temp_4
+    if held == nil or held.soft ~= true or UNCAPPED[mode] == true or type(v) ~= "number" then
+        return v
+    end
+    return v > ____exports.CAP and ____exports.CAP or v
 end
 --- Wraps the host file's Think: a held row's verb, not stepped while the bot cannot act (as Chooser.HostThink), else the inner Think.
 function ____exports.HostThink(bot, inner, cannotAct)
