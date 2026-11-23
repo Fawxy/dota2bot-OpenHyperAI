@@ -1344,7 +1344,8 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 `pid` num, `ap` num, `rule` str
 
-- `kind` str: The decision; `pull`, or `shadow` (Ours.ChoiceShadow).
+- `kind` str: The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held` or `win`).
+- `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
 - `why` str: What held a wanted pull back: a start check (`enemy-near`, a higher job's name, `partner-low`, `partner-gank`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills.
@@ -1371,7 +1372,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `ep` num: The HP of their creeps in lane before the pulled wave and the one spawned with it.
 - `hold` num: hold 1 when our lane core could hold their wave (PullJob CoreToHold); rule which trigger wanted the pull: new (the above), old (own + mv past tgt + WantPast and st not IN, counted only with hold 1) or both; absent when neither.
 - `pw` num: pw 1 when the pulled wave was found near its scheduled spot (or was still to spawn), 0 when it was not and pa ap were forecast with it in the lane.
-- `win` str: kind=shadow (Ours.ChoiceShadow, choice_shadow.ts): one line per hero of ours about every second and on each change of active mode. A frame's values are logged on the next frame, beside the active mode Valve picked from them. kind=shadow: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires.
+- `win` str: kind=shadow (Ours.ChoiceShadow, choice_shadow.ts): one line per hero of ours about every second and on each change of active mode. A frame's values are logged on the next frame, beside the active mode Valve picked from them. kind=shadow and decider: the active mode (debug ModeName, as ev_snap `mode`): Valve's pick from the frame's desires (decider: the last round's).
 - `top` str: kind=shadow: the mode OHA's own computed desires pick (argmax of the `d_` numbers); absent when none was computed.
 - `tv` num: kind=shadow: `top`'s desire.
 - `how` str: kind=shadow, when `top` is not `win`: `zeroed` (the gate lowered top's desire), `held` (the gate raised win's: DriveAfter's lane floor), `outbid` (win's desire is ours, set by the gate before OHA's code, or carries an Intent claim), `valve` (Valve's own mode or arbitration; a branch of ours inside win's own body, `mix`, is already in win's desire, so it is never the cause).

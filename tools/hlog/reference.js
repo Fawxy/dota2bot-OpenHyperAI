@@ -1,10 +1,12 @@
-// The gate's pinned reference and its mirror (master SCOREBOARD.md "The merge gate"), kept as assets of one GitHub release
-// on this repo so gate.js --ref and ledger.js --null read them on any machine. One release, replaced when the pin moves.
+// Logs kept as assets of a GitHub release on this repo, so any machine reads them. By default the release is the gate's
+// pinned reference and its mirror (master SCOREBOARD.md "The merge gate"), which gate.js --ref and ledger.js --null read;
+// it is replaced when the pin moves. --release <tag> names another: one per batch worth keeping, logs-<batch> by custom.
 // Usage:
-//   node reference.js fetch                    download the release's logs that ~/.dotactl/logs lacks; hlog ingests them
-//                                              on its next run
-//   node reference.js push <run> [<run> ...]   replace the release with these runs' logs (label prefixes, as gate.js)
-//   node reference.js list                     the release's logs
+//   node reference.js fetch [--release <tag>]                  download the release's logs that ~/.dotactl/logs lacks;
+//                                                              hlog ingests them on its next run
+//   node reference.js push [--release <tag>] <run> [<run> ...] replace the release with these runs' logs (label prefixes,
+//                                                              as gate.js)
+//   node reference.js list [--release <tag>]                   the release's logs
 // The repo is public and a Dota console log names the machine's user (Steam id, Steam name, home folder), so an asset
 // holds only the lines the store reads (keeps): telemetry, dotactl's facts, Lua errors. push stops on a kept line that
 // still names the user (leak). Needs the `gh` CLI, logged in; assets are brotli, one per log.
@@ -17,7 +19,7 @@ const { execFileSync } = require('child_process');
 const { parseLine } = require('./parse');
 const { LOGS } = require('./store');
 
-const RELEASE = 'gate-reference';
+const GATE = 'gate-reference';
 const EXT = '.br';
 
 /** A line the store reads: parse.js makes something of it, or it is one of dotactl's facts. */
@@ -42,6 +44,24 @@ function strip(text, who) {
     return out.join('\n') + '\n';
 }
 
+/** The command line: { cmd, release, runs }. --release takes the next word; the default is the gate's release. */
+function parseArgs(argv) {
+    const out = { cmd: argv[0], release: GATE, runs: [] };
+    for (let i = 1; i < argv.length; i++) {
+        if (argv[i] === '--release') {
+            out.release = argv[++i];
+            if (!out.release || out.release.startsWith('-')) throw new Error('--release needs a tag');
+        } else out.runs.push(argv[i]);
+    }
+    return out;
+}
+
+/** The release's title and notes: the gate's own, or a plain list of the runs. */
+function describeRelease(release, runs, logs) {
+    if (release === GATE) return ['Gate reference logs', `The merge gate's pinned reference and its mirror: ${runs.join(', ')} (${logs} logs, telemetry lines only). Fetch with tools/hlog/reference.js fetch.`];
+    return [`Logs: ${runs.join(', ')}`, `${runs.join(', ')}: ${logs} dotactl logs, cut to the lines hlog reads and checked for the user's Steam id and home folder; brotli, one asset per log. Fetch with tools/hlog/reference.js fetch --release ${release}.`];
+}
+
 /** The log files of a run: dotactl's timestamp, then the run's label prefix. */
 function logsOf(run, dir = LOGS) {
     const re = new RegExp(`^\\d{4}-\\d\\d-\\d\\dT\\d\\d-\\d\\d-\\d\\d-${run.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_.*\\.log$`);
@@ -50,10 +70,10 @@ function logsOf(run, dir = LOGS) {
 
 const gh = (args, opts = {}) => execFileSync('gh', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 
-function assets() {
+function assets(release) {
     let out;
     try {
-        out = gh(['release', 'view', RELEASE, '--json', 'assets', '-q', '.assets[].name']);
+        out = gh(['release', 'view', release, '--json', 'assets', '-q', '.assets[].name']);
     } catch (e) {
         if (/release not found/i.test(String(e.stderr))) return undefined;
         throw e;
@@ -65,7 +85,7 @@ const brotli = (buf) => new Promise((resolve, reject) => zlib.brotliCompress(buf
     [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_LGWIN]: 24, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length,
 } }, (err, out) => (err ? reject(err) : resolve(out))));
 
-async function push(runs) {
+async function push(runs, release = GATE) {
     const files = runs.flatMap((r) => {
         const fsOf = logsOf(r);
         if (!fsOf.length) throw new Error(`${r}: no log in ${LOGS}`);
@@ -83,40 +103,40 @@ async function push(runs) {
             fs.writeFileSync(path.join(tmp, job[0] + EXT), out);
         }
     }));
-    if (assets() !== undefined) gh(['release', 'delete', RELEASE, '--yes', '--cleanup-tag']);
-    gh(['release', 'create', RELEASE, '--title', 'Gate reference logs', '--latest=false', '--notes',
-        `The merge gate's pinned reference and its mirror: ${runs.join(', ')} (${files.length} logs, telemetry lines only). Fetch with tools/hlog/reference.js fetch.`]);
+    if (assets(release) !== undefined) gh(['release', 'delete', release, '--yes', '--cleanup-tag']);
+    const [title, notes] = describeRelease(release, runs, files.length);
+    gh(['release', 'create', release, '--title', title, '--latest=false', '--notes', notes]);
     const paths = files.map((f) => path.join(tmp, f + EXT));
-    for (let i = 0; i < paths.length; i += 20) gh(['release', 'upload', RELEASE, ...paths.slice(i, i + 20)]);
+    for (let i = 0; i < paths.length; i += 20) gh(['release', 'upload', release, ...paths.slice(i, i + 20)]);
     fs.rmSync(tmp, { recursive: true });
     return { logs: files.length, bytes };
 }
 
-function fetch() {
-    const have = assets();
-    if (have === undefined) throw new Error(`no ${RELEASE} release on this repo`);
+function fetch(release = GATE) {
+    const have = assets(release);
+    if (have === undefined) throw new Error(`no ${release} release on this repo`);
     fs.mkdirSync(LOGS, { recursive: true });
     const want = have.filter((n) => !fs.existsSync(path.join(LOGS, n.slice(0, -EXT.length))));
     if (!want.length) return { logs: have.length, fetched: 0 };
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-ref-'));
-    for (let i = 0; i < want.length; i += 20) gh(['release', 'download', RELEASE, '-D', tmp, ...want.slice(i, i + 20).flatMap((n) => ['-p', n])]);
+    for (let i = 0; i < want.length; i += 20) gh(['release', 'download', release, '-D', tmp, ...want.slice(i, i + 20).flatMap((n) => ['-p', n])]);
     for (const n of want) fs.writeFileSync(path.join(LOGS, n.slice(0, -EXT.length)), zlib.brotliDecompressSync(fs.readFileSync(path.join(tmp, n))));
     fs.rmSync(tmp, { recursive: true });
     return { logs: have.length, fetched: want.length };
 }
 
 if (require.main === module) {
-    const [cmd, ...rest] = process.argv.slice(2);
     (async () => {
-        if (cmd === 'fetch') {
-            const r = fetch();
+        const { cmd, release, runs } = parseArgs(process.argv.slice(2));
+        if (cmd === 'fetch' && !runs.length) {
+            const r = fetch(release);
             console.log(`${r.fetched} of ${r.logs} logs fetched into ${LOGS}`);
-        } else if (cmd === 'push' && rest.length) {
-            const r = await push(rest);
-            console.log(`${r.logs} logs pushed to release ${RELEASE}, ${(r.bytes / 1e6).toFixed(1)} MB`);
-        } else if (cmd === 'list') {
-            const a = assets();
-            console.log(a === undefined ? `no ${RELEASE} release` : a.map((n) => n.slice(0, -EXT.length)).join('\n'));
+        } else if (cmd === 'push' && runs.length) {
+            const r = await push(runs, release);
+            console.log(`${r.logs} logs pushed to release ${release}, ${(r.bytes / 1e6).toFixed(1)} MB`);
+        } else if (cmd === 'list' && !runs.length) {
+            const a = assets(release);
+            console.log(a === undefined ? `no ${release} release` : a.map((n) => n.slice(0, -EXT.length)).join('\n'));
         } else {
             console.log(fs.readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));
             process.exit(cmd === '--help' || cmd === '-h' ? 0 : 2);
@@ -127,4 +147,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { keeps, leak, strip, logsOf };
+module.exports = { keeps, leak, strip, logsOf, parseArgs, describeRelease };
