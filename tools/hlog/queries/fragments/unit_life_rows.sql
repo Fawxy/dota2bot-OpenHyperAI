@@ -4,7 +4,7 @@
 -- `ul_wave` the rows of ev_wave_creep_death, `ul_own` of ev_own_creep_death, `ul_enemy` of ev_creep_death, `ul_neu` of
 -- ev_neutral_death, and `ul_useen`, `ul_ugone` the rows of ev_unit_seen and ev_unit_gone (from team-bots after 836e2a2d; the
 -- game-filtering of every one is the includer's). A game with an ev_unit_seen row is read from those two (below); any other game
--- from the four death events, as before. CTE `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
+-- from the four death events, as before. CTEs `unit_life_log` (the log's rows) and `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
 -- by_pid, by_src, src, hid)`. Ends with a comma.
 -- A creep_death line (the other team's sighting) is written when a creep at low health leaves the writer's unit list
 -- (trackCreepDeaths, telemetry.ts), which can be a creep that went into fog and lived: ev=creep_revive is written if it reappears,
@@ -16,6 +16,7 @@
 -- ensure: ev_neutral_death(team, kind, x, y, by, camp)
 -- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
 -- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
+-- Also `ul_rp`: the rows of rp_unit (written by `hlog.js replay`, always there) of the games wanted, all columns, with t1 NULL unless end = death.
 ul_new AS MATERIALIZED (SELECT DISTINCT game_id FROM ul_useen),
 -- A game with unit_seen rows (telemetry.ts trackCreepDeaths, ev=unit_seen / ev=unit_gone): a row per own lane creep, from its
 -- owner's two lines, and one per neutral, the two teams' sightings merged. A cid is its team's own, so a unit is (team, cid).
@@ -187,8 +188,20 @@ ul_all2 AS (
         CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END AS by_src, n.hid
     FROM ul_nneutral n
 ),
-unit_life_rows AS (
+unit_life_log AS (
     SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CAST(by_pid AS INTEGER) AS by_pid, by_src, 'log' AS src, hid FROM ul_all
     UNION ALL
     SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CASE WHEN by_pid = 'none' THEN NULL ELSE CAST(by_pid AS INTEGER) END, by_src, 'log', hid FROM ul_all2
+),
+-- A game with replay rows (rp_game, written by `hlog.js replay`): its units are the replay's, whole (no log row of it is read, and none is paired
+-- to one: a unit's uid is the replay's entity and use, `<ent>.<n>`). lane is where the creep was 20 s after it spawned, wave floor(t0 / 30), t1 x1 y1
+-- the death (NULL for a unit alive at 12:00 or despawned: those have by_kind NULL), by_kind also creep or neutral, by_src replay (replay_amb: two
+-- like units died within 0.1 s with different killers, so the killers may be swapped), src replay. Any other game reads exactly as `unit_life_log`.
+-- Fragment wave_fate reads `unit_life_log`, so the pull readers give the same answers with or without a replay; query unit_grade reads both.
+unit_life_rows AS (
+    SELECT * FROM unit_life_log WHERE game_id NOT IN (SELECT game_id FROM rp_game)
+    UNION ALL
+    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, by_pid,
+        CASE WHEN by_kind IS NULL THEN NULL WHEN amb = 1 THEN 'replay_amb' ELSE 'replay' END, 'replay', NULL
+    FROM ul_rp
 ),

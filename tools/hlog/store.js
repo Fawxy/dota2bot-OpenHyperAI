@@ -117,6 +117,7 @@ class Store {
         if (version !== INGEST_VERSION) this.rebuild();
         this.loadKinds();
         this.applyDeclared();
+        this.replayTables();
         this.refreshViews();
         if (file !== ':memory:' && STORE_RE.test(path.basename(file))) {
             // Housekeeping only: a store that cannot be touched or swept (a race with another sweep, a locked file) still opens.
@@ -294,7 +295,7 @@ class Store {
         const id = Number(logId);
         const games = `SELECT game_id FROM games WHERE log_id = ${id}`;
         // Game ids are rowids and can be reused, so rows left behind would read as another game's.
-        for (const t of ['hero_sec', 'hero_sec_games']) {
+        for (const t of ['hero_sec', 'hero_sec_games', 'rp_game', 'rp_unit', 'unit_pos', 'unit_hit']) {
             if (this.hasTable(t)) this.db.exec(`DELETE FROM ${t} WHERE game_id IN (${games})`);
         }
         for (const t of [...this.tables(), 'errors']) {
@@ -465,6 +466,25 @@ class Store {
 
     hasTable(name) {
         return this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name) !== undefined;
+    }
+
+    /**
+     * The replay's rows (written only by `hlog.js replay`, replay.js): one row of rp_game per ingested game, its units (rp_unit), their
+     * positions once a second (unit_pos) and the hits with a hero on one side (unit_hit); fields in replay.js. Keyed by game_id like
+     * hero_sec, and dropped with the log's game (drop) or a rebuild: a changed log or a new store needs `hlog.js replay` again (about 1 s a game).
+     * Columns carry no type, as in the ev_ tables.
+     */
+    replayTables() {
+        if (this.hasTable('rp_game') && this.hasTable('rp_unit') && this.hasTable('unit_pos') && this.hasTable('unit_hit')) return;
+        this.db.exec(`CREATE TABLE IF NOT EXISTS rp_game (game_id INTEGER PRIMARY KEY, dem, size, mtime, until, units, hits);
+            CREATE TABLE IF NOT EXISTS rp_unit (game_id, uid, ent, kind, team, type, name, lane, wave, camp, t0, x0, y0, t1, x1, y1, hp, maxhp, end,
+                by_kind, by_team, by_name, by_pid, by_illusion, amb, kdt);
+            CREATE TABLE IF NOT EXISTS unit_pos (game_id, uid, t, x, y, hp);
+            CREATE TABLE IF NOT EXISTS unit_hit (game_id, t, ak, at, ap, an, tk, tt, tp, tn, dmg, inf);
+            CREATE INDEX IF NOT EXISTS rp_unit_game ON rp_unit (game_id, uid);
+            CREATE INDEX IF NOT EXISTS unit_pos_game ON unit_pos (game_id, uid, t);
+            CREATE INDEX IF NOT EXISTS unit_pos_t ON unit_pos (game_id, t);
+            CREATE INDEX IF NOT EXISTS unit_hit_game ON unit_hit (game_id, t)`);
     }
 
     heroSecTables() {

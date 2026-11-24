@@ -1,7 +1,7 @@
 -- unit_life (view) for the games a log names: the same rows as the view, whose store-wide read pairs every game. Params: like (a run
 -- label or log path fragment, as the other queries) with game (the game's number in its log, default each log's last, as
 -- `timeline --game`), or game_id (the store's id, a games row's game_id) alone. Reads only those games' events, by their
--- game_id index. Columns and rules: view unit_life.
+-- game_id index. Columns and rules: view unit_life. A game `hlog.js replay` has read gives the replay's units (src replay).
 -- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
@@ -19,5 +19,6 @@ ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SEL
 ul_neu AS NOT MATERIALIZED (SELECT * FROM ev_neutral_death WHERE game_id IN (SELECT game_id FROM gm)),
 ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE game_id IN (SELECT game_id FROM gm)),
 ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM gm)),
+ul_rp AS NOT MATERIALIZED (SELECT * FROM rp_unit WHERE game_id IN (SELECT game_id FROM gm)),
 -- include: unit_life_rows
 SELECT * FROM unit_life_rows ORDER BY game_id, t1, uid

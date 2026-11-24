@@ -1,6 +1,6 @@
 -- One row per lane creep and neutral, from the death events the log has (a game with ev=unit_seen: from unit_seen and unit_gone, a
 -- row per unit seen, t1 NULL while it was not found dead by 12:00; see the fragment's header) (scene-and-unit-lives proposal s4, reader
--- first). src is 'log' (a recorded game's replay will fill 'replay').
+-- first). src is 'log', or 'replay' for a game `hlog.js replay` has read (below).
 --   uid      lane creep: its owning team and that team's cid, `2:412`; a creep with no cid (builds before the field) `2:e<seq>`
 --            (the owner's death line); a creep only the other team saw `2:x<observer cid>` (the observer numbers its own
 --            sightings, so it is never the owner's cid; `2:xe<seq>` with no cid). Neutral: `n2:<seq>`, the seq of the
@@ -35,6 +35,12 @@
 -- row is confirmed by the owner's own line.
 -- Store-wide it pairs every game: read one game or a few with query unit_life (--p game=N or like=), whose inputs are only those
 -- games'. The rules are fragment unit_life_rows.
+-- A game with replay rows (rp_game, from `hlog.js replay <dem>`; replay.js): its rows are the replay's whole, none of the log's, none paired:
+-- uid `<entity>.<n>` (entity indices are reused), lane from where the creep was 20 s after it spawned, wave floor(t0 / 30), camp the nearest
+-- camp_boxes.json camp within 700 of a neutral's first spot, type melee, ranged, siege, flag or a neutral's name, t0 x0 y0 the first live
+-- frame, t1 x1 y1 its death (NULL alive at 12:00 and despawned), by_kind also creep and neutral (a summon of a hero reads unknown), by_pid
+-- a hero or denier, by_src replay (replay_amb: two like units died within 0.1 s with different killers, so the killers may be swapped), src
+-- replay. The same units from the log: CTE unit_life_log of the fragment; @unit_grade grades them against the replay's.
 -- A game with ev=unit_seen (team-bots after 836e2a2d): a row per own lane creep, from the owner's unit_seen (t0 = born to 0.1 s, x0, y0,
 -- lane, type: melee, ranged, siege or flag) and unit_gone (t1, x1, y1; no row of a creep still alive at 12:00 has them), `uid` its team and
 -- cid. The enemy hero's last hit and a tower's are not readable from the owner's side, so the other team's creep_death is still paired
@@ -60,5 +66,6 @@ ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death),
 ul_neu AS NOT MATERIALIZED (SELECT * FROM ev_neutral_death),
 ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen),
 ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone),
+ul_rp AS NOT MATERIALIZED (SELECT * FROM rp_unit),
 -- include: unit_life_rows
 SELECT * FROM unit_life_rows
