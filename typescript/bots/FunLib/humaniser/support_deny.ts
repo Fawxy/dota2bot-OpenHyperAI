@@ -186,5 +186,9 @@ function rowStep(bot: Unit): boolean {
     return running[bot.GetPlayerID()] === undefined;
 }
 
-/** The decider's row (registered in index.ts, so the decider imports no row). */
-export const ROW: Decider.Row = { name: "deny", applies: rowApplies, step: rowStep };
+/**
+ * The decider's row (registered in index.ts, so the decider imports no row). Soft (plan s3): Valve's attack, item, evasive
+ * and defend-ally outbid it when they want the hero; on the hard hold the supports lost about a quarter of their seconds in
+ * attack mode (batch sdeny1).
+ */
+export const ROW: Decider.Row = { name: "deny", applies: rowApplies, step: rowStep, soft: true };

@@ -127,4 +127,9 @@ do -- refused by the runner: a refused line, no hold
 	check("refused: no hold, why=refused", a == false and #ch == 1 and field(ch[1], "why") == "refused", table.concat(ch, " | "))
 end
 
+do -- the hold strength: soft (plan s3), so Valve's attack outbids an attempt when it wants the hero
+	local w = world()
+	check("the deny row holds soft", w.SD.ROW.soft == true, tostring(w.SD.ROW.soft))
+end
+
 finish()
