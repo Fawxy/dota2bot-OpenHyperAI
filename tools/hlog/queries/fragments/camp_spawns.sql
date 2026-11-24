@@ -1,5 +1,5 @@
 -- Fragment (`-- include: camp_spawns`): the CTE `camps(idx, x, y)`, each neutral camp's spawn point (camp_boxes.json `x`, `y`;
--- the index is the spawner index `ev=pull_job camp` and `ev=neutral_death camp` use). Pinned by test/lane_waste.test.js. Ends with a comma.
+-- the index is the spawner index `ev=pull_job camp` and unit_life's neutral `camp` use). Pinned by test/lane_waste.test.js. Ends with a comma.
 camps(idx, x, y) AS (VALUES
     (1, 3978, -5027), (2, 4649, -3699), (3, -1454, -3357), (4, 186, -5198), (5, -5015, -96), (6, -1983, -4815),
     (7, -4013, 991), (8, -721, -7696), (9, -8314, -553), (10, 2768, -8336), (11, 1921, -3975), (12, -8023, -1838),

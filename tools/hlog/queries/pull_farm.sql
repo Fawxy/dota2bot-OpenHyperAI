@@ -5,6 +5,10 @@ WITH
 -- include: camp_spawns
 gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 pfw(win) AS (SELECT coalesce(:win, 45)),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
+-- include: unit_life_lane
+-- include: unit_life_neutral
 -- include: pull_farm
 done AS (SELECT 1)
 SELECT gm.file, r.game_id, r.team, r.pid, r.pos, r.camp, r.slot, r.n_ours, r.n_puller, r.n_none,

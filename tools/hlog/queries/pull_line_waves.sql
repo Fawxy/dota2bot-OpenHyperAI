@@ -13,7 +13,6 @@
 -- ensure: ev_pull_job(pid, lane, slot, res, div, dt, nn)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw)
 -- ensure: ev_bot(pid, team, pos)
--- ensure: ev_wave_creep_death(team, kind, x, y, by, lane, born)
 WITH
 -- include: camp_spawns
 gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),

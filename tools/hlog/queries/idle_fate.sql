@@ -2,7 +2,7 @@
 -- whose file matches :like. Logs from build 2b on carry `cid` on ev=idle_swing, ev=creep_death and ev=own_creep_death; older
 -- logs give no rows here (use @idle_swings, the place match). One row per kind (predeny, setup, shove): `creeps` the distinct
 -- creeps a team swung at with an ok swing (two laners on one creep count once), `swings` the ok swings on them.
--- predeny, from the team's own_creep_death with that cid: `ours` denied by one of our heroes, `lost_hero` died with no deny of
+-- predeny, from the team's own lane creep deaths (unit_life's CTE ul_odeath, what own_creep_death was) with that cid: `ours` denied by one of our heroes, `lost_hero` died with no deny of
 -- ours and the other team's creep_death names an enemy hero's last hit at its place (1 s, 150), `lost_other` the rest (a creep
 -- or tower kill), `unmatched` no death logged (alive, or a death the 50% rule or the hero-near rule did not log).
 -- setup and shove, from the team's creep_death with that cid: `ours` one of our heroes' last hit, `lost_hero` their deny
@@ -10,10 +10,12 @@
 -- (predeny: pre-denied creeps that end as our deny; setup: setups that end as our last hit).
 -- ensure: ev_idle_swing(pid, kind, result, cid)
 -- ensure: ev_bot(pid, team)
--- ensure: ev_own_creep_death(team, x, y, by, cid)
 -- ensure: ev_creep_death(team, x, y, by, cid)
 WITH
 gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
+-- include: unit_life_lane
 tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team FROM ev_bot WHERE game_id IN (SELECT game_id FROM gm) GROUP BY 1, 2),
 s AS MATERIALIZED (
     SELECT i.game_id, tm.team, i.kind, i.cid, count(*) AS swings
@@ -22,8 +24,9 @@ s AS MATERIALIZED (
     GROUP BY 1, 2, 3, 4
 ),
 od AS MATERIALIZED (
-    SELECT game_id, team, cid, min(t) AS t, min(x) AS x, min(y) AS y, min(CAST(by AS TEXT)) AS by
-    FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM gm) AND cid IS NOT NULL GROUP BY 1, 2, 3
+    SELECT game_id, team, CAST(substr(uid, instr(uid, ':') + 1) AS INTEGER) AS cid, min(t) AS t, min(x) AS x, min(y) AS y,
+        min(coalesce(CAST(dny AS TEXT), 'none')) AS by
+    FROM ul_odeath WHERE uid GLOB '*:[0-9]*' GROUP BY 1, 2, 3
 ),
 cd AS MATERIALIZED (
     SELECT game_id, team, cid, min(CAST(by AS TEXT)) AS by

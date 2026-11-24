@@ -1,11 +1,11 @@
 -- Every enemy lane creep a team could have taken before :at, with its fate for that team and, when the team did not get it, one
 -- cause read from the lane's core (the loss ledger, rework step 6; read through ledger.js). The pool is the creeps the team saw
 -- die (ev=creep_death: within 1,500 of a living hero of the team; `src` seen) and the other team's own creeps it saw die that the
--- team did not (ev=own_creep_death with no creep_death of this team within 1 s and 250 units of the same kind; `src` unseen).
+-- team did not (unit_life's own deaths near a hero with no creep_death line of this team paired to them, no cd_seq; `src` unseen).
 -- Creeps neither team's heroes were near are in no log. The lane is the creep's place (fragment lane_label); the lane's core is
 -- the team's pos 1-3 whose modal lane over 1:00 to :at is that lane (snapshot `ln` within 1,100 of its path). First match wins:
 --   taken             a hero of the team got the last hit (`by` is its pid)
---   denied            an enemy hero denied it (view creep_fate, or the owner's own_creep_death `by`)
+--   denied            an enemy hero denied it (view creep_fate, or the owner's own deny, `dny`)
 --   off_lane          it died in a base or outside every lane, or in a lane no core of the team holds
 --   core_dead         the lane's core logged no living snapshot in the 2.5 s before
 --   away_base         the core was alive, over 1,500 from it and not in its lane: in a base (fountain, healing, the walk out)
@@ -24,7 +24,6 @@
 -- view creep_fate; the pre-hit window 5 s `judgement` (two pre-hits and the kill swing). Params: like, at (default 600).
 -- ensure: ev_prehit(pid, result)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
--- ensure: ev_own_creep_death(team, kind, x, y, by)
 -- ensure: ev_snap(pid, t, x, y, alive, hp, hit, ed, ln, ld)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
 -- include: creep_fate
@@ -40,13 +39,11 @@ seen AS MATERIALIZED (
 ),
 unseen AS MATERIALIZED (
     SELECT o.game_id, o.seq, o.t, 5 - o.team AS team, o.x, o.y, 'unseen' AS src, NULL AS killer,
-        CASE WHEN CAST(o."by" AS TEXT) <> 'none' THEN 'enemy_deny' END AS fate, NULL AS tw,
+        CASE WHEN o.dny IS NOT NULL THEN 'enemy_deny' END AS fate, NULL AS tw,
         NULL AS p1d, NULL AS p1r, NULL AS p1t, NULL AS p1a, NULL AS p2d, NULL AS p2r, NULL AS p2t, NULL AS p2a,
         NULL AS p3d, NULL AS p3r, NULL AS p3t, NULL AS p3a
-    FROM ev_own_creep_death o JOIN gm ON gm.game_id = o.game_id
-    WHERE o.t < coalesce(:at, 600) AND o.team IN (2, 3)
-      AND NOT EXISTS (SELECT 1 FROM ev_creep_death c WHERE c.game_id = o.game_id AND c.team <> o.team AND c.kind = o.kind
-          AND c.t BETWEEN o.t - 1.0 AND o.t + 1.0 AND (c.x - o.x) * (c.x - o.x) + (c.y - o.y) * (c.y - o.y) <= 62500)
+    FROM ul_odeath o
+    WHERE o.t < coalesce(:at, 600) AND o.team IN (2, 3) AND o.cd_seq IS NULL
 ),
 deaths AS MATERIALIZED (SELECT * FROM seen UNION ALL SELECT * FROM unseen),
 csnap AS MATERIALIZED (

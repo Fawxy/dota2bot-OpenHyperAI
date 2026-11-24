@@ -12,12 +12,12 @@
 //     out_of_range_camp  all of a creep that died with none of them within 1,500, inside or within 600 of a neutral camp's
 //                        box (camp_boxes.json): a pulled wave
 //     out_of_range_lane  the same, anywhere else
-//   Only deaths the owning team logged count (ev=own_creep_death: a living own hero within 1,500), so a wave that dies with
+//   Only deaths the owning team logged count (unit_life's own deaths: a living own hero within 1,500), so a wave that dies with
 //   no hero of either side near is in no row.
 // Rules, per hero and snapshot interval, d = experience change, p = the patch's passive rate (7.42: 50 a minute after
 //   0:00; 7.41: none) times the interval:
 //   1. gain = d - p; under 2 it is rounding and stays in passive.
-//   2. Causes: the hero's team's ev=creep_death and ev=neutral_death rows within 1,650 of the hero (1,500 is the game's
+//   2. Causes: the hero's team's ev=creep_death rows and unit_life's neutral deaths within 1,650 of the hero (1,500 is the game's
 //      share range; the rest is a frame of drift), each used once per hero. A cause is expected to pay the game's value
 //      for its kind (the median of clean single-cause intervals times the heroes sharing; fallbacks from the reference
 //      until three samples), halved for a denied creep (fragment creep_fate), over the team's living heroes within 1,500 of it.
@@ -177,16 +177,26 @@ function analyseGame(store, g, at_) {
     // Causes by the team that gains from them: the enemy creeps and the neutrals each team's module saw die.
     const causes = new Map();
     const isPid = (v) => v !== null && /^\d+$/.test(String(v));
-    if (has('ev_creep_death', 'x', 'y', 'kind', 'by')) {
-        const denied = new Set(store.query(`WITH gm AS (SELECT :g AS game_id),
+    // One read of the game's unit lives: the denied enemy creeps (fragment creep_fate), the neutral deaths and the own side's deny chances (CTEs ul_nlife, ul_odeath of unit_life's fragments).
+    const lives = store.query(`WITH gm AS (SELECT :g AS game_id),
 -- include: creep_fate
-SELECT seq FROM creep_fate WHERE side = 'enemy' AND fate = 'enemy_deny'`, { g: g.game_id }).map((r) => r.seq));
+-- include: unit_life_neutral
+SELECT 'denied' AS part, seq AS a, NULL AS t, NULL AS team, NULL AS kind, NULL AS x, NULL AS y, NULL AS by, NULL AS near_r, NULL AS near_d
+    FROM creep_fate WHERE side = 'enemy' AND fate = 'enemy_deny'
+UNION ALL
+SELECT 'neutral', NULL, t1, NULL, NULL, x1, y1, NULL, near_r, near_d FROM ul_nlife WHERE t1 IS NOT NULL AND t1 <= :at2
+UNION ALL
+SELECT 'own', seq, t, team, kind, x, y, CAST(dny AS TEXT), NULL, NULL FROM ul_odeath WHERE t <= :at
+ORDER BY 3, 2`, { g: g.game_id, at: at_, at2: at_ + AFTER });
+    if (has('ev_creep_death', 'x', 'y', 'kind', 'by')) {
+        const denied = new Set(lives.filter((r) => r.part === 'denied').map((r) => r.a));
         for (const r of store.query('SELECT seq, t, team, kind, x, y FROM ev_creep_death WHERE game_id = :g AND t <= :at ORDER BY t, seq', { g: g.game_id, at: at_ + AFTER })) {
             push(causes, r.team, { t: r.t, x: r.x, y: r.y, kind: r.kind in FALLBACK ? r.kind : 'melee', denied: denied.has(r.seq) });
         }
     }
-    if (has('ev_neutral_death', 'x', 'y')) for (const r of store.query('SELECT t, team, x, y FROM ev_neutral_death WHERE game_id = :g AND t <= :at ORDER BY t, seq', { g: g.game_id, at: at_ + AFTER })) {
-        push(causes, r.team, { t: r.t, x: r.x, y: r.y, kind: 'neutral', denied: false });
+    // A neutral's death is a cause for each team with a hero within 1,500 of it (the rows ev=neutral_death had, one per logging team).
+    for (const r of lives.filter((l) => l.part === 'neutral')) for (const [team, near] of [[2, r.near_r], [3, r.near_d]]) {
+        if (near) push(causes, team, { t: r.t, x: r.x, y: r.y, kind: 'neutral', denied: false });
     }
     for (const [team, list] of causes) {
         list.sort((a, b) => a.t - b.t);
@@ -220,7 +230,7 @@ SELECT seq FROM creep_fate WHERE side = 'enemy' AND fate = 'enemy_deny'`, { g: g
     }
 
     // The memo: what each team's own dying creeps did not give the other side, on the team's first hero so it folds once.
-    if (has('ev_own_creep_death', 'x', 'y', 'kind', 'by')) for (const r of store.query('SELECT t, team, kind, x, y, "by" AS by FROM ev_own_creep_death WHERE game_id = :g AND t <= :at ORDER BY t, seq', { g: g.game_id, at: at_ })) {
+    for (const r of lives.filter((l) => l.part === 'own')) {
         const holder = out.find((o) => o.hero.team === r.team);
         const other = [...teams].find((t) => t !== r.team);
         if (!holder || other === undefined) continue;

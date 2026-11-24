@@ -12,7 +12,7 @@
 // Each second is the hero's latest snapshot in that whole second (bots log none while dead).
 // Lines, to the time T:
 //   lh dn             last hits, denies (the snapshot counters)
-//   pool own_pool     enemy creeps / own creeps logged dying in the hero's lane (ev=creep_death / ev=own_creep_death of
+//   pool own_pool     enemy creeps / own creeps logged dying in the hero's lane (ev=creep_death / unit_life's own deaths of
 //                     the hero's team: creeps that died with one of its heroes near); lh_share = lh / pool. Shared by two
 //                     heroes of one team in a lane.
 //   lvl nw            level and net worth at T;  lvl_gap  the opponent's level less the hero's at T
@@ -74,11 +74,13 @@ function load(store, gameId, until) {
         FROM ev_snap WHERE game_id = :g AND t >= 0 AND t <= :u AND typeof(x) IN ('integer', 'real')
         GROUP BY pid, CAST(round(t) AS INTEGER) ORDER BY pid, s`, p);
     const loss = store.query(`SELECT pid, t, died, loss, src FROM hp_loss WHERE game_id = :g AND t <= :u`, p);
-    // The base tables, not fragment creep_fate (round B moves this read onto unit_life).
     const enemy = store.query(`-- ensure: ev_creep_death(team, kind, x, y, by, tw)
         SELECT t, team, kind, x, y, CAST("by" AS TEXT) AS by, tw FROM ev_creep_death WHERE game_id = :g AND t <= :u`, p);
-    const own = store.query(`-- ensure: ev_own_creep_death(team, kind, x, y, by)
-        SELECT t, team, kind, x, y, CAST("by" AS TEXT) AS by FROM ev_own_creep_death WHERE game_id = :g AND t <= :u`, p);
+    // The own side's deny chances (unit_life's CTE ul_odeath: near a hero of the creep's team at half health or less, as ev=own_creep_death was).
+    const own = store.query(`WITH ul_gm AS (SELECT :g AS game_id),
+-- include: unit_life_in
+-- include: unit_life_lane
+SELECT t, team, kind, x, y, coalesce(CAST(dny AS TEXT), 'none') AS by FROM ul_odeath WHERE t <= :u`, { g: p.g, u: p.u });
     return { heroes, secs, loss, fates: creepFates(enemy, own), fronts: frontsOf(store, p) };
 }
 

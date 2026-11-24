@@ -28,6 +28,8 @@ test('idle fate: each creep once by its id, its fate by killer', () => {
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
         line(0, 'bot pid=6 hero=h6 team=3 pos=1'),
+        // the own side is a deny chance only with a living hero of the team within 1,500 in the second before the death
+        line(101.5, 'snap pid=1 x=1000 y=0 alive=1 hp=100'), line(111.5, 'snap pid=1 x=2000 y=0 alive=1 hp=100'), line(120.5, 'snap pid=1 x=3000 y=0 alive=1 hp=100'),
         // predeny 10: both laners swing, pid 5 denies it: one creep, two swings, ours.
         line(100, sw(1, 'predeny', 10)),
         line(100.5, sw(5, 'predeny', 10)),

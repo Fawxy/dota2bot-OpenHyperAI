@@ -21,7 +21,7 @@
 //   sf         the episode began with a step-out before any attack order: the trade's `fa` = step (logs before `fa`: so > 0
 //              and pr = 0 is 1, pr > 0 with so = 0 is 0, both unknown)
 //   ulh, udn   last hits and denies that went untaken during the trade: enemy lane creeps (`ev=creep_death`) and our own
-//              (`ev=own_creep_death`, logged at 50% HP or under) that died from open to end within the cast's attack range +
+//              (unit_life's own deaths: near a hero of its team, at 50% HP or under) that died from open to end within the cast's attack range +
 //              REACH_SLACK of it, not credited to it (`by`); the cast's place is its nearest snapshot
 //   why, dur   how and when the trade ended (`creeps`: two creeps hitting us); so the step-outs
 // A trade whose window or episode holds an HP reset (the recipe's rig_hp_all, sent for :55 and run 1 to 6 s late at 8x: from
@@ -64,7 +64,16 @@ SELECT t, hv, hp, x, y, ar, hc, hit, tid, mode, alive FROM ev_snap WHERE game_id
 const deaths = (tbl) => `-- ensure: ${tbl}(team, x, y, by)
 SELECT t, x, y, by FROM ${tbl} WHERE game_id = :g AND team = :team AND t >= :a AND t <= :b ORDER BY t`;
 const LH_DEATHS = deaths('ev_creep_death');
-const DN_DEATHS = deaths('ev_own_creep_death');
+// The own lane creeps' deaths of a game, the old ev=own_creep_death rows (near a hero of the team at half health or less: unit_life's CTE ul_odeath), read once a game.
+const DN_DEATHS = `WITH ul_gm AS (SELECT :g AS game_id),
+-- include: unit_life_in
+-- include: unit_life_lane
+SELECT t, team, x, y, coalesce(CAST(dny AS TEXT), 'none') AS by FROM ul_odeath ORDER BY t`;
+const dnCache = new Map();
+function ownDeaths(store, g, team, a, b) {
+    if (!dnCache.has(g)) dnCache.set(g, store.query(DN_DEATHS, { g }));
+    return dnCache.get(g).filter((r) => r.team === team && r.t >= a && r.t <= b);
+}
 
 /**
  * HP drops between 1 s snapshots in [a, b], each put to the source the snapshot's API flags name for its last second: `hc`
@@ -216,7 +225,7 @@ function reps(store, like) {
                 s5: lostBy(own, x.open, x.open + WINDOW),
                 sf: stepFirst(x),
                 ulh: untaken(store.query(LH_DEATHS, { g: r.game_id, team: r.team, a: x.open, b: x.t }), own, r.pid),
-                udn: untaken(store.query(DN_DEATHS, { g: r.game_id, team: r.team, a: x.open, b: x.t }), own, r.pid),
+                udn: untaken(ownDeaths(store, r.game_id, r.team, x.open, x.t), own, r.pid),
                 hp5: lost(own, x.open, x.open + WINDOW), thp5: lost(tsnaps, x.open, x.open + WINDOW),
                 ch5: lines.filter((l) => l.ph === 'chit' && l.t >= x.open && l.t <= x.open + WINDOW).length,
                 ag: x.ag, why: x.why, dur: x.dur,

@@ -32,11 +32,14 @@ const bots = [
 // A team-2 creep as team 3 saw it die, and as team 2 saw it; a team-3 creep as team 2 saw it.
 const theirView = (t, x, by, tw = 0, kind = 'melee') => line(t, `creep_death team=3 kind=${kind} x=${x} y=-6000 hp=0.05 by=${by} tw=${tw}`);
 const ourView = (t, x, by, y = -6000, kind = 'melee') => line(t, `own_creep_death team=2 kind=${kind} x=${x} y=${y} hp=0.05 by=${by}`);
+const snap = (t, pid, x, y) => line(t, `snap pid=${pid} x=${x} y=${y} alive=1 hp=100`);
 const want = (t, pid, slot, extra = '') => line(t, `choice pid=${pid} kind=pull go=0 want=1 lane=3 slot=${slot}${extra}`);
 
 test('the ledger of a wanted window: each of our creeps once from the two logs, by who took it; their creeps the same way round', () => {
     const out = run([...bots,
         want(190, 5, 200, ' why=off src=shadow'),
+        // an own creep's death is in the owner's log only with a living hero of its team within 1,500 in the second before it
+        snap(209.7, 1, 30, -6000), snap(211.8, 5, 60, -6000), snap(214.5, 1, 1000, -7500), snap(215.5, 1, 1000, -7500), snap(222.6, 6, 10, -6000),
         // their core's last hit, seen by both teams: one death.
         theirView(210, 0, 6), ourView(210.2, 30, 'none'),
         // their support's last hit, seen only by them.

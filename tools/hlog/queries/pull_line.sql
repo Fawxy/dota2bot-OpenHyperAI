@@ -8,7 +8,7 @@
 -- A death's lane is read from where it died: y - x over 4,000 top (1), under -4,000 bot (3), else mid (2); a side lane's
 -- pull camps lie on its side of those lines, so a pulled wave counts where it died.
 -- Our creeps (the team's own), from both logs: the other team's ev=creep_death (its heroes within 1,500) and our
--- ev=own_creep_death (ours within 1,500), one death when the two agree on kind within 1 s and 250 units.
+-- own deaths (unit_life's CTE ul_odeath, what ev=own_creep_death was: ours within 1,500), one death when the two agree on kind within 1 s and 250 units.
 --   o_dead all of them; o_lh the other team's last hits (the named line is o_lh / o_dead); o_lh_core those by its pos 1-3;
 --   o_deny our denies; o_tower no hero and their tower on it the frame before; o_other the rest (creeps, neutrals, spells,
 --   nobody near).
@@ -18,7 +18,7 @@
 --   ok and dt, or div where a line has no dt, at least 0.75, as view pull_attempts); first_slot the first wanted slot.
 -- A creep that died with no hero of either team within 1,500 is in neither log.
 -- The wanted wave's own creeps (logs from team-bots c87cd648 on; 0 in older ones): each wanted slot's wave, by the pulling
--- team's ev=wave_creep_death (every own lane creep's death, anywhere) whose lane is the slot's and whose born second falls in
+-- team's own lane creeps (unit_life, every one's death, anywhere) whose lane is the slot's and whose born second falls in
 -- the slot's wave (floor(born / 30) = floor((slot - 1) / 30)), however long after the slot it died. Who took each: the other
 -- team's creep_death of the same kind within 1 s and 250 units, mutual nearest (`seen`, unwindowed); else our deny from
 -- its own `by`; else `other`. Off the line's window, so overlapping windows do not merge two waves.
@@ -29,9 +29,7 @@
 -- ensure: ev_choice(pid, kind, want, lane, slot)
 -- ensure: ev_pull_job(pid, lane, slot, res, hit, div, dt)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw)
--- ensure: ev_own_creep_death(team, kind, x, y, by)
 -- ensure: ev_bot(pid, team, pos)
--- ensure: ev_wave_creep_death(team, kind, x, y, by, lane, born)
 WITH
 -- include: camp_spawns
 gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
@@ -58,6 +56,7 @@ funnel AS (
     FROM ws w LEFT JOIN jobs j ON j.game_id = w.game_id AND j.team = w.team AND j.lane = w.lane AND j.wave = w.wave
     GROUP BY 1, 2, 3
 ),
+-- include: wave_fate
 -- A creep as the other team saw it die: `owner` the creep's team, `taker` the logging team.
 seen AS MATERIALIZED (
     SELECT c.game_id, c.seq, c.t, 5 - c.team AS owner, c.kind, c.x, c.y, CAST(c."by" AS TEXT) AS who, coalesce(c.tw, 0) AS tw
@@ -65,11 +64,10 @@ seen AS MATERIALIZED (
     WHERE c.team IN (2, 3) AND c.t < coalesce(:to, 525) + coalesce(:win, 75)
 ),
 own AS MATERIALIZED (
-    SELECT o.game_id, o.seq, o.t, o.team AS owner, o.kind, o.x, o.y, CAST(o."by" AS TEXT) AS who
-    FROM ev_own_creep_death o JOIN gm ON gm.game_id = o.game_id
+    SELECT o.game_id, o.seq, o.t, o.team AS owner, o.kind, o.x, o.y, coalesce(CAST(o.dny AS TEXT), 'none') AS who
+    FROM ul_odeath o
     WHERE o.team IN (2, 3) AND o.t < coalesce(:to, 525) + coalesce(:win, 75)
 ),
--- include: wave_fate
 wave_ledger AS (
     SELECT game_id, team, lane, count(*) AS w_n, sum(fate = 'lh') AS w_lh, sum(fate = 'lh' AND pos BETWEEN 1 AND 3) AS w_lh_core,
         sum(fate = 'deny') AS w_deny, sum(fate = 'tower') AS w_tower, sum(fate = 'other') AS w_other, sum(camp) AS w_camp
