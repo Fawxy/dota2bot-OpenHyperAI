@@ -36,11 +36,11 @@ ul_o AS MATERIALIZED (
     WHERE o.game_id NOT IN (SELECT game_id FROM ul_new)
         AND NOT EXISTS (SELECT 1 FROM ul_wave w WHERE w.game_id = o.game_id AND w.team = o.team AND w.cid = o.cid)
     UNION ALL
-    -- a game with unit_seen: every own lane creep, from its first sighting (alive at the end: no t, x, y, who), its kind as the
+    -- a game with unit_seen: every own lane creep, from its first sighting (born = its t to 0.1 s, as wave_creep_death's born is; alive at the end: no t, x, y, who), its kind as the
     -- old events name it (a flag bearer is a melee creep there, so the enemy's creep_death pairs by it) and its own type beside
     SELECT s.game_id, coalesce(g.seq, s.seq), g.t, s.team,
         CASE WHEN s.type LIKE '%siege%' THEN 'siege' WHEN s.type LIKE '%ranged%' THEN 'ranged' ELSE 'melee' END,
-        g.x, g.y, g.who, s.cid, s.lane, s.t,
+        g.x, g.y, g.who, s.cid, s.lane, round(s.t, 1),
         CASE WHEN s.type LIKE '%flagbearer%' THEN 'flag' END, s.x, s.y
     FROM ul_s s LEFT JOIN ul_g g ON g.game_id = s.game_id AND g.team = s.team AND g.cid = s.cid
     WHERE s.kind = 'lane'

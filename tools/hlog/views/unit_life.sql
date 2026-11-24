@@ -1,4 +1,5 @@
--- One row per lane creep and neutral that died, from the death events the log has (scene-and-unit-lives proposal s4, reader
+-- One row per lane creep and neutral, from the death events the log has (a game with ev=unit_seen: from unit_seen and unit_gone, a
+-- row per unit seen, t1 NULL while it was not found dead by 12:00; see the fragment's header) (scene-and-unit-lives proposal s4, reader
 -- first). src is 'log' (a recorded game's replay will fill 'replay').
 --   uid      lane creep: its owning team and that team's cid, `2:412`; a creep with no cid (builds before the field) `2:e<seq>`
 --            (the owner's death line); a creep only the other team saw `2:x<observer cid>` (the observer numbers its own
@@ -34,6 +35,12 @@
 -- row is confirmed by the owner's own line.
 -- Store-wide it pairs every game: read one game or a few with query unit_life (--p game=N or like=), whose inputs are only those
 -- games'. The rules are fragment unit_life_rows.
+-- A game with ev=unit_seen (team-bots after 836e2a2d): a row per own lane creep, from the owner's unit_seen (t0 = born to 0.1 s, x0, y0,
+-- lane, type: melee, ranged, siege or flag) and unit_gone (t1, x1, y1; no row of a creep still alive at 12:00 has them), `uid` its team and
+-- cid. The enemy hero's last hit and a tower's are not readable from the owner's side, so the other team's creep_death is still paired
+-- for them (by_src paired). A creep only the enemy saw is no row there. A neutral: `type` its unit name, `camp` and t0 x0 y0 from
+-- its unit_seen; the two teams' sightings are one unit when their unit_gone rows are within 1 s and 250 units (uid the Radiant
+-- sighting's, `n2:<cid>`); a neutral never found dead is a row per team (t1 NULL); a neutral out of sight and back is one unit.
 -- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)

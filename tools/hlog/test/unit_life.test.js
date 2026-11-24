@@ -109,9 +109,9 @@ const useen = (t, team, cid, type, x = 0, y = 0, lane = 'mid') =>
 const ugone = (t, team, cid, by = 'none', extra = '', x = 0, y = 0) =>
     line(t, `unit_gone team=${team} cid=${cid} x=${x} y=${y} hp=0.05 by=${by} ${extra}`.trim());
 
-test('own lane creeps: one row each from the owner\'s lines, even one still alive; the enemy taker and a tower are still read from the other team\'s line; a flag bearer is a flag', () => {
+test('own lane creeps: one row each from the owner\'s lines (born to 0.1 s, as the old wave line: 59.967 is wave 2), even one still alive; the enemy taker and a tower are still read from the other team\'s line; a flag bearer is a flag', () => {
     const { view } = run([
-        useen(60, 2, 1, 'creep_goodguys_melee'), useen(60, 2, 2, 'creep_goodguys_ranged'), useen(60, 2, 3, 'creep_goodguys_flagbearer'),
+        useen(59.967, 2, 1, 'creep_goodguys_melee'), useen(60, 2, 2, 'creep_goodguys_ranged'), useen(60, 2, 3, 'creep_goodguys_flagbearer'),
         useen(60, 2, 4, 'creep_goodguys_melee_upgraded'), useen(60, 2, 5, 'goodguys_siege'), useen(60, 2, 6, 'creep_goodguys_melee'),
         ugone(100, 2, 1), ugone(101, 2, 2, 1), ugone(102, 2, 3), ugone(103, 2, 4), ugone(104, 2, 5),
         // the enemy team's lines: a hero's last hit of 2:1, a tower on 2:3; a sighting of a creep that lived (nothing of ours died there)
