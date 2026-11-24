@@ -314,6 +314,31 @@ local function __TS__New(target, ...)
     return instance
 end
 
+local function __TS__StringStartsWith(self, searchString, position)
+    if position == nil or position < 0 then
+        position = 0
+    end
+    return string.sub(self, position + 1, #searchString + position) == searchString
+end
+
+local function __TS__StringSubstring(self, start, ____end)
+    if ____end ~= ____end then
+        ____end = 0
+    end
+    if ____end ~= nil and start > ____end then
+        start, ____end = ____end, start
+    end
+    if start >= 0 then
+        start = start + 1
+    else
+        start = 1
+    end
+    if ____end ~= nil and ____end < 0 then
+        ____end = 0
+    end
+    return string.sub(self, start, ____end)
+end
+
 local function __TS__StringAccess(self, index)
     if index >= 0 and index < #self then
         return string.sub(self, index + 1, index + 1)
@@ -1099,13 +1124,13 @@ end
 --- The spawner of the lane's pull camp (the pull's and the stack row's camp).
 function ____exports.SpawnerFor(bot)
     local camp = campFor(bot)
-    local ____temp_48
+    local ____temp_50
     if camp ~= nil then
-        ____temp_48 = Camps.SpawnerByIdx(camp.campIdx)
+        ____temp_50 = Camps.SpawnerByIdx(camp.campIdx)
     else
-        ____temp_48 = nil
+        ____temp_50 = nil
     end
-    return ____temp_48
+    return ____temp_50
 end
 function logSeeds()
     if seedsLogged or not Telemetry.IsEnabled() then
@@ -1960,6 +1985,91 @@ local function verbPlan(bot, pull, aggroAt)
         confirmFor = s.Timing.AggroConfirm
     }
 end
+local function tenth(x)
+    return math.floor(x * 10 + 0.5) / 10
+end
+--- A unit name less `npc_dota_neutral_` or `npc_dota_creep_` (stay_try).
+local function shortName(name)
+    for ____, pre in ipairs({"npc_dota_neutral_", "npc_dota_creep_"}) do
+        if __TS__StringStartsWith(name, pre) then
+            return __TS__StringSubstring(name, #pre)
+        end
+    end
+    return name
+end
+--- One `ev=stay_try` line: a deny or neutral last-hit try of the stay and why it ended (logging only).
+local function tryLine(bot, p, kind, r, target, hp, hits)
+    local ____this_49
+    ____this_49 = target
+    local ____opt_48 = ____this_49.GetUnitName
+    local name = ____opt_48 and ____opt_48(____this_49) or "?"
+    Telemetry.Event(
+        "stay_try",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"slot", p.plan.slot},
+            {"k", kind},
+            {"ok", r.success and 1 or 0},
+            {"why", r.reason},
+            {"m", r.message},
+            {
+                "u",
+                shortName(name)
+            },
+            {
+                "hp",
+                math.floor(hp + 0.5)
+            },
+            {
+                "hh",
+                tenth(hits)
+            },
+            {
+                "dt",
+                p.tryAt ~= nil and tenth(DotaTime() - p.tryAt) or nil
+            }
+        }
+    )
+    p.tryAt = nil
+end
+--- One `ev=stay_look` sample per WatchLogEvery while the stay runs (logging only).
+local function lookLine(bot, p, l)
+    local now = DotaTime()
+    if l.step == "lasthit" or l.step == "deny" then
+        p.tryAt = now
+    end
+    if p.lookedAt ~= nil and now - p.lookedAt < ____exports.SETTINGS.WatchLogEvery then
+        return
+    end
+    p.lookedAt = now
+    Telemetry.Event(
+        "stay_look",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"slot", p.plan.slot},
+            {"step", l.step},
+            {"nc", l.ours},
+            {"nn", l.neutrals},
+            {"nw", l.worked},
+            {"due", l.due},
+            {"sk", l.skipped},
+            {
+                "mh",
+                l.minHits ~= nil and tenth(l.minHits) or nil
+            },
+            {
+                "bh",
+                math.floor(bot:GetHealth() / bot:GetMaxHealth() * 100 + 0.5) / 100
+            }
+        }
+    )
+end
 local stay = __TS__Generator(function(bot, p, hooks)
     p.stayAt = DotaTime()
     p.stayHp = bot:GetHealth()
@@ -1971,7 +2081,7 @@ local stay = __TS__Generator(function(bot, p, hooks)
             onHit = function()
                 p.sht = (p.sht or 0) + 1
             end,
-            onAttempt = function(kind, r)
+            onAttempt = function(kind, r, target, hp, hits)
                 if kind == "deny" then
                     p.sdt = (p.sdt or 0) + 1
                     if r.success then
@@ -1983,7 +2093,17 @@ local stay = __TS__Generator(function(bot, p, hooks)
                         p.slk = (p.slk or 0) + 1
                     end
                 end
-            end
+                tryLine(
+                    bot,
+                    p,
+                    kind,
+                    r,
+                    target,
+                    hp,
+                    hits
+                )
+            end,
+            onLook = function(l) return lookLine(bot, p, l) end
         },
         hooks
     ))
@@ -2238,8 +2358,8 @@ local function rowStep(bot)
 end
 --- Soft in the stay (Ours.SupportPullStay): Valve's modes and retreat take the puller when they want it; hard before it.
 local function rowSoft(bot)
-    local ____opt_49 = running[bot:GetPlayerID()]
-    return (____opt_49 and ____opt_49.label) == "stay"
+    local ____opt_51 = running[bot:GetPlayerID()]
+    return (____opt_51 and ____opt_51.label) == "stay"
 end
 --- The decider's row (registered in index.ts, so the decider imports no row).
 ____exports.ROW = {name = "pull", applies = rowApplies, step = rowStep, soft = rowSoft}

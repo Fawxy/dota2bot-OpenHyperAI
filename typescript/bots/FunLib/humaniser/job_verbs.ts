@@ -804,10 +804,29 @@ export interface StayPlan {
     /** A neutral our creeps are on is last-hit (not plain attacked) once it holds at most this many of the bot's hits. Default 1
      *  (at 2 the first hit could land without the kill and turn the neutral onto the bot: pullchain1's stay). */
     lastHitHits?: number;
-    /** After each deny or neutral last hit: which, and its result. */
-    onAttempt?: (this: void, kind: "deny" | "lasthit", r: Result) => void;
+    /** After each deny or neutral last hit: which, its result, its target, and the target's HP and how many of the bot's hits
+     *  that was when the try began. */
+    onAttempt?: (this: void, kind: "deny" | "lasthit", r: Result, target: TaskAttacker, hp: number, hits: number) => void;
     /** After the first plain hit order on each of our deniable creeps. */
     onHit?: (this: void) => void;
+    /** Each frame the verb chooses, before it acts: what it chose and what the last-hit gate saw (logging only). */
+    onLook?: (this: void, l: StayLook) => void;
+}
+
+/** What one frame of the stay saw and chose (`StayPlan.onLook`). */
+export interface StayLook {
+    /** `lasthit`, `deny`, `hit` (a plain hit on one of ours), `stand` (behind our creeps) or `flee` (a neutral on the bot). */
+    step: string;
+    /** Our lane creeps and neutrals at the camp. */
+    ours: number;
+    neutrals: number;
+    /** Neutrals one of our creeps is attacking, and of them those within `lastHitHits` of the bot's hits (the gate open). */
+    worked: number;
+    due: number;
+    /** The lowest HP among the worked neutrals, in the bot's hits; undefined with none worked. */
+    minHits?: number;
+    /** Worked neutrals left to our creeps (their last hit could not run). */
+    skipped: number;
 }
 
 const STAY_RADIUS = 900;
@@ -912,6 +931,22 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
             return math.max(1, c.GetActualIncomingDamage !== undefined ? c.GetActualIncomingDamage(myHit, 1) : myHit);
         };
         const onMe = neutrals.some((n) => n.GetAttackTarget?.() === bot);
+        // Logging only (onLook): the gate's view of the neutrals our creeps are on, whether or not it is read below.
+        let worked = 0;
+        let due = 0;
+        let skipped = 0;
+        let minHits: number | undefined;
+        if (p.onLook !== undefined) {
+            for (const n of neutrals) {
+                if (!ours.some((o) => o.GetAttackTarget?.() === n)) continue;
+                worked++;
+                if (skip.indexOf(n) >= 0) skipped++;
+                const k = hpOf(n) / hitOn(n);
+                if (skip.indexOf(n) < 0 && hpOf(n) <= lhHits * hitOn(n)) due++;
+                if (minHits === undefined || k < minHits) minHits = k;
+            }
+        }
+        const look = (step: string): void => p.onLook?.({ step, ours: ours.length, neutrals: neutrals.length, worked, due, minHits, skipped });
         if (!onMe) {
             let finish: TaskAttacker | undefined;
             for (const n of neutrals) {
@@ -919,8 +954,11 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 if (hpOf(n) <= lhHits * hitOn(n) && (finish === undefined || hpOf(n) < hpOf(finish))) finish = n;
             }
             if (finish !== undefined) {
+                look("lasthit");
+                const hp0 = hpOf(finish);
+                const hits0 = hp0 / hitOn(finish);
                 const res = yield* E().Verbs.lastHit(bot, { target: finish as TaskCreep, maxWait: CLEAR_LH_WAIT, deadline: p.deadline, hold: "camp_lasthit" });
-                p.onAttempt?.("lasthit", res);
+                p.onAttempt?.("lasthit", res, finish, hp0, hits0);
                 hitTarget = undefined;
                 if (!res.success && (res.reason === "etiquette" || res.reason === "unsupported")) {
                     skip.push(finish);
@@ -937,8 +975,12 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 }
             }
             if (deny !== undefined) {
+                look("deny");
+                const d0 = deny as unknown as TaskAttacker;
+                const hp0 = hpOf(d0);
+                const hits0 = hp0 / hitOn(d0);
                 const res = yield* E().Verbs.deny(bot, { target: deny, maxWait: eta + 1.5, deadline: p.deadline, hold: "camp_deny" });
-                p.onAttempt?.("deny", res);
+                p.onAttempt?.("deny", res, d0, hp0, hits0);
                 hitTarget = undefined;
                 continue;
             }
@@ -949,6 +991,7 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 if (down === undefined || hpOf(o) < hpOf(down)) down = o;
             }
             if (down !== undefined) {
+                look("hit");
                 if (down !== hitTarget || t - hitAt >= STAY_REORDER) {
                     bot.Action_AttackUnit(down, false);
                     if (down !== hitTarget) p.onHit?.();
@@ -959,6 +1002,7 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 continue;
             }
         }
+        look(onMe ? "flee" : "stand");
         hitTarget = undefined;
         const to = behindPoint(bot, ours, neutrals, p.at, behindBack(bot) + (onMe ? BEHIND_FLEE : 0))!;
         if (dist(bot.GetLocation(), to) > STAY_ARRIVE) {

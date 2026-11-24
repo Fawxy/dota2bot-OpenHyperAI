@@ -1389,13 +1389,16 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         return (____opt_135 and ____opt_135(____this_136)) == bot
                     end
                 )
-                if not onMe then
-                    local finish
+                local worked = 0
+                local due = 0
+                local skipped = 0
+                local minHits
+                if p.onLook ~= nil then
                     for ____, n in ipairs(neutrals) do
                         do
                             local __continue172
                             repeat
-                                if __TS__ArrayIndexOf(skip, n) >= 0 or not __TS__ArraySome(
+                                if not __TS__ArraySome(
                                     ours,
                                     function(____, o)
                                         local ____this_138
@@ -1407,8 +1410,16 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                                     __continue172 = true
                                     break
                                 end
-                                if hpOf(n) <= lhHits * hitOn(n) and (finish == nil or hpOf(n) < hpOf(finish)) then
-                                    finish = n
+                                worked = worked + 1
+                                if __TS__ArrayIndexOf(skip, n) >= 0 then
+                                    skipped = skipped + 1
+                                end
+                                local k = hpOf(n) / hitOn(n)
+                                if __TS__ArrayIndexOf(skip, n) < 0 and hpOf(n) <= lhHits * hitOn(n) then
+                                    due = due + 1
+                                end
+                                if minHits == nil or k < minHits then
+                                    minHits = k
                                 end
                                 __continue172 = true
                             until true
@@ -1417,11 +1428,61 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                             end
                         end
                     end
+                end
+                local function look(step)
+                    local ____opt_139 = p.onLook
+                    return ____opt_139 and ____opt_139({
+                        step = step,
+                        ours = #ours,
+                        neutrals = #neutrals,
+                        worked = worked,
+                        due = due,
+                        minHits = minHits,
+                        skipped = skipped
+                    })
+                end
+                if not onMe then
+                    local finish
+                    for ____, n in ipairs(neutrals) do
+                        do
+                            local __continue181
+                            repeat
+                                if __TS__ArrayIndexOf(skip, n) >= 0 or not __TS__ArraySome(
+                                    ours,
+                                    function(____, o)
+                                        local ____this_142
+                                        ____this_142 = o
+                                        local ____opt_141 = ____this_142.GetAttackTarget
+                                        return (____opt_141 and ____opt_141(____this_142)) == n
+                                    end
+                                ) then
+                                    __continue181 = true
+                                    break
+                                end
+                                if hpOf(n) <= lhHits * hitOn(n) and (finish == nil or hpOf(n) < hpOf(finish)) then
+                                    finish = n
+                                end
+                                __continue181 = true
+                            until true
+                            if not __continue181 then
+                                break
+                            end
+                        end
+                    end
                     if finish ~= nil then
+                        look("lasthit")
+                        local hp0 = hpOf(finish)
+                        local hits0 = hp0 / hitOn(finish)
                         local res = __TS__DelegatedYield(E().Verbs.lastHit(bot, {target = finish, maxWait = CLEAR_LH_WAIT, deadline = p.deadline, hold = "camp_lasthit"}))
-                        local ____opt_139 = p.onAttempt
-                        if ____opt_139 ~= nil then
-                            ____opt_139("lasthit", res)
+                        local ____opt_143 = p.onAttempt
+                        if ____opt_143 ~= nil then
+                            ____opt_143(
+                                "lasthit",
+                                res,
+                                finish,
+                                hp0,
+                                hits0
+                            )
                         end
                         hitTarget = nil
                         if not res.success and (res.reason == "etiquette" or res.reason == "unsupported") then
@@ -1440,10 +1501,20 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         end
                     end
                     if deny ~= nil then
+                        look("deny")
+                        local d0 = deny
+                        local hp0 = hpOf(d0)
+                        local hits0 = hp0 / hitOn(d0)
                         local res = __TS__DelegatedYield(E().Verbs.deny(bot, {target = deny, maxWait = eta + 1.5, deadline = p.deadline, hold = "camp_deny"}))
-                        local ____opt_141 = p.onAttempt
-                        if ____opt_141 ~= nil then
-                            ____opt_141("deny", res)
+                        local ____opt_145 = p.onAttempt
+                        if ____opt_145 ~= nil then
+                            ____opt_145(
+                                "deny",
+                                res,
+                                d0,
+                                hp0,
+                                hits0
+                            )
                         end
                         hitTarget = nil
                         __continue165 = true
@@ -1452,33 +1523,34 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                     local down
                     for ____, o in ipairs(ours) do
                         do
-                            local __continue183
+                            local __continue192
                             repeat
-                                local ____this_144
-                                ____this_144 = o
-                                local ____opt_143 = ____this_144.GetMaxHealth
-                                local max = ____opt_143 and ____opt_143(____this_144) or 0
+                                local ____this_148
+                                ____this_148 = o
+                                local ____opt_147 = ____this_148.GetMaxHealth
+                                local max = ____opt_147 and ____opt_147(____this_148) or 0
                                 if max <= 0 or hpOf(o) >= max * DENY_SHARE or hpOf(o) <= STAY_HIT_ABOVE * hitOn(o) then
-                                    __continue183 = true
+                                    __continue192 = true
                                     break
                                 end
                                 if down == nil or hpOf(o) < hpOf(down) then
                                     down = o
                                 end
-                                __continue183 = true
+                                __continue192 = true
                             until true
-                            if not __continue183 then
+                            if not __continue192 then
                                 break
                             end
                         end
                     end
                     if down ~= nil then
+                        look("hit")
                         if down ~= hitTarget or t - hitAt >= STAY_REORDER then
                             bot:Action_AttackUnit(down, false)
                             if down ~= hitTarget then
-                                local ____opt_145 = p.onHit
-                                if ____opt_145 ~= nil then
-                                    ____opt_145()
+                                local ____opt_149 = p.onHit
+                                if ____opt_149 ~= nil then
+                                    ____opt_149()
                                 end
                             end
                             hitTarget = down
@@ -1489,6 +1561,7 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         break
                     end
                 end
+                look(onMe and "flee" or "stand")
                 hitTarget = nil
                 local to = ____exports.behindPoint(
                     bot,
@@ -1522,29 +1595,29 @@ local GANK_LOST_GRACE = 2
 local GANK_ENGAGE_FOR = 8
 local GANK_REORDER = 1
 local function visible(t)
-    local ____temp_150 = t ~= nil
-    if ____temp_150 then
-        local ____this_148
-        ____this_148 = t
-        local ____opt_147 = ____this_148.IsNull
-        local ____temp_149 = ____opt_147 and ____opt_147(____this_148)
-        if ____temp_149 == nil then
-            ____temp_149 = false
-        end
-        ____temp_150 = not ____temp_149
-    end
-    local ____temp_154 = ____temp_150 and t:IsAlive()
+    local ____temp_154 = t ~= nil
     if ____temp_154 then
         local ____this_152
         ____this_152 = t
-        local ____opt_151 = ____this_152.CanBeSeen
+        local ____opt_151 = ____this_152.IsNull
         local ____temp_153 = ____opt_151 and ____opt_151(____this_152)
         if ____temp_153 == nil then
-            ____temp_153 = true
+            ____temp_153 = false
         end
-        ____temp_154 = ____temp_153
+        ____temp_154 = not ____temp_153
     end
-    return ____temp_154
+    local ____temp_158 = ____temp_154 and t:IsAlive()
+    if ____temp_158 then
+        local ____this_156
+        ____this_156 = t
+        local ____opt_155 = ____this_156.CanBeSeen
+        local ____temp_157 = ____opt_155 and ____opt_155(____this_156)
+        if ____temp_157 == nil then
+            ____temp_157 = true
+        end
+        ____temp_158 = ____temp_157
+    end
+    return ____temp_158
 end
 local function pathLeft(from, path, i, ____end)
     local d = 0
@@ -1570,13 +1643,13 @@ ____exports.gank = __TS__Generator(function(bot, p, h)
     end
     local range = p.engageRange or GANK_ENGAGE
     local function speed()
-        local ____math_max_157 = math.max
-        local ____this_156
-        ____this_156 = bot
-        local ____opt_155 = ____this_156.GetCurrentMovementSpeed
-        return ____math_max_157(
+        local ____math_max_161 = math.max
+        local ____this_160
+        ____this_160 = bot
+        local ____opt_159 = ____this_160.GetCurrentMovementSpeed
+        return ____math_max_161(
             1,
-            ____opt_155 and ____opt_155(____this_156) or 300
+            ____opt_159 and ____opt_159(____this_160) or 300
         )
     end
     local wp = 0
@@ -1586,31 +1659,31 @@ ____exports.gank = __TS__Generator(function(bot, p, h)
     local engagedAt
     local attackAt
     local orderedAt = -math.huge
-    local ____opt_158 = h.label
-    if ____opt_158 ~= nil then
-        ____opt_158("travel")
+    local ____opt_162 = h.label
+    if ____opt_162 ~= nil then
+        ____opt_162("travel")
     end
     while true do
         if not bot:IsAlive() then
             return fail("dead")
         end
         local t = now()
-        local ____opt_160 = p.commit
-        local why = ____opt_160 and ____opt_160()
+        local ____opt_164 = p.commit
+        local why = ____opt_164 and ____opt_164()
         if why ~= nil then
             return fail("interrupted", why)
         end
         local target = p.target()
-        local ____temp_165 = target ~= nil
-        if ____temp_165 then
-            local ____opt_162 = target.IsNull
-            local ____temp_164 = ____opt_162 and ____opt_162(target)
-            if ____temp_164 == nil then
-                ____temp_164 = false
+        local ____temp_169 = target ~= nil
+        if ____temp_169 then
+            local ____opt_166 = target.IsNull
+            local ____temp_168 = ____opt_166 and ____opt_166(target)
+            if ____temp_168 == nil then
+                ____temp_168 = false
             end
-            ____temp_165 = not ____temp_164
+            ____temp_169 = not ____temp_168
         end
-        if ____temp_165 and not target:IsAlive() then
+        if ____temp_169 and not target:IsAlive() then
             return {success = true, reason = "ok", message = "kill"}
         end
         if visible(target) then
@@ -1650,17 +1723,17 @@ ____exports.gank = __TS__Generator(function(bot, p, h)
             if engagedAt == nil then
                 engagedAt = t
                 attackAt = t + E().Skill.react(bot)
-                local ____opt_166 = h.label
-                if ____opt_166 ~= nil then
-                    ____opt_166("engage")
-                end
-                local ____opt_168 = h.urgent
-                if ____opt_168 ~= nil then
-                    ____opt_168(true)
-                end
-                local ____opt_170 = p.onEngage
+                local ____opt_170 = h.label
                 if ____opt_170 ~= nil then
-                    ____opt_170(t)
+                    ____opt_170("engage")
+                end
+                local ____opt_172 = h.urgent
+                if ____opt_172 ~= nil then
+                    ____opt_172(true)
+                end
+                local ____opt_174 = p.onEngage
+                if ____opt_174 ~= nil then
+                    ____opt_174(t)
                 end
             end
             if t >= attackAt and t - orderedAt >= (p.reorder or GANK_REORDER) then

@@ -694,6 +694,34 @@ do
 end
 
 do
+    -- Logging only: onAttempt names the try's target with its HP and hits at the start; onLook shows the gate shut (the
+    -- worked neutral above one hit) while the bot stands, then open on the frame it chose the last hit.
+    local sim, bot = stayWorld()
+    local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 5000, autoAttack = true, damage = 20, secondsPerAttack = 1 }
+    local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
+    creep.attackTarget = n
+    sim:at(12, function() creep.loc.x = 3000 end)
+    local tries, looks = {}, {}
+    stayStart(bot, {
+        onAttempt = function(kind, r, target, hp, hits) tries[#tries + 1] = { kind = kind, ok = r.success, target = target, hp = hp, hits = hits } end,
+        onLook = function(l) looks[#looks + 1] = l end,
+    })
+    run(sim, bot)
+    T.eq("stay log: one try", #tries, 1)
+    local a = tries[1] or {}
+    T.eq("stay log: a last hit on the neutral", a.kind, "lasthit")
+    T.check("stay log: its target is the neutral", a.target == n)
+    T.check("stay log: HP within one hit at the start", (a.hp or 999) <= 40 and (a.hits or 9) <= 1, a.hp)
+    local shut, open = false, false
+    for _, l in ipairs(looks) do
+        if l.step == "stand" and l.worked == 1 and l.due == 0 and (l.minHits or 0) > 1 then shut = true end
+        if l.step == "lasthit" and l.due == 1 then open = true end
+    end
+    T.check("stay log: the gate seen shut while standing", shut)
+    T.check("stay log: the gate seen open on the last hit", open)
+end
+
+do
     -- Nothing to hit: the bot walks behind our creep, the far side from the neutral (range 150, so 150 behind its centre);
     -- with the neutral on the bot it goes BEHIND_FLEE (250) further and attacks nothing.
     local function standing(onBot)

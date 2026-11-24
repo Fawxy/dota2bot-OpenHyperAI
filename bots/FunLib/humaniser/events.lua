@@ -1617,6 +1617,30 @@ ____exports.EVENTS = {
         sht = "num",
         shl = "num"
     },
+    stay_try = {
+        pid = "num",
+        slot = "num",
+        k = "str",
+        ok = "num",
+        why = "str",
+        m = "str",
+        u = "str",
+        hp = "num",
+        hh = "num",
+        dt = "num"
+    },
+    stay_look = {
+        pid = "num",
+        slot = "num",
+        step = "str",
+        nc = "num",
+        nn = "num",
+        nw = "num",
+        due = "num",
+        sk = "num",
+        mh = "num",
+        bh = "num"
+    },
     pull_watch = {
         pid = "num",
         slot = "num",

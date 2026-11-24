@@ -197,6 +197,9 @@ interface Pull {
      *  successes, and its plain hits on our deniable creeps. */
     stayAt?: number;
     stayHp?: number;
+    /** Logging only: the last `ev=stay_look` sample's time, and when the running deny or last-hit try was chosen. */
+    lookedAt?: number;
+    tryAt?: number;
     sht?: number;
     sdt?: number;
     sdk?: number;
@@ -1078,6 +1081,53 @@ function behindOurs(bot: Unit, pull: Pull): Lib.Vec | undefined {
     );
 }
 
+const tenth = (x: number): number => math.floor(x * 10 + 0.5) / 10;
+
+/** A unit name less `npc_dota_neutral_` or `npc_dota_creep_` (stay_try). */
+function shortName(name: string): string {
+    for (const pre of ["npc_dota_neutral_", "npc_dota_creep_"]) if (name.startsWith(pre)) return name.substring(pre.length);
+    return name;
+}
+
+/** One `ev=stay_try` line: a deny or neutral last-hit try of the stay and why it ended (logging only). */
+function tryLine(bot: Unit, p: Pull, kind: string, r: Lib.Result, target: Lib.TaskAttacker, hp: number, hits: number): void {
+    const name = (target as unknown as Unit).GetUnitName?.() ?? "?";
+    Telemetry.Event("stay_try", [
+        ["pid", bot.GetPlayerID()],
+        ["slot", p.plan.slot],
+        ["k", kind],
+        ["ok", r.success ? 1 : 0],
+        ["why", r.reason],
+        ["m", r.message],
+        ["u", shortName(name)],
+        ["hp", math.floor(hp + 0.5)],
+        ["hh", tenth(hits)],
+        ["dt", p.tryAt !== undefined ? tenth(DotaTime() - p.tryAt) : undefined],
+    ]);
+    p.tryAt = undefined;
+}
+
+/** One `ev=stay_look` sample per WatchLogEvery while the stay runs (logging only). */
+function lookLine(bot: Unit, p: Pull, l: JobVerbs.StayLook): void {
+    const now = DotaTime();
+    // A try's start time, for stay_try dt: the frame that chose it.
+    if (l.step === "lasthit" || l.step === "deny") p.tryAt = now;
+    if (p.lookedAt !== undefined && now - p.lookedAt < SETTINGS.WatchLogEvery) return;
+    p.lookedAt = now;
+    Telemetry.Event("stay_look", [
+        ["pid", bot.GetPlayerID()],
+        ["slot", p.plan.slot],
+        ["step", l.step],
+        ["nc", l.ours],
+        ["nn", l.neutrals],
+        ["nw", l.worked],
+        ["due", l.due],
+        ["sk", l.skipped],
+        ["mh", l.minHits !== undefined ? tenth(l.minHits) : undefined],
+        ["bh", math.floor((bot.GetHealth() / bot.GetMaxHealth()) * 100 + 0.5) / 100],
+    ]);
+}
+
 function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
     p.stayAt = DotaTime();
     p.stayHp = bot.GetHealth();
@@ -1089,7 +1139,7 @@ function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
             onHit: () => {
                 p.sht = (p.sht ?? 0) + 1;
             },
-            onAttempt: (kind, r) => {
+            onAttempt: (kind, r, target, hp, hits) => {
                 if (kind === "deny") {
                     p.sdt = (p.sdt ?? 0) + 1;
                     if (r.success) p.sdk = (p.sdk ?? 0) + 1;
@@ -1097,7 +1147,9 @@ function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
                     p.slt = (p.slt ?? 0) + 1;
                     if (r.success) p.slk = (p.slk ?? 0) + 1;
                 }
+                tryLine(bot, p, kind, r, target, hp, hits);
             },
+            onLook: (l) => lookLine(bot, p, l),
         },
         hooks
     );

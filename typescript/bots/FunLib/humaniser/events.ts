@@ -2704,6 +2704,46 @@ export const EVENTS = {
     // Slice pull-diag: the camp's own neutrals tagged at the hit (see pull_job): tn alive, tp of them attacking the puller
     // (in attack range; a chase out of range reads no target, as for ntp/nt), tc on a creep, td the nearest of them to our lane creeps near the watch (to the meet point when none), th the farthest of them
     // from the camp origin. nd/nh/nt above may name another camp's neutral (nh over 3000 in banked logs).
+    /** The stay (Ours.SupportPullStay): one line per deny or neutral last-hit try (JobVerbs.stayCamp onAttempt). */
+    stay_try: {
+        pid: "num",
+        /** The pull's planned hit second; joins `ev=pull_job`. */
+        slot: "num",
+        /** `deny` or `lasthit`. */
+        k: "str",
+        /** 1 when the try got the kill or deny. */
+        ok: "num",
+        /** The verb's result reason (`ok`, `taken_by_other`, `timeout`, `missed`, `etiquette`, ...). */
+        why: "str",
+        /** The verb's result message (for lastHit `w=<waited> why=<what held the swing>` and its watch text). */
+        m: "str",
+        /** The target's unit name, less `npc_dota_neutral_` / `npc_dota_creep_`. */
+        u: "str",
+        /** The target's HP when the try began, and that HP in the puller's hits (one decimal). */
+        hp: "num",
+        hh: "num",
+        /** The try's seconds. */
+        dt: "num",
+    },
+    /** The stay (Ours.SupportPullStay): one sample per PullJob WatchLogEvery while it runs (JobVerbs.stayCamp onLook). */
+    stay_look: {
+        pid: "num",
+        /** The pull's planned hit second; joins `ev=pull_job`. */
+        slot: "num",
+        /** What the stay chose that frame: `lasthit`, `deny`, `hit`, `stand` or `flee` (a neutral on the puller). */
+        step: "str",
+        /** Our lane creeps and neutrals at the camp. */
+        nc: "num",
+        nn: "num",
+        /** Neutrals one of our creeps is on; of them `due` within the last-hit gate's hits (StayPlan lastHitHits), `sk` left to
+         *  our creeps after a try that could not run; `mh` the lowest HP among them in the puller's hits (one decimal). */
+        nw: "num",
+        due: "num",
+        sk: "num",
+        mh: "num",
+        /** The puller's HP share of max (two decimals). */
+        bh: "num",
+    },
     pull_watch: {
         pid: "num",
         /** The pull's planned hit second; joins `ev=pull_job`. */
