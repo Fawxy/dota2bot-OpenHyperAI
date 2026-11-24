@@ -236,12 +236,13 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     if (n.byTarget !== undefined) return n.byTarget;
     const by = new LuaTable<TaskAttacker, TaskAttacker[]>();
     const myTeam = bot.GetTeam?.();
-    const add = (a: TaskAttacker): void => {
+    const add = (a: TaskAttacker, neutral = false): void => {
         if (a === (bot as unknown) || gone(a)) return;
         // CanBeSeen is "visible to the enemy team": it says nothing about our own units, so only enemies are
-        // dropped by it (a fogged enemy's attack target cannot be read).
-        if (myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
-        if (myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
+        // dropped by it (a fogged enemy's attack target cannot be read). A neutral has no enemy team to ask, so it is
+        // not read through CanBeSeen; one in the fog reads no location and is `gone`.
+        if (!neutral && myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
+        if (!neutral && myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
         const target = a.GetAttackTarget?.();
         if (target === undefined || target === null) return;
         let list = by.get(target as TaskAttacker);
@@ -253,6 +254,11 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     };
     for (const c of n.enemyCreeps) add(c);
     for (const c of n.allyCreeps) add(c);
+    // Neutral creeps: a camp's neutrals on a pulled wave (or on a creep that walks past the camp). Without them the
+    // belief and the forecast saw no damage coming to a creep the neutrals were killing (pullchain2, 24/11/2026: 7 of 22
+    // denies at a camp lost after the swing, each reading idps=0). They are periodic attackers like lane creeps: kind
+    // `creep`, their repeats counted once phased.
+    for (const c of bot.GetNearbyNeutralCreeps?.(QUERY_RADIUS) ?? []) add(c, true);
     for (const o of others(bot, n)) add(o);
     n.byTarget = by;
     return by;

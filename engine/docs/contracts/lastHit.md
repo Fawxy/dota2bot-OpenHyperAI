@@ -1,7 +1,8 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 5 (v5, slice oha-engine-windup, 24/11/2026: the incoming wind-ups the belief counts
+name / version / owner:  lastHit, deny / 6 (v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
+                a camp's neutrals on the creep count as incoming damage; v5, slice oha-engine-windup, 24/11/2026: the incoming wind-ups the belief counts
                 are timed as attack point / attack speed from the first read, measured in game; v4 slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
                 cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
                 within the horizon are counted and its rate is not spread; v2 slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
@@ -22,7 +23,7 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 Kill belief (game facts, each frame): own hit time = attack point / attack speed + cooldown left (with the
                 adapter's attackClock) + projectile flight for a ranged bot (dist - 39, over projectile speed); incoming
                 damage = attack projectiles in flight at the creep plus every visible attacker of either team winding up
-                on it whose hit lands at least one server tick (0.034 s) before ours, after armour
+                on it (lane creeps, neutral creeps, heroes, towers) whose hit lands at least one server tick (0.034 s) before ours, after armour
                 (GetActualIncomingDamage); a tower's or creep's hit in flight or winding up repeats one attack cycle
                 later within the horizon (its phase is known; the repeat assumes it stays on the creep, UNVERIFIED in-game
                 as for hpForecast; slice pre-hit, 05/11/2026); past 0.45 s of horizon the
@@ -68,7 +69,7 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 the same check on lane creeps and towers (slice lh-unphased). Read by hlog `@lh_swings`.
 fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
-                enemy hero wind-ups relied on, not relied on, and under a lapse, hero watch (relied on, idle hero aimed at
+                enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
                 the creep, two heroes with one wind-up frame),
                 deny 50% rule, etiquette); bot test_states_laning_body.
 evidence:       calibration in lane-only games llhscn1 and llhscn2 (03/11/2026, slice lane-last-hits: relied horizon,
