@@ -47,7 +47,7 @@ local function stateOf(bot)
     local pid = bot:GetPlayerID()
     local s = heroes[pid]
     if s == nil then
-        s = {seen = {}}
+        s = {seen = {}, soft = false}
         heroes[pid] = s
     end
     return s
@@ -120,9 +120,10 @@ local function note(bot, s)
     local held = ____opt_0 and ____opt_0.name or "-"
     local win = HDebug.ModeName(bot:GetActiveMode())
     local let_ = s.letAt ~= nil
-    if held == s.lineHeld and win == s.lineWin and let_ == s.lineLet then
+    if held == s.lineHeld and win == s.lineWin and let_ == s.lineLet and s.soft == s.lineSoft then
         return
     end
+    s.lineSoft = s.soft
     s.lineHeld = held
     s.lineWin = win
     s.lineLet = let_
@@ -136,7 +137,7 @@ local function note(bot, s)
         {"win", win}
     }
     if s.held ~= nil then
-        fields[#fields + 1] = {"hs", s.held.soft == true and "soft" or "hard"}
+        fields[#fields + 1] = {"hs", s.soft and "soft" or "hard"}
     end
     if s.letAt ~= nil then
         __TS__ArrayPush(fields, {"let", "retreat"}, {"d_retreat", s.letAt})
@@ -162,11 +163,20 @@ function ____exports.Host(bot, inner)
             ____temp_3 = nil
         end
         s.held = ____temp_3
+        local ____opt_4 = s.held
+        local soft = ____opt_4 and ____opt_4.soft
+        local ____temp_6
+        if type(soft) == "function" then
+            ____temp_6 = soft(bot)
+        else
+            ____temp_6 = soft == true
+        end
+        s.soft = ____temp_6
         pcall(function() return note(bot, s) end)
         if s.held == nil then
             return inner()
         end
-        if s.held.soft ~= true then
+        if not s.soft then
             return ____exports.HARD
         end
         return bot:GetActiveMode() == BotMode.Farm and ____exports.SOFT / ____exports.BONUS or ____exports.SOFT
@@ -184,14 +194,14 @@ end
 -- it ("retreat excepted"); the first soft row's smoke counts it.
 function ____exports.Cap(bot, mode, v)
     local s = heroes[bot:GetPlayerID()]
-    local ____temp_4
+    local ____temp_7
     if s == nil then
-        ____temp_4 = nil
+        ____temp_7 = nil
     else
-        ____temp_4 = s.held
+        ____temp_7 = s.held
     end
-    local held = ____temp_4
-    if held == nil or held.soft ~= true or UNCAPPED[mode] == true or type(v) ~= "number" then
+    local held = ____temp_7
+    if held == nil or not s.soft or UNCAPPED[mode] == true or type(v) ~= "number" then
         return v
     end
     return v > ____exports.CAP and ____exports.CAP or v

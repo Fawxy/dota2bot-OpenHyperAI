@@ -170,8 +170,9 @@ Customize.Humaniser = {
 -- forecast of the lane wants it and the puller's record of the camp holds 6 neutrals, and stacks that camp in a minute the record
 -- is under it (families proposal s5); two rows of the decider (needs no other switch). Off: no pull or stack, both logged as shadows. On by default (it beat the reference arm,
 -- oha-pull-row's batch pullstack1).
--- SupportPullStay (families proposal s5 case 2; on oha-pull-stay only): after an ok pull the puller stays at the camp, denies
--- our pulled creeps and last-hits the neutrals they finish. Needs SupportPull. Off: the puller is yielded once the pull ends.
+-- SupportPullStay (families proposal s5 case 2; on oha-pull-stay only): after an ok pull the puller stays behind our pulled creeps,
+-- hits them down and denies them, and last-hits the neutrals they finish, on a soft hold. Needs SupportPull. Off: the puller is
+-- yielded once the pull ends.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- Sustain (D6, sustain design steps 3-5): a held laner's heal and mana items, its walk home, its regen purchases and their

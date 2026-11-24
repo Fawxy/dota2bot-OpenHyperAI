@@ -390,7 +390,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local campFor, alive, recordCount, advance, recordOf, readsHit, campDmgGate, ourTower, share, laneCreepsNear, onNeutral, sample, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, watch, logSeeds, Step, End, running, records, watchedAt, RECORD_LEASH, HOST, seedsLogged
+local campFor, alive, recordCount, advance, recordOf, readsHit, campDmgGate, ourTower, share, laneCreepsNear, onNeutral, sample, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, behindOurs, watch, logSeeds, Step, End, running, records, watchedAt, RECORD_LEASH, HOST, seedsLogged
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
@@ -402,6 +402,7 @@ local UnitType = ____dota.UnitType
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
+local JobVerbs = require(GetScriptDirectory().."/FunLib/humaniser/job_verbs")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
@@ -1059,6 +1060,25 @@ function taggedFields(bot, p, ours)
         }
     }
 end
+function behindOurs(bot, pull)
+    local ours = laneCreepsNear(
+        pull.plan,
+        LaneConfig.Settings().Radii.MeetWatch
+    )
+    if not __TS__ArraySome(
+        ours,
+        function(____, c) return onNeutral(c) end
+    ) then
+        return nil
+    end
+    local neutrals = {}
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        if u:IsAlive() and GetUnitToLocationDistance(u, pull.plan.spawner.location) <= LaneConfig.Settings().Radii.MeetWatch then
+            neutrals[#neutrals + 1] = u
+        end
+    end
+    return JobVerbs.behindPoint(bot, ours, neutrals, pull.plan.spawner.location)
+end
 function watch(bot)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
@@ -1079,13 +1099,13 @@ end
 --- The spawner of the lane's pull camp (the pull's and the stack row's camp).
 function ____exports.SpawnerFor(bot)
     local camp = campFor(bot)
-    local ____temp_47
+    local ____temp_48
     if camp ~= nil then
-        ____temp_47 = Camps.SpawnerByIdx(camp.campIdx)
+        ____temp_48 = Camps.SpawnerByIdx(camp.campIdx)
     else
-        ____temp_47 = nil
+        ____temp_48 = nil
     end
-    return ____temp_47
+    return ____temp_48
 end
 function logSeeds()
     if seedsLogged or not Telemetry.IsEnabled() then
@@ -1153,8 +1173,6 @@ ____exports.SETTINGS = {
     WatchEvery = 0.25,
     TrailSec = 10,
     StayMax = 35,
-    StayClearSeconds = 4,
-    StayClearReserve = 0.3,
     WatchLogEvery = 1,
     WatchNeutralSearch = 3000,
     TagRadius = 1200,
@@ -1801,7 +1819,12 @@ local function finish(bot, p, ____end, label)
         {"sdt", p.sdt},
         {"sdk", p.sdk},
         {"slt", p.slt},
-        {"slk", p.slk}
+        {"slk", p.slk},
+        {"sht", p.sht},
+        {
+            "shl",
+            p.stayHp ~= nil and math.floor((p.stayHp - (bot:IsAlive() and bot:GetHealth() or 0)) / bot:GetMaxHealth() * 100 + 0.5) / 100 or nil
+        }
     )
     local fields = {__TS__SparseArraySpread(____array_36)}
     if not r.success then
@@ -1915,7 +1938,15 @@ local function verbPlan(bot, pull, aggroAt)
         camp = camp,
         aggroAt = aggroAt,
         lead = p.lead,
-        watchAt = function() return shedPoint(bot, pull) end,
+        watchAt = function()
+            local ____Ours_On_result_47
+            if Ours.On("SupportPullStay") then
+                ____Ours_On_result_47 = behindOurs(bot, pull)
+            else
+                ____Ours_On_result_47 = nil
+            end
+            return ____Ours_On_result_47 or shedPoint(bot, pull)
+        end,
         watchSec = s.Timing.WatchSec,
         watchUntil = function()
             local w = PullTiming.WaveAt(pull.timer)
@@ -1929,22 +1960,17 @@ local function verbPlan(bot, pull, aggroAt)
         confirmFor = s.Timing.AggroConfirm
     }
 end
---- The stay's camp clear: the camp's damage on the puller over StayClearSeconds must leave it StayClearReserve of max HP.
-local function stayClears(bot, p)
-    local s = ____exports.CampStateOf(p.plan.spawner)
-    if s.n == 0 then
-        return false
-    end
-    return bot:GetHealth() - ____exports.CampDamage(bot, s, p.plan.spawner.type, ____exports.SETTINGS.StayClearSeconds) >= bot:GetMaxHealth() * ____exports.SETTINGS.StayClearReserve
-end
 local stay = __TS__Generator(function(bot, p, hooks)
     p.stayAt = DotaTime()
+    p.stayHp = bot:GetHealth()
     return __TS__DelegatedYield(Tasks.Jobs().stayCamp(
         bot,
         {
             at = p.plan.spawner.location,
             deadline = p.stayAt + ____exports.SETTINGS.StayMax,
-            clearLeft = function() return stayClears(bot, p) end,
+            onHit = function()
+                p.sht = (p.sht or 0) + 1
+            end,
             onAttempt = function(kind, r)
                 if kind == "deny" then
                     p.sdt = (p.sdt or 0) + 1
@@ -2210,8 +2236,13 @@ local function rowStep(bot)
     Step(bot)
     return running[bot:GetPlayerID()] == nil
 end
+--- Soft in the stay (Ours.SupportPullStay): Valve's modes and retreat take the puller when they want it; hard before it.
+local function rowSoft(bot)
+    local ____opt_49 = running[bot:GetPlayerID()]
+    return (____opt_49 and ____opt_49.label) == "stay"
+end
 --- The decider's row (registered in index.ts, so the decider imports no row).
-____exports.ROW = {name = "pull", applies = rowApplies, step = rowStep}
+____exports.ROW = {name = "pull", applies = rowApplies, step = rowStep, soft = rowSoft}
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end

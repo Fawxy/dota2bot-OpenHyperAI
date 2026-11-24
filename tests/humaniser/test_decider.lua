@@ -277,4 +277,24 @@ do
 		table.concat(lines, " | "))
 end
 
+do -- a row whose soft is a function (the pull: hard, then soft in its stay): read each round; the line notes the change
+	local H, bot = world()
+	local r = row({ applies = true, steps = 0, finishAt = 99 })
+	local stay = false
+	r.soft = function() return stay end
+	H.Decider.ROWS[1] = r
+	local f = farm()
+	local hard, soft, capped
+	local lines = capture(function()
+		hard = H.Decider.Host(bot, f.GetDesire)()
+		stay = true
+		soft = H.Decider.Host(bot, f.GetDesire)()
+		capped = H.Decider.Cap(bot, "laning", 0.9)
+	end)
+	check("a soft function false holds HARD, then true holds SOFT", hard == H.Decider.HARD and soft == H.Decider.SOFT, tostring(hard) .. " " .. tostring(soft))
+	check("a soft function true caps OHA's Lua modes", capped == H.Decider.CAP, tostring(capped))
+	check("the line goes out again on the change, hs=hard then hs=soft", #lines == 2 and lines[1]:find("hs=hard", 1, true)
+		and lines[2]:find("hs=soft", 1, true), table.concat(lines, " | "))
+end
+
 finish()

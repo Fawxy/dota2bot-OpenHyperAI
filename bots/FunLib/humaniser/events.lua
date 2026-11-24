@@ -1613,7 +1613,9 @@ ____exports.EVENTS = {
         sdt = "num",
         sdk = "num",
         slt = "num",
-        slk = "num"
+        slk = "num",
+        sht = "num",
+        shl = "num"
     },
     pull_watch = {
         pid = "num",

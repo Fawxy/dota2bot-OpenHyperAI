@@ -623,8 +623,9 @@ do
     T.check("approach: the camp was hit", n.attackTarget ~= nil)
 end
 
--- stayCamp: after a pull, keep the pulled wave from walking back: deny ours, last-hit the neutrals ours finish, and never
--- save our creeps by plain-attacking a neutral while one of ours is at the camp.
+-- stayCamp: after a pull, stand behind our pulled creeps, hit them down and deny them, last-hit the neutrals ours finish,
+-- and never save our creeps by plain-attacking a neutral while one of ours is at the camp. The engine's sim has no Vector.
+Vector = Vector or function(x, y, z) return { x = x, y = y, z = z or 0 } end
 local function stayWorld()
     local sim, bot = world(nil, { x = 0, damage = 40, secondsPerAttack = 1, range = 150, attackPoint = 0.3 })
     return sim, bot
@@ -641,21 +642,28 @@ local function stayStart(bot, over)
 end
 
 do
-    -- The neutral wins: our creep is denied once it is under half, the neutral is never hit while the creep lives, and the
-    -- neutral left alive ends the stay "left" (no clearLeft).
+    -- The neutral wins: our creep is hit down once it is under half and denied, the neutral is never hit while the creep
+    -- lives, and the neutral left alive ends the stay "left".
     local sim, bot = stayWorld()
     local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 300 }
     local n = sim:addNeutral{ x = 150, y = 0, hp = 2000, autoAttack = true, attackTarget = creep, damage = 30, secondsPerAttack = 1, passive = true }
     creep.attackTarget = n
     local hitNeutralWhileOurs = false
-    stayStart(bot)
+    local hitAboveHalf = false
+    local hits = 0
+    stayStart(bot, { onHit = function() hits = hits + 1 end })
     for _ = 1, 600 do
         if R.Current(bot) == nil then break end
+        local before = attacksOn(bot, creep)
+        local hp = creep.hp
         frame(sim, bot)
+        if attacksOn(bot, creep) > before and hp >= 150 then hitAboveHalf = true end
         if creep.alive and attacksOn(bot, n) > 0 then hitNeutralWhileOurs = true end
     end
     local r = R.Last(bot).result
     T.eq("stay deny: the creep denied", bot.denies, 1)
+    T.eq("stay deny: hit down once under half (one onHit)", hits, 1)
+    T.check("stay deny: no hit on it above half", not hitAboveHalf)
     T.check("stay deny: the neutral never hit while our creep lived", not hitNeutralWhileOurs)
     T.eq("stay deny: ends ok", r.reason, "ok")
     T.eq("stay deny: neutral left", r.message, "left")
@@ -663,8 +671,8 @@ do
 end
 
 do
-    -- Our creep wins: the bot takes the neutral's last hit (not a plain attack while it is healthy), then the stay ends "done"
-    -- once our creep has walked off the camp.
+    -- Our creep wins: the bot takes the neutral's last hit (no hit on it above one of the bot's hits), then the stay ends
+    -- "done" once our creep has walked off the camp.
     local sim, bot = stayWorld()
     local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 5000, autoAttack = true, damage = 20, secondsPerAttack = 1 }
     local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
@@ -674,32 +682,47 @@ do
     stayStart(bot)
     for _ = 1, 600 do
         if R.Current(bot) == nil then break end
+        local hp = n.hp
+        local before = attacksOn(bot, n)
         frame(sim, bot)
-        if n.alive and n.hp > 2 * 40 and attacksOn(bot, n) > 0 then earlyHit = true end
+        if attacksOn(bot, n) > before and hp > 40 then earlyHit = true end
     end
     local r = R.Last(bot).result
     T.eq("stay last hit: the neutral is the bot's kill", bot.lastHits, 1)
-    T.check("stay last hit: no hit on it above two of the bot's hits", not earlyHit)
+    T.check("stay last hit: no hit on it above one of the bot's hits", not earlyHit)
     T.eq("stay last hit: ends done", r.message, "done")
 end
 
 do
-    -- Our creeps gone with a neutral alive: clearLeft decides; true clears it.
-    local function ending(clear)
+    -- Nothing to hit: the bot walks behind our creep, the far side from the neutral (range 150, so 150 behind its centre);
+    -- with the neutral on the bot it goes BEHIND_FLEE (250) further and attacks nothing.
+    local function standing(onBot)
         local sim, bot = stayWorld()
-        bot.autoAttack = true
-        local creep = sim:addCreep{ team = 2, x = 3000, y = 0, hp = 300 }
-        local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
-        stayStart(bot, { clearLeft = function() return clear end })
-        local r = run(sim, bot)
-        return r, n
+        local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 5000 }
+        local n = sim:addNeutral{ x = 300, y = 0, hp = 2000, passive = true }
+        if onBot then n.attackTarget = bot end
+        stayStart(bot, { deadline = 8 })
+        run(sim, bot)
+        return bot, n, creep
     end
-    local kept, n1 = ending(false)
-    T.eq("stay none of ours, no clear: left", kept.message, "left")
-    T.check("stay none of ours, no clear: neutral untouched", n1.alive)
-    local cleared, n2 = ending(true)
-    T.eq("stay none of ours, clear: cleared", cleared.message, "cleared")
-    T.check("stay none of ours, clear: neutral dead", not n2.alive)
+    local bot, n, creep = standing(false)
+    T.check("stay behind: stands behind our creep (x about -50)", math.abs(bot.loc.x - -50) <= 60 and math.abs(bot.loc.y) <= 60, bot.loc.x)
+    T.eq("stay behind: no attack", attacksOn(bot, n) + attacksOn(bot, creep), 0)
+    local fled, n2, creep2 = standing(true)
+    T.check("stay behind, neutral on it: further back (x about -300)", math.abs(fled.loc.x - -300) <= 60, fled.loc.x)
+    T.eq("stay behind, neutral on it: no attack", attacksOn(fled, n2) + attacksOn(fled, creep2), 0)
+end
+
+do
+    -- Our creeps gone with a neutral alive: "left", the neutral untouched (the stay clears nothing).
+    local sim, bot = stayWorld()
+    bot.autoAttack = true
+    sim:addCreep{ team = 2, x = 3000, y = 0, hp = 300 }
+    local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
+    stayStart(bot)
+    local r = run(sim, bot)
+    T.eq("stay none of ours: left", r.message, "left")
+    T.check("stay none of ours: neutral untouched", n.alive)
 end
 
 print("jobs [" .. T.runtime() .. "]")

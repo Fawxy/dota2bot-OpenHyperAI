@@ -59,10 +59,6 @@ export const SETTINGS = {
     TrailSec: 10,
     /** The stay's backstop: it ends `timeout:late` this long after it began (the old pull farm's MaxFarm; a clear is 7-26 s). */
     StayMax: 35,
-    /** The stay clears the neutrals left once none of our creeps is at the camp only if the camp's damage over
-     *  StayClearSeconds leaves StayClearReserve of max HP (the old pull farm's ClearSeconds and ClearReserve). */
-    StayClearSeconds: 4,
-    StayClearReserve: 0.3,
     /** `ev=pull_watch` cadence: one line per pull per this many seconds from the lead to the end of the trail. */
     WatchLogEvery: 1,
     /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
@@ -197,8 +193,11 @@ interface Pull {
     shs?: number;
     shh?: number;
     shedTo?: Vector;
-    /** The stay (Ours.SupportPullStay): when it began, its deny and neutral last-hit tries and successes. */
+    /** The stay (Ours.SupportPullStay): when it began and the puller's HP then, its deny and neutral last-hit tries and
+     *  successes, and its plain hits on our deniable creeps. */
     stayAt?: number;
+    stayHp?: number;
+    sht?: number;
     sdt?: number;
     sdk?: number;
     slt?: number;
@@ -735,6 +734,8 @@ function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined):
         ["sdk", p.sdk],
         ["slt", p.slt],
         ["slk", p.slk],
+        ["sht", p.sht],
+        ["shl", p.stayHp !== undefined ? math.floor(((p.stayHp - (bot.IsAlive() ? bot.GetHealth() : 0)) / bot.GetMaxHealth()) * 100 + 0.5) / 100 : undefined],
     ];
     if (!r.success) {
         Telemetry.Event("pull_job", fields);
@@ -1043,7 +1044,7 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
         camp,
         aggroAt,
         lead: p.lead as unknown as Lib.Vec[],
-        watchAt: () => shedPoint(bot, pull) as unknown as Lib.Vec | undefined,
+        watchAt: () => (Ours.On("SupportPullStay") ? behindOurs(bot, pull) : undefined) ?? (shedPoint(bot, pull) as unknown as Lib.Vec | undefined),
         watchSec: s.Timing.WatchSec,
         watchUntil: () => {
             const w = PullTiming.WaveAt(pull.timer);
@@ -1058,21 +1059,36 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     };
 }
 
-/** The stay's camp clear: the camp's damage on the puller over StayClearSeconds must leave it StayClearReserve of max HP. */
-function stayClears(bot: Unit, p: Pull): boolean {
-    const s = CampStateOf(p.plan.spawner);
-    if (s.n === 0) return false;
-    return bot.GetHealth() - CampDamage(bot, s, p.plan.spawner.type, SETTINGS.StayClearSeconds) >= bot.GetMaxHealth() * SETTINGS.StayClearReserve;
+/**
+ * With the stay on, the watch's stand once our creeps near the meet point or the camp are on a neutral: behind them, the far
+ * side from the neutrals (JobVerbs.behindPoint), so the pull ends with our creeps between the puller and the camp.
+ */
+function behindOurs(bot: Unit, pull: Pull): Lib.Vec | undefined {
+    const ours = laneCreepsNear(pull.plan, LaneConfig.Settings().Radii.MeetWatch);
+    if (!ours.some((c) => onNeutral(c))) return undefined;
+    const neutrals: Unit[] = [];
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (u.IsAlive() && GetUnitToLocationDistance(u, pull.plan.spawner.location) <= LaneConfig.Settings().Radii.MeetWatch) neutrals.push(u);
+    }
+    return JobVerbs.behindPoint(
+        bot as unknown as Lib.TaskUnit,
+        ours as unknown as Lib.TaskAttacker[],
+        neutrals as unknown as Lib.TaskAttacker[],
+        pull.plan.spawner.location as unknown as Lib.Vec
+    );
 }
 
 function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
     p.stayAt = DotaTime();
+    p.stayHp = bot.GetHealth();
     return yield* Tasks.Jobs()!.stayCamp(
         bot as unknown as Lib.TaskUnit,
         {
             at: p.plan.spawner.location as unknown as Lib.Vec,
             deadline: p.stayAt + SETTINGS.StayMax,
-            clearLeft: () => stayClears(bot, p),
+            onHit: () => {
+                p.sht = (p.sht ?? 0) + 1;
+            },
             onAttempt: (kind, r) => {
                 if (kind === "deny") {
                     p.sdt = (p.sdt ?? 0) + 1;
@@ -1291,8 +1307,13 @@ function rowStep(bot: Unit): boolean {
     return running[bot.GetPlayerID()] === undefined;
 }
 
+/** Soft in the stay (Ours.SupportPullStay): Valve's modes and retreat take the puller when they want it; hard before it. */
+function rowSoft(bot: Unit): boolean {
+    return running[bot.GetPlayerID()]?.label === "stay";
+}
+
 /** The decider's row (registered in index.ts, so the decider imports no row). */
-export const ROW: Decider.Row = { name: "pull", applies: rowApplies, step: rowStep };
+export const ROW: Decider.Row = { name: "pull", applies: rowApplies, step: rowStep, soft: rowSoft };
 
 function Step(bot: Unit): boolean {
     const p = running[bot.GetPlayerID()];

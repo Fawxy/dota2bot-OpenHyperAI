@@ -801,21 +801,34 @@ export interface StayPlan {
     radius?: number;
     /** Absolute time: past it the verb fails `timeout` "late" (a logged backstop; the ends are reads). */
     deadline: number;
-    /** A neutral our creeps are on is last-hit (not plain attacked) once it holds at most this many of the bot's hits. Default 2. */
+    /** A neutral our creeps are on is last-hit (not plain attacked) once it holds at most this many of the bot's hits. Default 1
+     *  (at 2 the first hit could land without the kill and turn the neutral onto the bot: pullchain1's stay). */
     lastHitHits?: number;
-    /** Host: whether to clear the neutrals still alive once none of our creeps is left at the camp (its damage check). */
-    clearLeft?: (this: void, neutrals: TaskAttacker[]) => boolean;
     /** After each deny or neutral last hit: which, and its result. */
     onAttempt?: (this: void, kind: "deny" | "lasthit", r: Result) => void;
+    /** After the first plain hit order on each of our deniable creeps. */
+    onHit?: (this: void) => void;
 }
 
 const STAY_RADIUS = 900;
-const STAY_LH_HITS = 2;
+const STAY_LH_HITS = 1;
 const STAY_REORDER = 0.5;
-/** Within attack range plus this of the nearest of our creeps, the bot holds rather than walks. */
-const STAY_NEAR = 100;
+/** Within this of the stand point behind our creeps, the bot holds rather than walks. */
+const STAY_ARRIVE = 60;
 /** laneTargets' `within` for a deny: offered when it comes due within this of the bot reaching range. */
 const STAY_DENY_WITHIN = 1;
+/** Dota: an allied creep can be attacked (denied) below this share of its max HP. */
+const DENY_SHARE = 0.5;
+/** judgement: a deniable creep is plain-hit only while it holds more than this many of the bot's hits, so the last ones are
+ *  left to the deny verb's timing (the final deny). */
+const STAY_HIT_ABOVE = 2;
+/** judgement: how far behind our creeps' centre the bot stands: its attack range less BEHIND_SHORT, within BEHIND_MIN to
+ *  BEHIND_MAX, so our creeps stay in its range and the neutrals reach it only through them; BEHIND_FLEE more while a
+ *  neutral is on it. */
+const BEHIND_SHORT = 250;
+const BEHIND_MIN = 150;
+const BEHIND_MAX = 400;
+const BEHIND_FLEE = 250;
 
 function campUnits(list: TaskAttacker[] | undefined, at: Vec, r: number): TaskAttacker[] {
     const out: TaskAttacker[] = [];
@@ -826,12 +839,55 @@ function campUnits(list: TaskAttacker[] | undefined, at: Vec, r: number): TaskAt
     return out;
 }
 
+/** The stay's distance behind our creeps' centre for this bot (BEHIND_SHORT, BEHIND_MIN, BEHIND_MAX). */
+export function behindBack(bot: TaskUnit): number {
+    return math.min(BEHIND_MAX, math.max(BEHIND_MIN, (bot.GetAttackRange?.() ?? 150) - BEHIND_SHORT));
+}
+
 /**
- * After a pull: stays with the pulled wave at the camp so as few of its creeps as possible walk back to lane. It never
- * plain-attacks a neutral while one of our creeps is at the camp (that would save the creeps); it denies each of ours
- * that comes due (below half HP) and takes the last hit on a neutral our creeps are finishing. Once none of ours is
- * left: ok "done" with no neutral left, else the neutrals left are cleared when the host's `clearLeft` allows (the
- * clear's own result, message "cleared") or left, ok "left". Labels `stay`, then `clear`.
+ * Where to stand behind our creeps: past their centre on the far side from the neutrals' centre, `back` from it (default
+ * `behindBack`). With no neutrals, the far side from `from` (the camp's origin). Undefined with none of ours.
+ */
+export function behindPoint(bot: TaskUnit, ours: TaskAttacker[], neutrals: TaskAttacker[], from: Vec, back?: number): Vec | undefined {
+    if (ours.length === 0) return undefined;
+    const oc = centre(ours);
+    const nc = neutrals.length > 0 ? centre(neutrals) : from;
+    let dx = oc.x - nc.x;
+    let dy = oc.y - nc.y;
+    let l = math.sqrt(dx * dx + dy * dy);
+    if (l < 1) {
+        // The neutrals' centre on our creeps' centre: away through where the bot stands.
+        const at = bot.GetLocation();
+        dx = at.x - oc.x;
+        dy = at.y - oc.y;
+        l = math.sqrt(dx * dx + dy * dy);
+        if (l < 1) return oc;
+    }
+    const d = back ?? behindBack(bot);
+    return Vector(oc.x + (dx / l) * d, oc.y + (dy / l) * d, oc.z ?? 0) as unknown as Vec;
+}
+
+function centre(list: TaskAttacker[]): Vec {
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    for (const u of list) {
+        const l = u.GetLocation();
+        x += l.x;
+        y += l.y;
+        z += l.z ?? 0;
+    }
+    return Vector(x / list.length, y / list.length, z / list.length) as unknown as Vec;
+}
+
+/**
+ * After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and as few of the
+ * creeps as possible walk back to lane. It never plain-attacks a neutral while one of ours is at the camp (that would save
+ * the creeps). In order: a neutral our creeps are finishing is last-hit once within `lastHitHits` of the bot's hits; one of
+ * ours due is denied (the final hit); else the lowest of our deniable creeps (under half HP) still above STAY_HIT_ABOVE hits
+ * is plain-hit, so they die sooner; else it stands behind our creeps (`behindPoint`). While a neutral is on the bot it only
+ * walks, BEHIND_FLEE further back. Once none of ours is left: ok "done" with no neutral left, else ok "left" (the neutrals
+ * stay on the camp). Label `stay`.
  */
 export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBody {
     const r = p.radius ?? STAY_RADIUS;
@@ -840,6 +896,8 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
     // Neutrals whose lastHit could not run (etiquette, unsupported): left to our creeps.
     const skip: TaskAttacker[] = [];
     let movedAt = -math.huge;
+    let hitTarget: TaskAttacker | undefined;
+    let hitAt = -math.huge;
     h.label?.("stay");
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
@@ -847,46 +905,65 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
         if (t >= p.deadline) return fail("timeout", "late");
         const ours = campUnits(bot.GetNearbyLaneCreeps?.(search, false) as TaskAttacker[] | undefined, p.at, r);
         const neutrals = campUnits(bot.GetNearbyNeutralCreeps?.(search) as TaskAttacker[] | undefined, p.at, r);
-        if (ours.length === 0) {
-            if (neutrals.length === 0) return { success: true, reason: "ok", message: "done" };
-            if (p.clearLeft?.(neutrals) !== true) return { success: true, reason: "ok", message: "left" };
-            h.label?.("clear");
-            return yield* clearCamp(bot, { at: p.at, radius: r, deadline: p.deadline }, {});
-        }
-        let deny: TaskCreep | undefined;
-        let eta = math.huge;
-        for (const o of E().Verbs.laneTargets(bot, { lastHit: false, deny: true, within: STAY_DENY_WITHIN, radius: search })) {
-            if (o.kind === "deny" && o.eta < eta && ours.indexOf(o.creep as unknown as TaskAttacker) >= 0) {
-                deny = o.creep;
-                eta = o.eta;
+        if (ours.length === 0) return { success: true, reason: "ok", message: neutrals.length === 0 ? "done" : "left" };
+        const myHit = bot.GetAttackDamage?.() ?? 0;
+        const hitOn = (u: TaskAttacker): number => {
+            const c = u as unknown as TaskCreep;
+            return math.max(1, c.GetActualIncomingDamage !== undefined ? c.GetActualIncomingDamage(myHit, 1) : myHit);
+        };
+        const onMe = neutrals.some((n) => n.GetAttackTarget?.() === bot);
+        if (!onMe) {
+            let finish: TaskAttacker | undefined;
+            for (const n of neutrals) {
+                if (skip.indexOf(n) >= 0 || !ours.some((o) => o.GetAttackTarget?.() === n)) continue;
+                if (hpOf(n) <= lhHits * hitOn(n) && (finish === undefined || hpOf(n) < hpOf(finish))) finish = n;
             }
-        }
-        if (deny !== undefined) {
-            const res = yield* E().Verbs.deny(bot, { target: deny, maxWait: eta + 1.5, deadline: p.deadline, hold: "camp_deny" });
-            p.onAttempt?.("deny", res);
-            continue;
-        }
-        let finish: TaskAttacker | undefined;
-        for (const n of neutrals) {
-            if (skip.indexOf(n) >= 0 || !ours.some((o) => (o as Partial<TaskCreep>).GetAttackTarget?.() === n)) continue;
-            const c = n as unknown as TaskCreep;
-            const hit = c.GetActualIncomingDamage !== undefined ? c.GetActualIncomingDamage(bot.GetAttackDamage?.() ?? 0, 1) : bot.GetAttackDamage?.() ?? 0;
-            if (hpOf(n) <= lhHits * math.max(1, hit) && (finish === undefined || hpOf(n) < hpOf(finish))) finish = n;
-        }
-        if (finish !== undefined) {
-            const res = yield* E().Verbs.lastHit(bot, { target: finish as TaskCreep, maxWait: CLEAR_LH_WAIT, deadline: p.deadline, hold: "camp_lasthit" });
-            p.onAttempt?.("lasthit", res);
-            if (!res.success && (res.reason === "etiquette" || res.reason === "unsupported")) {
-                skip.push(finish);
+            if (finish !== undefined) {
+                const res = yield* E().Verbs.lastHit(bot, { target: finish as TaskCreep, maxWait: CLEAR_LH_WAIT, deadline: p.deadline, hold: "camp_lasthit" });
+                p.onAttempt?.("lasthit", res);
+                hitTarget = undefined;
+                if (!res.success && (res.reason === "etiquette" || res.reason === "unsupported")) {
+                    skip.push(finish);
+                    yield;
+                }
+                continue;
+            }
+            let deny: TaskCreep | undefined;
+            let eta = math.huge;
+            for (const o of E().Verbs.laneTargets(bot, { lastHit: false, deny: true, within: STAY_DENY_WITHIN, radius: search })) {
+                if (o.kind === "deny" && o.eta < eta && ours.indexOf(o.creep as unknown as TaskAttacker) >= 0) {
+                    deny = o.creep;
+                    eta = o.eta;
+                }
+            }
+            if (deny !== undefined) {
+                const res = yield* E().Verbs.deny(bot, { target: deny, maxWait: eta + 1.5, deadline: p.deadline, hold: "camp_deny" });
+                p.onAttempt?.("deny", res);
+                hitTarget = undefined;
+                continue;
+            }
+            let down: TaskAttacker | undefined;
+            for (const o of ours) {
+                const max = (o as unknown as TaskCreep).GetMaxHealth?.() ?? 0;
+                if (max <= 0 || hpOf(o) >= max * DENY_SHARE || hpOf(o) <= STAY_HIT_ABOVE * hitOn(o)) continue;
+                if (down === undefined || hpOf(o) < hpOf(down)) down = o;
+            }
+            if (down !== undefined) {
+                if (down !== hitTarget || t - hitAt >= STAY_REORDER) {
+                    bot.Action_AttackUnit(down, false);
+                    if (down !== hitTarget) p.onHit?.();
+                    hitTarget = down;
+                    hitAt = t;
+                }
                 yield;
+                continue;
             }
-            continue;
         }
-        let near: TaskAttacker | undefined;
-        for (const o of ours) if (near === undefined || dist(o.GetLocation(), bot.GetLocation()) < dist(near.GetLocation(), bot.GetLocation())) near = o;
-        if (dist(near!.GetLocation(), bot.GetLocation()) > (bot.GetAttackRange?.() ?? 150) + STAY_NEAR) {
+        hitTarget = undefined;
+        const to = behindPoint(bot, ours, neutrals, p.at, behindBack(bot) + (onMe ? BEHIND_FLEE : 0))!;
+        if (dist(bot.GetLocation(), to) > STAY_ARRIVE) {
             if (t - movedAt >= STAY_REORDER) {
-                bot.Action_MoveToLocation(near!.GetLocation());
+                bot.Action_MoveToLocation(to);
                 movedAt = t;
             }
         } else hold(bot, "camp_stay");
