@@ -111,9 +111,8 @@ export const SETTINGS = {
     ShedFor: 5,
     /** The bar (families proposal s5, named 24/11/2026): a pull is started only into a camp of at least this many neutrals on
      *  the hero's record. From the banked pull rigs' diverted pulls, creeps dead within 1,000 of the camp by neutrals met:
-     *  3 met 13 of 61, 4 met 4 of 36, 5 met 7 of 8, 6 or more 137 of 140 (small camps). By camp type: the off lane's hard
-     *  camp takes the wave unstacked (user 24/11/2026; slice oha-off-pull, its rig sets the value). */
-    StrongAt: { small: 6, medium: 6, large: 2, ancient: 6 } as Record<Camps.CampType, number>,
+     *  3 met 13 of 61, 4 met 4 of 36, 5 met 7 of 8, 6 or more 137 of 140. */
+    StrongAt: 6,
     /** Neutrals the spawn rule adds to an empty camp while it is out of sight (`judgement`: a camp's set varies by kind,
      *  2 to 4; the next sighting corrects it). */
     SetSize: { small: 3, medium: 3, large: 3, ancient: 3 } as Record<Camps.CampType, number>,
@@ -437,14 +436,9 @@ export function Known(spawner: Camps.Spawner): CampKnown {
     return { n, src: r.src, age: math.floor((now - r.seenAt) * 10) / 10, held: n - r.added };
 }
 
-/** The bar for a camp of this spawner's type (SETTINGS.StrongAt). */
-export function BarOf(spawner: Camps.Spawner): number {
-    return SETTINGS.StrongAt[spawner.type];
-}
-
-/** The camp holds at least its bar's neutrals on this hero's record. */
+/** The camp holds at least the bar's neutrals (SETTINGS.StrongAt) on this hero's record. */
 export function Strong(spawner: Camps.Spawner): boolean {
-    return Known(spawner).n >= BarOf(spawner);
+    return Known(spawner).n >= SETTINGS.StrongAt;
 }
 
 /**
@@ -1209,7 +1203,7 @@ function rowApplies(bot: Unit): boolean {
     }
     // Only a strong camp takes the wave (families proposal s5); under the bar the stack row builds it. A camp seen empty or
     // with one neutral says so (CampGate, in the start check).
-    if (camp.known.n < BarOf(p.spawner) && CampGate(camp, now, hitAt) === undefined) {
+    if (camp.known.n < SETTINGS.StrongAt && CampGate(camp, now, hitAt) === undefined) {
         done(false, "weak");
         return false;
     }
@@ -1262,7 +1256,7 @@ function Step(bot: Unit): boolean {
         const close = GetUnitToLocationDistance(bot, p.plan.stand) <= SETTINGS.CampReadNear;
         NoteSighting(p.plan.spawner, s, close);
         // On arrival the puller's own look is the record (a full view): a camp under the bar is not pulled.
-        const gate = CampGate(s, now, p.hitAt) ?? (readsHit(s, now, p.hitAt) && Known(p.plan.spawner).n < BarOf(p.plan.spawner) ? "weak" : undefined);
+        const gate = CampGate(s, now, p.hitAt) ?? (readsHit(s, now, p.hitAt) && Known(p.plan.spawner).n < SETTINGS.StrongAt ? "weak" : undefined);
         // `one`/`empty`/`weak` count only near the stand (CampReadNear) and must hold CampLowHold s (the camp fills in as it
         // comes into sight); camp damage ends it at once.
         if (gate === undefined || !close) p.low = undefined;

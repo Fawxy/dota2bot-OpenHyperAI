@@ -2791,8 +2791,8 @@ local function rowBlock(bot)
     return nil
 end
 --- A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark.
-local function rowWants(sp, k)
-    return k.n > 0 and k.n < PullJob.BarOf(sp)
+local function rowWants(k)
+    return k.n > 0 and k.n < PullJob.SETTINGS.StrongAt
 end
 --- Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`.
 function ____exports.Shadow(bot)
@@ -2814,7 +2814,7 @@ function ____exports.Shadow(bot)
         bot,
         slot,
         false,
-        rowWants(slot.sp, known),
+        rowWants(known),
         "off",
         known,
         "shadow"
@@ -2844,7 +2844,7 @@ local function rowApplies(bot)
         return false
     end
     local known = PullJob.Known(slot.sp)
-    if not rowWants(slot.sp, known) then
+    if not rowWants(known) then
         rowLine(
             bot,
             slot,

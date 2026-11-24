@@ -33,14 +33,14 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
-	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300, large = 300 }, LiveEvery = o.liveEvery } },
+	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery } },
 		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	FOGGED = not o.visible and campFog or nil
 	CURRENT_TEAM = 2
 	OBSERVER = 1
-	SPAWNERS = { { team = 2, type = o.type or "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
+	SPAWNERS = { { team = 2, type = "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
 	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
@@ -793,15 +793,6 @@ do
 	check("weak: one line, wanted, not started, why=weak, rn from the rules", #choice == 1 and field(choice[1], "want") == "1" and field(choice[1], "go") == "0"
 		and field(choice[1], "why") == "weak" and field(choice[1], "rn") == "3" and field(choice[1], "rsrc") == "rules", choice[1])
 	check("weak: no job, the hero stays in lane", #lines(out, "job") == 0 and w.sup.mode == LANING)
-end
-
--- The bar is the camp type's: a hard camp's set of three, the same record that holds a small camp `weak`, is strong
--- unstacked (the off lane's hard camp, slice oha-off-pull).
-do
-	local w = world({ reading = OUT, weak = true, type = "large" })
-	local out = run(w, 90)
-	local choice = lines(out, "choice")
-	check("hard camp: the rules' 3 is strong, the pull starts", #choice == 1 and field(choice[1], "go") == "1" and field(choice[1], "rn") == "3", choice[1])
 end
 
 -- The record says strong, but the puller's own look on arrival counts three: the pull is cancelled `weak` before the hit.

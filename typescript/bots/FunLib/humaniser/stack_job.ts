@@ -1533,8 +1533,8 @@ function rowBlock(bot: Unit): string | undefined {
 }
 
 /** A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark. */
-function rowWants(sp: Camps.Spawner, k: PullJob.CampKnown): boolean {
-    return k.n > 0 && k.n < PullJob.BarOf(sp);
+function rowWants(k: PullJob.CampKnown): boolean {
+    return k.n > 0 && k.n < PullJob.SETTINGS.StrongAt;
 }
 
 /** Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`. */
@@ -1544,7 +1544,7 @@ export function Shadow(bot: Unit): void {
     const slot = rowSlot(bot, DotaTime());
     if (slot === undefined) return;
     const known = PullJob.Known(slot.sp);
-    rowLine(bot, slot, false, rowWants(slot.sp, known), "off", known, "shadow");
+    rowLine(bot, slot, false, rowWants(known), "off", known, "shadow");
 }
 
 function rowApplies(bot: Unit): boolean {
@@ -1563,7 +1563,7 @@ function rowApplies(bot: Unit): boolean {
     const slot = rowSlot(bot, now);
     if (slot === undefined) return false;
     const known = PullJob.Known(slot.sp);
-    if (!rowWants(slot.sp, known)) {
+    if (!rowWants(known)) {
         rowLine(bot, slot, false, false, known.n > 0 ? "strong" : "empty", known);
         return false;
     }
