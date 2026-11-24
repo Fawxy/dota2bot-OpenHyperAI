@@ -335,7 +335,6 @@ ____exports.EVENTS = {
         pc = "num",
         age = "num",
         rose = "str",
-        erose = "str",
         ["end"] = "str"
     },
     swing_probe = {

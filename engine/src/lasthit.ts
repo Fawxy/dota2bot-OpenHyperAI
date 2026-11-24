@@ -402,7 +402,7 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
         const period = a.GetSecondsPerAttack?.() ?? 1;
         const land = windupLanding(a, creep);
         const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
-        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind, attacker: a, commit: windupLeft(a) ?? 0 });
+        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind, attacker: a, commit: math.max(0, land - flight) });
         const last = land ?? latest.get(a);
         if (last === undefined) {
             unphased += damage / period;

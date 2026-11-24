@@ -28,7 +28,6 @@ end
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
-local UnitType = ____dota.UnitType
 local LaneHits = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -107,15 +106,6 @@ local function teamHeroes()
     end
     return out
 end
-local function enemyHeroes()
-    local out = {}
-    for ____, h in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
-        if not h:IsNull() and not h:IsIllusion() and h:CanBeSeen() then
-            out[#out + 1] = h
-        end
-    end
-    return out
-end
 local function frame(bot)
     local now = DotaTime()
     if frameAt == now then
@@ -124,7 +114,6 @@ local function frame(bot)
     frameAt = now
     local team = bot:GetTeam()
     local ours = teamHeroes()
-    local theirs = enemyHeroes()
     local seen = {}
     for ____, lane in ipairs(LANES) do
         for ____, r in ipairs(LaneHits.Read(team, lane)) do
@@ -153,12 +142,11 @@ local function frame(bot)
     end
     if #left > 0 then
         local o = risen(ours)
-        local e = risen(theirs)
         for ____, p in ipairs(left) do
             known[p.creep] = nil
             local dead = p.creep:IsNull() or not p.creep:IsAlive()
-            local ____Telemetry_Event_3 = Telemetry.Event
-            local ____array_2 = __TS__SparseArrayNew(
+            local ____Telemetry_Event_2 = Telemetry.Event
+            local ____array_1 = __TS__SparseArrayNew(
                 {"team", team},
                 {"lane", p.lane},
                 {"own", p.own and 1 or 0},
@@ -188,22 +176,14 @@ local function frame(bot)
             else
                 ____temp_0 = p.own and o.dn or o.lh
             end
-            __TS__SparseArrayPush(____array_2, {"rose", ____temp_0})
-            local ____temp_1
-            if (p.own and e.lh or e.dn) == "" then
-                ____temp_1 = nil
-            else
-                ____temp_1 = p.own and e.lh or e.dn
-            end
-            __TS__SparseArrayPush(____array_2, {"erose", ____temp_1}, {"end", dead and "dead" or "left"})
-            ____Telemetry_Event_3(
+            __TS__SparseArrayPush(____array_1, {"rose", ____temp_0}, {"end", dead and "dead" or "left"})
+            ____Telemetry_Event_2(
                 "lane_hits_check",
-                {__TS__SparseArraySpread(____array_2)}
+                {__TS__SparseArraySpread(____array_1)}
             )
         end
     end
     remember(ours)
-    remember(theirs)
 end
 function ____exports.Tick(bot)
     if Overrides.Get("LaneReadProbe") ~= true then

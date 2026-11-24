@@ -3,11 +3,11 @@
  * creep? Each frame, once per team VM, every lane's LaneHits rows are read and each creep's latest prediction kept: the hit
  * the forecast says kills it (`KillingHit`: its kind, the hero's player id, seconds to it, its commit). When a creep leaves
  * the read, one `ev=lane_hits_check` line: the last prediction beside who took it, read from the game: the heroes of the team
- * whose last hits (an enemy creep) or denies (an own creep) rose that frame (`rose`), and the visible enemy heroes' the same
- * way (`erose`; for an own creep their last hits, for an enemy creep their denies). Several creeps can die in one frame, so a
+ * whose last hits (an enemy creep) or denies (an own creep) rose that frame (`rose`). The enemy's are not
+ * logged: their counters never rose in a stock bot game (lanehits4, 0 of 1,355 lines); pair with the other team's lines. Several creeps can die in one frame, so a
  * rise is the frame's, not the creep's: the reader pairs them. Reads and logs only. Runs under pcall.
  */
-import { Lane, Unit, UnitType } from "bots/ts_libs/dota";
+import { Lane, Unit } from "bots/ts_libs/dota";
 import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -88,19 +88,12 @@ function teamHeroes(): Unit[] {
     return out;
 }
 
-function enemyHeroes(): Unit[] {
-    const out: Unit[] = [];
-    for (const h of GetUnitList(UnitType.EnemyHeroes) ?? []) if (!h.IsNull() && !h.IsIllusion() && h.CanBeSeen()) out.push(h);
-    return out;
-}
-
 function frame(bot: Unit): void {
     const now = DotaTime();
     if (frameAt === now) return;
     frameAt = now;
     const team = bot.GetTeam();
     const ours = teamHeroes();
-    const theirs = enemyHeroes();
     const seen = new LuaTable<Unit, boolean>();
     for (const lane of LANES) {
         for (const r of LaneHits.Read(team, lane)) {
@@ -118,7 +111,6 @@ function frame(bot: Unit): void {
     for (const [c, p] of known) if (seen.get(c) !== true) left.push(p);
     if (left.length > 0) {
         const o = risen(ours);
-        const e = risen(theirs);
         for (const p of left) {
             known.delete(p.creep);
             const dead = p.creep.IsNull() || !p.creep.IsAlive();
@@ -134,13 +126,11 @@ function frame(bot: Unit): void {
                 ["pc", p.commit < 0 ? -1 : round(p.commit)],
                 ["age", round(now - p.at)],
                 ["rose", (p.own ? o.dn : o.lh) === "" ? undefined : p.own ? o.dn : o.lh],
-                ["erose", (p.own ? e.lh : e.dn) === "" ? undefined : p.own ? e.lh : e.dn],
                 ["end", dead ? "dead" : "left"],
             ]);
         }
     }
     remember(ours);
-    remember(theirs);
 }
 
 export function Tick(bot: Unit): void {

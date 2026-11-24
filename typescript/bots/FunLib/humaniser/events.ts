@@ -522,12 +522,6 @@ export const EVENTS = {
         cast: "num",
     },
     /**
-     * Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen
-     * to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the
-     * fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the
-     * hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
-     */
-    /**
      * Overrides.LaneReadProbe (lane_hits_probe.ts): one creep leaving LaneHits' read (dead, or out of the lane list or sight),
      * with the read's last prediction of the hit that kills it and who took it that frame.
      */
@@ -551,11 +545,15 @@ export const EVENTS = {
         age: "num",
         /** Heroes of the team whose denies (own creep) or last hits (enemy creep) rose this frame, `;`-joined player ids. */
         rose: "str",
-        /** Visible enemy heroes whose last hits (own creep) or denies (enemy creep) rose this frame. */
-        erose: "str",
         /** `dead`, or `left` (alive, out of the read). */
         end: "str",
     },
+    /**
+     * Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen
+     * to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the
+     * fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the
+     * hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
+     */
     swing_probe: {
         /** The hero's player id (absent for a creep or tower). */
         pid: "num",

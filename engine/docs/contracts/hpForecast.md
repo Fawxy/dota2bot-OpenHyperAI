@@ -42,7 +42,9 @@ timing:         one projectile scan and the per-frame attacker index (shared wit
 skill:          none (exact; a caller adds error where it decides).
 consumers:      bot `states/pre_hit` (a core's pre-hit under its tower, in game from slice pre-hit); named: a support's
                 pre-hit for its core (slice pre-hit open item, user 04/11/2026), staggering two creeps due at once
-                (docs/proposals/2026-11-04-prehit-and-feints.md "Pre-hit: potential" item 2).
+                (docs/proposals/2026-11-04-prehit-and-feints.md "Pre-hit: potential" item 2); bot `humaniser/lane_hits`
+                (per creep, each hero's hit by player id with its commit, slice oha-lane-swings), and through it, named,
+                the support's deny around its core's swing (slice oha-deny-free).
 status:         offline-verified (engine test_prehit: forecast within 1 HP of the sim between hits; the sim's HP within
                 [early, late] for an attacker of unknown phase); in game: slice pre-hit check runs.
 ```

@@ -1993,7 +1993,7 @@ function ____exports.hpForecast(bot, creep, horizon)
                         damage = damage,
                         by = kind,
                         attacker = a,
-                        commit = windupLeft(a) or 0
+                        commit = math.max(0, land - flight)
                     }
                 end
                 local last = land or latest[a]

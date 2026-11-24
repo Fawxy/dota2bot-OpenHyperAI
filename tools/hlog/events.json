@@ -412,7 +412,6 @@
    "pc": "num",
    "age": "num",
    "rose": "str",
-   "erose": "str",
    "end": "str"
   },
   "swing_probe": {
@@ -2352,7 +2351,6 @@
   "ev_lane_hits_check": {
    "pby": "text",
    "rose": "text",
-   "erose": "text",
    "end": "text"
   },
   "ev_swing_probe": {

@@ -215,6 +215,37 @@ do
     T.check("forecast: the repeat names the attacker and commits at its landing", rep ~= nil and math.abs(rep.commit - rep.t) < 1e-9)
 end
 
+-- A ranged wind-up commits a flight before it lands: its hit and its repeat land `flight` after their commit, (distance - 22)
+-- / projectile speed; once the projectile flies, the hit commits at 0.
+do
+    V.resetLastHitState()
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(5) })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2 }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 600, team = 3, passive = true }
+    local a = sim:addCreep{ x = 522, y = 0, team = 2, damage = 20, attackPoint = 0.5, attackSpeed = 1.25, animLength = 1.3,
+        secondsPerAttack = 1.36, autoAttack = true, firstSwingAt = 0.1, attackTarget = creep, passive = true,
+        range = 600, projectileSpeed = 900 }
+    local flight = (522 - 22) / 900
+    while sim.t < 0.1 + 2 * DT - 1e-9 do sim:step(DT) end
+    local f = V.hpForecast(bot, creep, 3)
+    local first, rep
+    for _, h in ipairs(f.hits) do
+        if h.attacker == a then
+            if first == nil then first = h elseif rep == nil then rep = h end
+        end
+    end
+    T.near("forecast: a ranged wind-up lands its flight after its commit", first and (first.t - first.commit) or -1, flight, 1e-6)
+    T.check("forecast: the ranged wind-up's commit is under one wind-up", first ~= nil and first.commit > 0 and first.commit < 0.4)
+    T.near("forecast: a ranged repeat lands its flight after its commit", rep and (rep.t - rep.commit) or -1, flight, 1e-6)
+    while a.swing do sim:step(DT) end
+    sim:step(DT)
+    f = V.hpForecast(bot, creep, 3)
+    local inFlight
+    for _, h in ipairs(f.hits) do if h.attacker == a and h.t < flight + 1e-6 then inFlight = h break end end
+    T.check("forecast: the ranged hit in flight commits at 0", inFlight ~= nil and inFlight.commit == 0)
+end
+
 -- attackAndConfirm with aggroConfirms = false: a target already attacking the bot does not confirm an attack that never fires.
 do
     local function run(aggro)

@@ -338,7 +338,7 @@ Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once 
 
 ## lane_hits_check
 
-Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame. Overrides.LaneReadProbe (lane_hits_probe.ts): one creep leaving LaneHits' read (dead, or out of the lane list or sight), with the read's last prediction of the hit that kills it and who took it that frame.
+Overrides.LaneReadProbe (lane_hits_probe.ts): one creep leaving LaneHits' read (dead, or out of the lane list or sight), with the read's last prediction of the hit that kills it and who took it that frame.
 
 `lane` num, `cid` num, `pc` num
 
@@ -350,10 +350,11 @@ Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, fr
 - `pt` num: Seconds from the last read to that hit, and to its commit (-1 none).
 - `age` num: Seconds from the last read to this line (one frame for a death).
 - `rose` str: Heroes of the team whose denies (own creep) or last hits (enemy creep) rose this frame, `;`-joined player ids.
-- `erose` str: Visible enemy heroes whose last hits (own creep) or denies (enemy creep) rose this frame.
 - `end` str: `dead`, or `left` (alive, out of the read).
 
 ## swing_probe
+
+Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
 
 `rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num, `bigat` num
 
