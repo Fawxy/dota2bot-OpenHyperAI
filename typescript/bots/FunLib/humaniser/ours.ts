@@ -2,7 +2,9 @@
  * Kill switches for the decisions we have taken over from OHA (Customize.Ours). Each switch's OFF arm is OHA's own
  * decision. A Customize file without the block or the key gets DEFAULTS; Customize.Enable = false turns all of them off.
  * Every default is off (plan s7, agreed 23/11/2026): none of these has beaten the reference arm, so the default build is
- * the reference arm and a batch arm, drill or test that wants one names it.
+ * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
+ * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
+ * RuneDetour.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
@@ -20,8 +22,9 @@ export const DEFAULTS = {
      *  pickup give-up (rune_pickup). Needs JobChooser and RuneRotation for the supports' side. */
     RuneSpawn: false,
     /** The own bounty on a cheap detour, a row of the decider (rune_detour.ts, doctrine D23): a hero of ours out of its lane takes its
-     *  own jungle's live bounty when the path by it adds about 12 s or less. Off: the pass is logged as a shadow and stock plays. */
-    RuneDetour: false,
+     *  own jungle's live bounty when the path by it adds about 12 s or less. Off: the pass is logged as a shadow and stock plays.
+     *  On: provisional (plan s5's small row, merged after its audit; read at the next checkpoint batch). */
+    RuneDetour: true,
     /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
      *  the old camp-job pulls stop for those bots. Needs JobChooser. */
     SupportPull: false,
