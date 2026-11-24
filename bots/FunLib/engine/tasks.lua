@@ -1248,6 +1248,162 @@ return ____exports
 ["lasthit"] = function(...) 
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__StringIncludes(self, searchString, position)
+    if not position then
+        position = 1
+    else
+        position = position + 1
+    end
+    local index = string.find(self, searchString, position, true)
+    return index ~= nil
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
+end
+
+local function __TS__ClassExtends(target, base)
+    target.____super = base
+    local staticMetatable = setmetatable({__index = base}, base)
+    setmetatable(target, staticMetatable)
+    local baseMetatable = getmetatable(base)
+    if baseMetatable then
+        if type(baseMetatable.__index) == "function" then
+            staticMetatable.__index = baseMetatable.__index
+        end
+        if type(baseMetatable.__newindex) == "function" then
+            staticMetatable.__newindex = baseMetatable.__newindex
+        end
+    end
+    setmetatable(target.prototype, base.prototype)
+    if type(base.prototype.__index) == "function" then
+        target.prototype.__index = base.prototype.__index
+    end
+    if type(base.prototype.__newindex) == "function" then
+        target.prototype.__newindex = base.prototype.__newindex
+    end
+    if type(base.prototype.__tostring) == "function" then
+        target.prototype.__tostring = base.prototype.__tostring
+    end
+end
+
+local Error, RangeError, ReferenceError, SyntaxError, TypeError, URIError
+do
+    local function getErrorStack(self, constructor)
+        if debug == nil then
+            return nil
+        end
+        local level = 1
+        while true do
+            local info = debug.getinfo(level, "f")
+            level = level + 1
+            if not info then
+                level = 1
+                break
+            elseif info.func == constructor then
+                break
+            end
+        end
+        if __TS__StringIncludes(_VERSION, "Lua 5.0") then
+            return debug.traceback(("[Level " .. tostring(level)) .. "]")
+        else
+            return debug.traceback(nil, level)
+        end
+    end
+    local function wrapErrorToString(self, getDescription)
+        return function(self)
+            local description = getDescription(self)
+            local caller = debug.getinfo(3, "f")
+            local isClassicLua = __TS__StringIncludes(_VERSION, "Lua 5.0") or _VERSION == "Lua 5.1"
+            if isClassicLua or caller and caller.func ~= error then
+                return description
+            else
+                return (description .. "\n") .. tostring(self.stack)
+            end
+        end
+    end
+    local function initErrorClass(self, Type, name)
+        Type.name = name
+        return setmetatable(
+            Type,
+            {__call = function(____, _self, message) return __TS__New(Type, message) end}
+        )
+    end
+    local ____initErrorClass_1 = initErrorClass
+    local ____class_0 = __TS__Class()
+    ____class_0.name = ""
+    function ____class_0.prototype.____constructor(self, message)
+        if message == nil then
+            message = ""
+        end
+        self.message = message
+        self.name = "Error"
+        self.stack = getErrorStack(nil, self.constructor.new)
+        local metatable = getmetatable(self)
+        if metatable and not metatable.__errorToStringPatched then
+            metatable.__errorToStringPatched = true
+            metatable.__tostring = wrapErrorToString(nil, metatable.__tostring)
+        end
+    end
+    function ____class_0.prototype.__tostring(self)
+        return self.message ~= "" and (self.name .. ": ") .. self.message or self.name
+    end
+    Error = ____initErrorClass_1(nil, ____class_0, "Error")
+    local function createErrorClass(self, name)
+        local ____initErrorClass_3 = initErrorClass
+        local ____class_2 = __TS__Class()
+        ____class_2.name = ____class_2.name
+        __TS__ClassExtends(____class_2, Error)
+        function ____class_2.prototype.____constructor(self, ...)
+            ____class_2.____super.prototype.____constructor(self, ...)
+            self.name = name
+        end
+        return ____initErrorClass_3(nil, ____class_2, name)
+    end
+    RangeError = createErrorClass(nil, "RangeError")
+    ReferenceError = createErrorClass(nil, "ReferenceError")
+    SyntaxError = createErrorClass(nil, "SyntaxError")
+    TypeError = createErrorClass(nil, "TypeError")
+    URIError = createErrorClass(nil, "URIError")
+end
+
+local function __TS__ObjectGetOwnPropertyDescriptors(object)
+    local metatable = getmetatable(object)
+    if not metatable then
+        return {}
+    end
+    return rawget(metatable, "_descriptors") or ({})
+end
+
+local function __TS__Delete(target, key)
+    local descriptors = __TS__ObjectGetOwnPropertyDescriptors(target)
+    local descriptor = descriptors[key]
+    if descriptor then
+        if not descriptor.configurable then
+            error(
+                __TS__New(
+                    TypeError,
+                    ((("Cannot delete property " .. tostring(key)) .. " of ") .. tostring(target)) .. "."
+                ),
+                0
+            )
+        end
+        descriptors[key] = nil
+        return true
+    end
+    target[key] = nil
+    return true
+end
+
 local __TS__Symbol, Symbol
 do
     local symbolMetatable = {__tostring = function(self)
@@ -2074,11 +2230,7 @@ function ____exports.cooldownLeft(bot)
     if a.attackClock == nil or bot.GetSecondsPerAttack == nil or bot.GetLastAttackTime == nil then
         return 0
     end
-    local ____temp_105 = bot:GetAttackPoint()
-    local ____this_104
-    ____this_104 = bot
-    local ____opt_103 = ____this_104.GetAttackSpeed
-    local windup = ____temp_105 / (____opt_103 and ____opt_103(____this_104) or 1)
+    local windup = windupSeconds(bot)
     local idle = bot:GetSecondsPerAttack() - windup
     local since = a.attackClock() - bot:GetLastAttackTime() + 0.01
     if since < -0.1 then
@@ -2086,20 +2238,20 @@ function ____exports.cooldownLeft(bot)
     end
     return math.max(0, since) < idle and idle - math.max(0, since) or 0
 end
-local ____math_atan2_106 = math.atan2
-if ____math_atan2_106 == nil then
-    ____math_atan2_106 = math.atan
+local ____math_atan2_103 = math.atan2
+if ____math_atan2_103 == nil then
+    ____math_atan2_103 = math.atan
 end
-local atan2 = ____math_atan2_106
+local atan2 = ____math_atan2_103
 --- Hero turn rate (radians per 0.03 s; heroes 0.5-0.9) and the angle an attack can start within.
 local TURN_RATE = 0.6
 local TURN_SLACK = 0.2
 --- Seconds to turn to face the creep (0 without GetFacing).
 function ____exports.turnTime(bot, creep)
-    local ____this_108
-    ____this_108 = bot
-    local ____opt_107 = ____this_108.GetFacing
-    local facing = ____opt_107 and ____opt_107(____this_108)
+    local ____this_105
+    ____this_105 = bot
+    local ____opt_104 = ____this_105.GetFacing
+    local facing = ____opt_104 and ____opt_104(____this_105)
     if facing == nil or facing == nil then
         return 0
     end
@@ -2114,18 +2266,14 @@ function ____exports.turnTime(bot, creep)
 end
 --- Seconds from an attack order now until the bot's attack point: wind-up, cooldown left and turn.
 local function ownCommitTime(bot, creep)
-    local ____temp_111 = bot:GetAttackPoint()
-    local ____this_110
-    ____this_110 = bot
-    local ____opt_109 = ____this_110.GetAttackSpeed
-    return ____temp_111 / (____opt_109 and ____opt_109(____this_110) or 1) + ____exports.cooldownLeft(bot) + ____exports.turnTime(bot, creep)
+    return windupSeconds(bot) + ____exports.cooldownLeft(bot) + ____exports.turnTime(bot, creep)
 end
 function ____exports.ownHitTime(bot, creep)
     local t = ownCommitTime(bot, creep)
-    local ____this_113
-    ____this_113 = bot
-    local ____opt_112 = ____this_113.GetAttackProjectileSpeed
-    local speed = ____opt_112 and ____opt_112(____this_113) or 0
+    local ____this_107
+    ____this_107 = bot
+    local ____opt_106 = ____this_107.GetAttackProjectileSpeed
+    local speed = ____opt_106 and ____opt_106(____this_107) or 0
     local range = bot:GetAttackRange()
     if range > RANGED_ABOVE and speed > 0 then
         local d = dist(
@@ -2140,6 +2288,20 @@ function ____exports.ownHitTime(bot, creep)
     return t
 end
 local rolls = {}
+--- Clears this module's state that outlives a frame: the wind-up records, the per-bot skill rolls and the nearby index. For a
+-- test's setup, or a host starting a new game; play needs no call (the wind-up record restarts on its own guards, the
+-- index on a new frame).
+function ____exports.resetLastHitState()
+    for k in pairs(windups) do
+        windups[k] = nil
+    end
+    for k in pairs(rolls) do
+        __TS__Delete(rolls, k)
+    end
+    for k in pairs(nearbyCache) do
+        __TS__Delete(nearbyCache, k)
+    end
+end
 local function rollFor(bot, creep)
     local id = bot:GetPlayerID()
     local byCreep = rolls[id]
@@ -2168,8 +2330,8 @@ local function rollFor(bot, creep)
 end
 --- True once the bot's error for this creep has been rolled (a peek: never rolls one, so it draws no random number).
 local function hasRoll(bot, creep)
-    local ____opt_114 = rolls[bot:GetPlayerID()]
-    return (____opt_114 and ____opt_114[creep]) ~= nil
+    local ____opt_108 = rolls[bot:GetPlayerID()]
+    return (____opt_108 and ____opt_108[creep]) ~= nil
 end
 --- What the bot believes about a swing ordered now. A negative timing shift shortens the horizon (late swing);
 -- a positive one extends it with the attackers' DPS, i.e. counts hits that have not started yet (early swing):
@@ -2184,15 +2346,15 @@ local function believe(bot, creep, withError, observedDps)
         observedDps = 0
     end
     local tHit = ____exports.ownHitTime(bot, creep)
-    local ____this_117
-    ____this_117 = creep
-    local ____opt_116 = ____this_117.GetHealthRegen
-    local regen = ____opt_116 and ____opt_116(____this_117) or 0
+    local ____this_111
+    ____this_111 = creep
+    local ____opt_110 = ____this_111.GetHealthRegen
+    local regen = ____opt_110 and ____opt_110(____this_111) or 0
     local hp = creep:GetHealth()
     local relied = math.max(0, tHit - MIN_MARGIN)
-    local ____exports_incomingDps_result_118 = ____exports.incomingDps(bot, creep)
-    local dps = ____exports_incomingDps_result_118.dps
-    local between = ____exports_incomingDps_result_118.between
+    local ____exports_incomingDps_result_112 = ____exports.incomingDps(bot, creep)
+    local dps = ____exports_incomingDps_result_112.dps
+    local between = ____exports_incomingDps_result_112.between
     local unseen = math.max(0, observedDps + regen - dps)
     local certain = hp + regen * tHit - ____exports.incomingDamage(bot, creep, relied)
     local visible = certain - math.max(0, relied - SEEN_AHEAD) * between - unseen * relied
@@ -2212,24 +2374,24 @@ local function believe(bot, creep, withError, observedDps)
             believed = visible + regen * r.shift - dps * r.shift
         end
     end
-    local ____tHit_124 = tHit
-    local ____temp_125 = certain > 0
-    local ____believed_126 = believed
-    local ____reliedUsed_127 = reliedUsed
-    local ____physical_123 = physical
-    local ____creep_122 = creep
-    local ____temp_121 = bot:GetAttackDamage()
-    local ____this_120
-    ____this_120 = bot
-    local ____opt_119 = ____this_120.GetBaseDamageVariance
+    local ____tHit_118 = tHit
+    local ____temp_119 = certain > 0
+    local ____believed_120 = believed
+    local ____reliedUsed_121 = reliedUsed
+    local ____physical_117 = physical
+    local ____creep_116 = creep
+    local ____temp_115 = bot:GetAttackDamage()
+    local ____this_114
+    ____this_114 = bot
+    local ____opt_113 = ____this_114.GetBaseDamageVariance
     return {
-        tHit = ____tHit_124,
-        survives = ____temp_125,
-        hpAtHit = ____believed_126,
-        relied = ____reliedUsed_127,
-        mine = ____physical_123(
-            ____creep_122,
-            (____temp_121 - (____opt_119 and ____opt_119(____this_120) or 0)) * (1 + eps * width)
+        tHit = ____tHit_118,
+        survives = ____temp_119,
+        hpAtHit = ____believed_120,
+        relied = ____reliedUsed_121,
+        mine = ____physical_117(
+            ____creep_116,
+            (____temp_115 - (____opt_113 and ____opt_113(____this_114) or 0)) * (1 + eps * width)
         )
     }
 end
@@ -2247,20 +2409,20 @@ local function windowText(w)
     )
 end
 local function isRangedCreep(c)
-    local ____this_129
-    ____this_129 = c
-    local ____opt_128 = ____this_129.GetUnitName
-    local name = ____opt_128 and ____opt_128(____this_129)
+    local ____this_123
+    ____this_123 = c
+    local ____opt_122 = ____this_123.GetUnitName
+    local name = ____opt_122 and ____opt_122(____this_123)
     if name == nil then
         return false
     end
     return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 local function deniable(c)
-    local ____this_131
-    ____this_131 = c
-    local ____opt_130 = ____this_131.GetMaxHealth
-    local max = ____opt_130 and ____opt_130(____this_131)
+    local ____this_125
+    ____this_125 = c
+    local ____opt_124 = ____this_125.GetMaxHealth
+    local max = ____opt_124 and ____opt_124(____this_125)
     return max == nil or c:GetHealth() < max / 2
 end
 --- Of `creeps`, the one closest to dying to our hit (exact prediction, no error), preferring a ranged or siege
@@ -2286,16 +2448,16 @@ end
 --- Deny heuristic, UNVERIFIED in-game: assumes an enemy hero attacking the creep on its last live frame
 -- landed the killing blow, and that Dota hands back the same handle for the same unit so `==` matches.
 local function enemyTargeting(bot, creep)
-    local ____this_133
-    ____this_133 = bot
-    local ____opt_132 = ____this_133.GetNearbyHeroes
-    local heroes = ____opt_132 and ____opt_132(____this_133, 1200, true, 0)
+    local ____this_127
+    ____this_127 = bot
+    local ____opt_126 = ____this_127.GetNearbyHeroes
+    local heroes = ____opt_126 and ____opt_126(____this_127, 1200, true, 0)
     if heroes == nil then
         return false
     end
     for ____, h in ipairs(heroes) do
-        local ____opt_134 = h.GetAttackTarget
-        if (____opt_134 and ____opt_134(h)) == creep then
+        local ____opt_128 = h.GetAttackTarget
+        if (____opt_128 and ____opt_128(h)) == creep then
             return true
         end
     end
@@ -2316,14 +2478,14 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    local ____exports_incomingDps_result_dps_139 = ____exports.incomingDps(bot, c).dps
-    local ____math_max_138 = math.max
-    local ____this_137
-    ____this_137 = c
-    local ____opt_136 = ____this_137.GetHealthRegen
-    local dps = ____exports_incomingDps_result_dps_139 + ____math_max_138(
+    local ____exports_incomingDps_result_dps_133 = ____exports.incomingDps(bot, c).dps
+    local ____math_max_132 = math.max
+    local ____this_131
+    ____this_131 = c
+    local ____opt_130 = ____this_131.GetHealthRegen
+    local dps = ____exports_incomingDps_result_dps_133 + ____math_max_132(
         0,
-        -(____opt_136 and ____opt_136(____this_137) or 0)
+        -(____opt_130 and ____opt_130(____this_131) or 0)
     )
     local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
     if margin <= 0 then
@@ -2353,13 +2515,13 @@ function ____exports.laneTargets(bot, opts)
         bot:GetAttackRange() + 400
     )
     local within = opts.within or 1
-    local ____math_max_142 = math.max
-    local ____this_141
-    ____this_141 = bot
-    local ____opt_140 = ____this_141.GetCurrentMovementSpeed
-    local speed = ____math_max_142(
+    local ____math_max_136 = math.max
+    local ____this_135
+    ____this_135 = bot
+    local ____opt_134 = ____this_135.GetCurrentMovementSpeed
+    local speed = ____math_max_136(
         100,
-        ____opt_140 and ____opt_140(____this_141) or 300
+        ____opt_134 and ____opt_134(____this_135) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -2613,10 +2775,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
-    local ____this_144
-    ____this_144 = bot
-    local ____opt_143 = ____this_144.GetLastAttackTime
-    local atk0 = ____opt_143 and ____opt_143(____this_144)
+    local ____this_138
+    ____this_138 = bot
+    local ____opt_137 = ____this_138.GetLastAttackTime
+    local atk0 = ____opt_137 and ____opt_137(____this_138)
     local fireAt
     local landHp
     local function out(r)

@@ -157,8 +157,8 @@ interface WindupSeen {
 const WINDUP_GAP = 0.25;
 const windups = setmetatable(new LuaTable<TaskAttacker, WindupSeen>(), { __mode: "k" });
 
-/** `a`'s wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
-function windupSeconds(a: TaskAttacker): number {
+/** A unit's wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+function windupSeconds(a: { GetAttackPoint?(): number; GetAttackSpeed?(): number }): number {
     return (a.GetAttackPoint?.() ?? 0) / math.max(0.01, a.GetAttackSpeed?.() ?? 1);
 }
 
@@ -528,7 +528,7 @@ function heroWatchText(w: HeroWatch): string {
 export function cooldownLeft(bot: TaskUnit): number {
     const a = get()!;
     if (a.attackClock === undefined || bot.GetSecondsPerAttack === undefined || bot.GetLastAttackTime === undefined) return 0;
-    const windup = bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1);
+    const windup = windupSeconds(bot);
     const idle = bot.GetSecondsPerAttack() - windup;
     // A hit landing this frame can read a hair after the clock; one reading clearly ahead of it is ignored.
     const since = a.attackClock() - bot.GetLastAttackTime() + 0.01;
@@ -557,7 +557,7 @@ export function turnTime(bot: TaskUnit, creep: TaskCreep): number {
 
 /** Seconds from an attack order now until the bot's attack point: wind-up, cooldown left and turn. */
 function ownCommitTime(bot: TaskUnit, creep: TaskCreep): number {
-    return bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1) + cooldownLeft(bot) + turnTime(bot, creep);
+    return windupSeconds(bot) + cooldownLeft(bot) + turnTime(bot, creep);
 }
 
 export function ownHitTime(bot: TaskUnit, creep: TaskCreep): number {
@@ -579,6 +579,17 @@ interface Roll {
     shift: number;
 }
 const rolls: { [playerID: number]: LuaTable<TaskCreep, Roll> } = {};
+
+/**
+ * Clears this module's state that outlives a frame: the wind-up records, the per-bot skill rolls and the nearby index. For a
+ * test's setup, or a host starting a new game; play needs no call (the wind-up record restarts on its own guards, the
+ * index on a new frame).
+ */
+export function resetLastHitState(): void {
+    for (const [k] of windups) windups.delete(k);
+    for (const [k] of pairs(rolls)) delete rolls[k as number];
+    for (const [k] of pairs(nearbyCache)) delete nearbyCache[k as number];
+}
 
 function rollFor(bot: TaskUnit, creep: TaskCreep): Roll {
     const id = bot.GetPlayerID();

@@ -1,7 +1,8 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 4 (slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
+name / version / owner:  lastHit, deny / 5 (v5, slice oha-engine-windup, 24/11/2026: the incoming wind-ups the belief counts
+                are timed as attack point / attack speed from the first read, measured in game; v4 slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
                 cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
                 within the horizon are counted and its rate is not spread; v2 slice lasthit-windup-logs, 04/11/2026: the enemy-hero watch fields `hf hwf ha hc
                 hpt` on every message and an enemy-hero query each frame; v1 slice lane-last-hits, 03/11/2026: first
@@ -30,7 +31,9 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 single-frame drop) is a lower bound on the rate, and the part of it the indexed attackers and regen do
                 not explain is extrapolated over the horizon. Own damage = (attack damage - damage variance) after
                 armour. Due when the creep survives the seen hits and the believed HP at our landing <= own damage.
-                The wind-up formula (attack point as a fraction of the attack cycle) is UNVERIFIED in game.
+                The wind-up is attack point / attack speed seconds, timed from the frame the engine first reads it (within
+                one frame of the fire on 97.7-99.0% of our heroes' wind-ups, lane creeps and towers about the same,
+                swingwc1-2); on enemy heroes it is not measured.
 effect check:   ok once the bot's GetLastHits (GetDenies) count rises, checked each frame until 0.5 s past the predicted
                 landing.
 outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | etiquette | dead | interrupted |
@@ -59,7 +62,7 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 watched the creep: `hf hwf` (frames an enemy hero's attack target was the creep, and of those the frames
                 the wind-up reader read it winding up) and, when hf > 0, `ha hc hpt` (that hero's GetAnimActivity,
                 GetAnimCycle, GetAttackPoint, from the last wind-up frame once one was seen): the in-game check of the
-                UNVERIFIED wind-up reading on heroes. Then the creep-attacker watch: `cf cwf` (readings of the creep's
+                wind-up reading on enemy heroes (not measured there; verified on our own, swingwc1). Then the creep-attacker watch: `cf cwf` (readings of the creep's
                 attackers that are not heroes, one per attacker per frame, and of those the ones read winding up) and, when
                 cf > 0, `ca cc cpt cs` (the last one's GetAnimActivity, GetAnimCycle, GetAttackPoint, GetSecondsPerAttack):
                 the same check on lane creeps and towers (slice lh-unphased). Read by hlog `@lh_swings`.

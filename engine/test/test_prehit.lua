@@ -106,6 +106,7 @@ end
 -- running at attack speed over the unit's own animation length (1.3 s here, not given by the API). Read from its first frame
 -- the forecast's hit is the real landing on every frame; the old reading ((point - cycle) * secondsPerAttack) was not.
 local function windupScene()
+    V.resetLastHitState()
     local sim = Sim.new()
     sim:adapter(tasks, { random = Sim.lcg(5) })
     local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2 }
@@ -128,10 +129,9 @@ do
     end
     T.check("windup: read on every frame of the wind-up (" .. n .. ")", n >= 9)
     T.check("windup: landing exact from the first frame (worst " .. worst .. ")", worst < 1e-6)
-    T.near("windup: the wind-up is attack point / attack speed", 0.5 / 1.25, 0.4, 1e-9)
 end
 -- First read three frames into the wind-up: the cycle then is converted at attack speed alone (the animation length is not
--- known), so the read is late by elapsed x (1 - 1 / animLength) and stays so; a read past WINDUP_GAP starts again.
+-- known), so the read is late by elapsed x (1 - 1 / animLength) and stays so.
 do
     local sim, bot, creep, a = windupScene()
     while sim.t < 0.1 + 3 * DT - 1e-9 do sim:step(DT) end
@@ -142,6 +142,22 @@ do
     sim:step(DT)
     local t2 = firstHit(V.hpForecast(bot, creep, 1))
     T.near("windup: the next frame keeps that offset (timed from the first read)", t2, a.swing.landAt - sim.t + off, 1e-6)
+end
+-- A read more than WINDUP_GAP (0.25 s) after the last starts the wind-up again from that read: its cycle then is converted at
+-- attack speed alone, so the read is late by the elapsed time x (1 - 1 / animLength) as for a late first read, where a
+-- record kept across the gap would have stayed exact.
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    V.hpForecast(bot, creep, 1)
+    while sim.t < 0.1 + 0.3 - 1e-9 do sim:step(DT) end
+    if a.swing then
+        local e = sim.t - a.swing.start
+        local t = firstHit(V.hpForecast(bot, creep, 1))
+        T.near("windup: a read past WINDUP_GAP restarts (late by elapsed x (1 - 1/animLength))", t, a.swing.landAt - sim.t + e * (1 - 1 / 1.3), 1e-6)
+    else
+        T.check("windup: the scene's wind-up outlasts the gap", false)
+    end
 end
 -- After the wind-up (backswing, the activity still the attack) no hit is read; the next swing's lower cycle starts a new one.
 do

@@ -80,6 +80,12 @@ export declare function cooldownLeft(bot: TaskUnit): number;
 /** Seconds to turn to face the creep (0 without GetFacing). */
 export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
+/**
+ * Clears this module's state that outlives a frame: the wind-up records, the per-bot skill rolls and the nearby index. For a
+ * test's setup, or a host starting a new game; play needs no call (the wind-up record restarts on its own guards, the
+ * index on a new frame).
+ */
+export declare function resetLastHitState(): void;
 export interface LaneTarget {
     creep: TaskCreep;
     /** `prehit`: never offered by laneTargets; a caller's pick that `laneFarm` carries out as one attack (see LaneFarmOpts.pick). */
