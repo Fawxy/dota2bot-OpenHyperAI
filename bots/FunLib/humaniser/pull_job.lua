@@ -415,7 +415,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local campFor, alive, recordCount, advance, recordOf, readsHit, campDmgGate, ourTower, share, laneCreepsNear, onNeutral, sample, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, behindOurs, watch, logSeeds, Step, End, running, records, watchedAt, RECORD_LEASH, HOST, seedsLogged
+local campFor, alive, recordCount, advance, recordOf, readsHit, campDmgGate, ourTower, share, laneCreepsNear, onNeutral, sample, sampleWave, diag, stale, taggedState, trackTagged, countDiverted, targetKind, watchLine, taggedFields, behindOurs, stayEnd, watch, logSeeds, Step, End, running, records, watchedAt, RECORD_LEASH, tenth, HOST, seedsLogged
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
@@ -655,18 +655,18 @@ function laneCreepsNear(p, radius)
     local out = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue123
+            local __continue125
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue123 = true
+                    __continue125 = true
                     break
                 end
                 if GetUnitToLocationDistance(c, p.meet) <= radius or GetUnitToLocationDistance(c, p.spawner.location) <= radius then
                     out[#out + 1] = c
                 end
-                __continue123 = true
+                __continue125 = true
             until true
-            if not __continue123 then
+            if not __continue125 then
                 break
             end
         end
@@ -690,19 +690,19 @@ function sample(bot, p)
     local radii = LaneConfig.Settings().Radii
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue131
+            local __continue133
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue131 = true
+                    __continue133 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, p.plan.meet)
                 if p.near == nil or d < p.near then
                     p.near = d
                 end
-                __continue131 = true
+                __continue133 = true
             until true
-            if not __continue131 then
+            if not __continue133 then
                 break
             end
         end
@@ -741,10 +741,10 @@ function taggedState(bot, p, ours)
     local s = {alive = 0, onPuller = 0, onCreep = 0}
     for ____, u in ipairs(p.tagged or ({})) do
         do
-            local __continue155
+            local __continue157
             repeat
                 if stale(u) then
-                    __continue155 = true
+                    __continue157 = true
                     break
                 end
                 s.alive = s.alive + 1
@@ -771,9 +771,9 @@ function taggedState(bot, p, ours)
                 if s.farthest == nil or h > s.farthest then
                     s.farthest = h
                 end
-                __continue155 = true
+                __continue157 = true
             until true
-            if not __continue155 then
+            if not __continue157 then
                 break
             end
         end
@@ -785,19 +785,19 @@ function trackTagged(bot, p)
     if p.wa == nil and p.early ~= nil then
         for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
             do
-                local __continue166
+                local __continue168
                 repeat
                     if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) or __TS__ArrayIndexOf(p.early, c) >= 0 then
-                        __continue166 = true
+                        __continue168 = true
                         break
                     end
                     if GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
                         p.wa = now
                         break
                     end
-                    __continue166 = true
+                    __continue168 = true
                 until true
-                if not __continue166 then
+                if not __continue168 then
                     break
                 end
             end
@@ -824,10 +824,10 @@ function trackTagged(bot, p)
     local home = 0
     for ____, u in ipairs(p.tagged) do
         do
-            local __continue173
+            local __continue175
             repeat
                 if stale(u) then
-                    __continue173 = true
+                    __continue175 = true
                     break
                 end
                 local ____opt_40 = p.starts
@@ -842,7 +842,7 @@ function trackTagged(bot, p)
                 )
                 p.peaks:set(u, peak)
                 if peak <= ____exports.SETTINGS.Left then
-                    __continue173 = true
+                    __continue175 = true
                     break
                 end
                 if p.g4 == nil then
@@ -853,9 +853,9 @@ function trackTagged(bot, p)
                 if h < peak - ____exports.SETTINGS.HomeMargin and (t == nil or t == nil) then
                     home = home + 1
                 end
-                __continue173 = true
+                __continue175 = true
             until true
-            if not __continue173 then
+            if not __continue175 then
                 break
             end
         end
@@ -918,19 +918,19 @@ function watchLine(bot, p, ph)
     local wd
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         do
-            local __continue194
+            local __continue196
             repeat
                 if not c:IsAlive() or not LanePush.IsLaneCreep(c:GetUnitName()) then
-                    __continue194 = true
+                    __continue196 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(c, meet)
                 if wd == nil or d < wd then
                     wd = d
                 end
-                __continue194 = true
+                __continue196 = true
             until true
-            if not __continue194 then
+            if not __continue196 then
                 break
             end
         end
@@ -955,15 +955,15 @@ function watchLine(bot, p, ph)
     local nd = math.huge
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue204
+            local __continue206
             repeat
                 if not u:IsAlive() then
-                    __continue204 = true
+                    __continue206 = true
                     break
                 end
                 local d = GetUnitToLocationDistance(u, meet)
                 if d > ____exports.SETTINGS.WatchNeutralSearch then
-                    __continue204 = true
+                    __continue206 = true
                     break
                 end
                 if d <= radii.WaveSize then
@@ -990,9 +990,9 @@ function watchLine(bot, p, ph)
                     nd = d
                     best = u
                 end
-                __continue204 = true
+                __continue206 = true
             until true
-            if not __continue204 then
+            if not __continue206 then
                 break
             end
         end
@@ -1104,6 +1104,61 @@ function behindOurs(bot, pull)
     end
     return JobVerbs.behindPoint(bot, ours, neutrals, pull.plan.spawner.location)
 end
+function stayEnd(bot, p, st, back)
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    local n = 0
+    local hp = 0
+    local max = 0
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        do
+            local __continue252
+            repeat
+                if not u:IsAlive() or GetUnitToLocationDistance(u, p.plan.spawner.location) > LaneConfig.Settings().Radii.MeetWatch then
+                    __continue252 = true
+                    break
+                end
+                n = n + 1
+                hp = hp + u:GetHealth()
+                max = max + u:GetMaxHealth()
+                __continue252 = true
+            until true
+            if not __continue252 then
+                break
+            end
+        end
+    end
+    Telemetry.Event(
+        "stay_end",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"slot", p.plan.slot},
+            {"st", st},
+            {
+                "ss",
+                p.stayAt ~= nil and tenth(DotaTime() - p.stayAt) or nil
+            },
+            {"back", back and 1 or 0},
+            {"nn", n},
+            {
+                "nhp",
+                math.floor(hp + 0.5)
+            },
+            {
+                "nmax",
+                math.floor(max + 0.5)
+            },
+            {
+                "bh",
+                math.floor(bot:GetHealth() / bot:GetMaxHealth() * 100 + 0.5) / 100
+            }
+        }
+    )
+end
 function watch(bot)
     local pid = bot:GetPlayerID()
     local now = DotaTime()
@@ -1198,6 +1253,7 @@ ____exports.SETTINGS = {
     WatchEvery = 0.25,
     TrailSec = 10,
     StayMax = 35,
+    ResumeHp = 0.5,
     WatchLogEvery = 1,
     WatchNeutralSearch = 3000,
     TagRadius = 1200,
@@ -1223,6 +1279,8 @@ ____exports.SETTINGS = {
 running = {}
 local trailing = {}
 local handled = {}
+--- A stay another mode took while our creeps still fought the camp (rowApplies resumes it; `resumeStay`).
+local resume = {}
 local decided = {}
 local timers = {}
 local gateWhy = {}
@@ -1732,6 +1790,12 @@ local function finish(bot, p, ____end, label)
     local r = p.stayAt ~= nil and ({success = true, reason = "ok"}) or ____end
     local why = r.success and "ok" or endWhy
     local cut = cutBy(bot, ____end)
+    if p.stayAt ~= nil then
+        stayEnd(bot, p, cut ~= nil and (endWhy .. ":") .. cut or endWhy, false)
+        if cut ~= nil then
+            resume[bot:GetPlayerID()] = p
+        end
+    end
     local ____jobLine_35 = jobLine
     local ____bot_33 = bot
     local ____p_34 = p
@@ -1899,18 +1963,18 @@ local function tagCamp(bot, p)
     local tagged = ____exports.CampStateOf(p.plan.spawner).units
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue143
+            local __continue145
             repeat
                 if not u:IsAlive() or __TS__ArrayIndexOf(tagged, u) >= 0 or GetUnitToUnitDistance(u, bot) > ____exports.SETTINGS.TagRadius then
-                    __continue143 = true
+                    __continue145 = true
                     break
                 end
                 if u:GetAttackTarget() == bot then
                     tagged[#tagged + 1] = u
                 end
-                __continue143 = true
+                __continue145 = true
             until true
-            if not __continue143 then
+            if not __continue145 then
                 break
             end
         end
@@ -1985,9 +2049,7 @@ local function verbPlan(bot, pull, aggroAt)
         confirmFor = s.Timing.AggroConfirm
     }
 end
-local function tenth(x)
-    return math.floor(x * 10 + 0.5) / 10
-end
+tenth = function(x) return math.floor(x * 10 + 0.5) / 10 end
 --- A unit name less `npc_dota_neutral_` or `npc_dota_creep_` (stay_try).
 local function shortName(name)
     for ____, pre in ipairs({"npc_dota_neutral_", "npc_dota_creep_"}) do
@@ -2070,14 +2132,15 @@ local function lookLine(bot, p, l)
         }
     )
 end
-local stay = __TS__Generator(function(bot, p, hooks)
+local stay = __TS__Generator(function(bot, p, hooks, deadline)
     p.stayAt = DotaTime()
+    p.stayFirst = p.stayFirst or p.stayAt
     p.stayHp = bot:GetHealth()
     return __TS__DelegatedYield(Tasks.Jobs().stayCamp(
         bot,
         {
             at = p.plan.spawner.location,
-            deadline = p.stayAt + ____exports.SETTINGS.StayMax,
+            deadline = deadline or p.stayAt + ____exports.SETTINGS.StayMax,
             onHit = function()
                 p.sht = (p.sht or 0) + 1
             end,
@@ -2108,6 +2171,70 @@ local stay = __TS__Generator(function(bot, p, hooks)
         hooks
     ))
 end)
+--- A stay another mode took (stock's retreat, Valve's attack: the hold is soft) is resumed once the hero is free again while
+-- our creeps still fight the camp's neutrals (user 25/11/2026). It is dropped when none of ours is left on a neutral there
+-- or the stay's backstop has passed; held, not dropped, while the hero is busy, low or in danger.
+local function resumeStay(bot, p)
+    local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local ____until = (p.stayFirst or now) + ____exports.SETTINGS.StayMax
+    if not Ours.On("SupportPullStay") or now >= ____until or not __TS__ArraySome(
+        laneCreepsNear(
+            p.plan,
+            LaneConfig.Settings().Radii.MeetWatch
+        ),
+        function(____, c) return onNeutral(c) end
+    ) then
+        resume[pid] = nil
+        return false
+    end
+    local mode = bot:GetActiveMode()
+    if mode == BotMode.Attack or mode == BotMode.Retreat or bot:GetHealth() < bot:GetMaxHealth() * ____exports.SETTINGS.ResumeHp then
+        return false
+    end
+    if SafeGather.At(
+        bot,
+        bot:GetLocation(),
+        {who = "pull_start"}
+    ).level == "deadly" then
+        return false
+    end
+    resume[pid] = nil
+    local ok = Tasks.Start(
+        bot,
+        {
+            name = "pull",
+            host = HOST,
+            preemptAfter = 1,
+            stallAfter = 4,
+            onEnd = function(r)
+                running[pid] = nil
+                local why = r.success and (r.message or "ok") or r.reason .. (r.message ~= nil and ":" .. r.message or "")
+                local cut = cutBy(bot, r)
+                stayEnd(bot, p, cut ~= nil and (why .. ":") .. cut or why, true)
+                if cut ~= nil then
+                    resume[pid] = p
+                end
+            end
+        },
+        function(ctx) return stay(
+            bot,
+            p,
+            {
+                label = function(l)
+                    ctx.label(l)
+                    p.label = l
+                end,
+                urgent = ctx.urgent
+            },
+            ____until
+        ) end
+    )
+    if ok then
+        running[pid] = p
+    end
+    return ok
+end
 local body = __TS__Generator(function(bot, p, aggroAt, ctx)
     local hooks = {
         label = function(l)
@@ -2231,6 +2358,7 @@ function ____exports.Shadow(bot)
         "shadow"
     )
 end
+--- The mode the decider hosts its rows in: the engine steps the pull's task under it.
 HOST = BotMode.Farm
 --- Why a wanted pull may not start now. Danger is the shared read's answer where the hero stands; a hero Valve's attack or a
 -- retreat holds is left to it. The camp's damage is the pull's own check, since the shared read prices no neutral damage.
@@ -2272,6 +2400,10 @@ local function rowApplies(bot)
     trail(bot, false)
     if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return false
+    end
+    local back = resume[pid]
+    if back ~= nil and resumeStay(bot, back) then
+        return true
     end
     watch(bot)
     local now = DotaTime()

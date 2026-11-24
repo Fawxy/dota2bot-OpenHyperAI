@@ -59,6 +59,8 @@ export const SETTINGS = {
     TrailSec: 10,
     /** The stay's backstop: it ends `timeout:late` this long after it began (the old pull farm's MaxFarm; a clear is 7-26 s). */
     StayMax: 35,
+    /** judgement: a stay another mode took is not resumed under this share of max HP (the stack row's bar). */
+    ResumeHp: 0.5,
     /** `ev=pull_watch` cadence: one line per pull per this many seconds from the lead to the end of the trail. */
     WatchLogEvery: 1,
     /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
@@ -196,6 +198,8 @@ interface Pull {
     /** The stay (Ours.SupportPullStay): when it began and the puller's HP then, its deny and neutral last-hit tries and
      *  successes, and its plain hits on our deniable creeps. */
     stayAt?: number;
+    /** When the stay's first leg began (a resumed leg keeps the first one's backstop). */
+    stayFirst?: number;
     stayHp?: number;
     /** Logging only: the last `ev=stay_look` sample's time, and when the running deny or last-hit try was chosen. */
     lookedAt?: number;
@@ -228,6 +232,8 @@ interface Trail {
 const running: Record<number, Pull | undefined> = {};
 const trailing: Record<number, Trail | undefined> = {};
 const handled: Record<number, number | undefined> = {};
+/** A stay another mode took while our creeps still fought the camp (rowApplies resumes it; `resumeStay`). */
+const resume: Record<number, Pull | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
 const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
@@ -692,6 +698,10 @@ function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined):
     const r: Lib.Result = p.stayAt !== undefined ? { success: true, reason: "ok" } : end;
     const why = r.success ? "ok" : endWhy;
     const cut = cutBy(bot, end);
+    if (p.stayAt !== undefined) {
+        stayEnd(bot, p, cut !== undefined ? `${endWhy}:${cut}` : endWhy, false);
+        if (cut !== undefined) resume[bot.GetPlayerID()] = p;
+    }
     jobLine(bot, p, "end", why, p.stayAt !== undefined ? undefined : cut);
     const r1 = (x: number) => math.floor(x * 10) / 10;
     const fields: Telemetry.Fields<"pull_job"> = [
@@ -1128,14 +1138,15 @@ function lookLine(bot: Unit, p: Pull, l: JobVerbs.StayLook): void {
     ]);
 }
 
-function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
+function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks, deadline?: number): Lib.TaskBody {
     p.stayAt = DotaTime();
+    p.stayFirst = p.stayFirst ?? p.stayAt;
     p.stayHp = bot.GetHealth();
     return yield* Tasks.Jobs()!.stayCamp(
         bot as unknown as Lib.TaskUnit,
         {
             at: p.plan.spawner.location as unknown as Lib.Vec,
-            deadline: p.stayAt + SETTINGS.StayMax,
+            deadline: deadline ?? p.stayAt + SETTINGS.StayMax,
             onHit: () => {
                 p.sht = (p.sht ?? 0) + 1;
             },
@@ -1153,6 +1164,81 @@ function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
         },
         hooks
     );
+}
+
+/** One `ev=stay_end` line per leg of a stay: how it ended and what is left of the camp (the next group's read). */
+function stayEnd(bot: Unit, p: Pull, st: string, back: boolean): void {
+    if (!Telemetry.IsEnabled()) return;
+    let n = 0;
+    let hp = 0;
+    let max = 0;
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) {
+        if (!u.IsAlive() || GetUnitToLocationDistance(u, p.plan.spawner.location) > LaneConfig.Settings().Radii.MeetWatch) continue;
+        n++;
+        hp += u.GetHealth();
+        max += u.GetMaxHealth();
+    }
+    Telemetry.Event("stay_end", [
+        ["pid", bot.GetPlayerID()],
+        ["slot", p.plan.slot],
+        ["st", st],
+        ["ss", p.stayAt !== undefined ? tenth(DotaTime() - p.stayAt) : undefined],
+        ["back", back ? 1 : 0],
+        ["nn", n],
+        ["nhp", math.floor(hp + 0.5)],
+        ["nmax", math.floor(max + 0.5)],
+        ["bh", math.floor((bot.GetHealth() / bot.GetMaxHealth()) * 100 + 0.5) / 100],
+    ]);
+}
+
+/**
+ * A stay another mode took (stock's retreat, Valve's attack: the hold is soft) is resumed once the hero is free again while
+ * our creeps still fight the camp's neutrals (user 25/11/2026). It is dropped when none of ours is left on a neutral there
+ * or the stay's backstop has passed; held, not dropped, while the hero is busy, low or in danger.
+ */
+function resumeStay(bot: Unit, p: Pull): boolean {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const until = (p.stayFirst ?? now) + SETTINGS.StayMax;
+    if (!Ours.On("SupportPullStay") || now >= until || !laneCreepsNear(p.plan, LaneConfig.Settings().Radii.MeetWatch).some((c) => onNeutral(c))) {
+        resume[pid] = undefined;
+        return false;
+    }
+    const mode = bot.GetActiveMode();
+    if (mode === BotMode.Attack || mode === BotMode.Retreat || bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.ResumeHp) return false;
+    if (SafeGather.At(bot, bot.GetLocation(), { who: "pull_start" }).level === "deadly") return false;
+    resume[pid] = undefined;
+    const ok = Tasks.Start(
+        bot,
+        {
+            name: "pull",
+            host: HOST,
+            preemptAfter: 1,
+            stallAfter: 4,
+            onEnd: (r) => {
+                running[pid] = undefined;
+                const why = r.success ? r.message ?? "ok" : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
+                const cut = cutBy(bot, r);
+                stayEnd(bot, p, cut !== undefined ? `${why}:${cut}` : why, true);
+                if (cut !== undefined) resume[pid] = p;
+            },
+        },
+        (ctx: Lib.Ctx) =>
+            stay(
+                bot,
+                p,
+                {
+                    label: (l) => {
+                        ctx.label(l);
+                        p.label = l;
+                    },
+                    urgent: ctx.urgent,
+                },
+                until
+            )
+    );
+    if (ok) running[pid] = p;
+    return ok;
 }
 
 function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody {
@@ -1303,6 +1389,8 @@ function rowApplies(bot: Unit): boolean {
     }
     trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    const back = resume[pid];
+    if (back !== undefined && resumeStay(bot, back)) return true;
     watch(bot);
     const now = DotaTime();
     const due = dueSlot(bot, now);

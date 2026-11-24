@@ -660,6 +660,7 @@ do
     local r = R.Last(bot).result
     T.check("stay hit: the neutral is hit while our creep is nearer to it", n.hp <= 2000 - 3 * 40)
     T.check("stay hit: our creep never hit above its last two hits", not hitOursEarly)
+
     T.eq("stay hit: ends ok", r.reason, "ok")
     T.eq("stay hit: neutral left", r.message, "left")
 end

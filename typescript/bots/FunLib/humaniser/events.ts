@@ -2776,7 +2776,7 @@ export const EVENTS = {
         // The stay (Ours.SupportPullStay), only on a pull that ended ok and stayed: st its end (`done` none of our creeps and no
         // neutral left at the camp, `left` neutrals left on it, `timeout:late` the backstop, `dead`, or the cut:
         // `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got,
-        // sht plain hits on our deniable creeps (one per creep hit), shl the puller's HP lost in it as a share of max.
+        // sht plain hits on neutrals (one per neutral hit), shl the puller's HP lost in it as a share of max.
         st: "str",
         ss: "num",
         sdt: "num",
@@ -2820,7 +2820,8 @@ export const EVENTS = {
         pid: "num",
         /** The pull's planned hit second; joins `ev=pull_job`. */
         slot: "num",
-        /** What the stay chose that frame: `lasthit`, `deny`, `hit`, `stand` or `flee` (a neutral on the puller). */
+        /** What the stay chose that frame: `lasthit`, `deny`, `hit` (a neutral), `hold` (the attack kept for a kill or deny due
+         *  inside a cycle), `stand` or `flee` (a neutral on the puller). */
         step: "str",
         /** Our lane creeps and neutrals at the camp. */
         nc: "num",
@@ -2831,6 +2832,24 @@ export const EVENTS = {
         due: "num",
         sk: "num",
         mh: "num",
+        /** The puller's HP share of max (two decimals). */
+        bh: "num",
+    },
+    /** One leg of a stay (Ours.SupportPullStay) ended: the first after the pull, or one resumed after another mode took it. */
+    stay_end: {
+        pid: "num",
+        /** The pull's planned hit second; joins `ev=pull_job`. */
+        slot: "num",
+        /** How it ended, as `ev=pull_job` st. */
+        st: "str",
+        /** The leg's seconds. */
+        ss: "num",
+        /** 1 on a resumed leg. */
+        back: "num",
+        /** What is left of the camp: neutrals alive within MeetWatch of its origin, their summed HP and max HP. */
+        nn: "num",
+        nhp: "num",
+        nmax: "num",
         /** The puller's HP share of max (two decimals). */
         bh: "num",
     },
