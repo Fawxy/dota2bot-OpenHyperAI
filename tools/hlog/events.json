@@ -899,7 +899,10 @@
    "why": "str",
    "host": "num",
    "hit": "num",
-   "cut": "str"
+   "cut": "str",
+   "ex": "num",
+   "took": "num",
+   "gj": "num"
   },
   "stack": {
    "pid": "num",
@@ -1774,6 +1777,9 @@
    "src": "str",
    "lane": "num",
    "slot": "num",
+   "rune": "num",
+   "ex": "num",
+   "dr": "num",
    "st": "str",
    "q": "num",
    "mv": "num",

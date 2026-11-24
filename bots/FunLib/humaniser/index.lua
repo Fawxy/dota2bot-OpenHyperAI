@@ -44,6 +44,7 @@ local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
+local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
 local SupportDeny = require(GetScriptDirectory().."/FunLib/humaniser/support_deny")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
@@ -69,6 +70,7 @@ ____exports.RunePickup = RunePickup
 ____exports.RunePlan = RunePlan
 ____exports.Plays = Plays
 ____exports.PullJob = PullJob
+____exports.RuneDetour = RuneDetour
 ____exports.PullFarm = PullFarm
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
@@ -132,6 +134,7 @@ local steps = {
     end,
     landing = SafeGather.Tick,
     pullShadow = PullJob.Shadow,
+    runeDetourShadow = RuneDetour.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -189,6 +192,7 @@ local function tick(bot)
     pcall(steps.regen, bot)
     pcall(steps.sustain, bot)
     pcall(steps.pullShadow, bot)
+    pcall(steps.runeDetourShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)
@@ -287,6 +291,18 @@ if Telemetry.GuardsEnabled() then
     end
 end
 Telemetry.PerfDeepInstall()
+if __TS__ArrayIndexOf(Decider.ROWS, RuneDetour.ROW) < 0 then
+    if Telemetry.GuardsEnabled() then
+        RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no)
+        RuneDetour.ROW.step = Telemetry.Guard(
+            "RuneDetourRow.step",
+            RuneDetour.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_0 = Decider.ROWS
+    ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = RuneDetour.ROW
+end
 if __TS__ArrayIndexOf(Decider.ROWS, SupportDeny.ROW) < 0 then
     if Telemetry.GuardsEnabled() then
         SupportDeny.ROW.applies = Telemetry.Guard("DenyRow.applies", SupportDeny.ROW.applies, no)
@@ -296,8 +312,8 @@ if __TS__ArrayIndexOf(Decider.ROWS, SupportDeny.ROW) < 0 then
             function() return true end
         )
     end
-    local ____Decider_ROWS_0 = Decider.ROWS
-    ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = SupportDeny.ROW
+    local ____Decider_ROWS_1 = Decider.ROWS
+    ____Decider_ROWS_1[#____Decider_ROWS_1 + 1] = SupportDeny.ROW
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)
