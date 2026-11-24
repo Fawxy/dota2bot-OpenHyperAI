@@ -523,7 +523,7 @@ export const EVENTS = {
     },
     /**
      * Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen
-     * to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing (engine formula), `fire` the
+     * to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the
      * fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the
      * hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
      */

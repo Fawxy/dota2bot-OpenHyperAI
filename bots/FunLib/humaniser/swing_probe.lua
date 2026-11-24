@@ -423,6 +423,15 @@ local function frame(bot)
             )
         end
     end
+    local dead = {}
+    for u, r in pairs(active) do
+        if r.kind == "creep" and (u:IsNull() or not u:IsAlive()) then
+            dead[#dead + 1] = u
+        end
+    end
+    for ____, u in ipairs(dead) do
+        active[u] = nil
+    end
     local creeps = 0
     for ____, r in pairs(active) do
         if r.kind == "creep" then
@@ -431,11 +440,11 @@ local function frame(bot)
     end
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
         do
-            local __continue61
+            local __continue65
             repeat
                 local u = c
                 if u:IsNull() or not isLaneCreep(u) then
-                    __continue61 = true
+                    __continue65 = true
                     break
                 end
                 local had = active[u] ~= nil
@@ -449,9 +458,9 @@ local function frame(bot)
                 if not had and active[u] ~= nil then
                     creeps = creeps + 1
                 end
-                __continue61 = true
+                __continue65 = true
             until true
-            if not __continue61 then
+            if not __continue65 then
                 break
             end
         end

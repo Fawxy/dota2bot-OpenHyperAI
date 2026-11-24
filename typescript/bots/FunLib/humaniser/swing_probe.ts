@@ -4,8 +4,8 @@
  * lane, so the support can skip, join or take a deny; if it cannot be read, the slice stops there.
  *
  * Each frame, once per team VM, every hero of the team (GetTeamMember 1..5) whose attack target is a lane creep and who is
- * winding up (GetAnimActivity ATTACK or ATTACK2, anim cycle before the attack point) starts one record. The prediction is the
- * engine's own formula (engine `windupLeft`/`windupLanding`, UNVERIFIED there): fire at (attack point - anim cycle) x seconds
+ * winding up (GetAnimActivity ATTACK or ATTACK2, anim cycle before the attack point) starts one record. `pf` is the
+ * engine's formula before slice oha-engine-windup, kept for comparison (the engine now times as `pf2`): fire at (attack point - anim cycle) x seconds
  * per attack (`pf`), and beside it `pf2`, the attack point as seconds over GetAttackSpeed (the engine's cooldownLeft reading;
  * swingprobe1: `pf` fired 0.25 s early for melee heroes, first seen at anim cycle 0), a ranged hero's hit landing the projectile's flight later (distance less the launch offset, over projectile
  * speed). The record is followed to its truth, read from the game and not from the prediction:
@@ -349,6 +349,11 @@ function frame(bot: Unit): void {
         const u = b as unknown as Swinger;
         if (!u.IsNull() && u.IsTower()) visit(u, "tower", team, now, true);
     }
+    // A creep that died mid-record leaves the unit list, so it is never visited again: drop its record here, or it holds one
+    // of the CREEP_RECORDS slots for the rest of the game (review of 27c562c8: swingwc2's creep lines stopped at 2:00).
+    const dead: Swinger[] = [];
+    for (const [u, r] of active) if (r.kind === "creep" && (u.IsNull() || !u.IsAlive())) dead.push(u);
+    for (const u of dead) active.delete(u);
     let creeps = 0;
     for (const [, r] of active) if (r.kind === "creep") creeps++;
     for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {

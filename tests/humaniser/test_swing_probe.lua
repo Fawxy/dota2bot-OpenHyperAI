@@ -156,4 +156,28 @@ do -- a lane creep of ours winding up on an enemy creep: kind=creep, no pid, its
 	CREEPS[2] = {}
 end
 
+do -- a creep that dies mid-record frees its slot: after three such deaths a fourth creep still starts a record
+	local c = creep({ team = 3 })
+	local P = world({})
+	local dying = {}
+	for i = 1, 3 do dying[i] = hero({ pid = -1, creep = true }) end
+	local late = hero({ pid = -1, creep = true })
+	CREEPS[2] = { dying[1], dying[2], dying[3] }
+	local out = capture(function()
+		for _, a in ipairs(dying) do a.target, a.act, a.cyc = c, 1503, 0 end
+		frame(P, dying[1], 600)
+		for _, a in ipairs(dying) do a.IsAlive = function() return false end end
+		CREEPS[2] = { late }
+		late.target, late.act, late.cyc = c, 1503, 0
+		frame(P, late, 600.1)
+		late.lat = 600.5
+		frame(P, late, 600.5)
+		frame(P, late, 600.6)
+	end)
+	local l = lines(out, "ev=swing_probe")
+	check("creep cap: the fourth creep's record starts and lands after three died mid-record", #l == 1 and field(l[1], "kind") == "creep"
+		and field(l[1], "end") == "land", table.concat(out, " | "))
+	CREEPS[2] = {}
+end
+
 finish()
