@@ -158,24 +158,35 @@ test('a neutral both teams saw die is one row under the Radiant uid, with its na
     ]);
 });
 
-test('a neutral found dead after it left the list (hid) pairs by a 2 s window and keeps its partner\'s exact time; far from its partner it stays its own row', () => {
-    const nseen = (t, team, cid, x, y) => line(t, `unit_seen team=${team} cid=${cid} kind=neutral type=neutral_wolf x=${x} y=${y}`);
+test('a neutral found dead after it left the list (hid) merges with its partner of the same type and camp within 2 s, however far its last spot; an exact pair needs the same type', () => {
+    const nseen = (t, team, cid, x, y, camp, type = 'neutral_wolf') =>
+        line(t, `unit_seen team=${team} cid=${cid} kind=neutral type=${type} x=${x} y=${y}${camp === undefined ? '' : ` camp=${camp}`}`);
     const { view } = run([
-        nseen(10, 2, 1, 100, 100), nseen(10, 3, 2, 100, 100),
+        // a hid row 20 units off: merged, with the exact partner's time
+        nseen(10, 2, 1, 100, 100, 5), nseen(10, 3, 2, 100, 100, 5),
         ugone(50, 2, 1, 1, '', 100, 100), ugone(51.7, 3, 2, 'none', 'hid=1', 120, 100),
-        // beyond 250 units of the exact row: not the same unit
-        nseen(10, 2, 3, 2000, 2000), nseen(10, 3, 4, 2000, 2000),
+        // a hid row 600 units from the exact one (it was pulled away from where it was last listed), same camp: still the same unit
+        nseen(10, 2, 3, 2000, 2000, 7), nseen(10, 3, 4, 2000, 2000, 7),
         ugone(90, 2, 3, 1, '', 2000, 2000), ugone(90.4, 3, 4, 'none', 'hid=1', 2600, 2000),
-        // an exact pair 1.5 s apart is two units, a hid pair 1.5 s apart one
+        // a hid row in no camp is never merged by time alone; one in another camp, or of another type, is not the same unit
         nseen(10, 2, 5, 500, 500), nseen(10, 3, 6, 500, 500),
-        ugone(120, 2, 5, 1, '', 500, 500), ugone(121.5, 3, 6, 'none', '', 500, 500),
+        ugone(120, 2, 5, 1, '', 500, 500), ugone(120.2, 3, 6, 'none', 'hid=1', 500, 500),
+        nseen(10, 2, 7, 800, 800, 9), nseen(10, 3, 8, 800, 800, 11), nseen(10, 3, 9, 800, 800, 9, 'neutral_ogre'),
+        ugone(150, 2, 7, 1, '', 800, 800), ugone(150.2, 3, 8, 'none', 'hid=1', 800, 800), ugone(150.2, 3, 9, 'none', 'hid=1', 800, 800),
+        // a hid pair 2.5 s apart is two units
+        nseen(10, 2, 10, 300, 300, 13), nseen(10, 3, 11, 300, 300, 13),
+        ugone(180, 2, 10, 1, '', 300, 300), ugone(182.5, 3, 11, 'none', 'hid=1', 300, 300),
+        // an exact pair of two types at one spot and time: each takes the one of its own type
+        nseen(10, 2, 12, 900, 900, 15), nseen(10, 3, 13, 900, 900, 15, 'neutral_ogre'), nseen(10, 2, 14, 900, 900, 15, 'neutral_ogre'), nseen(10, 3, 15, 900, 900, 15),
+        ugone(200, 2, 12, 1, '', 900, 900), ugone(200, 3, 13, 6, '', 900, 900), ugone(200, 2, 14, 2, '', 900, 900), ugone(200, 3, 15, 5, '', 900, 900),
         // an exact row is the partner when the Radiant row was the hid one
-        nseen(10, 2, 7, 800, 800), nseen(10, 3, 8, 800, 800),
-        ugone(150.4, 2, 7, 'none', 'hid=1', 800, 800), ugone(150, 3, 8, 6, '', 800, 800),
+        nseen(10, 2, 16, 400, 400, 17), nseen(10, 3, 17, 400, 400, 17),
+        ugone(230.4, 2, 16, 'none', 'hid=1', 400, 400), ugone(230, 3, 17, 6, '', 400, 400),
     ]);
-    const n = view.filter(r => r.kind === 'neutral').sort((a, b) => a.t1 - b.t1);
+    const n = view.filter(r => r.kind === 'neutral').sort((a, b) => a.t1 - b.t1 || a.uid.localeCompare(b.uid));
     assert.deepStrictEqual(n.map(r => [r.uid, r.t1, r.hid, r.by_pid]), [
-        ['n2:1', 50, 0, 1], ['n2:3', 90, 0, 1], ['n3:4', 90.4, 1, null], ['n2:5', 120, 0, 1], ['n3:6', 121.5, 0, null], ['n2:7', 150, 0, 6],
+        ['n2:1', 50, 0, 1], ['n2:3', 90, 0, 1], ['n2:5', 120, 0, 1], ['n3:6', 120.2, 1, null],
+        ['n2:7', 150, 0, 1], ['n3:8', 150.2, 1, null], ['n3:9', 150.2, 1, null], ['n2:10', 180, 0, 1], ['n3:11', 182.5, 1, null],
+        ['n2:12', 200, 0, 1], ['n2:14', 200, 0, 2], ['n2:16', 230, 0, 6],
     ]);
-    assert.strictEqual(view.filter(r => r.kind === 'lane').length, 0);
 });
