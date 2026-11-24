@@ -1269,6 +1269,15 @@ do
 	check("strong: no stack", #stackLines(printed) == 0)
 end
 
+-- A camp the record knows is empty is not stacked (nothing to pull out; the mark refills it): pullstackrow1 pid 6 at 7:5x,
+-- a stack sent to a camp seen empty failed `no_target`.
+do
+	local printed = rowRun({ n = 0 })
+	local c = choices(printed, "stack")
+	check("empty: one line, not wanted, why=empty", #c == 1 and field(c[1], "want") == "0" and field(c[1], "why") == "empty" and field(c[1], "rn") == "0", c[1])
+	check("empty: no stack", #stackLines(printed) == 0)
+end
+
 -- The box out of sight after the hit: the stack is read `unseen`, and the record adds a set by the rules.
 do
 	local printed, H, bot, sp = rowRun({ fogged = function() return true end })

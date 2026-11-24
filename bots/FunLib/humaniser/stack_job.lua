@@ -2693,6 +2693,9 @@ local ROW_HOST = BotMode.Farm
 --- This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided.
 local function rowSlot(bot, now)
     local minute = math.floor(now / GameRules.NEUTRAL_EVERY)
+    if minute * GameRules.NEUTRAL_EVERY < GameRules.NEUTRAL_FIRST then
+        return nil
+    end
     local ____opt_57 = rowMinutes[bot:GetPlayerID()]
     if (____opt_57 and ____opt_57[minute]) == true or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom then
         return nil
@@ -2784,6 +2787,10 @@ local function rowBlock(bot)
     end
     return nil
 end
+--- A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark.
+local function rowWants(k)
+    return k.n > 0 and k.n < PullJob.SETTINGS.StrongAt
+end
 --- Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`.
 function ____exports.Shadow(bot)
     if not Telemetry.IsEnabled() or not PullJob.IsPuller(bot) or rowOn(bot) or Drill.Held(bot) then
@@ -2804,7 +2811,7 @@ function ____exports.Shadow(bot)
         bot,
         slot,
         false,
-        known.n < PullJob.SETTINGS.StrongAt,
+        rowWants(known),
         "off",
         known,
         "shadow"
@@ -2834,13 +2841,13 @@ local function rowApplies(bot)
         return false
     end
     local known = PullJob.Known(slot.sp)
-    if known.n >= PullJob.SETTINGS.StrongAt then
+    if not rowWants(known) then
         rowLine(
             bot,
             slot,
             false,
             false,
-            "strong",
+            known.n > 0 and "strong" or "empty",
             known
         )
         return false

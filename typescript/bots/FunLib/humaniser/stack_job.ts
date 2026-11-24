@@ -1461,7 +1461,7 @@ export function NoteIdleHeld(bot: Unit): void {
  * the lane's puller stacks its pull camp whenever its record of the camp (PullJob Known) is under the pull's bar, so the
  * pull, which starts only into a strong camp, takes the wave. The verb, its `ev=stack` line and the outcome read are the
  * stack job's; the chooser host, the fixed minutes, the double stack and the carry clear are not used. One `ev=choice
- * kind=stack` line per minute at the leave time (want: the camp is under the bar).
+ * kind=stack` line per minute from the first spawn's, at the leave time (want: the camp holds neutrals, under the bar).
  */
 function rowOn(bot: Unit): boolean {
     return Ours.On("SupportPull") && Ours.On("SupportPullStack") && PullJob.IsPuller(bot) && !Drill.Held(bot);
@@ -1481,6 +1481,8 @@ interface RowSlot {
 /** This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided. */
 function rowSlot(bot: Unit, now: number): RowSlot | undefined {
     const minute = math.floor(now / GameRules.NEUTRAL_EVERY);
+    // Before the first spawn's minute the camp holds nothing to stack (pullstackrow1: pregame lines at minutes -2 and -1).
+    if (minute * GameRules.NEUTRAL_EVERY < GameRules.NEUTRAL_FIRST) return undefined;
     if (rowMinutes[bot.GetPlayerID()]?.[minute] === true || now < minute * GameRules.NEUTRAL_EVERY + SETTINGS.LookFrom) return undefined;
     const sp = PullJob.SpawnerFor(bot);
     const data = sp !== undefined ? Candidates(bot.GetTeam()).find((d) => d.campIdx === sp.idx) : undefined;
@@ -1521,6 +1523,11 @@ function rowBlock(bot: Unit): string | undefined {
     return undefined;
 }
 
+/** A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark. */
+function rowWants(k: PullJob.CampKnown): boolean {
+    return k.n > 0 && k.n < PullJob.SETTINGS.StrongAt;
+}
+
 /** Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`. */
 export function Shadow(bot: Unit): void {
     if (!Telemetry.IsEnabled() || !PullJob.IsPuller(bot) || rowOn(bot) || Drill.Held(bot)) return;
@@ -1528,7 +1535,7 @@ export function Shadow(bot: Unit): void {
     const slot = rowSlot(bot, DotaTime());
     if (slot === undefined) return;
     const known = PullJob.Known(slot.sp);
-    rowLine(bot, slot, false, known.n < PullJob.SETTINGS.StrongAt, "off", known, "shadow");
+    rowLine(bot, slot, false, rowWants(known), "off", known, "shadow");
 }
 
 function rowApplies(bot: Unit): boolean {
@@ -1547,8 +1554,8 @@ function rowApplies(bot: Unit): boolean {
     const slot = rowSlot(bot, now);
     if (slot === undefined) return false;
     const known = PullJob.Known(slot.sp);
-    if (known.n >= PullJob.SETTINGS.StrongAt) {
-        rowLine(bot, slot, false, false, "strong", known);
+    if (!rowWants(known)) {
+        rowLine(bot, slot, false, false, known.n > 0 ? "strong" : "empty", known);
         return false;
     }
     const why = rowBlock(bot);
