@@ -563,6 +563,12 @@ export const EVENTS = {
         end: "str",
         /** end=retarget: the new target, `creep` (another lane creep), `hero`, `none` or `other`. */
         to: "str",
+        /** Seconds after first sight of the end (any end): how far into the wind-up a cancel or retarget came. */
+        age: "num",
+        /** Ranged: predicted landing from the projectile's own position on its first frame (engine flightsAt), seconds after first sight. */
+        pl3: "num",
+        /** HP lost over the landing frame and the next (a hit's damage that shows a frame late). */
+        drop2: "num",
         /** The longest frame gap over the record. */
         gap: "num",
     },

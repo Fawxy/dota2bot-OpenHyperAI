@@ -100,7 +100,7 @@ do -- ranged: the projectile is seen, then gone: the landing is the frame it wen
 		frame(P, h, 200)
 		h.lat = 200.3
 		frame(P, h, 200.3)
-		c.proj = { { caster = h, is_attack = true } }
+		c.proj = { { caster = h, is_attack = true, location = Vector(222, 0) } }
 		frame(P, h, 200.5)
 		c.proj, c.hp = {}, 260
 		frame(P, h, 200.8)
@@ -110,6 +110,8 @@ do -- ranged: the projectile is seen, then gone: the landing is the frame it wen
 	check("ranged: one line, flight 0.5 s added to the 0.3 s fire", #l == 1 and near(num(l[1], "pf"), 0.3) and near(num(l[1], "pl"), 0.8), l[1])
 	check("ranged: projectile seen, landing at 0.8, drop 40, enemy creep, no kill", field(l[1], "proj") == "1" and near(num(l[1], "land"), 0.8)
 		and num(l[1], "drop") == 40 and field(l[1], "own") == "0" and field(l[1], "kill") == "0", l[1])
+	check("ranged: pl3 from the projectile's position (0.5 + 300/1000), drop2 the two frames, age 0.8", near(num(l[1], "pl3"), 0.8)
+		and num(l[1], "drop2") == 40 and near(num(l[1], "age"), 0.8), l[1])
 end
 
 do -- a wind-up that stops unfired ends cancel; a switch-off probe logs nothing
