@@ -44,6 +44,11 @@ export const SETTINGS = {
     Slack: 4,
     /** A gold gain this large between two steps of the walk is the pickup (judgement: a 4:00 bounty is about 40 at face). */
     TookGold: 20,
+    /**
+     * Seconds the row yields after a walk ends before another may start: the mode read is the hold's own host (farm) until
+     * Valve has picked from the other modes again (Decider FRESH; review 24/11/2026).
+     */
+    Rest: 0.5,
     /** Walks for one spawn that may end untaken (no gold jump) before the hero stops going for that spot (judgement). */
     Misses: 2,
 };
@@ -85,11 +90,14 @@ interface Walk {
 }
 /** pid -> its walk while it runs. */
 const running: Record<number, Walk | undefined> = {};
+/** pid -> when its last walk ended. */
+const endedAt: Record<number, number | undefined> = {};
 
 export function ResetCache(): void {
     for (const [k] of pairs(passes)) passes[k as number] = undefined;
     for (const [k] of pairs(went)) went[k as number] = undefined;
     for (const [k] of pairs(running)) running[k as number] = undefined;
+    for (const [k] of pairs(endedAt)) endedAt[k as number] = undefined;
 }
 
 export function On(): boolean {
@@ -232,6 +240,7 @@ function finish(bot: Unit, ex: number, res: Lib.Result): void {
     const pid = bot.GetPlayerID();
     const w = running[pid];
     running[pid] = undefined;
+    endedAt[pid] = DotaTime();
     if (w !== undefined) noteGold(bot, w);
     // The verb's ok (the status left available at the rune) is a pickup too: the gold can land a frame after it (rdaud s25).
     const took = res.success || (w !== undefined && w.jump >= SETTINGS.TookGold);
@@ -249,6 +258,8 @@ function rowApplies(bot: Unit): boolean {
     if (running[pid] !== undefined) return true;
     if (Tasks.Jobs() === undefined) return false;
     const now = DotaTime();
+    const ended = endedAt[pid];
+    if (ended !== undefined && now - ended < SETTINGS.Rest) return false;
     const r = observe(bot, "own", now);
     if (r === undefined) return false;
     const p = passes[pid]!;

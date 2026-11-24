@@ -164,6 +164,24 @@ do
 	local o2 = walk(R, a, true)
 	local o3 = walk(R, a, true)
 	check("taken, the status still up (runes piled on the spot): it keeps walking while each walk takes one", #lines(o2, "phase=start") == 1 and #lines(o3, "phase=start") == 1, table.concat(o3, " | "))
+	-- Review 24/11/2026: right after a walk the mode read is the hold's own; the row yields Rest seconds first.
+	local H2 = world(true)
+	local R2 = H2.RuneDetour
+	local z = hero({ pid = 9, loc = Vector(0, -2600) })
+	z.mode = BotMode.Farm
+	z.gold = 600
+	local yielded, later
+	capture(function()
+		R2.ROW.applies(z)
+		for _ = 1, 40 do
+			T = T + 0.1
+			if R2.ROW.step(z) then break end
+		end
+		yielded = R2.ROW.applies(z)
+		T = T + 0.6
+		later = R2.ROW.applies(z)
+	end)
+	check("no walk starts in the round right after one ends, one may after Rest", yielded == false and later == true)
 
 	H = world(true)
 	R = H.RuneDetour

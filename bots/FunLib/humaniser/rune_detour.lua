@@ -19,6 +19,7 @@ ____exports.SETTINGS = {
     Until = 600,
     Slack = 4,
     TookGold = 20,
+    Rest = 0.5,
     Misses = 2
 }
 --- The task's host: the decider's (farm).
@@ -28,6 +29,8 @@ local passes = {}
 local went = {}
 --- pid -> its walk while it runs.
 local running = {}
+--- pid -> when its last walk ended.
+local endedAt = {}
 function ____exports.ResetCache()
     for k in pairs(passes) do
         passes[k] = nil
@@ -37,6 +40,9 @@ function ____exports.ResetCache()
     end
     for k in pairs(running) do
         running[k] = nil
+    end
+    for k in pairs(endedAt) do
+        endedAt[k] = nil
     end
 end
 function ____exports.On()
@@ -251,6 +257,7 @@ local function finish(bot, ex, res)
     local pid = bot:GetPlayerID()
     local w = running[pid]
     running[pid] = nil
+    endedAt[pid] = DotaTime()
     if w ~= nil then
         noteGold(bot, w)
     end
@@ -284,6 +291,10 @@ local function rowApplies(bot)
         return false
     end
     local now = DotaTime()
+    local ended = endedAt[pid]
+    if ended ~= nil and now - ended < ____exports.SETTINGS.Rest then
+        return false
+    end
     local r = observe(bot, "own", now)
     if r == nil then
         return false
