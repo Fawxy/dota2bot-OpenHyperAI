@@ -1,11 +1,39 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local Lane = ____dota.Lane
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LaneHits = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits")
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
@@ -37,67 +65,116 @@ end
 local function acting(bot)
     return bot:NumQueuedActions() > 0 or bot:IsChanneling() or bot:IsUsingAbility() or bot:IsCastingAbility()
 end
---- The reachable deny closest to coming due, else undefined. Undefined too while the engine bundle is not loaded.
+local LANES = {Lane.Top, Lane.Mid, Lane.Bot}
+--- The teammate (never the bot itself) whose hit kills the creep first, else undefined.
+function ____exports.MateOn(bot, creep)
+    local team = bot:GetTeam()
+    local row
+    for ____, lane in ipairs(LANES) do
+        row = LaneHits.Of(team, lane, creep)
+        if row ~= nil then
+            break
+        end
+    end
+    if row == nil then
+        return nil
+    end
+    local k = LaneHits.KillingHit(row)
+    if k == nil or k.by ~= "hero" and k.by ~= "self" then
+        return nil
+    end
+    local a = k.attacker
+    if a == bot or a:GetTeam() ~= team then
+        return nil
+    end
+    return {
+        pid = a:GetPlayerID(),
+        commit = k.commit
+    }
+end
+--- The reachable deny closest to coming due that no teammate's hit takes. When a teammate's takes every reachable one, the
+-- nearest-due of those comes back with its `mate` (the row logs it and holds nothing). Undefined when nothing is reachable,
+-- or while the engine bundle is not loaded.
 function ____exports.Offer(bot)
     local verbs = Tasks.Verbs()
     if verbs == nil then
         return nil
     end
-    local best
+    local free
+    local taken
     for ____, t in ipairs(verbs.laneTargets(bot, {within = 1, lastHit = false})) do
         do
-            local __continue10
+            local __continue17
             repeat
                 if t.kind ~= "deny" or not LaneOffers.Reachable(t) then
-                    __continue10 = true
+                    __continue17 = true
                     break
                 end
-                if best == nil or t.eta < best.eta then
-                    best = t
+                if free ~= nil and t.eta >= free.eta then
+                    __continue17 = true
+                    break
                 end
-                __continue10 = true
+                local mate = ____exports.MateOn(bot, t.creep)
+                if mate == nil then
+                    free = t
+                elseif taken == nil or t.eta < taken.t.eta then
+                    taken = {t = t, mate = mate}
+                end
+                __continue17 = true
             until true
-            if not __continue10 then
+            if not __continue17 then
                 break
             end
         end
     end
-    return best
+    return free ~= nil and ({t = free}) or taken
 end
-local function choiceLine(bot, slot, go, why, t, src)
+local function choiceLine(bot, slot, go, why, o, src)
+    local t = o.t
     local function r2(x)
         return math.floor(x * 100 + 0.5) / 100
     end
-    Telemetry.Event(
-        "choice",
+    local ____Telemetry_Event_3 = Telemetry.Event
+    local ____array_2 = __TS__SparseArrayNew(
         {
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"kind", "deny"},
-            {"want", 1},
-            {"go", go and 1 or 0},
-            {"why", why},
-            {"src", src or "own"},
-            {
-                "lane",
-                bot:GetAssignedLane()
-            },
-            {"slot", slot},
-            {
-                "walk",
-                r2(t.walk)
-            },
-            {
-                "due",
-                r2(t.due)
-            },
-            {
-                "dies",
-                t.dies == math.huge and -1 or r2(t.dies)
-            }
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"kind", "deny"},
+        {"want", 1},
+        {"go", go and 1 or 0},
+        {"why", why},
+        {"src", src or "own"},
+        {
+            "lane",
+            bot:GetAssignedLane()
+        },
+        {"slot", slot},
+        {
+            "walk",
+            r2(t.walk)
+        },
+        {
+            "due",
+            r2(t.due)
+        },
+        {
+            "dies",
+            t.dies == math.huge and -1 or r2(t.dies)
         }
+    )
+    local ____opt_0 = o.mate
+    __TS__SparseArrayPush(
+        ____array_2,
+        {"mate", ____opt_0 and ____opt_0.pid},
+        {
+            "mc",
+            o.mate ~= nil and r2(o.mate.commit) or nil
+        }
+    )
+    ____Telemetry_Event_3(
+        "choice",
+        {__TS__SparseArraySpread(____array_2)}
     )
 end
 --- Once per creep and hero: true the first time (and the first time it goes), so a line goes out only then.
@@ -152,11 +229,15 @@ local function cutBy(bot, r)
     return HDebug.ModeName(bot:GetActiveMode())
 end
 local function finish(bot, r)
-    running[bot:GetPlayerID()] = nil
+    local pid = bot:GetPlayerID()
+    local ____opt_4 = running[pid]
+    local mate = ____opt_4 and ____opt_4.mate
+    running[pid] = nil
+    local why = r.success and "ok" or (r.reason == "interrupted" and mate ~= nil and "mate" or r.reason .. (r.message ~= nil and ":" .. r.message or ""))
     jobLine(
         bot,
         "end",
-        r.success and "ok" or r.reason .. (r.message ~= nil and ":" .. r.message or ""),
+        why,
         cutBy(bot, r)
     )
 end
@@ -171,18 +252,18 @@ local function shadow(bot)
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return
     end
-    local t = ____exports.Offer(bot)
-    if t == nil then
+    local o = ____exports.Offer(bot)
+    if o == nil then
         return
     end
-    local cid = Telemetry.CreepId(t.creep)
+    local cid = Telemetry.CreepId(o.t.creep)
     if firstLine(bot, cid, false) then
         choiceLine(
             bot,
             slotOf(cid),
             false,
             "off",
-            t,
+            o,
             "shadow"
         )
     end
@@ -201,12 +282,25 @@ local function rowApplies(bot)
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return false
     end
-    local t = ____exports.Offer(bot)
-    if t == nil then
+    local o = ____exports.Offer(bot)
+    if o == nil then
         return false
     end
+    local t = o.t
     local cid = Telemetry.CreepId(t.creep)
     local slot = slotOf(cid)
+    if o.mate ~= nil then
+        if firstLine(bot, cid, false) then
+            choiceLine(
+                bot,
+                slot,
+                false,
+                "mate",
+                o
+            )
+        end
+        return false
+    end
     if acting(bot) then
         if firstLine(bot, cid, false) then
             choiceLine(
@@ -214,12 +308,20 @@ local function rowApplies(bot)
                 slot,
                 false,
                 "acting",
-                t
+                o
             )
         end
         return false
     end
     local creep = t.creep
+    local function mateTakes()
+        local m = ____exports.MateOn(bot, creep)
+        local a = running[pid]
+        if m ~= nil and a ~= nil then
+            a.mate = m.pid
+        end
+        return m ~= nil
+    end
     local ok = Tasks.Start(
         bot,
         {
@@ -229,7 +331,7 @@ local function rowApplies(bot)
             stallAfter = 4,
             onEnd = function(r) return finish(bot, r) end
         },
-        function(ctx) return ctx.deny({target = creep, maxWait = t.eta + ____exports.WAIT_SLACK}) end
+        function(ctx) return ctx.deny({target = creep, maxWait = t.eta + ____exports.WAIT_SLACK, interruptIf = mateTakes}) end
     )
     if not ok then
         if firstLine(bot, cid, false) then
@@ -238,7 +340,7 @@ local function rowApplies(bot)
                 slot,
                 false,
                 "refused",
-                t
+                o
             )
         end
         return false
@@ -249,7 +351,7 @@ local function rowApplies(bot)
             slot,
             true,
             nil,
-            t
+            o
         )
     end
     running[pid] = {cid = cid, slot = slot}

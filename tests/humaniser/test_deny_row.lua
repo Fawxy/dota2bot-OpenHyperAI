@@ -36,12 +36,26 @@ local function world(o)
 	F.Tick = function() end
 	F.Start = function(_, opts, body)
 		w.starts = w.starts + 1
-		w.onEnd, w.opts = opts.onEnd, opts
+		w.onEnd, w.opts, w.body = opts.onEnd, opts, body
 		return o.refuse ~= true
 	end
 	F.Step = function() w.steps = w.steps + 1 return true end
+	-- w.kills[creep]: the lane read's killing hit for that creep ({ by, attacker, commit }); none: the creep is not in the read.
+	w.kills = {}
+	local LH = package.loaded["bots/FunLib/humaniser/lane_hits"]
+	LH.Of = function(_, _, creep) if w.kills[creep] ~= nil then return { creep = creep } end return nil end
+	LH.KillingHit = function(r) return w.kills[r.creep] end
 	return w
 end
+
+-- The deny options the started task passed to the engine verb.
+local function denyOpts(w)
+	local got
+	w.body({ deny = function(opts) got = opts end })
+	return got
+end
+local mate = MakeUnit({ pid = 1, team = 2, bot = true, loc = Vector(50, -5000) })
+local foe = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(300, -5000) })
 
 local creepA = MakeCreep({ team = 2, loc = Vector(100, -5000), hp = 40, maxhp = 550 })
 local creepB = MakeCreep({ team = 2, loc = Vector(150, -5000), hp = 300, maxhp = 550 })
@@ -133,6 +147,91 @@ do -- refused by the runner: a refused line, no hold
 	local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
 	local ch = lines(out, "kind=deny")
 	check("refused: no hold, why=refused", a == false and #ch == 1 and field(ch[1], "why") == "refused", table.concat(ch, " | "))
+end
+
+do -- skip: the nearest-due creep a teammate's hit kills is passed over for the next one in reach
+	local w = world()
+	w.offers = { deny(creepA, 0, 0.2, 2), deny(creepB, 0.5, 0.9, 3) }
+	w.kills[creepA] = { by = "hero", attacker = mate, commit = 0.15 }
+	local a
+	local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
+	local ch = lines(out, "kind=deny")
+	check("skip: the attempt goes to the creep no teammate takes", a == true and w.starts == 1 and denyOpts(w).target == creepB, tostring(a))
+	check("skip: one go=1 line, for the other creep, with no mate", #ch == 1 and field(ch[1], "go") == "1" and field(ch[1], "mate") == nil
+		and tonumber(field(ch[1], "walk")) == 0.5, table.concat(ch, " | "))
+end
+
+do -- skip: every reachable deny taken by a teammate holds nothing and logs why=mate with the teammate and its commit
+	local w = world()
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	w.kills[creepA] = { by = "hero", attacker = mate, commit = 0.15 }
+	local a
+	local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
+	local ch = lines(out, "kind=deny")
+	check("skip: no hold when a teammate takes the only deny", a == false and w.starts == 0, tostring(a))
+	check("skip: why=mate mate=1 mc=0.15", #ch == 1 and field(ch[1], "why") == "mate" and field(ch[1], "mate") == "1"
+		and tonumber(field(ch[1], "mc")) == 0.15, table.concat(ch, " | "))
+end
+
+do -- skip, not latched: a teammate's wind-up that cancels gives the creep back on the next round
+	local w = world()
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	w.kills[creepA] = { by = "hero", attacker = mate, commit = 0.2 }
+	local a1, a2
+	local out = capture(function()
+		a1 = w.SD.ROW.applies(w.sup)
+		w.kills[creepA] = nil
+		a2 = w.SD.ROW.applies(w.sup)
+	end)
+	local ch = lines(out, "kind=deny")
+	check("cancel: skipped, then attempted once the teammate's hit is gone", a1 == false and a2 == true and w.starts == 1, tostring(a1) .. " " .. tostring(a2))
+	check("cancel: a why=mate line, then a go=1 line for the same creep", #ch == 2 and field(ch[1], "why") == "mate" and field(ch[2], "go") == "1",
+		table.concat(ch, " | "))
+end
+
+do -- controls: a killing hit that is not a teammate's leaves the attempt as the solo deny made it
+	for _, case in ipairs({
+		{ name = "an enemy hero's", k = { by = "hero", attacker = foe, commit = 0 } },
+		{ name = "the bot's own", k = "self" },
+		{ name = "a creep's", k = { by = "creep", attacker = MakeCreep({ team = 3, loc = Vector(200, -5000) }), commit = 0 } },
+	}) do
+		local w = world()
+		w.offers = { deny(creepA, 0, 0.2, 2) }
+		w.kills[creepA] = case.k == "self" and { by = "self", attacker = w.sup, commit = 0 } or case.k
+		local a
+		local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
+		local ch = lines(out, "kind=deny")
+		check("control: " .. case.name .. " killing hit: the attempt starts", a == true and w.starts == 1 and #ch == 1
+			and field(ch[1], "go") == "1" and field(ch[1], "mate") == nil, table.concat(ch, " | "))
+	end
+end
+
+do -- live drop: a started attempt's verb is told to stop before its swing once a teammate's hit takes the creep
+	local w = world()
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	local a, before, after
+	local out = capture(function()
+		a = w.SD.ROW.applies(w.sup)
+		local opts = denyOpts(w)
+		before = opts.interruptIf()
+		w.kills[creepA] = { by = "hero", attacker = mate, commit = 0 }
+		after = opts.interruptIf()
+		w.onEnd({ success = false, reason = "interrupted" })
+	end)
+	local jobs = lines(out, "job=deny")
+	check("live drop: the verb's interrupt is false, then true once the teammate's hit kills it", a == true and before == false and after == true,
+		tostring(before) .. " " .. tostring(after))
+	check("live drop: the job ends why=mate", #jobs == 2 and field(jobs[2], "why") == "mate", table.concat(jobs, " | "))
+end
+
+do -- shadow: the reference arm logs the same read, why=off with the teammate on it
+	local w = world({ on = false })
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	w.kills[creepA] = { by = "hero", attacker = mate, commit = 0 }
+	local out = capture(function() w.SD.ROW.applies(w.sup) end)
+	local ch = lines(out, "kind=deny")
+	check("shadow: why=off src=shadow with mate=1", #ch == 1 and field(ch[1], "why") == "off" and field(ch[1], "src") == "shadow"
+		and field(ch[1], "mate") == "1", table.concat(ch, " | "))
 end
 
 do -- the hold strength: soft (plan s3), so Valve's attack outbids an attempt when it wants the hero

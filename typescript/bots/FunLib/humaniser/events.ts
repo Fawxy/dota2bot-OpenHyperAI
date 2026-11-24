@@ -2851,7 +2851,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `deny` (deny_row, Ours.Deny: one line per creep offered to a hero the trip table lets deny, `slot` the second it was first offered; `why` `off`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `deny` (deny_row, Ours.Deny: one line per creep offered to a hero the trip table lets deny, `slot` the second it was first offered; `why` `off`, `mate`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -3006,6 +3006,9 @@ export const EVENTS = {
         walk: "num",
         due: "num",
         dies: "num",
+        /** kind=deny (deny_row): the teammate whose hit kills the creep first in the lane read (lane_hits), and seconds until that hit commits (0: fired); absent when none. With it the row passes the creep over (`why=mate`; the shadow keeps `why=off`). */
+        mate: "num",
+        mc: "num",
     },
     gank: {
         pid: "num",

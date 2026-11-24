@@ -4,6 +4,11 @@
  * row `deny` (pos 4 and 5 for now; cores are held back until the row's worth and the claim exist). No pre-positioning: the
  * offers are the engine's `laneTargets` as they stand.
  *
+ * The skip (slice oha-deny-skip): a creep whose killing hit in the lane read (`lane_hits`) is a teammate's is passed over
+ * for the next reachable deny, and a live attempt drops before its swing once that becomes true. The killing hit is the
+ * first at which the forecast reaches 0, so a teammate's that kills is never behind an enemy hero's that would. Asked
+ * afresh each round: a teammate's wind-up that cancels gives the creep back.
+ *
  * The row latches its attempt (user 24/11/2026): `applies` is true while a started deny's task runs, whatever the offer now
  * says, so a damage estimate that changes mid-wind-up does not drop the hold and let stock cancel the swing. The task is
  * the engine `deny` verb on that creep; it ends when the creep dies, the deny lands or its wait runs out (`maxWait`, as
@@ -14,11 +19,12 @@
  * gives the land rate (`done` per started) with no hlog change.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Lane, Unit } from "bots/ts_libs/dota";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
@@ -34,6 +40,8 @@ export const WAIT_SLACK = 1.5;
 interface Attempt {
     cid: number;
     slot: number;
+    /** The teammate whose hit the attempt dropped for, once it has. */
+    mate?: number;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -54,19 +62,58 @@ function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
 }
 
-/** The reachable deny closest to coming due, else undefined. Undefined too while the engine bundle is not loaded. */
-export function Offer(bot: Unit): Lib.Verbs.LaneTarget | undefined {
-    const verbs = Tasks.Verbs();
-    if (verbs === undefined) return undefined;
-    let best: Lib.Verbs.LaneTarget | undefined;
-    for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: 1, lastHit: false })) {
-        if (t.kind !== "deny" || !LaneOffers.Reachable(t)) continue;
-        if (best === undefined || t.eta < best.eta) best = t;
-    }
-    return best;
+const LANES: Lane[] = [Lane.Top, Lane.Mid, Lane.Bot];
+
+/** A teammate's hit that kills the creep, as the lane read has it. */
+export interface MateHit {
+    pid: number;
+    /** Seconds until that hit commits (0: fired). */
+    commit: number;
 }
 
-function choiceLine(bot: Unit, slot: number, go: boolean, why: string | undefined, t: Lib.Verbs.LaneTarget, src?: string): void {
+/** The teammate (never the bot itself) whose hit kills the creep first, else undefined. */
+export function MateOn(bot: Unit, creep: unknown): MateHit | undefined {
+    const team = bot.GetTeam();
+    let row: LaneHits.CreepHits | undefined;
+    for (const lane of LANES) {
+        row = LaneHits.Of(team, lane, creep as Unit);
+        if (row !== undefined) break;
+    }
+    if (row === undefined) return undefined;
+    const k = LaneHits.KillingHit(row);
+    if (k === undefined || (k.by !== "hero" && k.by !== "self")) return undefined;
+    const a = k.attacker as unknown as Unit;
+    if (a === bot || a.GetTeam() !== team) return undefined;
+    return { pid: a.GetPlayerID(), commit: k.commit };
+}
+
+export interface Offered {
+    t: Lib.Verbs.LaneTarget;
+    mate?: MateHit;
+}
+
+/**
+ * The reachable deny closest to coming due that no teammate's hit takes. When a teammate's takes every reachable one, the
+ * nearest-due of those comes back with its `mate` (the row logs it and holds nothing). Undefined when nothing is reachable,
+ * or while the engine bundle is not loaded.
+ */
+export function Offer(bot: Unit): Offered | undefined {
+    const verbs = Tasks.Verbs();
+    if (verbs === undefined) return undefined;
+    let free: Lib.Verbs.LaneTarget | undefined;
+    let taken: Offered | undefined;
+    for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: 1, lastHit: false })) {
+        if (t.kind !== "deny" || !LaneOffers.Reachable(t)) continue;
+        if (free !== undefined && t.eta >= free.eta) continue;
+        const mate = MateOn(bot, t.creep);
+        if (mate === undefined) free = t;
+        else if (taken === undefined || t.eta < taken.t.eta) taken = { t, mate };
+    }
+    return free !== undefined ? { t: free } : taken;
+}
+
+function choiceLine(bot: Unit, slot: number, go: boolean, why: string | undefined, o: Offered, src?: string): void {
+    const t = o.t;
     const r2 = (x: number) => math.floor(x * 100 + 0.5) / 100;
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
@@ -80,6 +127,8 @@ function choiceLine(bot: Unit, slot: number, go: boolean, why: string | undefine
         ["walk", r2(t.walk)],
         ["due", r2(t.due)],
         ["dies", t.dies === math.huge ? -1 : r2(t.dies)],
+        ["mate", o.mate?.pid],
+        ["mc", o.mate !== undefined ? r2(o.mate.commit) : undefined],
     ]);
 }
 
@@ -127,8 +176,11 @@ function cutBy(bot: Unit, r: Lib.Result): string | undefined {
 }
 
 function finish(bot: Unit, r: Lib.Result): void {
-    running[bot.GetPlayerID()] = undefined;
-    jobLine(bot, "end", r.success ? "ok" : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`, cutBy(bot, r));
+    const pid = bot.GetPlayerID();
+    const mate = running[pid]?.mate;
+    running[pid] = undefined;
+    const why = r.success ? "ok" : r.reason === "interrupted" && mate !== undefined ? "mate" : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
+    jobLine(bot, "end", why, cutBy(bot, r));
 }
 
 function rowOn(bot: Unit): boolean {
@@ -139,10 +191,10 @@ function rowOn(bot: Unit): boolean {
 function shadow(bot: Unit): void {
     if (!Telemetry.IsEnabled() || !MayDeny(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
-    const t = Offer(bot);
-    if (t === undefined) return;
-    const cid = Telemetry.CreepId(t.creep as unknown as Unit);
-    if (firstLine(bot, cid, false)) choiceLine(bot, slotOf(cid), false, "off", t, "shadow");
+    const o = Offer(bot);
+    if (o === undefined) return;
+    const cid = Telemetry.CreepId(o.t.creep as unknown as Unit);
+    if (firstLine(bot, cid, false)) choiceLine(bot, slotOf(cid), false, "off", o, "shadow");
 }
 
 /** The row's `applies`, asked every scoring round: true while an attempt runs (the latch) or as one starts. */
@@ -155,23 +207,35 @@ function rowApplies(bot: Unit): boolean {
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
-    const t = Offer(bot);
-    if (t === undefined) return false;
+    const o = Offer(bot);
+    if (o === undefined) return false;
+    const t = o.t;
     const cid = Telemetry.CreepId(t.creep as unknown as Unit);
     const slot = slotOf(cid);
+    if (o.mate !== undefined) {
+        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "mate", o);
+        return false;
+    }
     if (acting(bot)) {
-        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "acting", t);
+        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "acting", o);
         return false;
     }
     const creep = t.creep;
+    // Checked by the verb before its swing only: once swung, our hit lands whatever a teammate does.
+    const mateTakes = (): boolean => {
+        const m = MateOn(bot, creep);
+        const a = running[pid];
+        if (m !== undefined && a !== undefined) a.mate = m.pid;
+        return m !== undefined;
+    };
     const ok = Tasks.Start(bot, { name: "deny", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: r => finish(bot, r) }, (ctx: Lib.Ctx) =>
-        ctx.deny({ target: creep, maxWait: t.eta + WAIT_SLACK })
+        ctx.deny({ target: creep, maxWait: t.eta + WAIT_SLACK, interruptIf: mateTakes })
     );
     if (!ok) {
-        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "refused", t);
+        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "refused", o);
         return false;
     }
-    if (firstLine(bot, cid, true)) choiceLine(bot, slot, true, undefined, t);
+    if (firstLine(bot, cid, true)) choiceLine(bot, slot, true, undefined, o);
     running[pid] = { cid, slot };
     jobLine(bot, "start", "trigger");
     return true;
