@@ -1952,7 +1952,9 @@ function ____exports.hpForecast(bot, creep, horizon)
             hits[#hits + 1] = {
                 t = f.t,
                 damage = physical(creep, f.damage),
-                by = kindOf(f.caster)
+                by = kindOf(f.caster),
+                attacker = f.caster,
+                commit = 0
             }
         end
     end
@@ -1978,8 +1980,21 @@ function ____exports.hpForecast(bot, creep, horizon)
                 local ____opt_70 = a.GetSecondsPerAttack
                 local period = ____opt_70 and ____opt_70(a) or 1
                 local land = windupLanding(a, creep)
+                local flight = isRanged(a) and math.max(
+                    0,
+                    dist(
+                        a:GetLocation(),
+                        here
+                    ) - CREEP_LAUNCH_OFFSET
+                ) / a:GetAttackProjectileSpeed() or 0
                 if land ~= nil and land <= horizon then
-                    hits[#hits + 1] = {t = land, damage = damage, by = kind}
+                    hits[#hits + 1] = {
+                        t = land,
+                        damage = damage,
+                        by = kind,
+                        attacker = a,
+                        commit = windupLeft(a) or 0
+                    }
                 end
                 local last = land or latest[a]
                 if last == nil then
@@ -1987,13 +2002,6 @@ function ____exports.hpForecast(bot, creep, horizon)
                     if kind == "tower" then
                         unphasedTower = true
                     end
-                    local flight = isRanged(a) and math.max(
-                        0,
-                        dist(
-                            a:GetLocation(),
-                            here
-                        ) - CREEP_LAUNCH_OFFSET
-                    ) / a:GetAttackProjectileSpeed() or 0
                     unphasedHits[#unphasedHits + 1] = {
                         damage = damage,
                         period = period,
@@ -2010,7 +2018,13 @@ function ____exports.hpForecast(bot, creep, horizon)
                 do
                     local t = last + period
                     while t <= horizon do
-                        hits[#hits + 1] = {t = t, damage = damage, by = kind}
+                        hits[#hits + 1] = {
+                            t = t,
+                            damage = damage,
+                            by = kind,
+                            attacker = a,
+                            commit = math.max(0, t - flight)
+                        }
                         t = t + period
                     end
                 end

@@ -194,6 +194,25 @@ do
     for _ = 1, 5 do sim:step(DT) end
     local f = V.hpForecast(bot, creep, 2)
     T.check("forecast: own projectile is a `self` hit", #f.hits == 1 and f.hits[1].by == "self")
+    T.check("forecast: a hit in flight names its attacker, commit 0", f.hits[1].attacker == bot and f.hits[1].commit == 0)
+end
+
+-- A wind-up's hit names its attacker, and its commit is the wind-up left (the landing less any flight); a creep's repeat
+-- one cycle on commits at its own landing (melee: no flight).
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 + 2 * DT - 1e-9 do sim:step(DT) end
+    local f = V.hpForecast(bot, creep, 3)
+    local first, rep
+    for _, h in ipairs(f.hits) do
+        if h.attacker == a then
+            if first == nil then first = h elseif rep == nil then rep = h end
+        end
+    end
+    T.check("forecast: the wind-up's hit names its attacker", first ~= nil)
+    T.near("forecast: a melee wind-up's commit is its landing", first.commit, first.t, 1e-9)
+    T.check("forecast: the commit is under one wind-up", first.commit > 0 and first.commit < 0.4)
+    T.check("forecast: the repeat names the attacker and commits at its landing", rep ~= nil and math.abs(rep.commit - rep.t) < 1e-9)
 end
 
 -- attackAndConfirm with aggroConfirms = false: a target already attacking the bot does not confirm an attack that never fires.

@@ -1,7 +1,8 @@
 # Contract: `hpForecast` / `forecastHp` (fact)
 
 ```
-name / version / owner:  hpForecast / 5 (v5, slice oha-engine-windup, 24/11/2026: the wind-up is attack point / attack
+name / version / owner:  hpForecast / 6 (v6, slice oha-lane-swings, 24/11/2026: each hit names its `attacker` and its
+                `commit`; v5, slice oha-engine-windup, 24/11/2026: the wind-up is attack point / attack
                 speed seconds, timed from the engine's first read, measured in game; slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
                 `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2; v4, 05/11/2026: a projectile landing
                 past the horizon phases its attacker, through the `flightsAt` helper shared with the last-hit belief, review
@@ -19,9 +20,11 @@ sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack,
                 speed seconds from the first frame the engine reads the wind-up; within one frame of the fire on 97.7-99.0%
                 of our heroes' wind-ups, 97.5-100% of lane creeps', 97.8% of towers', swingwc1-2; enemy heroes not
                 measured), GetNearbyTowers / GetNearbyHeroes for the attacker kinds.
-result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self }] sorted by t, unphased, unphasedTower,
+result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self, attacker, commit }] sorted by t, unphased, unphasedTower,
                 unphasedHits[{ damage, period, first, last }] }.
-                hits: every attack projectile in flight (the bot's own included), every wind-up seen landing within the
+                hits: `attacker` the unit whose hit it is; `commit` seconds until that attack is committed (its attack
+                point; 0 for a projectile in flight, the wind-up left for one winding up, a tower's or creep's repeat its
+                landing less its flight). Every attack projectile in flight (the bot's own included), every wind-up seen landing within the
                 horizon, and for a tower or lane creep its latest known hit repeated every attack cycle while it attacks
                 the creep now. unphased: DPS after armour of the attackers on it with no hit in flight or wind-up, spread
                 from 0.45 s on. unphasedTower: a tower is among those. unphasedHits: the same attackers one by one, `first`
