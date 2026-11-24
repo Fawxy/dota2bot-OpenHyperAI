@@ -109,10 +109,18 @@ function ____exports.ReadPass(bot, now)
         ex = ex
     }
 end
+--- The modes the row may take a hero from: a hero walking, farming, laning or shopping. Any other (a gank, a rotation to defend,
+-- a fight, a retreat) is a higher rule's, and the hold (Decider.HARD) would outbid it (review 24/11/2026).
+local FROM = {
+    [BotMode.None] = true,
+    [BotMode.Laning] = true,
+    [BotMode.Farm] = true,
+    [BotMode.Rune] = true,
+    [BotMode.Item] = true
+}
 --- What holds a cheap detour back now, else undefined.
 local function block(bot, r)
-    local mode = bot:GetActiveMode()
-    if mode == BotMode.Attack or mode == BotMode.Retreat then
+    if FROM[bot:GetActiveMode()] ~= true then
         return "busy"
     end
     for pid, w in pairs(running) do
@@ -155,7 +163,7 @@ local function choiceLine(bot, p, go, why, src)
         }
     )
 end
-local function jobLine(bot, phase, why, ex, cut, w)
+local function jobLine(bot, phase, why, ex, cut, w, took)
     Telemetry.Event(
         "job",
         {
@@ -172,7 +180,7 @@ local function jobLine(bot, phase, why, ex, cut, w)
                 ex ~= nil and math.floor(ex * 10 + 0.5) / 10 or nil
             },
             {"cut", cut},
-            {"took", w ~= nil and (w.jump >= ____exports.SETTINGS.TookGold and 1 or 0) or nil},
+            {"took", took ~= nil and (took and 1 or 0) or nil},
             {"gj", w ~= nil and w.jump or nil}
         }
     )
@@ -192,13 +200,15 @@ local function observe(bot, src, now)
     local r = ____exports.ReadPass(bot, now)
     local p = passes[pid]
     if p ~= nil and (r == nil or r.spawn ~= p.spawn) then
-        choiceLine(
-            bot,
-            p,
-            false,
-            src == "shadow" and "off" or (p.why or "detour"),
-            src
-        )
+        if p.logged ~= true then
+            choiceLine(
+                bot,
+                p,
+                false,
+                src == "shadow" and "off" or (p.why or "detour"),
+                src
+            )
+        end
         passes[pid] = nil
         p = nil
     end
@@ -222,7 +232,7 @@ local function observe(bot, src, now)
     return r
 end
 --- The reference arm's denominator: where the row is off, the same pass read and the same line (`src=shadow go=0 why=off`).
--- `want` is set when the detour was within budget and nothing held it at some read. Reads and logs; nothing is ordered.
+-- `want` is set when the detour was within budget at some read, as the row sets it. Reads and logs; nothing is ordered.
 function ____exports.Shadow(bot)
     if not Telemetry.IsEnabled() or ____exports.On() or Drill.Held(bot) then
         return
@@ -233,7 +243,7 @@ function ____exports.Shadow(bot)
         return
     end
     local p = passes[bot:GetPlayerID()]
-    if r.ex <= ____exports.SETTINGS.Budget and block(bot, r) == nil then
+    if r.ex <= ____exports.SETTINGS.Budget then
         p.want = true
     end
 end
@@ -244,8 +254,9 @@ local function finish(bot, ex, res)
     if w ~= nil then
         noteGold(bot, w)
     end
+    local took = res.success or w ~= nil and w.jump >= ____exports.SETTINGS.TookGold
     local g = went[pid]
-    if g ~= nil and not (w ~= nil and w.jump >= ____exports.SETTINGS.TookGold) then
+    if g ~= nil and not took then
         g.misses = g.misses + 1
     end
     local cut = not res.success and res.reason == "preempted" and (Decider.LetGo(bot) and "retreat" or HDebug.ModeName(bot:GetActiveMode())) or nil
@@ -255,7 +266,8 @@ local function finish(bot, ex, res)
         res.success and "ok" or res.reason,
         ex,
         cut,
-        w
+        w,
+        took
     )
 end
 --- The row's `applies`: true while a walk runs or as one starts.
@@ -309,22 +321,24 @@ local function rowApplies(bot)
     if g == nil or g.spawn ~= r.spawn then
         went[pid] = {spawn = r.spawn, misses = 0}
     end
-    passes[pid] = nil
-    local ____choiceLine_2 = choiceLine
-    local ____bot_1 = bot
-    local ____ok_0
-    if ok then
-        ____ok_0 = nil
-    else
-        ____ok_0 = "refused"
+    if p.logged ~= true then
+        local ____choiceLine_2 = choiceLine
+        local ____bot_1 = bot
+        local ____ok_0
+        if ok then
+            ____ok_0 = nil
+        else
+            ____ok_0 = "refused"
+        end
+        ____choiceLine_2(
+            ____bot_1,
+            p,
+            ok,
+            ____ok_0,
+            "own"
+        )
     end
-    ____choiceLine_2(
-        ____bot_1,
-        p,
-        ok,
-        ____ok_0,
-        "own"
-    )
+    p.logged = true
     if not ok then
         return false
     end

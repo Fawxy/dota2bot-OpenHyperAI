@@ -1,12 +1,12 @@
 /**
- * The own bounty on a cheap detour (doctrine D23; families proposal s7, case 1; a small row, plan s5), switch Ours.RuneDetour.
+ * The own bounty on a cheap detour (doctrine D26; families proposal s7, case 1; a small row, plan s5), switch Ours.RuneDetour.
  * A hero of ours out of its lane that passes its own jungle's live bounty takes it when the path by the rune adds about
  * Budget seconds or less; otherwise the hero is stock's. One hero, no threat input beyond the shared read's deadly answer.
  *
  * A pass is a run of reads in which the hero is alive, out of its own lane, within Radius of its own bounty while that rune
  * is available, before Until: the same rule hlog's @rune_passes reads from places and pickups, here from the API. Each pass
- * writes one `ev=choice kind=rune_detour` line: as it starts the walk (`go=1`), or as it ends untaken (`go=0`, `why` what
- * held it: `detour`, `danger`, `busy`, `ally`). Switched off, the same read is logged as the shadow (`src=shadow go=0
+ * writes one `ev=choice kind=rune_detour` line: as it starts its first walk (`go=1`), or as it ends untaken (`go=0`, `why` what
+ * held it: `detour`, `danger`, `busy` (a mode outside FROM), `ally`). Switched off, the same read is logged as the shadow (`src=shadow go=0
  * why=off`, `want` as the row would have read it). A started walk runs as `ev=job job=rune_detour` (engine `pickUpRune`);
  * its end's `why` is the engine verb's (`ok` when GetRuneStatus left available at the rune). That status can stay available after a
  * pickup (rdon1, 23/11/2026: the Radiant pos5's gold rose 47 at its 4:00 rune, the status stayed available to 8:00), so the walk
@@ -59,6 +59,8 @@ interface Pass {
     dr: number;
     want: boolean;
     why?: string;
+    /** Its line went out (at the first walk's start): a later walk for the same pass writes none. */
+    logged?: boolean;
 }
 
 interface Read {
@@ -137,10 +139,15 @@ export function ReadPass(bot: Unit, now: number = DotaTime()): Read | undefined 
     return { rune, at, spawn, dr, ex };
 }
 
+/**
+ * The modes the row may take a hero from: a hero walking, farming, laning or shopping. Any other (a gank, a rotation to defend,
+ * a fight, a retreat) is a higher rule's, and the hold (Decider.HARD) would outbid it (review 24/11/2026).
+ */
+const FROM: Record<number, boolean> = { [BotMode.None]: true, [BotMode.Laning]: true, [BotMode.Farm]: true, [BotMode.Rune]: true, [BotMode.Item]: true };
+
 /** What holds a cheap detour back now, else undefined. */
 function block(bot: Unit, r: Read): string | undefined {
-    const mode = bot.GetActiveMode();
-    if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
+    if (FROM[bot.GetActiveMode()] !== true) return "busy";
     for (const [pid, w] of pairs(running)) if (w.rune === r.rune && pid !== bot.GetPlayerID()) return "ally";
     if (SafeGather.At(bot, r.at, { who: "rune_detour" }).level === "deadly") return "danger";
     return undefined;
@@ -162,7 +169,7 @@ function choiceLine(bot: Unit, p: Pass, go: boolean, why: string | undefined, sr
     ]);
 }
 
-function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: string, w?: Walk): void {
+function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: string, w?: Walk, took?: boolean): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "rune_detour"],
@@ -171,7 +178,7 @@ function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: strin
         ["host", HOST],
         ["ex", ex !== undefined ? math.floor(ex * 10 + 0.5) / 10 : undefined],
         ["cut", cut],
-        ["took", w !== undefined ? (w.jump >= SETTINGS.TookGold ? 1 : 0) : undefined],
+        ["took", took !== undefined ? (took ? 1 : 0) : undefined],
         ["gj", w !== undefined ? w.jump : undefined],
     ]);
 }
@@ -192,7 +199,7 @@ function observe(bot: Unit, src: string, now: number): Read | undefined {
     const r = ReadPass(bot, now);
     let p = passes[pid];
     if (p !== undefined && (r === undefined || r.spawn !== p.spawn)) {
-        choiceLine(bot, p, false, src === "shadow" ? "off" : p.why ?? "detour", src);
+        if (p.logged !== true) choiceLine(bot, p, false, src === "shadow" ? "off" : p.why ?? "detour", src);
         passes[pid] = undefined;
         p = undefined;
     }
@@ -210,7 +217,7 @@ function observe(bot: Unit, src: string, now: number): Read | undefined {
 
 /**
  * The reference arm's denominator: where the row is off, the same pass read and the same line (`src=shadow go=0 why=off`).
- * `want` is set when the detour was within budget and nothing held it at some read. Reads and logs; nothing is ordered.
+ * `want` is set when the detour was within budget at some read, as the row sets it. Reads and logs; nothing is ordered.
  */
 export function Shadow(bot: Unit): void {
     if (!Telemetry.IsEnabled() || On() || Drill.Held(bot)) return;
@@ -218,7 +225,7 @@ export function Shadow(bot: Unit): void {
     const r = observe(bot, "shadow", now);
     if (r === undefined) return;
     const p = passes[bot.GetPlayerID()]!;
-    if (r.ex <= SETTINGS.Budget && block(bot, r) === undefined) p.want = true;
+    if (r.ex <= SETTINGS.Budget) p.want = true;
 }
 
 function finish(bot: Unit, ex: number, res: Lib.Result): void {
@@ -226,10 +233,12 @@ function finish(bot: Unit, ex: number, res: Lib.Result): void {
     const w = running[pid];
     running[pid] = undefined;
     if (w !== undefined) noteGold(bot, w);
+    // The verb's ok (the status left available at the rune) is a pickup too: the gold can land a frame after it (rdaud s25).
+    const took = res.success || (w !== undefined && w.jump >= SETTINGS.TookGold);
     const g = went[pid];
-    if (g !== undefined && !(w !== undefined && w.jump >= SETTINGS.TookGold)) g.misses++;
+    if (g !== undefined && !took) g.misses++;
     const cut = !res.success && res.reason === "preempted" ? (Decider.LetGo(bot) ? "retreat" : HDebug.ModeName(bot.GetActiveMode())) : undefined;
-    jobLine(bot, "end", res.success ? "ok" : res.reason, ex, cut, w);
+    jobLine(bot, "end", res.success ? "ok" : res.reason, ex, cut, w, took);
 }
 
 /** The row's `applies`: true while a walk runs or as one starts. */
@@ -260,8 +269,9 @@ function rowApplies(bot: Unit): boolean {
     );
     const g = went[pid];
     if (g === undefined || g.spawn !== r.spawn) went[pid] = { spawn: r.spawn, misses: 0 };
-    passes[pid] = undefined;
-    choiceLine(bot, p, ok, ok ? undefined : "refused", "own");
+    // One line a pass: a later walk for the same pass (a rune piled on the spot) writes none.
+    if (p.logged !== true) choiceLine(bot, p, ok, ok ? undefined : "refused", "own");
+    p.logged = true;
     if (!ok) return false;
     running[pid] = { rune: r.rune, gold: bot.GetGold(), jump: 0 };
     jobLine(bot, "start", "pass", ex);

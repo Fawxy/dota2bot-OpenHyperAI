@@ -21,7 +21,7 @@ export const DEFAULTS = {
     /** Slice rune-spawn: the team's 6:00 power rune (spot plan, hidden wait, timed walk, plays) and the 0:00 river bounty's
      *  pickup give-up (rune_pickup). Needs JobChooser and RuneRotation for the supports' side. */
     RuneSpawn: false,
-    /** The own bounty on a cheap detour, a row of the decider (rune_detour.ts, doctrine D23): a hero of ours out of its lane takes its
+    /** The own bounty on a cheap detour, a row of the decider (rune_detour.ts, doctrine D26): a hero of ours out of its lane takes its
      *  own jungle's live bounty when the path by it adds about 12 s or less. Off: the pass is logged as a shadow and stock plays.
      *  On: provisional (plan s5's small row, merged after its audit; read at the next checkpoint batch). */
     RuneDetour: true,

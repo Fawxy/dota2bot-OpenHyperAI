@@ -417,7 +417,7 @@ export const TABLE: Record<string, Entry> = {
             reps: sustainReps(),
         },
     },
-    // The rune detour (D23, rune_detour.ts; families proposal s7): each side's pos5 walks to a spot by its own jungle's bounty
+    // The rune detour (D26, rune_detour.ts; families proposal s7): each side's pos5 walks to a spot by its own jungle's bounty
     // 30 s before the 4:00 and 8:00 spawns (near: 200 from it; mid: about 900; far: about 1,500), out of its lane; ready once the
     // rune is up and the row's pass read finds the detour within budget; then the decider (farm's host) and idle. Everyone
     // else benched. Reps every 120 s from 3:30 so the 7:30 rep ends inside the window (rdrig1: 240 s reps ended at 11:30, past
@@ -1160,7 +1160,7 @@ export interface RigReady {
     /** Per item: the charges of the cast's first one in slots 0-8, [min, max] (a bottle's, a tango's). Fails `charges`. */
     charges?: Record<string, [number, number]>;
     /**
-     * The rune detour's situation (D23, `Ours.RuneDetour`): the cast's own jungle bounty is available and the row's pass read
+     * The rune detour's situation (D26, `Ours.RuneDetour`): the cast's own jungle bounty is available and the row's pass read
      * (RuneDetour.ReadPass: out of its lane, within 1,800, before 10:00) finds a detour within the budget. Fails `bounty`.
      */
     bounty?: boolean;

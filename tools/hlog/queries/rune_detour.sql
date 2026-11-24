@@ -1,4 +1,4 @@
--- The rune detour's audit (doctrine D23, rune_detour.ts; plan s5's small row): one row per pass the row (or its shadow) read,
+-- The rune detour's audit (doctrine D26, rune_detour.ts; plan s5's small row): one row per pass the row (or its shadow) read,
 -- `ev=choice kind=rune_detour`, with the walk it started and whether the hero took the rune.
 --   go, want, why, src, ex (the smallest detour read, s), dr (its distance to the rune), slot (the spawn)
 --   job_t, job_why   the walk's `ev=job job=rune_detour phase=end` line after the start (go=1 only): `ok` on a pickup

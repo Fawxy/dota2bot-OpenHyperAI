@@ -1,5 +1,5 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
--- The own bounty on a cheap detour (rune_detour.ts, doctrine D23): the pass read, the row's start and the shadow's line.
+-- The own bounty on a cheap detour (rune_detour.ts, doctrine D26): the pass read, the row's start and the shadow's line.
 -- Stub map: lanes are lines at y 5000 / 0 / -5000; Radiant's own bounty at (0, -2500), Dire's at (0, 2500); the bot lane's
 -- Radiant front at (0, -5000).
 
@@ -175,6 +175,37 @@ do
 	local o3 = walk(R, b, false)
 	check("an untaken walk ends took=0", #lines(o1, "took=0") == 1, table.concat(o1, " | "))
 	check("it starts once more, then no third time", #lines(o2, "phase=start") == 1 and #lines(o3, "phase=start") == 0, table.concat(o3, " | "))
+end
+
+do
+	-- Held back: a mode outside the row's list (a gank, a rotation) is `busy`; a teammate's walk for the same rune is `ally`.
+	local H = world(true)
+	local R = H.RuneDetour
+	local a = hero({ pid = 11, loc = Vector(0, -3000) })
+	a.mode = BotMode.Roam
+	local applied
+	local out = capture(function()
+		applied = R.ROW.applies(a)
+		a.loc = Vector(0, -4500)
+		T = T + 1
+		R.ROW.applies(a)
+	end)
+	local ch = lines(out, "kind=rune_detour")
+	check("a hero roaming is not held", applied == false)
+	check("its line is go=0 want=1 why=busy", #ch == 1 and ch[1]:find("go=0", 1, true) and ch[1]:find("want=1", 1, true) and ch[1]:find("why=busy", 1, true), table.concat(out, " | "))
+	local b = hero({ pid = 12, loc = Vector(0, -3000) })
+	b.mode = BotMode.Farm
+	local c = hero({ pid = 13, loc = Vector(100, -3000) })
+	c.mode = BotMode.Farm
+	local held
+	local out2 = capture(function()
+		R.ROW.applies(b)
+		held = R.ROW.applies(c)
+		c.loc = Vector(0, -4500)
+		T = T + 1
+		R.ROW.applies(c)
+	end)
+	check("a teammate walking for the rune holds the second back", held == false and #lines(out2, "why=ally") == 1, table.concat(out2, " | "))
 end
 
 finish()

@@ -800,7 +800,6 @@ ____exports.EVENTS = {
         host = "num",
         hit = "num",
         cut = "str",
-        hp = "num",
         ex = "num",
         took = "num",
         gj = "num"

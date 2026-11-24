@@ -163,7 +163,7 @@ Customize.Humaniser = {
 -- it has no stack that minute; hosted by the job chooser (needs JobChooser). Off: OHA's rune mode.
 -- RuneSpawn (slice rune-spawn): the team's 6:00 power rune as one plan (mid and supports) with the plays rolled from it, and the
 -- give-up on a 0:00 river bounty that a pickup does not take (rune_pickup). Off: OHA's rune mode.
--- RuneDetour (decider row, doctrine D23): a hero of ours out of its lane takes its own jungle's live bounty when the path by it adds
+-- RuneDetour (decider row, doctrine D26): a hero of ours out of its lane takes its own jungle's live bounty when the path by it adds
 -- about 12 s or less (rune_detour). Off: the pass is logged as a shadow (ev=choice kind=rune_detour src=shadow) and stock plays.
 -- On by default: provisional (plan s5's small row), read at the next checkpoint batch and deleted there if not above zero.
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
