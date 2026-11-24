@@ -168,7 +168,7 @@ test('scene: the command line prints the text and, with --json, the same rows', 
     const text = spawnSync('node', [hlog, ...args], { encoding: 'utf8' });
     assert.strictEqual(text.status, 0, text.stderr);
     assert.match(text.stdout, /1:40 .*\n.*R1 luna +\(4860,-5680\) +bot s=0.50 +1135 behind front +hp 90 +laning 0.5 by raw +-> D1 axe/);
-    assert.match(text.stdout, /next:\n {2}node hlog.js timeline /);
+    assert.match(text.stdout, /next:\n( {2}node hlog.js q @unit .*\n)? {2}node hlog.js timeline /);
     const json = spawnSync('node', [hlog, ...args, '--json', '--no-ingest'], { encoding: 'utf8' });
     const o = JSON.parse(json.stdout);
     assert.deepStrictEqual(o.rows.filter(r => r.kind === 'hero').map(r => r.hero), ['luna', 'lich', 'axe']);

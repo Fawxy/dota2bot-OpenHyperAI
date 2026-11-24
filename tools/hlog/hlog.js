@@ -29,6 +29,24 @@ const { Store, DB, LOGS, JOBS, q } = require('./store');
 const QUERIES = path.join(__dirname, 'queries');
 const CELL = 48;
 
+// Layer 1 of the entry point (scene-and-unit-lives proposal s6): the five questions, first in the usage, in this order.
+const QUESTIONS = [
+    ['one game in brief', 'node hlog.js digest <log>'],
+    ['a place and time', 'node hlog.js scene <log> --at 5:40 --hero <H>   (or --from T --to T; --pid, --lane, --xy)'],
+    ["one unit's life", 'node hlog.js q @unit --p like=<label> --p uid=<uid>   (a uid is in the foot of a scene, or q @unit_life)'],
+    ['counts across a batch', 'node hlog.js timeline <batch> --count'],
+    ['everything else', 'node hlog.js list [word]   (docs/team/LOGGING.md in the master repo)'],
+];
+
+/** The usage: the five questions, then each subcommand's synopsis (the header comment's lines, without their descriptions; `list` has them). */
+function usage() {
+    const head = fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).map(l => l.slice(3));
+    const synopsis = head.filter(l => /^ {2}node hlog\.js /.test(l) || l.startsWith('Options:')).map(l => l.split(/ {3,}/)[0].replace(/\s+$/, ''));
+    const width = Math.max(...QUESTIONS.map(([k]) => k.length));
+    return ['Ask the game logs. The five questions:', ...QUESTIONS.map(([k, c]) => `  ${(k + ':').padEnd(width + 2)}${c}`),
+        '', 'All commands (node hlog.js list [word] says what each query and view is):', ...synopsis].join('\n');
+}
+
 function fmt(v, wide) {
     if (v === null || v === undefined) return '';
     const s = typeof v === 'number' && !Number.isInteger(v) ? String(Math.round(v * 1000) / 1000) : String(v);
@@ -48,6 +66,8 @@ function table(rows, wide) {
 
 // Params that are game times: `--p from=5:00` is 300, as `--from 5:00` is.
 const TIME_PARAMS = new Set(['from', 'to', 't', 'until', 'at']);
+// A unit's uid is text even when it reads as a number (`1349.0`).
+const TEXT_PARAMS = new Set(['uid']);
 
 function params(argv) {
     const out = {};
@@ -55,7 +75,7 @@ function params(argv) {
         if (a !== '--p') return;
         const [k, ...v] = argv[i + 1].split('=');
         const s = v.join('=');
-        out[k] = TIME_PARAMS.has(k) && s !== '' ? secs(s) : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
+        out[k] = TIME_PARAMS.has(k) && s !== '' ? secs(s) : TEXT_PARAMS.has(k) ? s : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
     });
     return out;
 }
@@ -281,6 +301,7 @@ function main(argv) {
     };
     try {
         // An option that is misspelt or has no value would otherwise be ignored, and the answer read as the one asked for.
+        if (argv.includes('--help') || argv.includes('-h')) { console.log(usage()); return; }
         argv.forEach((a, i) => {
             if (!a.startsWith('--')) return;
             if (!flags.has(a)) throw new Error(`no option ${a}; see the usage (run with no command)`);
@@ -343,7 +364,7 @@ function main(argv) {
             const gone = store.prune();
             console.error(`pruned ${gone.length}`);
         } else {
-            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 21).map(l => l.slice(3)).join('\n'));
+            console.error(usage());
             process.exitCode = 2;
         }
     } catch (e) {
@@ -364,4 +385,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { table, digest, schema, list, events, secs, timelineRows, timelineText };
+module.exports = { usage, QUESTIONS, table, digest, schema, list, events, secs, timelineRows, timelineText };
