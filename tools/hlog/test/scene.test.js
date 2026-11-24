@@ -125,6 +125,23 @@ test('scene: a lone frame reads the events a frame (--every) either side, and th
     assert.match(r.lines[1], /not known in an unrecorded game/);
 });
 
+test('scene: a timeline row that began before the window and overlaps it is kept, at its own start', () => {
+    const { store, file } = open();
+    const r = run(store, file, { pid: 0, at: '1:44', every: 1 });
+    const mode = r.rows.find(x => x.kind === 'timeline' && x.what === 'mode' && x.hero === 'luna');
+    assert.deepStrictEqual([mode?.t, mode?.t1], [101, 104], 'attack 101-104 against the window 103-105');
+    assert.match(r.lines.join('\n'), /1:41-1:44 +R1 luna +mode +attack/);
+    assert.ok(!r.rows.some(x => x.kind === 'timeline' && x.what === 'cast'), 'the cast at 102 ended before the window');
+});
+
+test('scene: a hero with no frame says whether it is dead or the log has ended', () => {
+    const { store, file } = open();
+    const note = o => run(store, file, o).rows.find(x => x.kind === 'note')?.text;
+    assert.strictEqual(note({ pid: 0, at: '13:00' }), 'the log ends at 12:10');
+    assert.match(note({ hero: 'jakiro', at: '2:00' }), /dead \(no snapshot since 1:50, at \(6300,2900\)\)/);
+    assert.match(note({ hero: 'jakiro', at: '3:00' }), /dead \(no snapshot since 1:50/, 'none in the window: read from before it');
+});
+
 test('scene: after 12:00 the header says no unit is logged', () => {
     const { store, file } = open();
     const r = run(store, file, { pid: 0, at: '12:10' });

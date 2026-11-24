@@ -86,7 +86,7 @@ function scene(store, file, o0, { secs, timelineRows, target }) {
             + `--from ${clock(o.from)} --to ${clock(o.from + MAX_WINDOW)} ${selectorCmd(o)}`);
     }
     const game = o0.game === undefined ? null : Number(o0.game);
-    const g = store.query('SELECT game_id, game, label, build FROM games WHERE file = :file AND (:game IS NULL OR game = :game) ORDER BY game DESC LIMIT 1', { file, game })[0];
+    const g = store.query('SELECT game_id, game, label, build, max_t FROM games WHERE file = :file AND (:game IS NULL OR game = :game) ORDER BY game DESC LIMIT 1', { file, game })[0];
     if (!g) throw new Error(`no game ${o0.game ?? ''} in ${file}`);
     const game_id = g.game_id;
     // The window an event is read in: a lone frame reads a frame either side.
@@ -138,11 +138,14 @@ function scene(store, file, o0, { secs, timelineRows, target }) {
         let laneHere = o.lane;
         let members = [];
         if (focusPid !== undefined) {
-            const last = focus ?? latest(snaps.get(focusPid), ft);
-            if (!last) { rows.push({ t: ft, kind: 'note', text: `${named(focusPid)}: no snapshot by this time` }); continue; }
+            if (ft > g.max_t) { rows.push({ t: ft, kind: 'note', text: `the log ends at ${clock(g.max_t)}` }); continue; }
+            let last = focus ?? latest(snaps.get(focusPid), ft);
+            // A hero dead through the whole window has none in the list: its last snapshot before it.
+            last ??= store.query('SELECT t, x, y FROM ev_snap WHERE game_id = ? AND pid = ? AND t < ? AND x IS NOT NULL ORDER BY t DESC LIMIT 1', game_id, focusPid, lo)[0];
+            if (!last) { rows.push({ t: ft, kind: 'note', text: `${named(focusPid)}: no snapshot of this hero up to ${clock(ft)}` }); continue; }
             pts = [last];
             members = fresh.filter(h => h.pid === focusPid || dist(h, last) <= o.r);
-            if (!focus) rows.push({ t: ft, kind: 'note', text: `${named(focusPid)}: dead or not logged (last seen at (${last.x},${last.y}) ${clock(last.t)})` });
+            if (!focus) rows.push({ t: ft, kind: 'note', text: `${named(focusPid)}: dead (no snapshot since ${clock(last.t)}, at (${last.x},${last.y}))` });
             laneHere = focus && focus.ld <= C.LANE_R && LANES.includes(focus.ln) ? focus.ln : laneLabel([last.x, last.y]);
         } else if (o.xy) {
             pts = [o.xy];
@@ -213,7 +216,7 @@ function scene(store, file, o0, { secs, timelineRows, target }) {
     if (seen.size) {
         const tl = timelineRows(store, file, { game: g.game, from: evLo, to: evHi, kind: KINDS });
         for (const r of tl) {
-            if (r.t === null || r.t < evLo || r.t > evHi || r.pid === null) continue;
+            if (r.t === null || r.t > evHi || (r.t1 ?? r.t) < evLo || r.pid === null) continue;
             if (!seen.has(r.pid) && !seen.has(r.other_pid)) continue;
             rows.push({
                 t: r.t, kind: 'timeline', what: r.kind, pid: r.pid, team: r.team, pos: r.pos, hero: r.hero, t1: r.t1, detail: r.detail,
@@ -274,7 +277,7 @@ function scene(store, file, o0, { secs, timelineRows, target }) {
             + `--to ${clock(Math.max(o.from, Math.floor(mid)))} ${sel}   (or a smaller --r, or a larger --every)`);
     }
     lines.push('next:', ...cmds.map(c => `  ${c}`));
-    return { header: { label: g.label ?? null, game: g.game, place, window: win, units, creeps_and_camps: NOT_KNOWN }, rows: rows.map(({ text, label, ...r }) => r), next: cmds, lines };
+    return { header: { label: g.label ?? null, game: g.game, place, window: win, units, creeps_and_camps: NOT_KNOWN }, rows: rows.map(({ text, label, ...r }) => (r.kind === 'note' ? { ...r, text } : r)), next: cmds, lines };
 }
 
 module.exports = { scene, LANE_LEN, LANE_TOWERS };
