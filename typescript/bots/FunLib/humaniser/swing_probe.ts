@@ -17,11 +17,12 @@
  *   kill   the hero's last hits or denies rose by the frame after the landing.
  * One `ev=swing_probe` line per record, at its end (`end`: `land`, `cancel` the wind-up stopped unfired, `retarget` the
  * attack target changed before the fire, `gone` the creep died or vanished before the landing, `lost` nothing by GIVE_UP).
- * `wc` (slice oha-engine-windup): the anim cycle on every frame before the fire, to fit GetAnimCycle mid-wind-up; a
+ * `wc` (slice oha-engine-windup): records also for the team's towers and up to CREEP_RECORDS of its lane creeps at a time
+ * (`kind`, `aid`; their `kill` is 0), and the anim cycle on every frame before the fire, to fit GetAnimCycle mid-wind-up; a
  * record ends `cancel` only when the attack activity stops (not when the cycle passes the attack point).
  * Reads and logs only: no order. Runs under pcall (a probe error is silent: a run is judged by its row counts).
  */
-import { Unit } from "bots/ts_libs/dota";
+import { Unit, UnitType } from "bots/ts_libs/dota";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -40,6 +41,8 @@ const GIVE_UP = 3;
 /** Reads the probe takes that the typed Unit does not declare. */
 interface Swinger {
     IsNull(): boolean;
+    IsHero(): boolean;
+    IsTower(): boolean;
     IsAlive(): boolean;
     IsIllusion(): boolean;
     GetPlayerID(): number;
@@ -71,6 +74,8 @@ interface Target {
 
 interface Swing {
     h: Swinger;
+    /** `hero`, `creep` (a lane creep of ours) or `tower` (ours). */
+    kind: string;
     c: Target;
     cid: number;
     own: number;
@@ -123,11 +128,14 @@ interface Swing {
     wn: number;
 }
 
-const active: Record<number, Swing | undefined> = {};
+/** Live records by attacker handle. */
+let active = new LuaTable<Swinger, Swing>();
+/** At most this many live lane-creep records per team (creeps swing about once a second each; heroes and towers uncapped). */
+const CREEP_RECORDS = 3;
 let frameAt: number | undefined;
 
 export function ResetCache(): void {
-    for (const [k] of pairs(active)) active[k as number] = undefined;
+    active = new LuaTable<Swinger, Swing>();
     frameAt = undefined;
 }
 
@@ -184,17 +192,17 @@ function gone(c: Target): boolean {
     return c.IsNull() || !c.IsAlive();
 }
 
-function start(h: Swinger, c: Target, team: number, now: number): Swing | undefined {
+function start(h: Swinger, kind: string, c: Target, team: number, now: number): Swing | undefined {
     const left = windupLeft(h);
     if (left === undefined) return undefined;
     const ranged = h.GetAttackRange() > RANGED_ABOVE && h.GetAttackProjectileSpeed() > 0;
     const flight = ranged ? math.max(0, dist(h.GetLocation(), c.GetLocation()) - CREEP_LAUNCH_OFFSET) / h.GetAttackProjectileSpeed() : 0;
     const hp = c.GetHealth();
     return {
-        h, c, cid: Telemetry.CreepId(c as unknown as Unit), own: c.GetTeam() === team ? 1 : 0, ranged, t0: now,
+        h, kind, c, cid: Telemetry.CreepId(c as unknown as Unit), own: c.GetTeam() === team ? 1 : 0, ranged, t0: now,
         cyc: h.GetAnimCycle(), pt: h.GetAttackPoint(), spa: h.GetSecondsPerAttack(), pf: left, pl: left + flight,
         aspd: h.GetAttackSpeed(), pf2: (h.GetAttackPoint() / math.max(0.01, h.GetAttackSpeed())) * (1 - h.GetAnimCycle()), fl: flight,
-        lat0: h.GetLastAttackTime(), lh0: h.GetLastHits(), dn0: h.GetDenies(), hp0: hp, hpPrev: hp,
+        lat0: h.GetLastAttackTime(), lh0: kind === "hero" ? h.GetLastHits() : 0, dn0: kind === "hero" ? h.GetDenies() : 0, hp0: hp, hpPrev: hp,
         dmg: c.GetActualIncomingDamage(h.GetAttackDamage(), DAMAGE_TYPE_PHYSICAL ?? 1), proj: false, gap: 0, last: now,
         pres: "", absent: 0, big: 0, wc: string.format("0:%.3f", h.GetAnimCycle()), wn: 1,
     };
@@ -205,9 +213,11 @@ function r3(x: number | undefined): number {
 }
 
 function emit(s: Swing): void {
-    const kill = s.h.GetLastHits() > s.lh0 || s.h.GetDenies() > s.dn0 ? 1 : 0;
+    const kill = s.kind === "hero" && (s.h.GetLastHits() > s.lh0 || s.h.GetDenies() > s.dn0) ? 1 : 0;
     Telemetry.Event("swing_probe", [
-        ["pid", s.h.GetPlayerID()],
+        ["pid", s.kind === "hero" ? s.h.GetPlayerID() : undefined],
+        ["kind", s.kind],
+        ["aid", s.kind === "hero" ? undefined : Telemetry.CreepId(s.h as unknown as Unit)],
         ["cid", s.cid],
         ["own", s.own],
         ["rng", s.ranged ? 1 : 0],
@@ -310,7 +320,21 @@ function follow(s: Swing, now: number): boolean {
     return false;
 }
 
-/** The probe's frame: every hero of the bot's team, once per team VM per frame. */
+/** One attacker's frame: follow its live record, or start one on a wind-up at a lane creep. */
+function visit(u: Swinger, kind: string, team: number, now: number, room: boolean): void {
+    const s = active.get(u);
+    if (s !== undefined) {
+        if (follow(s, now)) active.delete(u);
+        return;
+    }
+    if (!room || !u.IsAlive()) return;
+    const t = u.GetAttackTarget();
+    if (!isLaneCreep(t)) return;
+    const r = start(u, kind, t, team, now);
+    if (r !== undefined) active.set(u, r);
+}
+
+/** The probe's frame: every hero of the bot's team, its towers, and a few of its lane creeps, once per team VM per frame. */
 function frame(bot: Unit): void {
     const now = DotaTime();
     if (frameAt === now) return;
@@ -319,16 +343,20 @@ function frame(bot: Unit): void {
     for (let i = 1; i <= 5; i++) {
         const u = GetTeamMember(i) as unknown as Swinger | undefined;
         if (u === undefined || u === null || u.IsNull() || u.IsIllusion()) continue;
-        const pid = u.GetPlayerID();
-        const s = active[pid];
-        if (s !== undefined) {
-            if (follow(s, now)) active[pid] = undefined;
-            else continue;
-        }
-        if (!u.IsAlive()) continue;
-        const t = u.GetAttackTarget();
-        if (!isLaneCreep(t)) continue;
-        active[pid] = start(u, t, team, now);
+        visit(u, "hero", team, now, true);
+    }
+    for (const b of GetUnitList(UnitType.AlliedBuildings) ?? []) {
+        const u = b as unknown as Swinger;
+        if (!u.IsNull() && u.IsTower()) visit(u, "tower", team, now, true);
+    }
+    let creeps = 0;
+    for (const [, r] of active) if (r.kind === "creep") creeps++;
+    for (const c of GetUnitList(UnitType.AlliedCreeps) ?? []) {
+        const u = c as unknown as Swinger;
+        if (u.IsNull() || !isLaneCreep(u)) continue;
+        const had = active.get(u) !== undefined;
+        visit(u, "creep", team, now, creeps < CREEP_RECORDS);
+        if (!had && active.get(u) !== undefined) creeps++;
     }
 }
 

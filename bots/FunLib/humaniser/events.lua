@@ -325,6 +325,8 @@ ____exports.EVENTS = {
     },
     swing_probe = {
         pid = "num",
+        kind = "str",
+        aid = "num",
         cid = "num",
         own = "num",
         rng = "num",

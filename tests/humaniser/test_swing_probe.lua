@@ -38,7 +38,10 @@ local function hero(o)
 	function h:IsNull() return false end
 	function h:IsAlive() return true end
 	function h:IsIllusion() return false end
-	function h:IsHero() return true end
+	function h:IsHero() return not o.creep end
+	function h:IsTower() return false end
+	function h:IsCreep() return o.creep == true end
+	function h:GetUnitName() return "npc_dota_creep_goodguys_melee" end
 	function h:GetTeam() return 2 end
 	function h:GetPlayerID() return self.pid end
 	function h:GetLocation() return self.loc end
@@ -133,6 +136,24 @@ do -- a wind-up that stops unfired ends cancel; a switch-off probe logs nothing
 	h.act, h.cyc = 1503, 0.1
 	local out2 = capture(function() frame(P, h, 400) frame(P, h, 400.1) h.act = 0 frame(P, h, 400.2) frame(P, h, 400.3) end)
 	check("off: nothing logged", #lines(out2, "ev=swing_probe") == 0, table.concat(out2, " | "))
+end
+
+do -- a lane creep of ours winding up on an enemy creep: kind=creep, no pid, its attacker id
+	local c = creep({ team = 3 })
+	local own = hero({ pid = -1, creep = true })
+	local P = world({})
+	CREEPS[2] = { own }
+	local out = capture(function()
+		own.target, own.act, own.cyc = c, 1503, 0
+		frame(P, own, 500)
+		own.lat = 500.4
+		frame(P, own, 500.4)
+		frame(P, own, 500.5)
+	end)
+	local l = lines(out, "ev=swing_probe")
+	check("creep: one line kind=creep, no pid, an aid, kill 0", #l == 1 and field(l[1], "kind") == "creep" and field(l[1], "pid") == nil
+		and num(l[1], "aid") ~= nil and field(l[1], "kill") == "0" and near(num(l[1], "fire"), 0.4), table.concat(out, " | "))
+	CREEPS[2] = {}
 end
 
 finish()

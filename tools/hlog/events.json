@@ -402,6 +402,8 @@
   },
   "swing_probe": {
    "pid": "num",
+   "kind": "str",
+   "aid": "num",
    "cid": "num",
    "own": "num",
    "rng": "num",
@@ -2333,6 +2335,7 @@
    "it0": "text"
   },
   "ev_swing_probe": {
+   "kind": "text",
    "end": "text",
    "to": "text",
    "pres": "text",

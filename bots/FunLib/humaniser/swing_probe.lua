@@ -1,5 +1,7 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local UnitType = ____dota.UnitType
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- The attack animations (engine lasthit.ts).
@@ -11,12 +13,13 @@ local RANGED_ABOVE = 320
 local CREEP_LAUNCH_OFFSET = 22
 --- Seconds after first sight with no landing: the record ends `lost`. `judgement`: past any hero's wind-up plus flight.
 local GIVE_UP = 3
+--- Live records by attacker handle.
 local active = {}
+--- At most this many live lane-creep records per team (creeps swing about once a second each; heroes and towers uncapped).
+local CREEP_RECORDS = 3
 local frameAt
 function ____exports.ResetCache()
-    for k in pairs(active) do
-        active[k] = nil
-    end
+    active = {}
     frameAt = nil
 end
 local function dist(a, b)
@@ -86,7 +89,7 @@ end
 local function gone(c)
     return c:IsNull() or not c:IsAlive()
 end
-local function start(h, c, team, now)
+local function start(h, kind, c, team, now)
     local left = windupLeft(h)
     if left == nil then
         return nil
@@ -102,6 +105,7 @@ local function start(h, c, team, now)
     local hp = c:GetHealth()
     return {
         h = h,
+        kind = kind,
         c = c,
         cid = Telemetry.CreepId(c),
         own = c:GetTeam() == team and 1 or 0,
@@ -119,8 +123,8 @@ local function start(h, c, team, now)
         ) * (1 - h:GetAnimCycle()),
         fl = flight,
         lat0 = h:GetLastAttackTime(),
-        lh0 = h:GetLastHits(),
-        dn0 = h:GetDenies(),
+        lh0 = kind == "hero" and h:GetLastHits() or 0,
+        dn0 = kind == "hero" and h:GetDenies() or 0,
         hp0 = hp,
         hpPrev = hp,
         dmg = c:GetActualIncomingDamage(
@@ -144,14 +148,25 @@ local function r3(x)
     return x == nil and -1 or math.floor(x * 1000 + 0.5) / 1000
 end
 local function emit(s)
-    local kill = (s.h:GetLastHits() > s.lh0 or s.h:GetDenies() > s.dn0) and 1 or 0
-    Telemetry.Event(
+    local kill = s.kind == "hero" and (s.h:GetLastHits() > s.lh0 or s.h:GetDenies() > s.dn0) and 1 or 0
+    local ____Telemetry_Event_3 = Telemetry.Event
+    local ____temp_1 = {
+        "pid",
+        s.kind == "hero" and s.h:GetPlayerID() or nil
+    }
+    local ____temp_2 = {"kind", s.kind}
+    local ____temp_0
+    if s.kind == "hero" then
+        ____temp_0 = nil
+    else
+        ____temp_0 = Telemetry.CreepId(s.h)
+    end
+    ____Telemetry_Event_3(
         "swing_probe",
         {
-            {
-                "pid",
-                s.h:GetPlayerID()
-            },
+            ____temp_1,
+            ____temp_2,
+            {"aid", ____temp_0},
             {"cid", s.cid},
             {"own", s.own},
             {"rng", s.ranged and 1 or 0},
@@ -288,13 +303,13 @@ local function follow(s, now)
             s.endWhy = "cancel"
         end
     elseif s.ranged then
-        local ____isGone_0
+        local ____isGone_4
         if isGone then
-            ____isGone_0 = nil
+            ____isGone_4 = nil
         else
-            ____isGone_0 = projectileEta(s.c, s.h)
+            ____isGone_4 = projectileEta(s.c, s.h)
         end
-        local eta = ____isGone_0
+        local eta = ____isGone_4
         local flying = eta ~= nil
         if #s.pres < 40 then
             s.pres = s.pres .. (flying and "1" or "0")
@@ -334,7 +349,34 @@ local function follow(s, now)
     s.hpPrev = hp
     return false
 end
---- The probe's frame: every hero of the bot's team, once per team VM per frame.
+--- One attacker's frame: follow its live record, or start one on a wind-up at a lane creep.
+local function visit(u, kind, team, now, room)
+    local s = active[u]
+    if s ~= nil then
+        if follow(s, now) then
+            active[u] = nil
+        end
+        return
+    end
+    if not room or not u:IsAlive() then
+        return
+    end
+    local t = u:GetAttackTarget()
+    if not isLaneCreep(t) then
+        return
+    end
+    local r = start(
+        u,
+        kind,
+        t,
+        team,
+        now
+    )
+    if r ~= nil then
+        active[u] = r
+    end
+end
+--- The probe's frame: every hero of the bot's team, its towers, and a few of its lane creeps, once per team VM per frame.
 local function frame(bot)
     local now = DotaTime()
     if frameAt == now then
@@ -346,40 +388,72 @@ local function frame(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue49
+                local __continue54
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:IsIllusion() then
-                        __continue49 = true
+                        __continue54 = true
                         break
                     end
-                    local pid = u:GetPlayerID()
-                    local s = active[pid]
-                    if s ~= nil then
-                        if follow(s, now) then
-                            active[pid] = nil
-                        else
-                            __continue49 = true
-                            break
-                        end
-                    end
-                    if not u:IsAlive() then
-                        __continue49 = true
-                        break
-                    end
-                    local t = u:GetAttackTarget()
-                    if not isLaneCreep(t) then
-                        __continue49 = true
-                        break
-                    end
-                    active[pid] = start(u, t, team, now)
-                    __continue49 = true
+                    visit(
+                        u,
+                        "hero",
+                        team,
+                        now,
+                        true
+                    )
+                    __continue54 = true
                 until true
-                if not __continue49 then
+                if not __continue54 then
                     break
                 end
             end
             i = i + 1
+        end
+    end
+    for ____, b in ipairs(GetUnitList(UnitType.AlliedBuildings) or ({})) do
+        local u = b
+        if not u:IsNull() and u:IsTower() then
+            visit(
+                u,
+                "tower",
+                team,
+                now,
+                true
+            )
+        end
+    end
+    local creeps = 0
+    for ____, r in pairs(active) do
+        if r.kind == "creep" then
+            creeps = creeps + 1
+        end
+    end
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps) or ({})) do
+        do
+            local __continue61
+            repeat
+                local u = c
+                if u:IsNull() or not isLaneCreep(u) then
+                    __continue61 = true
+                    break
+                end
+                local had = active[u] ~= nil
+                visit(
+                    u,
+                    "creep",
+                    team,
+                    now,
+                    creeps < CREEP_RECORDS
+                )
+                if not had and active[u] ~= nil then
+                    creeps = creeps + 1
+                end
+                __continue61 = true
+            until true
+            if not __continue61 then
+                break
+            end
         end
     end
 end

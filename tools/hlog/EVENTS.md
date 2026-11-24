@@ -340,8 +340,11 @@ Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once 
 
 Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing (engine formula), `fire` the fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
 
-`pid` num, `rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num, `bigat` num
+`rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num, `bigat` num
 
+- `pid` num: The hero's player id (absent for a creep or tower).
+- `kind` str: The attacker: `hero` of ours, `creep` (a lane creep of ours, a few followed at a time) or `tower` (ours).
+- `aid` num: A creep's or tower's Telemetry.CreepId (absent for a hero).
 - `cid` num: Telemetry.CreepId of the target.
 - `own` num: 1 our own creep (a deny attempt), 0 the enemy's.
 - `aspd` num: GetAttackSpeed at the first frame.

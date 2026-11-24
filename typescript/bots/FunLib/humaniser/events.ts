@@ -528,7 +528,12 @@ export const EVENTS = {
      * hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
      */
     swing_probe: {
+        /** The hero's player id (absent for a creep or tower). */
         pid: "num",
+        /** The attacker: `hero` of ours, `creep` (a lane creep of ours, a few followed at a time) or `tower` (ours). */
+        kind: "str",
+        /** A creep's or tower's Telemetry.CreepId (absent for a hero). */
+        aid: "num",
         /** Telemetry.CreepId of the target. */
         cid: "num",
         /** 1 our own creep (a deny attempt), 0 the enemy's. */
