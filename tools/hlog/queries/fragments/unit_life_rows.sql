@@ -48,7 +48,7 @@ ul_lane AS MATERIALIZED (
     LEFT JOIN ul_pair p ON p.game_id = u.game_id AND p.oseq = u.seq
     LEFT JOIN ul_c s ON s.game_id = p.game_id AND s.seq = p.sseq
     UNION ALL
-    SELECT s.game_id, s.owner || ':x' || coalesce(s.cid, 'e' || s.seq), s.owner, s.kind, NULL, NULL,
+    SELECT s.game_id, s.owner || ':' || 'x' || coalesce(s.cid, 'e' || s.seq), s.owner, s.kind, NULL, NULL,
         s.t, s.x, s.y, NULL, s.who, s.tw, 0
     FROM ul_c s
     WHERE NOT EXISTS (SELECT 1 FROM ul_pair p WHERE p.game_id = s.game_id AND p.sseq = s.seq)
