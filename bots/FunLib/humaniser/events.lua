@@ -323,6 +323,20 @@ ____exports.EVENTS = {
         chan = "num",
         cast = "num"
     },
+    lane_hits_check = {
+        team = "num",
+        lane = "num",
+        own = "num",
+        cid = "num",
+        hp = "num",
+        pby = "str",
+        ppid = "num",
+        pt = "num",
+        pc = "num",
+        age = "num",
+        rose = "str",
+        ["end"] = "str"
+    },
     swing_probe = {
         pid = "num",
         kind = "str",

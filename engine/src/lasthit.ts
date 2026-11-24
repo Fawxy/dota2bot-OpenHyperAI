@@ -329,11 +329,18 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
     return { raw, dps, between };
 }
 
-/** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
+/**
+ * One hit the forecast expects: seconds from now until it lands, damage after armour, the attacker's kind and the attacker,
+ * and `commit`, seconds until the attack is committed (its attack point, after which it can no longer be cancelled): 0 for
+ * a projectile in flight, the wind-up left for one winding up, and for a tower's or lane creep's repeat its landing less
+ * its flight.
+ */
 export interface ForecastHit {
     t: number;
     damage: number;
     by: "tower" | "creep" | "hero" | "self";
+    attacker: TaskAttacker;
+    commit: number;
 }
 
 export interface HpForecast {
@@ -390,7 +397,9 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
     // The phase comes from every projectile in flight, one landing past the horizon included (it still says when the next
     // hit comes); only the hits themselves are cut to the horizon.
     const { flights, latest } = flightsAt(bot, creep, true);
-    for (const f of flights) if (f.t <= horizon) hits.push({ t: f.t, damage: physical(creep, f.damage), by: kindOf(f.caster) });
+    for (const f of flights) {
+        if (f.t <= horizon) hits.push({ t: f.t, damage: physical(creep, f.damage), by: kindOf(f.caster), attacker: f.caster, commit: 0 });
+    }
     let unphased = 0;
     let unphasedTower = false;
     const unphasedHits: { damage: number; period: number; first: number; last: number }[] = [];
@@ -400,17 +409,17 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
         const damage = physical(creep, a.GetAttackDamage?.() ?? 0);
         const period = a.GetSecondsPerAttack?.() ?? 1;
         const land = windupLanding(a, creep);
-        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind });
+        const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
+        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind, attacker: a, commit: math.max(0, land - flight) });
         const last = land ?? latest.get(a);
         if (last === undefined) {
             unphased += damage / period;
             if (kind === "tower") unphasedTower = true;
-            const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
             unphasedHits.push({ damage, period, first: windupSeconds(a) + flight, last: period + flight });
             continue;
         }
         if (kind === "hero" || period <= 0) continue;
-        for (let t = last + period; t <= horizon; t += period) hits.push({ t, damage, by: kind });
+        for (let t = last + period; t <= horizon; t += period) hits.push({ t, damage, by: kind, attacker: a, commit: math.max(0, t - flight) });
     }
     table.sort(hits, (x, y) => x.t < y.t);
     return { hp: creep.GetHealth(), regen: creep.GetHealthRegen?.() ?? 0, horizon, hits, unphased, unphasedTower, unphasedHits };

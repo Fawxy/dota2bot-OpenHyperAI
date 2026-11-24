@@ -1,7 +1,8 @@
 # Contract: `hpForecast` / `forecastHp` (fact)
 
 ```
-name / version / owner:  hpForecast / 6 (v6, slice engine-neutrals, 24/11/2026: neutral creeps are in the attacker index,
+name / version / owner:  hpForecast / 7 (v7, slice oha-lane-swings, 24/11/2026: each hit names its `attacker` and its
+                `commit`; v6, slice engine-neutrals, 24/11/2026: neutral creeps are in the attacker index,
                 kind `creep`; v5, slice oha-engine-windup, 24/11/2026: the wind-up is attack point / attack
                 speed seconds, timed from the engine's first read, measured in game; slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
                 `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2; v4, 05/11/2026: a projectile landing
@@ -22,9 +23,11 @@ sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack,
                 measured), GetNearbyTowers / GetNearbyHeroes for the attacker kinds, GetNearbyNeutralCreeps (neutral attackers, read with no
                 CanBeSeen check: a fogged one has no location and is left out; UNVERIFIED in-game: neutrals' wind-up reading, the
                 fogged location and CanBeSeen on a neutral-team unit are not measured).
-result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self }] sorted by t, unphased, unphasedTower,
+result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self, attacker, commit }] sorted by t, unphased, unphasedTower,
                 unphasedHits[{ damage, period, first, last }] }.
-                hits: every attack projectile in flight (the bot's own included), every wind-up seen landing within the
+                hits: `attacker` the unit whose hit it is; `commit` seconds until that attack is committed (its attack
+                point; 0 for a projectile in flight, the wind-up left for one winding up, a tower's or creep's repeat its
+                landing less its flight). Every attack projectile in flight (the bot's own included), every wind-up seen landing within the
                 horizon, and for a tower, lane creep or neutral creep its latest known hit repeated every attack cycle while it attacks
                 the creep now. unphased: DPS after armour of the attackers on it with no hit in flight or wind-up, spread
                 from 0.45 s on. unphasedTower: a tower is among those. unphasedHits: the same attackers one by one, `first`
@@ -42,7 +45,9 @@ timing:         one projectile scan and the per-frame attacker index (shared wit
 skill:          none (exact; a caller adds error where it decides).
 consumers:      bot `states/pre_hit` (a core's pre-hit under its tower, in game from slice pre-hit); named: a support's
                 pre-hit for its core (slice pre-hit open item, user 04/11/2026), staggering two creeps due at once
-                (docs/proposals/2026-11-04-prehit-and-feints.md "Pre-hit: potential" item 2).
+                (docs/proposals/2026-11-04-prehit-and-feints.md "Pre-hit: potential" item 2); bot `humaniser/lane_hits`
+                (per creep, each hero's hit by player id with its commit, slice oha-lane-swings), and through it, named,
+                the support's deny around its core's swing (slice oha-deny-free).
 status:         offline-verified (engine test_prehit: forecast within 1 HP of the sim between hits; the sim's HP within
                 [early, late] for an attacker of unknown phase); in game: slice pre-hit check runs.
 ```

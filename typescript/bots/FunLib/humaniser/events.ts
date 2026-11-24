@@ -522,6 +522,33 @@ export const EVENTS = {
         cast: "num",
     },
     /**
+     * Overrides.LaneReadProbe (lane_hits_probe.ts): one creep leaving LaneHits' read (dead, or out of the lane list or sight),
+     * with the read's last prediction of the hit that kills it and who took it that frame.
+     */
+    lane_hits_check: {
+        /** The reading team. */
+        team: "num",
+        lane: "num",
+        /** 1 the reading team's own creep, 0 an enemy creep. */
+        own: "num",
+        cid: "num",
+        /** HP at the last read. */
+        hp: "num",
+        /** The predicted killing hit's kind: `hero`, `self` (the reader hero), `creep`, `tower`, or `none` (no hit within the horizon kills it). */
+        pby: "str",
+        /** Its hero's player id (-1 not a hero). */
+        ppid: "num",
+        /** Seconds from the last read to that hit, and to its commit (-1 none). */
+        pt: "num",
+        pc: "num",
+        /** Seconds from the last read to this line (one frame for a death). */
+        age: "num",
+        /** Heroes of the team whose denies (own creep) or last hits (enemy creep) rose this frame, `;`-joined player ids. */
+        rose: "str",
+        /** `dead`, or `left` (alive, out of the read). */
+        end: "str",
+    },
+    /**
      * Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen
      * to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the
      * fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the
