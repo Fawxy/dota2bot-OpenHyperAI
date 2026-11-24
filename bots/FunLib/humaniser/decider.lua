@@ -11,16 +11,25 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotMode = ____dota.BotMode
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
 -- hero as retreating; under OHA's retreat latch (1.1). The value inside that band is judgement.
 ____exports.HARD = 0.98
---- Plan s3: above laning's desire (0.45) and under every entry of Valve's attack (none of 7,419 in h2hoha742 under 0.5), so
--- attack, item, evasive and defend-ally outbid a soft hold when they want the hero. The value inside that band is judgement.
-____exports.SOFT = 0.49
+--- Plan s3: what a soft hold is worth to Valve, entering or held: above laning's desire (0.45) and under every entry of Valve's
+-- attack (none of 7,419 in h2hoha742 under 0.5), so attack, item, evasive and defend-ally outbid it when they want the hero.
+-- The value inside that band is judgement.
+____exports.SOFT = 0.495
+--- Valve multiplies the active mode's desire by about this (derived: ev=snap d over the file's own value, oha-solo-deny
+-- 22574266: laning 0.446 reads 0.491, an active soft hold 0.49 reads 0.539; not every round, and the hard hold's 0.98 was
+-- never boosted). While the host mode is active a soft hold returns SOFT / BONUS, so it is worth about SOFT either way.
+____exports.BONUS = 1.1
 --- judgement: the most an OHA Lua mode file may return while a soft row holds (plan s3: the gate caps them beneath it).
-____exports.CAP = 0.48
+-- With Valve's bonus on the active mode (CAP x BONUS, 0.484) it stays under SOFT, so an active capped mode cannot keep the
+-- hero from a soft hold.
+____exports.CAP = 0.44
 --- Not capped under a soft hold: retreat (stock's way out; when it leads, the retreat read lets go) and attack's own file
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
@@ -157,7 +166,10 @@ function ____exports.Host(bot, inner)
         if s.held == nil then
             return inner()
         end
-        return s.held.soft == true and ____exports.SOFT or ____exports.HARD
+        if s.held.soft ~= true then
+            return ____exports.HARD
+        end
+        return bot:GetActiveMode() == BotMode.Farm and ____exports.SOFT / ____exports.BONUS or ____exports.SOFT
     end
 end
 --- Chooser.Gate, for every gated mode file, after NoteDesire saw the value as returned: while a soft row holds, an OHA Lua

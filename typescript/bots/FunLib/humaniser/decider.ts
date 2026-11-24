@@ -11,7 +11,7 @@
  * chooser and the shadow line say nothing for that time. A row is re-picked every round and is not told when another mode
  * takes the hero, so its verb must cope with being cut off between any two steps.
  */
-import { Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -33,13 +33,25 @@ export interface Row {
 export const HARD = 0.98;
 
 /**
- * Plan s3: above laning's desire (0.45) and under every entry of Valve's attack (none of 7,419 in h2hoha742 under 0.5), so
- * attack, item, evasive and defend-ally outbid a soft hold when they want the hero. The value inside that band is judgement.
+ * Plan s3: what a soft hold is worth to Valve, entering or held: above laning's desire (0.45) and under every entry of Valve's
+ * attack (none of 7,419 in h2hoha742 under 0.5), so attack, item, evasive and defend-ally outbid it when they want the hero.
+ * The value inside that band is judgement.
  */
-export const SOFT = 0.49;
+export const SOFT = 0.495;
 
-/** judgement: the most an OHA Lua mode file may return while a soft row holds (plan s3: the gate caps them beneath it). */
-export const CAP = 0.48;
+/**
+ * Valve multiplies the active mode's desire by about this (derived: ev=snap d over the file's own value, oha-solo-deny
+ * 22574266: laning 0.446 reads 0.491, an active soft hold 0.49 reads 0.539; not every round, and the hard hold's 0.98 was
+ * never boosted). While the host mode is active a soft hold returns SOFT / BONUS, so it is worth about SOFT either way.
+ */
+export const BONUS = 1.1;
+
+/**
+ * judgement: the most an OHA Lua mode file may return while a soft row holds (plan s3: the gate caps them beneath it).
+ * With Valve's bonus on the active mode (CAP x BONUS, 0.484) it stays under SOFT, so an active capped mode cannot keep the
+ * hero from a soft hold.
+ */
+export const CAP = 0.44;
 
 /**
  * Not capped under a soft hold: retreat (stock's way out; when it leads, the retreat read lets go) and attack's own file
@@ -166,7 +178,10 @@ export function Host(bot: Unit, inner: () => any): () => any {
         s.held = s.letAt === undefined ? row : undefined;
         pcall(() => note(bot, s));
         if (s.held === undefined) return inner();
-        return s.held.soft === true ? SOFT : HARD;
+        if (s.held.soft !== true) return HARD;
+        // Held already: Valve adds its bonus to the active mode, so the hold asks for less to stay worth SOFT. Where the
+        // bonus is missing it is worth SOFT / BONUS (0.45): still over every capped Lua mode, and it yields to Valve's more.
+        return bot.GetActiveMode() === BotMode.Farm ? SOFT / BONUS : SOFT;
     };
 }
 

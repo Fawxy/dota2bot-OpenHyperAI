@@ -202,6 +202,10 @@ do
 		roam = gate(H, bot, "team_roam", 0.7)
 	end)
 	check("a hard row: nothing is capped", v == H.Decider.HARD and roam == 0.7, tostring(v) .. " " .. tostring(roam))
+	bot.mode = BotMode.Farm
+	local active
+	capture(function() active = H.Decider.Host(bot, f.GetDesire)() end)
+	check("a hard row held with farm active: still HARD, no bonus allowance", active == H.Decider.HARD, tostring(active))
 	check("a hard row's line says hs=hard", #lines == 1 and lines[1]:find("hs=hard", 1, true), table.concat(lines, " | "))
 end
 
@@ -219,7 +223,8 @@ do
 		v = desire()
 		got = {
 			team_roam = gate(H, bot, "team_roam", 0.7),
-			laning = gate(H, bot, "laning", 0.45),
+			laning = gate(H, bot, "laning", 0.43),
+			laningOver = gate(H, bot, "laning", 0.446),
 			retreat = gate(H, bot, "retreat", 0.3),
 			attack = gate(H, bot, "attack", 0.7),
 			roam = gate(H, bot, "roam", nil),
@@ -227,6 +232,7 @@ do
 		T = T + 0.1
 		gate(H, bot, "team_roam", 0.8)
 		gate(H, bot, "retreat", 0.6)
+		bot.mode = BotMode.Farm
 		held = desire()
 		T = T + 0.1
 		gate(H, bot, "team_roam", 0.8)
@@ -239,13 +245,19 @@ do
 		gone = desire()
 		goneRoam = gate(H, bot, "team_roam", 0.8)
 	end)
-	check("a soft row holds at SOFT, under 0.5 and over laning's 0.45", v == H.Decider.SOFT and v < 0.5 and v > 0.45, tostring(v))
-	check("under a soft hold an OHA Lua mode over CAP is returned as CAP; one under it passes", got.team_roam == H.Decider.CAP
-		and got.laning == 0.45, tostring(got.team_roam) .. " " .. tostring(got.laning))
+	check("a soft row enters at SOFT, under 0.5 and over an active laning with Valve's bonus (0.446 x BONUS)",
+		v == H.Decider.SOFT and v < 0.5 and v > 0.446 * H.Decider.BONUS, tostring(v))
+	check("a capped mode with Valve's bonus stays under SOFT", H.Decider.CAP * H.Decider.BONUS < H.Decider.SOFT,
+		tostring(H.Decider.CAP * H.Decider.BONUS))
+	check("under a soft hold an OHA Lua mode over CAP is returned as CAP (laning's 0.446 too); one under it passes",
+		got.team_roam == H.Decider.CAP and got.laningOver == H.Decider.CAP and got.laning == 0.43,
+		tostring(got.team_roam) .. " " .. tostring(got.laningOver) .. " " .. tostring(got.laning))
 	check("under a soft hold retreat and attack's file are not capped, and nil still falls through to Valve", got.retreat == 0.3
 		and got.attack == 0.7 and got.roam == nil, tostring(got.retreat) .. " " .. tostring(got.attack) .. " " .. tostring(got.roam))
 	check("the retreat read sees team roam's 0.8 as returned, not capped: retreat 0.6 under it, the soft row holds",
-		held == H.Decider.SOFT, tostring(held))
+		held == H.Decider.SOFT / H.Decider.BONUS, tostring(held))
+	check("held with farm active: SOFT / BONUS, over CAP and under 0.5 / BONUS (Valve's attack still outbids it with the bonus)",
+		held > H.Decider.CAP and held * H.Decider.BONUS < 0.5, tostring(held))
 	check("retreat leading the values as returned lets go, and nothing is capped once let go", let == 0.4 and after == 0.8,
 		tostring(let) .. " " .. tostring(after))
 	check("a soft row that no longer applies yields, uncapped", gone == 0.4 and goneRoam == 0.8, tostring(gone) .. " " .. tostring(goneRoam))
