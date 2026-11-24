@@ -12,7 +12,10 @@
 //   node hlog.js timeline <batch> --count [--ref arm --pos 1-3 --lane l --from t --to t]
 //                                                        the batch's arms compared on counted measures, with the reference arm's noise floor (summary.js)
 //   node hlog.js scene <log | label> --at T | --from T --to T  --hero h | --pid N | --lane top|mid|bot | --xy x,y  [--r 1600 --every 5 --game N]
-//                                                        who was where and what happened at a place and time: frames of heroes, fronts, towers, then timeline rows and creep deaths (scene.js)
+//                                                        who was where and what happened at a place and time: frames of heroes, fronts, towers, then timeline rows and creep deaths; in a game with a replay (hlog.js replay): unit paths and hits too (scene.js)
+//   node hlog.js replay <dem | log | label>... [--game N] [--until S] | --all
+//                                                        reads the game's SourceTV replay (the .dem beside its log; master unittruth) into the store: its units, their paths and hits.
+//                                                        Then @unit_life reads the replay's units, scene shows paths and hits, @unit_grade grades the log's against them (replay.js). --all: every .dem in the logs folder
 //   node hlog.js list [word]                             named queries and views: params and first sentence (word filters)
 //   node hlog.js schema [ev]                             tables, rows and columns (kind, non-null count, an example)
 //   node hlog.js prune                                   drop logs whose file is gone
@@ -257,7 +260,7 @@ function events(store, file, o) {
 
 function main(argv) {
     const opt = k => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind', '--ref', '--pos', '--at', '--r', '--every', '--xy']);
+    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind', '--ref', '--pos', '--at', '--r', '--every', '--xy', '--until']);
     const flags = new Set([...valued, '--json', '--wide', '--no-ingest', '--all', '--count']);
     const pos = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
     const [cmd, ...rest] = pos;
@@ -323,6 +326,14 @@ function main(argv) {
             const o = Object.fromEntries(['game', 'at', 'from', 'to', 'hero', 'pid', 'lane', 'xy', 'r', 'every'].map(k => [k, opt(k)]));
             const r = scene(store, logOf(store, rest[0]), o, { secs, timelineRows, target: rest[0] });
             console.log(argv.includes('--json') ? JSON.stringify({ header: r.header, rows: r.rows, next: r.next }, null, 1) : r.lines.join('\n'));
+        } else if (cmd === 'replay' && (rest[0] || argv.includes('--all'))) {
+            const { replayDem, demOf } = require('./replay');
+            const dems = argv.includes('--all') ? fs.readdirSync(logs).filter(f => f.endsWith('.dem')).sort().map(f => path.join(logs, f))
+                : rest.map(a => (/\.dem$|\.log$/.test(a) ? demOf(store, a, logOf) : (sync(), demOf(store, a, logOf))));
+            for (const dem of dems) {
+                try { console.log(replayDem(store, dem, { game: opt('game'), until: opt('until') === undefined ? undefined : secs(opt('until')) })); }
+                catch (e) { if (dems.length === 1) throw e; console.error(`skipped ${path.basename(dem)}: ${e.message}`); }
+            }
         } else if (cmd === 'digest' && rest[0]) {
             console.log(digest(store, rest[0], opt('game') === undefined ? undefined : Number(opt('game'))));
         } else if (cmd === 'schema') {
@@ -332,7 +343,7 @@ function main(argv) {
             const gone = store.prune();
             console.error(`pruned ${gone.length}`);
         } else {
-            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 18).map(l => l.slice(3)).join('\n'));
+            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 21).map(l => l.slice(3)).join('\n'));
             process.exitCode = 2;
         }
     } catch (e) {

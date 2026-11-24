@@ -1,5 +1,5 @@
 -- Fragment (`-- include: wave_fate`): every own lane creep's death by its wave and who took it (logs from team-bots c87cd648
--- on), read from unit_life's rows (fragment unit_life_rows: the owner's wave_creep_death paired to the other team's sighting). Needs
+-- on), read from unit_life's log rows (fragment unit_life_rows, CTE unit_life_log, never the replay's: the owner's wave_creep_death paired to the other team's sighting). Needs
 -- `gm(game_id)`, `tm(game_id, pid, pos)` and `camps` (fragment camp_spawns) before it. Ends with a comma.
 --   wfate one row a creep born before :to + 30 (default 525): game_id, team (its owner), lane 1-3 (top, mid, bot), wave
 --         floor(born / 30), fate (lh the other team's last hit; deny ours, from our `by` or their `deny`; tower no hero and
@@ -22,12 +22,13 @@ ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SEL
 ul_neu AS NOT MATERIALIZED (SELECT * FROM ev_neutral_death WHERE 0),
 ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE kind = 'lane' AND game_id IN (SELECT game_id FROM ul_games)),
 ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM ul_games)),
+ul_rp AS NOT MATERIALIZED (SELECT * FROM rp_unit WHERE 0),
 -- include: unit_life_rows
 wfate AS MATERIALIZED (
     SELECT u.game_id, u.team, CASE u.lane WHEN 'top' THEN 1 WHEN 'mid' THEN 2 WHEN 'bot' THEN 3 END AS lane, u.wave,
         CASE u.by_kind WHEN 'hero' THEN 'lh' WHEN 'deny' THEN 'deny' WHEN 'tower' THEN 'tower' ELSE 'other' END AS fate,
         (SELECT b.pos FROM tm b WHERE b.game_id = u.game_id AND u.by_kind = 'hero' AND CAST(b.pid AS TEXT) = CAST(u.by_pid AS TEXT)) AS pos,
         EXISTS (SELECT 1 FROM camps k WHERE (k.x - u.x1) * (k.x - u.x1) + (k.y - u.y1) * (k.y - u.y1) <= 490000) AS camp
-    FROM unit_life_rows u
+    FROM unit_life_log u
     WHERE u.kind = 'lane' AND u.t0 IS NOT NULL AND u.t1 IS NOT NULL AND u.t0 < coalesce(:to, 525) + 30
 ),
