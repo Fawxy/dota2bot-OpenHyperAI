@@ -182,3 +182,12 @@ test('strong-camp pairs: the on game\'s waves pulled into the bar or more, again
     assert.deepStrictEqual(sp.map(p => [p.label, p.on.waves, p.on.w_n, p.on.w_lh, p.on.w_camp, p.off.waves, p.off.w_n, p.off.w_lh]),
         [['x_A_onrad_1', 3, 12, 1, 11, 3, 11, 4]]);
 });
+
+test('--lanes: the off lanes are Radiant top and Dire bot, the safe lanes the other side lanes; mid is neither', () => {
+    const { laneKind } = require('../pull_line');
+    const rows = [{ team: 2, lane: 1 }, { team: 2, lane: 2 }, { team: 2, lane: 3 }, { team: 3, lane: 1 }, { team: 3, lane: 2 }, { team: 3, lane: 3 }];
+    const keep = (k) => rows.filter((r) => laneKind(r, k)).map((r) => `${r.team}:${r.lane}`);
+    assert.deepStrictEqual(keep('off'), ['2:1', '3:3']);
+    assert.deepStrictEqual(keep('safe'), ['2:3', '3:1']);
+    assert.strictEqual(keep(undefined).length, 6);
+});

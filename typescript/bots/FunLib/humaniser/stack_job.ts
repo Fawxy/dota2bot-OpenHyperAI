@@ -627,11 +627,20 @@ export function Candidates(team: number): Camps.CampJobData[] {
     return out;
 }
 
+/** The puller's own job for its pull camp as a stack camp. Not Candidates: the off lane's pull camp is a spawner of the other
+ *  team (the enemy's hard camp beside their safe-lane T1), which Candidates leaves out. */
+function rowCamp(bot: Unit, sp: Camps.Spawner): Camps.CampJobData | undefined {
+    const data = Camps.ByIdx(sp.idx, bot.GetTeam());
+    if (data === undefined || data.stack === undefined || sp.type === "ancient" || Stacking.Window(sp.idx)[0] === undefined) return undefined;
+    return data;
+}
+
 /** The lane's first pull camp as a stack camp, with its stand point (a drill with `stackMinutes`: the stacked pull's rig). */
 function pullCamp(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Vector | undefined]> {
     const lane = bot.GetAssignedLane() as Lane;
     const c = Camps.PullCampsFor(bot.GetTeam(), lane)[0];
-    const data = c !== undefined ? Candidates(bot.GetTeam()).find((d) => d.campIdx === c.campIdx) : undefined;
+    const sp = c !== undefined ? Camps.SpawnerByIdx(c.campIdx) : undefined;
+    const data = sp !== undefined ? rowCamp(bot, sp) : undefined;
     return $multi(data, data !== undefined ? Stand(Camps.SpawnerByIdx(data.campIdx)!, data) : undefined);
 }
 
@@ -1476,14 +1485,6 @@ interface RowSlot {
     stand: Vector;
     aggroAt: number;
     walk: number;
-}
-
-/** The puller's own job for its pull camp as a stack camp. Not Candidates: the off lane's pull camp is a spawner of the other
- *  team (the enemy's hard camp beside their safe-lane T1), which Candidates leaves out. */
-function rowCamp(bot: Unit, sp: Camps.Spawner): Camps.CampJobData | undefined {
-    const data = Camps.ByIdx(sp.idx, bot.GetTeam());
-    if (data === undefined || data.stack === undefined || sp.type === "ancient" || Stacking.Window(sp.idx)[0] === undefined) return undefined;
-    return data;
 }
 
 /** This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided. */

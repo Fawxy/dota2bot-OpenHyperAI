@@ -1,7 +1,7 @@
 // The pull's line across a batch (plan s5): of the own creeps of each wave the pull's trigger wanted, the share the enemy
 // last-hit (wlh), beside the share that died at a camp and our denies; then the older window ledger (every lane creep dying in
 // the 75 s from the slot) and the funnel, per arm and as paired on-minus-off differences.
-// Usage: node pull_line.js <run> [<run> ...] [--first] [--to 525] [--lead 0] [--win 75] [--strong 6] [--on on] [--off off] [--json] [--no-ingest]
+// Usage: node pull_line.js <run> [<run> ...] [--first] [--to 525] [--lead 0] [--win 75] [--strong 6] [--lanes off|safe] [--on on] [--off off] [--json] [--no-ingest]
 //   --lead 15 --win 55 narrows each window towards the wanted wave's own deaths (the query's header says how far).
 //   Rows come from queries/pull_line.sql (its header defines every column), summed over a team's lanes in a game.
 //   Arms       a game's test team is its label's seat (`<run>_<lineup>_<arm>rad|dire_<rep>`); an arm with no seat (the
@@ -18,6 +18,8 @@
 //              diverted waves under and over the bar, and the wanted waves whose camp the trigger saw at the bar already (`cn`,
 //              the off arm's own strong camps). Paired, each on game's strong waves against the same team, lane and wave of
 //              its off game, pulled or not: wlh and wcamp on those waves, the pairs with at least one.
+//   Lanes      --lanes off keeps only the off lanes' rows (Radiant top, Dire bot), --lanes safe the safe lanes'; with it,
+//              --strong is that lane kind's bar (the off lane's hard camp is strong unstacked: slice oha-off-pull).
 //   Null       with no on arm: two reference games of one lineup and team (across the runs named), differenced in label
 //              order (the spread a pair shows when nothing differs).
 'use strict';
@@ -60,6 +62,9 @@ function teamGames(rows, labels, waveRows = []) {
     return out;
 }
 
+const OFF_LANE = { 2: 1, 3: 3 };
+/** Whether a row (team 2 or 3, lane 1 to 3) is of the lane kind `lanes` names (off, safe); every row without one. */
+const laneKind = (r, lanes) => !lanes || (lanes === 'off' ? OFF_LANE[r.team] === r.lane : r.lane !== 2 && OFF_LANE[r.team] !== r.lane);
 const isStrong = (w, strong) => w.diverted && w.nn !== null && w.nn !== undefined && w.nn >= strong;
 
 /** Sums of the wave counts over `waves`, with wlh and wcamp. */
@@ -187,6 +192,7 @@ function main(argv) {
         else if (a === '--lead') o.lead = Number(argv[++i]);
         else if (a === '--win') o.win = Number(argv[++i]);
         else if (a === '--strong') o.strong = Number(argv[++i]);
+        else if (a === '--lanes') o.lanes = argv[++i];
         else if (a === '--on') o.on = argv[++i];
         else if (a === '--off') o.off = argv[++i];
         else if (a === '--json') o.json = true;
@@ -208,7 +214,7 @@ function main(argv) {
         const labels = new Map(gs.map((g) => [g.game_id, g.label]));
         const rows = store.query(SQL, { like: `%${run}_%`, to: o.to, win: o.win, lead: o.lead, first: o.first });
         const waves = store.query(WAVE_SQL, { like: `%${run}_%`, to: o.to });
-        all.push(...teamGames(rows, labels, waves));
+        all.push(...teamGames(rows.filter((r) => laneKind(r, o.lanes)), labels, waves.filter((w) => laneKind(w, o.lanes))));
     }
     store.close();
     if (o.json) console.log(JSON.stringify(all));
@@ -217,4 +223,4 @@ function main(argv) {
 }
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
-module.exports = { teamGames, pairs, nullPairs, diffStats, strongPairs, report };
+module.exports = { laneKind, teamGames, pairs, nullPairs, diffStats, strongPairs, report };

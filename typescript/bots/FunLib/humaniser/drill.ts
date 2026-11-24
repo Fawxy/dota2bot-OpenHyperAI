@@ -519,6 +519,17 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, on: 4 },
         forces: "pull",
     },
+    // The off lane's stacked hard camp (slice oha-off-pull round 2): pull-stack-verb's chain for both pos4s.
+    "pull-off-stack": {
+        note: "both pos4s stack their off lane's hard camp the minute before each pulled wave (3:5x, 6:5x ...) and pull every third minute's wave (1:00, 4:00 ...), statues otherwise; everyone else benched",
+        cast: { r: [4], d: [4] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 6 },
+        forces: "pull",
+        also: ["stack"],
+        stackMinutes: [3, 6, 9, 12],
+    },
     // The stacked pull's rig (families proposal s5 case 3): both pos5s pull every third minute's wave (1:00, 4:00 ...), so the
     // camp is killed at :45 of the minute after a pull, refilled by the next minute's own spawn, and stacked over the spawn
     // before the pulled wave (`rig_stack_minute`, bots/rigs/setters.lua; `dota_spawn_neutrals` refills no camp killed that
