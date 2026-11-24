@@ -44,7 +44,7 @@ test('trade_rig: a trade is graded from its open on the rig truth; a late one an
         trade(73, 'result=done why=creeps dur=3 hpd=40 thpd=60 ld=0.6 pr=1 so=0 ag=1 fa=order'),
         // Creeps dying in it: an enemy one 300 off untaken, one taken by the cast, one 900 off (out of reach); one of ours 100 off.
         line(72, 'creep_death team=2 kind=melee x=300 y=0 hp=40 by=none'), line(72.2, 'creep_death team=2 kind=melee x=200 y=0 hp=40 by=1'),
-        line(72.4, 'creep_death team=2 kind=melee x=900 y=0 hp=40 by=none'), line(71, 'own_creep_death team=2 kind=melee x=100 y=0 hp=40 by=none'), atk(70.6), hhit(71.5, 20), hhit(72.5, 20),
+        line(72.4, 'creep_death team=2 kind=melee x=900 y=0 hp=40 by=none'), line(71, 'own_creep_death team=2 kind=melee x=100 y=0 hp=0.4 by=none'), atk(70.6), hhit(71.5, 20), hhit(72.5, 20),
         // An offer not taken inside rep 1.
         trade(80, 'result=lost why=lost dur=0 pr=0 so=0'),
         // Rep 2: a trade opening at 117, within 5 s of the rep's end (120): late. Rep 3 never ready: no row.

@@ -6,11 +6,6 @@
 -- params of query timeline: like or batch, arm, game, lane, hero, pid, from, to, kind. Ends with a comma.
 -- ensure: ev_cast(pid, ab)
 -- ensure: ev_creep_death(team, kind, by)
--- ensure: ev_own_creep_death(team, kind, by)
--- ensure: ev_neutral_death(team, by)
--- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
--- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 -- ensure: ev_choice(pid, kind, want, go, why, src, lane, slot)
 gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id, g.file, g.game, r.batch, r.lineup, r.arm, r.seat_team, r.seat, r.rep
@@ -188,28 +183,29 @@ tl_cast AS (
 -- paired to), a deny (own_deny) on the hero who got it, and a creep of our own nobody got (lost) only when no enemy line of it exists (the unit has no cd_seq),
 -- since then it is that log's own_lh or other row. enemy_deny is the denier's own_deny row seen from the other side: never a row.
 cf_gm AS MATERIALIZED (SELECT game_id FROM gm WHERE :kind IS NULL OR instr(',' || :kind || ',', ',creep,') > 0),
-ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE game_id IN (SELECT game_id FROM cf_gm)),
-ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM cf_gm)),
-ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
-ul_wave AS NOT MATERIALIZED (SELECT * FROM ev_wave_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
-ul_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
+ul_gm AS (SELECT game_id FROM cf_gm),
+-- include: unit_life_in
 -- include: unit_life_lane
+-- include: unit_life_neutral
 tl_fate AS MATERIALIZED (SELECT * FROM creep_fate_rows),
-tl_fate_lane AS MATERIALIZED (SELECT * FROM creep_lane WHERE game_id IN (SELECT game_id FROM cf_gm)),
+tl_pts AS (SELECT game_id AS kind, seq AS k, seq, t, x, y FROM tl_fate),
+-- include: lane_label pts=tl_pts lab=tl_lab
+tl_fate_lane AS (SELECT kind AS game_id, seq, lane FROM tl_lab),
 -- `by` is a pid only on a creep a hero got.
 tl_got AS (
     SELECT game_id, t, team, pid AS got, CASE fate WHEN 'own_lh' THEN 'last hit ' ELSE 'deny ' END || coalesce(kind, 'creep') AS detail,
         fate, kind
     FROM tl_fate WHERE fate IN ('own_lh', 'own_deny')
     UNION ALL
-    SELECT c.game_id, c.t, c.team, c."by", 'last hit neutral', 'own_lh', 'neutral'
-    FROM gm CROSS JOIN ev_neutral_death c ON c.game_id = gm.game_id
+    SELECT n.game_id, n.t1, w.team, n.by_pid, 'last hit neutral', 'own_lh', 'neutral'
+    FROM ul_nlife n JOIN ep_who w ON w.game_id = n.game_id AND w.pid = n.by_pid
+    WHERE n.t1 IS NOT NULL AND n.by_pid IS NOT NULL
 ),
 tl_creep AS (
     SELECT c.game_id, w.pid, c.t, NULL, 'creep', c.detail, '', NULL, NULL, c.fate, NULL, NULL, NULL, c.kind, NULL, NULL
     FROM tl_got c JOIN ep_who w ON w.game_id = c.game_id AND w.team = c.team AND CAST(c.got AS TEXT) = CAST(w.pid AS TEXT)
 ),
--- Creeps nobody got: no hero, so a team of their own (the logging team) and the lane of the death's place (view creep_lane).
+-- Creeps nobody got: no hero, so a team of their own (the logging team) and the lane of the death's place (fragment lane_label).
 -- why, for other: tower (tw = 1: one of the logging team's towers hit it the frame before; under it, not surely killed by it),
 -- open (tw = 0), NULL (a build before the field); as view lane_waste's place.
 tl_nobody AS (

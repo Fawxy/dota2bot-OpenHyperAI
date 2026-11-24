@@ -2,13 +2,16 @@
 -- tries (every line), by result: denied (feed: our deny), ok (drag: our last hit), lost, alive, no_draw, hurt, died, cancelled;
 -- drew (lines with drawn >= 1), mean drawn, onr_any (feed lines with an enemy creep on the fed creep after the drop), mean dhp
 -- (HP lost per move). Per game beside it, the coverage: rn our ranged lane creeps that died before :until (both teams, every
--- lane: in these games every lineup bot runs our code) and rd those we denied (`ev=own_creep_death` `by` a pid).
+-- lane: in these games every lineup bot runs our code) and rd those we denied (unit_life's own deaths near a hero, `by_src` own).
 -- Params: like (LIKE pattern on games.file), until.
 -- ensure: ev_aggro(pid, kind, role, result, drawn, onr, dhp)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
+-- include: unit_life_lane
 cov AS (
-    SELECT d.game_id, count(*) AS rn, sum(d.by <> 'none') AS rd
-    FROM ev_own_creep_death d JOIN gm ON gm.game_id = d.game_id
+    SELECT d.game_id, count(*) AS rn, sum(d.dny IS NOT NULL) AS rd
+    FROM ul_odeath d
     WHERE d.kind = 'ranged' AND d.t < coalesce(:until, 600)
     GROUP BY d.game_id
 )

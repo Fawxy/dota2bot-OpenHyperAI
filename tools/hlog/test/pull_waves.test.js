@@ -55,7 +55,8 @@ test('an ok pull: their wave near our front in slot..slot+75 by fate, our own cr
         line(221, 'own_creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=none'),
         // an own death counts only with a living hero of its team within 1,500: pid 1 stands at the front from 200 to 222
         ...Array.from({ length: 23 }, (_, i) => line(200 + i, 'snap pid=1 x=0 y=-6000 alive=1 hp=100')),
-        // the pulled wave at the camp (2,898 from the front): the pulled-wave part, not our side's.
+        // the pulled wave at the camp (2,898 from the front): the pulled-wave part, not our side's; the puller (pid 5) is at the camp.
+        line(204.5, 'snap pid=5 x=-2400 y=-8400 alive=1 hp=100'),
         line(205, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none'),
     ], 'WITH gm AS (SELECT game_id FROM games),\n-- include: pull_waves\nSELECT * FROM pull_waves');
     assert.deepStrictEqual(out.map(r => [r.slot, r.grp, r.own_died, r.e_dead, r.e_core, r.e_ours, r.e_denied, r.e_tower, r.e_none, r.e_tw,

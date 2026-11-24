@@ -22,6 +22,9 @@ function run(lines) {
     return out;
 }
 
+// A neutral or own creep death counts for a team when one of its heroes stood within 1,500 in the second before it (the gate of the old events).
+const stand = (t, pid = 5) => line(t, `snap pid=${pid} x=-2400 y=-8400 alive=1 hp=100`);
+
 // Camp 13's spawn is (-2415, -8402). Team 2 pulls it at slot 170; pid 3 is their other support, pid 6 the other team's core.
 const base = [
     line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
@@ -34,7 +37,7 @@ const base = [
 ];
 
 test('per ok pull: the camp\'s neutrals by puller, ally and no one inside slot..slot+45, the pulled wave\'s deaths and who of the other team took them', () => {
-    const out = run([...base,
+    const out = run([...base, stand(170.5), stand(179.5, 3), stand(213.5), stand(184.5), stand(189.5), stand(190.5),
         line(171, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=200'),
         line(180, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=3 camp=13 np=3 nd=150'),
         line(214, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=none camp=13 np=5 nd=600'),
@@ -46,11 +49,11 @@ test('per ok pull: the camp\'s neutrals by puller, ally and no one inside slot..
         line(185, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=5'),
         line(190, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none'),
         line(191, 'own_creep_death team=2 kind=melee x=-2415 y=-7601 hp=0.05 by=none'),
-        // in the other team's log: their core's last hit, their deny of it (ours to them), no one's, and one after slot + 30.
-        line(186, 'creep_death team=3 kind=melee x=-2415 y=-7602 hp=0.05 by=6'),
-        line(187, 'creep_death team=3 kind=melee x=-2415 y=-7602 hp=0.05 by=deny'),
-        line(188, 'creep_death team=3 kind=melee x=-2415 y=-7602 hp=0.05 by=9'),
-        line(201, 'creep_death team=3 kind=melee x=-2415 y=-7602 hp=0.05 by=6'),
+        // in the other team's log (400 from the own deaths, so no line pairs to one of ours): their core's last hit, their deny of it (ours to them), no one's, and one after slot + 30.
+        line(186, 'creep_death team=3 kind=melee x=-2415 y=-8000 hp=0.05 by=6'),
+        line(187, 'creep_death team=3 kind=melee x=-2415 y=-8000 hp=0.05 by=deny'),
+        line(188, 'creep_death team=3 kind=melee x=-2415 y=-8000 hp=0.05 by=9'),
+        line(201, 'creep_death team=3 kind=melee x=-2415 y=-8000 hp=0.05 by=6'),
     ]);
     assert.deepStrictEqual(out.map(r => [r.pid, r.camp, r.slot, r.n_ours, r.n_puller, r.n_none, r.own_died, r.own_denied, r.them_took, r.them_core]),
         [[5, 13, 170, 2, 1, 1, 2, 1, 2, 1]]);
@@ -58,7 +61,7 @@ test('per ok pull: the camp\'s neutrals by puller, ally and no one inside slot..
 
 test('back-to-back pulls of one camp split their windows at the next slot, so no death counts twice; a slot after 720 s reads null neutrals', () => {
     const out = run([
-        line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
+        line(0, 'bot pid=5 hero=h5 team=2 pos=5'), stand(179.5), stand(197.5), stand(198.5),
         line(165, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=170 res=ok why=ok'),
         line(195, 'pull_job pid=5 pos=5 lane=3 camp=13 slot=198 res=ok why=ok'),
         line(180, 'neutral_death team=2 kind=neutral x=-2400 y=-8400 hp=0.05 by=5 camp=13 np=5 nd=100'),
@@ -71,6 +74,6 @@ test('back-to-back pulls of one camp split their windows at the next slot, so no
 });
 
 test('a build without neutral_death reads null neutrals, not zero, while the wave columns still count', () => {
-    const out = run([...base, line(185, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none')]);
+    const out = run([...base, stand(184.5), line(185, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none')]);
     assert.deepStrictEqual(out.map(r => [r.n_ours, r.n_none, r.own_died]), [[null, null, 1]]);
 });

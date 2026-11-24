@@ -20,6 +20,8 @@ test('lane aggro: per kind and role, results, draws and HP; ranged-creep deny co
     lines.push(aggro(180, { kind: 'feed', result: 'denied', role: 'support', pid: 4, drawn: 2, onr: 1 }));
     lines.push(aggro(650, { kind: 'feed', result: 'denied', drawn: 2, onr: 1 }));
     // Coverage: three ranged deaths before 600 (one ours), a melee deny and a late ranged deny that do not count.
+    // (a death counts when a living hero of the team stood within 1,500 in the second before it)
+    for (const t of [101, 131, 200, 210, 640]) lines.push(line(t - 0.5, 'snap pid=1 x=0 y=0 alive=1 hp=100'));
     lines.push(own(101, 'ranged', 1), own(131, 'ranged', 'none'), own(200, 'ranged', 'none'), own(210, 'melee', 1), own(640, 'ranged', 1));
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-lag-')), 'a.log');
     const at = l => Number(l.match(/t=([\d.]+)/)[1]);

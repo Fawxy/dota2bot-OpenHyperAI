@@ -41,7 +41,8 @@ function build() {
             let xp = base(k);
             if (pid === 1) xp += bump(k, [10, 28], [20, 17], [40, 57], [46, 177]);
             if (pid === 2) xp += bump(k, [10, 28], [20, 17], [50, 200], [425, 200]);
-            const [x, y] = pid === 1 ? [0, 0] : pid === 2 ? (k < 30 ? [0, 0] : [-6000, -6000]) : pid === 5 ? [0, 5000] : [800, 0];
+            // An own creep's death is a deny chance only with a living hero of its team within 1,500: hero 2 passes the camp (k=34) and the lane spot (k=35).
+            const [x, y] = pid === 1 ? [0, 0] : pid === 2 ? (k < 30 ? [0, 0] : k === 34 ? [3978, -5027] : k === 35 ? [-3000, -500] : [-6000, -6000]) : pid === 5 ? [0, 5000] : [800, 0];
             L.push(hev(k + 0.1, `snap pid=${pid} x=${x} y=${y} alive=1 hp=100 ${reading(xp)} lh=0 dn=0 kills=0 deaths=${pid === 6 && k >= 55 ? 1 : 0} gold=600 nw=600`));
         }
     }

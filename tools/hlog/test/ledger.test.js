@@ -65,7 +65,8 @@ test('lane creeps: the other team\'s own deaths fill the pool, causes come from 
     lines.push(creep(100, { by: 1, p1d: 120 }));
     lines.push(creep(101, { p1d: 1000 }));
     // Seen only by Dire, the owner: Radiant's core was at its fountain.
-    lines.push(line(110, `own_creep_death team=3 kind=melee x=${BOT_LANE[0]} y=${BOT_LANE[1]} hp=10 by=none`));
+    lines.push(snap(109.5, 6, BOT_LANE[0], BOT_LANE[1]));
+    lines.push(line(110, `own_creep_death team=3 kind=melee x=${BOT_LANE[0]} y=${BOT_LANE[1]} hp=0.1 by=none`));
     // Our tower kills two creeps the core was hitting: one it pre-hit 2 s before, one with no pre-hit in the 5 s before.
     lines.push(line(118, 'prehit pid=1 result=ok reason=ok'));
     lines.push(creep(120, { p1d: 120, p1t: 1, tw: true }));

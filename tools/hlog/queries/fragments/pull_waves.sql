@@ -33,6 +33,7 @@
 -- include: creep_fate
 -- include: camp_spawns
 pfw(win) AS (SELECT 45),
+-- include: unit_life_neutral
 -- include: pull_farm
 pw_tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos FROM ev_bot WHERE team IS NOT NULL GROUP BY 1, 2),
 pw_slots AS MATERIALIZED (

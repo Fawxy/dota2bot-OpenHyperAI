@@ -8,9 +8,14 @@
 --   One row per camp: the engage verdict (the last admit line of the trip's camp); the check at first sight often sees half the camp.
 -- A would-refuse row that breached or ended late was a good refusal; one that did not was a camp the rule lost.
 -- ensure: ev_core_camp(pid, phase, v, hp, hpe, clre, lb, nl, why)
--- ensure: ev_neutral_death(by)
 -- ensure: ev_snap(pid, hp)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
+-- include: unit_life_seen
+-- include: unit_life_neutral
+nk AS MATERIALIZED (SELECT game_id, by_pid, t1 FROM ul_nlife WHERE t1 IS NOT NULL AND by_pid IS NOT NULL),
+
 ad AS (
     SELECT a.game_id, a.pid, a.t, a.camp, a.src, a.v, a.hp, a.hpe, a.clre, a.lb,
         (SELECT min(e.t) FROM ev_core_camp e WHERE e.game_id = a.game_id AND e.pid = a.pid AND e.phase = 'end' AND e.t >= a.t) AS t1
@@ -20,8 +25,8 @@ last AS (
     SELECT ad.*, row_number() OVER (PARTITION BY ad.game_id, ad.pid, ad.camp, ad.t1 ORDER BY ad.t DESC) AS rn FROM ad
 ),
 k AS (
-    SELECT ad.*, coalesce((SELECT max(d.t) FROM ev_neutral_death d WHERE d.game_id = ad.game_id AND CAST(d.by AS TEXT) = CAST(ad.pid AS TEXT)
-            AND d.t >= ad.t AND d.t <= ad.t1), ad.t1) AS tk,
+    SELECT ad.*, coalesce((SELECT max(d.t1) FROM nk d WHERE d.game_id = ad.game_id AND d.by_pid = ad.pid
+            AND d.t1 >= ad.t AND d.t1 <= ad.t1), ad.t1) AS tk,
         (SELECT e.why FROM ev_core_camp e WHERE e.game_id = ad.game_id AND e.pid = ad.pid AND e.phase = 'end' AND e.t = ad.t1) AS why,
         (SELECT e.nl FROM ev_core_camp e WHERE e.game_id = ad.game_id AND e.pid = ad.pid AND e.phase = 'end' AND e.t = ad.t1) AS nl
     FROM last ad WHERE ad.rn = 1
