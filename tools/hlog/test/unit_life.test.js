@@ -134,7 +134,7 @@ test('own lane creeps: one row each from the owner\'s lines, even one still aliv
 test('the two teams\' creeps with one cid are two units: a cid is its team\'s own', () => {
     const { view } = run([
         useen(60, 2, 7, 'creep_goodguys_melee'), useen(60, 3, 7, 'creep_badguys_melee', 100, 100),
-        ugone(90, 2, 7, 6, 'bk=hero'), ugone(95, 3, 7, 1, 'bk=hero'),
+        ugone(90, 2, 7, 6), ugone(95, 3, 7, 1),
     ]);
     assert.deepStrictEqual(view.map(r => [r.uid, r.team, r.t1, r.by_pid]).sort(), [['2:7', 2, 90, 6], ['3:7', 3, 95, 1]]);
 });
