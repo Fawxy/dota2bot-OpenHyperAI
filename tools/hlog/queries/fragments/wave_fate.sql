@@ -11,7 +11,7 @@
 -- are all in wave_creep_death (8,802 of 8,802 own_creep_death lines in the 36 games), so reading them would only slow it.
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
 -- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, bk, tw, hid)
+-- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 ul_games AS MATERIALIZED (
     SELECT DISTINCT w.game_id FROM ev_wave_creep_death w WHERE w.game_id IN (SELECT game_id FROM gm)
     UNION SELECT DISTINCT u.game_id FROM ev_unit_seen u WHERE u.game_id IN (SELECT game_id FROM gm)

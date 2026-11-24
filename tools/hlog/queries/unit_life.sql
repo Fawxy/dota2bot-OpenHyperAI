@@ -7,7 +7,7 @@
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
 -- ensure: ev_neutral_death(team, kind, x, y, by, camp)
 -- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, bk, tw, hid)
+-- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 WITH gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id FROM games g
     WHERE g.game_id = :game_id

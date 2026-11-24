@@ -307,12 +307,8 @@ export const EVENTS = {
         y: "num",
         /** HP share when last listed. */
         hp: "num",
-        /** The pid of a hero of the logging team whose last hits (deny: whose denies, for an own lane creep) rose this frame and took the nearest unclaimed gone unit within 1,200; else `none`. For an own lane creep the pid of an enemy hero whose last hits rose, when the logging team can read them (see LOGGING.md). */
+        /** As on `own_creep_death` and `neutral_death`: the pid of an own hero whose denies (own lane creep) or last hits (neutral) rose this frame and took the nearest unclaimed gone unit within 1,200, else `none`. An enemy hero's last hit of an own creep is never here: the logging team reads an enemy hero's `GetLastHits` and `GetDenies` as -1, and its towers' targets as nothing, so the other team's `creep_death` is still the only source (hlog `unit_life` pairs it). */
         by: "mixed",
-        /** Own lane creeps with a `by`: `deny` when an own hero's denies rose, `hero` when an enemy hero's last hits rose. Absent with no taker and on neutrals. */
-        bk: "str",
-        /** An own lane creep: 1 when one of the enemy team's towers was attacking it on the frame before it left the list (what `creep_death` `tw` says from the other team's log). */
-        tw: "bool",
         /** 1 when the neutral was found dead only after it had left the list alive, so `t` is when that was noticed. */
         hid: "bool",
     },

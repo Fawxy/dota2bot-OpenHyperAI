@@ -202,8 +202,6 @@
    "y": "num",
    "hp": "num",
    "by": "mixed",
-   "bk": "str",
-   "tw": "bool",
    "hid": "bool"
   },
   "creep_death": {
@@ -2310,9 +2308,6 @@
    "kind": "text",
    "type": "text",
    "lane": "text"
-  },
-  "ev_unit_gone": {
-   "bk": "text"
   },
   "ev_creep_death": {
    "kind": "text",

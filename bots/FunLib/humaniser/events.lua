@@ -194,8 +194,6 @@ ____exports.EVENTS = {
         y = "num",
         hp = "num",
         by = "mixed",
-        bk = "str",
-        tw = "bool",
         hid = "bool"
     },
     creep_death = {

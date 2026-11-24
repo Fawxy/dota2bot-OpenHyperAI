@@ -15,20 +15,35 @@
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
 -- ensure: ev_neutral_death(team, kind, x, y, by, camp)
 -- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, bk, hid)
+-- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 ul_new AS MATERIALIZED (SELECT DISTINCT game_id FROM ul_useen),
+-- A game with unit_seen rows (telemetry.ts trackCreepDeaths, ev=unit_seen / ev=unit_gone): a row per own lane creep, from its
+-- owner's two lines, and one per neutral, the two teams' sightings merged. A cid is its team's own, so a unit is (team, cid).
+ul_s AS NOT MATERIALIZED (SELECT game_id, seq, t, team, cid, kind, type, lane, camp, x, y FROM ul_useen),
+ul_g AS NOT MATERIALIZED (
+    SELECT game_id, seq, t, team, cid, x, y, CAST("by" AS TEXT) AS who, coalesce(hid, 0) AS hid FROM ul_ugone
+),
 ul_c AS MATERIALIZED (
     SELECT game_id, seq, t, 5 - team AS owner, kind, x, y, CAST("by" AS TEXT) AS who, coalesce(tw, 0) AS tw, cid
-    FROM ul_enemy WHERE team IN (2, 3) AND game_id NOT IN (SELECT game_id FROM ul_new)
+    FROM ul_enemy WHERE team IN (2, 3)
 ),
 ul_o AS MATERIALIZED (
-    SELECT w.game_id, w.seq, w.t, w.team, w.kind, w.x, w.y, CAST(w."by" AS TEXT) AS who, w.cid, w.lane, w.born
+    SELECT w.game_id, w.seq, w.t, w.team, w.kind, w.x, w.y, CAST(w."by" AS TEXT) AS who, w.cid, w.lane, w.born, NULL AS utype, NULL AS x0, NULL AS y0
     FROM ul_wave w WHERE w.game_id NOT IN (SELECT game_id FROM ul_new)
     UNION ALL
-    SELECT o.game_id, o.seq, o.t, o.team, o.kind, o.x, o.y, CAST(o."by" AS TEXT), o.cid, NULL, NULL
+    SELECT o.game_id, o.seq, o.t, o.team, o.kind, o.x, o.y, CAST(o."by" AS TEXT), o.cid, NULL, NULL, NULL, NULL, NULL
     FROM ul_own o
     WHERE o.game_id NOT IN (SELECT game_id FROM ul_new)
         AND NOT EXISTS (SELECT 1 FROM ul_wave w WHERE w.game_id = o.game_id AND w.team = o.team AND w.cid = o.cid)
+    UNION ALL
+    -- a game with unit_seen: every own lane creep, from its first sighting (alive at the end: no t, x, y, who), its kind as the
+    -- old events name it (a flag bearer is a melee creep there, so the enemy's creep_death pairs by it) and its own type beside
+    SELECT s.game_id, coalesce(g.seq, s.seq), g.t, s.team,
+        CASE WHEN s.type LIKE '%siege%' THEN 'siege' WHEN s.type LIKE '%ranged%' THEN 'ranged' ELSE 'melee' END,
+        g.x, g.y, g.who, s.cid, s.lane, s.t,
+        CASE WHEN s.type LIKE '%flagbearer%' THEN 'flag' END, s.x, s.y
+    FROM ul_s s LEFT JOIN ul_g g ON g.game_id = s.game_id AND g.team = s.team AND g.cid = s.cid
+    WHERE s.kind = 'lane'
 ),
 ul_pair AS MATERIALIZED (
     SELECT game_id, oseq, sseq FROM (
@@ -52,16 +67,17 @@ ul_clast AS MATERIALIZED (
     SELECT game_id, owner, cid, max(seq) AS lastseq FROM ul_c WHERE cid IS NOT NULL GROUP BY game_id, owner, cid
 ),
 ul_lane AS MATERIALIZED (
-    SELECT u.game_id, u.team || ':' || coalesce(u.cid, 'e' || u.seq) AS uid, u.team, u.kind AS type, u.lane, u.born,
-        u.t, u.x, u.y, u.who AS owho, s.who AS swho, s.tw, s.seq IS NOT NULL AS paired
+    SELECT u.game_id, u.team || ':' || coalesce(u.cid, 'e' || u.seq) AS uid, u.team, coalesce(u.utype, u.kind) AS type, u.lane, u.born,
+        u.t, u.x, u.y, u.who AS owho, s.who AS swho, s.tw, s.seq IS NOT NULL AS paired, u.x0, u.y0
     FROM ul_o u
     LEFT JOIN ul_pair p ON p.game_id = u.game_id AND p.oseq = u.seq
     LEFT JOIN ul_c s ON s.game_id = p.game_id AND s.seq = p.sseq
     UNION ALL
     SELECT s.game_id, s.owner || ':' || 'x' || coalesce(s.cid, 'e' || s.seq), s.owner, s.kind, NULL, NULL,
-        s.t, s.x, s.y, NULL, s.who, s.tw, 0
+        s.t, s.x, s.y, NULL, s.who, s.tw, 0, NULL, NULL
     FROM ul_c s
-    WHERE NOT EXISTS (SELECT 1 FROM ul_pair p WHERE p.game_id = s.game_id AND p.sseq = s.seq)
+    WHERE s.game_id NOT IN (SELECT game_id FROM ul_new)
+        AND NOT EXISTS (SELECT 1 FROM ul_pair p WHERE p.game_id = s.game_id AND p.sseq = s.seq)
         AND (s.cid IS NULL OR (s.seq = (SELECT c.lastseq FROM ul_clast c WHERE c.game_id = s.game_id AND c.owner = s.owner AND c.cid = s.cid)
             AND NOT EXISTS (SELECT 1 FROM ul_cpair c WHERE c.game_id = s.game_id AND c.owner = s.owner AND c.cid = s.cid)))
 ),
@@ -89,19 +105,6 @@ ul_neutral AS (
     FROM ul_n a LEFT JOIN ul_npair p ON p.game_id = a.game_id AND p.aseq = a.seq
     LEFT JOIN ul_n b ON b.game_id = p.game_id AND b.seq = p.bseq
     WHERE NOT (a.team = 3 AND EXISTS (SELECT 1 FROM ul_npair q WHERE q.game_id = a.game_id AND q.bseq = a.seq))
-),
--- A game with unit_seen rows (telemetry.ts trackCreepDeaths, ev=unit_seen / ev=unit_gone): one row per own lane creep, from its
--- owner's two lines, and one per neutral, the two teams' sightings merged. A cid is its team's own, so a unit is (team, cid).
-ul_s AS NOT MATERIALIZED (SELECT game_id, seq, t, team, cid, kind, type, lane, camp, x, y FROM ul_useen),
-ul_g AS NOT MATERIALIZED (
-    SELECT game_id, seq, t, team, cid, x, y, CAST("by" AS TEXT) AS who, bk, coalesce(tw, 0) AS tw, coalesce(hid, 0) AS hid FROM ul_ugone
-),
-ul_nl AS MATERIALIZED (
-    SELECT s.game_id, s.team || ':' || s.cid AS uid, s.team,
-        CASE WHEN s.type LIKE '%flagbearer%' THEN 'flag' WHEN s.type LIKE '%siege%' THEN 'siege' WHEN s.type LIKE '%ranged%' THEN 'ranged' ELSE 'melee' END AS type,
-        s.lane, s.t AS t0, s.x AS x0, s.y AS y0, g.t AS t1, g.x AS x1, g.y AS y1, g.who, g.bk, g.tw
-    FROM ul_s s LEFT JOIN ul_g g ON g.game_id = s.game_id AND g.team = s.team AND g.cid = s.cid
-    WHERE s.kind = 'lane'
 ),
 -- A neutral both teams saw die is one unit: the two gone rows within 1 s and 250 units, mutually nearest (the rule the old
 -- neutral_death pairing has). A unit only one team logged, or a neutral still alive when the log stopped, is one row per team.
@@ -136,7 +139,7 @@ pts AS (SELECT game_id AS kind, uid AS k, 0 AS seq, t, x, y FROM ul_lane WHERE l
 -- include: lane_label
 ul_all AS (
     SELECT l.game_id, l.uid, 'lane' AS kind, l.team, l.type, coalesce(l.lane, b.lane) AS lane, CAST(l.born / 30 AS INTEGER) AS wave,
-        NULL AS camp, l.born AS t0, NULL AS x0, NULL AS y0, l.t AS t1, l.x AS x1, l.y AS y1,
+        NULL AS camp, l.born AS t0, l.x0, l.y0, l.t AS t1, l.x AS x1, l.y AS y1,
         CASE WHEN l.swho IS NOT NULL AND l.swho NOT IN ('none', 'deny') THEN 'hero'
              WHEN l.owho IS NOT NULL AND l.owho <> 'none' OR l.swho = 'deny' THEN 'deny'
              WHEN l.tw = 1 THEN 'tower' ELSE 'unknown' END AS by_kind,
@@ -152,15 +155,9 @@ ul_all AS (
     FROM ul_neutral
 ),
 ul_all2 AS (
-    SELECT l.game_id, l.uid, 'lane' AS kind, l.team, l.type, l.lane, CAST(l.t0 / 30 AS INTEGER) AS wave, NULL AS camp,
-        l.t0, l.x0, l.y0, l.t1, l.x1, l.y1,
-        CASE WHEN l.bk = 'deny' THEN 'deny' WHEN l.bk = 'hero' THEN 'hero' WHEN l.tw = 1 THEN 'tower' ELSE 'unknown' END AS by_kind,
-        l.who AS by_pid, CASE WHEN l.bk IS NOT NULL THEN 'own' END AS by_src
-    FROM ul_nl l
-    UNION ALL
-    SELECT n.game_id, n.uid, 'neutral', 4, n.type, NULL, NULL, n.camp, n.t0, n.x0, n.y0, n.t1, n.x1, n.y1,
-        CASE WHEN n.who IS NOT NULL THEN 'hero' ELSE 'unknown' END, n.who,
-        CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END
+    SELECT n.game_id, n.uid, 'neutral' AS kind, 4 AS team, n.type, NULL AS lane, NULL AS wave, n.camp, n.t0, n.x0, n.y0, n.t1, n.x1, n.y1,
+        CASE WHEN n.who IS NOT NULL THEN 'hero' ELSE 'unknown' END AS by_kind, n.who AS by_pid,
+        CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END AS by_src
     FROM ul_nneutral n
 ),
 unit_life_rows AS (
