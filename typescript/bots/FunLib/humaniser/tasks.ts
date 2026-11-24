@@ -209,4 +209,5 @@ export const ForOurs = {
         lib?.Tasks.Cancel(bot as unknown as Lib.TaskUnit, reason, message);
     },
     Jobs: (): typeof JobVerbs | undefined => (loadBundle(true) !== undefined ? JobVerbs : undefined),
+    Verbs: (): Bundle["Verbs"] | undefined => loadBundle(true)?.Verbs,
 };

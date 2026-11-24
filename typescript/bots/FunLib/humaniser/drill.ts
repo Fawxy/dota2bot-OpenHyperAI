@@ -417,6 +417,39 @@ export const TABLE: Record<string, Entry> = {
             reps: sustainReps(),
         },
     },
+    // The rune detour (D26, rune_detour.ts; families proposal s7): each side's pos5 walks to a spot by its own jungle's bounty
+    // 30 s before the 4:00 and 8:00 spawns (near: 200 from it; mid: about 900; far: about 1,500), out of its lane; ready once the
+    // rune is up and the row's pass read finds the detour within budget; then the decider (farm's host) and idle. Everyone
+    // else benched. Reps every 120 s from 3:30 so the 7:30 rep ends inside the window (rdrig1: 240 s reps ended at 11:30, past
+    // it); the 5:30 rep is ready only when the 4:00 rune still lies there (the off arm). rfar moved off unreachable ground
+    // (rdrig1: the Radiant pos5 stood 200 short of (1595, -3560), `setup`); rmid likewise (rdrig2: 306 short of (-5, -4010)); dfar to
+    // the lane side of the rune (rdrig2: behind it from the lane, the detour over budget, `bounty`). Read: the cast's ev=rune_pickup and its ev=job job=rune_detour end in the rep.
+    "rune-detour": {
+        note: "rig: each side's pos5 at a spot by its own jungle bounty before the 4:00 and 8:00 spawns (near, mid, far), everyone else benched; released to farm (the decider) and idle; 120 s reps from 3:30",
+        cast: { r: [5], d: [5] },
+        others: "bench",
+        rep: { every: 120, from: 210 },
+        rig: {
+            half: "execution",
+            switch: "RuneDetour",
+            window: 600,
+            spots: {
+                rnear: ["r:fountain", 7214, 1876],
+                rmid: ["r:fountain", 7914, 2176],
+                rfar: ["r:fountain", 5814, 2076],
+                dnear: ["d:fountain", -7621, -2137],
+                dmid: ["d:fountain", -7021, -2587],
+                dfar: ["d:fountain", -6171, -1637],
+            },
+            timeout: 60,
+            release: { modes: ["farm", "idle"] },
+            reps: [
+                { name: "a", setup: { r5: ["stand rnear"], d5: ["stand dmid"] }, ready: { bounty: true } },
+                { name: "b", setup: { r5: ["stand rmid"], d5: ["stand dfar"] }, ready: { bounty: true } },
+                { name: "c", setup: { r5: ["stand rfar"], d5: ["stand dnear"] }, ready: { bounty: true } },
+            ],
+        },
+    },
     // The lane ladder (master docs/proposals/2026-11-19-lane-ladder.md, step C): one hero per lane, per side, playing its
     // full decision (ours or OHA's) in-lane: no mode, teleport or global spell that leaves the lane. `sided`: `r` is our
     // side (Ours.Team), so each rung is one entry played from both sides. Natural reps (each wave); 10:00 recipes.
@@ -1126,6 +1159,11 @@ export interface RigReady {
     tree?: number;
     /** Per item: the charges of the cast's first one in slots 0-8, [min, max] (a bottle's, a tango's). Fails `charges`. */
     charges?: Record<string, [number, number]>;
+    /**
+     * The rune detour's situation (D26, `Ours.RuneDetour`): the cast's own jungle bounty is available and the row's pass read
+     * (RuneDetour.ReadPass: out of its lane, within 1,800, before 10:00) finds a detour within the budget. Fails `bounty`.
+     */
+    bounty?: boolean;
 }
 
 /** One kind of rep; a rig's reps cycle through these (rep n takes entry (n - 1) mod length). */
@@ -2059,6 +2097,12 @@ function failingCheck(bot: Unit, st: RigState, rr: RigRep): string | undefined {
         if (c === undefined || c < lo || c > hi) return "charges";
     }
     if (r.goldAtLeast !== undefined && bot.GetGold() < r.goldAtLeast) return "gold";
+    if (r.bounty === true) {
+        // Lazy: rune_detour imports the drill.
+        const RD = require("bots/FunLib/humaniser/rune_detour") as typeof import("bots/FunLib/humaniser/rune_detour");
+        const rd = RD.ReadPass(bot);
+        if (rd === undefined || rd.ex > RD.SETTINGS.Budget) return "bounty";
+    }
     if (r.courier === true && !courierFree(bot)) return "courier";
     if (r.tree !== undefined && ((bot as unknown as TreeBot).GetNearbyTrees(r.tree) ?? []).length === 0) return "tree";
     if (r.clear !== undefined || r.near !== undefined) {

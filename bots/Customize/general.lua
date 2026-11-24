@@ -163,6 +163,9 @@ Customize.Humaniser = {
 -- it has no stack that minute; hosted by the job chooser (needs JobChooser). Off: OHA's rune mode.
 -- RuneSpawn (slice rune-spawn): the team's 6:00 power rune as one plan (mid and supports) with the plays rolled from it, and the
 -- give-up on a 0:00 river bounty that a pickup does not take (rune_pickup). Off: OHA's rune mode.
+-- RuneDetour (decider row, doctrine D26): a hero of ours out of its lane takes its own jungle's live bounty when the path by it adds
+-- about 12 s or less (rune_detour). Off: the pass is logged as a shadow (ev=choice kind=rune_detour src=shadow) and stock plays.
+-- On by default: provisional (plan s5's small row), read at the next checkpoint batch and deleted there if not above zero.
 -- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
 -- (hosted by the job chooser, needs JobChooser). Off: no pull.
 -- SupportPullFarm (slice support-pull-farm): with SupportPull and JobChooser on, the support that pulled clears the neutrals the
@@ -181,7 +184,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, SupportPull = false, SupportPullFarm = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = false, SupportPullFarm = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

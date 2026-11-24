@@ -66,6 +66,7 @@ ____exports.DEFAULTS = {
     JobChooser = false,
     RuneRotation = false,
     RuneSpawn = false,
+    RuneDetour = true,
     SupportPull = false,
     SupportPullFarm = false,
     Threat = false,
