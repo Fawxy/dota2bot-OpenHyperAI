@@ -708,5 +708,50 @@ do
     T.eq("creep watch: none on it", field(r2.message, "cf"), "0")
 end
 
+-- Neutral creeps are attackers too (slice engine-neutrals), read with no CanBeSeen check (`hidden` here: CanBeSeen false): a camp's neutral killing our pulled creep. It hits for 70 every
+-- 0.6 s (200 -> 130 at 0.4, 60 at 1.0, dead at 1.6); our 60 takes 0.7 s to land. Seeing the neutral the deny is due once
+-- its 1.0 hit is wound up and lands before the 1.6 one; blind to it, the swing waits for 60 HP at 1.0 and lands after 1.6.
+local function neutralDenyWorld(o)
+    o = o or {}
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 60, attackPoint = 0.7, team = 2 }
+    local creep = sim:addCreep{ x = 100, y = 0, hp = 200, maxHp = 550, team = 2, passive = true }
+    local neutral = sim:addNeutral{ x = 180, y = 0, damage = 70, attackPoint = 0.4, autoAttack = true,
+        attackTarget = creep, secondsPerAttack = 0.6, passive = true, fogged = o.fogged, hidden = true }
+    return sim, bot, creep, neutral
+end
+
+do
+    local sim, bot, creep = neutralDenyWorld()
+    while sim.t < 0.2 do sim:step(DT) end
+    T.check("neutral: its DPS is incoming (" .. V.incomingDps(bot, creep).dps .. ")", V.incomingDps(bot, creep).dps > 100)
+    local f = V.hpForecast(bot, creep, 1)
+    T.check("neutral: its wound-up hit is in the forecast, kind creep", f.hits[1] ~= nil and f.hits[1].by == "creep"
+        and math.abs(f.hits[1].t - 0.2) < 2 * DT)
+end
+
+do
+    local sim, bot, creep = neutralDenyWorld()
+    local r = run(sim, V.deny(bot, { target = creep, maxWait = 3 }))
+    T.eq("neutral: the deny lands before the neutral's kill", r.reason, "ok")
+    T.eq("neutral: denies +1", bot.denies, 1)
+end
+
+-- laneTargets: the deny of our creep the neutral is killing is offered with a finite `dies`.
+do
+    local sim, bot, creep = neutralDenyWorld()
+    while sim.t < 0.2 do sim:step(DT) end
+    local o = offered(V.laneTargets(bot, { lastHit = false, within = 2 }), creep)
+    T.check("targets: neutral: the deny offered (" .. tostring(o and o.due) .. ")", o ~= nil and o.kind == "deny")
+    T.check("targets: neutral: dies finite (" .. tostring(o and o.dies) .. ")", o ~= nil and o.dies < 3)
+end
+
+-- A neutral in the fog reads no location: it is not indexed (and does not error).
+do
+    local sim, bot, creep = neutralDenyWorld({ fogged = true })
+    while sim.t < 0.2 do sim:step(DT) end
+    T.eq("neutral fogged: no DPS read", V.incomingDps(bot, creep).dps, 0)
+end
+
 print("lasthit [" .. T.runtime() .. "]")
 T.finish()

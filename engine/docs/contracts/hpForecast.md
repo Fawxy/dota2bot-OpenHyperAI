@@ -1,7 +1,10 @@
 # Contract: `hpForecast` / `forecastHp` (fact)
 
 ```
-name / version / owner:  hpForecast / 4 (slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
+name / version / owner:  hpForecast / 7 (v7, slice oha-lane-swings, 24/11/2026: each hit names its `attacker` and its
+                `commit`; v6, slice engine-neutrals, 24/11/2026: neutral creeps are in the attacker index,
+                kind `creep`; v5, slice oha-engine-windup, 24/11/2026: the wind-up is attack point / attack
+                speed seconds, timed from the engine's first read, measured in game; slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
                 `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2; v4, 05/11/2026: a projectile landing
                 past the horizon phases its attacker, through the `flightsAt` helper shared with the last-hit belief, review
                 2026-11-05-sdk-slice-prehit-c12af23 F1) / engine (main loop)
@@ -14,29 +17,37 @@ inputs:         bot, creep, horizon. forecastHp(f, t, schedule = spread | early 
 sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack, caster, location),
                 GetAttackProjectileSpeed, GetAttackDamage, GetSecondsPerAttack, GetActualIncomingDamage (physical),
                 GetHealth, GetHealthRegen, GetAttackTarget (the attacker index, per frame), the wind-up reading
-                (GetAnimActivity / GetAnimCycle / GetAttackPoint, as windupLanding: UNVERIFIED that the attack point is a
-                fraction of the attack cycle), GetNearbyTowers / GetNearbyHeroes for the attacker kinds.
-result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self }] sorted by t, unphased, unphasedTower,
+                (GetAnimActivity / GetAnimCycle / GetAttackPoint / GetAttackSpeed, as windupLanding: attack point / attack
+                speed seconds from the first frame the engine reads the wind-up; within one frame of the fire on 97.7-99.0%
+                of our heroes' wind-ups, 97.5-100% of lane creeps', 97.8% of towers', swingwc1-2; enemy heroes not
+                measured), GetNearbyTowers / GetNearbyHeroes for the attacker kinds, GetNearbyNeutralCreeps (neutral attackers, read with no
+                CanBeSeen check: a fogged one has no location and is left out; UNVERIFIED in-game: neutrals' wind-up reading, the
+                fogged location and CanBeSeen on a neutral-team unit are not measured).
+result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self, attacker, commit }] sorted by t, unphased, unphasedTower,
                 unphasedHits[{ damage, period, first, last }] }.
-                hits: every attack projectile in flight (the bot's own included), every wind-up seen landing within the
-                horizon, and for a tower or lane creep its latest known hit repeated every attack cycle while it attacks
+                hits: `attacker` the unit whose hit it is; `commit` seconds until that attack is committed (its attack
+                point; 0 for a projectile in flight, the wind-up left for one winding up, a tower's or creep's repeat its
+                landing less its flight). Every attack projectile in flight (the bot's own included), every wind-up seen landing within the
+                horizon, and for a tower, lane creep or neutral creep its latest known hit repeated every attack cycle while it attacks
                 the creep now. unphased: DPS after armour of the attackers on it with no hit in flight or wind-up, spread
                 from 0.45 s on. unphasedTower: a tower is among those. unphasedHits: the same attackers one by one, `first`
-                the earliest their next hit can land (attack point x cycle, as windupLeft reads it, plus flight), `last` the
+                the earliest their next hit can land (one wind-up, attack point / attack speed, plus flight), `last` the
                 latest (one cycle plus flight: with no wind-up seen the attacker is in backswing or cooldown). forecastHp = hp
                 + regen t - hits by t - the unknown-phase hits: `spread` unphased max(0, t - 0.45) (default, as lastHit's
                 belief), `early` each at first and every period after, `late` at last and every period after. Below 0 means
                 dead by then. The real HP lies between `early` and `late` while each such attacker is in range and its
                 wind-up readable (one still walking to the creep can land later).
 assumptions:    repeats keep today's distance and so flight time; an attacker stays on the creep (UNVERIFIED in-game: towers
-                re-target on hero aggro or when the creep leaves range); heroes are not repeated (their attacks are choices).
+                re-target on hero aggro or when the creep leaves range, a neutral leashes back to its camp); heroes are not repeated (their attacks are choices).
 outcomes:       none (a query); an empty forecast (hits {}, unphased 0) when no one attacks the creep.
 timing:         one projectile scan and the per-frame attacker index (shared with lastHit's belief); O(attackers x
                 horizon / attack cycle).
 skill:          none (exact; a caller adds error where it decides).
 consumers:      bot `states/pre_hit` (a core's pre-hit under its tower, in game from slice pre-hit); named: a support's
                 pre-hit for its core (slice pre-hit open item, user 04/11/2026), staggering two creeps due at once
-                (docs/proposals/2026-11-04-prehit-and-feints.md "Pre-hit: potential" item 2).
+                (docs/proposals/2026-11-04-prehit-and-feints.md "Pre-hit: potential" item 2); bot `humaniser/lane_hits`
+                (per creep, each hero's hit by player id with its commit, slice oha-lane-swings), and through it, named,
+                the support's deny around its core's swing (slice oha-deny-free).
 status:         offline-verified (engine test_prehit: forecast within 1 HP of the sim between hits; the sim's HP within
                 [early, late] for an attacker of unknown phase); in game: slice pre-hit check runs.
 ```

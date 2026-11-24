@@ -336,6 +336,51 @@ Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once 
 
 `team` num, `pid` num, `seen` num, `loc` num, `x` num, `y` num, `alive` num, `hp` num, `mp` num, `lvl` num, `ms` num, `nw` num, `nmod` num, `cds` num, `nitem` num, `it0` str, `tgt` num, `chan` num, `cast` num
 
+## lane_hits_check
+
+Overrides.LaneReadProbe (lane_hits_probe.ts): one creep leaving LaneHits' read (dead, or out of the lane list or sight), with the read's last prediction of the hit that kills it and who took it that frame.
+
+`lane` num, `cid` num, `pc` num
+
+- `team` num: The reading team.
+- `own` num: 1 the reading team's own creep, 0 an enemy creep.
+- `hp` num: HP at the last read.
+- `pby` str: The predicted killing hit's kind: `hero`, `self` (the reader hero), `creep`, `tower`, or `none` (no hit within the horizon kills it).
+- `ppid` num: Its hero's player id (-1 not a hero).
+- `pt` num: Seconds from the last read to that hit, and to its commit (-1 none).
+- `age` num: Seconds from the last read to this line (one frame for a death).
+- `rose` str: Heroes of the team whose denies (own creep) or last hits (enemy creep) rose this frame, `;`-joined player ids.
+- `end` str: `dead`, or `left` (alive, out of the read).
+
+## swing_probe
+
+Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
+
+`rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num, `bigat` num
+
+- `pid` num: The hero's player id (absent for a creep or tower).
+- `kind` str: The attacker: `hero` of ours, `creep` (a lane creep of ours, a few followed at a time) or `tower` (ours).
+- `aid` num: A creep's or tower's Telemetry.CreepId (absent for a hero).
+- `cid` num: Telemetry.CreepId of the target.
+- `own` num: 1 our own creep (a deny attempt), 0 the enemy's.
+- `aspd` num: GetAttackSpeed at the first frame.
+- `pf2` num: Predicted fire as attack point / attack speed x (1 - cycle): the attack point read as seconds (swingprobe1).
+- `fl` num: Predicted flight of a ranged hit (0 melee).
+- `same` num: The attack target at the fire was still the creep (1), another (0); -1 never fired.
+- `proj` num: A ranged hit's projectile was seen at the creep.
+- `drop` num: HP the creep lost from the frame before the landing to the landing frame (others' hits in that frame included); -1 no landing.
+- `dmg` num: The hero's attack damage after the creep's armour.
+- `kill` num: The hero's last hits or denies rose by the frame after the landing.
+- `end` str: `land`, `cancel`, `retarget`, `gone`, `lost`.
+- `to` str: end=retarget: the new target, `creep` (another lane creep), `hero`, `none` or `other`.
+- `age` num: Seconds after first sight of the end (any end): how far into the wind-up a cancel or retarget came.
+- `pl3` num: Ranged: predicted landing from the projectile's own position on its first frame (engine flightsAt), seconds after first sight.
+- `drop2` num: HP lost over the landing frame and the next (a hit's damage that shows a frame late).
+- `pres` str: Ranged, after the fire: per frame 1 the hero's projectile listed at the creep, 0 not (40 frames at most). The landing is the first of two absent frames in a row.
+- `big` num: After the fire: the largest one-frame HP loss of the creep, and when (seconds after first sight; -1 none).
+- `gap` num: The longest frame gap over the record.
+- `wc` str: Before the fire, per frame from the first `dt:cycle` (seconds after first sight, GetAnimCycle), `;`-joined, `x` appended off the attack activity (30 frames at most).
+
 ## apiprobe_enemy
 
 Overrides.ApiProbe: the team's reporter about an enemy hero handle it holds; a hero out of sight has no row (its handle is null).

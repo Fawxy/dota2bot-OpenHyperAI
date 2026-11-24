@@ -51,7 +51,7 @@ export interface TaskUnit {
     Action_AttackUnit(u: any, once: boolean): void;
     GetAttackRange(): number;
     GetAttackDamage?(): number;
-    /** Seconds from swing start until the hit lands. */
+    /** Base wind-up in seconds: over GetAttackSpeed, the seconds from swing start to the attack point. */
     GetAttackPoint?(): number;
     /** Game time of this unit's most recent attack; only ever compared with an earlier reading of itself. */
     GetLastAttackTime?(): number;
@@ -103,9 +103,12 @@ export interface TaskAttacker {
     GetAttackTarget?(): unknown;
     /** 1503 (ACTIVITY_ATTACK) during an attack animation. */
     GetAnimActivity?(): number;
-    /** Progress through the current animation, 0..1. */
+    /** Progress through the current animation, 0..1, at attack speed over the unit's own animation length (not its wind-up). */
     GetAnimCycle?(): number;
+    /** Base wind-up in seconds; divided by GetAttackSpeed it is the wind-up now. */
     GetAttackPoint?(): number;
+    /** Attack speed multiplier (1 = base). */
+    GetAttackSpeed?(): number;
     GetSecondsPerAttack?(): number;
     GetAttackDamage?(): number;
     GetAttackRange?(): number;
@@ -152,6 +155,7 @@ export interface TaskHero {
     GetAnimActivity?(): number;
     GetAnimCycle?(): number;
     GetAttackPoint?(): number;
+    GetAttackSpeed?(): number;
     GetSecondsPerAttack?(): number;
     GetAttackDamage?(): number;
     GetAttackRange?(): number;

@@ -143,22 +143,63 @@ function isRanged(u: TaskAttacker): boolean {
     return (u.GetAttackRange?.() ?? 0) > RANGED_ABOVE && (u.GetAttackProjectileSpeed?.() ?? 0) > 0;
 }
 
-/** Seconds until `a`'s attack point (after it, the attack can no longer be cancelled), or undefined when not winding up. */
-function windupLeft(a: TaskAttacker): number | undefined {
-    if (a.GetAnimActivity === undefined) return undefined;
-    const act = a.GetAnimActivity();
-    if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) return undefined;
-    if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
-    const cycle = a.GetAnimCycle();
-    const point = a.GetAttackPoint();
-    if (cycle >= point) return undefined;
-    return (point - cycle) * (a.GetSecondsPerAttack?.() ?? 1);
+/** A wind-up as the engine first read it: game time and anim cycle then, and the latest read. */
+interface WindupSeen {
+    t0: number;
+    c0: number;
+    t: number;
+    c: number;
+}
+/**
+ * Seconds between two reads of one attacker past which a wind-up is read as new (its first read starts again). Not
+ * measured: a frame is 1/30 s and a wind-up 0.1-0.6 s, so a gap this long cannot sit inside one wind-up's reads safely.
+ */
+const WINDUP_GAP = 0.25;
+const windups = setmetatable(new LuaTable<TaskAttacker, WindupSeen>(), { __mode: "k" });
+
+/** A unit's wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+function windupSeconds(a: { GetAttackPoint?(): number; GetAttackSpeed?(): number }): number {
+    return (a.GetAttackPoint?.() ?? 0) / math.max(0.01, a.GetAttackSpeed?.() ?? 1);
 }
 
 /**
- * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up. UNVERIFIED
- * in-game: reads the wind-up left as (attackPoint - animCycle) * secondsPerAttack, which treats
- * the attack point as a fraction of the attack cycle.
+ * Seconds until `a`'s attack point (after it, the attack can no longer be cancelled), or undefined when not winding up.
+ * The wind-up is timed from the first frame the engine reads it: attack point / attack speed, less the time since that
+ * read and the anim cycle read then over attack speed. GetAnimCycle runs at attack speed over a hero's own attack
+ * animation length (0.9-1.32 s at attack speed 1 across 9 heroes, swingwc1), which the API does not give, so the cycle is
+ * converted to time only at the first read, where it is 0 on 98-100% of wind-ups (swingprobe1-4). Measured against
+ * the fire (GetLastAttackTime rising) on every frame of 307 hero wind-ups (swingwc1, seed 30): within one frame (1/30 s)
+ * on 97.7% (melee) and 98.2% (ranged), within two on 99.1% and 98.4%; first read up to three frames late, within one frame
+ * on 93-95% and within two on 97.6-99%. Our lane creeps and towers the same way (swingwc2, seed 25): within one frame on
+ * 97.5-100% and 97.8%. A read more than WINDUP_GAP after the last, or a cycle lower than the last,
+ * starts a new wind-up. Remembers each attacker's wind-up across frames (weak keys).
+ */
+function windupLeft(a: TaskAttacker): number | undefined {
+    if (a.GetAnimActivity === undefined) return undefined;
+    const act = a.GetAnimActivity();
+    if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) {
+        windups.delete(a);
+        return undefined;
+    }
+    if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
+    const t = now();
+    const cycle = a.GetAnimCycle();
+    const speed = math.max(0.01, a.GetAttackSpeed?.() ?? 1);
+    let w = windups.get(a);
+    if (w === undefined || cycle < w.c || t < w.t || t - w.t > WINDUP_GAP) {
+        w = { t0: t, c0: cycle, t, c: cycle };
+        windups.set(a, w);
+    } else {
+        w.t = t;
+        w.c = cycle;
+    }
+    const left = windupSeconds(a) - (t - w.t0) - w.c0 / speed;
+    return left > 0 ? left : undefined;
+}
+
+/**
+ * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up: `windupLeft`, plus
+ * a ranged attacker's projectile flight (distance less the launch offset, over projectile speed).
  */
 function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
     let t = windupLeft(a);
@@ -195,12 +236,13 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     if (n.byTarget !== undefined) return n.byTarget;
     const by = new LuaTable<TaskAttacker, TaskAttacker[]>();
     const myTeam = bot.GetTeam?.();
-    const add = (a: TaskAttacker): void => {
+    const add = (a: TaskAttacker, neutral = false): void => {
         if (a === (bot as unknown) || gone(a)) return;
         // CanBeSeen is "visible to the enemy team": it says nothing about our own units, so only enemies are
-        // dropped by it (a fogged enemy's attack target cannot be read).
-        if (myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
-        if (myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
+        // dropped by it (a fogged enemy's attack target cannot be read). A neutral has no enemy team to ask, so it is
+        // not read through CanBeSeen; one in the fog reads no location and is `gone`.
+        if (!neutral && myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
+        if (!neutral && myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
         const target = a.GetAttackTarget?.();
         if (target === undefined || target === null) return;
         let list = by.get(target as TaskAttacker);
@@ -212,6 +254,12 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     };
     for (const c of n.enemyCreeps) add(c);
     for (const c of n.allyCreeps) add(c);
+    // Neutral creeps: a camp's neutrals on a pulled wave (or on a creep that walks past the camp). Without them the
+    // belief and the forecast saw no damage coming to a creep the neutrals were killing (pullchain2, 24/11/2026: 7 of 22
+    // denies at a camp lost after the swing, each reading idps=0). They are periodic attackers like lane creeps: kind
+    // `creep`, their repeats counted once phased. UNVERIFIED in-game: their wind-up reading, that a fogged one reads no
+    // location, and how CanBeSeen reads for a neutral-team unit.
+    for (const c of bot.GetNearbyNeutralCreeps?.(QUERY_RADIUS) ?? []) add(c, true);
     for (const o of others(bot, n)) add(o);
     n.byTarget = by;
     return by;
@@ -256,7 +304,8 @@ function flightsAt(bot: TaskUnit, creep: TaskCreep, withSelf: boolean): { flight
  * the `between` attackers whose next hit is spread as a rate. Counting a tower both ways read a ranged core's belief 30-45 HP
  * heavy under its own tower (its 80 per 0.81 s smeared past SEEN_AHEAD on top of the projectile already in flight), so it
  * swung early (slice pre-hit, 05/11/2026). The repeats assume the attacker stays on the creep (UNVERIFIED in-game: a tower
- * re-targets on hero aggro or when the creep leaves its range, a lane creep on aggro), as `hpForecast`'s do.
+ * re-targets on hero aggro or when the creep leaves its range, a lane creep on aggro, a neutral leashes back to its camp),
+ * as `hpForecast`'s do.
  */
 function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number; between: number } {
     horizon = math.min(horizon, FORECAST_MAX);
@@ -280,11 +329,18 @@ function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw:
     return { raw, dps, between };
 }
 
-/** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
+/**
+ * One hit the forecast expects: seconds from now until it lands, damage after armour, the attacker's kind and the attacker,
+ * and `commit`, seconds until the attack is committed (its attack point, after which it can no longer be cancelled): 0 for
+ * a projectile in flight, the wind-up left for one winding up, and for a tower's or lane creep's repeat its landing less
+ * its flight.
+ */
 export interface ForecastHit {
     t: number;
     damage: number;
     by: "tower" | "creep" | "hero" | "self";
+    attacker: TaskAttacker;
+    commit: number;
 }
 
 export interface HpForecast {
@@ -341,7 +397,9 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
     // The phase comes from every projectile in flight, one landing past the horizon included (it still says when the next
     // hit comes); only the hits themselves are cut to the horizon.
     const { flights, latest } = flightsAt(bot, creep, true);
-    for (const f of flights) if (f.t <= horizon) hits.push({ t: f.t, damage: physical(creep, f.damage), by: kindOf(f.caster) });
+    for (const f of flights) {
+        if (f.t <= horizon) hits.push({ t: f.t, damage: physical(creep, f.damage), by: kindOf(f.caster), attacker: f.caster, commit: 0 });
+    }
     let unphased = 0;
     let unphasedTower = false;
     const unphasedHits: { damage: number; period: number; first: number; last: number }[] = [];
@@ -351,17 +409,17 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
         const damage = physical(creep, a.GetAttackDamage?.() ?? 0);
         const period = a.GetSecondsPerAttack?.() ?? 1;
         const land = windupLanding(a, creep);
-        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind });
+        const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
+        if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind, attacker: a, commit: math.max(0, land - flight) });
         const last = land ?? latest.get(a);
         if (last === undefined) {
             unphased += damage / period;
             if (kind === "tower") unphasedTower = true;
-            const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
-            unphasedHits.push({ damage, period, first: (a.GetAttackPoint?.() ?? 0) * period + flight, last: period + flight });
+            unphasedHits.push({ damage, period, first: windupSeconds(a) + flight, last: period + flight });
             continue;
         }
         if (kind === "hero" || period <= 0) continue;
-        for (let t = last + period; t <= horizon; t += period) hits.push({ t, damage, by: kind });
+        for (let t = last + period; t <= horizon; t += period) hits.push({ t, damage, by: kind, attacker: a, commit: math.max(0, t - flight) });
     }
     table.sort(hits, (x, y) => x.t < y.t);
     return { hp: creep.GetHealth(), regen: creep.GetHealthRegen?.() ?? 0, horizon, hits, unphased, unphasedTower, unphasedHits };
@@ -407,7 +465,7 @@ function enemyHeroWindups(bot: TaskUnit, creep: TaskCreep, horizon: number): { n
 }
 
 /**
- * In-game check of the wind-up reader on enemy heroes (UNVERIFIED `windupLeft`): over the frames a verb watched one
+ * In-game check of the wind-up reader on enemy heroes (`windupLeft`; verified on our own heroes by swingwc1): over the frames a verb watched one
  * creep, how many had an enemy hero attacking it (`frames`), how many of those read that hero as winding up
  * (`windup`), and the raw animation reading of the last such hero (of the last wind-up frame once one was seen) (`act`, `cycle`, `point`; message fields hf hwf ha hc hpt). Message attribution only.
  */
@@ -439,8 +497,8 @@ function watchHeroes(bot: TaskUnit, creep: TaskCreep, w: HeroWatch): void {
 }
 
 /**
- * In-game check of the wind-up reader on the creep's other attackers that are not heroes (lane creeps, towers; slice
- * lh-unphased): over the frames a verb watched one creep, attacker readings (`n`, one per attacker per frame), those read as
+ * In-game check of the wind-up reader on the creep's other attackers that are not heroes (lane creeps, neutral creeps
+ * since slice engine-neutrals, towers; slice lh-unphased): over the frames a verb watched one creep, attacker readings (`n`, one per attacker per frame), those read as
  * winding up (`windup`), and the raw animation of the last one read (`act`, `cycle`, `point`, `spa` GetSecondsPerAttack).
  * A lane creep winds up for its attack point of each attack cycle, so a working reader reads about that share of a creep
  * attacker's frames as a wind-up. Message fields cf cwf ca cc cpt cs. Message attribution only.
@@ -487,7 +545,7 @@ function heroWatchText(w: HeroWatch): string {
 export function cooldownLeft(bot: TaskUnit): number {
     const a = get()!;
     if (a.attackClock === undefined || bot.GetSecondsPerAttack === undefined || bot.GetLastAttackTime === undefined) return 0;
-    const windup = bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1);
+    const windup = windupSeconds(bot);
     const idle = bot.GetSecondsPerAttack() - windup;
     // A hit landing this frame can read a hair after the clock; one reading clearly ahead of it is ignored.
     const since = a.attackClock() - bot.GetLastAttackTime() + 0.01;
@@ -516,7 +574,7 @@ export function turnTime(bot: TaskUnit, creep: TaskCreep): number {
 
 /** Seconds from an attack order now until the bot's attack point: wind-up, cooldown left and turn. */
 function ownCommitTime(bot: TaskUnit, creep: TaskCreep): number {
-    return bot.GetAttackPoint!() / (bot.GetAttackSpeed?.() ?? 1) + cooldownLeft(bot) + turnTime(bot, creep);
+    return windupSeconds(bot) + cooldownLeft(bot) + turnTime(bot, creep);
 }
 
 export function ownHitTime(bot: TaskUnit, creep: TaskCreep): number {
@@ -538,6 +596,17 @@ interface Roll {
     shift: number;
 }
 const rolls: { [playerID: number]: LuaTable<TaskCreep, Roll> } = {};
+
+/**
+ * Clears this module's state that outlives a frame: the wind-up records, the per-bot skill rolls and the nearby index. For a
+ * test's setup, or a host starting a new game; play needs no call (the wind-up record restarts on its own guards, the
+ * index on a new frame).
+ */
+export function resetLastHitState(): void {
+    for (const [k] of windups) windups.delete(k);
+    for (const [k] of pairs(rolls)) delete rolls[k as number];
+    for (const [k] of pairs(nearbyCache)) delete nearbyCache[k as number];
+}
 
 function rollFor(bot: TaskUnit, creep: TaskCreep): Roll {
     const id = bot.GetPlayerID();

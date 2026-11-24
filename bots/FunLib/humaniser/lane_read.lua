@@ -13,6 +13,7 @@ local function __TS__ArraySort(self, compareFn)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local absAmount, byLane, LANES
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
@@ -22,9 +23,64 @@ local UnitType = ____dota.UnitType
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneGeom = require(GetScriptDirectory().."/FunLib/humaniser/lane_geom")
+function absAmount(lane, loc)
+    local r = GetAmountAlongLane(lane, loc)
+    return {
+        amount = Camps.ToTeamAmount(Team.Radiant, r.amount),
+        distance = r.distance
+    }
+end
+function ____exports.IsLaneCreepName(name)
+    for ____, part in ipairs({"creep_goodguys", "creep_badguys", "goodguys_siege", "badguys_siege"}) do
+        if (string.find(name, part, 1, true)) ~= nil then
+            return true
+        end
+    end
+    return false
+end
+function byLane(units, visibleOnly)
+    local out = {[Lane.Top] = {}, [Lane.Mid] = {}, [Lane.Bot] = {}}
+    local assign = LaneConfig.Settings().Radii.LaneAssign
+    for ____, unit in ipairs(units) do
+        do
+            local __continue22
+            repeat
+                if visibleOnly and not unit:CanBeSeen() then
+                    __continue22 = true
+                    break
+                end
+                if not unit:IsAlive() or not ____exports.IsLaneCreepName(unit:GetUnitName()) then
+                    __continue22 = true
+                    break
+                end
+                local loc = unit:GetLocation()
+                local best
+                local bestDist = math.huge
+                local bestAmount = 0
+                for ____, lane in ipairs(LANES) do
+                    local r = absAmount(lane, loc)
+                    if r.distance < bestDist then
+                        bestDist = r.distance
+                        best = lane
+                        bestAmount = r.amount
+                    end
+                end
+                if best ~= nil and bestDist <= assign then
+                    local ____out_best_0 = out[best]
+                    ____out_best_0[#____out_best_0 + 1] = {unit = unit, loc = loc, amount = bestAmount}
+                end
+                __continue22 = true
+            until true
+            if not __continue22 then
+                break
+            end
+        end
+    end
+    return out
+end
 ____exports.WAVE_CYCLE = GameRules.WAVE_EVERY
 local TEAM_SLOTS = 5
-local LANES = {Lane.Top, Lane.Mid, Lane.Bot}
+LANES = {Lane.Top, Lane.Mid, Lane.Bot}
 local TOWER_IDS = {[Lane.Top] = {Tower.Top1, Tower.Top2, Tower.Top3}, [Lane.Mid] = {Tower.Mid1, Tower.Mid2, Tower.Mid3}, [Lane.Bot] = {Tower.Bot1, Tower.Bot2, Tower.Bot3}}
 local memory = {}
 local towerAmounts = {}
@@ -44,13 +100,6 @@ local function dist2D(a, b)
     local dx = a.x - b.x
     local dy = a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
-end
-local function absAmount(lane, loc)
-    local r = GetAmountAlongLane(lane, loc)
-    return {
-        amount = Camps.ToTeamAmount(Team.Radiant, r.amount),
-        distance = r.distance
-    }
 end
 function ____exports.CreepWeight(name)
     local w = LaneConfig.Settings().ForecastModel.TypeWeight
@@ -87,63 +136,19 @@ local function addCreep(c, team, unit, amount, loc)
         c.leadLoc = loc
     end
 end
-function ____exports.IsLaneCreepName(name)
-    for ____, part in ipairs({"creep_goodguys", "creep_badguys", "goodguys_siege", "badguys_siege"}) do
-        if (string.find(name, part, 1, true)) ~= nil then
-            return true
-        end
-    end
-    return false
-end
-local function byLane(units, visibleOnly)
-    local out = {[Lane.Top] = {}, [Lane.Mid] = {}, [Lane.Bot] = {}}
-    local assign = LaneConfig.Settings().Radii.LaneAssign
-    for ____, unit in ipairs(units) do
-        do
-            local __continue21
-            repeat
-                if visibleOnly and not unit:CanBeSeen() then
-                    __continue21 = true
-                    break
-                end
-                if not unit:IsAlive() or not ____exports.IsLaneCreepName(unit:GetUnitName()) then
-                    __continue21 = true
-                    break
-                end
-                local loc = unit:GetLocation()
-                local best
-                local bestDist = math.huge
-                local bestAmount = 0
-                for ____, lane in ipairs(LANES) do
-                    local r = absAmount(lane, loc)
-                    if r.distance < bestDist then
-                        bestDist = r.distance
-                        best = lane
-                        bestAmount = r.amount
-                    end
-                end
-                if best ~= nil and bestDist <= assign then
-                    local ____out_best_0 = out[best]
-                    ____out_best_0[#____out_best_0 + 1] = {unit = unit, loc = loc, amount = bestAmount}
-                end
-                __continue21 = true
-            until true
-            if not __continue21 then
-                break
-            end
-        end
-    end
-    return out
+--- Lane creeps of `units` (alive; visible ones only if asked) by the lane they are within LaneAssign of.
+function ____exports.ByLane(units, visibleOnly)
+    return byLane(units, visibleOnly)
 end
 --- Absolute amount of `owner`'s nearest alive tower on `lane`; its base end (0 or 1) when all three are down.
 local function towerAmount(team, owner, lane)
     for ____, id in ipairs(TOWER_IDS[lane]) do
         do
-            local __continue30
+            local __continue31
             repeat
                 local tower = GetTower(owner, id)
                 if tower == nil or tower == nil or not tower:IsAlive() then
-                    __continue30 = true
+                    __continue31 = true
                     break
                 end
                 local key = (((tostring(team) .. ":") .. tostring(owner)) .. ":") .. tostring(id)
@@ -157,7 +162,7 @@ local function towerAmount(team, owner, lane)
                 end
                 return amount
             until true
-            if not __continue30 then
+            if not __continue31 then
                 break
             end
         end
@@ -233,10 +238,10 @@ local function readEnemies(team, m, p)
     local seen = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue49
+            local __continue50
             repeat
                 if not u:CanBeSeen() or not u:IsAlive() or u:IsIllusion() then
-                    __continue49 = true
+                    __continue50 = true
                     break
                 end
                 local pid = u:GetPlayerID()
@@ -253,9 +258,9 @@ local function readEnemies(team, m, p)
                 e.hp = maxHP > 0 and u:GetHealth() / maxHP or 0
                 e.lvl = u:GetLevel()
                 enemies[#enemies + 1] = e
-                __continue49 = true
+                __continue50 = true
             until true
-            if not __continue49 then
+            if not __continue50 then
                 break
             end
         end
@@ -263,22 +268,22 @@ local function readEnemies(team, m, p)
     local dead = 0
     for pid in pairs(m.enemyPids) do
         do
-            local __continue52
+            local __continue53
             repeat
                 local id = pid
                 if seen[id] == true then
-                    __continue52 = true
+                    __continue53 = true
                     break
                 end
                 if not IsHeroAlive(id) then
                     dead = dead + 1
-                    __continue52 = true
+                    __continue53 = true
                     break
                 end
                 local info = GetHeroLastSeenInfo(id)[1]
                 if info == nil then
                     neverSeen[#neverSeen + 1] = id
-                    __continue52 = true
+                    __continue53 = true
                     break
                 end
                 enemies[#enemies + 1] = placed(
@@ -288,9 +293,9 @@ local function readEnemies(team, m, p)
                     info.location,
                     p
                 )
-                __continue52 = true
+                __continue53 = true
             until true
-            if not __continue52 then
+            if not __continue53 then
                 break
             end
         end
@@ -309,15 +314,15 @@ local function readAggro(lane, m, enemyCreeps, front, now)
         local i = 1
         while i <= TEAM_SLOTS do
             do
-                local __continue58
+                local __continue59
                 repeat
                     local hero = GetTeamMember(i)
                     if hero == nil or hero == nil or hero:IsIllusion() or not hero:IsAlive() then
-                        __continue58 = true
+                        __continue59 = true
                         break
                     end
                     if hero:GetAssignedLane() ~= lane and GetUnitToLocationDistance(hero, front) > near then
-                        __continue58 = true
+                        __continue59 = true
                         break
                     end
                     local n = 0
@@ -336,9 +341,9 @@ local function readAggro(lane, m, enemyCreeps, front, now)
                         pid,
                         hero:GetLocation()
                     }
-                    __continue58 = true
+                    __continue59 = true
                 until true
-                if not __continue58 then
+                if not __continue59 then
                     break
                 end
             end

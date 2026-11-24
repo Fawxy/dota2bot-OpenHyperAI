@@ -35,6 +35,8 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local RegenObs = require(GetScriptDirectory().."/FunLib/humaniser/regen_obs")
 local ApiProbe = require(GetScriptDirectory().."/FunLib/humaniser/api_probe")
+local SwingProbe = require(GetScriptDirectory().."/FunLib/humaniser/swing_probe")
+local LaneHitsProbe = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits_probe")
 local VisionMap = require(GetScriptDirectory().."/FunLib/humaniser/vision_map")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local StackJob = require(GetScriptDirectory().."/FunLib/humaniser/stack_job")
@@ -163,6 +165,10 @@ local function frameSteps(bot)
 end
 local function tick(bot)
     local all = stepsDue()
+    if bot:IsHero() and not bot:IsIllusion() then
+        SwingProbe.Tick(bot)
+        LaneHitsProbe.Tick(bot)
+    end
     if not Config.IsEnabled() then
         if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
             Telemetry.Tick(bot, nil, not all)

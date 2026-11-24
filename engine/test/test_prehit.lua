@@ -7,8 +7,7 @@ local V = tasks.Verbs
 local DT = 1 / 30
 
 -- Our tower (team 2) 700 from an enemy creep, hitting it every second for 100 with a 750-speed projectile; our melee
--- creep beside the enemy creep hits it for 20 every second. secondsPerAttack is 1 for both, so the sim's wind-up reading
--- ((attackPoint - cycle) * secondsPerAttack) is the real time left.
+-- creep beside the enemy creep hits it for 20 every second.
 local function towerScene(o)
     o = o or {}
     local sim = Sim.new()
@@ -103,6 +102,88 @@ do
     T.eq("schedules: late hit at last", V.forecastHp(f, u.last, "late"), 280)
 end
 
+-- The wind-up as measured in game (slice oha-engine-windup, swingwc1): attack point / attack speed seconds, the anim cycle
+-- running at attack speed over the unit's own animation length (1.3 s here, not given by the API). Read from its first frame
+-- the forecast's hit is the real landing on every frame; the old reading ((point - cycle) * secondsPerAttack) was not.
+local function windupScene()
+    V.resetLastHitState()
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(5) })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2 }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 300, team = 3, passive = true }
+    local a = sim:addCreep{ x = 60, y = 0, team = 2, damage = 20, attackPoint = 0.5, attackSpeed = 1.25, animLength = 1.3,
+        secondsPerAttack = 1.36, autoAttack = true, firstSwingAt = 0.1, attackTarget = creep, passive = true }
+    return sim, bot, creep, a
+end
+local function firstHit(f)
+    for _, h in ipairs(f.hits) do if h.by == "creep" then return h.t end end
+end
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    local worst, n = 0, 0
+    while a.swing do
+        local t = firstHit(V.hpForecast(bot, creep, 1))
+        if t then worst = math.max(worst, math.abs(t - (a.swing.landAt - sim.t))) n = n + 1 end
+        sim:step(DT)
+    end
+    T.check("windup: read on every frame of the wind-up (" .. n .. ")", n >= 9)
+    T.check("windup: landing exact from the first frame (worst " .. worst .. ")", worst < 1e-6)
+end
+-- First read three frames into the wind-up: the cycle then is converted at attack speed alone (the animation length is not
+-- known), so the read is late by elapsed x (1 - 1 / animLength) and stays so.
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 + 3 * DT - 1e-9 do sim:step(DT) end
+    local e0 = sim.t - a.swing.start
+    local off = e0 * (1 - 1 / 1.3)
+    local t1 = firstHit(V.hpForecast(bot, creep, 1))
+    T.near("windup: first read late by elapsed x (1 - 1/animLength)", t1, a.swing.landAt - sim.t + off, 1e-6)
+    sim:step(DT)
+    local t2 = firstHit(V.hpForecast(bot, creep, 1))
+    T.near("windup: the next frame keeps that offset (timed from the first read)", t2, a.swing.landAt - sim.t + off, 1e-6)
+end
+-- A read more than WINDUP_GAP (0.25 s) after the last starts the wind-up again from that read: its cycle then is converted at
+-- attack speed alone, so the read is late by the elapsed time x (1 - 1 / animLength) as for a late first read, where a
+-- record kept across the gap would have stayed exact.
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    V.hpForecast(bot, creep, 1)
+    while sim.t < 0.1 + 0.3 - 1e-9 do sim:step(DT) end
+    if a.swing then
+        local e = sim.t - a.swing.start
+        local t = firstHit(V.hpForecast(bot, creep, 1))
+        T.near("windup: a read past WINDUP_GAP restarts (late by elapsed x (1 - 1/animLength))", t, a.swing.landAt - sim.t + e * (1 - 1 / 1.3), 1e-6)
+    else
+        T.check("windup: the scene's wind-up outlasts the gap", false)
+    end
+end
+-- After the wind-up (backswing, the activity still the attack) no hit is read; the next swing's lower cycle starts a new one.
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    while a.swing do V.hpForecast(bot, creep, 1) sim:step(DT) end
+    while not a.swing do sim:step(DT) end
+    local worst = 0
+    while a.swing do
+        local t = firstHit(V.hpForecast(bot, creep, 1))
+        worst = math.max(worst, math.abs((t or -1) - (a.swing.landAt - sim.t)))
+        sim:step(DT)
+    end
+    -- It starts between frames: the first read is up to a frame in, late by at most DT x (1 - 1/animLength).
+    T.check("windup: the second swing read anew (worst " .. worst .. ")", worst <= DT * (1 - 1 / 1.3) + 1e-9)
+end
+-- An unphased attacker's earliest next hit is one wind-up in seconds (attack point / attack speed), not point x cycle.
+do
+    local sim, bot, creep, a = windupScene()
+    a.nextSwingAt = 5
+    sim:step(DT)
+    local f = V.hpForecast(bot, creep, 3)
+    T.eq("windup: one unphased attacker", #f.unphasedHits, 1)
+    T.near("windup: its first is attack point / attack speed", f.unphasedHits[1].first, 0.4, 1e-9)
+end
+
 -- The bot's own projectile in flight counts (a pre-hit it already fired).
 do
     local sim = Sim.new()
@@ -113,6 +194,56 @@ do
     for _ = 1, 5 do sim:step(DT) end
     local f = V.hpForecast(bot, creep, 2)
     T.check("forecast: own projectile is a `self` hit", #f.hits == 1 and f.hits[1].by == "self")
+    T.check("forecast: a hit in flight names its attacker, commit 0", f.hits[1].attacker == bot and f.hits[1].commit == 0)
+end
+
+-- A wind-up's hit names its attacker, and its commit is the wind-up left (the landing less any flight); a creep's repeat
+-- one cycle on commits at its own landing (melee: no flight).
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 + 2 * DT - 1e-9 do sim:step(DT) end
+    local f = V.hpForecast(bot, creep, 3)
+    local first, rep
+    for _, h in ipairs(f.hits) do
+        if h.attacker == a then
+            if first == nil then first = h elseif rep == nil then rep = h end
+        end
+    end
+    T.check("forecast: the wind-up's hit names its attacker", first ~= nil)
+    T.near("forecast: a melee wind-up's commit is its landing", first.commit, first.t, 1e-9)
+    T.check("forecast: the commit is under one wind-up", first.commit > 0 and first.commit < 0.4)
+    T.check("forecast: the repeat names the attacker and commits at its landing", rep ~= nil and math.abs(rep.commit - rep.t) < 1e-9)
+end
+
+-- A ranged wind-up commits a flight before it lands: its hit and its repeat land `flight` after their commit, (distance - 22)
+-- / projectile speed; once the projectile flies, the hit commits at 0.
+do
+    V.resetLastHitState()
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(5) })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2 }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 600, team = 3, passive = true }
+    local a = sim:addCreep{ x = 522, y = 0, team = 2, damage = 20, attackPoint = 0.5, attackSpeed = 1.25, animLength = 1.3,
+        secondsPerAttack = 1.36, autoAttack = true, firstSwingAt = 0.1, attackTarget = creep, passive = true,
+        range = 600, projectileSpeed = 900 }
+    local flight = (522 - 22) / 900
+    while sim.t < 0.1 + 2 * DT - 1e-9 do sim:step(DT) end
+    local f = V.hpForecast(bot, creep, 3)
+    local first, rep
+    for _, h in ipairs(f.hits) do
+        if h.attacker == a then
+            if first == nil then first = h elseif rep == nil then rep = h end
+        end
+    end
+    T.near("forecast: a ranged wind-up lands its flight after its commit", first and (first.t - first.commit) or -1, flight, 1e-6)
+    T.check("forecast: the ranged wind-up's commit is under one wind-up", first ~= nil and first.commit > 0 and first.commit < 0.4)
+    T.near("forecast: a ranged repeat lands its flight after its commit", rep and (rep.t - rep.commit) or -1, flight, 1e-6)
+    while a.swing do sim:step(DT) end
+    sim:step(DT)
+    f = V.hpForecast(bot, creep, 3)
+    local inFlight
+    for _, h in ipairs(f.hits) do if h.attacker == a and h.t < flight + 1e-6 then inFlight = h break end end
+    T.check("forecast: the ranged hit in flight commits at 0", inFlight ~= nil and inFlight.commit == 0)
 end
 
 -- attackAndConfirm with aggroConfirms = false: a target already attacking the bot does not confirm an attack that never fires.

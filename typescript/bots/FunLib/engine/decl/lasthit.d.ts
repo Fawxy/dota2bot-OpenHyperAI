@@ -1,5 +1,5 @@
 /** @noSelfInFile */
-import { TaskBody, TaskCreep, TaskUnit } from "./types";
+import { TaskAttacker, TaskBody, TaskCreep, TaskUnit } from "./types";
 /**
  * Damage (after armour) the creep takes from others within `horizon` seconds (cut to FORECAST_MAX): attack projectiles in
  * flight, every attacker of either team winding up an attack on it, and (since slice pre-hit, 05/11/2026) the repeats of a
@@ -18,11 +18,18 @@ export declare function incomingDps(bot: TaskUnit, creep: TaskCreep): {
     dps: number;
     between: number;
 };
-/** One hit the forecast expects: seconds from now until it lands, damage after armour, and the attacker's kind. */
+/**
+ * One hit the forecast expects: seconds from now until it lands, damage after armour, the attacker's kind and the attacker,
+ * and `commit`, seconds until the attack is committed (its attack point, after which it can no longer be cancelled): 0 for
+ * a projectile in flight, the wind-up left for one winding up, and for a tower's or lane creep's repeat its landing less
+ * its flight.
+ */
 export interface ForecastHit {
     t: number;
     damage: number;
     by: "tower" | "creep" | "hero" | "self";
+    attacker: TaskAttacker;
+    commit: number;
 }
 export interface HpForecast {
     /** HP and regen now. */
@@ -80,6 +87,12 @@ export declare function cooldownLeft(bot: TaskUnit): number;
 /** Seconds to turn to face the creep (0 without GetFacing). */
 export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
+/**
+ * Clears this module's state that outlives a frame: the wind-up records, the per-bot skill rolls and the nearby index. For a
+ * test's setup, or a host starting a new game; play needs no call (the wind-up record restarts on its own guards, the
+ * index on a new frame).
+ */
+export declare function resetLastHitState(): void;
 export interface LaneTarget {
     creep: TaskCreep;
     /** `prehit`: never offered by laneTargets; a caller's pick that `laneFarm` carries out as one attack (see LaneFarmOpts.pick). */

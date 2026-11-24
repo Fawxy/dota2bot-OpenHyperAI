@@ -168,10 +168,15 @@ export function IsLaneCreepName(name: string): boolean {
     return false;
 }
 
-interface Placed {
+export interface Placed {
     unit: Unit;
     loc: Vector;
     amount: number;
+}
+
+/** Lane creeps of `units` (alive; visible ones only if asked) by the lane they are within LaneAssign of. */
+export function ByLane(units: Unit[], visibleOnly: boolean): Record<number, Placed[]> {
+    return byLane(units, visibleOnly);
 }
 
 function byLane(units: Unit[], visibleOnly: boolean): Record<number, Placed[]> {
