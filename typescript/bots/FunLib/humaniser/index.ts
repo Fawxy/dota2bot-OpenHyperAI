@@ -12,6 +12,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as RegenObs from "bots/FunLib/humaniser/regen_obs";
 import * as ApiProbe from "bots/FunLib/humaniser/api_probe";
+import * as SwingProbe from "bots/FunLib/humaniser/swing_probe";
 import * as VisionMap from "bots/FunLib/humaniser/vision_map";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as StackJob from "bots/FunLib/humaniser/stack_job";
@@ -120,6 +121,9 @@ function frameSteps(this: void, bot: Unit): void {
 
 function tick(this: void, bot: Unit): void {
     const all = stepsDue();
+    // Probe games only (Overrides.SwingProbe): every frame, since a swing's fire and landing are timed to the frame; once
+    // per team VM per frame. Before the enable check, so a switches-off game probes as well.
+    if (bot.IsHero() && !bot.IsIllusion()) SwingProbe.Tick(bot);
     if (!Config.IsEnabled()) {
         // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
         if (Telemetry.IsEnabled() && bot.IsHero() && !bot.IsIllusion()) {

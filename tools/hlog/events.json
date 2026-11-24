@@ -400,6 +400,28 @@
    "chan": "num",
    "cast": "num"
   },
+  "swing_probe": {
+   "pid": "num",
+   "cid": "num",
+   "own": "num",
+   "rng": "num",
+   "cyc": "num",
+   "pt": "num",
+   "spa": "num",
+   "pf": "num",
+   "pl": "num",
+   "fire": "num",
+   "seen": "num",
+   "land": "num",
+   "same": "num",
+   "proj": "num",
+   "hp0": "num",
+   "drop": "num",
+   "dmg": "num",
+   "kill": "num",
+   "end": "str",
+   "gap": "num"
+  },
   "apiprobe_enemy": {
    "team": "num",
    "pid": "num",
@@ -2279,6 +2301,9 @@
   },
   "ev_apiprobe_own": {
    "it0": "text"
+  },
+  "ev_swing_probe": {
+   "end": "text"
   },
   "ev_apiprobe_enemy": {
    "it0": "text"
