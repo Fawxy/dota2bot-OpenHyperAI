@@ -2292,6 +2292,13 @@ ____exports.TABLE = {
         also = {"stack"},
         stackMinutes = {3, 6, 9, 12}
     },
+    ["pull-stack-row"] = {
+        note = "both pos5s play their safe lane with the stack and pull rows; both pos1s and the enemy pos3s play those lanes in-lane; everyone else benched",
+        cast = {r = {5}, d = {5}},
+        inLane = {r = {1, 3}, d = {1, 3}},
+        others = "bench",
+        rep = {every = 60, from = 60}
+    },
     ["pull-statue"] = {
         note = "Radiant pos5 pulls each minute's wave, a statue otherwise; Dire pos3 and pos4 statues in the lane; the :30 wave unpulled",
         cast = {r = {5}},

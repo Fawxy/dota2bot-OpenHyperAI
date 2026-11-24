@@ -499,6 +499,17 @@ export const TABLE: Record<string, Entry> = {
         also: ["stack"],
         stackMinutes: [3, 6, 9, 12],
     },
+    // The stack-then-pull group's rig (families proposal s5, with an enemy hero): both pos5s play their safe lane with the
+    // decider's stack and pull rows (Ours.SupportPull, Ours.SupportPullStack), nothing forced: the camp is stacked while the
+    // pos5's record of it is under the bar and pulled into a wanted slot once strong. Both pos1s and the enemy pos3s play the
+    // two safe lanes in-lane; everyone else benched.
+    "pull-stack-row": {
+        note: "both pos5s play their safe lane with the stack and pull rows; both pos1s and the enemy pos3s play those lanes in-lane; everyone else benched",
+        cast: { r: [5], d: [5] },
+        inLane: { r: [1, 3], d: [1, 3] },
+        others: "bench",
+        rep: { every: 60, from: 60 },
+    },
     // The statue steps (lane controller "Drills" steps): the same drills with the Dire laners that face the cast standing in
     // their lane as statues (never attack, cast or use items), so the lane has an enemy that is there but does not act.
     // Radiant pos5 pulls in the Radiant safe lane, which Dire's offlane pos3 and pos4 hold.

@@ -2630,6 +2630,13 @@ export const EVENTS = {
         php: "num",
         /** The nearest seen enemy hero's distance to the stand or meet point; not on walk cancels. */
         se: "num",
+        /** The camp as the puller's record knows it (PullJob Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
+         *  set it) or `rules` (the spawn rule or a stack's unseen set since), rage seconds since the last look that set it. */
+        rn: "num",
+        rsrc: "str",
+        rage: "num",
+        /** Of rn, the neutrals last seen whose handles still read alive (whether a neutral dying in fog reads dead is not known). */
+        rh: "num",
         // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads. The hit is
         // timed on the wave's front creep (pull_timing CreepTimer): hr geo (timed on it) or plan (never read), hc creeps
         // read, hn the creep after the front one and hb the back creep: predicted distance past the meet point at the
@@ -2748,7 +2755,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -2760,7 +2767,7 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` (not wanted) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. */
         why: "str",
         /** Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them). */
         src: "str",
@@ -2800,6 +2807,13 @@ export const EVENTS = {
         php: "num",
         /** The nearest seen enemy hero's distance to the stand or meet point. */
         se: "num",
+        /** The camp as the puller's record knows it (PullJob Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
+         *  set it) or `rules` (the spawn rule or a stack's unseen set since), rage seconds since the last look that set it. */
+        rn: "num",
+        rsrc: "str",
+        rage: "num",
+        /** Of rn, the neutrals last seen whose handles still read alive (whether a neutral dying in fog reads dead is not known). */
+        rh: "num",
         // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
         // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
         // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).

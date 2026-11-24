@@ -78,6 +78,7 @@ const steps = {
     },
     landing: SafeGather.Tick,
     pullShadow: PullJob.Shadow,
+    stackShadow: StackJob.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
     overlay: drawOverlay,
@@ -184,6 +185,11 @@ if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
         PullJob.ROW.step = Telemetry.Guard("PullRow.step", PullJob.ROW.step, () => true);
     }
     Decider.ROWS.push(PullJob.ROW);
+    if (Telemetry.GuardsEnabled()) {
+        StackJob.ROW.applies = Telemetry.Guard("StackRow.applies", StackJob.ROW.applies, no);
+        StackJob.ROW.step = Telemetry.Guard("StackRow.step", StackJob.ROW.step, () => true);
+    }
+    Decider.ROWS.push(StackJob.ROW);
 }
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 

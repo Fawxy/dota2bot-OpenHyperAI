@@ -115,6 +115,15 @@ export const SETTINGS = {
      *  were on the neutrals from 324 and the neutrals stayed on it until 327. `judgement`. */
     ShedMargin: 300,
     ShedFor: 5,
+    /** The bar (families proposal s5, named 24/11/2026): a pull is started only into a camp of at least this many neutrals on
+     *  the hero's record. From the banked pull rigs' diverted pulls, creeps dead within 1,000 of the camp by neutrals met:
+     *  3 met 13 of 61, 4 met 4 of 36, 5 met 7 of 8, 6 or more 137 of 140. */
+    StrongAt: 6,
+    /** Neutrals the spawn rule adds to an empty camp while it is out of sight (`judgement`: a camp's set varies by kind,
+     *  2 to 4; the next sighting corrects it). */
+    SetSize: { small: 3, medium: 3, large: 3, ancient: 3 } as Record<Camps.CampType, number>,
+    /** The record's look at the lane's camp while no pull runs, at most this often (`judgement`). */
+    RecordEvery: 0.5,
 };
 
 /** What the API returns in the camp's box: `n` neutrals, `seen` of them `CanBeSeen`, `hp` their health, `vis` the camp's
@@ -133,6 +142,8 @@ interface CampState {
     php?: number;
     /** At a decision: the nearest enemy hero to the stand point or the meet point (siteThreat). */
     se?: number;
+    /** At a decision: the camp as the hero's record knows it (Known). */
+    known?: CampKnown;
 }
 
 interface Plan {
@@ -218,9 +229,12 @@ const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
 const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
+/** By camp idx: this hero's record of each camp (CampRecord). */
+const records: Record<number, CampRecord | undefined> = {};
+const watchedAt: Record<number, number | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, records, watchedAt] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -313,6 +327,133 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
 }
 
 /**
+ * What this hero knows of a camp's strength while it is out of sight (families proposal s5: the trigger reads about 10 s
+ * before the slot with the camp fogged, `cn` 0 in every pullchain1 slot). A sighting is a fact and replaces the record; in
+ * between it moves only by the game's rules. The count is the neutrals last seen whose handles still read alive (one that
+ * dies in fog drops out if the API reports it; if not, the record stays high until the next sighting) plus the neutrals the
+ * spawn rules added since.
+ */
+interface CampRecord {
+    units: Unit[];
+    added: number;
+    /** The last sighting that set the record, and whether the rules have added since (`src` on the lines). */
+    seenAt: number;
+    src: "seen" | "rules";
+    /** The last minute mark the spawn rule was applied to. */
+    minute: number;
+    /** A stack holds the record (Hold): no look counts the camp until then. */
+    heldUntil?: number;
+}
+
+
+/** A camp's neutrals within this of its origin, seen alive, stay on the record through a sighting of the box: a stack's
+ *  pulled set walks back over :00 and stands outside the counted box (`judgement`, the pull's TagRadius). */
+const RECORD_LEASH = 1200;
+
+function alive(u: Unit): boolean {
+    return !u.IsNull() && u.IsAlive();
+}
+
+function recordCount(r: CampRecord): number {
+    let n = r.added;
+    for (const u of r.units) if (alive(u)) n++;
+    return n;
+}
+
+/**
+ * The spawn rule since the record's last minute: at each mark an empty camp gets a set, a camp holding neutrals gets nothing
+ * (leftovers block the spawn: pullchain1, Dire 7:00). A stack's set is the stack row's to add (NoteSet), since the record
+ * cannot tell a pulled-out camp from one in its box.
+ */
+function advance(r: CampRecord, type: Camps.CampType, now: number): void {
+    const m = math.floor(now / GameRules.NEUTRAL_EVERY);
+    while (r.minute < m) {
+        r.minute++;
+        if (r.minute * GameRules.NEUTRAL_EVERY >= GameRules.NEUTRAL_FIRST && recordCount(r) === 0) {
+            r.added += SETTINGS.SetSize[type];
+            r.src = "rules";
+        }
+    }
+}
+
+function recordOf(spawner: Camps.Spawner, now: number): CampRecord {
+    let r = records[spawner.idx];
+    if (r === undefined) {
+        // Before the first spawn the camp is empty, and the rule fills it at the first mark.
+        r = { units: [], added: 0, seenAt: now, src: "rules", minute: math.floor(now / GameRules.NEUTRAL_EVERY) };
+        if (now >= GameRules.NEUTRAL_FIRST) r.added = SETTINGS.SetSize[spawner.type];
+        records[spawner.idx] = r;
+    }
+    advance(r, spawner.type, now);
+    return r;
+}
+
+/**
+ * A look at the camp (`s`, CampStateOf now). A full view (the box's corners in sight, or `close`: one of ours stands at the
+ * camp, since the corners never all read visible in the drills, ldr11) replaces the record; a partial one only raises it,
+ * since a neutral out of view would drop a strong camp under the bar. An unseen origin says nothing (the API returns no
+ * fogged neutrals).
+ */
+export function NoteSighting(spawner: Camps.Spawner, s: CampState, close: boolean): void {
+    if (!s.vis) return;
+    const now = DotaTime();
+    const r = recordOf(spawner, now);
+    if (r.heldUntil !== undefined && now < r.heldUntil) return;
+    if (!(s.full === true || close) && s.n <= recordCount(r)) return;
+    const units = [...s.units];
+    for (const u of r.units) {
+        if (!alive(u) || !u.CanBeSeen() || units.includes(u) || GetUnitToLocationDistance(u, spawner.location) > RECORD_LEASH) continue;
+        units.push(u);
+    }
+    r.units = units;
+    r.added = 0;
+    r.seenAt = now;
+    r.src = "seen";
+}
+
+/**
+ * The stack row's read of its camp after the mark: the set it pulled out (`pulled`, the handles at its hit) and the spawn it
+ * saw come in (`fresh`), or a set by the rules when the box was out of sight (`fresh` undefined). It replaces the record:
+ * the row held it through the stack (Hold), since no look at the box counts a pulled-out set.
+ */
+export function NoteStack(spawner: Camps.Spawner, pulled: Unit[], fresh: number | undefined): void {
+    const now = DotaTime();
+    const r = recordOf(spawner, now);
+    r.units = pulled.filter((u) => alive(u));
+    r.added = fresh ?? SETTINGS.SetSize[spawner.type];
+    r.src = fresh !== undefined ? "seen" : "rules";
+    if (fresh !== undefined) r.seenAt = now;
+    r.heldUntil = undefined;
+}
+
+/** No look updates the record until `until` (or NoteStack): a stack is pulling the camp out of its box. */
+export function Hold(spawner: Camps.Spawner, until: number): void {
+    recordOf(spawner, DotaTime()).heldUntil = until;
+}
+
+export interface CampKnown {
+    n: number;
+    src: "seen" | "rules";
+    /** Seconds since the last sighting that set the record. */
+    age: number;
+    /** Of `n`, the neutrals last seen whose handles still read alive; the rest the rules added. */
+    held: number;
+}
+
+/** The camp's strength as this hero knows it now (CampRecord). */
+export function Known(spawner: Camps.Spawner): CampKnown {
+    const now = DotaTime();
+    const r = recordOf(spawner, now);
+    const n = recordCount(r);
+    return { n, src: r.src, age: math.floor((now - r.seenAt) * 10) / 10, held: n - r.added };
+}
+
+/** The camp holds at least the bar's neutrals (SETTINGS.StrongAt) on this hero's record. */
+export function Strong(spawner: Camps.Spawner): boolean {
+    return Known(spawner).n >= SETTINGS.StrongAt;
+}
+
+/**
  * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
  * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
  * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`). `one` the same with a single
@@ -320,11 +461,16 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
  * more 243 of 385; user 04/11/2026: skip it). Stacking it instead is the stack job's call, not this one's.
  */
 export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
-    const period = LaneConfig.Settings().Timing.PullPeriod;
-    if (!s.vis || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
+    if (!readsHit(s, now, hitAt)) return undefined;
     if (s.n === 0) return "empty";
     if (s.n === 1) return "one";
     return undefined;
+}
+
+/** What the team sees of the camp now holds at the hit: the origin is in sight and no spawn mark comes before the hit. */
+function readsHit(s: CampState, now: number, hitAt: number): boolean {
+    const period = LaneConfig.Settings().Timing.PullPeriod;
+    return s.vis && math.floor(hitAt / period) <= math.floor(now / period);
 }
 
 /** The camp's expected damage on `bot` over `seconds` of its hits (the pull's HitSeconds by default; DefaultDps unseen). */
@@ -477,6 +623,10 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
         ["se", r0(s.se)],
+        ["rn", s.known?.n],
+        ["rsrc", s.known?.src],
+        ["rage", s.known?.age],
+        ["rh", s.known?.held],
     ];
 }
 
@@ -1007,14 +1157,39 @@ export function Shadow(bot: Unit): void {
     logSeeds();
     if (!Telemetry.IsEnabled() || !IsPuller(bot) || rowOn(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
+    watch(bot);
     const due = dueSlot(bot, DotaTime());
     if (due === undefined) return;
     handled[bot.GetPlayerID()] = due.p.slot;
-    choiceLine(bot, due.d, due.p.slot, false, "off", CampStateOf(due.p.spawner), "shadow");
+    const camp = CampStateOf(due.p.spawner);
+    camp.known = Known(due.p.spawner);
+    choiceLine(bot, due.d, due.p.slot, false, "off", camp, "shadow");
 }
 
 /** The mode the decider hosts its rows in: the engine steps the pull's task under it. */
 const HOST = BotMode.Farm;
+
+
+/**
+ * The record's look at the lane's camp while no pull of this hero runs (a running pull's walk looks in Step; after its hit
+ * the neutrals are out of the box). Full when the hero stands within CampReadNear of the camp's origin. Both arms, so the
+ * shadow line carries the same record.
+ */
+function watch(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    if (running[pid] !== undefined || now - (watchedAt[pid] ?? -math.huge) < SETTINGS.RecordEvery) return;
+    watchedAt[pid] = now;
+    const sp = SpawnerFor(bot);
+    if (sp === undefined) return;
+    NoteSighting(sp, CampStateOf(sp), bot.IsAlive() && GetUnitToLocationDistance(bot, sp.location) <= SETTINGS.CampReadNear);
+}
+
+/** The spawner of the lane's pull camp (the pull's and the stack row's camp). */
+export function SpawnerFor(bot: Unit): Camps.Spawner | undefined {
+    const camp = campFor(bot);
+    return camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
+}
 
 /**
  * Why a wanted pull may not start now. Danger is the shared read's answer where the hero stands; a hero Valve's attack or a
@@ -1060,11 +1235,13 @@ function rowApplies(bot: Unit): boolean {
     }
     trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    watch(bot);
     const now = DotaTime();
     const due = dueSlot(bot, now);
     if (due === undefined) return false;
     const { p, timer, hitAt, walk, d } = due;
     const camp = CampStateOf(p.spawner);
+    camp.known = Known(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
         handled[pid] = p.slot;
         gateWhy[pid] = undefined;
@@ -1072,6 +1249,12 @@ function rowApplies(bot: Unit): boolean {
     };
     if (!d.want) {
         done(false, d.drill === true ? "drill" : d.reading === undefined ? "no-read" : "lane");
+        return false;
+    }
+    // Only a strong camp takes the wave (families proposal s5); under the bar the stack row builds it. A camp seen empty or
+    // with one neutral says so (CampGate, in the start check).
+    if (camp.known.n < SETTINGS.StrongAt && CampGate(camp, now, hitAt) === undefined) {
+        done(false, "weak");
         return false;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
@@ -1120,10 +1303,13 @@ function Step(bot: Unit): boolean {
         s.dmg = CampDamage(bot, s, p.plan.spawner.type);
         s.php = bot.GetHealth();
         const now = DotaTime();
-        const gate = CampGate(s, now, p.hitAt);
-        // `one`/`empty` count only near the stand (CampReadNear) and must hold CampLowHold s (the camp fills in as it comes
-        // into sight); camp damage ends it at once.
-        if (gate === undefined || GetUnitToLocationDistance(bot, p.plan.stand) > SETTINGS.CampReadNear) p.low = undefined;
+        const close = GetUnitToLocationDistance(bot, p.plan.stand) <= SETTINGS.CampReadNear;
+        NoteSighting(p.plan.spawner, s, close);
+        // On arrival the puller's own look is the record (a full view): a camp under the bar is not pulled.
+        const gate = CampGate(s, now, p.hitAt) ?? (readsHit(s, now, p.hitAt) && Known(p.plan.spawner).n < SETTINGS.StrongAt ? "weak" : undefined);
+        // `one`/`empty`/`weak` count only near the stand (CampReadNear) and must hold CampLowHold s (the camp fills in as it
+        // comes into sight); camp damage ends it at once.
+        if (gate === undefined || !close) p.low = undefined;
         else if (p.low === undefined || p.low.why !== gate) p.low = { why: gate, at: now };
         // The hold shrinks to the time left before the hit: a puller reaching the ring late still reads the camp before it
         // hits (review 2026-11-08-lane-drills M3: ldr17's cancels fell 2 s before to 0.8 s after the slot).

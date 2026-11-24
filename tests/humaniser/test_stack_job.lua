@@ -591,9 +591,11 @@ do
 	local ping = farm:find("defendPings'%]%.pingedTime <= 5%.0 then")
 	local abort = farm:find('J.Humaniser.Chooser.Abort(bot, "defend-ping")', 1, true)
 	check('farm: a defend ping aborts the job', ping ~= nil and abort ~= nil and abort > ping and abort - ping < 200, tostring(ping) .. ' ' .. tostring(abort))
-	-- Slice job-chooser: the job never names OHA or modes, and OHA's files reach it only through the chooser.
+	-- Slice job-chooser: the job never names OHA, and OHA's files reach it only through the chooser or the decider. Its
+	-- decider row reads the active mode for its start (a hero in attack or retreat is left to it) and names its host mode,
+	-- as the pull row does.
 	local jobSrc = source('typescript/bots/FunLib/humaniser/stack_job.ts')
-	for _, word in ipairs({ 'BotMode', 'GetActiveMode', 'OHA', 'mode_farm', 'ability_item', 'jmz_func' }) do
+	for _, word in ipairs({ 'OHA', 'mode_farm', 'ability_item', 'jmz_func' }) do
 		check('StackJob does not mention ' .. word, not has(jobSrc, word))
 	end
 	for _, rel in ipairs({ 'bots/mode_farm_generic.lua', 'bots/mode_retreat_generic.lua', 'bots/ability_item_usage_generic.lua', 'bots/FunLib/jmz_func.lua' }) do
@@ -1185,6 +1187,102 @@ do
 	-- The farm file's line builds both wrappers.
 	local farm = io.open(BOTS_ROOT .. "/bots/mode_farm_generic.lua", "r"):read("a")
 	check("farm: wrapper line hosts Think", farm:find("C.HostThink(GetBot(), 'farm', Think, J.CanNotUseAction)", 1, true) ~= nil)
+end
+
+
+-- The stack row (families proposal s5, Ours.SupportPullStack): the lane's puller stacks its pull camp in a minute its
+-- record of the camp (PullJob Known) is under the pull's bar, hosted by the decider; the stack's read becomes the record
+-- the pull's trigger reads.
+local function rowWorld(o)
+	o = o or {}
+	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, ours = { StackExecute = false, SupportPull = true, SupportPullStack = o.off ~= true } })
+	bot.lane, bot.bot = dota.Lane.Bot, true
+	-- The Radiant safe lane's T1, so the lane's pull camp seeds (the nearest small spawner: good_1).
+	local tower = MakeUnit({ pid = -1, team = RAD, loc = SAFE_T1[RAD] })
+	GetTower = function(team, id) if team == RAD and id == dota.Tower.Bot1 then return tower end return nil end
+	require("bots/FunLib/humaniser/camps").ResetCache()
+	H.PullJob.ResetCache()
+	local sp = H.PullJob.SpawnerFor(bot)
+	return H, bot, sp
+end
+local function rowFrame(H, bot)
+	local n0 = #ACTIONS
+	H.StackJob.Shadow(bot)
+	if H.Decider.Host(bot, H.Chooser.Gate(bot, "farm", function() return 0 end))() > 0 then
+		bot.mode = FARM
+		H.Decider.HostThink(bot, H.Chooser.HostThink(bot, "farm", function() return false end, function() return false end), function() return false end)()
+	else
+		bot.mode = LANING
+	end
+	for i = #ACTIONS, n0 + 1, -1 do
+		local a = ACTIONS[i]
+		if a.pid == bot.pid and a.kind == "MoveToLocation" then bot.loc = Vector(a.args[1].x, a.args[1].y) break end
+	end
+	for i = n0 + 1, #ACTIONS do
+		local a = ACTIONS[i]
+		if a.pid == bot.pid and a.kind == "AttackUnit" and a.args[1].team == 4 then a.args[1].target = bot end
+	end
+	T = T + 0.1
+end
+local function choices(lines, kind)
+	local r = {}
+	for _, l in ipairs(lines) do if l:find("ev=choice ", 1, true) and field(l, "kind") == kind then table.insert(r, l) end end
+	return r
+end
+-- One minute of the row: the camp holds `n` (seen at the start), a spawn of 3 at 4:00 unless `noSpawn`; to 4:00 + `tail`.
+local function rowRun(o)
+	local H, bot, sp = rowWorld(o)
+	local camp = sp and sp.location or Vector(0, 0)
+	neutrals(camp, o.n or 3)
+	local printed = capture(function()
+		while T < 4 * 60 do rowFrame(H, bot) end
+		if not o.noSpawn then neutrals(camp, 3) end
+		while T < 4 * 60 + (o.tail or 8) do rowFrame(H, bot) end
+	end)
+	return printed, H, bot, sp
+end
+
+do
+	local H, bot, sp = rowWorld()
+	check("row world: the lane's pull camp is good_1", sp ~= nil and sp.idx == idxOf("good_1"), sp and sp.idx)
+end
+
+-- Under the bar: the record (the 3 in sight) wants a stack; the row starts it under the decider's hold and the stack's read
+-- (the 3 it pulled out and the 3 that spawned) is the record after it.
+do
+	-- Read inside the stack's hold (to :06), so the record is the stack's read, not a later look.
+	local printed, H, bot, sp = rowRun({ tail = 5.5 })
+	local c = choices(printed, "stack")
+	local st = stackLines(printed)
+	check("weak: one stack line for 3:5x, wanted, started, the record's 3 from the rules", #c >= 1 and field(c[1], "go") == "1" and field(c[1], "want") == "1"
+		and field(c[1], "rn") == "3" and field(c[1], "src") == "own", c[1])
+	check("weak: the stack ran and stacked good_1", #st == 1 and field(st[1], "res") == "stacked" and tonumber(field(st[1], "camp")) == idxOf("good_1"), st[1])
+	local k = H.PullJob.Known(sp)
+	check("weak: the record after the stack holds the pulled 3 and the spawned 3, seen", k.n == 6 and k.src == "seen", k.n .. " " .. k.src)
+end
+
+-- At the bar the row does not stack: one line, not wanted, `strong`, and no job.
+do
+	local printed = rowRun({ n = 6 })
+	local c = choices(printed, "stack")
+	check("strong: one line, not wanted, why=strong", #c == 1 and field(c[1], "want") == "0" and field(c[1], "go") == "0" and field(c[1], "why") == "strong" and field(c[1], "rn") == "6", c[1])
+	check("strong: no stack", #stackLines(printed) == 0)
+end
+
+-- The box out of sight after the hit: the stack is read `unseen`, and the record adds a set by the rules.
+do
+	local printed, H, bot, sp = rowRun({ fogged = function() return true end })
+	local st = stackLines(printed)
+	local k = H.PullJob.Known(sp)
+	check("unseen: stack read unseen, record 3 pulled + a set by the rules", field(st[1], "res") == "unseen" and k.n == 6 and k.src == "rules", tostring(st[1]) .. " " .. k.n)
+end
+
+-- Switched off: the same minute's read as a shadow, and no stack.
+do
+	local printed = rowRun({ off = true })
+	local c = choices(printed, "stack")
+	check("off: one shadow line, wanted, go=0 why=off", #c == 1 and field(c[1], "src") == "shadow" and field(c[1], "want") == "1" and field(c[1], "why") == "off", c[1])
+	check("off: no stack", #stackLines(printed) == 0, stackLines(printed)[1])
 end
 
 finish()

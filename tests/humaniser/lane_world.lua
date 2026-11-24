@@ -301,6 +301,7 @@ function LaneFresh(laneCfg, extra)
 	local H = FreshHumaniser({ Enable = extra.enable ~= false, Debug = extra.debug, TickEvery = extra.tickEvery, Lane = laneCfg, Telemetry = extra.telemetry })
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPull = extra.supportPull == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullStay = extra.supportPullStay == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportPullStack = extra.supportPullStack == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.Retreat = extra.retreat == true
 	H.LaneConfig.SetHelpers({
 		GetPosition = function(u) return u.pos end,

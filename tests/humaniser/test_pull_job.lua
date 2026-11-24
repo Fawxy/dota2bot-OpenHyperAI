@@ -44,6 +44,8 @@ local function world(o)
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
 	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
+	-- The puller's record of the camp: strong (the bar) unless the world says `weak`; a look at the camp replaces it.
+	if not o.weak then H.PullJob.NoteStack(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), {}, o.known or 6) end
 	local data = require("bots/FunLib/humaniser/camps").ByIdx(1)
 	local stand = require("bots/FunLib/humaniser/camps").BoxEdgePoint(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
@@ -511,18 +513,19 @@ end
 -- 192 of 600, above the 150 reserve; the old 0.5 x 3.9 s lead share priced it at 330 and held it), and the choice line's
 -- `cdmg` is the damage the gate used.
 do
-	local function camp(k, hp)
+	-- `single`: a strong camp (the bar, six) with a single spawn's damage, 120 dps, since only a strong camp is pulled.
+	local function camp(k, hp, dps)
 		local w = world({ reading = OUT, visible = true, supHp = hp })
-		for i = 1, k do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 40 end
+		for i = 1, k do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = dps or 40 end
 		local out = run(w, 80)
 		return lines(out, "choice")[1], #lines(out, "job")
 	end
 	local stacked, jobsS = camp(8)
-	local single, jobs1 = camp(3)
-	local low, jobsL = camp(3, 372)
+	local single, jobs1 = camp(6, nil, 20)
+	local low, jobsL = camp(6, 372, 20)
 	check("stacked camp in sight: no start, why=camp-dmg, the probe counts its 8 neutrals", jobsS == 0 and field(stacked, "why") == "camp-dmg"
 		and field(stacked, "cn") == "8" and field(stacked, "cv") == "1" and field(stacked, "cdmg") == "480", stacked)
-	check("single spawn: the same puller starts", jobs1 >= 1 and field(single, "go") == "1" and field(single, "cn") == "3", single)
+	check("single spawn: the same puller starts", jobs1 >= 1 and field(single, "go") == "1" and field(single, "cn") == "6", single)
 	check("single spawn at 62% HP: starts on the 1.5 s window, cdmg=180", jobsL >= 1 and field(low, "go") == "1" and field(low, "cdmg") == "180", low)
 end
 
@@ -744,6 +747,75 @@ do
 	w = world({ reading = OUT, on = false })
 	w.sup.pos = 3
 	check("shadow: silent for a hero that is not the lane's puller", #lines(shadowed(w, 75), "choice") == 0)
+end
+
+
+-- The puller's record of its camp (families proposal s5: the trigger reads the camp fogged, cn 0 in every pullchain1 slot).
+-- A look replaces it only when full (the box's corners in sight, or the hero at the camp); a partial look only raises it.
+-- Between looks it moves by the game's rules: a neutral seen dying drops out, and an empty camp gets a set at the mark.
+do
+	local w = world({ reading = OUT, visible = true, weak = true })
+	local P, sp = w.H.PullJob, require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)
+	T = 70
+	local seen = {}
+	for i = 1, 3 do seen[i] = MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }) end
+	P.NoteSighting(sp, P.CampStateOf(sp), false)
+	local k = P.Known(sp)
+	check("record: a full look sets it from the camp (3, seen)", k.n == 3 and k.src == "seen", k.n .. " " .. k.src)
+	FOGGED = campFog
+	seen[1].hp, seen[2].removed = 0, true
+	check("record: in fog, neutrals seen dying drop out of it", P.Known(sp).n == 1, P.Known(sp).n)
+	T = 121
+	check("record: a leftover in the box blocks the 2:00 spawn", P.Known(sp).n == 1 and P.Known(sp).src == "seen", P.Known(sp).n)
+	seen[3].hp = 0
+	T = 181
+	k = P.Known(sp)
+	check("record: an empty camp gets a set at the 3:00 mark, by the rules, aged from the last look", k.n == 3 and k.src == "rules" and k.age == 111, k.n .. " " .. k.src .. " " .. k.age)
+	-- A partial look (origin in sight, the box's corners not, the hero away): only a higher count replaces the record.
+	P.NoteStack(sp, {}, 7)
+	local function look(n, close)
+		local units = {}
+		for i = 1, n do units[i] = MakeNeutral({ x = SMALL.x, y = SMALL.y }) end
+		P.NoteSighting(sp, { n = n, seen = n, hp = 0, vis = true, full = false, units = units }, close)
+	end
+	look(2, false)
+	check("record: a partial look of 2 leaves a record of 7", P.Known(sp).n == 7, P.Known(sp).n)
+	look(9, false)
+	check("record: a partial look of 9 raises it", P.Known(sp).n == 9, P.Known(sp).n)
+	-- The hero at the camp sees two; the others on the record are out of its view, so not in the camp.
+	for _, u in ipairs(NEUTRALS) do u.unseen = true end
+	look(2, true)
+	check("record: the hero's own look at the camp lowers it", P.Known(sp).n == 2, P.Known(sp).n)
+	P.Hold(sp, T + 10)
+	look(8, true)
+	check("record: a stack's hold keeps every look out", P.Known(sp).n == 2, P.Known(sp).n)
+	P.NoteStack(sp, {}, nil)
+	check("record: a stack read unseen adds a set by the rules and ends the hold", P.Known(sp).n == 3 and P.Known(sp).src == "rules", P.Known(sp).n)
+end
+
+-- Only a strong camp is pulled: a wanted slot with the record under the bar is not started (`why=weak`), the line carries
+-- the record; the stack row is what builds the camp.
+do
+	local w = world({ reading = OUT, weak = true })
+	local out = run(w, 90)
+	local choice = lines(out, "choice")
+	check("weak: one line, wanted, not started, why=weak, rn from the rules", #choice == 1 and field(choice[1], "want") == "1" and field(choice[1], "go") == "0"
+		and field(choice[1], "why") == "weak" and field(choice[1], "rn") == "3" and field(choice[1], "rsrc") == "rules", choice[1])
+	check("weak: no job, the hero stays in lane", #lines(out, "job") == 0 and w.sup.mode == LANING)
+end
+
+-- The record says strong, but the puller's own look on arrival counts three: the pull is cancelled `weak` before the hit.
+do
+	local w = world({ reading = OUT })
+	for i = 1, 3 do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }).dps = 1 end
+	-- Fogged at the trigger (the record decides), in sight once the puller nears the camp.
+	FOGGED = function(v) return campFog(v) and (T < 72 or GetUnitToLocationDistance(w.sup, SMALL) > 700) end
+	local out = run(w, 100)
+	local choice, pulls = lines(out, "choice"), lines(out, "pull_job")
+	check("arrival: started on the record of 6", field(choice[1], "go") == "1" and field(choice[1], "rn") == "6", choice[1])
+	check("arrival: the look at the camp cancels it weak", #pulls == 1 and field(pulls[1], "res") == "fail" and (field(pulls[1], "why") or ""):find("weak", 1, true) ~= nil
+		and field(pulls[1], "hit") == "0", pulls[1])
+	check("arrival: the record now holds the look", w.H.PullJob.Known(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)).n == 3)
 end
 
 finish()

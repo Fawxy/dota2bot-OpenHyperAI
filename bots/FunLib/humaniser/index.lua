@@ -129,6 +129,7 @@ local steps = {
     end,
     landing = SafeGather.Tick,
     pullShadow = PullJob.Shadow,
+    stackShadow = StackJob.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -296,6 +297,16 @@ if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
     end
     local ____Decider_ROWS_0 = Decider.ROWS
     ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = PullJob.ROW
+    if Telemetry.GuardsEnabled() then
+        StackJob.ROW.applies = Telemetry.Guard("StackRow.applies", StackJob.ROW.applies, no)
+        StackJob.ROW.step = Telemetry.Guard(
+            "StackRow.step",
+            StackJob.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_1 = Decider.ROWS
+    ____Decider_ROWS_1[#____Decider_ROWS_1 + 1] = StackJob.ROW
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)
