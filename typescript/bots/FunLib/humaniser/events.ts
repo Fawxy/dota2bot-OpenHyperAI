@@ -279,6 +279,40 @@ export const EVENTS = {
         /** `melee`, `ranged`, `siege`, `neutral` or `ancient`. */
         kind: "str",
         hp: "num",
+        /** The creep's id for this log (Telemetry CreepId), as on its `ev=creep_death` or `ev=neutral_death` row; absent on logs before 25/11/2026. */
+        cid: "num",
+    },
+    /** The first frame a lane creep of the logging team, or any neutral, is in the team's unit list (`Telemetry.Creeps`, 0:00 to `Telemetry.CreepDeathUntil`, both arms). Each team numbers its own creeps (`cid` is unique per team only), so a lane creep is `team` + `cid`; a neutral both teams see is two rows, merged by the reader (hlog `unit_life`). Pair: `unit_gone`. */
+    unit_seen: {
+        /** The logging team: the owner of a lane creep; for a neutral, the team that saw it. */
+        team: "num",
+        cid: "num",
+        /** `lane` or `neutral`. */
+        kind: "str",
+        /** The unit's name without `npc_dota_`: shows a flag bearer, an upgraded melee creep, a neutral's name. */
+        type: "str",
+        /** A lane creep's lane nearest where it was first seen (`top`, `mid`, `bot`). */
+        lane: "str",
+        /** A neutral's nearest camp spawner index within 1,200; absent when none. */
+        camp: "num",
+        x: "num",
+        y: "num",
+    },
+    /** The frame a unit with a `unit_seen` left the unit list dead. A lane creep: any frame it leaves the owner's list, at any health and place (a team sees its own creeps everywhere; at high `hp` it can be a change of owner). A neutral: only when `IsAlive()` is false or its handle is invalid; one that leaves the list alive (out of vision) is held, written `hid=1` if it is later found dead, and never when it is seen again. */
+    unit_gone: {
+        team: "num",
+        cid: "num",
+        /** Where it was last listed. */
+        x: "num",
+        y: "num",
+        /** HP share when last listed. */
+        hp: "num",
+        /** The pid of a hero of the logging team whose last hits (deny: whose denies, for an own lane creep) rose this frame and took the nearest unclaimed gone unit within 1,200; else `none`. For an own lane creep the pid of an enemy hero whose last hits rose, when the logging team can read them (see LOGGING.md). */
+        by: "mixed",
+        /** Own lane creeps with a `by`: `deny` when an own hero's denies rose, `hero` when an enemy hero's last hits rose. Absent with no taker and on neutrals. */
+        bk: "str",
+        /** 1 when the neutral was found dead only after it had left the list alive, so `t` is when that was noticed. */
+        hid: "bool",
     },
     /** An ENEMY lane creep (as seen by the logging team) that was seen last frame and is gone this frame at 50% health or less, within 1,500 of a living own hero. Logged per team by a frame job (`Telemetry.Creeps`, 0:00 to `Telemetry.CreepDeathUntil`, 720 s), in both arms. Mirror: `own_creep_death`. */
     creep_death: {

@@ -182,7 +182,28 @@
   "creep_revive": {
    "team": "num",
    "kind": "str",
-   "hp": "num"
+   "hp": "num",
+   "cid": "num"
+  },
+  "unit_seen": {
+   "team": "num",
+   "cid": "num",
+   "kind": "str",
+   "type": "str",
+   "lane": "str",
+   "camp": "num",
+   "x": "num",
+   "y": "num"
+  },
+  "unit_gone": {
+   "team": "num",
+   "cid": "num",
+   "x": "num",
+   "y": "num",
+   "hp": "num",
+   "by": "mixed",
+   "bk": "str",
+   "hid": "bool"
   },
   "creep_death": {
    "team": "num",
@@ -2283,6 +2304,14 @@
   },
   "ev_creep_revive": {
    "kind": "text"
+  },
+  "ev_unit_seen": {
+   "kind": "text",
+   "type": "text",
+   "lane": "text"
+  },
+  "ev_unit_gone": {
+   "bk": "text"
   },
   "ev_creep_death": {
    "kind": "text",

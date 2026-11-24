@@ -1286,6 +1286,8 @@ interface CreepSeen {
     x: number;
     y: number;
     hp: number;
+    /** A neutral that left the unit list alive (out of vision): held until it is listed again or found dead. */
+    hidden?: boolean;
 }
 interface CreepDeath {
     creep: Unit;
@@ -1315,6 +1317,11 @@ interface CreepTrack {
     neutrals: LuaTable<Unit, CreepSeen>;
     /** Neutrals logged as deaths: one seen alive again left vision (ev=creep_revive, kind neutral or ancient). */
     deadNeutrals: LuaTable<Unit, CreepSeen>;
+    /** Every neutral with a `unit_seen` and no `unit_gone` yet (ev=unit_seen/unit_gone: kept while out of vision). */
+    lives: LuaTable<Unit, CreepSeen>;
+    /** When the out-of-vision neutrals in `lives` were last checked for death. */
+    livesCheckedAt: number;
+    enemyLastHits: Record<number, number>;
 }
 interface Born {
     lane: string;
@@ -1394,13 +1401,63 @@ function rise(counts: Record<number, number>, pid: number, value: number): numbe
     return prev !== undefined && value > prev ? value - prev : 0;
 }
 
+const UNIT_NAME_PREFIX = "npc_dota_";
+/** A neutral is out of the unit list: dead only when its handle is invalid or says so; out of vision it is still alive. */
+const LIVES_RECHECK = 0.5;
+
+interface NeutralGone {
+    d: CreepDeath;
+    hid: boolean;
+}
+
+/** `ev=unit_seen` for each neutral first listed; returns the tracked neutrals now found dead (their `unit_gone` waits for the
+ *  claim pass, which gives each its taker). A neutral that left the list alive stays tracked, and is not written seen again. */
+function neutralLives(c: CreepTrack, team: number, listed: Unit[], now: number): NeutralGone[] {
+    const inList = new LuaTable<Unit, boolean>();
+    for (const u of listed) {
+        inList.set(u, true);
+        const isNew = c.lives.get(u) === undefined;
+        see(c.lives, u, neutralKind);
+        const rec = c.lives.get(u);
+        if (rec === undefined) continue;
+        rec.hidden = false;
+        if (!isNew) continue;
+        const [camp, campD] = Camps.NearestSpawner(Vector(rec.x, rec.y, 0));
+        const fields: Fields<"unit_seen"> = [
+            ["team", team],
+            ["cid", CreepId(u)],
+            ["kind", "neutral"],
+            ["type", string.gsub(u.GetUnitName(), "^" + UNIT_NAME_PREFIX, "")[0]],
+            ["x", math.floor(rec.x)],
+            ["y", math.floor(rec.y)],
+        ];
+        if (camp !== undefined && campD <= NEUTRAL_CAMP_NEAR) fields.push(["camp", camp.idx]);
+        Event("unit_seen", fields);
+    }
+    const due = now - c.livesCheckedAt >= LIVES_RECHECK;
+    if (due) c.livesCheckedAt = now;
+    const out: NeutralGone[] = [];
+    for (const [u, rec] of c.lives) {
+        if (inList.get(u) === true) continue;
+        if (rec.hidden === true && !due) continue;
+        const [ok, alive] = pcall(() => !u.IsNull() && u.IsAlive());
+        if (ok && alive === true) {
+            rec.hidden = true;
+            continue;
+        }
+        c.lives.delete(u);
+        out.push({ d: { creep: u, seen: rec }, hid: rec.hidden === true });
+    }
+    return out;
+}
+
 function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (now < 0 || now > Get().CreepDeathUntil) return;
     const team = bot.GetTeam();
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), own: new LuaTable(), born: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable() };
+        c = { creeps: new LuaTable(), own: new LuaTable(), born: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable(), lives: new LuaTable(), livesCheckedAt: 0, enemyLastHits: {} };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -1418,6 +1475,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
                 ["team", team],
                 ["kind", back.kind],
                 ["hp", back.hp],
+                ["cid", CreepId(u)],
             ]);
         }
     }
@@ -1452,6 +1510,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
                     ["team", team],
                     ["kind", back.kind],
                     ["hp", back.hp],
+                    ["cid", CreepId(u)],
                 ]);
             }
         }
@@ -1473,7 +1532,17 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         neutralDeaths.length = 0;
         HDebug.Log("Telemetry.Neutrals: " + tostring(neutralsErr));
     }
-    const pool: CreepDeath[] = [...deaths, ...neutralDeaths];
+    let neutralGone: NeutralGone[] = [];
+    const [livesOk, livesErr] = pcall(() => {
+        neutralGone = neutralLives(c!, team, neutralList, now);
+    });
+    if (!livesOk) HDebug.Log("Telemetry.Lives: " + tostring(livesErr));
+    // A neutral found dead is claimed once, as the wider unit_gone object; its old neutral_death takes the same taker.
+    const goneByCreep = new LuaTable<Unit, CreepDeath>();
+    for (const g of neutralGone) goneByCreep.set(g.d.creep, g.d);
+    const pool: CreepDeath[] = [...deaths];
+    for (const d of neutralDeaths) if (goneByCreep.get(d.creep) === undefined) pool.push(d);
+    for (const g of neutralGone) pool.push(g.d);
     for (const h of heroes) {
         const n = rise(c.lastHits, h.GetPlayerID(), (h as unknown as StatsUnit).GetLastHits());
         if (n > 0) claimDeaths(pool, h, n, tostring(h.GetPlayerID()));
@@ -1483,6 +1552,10 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         const [ok, dn] = pcall(() => (e as unknown as StatsUnit).GetDenies());
         const n = ok && type(dn) === "number" ? rise(c.denies, e.GetPlayerID(), dn as number) : 0;
         if (n > 0) claimDeaths(deaths, e, n, "deny");
+    }
+    for (const d of neutralDeaths) {
+        const g = goneByCreep.get(d.creep);
+        if (g !== undefined) d.by = g.by;
     }
     const cores: [Unit, 1 | 2 | 3][] = [];
     for (const h of heroes) {
@@ -1547,6 +1620,16 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         Event("neutral_death", fields);
         c.deadNeutrals.set(d.creep, d.seen);
     }
+    for (const g of neutralGone)
+        Event("unit_gone", [
+            ["team", team],
+            ["cid", CreepId(g.d.creep)],
+            ["x", math.floor(g.d.seen.x)],
+            ["y", math.floor(g.d.seen.y)],
+            ["hp", g.d.seen.hp],
+            ["by", g.d.by ?? "none"],
+            ["hid", g.hid],
+        ]);
     for (const u of neutralList) {
         // A neutral removed this frame can still be listed with no location (cnghar2_B_harness_5, t=624.0; phchk1 t=271).
         const loc = u.GetLocation();
@@ -1590,6 +1673,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     // wave reader's; `ownDeaths` keeps own_creep_death's old gates.
     const gone: [CreepDeath, number][] = [];
     const ownDeaths: CreepDeath[] = [];
+    const goneLow: CreepDeath[] = [];
     for (const [creep, seen] of c.own) {
         if (ownAlive.get(creep) === true) continue;
         c.own.delete(creep);
@@ -1597,12 +1681,22 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         let nd = math.huge;
         for (const h of heroes) nd = math.min(nd, deathDistance(h, d));
         gone.push([d, nd]);
+        if (seen.hp <= DEATH_MAX_HP) goneLow.push(d);
         if (seen.hp <= DEATH_MAX_HP && nd <= DEATH_NEAR) ownDeaths.push(d);
     }
     for (const h of heroes) {
         const [ok, dn] = pcall(() => (h as unknown as StatsUnit).GetDenies());
         const n = ok && type(dn) === "number" ? rise(c.ownDenies, h.GetPlayerID(), dn as number) : 0;
-        if (n > 0) claimDeaths(ownDeaths, h, n, tostring(h.GetPlayerID()));
+        if (n > 0) claimDeaths(goneLow, h, n, tostring(h.GetPlayerID()));
+    }
+    // The two old own-creep events keep naming only our own deniers; the enemy takers below are unit_gone's.
+    const ownTaken = new LuaTable<CreepDeath, string>();
+    for (const d of goneLow) if (d.by !== undefined) ownTaken.set(d, d.by);
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (e === null || e === undefined || !e.IsAlive() || e.IsIllusion()) continue;
+        const [ok, lh] = pcall(() => (e as unknown as StatsUnit).GetLastHits());
+        const n = ok && type(lh) === "number" ? rise(c.enemyLastHits, e.GetPlayerID(), lh as number) : 0;
+        if (n > 0) claimDeaths(goneLow, e, n, tostring(e.GetPlayerID()));
     }
     for (const d of ownDeaths)
         Event("own_creep_death", [
@@ -1611,7 +1705,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["x", math.floor(d.seen.x)],
             ["y", math.floor(d.seen.y)],
             ["hp", d.seen.hp],
-            ["by", d.by ?? "none"],
+            ["by", ownTaken.get(d) ?? "none"],
             ["cid", CreepId(d.creep)],
         ]);
     for (const [d, nd] of gone) {
@@ -1623,7 +1717,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["x", math.floor(d.seen.x)],
             ["y", math.floor(d.seen.y)],
             ["hp", d.seen.hp],
-            ["by", d.by ?? "none"],
+            ["by", ownTaken.get(d) ?? "none"],
             ["cid", CreepId(d.creep)],
         ];
         if (b !== undefined) {
@@ -1632,10 +1726,33 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         }
         if (nd < math.huge) fields.push(["nd", math.floor(nd)]);
         Event("wave_creep_death", fields);
+        const unitFields: Fields<"unit_gone"> = [
+            ["team", team],
+            ["cid", CreepId(d.creep)],
+            ["x", math.floor(d.seen.x)],
+            ["y", math.floor(d.seen.y)],
+            ["hp", d.seen.hp],
+            ["by", d.by ?? "none"],
+        ];
+        if (d.by !== undefined) unitFields.push(["bk", ownTaken.get(d) !== undefined ? "deny" : "hero"]);
+        Event("unit_gone", unitFields);
     }
     for (const u of ownList) {
         see(c.own, u, laneKindOf);
-        if (c.born.get(u) === undefined && c.own.get(u) !== undefined) c.born.set(u, { lane: nearestLane(u.GetLocation()), t: math.floor(now * 10 + 0.5) / 10 });
+        if (c.born.get(u) === undefined && c.own.get(u) !== undefined) {
+            const lane = nearestLane(u.GetLocation());
+            c.born.set(u, { lane, t: math.floor(now * 10 + 0.5) / 10 });
+            const rec = c.own.get(u)!;
+            Event("unit_seen", [
+                ["team", team],
+                ["cid", CreepId(u)],
+                ["kind", "lane"],
+                ["type", string.gsub(u.GetUnitName(), "^" + UNIT_NAME_PREFIX, "")[0]],
+                ["lane", lane],
+                ["x", math.floor(rec.x)],
+                ["y", math.floor(rec.y)],
+            ]);
+        }
     }
 }
 
