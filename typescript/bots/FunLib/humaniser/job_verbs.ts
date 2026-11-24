@@ -801,22 +801,19 @@ export interface StayPlan {
     radius?: number;
     /** Absolute time: past it the verb fails `timeout` "late" (a logged backstop; the ends are reads). */
     deadline: number;
-    /** A neutral our creeps are on is last-hit (not plain attacked) once it holds at most this many of the bot's hits. Default 1
-     *  (at 2 the first hit could land without the kill and turn the neutral onto the bot: pullchain1's stay). */
+    /** A neutral our creeps are on is last-hit once it holds at most this many of the bot's hits. Default 1 (at 2 the first
+     *  hit could land without the kill and turn the neutral onto the bot: pullchain1's stay). */
     lastHitHits?: number;
     /** After each deny or neutral last hit: which, its result, its target, and the target's HP and how many of the bot's hits
      *  that was when the try began. */
     onAttempt?: (this: void, kind: "deny" | "lasthit", r: Result, target: TaskAttacker, hp: number, hits: number) => void;
-    /** After the first plain hit order on each neutral. */
-    onHit?: (this: void) => void;
     /** Each frame the verb chooses, before it acts: what it chose and what the last-hit gate saw (logging only). */
     onLook?: (this: void, l: StayLook) => void;
 }
 
 /** What one frame of the stay saw and chose (`StayPlan.onLook`). */
 export interface StayLook {
-    /** `lasthit`, `deny`, `hit` (a plain hit on a neutral), `hold` (the attack kept for a kill or deny due inside a cycle),
-     *  `stand` (behind our creeps) or `flee` (a neutral on the bot). */
+    /** `lasthit`, `deny`, `stand` (behind our creeps) or `flee` (a neutral on the bot). */
     step: string;
     /** Our lane creeps and neutrals at the camp. */
     ours: number;
@@ -837,12 +834,6 @@ const STAY_REORDER = 0.5;
 const STAY_ARRIVE = 60;
 /** laneTargets' `within` for a deny: offered when it comes due within this of the bot reaching range. */
 const STAY_DENY_WITHIN = 1;
-/** judgement: a neutral is plain-hit only from within attack range plus this (the bot does not walk in for it), and only
- *  while one of ours stands at least STAY_NEARER nearer to it than the bot. */
-const STAY_REACH_SLACK = 50;
-/** judgement: seconds from an attack's start to its landing, added to the attack cycle for the plain hit's look-ahead. */
-const STAY_LAND = 0.6;
-const STAY_NEARER = 75;
 /** judgement: how far behind our creeps' centre the bot stands: its attack range less BEHIND_SHORT, within BEHIND_MIN to
  *  BEHIND_MAX, so our creeps stay in its range and the neutrals reach it only through them; BEHIND_FLEE more while a
  *  neutral is on it. */
@@ -902,13 +893,13 @@ function centre(list: TaskAttacker[]): Vec {
 }
 
 /**
- * After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and takes what the
- * camp pays while our creeps hold it. In order: a neutral our creeps or the bot are finishing is last-hit once within
- * `lastHitHits` of the bot's hits; one of ours due is denied (the final hit); while either comes due inside one attack cycle
- * the attack is held; else a neutral in reach that one of ours stands nearer to is plain-hit (it stays on our creeps: neutrals attack the closest); else it stands behind our creeps
- * (`behindPoint`). It never hits our own creeps down: a stacked camp kills them anyway, and the hit's cooldown lost the
- * denies and last hits that came due (pullneut1). While a neutral is on the bot it only walks, BEHIND_FLEE further back.
- * Once none of ours is left: ok "done" with no neutral left, else ok "left" (the neutrals stay on the camp). Label `stay`.
+ * After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and takes the last
+ * hits and denies the camp offers while our creeps hold it. In order: a neutral our creeps are finishing is last-hit once
+ * within `lastHitHits` of the bot's hits; one of ours due is denied (the final hit); else it stands behind our creeps
+ * (`behindPoint`). It attacks nothing else: a plain hit's cooldown lost the last hits and denies that came due (pullneut1,
+ * stay4_s30 `why=cd`), and our own creeps are never hit down (a stacked camp kills them anyway). While a neutral is on the
+ * bot it only walks, BEHIND_FLEE further back. Once none of ours is left: ok "done" with no neutral left, else ok "left"
+ * (the neutrals stay on the camp). Label `stay`.
  */
 export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBody {
     const r = p.radius ?? STAY_RADIUS;
@@ -917,8 +908,6 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
     // Neutrals whose lastHit could not run (etiquette, unsupported): left to our creeps.
     const skip: TaskAttacker[] = [];
     let movedAt = -math.huge;
-    let hitTarget: TaskAttacker | undefined;
-    let hitAt = -math.huge;
     h.label?.("stay");
     while (true) {
         if (!bot.IsAlive()) return fail("dead");
@@ -933,26 +922,27 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
             return math.max(1, c.GetActualIncomingDamage !== undefined ? c.GetActualIncomingDamage(myHit, 1) : myHit);
         };
         const onMe = neutrals.some((n) => n.GetAttackTarget?.() === bot);
+        const worked = (n: TaskAttacker): boolean => skip.indexOf(n) < 0 && ours.some((o) => o.GetAttackTarget?.() === n);
         // Logging only (onLook): the gate's view of the neutrals our creeps are on, whether or not it is read below.
-        let worked = 0;
+        let nWorked = 0;
         let due = 0;
         let skipped = 0;
         let minHits: number | undefined;
         if (p.onLook !== undefined) {
             for (const n of neutrals) {
                 if (!ours.some((o) => o.GetAttackTarget?.() === n)) continue;
-                worked++;
+                nWorked++;
                 if (skip.indexOf(n) >= 0) skipped++;
                 const k = hpOf(n) / hitOn(n);
                 if (skip.indexOf(n) < 0 && hpOf(n) <= lhHits * hitOn(n)) due++;
                 if (minHits === undefined || k < minHits) minHits = k;
             }
         }
-        const look = (step: string): void => p.onLook?.({ step, ours: ours.length, neutrals: neutrals.length, worked, due, minHits, skipped });
+        const look = (step: string): void => p.onLook?.({ step, ours: ours.length, neutrals: neutrals.length, worked: nWorked, due, minHits, skipped });
         if (!onMe) {
             let finish: TaskAttacker | undefined;
             for (const n of neutrals) {
-                if (skip.indexOf(n) >= 0 || !(n === hitTarget || ours.some((o) => o.GetAttackTarget?.() === n))) continue;
+                if (!worked(n)) continue;
                 if (hpOf(n) <= lhHits * hitOn(n) && (finish === undefined || hpOf(n) < hpOf(finish))) finish = n;
             }
             if (finish !== undefined) {
@@ -961,7 +951,6 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 const hits0 = hp0 / hitOn(finish);
                 const res = yield* E().Verbs.lastHit(bot, { target: finish as TaskCreep, maxWait: CLEAR_LH_WAIT, deadline: p.deadline, hold: "camp_lasthit" });
                 p.onAttempt?.("lasthit", res, finish, hp0, hits0);
-                hitTarget = undefined;
                 if (!res.success && (res.reason === "etiquette" || res.reason === "unsupported")) {
                     skip.push(finish);
                     yield;
@@ -983,52 +972,10 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 const hits0 = hp0 / hitOn(d0);
                 const res = yield* E().Verbs.deny(bot, { target: deny, maxWait: eta + 1.5, deadline: p.deadline, hold: "camp_deny" });
                 p.onAttempt?.("deny", res, d0, hp0, hits0);
-                hitTarget = undefined;
-                continue;
-            }
-            // Nothing is plain-hit while a neutral's kill or a deny comes due inside one attack cycle: the hit's cooldown
-            // would be running when it does (pullneut1, stay3base: `why=cd`).
-            const cycle = (bot.GetSecondsPerAttack?.() ?? 1.7) + STAY_LAND;
-            const dueSoon = (u: TaskAttacker): boolean => {
-                const c = u as unknown as TaskCreep;
-                return E().Verbs.forecastHp(E().Verbs.hpForecast(bot, c, cycle), cycle) <= hitOn(u);
-            };
-            if (neutrals.some((n) => skip.indexOf(n) < 0 && ours.some((o) => o.GetAttackTarget?.() === n) && dueSoon(n)) || ours.some((o) => dueSoon(o))) {
-                look("hold");
-                hitTarget = undefined;
-                hold(bot, "camp_hold");
-                yield;
-                continue;
-            }
-            // A neutral in reach from where the bot stands, with one of ours nearer to it than the bot: neutrals attack the
-            // closest enemy and ignore a hitter further away (ref Neutral_Creeps, Drawing Aggro). The one being hit is
-            // kept while it qualifies, else the lowest.
-            const at = bot.GetLocation();
-            const reach = (bot.GetAttackRange?.() ?? 150) + STAY_REACH_SLACK;
-            let down: TaskAttacker | undefined;
-            for (const n of neutrals) {
-                const d = dist(at, n.GetLocation());
-                if (d > reach || !ours.some((o) => dist(o.GetLocation(), n.GetLocation()) + STAY_NEARER < d)) continue;
-                if (n === hitTarget) {
-                    down = n;
-                    break;
-                }
-                if (down === undefined || hpOf(n) < hpOf(down)) down = n;
-            }
-            if (down !== undefined) {
-                look("hit");
-                if (down !== hitTarget || t - hitAt >= STAY_REORDER) {
-                    bot.Action_AttackUnit(down, false);
-                    if (down !== hitTarget) p.onHit?.();
-                    hitTarget = down;
-                    hitAt = t;
-                }
-                yield;
                 continue;
             }
         }
         look(onMe ? "flee" : "stand");
-        hitTarget = undefined;
         const to = behindPoint(bot, ours, neutrals, p.at, behindBack(bot) + (onMe ? BEHIND_FLEE : 0))!;
         if (dist(bot.GetLocation(), to) > STAY_ARRIVE) {
             if (t - movedAt >= STAY_REORDER) {

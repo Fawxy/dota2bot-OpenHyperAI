@@ -1113,18 +1113,18 @@ function stayEnd(bot, p, st, back)
     local max = 0
     for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
         do
-            local __continue252
+            local __continue251
             repeat
                 if not u:IsAlive() or GetUnitToLocationDistance(u, p.plan.spawner.location) > LaneConfig.Settings().Radii.MeetWatch then
-                    __continue252 = true
+                    __continue251 = true
                     break
                 end
                 n = n + 1
                 hp = hp + u:GetHealth()
                 max = max + u:GetMaxHealth()
-                __continue252 = true
+                __continue251 = true
             until true
-            if not __continue252 then
+            if not __continue251 then
                 break
             end
         end
@@ -1909,7 +1909,6 @@ local function finish(bot, p, ____end, label)
         {"sdk", p.sdk},
         {"slt", p.slt},
         {"slk", p.slk},
-        {"sht", p.sht},
         {
             "shl",
             p.stayHp ~= nil and math.floor((p.stayHp - (bot:IsAlive() and bot:GetHealth() or 0)) / bot:GetMaxHealth() * 100 + 0.5) / 100 or nil
@@ -2141,9 +2140,6 @@ local stay = __TS__Generator(function(bot, p, hooks, deadline)
         {
             at = p.plan.spawner.location,
             deadline = deadline or p.stayAt + ____exports.SETTINGS.StayMax,
-            onHit = function()
-                p.sht = (p.sht or 0) + 1
-            end,
             onAttempt = function(kind, r, target, hp, hits)
                 if kind == "deny" then
                     p.sdt = (p.sdt or 0) + 1

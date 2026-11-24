@@ -2776,14 +2776,13 @@ export const EVENTS = {
         // The stay (Ours.SupportPullStay), only on a pull that ended ok and stayed: st its end (`done` none of our creeps and no
         // neutral left at the camp, `left` neutrals left on it, `timeout:late` the backstop, `dead`, or the cut:
         // `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got,
-        // sht plain hits on neutrals (one per neutral hit), shl the puller's HP lost in it as a share of max.
+        // shl the puller's HP lost in it as a share of max. Older logs: sht plain hits on neutrals (one per neutral hit).
         st: "str",
         ss: "num",
         sdt: "num",
         sdk: "num",
         slt: "num",
         slk: "num",
-        sht: "num",
         shl: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
@@ -2820,8 +2819,8 @@ export const EVENTS = {
         pid: "num",
         /** The pull's planned hit second; joins `ev=pull_job`. */
         slot: "num",
-        /** What the stay chose that frame: `lasthit`, `deny`, `hit` (a neutral), `hold` (the attack kept for a kill or deny due
-         *  inside a cycle), `stand` or `flee` (a neutral on the puller). */
+        /** What the stay chose that frame: `lasthit`, `deny`, `stand` or `flee` (a neutral on the puller). Older logs: `hit` (a
+         *  plain hit on a neutral), `hold` (the attack kept for a kill or deny due inside a cycle). */
         step: "str",
         /** Our lane creeps and neutrals at the camp. */
         nc: "num",

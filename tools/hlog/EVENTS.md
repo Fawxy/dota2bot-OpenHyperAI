@@ -1341,7 +1341,7 @@ Once a game: how each seeded lane pull camp (camps_data with `laneKind`) resolve
 
 One line per pull the support's pull job started (`Ours.SupportPull`). Views `pull_attempts`, `pull_waves` and `pull_watch_cases` read it.
 
-`pid` num, `left` num, `away` num, `rsrc` str, `rage` num, `shh` num, `ss` num, `sdt` num, `sdk` num, `slt` num, `slk` num, `sht` num, `shl` num
+`pid` num, `left` num, `away` num, `rsrc` str, `rage` num, `shh` num, `ss` num, `sdt` num, `sdk` num, `slt` num, `slk` num, `shl` num
 
 - `pos` num: The puller's lineup position.
 - `lane` num: The lane pulled.
@@ -1385,7 +1385,7 @@ One line per pull the support's pull job started (`Ours.SupportPull`). Views `pu
 - `wa` num: The first time a lane creep not already within 300 of the meet point at `ht` came within 300 of it.
 - `nm` num: nm: the first tagged neutral 50 from where it stood at the hit (the camp's start; phchk2 replays 0.4-2.3 s after the order).
 - `shs` num: The shed (PullJob ShedMargin, user 06/11/2026): shs the time the puller began walking out of the neutrals' range once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
-- `st` str: The stay (Ours.SupportPullStay), only on a pull that ended ok and stayed: st its end (`done` none of our creeps and no neutral left at the camp, `left` neutrals left on it, `timeout:late` the backstop, `dead`, or the cut: `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got, sht plain hits on neutrals (one per neutral hit), shl the puller's HP lost in it as a share of max.
+- `st` str: The stay (Ours.SupportPullStay), only on a pull that ended ok and stayed: st its end (`done` none of our creeps and no neutral left at the camp, `left` neutrals left on it, `timeout:late` the backstop, `dead`, or the cut: `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got, shl the puller's HP lost in it as a share of max. Older logs: sht plain hits on neutrals (one per neutral hit).
 
 ## stay_try
 
@@ -1409,7 +1409,7 @@ The stay (Ours.SupportPullStay): one sample per PullJob WatchLogEvery while it r
 `pid` num, `nn` num, `due` num, `sk` num, `mh` num
 
 - `slot` num: The pull's planned hit second; joins `ev=pull_job`.
-- `step` str: What the stay chose that frame: `lasthit`, `deny`, `hit` (a neutral), `hold` (the attack kept for a kill or deny due inside a cycle), `stand` or `flee` (a neutral on the puller).
+- `step` str: What the stay chose that frame: `lasthit`, `deny`, `stand` or `flee` (a neutral on the puller). Older logs: `hit` (a plain hit on a neutral), `hold` (the attack kept for a kill or deny due inside a cycle).
 - `nc` num: Our lane creeps and neutrals at the camp.
 - `nw` num: Neutrals one of our creeps is on; of them `due` within the last-hit gate's hits (StayPlan lastHitHits), `sk` left to our creeps after a try that could not run; `mh` the lowest HP among them in the puller's hits (one decimal).
 - `bh` num: The puller's HP share of max (two decimals).

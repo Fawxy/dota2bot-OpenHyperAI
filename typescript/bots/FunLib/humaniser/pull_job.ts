@@ -204,7 +204,6 @@ interface Pull {
     /** Logging only: the last `ev=stay_look` sample's time, and when the running deny or last-hit try was chosen. */
     lookedAt?: number;
     tryAt?: number;
-    sht?: number;
     sdt?: number;
     sdk?: number;
     slt?: number;
@@ -747,7 +746,6 @@ function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined):
         ["sdk", p.sdk],
         ["slt", p.slt],
         ["slk", p.slk],
-        ["sht", p.sht],
         ["shl", p.stayHp !== undefined ? math.floor(((p.stayHp - (bot.IsAlive() ? bot.GetHealth() : 0)) / bot.GetMaxHealth()) * 100 + 0.5) / 100 : undefined],
     ];
     if (!r.success) {
@@ -1147,9 +1145,6 @@ function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks, deadline?: number):
         {
             at: p.plan.spawner.location as unknown as Lib.Vec,
             deadline: deadline ?? p.stayAt + SETTINGS.StayMax,
-            onHit: () => {
-                p.sht = (p.sht ?? 0) + 1;
-            },
             onAttempt: (kind, r, target, hp, hits) => {
                 if (kind === "deny") {
                     p.sdt = (p.sdt ?? 0) + 1;

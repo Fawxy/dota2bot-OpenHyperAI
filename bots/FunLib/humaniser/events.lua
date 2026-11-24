@@ -1663,7 +1663,6 @@ ____exports.EVENTS = {
         sdk = "num",
         slt = "num",
         slk = "num",
-        sht = "num",
         shl = "num"
     },
     stay_try = {
