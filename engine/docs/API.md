@@ -109,9 +109,7 @@ Per-frame creep queries are cached per bot.
 **HP forecast (`Verbs.hpForecast(bot, creep, horizon)` and `Verbs.forecastHp(f, t)`, facts, not verbs).** A creep's HP
 over the next `horizon` seconds from the hits the attacker index sees: `{ hp, regen, horizon, hits, unphased, unphasedTower }`.
 `hits` (sorted by `t`, seconds from now; `damage` after armour; `by` tower | creep | hero | self; `attacker` the unit; `commit`
-seconds until that attack can no longer be cancelled: 0 in flight, the wind-up left, a repeat's landing less its flight; a wind-up
-past its predicted point that has not fired (GetLastAttackTime not risen) stays listed at 0 for up to 0.1 s, since the prediction
-can be a frame early and a melee hit has no projectile to take over) holds every attack projectile
+seconds until that attack can no longer be cancelled: 0 in flight, the wind-up left, a repeat's landing less its flight) holds every attack projectile
 in flight (the bot's own included; arrival = distance / projectile speed), every wind-up seen (as `incomingDamage`), and for a
 tower or lane creep its latest known hit repeated every `GetSecondsPerAttack` while it stays on the creep (heroes are not
 repeated: their next attacks are choices). Repeats assume today's distance, so today's flight time. Attackers on the creep with

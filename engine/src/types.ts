@@ -105,8 +105,6 @@ export interface TaskAttacker {
     GetAnimActivity?(): number;
     /** Progress through the current animation, 0..1, at attack speed over the unit's own animation length (not its wind-up). */
     GetAnimCycle?(): number;
-    /** Game time of this unit's most recent attack (its fire); only ever compared with an earlier reading of itself. */
-    GetLastAttackTime?(): number;
     /** Base wind-up in seconds; divided by GetAttackSpeed it is the wind-up now. */
     GetAttackPoint?(): number;
     /** Attack speed multiplier (1 = base). */
@@ -156,7 +154,6 @@ export interface TaskHero {
     CanBeSeen?(): boolean;
     GetAnimActivity?(): number;
     GetAnimCycle?(): number;
-    GetLastAttackTime?(): number;
     GetAttackPoint?(): number;
     GetAttackSpeed?(): number;
     GetSecondsPerAttack?(): number;

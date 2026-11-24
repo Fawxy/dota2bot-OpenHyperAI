@@ -149,21 +149,12 @@ interface WindupSeen {
     c0: number;
     t: number;
     c: number;
-    /** GetLastAttackTime at the first read: a later value means this wind-up has fired. */
-    fired0?: number;
 }
 /**
  * Seconds between two reads of one attacker past which a wind-up is read as new (its first read starts again). Not
  * measured: a frame is 1/30 s and a wind-up 0.1-0.6 s, so a gap this long cannot sit inside one wind-up's reads safely.
  */
 const WINDUP_GAP = 0.25;
-/**
- * Seconds past its predicted attack point that a wind-up which has not yet fired stays listed, at 0 left: the prediction is
- * within one frame of the fire on about 98% (swingwc1), so it can be a frame early, and a melee hit (no projectile to take
- * over) then vanished from the forecast for the frame before its damage (lanehits2: a melee hero's last hit missing on the
- * frame before it, Dragon Knight, Pudge and Sand King). `judgement`: three frames.
- */
-const FIRE_SLACK = 0.1;
 const windups = setmetatable(new LuaTable<TaskAttacker, WindupSeen>(), { __mode: "k" });
 
 /** A unit's wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
@@ -196,19 +187,14 @@ function windupLeft(a: TaskAttacker): number | undefined {
     const speed = math.max(0.01, a.GetAttackSpeed?.() ?? 1);
     let w = windups.get(a);
     if (w === undefined || cycle < w.c || t < w.t || t - w.t > WINDUP_GAP) {
-        w = { t0: t, c0: cycle, t, c: cycle, fired0: a.GetLastAttackTime?.() };
+        w = { t0: t, c0: cycle, t, c: cycle };
         windups.set(a, w);
     } else {
         w.t = t;
         w.c = cycle;
     }
-    // Fired: its hit is a projectile (flightsAt lists it) or, melee, landed.
-    const fired = a.GetLastAttackTime?.();
-    if (fired !== undefined && w.fired0 !== undefined && fired > w.fired0) return undefined;
     const left = windupSeconds(a) - (t - w.t0) - w.c0 / speed;
-    if (left > 0) return left;
-    // Past the predicted point and not seen firing: landing now (a frame-early prediction), for at most FIRE_SLACK.
-    return fired !== undefined && left > -FIRE_SLACK ? 0 : undefined;
+    return left > 0 ? left : undefined;
 }
 
 /**

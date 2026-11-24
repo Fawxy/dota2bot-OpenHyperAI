@@ -23,8 +23,7 @@ sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack,
 result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self, attacker, commit }] sorted by t, unphased, unphasedTower,
                 unphasedHits[{ damage, period, first, last }] }.
                 hits: `attacker` the unit whose hit it is; `commit` seconds until that attack is committed (its attack
-                point; 0 for a projectile in flight, the wind-up left for one winding up (0 and landing now for up to 0.1 s past the
-                predicted point while GetLastAttackTime has not risen: a frame-early prediction, lanehits2), a tower's or creep's repeat its
+                point; 0 for a projectile in flight, the wind-up left for one winding up, a tower's or creep's repeat its
                 landing less its flight). Every attack projectile in flight (the bot's own included), every wind-up seen landing within the
                 horizon, and for a tower or lane creep its latest known hit repeated every attack cycle while it attacks
                 the creep now. unphased: DPS after armour of the attackers on it with no hit in flight or wind-up, spread
