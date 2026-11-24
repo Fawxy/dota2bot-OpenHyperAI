@@ -2250,6 +2250,14 @@ ____exports.TABLE = {
         sided = true,
         rep = {every = 30, from = 0}
     },
+    ["ladder-pair"] = {
+        note = "our side-lane pairs in-lane (pos 1 and 5 safe, pos 3 and 4 off), everyone else benched",
+        cast = {r = {1, 3, 4, 5}},
+        others = "bench",
+        castInLane = true,
+        sided = true,
+        rep = {every = 30, from = 0}
+    },
     ["ladder-duel"] = {
         note = "lane ladder rung 5: pos 1-3 of both sides in-lane, one against one per lane, everyone else benched",
         cast = {r = {1, 2, 3}, d = {1, 2, 3}},

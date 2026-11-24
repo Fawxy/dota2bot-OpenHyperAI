@@ -462,6 +462,9 @@ export const TABLE: Record<string, Entry> = {
     "ladder-solo": { note: "lane ladder rungs 1-3: our pos 1-3 in-lane, one per lane, everyone else benched", cast: { r: [1, 2, 3] }, others: "bench", castInLane: true, sided: true, rep: { every: 30, from: 0 } },
     // Rung 4: our side-lane supports alone (pos 5 safe, pos 4 off).
     "ladder-support": { note: "lane ladder rung 4: our pos 4 and 5 in-lane, alone in their side lanes, everyone else benched", cast: { r: [4, 5] }, others: "bench", castInLane: true, sided: true, rep: { every: 30, from: 0 } },
+    // Our side-lane pairs (pos 1 and 5 safe, pos 3 and 4 off), no enemy hero: the deny's skip rig (slice oha-deny-skip), a
+    // teammate on the same dying creeps; the race with an enemy hero's hit is the smoke game's.
+    "ladder-pair": { note: "our side-lane pairs in-lane (pos 1 and 5 safe, pos 3 and 4 off), everyone else benched", cast: { r: [1, 3, 4, 5] }, others: "bench", castInLane: true, sided: true, rep: { every: 30, from: 0 } },
     // Rung 5: one against one per lane (our safe pos1 against their pos3, mid against mid, our pos3 against their pos1).
     // Symmetric, so `sided` does nothing; Ours.Team says which side is ours. The isolation check is this drill with every
     // Ours switch off on both sides.
