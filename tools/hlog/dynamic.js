@@ -15,6 +15,7 @@ const C = {
     R_AWARE: 1200, // heroes within this many units count as meeting
     GAP_ENC: 5, // an encounter needs the pair apart for this many seconds first
     MERGE_ENC: 3, // an onset this close (s) to an encounter's first onset joins it
+    TOWER_R: 700, // a tower's attack range (7.41); `hlog.js scene` calls a hero inside it under the tower
     LANE_R: 1100, // distance from a lane polyline that still counts as that lane
     BASE_R: 1800, // within this of an ancient counts as base
     FOUNTAIN_R: 1200, // within this of a fountain counts as base too (fountains lie just outside BASE_R)
