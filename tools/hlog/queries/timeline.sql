@@ -14,7 +14,7 @@
 -- To read between them:
 --   mode       a mode other than retreat held 3 s or more (from the snapshots, so stock logs have it too)
 --   cast       an ability cast (no target is logged)
---   creep      a lane creep death, one row per death whichever team logged it (view creep_fate): a hero's last hit or deny,
+--   creep      a lane creep death, one row per death whichever team logged it (fragment creep_fate): a hero's last hit or deny,
 --              or one nobody got (no hero: see team); and a hero's last hit on a neutral
 --   state      every 15 s: HP, mode, the nearest living enemy, allies within 1,200
 --   not_logged what this log cannot show, so that none is not read as zero: first, whatever the lane, hero or window
@@ -37,7 +37,7 @@
 --               decision `unwanted` (want=0), `off` (a switched-off puller's shadow line, src=shadow, that wanted it), `refused`
 --               (wanted, not started), `done` (its trip ended `ok`), `cut` (any other end), `no_end` (no end logged),
 --               `no_start` (go=1 but no job start of its name logged);
---               creep, view creep_fate's fate: `own_lh` (the hero's last hit; a neutral's too), `own_deny` (the hero's deny),
+--               creep, fragment creep_fate's fate: `own_lh` (the hero's last hit; a neutral's too), `own_deny` (the hero's deny),
 --               `other` (an enemy creep nobody got), `lost` (our own creep nobody got, that no enemy log has). An enemy deny is
 --               the denier's own_deny row, and a creep both teams logged is the enemy log's row (own_lh or other), so no death
 --               is counted twice

@@ -63,7 +63,7 @@ const lines = [
 
 test('each no-one death gets a place from tw and the first cause that holds: core_on, pulled (the other team\'s ok pull, 0-30 s, within 800), core_reach, sup_reach (a live snap within 1.5 s), camp (within 600), no_reach', () => {
     const s = store(lines);
-    const v = s.query('SELECT t, place, cause, core FROM lane_waste ORDER BY t');
+    const v = s.query('WITH gm AS (SELECT game_id FROM games),\n-- include: lane_waste\nSELECT t, place, cause, core FROM lane_waste ORDER BY t');
     assert.deepStrictEqual(v.map(r => [r.t, r.place, r.cause]), [
         [100, 'tower', 'core_on'], [110, 'open', 'core_on'], [121, 'open', 'core_reach'], [131, 'open', 'sup_reach'],
         [141, 'open', 'no_reach'], [150, 'open', 'camp'], [160, 'untagged', 'no_reach'], [169, 'open', 'core_reach'],

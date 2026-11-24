@@ -124,7 +124,7 @@ test('stack_attempts view: left59 is pid:distance of the heroes still in the box
     assert.strictEqual(rows[2].death, null);
 });
 
-test('convenience views: hero_minute, lua_errors, mode_time, creep_kills', () => {
+test('convenience views: hero_minute, lua_errors, mode_time', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-views-'));
     const f = path.join(dir, 'a.log');
     fs.writeFileSync(f, [
@@ -137,9 +137,6 @@ test('convenience views: hero_minute, lua_errors, mode_time, creep_kills', () =>
         '[HEV] t=20 ev=mode pid=1 from=laning to=farm d=0.4 dwell=12',
         '[HEV] t=50 ev=mode pid=1 from=farm to=laning d=0.4 dwell=30',
         '[HEV] t=60 ev=mode pid=1 from=laning to=farm d=0.4 dwell=10',
-        '[HEV] t=15 ev=creep_death team=3 kind=melee x=1 y=2 hp=0.1 by=1',
-        '[HEV] t=16 ev=creep_death team=3 kind=melee x=1 y=2 hp=0.1 by=1',
-        '[HEV] t=17 ev=creep_death team=3 kind=melee x=1 y=2 hp=0.1 by=deny',
     ].join('\n') + '\n');
     const s = new Store(':memory:');
     s.ingest(f);
@@ -150,5 +147,4 @@ test('convenience views: hero_minute, lua_errors, mode_time, creep_kills', () =>
     assert.deepStrictEqual(rows('SELECT site, lines, max_n FROM lua_errors').map(r => [r.site, Number(r.lines), Number(r.max_n)]), [['Foo.Bar', 2, 4]]);
     assert.deepStrictEqual(rows('SELECT mode, secs, stints FROM mode_time ORDER BY mode').map(r => [r.mode, Number(r.secs), Number(r.stints)]),
         [['farm', 30, 1], ['laning', 22, 2]]);
-    assert.deepStrictEqual(rows('SELECT killer, n FROM creep_kills ORDER BY killer').map(r => [String(r.killer), Number(r.n)]), [['1', 2], ['deny', 1]]);
 });

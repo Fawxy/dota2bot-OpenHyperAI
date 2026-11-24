@@ -34,15 +34,29 @@ const FRAGMENTS = path.join(__dirname, 'queries', 'fragments');
 
 /** Expands `-- include: <name>` lines with queries/fragments/<name>.sql (CTEs several queries share; fragments may include
  *  others), so a rule a view cannot hold (one that needs the query's parameters) still has one copy. A fragment lands once
- *  in a query, at its first include: each names what it needs, and two may need the same one. */
+ *  in a query, at its first include: each names what it needs, and two may need the same one. `-- include: name from=to ...` renames
+ *  the identifiers `from` in the fragment to `to` (a second copy under other CTE names: lane_label with `pts=ul_pts lab=ul_lab`). */
 function include(sql, seen = [], done = new Set()) {
-    return sql.replace(/^-- include: (\w+)[^\S\n]*$/gm, (_, name) => {
+    const out = expandIncludes(sql, seen, done);
+    if (seen.length === 0) {
+        const names = new Map();
+        for (const m of out.matchAll(/^(?:WITH )?(\w+)(?:\([^)]*\))? AS (?:NOT )?(?:MATERIALIZED )?\(/gm)) names.set(m[1], (names.get(m[1]) || 0) + 1);
+        const twice = [...names].filter(([, n]) => n > 1).map(([name]) => name);
+        if (twice.length) throw new Error(`CTE ${twice.join(', ')} is defined twice in the query once its fragments are included (a fragment and the query, or two fragments: rename one, or include a fragment's second copy with \`from=to\`)`);
+    }
+    return out;
+}
+function expandIncludes(sql, seen, done) {
+    return sql.replace(/^-- include: (\w+)((?:[^\S\n]+\w+=\w+)*)[^\S\n]*$/gm, (_, name, args) => {
         if (seen.includes(name)) throw new Error(`fragment ${name} includes itself (${[...seen, name].join(' > ')})`);
-        if (done.has(name)) return '';
+        const key = name + args;
+        if (done.has(key)) return '';
         const file = path.join(FRAGMENTS, `${name}.sql`);
         if (!fs.existsSync(file)) throw new Error(`no fragment ${name} (queries/fragments/${name}.sql)`);
-        done.add(name);
-        return include(fs.readFileSync(file, 'utf8'), [...seen, name], done);
+        done.add(key);
+        let text = fs.readFileSync(file, 'utf8');
+        for (const [, from, to] of args.matchAll(/(\w+)=(\w+)/g)) text = text.replace(new RegExp(`\\b${from}\\b`, 'g'), to);
+        return expandIncludes(text, [...seen, name], done);
     }).replace(/,(\s*\n(?:\s*--[^\n]*\n)*)(?=SELECT\b)/g, '$1'); // fragments end with a comma: it is no use before a final SELECT
 }
 // Bump when ingest changes what it writes or the tables' shape (or a declared text column must become a number again):

@@ -8,6 +8,8 @@
 -- range + 100, `tower_excess`) is @creep_tower's, not this one's.
 -- ensure: ev_creep_death(team, kind, x, y, by, tw)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: creep_fate
+-- include: lane_waste
 den AS (
     SELECT f.game_id, f.team, CASE WHEN c.tw = 1 THEN 'tower' WHEN c.tw = 0 THEN 'open' ELSE 'untagged' END AS place,
         count(*) AS deaths

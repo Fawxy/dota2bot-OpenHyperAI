@@ -11,6 +11,7 @@
 -- ensure: ev_bot(pid, team)
 WITH
 gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: creep_fate
 tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team FROM ev_bot WHERE game_id IN (SELECT game_id FROM gm) GROUP BY 1, 2),
 s AS MATERIALIZED (
     SELECT i.game_id, i.seq, i.t, i.pid, tm.team, i.kind, i.n, i.cx, i.cy, coalesce(i.ranged, 0) AS ranged, i.result,

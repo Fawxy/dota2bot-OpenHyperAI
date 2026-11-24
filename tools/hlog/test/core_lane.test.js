@@ -94,7 +94,9 @@ test('economy: per-team guard counts at 10:00, share undefined without own-side 
 });
 
 test('economy: share and not_in_share are numbers once the team logs own-side creep deaths', () => {
-    const own = [line(120, `own_creep_death team=2 kind=melee x=${BOT[0]} y=${BOT[1]} hp=0.1 by=1`)];
+    // the own creep is a deny chance only with a living hero of its team near: a snapshot of pid 1 in the second before it
+    const own = [line(120, `own_creep_death team=2 kind=melee x=${BOT[0]} y=${BOT[1]} hp=0.1 by=1`),
+        line(119.5, `snap pid=1 x=${BOT[0]} y=${BOT[1]} alive=1 lh=0 dn=4 lvl=5 deaths=1`)];
     const o = runEconomy(log(own));
     assert.strictEqual(typeof o.share_r, 'number');
     assert.ok(o.share_r >= 0 && o.share_r <= 1);

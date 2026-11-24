@@ -19,6 +19,7 @@ function log(dir, name, lines) {
     return f;
 }
 
+const byT = ls => [...ls].sort((a, b) => Number(a.match(/t=(\S+)/)[1]) - Number(b.match(/t=(\S+)/)[1]));
 const BOT = '10/30 08:00:00 [HEV] t=-60 ev=bot pid=1 hero=lion team=2 schema=2 build=0123456';
 const FACTS = [
     '10/30 07:59:58 [DOTACTL] ev=start worktree=oha-x mode=bots human=none timescale=8 seed=30 set="Ours.StackJob=true,Ours.X=1"',
@@ -416,6 +417,13 @@ z AS (SELECT 1)
 SELECT lane FROM lab`)[0].lane;
     assert.deepStrictEqual([lane(-360, -6256), lane(-5920, -5352), lane(-2500, 2500)], ['bot', 'base', 'other']);
     assert.throws(() => s.query('-- include: no_such_fragment\nSELECT 1'), /no fragment no_such_fragment/);
+    // a CTE name the query and a fragment both define is named, not left to SQLite's "duplicate WITH table name"
+    assert.throws(() => s.query("WITH pts AS (SELECT 1 AS x),\nlab AS (SELECT 1 AS y),\n-- include: lane_label\nSELECT 1"), /CTE lab is defined twice/);
+    // a second copy of a fragment under other names is fine
+    assert.deepStrictEqual(s.query(`WITH pts2 AS (SELECT 'p' AS kind, 1 AS k, 1 AS seq, 0 AS t, -360 AS x, -6256 AS y),
+-- include: lane_label pts=pts2 lab=lab2
+z AS (SELECT 1)
+SELECT lane FROM lab2`).map(r => r.lane), ['bot']);
 });
 
 test('creep_fate: an enemy deny is named by the other team\'s own_creep_death, each death used once; own denies and losses', () => {
@@ -423,7 +431,11 @@ test('creep_fate: an enemy deny is named by the other team\'s own_creep_death, e
     const s = new Store(':memory:');
     const D = (t, team, x, y, by, kind = 'melee') => `[HEV] t=${t} ev=creep_death team=${team} kind=${kind} x=${x} y=${y} hp=0.2 by=${by}`;
     const O = (t, team, x, y, by, kind = 'melee') => `[HEV] t=${t} ev=own_creep_death team=${team} kind=${kind} x=${x} y=${y} hp=0.2 by=${by}`;
-    s.ingest(log(dir, 'a.log', [BOT,
+    // an own death is a row only with a living hero of its team within 1,500: pid 1 (Radiant) at the origin, pid 6 (Dire) 400 away
+    const P = (t, pid, x) => `[HEV] t=${t} ev=snap pid=${pid} x=${x} y=100 alive=1 hp=100`;
+    const near = [];
+    for (let t = 100; t <= 160; t += 0.5) near.push(P(t, 1, 0), P(t, 6, 400));
+    s.ingest(log(dir, 'a.log', byT([BOT, '[HEV] t=-60 ev=bot pid=6 hero=h6 team=3', ...near,
         D(100, 2, 100, 100, 1),                // team 2 last hit by pid 1
         D(110, 2, 200, 100, 'none'),           // an enemy deny: team 3 denied its own creep 0.2 s later, 50 units away
         O(110.2, 3, 250, 100, 7),
@@ -434,8 +446,8 @@ test('creep_fate: an enemy deny is named by the other team\'s own_creep_death, e
         D(140, 2, 500, 100, 'none', 'ranged'), // a deny of another kind does not pair
         O(140, 3, 500, 100, 9),
         O(150, 2, 0, 0, 1),                    // team 2's own creep denied by pid 1
-        O(160, 2, 0, 0, 'none')]));            // and one lost to an enemy last hit or a tower
-    const rows = s.query('SELECT t, team, side, kind, fate, pid FROM creep_fate ORDER BY side DESC, t, x').map(r => ({ ...r }));
+        O(160, 2, 0, 0, 'none')])));           // and one lost to an enemy last hit or a tower
+    const rows = s.query('WITH gm AS (SELECT game_id FROM games),\n-- include: creep_fate\nSELECT t, team, side, kind, fate, pid FROM creep_fate ORDER BY side DESC, t, x').map(r => ({ ...r }));
     const f = (t, side, kind = 'melee') => rows.filter(r => r.t === t && r.side === side && r.kind === kind).map(r => [r.team, r.fate, r.pid]);
     assert.deepStrictEqual(f(100, 'enemy'), [[2, 'own_lh', 1]]);
     assert.deepStrictEqual(f(110, 'enemy'), [[2, 'enemy_deny', 7]]);
@@ -456,17 +468,17 @@ test('creep_guard: team and core last hits, denies and deaths at 10:00, and the 
     s.ingest(log(dir, 'a.log', [B(0, 2, 1), B(7, 2, 5), B(5, 3, 1), B(6, 3, 2), '[HEV] t=-60 ev=player pid=9 hero=abaddon team=3',
         S(100, 0, 5, 1, 0), S(100, 6, 1, 1, 0),
         `[HEV] t=200 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0`,
-        `[HEV] t=300 ev=own_creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0`,
+        `[HEV] t=300 ev=own_creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=0`, S(299.5, 0, 5, 1, 0),
         S(590, 0, 10, 2, 1), S(590, 7, 3, 4, 2), S(590, 5, 7, 0, 0), S(590, 9, 2, 2, 0),
         S(598, 6, 4, 3, 1),   // seen at 598: no extra death
         S(700, 0, 99, 99, 9)]));
     s.refreshViews();
-    const r = s.query('SELECT * FROM creep_guard WHERE team = 2')[0];
+    const r = s.query('WITH gm AS (SELECT game_id FROM games),\n-- include: creep_guard\nSELECT * FROM creep_guard WHERE team = 2')[0];
     assert.deepStrictEqual([r.team_lh, r.team_dn, r.core_lh, r.core_dn, r.deaths, r.not_in_share], [13, 6, 10, 2, 3 + 2, 17]);
     // the pos 5 (pid 7) is the support split; the pos 1 is not in it
     assert.deepStrictEqual([r.sup_lh, r.sup_dn], [3, 4]);
     // pids 0 and 7 last seen at 590 (over 2.5 s before 10:00, game ran on): each still dead, +1 each
-    const d = s.query('SELECT * FROM creep_guard WHERE team = 3')[0];
+    const d = s.query('WITH gm AS (SELECT game_id FROM games),\n-- include: creep_guard\nSELECT * FROM creep_guard WHERE team = 3')[0];
     assert.deepStrictEqual([d.team_lh, d.team_dn, d.core_lh, d.deaths, d.not_in_share], [13, 5, 11, 3, null], 'dire: human in the team columns only; pids 5 and 9 still dead at 10:00, pid 6 seen at 598; no share row');
     assert.deepStrictEqual([d.sup_lh, d.sup_dn], [0, 0], 'dire: no lineup support, and the human is not counted as one');
 });
@@ -476,15 +488,16 @@ test('creep_share: taken over (enemy creeps less enemy denies plus own creeps) p
     const s = new Store(':memory:');
     const D = (t, team, x, by) => `[HEV] t=${t} ev=creep_death team=${team} kind=melee x=${x} y=100 hp=0.2 by=${by}`;
     const O = (t, team, x, by) => `[HEV] t=${t} ev=own_creep_death team=${team} kind=melee x=${x} y=100 hp=0.2 by=${by}`;
-    s.ingest(log(dir, 'a.log', [BOT,
+    const near = [149.5, 159.5, 109.9].map(t => `[HEV] t=${t} ev=snap pid=1 x=0 y=100 alive=1 hp=100`);
+    s.ingest(log(dir, 'a.log', byT([BOT, ...near,
         D(100, 2, 100, 1),     // taken: our last hit
         D(110, 2, 200, 'none'), // an enemy deny (below): out of the denominator
         O(110.2, 3, 250, 7),
         D(120, 2, 300, 'none'), // tower or creep kill: a miss
         O(150, 2, 0, 1),       // taken: our deny of our own creep
         O(160, 2, 0, 'none'),   // lost: a miss
-        D(700, 2, 400, 1)]));   // after 10:00: left out
-    const r = s.query('SELECT team, taken, den, share FROM creep_share WHERE team = 2')[0];
+        D(700, 2, 400, 1)])));  // after 10:00: left out
+    const r = s.query('WITH gm AS (SELECT game_id FROM games),\n-- include: creep_share\nSELECT team, taken, den, share FROM creep_share WHERE team = 2')[0];
     assert.deepStrictEqual([r.taken, r.den, r.share], [2, 4, 0.5]);
 });
 
@@ -493,7 +506,7 @@ test('creep_fate: by=deny reads enemy_deny, and a log without own_creep_death re
     const s = new Store(':memory:');
     s.ingest(log(dir, 'a.log', [BOT, '[HEV] t=10 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=deny',
         '[HEV] t=20 ev=creep_death team=2 kind=melee x=1 y=1 hp=0.2 by=none']));
-    assert.deepStrictEqual(s.query('SELECT t, fate FROM creep_fate ORDER BY t').map(r => [r.t, r.fate]), [[10, 'enemy_deny'], [20, 'other']]);
+    assert.deepStrictEqual(s.query('WITH gm AS (SELECT game_id FROM games),\n-- include: creep_fate\nSELECT t, fate FROM creep_fate ORDER BY t').map(r => [r.t, r.fate]), [[10, 'enemy_deny'], [20, 'other']]);
 });
 
 test('lane_activity and @lane_time: activity per snap, choice against option, presence and conversion', () => {

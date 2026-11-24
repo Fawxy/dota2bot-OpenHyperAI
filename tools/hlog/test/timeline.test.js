@@ -497,6 +497,8 @@ function creepLines() {
         cd(30, 'melee', 3100, 0, 0), own(30.2, 'melee', 3120, -6210, 'none'),
         cd(40, 'ranged', 3200, 'none', 1), own(40, 'ranged', 3200, -6200, 'none'),
         cd(50, 'melee', 3300, 'none', 0), own(50, 'melee', 3300, -6200, 5),
+        // a Dire hero (pid 8, not in the lane) stands near it: an own creep is read only with a living hero of its team within 1,500
+        line(0, 'bot pid=8 hero=h8 team=3 pos=4'), line(59.5, 'snap pid=8 x=0 y=0 alive=1 hp=100'),
         own(60, 'siege', 0, 0, 'none'),
         cd(70, 'melee', 3000, 'none', 0),
         line(80, 'neutral_death team=2 by=1'),
@@ -514,7 +516,7 @@ test('timeline creeps: one row per lane creep death whichever team logged it, no
         { t: 70, team: 2, hero: null, lane: 'bot', outcome: 'other', what: 'melee', why: 'open' },
         { t: 80, team: 2, hero: 'lich', lane: 'bot', outcome: 'own_lh', what: 'neutral', why: null },
     ]);
-    assert.strictEqual(store.query('SELECT count(*) AS n FROM creep_fate')[0].n, 8);
+    assert.strictEqual(store.query('WITH gm AS (SELECT game_id FROM games),\n-- include: creep_fate\nSELECT count(*) AS n FROM creep_fate')[0].n, 8);
     // A row with no hero is no hero's, and keeps its own lane.
     assert.deepStrictEqual(rows({ hero: 'luna' }).map(r => r.t), [30]);
     assert.deepStrictEqual(rows({ pid: 5 }).map(r => r.t), [50]);

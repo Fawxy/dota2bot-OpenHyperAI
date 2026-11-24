@@ -12,6 +12,7 @@
 -- ensure: ev_creep_death(team, x, y, by, p1d, p1r, p1t, p1a, p2d, p2r, p2t, p2a, p3d, p3r, p3t, p3a)
 -- ensure: ev_lane_pos(pid, d, why, sx, sy, spot)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: creep_fate
 cores AS MATERIALIZED (SELECT l.game_id, l.team, l.pos, l.pid FROM lineup l JOIN gm ON gm.game_id = l.game_id WHERE l.pos BETWEEN 1 AND 3),
 d AS MATERIALIZED (
     SELECT c.game_id, c.seq, c.t, c.x, c.y, co.pid,

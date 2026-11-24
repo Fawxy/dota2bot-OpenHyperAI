@@ -20,7 +20,7 @@
 //   2. Causes: the hero's team's ev=creep_death and ev=neutral_death rows within 1,650 of the hero (1,500 is the game's
 //      share range; the rest is a frame of drift), each used once per hero. A cause is expected to pay the game's value
 //      for its kind (the median of clean single-cause intervals times the heroes sharing; fallbacks from the reference
-//      until three samples), halved for a denied creep (view creep_fate), over the team's living heroes within 1,500 of it.
+//      until three samples), halved for a denied creep (fragment creep_fate), over the team's living heroes within 1,500 of it.
 //   3. An interval takes the causes logged inside it, then ones logged up to 0.5 s after it (a death is logged the frame
 //      after) and up to 1 s before it, while their expected sum stays under the gain; the gain is split by expected value.
 //   4. An enemy hero's death (fragment ep_death) within 1,650: the causes keep their expected value and the rest is kill.
@@ -178,8 +178,9 @@ function analyseGame(store, g, at_) {
     const causes = new Map();
     const isPid = (v) => v !== null && /^\d+$/.test(String(v));
     if (has('ev_creep_death', 'x', 'y', 'kind', 'by')) {
-        const denied = new Set(has('ev_own_creep_death', 'x', 'y', 'kind', 'by')
-            ? store.query("SELECT seq FROM creep_fate WHERE game_id = :g AND side = 'enemy' AND fate = 'enemy_deny'", { g: g.game_id }).map((r) => r.seq) : []);
+        const denied = new Set(store.query(`WITH gm AS (SELECT :g AS game_id),
+-- include: creep_fate
+SELECT seq FROM creep_fate WHERE side = 'enemy' AND fate = 'enemy_deny'`, { g: g.game_id }).map((r) => r.seq));
         for (const r of store.query('SELECT seq, t, team, kind, x, y FROM ev_creep_death WHERE game_id = :g AND t <= :at ORDER BY t, seq', { g: g.game_id, at: at_ + AFTER })) {
             push(causes, r.team, { t: r.t, x: r.x, y: r.y, kind: r.kind in FALLBACK ? r.kind : 'melee', denied: denied.has(r.seq) });
         }

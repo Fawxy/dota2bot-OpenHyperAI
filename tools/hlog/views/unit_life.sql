@@ -54,6 +54,12 @@
 -- (the exact partner's t1, x1, y1 and hid 0 are kept); a neutral in no camp is never merged by time alone, so it can count twice.
 -- A neutral never found dead (t1 NULL) is one row per team: count dead neutrals as rows with t1 not NULL, never all rows.
 -- A lane creep that was listed again after leaving (a change of owner) keeps its first unit_gone: t1 is its first exit, not a later death.
+-- `cd_seq cd_t cd_x cd_y tw` (after hid; NULL for a neutral and a replay row): the other team's ev=creep_death line the creep paired to, or, on a
+-- row for a creep only the taker saw, that line: its seq, t, spot and `tw`. `seq`: the owner's closing line (wave_creep_death, else own_creep_death, else
+-- unit_gone; its unit_seen for a creep still alive; NULL on a taker-only row). `hp1`: its last HP share when last seen (unit_gone's hp, else the owner's
+-- event's, else the sighting's). `near`: 1 when a living hero of the owner's team stood within 1,500 of that spot in the second before t1 (ev=snap),
+-- 0 when none did, NULL while the creep is alive; computed the same way on every game. They let fragment creep_fate key on a creep_death line's seq and
+-- keep the own side a deny chance (near, at half health or less), and see the sighting's own time and spot, which differ from t1 x1 y1 by up to 1 s and 250 units.
 -- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)

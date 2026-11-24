@@ -190,3 +190,19 @@ test('a neutral found dead after it left the list (hid) merges with its partner 
         ['n2:12', 200, 0, 1], ['n2:14', 200, 0, 2], ['n2:16', 230, 0, 6],
     ]);
 });
+
+test('cd_* and tw carry the taker\'s sighting of a creep (paired, or alone) and seq the owner\'s closing line; both are NULL where no such line exists', () => {
+    const oldLog = run([wave(100, 7, 'none'), seen(100.4, 3, 5, 1, 40, 0), wave(200, 8, 'none'), seen(300, 4, 6, 0, 900, 900)]).view;
+    const paired = oldLog.find(r => r.uid === '2:7'), unpaired = oldLog.find(r => r.uid === '2:8'), alone = oldLog.find(r => r.uid.includes(':x'));
+    assert.deepStrictEqual([paired.cd_t, paired.cd_x, paired.cd_y, paired.tw], [100.4, 40, 0, 1]);
+    assert.ok(paired.cd_seq !== null && paired.seq !== null && paired.cd_seq !== paired.seq);
+    assert.deepStrictEqual([unpaired.cd_seq, unpaired.cd_t, unpaired.tw], [null, null, null]);
+    assert.ok(unpaired.seq !== null);
+    assert.deepStrictEqual([alone.cd_t, alone.cd_x, alone.tw, alone.seq], [300, 900, 0, null]);
+
+    const newLog = run([useen(60, 2, 1, 'creep_goodguys_melee'), ugone(100, 2, 1), seen(100.1, 40, 5, 0, 0, 0), seen(300, 41, 6, 0, 900, 900)]).view;
+    const row = newLog.find(r => r.uid === '2:1');
+    assert.deepStrictEqual([row.cd_t, row.by_kind, row.by_pid], [100.1, 'hero', 5]);
+    assert.ok(row.seq !== null && row.cd_seq !== null);
+    assert.strictEqual(newLog.filter(r => r.uid.includes(':x')).length, 0, 'a sighting with no unit_gone behind it is no unit on a new log');
+});
