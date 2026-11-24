@@ -5,7 +5,7 @@
 -- ev_neutral_death, and `ul_useen`, `ul_ugone` the rows of ev_unit_seen and ev_unit_gone (from team-bots after 836e2a2d; the
 -- game-filtering of every one is the includer's). A game with an ev_unit_seen row is read from those two (below); any other game
 -- from the four death events, as before. CTEs `unit_life_log` (the log's rows) and `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
--- by_pid, by_src, src, hid)`. Ends with a comma.
+-- by_pid, by_src, src, hid, cd_seq, cd_t, cd_x, cd_y, tw, seq)`. Ends with a comma.
 -- A creep_death line (the other team's sighting) is written when a creep at low health leaves the writer's unit list
 -- (trackCreepDeaths, telemetry.ts), which can be a creep that went into fog and lived: ev=creep_revive is written if it reappears,
 -- with no cid. So a row with by_src = taker whose uid has `:x` (no owner line) is a sighting, not a confirmed death; a paired
@@ -69,13 +69,15 @@ ul_clast AS MATERIALIZED (
 ),
 ul_lane AS MATERIALIZED (
     SELECT u.game_id, u.team || ':' || coalesce(u.cid, 'e' || u.seq) AS uid, u.team, coalesce(u.utype, u.kind) AS type, u.lane, u.born,
-        u.t, u.x, u.y, u.who AS owho, s.who AS swho, s.tw, s.seq IS NOT NULL AS paired, u.x0, u.y0
+        u.t, u.x, u.y, u.who AS owho, s.who AS swho, s.tw, s.seq IS NOT NULL AS paired, u.x0, u.y0,
+        u.seq AS oseq, s.seq AS cd_seq, s.t AS cd_t, s.x AS cd_x, s.y AS cd_y
     FROM ul_o u
     LEFT JOIN ul_pair p ON p.game_id = u.game_id AND p.oseq = u.seq
     LEFT JOIN ul_c s ON s.game_id = p.game_id AND s.seq = p.sseq
     UNION ALL
     SELECT s.game_id, s.owner || ':' || 'x' || coalesce(s.cid, 'e' || s.seq), s.owner, s.kind, NULL, NULL,
-        s.t, s.x, s.y, NULL, s.who, s.tw, 0, NULL, NULL
+        s.t, s.x, s.y, NULL, s.who, s.tw, 0, NULL, NULL,
+        NULL, s.seq, s.t, s.x, s.y
     FROM ul_c s
     WHERE s.game_id NOT IN (SELECT game_id FROM ul_new)
         AND NOT EXISTS (SELECT 1 FROM ul_pair p WHERE p.game_id = s.game_id AND p.sseq = s.seq)
@@ -174,24 +176,25 @@ ul_all AS (
              WHEN l.owho IS NOT NULL AND l.owho <> 'none' THEN l.owho END AS by_pid,
         CASE WHEN l.swho IS NOT NULL AND l.swho NOT IN ('none', 'deny') OR l.swho = 'deny' OR l.tw = 1 THEN CASE WHEN l.paired THEN 'paired' ELSE 'taker' END
              WHEN l.owho IS NOT NULL AND l.owho <> 'none' THEN 'own' END AS by_src,
-        NULL AS hid
+        NULL AS hid, l.cd_seq, l.cd_t, l.cd_x, l.cd_y, l.tw, l.oseq AS seq
     FROM ul_lane l LEFT JOIN lab b ON b.kind = l.game_id AND b.k = l.uid AND l.lane IS NULL
     UNION ALL
     SELECT game_id, uid, 'neutral', 4, NULL, NULL, NULL, camp, NULL, NULL, NULL, t, x, y,
         CASE WHEN who IS NOT NULL THEN 'hero' ELSE 'unknown' END, who,
-        CASE WHEN who IS NULL THEN NULL WHEN from_b THEN 'paired' ELSE 'taker' END, NULL
+        CASE WHEN who IS NULL THEN NULL WHEN from_b THEN 'paired' ELSE 'taker' END, NULL, NULL, NULL, NULL, NULL, NULL, NULL
     FROM ul_neutral
 ),
 ul_all2 AS (
     SELECT n.game_id, n.uid, 'neutral' AS kind, 4 AS team, n.type, NULL AS lane, NULL AS wave, n.camp, n.t0, n.x0, n.y0, n.t1, n.x1, n.y1,
         CASE WHEN n.who IS NOT NULL THEN 'hero' ELSE 'unknown' END AS by_kind, n.who AS by_pid,
-        CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END AS by_src, n.hid
+        CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END AS by_src, n.hid,
+        NULL AS cd_seq, NULL AS cd_t, NULL AS cd_x, NULL AS cd_y, NULL AS tw, NULL AS seq
     FROM ul_nneutral n
 ),
 unit_life_log AS (
-    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CAST(by_pid AS INTEGER) AS by_pid, by_src, 'log' AS src, hid FROM ul_all
+    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CAST(by_pid AS INTEGER) AS by_pid, by_src, 'log' AS src, hid, cd_seq, cd_t, cd_x, cd_y, tw, seq FROM ul_all
     UNION ALL
-    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CASE WHEN by_pid = 'none' THEN NULL ELSE CAST(by_pid AS INTEGER) END, by_src, 'log', hid FROM ul_all2
+    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CASE WHEN by_pid = 'none' THEN NULL ELSE CAST(by_pid AS INTEGER) END, by_src, 'log', hid, cd_seq, cd_t, cd_x, cd_y, tw, seq FROM ul_all2
 ),
 -- A game with replay rows (rp_game, written by `hlog.js replay`): its units are the replay's, whole (no log row of it is read, and none is paired
 -- to one: a unit's uid is the replay's entity and use, `<ent>.<n>`). lane is where the creep was 20 s after it spawned, wave floor(t0 / 30), t1 x1 y1
@@ -202,6 +205,6 @@ unit_life_rows AS (
     SELECT * FROM unit_life_log WHERE game_id NOT IN (SELECT game_id FROM rp_game)
     UNION ALL
     SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, by_pid,
-        CASE WHEN by_kind IS NULL THEN NULL WHEN amb = 1 THEN 'replay_amb' ELSE 'replay' END, 'replay', NULL
+        CASE WHEN by_kind IS NULL THEN NULL WHEN amb = 1 THEN 'replay_amb' ELSE 'replay' END, 'replay', NULL, NULL, NULL, NULL, NULL, NULL, NULL
     FROM ul_rp
 ),
