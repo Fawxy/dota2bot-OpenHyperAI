@@ -344,12 +344,16 @@ Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, fr
 
 - `cid` num: Telemetry.CreepId of the target.
 - `own` num: 1 our own creep (a deny attempt), 0 the enemy's.
+- `aspd` num: GetAttackSpeed at the first frame.
+- `pf2` num: Predicted fire as attack point / attack speed x (1 - cycle): the attack point read as seconds (swingprobe1).
+- `fl` num: Predicted flight of a ranged hit (0 melee).
 - `same` num: The attack target at the fire was still the creep (1), another (0); -1 never fired.
 - `proj` num: A ranged hit's projectile was seen at the creep.
 - `drop` num: HP the creep lost from the frame before the landing to the landing frame (others' hits in that frame included); -1 no landing.
 - `dmg` num: The hero's attack damage after the creep's armour.
 - `kill` num: The hero's last hits or denies rose by the frame after the landing.
 - `end` str: `land`, `cancel`, `retarget`, `gone`, `lost`.
+- `to` str: end=retarget: the new target, `creep` (another lane creep), `hero`, `none` or `other`.
 - `gap` num: The longest frame gap over the record.
 
 ## apiprobe_enemy

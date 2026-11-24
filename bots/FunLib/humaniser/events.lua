@@ -333,6 +333,9 @@ ____exports.EVENTS = {
         spa = "num",
         pf = "num",
         pl = "num",
+        aspd = "num",
+        pf2 = "num",
+        fl = "num",
         fire = "num",
         seen = "num",
         land = "num",
@@ -343,6 +346,7 @@ ____exports.EVENTS = {
         dmg = "num",
         kill = "num",
         ["end"] = "str",
+        to = "str",
         gap = "num"
     },
     apiprobe_enemy = {
