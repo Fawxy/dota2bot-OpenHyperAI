@@ -836,11 +836,10 @@ const STAY_REORDER = 0.5;
 const STAY_ARRIVE = 60;
 /** laneTargets' `within` for a deny: offered when it comes due within this of the bot reaching range. */
 const STAY_DENY_WITHIN = 1;
-/** Dota: an allied creep can be attacked (denied) below this share of its max HP. */
-const DENY_SHARE = 0.5;
-/** judgement: a deniable creep is plain-hit only while it holds more than this many of the bot's hits, so the last ones are
- *  left to the deny verb's timing (the final deny). */
-const STAY_HIT_ABOVE = 2;
+/** judgement: a neutral is plain-hit only from within attack range plus this (the bot does not walk in for it), and only
+ *  while one of ours stands at least STAY_NEARER nearer to it than the bot. */
+const STAY_REACH_SLACK = 50;
+const STAY_NEARER = 75;
 /** judgement: how far behind our creeps' centre the bot stands: its attack range less BEHIND_SHORT, within BEHIND_MIN to
  *  BEHIND_MAX, so our creeps stay in its range and the neutrals reach it only through them; BEHIND_FLEE more while a
  *  neutral is on it. */
@@ -900,13 +899,13 @@ function centre(list: TaskAttacker[]): Vec {
 }
 
 /**
- * After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and as few of the
- * creeps as possible walk back to lane. It never plain-attacks a neutral while one of ours is at the camp (that would save
- * the creeps). In order: a neutral our creeps are finishing is last-hit once within `lastHitHits` of the bot's hits; one of
- * ours due is denied (the final hit); else the lowest of our deniable creeps (under half HP) still above STAY_HIT_ABOVE hits
- * is plain-hit, so they die sooner; else it stands behind our creeps (`behindPoint`). While a neutral is on the bot it only
- * walks, BEHIND_FLEE further back. Once none of ours is left: ok "done" with no neutral left, else ok "left" (the neutrals
- * stay on the camp). Label `stay`.
+ * After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and takes what the
+ * camp pays while our creeps hold it. In order: a neutral our creeps or the bot are finishing is last-hit once within
+ * `lastHitHits` of the bot's hits; one of ours due is denied (the final hit); else a neutral in reach that one of ours
+ * stands nearer to is plain-hit (it stays on our creeps: neutrals attack the closest); else it stands behind our creeps
+ * (`behindPoint`). It never hits our own creeps down: a stacked camp kills them anyway, and the hit's cooldown lost the
+ * denies and last hits that came due (pullneut1). While a neutral is on the bot it only walks, BEHIND_FLEE further back.
+ * Once none of ours is left: ok "done" with no neutral left, else ok "left" (the neutrals stay on the camp). Label `stay`.
  */
 export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBody {
     const r = p.radius ?? STAY_RADIUS;
@@ -950,7 +949,7 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
         if (!onMe) {
             let finish: TaskAttacker | undefined;
             for (const n of neutrals) {
-                if (skip.indexOf(n) >= 0 || !ours.some((o) => o.GetAttackTarget?.() === n)) continue;
+                if (skip.indexOf(n) >= 0 || !(n === hitTarget || ours.some((o) => o.GetAttackTarget?.() === n))) continue;
                 if (hpOf(n) <= lhHits * hitOn(n) && (finish === undefined || hpOf(n) < hpOf(finish))) finish = n;
             }
             if (finish !== undefined) {
@@ -984,11 +983,20 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 hitTarget = undefined;
                 continue;
             }
+            // A neutral in reach from where the bot stands, with one of ours nearer to it than the bot: neutrals attack the
+            // closest enemy and ignore a hitter further away (ref Neutral_Creeps, Drawing Aggro). The one being hit is
+            // kept while it qualifies, else the lowest.
+            const at = bot.GetLocation();
+            const reach = (bot.GetAttackRange?.() ?? 150) + STAY_REACH_SLACK;
             let down: TaskAttacker | undefined;
-            for (const o of ours) {
-                const max = (o as unknown as TaskCreep).GetMaxHealth?.() ?? 0;
-                if (max <= 0 || hpOf(o) >= max * DENY_SHARE || hpOf(o) <= STAY_HIT_ABOVE * hitOn(o)) continue;
-                if (down === undefined || hpOf(o) < hpOf(down)) down = o;
+            for (const n of neutrals) {
+                const d = dist(at, n.GetLocation());
+                if (d > reach || !ours.some((o) => dist(o.GetLocation(), n.GetLocation()) + STAY_NEARER < d)) continue;
+                if (n === hitTarget) {
+                    down = n;
+                    break;
+                }
+                if (down === undefined || hpOf(n) < hpOf(down)) down = n;
             }
             if (down !== undefined) {
                 look("hit");

@@ -623,8 +623,8 @@ do
     T.check("approach: the camp was hit", n.attackTarget ~= nil)
 end
 
--- stayCamp: after a pull, stand behind our pulled creeps, hit them down and deny them, last-hit the neutrals ours finish,
--- and never save our creeps by plain-attacking a neutral while one of ours is at the camp. The engine's sim has no Vector.
+-- stayCamp: after a pull, stand behind our pulled creeps, hit the neutrals one of ours stands nearer to, last-hit the ones
+-- being finished, deny ours when due, and never hit our own creeps down. The engine's sim has no Vector.
 Vector = Vector or function(x, y, z) return { x = x, y = y, z = z or 0 } end
 local function stayWorld()
     local sim, bot = world(nil, { x = 0, damage = 40, secondsPerAttack = 1, range = 150, attackPoint = 0.3 })
@@ -642,60 +642,64 @@ local function stayStart(bot, over)
 end
 
 do
-    -- The neutral wins: our creep is hit down once it is under half and denied, the neutral is never hit while the creep
-    -- lives, and the neutral left alive ends the stay "left".
+    -- Our creep stands between the bot and the neutral: the bot hits the neutral, never our creep above a deny, and the
+    -- neutral left alive once our creep is dead ends the stay "left".
     local sim, bot = stayWorld()
     local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 300 }
     local n = sim:addNeutral{ x = 150, y = 0, hp = 2000, autoAttack = true, attackTarget = creep, damage = 30, secondsPerAttack = 1, passive = true }
     creep.attackTarget = n
-    local hitNeutralWhileOurs = false
-    local hitAboveHalf = false
-    local hits = 0
-    stayStart(bot, { onHit = function() hits = hits + 1 end })
+    local hitOursEarly = false
+    stayStart(bot)
     for _ = 1, 600 do
         if R.Current(bot) == nil then break end
         local before = attacksOn(bot, creep)
         local hp = creep.hp
         frame(sim, bot)
-        if attacksOn(bot, creep) > before and hp >= 150 then hitAboveHalf = true end
-        if creep.alive and attacksOn(bot, n) > 0 then hitNeutralWhileOurs = true end
+        if attacksOn(bot, creep) > before and hp > 2 * 40 then hitOursEarly = true end
     end
     local r = R.Last(bot).result
-    T.eq("stay deny: the creep denied", bot.denies, 1)
-    T.eq("stay deny: hit down once under half (one onHit)", hits, 1)
-    T.check("stay deny: no hit on it above half", not hitAboveHalf)
-    T.check("stay deny: the neutral never hit while our creep lived", not hitNeutralWhileOurs)
-    T.eq("stay deny: ends ok", r.reason, "ok")
-    T.eq("stay deny: neutral left", r.message, "left")
-    T.check("stay deny: the neutral alive", n.alive)
+    T.check("stay hit: the neutral is hit while our creep is nearer to it", n.hp <= 2000 - 3 * 40)
+    T.check("stay hit: our creep never hit above its last two hits", not hitOursEarly)
+    T.eq("stay hit: ends ok", r.reason, "ok")
+    T.eq("stay hit: neutral left", r.message, "left")
 end
 
 do
-    -- Our creep wins: the bot takes the neutral's last hit (no hit on it above one of the bot's hits), then the stay ends
-    -- "done" once our creep has walked off the camp.
+    -- The bot is the nearest to the neutral (our creep stands past it): a hit would turn the neutral onto the bot, so it
+    -- is never hit.
+    local sim, bot = stayWorld()
+    local creep = sim:addCreep{ team = 2, x = 320, y = 0, hp = 300 }
+    local n = sim:addNeutral{ x = 150, y = 0, hp = 2000, autoAttack = true, attackTarget = creep, damage = 30, secondsPerAttack = 1, passive = true }
+    creep.attackTarget = n
+    stayStart(bot, { at = { x = 200, y = 0 } })
+    for _ = 1, 600 do
+        if R.Current(bot) == nil then break end
+        frame(sim, bot)
+    end
+    T.eq("stay hit: no hit on a neutral the bot is nearest to", n.hp, 2000)
+end
+
+do
+    -- Our creep wins: the bot hits the neutral down with it and takes the kill, then the stay ends "done" once our creep
+    -- has walked off the camp.
     local sim, bot = stayWorld()
     local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 5000, autoAttack = true, damage = 20, secondsPerAttack = 1 }
     local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
     creep.attackTarget = n
-    local earlyHit = false
     sim:at(12, function() creep.loc.x = 3000 end)
     stayStart(bot)
     for _ = 1, 600 do
         if R.Current(bot) == nil then break end
-        local hp = n.hp
-        local before = attacksOn(bot, n)
         frame(sim, bot)
-        if attacksOn(bot, n) > before and hp > 40 then earlyHit = true end
     end
     local r = R.Last(bot).result
     T.eq("stay last hit: the neutral is the bot's kill", bot.lastHits, 1)
-    T.check("stay last hit: no hit on it above one of the bot's hits", not earlyHit)
     T.eq("stay last hit: ends done", r.message, "done")
 end
 
 do
     -- Logging only: onAttempt names the try's target with its HP and hits at the start; onLook shows the gate shut (the
-    -- worked neutral above one hit) while the bot stands, then open on the frame it chose the last hit.
+    -- worked neutral above one hit) while the bot hits it down, then open on the frame it chose the last hit.
     local sim, bot = stayWorld()
     local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 5000, autoAttack = true, damage = 20, secondsPerAttack = 1 }
     local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
@@ -714,10 +718,10 @@ do
     T.check("stay log: HP within one hit at the start", (a.hp or 999) <= 40 and (a.hits or 9) <= 1, a.hp)
     local shut, open = false, false
     for _, l in ipairs(looks) do
-        if l.step == "stand" and l.worked == 1 and l.due == 0 and (l.minHits or 0) > 1 then shut = true end
+        if l.step == "hit" and l.worked == 1 and l.due == 0 and (l.minHits or 0) > 1 then shut = true end
         if l.step == "lasthit" and l.due == 1 then open = true end
     end
-    T.check("stay log: the gate seen shut while standing", shut)
+    T.check("stay log: the gate seen shut while hitting it down", shut)
     T.check("stay log: the gate seen open on the last hit", open)
 end
 

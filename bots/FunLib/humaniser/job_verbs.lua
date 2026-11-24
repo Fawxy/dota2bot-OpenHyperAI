@@ -1223,11 +1223,10 @@ local STAY_REORDER = 0.5
 local STAY_ARRIVE = 60
 --- laneTargets' `within` for a deny: offered when it comes due within this of the bot reaching range.
 local STAY_DENY_WITHIN = 1
---- Dota: an allied creep can be attacked (denied) below this share of its max HP.
-local DENY_SHARE = 0.5
---- judgement: a deniable creep is plain-hit only while it holds more than this many of the bot's hits, so the last ones are
--- left to the deny verb's timing (the final deny).
-local STAY_HIT_ABOVE = 2
+--- judgement: a neutral is plain-hit only from within attack range plus this (the bot does not walk in for it), and only
+-- while one of ours stands at least STAY_NEARER nearer to it than the bot.
+local STAY_REACH_SLACK = 50
+local STAY_NEARER = 75
 --- judgement: how far behind our creeps' centre the bot stands: its attack range less BEHIND_SHORT, within BEHIND_MIN to
 -- BEHIND_MAX, so our creeps stay in its range and the neutrals reach it only through them; BEHIND_FLEE more while a
 -- neutral is on it.
@@ -1312,13 +1311,13 @@ function ____exports.behindPoint(bot, ours, neutrals, from, back)
     local d = back or ____exports.behindBack(bot)
     return Vector(oc.x + dx / l * d, oc.y + dy / l * d, oc.z or 0)
 end
---- After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and as few of the
--- creeps as possible walk back to lane. It never plain-attacks a neutral while one of ours is at the camp (that would save
--- the creeps). In order: a neutral our creeps are finishing is last-hit once within `lastHitHits` of the bot's hits; one of
--- ours due is denied (the final hit); else the lowest of our deniable creeps (under half HP) still above STAY_HIT_ABOVE hits
--- is plain-hit, so they die sooner; else it stands behind our creeps (`behindPoint`). While a neutral is on the bot it only
--- walks, BEHIND_FLEE further back. Once none of ours is left: ok "done" with no neutral left, else ok "left" (the neutrals
--- stay on the camp). Label `stay`.
+--- After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and takes what the
+-- camp pays while our creeps hold it. In order: a neutral our creeps or the bot are finishing is last-hit once within
+-- `lastHitHits` of the bot's hits; one of ours due is denied (the final hit); else a neutral in reach that one of ours
+-- stands nearer to is plain-hit (it stays on our creeps: neutrals attack the closest); else it stands behind our creeps
+-- (`behindPoint`). It never hits our own creeps down: a stacked camp kills them anyway, and the hit's cooldown lost the
+-- denies and last hits that came due (pullneut1). While a neutral is on the bot it only walks, BEHIND_FLEE further back.
+-- Once none of ours is left: ok "done" with no neutral left, else ok "left" (the neutrals stay on the camp). Label `stay`.
 ____exports.stayCamp = __TS__Generator(function(bot, p, h)
     if h == nil then
         h = {}
@@ -1447,7 +1446,7 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         do
                             local __continue181
                             repeat
-                                if __TS__ArrayIndexOf(skip, n) >= 0 or not __TS__ArraySome(
+                                if __TS__ArrayIndexOf(skip, n) >= 0 or not (n == hitTarget or __TS__ArraySome(
                                     ours,
                                     function(____, o)
                                         local ____this_142
@@ -1455,7 +1454,7 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                                         local ____opt_141 = ____this_142.GetAttackTarget
                                         return (____opt_141 and ____opt_141(____this_142)) == n
                                     end
-                                ) then
+                                )) then
                                     __continue181 = true
                                     break
                                 end
@@ -1520,21 +1519,36 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         __continue165 = true
                         break
                     end
+                    local at = bot:GetLocation()
+                    local ____this_148
+                    ____this_148 = bot
+                    local ____opt_147 = ____this_148.GetAttackRange
+                    local reach = (____opt_147 and ____opt_147(____this_148) or 150) + STAY_REACH_SLACK
                     local down
-                    for ____, o in ipairs(ours) do
+                    for ____, n in ipairs(neutrals) do
                         do
                             local __continue192
                             repeat
-                                local ____this_148
-                                ____this_148 = o
-                                local ____opt_147 = ____this_148.GetMaxHealth
-                                local max = ____opt_147 and ____opt_147(____this_148) or 0
-                                if max <= 0 or hpOf(o) >= max * DENY_SHARE or hpOf(o) <= STAY_HIT_ABOVE * hitOn(o) then
+                                local d = dist(
+                                    at,
+                                    n:GetLocation()
+                                )
+                                if d > reach or not __TS__ArraySome(
+                                    ours,
+                                    function(____, o) return dist(
+                                        o:GetLocation(),
+                                        n:GetLocation()
+                                    ) + STAY_NEARER < d end
+                                ) then
                                     __continue192 = true
                                     break
                                 end
-                                if down == nil or hpOf(o) < hpOf(down) then
-                                    down = o
+                                if n == hitTarget then
+                                    down = n
+                                    break
+                                end
+                                if down == nil or hpOf(n) < hpOf(down) then
+                                    down = n
                                 end
                                 __continue192 = true
                             until true
