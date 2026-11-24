@@ -133,7 +133,7 @@ attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the ne
 ranged bots)` and fires once `HP + regen * t - incoming(t) <= ownDamage` while `HP + regen * t - incoming(t) >
 0` (no swing at a creep someone else kills first). `incoming(t)` counts, after armour
 (`GetActualIncomingDamage`): attack projectiles in flight (`GetIncomingTrackingProjectiles`) that arrive within
-t, and every visible creep, hero or tower of either team whose attack on the creep is in its wind-up and lands
+t, and every visible creep (lane or neutral; neutrals since slice engine-neutrals, 24/11/2026), hero or tower of either team whose attack on the creep is in its wind-up and lands
 within t (the wind-up left, `attackPoint / attackSpeed` timed from the first frame the engine read the wind-up, below;
 plus projectile travel for ranged attackers; OHA's `GetCreepAttackActivityWillRealDamage`). Only hits landing at least one server tick (0.034 s) before ours count: a
 hit in the same tick may be applied after ours. The tick is not the host's think gap (in game the body is stepped

@@ -236,12 +236,13 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     if (n.byTarget !== undefined) return n.byTarget;
     const by = new LuaTable<TaskAttacker, TaskAttacker[]>();
     const myTeam = bot.GetTeam?.();
-    const add = (a: TaskAttacker): void => {
+    const add = (a: TaskAttacker, neutral = false): void => {
         if (a === (bot as unknown) || gone(a)) return;
         // CanBeSeen is "visible to the enemy team": it says nothing about our own units, so only enemies are
-        // dropped by it (a fogged enemy's attack target cannot be read).
-        if (myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
-        if (myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
+        // dropped by it (a fogged enemy's attack target cannot be read). A neutral has no enemy team to ask, so it is
+        // not read through CanBeSeen; one in the fog reads no location and is `gone`.
+        if (!neutral && myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
+        if (!neutral && myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
         const target = a.GetAttackTarget?.();
         if (target === undefined || target === null) return;
         let list = by.get(target as TaskAttacker);
@@ -253,6 +254,12 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     };
     for (const c of n.enemyCreeps) add(c);
     for (const c of n.allyCreeps) add(c);
+    // Neutral creeps: a camp's neutrals on a pulled wave (or on a creep that walks past the camp). Without them the
+    // belief and the forecast saw no damage coming to a creep the neutrals were killing (pullchain2, 24/11/2026: 7 of 22
+    // denies at a camp lost after the swing, each reading idps=0). They are periodic attackers like lane creeps: kind
+    // `creep`, their repeats counted once phased. UNVERIFIED in-game: their wind-up reading, that a fogged one reads no
+    // location, and how CanBeSeen reads for a neutral-team unit.
+    for (const c of bot.GetNearbyNeutralCreeps?.(QUERY_RADIUS) ?? []) add(c, true);
     for (const o of others(bot, n)) add(o);
     n.byTarget = by;
     return by;
@@ -297,7 +304,8 @@ function flightsAt(bot: TaskUnit, creep: TaskCreep, withSelf: boolean): { flight
  * the `between` attackers whose next hit is spread as a rate. Counting a tower both ways read a ranged core's belief 30-45 HP
  * heavy under its own tower (its 80 per 0.81 s smeared past SEEN_AHEAD on top of the projectile already in flight), so it
  * swung early (slice pre-hit, 05/11/2026). The repeats assume the attacker stays on the creep (UNVERIFIED in-game: a tower
- * re-targets on hero aggro or when the creep leaves its range, a lane creep on aggro), as `hpForecast`'s do.
+ * re-targets on hero aggro or when the creep leaves its range, a lane creep on aggro, a neutral leashes back to its camp),
+ * as `hpForecast`'s do.
  */
 function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number; between: number } {
     horizon = math.min(horizon, FORECAST_MAX);
@@ -480,8 +488,8 @@ function watchHeroes(bot: TaskUnit, creep: TaskCreep, w: HeroWatch): void {
 }
 
 /**
- * In-game check of the wind-up reader on the creep's other attackers that are not heroes (lane creeps, towers; slice
- * lh-unphased): over the frames a verb watched one creep, attacker readings (`n`, one per attacker per frame), those read as
+ * In-game check of the wind-up reader on the creep's other attackers that are not heroes (lane creeps, neutral creeps
+ * since slice engine-neutrals, towers; slice lh-unphased): over the frames a verb watched one creep, attacker readings (`n`, one per attacker per frame), those read as
  * winding up (`windup`), and the raw animation of the last one read (`act`, `cycle`, `point`, `spa` GetSecondsPerAttack).
  * A lane creep winds up for its attack point of each attack cycle, so a working reader reads about that share of a creep
  * attacker's frames as a wind-up. Message fields cf cwf ca cc cpt cs. Message attribution only.

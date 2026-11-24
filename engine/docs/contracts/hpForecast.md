@@ -1,7 +1,8 @@
 # Contract: `hpForecast` / `forecastHp` (fact)
 
 ```
-name / version / owner:  hpForecast / 5 (v5, slice oha-engine-windup, 24/11/2026: the wind-up is attack point / attack
+name / version / owner:  hpForecast / 6 (v6, slice engine-neutrals, 24/11/2026: neutral creeps are in the attacker index,
+                kind `creep`; v5, slice oha-engine-windup, 24/11/2026: the wind-up is attack point / attack
                 speed seconds, timed from the engine's first read, measured in game; slice pre-hit, 04/11/2026: first contract; v2 same day: `unphasedHits` and forecastHp's `schedule`; v3: `late` at
                 `last` = one cycle plus flight, review 2026-11-04-sdk-slice-prehit-6ed766b F2; v4, 05/11/2026: a projectile landing
                 past the horizon phases its attacker, through the `flightsAt` helper shared with the last-hit belief, review
@@ -18,11 +19,13 @@ sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack,
                 (GetAnimActivity / GetAnimCycle / GetAttackPoint / GetAttackSpeed, as windupLanding: attack point / attack
                 speed seconds from the first frame the engine reads the wind-up; within one frame of the fire on 97.7-99.0%
                 of our heroes' wind-ups, 97.5-100% of lane creeps', 97.8% of towers', swingwc1-2; enemy heroes not
-                measured), GetNearbyTowers / GetNearbyHeroes for the attacker kinds.
+                measured), GetNearbyTowers / GetNearbyHeroes for the attacker kinds, GetNearbyNeutralCreeps (neutral attackers, read with no
+                CanBeSeen check: a fogged one has no location and is left out; UNVERIFIED in-game: neutrals' wind-up reading, the
+                fogged location and CanBeSeen on a neutral-team unit are not measured).
 result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self }] sorted by t, unphased, unphasedTower,
                 unphasedHits[{ damage, period, first, last }] }.
                 hits: every attack projectile in flight (the bot's own included), every wind-up seen landing within the
-                horizon, and for a tower or lane creep its latest known hit repeated every attack cycle while it attacks
+                horizon, and for a tower, lane creep or neutral creep its latest known hit repeated every attack cycle while it attacks
                 the creep now. unphased: DPS after armour of the attackers on it with no hit in flight or wind-up, spread
                 from 0.45 s on. unphasedTower: a tower is among those. unphasedHits: the same attackers one by one, `first`
                 the earliest their next hit can land (one wind-up, attack point / attack speed, plus flight), `last` the
@@ -32,7 +35,7 @@ result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|sel
                 dead by then. The real HP lies between `early` and `late` while each such attacker is in range and its
                 wind-up readable (one still walking to the creep can land later).
 assumptions:    repeats keep today's distance and so flight time; an attacker stays on the creep (UNVERIFIED in-game: towers
-                re-target on hero aggro or when the creep leaves range); heroes are not repeated (their attacks are choices).
+                re-target on hero aggro or when the creep leaves range, a neutral leashes back to its camp); heroes are not repeated (their attacks are choices).
 outcomes:       none (a query); an empty forecast (hits {}, unphased 0) when no one attacks the creep.
 timing:         one projectile scan and the per-frame attacker index (shared with lastHit's belief); O(attackers x
                 horizon / attack cycle).
