@@ -1322,6 +1322,8 @@ interface CreepTrack {
     /** When the out-of-vision neutrals in `lives` were last checked for death. */
     livesCheckedAt: number;
     enemyLastHits: Record<number, number>;
+    /** Own lane creeps an enemy tower was attacking last frame (`tw` on ev=unit_gone). */
+    enemyTowerOn: LuaTable<Unit, boolean>;
 }
 interface Born {
     lane: string;
@@ -1458,7 +1460,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     if (!firstThisFrame("creeps", team, now)) return;
     let c = creepTracks[team];
     if (c === undefined) {
-        c = { creeps: new LuaTable(), own: new LuaTable(), born: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable(), lives: new LuaTable(), livesCheckedAt: 0, enemyLastHits: {} };
+        c = { creeps: new LuaTable(), own: new LuaTable(), born: new LuaTable(), ownDenies: {}, dead: new LuaTable(), lastHits: {}, denies: {}, target: {}, attackAt: {}, attackOn: {}, attackMode: {}, towerOn: new LuaTable(), neutrals: new LuaTable(), deadNeutrals: new LuaTable(), lives: new LuaTable(), livesCheckedAt: 0, enemyLastHits: {}, enemyTowerOn: new LuaTable() };
         creepTracks[team] = c;
     }
     const heroes = teamHeroes();
@@ -1762,6 +1764,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
             ["by", d.by ?? "none"],
         ];
         if (d.by !== undefined) unitFields.push(["bk", ownTaken.get(d) !== undefined ? "deny" : "hero"]);
+        unitFields.push(["tw", c.enemyTowerOn.get(d.creep) === true]);
         Event("unit_gone", unitFields);
     }
     for (const u of ownList) {
@@ -1780,6 +1783,13 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
                 ["y", math.floor(rec.y)],
             ]);
         }
+    }
+    c.enemyTowerOn = new LuaTable();
+    for (let id = 0; id <= 10; id++) {
+        const tower = GetTower(5 - team, id);
+        if (tower === null || tower === undefined || !tower.IsAlive()) continue;
+        const target = tower.GetAttackTarget();
+        if (target !== null && target !== undefined) c.enemyTowerOn.set(target, true);
     }
 }
 

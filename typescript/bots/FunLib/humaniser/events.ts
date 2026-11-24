@@ -311,6 +311,8 @@ export const EVENTS = {
         by: "mixed",
         /** Own lane creeps with a `by`: `deny` when an own hero's denies rose, `hero` when an enemy hero's last hits rose. Absent with no taker and on neutrals. */
         bk: "str",
+        /** An own lane creep: 1 when one of the enemy team's towers was attacking it on the frame before it left the list (what `creep_death` `tw` says from the other team's log). */
+        tw: "bool",
         /** 1 when the neutral was found dead only after it had left the list alive, so `t` is when that was noticed. */
         hid: "bool",
     },

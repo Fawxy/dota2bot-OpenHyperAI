@@ -2232,7 +2232,8 @@ local function trackCreepDeaths(bot, now)
             deadNeutrals = {},
             lives = {},
             livesCheckedAt = 0,
-            enemyLastHits = {}
+            enemyLastHits = {},
+            enemyTowerOn = {}
         }
         creepTracks[team] = c
     end
@@ -2862,6 +2863,7 @@ local function trackCreepDeaths(bot, now)
         if d.by ~= nil then
             unitFields[#unitFields + 1] = {"bk", ownTaken[d] ~= nil and "deny" or "hero"}
         end
+        unitFields[#unitFields + 1] = {"tw", c.enemyTowerOn[d.creep] == true}
         ____exports.Event("unit_gone", unitFields)
     end
     for ____, u in ipairs(ownList) do
@@ -2900,6 +2902,31 @@ local function trackCreepDeaths(bot, now)
             )
         end
     end
+    c.enemyTowerOn = {}
+    do
+        local id = 0
+        while id <= 10 do
+            do
+                local __continue413
+                repeat
+                    local tower = GetTower(5 - team, id)
+                    if tower == nil or tower == nil or not tower:IsAlive() then
+                        __continue413 = true
+                        break
+                    end
+                    local target = tower:GetAttackTarget()
+                    if target ~= nil and target ~= nil then
+                        c.enemyTowerOn[target] = true
+                    end
+                    __continue413 = true
+                until true
+                if not __continue413 then
+                    break
+                end
+            end
+            id = id + 1
+        end
+    end
 end
 local guardedWorld = ____exports.Guard("Telemetry.World", trackWorld)
 local guardedCreeps = ____exports.Guard("Telemetry.Creeps", trackCreepDeaths)
@@ -2914,15 +2941,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue415
+                local __continue418
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue415 = true
+                        __continue418 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue415 = true
+                        __continue418 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -2961,9 +2988,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue415 = true
+                    __continue418 = true
                 until true
-                if not __continue415 then
+                if not __continue418 then
                     break
                 end
             end

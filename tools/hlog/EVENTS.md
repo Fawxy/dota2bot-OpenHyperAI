@@ -187,6 +187,7 @@ The frame a unit with a `unit_seen` left the unit list dead. A lane creep: any f
 - `hp` num: HP share when last listed.
 - `by` mixed: The pid of a hero of the logging team whose last hits (deny: whose denies, for an own lane creep) rose this frame and took the nearest unclaimed gone unit within 1,200; else `none`. For an own lane creep the pid of an enemy hero whose last hits rose, when the logging team can read them (see LOGGING.md).
 - `bk` str: Own lane creeps with a `by`: `deny` when an own hero's denies rose, `hero` when an enemy hero's last hits rose. Absent with no taker and on neutrals.
+- `tw` bool: An own lane creep: 1 when one of the enemy team's towers was attacking it on the frame before it left the list (what `creep_death` `tw` says from the other team's log).
 - `hid` bool: 1 when the neutral was found dead only after it had left the list alive, so `t` is when that was noticed.
 
 ## creep_death

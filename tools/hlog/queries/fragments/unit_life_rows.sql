@@ -2,7 +2,9 @@
 -- The including query defines first, each `AS NOT MATERIALIZED`, the death events to read, all columns, of the games it wants
 -- (view unit_life: every game; query unit_life and the readers of one run: their own games, so the cost follows the games read):
 -- `ul_wave` the rows of ev_wave_creep_death, `ul_own` of ev_own_creep_death, `ul_enemy` of ev_creep_death, `ul_neu` of
--- ev_neutral_death. CTE `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
+-- ev_neutral_death, and `ul_useen`, `ul_ugone` the rows of ev_unit_seen and ev_unit_gone (from team-bots after 836e2a2d; the
+-- game-filtering of every one is the includer's). A game with an ev_unit_seen row is read from those two (below); any other game
+-- from the four death events, as before. CTE `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
 -- by_pid, by_src, src)`. Ends with a comma.
 -- A creep_death line (the other team's sighting) is written when a creep at low health leaves the writer's unit list
 -- (trackCreepDeaths, telemetry.ts), which can be a creep that went into fog and lived: ev=creep_revive is written if it reappears,
@@ -12,17 +14,21 @@
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
 -- ensure: ev_neutral_death(team, kind, x, y, by, camp)
+-- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
+-- ensure: ev_unit_gone(team, cid, x, y, hp, by, bk, hid)
+ul_new AS MATERIALIZED (SELECT DISTINCT game_id FROM ul_useen),
 ul_c AS MATERIALIZED (
     SELECT game_id, seq, t, 5 - team AS owner, kind, x, y, CAST("by" AS TEXT) AS who, coalesce(tw, 0) AS tw, cid
-    FROM ul_enemy WHERE team IN (2, 3)
+    FROM ul_enemy WHERE team IN (2, 3) AND game_id NOT IN (SELECT game_id FROM ul_new)
 ),
 ul_o AS MATERIALIZED (
     SELECT w.game_id, w.seq, w.t, w.team, w.kind, w.x, w.y, CAST(w."by" AS TEXT) AS who, w.cid, w.lane, w.born
-    FROM ul_wave w
+    FROM ul_wave w WHERE w.game_id NOT IN (SELECT game_id FROM ul_new)
     UNION ALL
     SELECT o.game_id, o.seq, o.t, o.team, o.kind, o.x, o.y, CAST(o."by" AS TEXT), o.cid, NULL, NULL
     FROM ul_own o
-    WHERE NOT EXISTS (SELECT 1 FROM ul_wave w WHERE w.game_id = o.game_id AND w.team = o.team AND w.cid = o.cid)
+    WHERE o.game_id NOT IN (SELECT game_id FROM ul_new)
+        AND NOT EXISTS (SELECT 1 FROM ul_wave w WHERE w.game_id = o.game_id AND w.team = o.team AND w.cid = o.cid)
 ),
 ul_pair AS MATERIALIZED (
     SELECT game_id, oseq, sseq FROM (
@@ -60,7 +66,7 @@ ul_lane AS MATERIALIZED (
             AND NOT EXISTS (SELECT 1 FROM ul_cpair c WHERE c.game_id = s.game_id AND c.owner = s.owner AND c.cid = s.cid)))
 ),
 ul_n AS NOT MATERIALIZED (
-    SELECT game_id, seq, t, team, x, y, CAST("by" AS TEXT) AS who, camp FROM ul_neu
+    SELECT game_id, seq, t, team, x, y, CAST("by" AS TEXT) AS who, camp FROM ul_neu WHERE game_id NOT IN (SELECT game_id FROM ul_new)
 ),
 ul_npair AS (
     SELECT game_id, aseq, bseq FROM (
