@@ -182,6 +182,30 @@ function replayRows({ store, game_id, evLo, evHi, o, centerAt, who, named, seen,
 }
 
 /**
+ * The foot of the text output (layer 2 of the entry point), at most three commands fitted to what was printed: `q @unit` for a lane creep or
+ * neutral that died in the window inside the scene (the first a hero on screen killed or denied, else the first to die), the same window on the
+ * timeline (`timelineCmd`), and `replay` when the .dem sits beside the log and the game has no replay rows. A recorded game's units are in `rows`
+ * (uid); an unrecorded game's come from the unit_life query of that game.
+ */
+function footer({ store, game_id, replay, rows, seen, centerAt, o, o0, target: arg, file, evLo, unitCut, timelineCmd }) {
+    const target = /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+    const inside = (t, x, y) => centerAt(t).some(p => Math.hypot(x - p.x, y - p.y) <= o.r);
+    let dead;
+    if (replay) dead = rows.filter(r => r.uid !== undefined && (r.kind === 'creep' || r.kind === 'neutral')).map(r => ({ uid: r.uid, t: r.t, pid: r.pid }));
+    else if (evLo <= unitCut) {
+        dead = store.query(sql('unit_life'), { game_id, like: null, game: null })
+            .filter(u => u.t1 !== null && u.t1 >= evLo && u.t1 <= unitCut && inside(u.t1, u.x1, u.y1)).sort((a, b) => a.t1 - b.t1)
+            .map(u => ({ uid: u.uid, t: u.t1, pid: u.by_pid }));
+    } else dead = [];
+    const unit = dead.find(u => u.pid !== null && seen.has(Number(u.pid))) ?? dead[0];
+    const cmds = [];
+    if (unit) cmds.push(`node hlog.js q @unit --p like=${target} --p uid=${unit.uid}${o0.game === undefined ? '' : ` --p game=${o0.game}`}`);
+    cmds.push(timelineCmd.replace(`timeline ${arg}`, `timeline ${target}`));
+    if (!replay && /\.log$/.test(file) && fs.existsSync(file.replace(/\.log$/, '.dem'))) cmds.push(`node hlog.js replay ${target}${o0.game === undefined ? '' : ` --game ${o0.game}`}`);
+    return cmds;
+}
+
+/**
  * The scene as rows and a header. store: an open Store with views refreshed; file: the log's absolute path; timelineRows: hlog.js's.
  * o: game, at | from + to, one of hero | pid | lane | xy, r, every (strings or numbers as given on the command line).
  * Returns { header, rows, next, lines }: rows {t, kind: front|hero|timeline|creep|neutral|note, ...}; lines the text view.
@@ -389,7 +413,7 @@ function scene(store, file, o0, { secs, timelineRows, target }) {
         throw new Error(`the output would be ${lines.length + cmds.length + 1} lines, over ${MAX_LINES}; narrow it: node hlog.js scene ${target}${gameArg} --from ${clock(o.from)} `
             + `--to ${clock(Math.max(o.from, Math.floor(mid)))} ${sel}   (or a smaller --r, or a larger --every)`);
     }
-    lines.push('next:', ...cmds.map(c => `  ${c}`));
+    lines.push('next:', ...footer({ store, game_id, replay, rows, seen, centerAt, o, o0, target, file, evLo, unitCut, timelineCmd: cmds[0] }).map(c => `  ${c}`));
     return { header: { label: g.label ?? null, game: g.game, place, window: win, units, creeps_and_camps: replay ? header[1] : NOT_KNOWN }, rows: rows.map(({ text, label, ...r }) => (r.kind === 'note' ? { ...r, text } : r)), next: cmds, lines };
 }
 
