@@ -16,23 +16,13 @@
 --   replay_only  replay deaths with no log row, by the replay's by_kind (what the log lacks)
 --   log_only     log deaths with no replay death; log_sighting: log rows that are only sightings
 -- A replay row marked amb (like units died within 0.1 s with different killers) pairs like the rest; its killer may be swapped with its twin's.
--- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
--- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
--- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
--- ensure: ev_neutral_death(team, kind, x, y, by, camp)
--- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 WITH gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id FROM games g
     WHERE g.game_id = :game_id
         OR (:like IS NOT NULL AND g.file LIKE :like AND g.game = coalesce(:game, (SELECT max(g2.game) FROM games g2 WHERE g2.file = g.file)))
 ),
-ul_wave AS NOT MATERIALIZED (SELECT * FROM ev_wave_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_neu AS NOT MATERIALIZED (SELECT * FROM ev_neutral_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE game_id IN (SELECT game_id FROM gm)),
-ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM gm)),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
 ul_rp AS NOT MATERIALIZED (SELECT * FROM rp_unit WHERE game_id IN (SELECT game_id FROM gm)),
 -- include: unit_life_rows
 gl AS MATERIALIZED (

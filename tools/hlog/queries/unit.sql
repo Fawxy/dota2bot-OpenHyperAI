@@ -5,22 +5,12 @@
 -- rows by game_id, as @unit_life. A unit in a game with no replay rows has the life part only: paths and hits are in no log.
 -- unit_hit has no unit id (a damage entry names the kind, team and name of each side), so a hit is matched to the unit by those and by falling inside its
 -- life (t0 to its death): `n_like` is how many units of that kind, team and name were alive then, and over 1 the hit may be a like unit's.
--- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
--- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
--- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
--- ensure: ev_neutral_death(team, kind, x, y, by, camp)
--- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 WITH gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id FROM games g
     WHERE g.file LIKE :like AND g.game = coalesce(:game, (SELECT max(g2.game) FROM games g2 WHERE g2.file = g.file))
 ),
-ul_wave AS NOT MATERIALIZED (SELECT * FROM ev_wave_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_neu AS NOT MATERIALIZED (SELECT * FROM ev_neutral_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE game_id IN (SELECT game_id FROM gm)),
-ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM gm)),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
 ul_rp AS NOT MATERIALIZED (SELECT * FROM rp_unit WHERE game_id IN (SELECT game_id FROM gm)),
 -- include: unit_life_rows
 one AS MATERIALIZED (SELECT * FROM unit_life_rows WHERE uid = :uid),

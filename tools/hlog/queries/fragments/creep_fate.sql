@@ -8,15 +8,7 @@
 --           `own`: the creep's owner's row (`team` the owner; `seq` its closing line), kept as a deny chance: the creep died within 1,500 of a living hero of its team
 --           at half health or less (unit_life `near`, `hp1`): own_deny (an owner hero denied it, `pid`) or lost (anything else: an enemy last hit, tower or creep kill).
 --   A creep is in both when an enemy hero's last hit or the like took it near an owner hero: count one side of one team per question. `t`, `x`, `y` are that side's last sighting.
--- ensure: ev_creep_death(team, kind, x, y, hp, by, tw, cid)
--- ensure: ev_own_creep_death(team, kind, x, y, hp, by, cid)
--- ensure: ev_wave_creep_death(team, kind, x, y, hp, by, cid, lane, born)
--- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
--- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
-ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE game_id IN (SELECT game_id FROM gm)),
-ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM gm)),
-ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_wave AS NOT MATERIALIZED (SELECT * FROM ev_wave_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
-ul_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM gm)),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
 -- include: unit_life_lane
 creep_fate AS MATERIALIZED (SELECT * FROM creep_fate_rows),

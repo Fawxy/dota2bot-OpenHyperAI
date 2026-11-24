@@ -1,8 +1,10 @@
--- Fragment (`-- include: unit_life_lane`): the lane creeps' half of fragment unit_life_rows (read for its header: the rules, columns and the inputs the includer
--- defines first: `ul_useen`, `ul_ugone`, `ul_enemy`, `ul_wave`, `ul_own` and the lane creep's events), alone, for a reader that wants no neutral and no replay row:
--- fragment creep_fate_rows (SQLite plans a long CTE chain slowly, so the timeline does not carry the neutral half for it). CTEs `ul_new` .. `ul_lane` and
--- `creep_fate_rows` (below) and `ul_lall(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, by_pid, by_src, hid, cd_seq, cd_t, cd_x, cd_y, tw, seq, hp1, near)`: the lane rows of
+-- Fragment (`-- include: unit_life_lane`): the lane creeps' half of fragment unit_life_rows (read for its header: the rules and columns), alone, for a reader that wants no neutral and no
+-- replay row (SQLite plans a long CTE chain slowly, so the timeline does not carry the neutral half). The includer defines `ul_gm(game_id)` and includes `unit_life_in` first. CTEs
+-- `ul_new` .. `ul_lane` (fragment unit_life_seen is included here), `ul_odeath` and `creep_fate_rows` (below) and `ul_lall(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, by_pid, by_src, hid, cd_seq, cd_t, cd_x, cd_y, tw, seq, hp1, near)`: the lane rows of
 -- unit_life_rows before its src column. Ends with a comma.
+-- `ul_odeath(game_id, seq, t, team, kind, x, y, uid, by_kind, by_pid, by_src, hp1, cd_seq, dny)`: the owner's lines ev=own_creep_death was, one per lane creep that died within 1,500 of a living hero of its
+-- team (`near`) at half health or less (`hp1`, NULL counts): `seq` its closing line, `t`, `x`, `y` its last sighting, `kind` melee, ranged or siege (a flag bearer is a melee creep),
+-- `by_pid` the denier or the enemy hero who took it (by_kind says which; `by_src` own is not always set for a deny: an enemy line with `tw` makes it paired), `dny` the owner's denier (the old `by` of the owner's line: a pid, NULL for none; by_kind deny with a pid), `cd_seq` the other team's creep_death line it paired to (NULL: no enemy line took it, so it is a creep the taker did not log). A reader of the own side's deny chances (deny_reach, lane_aggro, idle_fate, the xp memo) reads this.
 -- ensure: ev_wave_creep_death(team, kind, x, y, hp, by, cid, lane, born)
 -- ensure: ev_own_creep_death(team, kind, x, y, hp, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, hp, by, tw, cid)
@@ -10,17 +12,13 @@
 -- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 -- ensure: ev_snap(pid, alive, x, y)
 -- ensure: ev_bot(pid, team)
-ul_new AS MATERIALIZED (SELECT DISTINCT game_id FROM ul_useen),
--- A game with unit_seen rows (telemetry.ts trackCreepDeaths, ev=unit_seen / ev=unit_gone): a row per own lane creep, from its
--- owner's two lines, and one per neutral, the two teams' sightings merged. A cid is its team's own, so a unit is (team, cid).
-ul_s AS NOT MATERIALIZED (SELECT game_id, seq, t, team, cid, kind, type, lane, camp, x, y FROM ul_useen),
-ul_g AS NOT MATERIALIZED (
-    SELECT game_id, seq, t, team, cid, x, y, CAST("by" AS TEXT) AS who, coalesce(hid, 0) AS hid, hp FROM ul_ugone
-),
+-- include: unit_life_seen
 ul_c AS MATERIALIZED (
     SELECT game_id, seq, t, 5 - team AS owner, kind, x, y, CAST("by" AS TEXT) AS who, coalesce(tw, 0) AS tw, cid, hp
     FROM ul_enemy WHERE team IN (2, 3)
 ),
+-- the own lines whose creep has a wave line (same team and cid) are that line's: the keys, for the anti-join below
+ul_wk AS MATERIALIZED (SELECT DISTINCT game_id, team, cid FROM ul_wave WHERE cid IS NOT NULL),
 ul_o AS MATERIALIZED (
     SELECT w.game_id, w.seq, w.t, w.team, w.kind, w.x, w.y, CAST(w."by" AS TEXT) AS who, w.cid, w.lane, w.born, NULL AS utype, NULL AS x0, NULL AS y0, w.hp
     FROM ul_wave w WHERE w.game_id NOT IN (SELECT game_id FROM ul_new)
@@ -28,7 +26,7 @@ ul_o AS MATERIALIZED (
     SELECT o.game_id, o.seq, o.t, o.team, o.kind, o.x, o.y, CAST(o."by" AS TEXT), o.cid, NULL, NULL, NULL, NULL, NULL, o.hp
     FROM ul_own o
     WHERE o.game_id NOT IN (SELECT game_id FROM ul_new)
-        AND NOT EXISTS (SELECT 1 FROM ul_wave w WHERE w.game_id = o.game_id AND w.team = o.team AND w.cid = o.cid)
+        AND NOT EXISTS (SELECT 1 FROM ul_wk w WHERE w.game_id = o.game_id AND w.team = o.team AND w.cid = o.cid)
     UNION ALL
     -- a game with unit_seen: every own lane creep, from its first sighting (born = its t to 0.1 s, as wave_creep_death's born is; alive at the end: no t, x, y, who), its kind as the
     -- old events name it (a flag bearer is a melee creep there, so the enemy's creep_death pairs by it) and its own type beside
@@ -94,6 +92,11 @@ ul_lall AS MATERIALIZED (
                 AND (h.x - l.x) * (h.x - l.x) + (h.y - l.y) * (h.y - l.y) <= 2250000) END AS near
     FROM ul_lane l
 ),
+ul_odeath AS (
+    SELECT u.game_id, u.seq, u.t1 AS t, u.team, CASE WHEN u.type = 'flag' THEN 'melee' ELSE u.type END AS kind, u.x1 AS x, u.y1 AS y, u.uid, u.by_kind,
+        CAST(u.by_pid AS INTEGER) AS by_pid, u.by_src, u.hp1, u.cd_seq, CASE WHEN u.by_kind = 'deny' THEN CAST(u.by_pid AS INTEGER) END AS dny
+    FROM ul_lall u WHERE u.seq IS NOT NULL AND u.t1 IS NOT NULL AND u.near = 1 AND (u.hp1 IS NULL OR u.hp1 <= 0.5)
+),
 -- creep_fate_rows(game_id, seq, t, team, side, kind, x, y, fate, pid, tw): view creep_fate's rows (its header has the rule), one per lane creep death from the lane rows
 -- above. A creep death has up to two: the taker's (`enemy`: the creep_death line it paired to, so `seq` is that line's) and the owner's (`own`: the closing line, kept
 -- as a deny chance: the creep died within 1,500 of a living hero of its owner's team (`near`) at half health or less (`hp1`, NULL counts)). A creep a hero took
@@ -105,8 +108,8 @@ creep_fate_rows AS (
         CASE WHEN u.by_kind IN ('hero', 'deny') THEN CAST(u.by_pid AS INTEGER) END AS pid, u.tw
     FROM ul_lall u WHERE u.cd_seq IS NOT NULL
     UNION ALL
-    SELECT u.game_id, u.seq, u.t1, u.team, 'own', CASE WHEN u.type = 'flag' THEN 'melee' ELSE u.type END, u.x1, u.y1,
+    SELECT u.game_id, u.seq, u.t, u.team, 'own', u.kind, u.x, u.y,
         CASE WHEN u.by_kind = 'deny' THEN 'own_deny' ELSE 'lost' END,
         CASE WHEN u.by_kind = 'deny' THEN CAST(u.by_pid AS INTEGER) END, NULL
-    FROM ul_lall u WHERE u.seq IS NOT NULL AND u.t1 IS NOT NULL AND u.near = 1 AND (u.hp1 IS NULL OR u.hp1 <= 0.5)
+    FROM ul_odeath u
 ),
