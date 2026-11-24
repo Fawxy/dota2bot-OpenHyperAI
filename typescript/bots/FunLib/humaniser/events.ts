@@ -539,6 +539,12 @@ export const EVENTS = {
         spa: "num",
         pf: "num",
         pl: "num",
+        /** GetAttackSpeed at the first frame. */
+        aspd: "num",
+        /** Predicted fire as attack point / attack speed x (1 - cycle): the attack point read as seconds (swingprobe1). */
+        pf2: "num",
+        /** Predicted flight of a ranged hit (0 melee). */
+        fl: "num",
         fire: "num",
         seen: "num",
         land: "num",
@@ -555,6 +561,8 @@ export const EVENTS = {
         kill: "num",
         /** `land`, `cancel`, `retarget`, `gone`, `lost`. */
         end: "str",
+        /** end=retarget: the new target, `creep` (another lane creep), `hero`, `none` or `other`. */
+        to: "str",
         /** The longest frame gap over the record. */
         gap: "num",
     },

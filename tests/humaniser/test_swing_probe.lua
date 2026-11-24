@@ -47,6 +47,7 @@ local function hero(o)
 	function h:GetAnimCycle() return self.cyc end
 	function h:GetAttackPoint() return self.pt end
 	function h:GetSecondsPerAttack() return self.spa end
+	function h:GetAttackSpeed() return self.aspd or 1 end
 	function h:GetAttackRange() return self.range end
 	function h:GetAttackProjectileSpeed() return self.pspeed end
 	function h:GetAttackDamage() return self.dmg end

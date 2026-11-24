@@ -52,6 +52,17 @@ local function windupLeft(h)
     end
     return (pt - cyc) * h:GetSecondsPerAttack()
 end
+--- What a retarget went to: `creep` another lane creep, `hero`, `none`, `other`.
+local function targetKind(u)
+    if u == nil or u == nil then
+        return "none"
+    end
+    if isLaneCreep(u) then
+        return "creep"
+    end
+    local ok, hero = pcall(function() return u:IsHero() end)
+    return ok and hero == true and "hero" or "other"
+end
 local function hasProjectile(c, h)
     for ____, p in ipairs(c:GetIncomingTrackingProjectiles() or ({})) do
         if p.is_attack == true and p.caster == h then
@@ -89,6 +100,12 @@ local function start(h, c, team, now)
         spa = h:GetSecondsPerAttack(),
         pf = left,
         pl = left + flight,
+        aspd = h:GetAttackSpeed(),
+        pf2 = h:GetAttackPoint() / math.max(
+            0.01,
+            h:GetAttackSpeed()
+        ) * (1 - h:GetAnimCycle()),
+        fl = flight,
         lat0 = h:GetLastAttackTime(),
         lh0 = h:GetLastHits(),
         dn0 = h:GetDenies(),
@@ -139,6 +156,18 @@ local function emit(s)
                 r3(s.pl)
             },
             {
+                "aspd",
+                r3(s.aspd)
+            },
+            {
+                "pf2",
+                r3(s.pf2)
+            },
+            {
+                "fl",
+                r3(s.fl)
+            },
+            {
                 "fire",
                 r3(s.fire)
             },
@@ -166,6 +195,7 @@ local function emit(s)
             },
             {"kill", kill},
             {"end", s.endWhy},
+            {"to", s.to},
             {
                 "gap",
                 r3(s.gap)
@@ -197,6 +227,7 @@ local function follow(s, now)
             s.endWhy = "gone"
         elseif s.h:GetAttackTarget() ~= s.c then
             s.endWhy = "retarget"
+            s.to = targetKind(s.h:GetAttackTarget())
         elseif windupLeft(s.h) == nil then
             s.endWhy = "cancel"
         end
@@ -228,11 +259,11 @@ local function frame(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue35
+                local __continue39
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:IsIllusion() then
-                        __continue35 = true
+                        __continue39 = true
                         break
                     end
                     local pid = u:GetPlayerID()
@@ -241,23 +272,23 @@ local function frame(bot)
                         if follow(s, now) then
                             active[pid] = nil
                         else
-                            __continue35 = true
+                            __continue39 = true
                             break
                         end
                     end
                     if not u:IsAlive() then
-                        __continue35 = true
+                        __continue39 = true
                         break
                     end
                     local t = u:GetAttackTarget()
                     if not isLaneCreep(t) then
-                        __continue35 = true
+                        __continue39 = true
                         break
                     end
                     active[pid] = start(u, t, team, now)
-                    __continue35 = true
+                    __continue39 = true
                 until true
-                if not __continue35 then
+                if not __continue39 then
                     break
                 end
             end

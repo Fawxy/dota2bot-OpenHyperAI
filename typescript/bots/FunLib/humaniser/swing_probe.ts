@@ -6,7 +6,8 @@
  * Each frame, once per team VM, every hero of the team (GetTeamMember 1..5) whose attack target is a lane creep and who is
  * winding up (GetAnimActivity ATTACK or ATTACK2, anim cycle before the attack point) starts one record. The prediction is the
  * engine's own formula (engine `windupLeft`/`windupLanding`, UNVERIFIED there): fire at (attack point - anim cycle) x seconds
- * per attack, a ranged hero's hit landing the projectile's flight later (distance less the launch offset, over projectile
+ * per attack (`pf`), and beside it `pf2`, the attack point as seconds over GetAttackSpeed (the engine's cooldownLeft reading;
+ * swingprobe1: `pf` fired 0.25 s early for melee heroes, first seen at anim cycle 0), a ranged hero's hit landing the projectile's flight later (distance less the launch offset, over projectile
  * speed). The record is followed to its truth, read from the game and not from the prediction:
  *   fire   GetLastAttackTime rising (the attack point passed; a melee hit lands then);
  *   land   melee: the fire; ranged: the frame the hero's attack projectile, once seen in the creep's
@@ -46,6 +47,7 @@ interface Swinger {
     GetAnimCycle(): number;
     GetAttackPoint(): number;
     GetSecondsPerAttack(): number;
+    GetAttackSpeed(): number;
     GetAttackRange(): number;
     GetAttackProjectileSpeed(): number;
     GetAttackDamage(): number;
@@ -77,6 +79,9 @@ interface Swing {
     spa: number;
     pf: number;
     pl: number;
+    aspd: number;
+    pf2: number;
+    fl: number;
     lat0: number;
     lh0: number;
     dn0: number;
@@ -90,6 +95,7 @@ interface Swing {
     land?: number;
     drop?: number;
     endWhy?: string;
+    to?: string;
     gap: number;
     last: number;
 }
@@ -129,6 +135,14 @@ function windupLeft(h: Swinger): number | undefined {
     return (pt - cyc) * h.GetSecondsPerAttack();
 }
 
+/** What a retarget went to: `creep` another lane creep, `hero`, `none`, `other`. */
+function targetKind(u: unknown): string {
+    if (u === undefined || u === null) return "none";
+    if (isLaneCreep(u)) return "creep";
+    const [ok, hero] = pcall(() => (u as { IsHero(): boolean }).IsHero());
+    return ok && hero === true ? "hero" : "other";
+}
+
 function hasProjectile(c: Target, h: Swinger): boolean {
     for (const p of c.GetIncomingTrackingProjectiles() ?? []) if (p.is_attack === true && p.caster === h) return true;
     return false;
@@ -147,6 +161,7 @@ function start(h: Swinger, c: Target, team: number, now: number): Swing | undefi
     return {
         h, c, cid: Telemetry.CreepId(c as unknown as Unit), own: c.GetTeam() === team ? 1 : 0, ranged, t0: now,
         cyc: h.GetAnimCycle(), pt: h.GetAttackPoint(), spa: h.GetSecondsPerAttack(), pf: left, pl: left + flight,
+        aspd: h.GetAttackSpeed(), pf2: (h.GetAttackPoint() / math.max(0.01, h.GetAttackSpeed())) * (1 - h.GetAnimCycle()), fl: flight,
         lat0: h.GetLastAttackTime(), lh0: h.GetLastHits(), dn0: h.GetDenies(), hp0: hp, hpPrev: hp,
         dmg: c.GetActualIncomingDamage(h.GetAttackDamage(), DAMAGE_TYPE_PHYSICAL ?? 1), proj: false, gap: 0, last: now,
     };
@@ -168,6 +183,9 @@ function emit(s: Swing): void {
         ["spa", r3(s.spa)],
         ["pf", r3(s.pf)],
         ["pl", r3(s.pl)],
+        ["aspd", r3(s.aspd)],
+        ["pf2", r3(s.pf2)],
+        ["fl", r3(s.fl)],
         ["fire", r3(s.fire)],
         ["seen", r3(s.seen)],
         ["land", r3(s.land)],
@@ -178,6 +196,7 @@ function emit(s: Swing): void {
         ["dmg", math.floor(s.dmg)],
         ["kill", kill],
         ["end", s.endWhy],
+        ["to", s.to],
         ["gap", r3(s.gap)],
     ]);
 }
@@ -203,7 +222,10 @@ function follow(s: Swing, now: number): boolean {
         }
     } else if (s.fire === undefined) {
         if (isGone) s.endWhy = "gone";
-        else if (s.h.GetAttackTarget() !== s.c) s.endWhy = "retarget";
+        else if (s.h.GetAttackTarget() !== s.c) {
+            s.endWhy = "retarget";
+            s.to = targetKind(s.h.GetAttackTarget());
+        }
         else if (windupLeft(s.h) === undefined) s.endWhy = "cancel";
     } else if (s.ranged) {
         const flying = !isGone && hasProjectile(s.c, s.h);

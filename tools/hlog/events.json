@@ -410,6 +410,9 @@
    "spa": "num",
    "pf": "num",
    "pl": "num",
+   "aspd": "num",
+   "pf2": "num",
+   "fl": "num",
    "fire": "num",
    "seen": "num",
    "land": "num",
@@ -420,6 +423,7 @@
    "dmg": "num",
    "kill": "num",
    "end": "str",
+   "to": "str",
    "gap": "num"
   },
   "apiprobe_enemy": {
@@ -2322,7 +2326,8 @@
    "it0": "text"
   },
   "ev_swing_probe": {
-   "end": "text"
+   "end": "text",
+   "to": "text"
   },
   "ev_apiprobe_enemy": {
    "it0": "text"
