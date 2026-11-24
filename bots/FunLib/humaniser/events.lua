@@ -347,6 +347,9 @@ ____exports.EVENTS = {
         kill = "num",
         ["end"] = "str",
         to = "str",
+        age = "num",
+        pl3 = "num",
+        drop2 = "num",
         gap = "num"
     },
     apiprobe_enemy = {

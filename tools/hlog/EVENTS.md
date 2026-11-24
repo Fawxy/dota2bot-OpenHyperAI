@@ -354,6 +354,9 @@ Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, fr
 - `kill` num: The hero's last hits or denies rose by the frame after the landing.
 - `end` str: `land`, `cancel`, `retarget`, `gone`, `lost`.
 - `to` str: end=retarget: the new target, `creep` (another lane creep), `hero`, `none` or `other`.
+- `age` num: Seconds after first sight of the end (any end): how far into the wind-up a cancel or retarget came.
+- `pl3` num: Ranged: predicted landing from the projectile's own position on its first frame (engine flightsAt), seconds after first sight.
+- `drop2` num: HP lost over the landing frame and the next (a hit's damage that shows a frame late).
 - `gap` num: The longest frame gap over the record.
 
 ## apiprobe_enemy

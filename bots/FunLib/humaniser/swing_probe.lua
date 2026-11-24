@@ -63,13 +63,20 @@ local function targetKind(u)
     local ok, hero = pcall(function() return u:IsHero() end)
     return ok and hero == true and "hero" or "other"
 end
-local function hasProjectile(c, h)
+--- The hero's attack projectile at the creep: seconds to its landing from its own position (engine flightsAt), else undefined.
+local function projectileEta(c, h)
     for ____, p in ipairs(c:GetIncomingTrackingProjectiles() or ({})) do
         if p.is_attack == true and p.caster == h then
-            return true
+            return dist(
+                p.location,
+                c:GetLocation()
+            ) / math.max(
+                1,
+                h:GetAttackProjectileSpeed()
+            )
         end
     end
-    return false
+    return nil
 end
 local function gone(c)
     return c:IsNull() or not c:IsAlive()
@@ -199,6 +206,18 @@ local function emit(s)
             {
                 "gap",
                 r3(s.gap)
+            },
+            {
+                "age",
+                r3(s.age)
+            },
+            {
+                "pl3",
+                r3(s.pl3)
+            },
+            {
+                "drop2",
+                s.drop2 == nil and -1 or math.floor(s.drop2)
             }
         }
     )
@@ -208,6 +227,9 @@ local function follow(s, now)
     s.gap = math.max(s.gap, now - s.last)
     s.last = now
     if s.endWhy ~= nil then
+        if s.hpLand ~= nil and s.drop ~= nil then
+            s.drop2 = s.drop + s.hpLand - (gone(s.c) and 0 or s.c:GetHealth())
+        end
         emit(s)
         return true
     end
@@ -232,7 +254,17 @@ local function follow(s, now)
             s.endWhy = "cancel"
         end
     elseif s.ranged then
-        local flying = not isGone and hasProjectile(s.c, s.h)
+        local ____isGone_0
+        if isGone then
+            ____isGone_0 = nil
+        else
+            ____isGone_0 = projectileEta(s.c, s.h)
+        end
+        local eta = ____isGone_0
+        local flying = eta ~= nil
+        if flying and not s.proj then
+            s.pl3 = now - s.t0 + eta
+        end
         if flying then
             s.proj = true
         elseif s.proj or isGone then
@@ -243,6 +275,12 @@ local function follow(s, now)
     end
     if s.endWhy == nil and now - s.t0 > GIVE_UP then
         s.endWhy = "lost"
+    end
+    if s.endWhy ~= nil then
+        s.age = now - s.t0
+        if s.drop ~= nil then
+            s.hpLand = hp
+        end
     end
     s.hpPrev = hp
     return false
@@ -259,11 +297,11 @@ local function frame(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue39
+                local __continue43
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:IsIllusion() then
-                        __continue39 = true
+                        __continue43 = true
                         break
                     end
                     local pid = u:GetPlayerID()
@@ -272,23 +310,23 @@ local function frame(bot)
                         if follow(s, now) then
                             active[pid] = nil
                         else
-                            __continue39 = true
+                            __continue43 = true
                             break
                         end
                     end
                     if not u:IsAlive() then
-                        __continue39 = true
+                        __continue43 = true
                         break
                     end
                     local t = u:GetAttackTarget()
                     if not isLaneCreep(t) then
-                        __continue39 = true
+                        __continue43 = true
                         break
                     end
                     active[pid] = start(u, t, team, now)
-                    __continue39 = true
+                    __continue43 = true
                 until true
-                if not __continue39 then
+                if not __continue43 then
                     break
                 end
             end

@@ -64,7 +64,7 @@ interface Target {
     GetHealth(): number;
     GetLocation(): { x: number; y: number };
     GetActualIncomingDamage(dmg: number, kind: number): number;
-    GetIncomingTrackingProjectiles(): { caster: unknown; is_attack: boolean }[] | undefined;
+    GetIncomingTrackingProjectiles(): { caster: unknown; is_attack: boolean; location: { x: number; y: number } }[] | undefined;
 }
 
 interface Swing {
@@ -96,6 +96,14 @@ interface Swing {
     drop?: number;
     endWhy?: string;
     to?: string;
+    /** Seconds after first sight of the end (any end). */
+    age?: number;
+    /** Predicted landing from the projectile's own position on its first frame, seconds after first sight. */
+    pl3?: number;
+    /** HP at the landing frame, for the next frame's loss. */
+    hpLand?: number;
+    /** HP lost over the landing frame and the next. */
+    drop2?: number;
     gap: number;
     last: number;
 }
@@ -143,9 +151,12 @@ function targetKind(u: unknown): string {
     return ok && hero === true ? "hero" : "other";
 }
 
-function hasProjectile(c: Target, h: Swinger): boolean {
-    for (const p of c.GetIncomingTrackingProjectiles() ?? []) if (p.is_attack === true && p.caster === h) return true;
-    return false;
+/** The hero's attack projectile at the creep: seconds to its landing from its own position (engine flightsAt), else undefined. */
+function projectileEta(c: Target, h: Swinger): number | undefined {
+    for (const p of c.GetIncomingTrackingProjectiles() ?? []) {
+        if (p.is_attack === true && p.caster === h) return dist(p.location, c.GetLocation()) / math.max(1, h.GetAttackProjectileSpeed());
+    }
+    return undefined;
 }
 
 function gone(c: Target): boolean {
@@ -198,6 +209,9 @@ function emit(s: Swing): void {
         ["end", s.endWhy],
         ["to", s.to],
         ["gap", r3(s.gap)],
+        ["age", r3(s.age)],
+        ["pl3", r3(s.pl3)],
+        ["drop2", s.drop2 === undefined ? -1 : math.floor(s.drop2)],
     ]);
 }
 
@@ -206,6 +220,7 @@ function follow(s: Swing, now: number): boolean {
     s.gap = math.max(s.gap, now - s.last);
     s.last = now;
     if (s.endWhy !== undefined) {
+        if (s.hpLand !== undefined && s.drop !== undefined) s.drop2 = s.drop + s.hpLand - (gone(s.c) ? 0 : s.c.GetHealth());
         emit(s);
         return true;
     }
@@ -228,7 +243,9 @@ function follow(s: Swing, now: number): boolean {
         }
         else if (windupLeft(s.h) === undefined) s.endWhy = "cancel";
     } else if (s.ranged) {
-        const flying = !isGone && hasProjectile(s.c, s.h);
+        const eta = isGone ? undefined : projectileEta(s.c, s.h);
+        const flying = eta !== undefined;
+        if (flying && !s.proj) s.pl3 = now - s.t0 + eta;
         if (flying) s.proj = true;
         else if (s.proj || isGone) {
             s.land = now - s.t0;
@@ -237,6 +254,10 @@ function follow(s: Swing, now: number): boolean {
         }
     }
     if (s.endWhy === undefined && now - s.t0 > GIVE_UP) s.endWhy = "lost";
+    if (s.endWhy !== undefined) {
+        s.age = now - s.t0;
+        if (s.drop !== undefined) s.hpLand = hp;
+    }
     s.hpPrev = hp;
     return false;
 }
