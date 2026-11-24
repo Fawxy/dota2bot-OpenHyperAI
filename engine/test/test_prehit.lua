@@ -7,8 +7,7 @@ local V = tasks.Verbs
 local DT = 1 / 30
 
 -- Our tower (team 2) 700 from an enemy creep, hitting it every second for 100 with a 750-speed projectile; our melee
--- creep beside the enemy creep hits it for 20 every second. secondsPerAttack is 1 for both, so the sim's wind-up reading
--- ((attackPoint - cycle) * secondsPerAttack) is the real time left.
+-- creep beside the enemy creep hits it for 20 every second.
 local function towerScene(o)
     o = o or {}
     local sim = Sim.new()
@@ -101,6 +100,72 @@ do
     T.eq("schedules: early hit at first", V.forecastHp(f, u.first, "early"), 280)
     T.eq("schedules: late untouched just before last", V.forecastHp(f, u.last - 0.01, "late"), 300)
     T.eq("schedules: late hit at last", V.forecastHp(f, u.last, "late"), 280)
+end
+
+-- The wind-up as measured in game (slice oha-engine-windup, swingwc1): attack point / attack speed seconds, the anim cycle
+-- running at attack speed over the unit's own animation length (1.3 s here, not given by the API). Read from its first frame
+-- the forecast's hit is the real landing on every frame; the old reading ((point - cycle) * secondsPerAttack) was not.
+local function windupScene()
+    local sim = Sim.new()
+    sim:adapter(tasks, { random = Sim.lcg(5) })
+    local bot = sim:addBot{ x = -100, y = 0, range = 150, damage = 40, attackPoint = 0.4, team = 2 }
+    local creep = sim:addCreep{ x = 0, y = 0, hp = 300, team = 3, passive = true }
+    local a = sim:addCreep{ x = 60, y = 0, team = 2, damage = 20, attackPoint = 0.5, attackSpeed = 1.25, animLength = 1.3,
+        secondsPerAttack = 1.36, autoAttack = true, firstSwingAt = 0.1, attackTarget = creep, passive = true }
+    return sim, bot, creep, a
+end
+local function firstHit(f)
+    for _, h in ipairs(f.hits) do if h.by == "creep" then return h.t end end
+end
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    local worst, n = 0, 0
+    while a.swing do
+        local t = firstHit(V.hpForecast(bot, creep, 1))
+        if t then worst = math.max(worst, math.abs(t - (a.swing.landAt - sim.t))) n = n + 1 end
+        sim:step(DT)
+    end
+    T.check("windup: read on every frame of the wind-up (" .. n .. ")", n >= 9)
+    T.check("windup: landing exact from the first frame (worst " .. worst .. ")", worst < 1e-6)
+    T.near("windup: the wind-up is attack point / attack speed", 0.5 / 1.25, 0.4, 1e-9)
+end
+-- First read three frames into the wind-up: the cycle then is converted at attack speed alone (the animation length is not
+-- known), so the read is late by elapsed x (1 - 1 / animLength) and stays so; a read past WINDUP_GAP starts again.
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 + 3 * DT - 1e-9 do sim:step(DT) end
+    local e0 = sim.t - a.swing.start
+    local off = e0 * (1 - 1 / 1.3)
+    local t1 = firstHit(V.hpForecast(bot, creep, 1))
+    T.near("windup: first read late by elapsed x (1 - 1/animLength)", t1, a.swing.landAt - sim.t + off, 1e-6)
+    sim:step(DT)
+    local t2 = firstHit(V.hpForecast(bot, creep, 1))
+    T.near("windup: the next frame keeps that offset (timed from the first read)", t2, a.swing.landAt - sim.t + off, 1e-6)
+end
+-- After the wind-up (backswing, the activity still the attack) no hit is read; the next swing's lower cycle starts a new one.
+do
+    local sim, bot, creep, a = windupScene()
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    while a.swing do V.hpForecast(bot, creep, 1) sim:step(DT) end
+    while not a.swing do sim:step(DT) end
+    local worst = 0
+    while a.swing do
+        local t = firstHit(V.hpForecast(bot, creep, 1))
+        worst = math.max(worst, math.abs((t or -1) - (a.swing.landAt - sim.t)))
+        sim:step(DT)
+    end
+    -- It starts between frames: the first read is up to a frame in, late by at most DT x (1 - 1/animLength).
+    T.check("windup: the second swing read anew (worst " .. worst .. ")", worst <= DT * (1 - 1 / 1.3) + 1e-9)
+end
+-- An unphased attacker's earliest next hit is one wind-up in seconds (attack point / attack speed), not point x cycle.
+do
+    local sim, bot, creep, a = windupScene()
+    a.nextSwingAt = 5
+    sim:step(DT)
+    local f = V.hpForecast(bot, creep, 3)
+    T.eq("windup: one unphased attacker", #f.unphasedHits, 1)
+    T.near("windup: its first is attack point / attack speed", f.unphasedHits[1].first, 0.4, 1e-9)
 end
 
 -- The bot's own projectile in flight counts (a pre-hit it already fired).

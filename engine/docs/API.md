@@ -114,7 +114,7 @@ tower or lane creep its latest known hit repeated every `GetSecondsPerAttack` wh
 repeated: their next attacks are choices). Repeats assume today's distance, so today's flight time. Attackers on the creep with
 no hit in flight or wind-up have an unknown phase: their DPS (`unphased`) is spread evenly from 0.45 s on, as `lastHit`'s
 belief does, and `unphasedTower` says a tower is among them (its hits are the largest, so the forecast's step times are not
-known), and `unphasedHits` lists them one by one (`damage`, `period`, `first` and `last`: the earliest and latest their next hit can land, a wind-up or one cycle from now,
+known), and `unphasedHits` lists them one by one (`damage`, `period`, `first` and `last`: the earliest and latest their next hit can land, a wind-up (`attackPoint / attackSpeed`) or one cycle from now,
 plus flight).
 `forecastHp(f, t, schedule)` = hp + regen t - the hits landed by t - the unknown-phase hits, placed `spread` (default:
 unphased max(0, t - 0.45)), `early` (each at `first` and every cycle after) or `late` (at `last` and every cycle after); below 0 once the creep
@@ -134,8 +134,8 @@ ranged bots)` and fires once `HP + regen * t - incoming(t) <= ownDamage` while `
 0` (no swing at a creep someone else kills first). `incoming(t)` counts, after armour
 (`GetActualIncomingDamage`): attack projectiles in flight (`GetIncomingTrackingProjectiles`) that arrive within
 t, and every visible creep, hero or tower of either team whose attack on the creep is in its wind-up and lands
-within t (`(attackPoint - animCycle) * secondsPerAttack`, plus projectile travel for ranged attackers; OHA's
-`GetCreepAttackActivityWillRealDamage`). Only hits landing at least one server tick (0.034 s) before ours count: a
+within t (the wind-up left, `attackPoint / attackSpeed` timed from the first frame the engine read the wind-up, below;
+plus projectile travel for ranged attackers; OHA's `GetCreepAttackActivityWillRealDamage`). Only hits landing at least one server tick (0.034 s) before ours count: a
 hit in the same tick may be applied after ours. The tick is not the host's think gap (in game the body is stepped
 about every 0.167 s): tying the margin to the think gap made the verb ignore every hit in the last 0.2 s before
 its own and swing late (lane-only calibration llhscn1, 03/11/2026, 35% of swings late against 8% early). Hits the
@@ -186,8 +186,8 @@ inside the relied horizon (hits the belief counts as certain, so a cancelled one
 `ew=<how many> er=<1: due only because of them> ec=<s to the latest of their attack points> oc=<s from the order to our attack
 point>`, placed before `end=` (`oc > ec`: we commit after them and could still see a cancel). The set is the belief's own: enemy
 heroes in the attacker index, wind-ups inside the horizon the belief used (a negative skill shift shortens it). `ec` reads the
-wind-up left as `windupLanding` does (attack point as a fraction of the attack cycle, UNVERIFIED in-game), `oc` as `GetAttackPoint()
-/ GetAttackSpeed()` seconds, so `oc - ec` carries that reading's error until it is verified. Every message, swung or not, ends with the enemy-hero watch over each frame the verb watched the creep: `hf=<frames an enemy hero's attack target was the creep> hwf=<of those, frames windupLeft read it winding up>` and, when `hf > 0`, `ha=<GetAnimActivity> hc=<GetAnimCycle> hpt=<GetAttackPoint>` of the last such hero (of the last wind-up frame once one was seen). It checks the UNVERIFIED wind-up reading on heroes in game: `hf > 0` with `hwf = 0` across many attempts says the reader never sees a hero's wind-up; `hwf > 0` on `denied`/`taken_by_other` attempts with no swing are the enemy wind-ups a creep was lost to (no `ew`, which only a fired swing carries). After it comes the creep-attacker watch (slice lh-unphased, 20/11/2026): `cf=<readings of the creep's attackers that are not heroes, one per attacker per frame> cwf=<of those, read winding up>` and, when `cf > 0`, `ca=<GetAnimActivity> cc=<GetAnimCycle> cpt=<GetAttackPoint> cs=<GetSecondsPerAttack>` of the last reading. A working reader reads about a lane creep's attack-point share of its cycle (0.47) as wind-up; a share near 0 says the reader misses creep wind-ups in game. Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+wind-up left as `windupLanding` does and `oc` as `GetAttackPoint() / GetAttackSpeed()` seconds: both the same measured reading
+(slice oha-engine-windup). Every message, swung or not, ends with the enemy-hero watch over each frame the verb watched the creep: `hf=<frames an enemy hero's attack target was the creep> hwf=<of those, frames windupLeft read it winding up>` and, when `hf > 0`, `ha=<GetAnimActivity> hc=<GetAnimCycle> hpt=<GetAttackPoint>` of the last such hero (of the last wind-up frame once one was seen). It checks the wind-up reading on enemy heroes in game (verified on our own, below): `hf > 0` with `hwf = 0` across many attempts says the reader never sees a hero's wind-up; `hwf > 0` on `denied`/`taken_by_other` attempts with no swing are the enemy wind-ups a creep was lost to (no `ew`, which only a fired swing carries). After it comes the creep-attacker watch (slice lh-unphased, 20/11/2026): `cf=<readings of the creep's attackers that are not heroes, one per attacker per frame> cwf=<of those, read winding up>` and, when `cf > 0`, `ca=<GetAnimActivity> cc=<GetAnimCycle> cpt=<GetAttackPoint> cs=<GetSecondsPerAttack>` of the last reading. A working reader reads about a lane creep's attack-point share of its cycle (0.47) as wind-up; a share near 0 says the reader misses creep wind-ups in game. Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
 `range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
 (the kill belief not due yet), `start` (ended on the first frame). Every message, swung or not (`dead` after a swing included),
 also carries the kill window over the frames before the swing, placed before `hf=` (bug-hunt mark 27, 06/11/2026; attribution only, no
@@ -204,7 +204,22 @@ Offline (sim, 30 fps, a creep contested by three allied melee creeps, 120 trials
 0.2 50% with both early and late misses. In game the prediction sees less than the sim, so skill 1 should land
 below 100% of contested creeps (the 75-85% target of knowledge.md §1.2).
 
-UNVERIFIED in-game: the wind-up formula's units (attack point as a cycle fraction), projectile `location`/`caster`
+**The wind-up (verified in game, slice oha-engine-windup).** `GetAttackPoint()` is the base wind-up in seconds: the wind-up
+is `GetAttackPoint() / GetAttackSpeed()`, from the first wind-up frame (anim cycle 0 there) to the fire (`GetLastAttackTime`
+rising) within two frames on 99.7-100% of 1,774 own-hero swings (probes swingprobe2-4, bot branch oha-deny-free da8b1435;
+the earlier reading, attack point as a fraction of `GetSecondsPerAttack`, fired 0.25 s late for melee heroes and 0.14 s for
+ranged, swingprobe1). `GetAnimCycle()` runs linearly at attack speed over the unit's own attack animation length, 0.9-1.32 s
+at attack speed 1 across 9 heroes (swingwc1, seed 30, 10:00, timescale 8, every frame of 307 fired hero wind-ups), which the
+API does not give: so the engine times a wind-up from the first frame it reads it (left = attackPoint / attackSpeed - time
+since that read - the cycle then / attackSpeed; per attacker, a new wind-up on a lower cycle or after a 0.25 s gap between
+reads). Against the fire on every frame of those wind-ups: within one frame (1/30 s) on 97.7% (melee) and 98.2% (ranged),
+within two on 99.1% and 98.4%; first read up to three frames late, within one frame on 93-95%, within two on 97.6-99%.
+A second game (swingwc2, seed 25, our heroes, towers and up to three lane creeps at a time): heroes within one frame on
+98.2% (melee) and 99.0% (ranged) of wind-up frames; lane creeps 97.5% (melee) and 100% (ranged); towers 97.8% (98.1% within
+two). Lane creeps (base attack time 1) read about the same by the old reading; heroes and towers did not (6.8-18% and 46%
+within one frame).
+
+UNVERIFIED in-game: projectile `location`/`caster`
 fields, and `GetNearbyTowers` returning towers whose `GetAttackTarget` is the creep. Read in game (llhscn1,
 03/11/2026, 8x): the body is stepped every 0.167 s (`fg`); for melee heroes `GetLastAttackTime` rises at the
 predicted landing (`fa - t` median 0.07 s, the frame quantum); for ranged heroes it also sits at the predicted

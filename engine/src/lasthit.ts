@@ -143,22 +143,63 @@ function isRanged(u: TaskAttacker): boolean {
     return (u.GetAttackRange?.() ?? 0) > RANGED_ABOVE && (u.GetAttackProjectileSpeed?.() ?? 0) > 0;
 }
 
-/** Seconds until `a`'s attack point (after it, the attack can no longer be cancelled), or undefined when not winding up. */
-function windupLeft(a: TaskAttacker): number | undefined {
-    if (a.GetAnimActivity === undefined) return undefined;
-    const act = a.GetAnimActivity();
-    if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) return undefined;
-    if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
-    const cycle = a.GetAnimCycle();
-    const point = a.GetAttackPoint();
-    if (cycle >= point) return undefined;
-    return (point - cycle) * (a.GetSecondsPerAttack?.() ?? 1);
+/** A wind-up as the engine first read it: game time and anim cycle then, and the latest read. */
+interface WindupSeen {
+    t0: number;
+    c0: number;
+    t: number;
+    c: number;
+}
+/**
+ * Seconds between two reads of one attacker past which a wind-up is read as new (its first read starts again). Not
+ * measured: a frame is 1/30 s and a wind-up 0.1-0.6 s, so a gap this long cannot sit inside one wind-up's reads safely.
+ */
+const WINDUP_GAP = 0.25;
+const windups = setmetatable(new LuaTable<TaskAttacker, WindupSeen>(), { __mode: "k" });
+
+/** `a`'s wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+function windupSeconds(a: TaskAttacker): number {
+    return (a.GetAttackPoint?.() ?? 0) / math.max(0.01, a.GetAttackSpeed?.() ?? 1);
 }
 
 /**
- * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up. UNVERIFIED
- * in-game: reads the wind-up left as (attackPoint - animCycle) * secondsPerAttack, which treats
- * the attack point as a fraction of the attack cycle.
+ * Seconds until `a`'s attack point (after it, the attack can no longer be cancelled), or undefined when not winding up.
+ * The wind-up is timed from the first frame the engine reads it: attack point / attack speed, less the time since that
+ * read and the anim cycle read then over attack speed. GetAnimCycle runs at attack speed over a hero's own attack
+ * animation length (0.9-1.32 s at attack speed 1 across 9 heroes, swingwc1), which the API does not give, so the cycle is
+ * converted to time only at the first read, where it is 0 on 98-100% of wind-ups (swingprobe1-4). Measured against
+ * the fire (GetLastAttackTime rising) on every frame of 307 hero wind-ups (swingwc1, seed 30): within one frame (1/30 s)
+ * on 97.7% (melee) and 98.2% (ranged), within two on 99.1% and 98.4%; first read up to three frames late, within one frame
+ * on 93-95% and within two on 97.6-99%. Our lane creeps and towers the same way (swingwc2, seed 25): within one frame on
+ * 97.5-100% and 97.8%. A read more than WINDUP_GAP after the last, or a cycle lower than the last,
+ * starts a new wind-up. Remembers each attacker's wind-up across frames (weak keys).
+ */
+function windupLeft(a: TaskAttacker): number | undefined {
+    if (a.GetAnimActivity === undefined) return undefined;
+    const act = a.GetAnimActivity();
+    if (act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2) {
+        windups.delete(a);
+        return undefined;
+    }
+    if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
+    const t = now();
+    const cycle = a.GetAnimCycle();
+    const speed = math.max(0.01, a.GetAttackSpeed?.() ?? 1);
+    let w = windups.get(a);
+    if (w === undefined || cycle < w.c || t < w.t || t - w.t > WINDUP_GAP) {
+        w = { t0: t, c0: cycle, t, c: cycle };
+        windups.set(a, w);
+    } else {
+        w.t = t;
+        w.c = cycle;
+    }
+    const left = windupSeconds(a) - (t - w.t0) - w.c0 / speed;
+    return left > 0 ? left : undefined;
+}
+
+/**
+ * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up: `windupLeft`, plus
+ * a ranged attacker's projectile flight (distance less the launch offset, over projectile speed).
  */
 function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
     let t = windupLeft(a);
@@ -357,7 +398,7 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
             unphased += damage / period;
             if (kind === "tower") unphasedTower = true;
             const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
-            unphasedHits.push({ damage, period, first: (a.GetAttackPoint?.() ?? 0) * period + flight, last: period + flight });
+            unphasedHits.push({ damage, period, first: windupSeconds(a) + flight, last: period + flight });
             continue;
         }
         if (kind === "hero" || period <= 0) continue;
@@ -407,7 +448,7 @@ function enemyHeroWindups(bot: TaskUnit, creep: TaskCreep, horizon: number): { n
 }
 
 /**
- * In-game check of the wind-up reader on enemy heroes (UNVERIFIED `windupLeft`): over the frames a verb watched one
+ * In-game check of the wind-up reader on enemy heroes (`windupLeft`; verified on our own heroes by swingwc1): over the frames a verb watched one
  * creep, how many had an enemy hero attacking it (`frames`), how many of those read that hero as winding up
  * (`windup`), and the raw animation reading of the last such hero (of the last wind-up frame once one was seen) (`act`, `cycle`, `point`; message fields hf hwf ha hc hpt). Message attribution only.
  */
