@@ -8,8 +8,11 @@
  * fire on about 98% of our heroes' wind-ups; enemy heroes not measured). A wind-up is not a commitment: a seen wind-up of a
  * melee core fired 55% of the time, 87% once past half of it (swingprobe2-4); the consumer weighs that, from `commit`.
  *
- * Each creep's forecast is read from the nearest alive hero of the team within READER_RADIUS (the engine's attacker index
- * is that hero's surroundings); a creep with none is left out (no hero of ours can act on it). Built on demand, once per
+ * Each creep's forecast is read from the nearest alive hero of the team within READER_RADIUS that is not attacking it (the
+ * engine's attacker index is that hero's surroundings, and leaves out the reader's own wind-up: lanehits2-3, a melee hero
+ * nearest the creep it was hitting had its last hit missing). When every hero in range attacks it, the nearest reads and
+ * its own hits come from the next one's read; a lone hero attacking it has its wind-up missing. A creep with no hero in
+ * range is left out (no hero of ours can act on it). Built on demand, once per
  * team, lane and frame. Not wired into any decision here: its consumer is the support's deny (slice oha-deny-free).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
@@ -74,17 +77,43 @@ function ownHeroes(): Unit[] {
     return out;
 }
 
-function nearestReader(heroes: Unit[], creep: Unit): Unit | undefined {
-    let best: Unit | undefined;
-    let bestD = READER_RADIUS;
+/** The heroes within READER_RADIUS of the creep, nearest first. */
+function inRange(heroes: Unit[], creep: Unit): Unit[] {
+    const out: [Unit, number][] = [];
     for (const h of heroes) {
         const d = dist(h, creep);
-        if (d <= bestD) {
-            bestD = d;
-            best = h;
+        if (d <= READER_RADIUS) out.push([h, d]);
+    }
+    out.sort((a, b) => a[1] - b[1]);
+    return out.map((x) => x[0]);
+}
+
+function attacking(h: Unit, creep: Unit): boolean {
+    return h.GetAttackTarget() === creep;
+}
+
+type Verbs = NonNullable<ReturnType<typeof Tasks.Verbs>>;
+
+/** The creep's forecast and its reader: see the header for who reads and how the reader's own hits are filled in. */
+function forecastOf(verbs: Verbs, cands: Unit[], creep: Unit): [Unit, Lib.Verbs.HpForecast] {
+    let reader = cands[0];
+    for (const h of cands) {
+        if (!attacking(h, creep)) {
+            reader = h;
+            break;
         }
     }
-    return best;
+    const read = (h: Unit) => verbs.hpForecast(h as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep, HORIZON);
+    const f = read(reader);
+    const other = cands.find((h) => h !== reader);
+    if (attacking(reader, creep) && other !== undefined) {
+        const own = (x: Lib.Verbs.ForecastHit) => x.attacker === (reader as unknown);
+        const hits = f.hits.filter((x) => !own(x));
+        for (const x of read(other).hits) if (own(x)) hits.push(x);
+        hits.sort((a, b) => a.t - b.t);
+        f.hits = hits;
+    }
+    return [reader, f];
 }
 
 function heroHits(f: Lib.Verbs.HpForecast, team: number): HeroHit[] {
@@ -97,7 +126,7 @@ function heroHits(f: Lib.Verbs.HpForecast, team: number): HeroHit[] {
     return out;
 }
 
-function build(team: number, lane: Lane, verbs: NonNullable<ReturnType<typeof Tasks.Verbs>>): CreepHits[] {
+function build(team: number, lane: Lane, verbs: Verbs): CreepHits[] {
     const heroes = ownHeroes();
     const rows: CreepHits[] = [];
     if (heroes.length === 0) return rows;
@@ -107,9 +136,9 @@ function build(team: number, lane: Lane, verbs: NonNullable<ReturnType<typeof Ta
     ];
     for (const [own, placed] of sides) {
         for (const p of placed) {
-            const reader = nearestReader(heroes, p.unit);
-            if (reader === undefined) continue;
-            const f = verbs.hpForecast(reader as unknown as Lib.TaskUnit, p.unit as unknown as Lib.TaskCreep, HORIZON);
+            const cands = inRange(heroes, p.unit);
+            if (cands.length === 0) continue;
+            const [reader, f] = forecastOf(verbs, cands, p.unit);
             rows.push({ creep: p.unit, own, hp: f.hp, reader: reader.GetPlayerID(), forecast: f, heroes: heroHits(f, team) });
         }
     }

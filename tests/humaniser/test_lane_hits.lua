@@ -33,7 +33,11 @@ local function world(o)
 			hpForecast = function(bot, creep, horizon)
 				w.calls = w.calls + 1
 				table.insert(w.readers, bot)
-				return { hp = creep.hp, regen = 0, horizon = horizon, hits = w.hits[creep] or {}, unphased = 0, unphasedTower = false, unphasedHits = {} }
+				local hs = w.hits[creep] or {}
+				if type(hs) == "function" then hs = hs(bot) end
+				local copy = {}
+				for i, x in ipairs(hs) do copy[i] = x end
+				return { hp = creep.hp, regen = 0, horizon = horizon, hits = copy, unphased = 0, unphasedTower = false, unphasedHits = {} }
 			end,
 			forecastHp = function(f, t)
 				local hp = f.hp
@@ -53,6 +57,7 @@ local function hero(pid, team, x, y)
 	h.lh, h.dn = 0, 0
 	h.GetLastHits = function(self) return self.lh end
 	h.GetDenies = function(self) return self.dn end
+	h.GetAttackTarget = function(self) return self.atk end
 	return h
 end
 
@@ -86,6 +91,33 @@ do -- rows: own and enemy lane creeps with a reader in range; the nearest hero r
 	check("killing hit: the first that takes the HP to 0 (the core's 45 on 40)", k ~= nil and k.attacker == core, k and k.t)
 	check("killing hit: none when nothing kills", w.LH.KillingHit(rows[2]) == nil)
 	check("of: finds a creep's row", w.LH.Of(2, Lane.Bot, foe) ~= nil and w.LH.Of(2, Lane.Mid, foe) == nil)
+end
+
+do -- reader: a hero attacking the creep does not read it (its own wind-up is not in its read); all attacking: the next fills it in
+	local w = world()
+	local core = hero(6, 2, 400, -5000)
+	local sup = hero(5, 2, 0, -5000)
+	local own = MakeCreep({ team = 2, x = 450, y = -5000, hp = 40 })
+	local swing = { t = 0.2, damage = 45, by = "hero", attacker = core, commit = 0.2 }
+	local enemy = hero(7, 3, 200, -4900)
+	local theirs = { t = 0.5, damage = 50, by = "hero", attacker = enemy, commit = 0.1 }
+	-- The engine leaves the reader's own wind-up out of its read.
+	w.hits[own] = function(bot) if bot == core then return { theirs } end return { swing, theirs } end
+	core.atk = own
+	local r = w.LH.Read(2, Lane.Bot)[1]
+	check("reader: the core attacking the creep does not read it; the support does, and sees the core's swing",
+		r.reader == 5 and #r.heroes == 2 and r.heroes[1].pid == 6, tostring(r.reader) .. " " .. #r.heroes)
+	sup.atk = own
+	T = 100.1
+	local selfFlight = { t = 0.3, damage = 30, by = "self", attacker = core, commit = 0 }
+	w.hits[own] = function(bot)
+		if bot == core then return { selfFlight, theirs } end
+		return { swing, { t = 0.3, damage = 30, by = "hero", attacker = core, commit = 0 }, theirs }
+	end
+	r = w.LH.Read(2, Lane.Bot)[1]
+	check("all attacking: the nearest reads, its own hits from the next one's read, once each, by time",
+		r.reader == 6 and #r.heroes == 3 and r.heroes[1].t == 0.2 and r.heroes[2].t == 0.3 and r.heroes[3].pid == 7,
+		tostring(r.reader) .. " " .. #r.heroes)
 end
 
 do -- the probe: a creep that dies leaves one line, its last prediction beside the denier whose count rose that frame

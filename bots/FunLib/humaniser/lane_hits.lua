@@ -1,4 +1,47 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ArraySort(self, compareFn)
+    if compareFn ~= nil then
+        table.sort(
+            self,
+            function(a, b) return compareFn(nil, a, b) < 0 end
+        )
+    else
+        table.sort(self)
+    end
+    return self
+end
+
+local function __TS__ArrayMap(self, callbackfn, thisArg)
+    local result = {}
+    for i = 1, #self do
+        result[i] = callbackfn(thisArg, self[i], i - 1, self)
+    end
+    return result
+end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
+
+local function __TS__ArrayFilter(self, callbackfn, thisArg)
+    local result = {}
+    local len = 0
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            len = len + 1
+            result[len] = self[i]
+        end
+    end
+    return result
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
@@ -37,26 +80,73 @@ local function ownHeroes()
     end
     return out
 end
-local function nearestReader(heroes, creep)
-    local best
-    local bestD = ____exports.READER_RADIUS
+--- The heroes within READER_RADIUS of the creep, nearest first.
+local function inRange(heroes, creep)
+    local out = {}
     for ____, h in ipairs(heroes) do
         local d = dist(h, creep)
-        if d <= bestD then
-            bestD = d
-            best = h
+        if d <= ____exports.READER_RADIUS then
+            out[#out + 1] = {h, d}
         end
     end
-    return best
+    __TS__ArraySort(
+        out,
+        function(____, a, b) return a[2] - b[2] end
+    )
+    return __TS__ArrayMap(
+        out,
+        function(____, x) return x[1] end
+    )
+end
+local function attacking(h, creep)
+    return h:GetAttackTarget() == creep
+end
+--- The creep's forecast and its reader: see the header for who reads and how the reader's own hits are filled in.
+local function forecastOf(verbs, cands, creep)
+    local reader = cands[1]
+    for ____, h in ipairs(cands) do
+        if not attacking(h, creep) then
+            reader = h
+            break
+        end
+    end
+    local function read(h)
+        return verbs.hpForecast(h, creep, ____exports.HORIZON)
+    end
+    local f = read(reader)
+    local other = __TS__ArrayFind(
+        cands,
+        function(____, h) return h ~= reader end
+    )
+    if attacking(reader, creep) and other ~= nil then
+        local function own(x)
+            return x.attacker == reader
+        end
+        local hits = __TS__ArrayFilter(
+            f.hits,
+            function(____, x) return not own(x) end
+        )
+        for ____, x in ipairs(read(other).hits) do
+            if own(x) then
+                hits[#hits + 1] = x
+            end
+        end
+        __TS__ArraySort(
+            hits,
+            function(____, a, b) return a.t - b.t end
+        )
+        f.hits = hits
+    end
+    return {reader, f}
 end
 local function heroHits(f, team)
     local out = {}
     for ____, h in ipairs(f.hits) do
         do
-            local __continue13
+            local __continue29
             repeat
                 if h.by ~= "hero" and h.by ~= "self" then
-                    __continue13 = true
+                    __continue29 = true
                     break
                 end
                 local a = h.attacker
@@ -67,9 +157,9 @@ local function heroHits(f, team)
                     commit = h.commit,
                     damage = h.damage
                 }
-                __continue13 = true
+                __continue29 = true
             until true
-            if not __continue13 then
+            if not __continue29 then
                 break
             end
         end
@@ -103,14 +193,14 @@ local function build(team, lane, verbs)
         local placed = ____value[2]
         for ____, p in ipairs(placed) do
             do
-                local __continue19
+                local __continue35
                 repeat
-                    local reader = nearestReader(heroes, p.unit)
-                    if reader == nil then
-                        __continue19 = true
+                    local cands = inRange(heroes, p.unit)
+                    if #cands == 0 then
+                        __continue35 = true
                         break
                     end
-                    local f = verbs.hpForecast(reader, p.unit, ____exports.HORIZON)
+                    local reader, f = unpack(forecastOf(verbs, cands, p.unit))
                     rows[#rows + 1] = {
                         creep = p.unit,
                         own = own,
@@ -119,9 +209,9 @@ local function build(team, lane, verbs)
                         forecast = f,
                         heroes = heroHits(f, team)
                     }
-                    __continue19 = true
+                    __continue35 = true
                 until true
-                if not __continue19 then
+                if not __continue35 then
                     break
                 end
             end
