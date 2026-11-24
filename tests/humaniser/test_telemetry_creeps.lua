@@ -334,8 +334,8 @@ end
 
 -- Neutral deaths: a neutral kill raises GetLastHits, so it shares the claim pool with lane creep deaths. The core's rise goes
 -- to the neutral it killed, not to a lane creep that died the same frame within KILLER_NEAR (the neutral's unit_gone carries
--- the taker). A neutral with no own hero within 1,500, or one that vanished above half HP, takes no rise. One that left vision at
--- half HP or less and is listed again is a creep_revive.
+-- the taker). A neutral above half HP takes no rise even when it is the nearest. One that left vision at half HP or less within
+-- 1,500 of an own hero and is listed again is a creep_revive, ancient or not; one beyond 1,500 is not.
 do
 	local realSpawners = GetNeutralSpawners
 	GetNeutralSpawners = function()
@@ -347,7 +347,7 @@ do
 	local lane = creep("npc_dota_creep_badguys_melee", Vector(300, 0), 20)
 	local n = creep("npc_dota_neutral_kobold", Vector(1000, 0), 10, NEUTRALS)
 	local far = creep("npc_dota_neutral_kobold", Vector(5000, 0), 10, NEUTRALS)
-	local fled = creep("npc_dota_neutral_kobold", Vector(1050, 0), 80, NEUTRALS)
+	local fled = creep("npc_dota_neutral_kobold", Vector(950, 0), 80, NEUTRALS)
 	local anc = creep("npc_dota_neutral_black_drake", Vector(3000, 0), 10, NEUTRALS)
 	anc.ancient = true
 	tick(H, { core }, 60)
@@ -361,7 +361,8 @@ do
 	for _, l in ipairs(events("unit_gone")) do byX[field(l, "x")] = field(l, "by") end
 	local cd = events("creep_death")
 	check("neutral: the core's rise is the near neutral's", byX["1000"] == "1", byX["1000"])
-	check("neutral: far and above-half-HP ones take no rise", byX["5000"] == "none" and byX["1050"] == "none", byX["5000"])
+	check("neutral: an above-half-HP one nearer the core takes no rise", byX["950"] == "none", byX["950"])
+	check("neutral: one beyond reach takes none either", byX["5000"] == "none", byX["5000"])
 	check("neutral: the lane creep that died beside it is no one's", #cd == 1 and field(cd[1], "by") == "none", cd[1])
 	-- A neutral that left vision at half HP or less was claimed as dead; seen alive again it is named by ev=creep_revive.
 	core.loc = Vector(2500, 0)
@@ -373,6 +374,18 @@ do
 	tick(H, { core }, 60.6)
 	local rv = events("creep_revive")
 	check("neutral: seen again, creep_revive kind neutral", #rv == 1 and field(rv[1], "kind") == "neutral", rv[1])
+	-- an ancient is revived as an ancient; one that vanished beyond 1,500 of every own hero was never claimed, so no revive
+	local ancient = creep("npc_dota_neutral_black_drake", Vector(2550, 0), 30, NEUTRALS)
+	ancient.ancient = true
+	local away = creep("npc_dota_neutral_kobold", Vector(6000, 0), 30, NEUTRALS)
+	tick(H, { core }, 60.7)
+	for i = #NEUTRALS, 1, -1 do if NEUTRALS[i] == ancient or NEUTRALS[i] == away then table.remove(NEUTRALS, i) end end
+	tick(H, { core }, 60.8)
+	table.insert(NEUTRALS, ancient)
+	table.insert(NEUTRALS, away)
+	tick(H, { core }, 60.9)
+	rv = events("creep_revive")
+	check("neutral: an ancient is revived as ancient, and a far one is not revived", #rv == 2 and field(rv[2], "kind") == "ancient", #rv)
 	GetNeutralSpawners = realSpawners
 end
 

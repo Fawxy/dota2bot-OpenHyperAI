@@ -2038,7 +2038,7 @@ local DEATH_MAX_HP = 0.5
 local DEATH_NEAR = 1500
 --- A hero whose last hits (or an enemy whose denies) rose takes the nearest death within this distance.
 local KILLER_NEAR = 1200
---- A neutral dying this far from every camp's box centre has no `camp` (it was led away, or is a summon). `judgement`.
+--- A neutral first listed this far from every camp's box centre has no `camp` on its unit_seen (it was led away, or is a summon). `judgement`.
 local NEUTRAL_CAMP_NEAR = 1200
 --- "ancient" for ancient-camp neutrals, else "neutral": the camp's own type is the `camp` index's.
 local function neutralKind(u)

@@ -1337,7 +1337,7 @@ const DEATH_NEAR = 1500;
 /** A hero whose last hits (or an enemy whose denies) rose takes the nearest death within this distance. */
 const KILLER_NEAR = 1200;
 
-/** A neutral dying this far from every camp's box centre has no `camp` (it was led away, or is a summon). `judgement`. */
+/** A neutral first listed this far from every camp's box centre has no `camp` on its unit_seen (it was led away, or is a summon). `judgement`. */
 const NEUTRAL_CAMP_NEAR = 1200;
 
 /** "ancient" for ancient-camp neutrals, else "neutral": the camp's own type is the `camp` index's. */
@@ -1655,10 +1655,10 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         }
     }
     for (const u of alive) see(c.creeps, u, laneKindOf);
-    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that died
-    // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
-    // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
-    // of our creeps this way (hlog `creep_fate` joins it to their `creep_death`), because an enemy hero's GetDenies reads 0.
+    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that left the
+    // list, wherever they were: an own hero's deny rise names the denier on its unit_gone; no rise means an enemy last hit, a
+    // tower or creep kill, or not attributable (`none`). An enemy hero's GetDenies reads 0 from here, so hlog `unit_life` pairs the
+    // other team's `creep_death` for an enemy taker.
     // With no list this frame every tracked creep would read as gone at full health (unit_gone has no health gate).
     const allied = GetUnitList(UnitType.AlliedCreeps);
     if (allied === null || allied === undefined) return;
