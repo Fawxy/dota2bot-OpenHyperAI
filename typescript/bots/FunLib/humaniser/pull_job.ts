@@ -1,12 +1,15 @@
 /**
- * The pull (slice support-lane, switch Ours.SupportPull, KR S.3): a pos4/pos5 takes our wave into its lane's first pull camp
- * when the lane push reading wants it, then comes back to lane. The job chooser hosts it and decides when it may start; this
- * module reads the lane once per pull slot (`ev=choice kind=pull`), plans the pull from the camp data (`camps`,
- * `pull_timing`), walks it with the job verb `pull` and logs one `ev=pull_job` line per started pull.
+ * The whole-wave pull (doctrine D17, switch Ours.SupportPull), a row of the decider (plan s3): a pos4/pos5 takes our wave
+ * into its lane's first pull camp when the pull's own forecast of the lane wants it, then the decider yields it back to
+ * stock. This module reads the lane once per pull slot (`ev=choice kind=pull`), plans the pull from the camp data (`camps`,
+ * `pull_timing`), walks it with the job verb `pull` and logs one `ev=pull_job` line per started pull. With the switch off
+ * the same read is logged as a shadow and nothing else runs.
  */
 import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import { BotMode, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
+import * as Decider from "bots/FunLib/humaniser/decider";
+import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as JobVerbs from "bots/FunLib/humaniser/job_verbs";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -15,9 +18,13 @@ import * as Ours from "bots/FunLib/humaniser/ours";
 import * as PullTiming from "bots/FunLib/humaniser/pull_timing";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as Drill from "bots/FunLib/humaniser/drill";
+import * as Overrides from "bots/FunLib/humaniser/overrides";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
+
+/** Telemetry only (`hit` on the pull's lines): a hero damaged the puller within this many seconds. */
+const HERO_HIT_WITHIN = 3;
 
 // All `judgement` (slice file, Decisions), except where a source is named.
 export const SETTINGS = {
@@ -42,15 +49,6 @@ export const SETTINGS = {
     WantPast: 150,
     ArriveAfter: 12,
     PowerRatio: 1.2,
-    /** The lane partner is under threat: HP share below PartnerHp with an enemy hero within PartnerRadius, or PartnerGank
-     *  enemy heroes within it. */
-    PartnerHp: 0.5,
-    PartnerRadius: 900,
-    PartnerGank: 3,
-    /** No start with an enemy hero within SiteEnemy of the stand point or the meet point (`why=enemy-site`). Banked `ok`
-     *  off-lane pulls with one under 1,200 of the pull site at the start: 5 of 19 hit by a hero, 4 diverted; 1,200 or more:
-     *  6 of 36 hit, 16 diverted (04/11/2026, the user's ptm1_A 4:21: a pull into an enemy offlaner). `judgement`. */
-    SiteEnemy: 1200,
     /** Our creeps within MeetWatch of the meet point or of the camp origin are watched; a creep attacking a neutral is
      *  diverted. Wave size: our creeps within WaveSize of either when the first one is seen diverted (camp_jobs' sample,
      *  LaneConfig Radii). */
@@ -111,6 +109,15 @@ export const SETTINGS = {
      *  were on the neutrals from 324 and the neutrals stayed on it until 327. `judgement`. */
     ShedMargin: 300,
     ShedFor: 5,
+    /** The bar (families proposal s5, named 24/11/2026): a pull is started only into a camp of at least this many neutrals on
+     *  the hero's record. From the banked pull rigs' diverted pulls, creeps dead within 1,000 of the camp by neutrals met:
+     *  3 met 13 of 61, 4 met 4 of 36, 5 met 7 of 8, 6 or more 137 of 140. */
+    StrongAt: 6,
+    /** Neutrals the spawn rule adds to an empty camp while it is out of sight (`judgement`: a camp's set varies by kind,
+     *  2 to 4; the next sighting corrects it). */
+    SetSize: { small: 3, medium: 3, large: 3, ancient: 3 } as Record<Camps.CampType, number>,
+    /** The record's look at the lane's camp while no pull runs, at most this often (`judgement`). */
+    RecordEvery: 0.5,
 };
 
 /** What the API returns in the camp's box: `n` neutrals, `seen` of them `CanBeSeen`, `hp` their health, `vis` the camp's
@@ -129,6 +136,8 @@ interface CampState {
     php?: number;
     /** At a decision: the nearest enemy hero to the stand point or the meet point (siteThreat). */
     se?: number;
+    /** At a decision: the camp as the hero's record knows it (Known). */
+    known?: CampKnown;
 }
 
 interface Plan {
@@ -208,17 +217,12 @@ const handled: Record<number, number | undefined> = {};
 const decided: Record<number, Decision | undefined> = {};
 const timers: Record<number, PullTiming.CreepTimer | undefined> = {};
 const gateWhy: Record<number, string | undefined> = {};
-const ended: Record<number, Ended | undefined> = {};
-
-/** A pull that ended ok: its camp, when, and the wave's diverted share so far (PullFarm's trigger reads it). */
-interface Ended {
-    camp: number;
-    at: number;
-    pull: Pull;
-}
+/** By camp idx: this hero's record of each camp (CampRecord). */
+const records: Record<number, CampRecord | undefined> = {};
+const watchedAt: Record<number, number | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers, ended] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, records, watchedAt] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -238,23 +242,25 @@ function pullerOfLane(bot: Unit): boolean {
     return true;
 }
 
+/** The lane's first pull camp; with `Overrides.PullCamp` (a rig's camp type, e.g. `large` for the hard camp) the first of that type. */
 function campFor(bot: Unit): Camps.CampJobData | undefined {
     const lane = bot.GetAssignedLane();
     if (lane !== Lane.Top && lane !== Lane.Bot) return undefined;
-    return Camps.PullCampsFor(bot.GetTeam(), lane)[0];
+    const camps = Camps.PullCampsFor(bot.GetTeam(), lane);
+    const kind = Overrides.Get("PullCamp");
+    if (typeof kind === "string" && kind !== "") return camps.find((c) => c.type === kind);
+    return camps[0];
 }
 
 /** The hero that would pull for its lane, whatever the switches say. */
-function puller(bot: Unit): boolean {
+export function IsPuller(bot: Unit): boolean {
     return bot.IsBot() && TripTable.Does("pull", LaneConfig.PositionOf(bot)) && isSupport(bot) && pullerOfLane(bot) && campFor(bot) !== undefined;
 }
 
-export function Applies(bot: Unit): boolean {
-    return Ours.On("SupportPull") && Ours.On("JobChooser") && puller(bot);
-}
-
-export function Claims(bot: Unit): boolean {
-    return Running(bot);
+/** The row is switched on for this lane's puller (Ours.Team scopes it, so the other team's puller is shadowed). A hero a drill
+ *  benches or stands as a statue is the drill's: the chooser never asked its jobs, and the row is not asked either. */
+function rowOn(bot: Unit): boolean {
+    return Ours.On("SupportPull") && IsPuller(bot) && !Drill.Held(bot);
 }
 
 /** The next hit second at or after `from` among `seconds` of each minute (camp_jobs' NextAggroTime). */
@@ -309,6 +315,133 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
 }
 
 /**
+ * What this hero knows of a camp's strength while it is out of sight (families proposal s5: the trigger reads about 10 s
+ * before the slot with the camp fogged, `cn` 0 in every pullchain1 slot). A sighting is a fact and replaces the record; in
+ * between it moves only by the game's rules. The count is the neutrals last seen whose handles still read alive (one that
+ * dies in fog drops out if the API reports it; if not, the record stays high until the next sighting) plus the neutrals the
+ * spawn rules added since.
+ */
+interface CampRecord {
+    units: Unit[];
+    added: number;
+    /** The last sighting that set the record, and whether the rules have added since (`src` on the lines). */
+    seenAt: number;
+    src: "seen" | "rules";
+    /** The last minute mark the spawn rule was applied to. */
+    minute: number;
+    /** A stack holds the record (Hold): no look counts the camp until then. */
+    heldUntil?: number;
+}
+
+
+/** A camp's neutrals within this of its origin, seen alive, stay on the record through a sighting of the box: a stack's
+ *  pulled set walks back over :00 and stands outside the counted box (`judgement`, the pull's TagRadius). */
+const RECORD_LEASH = 1200;
+
+function alive(u: Unit): boolean {
+    return !u.IsNull() && u.IsAlive();
+}
+
+function recordCount(r: CampRecord): number {
+    let n = r.added;
+    for (const u of r.units) if (alive(u)) n++;
+    return n;
+}
+
+/**
+ * The spawn rule since the record's last minute: at each mark an empty camp gets a set, a camp holding neutrals gets nothing
+ * (leftovers block the spawn: pullchain1, Dire 7:00). A stack's set is the stack row's to add (NoteSet), since the record
+ * cannot tell a pulled-out camp from one in its box.
+ */
+function advance(r: CampRecord, type: Camps.CampType, now: number): void {
+    const m = math.floor(now / GameRules.NEUTRAL_EVERY);
+    while (r.minute < m) {
+        r.minute++;
+        if (r.minute * GameRules.NEUTRAL_EVERY >= GameRules.NEUTRAL_FIRST && recordCount(r) === 0) {
+            r.added += SETTINGS.SetSize[type];
+            r.src = "rules";
+        }
+    }
+}
+
+function recordOf(spawner: Camps.Spawner, now: number): CampRecord {
+    let r = records[spawner.idx];
+    if (r === undefined) {
+        // Before the first spawn the camp is empty, and the rule fills it at the first mark.
+        r = { units: [], added: 0, seenAt: now, src: "rules", minute: math.floor(now / GameRules.NEUTRAL_EVERY) };
+        if (now >= GameRules.NEUTRAL_FIRST) r.added = SETTINGS.SetSize[spawner.type];
+        records[spawner.idx] = r;
+    }
+    advance(r, spawner.type, now);
+    return r;
+}
+
+/**
+ * A look at the camp (`s`, CampStateOf now). A full view (the box's corners in sight, or `close`: one of ours stands at the
+ * camp, since the corners never all read visible in the drills, ldr11) replaces the record; a partial one only raises it,
+ * since a neutral out of view would drop a strong camp under the bar. An unseen origin says nothing (the API returns no
+ * fogged neutrals).
+ */
+export function NoteSighting(spawner: Camps.Spawner, s: CampState, close: boolean): void {
+    if (!s.vis) return;
+    const now = DotaTime();
+    const r = recordOf(spawner, now);
+    if (r.heldUntil !== undefined && now < r.heldUntil) return;
+    if (!(s.full === true || close) && s.n <= recordCount(r)) return;
+    const units = [...s.units];
+    for (const u of r.units) {
+        if (!alive(u) || !u.CanBeSeen() || units.includes(u) || GetUnitToLocationDistance(u, spawner.location) > RECORD_LEASH) continue;
+        units.push(u);
+    }
+    r.units = units;
+    r.added = 0;
+    r.seenAt = now;
+    r.src = "seen";
+}
+
+/**
+ * The stack row's read of its camp after the mark: the set it pulled out (`pulled`, the handles at its hit) and the spawn it
+ * saw come in (`fresh`), or a set by the rules when the box was out of sight (`fresh` undefined). It replaces the record:
+ * the row held it through the stack (Hold), since no look at the box counts a pulled-out set.
+ */
+export function NoteStack(spawner: Camps.Spawner, pulled: Unit[], fresh: number | undefined): void {
+    const now = DotaTime();
+    const r = recordOf(spawner, now);
+    r.units = pulled.filter((u) => alive(u));
+    r.added = fresh ?? SETTINGS.SetSize[spawner.type];
+    r.src = fresh !== undefined ? "seen" : "rules";
+    if (fresh !== undefined) r.seenAt = now;
+    r.heldUntil = undefined;
+}
+
+/** No look updates the record until `until` (or NoteStack): a stack is pulling the camp out of its box. */
+export function Hold(spawner: Camps.Spawner, until: number): void {
+    recordOf(spawner, DotaTime()).heldUntil = until;
+}
+
+export interface CampKnown {
+    n: number;
+    src: "seen" | "rules";
+    /** Seconds since the last sighting that set the record. */
+    age: number;
+    /** Of `n`, the neutrals last seen whose handles still read alive; the rest the rules added. */
+    held: number;
+}
+
+/** The camp's strength as this hero knows it now (CampRecord). */
+export function Known(spawner: Camps.Spawner): CampKnown {
+    const now = DotaTime();
+    const r = recordOf(spawner, now);
+    const n = recordCount(r);
+    return { n, src: r.src, age: math.floor((now - r.seenAt) * 10) / 10, held: n - r.added };
+}
+
+/** The camp holds at least the bar's neutrals (SETTINGS.StrongAt) on this hero's record. */
+export function Strong(spawner: Camps.Spawner): boolean {
+    return Known(spawner).n >= SETTINGS.StrongAt;
+}
+
+/**
  * `empty` when the camp holds nothing to pull at `hitAt`: nothing returned while the team sees the camp's origin, and no
  * spawn minute before the hit (a camp respawns only on the minute, so it stays empty). An empty box out of sight says
  * nothing: the API returns no fogged neutrals (pc1: every one returned was `CanBeSeen`). `one` the same with a single
@@ -316,11 +449,16 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
  * more 243 of 385; user 04/11/2026: skip it). Stacking it instead is the stack job's call, not this one's.
  */
 export function CampGate(s: CampState, now: number, hitAt: number): string | undefined {
-    const period = LaneConfig.Settings().Timing.PullPeriod;
-    if (!s.vis || math.floor(hitAt / period) > math.floor(now / period)) return undefined;
+    if (!readsHit(s, now, hitAt)) return undefined;
     if (s.n === 0) return "empty";
     if (s.n === 1) return "one";
     return undefined;
+}
+
+/** What the team sees of the camp now holds at the hit: the origin is in sight and no spawn mark comes before the hit. */
+function readsHit(s: CampState, now: number, hitAt: number): boolean {
+    const period = LaneConfig.Settings().Timing.PullPeriod;
+    return s.vis && math.floor(hitAt / period) <= math.floor(now / period);
 }
 
 /** The camp's expected damage on `bot` over `seconds` of its hits (the pull's HitSeconds by default; DefaultDps unseen). */
@@ -446,36 +584,15 @@ export function PulledSpawn(slot: number): number {
     return math.floor((slot - 1) / GameRules.WAVE_EVERY) * GameRules.WAVE_EVERY;
 }
 
-/** Why the lane partner (a teammate core assigned to the lane) should not be left now, else undefined. */
-export function PartnerThreat(bot: Unit): string | undefined {
-    const lane = bot.GetAssignedLane();
-    for (let i = 1; i <= 5; i++) {
-        const m = GetTeamMember(i);
-        if (m === undefined || m === null || m === bot || !m.IsAlive() || isSupport(m) || m.GetAssignedLane() !== lane) continue;
-        // Distinct heroes only: an illusion is a unit, not a pid (lane-read-ec review L3 counted a pid twice).
-        const pids: Record<number, boolean> = {};
-        let n = 0;
-        for (const e of GetUnitList(UnitType.EnemyHeroes)) {
-            if (!e.IsAlive() || e.IsIllusion() || GetUnitToUnitDistance(e, m) > SETTINGS.PartnerRadius) continue;
-            if (pids[e.GetPlayerID()] !== true) n++;
-            pids[e.GetPlayerID()] = true;
-        }
-        if (n >= SETTINGS.PartnerGank) return "partner-gank";
-        if (n > 0 && m.GetHealth() < m.GetMaxHealth() * SETTINGS.PartnerHp) return "partner-low";
-    }
-    return undefined;
-}
-
-/** The nearest enemy hero to the pull site (stand or meet point) into `camp.se`; `enemy-site` within SiteEnemy. */
-function siteThreat(p: Plan, camp: CampState): string | undefined {
+/** The nearest enemy hero to the pull site (stand or meet point), logged as `se`: no gate reads it. */
+function siteEnemy(p: Plan): number | undefined {
     let near: number | undefined;
     for (const e of GetUnitList(UnitType.EnemyHeroes)) {
         if (!e.IsAlive() || e.IsIllusion()) continue;
         const d = math.min(GetUnitToLocationDistance(e, p.stand), GetUnitToLocationDistance(e, p.meet));
         if (near === undefined || d < near) near = d;
     }
-    camp.se = near;
-    return near !== undefined && near <= SETTINGS.SiteEnemy ? "enemy-site" : undefined;
+    return near;
 }
 
 /** OHA's own action holds the hero (rune_job's check: a queued TP, a cast or channel). */
@@ -494,6 +611,10 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
         ["cdmg", r0(s.dmg)],
         ["php", r0(s.php)],
         ["se", r0(s.se)],
+        ["rn", s.known?.n],
+        ["rsrc", s.known?.src],
+        ["rage", s.known?.age],
+        ["rh", s.known?.held],
     ];
 }
 
@@ -526,7 +647,7 @@ function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: stri
     ]);
 }
 
-function jobLine(bot: Unit, p: Pull, phase: string, why: string): void {
+function jobLine(bot: Unit, p: Pull, phase: string, why: string, cut?: string): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "pull"],
@@ -534,13 +655,29 @@ function jobLine(bot: Unit, p: Pull, phase: string, why: string): void {
         ["why", why],
         ["host", p.host],
         ...(phase === "end" ? ([["hit", p.hit === true ? 1 : 0]] as Telemetry.Fields<"job">) : []),
+        ["cut", cut],
+        ["hp", cut === "retreat" ? math.floor((bot.GetHealth() / math.max(1, bot.GetMaxHealth())) * 100 + 0.5) / 100 : undefined],
     ]);
 }
 
-function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): void {
+/**
+ * Plan s4 step 8: the decider does not tell a row it was cut off, so a pull the engine ends because the host mode lost the
+ * hero names what took it: `retreat` when the decider let go for stock's retreat or the retreat mode holds the hero (OHA's
+ * latch outbids the hold), else the mode that does.
+ */
+function cutBy(bot: Unit, r: Lib.Result): string | undefined {
+    if (r.success || r.reason !== "preempted") return undefined;
+    if (Decider.LetGo(bot) || bot.GetActiveMode() === BotMode.Retreat) return "retreat";
+    return HDebug.ModeName(bot.GetActiveMode());
+}
+
+function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined): void {
     running[bot.GetPlayerID()] = undefined;
-    const why = r.success ? "ok" : `${r.reason}${r.message !== undefined ? ":" + r.message : ""}`;
-    jobLine(bot, p, "end", why);
+    const endWhy = end.success ? end.message ?? "ok" : `${end.reason}${end.message !== undefined ? ":" + end.message : ""}`;
+    const r = end;
+    const why = r.success ? "ok" : endWhy;
+    const cut = cutBy(bot, end);
+    jobLine(bot, p, "end", why, cut);
     const r1 = (x: number) => math.floor(x * 10) / 10;
     const fields: Telemetry.Fields<"pull_job"> = [
         ["pid", bot.GetPlayerID()],
@@ -585,7 +722,6 @@ function finish(bot: Unit, p: Pull, r: Lib.Result, label: string | undefined): v
         return;
     }
     const now = DotaTime();
-    ended[bot.GetPlayerID()] = { camp: p.plan.camp.campIdx, at: now, pull: p };
     trailing[bot.GetPlayerID()] = { pull: p, fields, until: math.max(now, PullTiming.WaveAt(p.timer) ?? now) + SETTINGS.TrailSec };
 }
 
@@ -963,52 +1099,118 @@ function dueSlot(bot: Unit, now: number): Due | undefined {
 
 /**
  * Plan s5's denominator in the arm that does not pull: for a lane's puller whose pull is switched off, the same read of each
- * slot at the same leave time, written as the line Wants writes (`go=0 why=off src=shadow`). It reads and logs; nothing is
+ * slot at the same leave time, written as the line the row writes (`go=0 why=off src=shadow`). It reads and logs; nothing is
  * ordered or started. A shadowed slot is where a puller standing where stock left it would have had to leave; the on arm's
  * puller may stand elsewhere, so the two arms' slots match by wave, not by second.
  */
 export function Shadow(bot: Unit): void {
-    if (!Telemetry.IsEnabled() || !puller(bot) || Applies(bot)) return;
+    logSeeds();
+    if (!Telemetry.IsEnabled() || !IsPuller(bot) || rowOn(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
+    watch(bot);
     const due = dueSlot(bot, DotaTime());
     if (due === undefined) return;
     handled[bot.GetPlayerID()] = due.p.slot;
-    choiceLine(bot, due.d, due.p.slot, false, "off", CampStateOf(due.p.spawner), "shadow");
+    const camp = CampStateOf(due.p.spawner);
+    camp.known = Known(due.p.spawner);
+    choiceLine(bot, due.d, due.p.slot, false, "off", camp, "shadow");
+}
+
+/** The mode the decider hosts its rows in: the engine steps the pull's task under it. */
+const HOST = BotMode.Farm;
+
+
+/**
+ * The record's look at the lane's camp while no pull of this hero runs (a running pull's walk looks in Step; after its hit
+ * the neutrals are out of the box). Full when the hero stands within CampReadNear of the camp's origin. Both arms, so the
+ * shadow line carries the same record.
+ */
+function watch(bot: Unit): void {
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    if (running[pid] !== undefined || now - (watchedAt[pid] ?? -math.huge) < SETTINGS.RecordEvery) return;
+    watchedAt[pid] = now;
+    const sp = SpawnerFor(bot);
+    if (sp === undefined) return;
+    NoteSighting(sp, CampStateOf(sp), bot.IsAlive() && GetUnitToLocationDistance(bot, sp.location) <= SETTINGS.CampReadNear);
+}
+
+/** The spawner of the lane's pull camp (the pull's and the stack row's camp). */
+export function SpawnerFor(bot: Unit): Camps.Spawner | undefined {
+    const camp = campFor(bot);
+    return camp !== undefined ? Camps.SpawnerByIdx(camp.campIdx) : undefined;
 }
 
 /**
- * Every frame while the chooser asks: true while a pull runs or as one starts. The lane is read once per slot at the leave
- * time; a wanted pull then waits for `blocked` (the chooser's checks, a higher job's claim), the partner check and OHA's own
- * action until it could no longer reach the camp by the hit's late limit.
+ * Why a wanted pull may not start now. Danger is the shared read's answer where the hero stands; a hero Valve's attack or a
+ * retreat holds is left to it. The camp's damage is the pull's own check, since the shared read prices no neutral damage.
+ * The old job's HP floor, hero-hit check, enemy-site rule and partner check are gone: once started, stopping is the
+ * decider's (it lets go when stock would retreat) and the verb's bail.
  */
-export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, host: number): boolean {
-    if (!Applies(bot)) return false;
+function startBlock(bot: Unit, camp: CampState, now: number, hitAt: number): string | undefined {
+    const gate = CampGate(camp, now, hitAt);
+    if (gate !== undefined) return gate;
+    if (SafeGather.At(bot, bot.GetLocation(), { who: "pull_start" }).level === "deadly") return "enemy-near";
+    const mode = bot.GetActiveMode();
+    if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
+    return campDmgGate(bot, camp.dmg!) ?? (acting(bot) ? "acting" : undefined);
+}
+
+/**
+ * The row's `applies`, asked every scoring round: true while a pull runs or as one starts. The lane is read once per slot at
+ * the leave time; a wanted pull then waits on `startBlock` until it could no longer reach the camp by the hit's late limit.
+ * A pull the decider let go of (stock's retreat) or another mode took is ended by the engine once the host has been without
+ * the hero for `preemptAfter`; its wave is handled, so it does not start again.
+ */
+let seedsLogged = false;
+
+/** Once a game, the seeded pull camps' resolution (`ev=pull_camp_seed`), once the spawner list is in. */
+function logSeeds(): void {
+    if (seedsLogged || !Telemetry.IsEnabled()) return;
+    const reads = Camps.SeedReads();
+    if (reads.length === 0) return;
+    seedsLogged = true;
+    for (const r of reads) Telemetry.Event("pull_camp_seed", [["key", r.key], ["idx", r.idx], ["td", r.td], ["ld", r.ld], ["ok", r.ok ? 1 : 0]]);
+}
+
+function rowApplies(bot: Unit): boolean {
+    logSeeds();
+    if (!rowOn(bot)) return false;
     const pid = bot.GetPlayerID();
     Tasks.Tick(bot);
-    if (running[pid] !== undefined) return true;
+    const cur = running[pid];
+    if (cur !== undefined) {
+        if (bot.WasRecentlyDamagedByAnyHero(HERO_HIT_WITHIN)) cur.hit = true;
+        return true;
+    }
     trail(bot, false);
     if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    watch(bot);
     const now = DotaTime();
     const due = dueSlot(bot, now);
     if (due === undefined) return false;
     const { p, timer, hitAt, walk, d } = due;
     const camp = CampStateOf(p.spawner);
+    camp.known = Known(p.spawner);
     const done = (go: boolean, why: string | undefined) => {
         handled[pid] = p.slot;
         gateWhy[pid] = undefined;
-        choiceLine(bot, d!, p.slot, go, why, camp);
+        choiceLine(bot, d, p.slot, go, why, camp);
     };
     if (!d.want) {
         done(false, d.drill === true ? "drill" : d.reading === undefined ? "no-read" : "lane");
         return false;
     }
+    // Only a strong camp takes the wave (families proposal s5); under the bar the stack row builds it. A camp seen empty or
+    // with one neutral says so (CampGate, in the start check).
+    if (camp.known.n < SETTINGS.StrongAt && CampGate(camp, now, hitAt) === undefined) {
+        done(false, "weak");
+        return false;
+    }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
     camp.php = bot.GetHealth();
-    // Slice threat: the start reads the camp alone on the shared gate (`threat`: a visible hero in reach of the camp;
-    // `missing`: the belief's weight sum at least MissingRefuse); `se` stays logged. Off: the pull's own enemy-site rule.
-    const own = siteThreat(p, camp);
-    const site = Ours.On("Threat") ? SafeGather.TripGate(bot, Camps.BoxCenter(p.spawner), "pull_job", Camps.BoxCenter(p.spawner)).why : own;
-    const why = CampGate(camp, now, hitAt) ?? blocked(bot) ?? campDmgGate(bot, camp.dmg) ?? site ?? PartnerThreat(bot) ?? (acting(bot) ? "acting" : undefined);
+    camp.se = siteEnemy(p);
+    const why = startBlock(bot, camp, now, hitAt);
     if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
         done(false, gateWhy[pid] ?? why ?? "late");
         return false;
@@ -1019,8 +1221,8 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     }
     const aggroAt = hitAt;
     trail(bot, true);
-    const pull: Pull = { plan: p, left: now, host, wave: 0, peak: 0, neutrals: 0, hitAt, timer, start: camp };
-    const ok = Tasks.Start(bot, { name: "pull", host, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
+    const pull: Pull = { plan: p, left: now, host: HOST, wave: 0, peak: 0, neutrals: 0, hitAt, timer, start: camp };
+    const ok = Tasks.Start(bot, { name: "pull", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );
     if (!ok) {
@@ -1033,7 +1235,16 @@ export function Wants(bot: Unit, blocked: (bot: Unit) => string | undefined, hos
     return true;
 }
 
-export function Step(bot: Unit, host: number): boolean {
+/** The row's verb: one frame of the pull; true once it has ended. */
+function rowStep(bot: Unit): boolean {
+    Step(bot);
+    return running[bot.GetPlayerID()] === undefined;
+}
+
+/** The decider's row (registered in index.ts, so the decider imports no row). */
+export const ROW: Decider.Row = { name: "pull", applies: rowApplies, step: rowStep };
+
+function Step(bot: Unit): boolean {
     const p = running[bot.GetPlayerID()];
     if (p === undefined) return false;
     // Before the hit the walk may bring the camp into sight: stop there rather than hit an empty camp or one it cannot take.
@@ -1042,10 +1253,13 @@ export function Step(bot: Unit, host: number): boolean {
         s.dmg = CampDamage(bot, s, p.plan.spawner.type);
         s.php = bot.GetHealth();
         const now = DotaTime();
-        const gate = CampGate(s, now, p.hitAt);
-        // `one`/`empty` count only near the stand (CampReadNear) and must hold CampLowHold s (the camp fills in as it comes
-        // into sight); camp damage ends it at once.
-        if (gate === undefined || GetUnitToLocationDistance(bot, p.plan.stand) > SETTINGS.CampReadNear) p.low = undefined;
+        const close = GetUnitToLocationDistance(bot, p.plan.stand) <= SETTINGS.CampReadNear;
+        NoteSighting(p.plan.spawner, s, close);
+        // On arrival the puller's own look is the record (a full view): a camp under the bar is not pulled.
+        const gate = CampGate(s, now, p.hitAt) ?? (readsHit(s, now, p.hitAt) && Known(p.plan.spawner).n < SETTINGS.StrongAt ? "weak" : undefined);
+        // `one`/`empty`/`weak` count only near the stand (CampReadNear) and must hold CampLowHold s (the camp fills in as it
+        // comes into sight); camp damage ends it at once.
+        if (gate === undefined || !close) p.low = undefined;
         else if (p.low === undefined || p.low.why !== gate) p.low = { why: gate, at: now };
         // The hold shrinks to the time left before the hit: a puller reaching the ring late still reads the camp before it
         // hits (review 2026-11-08-lane-drills M3: ldr17's cancels fell 2 s before to 0.8 s after the slot).
@@ -1059,26 +1273,15 @@ export function Step(bot: Unit, host: number): boolean {
         }
     }
     sample(bot, p);
-    return Tasks.Step(bot, host);
-}
-
-/** The bot's last ok pull: its camp index, end time and the wave's diverted share (still growing for TrailSec after the end). */
-export function Finished(bot: Unit): { camp: number; at: number; div: number } | undefined {
-    const e = ended[bot.GetPlayerID()];
-    return e !== undefined ? { camp: e.camp, at: e.at, div: share(e.pull) } : undefined;
+    return Tasks.Step(bot, HOST);
 }
 
 export function Running(bot: Unit): boolean {
     return running[bot.GetPlayerID()] !== undefined;
 }
 
-export function End(bot: Unit, why: string): void {
+function End(bot: Unit, why: string): void {
     if (running[bot.GetPlayerID()] !== undefined) Tasks.Cancel(bot, "cancelled", why);
-}
-
-export function NoteHit(bot: Unit): void {
-    const p = running[bot.GetPlayerID()];
-    if (p !== undefined) p.hit = true;
 }
 
 export function NoteIdleHeld(bot: Unit): void {

@@ -25,16 +25,15 @@ export const DEFAULTS = {
      *  own jungle's live bounty when the path by it adds about 12 s or less. Off: the pass is logged as a shadow and stock plays.
      *  On: provisional (plan s5's small row, merged after its audit; read at the next checkpoint batch). */
     RuneDetour: true,
-    /** Slice support-lane: pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it (PullJob);
-     *  the old camp-job pulls stop for those bots. Needs JobChooser. */
-    SupportPull: false,
-    /** Slice support-pull-farm: with SupportPull and JobChooser on, the support that pulled stays on the camp and clears the
-     *  neutrals the wave left (PullFarm, a chooser job) when the site is safe, and gives the camp up to a core of ours standing
-     *  on it. Off: the support walks back to lane after its pull. */
-    SupportPullFarm: false,
+    /** The whole-wave pull, a row of the decider (pull_job.ts, doctrine D17): the lane's pos5 (else pos4) pulls our wave into the
+     *  lane's first pull camp when the pull's forecast wants it and the puller's record of the camp holds the bar (6
+     *  neutrals), and stacks that camp in a minute the record is under it (stack_job.ts ROW; families proposal s5, lanecamp's
+     *  stack-then-pull group). Off: both are logged as shadows and stock plays. On: it beat the reference arm on its line
+     *  (oha-pull-row's batch pullstack1). */
+    SupportPull: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
-     *  gates of the support's pull farm and the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
-     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. Off: pull_farm's ThreatOnWay. */
+     *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
+     *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
     Threat: false,
     /** Slice retreat (design s5.4, master slices/retreat.md): a laning bot hero's retreat is ours (retreat.ts: leave when
      *  Safe.At calls the place deadly, the anchor by route cost, the stop on a place Safe.At does not call deadly); OHA's retreat desire, farm's ShouldRun and the

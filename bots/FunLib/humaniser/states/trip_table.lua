@@ -39,16 +39,6 @@ ____exports.TRIPS = {
             20,
             20
         )
-    },
-    {
-        kind = "pullfarm",
-        rank = by(
-            nil,
-            nil,
-            nil,
-            40,
-            40
-        )
     }
 }
 local function rowOf(kind)

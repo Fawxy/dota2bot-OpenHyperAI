@@ -162,6 +162,16 @@ do
 	H.Drill.TABLE.stack.rep.control = nil
 end
 
+-- pull-long: only every fourth 30 s rep pulls (each other minute's wave); the waves between, the :30 ones and the next
+-- minute's, are withheld, so the pulled fight has until the next pulled wave.
+do
+	local H = world("pull-long")
+	local t = H.Drill.RepTimes("pull")
+	check("pull-long: pulls the 1:00, 3:00 and 5:00 waves", t[1] == 60 and t[2] == 180 and t[3] == 300, table.concat({ t[1], t[2], t[3] }, ","))
+	check("pull-long: the waves between are controls", H.Drill.ForcedAt("pull", 90) == "off" and H.Drill.ForcedAt("pull", 120) == "off"
+		and H.Drill.ForcedAt("pull", 150) == "off" and H.Drill.ForcedAt("pull", 185) == "on")
+end
+
 -- lane-only (the old Overrides.LaneOnly): every hero is the cast and lane-only.
 do
 	local H = world("lane-only")

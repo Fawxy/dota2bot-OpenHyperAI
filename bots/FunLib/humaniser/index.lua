@@ -42,7 +42,6 @@ local RuneJob = require(GetScriptDirectory().."/FunLib/humaniser/rune_job")
 local RunePickup = require(GetScriptDirectory().."/FunLib/humaniser/rune_pickup")
 local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
-local PullFarm = require(GetScriptDirectory().."/FunLib/humaniser/pull_farm")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
@@ -70,7 +69,6 @@ ____exports.RunePlan = RunePlan
 ____exports.Plays = Plays
 ____exports.PullJob = PullJob
 ____exports.RuneDetour = RuneDetour
-____exports.PullFarm = PullFarm
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
@@ -133,6 +131,7 @@ local steps = {
     end,
     landing = SafeGather.Tick,
     pullShadow = PullJob.Shadow,
+    stackShadow = StackJob.Shadow,
     runeDetourShadow = RuneDetour.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
@@ -191,6 +190,7 @@ local function tick(bot)
     pcall(steps.regen, bot)
     pcall(steps.sustain, bot)
     pcall(steps.pullShadow, bot)
+    pcall(steps.stackShadow, bot)
     pcall(steps.runeDetourShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
@@ -256,6 +256,7 @@ if Telemetry.GuardsEnabled() then
         FarmThink = no,
         Abort = none,
         HoldsRun = no,
+        PullsNeutrals = no,
         HoldsIdle = no,
         HoldsCasts = no,
         Benched = no,
@@ -290,7 +291,27 @@ if Telemetry.GuardsEnabled() then
     end
 end
 Telemetry.PerfDeepInstall()
-if __TS__ArrayIndexOf(Decider.ROWS, RuneDetour.ROW) < 0 then
+if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
+    if Telemetry.GuardsEnabled() then
+        PullJob.ROW.applies = Telemetry.Guard("PullRow.applies", PullJob.ROW.applies, no)
+        PullJob.ROW.step = Telemetry.Guard(
+            "PullRow.step",
+            PullJob.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_0 = Decider.ROWS
+    ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = PullJob.ROW
+    if Telemetry.GuardsEnabled() then
+        StackJob.ROW.applies = Telemetry.Guard("StackRow.applies", StackJob.ROW.applies, no)
+        StackJob.ROW.step = Telemetry.Guard(
+            "StackRow.step",
+            StackJob.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_1 = Decider.ROWS
+    ____Decider_ROWS_1[#____Decider_ROWS_1 + 1] = StackJob.ROW
     if Telemetry.GuardsEnabled() then
         RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no)
         RuneDetour.ROW.step = Telemetry.Guard(
@@ -299,8 +320,8 @@ if __TS__ArrayIndexOf(Decider.ROWS, RuneDetour.ROW) < 0 then
             function() return true end
         )
     end
-    local ____Decider_ROWS_0 = Decider.ROWS
-    ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = RuneDetour.ROW
+    local ____Decider_ROWS_2 = Decider.ROWS
+    ____Decider_ROWS_2[#____Decider_ROWS_2 + 1] = RuneDetour.ROW
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)

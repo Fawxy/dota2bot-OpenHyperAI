@@ -1249,6 +1249,8 @@ export const EVENTS = {
         hit: "num",
         /** On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name. */
         cut: "str",
+        /** With `cut=retreat`: the hero's HP share then. */
+        hp: "num",
         /** `job=rune_detour`: the seconds the path by the rune was read to add when the walk started. */
         ex: "num",
         /** `job=rune_detour` end: 1 on a pickup: the verb's ok, or one step's gold gain reaching RuneDetour TookGold (GetRuneStatus stays available while a second rune lies on the spot). */
@@ -2570,6 +2572,19 @@ export const EVENTS = {
         /** Madstone charges gained in its item slots over the farm. */
         mi: "num",
     },
+    /** Once a game: how each seeded lane pull camp (camps_data with `laneKind`) resolved, the pull's camp choice's input. */
+    pull_camp_seed: {
+        /** The camps_data entry. */
+        key: "str",
+        /** The nearest spawner of its type and team to the lane's tower (`ev=camp` `idx`); absent with none. */
+        idx: "num",
+        /** Its distance to that tower (the limit is `PullCampMaxTowerDist`, or the entry's `maxTowerDist`). */
+        td: "num",
+        /** Its distance to the lane (the limit is `PullCampMaxLaneDist`). */
+        ld: "num",
+        /** 1 when it became the entry's pull camp. */
+        ok: "num",
+    },
     /** One line per pull the support's pull job started (`Ours.SupportPull`). Views `pull_attempts`, `pull_waves` and `pull_watch_cases` read it. */
     pull_job: {
         pid: "num",
@@ -2621,6 +2636,13 @@ export const EVENTS = {
         php: "num",
         /** The nearest seen enemy hero's distance to the stand or meet point; not on walk cancels. */
         se: "num",
+        /** The camp as the puller's record knows it (PullJob Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
+         *  set it) or `rules` (the spawn rule or a stack's unseen set since), rage seconds since the last look that set it. */
+        rn: "num",
+        rsrc: "str",
+        rage: "num",
+        /** Of rn, the neutrals last seen whose handles still read alive (whether a neutral dying in fog reads dead is not known). */
+        rh: "num",
         // sh the hit's shift from the plan's slot at the order, s0 the first creep-timed shift, lv creep reads. The hit is
         // timed on the wave's front creep (pull_timing CreepTimer): hr geo (timed on it) or plan (never read), hc creeps
         // read, hn the creep after the front one and hb the back creep: predicted distance past the meet point at the
@@ -2661,6 +2683,15 @@ export const EVENTS = {
         // once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
         shs: "num",
         shh: "num",
+        // Banked logs only (the stay, Ours.SupportPullStay, deleted at oha-pull-row's close; pullchain1, pullstay6): on a pull that ended ok and stayed: st its end (`done` none of our creeps and no
+        // neutral left at the camp, `left` neutrals left uncleared, `cleared`, `timeout:late` the backstop, `dead`, or the cut:
+        // `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got.
+        st: "str",
+        ss: "num",
+        sdt: "num",
+        sdk: "num",
+        slt: "num",
+        slk: "num",
     },
     // Slice support-lane: one sample per started pull per PullJob WatchLogEvery during its lead, watch and trail (ph lead|watch|
     // trail). Ours near the meet point or the camp origin (within MeetWatch of either): wc creeps, of them won on a neutral, whe on a hero, wcr on anything
@@ -2730,7 +2761,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -2742,7 +2773,7 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, a higher job's name, `partner-low`, `partner-gank`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. */
         why: "str",
         /** Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them). */
         src: "str",
@@ -2788,6 +2819,13 @@ export const EVENTS = {
         php: "num",
         /** The nearest seen enemy hero's distance to the stand or meet point. */
         se: "num",
+        /** The camp as the puller's record knows it (PullJob Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
+         *  set it) or `rules` (the spawn rule or a stack's unseen set since), rage seconds since the last look that set it. */
+        rn: "num",
+        rsrc: "str",
+        rage: "num",
+        /** Of rn, the neutrals last seen whose handles still read alive (whether a neutral dying in fog reads dead is not known). */
+        rh: "num",
         // Slice pull-gate (Decision 06/11/2026): the pull trigger's inputs, from the lane with the pulled wave gone (LanePush
         // WaveGoneFrom): pa the clash's distance from our T1 PullJob ArriveAfter s after the slot (wanted past tgt + WantPast),
         // ap ep the HP of our and their creeps in lane before that pair of waves (wanted with ep <= PowerRatio x ap).

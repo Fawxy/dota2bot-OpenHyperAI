@@ -31,7 +31,9 @@ export const DEFAULT_STACK_SEC: Record<CampType, number> = { small: 54.5, medium
 export const CAMP_DATA: CampDataEntry[] = [
     { key: "radiant_safe_small", team: 2, type: "small", laneKind: "safe", pullAggroSec: [15, 45], source: "seed" },
     { key: "dire_safe_small", team: 3, type: "small", laneKind: "safe", pullAggroSec: [15, 45], source: "seed" },
-    { key: "radiant_safe_large", team: 2, type: "large", laneKind: "safe", pullAggroSec: [18, 48], source: "seed" },
+    // 7.41 moved the safe-lane tier-one towers off their pull camps: this one stands 2,688 from the bot T1 (ev=pull_camp_seed,
+    // pullstack1), past the default 2,500, so it was never resolved.
+    { key: "radiant_safe_large", team: 2, type: "large", laneKind: "safe", maxTowerDist: 2800, pullAggroSec: [18, 48], source: "seed" },
     { key: "dire_safe_large", team: 3, type: "large", laneKind: "safe", pullAggroSec: [18, 48], source: "seed" },
     // 7.41 map: the off lane pulls the enemy's hard camp beside their safe-lane T1 (evil_1 / good_2, ~2550 / ~2200 from our
     // off-lane T1). Our own hard camp behind the off-lane T2 (good_13 / evil_7) is 12-20 s away (console.9055874680

@@ -166,10 +166,10 @@ Customize.Humaniser = {
 -- RuneDetour (decider row, doctrine D26): a hero of ours out of its lane takes its own jungle's live bounty when the path by it adds
 -- about 12 s or less (rune_detour). Off: the pass is logged as a shadow (ev=choice kind=rune_detour src=shadow) and stock plays.
 -- On by default: provisional (plan s5's small row), read at the next checkpoint batch and deleted there if not above zero.
--- SupportPull (slice support-lane): pos4/5 pull our wave into the lane's first pull camp when the lane push reading wants it
--- (hosted by the job chooser, needs JobChooser). Off: no pull.
--- SupportPullFarm (slice support-pull-farm): with SupportPull and JobChooser on, the support that pulled clears the neutrals the
--- wave left on the camp when the site is safe, and gives the camp up to a core of ours standing on it. Off: it walks back to lane.
+-- SupportPull (doctrine D17): the lane's pos5 (else pos4) pulls our whole wave into the lane's first pull camp when the pull's
+-- forecast of the lane wants it and the puller's record of the camp holds 6 neutrals, and stacks that camp in a minute the record
+-- is under it (families proposal s5); two rows of the decider (needs no other switch). Off: no pull or stack, both logged as shadows. On by default (it beat the reference arm,
+-- oha-pull-row's batch pullstack1).
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- Sustain (D6, sustain design steps 3-5): a held laner's heal and mana items, its walk home, its regen purchases and their
@@ -184,7 +184,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = false, SupportPullFarm = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
@@ -193,7 +193,9 @@ Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false
 -- lane or lane-only, the reps and the forced context; dotactl --drill <name> sets it; drills replaced the old Solo,
 -- StackEvery and LaneOnly knobs). StackFar: no 25 s away skip (slice double-stack: execution apart from getting there;
 -- scenario and drill games only; drill stack implies it).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "" }
+-- PullCamp (camp type, "" = off): the pull takes its lane's first pull camp of this type, not the first (a rig's knob: "large" is the
+-- hard camp).
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", PullCamp = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Ours.Sustain"] = false, ... }. Loaded last so it wins; a missing file is the normal case.

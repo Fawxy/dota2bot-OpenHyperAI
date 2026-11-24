@@ -900,6 +900,7 @@
    "host": "num",
    "hit": "num",
    "cut": "str",
+   "hp": "num",
    "ex": "num",
    "took": "num",
    "gj": "num"
@@ -1694,6 +1695,13 @@
    "fd": "num",
    "mi": "num"
   },
+  "pull_camp_seed": {
+   "key": "str",
+   "idx": "num",
+   "td": "num",
+   "ld": "num",
+   "ok": "num"
+  },
   "pull_job": {
    "pid": "num",
    "pos": "num",
@@ -1721,6 +1729,10 @@
    "cdmg": "num",
    "php": "num",
    "se": "num",
+   "rn": "num",
+   "rsrc": "str",
+   "rage": "num",
+   "rh": "num",
    "sh": "num",
    "lv": "num",
    "s0": "num",
@@ -1738,7 +1750,13 @@
    "wa": "num",
    "nm": "num",
    "shs": "num",
-   "shh": "num"
+   "shh": "num",
+   "st": "str",
+   "ss": "num",
+   "sdt": "num",
+   "sdk": "num",
+   "slt": "num",
+   "slk": "num"
   },
   "pull_watch": {
    "pid": "num",
@@ -1796,6 +1814,10 @@
    "cdmg": "num",
    "php": "num",
    "se": "num",
+   "rn": "num",
+   "rsrc": "str",
+   "rage": "num",
+   "rh": "num",
    "pa": "num",
    "ap": "num",
    "ep": "num",
@@ -2708,11 +2730,16 @@
    "res": "text",
    "label": "text"
   },
+  "ev_pull_camp_seed": {
+   "key": "text"
+  },
   "ev_pull_job": {
    "res": "text",
    "why": "text",
    "label": "text",
-   "hr": "text"
+   "rsrc": "text",
+   "hr": "text",
+   "st": "text"
   },
   "ev_pull_watch": {
    "ph": "text",
@@ -2726,6 +2753,7 @@
    "why": "text",
    "src": "text",
    "st": "text",
+   "rsrc": "text",
    "rule": "text",
    "win": "text",
    "top": "text",

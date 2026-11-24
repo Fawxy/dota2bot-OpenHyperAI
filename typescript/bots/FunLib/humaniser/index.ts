@@ -19,7 +19,6 @@ import * as RuneJob from "bots/FunLib/humaniser/rune_job";
 import * as RunePickup from "bots/FunLib/humaniser/rune_pickup";
 import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
-import * as PullFarm from "bots/FunLib/humaniser/pull_farm";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
@@ -28,7 +27,7 @@ import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, RuneDetour, PullFarm, Chooser, Decider, Overrides, Drill, ChoiceShadow };
+export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, RuneDetour, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -80,6 +79,7 @@ const steps = {
     },
     landing: SafeGather.Tick,
     pullShadow: PullJob.Shadow,
+    stackShadow: StackJob.Shadow,
     runeDetourShadow: RuneDetour.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
@@ -148,6 +148,8 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.sustain, bot);
     // The pull's trigger where the pull is switched off (ev=choice kind=pull src=shadow): reads and logs, no order.
     pcall(steps.pullShadow, bot);
+    // The stack row's minute where the group is switched off (ev=choice kind=stack src=shadow): reads and logs, no order.
+    pcall(steps.stackShadow, bot);
     // The rune detour's pass where the row is switched off (ev=choice kind=rune_detour src=shadow): reads and logs, no order.
     pcall(steps.runeDetourShadow, bot);
     pcall(steps.probe, bot);
@@ -169,7 +171,7 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("StackJob", StackJob, { Wants: no, Step: no, End: none, Running: no, NoteIdleHeld: none, NoteHit: none, Benched: no, Bench: no, Minutes: () => StackJob.SETTINGS.TriggerMinutes });
     // A drill error plays the hero as in a normal game (no bench, no statue, not lane-only).
     Telemetry.GuardModule("Drill", Drill, { Tick: none, Held: no, Casts: no, Hold: no, LaneOnly: no, InLane: no, InLaneDenies: no, ForbidsItem: no, ForbidsCast: no, IdleStatue: no, Owns: no, ForcedJob: none, ForcedAt: none, RoleOf: () => "play", Implied: none, RepTimes: none, RepAt: zero, Name: none, Active: none });
-    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
+    Telemetry.GuardModule("Chooser", Chooser, { RunningJobName: none, Decide: none, FarmDesire: zero, FarmThink: no, Abort: none, HoldsRun: no, PullsNeutrals: no, HoldsIdle: no, HoldsCasts: no, Benched: no, Bench: no });
     // An error hands the hero to OHA's retreat desire for that call (undefined) and a Think that issues nothing.
     // Telemetry only: an error drops the purchase's ev=sustain_buy line.
     Telemetry.GuardModule("SustainGather", SustainGather, { Bought: none });
@@ -183,7 +185,17 @@ if (Telemetry.GuardsEnabled()) {
 }
 Telemetry.PerfDeepInstall();
 // The decider's rows, in doctrine order. A row's error yields the hero to stock for that call (not applying; finished).
-if (Decider.ROWS.indexOf(RuneDetour.ROW) < 0) {
+if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
+    if (Telemetry.GuardsEnabled()) {
+        PullJob.ROW.applies = Telemetry.Guard("PullRow.applies", PullJob.ROW.applies, no);
+        PullJob.ROW.step = Telemetry.Guard("PullRow.step", PullJob.ROW.step, () => true);
+    }
+    Decider.ROWS.push(PullJob.ROW);
+    if (Telemetry.GuardsEnabled()) {
+        StackJob.ROW.applies = Telemetry.Guard("StackRow.applies", StackJob.ROW.applies, no);
+        StackJob.ROW.step = Telemetry.Guard("StackRow.step", StackJob.ROW.step, () => true);
+    }
+    Decider.ROWS.push(StackJob.ROW);
     if (Telemetry.GuardsEnabled()) {
         RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no);
         RuneDetour.ROW.step = Telemetry.Guard("RuneDetourRow.step", RuneDetour.ROW.step, () => true);

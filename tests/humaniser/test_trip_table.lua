@@ -6,7 +6,7 @@ local Table = require("bots/FunLib/humaniser/states/trip_table")
 
 -- The contract: each position's order written out. A re-ranking shows up as a diff of these lists.
 do
-	local want = { [1] = "", [2] = "", [3] = "", [4] = "rune,stack,pull,pullfarm", [5] = "stack,pull,pullfarm,rune" }
+	local want = { [1] = "", [2] = "", [3] = "", [4] = "rune,stack,pull", [5] = "stack,pull,rune" }
 	for pos = 1, 5 do
 		local order = table.concat(Table.Order(pos), ",")
 		check("order, position " .. pos, order == want[pos], order)
@@ -27,7 +27,6 @@ do
 		return table.concat(out, ",")
 	end
 	check("pull: positions 4-5", who("pull") == "4,5", who("pull"))
-	check("pullfarm: positions 4-5", who("pullfarm") == "4,5", who("pullfarm"))
 	check("rune: positions 4-5", who("rune") == "4,5", who("rune"))
 	check("stack: positions 4-5", who("stack") == "4,5", who("stack"))
 end

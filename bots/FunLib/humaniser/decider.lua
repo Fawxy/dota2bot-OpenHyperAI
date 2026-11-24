@@ -34,7 +34,7 @@ ____exports.CAP = 0.44
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
---- Doctrine order: the first row that applies holds. Empty: the pass-through.
+--- Doctrine order: the first row that applies holds. Empty: the pass-through. index.ts fills it, so no row is imported here.
 ____exports.ROWS = {}
 --- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
 -- and counting it only when fresh (the round after a yield) would make the hold flicker every other round.

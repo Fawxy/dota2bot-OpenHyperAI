@@ -60,7 +60,7 @@ export const CAP = 0.44;
  */
 const UNCAPPED: Record<string, boolean> = { retreat: true, attack: true, farm: true };
 
-/** Doctrine order: the first row that applies holds. Empty: the pass-through. */
+/** Doctrine order: the first row that applies holds. Empty: the pass-through. index.ts fills it, so no row is imported here. */
 export const ROWS: Row[] = [];
 
 /**

@@ -80,10 +80,15 @@ export interface Entry {
      *  the lane (a pull drill's puller between pulls). Only the forced job is asked (`ForcedJob`). */
     castIdle?: "statue";
     /** The rep clock (DotaTime seconds): a rep every `every` from `from`; with `control` n, every nth rep withholds the
-     *  input (`input=off`, the control in the same game). */
-    rep: { every: number; from: number; control?: number };
+     *  input (`input=off`, the control in the same game); with `on` n, only reps 1, n + 1, 2n + 1 ... carry it and the
+     *  rest withhold it (room for a forced action's effect to play out before the next). */
+    rep: { every: number; from: number; control?: number; on?: number };
     /** The context the drill forces each rep (`RepTimes(context)`); absent when reps are natural (each lane wave). */
     forces?: string;
+    /** Chooser jobs an idle-statue cast may run beside its forced one (`AllowsJob`). */
+    also?: string[];
+    /** The stack job's minutes (its hit at x:5x), and that it stacks the lane's pull camp, not the nearest (StackJob). */
+    stackMinutes?: number[];
     /** Overrides keys the drill implies (`Overrides.Get` falls back to them; an explicit `--set` wins). */
     overrides?: Record<string, unknown>;
     /** A rig (drills from 11/11/2026): each rep is setup, ready, release (see `Rig`). */
@@ -488,6 +493,56 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, control: 2 },
         forces: "pull",
     },
+    // The pull rig with time for the pulled wave's fight to end (families proposal s5 step 2): only every other minute's wave is
+    // pulled (1:00, 3:00 ...), so the camp is reset in the minute between (`--every "2:00@2:45 ent_fire npc_dota_creep_neutral
+    // Kill" --every "2:00@2:52 dota_spawn_neutrals"`, set with `--set Overrides.Drill=pull-long`): in `pull` the :45 kill cut
+    // the fight in 7 of 8 pulls with 3 to 5 of our creeps still at the camp (pullrig2, 23/11/2026). The :30 waves are the
+    // control as in `pull`; the unpulled minute wave between walks past a camp still fighting. Both pos5s pull (user
+    // 24/11/2026): the safe lanes do not meet, and Dire's small camp (697 from its lane, Radiant's 1,198) is a second camp, read
+    // apart (`q @pull_rig --p team=3`).
+    "pull-long": {
+        note: "both pos5s pull every other minute's wave in their safe lanes (1:00, 3:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast: { r: [5], d: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 4 },
+        forces: "pull",
+    },
+    // The stacked pull's rig (families proposal s5 case 3): both pos5s pull every third minute's wave (1:00, 4:00 ...), so the
+    // camp is killed at :45 of the minute after a pull, refilled by the next minute's own spawn, and stacked over the spawn
+    // before the pulled wave (`rig_stack_minute`, bots/rigs/setters.lua; `dota_spawn_neutrals` refills no camp killed that
+    // minute, pullstk3). The 1:00 pull meets an unstacked camp.
+    "pull-stack": {
+        note: "both pos5s pull every third minute's wave in their safe lanes (1:00, 4:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast: { r: [5], d: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 6 },
+        forces: "pull",
+    },
+    // The stacked pull's chain (families proposal s5 case 3, round 2): as pull-stack, but the pos5s' own stack job (switch
+    // Ours.StackExecute) stacks the lane's pull camp at 3:5x, 6:5x and 9:5x, ahead of each pulled wave, instead of the setter.
+    "pull-stack-verb": {
+        note: "both pos5s stack their safe lane's pull camp the minute before each pulled wave (3:5x, 6:5x ...) and pull every third minute's wave (1:00, 4:00 ...), statues otherwise; everyone else benched",
+        cast: { r: [5], d: [5] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 6 },
+        forces: "pull",
+        also: ["stack"],
+        stackMinutes: [3, 6, 9, 12],
+    },
+    // The stack-then-pull group's rig (families proposal s5, with an enemy hero): both pos5s play their safe lane with the
+    // decider's stack and pull rows (Ours.SupportPull), nothing forced: the camp is stacked while the
+    // pos5's record of it is under the bar and pulled into a wanted slot once strong. Both pos1s and the enemy pos3s play the
+    // two safe lanes in-lane; everyone else benched.
+    "pull-stack-row": {
+        note: "both pos5s play their safe lane with the stack and pull rows; both pos1s and the enemy pos3s play those lanes in-lane; everyone else benched",
+        cast: { r: [5], d: [5] },
+        inLane: { r: [1, 3], d: [1, 3] },
+        others: "bench",
+        rep: { every: 60, from: 60 },
+    },
     // The statue steps (lane controller "Drills" steps): the same drills with the Dire laners that face the cast standing in
     // their lane as statues (never attack, cast or use items), so the lane has an enemy that is there but does not act.
     // Radiant pos5 pulls in the Radiant safe lane, which Dire's offlane pos3 and pos4 hold.
@@ -718,6 +773,12 @@ export function IdleStatue(bot: Unit): boolean {
 export function ForcedJob(bot: Unit): string | undefined {
     const d = Active();
     return d !== undefined && d.castIdle !== undefined && RoleOf(bot) === "cast" ? d.forces : undefined;
+}
+
+/** Whether a cast restricted to its forced job (`ForcedJob`) may run the chooser job `name` too. */
+export function AllowsJob(bot: Unit, name: string): boolean {
+    const only = ForcedJob(bot);
+    return only === undefined || only === name || (Active()?.also ?? []).includes(name);
 }
 
 /** For a context the drill forces: whether the rep that `t` falls in carries the input (`on`), withholds it (`off`, a
@@ -2376,6 +2437,7 @@ export function RepTimes(context: string): number[] | undefined {
 }
 
 function controlRep(d: Entry, n: number): boolean {
+    if (d.rep.on !== undefined && d.rep.on > 0) return (n - 1) % d.rep.on !== 0;
     return d.rep.control !== undefined && d.rep.control > 0 && n % d.rep.control === 0;
 }
 

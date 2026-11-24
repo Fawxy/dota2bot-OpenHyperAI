@@ -8,7 +8,7 @@
  */
 import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Team, Unit, Vector } from "bots/ts_libs/dota";
+import { BotMode, Lane, Team, Unit, Vector } from "bots/ts_libs/dota";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as CampClear from "bots/FunLib/humaniser/camp_clear";
@@ -17,6 +17,9 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
+import type * as Decider from "bots/FunLib/humaniser/decider";
+import * as PullJob from "bots/FunLib/humaniser/pull_job";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as Stacking from "bots/FunLib/humaniser/stacking";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
@@ -85,6 +88,9 @@ export const SETTINGS = {
     PileEarlier: 0.5,
     PileSize: 4,
     PileEarlierMax: 1.5,
+    /** The stack row's start: the hero's HP at least this share of its max (the chooser's MinHpFraction, the stack job's
+     *  low-health skip: pullchain1's one missed stack in each arm). */
+    RowMinHp: 0.5,
 };
 
 // Stack diagnostics (scenario and drill games only, never a verdict). The solo harness (one pos5 alone, an attempt every
@@ -120,6 +126,8 @@ function awayMax(): number {
 
 /** The minutes with an attempt: TriggerMinutes, or the rep minutes of a drill that forces the stack (drill `stack`). */
 export function Minutes(): number[] {
+    const fixed = Drill.Active()?.stackMinutes;
+    if (fixed !== undefined) return fixed;
     const reps = Drill.RepTimes("stack");
     if (reps === undefined) return SETTINGS.TriggerMinutes;
     return reps.map(t => math.floor(t / 60));
@@ -210,6 +218,8 @@ export interface Attempt {
     first?: FirstCamp;
     /** As FirstCamp.early, for camp B. */
     early?: number;
+    /** Started by the decider's stack row (not the chooser). */
+    row?: boolean;
 }
 
 /** Camp A of a double stack, hit before the attempt's own camp (B). */
@@ -529,6 +539,9 @@ export function Stand(sp: Camps.Spawner, data: Camps.CampJobData): Vector {
     return Camps.StandPoint(sp, side, LaneConfig.Settings().Radii.StandOffset);
 }
 const gateWhy: Record<number, string | undefined> = {};
+/** The stack row's minutes decided (by player, then minute) and why its start is held this minute. */
+const rowMinutes: Record<number, Record<number, boolean>> = {};
+const rowGate: Record<number, string | undefined> = {};
 const running: Record<number, Attempt | undefined> = {};
 let campsLogged = false;
 
@@ -588,11 +601,13 @@ export function ResetCache(): void {
     for (const k in running) delete running[k];
     for (const k in settling) delete settling[k];
     for (const k in exits) delete exits[k];
+    for (const k in rowMinutes) delete rowMinutes[k];
+    for (const k in rowGate) delete rowGate[k];
 }
 
 /** The switch is on and `bot` is position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`). */
 export function Applies(bot: Unit): boolean {
-    if (!Ours.On("StackExecute")) return false;
+    if (!Ours.On("StackExecute") || rowOn(bot)) return false;
     const pos = LaneConfig.PositionOf(bot);
     return TripTable.Does("stack", pos) && (pos !== 4 || Ours.On("DoubleStack"));
 }
@@ -610,6 +625,14 @@ export function Candidates(team: number): Camps.CampJobData[] {
         if (data !== undefined && data.stack !== undefined) out.push(data);
     }
     return out;
+}
+
+/** The lane's first pull camp as a stack camp, with its stand point (a drill with `stackMinutes`: the stacked pull's rig). */
+function pullCamp(bot: Unit): LuaMultiReturn<[Camps.CampJobData | undefined, Vector | undefined]> {
+    const lane = bot.GetAssignedLane() as Lane;
+    const c = Camps.PullCampsFor(bot.GetTeam(), lane)[0];
+    const data = c !== undefined ? Candidates(bot.GetTeam()).find((d) => d.campIdx === c.campIdx) : undefined;
+    return $multi(data, data !== undefined ? Stand(Camps.SpawnerByIdx(data.campIdx)!, data) : undefined);
 }
 
 /** The candidate whose stand point is nearest `loc`, with that stand point. */
@@ -1019,6 +1042,11 @@ function report(bot: Unit, a: Attempt): void {
     const res = !landed ? "failed" : (a.fresh ?? 0) > 0 ? "stacked" : a.chk === undefined ? "unseen" : "not_stacked";
     // Before the line, so `scount` is what the core camp's price and the camp cap read from now on.
     recordOutcome(a.campIdx, a.minute, res);
+    if (a.row === true && sp !== undefined) {
+        // The row's stack tells the puller's record what the camp holds now: the set it pulled out, and the spawn read or assumed.
+        if (landed) PullJob.NoteStack(sp, a.campUnits ?? [], res === "stacked" ? a.fresh : res === "not_stacked" ? 0 : undefined);
+        else PullJob.Hold(sp, 0);
+    }
     if (a.first !== undefined) recordOutcome(a.first.campIdx, a.minute, firstRes(a.first));
     log(bot, a.minute, [
         ["res", res],
@@ -1225,6 +1253,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
         const pair = job?.[1];
         let [data, stand] = override("Sweep") === true ? SweepNext(bot) : Nearest(bot.GetTeam(), bot.GetLocation());
         if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
+        if (Drill.Active()?.stackMinutes !== undefined) [data, stand] = pullCamp(bot);
         const skip = (why: string) => {
             handled[pid][minute] = true;
             gateWhy[pid] = undefined;
@@ -1318,6 +1347,7 @@ export function CalendarEntries(bot: Unit, now: number): { kind: "stack"; key: n
         const pos4 = LaneConfig.PositionOf(bot) === 4;
         const job = pos4 ? Pos4For(bot.GetTeam(), minute) : undefined;
         if (pos4) [data, stand] = job !== undefined ? [job[0], Stand(Camps.SpawnerByIdx(job[0].campIdx)!, job[0])] : [undefined, undefined];
+        if (Drill.Active()?.stackMinutes !== undefined) [data, stand] = pullCamp(bot);
         if (data === undefined || stand === undefined) continue;
         const walk = travel(bot, stand);
         let leave = minute * 60 + SingleSec(data) - walk - SETTINGS.Lead;
@@ -1425,3 +1455,148 @@ export function NoteIdleHeld(bot: Unit): void {
     const a = running[bot.GetPlayerID()];
     if (a !== undefined) a.idle = (a.idle ?? 0) + 1;
 }
+
+/**
+ * The stack row (families proposal s5, lanecamp's stack-then-pull group; switch Ours.SupportPull, the pull's: one group, one switch):
+ * the lane's puller stacks its pull camp whenever its record of the camp (PullJob Known) is under the pull's bar, so the
+ * pull, which starts only into a strong camp, takes the wave. The verb, its `ev=stack` line and the outcome read are the
+ * stack job's; the chooser host, the fixed minutes, the double stack and the carry clear are not used. One `ev=choice
+ * kind=stack` line per minute from the first spawn's, at the leave time (want: the camp holds neutrals, under the bar).
+ */
+function rowOn(bot: Unit): boolean {
+    return Ours.On("SupportPull") && PullJob.IsPuller(bot) && !Drill.Held(bot);
+}
+
+const ROW_HOST = BotMode.Farm;
+
+interface RowSlot {
+    minute: number;
+    data: Camps.CampJobData;
+    sp: Camps.Spawner;
+    stand: Vector;
+    aggroAt: number;
+    walk: number;
+}
+
+/** This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided. */
+function rowSlot(bot: Unit, now: number): RowSlot | undefined {
+    const minute = math.floor(now / GameRules.NEUTRAL_EVERY);
+    // Before the first spawn's minute the camp holds nothing to stack (pullstackrow1: pregame lines at minutes -2 and -1).
+    if (minute * GameRules.NEUTRAL_EVERY < GameRules.NEUTRAL_FIRST) return undefined;
+    if (rowMinutes[bot.GetPlayerID()]?.[minute] === true || now < minute * GameRules.NEUTRAL_EVERY + SETTINGS.LookFrom) return undefined;
+    const sp = PullJob.SpawnerFor(bot);
+    const data = sp !== undefined ? Candidates(bot.GetTeam()).find((d) => d.campIdx === sp.idx) : undefined;
+    if (sp === undefined || data === undefined) return undefined;
+    const stand = Stand(sp, data);
+    const aggroAt = minute * 60 + SingleSec(data);
+    const walk = travel(bot, stand);
+    if (now < aggroAt - walk - SETTINGS.Lead) return undefined;
+    return { minute, data, sp, stand, aggroAt, walk };
+}
+
+function rowLine(bot: Unit, slot: RowSlot, go: boolean, want: boolean, why: string | undefined, known: PullJob.CampKnown, src = "own"): void {
+    (rowMinutes[bot.GetPlayerID()] ??= {})[slot.minute] = true;
+    rowGate[bot.GetPlayerID()] = undefined;
+    Telemetry.Event("choice", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", "stack"],
+        ["go", go ? 1 : 0],
+        ["want", want ? 1 : 0],
+        ["why", why],
+        ["src", src],
+        ["lane", bot.GetAssignedLane()],
+        ["slot", math.floor(slot.aggroAt * 10) / 10],
+        ["rn", known.n],
+        ["rsrc", known.src],
+        ["rage", known.age],
+        ["rh", known.held],
+    ]);
+}
+
+/** Why the row may not start now: the shared danger read, a hero Valve's attack or a retreat holds, low HP, a cast, channel or queued action. */
+function rowBlock(bot: Unit): string | undefined {
+    if (SafeGather.At(bot, bot.GetLocation(), { who: "stack_start" }).level === "deadly") return "enemy-near";
+    const mode = bot.GetActiveMode();
+    if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
+    if (bot.GetHealth() < bot.GetMaxHealth() * SETTINGS.RowMinHp) return "low-hp";
+    if (bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility()) return "acting";
+    return undefined;
+}
+
+/** A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark. */
+function rowWants(k: PullJob.CampKnown): boolean {
+    return k.n > 0 && k.n < PullJob.SETTINGS.StrongAt;
+}
+
+/** Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`. */
+export function Shadow(bot: Unit): void {
+    if (!Telemetry.IsEnabled() || !PullJob.IsPuller(bot) || rowOn(bot) || Drill.Held(bot)) return;
+    if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
+    const slot = rowSlot(bot, DotaTime());
+    if (slot === undefined) return;
+    const known = PullJob.Known(slot.sp);
+    rowLine(bot, slot, false, rowWants(known), "off", known, "shadow");
+}
+
+function rowApplies(bot: Unit): boolean {
+    if (!rowOn(bot)) return false;
+    const pid = bot.GetPlayerID();
+    readOutcome(bot);
+    Tasks.Tick(bot);
+    const cur = running[pid];
+    if (cur !== undefined) {
+        if (bot.WasRecentlyDamagedByAnyHero(3)) cur.hit = true;
+        track(bot, cur);
+        return true;
+    }
+    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    const now = DotaTime();
+    const slot = rowSlot(bot, now);
+    if (slot === undefined) return false;
+    const known = PullJob.Known(slot.sp);
+    if (!rowWants(known)) {
+        rowLine(bot, slot, false, false, known.n > 0 ? "strong" : "empty", known);
+        return false;
+    }
+    const why = rowBlock(bot);
+    if (now > slot.aggroAt - slot.walk - SETTINGS.MinSlack) {
+        rowLine(bot, slot, false, true, rowGate[pid] ?? why ?? "late", known);
+        return false;
+    }
+    if (why !== undefined) {
+        rowGate[pid] = why;
+        return false;
+    }
+    if (settling[pid] !== undefined) {
+        report(bot, settling[pid]!);
+        settling[pid] = undefined;
+    }
+    const a: Attempt = { minute: slot.minute, campIdx: slot.data.campIdx, type: slot.data.type, startedAt: now, host: ROW_HOST, row: true };
+    const plan = Plan(bot, slot.data, slot.stand, slot.minute, a);
+    const ok = Tasks.Start(bot, { name: "stack", host: ROW_HOST, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: (result) => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
+        body(bot, plan, a, ctx)
+    );
+    if (!ok) {
+        rowLine(bot, slot, false, true, "refused", known);
+        return false;
+    }
+    // Until the outcome read ends: the pulled set stands outside the box, so no look may count the camp.
+    PullJob.Hold(slot.sp, (slot.minute + 1) * 60 + SETTINGS.ReadUntil + 1);
+    rowLine(bot, slot, true, true, undefined, known);
+    running[pid] = a;
+    jobLine(bot, a, "start", "trigger");
+    return true;
+}
+
+/** The stack row's stack runs for this hero (the chooser's stack job does not count). */
+export function RowRunning(bot: Unit): boolean {
+    return running[bot.GetPlayerID()]?.row === true;
+}
+
+function rowStep(bot: Unit): boolean {
+    Tasks.Step(bot, ROW_HOST);
+    return running[bot.GetPlayerID()] === undefined;
+}
+
+/** The decider's row (registered in index.ts after the pull's). */
+export const ROW: Decider.Row = { name: "stack", applies: rowApplies, step: rowStep };

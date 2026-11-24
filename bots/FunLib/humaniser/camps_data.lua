@@ -23,6 +23,7 @@ ____exports.CAMP_DATA = {
         team = 2,
         type = "large",
         laneKind = "safe",
+        maxTowerDist = 2800,
         pullAggroSec = {18, 48},
         source = "seed"
     },

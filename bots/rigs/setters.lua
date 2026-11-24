@@ -132,4 +132,126 @@ Convars:RegisterCommand("rig_charges", function(_, item, n, team)
 	say(string.format("charges item=%s n=%s heroes=%d", tostring(item), tostring(n), #hs))
 end, "rig: set the charges of an item on every hero holding it", FCVAR_CHEAT)
 
+local function campNeutrals(c, r)
+	local out = {}
+	for _, u in ipairs(FindUnitsInRadius(DOTA_TEAM_NEUTRALS, c, nil, r, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC,
+		DOTA_UNIT_TARGET_FLAG_INVULNERABLE, 0, false)) do
+		if u:IsAlive() and u:GetTeamNumber() == DOTA_TEAM_NEUTRALS then table.insert(out, u) end
+	end
+	return out
+end
+
+-- A stack without a stacker, by the game's own minute spawn: from :59.0 of the coming minute to :00.6 the camp's neutrals
+-- are held out of its box, then left to walk home (the camp held 6 or 7 after it, pullstk6). Moving them out and forcing a
+-- spawn adds none: `dota_spawn_neutrals` only arms the next :00 spawn (pullstk1, pullstk3).
+-- The units held are those in the circle at :59.0, so a set stacked earlier goes out with them.
+-- The think runs on a hero: a plain `map dota` game has no game-mode entity to host it (GetGameModeEntity, pullstk2:
+-- "error in error handling" on every call).
+local function stackMinute(x, y, r, dx, dy)
+	local c = Vector(tonumber(x), tonumber(y), 0)
+	local off = Vector(tonumber(dx) or 0, tonumber(dy) or 800, 0)
+	r = tonumber(r) or 500
+	local now = GameRules:GetDOTATime(false, false)
+	local from = math.floor(now / 60) * 60 + 59
+	if now > from then from = from + 60 end
+	local held
+	local name = "rig_stack_" .. tostring(x) .. "_" .. tostring(y)
+	HeroList:GetAllHeroes()[1]:SetContextThink(name, function()
+		local t = GameRules:GetDOTATime(false, false)
+		if t < from then return 0.1 end
+		if held == nil then
+			held = campNeutrals(c, r)
+			local near, nd = 0, 1e9
+			for _, u in ipairs(campNeutrals(c, 2000)) do
+				near = near + 1
+				nd = math.min(nd, (u:GetAbsOrigin() - c):Length2D())
+			end
+			say(string.format("stack_minute x=%s y=%s t=%.2f in=%d within2000=%d nearest=%.0f", tostring(x), tostring(y), t, #held, near, nd))
+		end
+		if t > from + 1.6 then
+			say(string.format("stack_minute x=%s y=%s held=%d at=%.1f", tostring(x), tostring(y), #held, from))
+			return nil
+		end
+		for _, u in ipairs(held) do
+			if u:IsAlive() and (u:GetAbsOrigin() - c):Length2D() < 600 then FindClearSpaceForUnit(u, c + off, true) end
+		end
+		return 0.05
+	end, 0)
+	say(string.format("stack_minute armed x=%s y=%s from=%.0f", tostring(x), tostring(y), from))
+end
+
+Convars:RegisterCommand("rig_stack_minute", function(_, ...)
+	local ok, err = pcall(stackMinute, ...)
+	if not ok then say("stack_minute error " .. tostring(err)) end
+end, "rig: hold a camp's neutrals out of its box over the coming minute's spawn", FCVAR_CHEAT)
+
+Convars:RegisterCommand("rig_neutrals", function(_, x, y, r)
+	local us = campNeutrals(Vector(tonumber(x), tonumber(y), 0), tonumber(r) or 500)
+	local names = {}
+	for _, u in ipairs(us) do table.insert(names, (u:GetUnitName():gsub("npc_dota_neutral_", ""))) end
+	say(string.format("neutrals x=%s y=%s t=%.1f n=%d %s", tostring(x), tostring(y), GameRules:GetDOTATime(false, false), #us,
+		table.concat(names, ",")))
+end, "rig: count the live neutrals in a circle", FCVAR_CHEAT)
+
+-- A camp's watch for the stacked pull's rig (families proposal s5 case 3, round 3), one think per camp for the rest of the
+-- game: at :59.5 and :00.5 the neutrals in the box circle with their HP shares (`watch_min`: what a stack meets and makes);
+-- each lane creep of `team` that came within `r` of the camp and leaves past r + 300 alive, with its HP share (`watch_off`:
+-- the pulled wave's survivors walking back); and when the last of that team's creeps leaves or dies, the neutrals still
+-- alive within r with their HP shares (`watch_end`).
+local function hps(us)
+	local t = {}
+	for _, u in ipairs(us) do table.insert(t, string.format("%.2f", u:GetHealth() / math.max(1, u:GetMaxHealth()))) end
+	return table.concat(t, ",")
+end
+
+local function laneCreeps(team, c, r)
+	local out = {}
+	for _, u in ipairs(FindUnitsInRadius(team, c, nil, r, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC, 0, 0, false)) do
+		if u:IsAlive() and u:GetClassname() == "npc_dota_creep_lane" then table.insert(out, u) end
+	end
+	return out
+end
+
+Convars:RegisterCommand("rig_camp_watch", function(_, x, y, team, r, box)
+	local ok, err = pcall(function()
+		local c = Vector(tonumber(x), tonumber(y), 0)
+		team = tonumber(team)
+		r = tonumber(r) or 900
+		box = tonumber(box) or 500
+		local tag = string.format("x=%s y=%s", tostring(x), tostring(y))
+		local inside, fighting = {}, false
+		local lastMark = -1
+		HeroList:GetAllHeroes()[1]:SetContextThink("rig_watch_" .. tostring(x) .. "_" .. tostring(y), function()
+			local t = GameRules:GetDOTATime(false, false)
+			local sec = t % 60
+			local mark = math.floor(t * 2 + 0.5)
+			if (sec >= 59.5 or sec < 0.75) and mark ~= lastMark and (math.abs(sec - 59.5) < 0.2 or math.abs(sec - 0.5) < 0.2) then
+				lastMark = mark
+				local ns = campNeutrals(c, box)
+				say(string.format("watch_min %s t=%.1f n=%d hp=%s", tag, t, #ns, hps(ns)))
+			end
+			local near = laneCreeps(team, c, r)
+			for _, u in ipairs(near) do inside[u:entindex()] = u end
+			for id, u in pairs(inside) do
+				if u:IsNull() or not u:IsAlive() then
+					inside[id] = nil
+				elseif (u:GetAbsOrigin() - c):Length2D() > r + 300 then
+					say(string.format("watch_off %s t=%.1f hp=%.2f", tag, t, u:GetHealth() / math.max(1, u:GetMaxHealth())))
+					inside[id] = nil
+				end
+			end
+			local any = next(inside) ~= nil
+			if any then fighting = true end
+			if fighting and not any then
+				fighting = false
+				local ns = campNeutrals(c, r)
+				say(string.format("watch_end %s t=%.1f n=%d hp=%s", tag, t, #ns, hps(ns)))
+			end
+			return 0.1
+		end, 0)
+		say(string.format("watch armed %s team=%d r=%d", tag, team, r))
+	end)
+	if not ok then say("watch error " .. tostring(err)) end
+end, "rig: watch a camp for the stacked pull's rig", FCVAR_CHEAT)
+
 say("setters registered")
