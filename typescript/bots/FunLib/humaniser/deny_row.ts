@@ -1,7 +1,8 @@
 /**
- * The support's solo deny (doctrine D12, switch Ours.SupportDeny), a row of the decider (plan s3; families proposal s6, case
- * 1): a side-lane pos 4/5 denies any of our lane creeps the reach rule (`lane_offers.Reachable`) puts in its reach. No read
- * of what its core is hitting and no pre-positioning: the offers are the engine's `laneTargets` as they stand.
+ * The deny (doctrine D12, switch Ours.Deny), a row of the decider (plan s3; families proposal s6, case 1): a hero denies any of
+ * our lane creeps the reach rule (`lane_offers.Reachable`) puts in its reach. Which positions may is `states/trip_table`'s
+ * row `deny` (pos 4 and 5 for now; cores are held back until the row's worth and the claim exist). No pre-positioning: the
+ * offers are the engine's `laneTargets` as they stand.
  *
  * The row latches its attempt (user 24/11/2026): `applies` is true while a started deny's task runs, whatever the offer now
  * says, so a damage estimate that changes mid-wind-up does not drop the hold and let stock cancel the swing. The task is
@@ -13,13 +14,14 @@
  * gives the land rate (`done` per started) with no hlog change.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Lane, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as Ours from "bots/FunLib/humaniser/ours";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -42,13 +44,9 @@ export function ResetCache(): void {
     for (const t of [running, logged] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
-/** A pos 4 or 5 assigned to a side lane, whatever the switches say: the hero the line's reader names. */
-export function IsSideSupport(bot: Unit): boolean {
-    if (!bot.IsBot()) return false;
-    const pos = LaneConfig.PositionOf(bot);
-    if (pos !== 4 && pos !== 5) return false;
-    const lane = bot.GetAssignedLane();
-    return lane === Lane.Top || lane === Lane.Bot;
+/** A bot whose position the trip table lets deny, whatever the switches say: the hero the line's reader names. */
+export function MayDeny(bot: Unit): boolean {
+    return bot.IsBot() && TripTable.Does("deny", LaneConfig.PositionOf(bot));
 }
 
 /** OHA's own action holds the hero (pull_job's and rune_job's check: a queued TP, a cast or channel). */
@@ -134,12 +132,12 @@ function finish(bot: Unit, r: Lib.Result): void {
 }
 
 function rowOn(bot: Unit): boolean {
-    return Ours.On("SupportDeny") && IsSideSupport(bot) && !Drill.Held(bot);
+    return Ours.On("Deny") && MayDeny(bot) && !Drill.Held(bot);
 }
 
 /** The shadow (switch off, or the other team under Ours.Team): the same offer, logged once per creep, nothing ordered. */
 function shadow(bot: Unit): void {
-    if (!Telemetry.IsEnabled() || !IsSideSupport(bot) || Drill.Held(bot)) return;
+    if (!Telemetry.IsEnabled() || !MayDeny(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
     const t = Offer(bot);
     if (t === undefined) return;

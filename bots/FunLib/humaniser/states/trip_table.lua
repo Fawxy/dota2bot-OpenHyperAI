@@ -39,6 +39,16 @@ ____exports.TRIPS = {
             20,
             20
         )
+    },
+    {
+        kind = "deny",
+        rank = by(
+            nil,
+            nil,
+            nil,
+            40,
+            40
+        )
     }
 }
 local function rowOf(kind)

@@ -23,7 +23,7 @@ import * as RunePlan from "bots/FunLib/humaniser/rune_plan";
 import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
-import * as SupportDeny from "bots/FunLib/humaniser/support_deny";
+import * as DenyRow from "bots/FunLib/humaniser/deny_row";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
@@ -212,12 +212,12 @@ if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
     }
     Decider.ROWS.push(RuneDetour.ROW);
 }
-if (Decider.ROWS.indexOf(SupportDeny.ROW) < 0) {
+if (Decider.ROWS.indexOf(DenyRow.ROW) < 0) {
     if (Telemetry.GuardsEnabled()) {
-        SupportDeny.ROW.applies = Telemetry.Guard("DenyRow.applies", SupportDeny.ROW.applies, no);
-        SupportDeny.ROW.step = Telemetry.Guard("DenyRow.step", SupportDeny.ROW.step, () => true);
+        DenyRow.ROW.applies = Telemetry.Guard("DenyRow.applies", DenyRow.ROW.applies, no);
+        DenyRow.ROW.step = Telemetry.Guard("DenyRow.step", DenyRow.ROW.step, () => true);
     }
-    Decider.ROWS.push(SupportDeny.ROW);
+    Decider.ROWS.push(DenyRow.ROW);
 }
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 

@@ -2851,7 +2851,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `deny` (SupportDeny: one line per creep offered to a side-lane support, `slot` the second it was first offered; `why` `off`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `deny` (deny_row, Ours.Deny: one line per creep offered to a hero the trip table lets deny, `slot` the second it was first offered; `why` `off`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -3002,7 +3002,7 @@ export const EVENTS = {
         d_side_shop: "mixed",
         /** kind=shadow: as `d_laning`, for mode_outpost_generic. */
         d_outpost: "mixed",
-        /** kind=deny (SupportDeny): the offered creep's laneTargets facts at the line: seconds to walk into range, until a swing would be due, and until the others kill it (-1: no one is on it). */
+        /** kind=deny (deny_row): the offered creep's laneTargets facts at the line: seconds to walk into range, until a swing would be due, and until the others kill it (-1: no one is on it). */
         walk: "num",
         due: "num",
         dies: "num",

@@ -31,9 +31,9 @@ export const DEFAULTS = {
      *  stack-then-pull group). Off: both are logged as shadows and stock plays. On: it beat the reference arm on its line
      *  (oha-pull-row's batch pullstack1). */
     SupportPull: true,
-    /** The support's solo deny, a row of the decider (support_deny.ts, doctrine D12): a side-lane pos 4/5 denies any of our lane
-     *  creeps in its reach. Off: the offer is logged as a shadow and stock plays. */
-    SupportDeny: false,
+    /** The deny, a row of the decider (deny_row.ts, doctrine D12): a hero the trip table lets deny (pos 4 and 5 for now) denies
+     *  our lane creeps in its reach. Off: the offer is logged as a shadow and stock plays. */
+    Deny: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

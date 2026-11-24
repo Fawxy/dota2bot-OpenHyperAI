@@ -1,5 +1,5 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
--- The support's solo deny (support_deny.ts, Ours.SupportDeny, doctrine D12), a decider row. The engine's laneTargets and task
+-- The deny (deny_row.ts, Ours.Deny, doctrine D12), a decider row. The engine's laneTargets and task
 -- runner are stubbed (ForOurs), so these cover the row's decision, its latch and its lines; the deny verb is the engine's
 -- (its own tests) and its execution is the rig's.
 local dota = require("bots/ts_libs/dota/index")
@@ -24,9 +24,9 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 local function world(o)
 	o = o or {}
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
-	package.loaded["bots/FunLib/custom_loader"].Ours.SupportDeny = o.on ~= false
+	package.loaded["bots/FunLib/custom_loader"].Ours.Deny = o.on ~= false
 	T = 120
-	local SD = require("bots/FunLib/humaniser/support_deny")
+	local SD = require("bots/FunLib/humaniser/deny_row")
 	SD.ResetCache()
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = Vector(0, -5000), hp = 600, maxhp = 600 })
 	sup.lane, sup.pos = o.lane or Lane.Bot, o.pos or 5
@@ -91,14 +91,22 @@ do -- control: nothing the reach rule passes holds nothing
 		a == false and w.starts == 0 and #lines(out, "kind=deny") == 0, tostring(a) .. " " .. w.starts)
 end
 
-do -- control: not a side-lane support
-	for _, case in ipairs({ { pos = 1, lane = Lane.Bot, name = "a pos 1" }, { pos = 4, lane = Lane.Mid, name = "a mid pos 4" } }) do
+do -- control: a position the trip table holds back (the cores)
+	for _, case in ipairs({ { pos = 1, lane = Lane.Bot, name = "a pos 1" }, { pos = 3, lane = Lane.Top, name = "a pos 3" } }) do
 		local w = world({ pos = case.pos, lane = case.lane })
 		w.offers = { deny(creepA, 0, 0.2, 2) }
 		local a
 		local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
 		check("control: " .. case.name .. " never applies or logs", a == false and w.starts == 0 and #lines(out, "kind=deny") == 0, tostring(a))
 	end
+end
+
+do -- the off lane's pos 4 acts as the safe lane's pos 5 does
+	local w = world({ pos = 4, lane = Lane.Top })
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	local a
+	capture(function() a = w.SD.ROW.applies(w.sup) end)
+	check("pos 4: a reachable deny holds the hero", a == true and w.starts == 1, tostring(a) .. " " .. w.starts)
 end
 
 do -- acting, then free: a held-back line, then the go line for the same creep

@@ -2,13 +2,13 @@
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
-local Lane = ____dota.Lane
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -26,17 +26,12 @@ function ____exports.ResetCache()
         end
     end
 end
---- A pos 4 or 5 assigned to a side lane, whatever the switches say: the hero the line's reader names.
-function ____exports.IsSideSupport(bot)
-    if not bot:IsBot() then
-        return false
-    end
-    local pos = LaneConfig.PositionOf(bot)
-    if pos ~= 4 and pos ~= 5 then
-        return false
-    end
-    local lane = bot:GetAssignedLane()
-    return lane == Lane.Top or lane == Lane.Bot
+--- A bot whose position the trip table lets deny, whatever the switches say: the hero the line's reader names.
+function ____exports.MayDeny(bot)
+    return bot:IsBot() and TripTable.Does(
+        "deny",
+        LaneConfig.PositionOf(bot)
+    )
 end
 --- OHA's own action holds the hero (pull_job's and rune_job's check: a queued TP, a cast or channel).
 local function acting(bot)
@@ -51,18 +46,18 @@ function ____exports.Offer(bot)
     local best
     for ____, t in ipairs(verbs.laneTargets(bot, {within = 1, lastHit = false})) do
         do
-            local __continue12
+            local __continue10
             repeat
                 if t.kind ~= "deny" or not LaneOffers.Reachable(t) then
-                    __continue12 = true
+                    __continue10 = true
                     break
                 end
                 if best == nil or t.eta < best.eta then
                     best = t
                 end
-                __continue12 = true
+                __continue10 = true
             until true
-            if not __continue12 then
+            if not __continue10 then
                 break
             end
         end
@@ -166,11 +161,11 @@ local function finish(bot, r)
     )
 end
 local function rowOn(bot)
-    return Ours.On("SupportDeny") and ____exports.IsSideSupport(bot) and not Drill.Held(bot)
+    return Ours.On("Deny") and ____exports.MayDeny(bot) and not Drill.Held(bot)
 end
 --- The shadow (switch off, or the other team under Ours.Team): the same offer, logged once per creep, nothing ordered.
 local function shadow(bot)
-    if not Telemetry.IsEnabled() or not ____exports.IsSideSupport(bot) or Drill.Held(bot) then
+    if not Telemetry.IsEnabled() or not ____exports.MayDeny(bot) or Drill.Held(bot) then
         return
     end
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then

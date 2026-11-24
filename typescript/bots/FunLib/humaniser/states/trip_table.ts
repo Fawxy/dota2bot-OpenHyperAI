@@ -6,13 +6,15 @@
  * Kill switches and non-position conditions stay gates in code and the table says what happens with them on:
  * - Ours.DoubleStack gates position 4's stack (stack_job Applies); the cell is the rank once it is on.
  * - The pull is the decider's row, not a chooser job: its row here says only which positions pull (one puller per lane is
- *   chosen in pull_job). Ours.RuneRotation and the other job switches gate their jobs in code. None changes a cell.
+ *   chosen in pull_job). The deny is a row too: its row says only which positions deny (deny_row; cores held back until
+ *   the row's worth and the claim exist). Ours.RuneRotation and the other job switches gate their jobs in code. None
+ *   changes a cell.
  * - A job's own situation (a claim open, a window due) decides whether it wants the hero now; the table only orders the
  *   jobs that apply.
  */
 export type Pos = 1 | 2 | 3 | 4 | 5;
 /** The chooser's job names; logs and other modules read them. */
-export type TripKind = "stack" | "rune" | "pull";
+export type TripKind = "stack" | "rune" | "pull" | "deny";
 
 export interface TripRow {
     kind: TripKind;
@@ -28,6 +30,7 @@ export const TRIPS: TripRow[] = [
     { kind: "pull", rank: by(undefined, undefined, undefined, 30, 30) },
     { kind: "rune", rank: by(undefined, undefined, undefined, 15, 50) },
     { kind: "stack", rank: by(undefined, undefined, undefined, 20, 20) },
+    { kind: "deny", rank: by(undefined, undefined, undefined, 40, 40) },
 ];
 
 function rowOf(kind: TripKind): TripRow | undefined {
