@@ -1363,7 +1363,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 `pid` num, `ap` num, `rule` str, `due` num, `dies` num
 
-- `kind` str: The decision; `pull`, `deny` (SupportDeny: one line per creep offered to a side-lane support, `slot` the second it was first offered; `why` `off`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
+- `kind` str: The decision; `pull`, `deny` (SupportDeny: one line per creep offered to a side-lane support, `slot` the second it was first offered; `why` `off`, `ally`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
 - `hs` str: kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it).
 - `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
@@ -1432,6 +1432,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `d_side_shop` mixed: kind=shadow: as `d_laning`, for mode_side_shop_generic.
 - `d_outpost` mixed: kind=shadow: as `d_laning`, for mode_outpost_generic.
 - `walk` num: kind=deny (SupportDeny): the offered creep's laneTargets facts at the line: seconds to walk into range, until a swing would be due, and until the others kill it (-1: no one is on it).
+- `ally` num: kind=deny (SupportDeny): allied heroes other than the support whose attack target is the creep at the line (`why=ally` when above 0: the ally keeps it).
 
 ## gank
 

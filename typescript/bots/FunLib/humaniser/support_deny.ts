@@ -1,7 +1,8 @@
 /**
  * The support's solo deny (doctrine D12, switch Ours.SupportDeny), a row of the decider (plan s3; families proposal s6, case
- * 1): a side-lane pos 4/5 denies any of our lane creeps the reach rule (`lane_offers.Reachable`) puts in its reach. No read
- * of what its core is hitting and no pre-positioning: the offers are the engine's `laneTargets` as they stand.
+ * 1): a side-lane pos 4/5 denies our lane creeps the reach rule (`lane_offers.Reachable`) puts in its reach, bar any an
+ * allied hero is swinging at (user 24/11/2026: the core's deny is the core's; slice oha-deny-free). No pre-positioning: the
+ * offers are the engine's `laneTargets` as they stand.
  *
  * The row latches its attempt (user 24/11/2026): `applies` is true while a started deny's task runs, whatever the offer now
  * says, so a damage estimate that changes mid-wind-up does not drop the hold and let stock cancel the swing. The task is
@@ -25,6 +26,9 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 /** The mode the decider hosts its rows in: the engine steps the deny's task under it. */
 const HOST = BotMode.Farm;
+
+/** How far to look for allied heroes on the creep: the API's largest GetNearbyHeroes radius. */
+const ALLY_RADIUS = 1600;
 
 /** The wait for the creep to come due, after its eta: laneFarm's own (`maxWait` eta + 1.5 s, engine/docs/API.md). `judgement`. */
 export const WAIT_SLACK = 1.5;
@@ -56,19 +60,39 @@ function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
 }
 
-/** The reachable deny closest to coming due, else undefined. Undefined too while the engine bundle is not loaded. */
-export function Offer(bot: Unit): Lib.Verbs.LaneTarget | undefined {
-    const verbs = Tasks.Verbs();
-    if (verbs === undefined) return undefined;
-    let best: Lib.Verbs.LaneTarget | undefined;
-    for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: 1, lastHit: false })) {
-        if (t.kind !== "deny" || !LaneOffers.Reachable(t)) continue;
-        if (best === undefined || t.eta < best.eta) best = t;
+/**
+ * Allied heroes other than the bot whose attack target is the creep. An attack on our own lane creep is a deny attempt
+ * (the game refuses it above half HP), so this reads "an ally is swinging at it", from the order on.
+ */
+export function AlliesOn(bot: Unit, creep: unknown): number {
+    let n = 0;
+    for (const h of bot.GetNearbyHeroes(ALLY_RADIUS, false, BotMode.None) ?? []) {
+        if (h !== bot && h.IsAlive() && h.GetAttackTarget() === creep) n++;
     }
-    return best;
+    return n;
 }
 
-function choiceLine(bot: Unit, slot: number, go: boolean, why: string | undefined, t: Lib.Verbs.LaneTarget, src?: string): void {
+/**
+ * The reachable deny closest to coming due, with the allied heroes on it, else undefined. A creep an ally is on is passed
+ * over for the next one; when every reachable deny has an ally on it, the nearest-due of them comes back with `ally` > 0
+ * (the row logs it and holds nothing). Undefined too while the engine bundle is not loaded.
+ */
+export function Offer(bot: Unit): { t: Lib.Verbs.LaneTarget; ally: number } | undefined {
+    const verbs = Tasks.Verbs();
+    if (verbs === undefined) return undefined;
+    let free: Lib.Verbs.LaneTarget | undefined;
+    let taken: { t: Lib.Verbs.LaneTarget; ally: number } | undefined;
+    for (const t of verbs.laneTargets(bot as unknown as Lib.TaskUnit, { within: 1, lastHit: false })) {
+        if (t.kind !== "deny" || !LaneOffers.Reachable(t)) continue;
+        if (free !== undefined && t.eta >= free.eta) continue;
+        const ally = AlliesOn(bot, t.creep);
+        if (ally === 0) free = t;
+        else if (taken === undefined || t.eta < taken.t.eta) taken = { t, ally };
+    }
+    return free !== undefined ? { t: free, ally: 0 } : taken;
+}
+
+function choiceLine(bot: Unit, slot: number, go: boolean, why: string | undefined, t: Lib.Verbs.LaneTarget, ally: number, src?: string): void {
     const r2 = (x: number) => math.floor(x * 100 + 0.5) / 100;
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
@@ -82,6 +106,7 @@ function choiceLine(bot: Unit, slot: number, go: boolean, why: string | undefine
         ["walk", r2(t.walk)],
         ["due", r2(t.due)],
         ["dies", t.dies === math.huge ? -1 : r2(t.dies)],
+        ["ally", ally],
     ]);
 }
 
@@ -141,10 +166,10 @@ function rowOn(bot: Unit): boolean {
 function shadow(bot: Unit): void {
     if (!Telemetry.IsEnabled() || !IsSideSupport(bot) || Drill.Held(bot)) return;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return;
-    const t = Offer(bot);
-    if (t === undefined) return;
-    const cid = Telemetry.CreepId(t.creep as unknown as Unit);
-    if (firstLine(bot, cid, false)) choiceLine(bot, slotOf(cid), false, "off", t, "shadow");
+    const o = Offer(bot);
+    if (o === undefined) return;
+    const cid = Telemetry.CreepId(o.t.creep as unknown as Unit);
+    if (firstLine(bot, cid, false)) choiceLine(bot, slotOf(cid), false, o.ally > 0 ? "ally" : "off", o.t, o.ally, "shadow");
 }
 
 /** The row's `applies`, asked every scoring round: true while an attempt runs (the latch) or as one starts. */
@@ -157,23 +182,31 @@ function rowApplies(bot: Unit): boolean {
     Tasks.Tick(bot);
     if (running[pid] !== undefined) return true;
     if (!LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
-    const t = Offer(bot);
-    if (t === undefined) return false;
+    const o = Offer(bot);
+    if (o === undefined) return false;
+    const t = o.t;
     const cid = Telemetry.CreepId(t.creep as unknown as Unit);
     const slot = slotOf(cid);
+    if (o.ally > 0) {
+        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "ally", t, o.ally);
+        return false;
+    }
     if (acting(bot)) {
-        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "acting", t);
+        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "acting", t, 0);
         return false;
     }
     const creep = t.creep;
+    // An ally that starts its swing at the creep before ours is ordered keeps it: the engine checks `interruptIf` only
+    // before the swing (an ordered swing lands), and the end reads `interrupted`.
+    const allyOn = () => AlliesOn(bot, creep) > 0;
     const ok = Tasks.Start(bot, { name: "deny", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: r => finish(bot, r) }, (ctx: Lib.Ctx) =>
-        ctx.deny({ target: creep, maxWait: t.eta + WAIT_SLACK })
+        ctx.deny({ target: creep, maxWait: t.eta + WAIT_SLACK, interruptIf: allyOn })
     );
     if (!ok) {
-        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "refused", t);
+        if (firstLine(bot, cid, false)) choiceLine(bot, slot, false, "refused", t, 0);
         return false;
     }
-    if (firstLine(bot, cid, true)) choiceLine(bot, slot, true, undefined, t);
+    if (firstLine(bot, cid, true)) choiceLine(bot, slot, true, undefined, t, 0);
     running[pid] = { cid, slot };
     jobLine(bot, "start", "trigger");
     return true;

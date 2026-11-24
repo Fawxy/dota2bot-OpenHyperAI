@@ -127,6 +127,56 @@ do -- refused by the runner: a refused line, no hold
 	check("refused: no hold, why=refused", a == false and #ch == 1 and field(ch[1], "why") == "refused", table.concat(ch, " | "))
 end
 
+do -- control (D12's first half): an allied hero swinging at the only reachable deny keeps it; no hold, a why=ally line
+	local w = world()
+	local core = MakeUnit({ pid = 6, team = 2, bot = true, loc = Vector(300, -5000), hp = 600, maxhp = 600 })
+	core.target = creepA
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	local a
+	local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
+	local ch = lines(out, "kind=deny")
+	core.target = nil
+	check("ally: an ally on the creep, no hold and no task", a == false and w.starts == 0, tostring(a) .. " " .. w.starts)
+	check("ally: one line go=0 why=ally ally=1", #ch == 1 and field(ch[1], "go") == "0" and field(ch[1], "why") == "ally"
+		and field(ch[1], "ally") == "1", table.concat(ch, " | "))
+end
+
+do -- an ally on the creep closest to due: the attempt goes for the next reachable one instead
+	local w = world()
+	local core = MakeUnit({ pid = 6, team = 2, bot = true, loc = Vector(300, -5000), hp = 600, maxhp = 600 })
+	core.target = creepA
+	w.offers = { deny(creepB, 0.5, 0.9, 3), deny(creepA, 0, 0.2, 2) }
+	local a
+	local out = capture(function() a = w.SD.ROW.applies(w.sup) end)
+	local ch = lines(out, "kind=deny")
+	core.target = nil
+	check("ally: the free creep is taken", a == true and w.starts == 1 and #ch == 1 and field(ch[1], "go") == "1"
+		and field(ch[1], "ally") == "0" and tonumber(field(ch[1], "walk")) == 0.5, table.concat(ch, " | "))
+end
+
+do -- the support itself on the creep is not an ally on it; an ally that takes it up mid-attempt interrupts the wait
+	local w = world()
+	w.sup.target = creepA
+	w.offers = { deny(creepA, 0, 0.2, 2) }
+	local body
+	local F = package.loaded["bots/FunLib/humaniser/tasks"].ForOurs
+	local start = F.Start
+	F.Start = function(b, opts, fn) body = fn return start(b, opts, fn) end
+	local a
+	capture(function() a = w.SD.ROW.applies(w.sup) end)
+	w.sup.target = nil
+	local got
+	body({ deny = function(o) got = o return nil end })
+	check("self: the support's own target does not block it", a == true and w.starts == 1, tostring(a))
+	local core = MakeUnit({ pid = 6, team = 2, bot = true, loc = Vector(300, -5000), hp = 600, maxhp = 600 })
+	local before = got ~= nil and got.interruptIf ~= nil and got.interruptIf()
+	core.target = creepA
+	local after = got ~= nil and got.interruptIf ~= nil and got.interruptIf()
+	core.target = nil
+	check("ally mid-attempt: the deny's interruptIf is false until an ally targets the creep, then true",
+		before == false and after == true, tostring(before) .. " " .. tostring(after))
+end
+
 do -- the hold strength: soft (plan s3), so Valve's attack outbids an attempt when it wants the hero
 	local w = world()
 	check("the deny row holds soft", w.SD.ROW.soft == true, tostring(w.SD.ROW.soft))

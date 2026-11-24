@@ -1696,7 +1696,8 @@ ____exports.EVENTS = {
         d_outpost = "mixed",
         walk = "num",
         due = "num",
-        dies = "num"
+        dies = "num",
+        ally = "num"
     },
     gank = {
         pid = "num",
