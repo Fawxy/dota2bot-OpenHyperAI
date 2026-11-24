@@ -68,6 +68,7 @@ ____exports.DEFAULTS = {
     RuneSpawn = false,
     RuneDetour = true,
     SupportPull = true,
+    SupportPullStay = false,
     Threat = false,
     Retreat = false,
     MidWater = false,

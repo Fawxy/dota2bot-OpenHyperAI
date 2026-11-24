@@ -1340,7 +1340,7 @@ One line per pull the support's pull job started (`Ours.SupportPull`). Views `pu
 - `wa` num: The first time a lane creep not already within 300 of the meet point at `ht` came within 300 of it.
 - `nm` num: nm: the first tagged neutral 50 from where it stood at the hit (the camp's start; phchk2 replays 0.4-2.3 s after the order).
 - `shs` num: The shed (PullJob ShedMargin, user 06/11/2026): shs the time the puller began walking out of the neutrals' range once our creeps fought them while a neutral still hit it, shh its HP share of max then; unset when it never shed.
-- `st` str: Banked logs only (the stay, Ours.SupportPullStay, deleted at oha-pull-row's close; pullchain1, pullstay6): on a pull that ended ok and stayed: st its end (`done` none of our creeps and no neutral left at the camp, `left` neutrals left uncleared, `cleared`, `timeout:late` the backstop, `dead`, or the cut: `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got.
+- `st` str: The stay (Ours.SupportPullStay), only on a pull that ended ok and stayed: st its end (`done` none of our creeps and no neutral left at the camp, `left` neutrals left uncleared, `cleared`, `timeout:late` the backstop, `dead`, or the cut: `preempted:<msg>:<what took it>`), ss its seconds; sdt deny tries and sdk denies got, slt neutral last-hit tries and slk got.
 
 ## pull_watch
 

@@ -31,6 +31,10 @@ export const DEFAULTS = {
      *  stack-then-pull group). Off: both are logged as shadows and stock plays. On: it beat the reference arm on its line
      *  (oha-pull-row's batch pullstack1). */
     SupportPull: true,
+    /** The pull's stay (families proposal s5, case 2; on oha-pull-stay only): after an ok pull the puller stays at the camp,
+     *  denies our pulled creeps and last-hits the neutrals they finish (JobVerbs.stayCamp). Needs SupportPull. Off: the decider
+     *  yields the puller once the pull ends. */
+    SupportPullStay: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

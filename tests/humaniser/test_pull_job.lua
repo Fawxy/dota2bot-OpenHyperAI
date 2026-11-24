@@ -34,7 +34,7 @@ local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
 	local H = LaneFresh({ Enable = true, PullTiming = { LanePaths = { radiant_bot = PATH }, NeutralSpeed = { small = 300 }, LiveEvery = o.liveEvery } },
-		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false })
+		{ skill = 1, telemetry = { Enable = true }, supportPull = o.on ~= false, supportPullStay = o.stay == true })
 	T = o.t or 61
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	FOGGED = not o.visible and campFog or nil
@@ -290,7 +290,7 @@ end
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
 	o = o or {}
-	local w = world({ reading = o.reading or OUT, liveEvery = 0 })
+	local w = world({ reading = o.reading or OUT, liveEvery = 0, stay = o.stay })
 	ACTIONS = {}
 	for k in pairs(NEUTRALS) do NEUTRALS[k] = nil end
 	local kobold = MakeNeutral({ x = SMALL.x, y = SMALL.y })
@@ -306,6 +306,15 @@ local function livePull(o)
 	end)
 	if not ok then error(out, 0) end
 	return lines(out, "pull_job")[1], out
+end
+
+do
+	-- The stay (Ours.SupportPullStay) runs after an ok pull: the pull's own line still reads res=ok why=ok, and the stay's end
+	-- is st with its seconds; switched off there is no st.
+	local stayed = livePull({ stay = true, till = 170 })
+	check("stay: the pull's line keeps the pull's ok", field(stayed, "res") == "ok" and field(stayed, "why") == "ok", stayed)
+	check("stay: its end and seconds on the line", field(stayed, "st") ~= nil and tonumber(field(stayed, "ss")) ~= nil, stayed)
+	check("stay off: no st", field(livePull(), "st") == nil)
 end
 
 do
