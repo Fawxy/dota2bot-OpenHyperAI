@@ -1328,6 +1328,7 @@ interface Born {
     t: number;
 }
 const creepTracks: Record<number, CreepTrack> = {};
+const probeAt: Record<number, number> = { 2: -100, 3: -100 };
 /** A creep that vanishes above this health share left vision; it did not die. */
 const DEATH_MAX_HP = 0.5;
 /** Deaths are logged only this close to an own hero (vision), and cores are described only this close to the death. */
@@ -1540,6 +1541,32 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     // A neutral found dead is claimed once, as the wider unit_gone object; its old neutral_death takes the same taker.
     const goneByCreep = new LuaTable<Unit, CreepDeath>();
     for (const g of neutralGone) goneByCreep.set(g.d.creep, g.d);
+    // PROBE (throwaway, not for merge)
+    if (math.floor(now) % 60 === 5 && now - probeAt[team] > 30) {
+        probeAt[team] = now;
+        const raw = (Utils as any).RawPrint as (s: string) => void;
+        for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+            if (e === null || e === undefined) continue;
+            const [ok1, lh] = pcall(() => (e as unknown as StatsUnit).GetLastHits());
+            const [ok2, dn] = pcall(() => (e as unknown as StatsUnit).GetDenies());
+            raw(`[PROBE] t=${math.floor(now)} team=${team} enemy=${e.GetUnitName()} pid=${e.GetPlayerID()} lh=${ok1 ? tostring(lh) : "ERR"} dn=${ok2 ? tostring(dn) : "ERR"}`);
+        }
+        let maxD = 0;
+        let farN = 0;
+        for (const u of neutralList) {
+            let nd = math.huge;
+            for (const h of heroes) nd = math.min(nd, math.sqrt((h.GetLocation().x - u.GetLocation().x) ** 2 + (h.GetLocation().y - u.GetLocation().y) ** 2));
+            maxD = math.max(maxD, nd);
+            if (nd > 2000) farN++;
+        }
+        let hid = 0;
+        let tot = 0;
+        for (const [, rec] of c.lives) {
+            tot++;
+            if (rec.hidden === true) hid++;
+        }
+        raw(`[PROBE] t=${math.floor(now)} team=${team} neutrals_listed=${neutralList.length} max_nearest_hero=${math.floor(maxD)} listed_far_over_2000=${farN} tracked=${tot} hidden_alive=${hid}`);
+    }
     const pool: CreepDeath[] = [...deaths];
     for (const d of neutralDeaths) if (goneByCreep.get(d.creep) === undefined) pool.push(d);
     for (const g of neutralGone) pool.push(g.d);
