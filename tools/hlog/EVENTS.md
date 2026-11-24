@@ -336,6 +336,22 @@ Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once 
 
 `team` num, `pid` num, `seen` num, `loc` num, `x` num, `y` num, `alive` num, `hp` num, `mp` num, `lvl` num, `ms` num, `nw` num, `nmod` num, `cds` num, `nitem` num, `it0` str, `tgt` num, `chan` num, `cast` num
 
+## swing_probe
+
+Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing (engine formula), `fire` the fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
+
+`pid` num, `rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num
+
+- `cid` num: Telemetry.CreepId of the target.
+- `own` num: 1 our own creep (a deny attempt), 0 the enemy's.
+- `same` num: The attack target at the fire was still the creep (1), another (0); -1 never fired.
+- `proj` num: A ranged hit's projectile was seen at the creep.
+- `drop` num: HP the creep lost from the frame before the landing to the landing frame (others' hits in that frame included); -1 no landing.
+- `dmg` num: The hero's attack damage after the creep's armour.
+- `kill` num: The hero's last hits or denies rose by the frame after the landing.
+- `end` str: `land`, `cancel`, `retarget`, `gone`, `lost`.
+- `gap` num: The longest frame gap over the record.
+
 ## apiprobe_enemy
 
 Overrides.ApiProbe: the team's reporter about an enemy hero handle it holds; a hero out of sight has no row (its handle is null).
