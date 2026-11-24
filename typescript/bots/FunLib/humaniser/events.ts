@@ -2730,7 +2730,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `deny` (SupportDeny: one line per creep offered to a side-lane support, `slot` the second it was first offered; `why` `off`, `ally`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `deny` (SupportDeny: one line per creep offered to a side-lane support, `slot` the second it was first offered; `why` `off`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -2878,8 +2878,6 @@ export const EVENTS = {
         walk: "num",
         due: "num",
         dies: "num",
-        /** kind=deny (SupportDeny): allied heroes other than the support whose attack target is the creep at the line (`why=ally` when above 0: the ally keeps it). */
-        ally: "num",
     },
     gank: {
         pid: "num",

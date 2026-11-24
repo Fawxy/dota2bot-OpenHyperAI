@@ -14,8 +14,6 @@ local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- The mode the decider hosts its rows in: the engine steps the deny's task under it.
 local HOST = BotMode.Farm
---- How far to look for allied heroes on the creep: the API's largest GetNearbyHeroes radius.
-local ALLY_RADIUS = 1600
 --- The wait for the creep to come due, after its eta: laneFarm's own (`maxWait` eta + 1.5 s, engine/docs/API.md). `judgement`.
 ____exports.WAIT_SLACK = 1.5
 local running = {}
@@ -44,55 +42,34 @@ end
 local function acting(bot)
     return bot:NumQueuedActions() > 0 or bot:IsChanneling() or bot:IsUsingAbility() or bot:IsCastingAbility()
 end
---- Allied heroes other than the bot whose attack target is the creep. An attack on our own lane creep is a deny attempt
--- (the game refuses it above half HP), so this reads "an ally is swinging at it", from the order on.
-function ____exports.AlliesOn(bot, creep)
-    local n = 0
-    for ____, h in ipairs(bot:GetNearbyHeroes(ALLY_RADIUS, false, BotMode.None) or ({})) do
-        if h ~= bot and h:IsAlive() and h:GetAttackTarget() == creep then
-            n = n + 1
-        end
-    end
-    return n
-end
---- The reachable deny closest to coming due, with the allied heroes on it, else undefined. A creep an ally is on is passed
--- over for the next one; when every reachable deny has an ally on it, the nearest-due of them comes back with `ally` > 0
--- (the row logs it and holds nothing). Undefined too while the engine bundle is not loaded.
+--- The reachable deny closest to coming due, else undefined. Undefined too while the engine bundle is not loaded.
 function ____exports.Offer(bot)
     local verbs = Tasks.Verbs()
     if verbs == nil then
         return nil
     end
-    local free
-    local taken
+    local best
     for ____, t in ipairs(verbs.laneTargets(bot, {within = 1, lastHit = false})) do
         do
-            local __continue16
+            local __continue12
             repeat
                 if t.kind ~= "deny" or not LaneOffers.Reachable(t) then
-                    __continue16 = true
+                    __continue12 = true
                     break
                 end
-                if free ~= nil and t.eta >= free.eta then
-                    __continue16 = true
-                    break
+                if best == nil or t.eta < best.eta then
+                    best = t
                 end
-                local ally = ____exports.AlliesOn(bot, t.creep)
-                if ally == 0 then
-                    free = t
-                elseif taken == nil or t.eta < taken.t.eta then
-                    taken = {t = t, ally = ally}
-                end
-                __continue16 = true
+                __continue12 = true
             until true
-            if not __continue16 then
+            if not __continue12 then
                 break
             end
         end
     end
-    return free ~= nil and ({t = free, ally = 0}) or taken
+    return best
 end
-local function choiceLine(bot, slot, go, why, t, ally, src)
+local function choiceLine(bot, slot, go, why, t, src)
     local function r2(x)
         return math.floor(x * 100 + 0.5) / 100
     end
@@ -124,8 +101,7 @@ local function choiceLine(bot, slot, go, why, t, ally, src)
             {
                 "dies",
                 t.dies == math.huge and -1 or r2(t.dies)
-            },
-            {"ally", ally}
+            }
         }
     )
 end
@@ -200,19 +176,18 @@ local function shadow(bot)
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return
     end
-    local o = ____exports.Offer(bot)
-    if o == nil then
+    local t = ____exports.Offer(bot)
+    if t == nil then
         return
     end
-    local cid = Telemetry.CreepId(o.t.creep)
+    local cid = Telemetry.CreepId(t.creep)
     if firstLine(bot, cid, false) then
         choiceLine(
             bot,
             slotOf(cid),
             false,
-            o.ally > 0 and "ally" or "off",
-            o.t,
-            o.ally,
+            "off",
+            t,
             "shadow"
         )
     end
@@ -231,26 +206,12 @@ local function rowApplies(bot)
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
         return false
     end
-    local o = ____exports.Offer(bot)
-    if o == nil then
+    local t = ____exports.Offer(bot)
+    if t == nil then
         return false
     end
-    local t = o.t
     local cid = Telemetry.CreepId(t.creep)
     local slot = slotOf(cid)
-    if o.ally > 0 then
-        if firstLine(bot, cid, false) then
-            choiceLine(
-                bot,
-                slot,
-                false,
-                "ally",
-                t,
-                o.ally
-            )
-        end
-        return false
-    end
     if acting(bot) then
         if firstLine(bot, cid, false) then
             choiceLine(
@@ -258,16 +219,12 @@ local function rowApplies(bot)
                 slot,
                 false,
                 "acting",
-                t,
-                0
+                t
             )
         end
         return false
     end
     local creep = t.creep
-    local function allyOn()
-        return ____exports.AlliesOn(bot, creep) > 0
-    end
     local ok = Tasks.Start(
         bot,
         {
@@ -277,7 +234,7 @@ local function rowApplies(bot)
             stallAfter = 4,
             onEnd = function(r) return finish(bot, r) end
         },
-        function(ctx) return ctx.deny({target = creep, maxWait = t.eta + ____exports.WAIT_SLACK, interruptIf = allyOn}) end
+        function(ctx) return ctx.deny({target = creep, maxWait = t.eta + ____exports.WAIT_SLACK}) end
     )
     if not ok then
         if firstLine(bot, cid, false) then
@@ -286,8 +243,7 @@ local function rowApplies(bot)
                 slot,
                 false,
                 "refused",
-                t,
-                0
+                t
             )
         end
         return false
@@ -298,8 +254,7 @@ local function rowApplies(bot)
             slot,
             true,
             nil,
-            t,
-            0
+            t
         )
     end
     running[pid] = {cid = cid, slot = slot}
