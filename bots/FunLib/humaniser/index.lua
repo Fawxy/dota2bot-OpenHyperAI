@@ -43,6 +43,7 @@ local RunePickup = require(GetScriptDirectory().."/FunLib/humaniser/rune_pickup"
 local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
+local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
@@ -67,6 +68,7 @@ ____exports.RunePickup = RunePickup
 ____exports.RunePlan = RunePlan
 ____exports.Plays = Plays
 ____exports.PullJob = PullJob
+____exports.RuneDetour = RuneDetour
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
@@ -130,6 +132,7 @@ local steps = {
     landing = SafeGather.Tick,
     pullShadow = PullJob.Shadow,
     stackShadow = StackJob.Shadow,
+    runeDetourShadow = RuneDetour.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -187,6 +190,7 @@ local function tick(bot)
     pcall(steps.regen, bot)
     pcall(steps.sustain, bot)
     pcall(steps.pullShadow, bot)
+    pcall(steps.runeDetourShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)
@@ -307,6 +311,16 @@ if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
     end
     local ____Decider_ROWS_1 = Decider.ROWS
     ____Decider_ROWS_1[#____Decider_ROWS_1 + 1] = StackJob.ROW
+    if Telemetry.GuardsEnabled() then
+        RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no)
+        RuneDetour.ROW.step = Telemetry.Guard(
+            "RuneDetourRow.step",
+            RuneDetour.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_2 = Decider.ROWS
+    ____Decider_ROWS_2[#____Decider_ROWS_2 + 1] = RuneDetour.ROW
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)

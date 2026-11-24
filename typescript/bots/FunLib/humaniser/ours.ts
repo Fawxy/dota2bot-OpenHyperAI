@@ -2,7 +2,9 @@
  * Kill switches for the decisions we have taken over from OHA (Customize.Ours). Each switch's OFF arm is OHA's own
  * decision. A Customize file without the block or the key gets DEFAULTS; Customize.Enable = false turns all of them off.
  * Every default is off (plan s7, agreed 23/11/2026): none of these has beaten the reference arm, so the default build is
- * the reference arm and a batch arm, drill or test that wants one names it.
+ * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
+ * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
+ * RuneDetour.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
@@ -19,6 +21,10 @@ export const DEFAULTS = {
     /** Slice rune-spawn: the team's 6:00 power rune (spot plan, hidden wait, timed walk, plays) and the 0:00 river bounty's
      *  pickup give-up (rune_pickup). Needs JobChooser and RuneRotation for the supports' side. */
     RuneSpawn: false,
+    /** The own bounty on a cheap detour, a row of the decider (rune_detour.ts, doctrine D26): a hero of ours out of its lane takes its
+     *  own jungle's live bounty when the path by it adds about 12 s or less. Off: the pass is logged as a shadow and stock plays.
+     *  On: provisional (plan s5's small row, merged after its audit; read at the next checkpoint batch). */
+    RuneDetour: true,
     /** The whole-wave pull, a row of the decider (pull_job.ts, doctrine D17): the lane's pos5 (else pos4) pulls our wave into the
      *  lane's first pull camp when the pull's forecast wants it and the puller's record of the camp holds the bar (6
      *  neutrals). Off: the trigger is logged as a shadow and stock plays. */
