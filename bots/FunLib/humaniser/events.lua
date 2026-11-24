@@ -350,6 +350,9 @@ ____exports.EVENTS = {
         age = "num",
         pl3 = "num",
         drop2 = "num",
+        pres = "str",
+        big = "num",
+        bigat = "num",
         gap = "num"
     },
     apiprobe_enemy = {

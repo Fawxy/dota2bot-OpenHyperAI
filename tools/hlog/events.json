@@ -427,6 +427,9 @@
    "age": "num",
    "pl3": "num",
    "drop2": "num",
+   "pres": "str",
+   "big": "num",
+   "bigat": "num",
    "gap": "num"
   },
   "apiprobe_enemy": {
@@ -2330,7 +2333,8 @@
   },
   "ev_swing_probe": {
    "end": "text",
-   "to": "text"
+   "to": "text",
+   "pres": "text"
   },
   "ev_apiprobe_enemy": {
    "it0": "text"

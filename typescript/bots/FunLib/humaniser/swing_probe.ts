@@ -104,6 +104,15 @@ interface Swing {
     hpLand?: number;
     /** HP lost over the landing frame and the next. */
     drop2?: number;
+    /** Ranged, after the fire: per frame `1` the projectile listed at the creep, `0` not (cut at 40 frames). */
+    pres: string;
+    /** Absent frames in a row after it was seen. */
+    absent: number;
+    /** The landing by the first absent frame (the earlier rule), seconds after first sight. */
+    land1?: number;
+    /** After the fire: the largest one-frame HP loss and its time, seconds after first sight. */
+    big: number;
+    bigAt?: number;
     gap: number;
     last: number;
 }
@@ -175,6 +184,7 @@ function start(h: Swinger, c: Target, team: number, now: number): Swing | undefi
         aspd: h.GetAttackSpeed(), pf2: (h.GetAttackPoint() / math.max(0.01, h.GetAttackSpeed())) * (1 - h.GetAnimCycle()), fl: flight,
         lat0: h.GetLastAttackTime(), lh0: h.GetLastHits(), dn0: h.GetDenies(), hp0: hp, hpPrev: hp,
         dmg: c.GetActualIncomingDamage(h.GetAttackDamage(), DAMAGE_TYPE_PHYSICAL ?? 1), proj: false, gap: 0, last: now,
+        pres: "", absent: 0, big: 0,
     };
 }
 
@@ -212,6 +222,9 @@ function emit(s: Swing): void {
         ["age", r3(s.age)],
         ["pl3", r3(s.pl3)],
         ["drop2", s.drop2 === undefined ? -1 : math.floor(s.drop2)],
+        ["pres", s.ranged ? s.pres : undefined],
+        ["big", math.floor(s.big)],
+        ["bigat", r3(s.bigAt)],
     ]);
 }
 
@@ -220,7 +233,7 @@ function follow(s: Swing, now: number): boolean {
     s.gap = math.max(s.gap, now - s.last);
     s.last = now;
     if (s.endWhy !== undefined) {
-        if (s.hpLand !== undefined && s.drop !== undefined) s.drop2 = s.drop + s.hpLand - (gone(s.c) ? 0 : s.c.GetHealth());
+        if (s.drop !== undefined) s.drop2 = s.ranged ? s.drop : s.drop + (s.hpLand ?? 0) - (gone(s.c) ? 0 : s.c.GetHealth());
         emit(s);
         return true;
     }
@@ -245,18 +258,34 @@ function follow(s: Swing, now: number): boolean {
     } else if (s.ranged) {
         const eta = isGone ? undefined : projectileEta(s.c, s.h);
         const flying = eta !== undefined;
+        if (s.pres.length < 40) s.pres = s.pres + (flying ? "1" : "0");
+        if (s.hpPrev - hp > s.big) {
+            s.big = s.hpPrev - hp;
+            s.bigAt = now - s.t0;
+        }
         if (flying && !s.proj) s.pl3 = now - s.t0 + eta;
-        if (flying) s.proj = true;
-        else if (s.proj || isGone) {
-            s.land = now - s.t0;
-            s.drop = s.hpPrev - hp;
+        if (flying) {
+            s.proj = true;
+            s.absent = 0;
+        } else if (s.proj) {
+            s.absent++;
+            if (s.absent === 1) {
+                s.land1 = now - s.t0;
+                s.hpLand = s.hpPrev;
+            }
+        }
+        // Landed: two absent frames in a row after the projectile was seen (one may be a gap in the list), or the creep gone.
+        if (!flying && ((s.proj && s.absent >= 2) || isGone)) {
+            s.land = s.absent >= 2 ? (s.land1 ?? now - s.t0) : now - s.t0;
+            // From the frame before the first absent one, over both: a hit that shows on either.
+            s.drop = (s.absent >= 2 ? (s.hpLand ?? s.hpPrev) : s.hpPrev) - hp;
             s.endWhy = isGone && !s.proj ? "gone" : "land";
         }
     }
     if (s.endWhy === undefined && now - s.t0 > GIVE_UP) s.endWhy = "lost";
     if (s.endWhy !== undefined) {
         s.age = now - s.t0;
-        if (s.drop !== undefined) s.hpLand = hp;
+        if (s.drop !== undefined && !s.ranged) s.hpLand = hp;
     }
     s.hpPrev = hp;
     return false;

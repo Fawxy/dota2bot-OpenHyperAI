@@ -340,7 +340,7 @@ Overrides.ApiProbe (probe games only, `api_probe.ts`): a hero about itself once 
 
 Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing (engine formula), `fire` the fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
 
-`pid` num, `rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num
+`pid` num, `rng` num, `cyc` num, `pt` num, `spa` num, `pf` num, `pl` num, `fire` num, `seen` num, `land` num, `hp0` num, `bigat` num
 
 - `cid` num: Telemetry.CreepId of the target.
 - `own` num: 1 our own creep (a deny attempt), 0 the enemy's.
@@ -357,6 +357,8 @@ Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, fr
 - `age` num: Seconds after first sight of the end (any end): how far into the wind-up a cancel or retarget came.
 - `pl3` num: Ranged: predicted landing from the projectile's own position on its first frame (engine flightsAt), seconds after first sight.
 - `drop2` num: HP lost over the landing frame and the next (a hit's damage that shows a frame late).
+- `pres` str: Ranged, after the fire: per frame 1 the hero's projectile listed at the creep, 0 not (40 frames at most). The landing is the first of two absent frames in a row.
+- `big` num: After the fire: the largest one-frame HP loss of the creep, and when (seconds after first sight; -1 none).
 - `gap` num: The longest frame gap over the record.
 
 ## apiprobe_enemy

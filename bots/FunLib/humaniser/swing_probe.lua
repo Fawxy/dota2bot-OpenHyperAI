@@ -124,7 +124,10 @@ local function start(h, c, team, now)
         ),
         proj = false,
         gap = 0,
-        last = now
+        last = now,
+        pres = "",
+        absent = 0,
+        big = 0
     }
 end
 local function r3(x)
@@ -218,6 +221,15 @@ local function emit(s)
             {
                 "drop2",
                 s.drop2 == nil and -1 or math.floor(s.drop2)
+            },
+            {"pres", s.ranged and s.pres or nil},
+            {
+                "big",
+                math.floor(s.big)
+            },
+            {
+                "bigat",
+                r3(s.bigAt)
             }
         }
     )
@@ -227,8 +239,8 @@ local function follow(s, now)
     s.gap = math.max(s.gap, now - s.last)
     s.last = now
     if s.endWhy ~= nil then
-        if s.hpLand ~= nil and s.drop ~= nil then
-            s.drop2 = s.drop + s.hpLand - (gone(s.c) and 0 or s.c:GetHealth())
+        if s.drop ~= nil then
+            s.drop2 = s.ranged and s.drop or s.drop + (s.hpLand or 0) - (gone(s.c) and 0 or s.c:GetHealth())
         end
         emit(s)
         return true
@@ -262,14 +274,29 @@ local function follow(s, now)
         end
         local eta = ____isGone_0
         local flying = eta ~= nil
+        if #s.pres < 40 then
+            s.pres = s.pres .. (flying and "1" or "0")
+        end
+        if s.hpPrev - hp > s.big then
+            s.big = s.hpPrev - hp
+            s.bigAt = now - s.t0
+        end
         if flying and not s.proj then
             s.pl3 = now - s.t0 + eta
         end
         if flying then
             s.proj = true
-        elseif s.proj or isGone then
-            s.land = now - s.t0
-            s.drop = s.hpPrev - hp
+            s.absent = 0
+        elseif s.proj then
+            s.absent = s.absent + 1
+            if s.absent == 1 then
+                s.land1 = now - s.t0
+                s.hpLand = s.hpPrev
+            end
+        end
+        if not flying and (s.proj and s.absent >= 2 or isGone) then
+            s.land = s.absent >= 2 and (s.land1 or now - s.t0) or now - s.t0
+            s.drop = (s.absent >= 2 and (s.hpLand or s.hpPrev) or s.hpPrev) - hp
             s.endWhy = isGone and not s.proj and "gone" or "land"
         end
     end
@@ -278,7 +305,7 @@ local function follow(s, now)
     end
     if s.endWhy ~= nil then
         s.age = now - s.t0
-        if s.drop ~= nil then
+        if s.drop ~= nil and not s.ranged then
             s.hpLand = hp
         end
     end
@@ -297,11 +324,11 @@ local function frame(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue43
+                local __continue47
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:IsIllusion() then
-                        __continue43 = true
+                        __continue47 = true
                         break
                     end
                     local pid = u:GetPlayerID()
@@ -310,23 +337,23 @@ local function frame(bot)
                         if follow(s, now) then
                             active[pid] = nil
                         else
-                            __continue43 = true
+                            __continue47 = true
                             break
                         end
                     end
                     if not u:IsAlive() then
-                        __continue43 = true
+                        __continue47 = true
                         break
                     end
                     local t = u:GetAttackTarget()
                     if not isLaneCreep(t) then
-                        __continue43 = true
+                        __continue47 = true
                         break
                     end
                     active[pid] = start(u, t, team, now)
-                    __continue43 = true
+                    __continue47 = true
                 until true
-                if not __continue43 then
+                if not __continue47 then
                     break
                 end
             end
