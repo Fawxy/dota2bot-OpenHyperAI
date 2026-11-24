@@ -221,10 +221,15 @@ do
 	check("revive logged once", #events("creep_revive") == 1, #events("creep_revive"))
 end
 
--- Own lane creeps (slice creep-economy): ev=own_creep_death names our own deny; an own creep that dies with no deny rise
--- (an enemy last hit, tower or creep kill) is by none; one above half health that vanishes left vision; far ones, enemy
--- creeps and neutrals are not own deaths.
+-- Own lane creeps: ev=unit_gone names our own deny; an own creep that dies with no deny rise (an enemy last hit, tower or creep
+-- kill) is by none. It is gone wherever it was and at any health (a team sees its own creeps everywhere), and enemy creeps and
+-- neutrals are not own units. The old own/wave/neutral death events are no longer written.
 do
+	local keep = GetAmountAlongLane
+	GetAmountAlongLane = function(lane, loc)
+		local y = lane == dota.Lane.Bot and -6000 or lane == dota.Lane.Top and 6000 or 0
+		return { amount = 0.5, distance = math.abs(loc.y - y) }
+	end
 	local H = fresh()
 	local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })
 	core.pos = 1
@@ -244,22 +249,25 @@ do
 	core.dn = 1
 	local ok, err = pcall(tick, H, { core, sup }, 100.1)
 	check("removed own creep handles are never read", ok, err)
-	local e = events("own_creep_death")
-	check("two own deaths near a hero", #e == 2, #e)
-	local byKind = {}
-	for _, l in ipairs(e) do byKind[field(l, "kind")] = field(l, "by") end
-	check("the melee one was denied by the core", byKind.melee == "1", byKind.melee)
-	check("the ranged one died to someone else: by none", byKind.ranged == "none", byKind.ranged)
-	check("the enemy creep is a creep_death, not an own death", #events("creep_death") == 1, #events("creep_death"))
+	local e = events("unit_gone")
+	check("every own creep that left is gone, far and healthy ones too", #e == 4, #e)
+	local byX = {}
+	for _, l in ipairs(e) do byX[field(l, "x")] = field(l, "by") end
+	check("the nearest low creep was denied by the core", byX["150"] == "1", byX["150"])
+	check("the ranged one died to someone else: by none", byX["-200"] == "none", byX["-200"])
+	check("a healthy creep that left is never claimed", byX["120"] == "none", byX["120"])
+	check("the enemy creep is a creep_death, not an own unit", #events("creep_death") == 1, #events("creep_death"))
+	check("the three old death events are not written", #events("own_creep_death") == 0 and #events("wave_creep_death") == 0 and #events("neutral_death") == 0, #events("own_creep_death"))
 	local late = creep("npc_dota_creep_goodguys_melee", Vector(100, 0), 5, OWN)
 	tick(H, { core, sup }, 721)
 	kill(late)
 	tick(H, { core, sup }, 721.1)
-	check("nothing after CreepDeathUntil", #events("own_creep_death") == 2, #events("own_creep_death"))
+	check("nothing after CreepDeathUntil", #events("unit_gone") == 4, #events("unit_gone"))
+	GetAmountAlongLane = keep
 end
 
--- ev=wave_creep_death (the pull's wave reader): every own lane creep that leaves the list, far from every hero and at any
--- health, with the lane and second it was first seen in; own_creep_death keeps its gates.
+-- Far deaths and the wave reader's facts: an own creep that leaves the list far from every hero is gone with its lane (on its
+-- unit_seen); one denied beside its hero carries the denier; a frame with no allied list is skipped, not read as deaths.
 do
 	local keep = GetAmountAlongLane
 	-- The bot lane runs along y = -6000, the top along y = 6000.
@@ -275,6 +283,10 @@ do
 	local late = creep("npc_dota_creep_goodguys_ranged", Vector(-6000, -5900), 100, OWN)
 	local top = creep("npc_dota_creep_goodguys_melee", Vector(-6000, 5900), 100, OWN)
 	tick(H, { sup }, 60.1)
+	local seen = events("unit_seen")
+	local lanes = {}
+	for _, l in ipairs(seen) do lanes[field(l, "kind") == "lane" and field(l, "type") .. field(l, "y")] = field(l, "lane") end
+	check("each unit_seen names the lane it was first seen in", #seen == 3 and lanes["creep_goodguys_melee-5900"] == "bot" and lanes["creep_goodguys_melee5900"] == "top", #seen)
 	-- Both bot creeps walk to the camp, 5,000 from the support, and die there; the top one is denied beside its hero.
 	early.loc, early.hp = Vector(5000, -6000), 40
 	late.loc, late.hp = Vector(5000, -6000), 80
@@ -282,23 +294,16 @@ do
 	kill(early)
 	kill(late)
 	tick(H, { sup }, 90.1)
-	local e = events("wave_creep_death")
+	local e = events("unit_gone")
 	check("both far deaths logged, the healthy one too", #e == 2, #e)
-	local byCid = {}
-	for _, l in ipairs(e) do byCid[field(l, "kind")] = l end
-	check("lane from where it was first seen", field(byCid.melee, "lane") == "bot" and field(byCid.ranged, "lane") == "bot", e[1])
-	check("born names each creep's wave", tonumber(field(byCid.melee, "born")) == 30.1 and tonumber(field(byCid.ranged, "born")) == 60.1, e[1])
-	check("distance to the nearest hero", tonumber(field(byCid.melee, "nd")) == 5000, field(byCid.melee, "nd"))
-	check("far deaths are not own_creep_death", #events("own_creep_death") == 0, #events("own_creep_death"))
 	sup.loc = Vector(-6000, 5800)
 	top.hp = 20
 	tick(H, { sup }, 95)
 	kill(top)
 	sup.dn = 1
 	tick(H, { sup }, 95.1)
-	e = events("wave_creep_death")
-	check("a denied creep carries its denier", #e == 3 and field(e[3], "by") == "2" and field(e[3], "lane") == "top", e[3])
-	check("and is still an own_creep_death", #events("own_creep_death") == 1, #events("own_creep_death"))
+	e = events("unit_gone")
+	check("a denied creep carries its denier", #e == 3 and field(e[3], "by") == "2", e[3])
 	-- A frame whose allied list is missing is skipped: the creeps tracked are not read as gone at full health.
 	local held = creep("npc_dota_creep_goodguys_melee", Vector(0, -5900), 100, OWN)
 	tick(H, { sup }, 100)
@@ -307,11 +312,10 @@ do
 	tick(H, { sup }, 100.1)
 	GetUnitList = list
 	tick(H, { sup }, 100.2)
-	check("no death from a missing list", #events("wave_creep_death") == 3, #events("wave_creep_death"))
+	check("no death from a missing list", #events("unit_gone") == 3, #events("unit_gone"))
 	kill(held)
 	tick(H, { sup }, 100.3)
-	e = events("wave_creep_death")
-	check("and the creep is still tracked with its birth", #e == 4 and tonumber(field(e[4], "born")) == 100, e[4])
+	check("and the creep is still tracked", #events("unit_gone") == 4, #events("unit_gone"))
 	GetAmountAlongLane = keep
 end
 
@@ -328,10 +332,10 @@ do
 	kill(blind)
 end
 
--- Neutral deaths (slice lane-farm-logs): a neutral kill raises GetLastHits, so it shares the claim pool with lane creep deaths.
--- The core's rise goes to the neutral it killed, not to a lane creep that died the same frame within KILLER_NEAR; the neutral
--- names its camp (the nearest spawner box within 1,200) and the nearest own hero. A neutral with no own hero within 1,500, or
--- one that vanished above half HP (left vision), is not logged.
+-- Neutral deaths: a neutral kill raises GetLastHits, so it shares the claim pool with lane creep deaths. The core's rise goes
+-- to the neutral it killed, not to a lane creep that died the same frame within KILLER_NEAR (the neutral's unit_gone carries
+-- the taker). A neutral with no own hero within 1,500, or one that vanished above half HP, takes no rise. One that left vision at
+-- half HP or less and is listed again is a creep_revive.
 do
 	local realSpawners = GetNeutralSpawners
 	GetNeutralSpawners = function()
@@ -353,25 +357,18 @@ do
 	kill(fled)
 	core.lh = 1
 	tick(H, { core }, 60.1)
-	local nd = events("neutral_death")
+	local byX = {}
+	for _, l in ipairs(events("unit_gone")) do byX[field(l, "x")] = field(l, "by") end
 	local cd = events("creep_death")
-	check("neutral: one logged (far and above-half-HP ones are not)", #nd == 1, #nd)
-	check("neutral: the core's rise is the neutral's", nd[1] and field(nd[1], "by") == "1", nd[1])
+	check("neutral: the core's rise is the near neutral's", byX["1000"] == "1", byX["1000"])
+	check("neutral: far and above-half-HP ones take no rise", byX["5000"] == "none" and byX["1050"] == "none", byX["5000"])
 	check("neutral: the lane creep that died beside it is no one's", #cd == 1 and field(cd[1], "by") == "none", cd[1])
-	check("neutral: camp 13, nearest hero pid 1 at 100", nd[1] and field(nd[1], "camp") == "13" and field(nd[1], "np") == "1" and field(nd[1], "nd") == "100", nd[1])
-	check("neutral: kind neutral", nd[1] and field(nd[1], "kind") == "neutral", nd[1])
+	-- A neutral that left vision at half HP or less was claimed as dead; seen alive again it is named by ev=creep_revive.
 	core.loc = Vector(2500, 0)
-	tick(H, { core }, 60.2)
-	kill(anc)
-	tick(H, { core }, 60.3)
-	nd = events("neutral_death")
-	check("neutral: an ancient beyond 1,200 of every camp has no camp, kind ancient, no one's", #nd == 2 and field(nd[2], "camp") == nil and field(nd[2], "kind") == "ancient" and field(nd[2], "by") == "none", nd[2])
-	-- A neutral that left vision at half HP or less was logged dead; seen alive again it is named by ev=creep_revive.
 	local hidden = creep("npc_dota_neutral_kobold", Vector(2600, 0), 30, NEUTRALS)
 	tick(H, { core }, 60.4)
 	table.remove(NEUTRALS, #NEUTRALS)
 	tick(H, { core }, 60.5)
-	check("neutral: one that vanished at 30% is logged", #events("neutral_death") == 3, #events("neutral_death"))
 	table.insert(NEUTRALS, hidden)
 	tick(H, { core }, 60.6)
 	local rv = events("creep_revive")
@@ -424,7 +421,6 @@ do
 	tick(H, { core }, 70.1)
 	gone = events("unit_gone")
 	check("unit: killed in sight is gone at once, hid=0, by the core", #gone == 2 and field(gone[2], "hid") == "0" and field(gone[2], "by") == "1", gone[2])
-	check("unit: and its neutral_death names the same taker", field(events("neutral_death")[1], "by") == "1", events("neutral_death")[1])
 	GetNeutralSpawners = realSpawners
 end
 
@@ -459,7 +455,6 @@ do
 	check("own: two gone, one of them 5,000 from every own hero", #gone == 2 and farLine ~= nil and denLine ~= nil, #gone)
 	check("own: the far one has no taker we can read", farLine and field(farLine, "by") == "none", farLine)
 	check("own: our deny keeps its pid", denLine and field(denLine, "by") == "2", denLine)
-	check("own: the old own-creep events agree on the denier", #events("own_creep_death") == 1 and field(events("own_creep_death")[1], "by") == "2", events("own_creep_death")[1])
 	GetAmountAlongLane = keep
 end
 
@@ -532,7 +527,6 @@ do
 	table.remove(OWN, 1)
 	tick(H, { sup }, 100.3)
 	check("own: listed again, one seen and one gone", #events("unit_seen") == 1 and #events("unit_gone") == 1, #events("unit_seen") .. "/" .. #events("unit_gone"))
-	check("own: the old wave line still logs both exits", #events("wave_creep_death") == 2, #events("wave_creep_death"))
 	GetAmountAlongLane = keep
 end
 
