@@ -101,3 +101,65 @@ test('a log from before cid (and before the wave event) still reads: its own dea
     assert.deepStrictEqual(view.map(r => [r.uid.replace(/\d+$/, '#'), r.type, r.by_kind, r.by_pid, r.t0, r.wave]),
         [['2:e#', 'melee', 'hero', 5, null, null], ['2:xe#', 'ranged', 'unknown', null, null, null]]);
 });
+
+// A game with ev=unit_seen is read from unit_seen / unit_gone alone: the owner's lines give every own lane creep a row, and the old
+// death events the same log still carries are not read a second time.
+const useen = (t, team, cid, type, x = 0, y = 0, lane = 'mid') =>
+    line(t, `unit_seen team=${team} cid=${cid} kind=lane type=${type} lane=${lane} x=${x} y=${y}`);
+const ugone = (t, team, cid, by = 'none', extra = '', x = 0, y = 0) =>
+    line(t, `unit_gone team=${team} cid=${cid} x=${x} y=${y} hp=0.05 by=${by} ${extra}`.trim());
+
+test('own lane creeps: one row each from the owner\'s lines; an enemy hero\'s last hit, our deny, a tower and a creep still alive are told apart', () => {
+    const { view } = run([
+        useen(60, 2, 1, 'creep_goodguys_melee'), useen(60, 2, 2, 'creep_goodguys_ranged'), useen(60, 2, 3, 'creep_goodguys_flagbearer'),
+        useen(60, 2, 4, 'creep_goodguys_melee_upgraded'), useen(60, 2, 5, 'goodguys_siege'), useen(60, 2, 6, 'creep_goodguys_melee'),
+        ugone(100, 2, 1, 5, 'bk=hero'), ugone(101, 2, 2, 1, 'bk=deny'), ugone(102, 2, 3, 'none', 'tw=1'), ugone(103, 2, 4),
+        ugone(104, 2, 5),
+        // the old events of the same creeps would double-count them if read
+        line(100, 'wave_creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none cid=1 lane=mid born=60 nd=0'),
+    ]);
+    const lane = view.filter(r => r.kind === 'lane').sort((a, b) => a.uid.localeCompare(b.uid));
+    assert.strictEqual(lane.length, 6);
+    assert.deepStrictEqual(lane.map(r => [r.uid, r.type, r.wave, r.lane, r.t0, r.by_kind, r.by_pid]), [
+        ['2:1', 'melee', 2, 'mid', 60, 'hero', 5], ['2:2', 'ranged', 2, 'mid', 60, 'deny', 1], ['2:3', 'flag', 2, 'mid', 60, 'tower', null],
+        ['2:4', 'melee', 2, 'mid', 60, 'unknown', null], ['2:5', 'siege', 2, 'mid', 60, 'unknown', null], ['2:6', 'melee', 2, 'mid', 60, 'unknown', null],
+    ]);
+    assert.strictEqual(lane.find(r => r.uid === '2:6').t1, null);
+    assert.strictEqual(lane.find(r => r.uid === '2:1').t1, 100);
+});
+
+test('the two teams\' creeps with one cid are two units: a cid is its team\'s own', () => {
+    const { view } = run([
+        useen(60, 2, 7, 'creep_goodguys_melee'), useen(60, 3, 7, 'creep_badguys_melee', 100, 100),
+        ugone(90, 2, 7, 6, 'bk=hero'), ugone(95, 3, 7, 1, 'bk=hero'),
+    ]);
+    assert.deepStrictEqual(view.map(r => [r.uid, r.team, r.t1, r.by_pid]).sort(), [['2:7', 2, 90, 6], ['3:7', 3, 95, 1]]);
+});
+
+test('a neutral both teams saw die is one row under the Radiant uid, with its name and camp; a hidden-then-found-dead sighting pairs by its gone time; a neutral never found dead is a row per team', () => {
+    const nseen = (t, team, cid, type, x, y, camp) =>
+        line(t, `unit_seen team=${team} cid=${cid} kind=neutral type=${type} x=${x} y=${y}${camp === undefined ? '' : ` camp=${camp}`}`);
+    const { view } = run([
+        nseen(20, 2, 11, 'neutral_kobold', 3978, -5027, 1), nseen(25, 3, 12, 'neutral_kobold', 3990, -5000, 1),
+        ugone(50, 2, 11, 1, '', 3978, -5027), ugone(50.3, 3, 12, 'none', 'hid=1', 3990, -5000),
+        // two heroes take two neutrals at once: two units, not one
+        nseen(60, 2, 13, 'neutral_wolf', 100, 100), nseen(60, 2, 14, 'neutral_wolf', 150, 100),
+        ugone(80, 2, 13, 1, '', 100, 100), ugone(80, 2, 14, 2, '', 150, 100),
+        // out of sight and back, never found dead: no death
+        nseen(70, 2, 15, 'neutral_ogre', 5000, 5000), nseen(70, 3, 16, 'neutral_ogre', 5000, 5000),
+    ]);
+    const n = view.filter(r => r.kind === 'neutral').sort((a, b) => a.uid.localeCompare(b.uid));
+    assert.deepStrictEqual(n.map(r => [r.uid, r.type, r.camp, r.t0, r.t1, r.by_kind, r.by_pid]), [
+        ['n2:11', 'neutral_kobold', 1, 20, 50, 'hero', 1], ['n2:13', 'neutral_wolf', null, 60, 80, 'hero', 1], ['n2:14', 'neutral_wolf', null, 60, 80, 'hero', 2],
+        ['n2:15', 'neutral_ogre', null, 70, null, 'unknown', null], ['n3:16', 'neutral_ogre', null, 70, null, 'unknown', null],
+    ]);
+});
+
+test('wave_fate-style reading of a unit_seen game needs no enemy line: the owner\'s unit_gone names the enemy taker', () => {
+    const { view } = run([
+        useen(60, 2, 1, 'creep_goodguys_melee'), ugone(100, 2, 1, 5, 'bk=hero'),
+        // an enemy creep_death line for it must not pair: the log has unit_seen, so those lines are not read
+        line(100.1, 'creep_death team=3 kind=melee x=0 y=0 hp=0.05 by=6 tw=0 cid=40'),
+    ]);
+    assert.deepStrictEqual(view.map(r => [r.uid, r.by_kind, r.by_pid]), [['2:1', 'hero', 5]]);
+});

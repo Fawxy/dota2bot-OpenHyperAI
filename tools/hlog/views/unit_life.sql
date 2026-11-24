@@ -38,9 +38,13 @@
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)
 -- ensure: ev_neutral_death(team, kind, x, y, by, camp)
+-- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
+-- ensure: ev_unit_gone(team, cid, x, y, hp, by, bk, tw, hid)
 WITH ul_wave AS NOT MATERIALIZED (SELECT * FROM ev_wave_creep_death),
 ul_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death),
 ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death),
 ul_neu AS NOT MATERIALIZED (SELECT * FROM ev_neutral_death),
+ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen),
+ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone),
 -- include: unit_life_rows
 SELECT * FROM unit_life_rows
