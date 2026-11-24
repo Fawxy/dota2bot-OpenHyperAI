@@ -22,7 +22,7 @@
 // against OHA. A remote job's stub game is skipped (each log's last game is read).
 // Deaths (queries/ledger_deaths.sql): every hero, pos 1-5, one cause each; a line's gap is ours minus OHA per game.
 // Last hits: the team's last hits at --at (each hero's last snapshot) split by identity into
-//   neutral       neutral creeps the team's heroes got (ev=neutral_death `by`)
+//   neutral       neutral creeps the team's heroes got (unit_life's neutral rows, `by_pid`)
 //   pool          enemy lane creeps either team's heroes saw die (queries/ledger_creeps.sql): spawns are the same for both
 //                 teams, so a smaller pool is creeps that died with no hero of either team near
 //   <cause>       each pool creep not taken, by ledger_creeps.sql's cause (a loss: its gap is OHA minus ours)
@@ -82,10 +82,12 @@ function teamLastHits(store, g, at) {
 }
 
 function neutralHits(store, g, at) {
-    if (!store.tables().includes('ev_neutral_death')) return { 2: 0, 3: 0 };
-    const rows = store.query(`SELECT n.team, count(*) AS n FROM ev_neutral_death n JOIN lineup l ON l.game_id = n.game_id
-            AND CAST(l.pid AS TEXT) = CAST(n."by" AS TEXT) AND l.team = n.team
-        WHERE n.game_id = :g AND n.t < :at GROUP BY n.team`, { g: g.game_id, at });
+    const rows = store.query(`WITH ul_gm AS (SELECT :g AS game_id),
+-- include: unit_life_in
+-- include: unit_life_seen
+-- include: unit_life_neutral
+SELECT l.team, count(*) AS n FROM ul_nlife n JOIN lineup l ON l.game_id = n.game_id AND l.pid = n.by_pid
+        WHERE n.t1 < :at GROUP BY l.team`, { g: g.game_id, at });
     const out = { 2: 0, 3: 0 };
     for (const r of rows) out[r.team] = r.n;
     return out;

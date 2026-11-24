@@ -9,13 +9,18 @@
 --   unfinished one (cut by a retreat, `interrupted`, a deadline) reads low. :all = 1 lists them too, with `nl`. A clear in which the
 --   core killed nothing stays (its window is the measured clear before the trip's end, which includes the walk back).
 -- ensure: ev_core_camp(pid, phase, hpe, hpr, clre, clrm, hpm, hpt, src, type, nl)
--- ensure: ev_neutral_death(by)
 -- ensure: ev_snap(pid, hp)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
+-- include: unit_life_seen
+-- include: unit_life_neutral
+nk AS MATERIALIZED (SELECT game_id, by_pid, t1 FROM ul_nlife WHERE t1 IS NOT NULL AND by_pid IS NOT NULL),
+
 en AS (
     SELECT e.game_id, e.pid, e.t AS t1, e.hpe, e.hpr, e.clre, e.clrm, e.hpm, e.nl,
-        coalesce((SELECT max(d.t) FROM ev_neutral_death d WHERE d.game_id = e.game_id AND CAST(d.by AS TEXT) = CAST(e.pid AS TEXT)
-            AND d.t <= e.t AND d.t >= e.t - e.clrm - 40), e.t) AS tk
+        coalesce((SELECT max(d.t1) FROM nk d WHERE d.game_id = e.game_id AND d.by_pid = e.pid
+            AND d.t1 <= e.t AND d.t1 >= e.t - e.clrm - 40), e.t) AS tk
     FROM ev_core_camp e JOIN gm ON gm.game_id = e.game_id
     WHERE e.phase = 'end' AND e.hpe IS NOT NULL AND e.clrm IS NOT NULL AND (coalesce(e.nl, 0) = 0 OR coalesce(:all, 0) = 1)
 ),

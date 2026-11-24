@@ -21,7 +21,7 @@
 //      fell between two ev=inv rows inside the interval (other items vanishing are recipes combining, not a loss).
 //   2. income = max(0, d - p + L); loss = d - p - income. A |loss| under 2.5 and an income under 2.5 are rounding: passive.
 //   3. Income goes to the interval's causes in this order: lane creeps and neutrals the hero last-hit (ev=creep_death /
-//      neutral_death by=pid, each taking that game's mean for a clean single-cause interval), a bounty rune picked up by
+//      unit_life's neutral rows by_pid, each taking that game's mean for a clean single-cause interval), a bounty rune picked up by
 //      the team, then the rest to kill (own kills rose) or assist (an enemy hero died, fragment ep_death, within 1500 of the hero). With no
 //      kill or assist the creeps and rune share all of it (the rune first at its mean). Nothing to name it: other_income.
 //   4. A loss goes to consumable first (up to L), then death (own deaths rose), else other_loss.
@@ -225,9 +225,15 @@ function analyseGame(store, g, at) {
         nearby.push(r);
         if (isPid(r.by)) push(creeps, Number(r.by), { t: r.t, cat: `lane_${['melee', 'ranged', 'siege'].includes(r.kind) ? r.kind : 'other'}` });
     }
-    if (has('ev_neutral_death', 'x', 'y', 'by')) for (const r of store.query('SELECT t, team, "by" AS by, x, y FROM ev_neutral_death WHERE game_id = :g ORDER BY t, seq', { g: g.game_id })) {
-        nearby.push(r);
-        if (isPid(r.by)) push(creeps, Number(r.by), { t: r.t, cat: 'neutral' });
+    // Neutrals (unit_life's neutral rows): the hero that took one, and a creep near each team's heroes (within 1,500: the gate of the old ev=neutral_death, a row per logging team).
+    for (const r of store.query(`WITH ul_gm AS (SELECT :g AS game_id),
+-- include: unit_life_in
+-- include: unit_life_seen
+-- include: unit_life_neutral
+SELECT t1 AS t, by_pid AS by, x1 AS x, y1 AS y, near_r, near_d FROM ul_nlife WHERE t1 IS NOT NULL ORDER BY t1, uid`, { g: g.game_id })) {
+        if (r.near_r) nearby.push({ t: r.t, team: 2, by: r.by, x: r.x, y: r.y });
+        if (r.near_d) nearby.push({ t: r.t, team: 3, by: r.by, x: r.x, y: r.y });
+        if (r.by !== null) push(creeps, Number(r.by), { t: r.t, cat: 'neutral' });
     }
     const runes = new Map();
     if (has('ev_rune_pickup', 'kind', 'team')) for (const r of store.query("SELECT t, team FROM ev_rune_pickup WHERE game_id = :g AND kind = 'bounty' ORDER BY t", { g: g.game_id })) push(runes, r.team, { t: r.t });

@@ -3,12 +3,17 @@
 -- when its StartWithin window closed (or the claim that gave the camp to a core).
 --   why        start: how it ended (back, interrupted:yield, interrupted:threat, ...); skip: core-coming, core-there, no-neutrals, late, ...
 --   n0/nl      neutrals on the camp at the decision / left at the end; div the pull's diverted share then; ago seconds from the pull's end
---   gain       g1 - g0 less passive gold over the job (:passive a second, default 1.5); nk the hero's ev=neutral_death last hits from
+--   gain       g1 - g0 less passive gold over the job (:passive a second, default 1.5); nk the hero's neutral last hits (unit_life's neutral rows) from
 --              start to end; died: a snapshot at 0 HP from start to end + 3 s
 -- ensure: ev_pull_clear(pid, phase, camp, ago, div, n0, why, nl, back, g0, g1, secs, hp0, hp, died)
--- ensure: ev_neutral_death(team, by)
 -- ensure: ev_snap(pid, hp)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+ul_gm AS (SELECT game_id FROM gm),
+-- include: unit_life_in
+-- include: unit_life_seen
+-- include: unit_life_neutral
+nk AS MATERIALIZED (SELECT game_id, by_pid, t1 FROM ul_nlife WHERE t1 IS NOT NULL AND by_pid IS NOT NULL),
+
 st AS (SELECT c.* FROM ev_pull_clear c JOIN gm ON gm.game_id = c.game_id WHERE c.phase IN ('start', 'skip')),
 row AS (
     SELECT st.game_id, st.pid, st.pos, st.t, st.phase, st.camp, st.ago, st.div, st.n0, st.why AS skip_why,
@@ -18,7 +23,7 @@ row AS (
 SELECT gm.file, r.game_id, r.pid, r.pos, r.t, r.phase, r.camp, r.ago, r.div, r.n0,
     coalesce(e.why, r.skip_why) AS why, e.nl, e.back, e.secs, e.hp0, e.hp,
     round(e.g1 - e.g0 - coalesce(:passive, 1.5) * e.secs, 1) AS gain,
-    (SELECT count(*) FROM ev_neutral_death d WHERE d.game_id = r.game_id AND CAST(d.by AS TEXT) = CAST(r.pid AS TEXT) AND d.t >= r.t AND d.t <= r.t1) AS nk,
+    (SELECT count(*) FROM nk d WHERE d.game_id = r.game_id AND d.by_pid = r.pid AND d.t1 >= r.t AND d.t1 <= r.t1) AS nk,
     CASE WHEN r.phase = 'start' THEN (SELECT count(*) > 0 FROM ev_snap s WHERE s.game_id = r.game_id AND s.pid = r.pid AND s.t >= r.t AND s.t <= r.t1 + 3 AND s.hp <= 0) END AS died
 FROM row r JOIN gm ON gm.game_id = r.game_id
 LEFT JOIN ev_pull_clear e ON e.game_id = r.game_id AND e.pid = r.pid AND e.phase = 'end' AND e.t = r.t1
