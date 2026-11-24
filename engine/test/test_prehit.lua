@@ -197,6 +197,30 @@ do
     T.check("forecast: a hit in flight names its attacker, commit 0", f.hits[1].attacker == bot and f.hits[1].commit == 0)
 end
 
+-- A prediction a frame early (the unit reads 10% more attack speed than it swings at): from the predicted attack point to the
+-- real fire the hit stays listed, landing now (t 0, commit 0), and is gone once the attack fires.
+do
+    local sim, bot, creep, a = windupScene()
+    a.GetAttackSpeed = function() return 1.25 * 1.1 end
+    while sim.t < 0.1 - 1e-9 do sim:step(DT) end
+    local predicted = 0.1 + 0.5 / (1.25 * 1.1)
+    local held, gone, firedSeen = 0, true, false
+    while a.swing do
+        local f = V.hpForecast(bot, creep, 1)
+        local h
+        for _, x in ipairs(f.hits) do if x.attacker == a then h = x break end end
+        if sim.t > predicted + 1e-9 then
+            if h ~= nil and h.t == 0 and h.commit == 0 then held = held + 1 end
+            if h == nil then gone = false end
+        end
+        sim:step(DT)
+    end
+    local f = V.hpForecast(bot, creep, 1)
+    for _, x in ipairs(f.hits) do if x.attacker == a and x.t < 0.5 then firedSeen = true end end
+    T.check("windup: early prediction held at 0 until the fire (" .. held .. " frames)", held >= 1 and gone)
+    T.check("windup: after the fire the wind-up's hit is gone", not firedSeen)
+end
+
 -- A wind-up's hit names its attacker, and its commit is the wind-up left (the landing less any flight); a creep's repeat
 -- one cycle on commits at its own landing (melee: no flight).
 do
