@@ -801,9 +801,12 @@ export interface StayPlan {
     radius?: number;
     /** Absolute time: past it the verb fails `timeout` "late" (a logged backstop; the ends are reads). */
     deadline: number;
-    /** A neutral our creeps are on is last-hit once it holds at most this many of the bot's hits. Default 1 (at 2 the first
-     *  hit could land without the kill and turn the neutral onto the bot: pullchain1's stay). */
+    /** A neutral our creeps are on is last-hit once its forecast HP, `lastHitWithin` s past the bot's own hit time, holds at
+     *  most this many of the bot's hits. Default 1 (at 2 the first hit could land without the kill and turn the neutral onto
+     *  the bot: pullchain1's stay). */
     lastHitHits?: number;
+    /** Seconds of look-ahead past the bot's own hit time for the last-hit gate. Default STAY_LH_WITHIN. */
+    lastHitWithin?: number;
     /** After each deny or neutral last hit: which, its result, its target, and the target's HP and how many of the bot's hits
      *  that was when the try began. */
     onAttempt?: (this: void, kind: "deny" | "lasthit", r: Result, target: TaskAttacker, hp: number, hits: number) => void;
@@ -818,7 +821,7 @@ export interface StayLook {
     /** Our lane creeps and neutrals at the camp. */
     ours: number;
     neutrals: number;
-    /** Neutrals one of our creeps is attacking, and of them those within `lastHitHits` of the bot's hits (the gate open). */
+    /** Neutrals one of our creeps is attacking, and of them those the last-hit gate offers (forecast within `lastHitHits`). */
     worked: number;
     due: number;
     /** The lowest HP among the worked neutrals, in the bot's hits; undefined with none worked. */
@@ -829,6 +832,12 @@ export interface StayLook {
 
 const STAY_RADIUS = 900;
 const STAY_LH_HITS = 1;
+/** judgement: the neutral's try starts when it comes due within this of the bot's own hit time, as a deny's (STAY_DENY_WITHIN):
+ *  gated on HP now, a neutral three of our creeps are on fell through one hit inside the bot's swing (stay4_s30: 14 tries for
+ *  27 neutral deaths), and the verb times the swing itself. */
+const STAY_LH_WITHIN = 1;
+/** The last-hit try's wait past that horizon before it times out (the deny's is its eta + 1.5). */
+const STAY_LH_SLACK = 0.5;
 const STAY_REORDER = 0.5;
 /** Within this of the stand point behind our creeps, the bot holds rather than walks. */
 const STAY_ARRIVE = 60;
@@ -895,7 +904,7 @@ function centre(list: TaskAttacker[]): Vec {
 /**
  * After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and takes the last
  * hits and denies the camp offers while our creeps hold it. In order: a neutral our creeps are finishing is last-hit once
- * within `lastHitHits` of the bot's hits; one of ours due is denied (the final hit); else it stands behind our creeps
+ * its forecast comes within `lastHitHits` of the bot's hits inside `lastHitWithin` of its own hit time; one of ours due is denied (the final hit); else it stands behind our creeps
  * (`behindPoint`). It attacks nothing else: a plain hit's cooldown lost the last hits and denies that came due (pullneut1,
  * stay4_s30 `why=cd`), and our own creeps are never hit down (a stacked camp kills them anyway). While a neutral is on the
  * bot it only walks, BEHIND_FLEE further back. Once none of ours is left: ok "done" with no neutral left, else ok "left"
@@ -904,6 +913,7 @@ function centre(list: TaskAttacker[]): Vec {
 export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBody {
     const r = p.radius ?? STAY_RADIUS;
     const lhHits = p.lastHitHits ?? STAY_LH_HITS;
+    const lhWithin = p.lastHitWithin ?? STAY_LH_WITHIN;
     const search = r + dist(bot.GetLocation(), p.at);
     // Neutrals whose lastHit could not run (etiquette, unsupported): left to our creeps.
     const skip: TaskAttacker[] = [];
@@ -923,6 +933,12 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
         };
         const onMe = neutrals.some((n) => n.GetAttackTarget?.() === bot);
         const worked = (n: TaskAttacker): boolean => skip.indexOf(n) < 0 && ours.some((o) => o.GetAttackTarget?.() === n);
+        // The neutral's HP when the bot's hit could land, lhWithin late at most: the gate and the pick's order.
+        const ahead = (n: TaskAttacker): number => {
+            const c = n as unknown as TaskCreep;
+            const hz = E().Verbs.ownHitTime(bot, c) + lhWithin;
+            return E().Verbs.forecastHp(E().Verbs.hpForecast(bot, c, hz), hz);
+        };
         // Logging only (onLook): the gate's view of the neutrals our creeps are on, whether or not it is read below.
         let nWorked = 0;
         let due = 0;
@@ -934,22 +950,28 @@ export function* stayCamp(bot: TaskUnit, p: StayPlan, h: JobHooks = {}): TaskBod
                 nWorked++;
                 if (skip.indexOf(n) >= 0) skipped++;
                 const k = hpOf(n) / hitOn(n);
-                if (skip.indexOf(n) < 0 && hpOf(n) <= lhHits * hitOn(n)) due++;
+                if (skip.indexOf(n) < 0 && ahead(n) <= lhHits * hitOn(n)) due++;
                 if (minHits === undefined || k < minHits) minHits = k;
             }
         }
         const look = (step: string): void => p.onLook?.({ step, ours: ours.length, neutrals: neutrals.length, worked: nWorked, due, minHits, skipped });
         if (!onMe) {
             let finish: TaskAttacker | undefined;
+            let finishAt = math.huge;
             for (const n of neutrals) {
                 if (!worked(n)) continue;
-                if (hpOf(n) <= lhHits * hitOn(n) && (finish === undefined || hpOf(n) < hpOf(finish))) finish = n;
+                const a = ahead(n);
+                if (a <= lhHits * hitOn(n) && a < finishAt) {
+                    finish = n;
+                    finishAt = a;
+                }
             }
             if (finish !== undefined) {
                 look("lasthit");
                 const hp0 = hpOf(finish);
                 const hits0 = hp0 / hitOn(finish);
-                const res = yield* E().Verbs.lastHit(bot, { target: finish as TaskCreep, maxWait: CLEAR_LH_WAIT, deadline: p.deadline, hold: "camp_lasthit" });
+                const wait = math.max(CLEAR_LH_WAIT, E().Verbs.ownHitTime(bot, finish as TaskCreep) + lhWithin + STAY_LH_SLACK);
+                const res = yield* E().Verbs.lastHit(bot, { target: finish as TaskCreep, maxWait: wait, deadline: p.deadline, hold: "camp_lasthit" });
                 p.onAttempt?.("lasthit", res, finish, hp0, hits0);
                 if (!res.success && (res.reason === "etiquette" || res.reason === "unsupported")) {
                     skip.push(finish);

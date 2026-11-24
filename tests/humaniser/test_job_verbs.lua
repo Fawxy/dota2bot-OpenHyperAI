@@ -683,32 +683,43 @@ do
     T.eq("stay last hit: ends done", r.message, "done")
 end
 
-do
-    -- Logging only: onAttempt names the try's target with its HP and hits at the start; onLook shows the gate shut (the
-    -- worked neutral above one hit) while the bot stands, then open on the frame it chose the last hit.
+-- A neutral four of our creeps are on, 45 HP every 0.25 s from staggered swings: it holds one of the bot's hits (40) for
+-- less than the bot's 0.3 s swing, so a try started on HP now comes too late; one started on the forecast is in place.
+local function fastNeutral(over)
     local sim, bot = stayWorld()
-    local creep = sim:addCreep{ team = 2, x = 100, y = 0, hp = 5000, autoAttack = true, damage = 20, secondsPerAttack = 1 }
-    local n = sim:addNeutral{ x = 150, y = 0, hp = 200, passive = true }
-    creep.attackTarget = n
-    sim:at(12, function() creep.loc.x = 3000 end)
+    local n = sim:addNeutral{ x = 150, y = 0, hp = 230, passive = true }
+    for i = 0, 3 do
+        local c = sim:addCreep{ team = 2, x = 100, y = 20 * i, hp = 5000, autoAttack = true, damage = 45, secondsPerAttack = 1, attackPoint = 0.1, firstSwingAt = 2 + 0.25 * i }
+        c.attackTarget = n
+        sim:at(12, function() c.loc.x = 3000 end)
+    end
     local tries, looks = {}, {}
-    stayStart(bot, {
+    local plan = {
         onAttempt = function(kind, r, target, hp, hits) tries[#tries + 1] = { kind = kind, ok = r.success, target = target, hp = hp, hits = hits } end,
         onLook = function(l) looks[#looks + 1] = l end,
-    })
+    }
+    for k, v in pairs(over or {}) do plan[k] = v end
+    stayStart(bot, plan)
     run(sim, bot)
-    T.eq("stay log: one try", #tries, 1)
+    return bot, n, tries, looks
+end
+
+do
+    local bot, n, tries, looks = fastNeutral()
+    T.eq("stay fast neutral: the bot's last hit", bot.lastHits, 1)
     local a = tries[1] or {}
-    T.eq("stay log: a last hit on the neutral", a.kind, "lasthit")
-    T.check("stay log: its target is the neutral", a.target == n)
-    T.check("stay log: HP within one hit at the start", (a.hp or 999) <= 40 and (a.hits or 9) <= 1, a.hp)
+    T.eq("stay fast neutral: one try, a last hit on it", #tries .. ":" .. tostring(a.kind), "1:lasthit")
+    T.check("stay fast neutral: the try began above one hit (on the forecast)", (a.hp or 0) > 40, a.hp)
     local shut, open = false, false
     for _, l in ipairs(looks) do
-        if l.step == "stand" and l.worked == 1 and l.due == 0 and (l.minHits or 0) > 1 then shut = true end
+        if l.step == "stand" and l.worked == 1 and l.due == 0 then shut = true end
         if l.step == "lasthit" and l.due == 1 then open = true end
     end
     T.check("stay log: the gate seen shut while standing", shut)
     T.check("stay log: the gate seen open on the last hit", open)
+    -- Control: no look-ahead (the gate on HP now) loses the same neutral.
+    local late = fastNeutral({ lastHitWithin = -10 })
+    T.eq("stay fast neutral, gate on HP now: no last hit", late.lastHits, 0)
 end
 
 do

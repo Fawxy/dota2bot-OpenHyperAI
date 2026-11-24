@@ -1218,6 +1218,12 @@ ____exports.clearCamp = __TS__Generator(function(bot, p, h)
 end)
 local STAY_RADIUS = 900
 local STAY_LH_HITS = 1
+--- judgement: the neutral's try starts when it comes due within this of the bot's own hit time, as a deny's (STAY_DENY_WITHIN):
+-- gated on HP now, a neutral three of our creeps are on fell through one hit inside the bot's swing (stay4_s30: 14 tries for
+-- 27 neutral deaths), and the verb times the swing itself.
+local STAY_LH_WITHIN = 1
+--- The last-hit try's wait past that horizon before it times out (the deny's is its eta + 1.5).
+local STAY_LH_SLACK = 0.5
 local STAY_REORDER = 0.5
 --- Within this of the stand point behind our creeps, the bot holds rather than walks.
 local STAY_ARRIVE = 60
@@ -1309,7 +1315,7 @@ function ____exports.behindPoint(bot, ours, neutrals, from, back)
 end
 --- After a pull: stays behind the pulled wave at the camp, so the neutrals hit our creeps and not the bot, and takes the last
 -- hits and denies the camp offers while our creeps hold it. In order: a neutral our creeps are finishing is last-hit once
--- within `lastHitHits` of the bot's hits; one of ours due is denied (the final hit); else it stands behind our creeps
+-- its forecast comes within `lastHitHits` of the bot's hits inside `lastHitWithin` of its own hit time; one of ours due is denied (the final hit); else it stands behind our creeps
 -- (`behindPoint`). It attacks nothing else: a plain hit's cooldown lost the last hits and denies that came due (pullneut1,
 -- stay4_s30 `why=cd`), and our own creeps are never hit down (a stacked camp kills them anyway). While a neutral is on the
 -- bot it only walks, BEHIND_FLEE further back. Once none of ours is left: ok "done" with no neutral left, else ok "left"
@@ -1320,6 +1326,7 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
     end
     local r = p.radius or STAY_RADIUS
     local lhHits = p.lastHitHits or STAY_LH_HITS
+    local lhWithin = p.lastHitWithin or STAY_LH_WITHIN
     local search = r + dist(
         bot:GetLocation(),
         p.at
@@ -1393,6 +1400,14 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         end
                     )
                 end
+                local function ahead(n)
+                    local c = n
+                    local hz = E().Verbs.ownHitTime(bot, c) + lhWithin
+                    return E().Verbs.forecastHp(
+                        E().Verbs.hpForecast(bot, c, hz),
+                        hz
+                    )
+                end
                 local nWorked = 0
                 local due = 0
                 local skipped = 0
@@ -1400,7 +1415,7 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                 if p.onLook ~= nil then
                     for ____, n in ipairs(neutrals) do
                         do
-                            local __continue174
+                            local __continue175
                             repeat
                                 if not __TS__ArraySome(
                                     ours,
@@ -1411,7 +1426,7 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                                         return (____opt_139 and ____opt_139(____this_140)) == n
                                     end
                                 ) then
-                                    __continue174 = true
+                                    __continue175 = true
                                     break
                                 end
                                 nWorked = nWorked + 1
@@ -1419,15 +1434,15 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                                     skipped = skipped + 1
                                 end
                                 local k = hpOf(n) / hitOn(n)
-                                if __TS__ArrayIndexOf(skip, n) < 0 and hpOf(n) <= lhHits * hitOn(n) then
+                                if __TS__ArrayIndexOf(skip, n) < 0 and ahead(n) <= lhHits * hitOn(n) then
                                     due = due + 1
                                 end
                                 if minHits == nil or k < minHits then
                                     minHits = k
                                 end
-                                __continue174 = true
+                                __continue175 = true
                             until true
-                            if not __continue174 then
+                            if not __continue175 then
                                 break
                             end
                         end
@@ -1447,20 +1462,23 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                 end
                 if not onMe then
                     local finish
+                    local finishAt = math.huge
                     for ____, n in ipairs(neutrals) do
                         do
-                            local __continue183
+                            local __continue184
                             repeat
                                 if not worked(n) then
-                                    __continue183 = true
+                                    __continue184 = true
                                     break
                                 end
-                                if hpOf(n) <= lhHits * hitOn(n) and (finish == nil or hpOf(n) < hpOf(finish)) then
+                                local a = ahead(n)
+                                if a <= lhHits * hitOn(n) and a < finishAt then
                                     finish = n
+                                    finishAt = a
                                 end
-                                __continue183 = true
+                                __continue184 = true
                             until true
-                            if not __continue183 then
+                            if not __continue184 then
                                 break
                             end
                         end
@@ -1469,7 +1487,11 @@ ____exports.stayCamp = __TS__Generator(function(bot, p, h)
                         look("lasthit")
                         local hp0 = hpOf(finish)
                         local hits0 = hp0 / hitOn(finish)
-                        local res = __TS__DelegatedYield(E().Verbs.lastHit(bot, {target = finish, maxWait = CLEAR_LH_WAIT, deadline = p.deadline, hold = "camp_lasthit"}))
+                        local wait = math.max(
+                            CLEAR_LH_WAIT,
+                            E().Verbs.ownHitTime(bot, finish) + lhWithin + STAY_LH_SLACK
+                        )
+                        local res = __TS__DelegatedYield(E().Verbs.lastHit(bot, {target = finish, maxWait = wait, deadline = p.deadline, hold = "camp_lasthit"}))
                         local ____opt_143 = p.onAttempt
                         if ____opt_143 ~= nil then
                             ____opt_143(
