@@ -186,6 +186,18 @@ do
 		and lines[1]:find("held=-", 1, true) and not lines[1]:find("let=", 1, true), tostring(v) .. " " .. table.concat(lines, " | "))
 end
 
+do -- a soft row's first round with farm already active (OHA's farm, say): SOFT / BONUS, since Valve boosts what we return
+	local H, bot = world()
+	local r = row({ applies = true, steps = 0, finishAt = 99 })
+	r.soft = true
+	H.Decider.ROWS[1] = r
+	bot.mode = BotMode.Farm
+	local f = farm()
+	local v
+	capture(function() v = H.Decider.Host(bot, f.GetDesire)() end)
+	check("a soft row's first round with farm already active returns SOFT / BONUS", v == H.Decider.SOFT / H.Decider.BONUS, tostring(v))
+end
+
 -- Plan s3, the soft hold: a row with soft=true holds at SOFT, and while it holds the gate returns OHA's Lua modes capped at
 -- CAP, retreat and attack's file excepted; the retreat read still sees each value as its file returned it.
 local function gate(H, bot, mode, v)

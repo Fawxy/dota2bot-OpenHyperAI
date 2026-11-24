@@ -179,7 +179,8 @@ export function Host(bot: Unit, inner: () => any): () => any {
         pcall(() => note(bot, s));
         if (s.held === undefined) return inner();
         if (s.held.soft !== true) return HARD;
-        // Held already: Valve adds its bonus to the active mode, so the hold asks for less to stay worth SOFT. Where the
+        // Farm active (the hold's own, or farm's for any reason in a soft row's first round): Valve adds its bonus to the
+        // active mode, so the hold asks for less to stay worth SOFT. Where the
         // bonus is missing it is worth SOFT / BONUS (0.45): still over every capped Lua mode, and it yields to Valve's more.
         return bot.GetActiveMode() === BotMode.Farm ? SOFT / BONUS : SOFT;
     };
@@ -192,7 +193,8 @@ export function Host(bot: Unit, inner: () => any): () => any {
  * soft hold starts, still capped in the round it lets go or stops applying. The cap follows `held`, so the lag cannot
  * flicker on its own. Anything else, and any value that is not a number, passes unchanged.
  *
- * Known effect, not stock's: retreat is uncapped, so a retreat value between SOFT and the highest raw Lua mode wins the hero
+ * Known effect, not stock's: retreat is uncapped, so a retreat value between the hold's worth (about SOFT; SOFT / BONUS in a
+ * round Valve gives the active farm no bonus) and the highest raw Lua mode wins the hero
  * from the hold although the retreat read (raw values) keeps holding; stock would have run that Lua mode. Plan s3 accepts
  * it ("retreat excepted"); the first soft row's smoke counts it.
  */
