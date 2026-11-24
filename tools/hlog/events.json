@@ -400,6 +400,20 @@
    "chan": "num",
    "cast": "num"
   },
+  "lane_hits_check": {
+   "lane": "num",
+   "own": "num",
+   "cid": "num",
+   "hp": "num",
+   "pby": "str",
+   "ppid": "num",
+   "pt": "num",
+   "pc": "num",
+   "age": "num",
+   "rose": "str",
+   "erose": "str",
+   "end": "str"
+  },
   "swing_probe": {
    "pid": "num",
    "kind": "str",
@@ -2333,6 +2347,12 @@
   },
   "ev_apiprobe_own": {
    "it0": "text"
+  },
+  "ev_lane_hits_check": {
+   "pby": "text",
+   "rose": "text",
+   "erose": "text",
+   "end": "text"
   },
   "ev_swing_probe": {
    "kind": "text",
