@@ -55,9 +55,10 @@ local function creep(name, loc, hp, list)
 	c._GetLocation = function(self) return self.loc end
 	c._GetHealth = function(self) return self.hp end
 	c._GetMaxHealth = function() return 100 end
-	c._IsAlive = function() return true end
+	c._IsAlive = function(self) return self.dead ~= true end
+	c._IsNull = function() return false end
 	c._IsAncientCreep = function(self) return self.ancient == true end
-	for _, f in ipairs({ "GetUnitName", "GetLocation", "GetHealth", "GetMaxHealth", "IsAlive", "IsAncientCreep" }) do c[f] = live(f) end
+	for _, f in ipairs({ "GetUnitName", "GetLocation", "GetHealth", "GetMaxHealth", "IsAlive", "IsAncientCreep", "IsNull" }) do c[f] = live(f) end
 	table.insert(list or CREEPS, c)
 	return c
 end
@@ -376,6 +377,163 @@ do
 	local rv = events("creep_revive")
 	check("neutral: seen again, creep_revive kind neutral", #rv == 1 and field(rv[1], "kind") == "neutral", rv[1])
 	GetNeutralSpawners = realSpawners
+end
+
+-- ev=unit_seen / ev=unit_gone: one row per own lane creep, and per neutral. A neutral that leaves the list alive (out of
+-- vision) is held: not a death, and not seen again when it returns; found dead only by its own handle.
+do
+	local realSpawners = GetNeutralSpawners
+	GetNeutralSpawners = function()
+		return { [13] = { team = 2, type = "small", location = Vector(1000, 0), min = Vector(900, -100), max = Vector(1100, 100) } }
+	end
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(900, 0) })
+	core.pos = 1
+	local function unlist(c)
+		for i, u in ipairs(NEUTRALS) do if u == c then table.remove(NEUTRALS, i) break end end
+	end
+	local n = creep("npc_dota_neutral_kobold", Vector(1000, 0), 90, NEUTRALS)
+	creep("npc_dota_xp_fountain", Vector(1000, 0), 100, NEUTRALS)
+	tick(H, { core }, 60)
+	local seen = events("unit_seen")
+	check("unit: a neutral is seen once, with its name and camp; a map fixture in the list is no unit", #seen == 1 and field(seen[1], "kind") == "neutral" and field(seen[1], "type") == "neutral_kobold" and field(seen[1], "camp") == "13", seen[1])
+	-- out of vision, alive: its handle is still valid
+	unlist(n)
+	tick(H, { core }, 60.1)
+	tick(H, { core }, 61)
+	check("unit: out of sight alive is not gone", #events("unit_gone") == 0, events("unit_gone")[1])
+	table.insert(NEUTRALS, n)
+	tick(H, { core }, 62)
+	check("unit: back in sight is the same unit", #events("unit_seen") == 1 and #events("unit_gone") == 0, #events("unit_seen"))
+	-- out of sight again, then found dead later: hid=1, the last spot and health it was listed with
+	unlist(n)
+	tick(H, { core }, 62.1)
+	n.dead = true
+	tick(H, { core }, 62.2)
+	check("unit: dead out of sight is not found before the recheck", #events("unit_gone") == 0, #events("unit_gone"))
+	tick(H, { core }, 63)
+	local gone = events("unit_gone")
+	check("unit: found dead later is hid=1 with its last spot", #gone == 1 and field(gone[1], "hid") == "1" and field(gone[1], "x") == "1000" and field(gone[1], "by") == "none", gone[1])
+	tick(H, { core }, 64)
+	check("unit: written once", #events("unit_gone") == 1, #events("unit_gone"))
+	-- killed in sight by the core: its handle is removed on the frame it leaves the list, and the core's rise is the taker
+	local k = creep("npc_dota_neutral_kobold", Vector(1000, 50), 10, NEUTRALS)
+	tick(H, { core }, 70)
+	kill(k)
+	core.lh = 1
+	tick(H, { core }, 70.1)
+	gone = events("unit_gone")
+	check("unit: killed in sight is gone at once, hid=0, by the core", #gone == 2 and field(gone[2], "hid") == "0" and field(gone[2], "by") == "1", gone[2])
+	check("unit: and its neutral_death names the same taker", field(events("neutral_death")[1], "by") == "1", events("neutral_death")[1])
+	GetNeutralSpawners = realSpawners
+end
+
+-- An own lane creep: seen once with the unit's own name (a flag bearer shows) and the lane; gone on the frame it leaves the list
+-- wherever it was, with our deny as the taker (an enemy hero's last hits read -1 from our side).
+do
+	local H = fresh()
+	local keep = GetAmountAlongLane
+	GetAmountAlongLane = function(lane, loc)
+		local y = lane == dota.Lane.Bot and -6000 or lane == dota.Lane.Top and 6000 or 0
+		return { amount = 0.5, distance = math.abs(loc.y - y) }
+	end
+	local sup = MakeUnit({ pid = 2, loc = Vector(0, -6000) })
+	sup.pos = 5
+	local flag = creep("npc_dota_creep_goodguys_melee_flagbearer", Vector(-6000, -5900), 100, OWN)
+	local far = creep("npc_dota_creep_goodguys_ranged", Vector(5000, -6000), 40, OWN)
+	local denied = creep("npc_dota_creep_goodguys_melee", Vector(0, -5900), 30, OWN)
+	tick(H, { sup }, 100)
+	local seen = events("unit_seen")
+	local byType = {}
+	for _, l in ipairs(seen) do byType[field(l, "type")] = l end
+	check("own: three seen, flag bearer named by the unit", #seen == 3 and byType["creep_goodguys_melee_flagbearer"] ~= nil and field(byType["creep_goodguys_ranged"], "lane") == "bot", #seen)
+	tick(H, { sup }, 100.1)
+	check("own: each is seen once", #events("unit_seen") == 3, #events("unit_seen"))
+	kill(far)
+	kill(denied)
+	sup.dn = 1
+	tick(H, { sup }, 100.2)
+	local gone = events("unit_gone")
+	local farLine, denLine
+	for _, l in ipairs(gone) do if field(l, "x") == "5000" then farLine = l else denLine = l end end
+	check("own: two gone, one of them 5,000 from every own hero", #gone == 2 and farLine ~= nil and denLine ~= nil, #gone)
+	check("own: the far one has no taker we can read", farLine and field(farLine, "by") == "none", farLine)
+	check("own: our deny keeps its pid", denLine and field(denLine, "by") == "2", denLine)
+	check("own: the old own-creep events agree on the denier", #events("own_creep_death") == 1 and field(events("own_creep_death")[1], "by") == "2", events("own_creep_death")[1])
+	GetAmountAlongLane = keep
+end
+
+-- A fixture in the neutral list is classified once, not every frame; a neutral found dead whose handle read errored and is listed
+-- again keeps one unit_seen and one unit_gone; and a neutral found dead after it left the list (a stale spot) neither takes a
+-- hero's last-hit rise from a lane creep that died nearby nor names a taker itself.
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(900, 0) })
+	core.pos = 1
+	local fix = creep("npc_dota_xp_fountain", Vector(1000, 0), 100, NEUTRALS)
+	local reads = 0
+	local nameOf = fix._GetUnitName
+	fix._GetUnitName = function(self) reads = reads + 1 return nameOf(self) end
+	local flaky = creep("npc_dota_neutral_kobold", Vector(1000, 0), 90, NEUTRALS)
+	tick(H, { core }, 60)
+	tick(H, { core }, 60.1)
+	tick(H, { core }, 60.2)
+	check("unit: a fixture's name is read once", reads == 1, reads)
+	-- its handle check errors while it is out of the list: logged gone; listed again, it is the same unit, not a new one
+	flaky._IsNull = function() error("invalid handle") end
+	for i, u in ipairs(NEUTRALS) do if u == flaky then table.remove(NEUTRALS, i) break end end
+	tick(H, { core }, 60.3)
+	check("unit: an errored handle check is a gone", #events("unit_gone") == 1, #events("unit_gone"))
+	table.insert(NEUTRALS, flaky)
+	tick(H, { core }, 60.4)
+	for i, u in ipairs(NEUTRALS) do if u == flaky then table.remove(NEUTRALS, i) break end end
+	tick(H, { core }, 60.5)
+	tick(H, { core }, 61.5)
+	check("unit: listed again it keeps one seen and one gone", #events("unit_seen") == 1 and #events("unit_gone") == 1, #events("unit_seen") .. "/" .. #events("unit_gone"))
+end
+
+do
+	local H = fresh()
+	local core = MakeUnit({ pid = 1, loc = Vector(0, 0) })
+	core.pos = 1
+	local n = creep("npc_dota_neutral_kobold", Vector(100, 0), 30, NEUTRALS)
+	tick(H, { core }, 60)
+	for i, u in ipairs(NEUTRALS) do if u == n then table.remove(NEUTRALS, i) break end end
+	tick(H, { core }, 60.1)
+	local lane = creep("npc_dota_creep_badguys_melee", Vector(300, 0), 20)
+	tick(H, { core }, 60.2)
+	-- the hidden neutral dies out of sight and is noticed on the frame the core last-hits the lane creep
+	n.dead = true
+	kill(lane)
+	core.lh = 1
+	tick(H, { core }, 61)
+	local cd = events("creep_death")
+	check("unit: a neutral found dead after being held does not take the core's rise", #cd == 1 and field(cd[1], "by") == "1", cd[1])
+	local gone = events("unit_gone")
+	check("unit: and it is logged hid=1 with no taker", #gone == 1 and field(gone[1], "hid") == "1" and field(gone[1], "by") == "none", gone[1])
+end
+
+-- An own creep that left the list and is listed again (a change of owner) keeps one unit_seen and one unit_gone.
+do
+	local H = fresh()
+	local keep = GetAmountAlongLane
+	GetAmountAlongLane = function(lane, loc)
+		local y = lane == dota.Lane.Bot and -6000 or lane == dota.Lane.Top and 6000 or 0
+		return { amount = 0.5, distance = math.abs(loc.y - y) }
+	end
+	local sup = MakeUnit({ pid = 2, loc = Vector(0, -6000) })
+	sup.pos = 5
+	local c = creep("npc_dota_creep_goodguys_melee", Vector(-6000, -5900), 100, OWN)
+	tick(H, { sup }, 100)
+	table.remove(OWN, 1)
+	tick(H, { sup }, 100.1)
+	table.insert(OWN, c)
+	tick(H, { sup }, 100.2)
+	table.remove(OWN, 1)
+	tick(H, { sup }, 100.3)
+	check("own: listed again, one seen and one gone", #events("unit_seen") == 1 and #events("unit_gone") == 1, #events("unit_seen") .. "/" .. #events("unit_gone"))
+	check("own: the old wave line still logs both exits", #events("wave_creep_death") == 2, #events("wave_creep_death"))
+	GetAmountAlongLane = keep
 end
 
 finish()

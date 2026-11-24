@@ -176,7 +176,26 @@ ____exports.EVENTS = {
         dist = "num"
     },
     aegis = {pid = "num", team = "num"},
-    creep_revive = {team = "num", kind = "str", hp = "num"},
+    creep_revive = {team = "num", kind = "str", hp = "num", cid = "num"},
+    unit_seen = {
+        team = "num",
+        cid = "num",
+        kind = "str",
+        type = "str",
+        lane = "str",
+        camp = "num",
+        x = "num",
+        y = "num"
+    },
+    unit_gone = {
+        team = "num",
+        cid = "num",
+        x = "num",
+        y = "num",
+        hp = "num",
+        by = "mixed",
+        hid = "bool"
+    },
     creep_death = {
         team = "num",
         kind = "str",

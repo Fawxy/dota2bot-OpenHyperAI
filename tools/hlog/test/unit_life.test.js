@@ -101,3 +101,92 @@ test('a log from before cid (and before the wave event) still reads: its own dea
     assert.deepStrictEqual(view.map(r => [r.uid.replace(/\d+$/, '#'), r.type, r.by_kind, r.by_pid, r.t0, r.wave]),
         [['2:e#', 'melee', 'hero', 5, null, null], ['2:xe#', 'ranged', 'unknown', null, null, null]]);
 });
+
+// A game with ev=unit_seen is read from unit_seen / unit_gone alone: the owner's lines give every own lane creep a row, and the old
+// death events the same log still carries are not read a second time.
+const useen = (t, team, cid, type, x = 0, y = 0, lane = 'mid') =>
+    line(t, `unit_seen team=${team} cid=${cid} kind=lane type=${type} lane=${lane} x=${x} y=${y}`);
+const ugone = (t, team, cid, by = 'none', extra = '', x = 0, y = 0) =>
+    line(t, `unit_gone team=${team} cid=${cid} x=${x} y=${y} hp=0.05 by=${by} ${extra}`.trim());
+
+test('own lane creeps: one row each from the owner\'s lines (born to 0.1 s, as the old wave line: 59.967 is wave 2), even one still alive; the enemy taker and a tower are still read from the other team\'s line; a flag bearer is a flag', () => {
+    const { view } = run([
+        useen(59.967, 2, 1, 'creep_goodguys_melee'), useen(60, 2, 2, 'creep_goodguys_ranged'), useen(60, 2, 3, 'creep_goodguys_flagbearer'),
+        useen(60, 2, 4, 'creep_goodguys_melee_upgraded'), useen(60, 2, 5, 'goodguys_siege'), useen(60, 2, 6, 'creep_goodguys_melee'),
+        ugone(100, 2, 1), ugone(101, 2, 2, 1), ugone(102, 2, 3), ugone(103, 2, 4), ugone(104, 2, 5),
+        // the enemy team's lines: a hero's last hit of 2:1, a tower on 2:3; a sighting of a creep that lived (nothing of ours died there)
+        line(100.1, 'creep_death team=3 kind=melee x=0 y=0 hp=0.05 by=5 tw=0 cid=40'),
+        line(102.1, 'creep_death team=3 kind=melee x=0 y=0 hp=0.05 by=none tw=1 cid=41'),
+        line(300, 'creep_death team=3 kind=melee x=900 y=900 hp=0.05 by=6 tw=0 cid=42'),
+        // the old events of the same creeps would double-count them if read
+        line(100, 'wave_creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none cid=1 lane=mid born=60 nd=0'),
+    ]);
+    const lane = view.filter(r => r.kind === 'lane').sort((a, b) => a.uid.localeCompare(b.uid));
+    assert.deepStrictEqual(lane.map(r => [r.uid, r.type, r.wave, r.lane, r.t0, r.by_kind, r.by_pid]), [
+        ['2:1', 'melee', 2, 'mid', 60, 'hero', 5], ['2:2', 'ranged', 2, 'mid', 60, 'deny', 1], ['2:3', 'flag', 2, 'mid', 60, 'tower', null],
+        ['2:4', 'melee', 2, 'mid', 60, 'unknown', null], ['2:5', 'siege', 2, 'mid', 60, 'unknown', null], ['2:6', 'melee', 2, 'mid', 60, 'unknown', null],
+    ]);
+    assert.strictEqual(lane.find(r => r.uid === '2:6').t1, null);
+    assert.strictEqual(lane.find(r => r.uid === '2:1').t1, 100);
+    assert.deepStrictEqual([lane[0].x0, lane[0].y0], [0, 0]);
+});
+
+test('the two teams\' creeps with one cid are two units: a cid is its team\'s own', () => {
+    const { view } = run([
+        useen(60, 2, 7, 'creep_goodguys_melee'), useen(60, 3, 7, 'creep_badguys_melee', 100, 100),
+        ugone(90, 2, 7, 6), ugone(95, 3, 7, 1),
+    ]);
+    assert.deepStrictEqual(view.map(r => [r.uid, r.team, r.t1, r.by_pid]).sort(), [['2:7', 2, 90, 6], ['3:7', 3, 95, 1]]);
+});
+
+test('a neutral both teams saw die is one row under the Radiant uid, with its name and camp; a hidden-then-found-dead sighting pairs by its gone time; a neutral never found dead is a row per team', () => {
+    const nseen = (t, team, cid, type, x, y, camp) =>
+        line(t, `unit_seen team=${team} cid=${cid} kind=neutral type=${type} x=${x} y=${y}${camp === undefined ? '' : ` camp=${camp}`}`);
+    const { view } = run([
+        nseen(20, 2, 11, 'neutral_kobold', 3978, -5027, 1), nseen(25, 3, 12, 'neutral_kobold', 3990, -5000, 1),
+        ugone(50, 2, 11, 1, '', 3978, -5027), ugone(50.3, 3, 12, 'none', 'hid=1', 3990, -5000),
+        // two heroes take two neutrals at once: two units, not one
+        nseen(60, 2, 13, 'neutral_wolf', 100, 100), nseen(60, 2, 14, 'neutral_wolf', 150, 100),
+        ugone(80, 2, 13, 1, '', 100, 100), ugone(80, 2, 14, 2, '', 150, 100),
+        // out of sight and back, never found dead: no death
+        nseen(70, 2, 15, 'neutral_ogre', 5000, 5000), nseen(70, 3, 16, 'neutral_ogre', 5000, 5000),
+    ]);
+    const n = view.filter(r => r.kind === 'neutral').sort((a, b) => a.uid.localeCompare(b.uid));
+    assert.deepStrictEqual(n.map(r => [r.uid, r.type, r.camp, r.t0, r.t1, r.by_kind, r.by_pid]), [
+        ['n2:11', 'neutral_kobold', 1, 20, 50, 'hero', 1], ['n2:13', 'neutral_wolf', null, 60, 80, 'hero', 1], ['n2:14', 'neutral_wolf', null, 60, 80, 'hero', 2],
+        ['n2:15', 'neutral_ogre', null, 70, null, 'unknown', null], ['n3:16', 'neutral_ogre', null, 70, null, 'unknown', null],
+    ]);
+});
+
+test('a neutral found dead after it left the list (hid) merges with its partner of the same type and camp within 2 s, however far its last spot; an exact pair needs the same type', () => {
+    const nseen = (t, team, cid, x, y, camp, type = 'neutral_wolf') =>
+        line(t, `unit_seen team=${team} cid=${cid} kind=neutral type=${type} x=${x} y=${y}${camp === undefined ? '' : ` camp=${camp}`}`);
+    const { view } = run([
+        // a hid row 20 units off: merged, with the exact partner's time
+        nseen(10, 2, 1, 100, 100, 5), nseen(10, 3, 2, 100, 100, 5),
+        ugone(50, 2, 1, 1, '', 100, 100), ugone(51.7, 3, 2, 'none', 'hid=1', 120, 100),
+        // a hid row 600 units from the exact one (it was pulled away from where it was last listed), same camp: still the same unit
+        nseen(10, 2, 3, 2000, 2000, 7), nseen(10, 3, 4, 2000, 2000, 7),
+        ugone(90, 2, 3, 1, '', 2000, 2000), ugone(90.4, 3, 4, 'none', 'hid=1', 2600, 2000),
+        // a hid row in no camp is never merged by time alone; one in another camp, or of another type, is not the same unit
+        nseen(10, 2, 5, 500, 500), nseen(10, 3, 6, 500, 500),
+        ugone(120, 2, 5, 1, '', 500, 500), ugone(120.2, 3, 6, 'none', 'hid=1', 500, 500),
+        nseen(10, 2, 7, 800, 800, 9), nseen(10, 3, 8, 800, 800, 11), nseen(10, 3, 9, 800, 800, 9, 'neutral_ogre'),
+        ugone(150, 2, 7, 1, '', 800, 800), ugone(150.2, 3, 8, 'none', 'hid=1', 800, 800), ugone(150.2, 3, 9, 'none', 'hid=1', 800, 800),
+        // a hid pair 2.5 s apart is two units
+        nseen(10, 2, 10, 300, 300, 13), nseen(10, 3, 11, 300, 300, 13),
+        ugone(180, 2, 10, 1, '', 300, 300), ugone(182.5, 3, 11, 'none', 'hid=1', 300, 300),
+        // an exact pair of two types at one spot and time: each takes the one of its own type
+        nseen(10, 2, 12, 900, 900, 15), nseen(10, 3, 13, 900, 900, 15, 'neutral_ogre'), nseen(10, 2, 14, 900, 900, 15, 'neutral_ogre'), nseen(10, 3, 15, 900, 900, 15),
+        ugone(200, 2, 12, 1, '', 900, 900), ugone(200, 3, 13, 6, '', 900, 900), ugone(200, 2, 14, 2, '', 900, 900), ugone(200, 3, 15, 5, '', 900, 900),
+        // an exact row is the partner when the Radiant row was the hid one
+        nseen(10, 2, 16, 400, 400, 17), nseen(10, 3, 17, 400, 400, 17),
+        ugone(230.4, 2, 16, 'none', 'hid=1', 400, 400), ugone(230, 3, 17, 6, '', 400, 400),
+    ]);
+    const n = view.filter(r => r.kind === 'neutral').sort((a, b) => a.t1 - b.t1 || a.uid.localeCompare(b.uid));
+    assert.deepStrictEqual(n.map(r => [r.uid, r.t1, r.hid, r.by_pid]), [
+        ['n2:1', 50, 0, 1], ['n2:3', 90, 0, 1], ['n2:5', 120, 0, 1], ['n3:6', 120.2, 1, null],
+        ['n2:7', 150, 0, 1], ['n3:8', 150.2, 1, null], ['n3:9', 150.2, 1, null], ['n2:10', 180, 0, 1], ['n3:11', 182.5, 1, null],
+        ['n2:12', 200, 0, 1], ['n2:14', 200, 0, 2], ['n2:16', 230, 0, 6],
+    ]);
+});
