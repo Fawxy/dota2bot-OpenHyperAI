@@ -35,7 +35,7 @@
 //   wave_tower_s      seconds the team's front in the hero's lane (ev=front, latest line) sat within TOWER_R of an
 //                     enemy tower of that lane
 //   tower_took        the team's creeps the enemy towers killed in the lane: the enemy team's ev=creep_death with tw=1
-//                     and fate `other` (as view creep_fate, see creepFates). Null on builds before `tw`.
+//                     and fate `other` (as fragment creep_fate, see creepFates). Null on builds before `tw`.
 // Speed: every query filters on game_id by index; about 0.1 s a game for the store, most of it view hp_loss.
 // The controller's forecast error (s4's last line) reads our telemetry: `q @lane_ctl`, `q @lever_effect`.
 'use strict';
@@ -74,7 +74,7 @@ function load(store, gameId, until) {
         FROM ev_snap WHERE game_id = :g AND t >= 0 AND t <= :u AND typeof(x) IN ('integer', 'real')
         GROUP BY pid, CAST(round(t) AS INTEGER) ORDER BY pid, s`, p);
     const loss = store.query(`SELECT pid, t, died, loss, src FROM hp_loss WHERE game_id = :g AND t <= :u`, p);
-    // The base tables, not view creep_fate: its deny pairing scans every game's creep deaths (about 1 s a game).
+    // The base tables, not fragment creep_fate (round B moves this read onto unit_life).
     const enemy = store.query(`-- ensure: ev_creep_death(team, kind, x, y, by, tw)
         SELECT t, team, kind, x, y, CAST("by" AS TEXT) AS by, tw FROM ev_creep_death WHERE game_id = :g AND t <= :u`, p);
     const own = store.query(`-- ensure: ev_own_creep_death(team, kind, x, y, by)
@@ -83,7 +83,7 @@ function load(store, gameId, until) {
 }
 
 /**
- * As view creep_fate, without its mutual-nearest pairing: an enemy creep no one's last hit is `enemy_deny` when the
+ * As fragment creep_fate, without its mutual-nearest pairing: an enemy creep no one's last hit is `enemy_deny` when the
  * other team logged a deny of one of its own creeps of the same kind within 1 s and 250 units, else `other`.
  */
 function creepFates(enemy, own) {

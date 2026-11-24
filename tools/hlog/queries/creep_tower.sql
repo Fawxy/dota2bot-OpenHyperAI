@@ -12,6 +12,7 @@
 -- about 2 or more per team per 10:00 (proposal 2026-11-04-prehit-and-feints). One row per game and team: a team-game.
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, p1d, p1r, p2d, p2r, p3d, p3r)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: creep_fate
 d AS (
     SELECT c.game_id, c.team, c.tw, f.fate,
         (c.p1d IS NOT NULL AND c.p1d <= c.p1r + 100) OR (c.p2d IS NOT NULL AND c.p2d <= c.p2r + 100)

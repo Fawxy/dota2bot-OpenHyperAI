@@ -14,6 +14,7 @@
 -- ensure: ev_bot(pid, team, pos)
 WITH
 gm AS MATERIALIZED (SELECT +game_id AS game_id FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: pull_waves
 tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team FROM ev_bot WHERE game_id IN (SELECT game_id FROM gm) GROUP BY 1, 2),
 h AS MATERIALIZED (
     SELECT w.game_id, w.seq, w.pid, tm.team, w.lane, w.br, w.res, w.n, w.lh, w.tw, w.sw, w.t - coalesce(w.dur, 0) AS t0

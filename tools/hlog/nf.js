@@ -269,13 +269,14 @@ function coreLane(store, file, gameNo) {
 }
 
 /**
- * L.1 creep-economy keys per team (`_r` Radiant, `_d` Dire) at 10:00, from the views creep_share and creep_guard (the former GOALS.md L.1,
+ * L.1 creep-economy keys per team (`_r` Radiant, `_d` Dire) at 10:00, from the fragments creep_share and creep_guard (the former GOALS.md L.1,
  * LOGGING.md): `share`, `team_lhdn` (team last hits + denies), `core_lh`, `core_dn`, `sup_lh`, `sup_dn` (pos 4-5), `deaths_t` (counts a hero still dead
  * at 10:00), `not_in_share`. Undefined for a team with no row (share and not_in_share are NULL on logs from before 406ee95).
  */
 function economy(store, file, gameNo) {
-    const rows = store.query(`WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1))
-        SELECT g.team, s.share AS share, g.team_lh + g.team_dn AS team_lhdn, g.core_lh, g.core_dn, g.sup_lh, g.sup_dn, g.deaths, g.not_in_share
+    const rows = store.query(`WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+-- include: creep_guard
+SELECT g.team, s.share AS share, g.team_lh + g.team_dn AS team_lhdn, g.core_lh, g.core_dn, g.sup_lh, g.sup_dn, g.deaths, g.not_in_share
         FROM creep_guard g LEFT JOIN creep_share s ON s.game_id = g.game_id AND s.team = g.team
         WHERE g.game_id = (SELECT game_id FROM gm)`, { file, game: gameNo });
     const out = {};

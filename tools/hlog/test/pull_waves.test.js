@@ -53,9 +53,11 @@ test('an ok pull: their wave near our front in slot..slot+75 by fate, our own cr
         line(217, 'creep_death team=3 kind=melee x=0 y=-6000 hp=0.05 by=6 tw=0'),
         line(220, 'own_creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=1'),
         line(221, 'own_creep_death team=2 kind=melee x=0 y=-6000 hp=0.05 by=none'),
+        // an own death counts only with a living hero of its team within 1,500: pid 1 stands at the front from 200 to 222
+        ...Array.from({ length: 23 }, (_, i) => line(200 + i, 'snap pid=1 x=0 y=-6000 alive=1 hp=100')),
         // the pulled wave at the camp (2,898 from the front): the pulled-wave part, not our side's.
         line(205, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none'),
-    ], 'SELECT * FROM pull_waves');
+    ], 'WITH gm AS (SELECT game_id FROM games),\n-- include: pull_waves\nSELECT * FROM pull_waves');
     assert.deepStrictEqual(out.map(r => [r.slot, r.grp, r.own_died, r.e_dead, r.e_core, r.e_ours, r.e_denied, r.e_tower, r.e_none, r.e_tw,
         r.o_dead, r.o_denied, r.tw30, r.meet_own, r.meet_d, r.meet_tw]),
         // meet: (-0.6 + 1) / 2 * 4,517 (bot T1-T1) = 903 from our T1, 3 past the side-lane target 900.
@@ -77,7 +79,7 @@ test('control rows: one per team, lane and slot that wanted a pull and got none,
         cd(330, 0, -6000, 1, 0),
         line(378, 'choice pid=5 kind=pull go=0 want=0 lane=3 slot=380'),
         line(408, 'choice pid=5 kind=pull go=0 want=1 lane=1 slot=410'),
-    ], 'SELECT * FROM pull_waves ORDER BY slot');
+    ], 'WITH gm AS (SELECT game_id FROM games),\n-- include: pull_waves\nSELECT * FROM pull_waves ORDER BY slot');
     assert.deepStrictEqual(out.map(r => [r.slot, r.grp, r.own_died, r.e_dead, r.e_core, r.tw30, r.meet_own, r.meet_tw]),
         [[200, 'ok_undiv', 0, null, null, null, null, null], [320, 'none', null, 1, 1, 0, 452, 1], [410, 'none', null, null, null, null, null, null]]);
 });
@@ -88,7 +90,8 @@ test('a pull row leaves the pulled wave (within 800 of the camp spawn) out of ou
         line(200, 'lane_read team=2 lane=3 eq=0.2 fx=-2000 fy=-7000 tw=1'),
         line(205, 'own_creep_death team=2 kind=melee x=-2415 y=-7602 hp=0.05 by=none'),
         line(206, 'own_creep_death team=2 kind=melee x=-1000 y=-7000 hp=0.05 by=none'),
-    ], 'SELECT * FROM pull_waves');
+        ...Array.from({ length: 10 }, (_, i) => line(200 + i, 'snap pid=1 x=-1500 y=-7000 alive=1 hp=100')),
+    ], 'WITH gm AS (SELECT game_id FROM games),\n-- include: pull_waves\nSELECT * FROM pull_waves');
     assert.deepStrictEqual(out.map(r => [r.own_died, r.o_dead]), [[1, 1]]);
 });
 
@@ -100,6 +103,6 @@ test('a pull by one team does not hide the other team\'s wanted slot on the same
         line(191, 'choice pid=8 kind=pull go=0 want=1 why=off src=shadow lane=3 slot=200.6'),
         // the pulling team's other support, wanted and not started on the pulled slot: still not a control.
         line(192, 'choice pid=3 kind=pull go=0 want=1 lane=3 slot=200.2'),
-    ], 'SELECT * FROM pull_waves ORDER BY team');
+    ], 'WITH gm AS (SELECT game_id FROM games),\n-- include: pull_waves\nSELECT * FROM pull_waves ORDER BY team');
     assert.deepStrictEqual(out.map(r => [r.team, r.pid, r.slot, r.grp]), [[2, 5, 200, 'ok_div'], [3, 8, 200.6, 'none']]);
 });

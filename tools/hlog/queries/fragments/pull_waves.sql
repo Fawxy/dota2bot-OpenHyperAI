@@ -1,3 +1,4 @@
+-- Fragment (`-- include: pull_waves`): CTE `pull_waves`, what view pull_waves was (see fragment creep_fate). Needs `gm(game_id)` before it; its own CTEs carry the prefix pw_ (and pfw, camps, pf_*).
 -- A pull scored per wave (the `pull-effect` proposal (master tag `pre-process-v5`) s2; slice support-lane `reading`): one row per `ok`
 -- ev=pull_job (`grp` ok_div when `diverted`, as view pull_attempts: dt >= 0.75, div where a line has no dt; else ok_undiv)
 -- and one control row per lane slot that wanted a pull and got none (`grp` none: ev=choice kind=pull want=1 go=0 with no
@@ -28,44 +29,44 @@
 -- ensure: ev_choice(pid, kind, go, want, lane, slot)
 -- ensure: ev_lane_read(team, lane, eq, fx, fy, tw)
 -- ensure: ev_bot(pid, team, pos)
-WITH
+-- ensure: ev_pull_job(pid, lane, camp, slot, res, dt, div)
+-- include: creep_fate
 -- include: camp_spawns
-gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games),
 pfw(win) AS (SELECT 45),
 -- include: pull_farm
-tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos FROM ev_bot WHERE team IS NOT NULL GROUP BY 1, 2),
-slots AS MATERIALIZED (
+pw_tm AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos FROM ev_bot WHERE team IS NOT NULL GROUP BY 1, 2),
+pw_slots AS MATERIALIZED (
     SELECT j.game_id, j.seq, j.pid, tm.team, j.lane, j.camp, j.slot,
         CASE WHEN coalesce(j.dt, j.div) >= 0.75 THEN 'ok_div' ELSE 'ok_undiv' END AS grp
-    FROM ev_pull_job j JOIN tm ON tm.game_id = j.game_id AND tm.pid = j.pid
+    FROM ev_pull_job j JOIN pw_tm tm ON tm.game_id = j.game_id AND tm.pid = j.pid
     WHERE j.res = 'ok'
     UNION ALL
     SELECT c.game_id, min(c.seq), min(c.pid), tm.team, c.lane, NULL, c.slot, 'none'
-    FROM ev_choice c JOIN tm ON tm.game_id = c.game_id AND tm.pid = c.pid
+    FROM ev_choice c JOIN pw_tm tm ON tm.game_id = c.game_id AND tm.pid = c.pid
     WHERE c.kind = 'pull' AND c.want = 1 AND c.go = 0
-        AND NOT EXISTS (SELECT 1 FROM ev_pull_job j JOIN tm tj ON tj.game_id = j.game_id AND tj.pid = j.pid
+        AND NOT EXISTS (SELECT 1 FROM ev_pull_job j JOIN pw_tm tj ON tj.game_id = j.game_id AND tj.pid = j.pid
             WHERE j.game_id = c.game_id AND tj.team = tm.team AND j.lane = c.lane AND abs(j.slot - c.slot) < 20)
     GROUP BY c.game_id, tm.team, c.lane, c.slot
 ),
-rd AS MATERIALIZED (
+pw_rd AS MATERIALIZED (
     SELECT s.*,
         (SELECT r.t FROM ev_lane_read r WHERE r.game_id = s.game_id AND r.t >= s.slot AND r.t < s.slot + 5 AND r.team = s.team AND r.lane = s.lane ORDER BY r.t LIMIT 1) AS t0,
         (SELECT r.eq FROM ev_lane_read r WHERE r.game_id = s.game_id AND r.t >= s.slot + 30 AND r.t < s.slot + 35 AND r.team = s.team AND r.lane = s.lane ORDER BY r.t LIMIT 1) AS eq30,
         (SELECT r.t FROM ev_lane_read r WHERE r.game_id = s.game_id AND r.t >= s.slot + 60 AND r.t < s.slot + 90 AND r.team = s.team AND r.lane = s.lane AND r.tw = 1 ORDER BY r.t LIMIT 1) AS t60
-    FROM slots s
+    FROM pw_slots s
 ),
-fr AS MATERIALIZED (
+pw_fr AS MATERIALIZED (
     SELECT d.*, r0.fx, r0.fy, r0.eq AS eq0, r6.eq AS eq60_90,
         CASE d.lane WHEN 2 THEN 2902 WHEN 1 THEN 4321 ELSE 4517 END AS span,
         CASE d.lane WHEN 2 THEN 1300 ELSE 900 END AS target
         , cp.x AS cx, cp.y AS cy
-    FROM rd d
+    FROM pw_rd d
     LEFT JOIN camps cp ON cp.idx = d.camp
     LEFT JOIN ev_lane_read r0 ON r0.game_id = d.game_id AND r0.t = d.t0 AND r0.team = d.team AND r0.lane = d.lane
     LEFT JOIN ev_lane_read r6 ON r6.game_id = d.game_id AND r6.t = d.t60 AND r6.team = d.team AND r6.lane = d.lane
 ),
-cf AS MATERIALIZED (SELECT game_id, team, side, t, x, y, fate, pid, tw FROM creep_fate),
-fate AS (
+pw_cf AS MATERIALIZED (SELECT game_id, team, side, t, x, y, fate, pid, tw FROM creep_fate),
+pw_fate AS (
     SELECT f.game_id, f.seq, f.team,
         sum(c.side = 'enemy') AS e_dead,
         sum(c.side = 'enemy' AND c.fate = 'own_lh' AND b.pos BETWEEN 1 AND 3) AS e_core,
@@ -76,14 +77,15 @@ fate AS (
         sum(c.side = 'enemy' AND c.tw = 1) AS e_tw,
         sum(c.side = 'own') AS o_dead,
         sum(c.side = 'own' AND c.fate = 'own_deny') AS o_denied
-    FROM fr f
-    JOIN cf c ON c.game_id = f.game_id AND c.team = f.team AND c.t >= f.slot AND c.t < f.slot + 75
+    FROM pw_fr f
+    JOIN pw_cf c ON c.game_id = f.game_id AND c.team = f.team AND c.t >= f.slot AND c.t < f.slot + 75
         AND (c.x - f.fx) * (c.x - f.fx) + (c.y - f.fy) * (c.y - f.fy) <= 2500 * 2500
         AND NOT (c.side = 'own' AND f.cx IS NOT NULL AND (c.x - f.cx) * (c.x - f.cx) + (c.y - f.cy) * (c.y - f.cy) <= 800 * 800)
-    LEFT JOIN tm b ON b.game_id = c.game_id AND CAST(b.pid AS TEXT) = CAST(c.pid AS TEXT)
+    LEFT JOIN pw_tm b ON b.game_id = c.game_id AND CAST(b.pid AS TEXT) = CAST(c.pid AS TEXT)
     WHERE f.fx IS NOT NULL
     GROUP BY 1, 2, 3
-)
+),
+pull_waves AS (
 SELECT f.game_id, g.file, g.game, f.seq, f.team, f.pid, f.lane, f.camp, f.slot, f.grp,
     p.n_puller, p.n_ours, p.own_died, p.own_denied, p.them_took, p.them_core,
     CASE WHEN f.fx IS NULL THEN NULL ELSE coalesce(w.e_dead, 0) END AS e_dead,
@@ -100,6 +102,7 @@ SELECT f.game_id, g.file, g.game, f.seq, f.team, f.pid, f.lane, f.camp, f.slot, 
     CASE WHEN f.eq60_90 IS NULL THEN NULL ELSE round((f.eq60_90 + 1) / 2.0 * f.span) END AS meet_own,
     CASE WHEN f.eq60_90 IS NULL THEN NULL ELSE round((f.eq60_90 + 1) / 2.0 * f.span) - f.target END AS meet_d,
     CASE WHEN f.eq60_90 IS NULL THEN NULL WHEN (f.eq60_90 + 1) / 2.0 * f.span <= 700 THEN 1 ELSE 0 END AS meet_tw
-FROM fr f JOIN games g USING (game_id)
+FROM pw_fr f JOIN games g USING (game_id)
 LEFT JOIN pf_rows p ON f.grp <> 'none' AND p.game_id = f.game_id AND p.seq = f.seq
-LEFT JOIN fate w ON w.game_id = f.game_id AND w.seq = f.seq AND w.team = f.team
+LEFT JOIN pw_fate w ON w.game_id = f.game_id AND w.seq = f.seq AND w.team = f.team
+),

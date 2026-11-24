@@ -1,3 +1,4 @@
+-- Fragment (`-- include: lane_waste`): CTE `lane_waste`, what view lane_waste was (see fragment creep_fate). Needs `gm(game_id)` before it; its own CTEs are d, sup, sd, pts, lab, cd.
 -- Lane-wide waste by place and cause (slice support-lane, coverage "lane-wide waste"): one row per enemy lane creep death no hero got
 -- (`creep_fate` side enemy, fate `other`), from either team's log, with who of the logging team was near it and why no one took it.
 -- core_*: from ev=creep_death's p<N> fields (own cores pos 1-3 within 1,500): `core_d` the nearest one's distance; `core` = on
@@ -23,7 +24,7 @@
 -- ensure: ev_snap(pid, x, y, alive, ar)
 -- ensure: ev_bot(pid, team, pos)
 -- ensure: ev_pull_job(pid, camp, slot, res)
-WITH
+-- include: creep_fate
 -- include: camp_spawns
 d AS (
     SELECT c.game_id, c.seq, c.t, c.team, c.kind, c.x, c.y, c.tw,
@@ -33,6 +34,7 @@ d AS (
         (c.p1d <= coalesce(c.p1r, 150) + 300 OR c.p2d <= coalesce(c.p2r, 150) + 300 OR c.p3d <= coalesce(c.p3r, 150) + 300) AS in_reach
     FROM ev_creep_death c
     JOIN creep_fate f ON f.game_id = c.game_id AND f.seq = c.seq AND f.side = 'enemy' AND f.fate = 'other'
+    WHERE c.game_id IN (SELECT game_id FROM gm)
 ),
 sup AS (
     SELECT d.game_id, d.seq,
@@ -59,7 +61,8 @@ cd AS (
                   AND NOT EXISTS (SELECT 1 FROM ev_bot b WHERE b.game_id = p.game_id AND b.pid = p.pid AND b.team = d.team)
                   AND (k.x - d.x) * (k.x - d.x) + (k.y - d.y) * (k.y - d.y) <= 640000) AS pulled
     FROM d
-)
+),
+lane_waste AS (
 SELECT d.game_id, d.seq, d.t, d.team, d.kind, d.x, d.y, d.tw, lab.lane,
     CASE WHEN d.core_d < 1e9 THEN round(d.core_d) END AS core_d,
     CASE WHEN d.on_it THEN 'on' WHEN d.in_reach THEN 'reach' WHEN d.core_d < 1e9 THEN 'near' ELSE 'none' END AS core,
@@ -75,3 +78,4 @@ FROM d
 JOIN lab ON lab.k = d.game_id AND lab.seq = d.seq
 JOIN cd ON cd.game_id = d.game_id AND cd.seq = d.seq
 LEFT JOIN sd ON sd.game_id = d.game_id AND sd.seq = d.seq
+),

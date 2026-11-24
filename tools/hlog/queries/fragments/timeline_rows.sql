@@ -8,6 +8,9 @@
 -- ensure: ev_creep_death(team, kind, by)
 -- ensure: ev_own_creep_death(team, kind, by)
 -- ensure: ev_neutral_death(team, by)
+-- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
+-- ensure: ev_unit_seen(team, cid, kind, type, lane, camp, x, y)
+-- ensure: ev_unit_gone(team, cid, x, y, hp, by, hid)
 -- ensure: ev_choice(pid, kind, want, go, why, src, lane, slot)
 gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id, g.file, g.game, r.batch, r.lineup, r.arm, r.seat_team, r.seat, r.rep
@@ -180,16 +183,17 @@ tl_cast AS (
     SELECT c.game_id, c.pid, c.t, NULL, 'cast', c.ab, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
     FROM gm CROSS JOIN ev_cast c ON c.game_id = gm.game_id WHERE c.ab IS NOT NULL
 ),
--- Lane creep deaths have one fate each (view creep_fate's rule, fragment creep_fate_rows, for the games read). A creep is in both teams' logs when each had a hero near: as the
--- enemy side of the team that could last-hit it, and the own side of its own team. So one row per death: a hero's last hit
--- (own_lh) and deny (own_deny) on the hero who got it; an enemy creep nobody got (other) from the log of the team that could
--- have last-hit it; a creep of our own nobody got (lost) only when the other team's log has no enemy-side death of it (same
--- kind, within 1 s and 250, as creep_fate pairs denies), since then it is that log's own_lh or other row. enemy_deny is the
--- denier's own_deny row seen from the other side: never a row.
+-- Lane creep deaths have one fate each (view creep_fate's rule, from unit_life's lane rows: fragment unit_life_lane, for the games read). A creep is a unit
+-- with up to two rows: a hero's last hit (own_lh) and an enemy creep nobody got (other) from the log of the team that could have last-hit it (the creep_death line it
+-- paired to), a deny (own_deny) on the hero who got it, and a creep of our own nobody got (lost) only when no enemy line of it exists (the unit has no cd_seq),
+-- since then it is that log's own_lh or other row. enemy_deny is the denier's own_deny row seen from the other side: never a row.
 cf_gm AS MATERIALIZED (SELECT game_id FROM gm WHERE :kind IS NULL OR instr(',' || :kind || ',', ',creep,') > 0),
-cf_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
-cf_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
--- include: creep_fate_rows
+ul_useen AS NOT MATERIALIZED (SELECT * FROM ev_unit_seen WHERE game_id IN (SELECT game_id FROM cf_gm)),
+ul_ugone AS NOT MATERIALIZED (SELECT * FROM ev_unit_gone WHERE game_id IN (SELECT game_id FROM cf_gm)),
+ul_enemy AS NOT MATERIALIZED (SELECT * FROM ev_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
+ul_wave AS NOT MATERIALIZED (SELECT * FROM ev_wave_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
+ul_own AS NOT MATERIALIZED (SELECT * FROM ev_own_creep_death WHERE game_id IN (SELECT game_id FROM cf_gm)),
+-- include: unit_life_lane
 tl_fate AS MATERIALIZED (SELECT * FROM creep_fate_rows),
 tl_fate_lane AS MATERIALIZED (SELECT * FROM creep_lane WHERE game_id IN (SELECT game_id FROM cf_gm)),
 -- `by` is a pid only on a creep a hero got.
@@ -220,9 +224,7 @@ tl_nobody AS (
     LEFT JOIN tl_fate_lane l ON l.game_id = f.game_id AND l.seq = f.seq
     WHERE (f.side = 'enemy' AND f.fate = 'other')
         OR (f.side = 'own' AND f.fate = 'lost' AND NOT EXISTS (
-            SELECT 1 FROM tl_fate e WHERE e.game_id = f.game_id AND e.side = 'enemy' AND e.fate IN ('own_lh', 'other')
-                AND e.team <> f.team AND e.kind IS f.kind AND e.t BETWEEN f.t - 1 AND f.t + 1
-                AND (e.x - f.x) * (e.x - f.x) + (e.y - f.y) * (e.y - f.y) <= 62500))
+            SELECT 1 FROM ul_lall e WHERE e.game_id = f.game_id AND e.seq = f.seq AND e.cd_seq IS NOT NULL))
 ),
 tl_state AS (
     SELECT s.game_id, s.pid, s.sec, NULL, 'state',

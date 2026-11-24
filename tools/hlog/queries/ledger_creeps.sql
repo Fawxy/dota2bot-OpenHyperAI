@@ -27,6 +27,7 @@
 -- ensure: ev_own_creep_death(team, kind, x, y, by)
 -- ensure: ev_snap(pid, t, x, y, alive, hp, hit, ed, ln, ld)
 WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file FROM games WHERE file LIKE coalesce(:like, '%')),
+-- include: creep_fate
 cores AS MATERIALIZED (
     SELECT l.game_id, l.team, l.pos, l.pid FROM lineup l JOIN gm ON gm.game_id = l.game_id WHERE l.pos BETWEEN 1 AND 3
 ),

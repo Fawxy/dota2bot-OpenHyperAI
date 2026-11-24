@@ -27,6 +27,8 @@ test('predeny: one creep per start, its fate from the own creep death after the 
     const out = run([
         line(0, 'bot pid=1 hero=h1 team=2 pos=1'),
         line(0, 'bot pid=5 hero=h5 team=2 pos=5'),
+        // an own creep death is read only with a living hero of its team within 1,500 (a deny chance): pid 1 stands at x = 2500
+        ...Array.from({ length: 45 }, (_, i) => line(99 + i, 'snap pid=1 x=2500 y=0 alive=1 hp=100')),
         // Creep A: pid 1 swings twice (n 0, 1), our pid 5 denies it 2 s after the last swing: denied, not by_me.
         line(100, sw(1, 0, 1000)),
         line(101.5, sw(1, 1, 1050)),

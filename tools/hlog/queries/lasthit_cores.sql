@@ -15,6 +15,7 @@
 -- ensure: ev_snap(pid, x, y, alive, lh)
 -- ensure: ev_bot(pid, team, pos)
 WITH gm AS (SELECT +game_id AS game_id FROM games WHERE file = :file AND game = coalesce(:game, 1)),
+-- include: creep_fate
 cores AS (
     SELECT l.team, l.pos, l.pid
     FROM lineup l
