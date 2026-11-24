@@ -136,3 +136,49 @@ test('pairs: an on game\'s seat team against the off game of its run, lineup and
     assert.deepStrictEqual([s.n, s.mean.toFixed(3), s.sd.toFixed(3), s.half.toFixed(3)], [3, '-0.200', '0.100', '0.248']);
     assert.deepStrictEqual(nullPairs(games, 'off').map((p) => [p.on.label, p.off.label, p.on.team]), [['x2_A_off_1', 'x1_A_off_1', 2]]);
 });
+
+const waveSql = fs.readFileSync(path.join(__dirname, '..', 'queries', 'pull_line_waves.sql'), 'utf8');
+
+test('by wave: each own wave once, whether the trigger wanted it, the camp it saw, and the neutrals a diverted pull met', () => {
+    let cid = 0;
+    const wcd = (t, x, y, born) => line(t, `wave_creep_death team=2 kind=melee x=${x} y=${y} hp=0.05 by=none cid=${++cid} lane=bot born=${born}`);
+    const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-plw-')), 'a.log');
+    const lines = [...bots,
+        // wave 6 (3:00): wanted with the camp seen at 7, pulled into 7 neutrals; two die at the camp, one to their pos 1 in lane.
+        want(190, 5, 200, ' cn=7 cs=1'),
+        line(215, 'pull_job pid=5 pos=5 lane=3 camp=8 slot=200 res=ok why=ok hit=1 dt=1 nn=7'),
+        wcd(215.5, -700, -7650, 180.1), wcd(216, -720, -7690, 180.1), wcd(240, 0, -6000, 180.1), theirView(240.1, 0, 6),
+        // wave 7: wanted, the pull started but did not divert (dt under 0.75), so no nn.
+        want(220, 5, 230),
+        line(235, 'pull_job pid=5 pos=5 lane=3 camp=8 slot=230 res=ok why=ok hit=1 dt=0.5 nn=3'),
+        wcd(260, 0, -6000, 210.1),
+        // wave 8: not wanted, still a row; then the wave spawned at 9:00, past :to (525).
+        wcd(290, 0, -6000, 240.1), wcd(570, 0, -6000, 540.1),
+    ];
+    const at = l => Number(l.match(/t=(\S+)/)[1]);
+    fs.writeFileSync(f, lines.sort((x, y) => at(x) - at(y)).join('\n') + '\n');
+    const s = new Store(':memory:');
+    s.ingest(f);
+    const out = s.query(waveSql, { like: null, to: null });
+    s.db.close();
+    assert.deepStrictEqual(out.map(r => [r.team, r.lane, r.wave, r.wanted, r.cn, r.diverted, r.nn, r.w_n, r.w_lh, r.w_lh_core, r.w_camp]),
+        [[2, 3, 6, 1, 7, 1, 7, 3, 1, 1, 2], [2, 3, 7, 1, null, 0, null, 1, 0, 0, 0], [2, 3, 8, 0, null, 0, null, 1, 0, 0, 0]]);
+});
+
+test('strong-camp pairs: the on game\'s waves pulled into the bar or more, against the same lane and wave of its off game', () => {
+    const { strongPairs } = require('../pull_line');
+    const w = (lane, wave, diverted, nn, w_n, w_lh, w_camp) => ({ lane, wave, diverted, nn, w_n, w_lh, w_camp });
+    const ps = [
+        { on: { label: 'x_A_onrad_1', team: 2, waves: [
+            // strong at 7 and at exactly 6, one under the bar (4), and a strong one on the top lane.
+            w(3, 6, 1, 7, 4, 0, 4), w(3, 10, 1, 6, 4, 1, 3), w(3, 8, 1, 4, 4, 2, 1), w(1, 6, 1, 8, 4, 0, 4)] },
+          off: { waves: [
+            // the same waves unpulled; bot wave 8 (the on game's weak pull) and mid wave 6 are not compared.
+            w(3, 6, 0, null, 4, 2, 0), w(3, 10, 0, null, 3, 1, 0), w(3, 8, 0, null, 4, 3, 0), w(1, 6, 0, null, 4, 1, 0), w(2, 6, 0, null, 4, 4, 0)] } },
+        // no strong wave: no pair.
+        { on: { label: 'x_A_onrad_2', team: 2, waves: [w(3, 6, 1, 3, 4, 2, 1)] }, off: { waves: [w(3, 6, 0, null, 4, 2, 0)] } },
+    ];
+    const sp = strongPairs(ps, 6);
+    assert.deepStrictEqual(sp.map(p => [p.label, p.on.waves, p.on.w_n, p.on.w_lh, p.on.w_camp, p.off.waves, p.off.w_n, p.off.w_lh]),
+        [['x_A_onrad_1', 3, 12, 1, 11, 3, 11, 4]]);
+});

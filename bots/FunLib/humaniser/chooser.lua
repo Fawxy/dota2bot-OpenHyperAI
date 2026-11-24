@@ -308,7 +308,8 @@ function ____exports.Decide(bot, mode)
     return ____temp_8
 end
 --- Wraps a mode file's GetDesire. 0, never nil: nil falls through to Valve's built-in desire for that mode. What it returns is
--- noted for the decider's retreat read (Decider.NoteDesire).
+-- noted for the decider's retreat read (Decider.NoteDesire), then capped under a soft hold (Decider.Cap). The shadow line
+-- and DesireLog note the value before the cap: under a soft hold, not what Valve saw.
 function ____exports.Gate(bot, mode, inner)
     return function()
         local shadow = ChoiceShadow.On()
@@ -327,7 +328,7 @@ function ____exports.Gate(bot, mode, inner)
                 )
             end
             Decider.NoteDesire(bot, mode, v)
-            return v
+            return Decider.Cap(bot, mode, v)
         end
         local d = inner()
         DesireLog.Note(bot, mode, d)
@@ -341,7 +342,7 @@ function ____exports.Gate(bot, mode, inner)
             )
         end
         Decider.NoteDesire(bot, mode, d)
-        return d
+        return Decider.Cap(bot, mode, d)
     end
 end
 --- Wraps the host file's Think, switch on: the job steps without entering OHA's code, so its defend-ping and run aborts cannot

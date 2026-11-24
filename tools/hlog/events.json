@@ -900,7 +900,10 @@
    "host": "num",
    "hit": "num",
    "cut": "str",
-   "hp": "num"
+   "hp": "num",
+   "ex": "num",
+   "took": "num",
+   "gj": "num"
   },
   "stack": {
    "pid": "num",
@@ -1780,6 +1783,7 @@
    "pid": "num",
    "kind": "str",
    "held": "str",
+   "hs": "str",
    "let": "str",
    "go": "num",
    "want": "num",
@@ -1787,6 +1791,9 @@
    "src": "str",
    "lane": "num",
    "slot": "num",
+   "rune": "num",
+   "ex": "num",
+   "dr": "num",
    "st": "str",
    "q": "num",
    "mv": "num",
@@ -2732,6 +2739,7 @@
   "ev_choice": {
    "kind": "text",
    "held": "text",
+   "hs": "text",
    "let": "text",
    "why": "text",
    "src": "text",

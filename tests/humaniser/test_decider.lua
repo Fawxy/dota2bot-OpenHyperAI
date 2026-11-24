@@ -186,4 +186,95 @@ do
 		and lines[1]:find("held=-", 1, true) and not lines[1]:find("let=", 1, true), tostring(v) .. " " .. table.concat(lines, " | "))
 end
 
+do -- a soft row's first round with farm already active (OHA's farm, say): SOFT / BONUS, since Valve boosts what we return
+	local H, bot = world()
+	local r = row({ applies = true, steps = 0, finishAt = 99 })
+	r.soft = true
+	H.Decider.ROWS[1] = r
+	bot.mode = BotMode.Farm
+	local f = farm()
+	local v
+	capture(function() v = H.Decider.Host(bot, f.GetDesire)() end)
+	check("a soft row's first round with farm already active returns SOFT / BONUS", v == H.Decider.SOFT / H.Decider.BONUS, tostring(v))
+end
+
+-- Plan s3, the soft hold: a row with soft=true holds at SOFT, and while it holds the gate returns OHA's Lua modes capped at
+-- CAP, retreat and attack's file excepted; the retreat read still sees each value as its file returned it.
+local function gate(H, bot, mode, v)
+	return H.Chooser.Gate(bot, mode, function() return v end)()
+end
+
+do
+	local H, bot = world()
+	H.Decider.ROWS[1] = row({ applies = true, steps = 0, finishAt = 99 })
+	local f = farm()
+	local v, roam
+	local lines = capture(function()
+		v = H.Decider.Host(bot, f.GetDesire)()
+		roam = gate(H, bot, "team_roam", 0.7)
+	end)
+	check("a hard row: nothing is capped", v == H.Decider.HARD and roam == 0.7, tostring(v) .. " " .. tostring(roam))
+	bot.mode = BotMode.Farm
+	local active
+	capture(function() active = H.Decider.Host(bot, f.GetDesire)() end)
+	check("a hard row held with farm active: still HARD, no bonus allowance", active == H.Decider.HARD, tostring(active))
+	check("a hard row's line says hs=hard", #lines == 1 and lines[1]:find("hs=hard", 1, true), table.concat(lines, " | "))
+end
+
+do
+	local H, bot = world()
+	local on = { applies = true, steps = 0, finishAt = 99 }
+	local r = row(on)
+	r.soft = true
+	H.Decider.ROWS[1] = r
+	local f = farm()
+	local desire = H.Decider.Host(bot, f.GetDesire)
+	local v, got, held, let, after, gone, goneRoam
+	local lines = capture(function()
+		gate(H, bot, "laning", 0.45)
+		v = desire()
+		got = {
+			team_roam = gate(H, bot, "team_roam", 0.7),
+			laning = gate(H, bot, "laning", 0.43),
+			laningOver = gate(H, bot, "laning", 0.446),
+			retreat = gate(H, bot, "retreat", 0.3),
+			attack = gate(H, bot, "attack", 0.7),
+			roam = gate(H, bot, "roam", nil),
+		}
+		T = T + 0.1
+		gate(H, bot, "team_roam", 0.8)
+		gate(H, bot, "retreat", 0.6)
+		bot.mode = BotMode.Farm
+		held = desire()
+		T = T + 0.1
+		gate(H, bot, "team_roam", 0.8)
+		gate(H, bot, "retreat", 0.9)
+		let = desire()
+		after = gate(H, bot, "team_roam", 0.8)
+		T = T + 0.1
+		gate(H, bot, "retreat", 0.1)
+		on.applies = false
+		gone = desire()
+		goneRoam = gate(H, bot, "team_roam", 0.8)
+	end)
+	check("a soft row enters at SOFT, under 0.5 and over an active laning with Valve's bonus (0.446 x BONUS)",
+		v == H.Decider.SOFT and v < 0.5 and v > 0.446 * H.Decider.BONUS, tostring(v))
+	check("a capped mode with Valve's bonus stays under SOFT", H.Decider.CAP * H.Decider.BONUS < H.Decider.SOFT,
+		tostring(H.Decider.CAP * H.Decider.BONUS))
+	check("under a soft hold an OHA Lua mode over CAP is returned as CAP (laning's 0.446 too); one under it passes",
+		got.team_roam == H.Decider.CAP and got.laningOver == H.Decider.CAP and got.laning == 0.43,
+		tostring(got.team_roam) .. " " .. tostring(got.laningOver) .. " " .. tostring(got.laning))
+	check("under a soft hold retreat and attack's file are not capped, and nil still falls through to Valve", got.retreat == 0.3
+		and got.attack == 0.7 and got.roam == nil, tostring(got.retreat) .. " " .. tostring(got.attack) .. " " .. tostring(got.roam))
+	check("the retreat read sees team roam's 0.8 as returned, not capped: retreat 0.6 under it, the soft row holds",
+		held == H.Decider.SOFT / H.Decider.BONUS, tostring(held))
+	check("held with farm active: SOFT / BONUS, over CAP and under 0.5 / BONUS (Valve's attack still outbids it with the bonus)",
+		held > H.Decider.CAP and held * H.Decider.BONUS < 0.5, tostring(held))
+	check("retreat leading the values as returned lets go, and nothing is capped once let go", let == 0.4 and after == 0.8,
+		tostring(let) .. " " .. tostring(after))
+	check("a soft row that no longer applies yields, uncapped", gone == 0.4 and goneRoam == 0.8, tostring(gone) .. " " .. tostring(goneRoam))
+	check("the soft row's line says hs=soft", lines[1] and lines[1]:find("held=test_row", 1, true) and lines[1]:find("hs=soft", 1, true),
+		table.concat(lines, " | "))
+end
+
 finish()

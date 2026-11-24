@@ -643,13 +643,16 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 
 `pid` num
 
-- `job` str: `stack`, `rune` or `pull`.
+- `job` str: `stack`, `rune`, `pull` or `rune_detour`.
 - `phase` str: `start` (`why=trigger`) or `end`.
 - `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`.
 - `host` num: The hosting mode's number.
 - `hit` num: 1 when hero damage landed during the job.
 - `cut` str: On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name.
 - `hp` num: With `cut=retreat`: the hero's HP share then.
+- `ex` num: `job=rune_detour`: the seconds the path by the rune was read to add when the walk started.
+- `took` num: `job=rune_detour` end: 1 on a pickup: the verb's ok, or one step's gold gain reaching RuneDetour TookGold (GetRuneStatus stays available while a second rune lies on the spot).
+- `gj` num: `job=rune_detour` end: the largest gold gain between two steps of the walk.
 
 ## stack
 
@@ -1372,8 +1375,9 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 `pid` num, `ap` num, `rule` str
 
-- `kind` str: The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
+- `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
+- `hs` str: kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it).
 - `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
@@ -1381,6 +1385,9 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `src` str: Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them).
 - `lane` num: The lane.
 - `slot` num: The planned hit second.
+- `rune` num: `kind=rune_detour`: the own jungle bounty's rune id.
+- `ex` num: `kind=rune_detour`: the smallest detour the pass read (s): the walk by the rune to the lane front, less the walk there.
+- `dr` num: `kind=rune_detour`: the distance to the rune at that read.
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.
 - `q` num: The clash point between the T1s: 0 ours, 1 theirs.
 - `mv` num: The clash's 30 s move from our side.
