@@ -42,15 +42,20 @@ dr_reach AS (
         AND (s.x - d.x) * (s.x - d.x) + (s.y - d.y) * (s.y - d.y) <= (s.ar + 648) * (s.ar + 648)
 ),
 dr_one AS (SELECT *, row_number() OVER (PARTITION BY game_id, seq ORDER BY dist, pid) AS rk FROM dr_reach),
+-- The other team's logged death nearest each own death (same kind, within 1 s and 250): a window, not a subquery ordered by
+-- the outer row's place, which the Mac's SQLite (node 22.21, 3.50.4) refuses with "no such column".
+dr_lh AS (
+    SELECT d.game_id, d.seq, e.lby,
+        row_number() OVER (PARTITION BY d.game_id, d.seq ORDER BY (e.x - d.x) * (e.x - d.x) + (e.y - d.y) * (e.y - d.y)) AS rk
+    FROM dr_own d JOIN dr_en e ON e.game_id = d.game_id AND e.team <> d.team AND e.kind = d.kind AND e.t BETWEEN d.t - 1.0 AND d.t + 1.0
+        AND (e.x - d.x) * (e.x - d.x) + (e.y - d.y) * (e.y - d.y) <= 62500
+),
 deny_reach_rows AS (
     SELECT d.game_id, d.seq, d.t, d.team, d.kind, d.x, d.y, r.pid, r.pos, r.ln, round(r.dist) AS dist, r.ar, r.offers,
         CASE WHEN r.dist <= r.ar + 348 THEN 'in' ELSE 'near' END AS band,
         CASE WHEN d.dby = CAST(r.pid AS TEXT) THEN 'sup_deny'
              WHEN d.dby <> 'none' THEN 'own_deny'
-             WHEN (SELECT e.lby FROM dr_en e
-                    WHERE e.game_id = d.game_id AND e.team <> d.team AND e.kind = d.kind AND e.t BETWEEN d.t - 1.0 AND d.t + 1.0
-                        AND (e.x - d.x) * (e.x - d.x) + (e.y - d.y) * (e.y - d.y) <= 62500
-                    ORDER BY (e.x - d.x) * (e.x - d.x) + (e.y - d.y) * (e.y - d.y) LIMIT 1) NOT IN ('none', 'deny') THEN 'enemy_lh'
+             WHEN (SELECT l.lby FROM dr_lh l WHERE l.game_id = d.game_id AND l.seq = d.seq AND l.rk = 1) NOT IN ('none', 'deny') THEN 'enemy_lh'
              ELSE 'other' END AS fate
     FROM dr_one r JOIN dr_own d ON d.game_id = r.game_id AND d.seq = r.seq
     WHERE r.rk = 1
