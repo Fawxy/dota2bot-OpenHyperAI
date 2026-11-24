@@ -569,6 +569,11 @@ export const EVENTS = {
         pl3: "num",
         /** HP lost over the landing frame and the next (a hit's damage that shows a frame late). */
         drop2: "num",
+        /** Ranged, after the fire: per frame 1 the hero's projectile listed at the creep, 0 not (40 frames at most). The landing is the first of two absent frames in a row. */
+        pres: "str",
+        /** After the fire: the largest one-frame HP loss of the creep, and when (seconds after first sight; -1 none). */
+        big: "num",
+        bigat: "num",
         /** The longest frame gap over the record. */
         gap: "num",
     },
