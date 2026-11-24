@@ -57,12 +57,6 @@ export const SETTINGS = {
      *  the job ends 3 s after the wave is due, while its later creeps are still reaching the neutrals (sp2: pulls logged at
      *  div 0.25 moved the lane back the most, `eq` -1.65 in 30 s, about 0.8 of the T1-T1 stretch). */
     TrailSec: 10,
-    /** The stay's backstop: it ends `timeout:late` this long after it began (the old pull farm's MaxFarm; a clear is 7-26 s). */
-    StayMax: 35,
-    /** The stay clears the neutrals left once none of our creeps is at the camp only if the camp's damage over
-     *  StayClearSeconds leaves StayClearReserve of max HP (the old pull farm's ClearSeconds and ClearReserve). */
-    StayClearSeconds: 4,
-    StayClearReserve: 0.3,
     /** `ev=pull_watch` cadence: one line per pull per this many seconds from the lead to the end of the trail. */
     WatchLogEvery: 1,
     /** The neutral `nd`/`nh`/`nt` describe is the nearest within this of the meet point, so a camp that never followed still shows. */
@@ -197,12 +191,6 @@ interface Pull {
     shs?: number;
     shh?: number;
     shedTo?: Vector;
-    /** The stay (Ours.SupportPullStay): when it began, its deny and neutral last-hit tries and successes. */
-    stayAt?: number;
-    sdt?: number;
-    sdk?: number;
-    slt?: number;
-    slk?: number;
 }
 
 interface Decision {
@@ -686,11 +674,10 @@ function cutBy(bot: Unit, r: Lib.Result): string | undefined {
 function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined): void {
     running[bot.GetPlayerID()] = undefined;
     const endWhy = end.success ? end.message ?? "ok" : `${end.reason}${end.message !== undefined ? ":" + end.message : ""}`;
-    // Once the stay began the pull itself ended ok: the line's res and why are the pull's, the stay's end is `st`.
-    const r: Lib.Result = p.stayAt !== undefined ? { success: true, reason: "ok" } : end;
+    const r = end;
     const why = r.success ? "ok" : endWhy;
     const cut = cutBy(bot, end);
-    jobLine(bot, p, "end", why, p.stayAt !== undefined ? undefined : cut);
+    jobLine(bot, p, "end", why, cut);
     const r1 = (x: number) => math.floor(x * 10) / 10;
     const fields: Telemetry.Fields<"pull_job"> = [
         ["pid", bot.GetPlayerID()],
@@ -729,12 +716,6 @@ function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined):
         ["nm", p.nm],
         ["shs", p.shs !== undefined ? math.floor(p.shs * 10 + 0.5) / 10 : undefined],
         ["shh", p.shh !== undefined ? math.floor(p.shh * 100 + 0.5) / 100 : undefined],
-        ["st", p.stayAt !== undefined ? (cut !== undefined ? `${endWhy}:${cut}` : endWhy) : undefined],
-        ["ss", p.stayAt !== undefined ? r1(DotaTime() - p.stayAt) : undefined],
-        ["sdt", p.sdt],
-        ["sdk", p.sdk],
-        ["slt", p.slt],
-        ["slk", p.slk],
     ];
     if (!r.success) {
         Telemetry.Event("pull_job", fields);
@@ -1058,35 +1039,6 @@ function verbPlan(bot: Unit, pull: Pull, aggroAt: number): JobVerbs.PullPlan {
     };
 }
 
-/** The stay's camp clear: the camp's damage on the puller over StayClearSeconds must leave it StayClearReserve of max HP. */
-function stayClears(bot: Unit, p: Pull): boolean {
-    const s = CampStateOf(p.plan.spawner);
-    if (s.n === 0) return false;
-    return bot.GetHealth() - CampDamage(bot, s, p.plan.spawner.type, SETTINGS.StayClearSeconds) >= bot.GetMaxHealth() * SETTINGS.StayClearReserve;
-}
-
-function* stay(bot: Unit, p: Pull, hooks: JobVerbs.JobHooks): Lib.TaskBody {
-    p.stayAt = DotaTime();
-    return yield* Tasks.Jobs()!.stayCamp(
-        bot as unknown as Lib.TaskUnit,
-        {
-            at: p.plan.spawner.location as unknown as Lib.Vec,
-            deadline: p.stayAt + SETTINGS.StayMax,
-            clearLeft: () => stayClears(bot, p),
-            onAttempt: (kind, r) => {
-                if (kind === "deny") {
-                    p.sdt = (p.sdt ?? 0) + 1;
-                    if (r.success) p.sdk = (p.sdk ?? 0) + 1;
-                } else {
-                    p.slt = (p.slt ?? 0) + 1;
-                    if (r.success) p.slk = (p.slk ?? 0) + 1;
-                }
-            },
-        },
-        hooks
-    );
-}
-
 function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody {
     const hooks: JobVerbs.JobHooks = {
         label: (l) => {
@@ -1097,9 +1049,7 @@ function* body(bot: Unit, p: Pull, aggroAt: number, ctx: Lib.Ctx): Lib.TaskBody 
         },
         urgent: ctx.urgent,
     };
-    const r = yield* Tasks.Jobs()!.pull(bot as unknown as Lib.TaskUnit, verbPlan(bot, p, aggroAt), hooks);
-    if (!r.success || !Ours.On("SupportPullStay")) return r;
-    return yield* stay(bot, p, hooks);
+    return yield* Tasks.Jobs()!.pull(bot as unknown as Lib.TaskUnit, verbPlan(bot, p, aggroAt), hooks);
 }
 
 interface Due {

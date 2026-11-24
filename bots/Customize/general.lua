@@ -171,8 +171,6 @@ Customize.Humaniser = {
 -- switch). Off: no pull, the trigger logged as a shadow.
 -- SupportPullStack (families proposal s5): the lane's puller stacks its pull camp in a minute its record of the camp is under
 -- the pull's bar; a row of the decider. Needs SupportPull. Off: logged as a shadow.
--- SupportPullStay (families proposal s5 case 2; on oha-pull-row only): after an ok pull the puller stays at the camp, denies our
--- pulled creeps and last-hits the neutrals they finish. Needs SupportPull. Off: the puller is yielded once the pull ends.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- Sustain (D6, sustain design steps 3-5): a held laner's heal and mana items, its walk home, its regen purchases and their
@@ -187,7 +185,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = false, SupportPullStay = false, SupportPullStack = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = false, SupportPullStack = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

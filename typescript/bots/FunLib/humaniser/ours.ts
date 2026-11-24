@@ -29,10 +29,6 @@ export const DEFAULTS = {
      *  lane's first pull camp when the pull's forecast wants it and the puller's record of the camp holds the bar (6
      *  neutrals). Off: the trigger is logged as a shadow and stock plays. */
     SupportPull: false,
-    /** The pull's stay (families proposal s5, case 2; on oha-pull-row only, judged with the pull as one group): after an ok pull
-     *  the puller stays at the camp, denies our pulled creeps and last-hits the neutrals they finish (JobVerbs.stayCamp).
-     *  Needs SupportPull. Off: the decider yields the puller once the pull ends. */
-    SupportPullStay: false,
     /** The stack row (families proposal s5, lanecamp's stack-then-pull group; stack_job.ts ROW): the lane's puller stacks its
      *  pull camp in a minute its record of the camp is under the pull's bar. Needs SupportPull. Off: logged as a shadow. */
     SupportPullStack: false,

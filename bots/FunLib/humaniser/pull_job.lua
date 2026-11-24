@@ -804,8 +804,8 @@ function trackTagged(bot, p)
                     __continue173 = true
                     break
                 end
-                local ____opt_40 = p.starts
-                local s0 = ____opt_40 and ____opt_40:get(u)
+                local ____opt_36 = p.starts
+                local s0 = ____opt_36 and ____opt_36:get(u)
                 if p.nm == nil and s0 ~= nil and GetUnitToLocationDistance(u, s0) >= ____exports.SETTINGS.Moved then
                     p.nm = now
                 end
@@ -974,8 +974,8 @@ function watchLine(bot, p, ph)
     local function r0(x)
         return x ~= nil and math.floor(x + 0.5) or nil
     end
-    local ____Telemetry_Event_46 = Telemetry.Event
-    local ____array_45 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_42 = Telemetry.Event
+    local ____array_41 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -996,22 +996,22 @@ function watchLine(bot, p, ph)
         {"ntc", ntc},
         {"ntx", ntx}
     )
-    local ____temp_42
+    local ____temp_38
     if best ~= nil then
-        ____temp_42 = r0(nd)
+        ____temp_38 = r0(nd)
     else
-        ____temp_42 = nil
+        ____temp_38 = nil
     end
-    __TS__SparseArrayPush(____array_45, {"nd", ____temp_42})
-    local ____temp_43
+    __TS__SparseArrayPush(____array_41, {"nd", ____temp_38})
+    local ____temp_39
     if best ~= nil then
-        ____temp_43 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
+        ____temp_39 = r0(GetUnitToLocationDistance(best, p.plan.spawner.location))
     else
-        ____temp_43 = nil
+        ____temp_39 = nil
     end
     __TS__SparseArrayPush(
-        ____array_45,
-        {"nh", ____temp_43},
+        ____array_41,
+        {"nh", ____temp_39},
         {
             "nt",
             best ~= nil and targetKind(
@@ -1020,21 +1020,21 @@ function watchLine(bot, p, ph)
             ) or nil
         }
     )
-    local ____bot_IsAlive_result_44
+    local ____bot_IsAlive_result_40
     if bot:IsAlive() then
-        ____bot_IsAlive_result_44 = r0(GetUnitToLocationDistance(bot, meet))
+        ____bot_IsAlive_result_40 = r0(GetUnitToLocationDistance(bot, meet))
     else
-        ____bot_IsAlive_result_44 = nil
+        ____bot_IsAlive_result_40 = nil
     end
     __TS__SparseArrayPush(
-        ____array_45,
-        {"pd", ____bot_IsAlive_result_44},
+        ____array_41,
+        {"pd", ____bot_IsAlive_result_40},
         {"shd", p.shs ~= nil and 1 or nil},
         unpack(taggedFields(bot, p, ours))
     )
-    ____Telemetry_Event_46(
+    ____Telemetry_Event_42(
         "pull_watch",
-        {__TS__SparseArraySpread(____array_45)}
+        {__TS__SparseArraySpread(____array_41)}
     )
 end
 function taggedFields(bot, p, ours)
@@ -1079,13 +1079,13 @@ end
 --- The spawner of the lane's pull camp (the pull's and the stack row's camp).
 function ____exports.SpawnerFor(bot)
     local camp = campFor(bot)
-    local ____temp_47
+    local ____temp_43
     if camp ~= nil then
-        ____temp_47 = Camps.SpawnerByIdx(camp.campIdx)
+        ____temp_43 = Camps.SpawnerByIdx(camp.campIdx)
     else
-        ____temp_47 = nil
+        ____temp_43 = nil
     end
-    return ____temp_47
+    return ____temp_43
 end
 function logSeeds()
     if seedsLogged or not Telemetry.IsEnabled() then
@@ -1152,9 +1152,6 @@ ____exports.SETTINGS = {
     PowerRatio = 1.2,
     WatchEvery = 0.25,
     TrailSec = 10,
-    StayMax = 35,
-    StayClearSeconds = 4,
-    StayClearReserve = 0.3,
     WatchLogEvery = 1,
     WatchNeutralSearch = 3000,
     TagRadius = 1200,
@@ -1686,29 +1683,20 @@ end
 local function finish(bot, p, ____end, label)
     running[bot:GetPlayerID()] = nil
     local endWhy = ____end.success and (____end.message or "ok") or ____end.reason .. (____end.message ~= nil and ":" .. ____end.message or "")
-    local r = p.stayAt ~= nil and ({success = true, reason = "ok"}) or ____end
+    local r = ____end
     local why = r.success and "ok" or endWhy
     local cut = cutBy(bot, ____end)
-    local ____jobLine_35 = jobLine
-    local ____bot_33 = bot
-    local ____p_34 = p
-    local ____temp_32
-    if p.stayAt ~= nil then
-        ____temp_32 = nil
-    else
-        ____temp_32 = cut
-    end
-    ____jobLine_35(
-        ____bot_33,
-        ____p_34,
+    jobLine(
+        bot,
+        p,
         "end",
         why,
-        ____temp_32
+        cut
     )
     local function r1(x)
         return math.floor(x * 10) / 10
     end
-    local ____array_36 = __TS__SparseArrayNew(
+    local ____array_32 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -1753,7 +1741,7 @@ local function finish(bot, p, ____end, label)
         unpack(campFields(p.start))
     )
     __TS__SparseArrayPush(
-        ____array_36,
+        ____array_32,
         {
             "sh",
             math.floor((p.hitAt - p.plan.slot) * 10 + 0.5) / 10
@@ -1792,18 +1780,9 @@ local function finish(bot, p, ____end, label)
         {
             "shh",
             p.shh ~= nil and math.floor(p.shh * 100 + 0.5) / 100 or nil
-        },
-        {"st", p.stayAt ~= nil and (cut ~= nil and (endWhy .. ":") .. cut or endWhy) or nil},
-        {
-            "ss",
-            p.stayAt ~= nil and r1(DotaTime() - p.stayAt) or nil
-        },
-        {"sdt", p.sdt},
-        {"sdk", p.sdk},
-        {"slt", p.slt},
-        {"slk", p.slk}
+        }
     )
-    local fields = {__TS__SparseArraySpread(____array_36)}
+    local fields = {__TS__SparseArraySpread(____array_32)}
     if not r.success then
         Telemetry.Event("pull_job", fields)
         return
@@ -1831,18 +1810,18 @@ local function trail(bot, flush)
         return
     end
     trailing[pid] = nil
-    local ____Telemetry_Event_38 = Telemetry.Event
-    local ____array_37 = __TS__SparseArrayNew(unpack(tr.fields))
+    local ____Telemetry_Event_34 = Telemetry.Event
+    local ____array_33 = __TS__SparseArrayNew(unpack(tr.fields))
     __TS__SparseArrayPush(
-        ____array_37,
+        ____array_33,
         {
             "dt",
             share(tr.pull)
         }
     )
-    ____Telemetry_Event_38(
+    ____Telemetry_Event_34(
         "pull_job",
-        {__TS__SparseArraySpread(____array_37)}
+        {__TS__SparseArraySpread(____array_33)}
     )
 end
 --- At the hit: the camp's neutrals (in its box, or on the puller within TagRadius), so the watch follows that camp only.
@@ -1879,8 +1858,8 @@ local function tagCamp(bot, p)
     p.early = {}
     for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
         if c:IsAlive() and LanePush.IsLaneCreep(c:GetUnitName()) and GetUnitToLocationDistance(c, p.plan.meet) <= ____exports.SETTINGS.ArriveR then
-            local ____p_early_39 = p.early
-            ____p_early_39[#____p_early_39 + 1] = c
+            local ____p_early_35 = p.early
+            ____p_early_35[#____p_early_35 + 1] = c
         end
     end
 end
@@ -1929,39 +1908,6 @@ local function verbPlan(bot, pull, aggroAt)
         confirmFor = s.Timing.AggroConfirm
     }
 end
---- The stay's camp clear: the camp's damage on the puller over StayClearSeconds must leave it StayClearReserve of max HP.
-local function stayClears(bot, p)
-    local s = ____exports.CampStateOf(p.plan.spawner)
-    if s.n == 0 then
-        return false
-    end
-    return bot:GetHealth() - ____exports.CampDamage(bot, s, p.plan.spawner.type, ____exports.SETTINGS.StayClearSeconds) >= bot:GetMaxHealth() * ____exports.SETTINGS.StayClearReserve
-end
-local stay = __TS__Generator(function(bot, p, hooks)
-    p.stayAt = DotaTime()
-    return __TS__DelegatedYield(Tasks.Jobs().stayCamp(
-        bot,
-        {
-            at = p.plan.spawner.location,
-            deadline = p.stayAt + ____exports.SETTINGS.StayMax,
-            clearLeft = function() return stayClears(bot, p) end,
-            onAttempt = function(kind, r)
-                if kind == "deny" then
-                    p.sdt = (p.sdt or 0) + 1
-                    if r.success then
-                        p.sdk = (p.sdk or 0) + 1
-                    end
-                else
-                    p.slt = (p.slt or 0) + 1
-                    if r.success then
-                        p.slk = (p.slk or 0) + 1
-                    end
-                end
-            end
-        },
-        hooks
-    ))
-end)
 local body = __TS__Generator(function(bot, p, aggroAt, ctx)
     local hooks = {
         label = function(l)
@@ -1973,15 +1919,11 @@ local body = __TS__Generator(function(bot, p, aggroAt, ctx)
         end,
         urgent = ctx.urgent
     }
-    local r = __TS__DelegatedYield(Tasks.Jobs().pull(
+    return __TS__DelegatedYield(Tasks.Jobs().pull(
         bot,
         verbPlan(bot, p, aggroAt),
         hooks
     ))
-    if not r.success or not Ours.On("SupportPullStay") then
-        return r
-    end
-    return __TS__DelegatedYield(stay(bot, p, hooks))
 end)
 --- The slot this puller would have to leave for now, with the lane's read of it: undefined before the leave time and once
 -- the slot's wave is handled. The lane is read once per wave, on the first frame at or after the leave time.
