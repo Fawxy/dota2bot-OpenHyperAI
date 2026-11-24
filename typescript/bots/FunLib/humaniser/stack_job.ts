@@ -1588,6 +1588,11 @@ function rowApplies(bot: Unit): boolean {
     return true;
 }
 
+/** The stack row's stack runs for this hero (the chooser's stack job does not count). */
+export function RowRunning(bot: Unit): boolean {
+    return running[bot.GetPlayerID()]?.row === true;
+}
+
 function rowStep(bot: Unit): boolean {
     Tasks.Step(bot, ROW_HOST);
     return running[bot.GetPlayerID()] === undefined;

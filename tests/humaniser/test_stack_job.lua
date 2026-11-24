@@ -1269,6 +1269,20 @@ do
 	check("strong: no stack", #stackLines(printed) == 0)
 end
 
+-- While the row's stack runs, the camp's neutrals hitting the hero are not a reason for stock's retreat (mode_retreat's
+-- creep-damage hook, Chooser.PullsNeutrals): pullstack_smoke1, the decider let go to that branch at the hit of 5 of 11.
+do
+	local H, bot, sp = rowWorld()
+	neutrals(sp.location, 3)
+	local before, during
+	capture(function()
+		before = H.Chooser.PullsNeutrals(bot)
+		while T < 4 * 60 and not H.StackJob.RowRunning(bot) do rowFrame(H, bot) end
+		during = H.Chooser.PullsNeutrals(bot)
+	end)
+	check("retreat hook: not before the stack, set while the row's stack runs", before == false and during == true and H.StackJob.RowRunning(bot))
+end
+
 -- A camp the record knows is empty is not stacked (nothing to pull out; the mark refills it): pullstackrow1 pid 6 at 7:5x,
 -- a stack sent to a camp seen empty failed `no_target`.
 do

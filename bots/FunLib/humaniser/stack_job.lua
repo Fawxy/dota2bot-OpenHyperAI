@@ -2922,6 +2922,11 @@ local function rowApplies(bot)
     jobLine(bot, a, "start", "trigger")
     return true
 end
+--- The stack row's stack runs for this hero (the chooser's stack job does not count).
+function ____exports.RowRunning(bot)
+    local ____opt_63 = running[bot:GetPlayerID()]
+    return (____opt_63 and ____opt_63.row) == true
+end
 local function rowStep(bot)
     Tasks.Step(bot, ROW_HOST)
     return running[bot:GetPlayerID()] == nil

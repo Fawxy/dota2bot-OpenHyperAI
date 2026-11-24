@@ -393,10 +393,12 @@ end
 function ____exports.HoldsRun(bot)
     return ____exports.Running(bot)
 end
---- mode_retreat_generic's creep-damage branch: while the decider's pull runs, the neutrals hitting the hero are the pull's
--- own doing and not a reason for stock's retreat (the pull's verb bails from them itself). Lane creeps and heroes still count.
+--- mode_retreat_generic's creep-damage branch: while the decider's pull or stack runs, the neutrals hitting the hero are the
+-- row's own doing and not a reason for stock's retreat (the pull's verb bails from them, the stack walks off from them).
+-- Lane creeps and heroes still count. The stack row's (pullstack_smoke1): the decider let go to this branch at the hit of
+-- 5 of 11 stacks, `d_retreat` 0.75 to 0.83 at 94% HP.
 function ____exports.PullsNeutrals(bot)
-    return PullJob.Running(bot)
+    return PullJob.Running(bot) or StackJob.RowRunning(bot)
 end
 --- ability_item_usage: spells and items wait while the job runs, as camp_jobs' HoldsCasts does for camp jobs. OHA's farm
 -- branches cast on the camp: witch doctor's cask landed at :42-:47, before the hit, and once after it, and the stunned
