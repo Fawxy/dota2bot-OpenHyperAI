@@ -533,7 +533,7 @@ export const TABLE: Record<string, Entry> = {
         stackMinutes: [3, 6, 9, 12],
     },
     // The stack-then-pull group's rig (families proposal s5, with an enemy hero): both pos5s play their safe lane with the
-    // decider's stack and pull rows (Ours.SupportPull, Ours.SupportPullStack), nothing forced: the camp is stacked while the
+    // decider's stack and pull rows (Ours.SupportPull), nothing forced: the camp is stacked while the
     // pos5's record of it is under the bar and pulled into a wanted slot once strong. Both pos1s and the enemy pos3s play the
     // two safe lanes in-lane; everyone else benched.
     "pull-stack-row": {

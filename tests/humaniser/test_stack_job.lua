@@ -1190,12 +1190,12 @@ do
 end
 
 
--- The stack row (families proposal s5, Ours.SupportPullStack): the lane's puller stacks its pull camp in a minute its
+-- The stack row (families proposal s5, Ours.SupportPull with the pull): the lane's puller stacks its pull camp in a minute its
 -- record of the camp (PullJob Known) is under the pull's bar, hosted by the decider; the stack's read becomes the record
 -- the pull's trigger reads.
 local function rowWorld(o)
 	o = o or {}
-	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, ours = { StackExecute = false, SupportPull = true, SupportPullStack = o.off ~= true } })
+	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, ours = { StackExecute = false, SupportPull = o.off ~= true } })
 	bot.lane, bot.bot = dota.Lane.Bot, true
 	-- The Radiant safe lane's T1, so the lane's pull camp seeds (the nearest small spawner: good_1).
 	local tower = MakeUnit({ pid = -1, team = RAD, loc = SAFE_T1[RAD] })
@@ -1290,6 +1290,18 @@ do
 	local c = choices(printed, "stack")
 	check("empty: one line, not wanted, why=empty", #c == 1 and field(c[1], "want") == "0" and field(c[1], "why") == "empty" and field(c[1], "rn") == "0", c[1])
 	check("empty: no stack", #stackLines(printed) == 0)
+end
+
+-- Every step the humaniser's tick lists is called by name: the stack row's shadow was listed in `steps` and never called
+-- (review of oha-pull-row: no kind=stack src=shadow line in pullstack_smoke1, smoke2 or pullstack1_A_off_1).
+do
+	local src = io.open(BOTS_ROOT .. '/typescript/bots/FunLib/humaniser/index.ts', 'r'):read('a')
+	local block = src:match("const steps = {(.-)\n};")
+	local missing = {}
+	for key in (block or ""):gmatch("\n%s*([%w_]+):") do
+		if not src:find("steps." .. key, 1, true) then table.insert(missing, key) end
+	end
+	check("tick: every listed step is called", block ~= nil and #missing == 0, table.concat(missing, ","))
 end
 
 -- The box out of sight after the hit: the stack is read `unseen`, and the record adds a set by the rules.

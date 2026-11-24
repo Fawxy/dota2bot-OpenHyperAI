@@ -1354,7 +1354,7 @@ function sample59(bot, a)
     a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
 end
 function rowOn(bot)
-    return Ours.On("SupportPull") and Ours.On("SupportPullStack") and PullJob.IsPuller(bot) and not Drill.Held(bot)
+    return Ours.On("SupportPull") and PullJob.IsPuller(bot) and not Drill.Held(bot)
 end
 ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},

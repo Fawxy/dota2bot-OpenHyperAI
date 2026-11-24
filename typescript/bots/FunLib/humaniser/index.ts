@@ -148,6 +148,8 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.sustain, bot);
     // The pull's trigger where the pull is switched off (ev=choice kind=pull src=shadow): reads and logs, no order.
     pcall(steps.pullShadow, bot);
+    // The stack row's minute where the group is switched off (ev=choice kind=stack src=shadow): reads and logs, no order.
+    pcall(steps.stackShadow, bot);
     // The rune detour's pass where the row is switched off (ev=choice kind=rune_detour src=shadow): reads and logs, no order.
     pcall(steps.runeDetourShadow, bot);
     pcall(steps.probe, bot);

@@ -1457,14 +1457,14 @@ export function NoteIdleHeld(bot: Unit): void {
 }
 
 /**
- * The stack row (families proposal s5, lanecamp's stack-then-pull group; switch Ours.SupportPullStack, needs SupportPull):
+ * The stack row (families proposal s5, lanecamp's stack-then-pull group; switch Ours.SupportPull, the pull's: one group, one switch):
  * the lane's puller stacks its pull camp whenever its record of the camp (PullJob Known) is under the pull's bar, so the
  * pull, which starts only into a strong camp, takes the wave. The verb, its `ev=stack` line and the outcome read are the
  * stack job's; the chooser host, the fixed minutes, the double stack and the carry clear are not used. One `ev=choice
  * kind=stack` line per minute from the first spawn's, at the leave time (want: the camp holds neutrals, under the bar).
  */
 function rowOn(bot: Unit): boolean {
-    return Ours.On("SupportPull") && Ours.On("SupportPullStack") && PullJob.IsPuller(bot) && !Drill.Held(bot);
+    return Ours.On("SupportPull") && PullJob.IsPuller(bot) && !Drill.Held(bot);
 }
 
 const ROW_HOST = BotMode.Farm;
