@@ -521,6 +521,69 @@ export const EVENTS = {
         chan: "num",
         cast: "num",
     },
+    /**
+     * Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, from the first frame its wind-up is seen
+     * to its truth. Times in seconds after that frame: `pf`/`pl` the predicted fire and landing by the engine's formula before slice oha-engine-windup (kept for comparison), `fire` the
+     * fire by GetLastAttackTime, `seen` the frame it was seen, `land` the landing seen (melee: the fire frame; ranged: the
+     * hero's projectile gone from the creep). -1: never. `cyc`, `pt`, `spa` the raw reads at the first frame.
+     */
+    swing_probe: {
+        /** The hero's player id (absent for a creep or tower). */
+        pid: "num",
+        /** The attacker: `hero` of ours, `creep` (a lane creep of ours, a few followed at a time) or `tower` (ours). */
+        kind: "str",
+        /** A creep's or tower's Telemetry.CreepId (absent for a hero). */
+        aid: "num",
+        /** Telemetry.CreepId of the target. */
+        cid: "num",
+        /** 1 our own creep (a deny attempt), 0 the enemy's. */
+        own: "num",
+        rng: "num",
+        cyc: "num",
+        pt: "num",
+        spa: "num",
+        pf: "num",
+        pl: "num",
+        /** GetAttackSpeed at the first frame. */
+        aspd: "num",
+        /** Predicted fire as attack point / attack speed x (1 - cycle): the attack point read as seconds (swingprobe1). */
+        pf2: "num",
+        /** Predicted flight of a ranged hit (0 melee). */
+        fl: "num",
+        fire: "num",
+        seen: "num",
+        land: "num",
+        /** The attack target at the fire was still the creep (1), another (0); -1 never fired. */
+        same: "num",
+        /** A ranged hit's projectile was seen at the creep. */
+        proj: "num",
+        hp0: "num",
+        /** HP the creep lost from the frame before the landing to the landing frame (others' hits in that frame included); -1 no landing. */
+        drop: "num",
+        /** The hero's attack damage after the creep's armour. */
+        dmg: "num",
+        /** The hero's last hits or denies rose by the frame after the landing. */
+        kill: "num",
+        /** `land`, `cancel`, `retarget`, `gone`, `lost`. */
+        end: "str",
+        /** end=retarget: the new target, `creep` (another lane creep), `hero`, `none` or `other`. */
+        to: "str",
+        /** Seconds after first sight of the end (any end): how far into the wind-up a cancel or retarget came. */
+        age: "num",
+        /** Ranged: predicted landing from the projectile's own position on its first frame (engine flightsAt), seconds after first sight. */
+        pl3: "num",
+        /** HP lost over the landing frame and the next (a hit's damage that shows a frame late). */
+        drop2: "num",
+        /** Ranged, after the fire: per frame 1 the hero's projectile listed at the creep, 0 not (40 frames at most). The landing is the first of two absent frames in a row. */
+        pres: "str",
+        /** After the fire: the largest one-frame HP loss of the creep, and when (seconds after first sight; -1 none). */
+        big: "num",
+        bigat: "num",
+        /** The longest frame gap over the record. */
+        gap: "num",
+        /** Before the fire, per frame from the first `dt:cycle` (seconds after first sight, GetAnimCycle), `;`-joined, `x` appended off the attack activity (30 frames at most). */
+        wc: "str",
+    },
     /** Overrides.ApiProbe: the team's reporter about an enemy hero handle it holds; a hero out of sight has no row (its handle is null). */
     apiprobe_enemy: {
         team: "num",

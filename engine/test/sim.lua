@@ -12,9 +12,10 @@
 -- hidden). A bot attack that lands sets the bot's lastAttackTime and makes the victim attack back
 -- (attackTarget = bot) unless the victim has `passive`; a bot with `whiff` never lands an attack.
 --
--- Attack model (for last-hit prediction): every swing has a wind-up of `attackPoint` seconds, during which
--- GetAnimActivity() is 1503 and GetAnimCycle() = elapsed / secondsPerAttack (so (attackPoint - cycle) *
--- secondsPerAttack is the wind-up left, as the verbs read it). A unit with `projectileSpeed` launches a tracking
+-- Attack model (for last-hit prediction), as measured in game (slice oha-engine-windup, swingwc1): every swing has a
+-- wind-up of `attackPoint / attackSpeed` seconds (attackSpeed default 1), during which GetAnimActivity() is 1503 and
+-- GetAnimCycle() = elapsed * attackSpeed / animLength (animLength, the unit's attack animation at attack speed 1, default 1 s;
+-- the API does not give it). A unit with `projectileSpeed` launches a tracking
 -- projectile at the end of the wind-up (seen in the target's GetIncomingTrackingProjectiles) that deals its
 -- damage on arrival. A unit with `autoAttack` swings at its attackTarget every `secondsPerAttack`, from
 -- `firstSwingAt` (default 0), ignoring range. Kills by a bot count as a deny when the victim is on its team.
@@ -74,6 +75,8 @@ function Sim:_add(kind, o)
         range = o.range or 150,
         damage = o.damage or 50,
         attackPoint = o.attackPoint or 0.3,
+        attackSpeed = o.attackSpeed or 1,
+        animLength = o.animLength or 1,
         lastHits = 0,
         denies = 0,
         maxHp = o.maxHp or o.hp or 1000,
@@ -201,7 +204,7 @@ function Sim:step(dt)
     for _, u in ipairs(self.units) do
         local tg = u.autoAttack and u.attackTarget or u.pendingAttack
         if (u.autoAttack or u.pendingAttack) and u.alive and not u.swing and tg and tg.alive and self.t >= u.nextSwingAt - 1e-9 then
-            u.swing = { target = tg, start = u.nextSwingAt, landAt = u.nextSwingAt + u.attackPoint }
+            u.swing = { target = tg, start = u.nextSwingAt, landAt = u.nextSwingAt + u.attackPoint / u.attackSpeed }
             u.lastSwingStart = u.nextSwingAt
             u.nextSwingAt = u.nextSwingAt + u.secondsPerAttack
             u.pendingAttack = nil
@@ -276,8 +279,9 @@ function Unit:GetCurrentMovementSpeed() return self.speed end
 function Unit:GetAnimActivity() return self.swing and 1503 or 0 end
 function Unit:GetAnimCycle()
     if not self.swing then return 0 end
-    return (self.sim.t - self.swing.start) / self.secondsPerAttack
+    return (self.sim.t - self.swing.start) * self.attackSpeed / self.animLength
 end
+function Unit:GetAttackSpeed() return self.attackSpeed end
 function Unit:GetIncomingTrackingProjectiles()
     local out = {}
     for _, p in ipairs(self.sim.projectiles or {}) do
@@ -330,7 +334,7 @@ function Unit:Action_AttackUnit(target, once)
     if self.cooldown and self.lastSwingStart then start = math.max(start, self.lastSwingStart + self.secondsPerAttack) end
     if self.swing and self.cooldown then return end
     self.lastSwingStart = start
-    self.swing = { target = target, start = start, landAt = start + self.attackPoint }
+    self.swing = { target = target, start = start, landAt = start + self.attackPoint / self.attackSpeed }
 end
 
 function Unit:actionsOf(kind)
