@@ -2752,6 +2752,8 @@ export const EVENTS = {
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
+        /** kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it). */
+        hs: "str",
         /** kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise. */
         let: "str",
         /** 1 when the pull started. */

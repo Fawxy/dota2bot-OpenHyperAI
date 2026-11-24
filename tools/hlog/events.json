@@ -1780,6 +1780,7 @@
    "pid": "num",
    "kind": "str",
    "held": "str",
+   "hs": "str",
    "let": "str",
    "go": "num",
    "want": "num",
@@ -2732,6 +2733,7 @@
   "ev_choice": {
    "kind": "text",
    "held": "text",
+   "hs": "text",
    "let": "text",
    "why": "text",
    "src": "text",

@@ -1374,6 +1374,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 - `kind` str: The decision; `pull`, `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
+- `hs` str: kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it).
 - `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
