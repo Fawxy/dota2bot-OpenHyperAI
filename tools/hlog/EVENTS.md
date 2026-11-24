@@ -688,7 +688,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 
 `pid` num
 
-- `job` str: `stack`, `rune`, `pull` or `rune_detour`.
+- `job` str: `stack`, `rune`, `pull` `deny` or `rune_detour`.
 - `phase` str: `start` (`why=trigger`) or `end`.
 - `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`.
 - `host` num: The hosting mode's number.
@@ -1420,9 +1420,9 @@ Slice support-lane: one sample per started pull per PullJob WatchLogEvery during
 
 Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it; pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost); the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`; Ours.Threat on).
 
-`pid` num, `rsrc` str, `rage` num, `ap` num, `rule` str
+`pid` num, `rsrc` str, `rage` num, `ap` num, `rule` str, `due` num, `dies` num
 
-- `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
+- `kind` str: The decision; `pull`, `deny` (SupportDeny: one line per creep offered to a side-lane support, `slot` the second it was first offered; `why` `off`, `acting` or `refused`), `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
 - `hs` str: kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it).
 - `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
@@ -1492,6 +1492,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `d_secret_shop` mixed: kind=shadow: as `d_laning`, for mode_secret_shop_generic.
 - `d_side_shop` mixed: kind=shadow: as `d_laning`, for mode_side_shop_generic.
 - `d_outpost` mixed: kind=shadow: as `d_laning`, for mode_outpost_generic.
+- `walk` num: kind=deny (SupportDeny): the offered creep's laneTargets facts at the line: seconds to walk into range, until a swing would be due, and until the others kill it (-1: no one is on it).
 
 ## gank
 

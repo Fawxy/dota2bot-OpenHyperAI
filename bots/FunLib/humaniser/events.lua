@@ -1764,7 +1764,10 @@ ____exports.EVENTS = {
         d_roshan = "mixed",
         d_secret_shop = "mixed",
         d_side_shop = "mixed",
-        d_outpost = "mixed"
+        d_outpost = "mixed",
+        walk = "num",
+        due = "num",
+        dies = "num"
     },
     gank = {
         pid = "num",
