@@ -52,6 +52,11 @@ local function windupLeft(h)
     end
     return (pt - cyc) * h:GetSecondsPerAttack()
 end
+--- In an attack animation (the cancel test: the anim cycle is not read, so a cycle past the point does not end a record).
+local function attacking(h)
+    local act = h:GetAnimActivity()
+    return act == ACTIVITY_ATTACK or act == ACTIVITY_ATTACK2
+end
 --- What a retarget went to: `creep` another lane creep, `hero`, `none`, `other`.
 local function targetKind(u)
     if u == nil or u == nil then
@@ -127,7 +132,12 @@ local function start(h, c, team, now)
         last = now,
         pres = "",
         absent = 0,
-        big = 0
+        big = 0,
+        wc = string.format(
+            "0:%.3f",
+            h:GetAnimCycle()
+        ),
+        wn = 1
     }
 end
 local function r3(x)
@@ -230,7 +240,8 @@ local function emit(s)
             {
                 "bigat",
                 r3(s.bigAt)
-            }
+            },
+            {"wc", s.wc}
         }
     )
 end
@@ -247,6 +258,17 @@ local function follow(s, now)
     end
     local isGone = gone(s.c)
     local hp = isGone and 0 or s.c:GetHealth()
+    if s.fire == nil and not isGone and s.wn < 30 then
+        local act = s.h:GetAnimActivity()
+        local off = act ~= ACTIVITY_ATTACK and act ~= ACTIVITY_ATTACK2 and "x" or ""
+        s.wc = s.wc .. string.format(
+            ";%.3f:%.3f%s",
+            now - s.t0,
+            s.h:GetAnimCycle(),
+            off
+        )
+        s.wn = s.wn + 1
+    end
     if s.fire == nil and s.h:GetLastAttackTime() > s.lat0 then
         s.fire = s.h:GetLastAttackTime() - (GameTime() - now) - s.t0
         s.seen = now - s.t0
@@ -262,7 +284,7 @@ local function follow(s, now)
         elseif s.h:GetAttackTarget() ~= s.c then
             s.endWhy = "retarget"
             s.to = targetKind(s.h:GetAttackTarget())
-        elseif windupLeft(s.h) == nil then
+        elseif not attacking(s.h) then
             s.endWhy = "cancel"
         end
     elseif s.ranged then
@@ -324,11 +346,11 @@ local function frame(bot)
         local i = 1
         while i <= 5 do
             do
-                local __continue47
+                local __continue49
                 repeat
                     local u = GetTeamMember(i)
                     if u == nil or u == nil or u:IsNull() or u:IsIllusion() then
-                        __continue47 = true
+                        __continue49 = true
                         break
                     end
                     local pid = u:GetPlayerID()
@@ -337,23 +359,23 @@ local function frame(bot)
                         if follow(s, now) then
                             active[pid] = nil
                         else
-                            __continue47 = true
+                            __continue49 = true
                             break
                         end
                     end
                     if not u:IsAlive() then
-                        __continue47 = true
+                        __continue49 = true
                         break
                     end
                     local t = u:GetAttackTarget()
                     if not isLaneCreep(t) then
-                        __continue47 = true
+                        __continue49 = true
                         break
                     end
                     active[pid] = start(u, t, team, now)
-                    __continue47 = true
+                    __continue49 = true
                 until true
-                if not __continue47 then
+                if not __continue49 then
                     break
                 end
             end

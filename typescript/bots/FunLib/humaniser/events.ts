@@ -576,6 +576,8 @@ export const EVENTS = {
         bigat: "num",
         /** The longest frame gap over the record. */
         gap: "num",
+        /** Before the fire, per frame from the first `dt:cycle` (seconds after first sight, GetAnimCycle), `;`-joined, `x` appended off the attack activity (30 frames at most). */
+        wc: "str",
     },
     /** Overrides.ApiProbe: the team's reporter about an enemy hero handle it holds; a hero out of sight has no row (its handle is null). */
     apiprobe_enemy: {

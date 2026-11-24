@@ -353,7 +353,8 @@ ____exports.EVENTS = {
         pres = "str",
         big = "num",
         bigat = "num",
-        gap = "num"
+        gap = "num",
+        wc = "str"
     },
     apiprobe_enemy = {
         team = "num",

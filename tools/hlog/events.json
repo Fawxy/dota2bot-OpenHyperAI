@@ -430,7 +430,8 @@
    "pres": "str",
    "big": "num",
    "bigat": "num",
-   "gap": "num"
+   "gap": "num",
+   "wc": "str"
   },
   "apiprobe_enemy": {
    "team": "num",
@@ -2334,7 +2335,8 @@
   "ev_swing_probe": {
    "end": "text",
    "to": "text",
-   "pres": "text"
+   "pres": "text",
+   "wc": "text"
   },
   "ev_apiprobe_enemy": {
    "it0": "text"

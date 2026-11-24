@@ -89,6 +89,7 @@ do -- melee: seen at cycle 0.1 of a 0.4 point at 1.5 s an attack, so the fire is
 		and near(num(l[1], "pl"), 0.45) and near(num(l[1], "fire"), 0.45) and near(num(l[1], "land"), 0.5), l[1])
 	check("melee: own creep, same target, the drop the whole HP, kill 1, end land", field(l[1], "own") == "1" and field(l[1], "same") == "1"
 		and num(l[1], "drop") == 60 and field(l[1], "kill") == "1" and field(l[1], "end") == "land" and num(l[1], "dmg") == 40, l[1])
+	check("melee: the cycle on every live frame before the fire (wc)", field(l[1], "wc") == "0:0.100;0.200:0.200", l[1])
 end
 
 do -- ranged: the projectile is seen, then gone: the landing is the frame it went

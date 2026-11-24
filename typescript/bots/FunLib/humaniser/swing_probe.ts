@@ -17,6 +17,8 @@
  *   kill   the hero's last hits or denies rose by the frame after the landing.
  * One `ev=swing_probe` line per record, at its end (`end`: `land`, `cancel` the wind-up stopped unfired, `retarget` the
  * attack target changed before the fire, `gone` the creep died or vanished before the landing, `lost` nothing by GIVE_UP).
+ * `wc` (slice oha-engine-windup): the anim cycle on every frame before the fire, to fit GetAnimCycle mid-wind-up; a
+ * record ends `cancel` only when the attack activity stops (not when the cycle passes the attack point).
  * Reads and logs only: no order. Runs under pcall (a probe error is silent: a run is judged by its row counts).
  */
 import { Unit } from "bots/ts_libs/dota";
@@ -115,6 +117,10 @@ interface Swing {
     bigAt?: number;
     gap: number;
     last: number;
+    /** Before the fire, per frame (the first included) `dt:cycle`, `;`-joined, `x` appended off the attack activity (30 frames at most). */
+    wc: string;
+    /** Frames in `wc`. */
+    wn: number;
 }
 
 const active: Record<number, Swing | undefined> = {};
@@ -152,6 +158,12 @@ function windupLeft(h: Swinger): number | undefined {
     return (pt - cyc) * h.GetSecondsPerAttack();
 }
 
+/** In an attack animation (the cancel test: the anim cycle is not read, so a cycle past the point does not end a record). */
+function attacking(h: Swinger): boolean {
+    const act = h.GetAnimActivity();
+    return act === ACTIVITY_ATTACK || act === ACTIVITY_ATTACK2;
+}
+
 /** What a retarget went to: `creep` another lane creep, `hero`, `none`, `other`. */
 function targetKind(u: unknown): string {
     if (u === undefined || u === null) return "none";
@@ -184,7 +196,7 @@ function start(h: Swinger, c: Target, team: number, now: number): Swing | undefi
         aspd: h.GetAttackSpeed(), pf2: (h.GetAttackPoint() / math.max(0.01, h.GetAttackSpeed())) * (1 - h.GetAnimCycle()), fl: flight,
         lat0: h.GetLastAttackTime(), lh0: h.GetLastHits(), dn0: h.GetDenies(), hp0: hp, hpPrev: hp,
         dmg: c.GetActualIncomingDamage(h.GetAttackDamage(), DAMAGE_TYPE_PHYSICAL ?? 1), proj: false, gap: 0, last: now,
-        pres: "", absent: 0, big: 0,
+        pres: "", absent: 0, big: 0, wc: string.format("0:%.3f", h.GetAnimCycle()), wn: 1,
     };
 }
 
@@ -225,6 +237,7 @@ function emit(s: Swing): void {
         ["pres", s.ranged ? s.pres : undefined],
         ["big", math.floor(s.big)],
         ["bigat", r3(s.bigAt)],
+        ["wc", s.wc],
     ]);
 }
 
@@ -239,6 +252,12 @@ function follow(s: Swing, now: number): boolean {
     }
     const isGone = gone(s.c);
     const hp = isGone ? 0 : s.c.GetHealth();
+    if (s.fire === undefined && !isGone && s.wn < 30) {
+        const act = s.h.GetAnimActivity();
+        const off = act !== ACTIVITY_ATTACK && act !== ACTIVITY_ATTACK2 ? "x" : "";
+        s.wc = s.wc + string.format(";%.3f:%.3f%s", now - s.t0, s.h.GetAnimCycle(), off);
+        s.wn++;
+    }
     if (s.fire === undefined && s.h.GetLastAttackTime() > s.lat0) {
         s.fire = s.h.GetLastAttackTime() - (GameTime() - now) - s.t0;
         s.seen = now - s.t0;
@@ -254,7 +273,7 @@ function follow(s: Swing, now: number): boolean {
             s.endWhy = "retarget";
             s.to = targetKind(s.h.GetAttackTarget());
         }
-        else if (windupLeft(s.h) === undefined) s.endWhy = "cancel";
+        else if (!attacking(s.h)) s.endWhy = "cancel";
     } else if (s.ranged) {
         const eta = isGone ? undefined : projectileEta(s.c, s.h);
         const flying = eta !== undefined;
