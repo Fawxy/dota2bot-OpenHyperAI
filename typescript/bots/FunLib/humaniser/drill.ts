@@ -508,6 +508,17 @@ export const TABLE: Record<string, Entry> = {
         rep: { every: 30, from: 60, on: 4 },
         forces: "pull",
     },
+    // The off lane's hard camp pulled unstacked (slice oha-off-pull): as pull-long with both pos4s, each alone in its off lane
+    // and so its puller, pulling the enemy-side hard camp beside the enemy safe-lane T1 (Radiant spawner 18, Dire 1). The
+    // off lanes do not meet. Reset as pull-long.
+    "pull-off": {
+        note: "both pos4s pull every other minute's wave in their off lanes (1:00, 3:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast: { r: [4], d: [4] },
+        others: "bench",
+        castIdle: "statue",
+        rep: { every: 30, from: 60, on: 4 },
+        forces: "pull",
+    },
     // The stacked pull's rig (families proposal s5 case 3): both pos5s pull every third minute's wave (1:00, 4:00 ...), so the
     // camp is killed at :45 of the minute after a pull, refilled by the next minute's own spawn, and stacked over the spawn
     // before the pulled wave (`rig_stack_minute`, bots/rigs/setters.lua; `dota_spawn_neutrals` refills no camp killed that

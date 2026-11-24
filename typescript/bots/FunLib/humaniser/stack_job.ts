@@ -1478,6 +1478,14 @@ interface RowSlot {
     walk: number;
 }
 
+/** The puller's own job for its pull camp as a stack camp. Not Candidates: the off lane's pull camp is a spawner of the other
+ *  team (the enemy's hard camp beside their safe-lane T1), which Candidates leaves out. */
+function rowCamp(bot: Unit, sp: Camps.Spawner): Camps.CampJobData | undefined {
+    const data = Camps.ByIdx(sp.idx, bot.GetTeam());
+    if (data === undefined || data.stack === undefined || sp.type === "ancient" || Stacking.Window(sp.idx)[0] === undefined) return undefined;
+    return data;
+}
+
 /** This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided. */
 function rowSlot(bot: Unit, now: number): RowSlot | undefined {
     const minute = math.floor(now / GameRules.NEUTRAL_EVERY);
@@ -1485,7 +1493,7 @@ function rowSlot(bot: Unit, now: number): RowSlot | undefined {
     if (minute * GameRules.NEUTRAL_EVERY < GameRules.NEUTRAL_FIRST) return undefined;
     if (rowMinutes[bot.GetPlayerID()]?.[minute] === true || now < minute * GameRules.NEUTRAL_EVERY + SETTINGS.LookFrom) return undefined;
     const sp = PullJob.SpawnerFor(bot);
-    const data = sp !== undefined ? Candidates(bot.GetTeam()).find((d) => d.campIdx === sp.idx) : undefined;
+    const data = sp !== undefined ? rowCamp(bot, sp) : undefined;
     if (sp === undefined || data === undefined) return undefined;
     const stand = Stand(sp, data);
     const aggroAt = minute * 60 + SingleSec(data);
@@ -1524,8 +1532,8 @@ function rowBlock(bot: Unit): string | undefined {
 }
 
 /** A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark. */
-function rowWants(k: PullJob.CampKnown): boolean {
-    return k.n > 0 && k.n < PullJob.SETTINGS.StrongAt;
+function rowWants(sp: Camps.Spawner, k: PullJob.CampKnown): boolean {
+    return k.n > 0 && k.n < PullJob.BarOf(sp);
 }
 
 /** Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`. */
@@ -1535,7 +1543,7 @@ export function Shadow(bot: Unit): void {
     const slot = rowSlot(bot, DotaTime());
     if (slot === undefined) return;
     const known = PullJob.Known(slot.sp);
-    rowLine(bot, slot, false, rowWants(known), "off", known, "shadow");
+    rowLine(bot, slot, false, rowWants(slot.sp, known), "off", known, "shadow");
 }
 
 function rowApplies(bot: Unit): boolean {
@@ -1554,7 +1562,7 @@ function rowApplies(bot: Unit): boolean {
     const slot = rowSlot(bot, now);
     if (slot === undefined) return false;
     const known = PullJob.Known(slot.sp);
-    if (!rowWants(known)) {
+    if (!rowWants(slot.sp, known)) {
         rowLine(bot, slot, false, false, known.n > 0 ? "strong" : "empty", known);
         return false;
     }

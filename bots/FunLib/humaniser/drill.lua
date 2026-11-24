@@ -2296,6 +2296,14 @@ ____exports.TABLE = {
         rep = {every = 30, from = 60, on = 4},
         forces = "pull"
     },
+    ["pull-off"] = {
+        note = "both pos4s pull every other minute's wave in their off lanes (1:00, 3:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
+        cast = {r = {4}, d = {4}},
+        others = "bench",
+        castIdle = "statue",
+        rep = {every = 30, from = 60, on = 4},
+        forces = "pull"
+    },
     ["pull-stack"] = {
         note = "both pos5s pull every third minute's wave in their safe lanes (1:00, 4:00 ...), statues otherwise; the other waves unpulled; everyone else benched",
         cast = {r = {5}, d = {5}},

@@ -2690,6 +2690,18 @@ function ____exports.NoteIdleHeld(bot)
     end
 end
 local ROW_HOST = BotMode.Farm
+--- The puller's own job for its pull camp as a stack camp. Not Candidates: the off lane's pull camp is a spawner of the other
+-- team (the enemy's hard camp beside their safe-lane T1), which Candidates leaves out.
+local function rowCamp(bot, sp)
+    local data = Camps.ByIdx(
+        sp.idx,
+        bot:GetTeam()
+    )
+    if data == nil or data.stack == nil or sp.type == "ancient" or (Stacking.Window(sp.idx)) == nil then
+        return nil
+    end
+    return data
+end
 --- This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided.
 local function rowSlot(bot, now)
     local minute = math.floor(now / GameRules.NEUTRAL_EVERY)
@@ -2703,10 +2715,7 @@ local function rowSlot(bot, now)
     local sp = PullJob.SpawnerFor(bot)
     local ____temp_59
     if sp ~= nil then
-        ____temp_59 = __TS__ArrayFind(
-            ____exports.Candidates(bot:GetTeam()),
-            function(____, d) return d.campIdx == sp.idx end
-        )
+        ____temp_59 = rowCamp(bot, sp)
     else
         ____temp_59 = nil
     end
@@ -2788,8 +2797,8 @@ local function rowBlock(bot)
     return nil
 end
 --- A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark.
-local function rowWants(k)
-    return k.n > 0 and k.n < PullJob.SETTINGS.StrongAt
+local function rowWants(sp, k)
+    return k.n > 0 and k.n < PullJob.BarOf(sp)
 end
 --- Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`.
 function ____exports.Shadow(bot)
@@ -2811,7 +2820,7 @@ function ____exports.Shadow(bot)
         bot,
         slot,
         false,
-        rowWants(known),
+        rowWants(slot.sp, known),
         "off",
         known,
         "shadow"
@@ -2841,7 +2850,7 @@ local function rowApplies(bot)
         return false
     end
     local known = PullJob.Known(slot.sp)
-    if not rowWants(known) then
+    if not rowWants(slot.sp, known) then
         rowLine(
             bot,
             slot,

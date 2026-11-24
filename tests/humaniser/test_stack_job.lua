@@ -21,6 +21,7 @@ local MAP = {
 }
 -- Where each team's safe-lane pos5 stands at the trigger: beside its T1 (MAP_TOWERS in test_lane_camps.lua).
 local SAFE_T1 = { [RAD] = Vector(4860, -6379), [DIRE] = Vector(-5275, 6036) }
+local OFF_T1_RAD = Vector(-6336, 1856)
 
 local function dist(a, b) return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2) end
 
@@ -1195,11 +1196,14 @@ end
 -- the pull's trigger reads.
 local function rowWorld(o)
 	o = o or {}
-	local H, bot = world({ t = 3 * 60 + 15, fogged = o.fogged, ours = { StackExecute = false, SupportPull = o.off ~= true } })
+	local H, bot = world({ t = 3 * 60 + 15, at = o.offLane and OFF_T1_RAD or nil, fogged = o.fogged, ours = { StackExecute = false, SupportPull = o.off ~= true } })
 	bot.lane, bot.bot = dota.Lane.Bot, true
-	-- The Radiant safe lane's T1, so the lane's pull camp seeds (the nearest small spawner: good_1).
-	local tower = MakeUnit({ pid = -1, team = RAD, loc = SAFE_T1[RAD] })
-	GetTower = function(team, id) if team == RAD and id == dota.Tower.Bot1 then return tower end return nil end
+	-- The Radiant safe lane's T1, so the lane's pull camp seeds (the nearest small spawner: good_1). `offLane`: the pos4 alone
+	-- in the top lane, whose pull camp is the enemy's hard camp beside their safe-lane T1 (evil_1, 2,554 from our top T1).
+	local tower = MakeUnit({ pid = -1, team = RAD, loc = o.offLane and OFF_T1_RAD or SAFE_T1[RAD] })
+	local towerId = o.offLane and dota.Tower.Top1 or dota.Tower.Bot1
+	if o.offLane then bot.lane, bot.pos = dota.Lane.Top, 4 end
+	GetTower = function(team, id) if team == RAD and id == towerId then return tower end return nil end
 	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
 	local sp = H.PullJob.SpawnerFor(bot)
@@ -1310,6 +1314,20 @@ do
 	local st = stackLines(printed)
 	local k = H.PullJob.Known(sp)
 	check("unseen: stack read unseen, record 3 pulled + a set by the rules", field(st[1], "res") == "unseen" and k.n == 6 and k.src == "rules", tostring(st[1]) .. " " .. k.n)
+end
+
+-- The off lane: the pos4's pull camp is a spawner of the other team. Its record under the hard camp's bar (one neutral left)
+-- is stacked like the safe lane's; a full hard camp (3) is already at its bar and is not.
+do
+	local H, bot, sp = rowWorld({ offLane = true })
+	check("off lane: the pull camp is the enemy-side hard camp evil_1", sp ~= nil and sp.idx == idxOf("evil_1"), sp and sp.idx)
+	local printed = rowRun({ offLane = true, n = 1 })
+	local c = choices(printed, "stack")
+	local st = stackLines(printed)
+	check("off lane, one left: the stack is wanted and started", #c >= 1 and field(c[1], "go") == "1" and field(c[1], "rn") == "1", c[1])
+	check("off lane, one left: it stacked evil_1", #st == 1 and tonumber(field(st[1], "camp")) == idxOf("evil_1"), st[1])
+	local full = choices(rowRun({ offLane = true, n = 3 }), "stack")
+	check("off lane, a full hard camp: not wanted, why=strong", #full == 1 and field(full[1], "want") == "0" and field(full[1], "why") == "strong", full[1])
 end
 
 -- Switched off: the same minute's read as a shadow, and no stack.
