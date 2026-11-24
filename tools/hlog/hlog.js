@@ -11,6 +11,8 @@
 //                                                        what happened, oldest first: episodes, our decisions, modes, casts, creep deaths (@timeline)
 //   node hlog.js timeline <batch> --count [--ref arm --pos 1-3 --lane l --from t --to t]
 //                                                        the batch's arms compared on counted measures, with the reference arm's noise floor (summary.js)
+//   node hlog.js scene <log | label> --at T | --from T --to T  --hero h | --pid N | --lane top|mid|bot | --xy x,y  [--r 1600 --every 5 --game N]
+//                                                        who was where and what happened at a place and time: frames of heroes, fronts, towers, then timeline rows and creep deaths (scene.js)
 //   node hlog.js list [word]                             named queries and views: params and first sentence (word filters)
 //   node hlog.js schema [ev]                             tables, rows and columns (kind, non-null count, an example)
 //   node hlog.js prune                                   drop logs whose file is gone
@@ -255,7 +257,7 @@ function events(store, file, o) {
 
 function main(argv) {
     const opt = k => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : undefined);
-    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind', '--ref', '--pos']);
+    const valued = new Set(['--db', '--logs', '--p', '--game', '--pid', '--hero', '--from', '--to', '--ev', '--lane', '--kind', '--ref', '--pos', '--at', '--r', '--every', '--xy']);
     const flags = new Set([...valued, '--json', '--wide', '--no-ingest', '--all', '--count']);
     const pos = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
     const [cmd, ...rest] = pos;
@@ -313,6 +315,14 @@ function main(argv) {
             const o = Object.fromEntries(['game', 'lane', 'hero', 'pid', 'from', 'to', 'kind'].map(k => [k, opt(k)]));
             const rows = timelineRows(store, logOf(store, rest[0]), o);
             say(rows, timelineText(rows, o));
+        } else if (cmd === 'scene' && rest[0]) {
+            if (fs.existsSync(rest[0])) store.ingest(rest[0]);
+            else sync();
+            store.refreshViews();
+            const { scene } = require('./scene');
+            const o = Object.fromEntries(['game', 'at', 'from', 'to', 'hero', 'pid', 'lane', 'xy', 'r', 'every'].map(k => [k, opt(k)]));
+            const r = scene(store, logOf(store, rest[0]), o, { secs, timelineRows, target: rest[0] });
+            console.log(argv.includes('--json') ? JSON.stringify({ header: r.header, rows: r.rows, next: r.next }, null, 1) : r.lines.join('\n'));
         } else if (cmd === 'digest' && rest[0]) {
             console.log(digest(store, rest[0], opt('game') === undefined ? undefined : Number(opt('game'))));
         } else if (cmd === 'schema') {
@@ -322,7 +332,7 @@ function main(argv) {
             const gone = store.prune();
             console.error(`pruned ${gone.length}`);
         } else {
-            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 16).map(l => l.slice(3)).join('\n'));
+            console.error(fs.readFileSync(__filename, 'utf8').split('\n').filter(l => l.startsWith('//')).slice(2, 18).map(l => l.slice(3)).join('\n'));
             process.exitCode = 2;
         }
     } catch (e) {
