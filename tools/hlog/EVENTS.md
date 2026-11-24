@@ -342,6 +342,7 @@ Overrides.SwingProbe (swing_probe.ts): one own hero's attack on a lane creep, fr
 
 `lane` num, `cid` num, `pc` num
 
+- `team` num: The reading team.
 - `own` num: 1 the reading team's own creep, 0 an enemy creep.
 - `hp` num: HP at the last read.
 - `pby` str: The predicted killing hit's kind: `hero`, `self` (the reader hero), `creep`, `tower`, or `none` (no hit within the horizon kills it).

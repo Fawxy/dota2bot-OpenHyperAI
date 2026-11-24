@@ -159,6 +159,7 @@ local function frame(bot)
             local dead = p.creep:IsNull() or not p.creep:IsAlive()
             local ____Telemetry_Event_3 = Telemetry.Event
             local ____array_2 = __TS__SparseArrayNew(
+                {"team", team},
                 {"lane", p.lane},
                 {"own", p.own and 1 or 0},
                 {"cid", p.cid},

@@ -123,6 +123,7 @@ function frame(bot: Unit): void {
             known.delete(p.creep);
             const dead = p.creep.IsNull() || !p.creep.IsAlive();
             Telemetry.Event("lane_hits_check", [
+                ["team", team],
                 ["lane", p.lane],
                 ["own", p.own ? 1 : 0],
                 ["cid", p.cid],

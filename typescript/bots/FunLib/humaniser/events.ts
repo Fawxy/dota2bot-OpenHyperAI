@@ -532,6 +532,8 @@ export const EVENTS = {
      * with the read's last prediction of the hit that kills it and who took it that frame.
      */
     lane_hits_check: {
+        /** The reading team. */
+        team: "num",
         lane: "num",
         /** 1 the reading team's own creep, 0 an enemy creep. */
         own: "num",

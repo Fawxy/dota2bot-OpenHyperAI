@@ -324,6 +324,7 @@ ____exports.EVENTS = {
         cast = "num"
     },
     lane_hits_check = {
+        team = "num",
         lane = "num",
         own = "num",
         cid = "num",
