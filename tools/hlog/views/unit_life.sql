@@ -28,6 +28,10 @@
 -- A neutral's two sightings (team 2 and team 3) are one unit when within 1 s and 250 units, mutually nearest, and at most one
 -- names a hero: two heroes taking neutrals at once are two units. Not in today's events (NULL): x0, y0, t0 of a neutral and of
 -- a creep outside the wave event, a neutral's name, `flag` as a type.
+-- A creep_death line (the other team's sighting) is written when a creep at low health leaves the writer's unit list
+-- (trackCreepDeaths, telemetry.ts), which can be a creep that went into fog and lived: ev=creep_revive is written if it reappears,
+-- with no cid. So a row with by_src = taker whose uid has `:x` (no owner line) is a sighting, not a confirmed death; a paired
+-- row is confirmed by the owner's own line.
 -- Store-wide it pairs every game: read one game or a few with query unit_life (--p game=N or like=), whose inputs are only those
 -- games'. The rules are fragment unit_life_rows.
 -- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)

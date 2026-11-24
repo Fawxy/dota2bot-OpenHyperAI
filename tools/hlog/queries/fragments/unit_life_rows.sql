@@ -4,6 +4,10 @@
 -- `ul_wave` the rows of ev_wave_creep_death, `ul_own` of ev_own_creep_death, `ul_enemy` of ev_creep_death, `ul_neu` of
 -- ev_neutral_death. CTE `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
 -- by_pid, by_src, src)`. Ends with a comma.
+-- A creep_death line (the other team's sighting) is written when a creep at low health leaves the writer's unit list
+-- (trackCreepDeaths, telemetry.ts), which can be a creep that went into fog and lived: ev=creep_revive is written if it reappears,
+-- with no cid. So a row with by_src = taker whose uid has `:x` (no owner line) is a sighting, not a confirmed death; a paired
+-- row is confirmed by the owner's own line.
 -- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)

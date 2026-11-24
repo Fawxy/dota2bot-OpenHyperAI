@@ -17,9 +17,11 @@ function run(lines) {
     s.refreshViews();
     const view = s.query('SELECT * FROM unit_life ORDER BY t1, uid');
     const named = s.query(fs.readFileSync(path.join(__dirname, '..', 'queries', 'unit_life.sql'), 'utf8'),
-        { game: s.query('SELECT game_id FROM games')[0].game_id });
+        { game_id: s.query('SELECT game_id FROM games')[0].game_id });
+    const byLog = n => s.query(fs.readFileSync(path.join(__dirname, '..', 'queries', 'unit_life.sql'), 'utf8'), n === undefined ? { like: '%a.log' } : { like: '%a.log', game: n });
+    const lastGame = byLog(), game1 = byLog(1), game2 = byLog(2);
     s.db.close();
-    return { view, named };
+    return { view, named, lastGame, game1, game2 };
 }
 
 // Team 2 owns the creeps; team 3's heroes (pids 5, 6) write creep_death for them, team 2's pid 1 denies.
@@ -30,8 +32,10 @@ const seen = (t, cid, by, tw, x = 0, y = 0, kind = 'melee') =>
 
 test('a creep both teams logged is one row; the enemy hero that took it is named through the pairing, not by the owner', () => {
     // the owner's near-hero line (own_creep_death) of the same creep is the same unit as its wave line
-    const { view, named } = run([wave(100, 7, 'none'), line(100, 'own_creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none cid=7'), seen(100.2, 3, 5, 0, 40, 0)]);
-    for (const rows of [view, named]) {
+    const { view, named, lastGame, game1, game2 } = run([wave(100, 7, 'none'), line(100, 'own_creep_death team=2 kind=melee x=0 y=0 hp=0.05 by=none cid=7'), seen(100.2, 3, 5, 0, 40, 0)]);
+    // `like` alone reads the log's last game, `game` is its number in the log (a log with one game has no game 2), `game_id` the store's
+    assert.strictEqual(game2.length, 0);
+    for (const rows of [view, named, lastGame, game1]) {
         assert.strictEqual(rows.length, 1);
         const r = rows[0];
         assert.deepStrictEqual([r.uid, r.kind, r.team, r.type, r.lane, r.wave, r.t0, r.x1, r.src], ['2:7', 'lane', 2, 'melee', 'mid', 2, 60, 0, 'log']);
