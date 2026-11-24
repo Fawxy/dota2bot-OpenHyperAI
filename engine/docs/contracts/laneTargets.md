@@ -20,7 +20,7 @@ timing:         one scan of the creeps within radius; per-frame creep queries ar
 interruption:   n/a (a query).
 skill:          none (exact prediction; lastHit/deny draw Skill error when they swing).
 telemetry:      none (laneFarm's caller logs ev=lh per attempt).
-fixtures:       engine test_lasthit "targets:" cases (due/walk/dies: "melee due, walk and dies", "far creep due now"); test_lane "no pick"; bot test_lane_pick, test_states_laning_body.
+fixtures:       engine test_lasthit "targets:" cases (due/walk/dies: "melee due, walk and dies", "far creep due now", "targets: neutral" (dies and due with a neutral on our creep)); test_lane "no pick"; bot test_lane_pick, test_states_laning_body.
 evidence:       none (radius and within are taste; the eta maths is the lastHit fact's).
 consumers:      engine laneFarm (pick receives this list; without pick, laneFarm only holds its spot); bot states/laning
                 via states/lane_pick Choose (skips a creep with walk + ARRIVE_SLACK >= dies); slice 5's core last-hit choice (docs/team/ROADMAP.md row 5).

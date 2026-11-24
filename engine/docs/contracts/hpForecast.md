@@ -20,7 +20,8 @@ sources:        Valve API reads only: GetIncomingTrackingProjectiles (is_attack,
                 speed seconds from the first frame the engine reads the wind-up; within one frame of the fire on 97.7-99.0%
                 of our heroes' wind-ups, 97.5-100% of lane creeps', 97.8% of towers', swingwc1-2; enemy heroes not
                 measured), GetNearbyTowers / GetNearbyHeroes for the attacker kinds, GetNearbyNeutralCreeps (neutral attackers, read with no
-                CanBeSeen check: a fogged one has no location and is left out).
+                CanBeSeen check: a fogged one has no location and is left out; UNVERIFIED in-game: neutrals' wind-up reading, the
+                fogged location and CanBeSeen on a neutral-team unit are not measured).
 result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|self }] sorted by t, unphased, unphasedTower,
                 unphasedHits[{ damage, period, first, last }] }.
                 hits: every attack projectile in flight (the bot's own included), every wind-up seen landing within the
@@ -34,7 +35,7 @@ result:         { hp, regen, horizon, hits[{ t, damage, by: tower|creep|hero|sel
                 dead by then. The real HP lies between `early` and `late` while each such attacker is in range and its
                 wind-up readable (one still walking to the creep can land later).
 assumptions:    repeats keep today's distance and so flight time; an attacker stays on the creep (UNVERIFIED in-game: towers
-                re-target on hero aggro or when the creep leaves range); heroes are not repeated (their attacks are choices).
+                re-target on hero aggro or when the creep leaves range, a neutral leashes back to its camp); heroes are not repeated (their attacks are choices).
 outcomes:       none (a query); an empty forecast (hits {}, unphased 0) when no one attacks the creep.
 timing:         one projectile scan and the per-frame attacker index (shared with lastHit's belief); O(attackers x
                 horizon / attack cycle).

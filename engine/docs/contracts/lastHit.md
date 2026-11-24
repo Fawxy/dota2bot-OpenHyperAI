@@ -34,7 +34,8 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 armour. Due when the creep survives the seen hits and the believed HP at our landing <= own damage.
                 The wind-up is attack point / attack speed seconds, timed from the frame the engine first reads it (within
                 one frame of the fire on 97.7-99.0% of our heroes' wind-ups, lane creeps and towers about the same,
-                swingwc1-2); on enemy heroes it is not measured.
+                swingwc1-2); on enemy heroes and neutral creeps it is not measured (UNVERIFIED in-game for neutrals: the
+                wind-up reading, the fogged location, CanBeSeen skipped for them).
 effect check:   ok once the bot's GetLastHits (GetDenies) count rises, checked each frame until 0.5 s past the predicted
                 landing.
 outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | etiquette | dead | interrupted |
@@ -66,7 +67,7 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 wind-up reading on enemy heroes (not measured there; verified on our own, swingwc1). Then the creep-attacker watch: `cf cwf` (readings of the creep's
                 attackers that are not heroes, one per attacker per frame, and of those the ones read winding up) and, when
                 cf > 0, `ca cc cpt cs` (the last one's GetAnimActivity, GetAnimCycle, GetAttackPoint, GetSecondsPerAttack):
-                the same check on lane creeps and towers (slice lh-unphased). Read by hlog `@lh_swings`.
+                the same check on lane creeps, neutral creeps (slice engine-neutrals) and towers (slice lh-unphased). Read by hlog `@lh_swings`.
 fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
                 enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
