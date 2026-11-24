@@ -157,3 +157,25 @@ test('a neutral both teams saw die is one row under the Radiant uid, with its na
         ['n2:15', 'neutral_ogre', null, 70, null, 'unknown', null], ['n3:16', 'neutral_ogre', null, 70, null, 'unknown', null],
     ]);
 });
+
+test('a neutral found dead after it left the list (hid) pairs by a 2 s window and keeps its partner\'s exact time; far from its partner it stays its own row', () => {
+    const nseen = (t, team, cid, x, y) => line(t, `unit_seen team=${team} cid=${cid} kind=neutral type=neutral_wolf x=${x} y=${y}`);
+    const { view } = run([
+        nseen(10, 2, 1, 100, 100), nseen(10, 3, 2, 100, 100),
+        ugone(50, 2, 1, 1, '', 100, 100), ugone(51.7, 3, 2, 'none', 'hid=1', 120, 100),
+        // beyond 250 units of the exact row: not the same unit
+        nseen(10, 2, 3, 2000, 2000), nseen(10, 3, 4, 2000, 2000),
+        ugone(90, 2, 3, 1, '', 2000, 2000), ugone(90.4, 3, 4, 'none', 'hid=1', 2600, 2000),
+        // an exact pair 1.5 s apart is two units, a hid pair 1.5 s apart one
+        nseen(10, 2, 5, 500, 500), nseen(10, 3, 6, 500, 500),
+        ugone(120, 2, 5, 1, '', 500, 500), ugone(121.5, 3, 6, 'none', '', 500, 500),
+        // an exact row is the partner when the Radiant row was the hid one
+        nseen(10, 2, 7, 800, 800), nseen(10, 3, 8, 800, 800),
+        ugone(150.4, 2, 7, 'none', 'hid=1', 800, 800), ugone(150, 3, 8, 6, '', 800, 800),
+    ]);
+    const n = view.filter(r => r.kind === 'neutral').sort((a, b) => a.t1 - b.t1);
+    assert.deepStrictEqual(n.map(r => [r.uid, r.t1, r.hid, r.by_pid]), [
+        ['n2:1', 50, 0, 1], ['n2:3', 90, 0, 1], ['n3:4', 90.4, 1, null], ['n2:5', 120, 0, 1], ['n3:6', 121.5, 0, null], ['n2:7', 150, 0, 6],
+    ]);
+    assert.strictEqual(view.filter(r => r.kind === 'lane').length, 0);
+});

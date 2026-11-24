@@ -41,6 +41,12 @@
 -- for them (by_src paired). A creep only the enemy saw is no row there. A neutral: `type` its unit name, `camp` and t0 x0 y0 from
 -- its unit_seen; the two teams' sightings are one unit when their unit_gone rows are within 1 s and 250 units (uid the Radiant
 -- sighting's, `n2:<cid>`); a neutral never found dead is a row per team (t1 NULL); a neutral out of sight and back is one unit.
+-- `hid` (last column; NULL for a lane creep and for a game read from the old events): 1 on a neutral found dead only after it had left
+-- the unit list, whose t1 is when that was noticed (up to 0.5 s and a frame after its death) and spot the last one seen, with no taker.
+-- Such a row pairs with the other team's row by a 2 s window (not 1 s) at the same 250 units and, with an exact (hid 0) partner,
+-- takes its t1, x1, y1 and hid 0; beyond 250 units of any partner it stays its own row, so a neutral killed out of sight
+-- far from where it was last listed can count twice. A neutral never found dead (t1 NULL) is one row per team, so a neutral count
+-- from this view over-counts the alive ones: count dead neutrals (t1 not NULL), not rows.
 -- ensure: ev_wave_creep_death(team, kind, x, y, by, cid, lane, born)
 -- ensure: ev_own_creep_death(team, kind, x, y, by, cid)
 -- ensure: ev_creep_death(team, kind, x, y, by, tw, cid)

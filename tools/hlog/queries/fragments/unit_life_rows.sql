@@ -5,7 +5,7 @@
 -- ev_neutral_death, and `ul_useen`, `ul_ugone` the rows of ev_unit_seen and ev_unit_gone (from team-bots after 836e2a2d; the
 -- game-filtering of every one is the includer's). A game with an ev_unit_seen row is read from those two (below); any other game
 -- from the four death events, as before. CTE `unit_life_rows(game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind,
--- by_pid, by_src, src)`. Ends with a comma.
+-- by_pid, by_src, src, hid)`. Ends with a comma.
 -- A creep_death line (the other team's sighting) is written when a creep at low health leaves the writer's unit list
 -- (trackCreepDeaths, telemetry.ts), which can be a creep that went into fog and lived: ev=creep_revive is written if it reappears,
 -- with no cid. So a row with by_src = taker whose uid has `:x` (no owner line) is a sighting, not a confirmed death; a paired
@@ -107,9 +107,12 @@ ul_neutral AS (
     WHERE NOT (a.team = 3 AND EXISTS (SELECT 1 FROM ul_npair q WHERE q.game_id = a.game_id AND q.bseq = a.seq))
 ),
 -- A neutral both teams saw die is one unit: the two gone rows within 1 s and 250 units, mutually nearest (the rule the old
--- neutral_death pairing has). A unit only one team logged, or a neutral still alive when the log stopped, is one row per team.
+-- neutral_death pairing has). A row with hid = 1 was found dead only after it left the list, so its t1 is when that was noticed (up
+-- to the 0.5 s recheck and a frame after the death) and its spot the last one seen: it pairs with a window of 2 s instead of 1, at the
+-- same 250 units, and an exact row (hid = 0) of the pair gives the merged t1, x1, y1. A hid row whose spot is beyond 250 units of the
+-- other team's row stays a row of its own. A unit only one team logged, or a neutral still alive when the log stopped, is one row per team.
 ul_nn AS MATERIALIZED (
-    SELECT s.game_id, s.team, s.cid, s.type, s.camp, s.t AS t0, s.x AS x0, s.y AS y0, g.t AS t1, g.x AS x1, g.y AS y1, g.who
+    SELECT s.game_id, s.team, s.cid, s.type, s.camp, s.t AS t0, s.x AS x0, s.y AS y0, g.t AS t1, g.x AS x1, g.y AS y1, g.who, g.hid
     FROM ul_s s LEFT JOIN ul_g g ON g.game_id = s.game_id AND g.team = s.team AND g.cid = s.cid
     WHERE s.kind = 'neutral'
 ),
@@ -122,13 +125,15 @@ ul_nnpair AS (
             SELECT a.game_id, a.cid AS acid, b.cid AS bcid, abs(b.t1 - a.t1) AS dt,
                 (b.x1 - a.x1) * (b.x1 - a.x1) + (b.y1 - a.y1) * (b.y1 - a.y1) AS d2
             FROM ul_nn a JOIN ul_nn b ON b.game_id = a.game_id AND a.team = 2 AND b.team = 3
-                AND b.t1 BETWEEN a.t1 - 1 AND a.t1 + 1 AND (b.x1 - a.x1) * (b.x1 - a.x1) + (b.y1 - a.y1) * (b.y1 - a.y1) <= 62500
+                AND abs(b.t1 - a.t1) <= CASE WHEN a.hid = 1 OR b.hid = 1 THEN 2 ELSE 1 END AND (b.x1 - a.x1) * (b.x1 - a.x1) + (b.y1 - a.y1) * (b.y1 - a.y1) <= 62500
         )
     ) WHERE ra = 1 AND rb = 1
 ),
 ul_nneutral AS (
     SELECT a.game_id, 'n' || a.team || ':' || a.cid AS uid, a.type, coalesce(a.camp, b.camp) AS camp,
-        CASE WHEN b.t0 IS NOT NULL AND b.t0 < a.t0 THEN b.t0 ELSE a.t0 END AS t0, a.x0, a.y0, a.t1, a.x1, a.y1,
+        CASE WHEN b.t0 IS NOT NULL AND b.t0 < a.t0 THEN b.t0 ELSE a.t0 END AS t0, a.x0, a.y0,
+        CASE WHEN a.hid = 1 AND b.hid = 0 THEN b.t1 ELSE a.t1 END AS t1, CASE WHEN a.hid = 1 AND b.hid = 0 THEN b.x1 ELSE a.x1 END AS x1,
+        CASE WHEN a.hid = 1 AND b.hid = 0 THEN b.y1 ELSE a.y1 END AS y1, CASE WHEN a.hid = 1 AND b.hid = 0 THEN 0 ELSE a.hid END AS hid,
         CASE WHEN a.who IS NOT NULL AND a.who <> 'none' THEN a.who WHEN b.who IS NOT NULL AND b.who <> 'none' THEN b.who END AS who,
         (a.who IS NULL OR a.who = 'none') AND b.who IS NOT NULL AND b.who <> 'none' AS from_b
     FROM ul_nn a LEFT JOIN ul_nnpair p ON p.game_id = a.game_id AND p.acid = a.cid AND a.team = 2
@@ -146,22 +151,23 @@ ul_all AS (
         CASE WHEN l.swho IS NOT NULL AND l.swho NOT IN ('none', 'deny') THEN l.swho
              WHEN l.owho IS NOT NULL AND l.owho <> 'none' THEN l.owho END AS by_pid,
         CASE WHEN l.swho IS NOT NULL AND l.swho NOT IN ('none', 'deny') OR l.swho = 'deny' OR l.tw = 1 THEN CASE WHEN l.paired THEN 'paired' ELSE 'taker' END
-             WHEN l.owho IS NOT NULL AND l.owho <> 'none' THEN 'own' END AS by_src
+             WHEN l.owho IS NOT NULL AND l.owho <> 'none' THEN 'own' END AS by_src,
+        NULL AS hid
     FROM ul_lane l LEFT JOIN lab b ON b.kind = l.game_id AND b.k = l.uid AND l.lane IS NULL
     UNION ALL
     SELECT game_id, uid, 'neutral', 4, NULL, NULL, NULL, camp, NULL, NULL, NULL, t, x, y,
         CASE WHEN who IS NOT NULL THEN 'hero' ELSE 'unknown' END, who,
-        CASE WHEN who IS NULL THEN NULL WHEN from_b THEN 'paired' ELSE 'taker' END
+        CASE WHEN who IS NULL THEN NULL WHEN from_b THEN 'paired' ELSE 'taker' END, NULL
     FROM ul_neutral
 ),
 ul_all2 AS (
     SELECT n.game_id, n.uid, 'neutral' AS kind, 4 AS team, n.type, NULL AS lane, NULL AS wave, n.camp, n.t0, n.x0, n.y0, n.t1, n.x1, n.y1,
         CASE WHEN n.who IS NOT NULL THEN 'hero' ELSE 'unknown' END AS by_kind, n.who AS by_pid,
-        CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END AS by_src
+        CASE WHEN n.who IS NULL THEN NULL WHEN n.from_b THEN 'paired' ELSE 'taker' END AS by_src, n.hid
     FROM ul_nneutral n
 ),
 unit_life_rows AS (
-    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CAST(by_pid AS INTEGER) AS by_pid, by_src, 'log' AS src FROM ul_all
+    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CAST(by_pid AS INTEGER) AS by_pid, by_src, 'log' AS src, hid FROM ul_all
     UNION ALL
-    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CASE WHEN by_pid = 'none' THEN NULL ELSE CAST(by_pid AS INTEGER) END, by_src, 'log' FROM ul_all2
+    SELECT game_id, uid, kind, team, type, lane, wave, camp, t0, x0, y0, t1, x1, y1, by_kind, CASE WHEN by_pid = 'none' THEN NULL ELSE CAST(by_pid AS INTEGER) END, by_src, 'log', hid FROM ul_all2
 ),
