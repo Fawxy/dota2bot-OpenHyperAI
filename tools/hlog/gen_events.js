@@ -7,6 +7,9 @@ const path = require('path');
 const SRC = path.join(__dirname, '../../typescript/bots/FunLib/humaniser/events.ts');
 const MD = path.join(__dirname, 'EVENTS.md');
 const JSON_OUT = path.join(__dirname, 'events.json');
+// Events the bot no longer writes that older logs still hold: their column kinds stay declared (the store keeps reading them as
+// before) and EVENTS.md lists them as old logs only. Same shape as the typed declaration: {event: {field: type}}.
+const LEGACY = path.join(__dirname, 'legacy_events.json');
 
 // `bool` prints 1/0. Only `str` is forced to a text column; the others (`numstr`: a number printed from a string, `mixed`: a number or a
 // `?` placeholder) are left to the store's inference, which keeps a column numeric until a value is not a number.
@@ -106,9 +109,9 @@ function section(ev, fields, doc) {
 
 const NO_DOCS = { event: () => undefined, field: () => undefined };
 
-function build(events, doc = NO_DOCS) {
+function build(events, doc = NO_DOCS, legacy = {}) {
     const kinds = {};
-    for (const [ev, fields] of Object.entries(events)) {
+    for (const [ev, fields] of Object.entries({ ...events, ...legacy })) {
         const k = {};
         for (const [f, t] of Object.entries(fields)) {
             if (!STORE_KIND[t]) throw new Error(`${ev}.${f}: unknown type ${t}`);
@@ -116,7 +119,7 @@ function build(events, doc = NO_DOCS) {
         }
         if (Object.keys(k).length) kinds[tableName(ev)] = k;
     }
-    const json = JSON.stringify({ generated: 'by gen_events.js from events.ts; do not edit', events, kinds }, null, 1) + '\n';
+    const json = JSON.stringify({ generated: 'by gen_events.js from events.ts; do not edit', events, kinds, legacy }, null, 1) + '\n';
     const md = [
         '# Humaniser events (generated)',
         '',
@@ -128,6 +131,15 @@ function build(events, doc = NO_DOCS) {
         `${Object.keys(events).length} typed events.`,
         '',
         ...Object.entries(events).flatMap(([ev, fields]) => section(ev, fields, doc)),
+        ...(Object.keys(legacy).length
+            ? [
+                '## Old logs only',
+                '',
+                'No longer written by the bot (`legacy_events.json`); hlog still ingests them from older logs, with these column kinds.',
+                '',
+                ...Object.entries(legacy).flatMap(([ev, fields]) => section(ev, fields, NO_DOCS).map(l => (l.startsWith('## ') ? `### ${ev}` : l))),
+            ]
+            : []),
         '## Untyped',
         '',
         'Printed through `Telemetry.EventUntyped`, name or fields built at run time, so nothing checks them: the',
@@ -139,7 +151,7 @@ function build(events, doc = NO_DOCS) {
 }
 
 function main() {
-    const { json, md } = build(load(), docs(fs.readFileSync(SRC, "utf8")));
+    const { json, md } = build(load(), docs(fs.readFileSync(SRC, "utf8")), JSON.parse(fs.readFileSync(LEGACY, 'utf8')));
     const check = process.argv.includes('--check');
     let stale = false;
     for (const [file, want] of [[JSON_OUT, json], [MD, md]]) {

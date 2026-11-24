@@ -220,38 +220,6 @@ ____exports.EVENTS = {
         p3a = "num",
         cid = "num"
     },
-    neutral_death = {
-        team = "num",
-        kind = "str",
-        x = "num",
-        y = "num",
-        hp = "num",
-        by = "mixed",
-        camp = "num",
-        np = "num",
-        nd = "num"
-    },
-    own_creep_death = {
-        team = "num",
-        kind = "str",
-        x = "num",
-        y = "num",
-        hp = "num",
-        by = "mixed",
-        cid = "num"
-    },
-    wave_creep_death = {
-        team = "num",
-        kind = "str",
-        x = "num",
-        y = "num",
-        hp = "num",
-        by = "mixed",
-        cid = "num",
-        lane = "str",
-        born = "num",
-        nd = "num"
-    },
     player = {pid = "num", hero = "str", team = "num", human = "bool"},
     snap = __TS__ObjectAssign({pid = "num", human = "bool"}, ____exports.BOT),
     inv = {pid = "num", items = "str"},

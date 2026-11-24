@@ -228,38 +228,6 @@
    "p3a": "num",
    "cid": "num"
   },
-  "neutral_death": {
-   "team": "num",
-   "kind": "str",
-   "x": "num",
-   "y": "num",
-   "hp": "num",
-   "by": "mixed",
-   "camp": "num",
-   "np": "num",
-   "nd": "num"
-  },
-  "own_creep_death": {
-   "team": "num",
-   "kind": "str",
-   "x": "num",
-   "y": "num",
-   "hp": "num",
-   "by": "mixed",
-   "cid": "num"
-  },
-  "wave_creep_death": {
-   "team": "num",
-   "kind": "str",
-   "x": "num",
-   "y": "num",
-   "hp": "num",
-   "by": "mixed",
-   "cid": "num",
-   "lane": "str",
-   "born": "num",
-   "nd": "num"
-  },
   "player": {
    "pid": "num",
    "hero": "str",
@@ -2313,16 +2281,6 @@
    "kind": "text",
    "bm": "text"
   },
-  "ev_neutral_death": {
-   "kind": "text"
-  },
-  "ev_own_creep_death": {
-   "kind": "text"
-  },
-  "ev_wave_creep_death": {
-   "kind": "text",
-   "lane": "text"
-  },
   "ev_player": {
    "hero": "text"
   },
@@ -2976,6 +2934,50 @@
   },
   "ev_cut_towers": {
    "tw": "text"
+  },
+  "ev_own_creep_death": {
+   "kind": "text"
+  },
+  "ev_wave_creep_death": {
+   "kind": "text",
+   "lane": "text"
+  },
+  "ev_neutral_death": {
+   "kind": "text"
+  }
+ },
+ "legacy": {
+  "own_creep_death": {
+   "team": "num",
+   "kind": "str",
+   "x": "num",
+   "y": "num",
+   "hp": "num",
+   "by": "mixed",
+   "cid": "num"
+  },
+  "wave_creep_death": {
+   "team": "num",
+   "kind": "str",
+   "x": "num",
+   "y": "num",
+   "hp": "num",
+   "by": "mixed",
+   "cid": "num",
+   "lane": "str",
+   "born": "num",
+   "nd": "num"
+  },
+  "neutral_death": {
+   "team": "num",
+   "kind": "str",
+   "x": "num",
+   "y": "num",
+   "hp": "num",
+   "by": "mixed",
+   "camp": "num",
+   "np": "num",
+   "nd": "num"
   }
  }
 }

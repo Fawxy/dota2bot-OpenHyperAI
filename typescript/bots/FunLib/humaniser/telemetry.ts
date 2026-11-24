@@ -1296,9 +1296,9 @@ interface CreepDeath {
 }
 interface CreepTrack {
     creeps: LuaTable<Unit, CreepSeen>;
-    // Own lane creeps seen last frame (slice creep-economy): a death near an own hero is ev=own_creep_death.
+    // Own lane creeps seen last frame: one leaving the list is its ev=unit_gone.
     own: LuaTable<Unit, CreepSeen>;
-    /** Each own lane creep's lane and first-seen second, stamped once (ev=wave_creep_death names its wave by them). */
+    /** Each own lane creep's lane when first seen, stamped once (its ev=unit_seen). */
     born: LuaTable<Unit, Born>;
     ownDenies: Record<number, number>;
     // Handles logged as deaths: one seen alive again was a creep that left vision (ev=creep_revive, the WO-025 G2 gate).
@@ -1313,7 +1313,7 @@ interface CreepTrack {
     attackMode: Record<number, number | undefined>;
     /** Enemy creeps one of our towers was attacking last frame (`tw` on ev=creep_death). */
     towerOn: LuaTable<Unit, boolean>;
-    /** Neutral creeps seen last frame (slice lane-farm-logs): a death near an own hero is ev=neutral_death. */
+    /** Neutral creeps seen last frame: one that left the list within reach of an own hero at low HP is a neutral death (the claim pool, creep_revive). */
     neutrals: LuaTable<Unit, CreepSeen>;
     /** Neutrals logged as deaths: one seen alive again left vision (ev=creep_revive, kind neutral or ancient). */
     deadNeutrals: LuaTable<Unit, CreepSeen>;
@@ -1328,7 +1328,6 @@ interface CreepTrack {
 }
 interface Born {
     lane: string;
-    t: number;
 }
 const creepTracks: Record<number, CreepTrack> = {};
 /** A creep that vanishes above this health share left vision; it did not die. */
@@ -1338,7 +1337,7 @@ const DEATH_NEAR = 1500;
 /** A hero whose last hits (or an enemy whose denies) rose takes the nearest death within this distance. */
 const KILLER_NEAR = 1200;
 
-/** A neutral dying this far from every camp's box centre has no `camp` (it was led away, or is a summon). `judgement`. */
+/** A neutral first listed this far from every camp's box centre has no `camp` on its unit_seen (it was led away, or is a summon). `judgement`. */
 const NEUTRAL_CAMP_NEAR = 1200;
 
 /** "ancient" for ancient-camp neutrals, else "neutral": the camp's own type is the `camp` index's. */
@@ -1565,8 +1564,8 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
     const [livesOk, livesRes] = pcall(neutralsGone, c, neutralList, now);
     if (livesOk) neutralGone = livesRes as NeutralGone[];
     else HDebug.Log("Telemetry.Lives: " + tostring(livesRes));
-    // The claim pool is the old events' alone, as it was before unit_gone: a neutral's unit_gone takes its by from its neutral_death
-    // object after the claim.
+    // The claim pool is [creep deaths, near neutral deaths] only, as when the old own/wave/neutral death events were written: a neutral's
+    // unit_gone takes its by from its neutralDeaths object after the claim.
     const pool: CreepDeath[] = [...deaths, ...neutralDeaths];
     for (const h of heroes) {
         const n = rise(c.lastHits, h.GetPlayerID(), (h as unknown as StatsUnit).GetLastHits());
@@ -1614,33 +1613,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         Event("creep_death", fields);
         c.dead.set(d.creep, d.seen);
     }
-    for (const d of neutralDeaths) {
-        const [camp, campD] = Camps.NearestSpawner(Vector(d.seen.x, d.seen.y, 0));
-        let near: Unit | undefined;
-        let nearD = math.huge;
-        for (const h of heroes) {
-            const dist = deathDistance(h, d);
-            if (dist < nearD) {
-                near = h;
-                nearD = dist;
-            }
-        }
-        const fields: Fields<"neutral_death"> = [
-            ["team", team],
-            ["kind", d.seen.kind],
-            ["x", math.floor(d.seen.x)],
-            ["y", math.floor(d.seen.y)],
-            ["hp", d.seen.hp],
-            ["by", d.by ?? "none"],
-        ];
-        if (camp !== undefined && campD <= NEUTRAL_CAMP_NEAR) fields.push(["camp", camp.idx]);
-        if (near !== undefined) {
-            fields.push(["np", near.GetPlayerID()]);
-            fields.push(["nd", math.floor(nearD)]);
-        }
-        Event("neutral_death", fields);
-        c.deadNeutrals.set(d.creep, d.seen);
-    }
+    for (const d of neutralDeaths) c.deadNeutrals.set(d.creep, d.seen);
     for (const g of neutralGone) {
         // A neutral found dead after it left the list has a stale spot and a late time: no taker is named for it.
         let by: string | undefined;
@@ -1682,11 +1655,11 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         }
     }
     for (const u of alive) see(c.creeps, u, laneKindOf);
-    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that died
-    // near an own hero (slice creep-economy): an own hero's deny rise names the denier; no rise
-    // means an enemy last hit, a tower or creep kill, or not attributable (`none`). The enemy team's log names its denies
-    // of our creeps this way (hlog `creep_fate` joins it to their `creep_death`), because an enemy hero's GetDenies reads 0.
-    // With no list this frame every tracked creep would read as gone at full health (wave_creep_death has no health gate).
+    // After the enemy-creep state above, so an error here cannot leave creep_death with stale state. Own lane creeps that left the
+    // list, wherever they were: an own hero's deny rise names the denier on its unit_gone; no rise means an enemy last hit, a
+    // tower or creep kill, or not attributable (`none`). An enemy hero's GetDenies reads 0 from here, so hlog `unit_life` pairs the
+    // other team's `creep_death` for an enemy taker.
+    // With no list this frame every tracked creep would read as gone at full health (unit_gone has no health gate).
     const allied = GetUnitList(UnitType.AlliedCreeps);
     if (allied === null || allied === undefined) return;
     const ownAlive = new LuaTable<Unit, boolean>();
@@ -1696,10 +1669,8 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         ownList.push(u);
         ownAlive.set(u, true);
     }
-    // A team sees its own creeps everywhere, so a listed one that is gone died (or changed owner): `gone` has every one, the
-    // wave reader's; `ownDeaths` keeps own_creep_death's old gates.
-    const gone: [CreepDeath, number][] = [];
-    const ownDeaths: CreepDeath[] = [];
+    // A team sees its own creeps everywhere, so a listed one that is gone died (or changed owner): `gone` has every one.
+    const gone: CreepDeath[] = [];
     const goneLow: CreepDeath[] = [];
     // A creep listed again after it left (a change of owner) keeps its one unit_seen and one unit_gone.
     const repeated = new LuaTable<CreepDeath, boolean>();
@@ -1709,45 +1680,16 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         const d: CreepDeath = { creep, seen };
         if (c.ended.get(creep) === true) repeated.set(d, true);
         c.ended.set(creep, true);
-        let nd = math.huge;
-        for (const h of heroes) nd = math.min(nd, deathDistance(h, d));
-        gone.push([d, nd]);
+        gone.push(d);
         if (seen.hp <= DEATH_MAX_HP) goneLow.push(d);
-        if (seen.hp <= DEATH_MAX_HP && nd <= DEATH_NEAR) ownDeaths.push(d);
     }
     for (const h of heroes) {
         const [ok, dn] = pcall(() => (h as unknown as StatsUnit).GetDenies());
         const n = ok && type(dn) === "number" ? rise(c.ownDenies, h.GetPlayerID(), dn as number) : 0;
         if (n > 0) claimDeaths(goneLow, h, n, tostring(h.GetPlayerID()));
     }
-    for (const d of ownDeaths)
-        Event("own_creep_death", [
-            ["team", team],
-            ["kind", d.seen.kind],
-            ["x", math.floor(d.seen.x)],
-            ["y", math.floor(d.seen.y)],
-            ["hp", d.seen.hp],
-            ["by", d.by ?? "none"],
-            ["cid", CreepId(d.creep)],
-        ]);
-    for (const [d, nd] of gone) {
-        const b = c.born.get(d.creep);
+    for (const d of gone) {
         c.born.delete(d.creep);
-        const fields: Fields<"wave_creep_death"> = [
-            ["team", team],
-            ["kind", d.seen.kind],
-            ["x", math.floor(d.seen.x)],
-            ["y", math.floor(d.seen.y)],
-            ["hp", d.seen.hp],
-            ["by", d.by ?? "none"],
-            ["cid", CreepId(d.creep)],
-        ];
-        if (b !== undefined) {
-            fields.push(["lane", b.lane]);
-            fields.push(["born", b.t]);
-        }
-        if (nd < math.huge) fields.push(["nd", math.floor(nd)]);
-        Event("wave_creep_death", fields);
         const goneFields: Fields<"unit_gone"> = [
             ["team", team],
             ["cid", CreepId(d.creep)],
@@ -1762,7 +1704,7 @@ function trackCreepDeaths(this: void, bot: Unit, now: number): void {
         see(c.own, u, laneKindOf);
         if (c.born.get(u) === undefined && c.own.get(u) !== undefined) {
             const lane = nearestLane(u.GetLocation());
-            c.born.set(u, { lane, t: math.floor(now * 10 + 0.5) / 10 });
+            c.born.set(u, { lane });
             const rec = c.own.get(u)!;
             if (c.ended.get(u) !== true) {
                 Event("unit_seen", [

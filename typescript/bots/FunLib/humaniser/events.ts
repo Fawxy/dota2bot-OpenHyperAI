@@ -279,7 +279,7 @@ export const EVENTS = {
         /** `melee`, `ranged`, `siege`, `neutral` or `ancient`. */
         kind: "str",
         hp: "num",
-        /** The creep's id for this log (Telemetry CreepId), as on its `ev=creep_death` or `ev=neutral_death` row; absent on logs before 25/11/2026. */
+        /** The creep's id for this log (Telemetry CreepId), as on its `ev=creep_death` row; absent on logs before 25/11/2026. */
         cid: "num",
     },
     /** The first frame a lane creep of the logging team, or any neutral, is in the team's unit list (`Telemetry.Creeps`, 0:00 to `Telemetry.CreepDeathUntil`, both arms). Each team numbers its own creeps (`cid` is unique per team only), so a lane creep is `team` + `cid`; a neutral both teams see is two rows, merged by the reader (hlog `unit_life`). Pair: `unit_gone`. */
@@ -307,14 +307,14 @@ export const EVENTS = {
         y: "num",
         /** HP share when last listed. */
         hp: "num",
-        /** As on `own_creep_death` and `neutral_death`: the pid of an own hero whose denies (own lane creep) or last hits (neutral) rose this frame and took the nearest unclaimed gone unit within 1,200, else `none`. An enemy hero's last hit of an own creep is never here: the logging team reads an enemy hero's `GetLastHits` and `GetDenies` as -1, and its towers' targets as nothing, so the other team's `creep_death` is still the only source (hlog `unit_life` pairs it). */
+        /** The pid of an own hero whose denies (own lane creep) or last hits (neutral) rose this frame and took the nearest unclaimed gone unit within 1,200, else `none`. An enemy hero's last hit of an own creep is never here: the logging team reads an enemy hero's `GetLastHits` and `GetDenies` as -1, and its towers' targets as nothing, so the other team's `creep_death` is still the only source (hlog `unit_life` pairs it). */
         by: "mixed",
         /** 1 when the neutral was found dead only after it had left the list alive, so `t` is when that was noticed. */
         hid: "bool",
     },
-    /** An ENEMY lane creep (as seen by the logging team) that was seen last frame and is gone this frame at 50% health or less, within 1,500 of a living own hero. Logged per team by a frame job (`Telemetry.Creeps`, 0:00 to `Telemetry.CreepDeathUntil`, 720 s), in both arms. Mirror: `own_creep_death`. */
+    /** An ENEMY lane creep (as seen by the logging team) that was seen last frame and is gone this frame at 50% health or less, within 1,500 of a living own hero. Logged per team by a frame job (`Telemetry.Creeps`, 0:00 to `Telemetry.CreepDeathUntil`, 720 s), in both arms. */
     creep_death: {
-        /** The logging team: the team whose module saw the death. A row is an enemy lane creep seen by that team, so the same creep may also be in the other team's `own_creep_death`. */
+        /** The logging team: the team whose module saw the death. A row is an enemy lane creep seen by that team, so the same creep is also, for its owner, a `unit_gone`. */
         team: "num",
         /** `melee`, `ranged` or `siege`. */
         kind: "str",
@@ -358,55 +358,6 @@ export const EVENTS = {
         p3a: "num",
         /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
         cid: "num",
-    },
-    /** Slice lane-farm-logs: a neutral creep that died within 1,500 of one of the logging team's heroes. `by` the hero whose
-     *  last hits rose (a pid) or `none`; `camp` the nearest camp's spawner index within 1,200; `np`/`nd` the nearest own hero. */
-    neutral_death: {
-        team: "num",
-        kind: "str",
-        x: "num",
-        y: "num",
-        hp: "num",
-        by: "mixed",
-        camp: "num",
-        np: "num",
-        nd: "num",
-    },
-    /** Mirror of `creep_death` for the logging team's OWN lane creeps (same job, range, 50% rule and limit). Joined to the other team's `creep_death` in view `creep_fate`. */
-    own_creep_death: {
-        /** The logging team, which owns the creep. A `creep_death` row is the other team's view of an enemy creep; this row is the owner's view of its own. */
-        team: "num",
-        kind: "str",
-        x: "num",
-        y: "num",
-        hp: "num",
-        /** The pid of an own hero whose denies rose (each rise takes its nearest unclaimed death within 1,200), else `none`: an enemy last hit, a tower or creep kill, or not attributable. The other team's `creep_death` with `by=none` is paired to a denier here. */
-        by: "mixed",
-        /** The creep's id for this log (Telemetry CreepId; joins an ev=idle_swing). */
-        cid: "num",
-    },
-    /** Every own lane creep that left the team's unit list, wherever it was and at any health: a team always sees its own creeps, so this is its death (or, at high `hp`, a change of owner). The wave reader's line: a creep's wave is its `lane` and `born` (spawns are every 30 s, so `floor(born / 30) * 30`), so a wanted pull slot's own creeps are named with no line at the slot. Same frame job and window as `own_creep_death` (0:00 to `Telemetry.CreepDeathUntil`), both arms. Who took it comes from the other team's `creep_death`, paired by kind, time and place (separate VMs: `cid` is not shared). */
-    wave_creep_death: {
-        /** The logging team, which owns the creep. */
-        team: "num",
-        /** `melee`, `ranged` or `siege`. */
-        kind: "str",
-        /** The creep's x as last frame read it. */
-        x: "num",
-        /** The creep's y as last frame read it. */
-        y: "num",
-        /** The creep's HP share as last frame read it. */
-        hp: "num",
-        /** As on `own_creep_death`: our denier's pid, else `none`. Only deaths `own_creep_death` also logs can carry a pid. */
-        by: "mixed",
-        /** The creep's id for this log, the same as on its `own_creep_death`. */
-        cid: "num",
-        /** The lane nearest the creep when first seen (`top`, `mid`, `bot`). Absent when the creep was first seen this frame. */
-        lane: "str",
-        /** DotaTime when the team first saw the creep, to 0.1 s: its spawn, give or take a frame. Absent with `lane`. */
-        born: "num",
-        /** Distance to the nearest living own hero; absent with none. `own_creep_death` keeps 1,500 or less at 50% HP or less. */
-        nd: "num",
     },
     /** The human player's state, printed every frame (noisy). Bots log `snap` instead. */
     player: {
@@ -2097,7 +2048,7 @@ export const EVENTS = {
         focus: "bool",
         /** setup: our hits to the kill at the pick, this swing included. */
         hits: "num",
-        /** The creep's id (Telemetry CreepId), the same as on its ev=creep_death or ev=own_creep_death. */
+        /** The creep's id (Telemetry CreepId), the same as on its ev=creep_death. */
         cid: "num",
         /** 1 when this bot's deny count rose during the swing. */
         dn: "bool",
