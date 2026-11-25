@@ -214,6 +214,18 @@ do
     T.check("hit taken by an earlier swing: the message names it and no swing of the verb's was ordered", (r.message or ""):sub(1, 10) == "hit=other " and (r.message or ""):find(" end=", 1, true) == nil and firstSwing(bot) == nil)
 end
 
+-- The bot's count rose on another creep, then the target died to nobody of ours: not ok (the rise was not the target's).
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, speed = 100 }
+    local other = sim:addCreep{ x = 60, y = 0, hp = 40, team = 3, passive = true }
+    local creep = sim:addCreep{ x = 900, y = 0, hp = 40, team = 3, passive = true }
+    sim:at(0.2, function(w) w:kill(other, bot) end)
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("a kill on another creep is not the target's: taken_by_other", r.reason, "taken_by_other")
+end
+
 -- A tower shot winding up on a 130 hp creep leaves 30: the swing is ordered before the shot lands.
 do
     local sim = world()

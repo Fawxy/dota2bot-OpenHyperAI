@@ -2376,7 +2376,7 @@ local function heroWatchText(w)
 end
 --- The centre-to-centre distance within which `attacker` begins an attack on `target` without moving: its attack range plus
 -- both hull radii (`GetBoundingRadius`, 0 for a handle without one). `range` is the attacker's attack range when the caller
--- has already read it. Source: banked games (slice oha-creep-reach, commit A), 21,212 hero attacks on lane creeps begun
+-- has already read it. Source: banked games (commit 628bfdd0, docs/contracts/attackReach.md), 21,212 hero attacks on lane creeps begun
 -- within 0.12 s of the creep's death in 1,394 games: they began up to range + 40 from a melee creep (hull 16) and range + 32
 -- from a ranged creep (hull 8) for heroes of hull 24, and 28 of 21,212 began farther.
 function ____exports.attackReach(attacker, target, range)
@@ -2616,7 +2616,7 @@ local function cannotComeDue(bot, c, n, cur)
     end
     return #flightsAt(bot, c, false, n).flights == 0
 end
---- Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
+--- Seconds until the creep is killable by a swing ordered then, the walk into attack reach (`attackReach`), and until it dies to the
 -- others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
 local function etaOf(bot, c, walkSpeed, n)
     local ____temp_125 = c:GetHealth()
@@ -2664,10 +2664,10 @@ local function etaOf(bot, c, walkSpeed, n)
     end
     return {margin / dps, walk, dies}
 end
---- The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
+--- The lane creeps that become killable within `within` seconds of the bot reaching attack reach (`attackReach`), enemy creeps
 -- first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
 -- exact prediction and no skill error (the verbs apply that when they swing): eta is when the creep becomes
--- killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Which one to go for is
+-- killable by a swing ordered then (from incoming DPS), or the walk into attack reach if longer. Which one to go for is
 -- the caller's choice.
 function ____exports.laneTargets(bot, opts)
     if opts == nil then
@@ -2824,6 +2824,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local gapN = 0
     local seen = {}
     observedDps = 0
+    local lastCount = baseline
     while true do
         local t = now()
         local gap = 0
@@ -2839,6 +2840,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
         end
         lastFrame = t
         if not gone(creep) then
+            lastCount = counter()
             local hp = creep:GetHealth()
             seen[#seen + 1] = {t = t, hp = hp}
             while #seen > 1 and t - seen[2].t >= OBSERVE_WINDOW do
@@ -2859,7 +2861,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             return early(fail("dead"))
         end
         if gone(creep) then
-            if counter() > baseline then
+            if counter() > lastCount then
                 local r = early(ok())
                 r.message = "hit=other " .. tostring(r.message)
                 return r
@@ -3004,7 +3006,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
     end
 end)
 --- Last-hits an enemy lane creep (`opts.target`, or the best one within `searchRadius` that the adapter's
--- `lastHitFilter` allows). Waits in attack range until the bot believes its hit, ordered now, lands after
+-- `lastHitFilter` allows). Waits in attack reach (`attackReach`) until the bot believes its hit, ordered now, lands after
 -- everyone else's incoming damage and kills: `creepHP + regen * t - incoming(t) <= ownDamage`, where t is the
 -- own hit time (wind-up, cooldown, projectile travel) and incoming counts attack projectiles in flight and
 -- wind-ups of creeps, heroes and towers targeting the creep. The belief carries a per-creep error from the

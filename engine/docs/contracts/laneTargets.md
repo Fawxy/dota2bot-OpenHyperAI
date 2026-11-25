@@ -23,7 +23,7 @@ interruption:   n/a (a query).
 skill:          none (exact prediction; lastHit/deny draw Skill error when they swing).
 telemetry:      none (laneFarm's caller logs ev=lh per attempt).
 fixtures:       engine test_lasthit "targets:" cases (due/walk/dies: "melee due, walk and dies", "far creep due now", "targets: neutral" (dies and due with a neutral on our creep), "targets: a tower on a creep above our hit", "targets: a projectile in flight with no attacker left"); test_lane "no pick"; bot test_lane_pick, test_states_laning_body.
-evidence:       none (radius and within are taste; the eta maths is the lastHit fact's).
+evidence:       none (radius and within are taste; the eta maths is the lastHit fact's); the reach `walk` is to: docs/contracts/attackReach.md.
 consumers:      engine laneFarm (pick receives this list; without pick, laneFarm only holds its spot); bot states/laning
                 via states/lane_pick Choose (skips a creep with walk + ARRIVE_SLACK >= dies); slice 5's core last-hit choice (docs/team/ROADMAP.md row 5).
 status:         offline-verified (no in-game caller with last hits on by default; slice 5's ER will say)
