@@ -1,7 +1,7 @@
 -- Fragment (`-- include: creep_paid_rows`): the lane creeps family's line (master docs/proposals/2026-11-25-no-creep-unpaid.md s3),
 -- one definition for @creep_paid and @creep_paid_games. The includer defines `gm(game_id)` first. CTE `creep_paid_rows(game_id, uid,
 -- t, team, whose, kind, lane, how, paid, by_pid, tw, x, y, pid, pos, hln, dist, ar, gap, band, hp, atk, ed, busy, cpid, cgap, cband,
--- exact, cexact)`.
+-- exact, cexact, lcid)`.
 -- Params: from (default 0), until (default 600), deaths with from <= t < until. Ends with a comma.
 --   unit    a lane creep death from unit_life's lane rows (fragment unit_life_lane), read twice: once for each team (`team`). `whose`
 --           `theirs` (the other team's creep, one `team` could last-hit) or `ours` (`team`'s own, one it could deny). `t`, `x`, `y`
@@ -30,9 +30,12 @@
 --           the nearest visible enemy hero within 1,200 (snap `ed`), all from the snapshot at or before `t` (the one after if
 --           none). `busy` 1 when that hero last-hit or denied another lane creep within 1.2 s of `t`.
 --           `cpid`, `cgap`, `cband` the same for `team`'s nearest live pos 1-3 hero (NULL when none within 1,500).
+--   lcid    the creep's `Telemetry.CreepId` in `team`'s own Lua state, the number `team`'s lines carry (`ev=choice kind=creep` `cid`): its own
+--           `unit_seen` cid for `ours`; the cid on the taker's `creep_death` row for `theirs` (NULL when no such row took it, and for an
+--           `ours` death only the taker logged: its uid then holds the taker's cid, not ours).
 -- ensure: ev_snap(pid, x, y, alive, ar, hp, tid, tgt, ed, ln)
 -- ensure: ev_bot(pid, team, pos, hero)
--- ensure: ev_creep_death(team, p1d, p1r, p2d, p2r, p3d, p3r)
+-- ensure: ev_creep_death(team, cid, p1d, p1r, p2d, p2r, p3d, p3r)
 ul_gm AS (SELECT game_id FROM gm),
 -- include: unit_life_in
 -- include: unit_life_lane
@@ -49,7 +52,8 @@ cp_v AS MATERIALIZED (
         CASE WHEN v.team = u.owner THEN CASE WHEN u.t1 IS NOT NULL THEN u.x1 ELSE u.cd_x END ELSE CASE WHEN u.cd_t IS NOT NULL THEN u.cd_x ELSE u.x1 END END AS x,
         CASE WHEN v.team = u.owner THEN CASE WHEN u.t1 IS NOT NULL THEN u.y1 ELSE u.cd_y END ELSE CASE WHEN u.cd_t IS NOT NULL THEN u.cd_y ELSE u.y1 END END AS y,
         CASE WHEN u.by_kind = 'hero' THEN 5 - u.owner END AS payee,
-        c.p1d, c.p1r, c.p2d, c.p2r, c.p3d, c.p3r
+        c.p1d, c.p1r, c.p2d, c.p2r, c.p3d, c.p3r,
+        CASE WHEN v.team = u.owner THEN CASE WHEN u.uid NOT GLOB '*[^0-9:]*' THEN CAST(substr(u.uid, 3) AS INTEGER) END ELSE c.cid END AS lcid
     FROM cp_u u CROSS JOIN (SELECT 2 AS team UNION ALL SELECT 3) v
     -- the taker's own line (ev_creep_death is indexed by game and t): its cores' distances, for the taker's rows only
     LEFT JOIN ev_creep_death c ON v.team <> u.owner AND c.game_id = u.game_id AND c.t = u.cd_t AND c.seq = u.cd_seq
@@ -105,7 +109,7 @@ creep_paid_rows AS (
         c.pid AS cpid, round(c.gap) AS cgap,
         CASE WHEN c.pid IS NULL THEN NULL WHEN c.ar IS NULL THEN NULL WHEN c.gap <= 0 THEN 'in' WHEN c.gap <= 150 THEN 'r150'
              WHEN c.gap <= 300 THEN 'r300' ELSE 'r1500' END AS cband,
-        n.exact, c.exact AS cexact
+        n.exact, c.exact AS cexact, v.lcid
     FROM cp_v v
     LEFT JOIN cp_lab l ON l.kind = v.game_id AND l.k = v.rid
     LEFT JOIN cp_hr n ON n.game_id = v.game_id AND n.rid = v.rid AND n.rk = 1
