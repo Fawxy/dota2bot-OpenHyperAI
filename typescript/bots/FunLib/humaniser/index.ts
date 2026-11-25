@@ -5,6 +5,7 @@
 import { Unit } from "bots/ts_libs/dota";
 import * as Config from "bots/FunLib/humaniser/config";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as Overlay from "bots/FunLib/humaniser/overlay";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as Chat from "bots/FunLib/humaniser/chat";
 import * as DesireLog from "bots/FunLib/humaniser/desire_log";
@@ -47,27 +48,12 @@ import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 export { SafeGather };
 import * as CastLog from "bots/FunLib/humaniser/cast_log";
 
-const OVERLAY_REFRESH = 0.25;
-const overlayAt: Record<number, number> = {};
-
 export function IsEnabled(): boolean {
     return Config.IsEnabled();
 }
 
 function telemetryContext(this: void, bot: Unit): Telemetry.BotContext {
     return { by: DesireLog.Explain(bot, bot.GetActiveMode()), competing: DesireLog.Competing(bot) };
-}
-
-function drawOverlay(bot: Unit): void {
-    if (!HDebug.IsEnabled()) return;
-    const pid = bot.GetPlayerID();
-    const now = GameTime();
-    if (now - (overlayAt[pid] ?? -1) >= OVERLAY_REFRESH) {
-        overlayAt[pid] = now;
-        HDebug.Text(bot, "desire", DesireLog.Explain(bot, bot.GetActiveMode()));
-        if (Tasks.IsActive()) HDebug.Text(bot, "task", Tasks.Describe(bot) ?? "-");
-    }
-    HDebug.Draw(bot);
 }
 
 // The unguarded steps of tick, so the perf probe can time each (Telemetry.PerfStep; installed below, after the guards).
@@ -87,7 +73,6 @@ const steps = {
     creepOfferShadow: CreepOffer.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
-    overlay: drawOverlay,
 };
 
 // One Lua VM per team, so a team's bots share this clock and run their steps on the same frames: a "first caller this
@@ -117,8 +102,6 @@ function frameSteps(this: void, bot: Unit): void {
     // A rig places and releases units to the frame; no drill, no step.
     if (Drill.Active() !== undefined) Drill.Tick(bot);
     steps.telemetry(bot, telemetryContext, true);
-    // Debug text lasts one frame.
-    steps.overlay(bot);
 }
 
 function tick(this: void, bot: Unit): void {
@@ -129,6 +112,8 @@ function tick(this: void, bot: Unit): void {
         SwingProbe.Tick(bot);
         // Probe games only (Overrides.LaneReadProbe): every frame, so a creep's last prediction is the frame before its death.
         LaneHitsProbe.Tick(bot);
+        // Every frame (a draw lasts one), and before the enable check so a switches-off game shows its overlay too.
+        pcall(Overlay.Draw, bot);
     }
     if (!Config.IsEnabled()) {
         // Telemetry only: an A/B game with the humaniser off still logs snapshots and mode changes.
@@ -170,7 +155,6 @@ function tick(this: void, bot: Unit): void {
     pcall(VisionMap.Tick, bot);
     steps.tasks(bot);
     HDebug.SharedStateProbe(bot);
-    steps.overlay(bot);
 }
 
 const none = (): undefined => undefined;

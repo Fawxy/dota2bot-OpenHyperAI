@@ -28,6 +28,7 @@ end
 local ____exports = {}
 local Config = require(GetScriptDirectory().."/FunLib/humaniser/config")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Overlay = require(GetScriptDirectory().."/FunLib/humaniser/overlay")
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local Chat = require(GetScriptDirectory().."/FunLib/humaniser/chat")
 local DesireLog = require(GetScriptDirectory().."/FunLib/humaniser/desire_log")
@@ -84,8 +85,6 @@ ____exports.Retreat = Retreat
 ____exports.SustainGather = SustainGather
 ____exports.SustainAct = SustainAct
 ____exports.SafeGather = SafeGather
-local OVERLAY_REFRESH = 0.25
-local overlayAt = {}
 function ____exports.IsEnabled()
     return Config.IsEnabled()
 end
@@ -97,32 +96,6 @@ local function telemetryContext(bot)
         ),
         competing = DesireLog.Competing(bot)
     }
-end
-local function drawOverlay(bot)
-    if not HDebug.IsEnabled() then
-        return
-    end
-    local pid = bot:GetPlayerID()
-    local now = GameTime()
-    if now - (overlayAt[pid] or -1) >= OVERLAY_REFRESH then
-        overlayAt[pid] = now
-        HDebug.Text(
-            bot,
-            "desire",
-            DesireLog.Explain(
-                bot,
-                bot:GetActiveMode()
-            )
-        )
-        if Tasks.IsActive() then
-            HDebug.Text(
-                bot,
-                "task",
-                Tasks.Describe(bot) or "-"
-            )
-        end
-    end
-    HDebug.Draw(bot)
 end
 local steps = {
     feed = Camps.FeedNeutralSpeeds,
@@ -139,8 +112,7 @@ local steps = {
     runeDetourShadow = RuneDetour.Shadow,
     creepOfferShadow = CreepOffer.Shadow,
     probe = ApiProbe.Tick,
-    tasks = Tasks.Tick,
-    overlay = drawOverlay
+    tasks = Tasks.Tick
 }
 local frameAt
 local frameNo = 0
@@ -164,13 +136,13 @@ local function frameSteps(bot)
         Drill.Tick(bot)
     end
     steps.telemetry(bot, telemetryContext, true)
-    steps.overlay(bot)
 end
 local function tick(bot)
     local all = stepsDue()
     if bot:IsHero() and not bot:IsIllusion() then
         SwingProbe.Tick(bot)
         LaneHitsProbe.Tick(bot)
+        pcall(Overlay.Draw, bot)
     end
     if not Config.IsEnabled() then
         if Telemetry.IsEnabled() and bot:IsHero() and not bot:IsIllusion() then
@@ -206,7 +178,6 @@ local function tick(bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)
     HDebug.SharedStateProbe(bot)
-    steps.overlay(bot)
 end
 local function none()
     return nil

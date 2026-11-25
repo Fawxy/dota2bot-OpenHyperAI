@@ -166,6 +166,10 @@ function ____exports.Current(bot)
     end
     return ____IsActive_result_4
 end
+--- The running task however the bundle was loaded (ForOurs too); never loads it (the overlay).
+function ____exports.Running(bot)
+    return lib and lib.Tasks.Current(bot)
+end
 function ____exports.Cancel(bot, reason, message)
     if ____exports.IsActive() then
         lib.Tasks.Cancel(bot, reason, message)
@@ -182,12 +186,12 @@ function ____exports.Label(bot, label)
     end
 end
 function ____exports.Describe(bot)
-    local ____opt_9 = loadBundle()
-    return ____opt_9 and ____opt_9.Tasks.Describe(bot)
+    local ____opt_11 = loadBundle()
+    return ____opt_11 and ____opt_11.Tasks.Describe(bot)
 end
 function ____exports.Verbs()
-    local ____opt_11 = loadBundle()
-    return ____opt_11 and ____opt_11.Verbs
+    local ____opt_13 = loadBundle()
+    return ____opt_13 and ____opt_13.Verbs
 end
 --- The job verbs (bot code on the engine's verbs), or undefined when tasks are off or the bundle failed to load.
 function ____exports.Jobs()
@@ -205,9 +209,9 @@ ____exports.ForOurs = {
         return l ~= nil and l.Tasks.Step(bot, mode)
     end,
     Tick = function(bot)
-        local ____opt_13 = loadBundle(true)
-        if ____opt_13 ~= nil then
-            ____opt_13.Tasks.Tick(bot)
+        local ____opt_15 = loadBundle(true)
+        if ____opt_15 ~= nil then
+            ____opt_15.Tasks.Tick(bot)
         end
     end,
     Cancel = function(bot, reason, message)
@@ -217,8 +221,8 @@ ____exports.ForOurs = {
     end,
     Jobs = function() return loadBundle(true) ~= nil and JobVerbs or nil end,
     Verbs = function()
-        local ____opt_17 = loadBundle(true)
-        return ____opt_17 and ____opt_17.Verbs
+        local ____opt_19 = loadBundle(true)
+        return ____opt_19 and ____opt_19.Verbs
     end
 }
 return ____exports
