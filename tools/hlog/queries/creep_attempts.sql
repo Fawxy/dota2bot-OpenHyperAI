@@ -9,7 +9,7 @@
 -- mate, deny, tower, unpaid, nodeath, and hero_paid (self_row + self_other), team_paid (hero_paid + mate), over the group's attempts.
 -- One row per attempt: @creep_attempt_rows.
 -- Params: like (a path fragment or run label) or batch (the exact run name; a label with no lineup letter has none, use like), one is required.
-WITH gm AS MATERIALIZED (SELECT game_id, file, game, label FROM games
+WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file, game, label FROM games
     WHERE bots > 0 AND (file LIKE coalesce(:like, '') OR run_label_part(label, 'batch') = :batch)),
 -- include: creep_attempt_rows
 SELECT gm.file, gm.game, a.cls, a.cut, a.arr, a.ontime, count(*) AS n, sum(a.melee) AS melee, sum(coalesce(a.swon, 0)) AS swon,
