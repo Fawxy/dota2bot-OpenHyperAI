@@ -1,7 +1,7 @@
 # Contract: `laneTargets` (with `laneFarm`'s `pick`)
 
 ```
-name / version / owner:  laneTargets / 3 (slice 5a, 30/10/2026; v2 slice 5: due, walk, dies; v3 slice engine-neutrals,
+name / version / owner:  laneTargets / 4 (slice 5a, 30/10/2026; v4 slice oha-creep-reach: walk is to the attack reach, range and both hulls; v2 slice 5: due, walk, dies; v3 slice engine-neutrals,
                 24/11/2026: due and dies count neutral creeps attacking the creep, as the lastHit belief does) / engine (main loop)
 layer:          game fact
 intent:         The lane creeps a laner could go for next, with when each becomes killable by its own swing; no choice.
@@ -13,7 +13,7 @@ inputs:         opts.radius (default max(800, attack range + 400), taste); opts.
 effect check:   none (a query; no order is issued).
 outcomes:       a list of { creep, kind: "lasthit" | "deny", eta, due, walk, dies (s), ranged (bool) }, enemy creeps
                 first, then allied ones, each side in the host's creep order; empty when nothing is due. due = (believed
-                HP at our hit - own damage) / incoming DPS (0 when killable now); walk = into attack range at the current
+                HP at our hit - own damage) / incoming DPS (0 when killable now); walk = into attack reach (attackReach: attack range and both hulls, centre to centre) at the current
                 speed; eta = max(due, walk); dies = our hit time + believed HP at our hit / incoming DPS, when the others
                 kill it at their current DPS (math.huge with no one on it). All exact (no skill error).
 timing:         one scan of the creeps within radius; per-frame creep queries are cached per bot. A creep with no attacker

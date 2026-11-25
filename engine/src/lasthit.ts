@@ -613,6 +613,17 @@ function ownWindup(bot: TaskUnit, n: Nearby): number {
     return o.windup;
 }
 
+/**
+ * The centre-to-centre distance within which `attacker` begins an attack on `target` without moving: its attack range plus
+ * both hull radii (`GetBoundingRadius`, 0 for a handle without one). `range` is the attacker's attack range when the caller
+ * has already read it. Source: banked games (slice oha-creep-reach, commit A), 21,212 hero attacks on lane creeps begun
+ * within 0.12 s of the creep's death in 1,394 games: they began up to range + 40 from a melee creep (hull 16) and range + 32
+ * from a ranged creep (hull 8) for heroes of hull 24, and 28 of 21,212 began farther.
+ */
+export function attackReach(attacker: TaskUnit, target: TaskCreep, range?: number): number {
+    return (range ?? attacker.GetAttackRange()) + (attacker.GetBoundingRadius?.() ?? 0) + (target.GetBoundingRadius?.() ?? 0);
+}
+
 function ownRange(bot: TaskUnit, n: Nearby): number {
     const o = ownOf(n, bot);
     if (o.range === undefined) o.range = bot.GetAttackRange();
@@ -952,7 +963,7 @@ function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number, n: Nearby): [numb
     if (cannotComeDue(bot, c, n, cur)) return undefined;
     const b = believe(bot, c, false, 0, n, cur);
     if (!b.survives) return undefined;
-    const walk = math.max(0, dist(locOf(n, bot)!, locOf(n, c)!) - ownRange(bot, n)) / walkSpeed;
+    const walk = math.max(0, dist(locOf(n, bot)!, locOf(n, c)!) - attackReach(bot, c, ownRange(bot, n))) / walkSpeed;
     const margin = b.hpAtHit - b.mine;
     const dps = b.dps + math.max(0, -cur.regen);
     const dies = dps > 0 ? b.tHit + b.hpAtHit / dps : math.huge;
@@ -1099,8 +1110,9 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);
         watchHeroes(bot, creep, heroes);
         watchCreeps(bot, creep, creeps);
-        if (dist(bot.GetLocation(), creep.GetLocation()) > bot.GetAttackRange()) {
-            held = string.format("range d=%d", math.floor(dist(bot.GetLocation(), creep.GetLocation()) - bot.GetAttackRange()));
+        const away = dist(bot.GetLocation(), creep.GetLocation()) - attackReach(bot, creep);
+        if (away > 0) {
+            held = string.format("range d=%d", math.floor(away));
             if (openNow()) opened(t, gap, "range");
             bot.Action_MoveToLocation(creep.GetLocation());
         } else {

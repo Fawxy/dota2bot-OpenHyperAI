@@ -77,6 +77,14 @@ export type ForecastSchedule = "spread" | "early" | "late";
 export declare function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): HpForecast;
 /** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then), the unknown-phase hits placed by `schedule`. */
 export declare function forecastHp(f: HpForecast, t: number, schedule?: ForecastSchedule): number;
+/**
+ * The centre-to-centre distance within which `attacker` begins an attack on `target` without moving: its attack range plus
+ * both hull radii (`GetBoundingRadius`, 0 for a handle without one). `range` is the attacker's attack range when the caller
+ * has already read it. Source: banked games (slice oha-creep-reach, commit A), 21,212 hero attacks on lane creeps begun
+ * within 0.12 s of the creep's death in 1,394 games: they began up to range + 40 from a melee creep (hull 16) and range + 32
+ * from a ranged creep (hull 8) for heroes of hull 24, and 28 of 21,212 began farther.
+ */
+export declare function attackReach(attacker: TaskUnit, target: TaskCreep, range?: number): number;
 /** Seconds until the bot can start its next swing (0 without the adapter's `attackClock`). */
 export declare function cooldownLeft(bot: TaskUnit): number;
 /** Seconds to turn to face the creep (0 without GetFacing). */

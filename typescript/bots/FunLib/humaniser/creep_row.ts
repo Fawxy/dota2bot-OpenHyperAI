@@ -97,18 +97,16 @@ export function Due(this: void, walk: number, due: number, lead: number): boolea
 }
 
 /**
- * Seconds until the hero can order its swing from inside the verb's own range: the walk to `bot.GetAttackRange()` of the creep's
- * centre (lastHit's `why=range` test; the offer's `walk` uses a wider range, which cost a median 0.3 s on cearly1) at the hero's
- * current move speed. No wind-up, flight or turn: `due` already counts them between the order and the hit (the engine's
- * `ownHit`), so it is the time to the order.
+ * Seconds until the hero can order its swing from inside the verb's own range: the walk to the engine's `attackReach` of the creep
+ * (lastHit's `why=range` test, which the offer's `walk` also reads) at the hero's current move speed. No wind-up, flight or turn: `due`
+ * already counts them between the order and the hit (the engine's `ownHit`), so it is the time to the order.
  */
 export function Need(this: void, bot: Unit, creep: Unit): number {
     const at = creep.GetLocation();
     const me = bot.GetLocation();
     const dx = at.x - me.x;
     const dy = at.y - me.y;
-    const speed = math.max(100, bot.GetCurrentMovementSpeed());
-    return math.max(0, math.sqrt(dx * dx + dy * dy) - bot.GetAttackRange()) / speed;
+    return math.max(0, math.sqrt(dx * dx + dy * dy) - CreepOffer.Reach(bot, creep)) / math.max(100, bot.GetCurrentMovementSpeed());
 }
 
 /** The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`). */
@@ -166,7 +164,7 @@ interface Attempt {
     creep: Unit;
     t0: number;
     hp0: number;
-    /** Seconds from the start to the first step that ended inside the verb's range (lastHit's own test: centre distance against attack range). */
+    /** Seconds from the start to the first step that ended inside the verb's range (lastHit's own test: centre distance against the engine's attackReach). */
     tin?: number;
 }
 
@@ -202,12 +200,13 @@ function r2(x: number): number {
 }
 
 /**
- * The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range, and
+ * The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range (`rng`)
+ * and the engine's reach on the creep (`rch`), and
  * what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
  * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep.
  */
-function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: { need: number; seen: Seen; now: number; sa: boolean }): void {
+function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "creep"],
@@ -218,6 +217,7 @@ function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: 
         ["gw", r2(t.walk)],
         ["gd", r2(t.due)],
         ["rng", math.floor(bot.GetAttackRange())],
+        ["rch", math.floor(g.reach)],
         ["gn", r2(g.need)],
         ["sp", r2(t.due - g.need)],
         ["hw", g.seen.why],
@@ -349,7 +349,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     running[pid] = { cid: best.cid, creep: best.creep, t0: DotaTime(), hp0: math.floor(bot.GetHealth()) };
     lastCid[pid] = best.cid;
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, t, { need, seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep });
+    startLine(bot, best.cid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep });
 }
 
 /** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */
@@ -373,7 +373,7 @@ function rowStep(bot: Unit): boolean {
         if (at !== undefined && at !== null) {
             const dx = at.x - me.x;
             const dy = at.y - me.y;
-            if (math.sqrt(dx * dx + dy * dy) <= bot.GetAttackRange()) a.tin = DotaTime() - a.t0;
+            if (math.sqrt(dx * dx + dy * dy) <= CreepOffer.Reach(bot, a.creep)) a.tin = DotaTime() - a.t0;
         }
     }
     return false;

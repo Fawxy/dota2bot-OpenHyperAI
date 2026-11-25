@@ -239,23 +239,21 @@ end
 function ____exports.Due(walk, due, lead)
     return due <= walk + lead
 end
---- Seconds until the hero can order its swing from inside the verb's own range: the walk to `bot.GetAttackRange()` of the creep's
--- centre (lastHit's `why=range` test; the offer's `walk` uses a wider range, which cost a median 0.3 s on cearly1) at the hero's
--- current move speed. No wind-up, flight or turn: `due` already counts them between the order and the hit (the engine's
--- `ownHit`), so it is the time to the order.
+--- Seconds until the hero can order its swing from inside the verb's own range: the walk to the engine's `attackReach` of the creep
+-- (lastHit's `why=range` test, which the offer's `walk` also reads) at the hero's current move speed. No wind-up, flight or turn: `due`
+-- already counts them between the order and the hit (the engine's `ownHit`), so it is the time to the order.
 function ____exports.Need(bot, creep)
     local at = creep:GetLocation()
     local me = bot:GetLocation()
     local dx = at.x - me.x
     local dy = at.y - me.y
-    local speed = math.max(
+    return math.max(
+        0,
+        math.sqrt(dx * dx + dy * dy) - CreepOffer.Reach(bot, creep)
+    ) / math.max(
         100,
         bot:GetCurrentMovementSpeed()
     )
-    return math.max(
-        0,
-        math.sqrt(dx * dx + dy * dy) - bot:GetAttackRange()
-    ) / speed
 end
 --- The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`).
 function ____exports.OnTime(need, due)
@@ -338,7 +336,8 @@ end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
---- The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range, and
+--- The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range (`rng`)
+-- and the engine's reach on the creep (`rch`), and
 -- what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
 -- due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
 -- when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep.
@@ -366,6 +365,10 @@ local function startLine(bot, cid, t, g)
             {
                 "rng",
                 math.floor(bot:GetAttackRange())
+            },
+            {
+                "rch",
+                math.floor(g.reach)
             },
             {
                 "gn",
@@ -596,7 +599,18 @@ function ____exports.Consider(bot, cands)
     }
     lastCid[pid] = best.cid
     local sa = bot:GetAttackTarget()
-    startLine(bot, best.cid, t, {need = need, seen = recs[best.cid], now = now, sa = sa ~= nil and sa ~= nil and sa == creep})
+    startLine(
+        bot,
+        best.cid,
+        t,
+        {
+            need = need,
+            reach = CreepOffer.Reach(bot, best.creep),
+            seen = recs[best.cid],
+            now = now,
+            sa = sa ~= nil and sa ~= nil and sa == creep
+        }
+    )
 end
 --- The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here.
 local function rowApplies(bot)
@@ -623,7 +637,7 @@ local function rowStep(bot)
         if at ~= nil and at ~= nil then
             local dx = at.x - me.x
             local dy = at.y - me.y
-            if math.sqrt(dx * dx + dy * dy) <= bot:GetAttackRange() then
+            if math.sqrt(dx * dx + dy * dy) <= CreepOffer.Reach(bot, a.creep) then
                 a.tin = DotaTime() - a.t0
             end
         end

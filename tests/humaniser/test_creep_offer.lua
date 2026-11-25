@@ -2,6 +2,9 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- The creep offer's shadow (creep_offer.ts): an opportunity per hero and lane creep, its snapshot, and its one line. The
 -- engine's laneTargets and hpForecast are stubs (w.targets, w.hits); the stub map's bot lane runs along y = -5000.
 
+-- The engine's own attackReach: the stubbed Verbs below carry the real fact, so the row and the read answer as the verb does.
+local REAL_ENGINE = dofile(BOTS_ROOT .. "/bots/FunLib/engine/tasks.lua")
+
 local dota = require("bots/ts_libs/dota/index")
 local Lane = dota.Lane
 
@@ -27,6 +30,7 @@ local function world(every)
 	local F = package.loaded["bots/FunLib/humaniser/tasks"].ForOurs
 	F.Verbs = function()
 		return {
+			attackReach = REAL_ENGINE.Verbs.attackReach,
 			laneTargets = function(bot, opts) w.opts = opts w.calls[bot] = (w.calls[bot] or 0) + 1 return w.targets end,
 			hpForecast = function(bot, creep, horizon)
 				local copy = {}

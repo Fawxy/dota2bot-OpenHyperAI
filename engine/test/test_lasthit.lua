@@ -172,6 +172,36 @@ do
     T.check("lost while walking in: why=range with the distance left", (r.message or ""):match("why=range d=%d+") ~= nil, tostring(r.message))
 end
 
+-- The verb's range test is the attack's reach: range plus both hulls (attackReach). A creep 180 away from a range-150 hero
+-- (hulls 24 and 16) is inside the 190 reach: the swing is ordered at once with no move, and it lands. Outside the reach the
+-- hero walks in first, and the message names the distance left to the reach, not to the bare range.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5 }
+    local creep = sim:addCreep{ x = 180, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("in reach beyond the range: ok", r.reason, "ok")
+    T.eq("in reach beyond the range: no move order", sim:count("Action_MoveToLocation", bot), 0)
+    local swing = firstSwing(bot)
+    T.check("in reach beyond the range: swung on the first frame", swing ~= nil and swing.t == 0, swing and swing.t)
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    local left = tonumber((r.message or ""):match("why=range d=(%d+)"))
+    T.check("outside the reach: walks in, and the distance left is to the reach (110 less about 30 walked; to the bare range it would read 120) " .. tostring(r.message), left ~= nil and left >= 76 and left <= 86)
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local t = V.laneTargets(bot)
+    T.check("laneTargets: the walk to reach (110 at 100 a second), not to the range (150)", #t == 1 and math.abs(t[1].walk - 1.1) < 0.01, t[1] and t[1].walk)
+end
+
 -- A tower shot winding up on a 130 hp creep leaves 30: the swing is ordered before the shot lands.
 do
     local sim = world()

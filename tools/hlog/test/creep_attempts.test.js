@@ -161,6 +161,22 @@ test('creep_attempt_rows: the start fields and ontime (1 at sp >= 0, 0 under, NU
     ]);
 });
 
+// R1 100  the start line's rch 582 (range 550 and the hulls 24 and 8): the creep died at 575, inside it
+// R2 120  the same reach, died at 590: past it though inside range + 48 (the class of logs before rch)
+// R3 140  no rch on the start line: range + 48 still decides (590 is in)
+test('creep_attempt_rows: lost_inrange reads the start line\'s reach, range + 48 on logs before it', () => {
+    const out = [line(-90, 'bot pid=2 hero=sniper team=2 pos=2')];
+    for (let t = 90; t <= 200; t += 1) out.push(snap(t));
+    const row = (t, cid, d, extra) => out.push(
+        line(t, `job pid=2 job=creep phase=start why=trigger host=17 cid=${cid} gw=0.5 gd=1.2 rng=550${extra}`),
+        end(t + 1, 'taken_by_other', { cid, tin: 0.3, sw: 0 }), death(t + 0.9, cid, d, 0, 'none'));
+    row(100, 1, 575, ' rch=582');
+    row(120, 2, 590, ' rch=582');
+    row(140, 3, 590, '');
+    const rows = load(out, 'rch_A_on_1').query(sqlOf('creep_attempt_rows'), { like: '%rch_A_on_1%' }).map(r => ({ ...r }));
+    assert.deepStrictEqual(rows.map(r => [r.cid, r.cls]), [[1, 'lost_inrange'], [2, 'lost_out'], [3, 'lost_inrange']]);
+});
+
 test('creep_attempts: counts split by ontime', () => {
     const rows = load(onTimeLines(), 'ot_A_on_1').query(sqlOf('creep_attempts'), { like: '%ot_A_on_1%' }).map(r => ({ ...r }));
     const by = o => rows.filter(r => r.ontime === o).reduce((a, r) => a + r.n, 0);

@@ -1,7 +1,7 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 6 (v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
+name / version / owner:  lastHit, deny / 7 (v7, slice oha-creep-reach: the range test is attackReach (attack range and both hulls, centre to centre), not the bare attack range, so a hero between the two swings without a move order; v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
                 a camp's neutrals on the creep count as incoming damage; v5, slice oha-engine-windup, 24/11/2026: the incoming wind-ups the belief counts
                 are timed as attack point / attack speed from the first read, measured in game; v4 slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
                 cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
@@ -10,7 +10,7 @@ name / version / owner:  lastHit, deny / 6 (v6, slice engine-neutrals, 24/11/202
                 contract, written as the kill belief, the outcome rule and the message fields changed) / engine (main loop)
 layer:          atomic action (one swing on one lane creep, confirmed on the bot's last-hit or deny count)
 intent:         Swing once at a lane creep so the hit lands as the killing blow (lastHit: an enemy creep; deny: an allied
-                creep below half HP), waiting in attack range until the bot believes a swing ordered now does that.
+                creep below half HP), waiting in attack reach (attackReach: attack range and both hulls) until the bot believes a swing ordered now does that.
 applicability:  A bot handle with GetAttackDamage and GetAttackPoint (deny: also GetDenies); otherwise `unsupported`.
                 With `target` given the caller has chosen the creep (laneFarm does, from laneTargets through its
                 `pick`); without it the verb picks the creep closest to dying within `searchRadius` (needs
@@ -68,7 +68,7 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 attackers that are not heroes, one per attacker per frame, and of those the ones read winding up) and, when
                 cf > 0, `ca cc cpt cs` (the last one's GetAnimActivity, GetAnimCycle, GetAttackPoint, GetSecondsPerAttack):
                 the same check on lane creeps, neutral creeps (slice engine-neutrals) and towers (slice lh-unphased). Read by hlog `@lh_swings`.
-fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
+fixtures:       engine test_lasthit ("in reach beyond the range", "outside the reach", "laneTargets: the walk to reach"; predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
                 enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
                 the creep, two heroes with one wind-up frame),

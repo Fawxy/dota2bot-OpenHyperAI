@@ -41,6 +41,14 @@ export const SETTINGS = {
 
 type Timed = Unit & { GetSecondsPerAttack?(): number };
 
+/**
+ * Where the hero's attack on the creep starts without a move: the engine's `attackReach` (attack range and both hulls), the one
+ * fact the engine's walk and last-hit verb, this read and the row all use (ARCHITECTURE.md rule 1).
+ */
+export function Reach(bot: Unit, creep: Unit): number {
+    return Tasks.Verbs()!.attackReach(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep);
+}
+
 /** The unit's attack cycle (s, `GetSecondsPerAttack`); 1 where the handle has none. */
 export function AttackCycle(u: Unit): number {
     return (u as Timed).GetSecondsPerAttack?.() ?? 1;
@@ -280,7 +288,6 @@ interface Frame {
     hero: { x: number; y: number };
     speed: number;
     hull: number;
-    reach: number;
     enemyCreeps: Unit[];
     towers?: Offer.PathTower[];
     /** Our towers, `reach` their attack range plus the tower's hull (the creep's hull is added per creep). */
@@ -367,7 +374,7 @@ function race(bot: Unit, creep: Unit): [string, number | undefined] {
 function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, others: Offer.Other[]): Snap {
     const creep = t.creep as unknown as Unit;
     const at = creep.GetLocation();
-    const spot = Offer.StandSpot(f.hero, at, f.reach + creep.GetBoundingRadius());
+    const spot = Offer.StandSpot(f.hero, at, Reach(bot, creep));
     const path = Offer.PathCost({ from: f.hero, spot, speed: f.speed, hull: f.hull, creeps: creepsOf(f), towers: towersOf(bot, f), enemies: enemiesOf(f) });
     let ed = 0;
     let ein = 0;
@@ -480,7 +487,7 @@ export function Shadow(bot: Unit): void {
     }
 
     const loc = bot.GetLocation();
-    const f: Frame = { hero: { x: loc.x, y: loc.y }, speed: math.max(100, bot.GetCurrentMovementSpeed()), hull: bot.GetBoundingRadius(), reach: bot.GetAttackRange() + bot.GetBoundingRadius(), enemyCreeps: theirs };
+    const f: Frame = { hero: { x: loc.x, y: loc.y }, speed: math.max(100, bot.GetCurrentMovementSpeed()), hull: bot.GetBoundingRadius(), enemyCreeps: theirs };
     const atkTarget = bot.GetAttackTarget();
     const slot = math.floor(now * 10) / 10;
     const cands: Candidate[] = [];

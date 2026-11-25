@@ -11,8 +11,9 @@
 --   hp0, hp1   the end line's, else the hero's snapshot `hv` at or before the start and the end (a snapshot a second: rough)
 --   dt, gap,   the creep's death (the hero's team's `creep_death` of that cid from the start to 5 s past the end, the nearest the
 --   swon       end): its t, the hero's distance less its range then, and 1 when the hero was attacking it then (`p<pos>t`)
---   cls        landed (why ok), cut (why preempted), lost_swing (a swing on the creep as it died), lost_inrange (within range + 48
---              at its death, no swing on it), lost_out (farther), lost_nodeath (no death joined)
+--   cls        landed (why ok), cut (why preempted), lost_swing (a swing on the creep as it died), lost_inrange (within the
+--              engine's attack reach at its death, no swing on it: the start line's `rch`, attack range and both hulls; range + 48 on
+--              logs before it), lost_out (farther), lost_nodeath (no death joined)
 --   died       1 when the hero died from the start to 5 s past the end (fragment ep_death)
 --   paid       who was paid for the creep, from the unit-life pairing (fragment unit_life_lane, so any time in the game) of the creep's
 --              death line found for dt, by its line, not a time window: `self` (this hero last-hit it), `mate` (another hero of its
@@ -29,7 +30,7 @@
 --   fate       one class from paid and why: self_row (self, why ok), self_other (self, the row did not end ok), mate, deny, tower,
 --              unpaid (paid other), nodeath (no death joined)
 -- Ends with a comma.
--- ensure: ev_job(pid, job, phase, why, cut, cid, gw, gd, rng, tin, sw, hp0, hp1, msg, gn, sp, hw, hm, hs, sa, nw)
+-- ensure: ev_job(pid, job, phase, why, cut, cid, gw, gd, rng, rch, tin, sw, hp0, hp1, msg, gn, sp, hw, hm, hs, sa, nw)
 -- ensure: ev_choice(pid, kind, go, slot, gat, gw, cid)
 -- ensure: ev_creep_death(team, cid, p1d, p1r, p1t, p2d, p2r, p2t, p3d, p3r, p3t)
 -- ensure: ev_snap(pid, hv, ar)
@@ -41,14 +42,14 @@ ul_gm AS (SELECT game_id FROM gm),
 ca_bot AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos, max(hero) AS hero FROM ev_bot
     WHERE game_id IN (SELECT game_id FROM gm) GROUP BY game_id, pid),
 ca_e AS MATERIALIZED (
-    SELECT game_id, seq, t, pid, phase, why, cut, cid, gw, rng, gn, sp, hw, hm, hs, sa, nw, tin, sw, hp0, hp1, msg,
+    SELECT game_id, seq, t, pid, phase, why, cut, cid, gw, rng, rch, gn, sp, hw, hm, hs, sa, nw, tin, sw, hp0, hp1, msg,
         lead(phase) OVER w AS nphase, lead(t) OVER w AS nt, lead(why) OVER w AS nwhy, lead(cut) OVER w AS ncut, lead(cid) OVER w AS ncid,
         lead(tin) OVER w AS ntin, lead(sw) OVER w AS nsw, lead(hp0) OVER w AS nhp0, lead(hp1) OVER w AS nhp1, lead(msg) OVER w AS nmsg
     FROM ev_job WHERE game_id IN (SELECT game_id FROM gm) AND job = 'creep' AND phase IN ('start', 'end')
     WINDOW w AS (PARTITION BY game_id, pid ORDER BY seq)
 ),
 ca_s AS MATERIALIZED (
-    SELECT s.game_id, s.pid, s.t AS t0, s.nt AS t1, s.nwhy AS why, s.ncut AS cut, coalesce(s.cid, s.ncid) AS jcid, s.gw AS jgw, s.rng AS jrng, s.gn, s.sp, s.hw, s.hm, s.hs, s.sa, s.nw,
+    SELECT s.game_id, s.pid, s.t AS t0, s.nt AS t1, s.nwhy AS why, s.ncut AS cut, coalesce(s.cid, s.ncid) AS jcid, s.gw AS jgw, s.rng AS jrng, s.rch AS jrch, s.gn, s.sp, s.hw, s.hm, s.hs, s.sa, s.nw,
         s.ntin AS tin, s.nsw AS sw, s.nhp0 AS hp0, s.nhp1 AS hp1, s.nmsg AS msg
     FROM ca_e s WHERE s.phase = 'start' AND s.nphase = 'end'
 ),
@@ -96,7 +97,7 @@ creep_attempt_rows AS (
         x.tin, x.sw, x.xhp0 AS hp0, x.xhp1 AS hp1, x.xhp0 - x.xhp1 AS hplost, x.dt,
         CASE WHEN x.dd IS NOT NULL THEN x.dd - x.dr END AS gap, x.dtg AS swon,
         CASE WHEN x.why = 'ok' THEN 'landed' WHEN x.why = 'preempted' THEN 'cut' WHEN x.dt IS NULL OR x.dd IS NULL THEN 'lost_nodeath'
-            WHEN x.dtg = 1 THEN 'lost_swing' WHEN x.dd <= x.dr + 48 THEN 'lost_inrange' ELSE 'lost_out' END AS cls,
+            WHEN x.dtg = 1 THEN 'lost_swing' WHEN x.dd <= coalesce(x.jrch, x.dr + 48) THEN 'lost_inrange' ELSE 'lost_out' END AS cls,
         EXISTS (SELECT 1 FROM ep_death e WHERE e.game_id = x.game_id AND e.pid = x.pid AND e.t >= x.t0 AND e.t <= x.t1 + 5) AS died,
         x.msg, x.paid, x.mpos, x.gn, x.sp, x.hw, x.hm, x.hs, x.sa, x.nw,
         CASE WHEN x.sp IS NULL THEN NULL WHEN x.sp >= 0 THEN 1 ELSE 0 END AS ontime, CASE WHEN x.gw IS NULL THEN NULL WHEN x.gw > 0 THEN 1 ELSE 0 END AS walkin,

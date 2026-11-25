@@ -3,6 +3,9 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- offer read. The engine's laneTargets, hpForecast and task runner are stubbed (ForOurs), so these cover the decision, the
 -- latch and the lines; the lastHit verb is the engine's (its own tests) and its execution is the rig's.
 
+-- The engine's own attackReach: the stubbed Verbs below carry the real fact, so the row and the read answer as the verb does.
+local REAL_ENGINE = dofile(BOTS_ROOT .. "/bots/FunLib/engine/tasks.lua")
+
 local dota = require("bots/ts_libs/dota/index")
 local Lane = dota.Lane
 
@@ -32,6 +35,7 @@ local function world(o)
 	local F = package.loaded["bots/FunLib/humaniser/tasks"].ForOurs
 	F.Verbs = function()
 		return {
+			attackReach = REAL_ENGINE.Verbs.attackReach,
 			laneTargets = function() return w.targets end,
 			hpForecast = function(bot, creep, horizon)
 				return { hp = creep.hp, regen = 0, horizon = horizon, hits = w.hits[creep] or {}, unphased = 0, unphasedTower = false, unphasedHits = {} }
@@ -124,7 +128,7 @@ do -- the attempt's lines: the creep, the walk at go, when the hero was first in
 			T = T + 0.4
 			w.CR.ROW.step(w.core)
 			if moveIn then
-				c.loc = Vector(100, -5000)
+				c.loc = Vector(moveIn == true and 100 or moveIn, -5000)
 				T = T + 0.3
 				w.CR.ROW.step(w.core)
 				T = T + 0.3
@@ -138,6 +142,9 @@ do -- the attempt's lines: the creep, the walk at go, when the hero was first in
 	check("lines: start names the creep and the walk at go", #jobs == 2 and field(jobs[1], "cid") ~= nil and field(jobs[1], "gw") == "0.300" and field(jobs[1], "gd") == "0.500", table.concat(jobs, " | "))
 	check("lines: in range at the first step inside it, a swing read from the post-swing message, HP 600 to 540", field(jobs[2], "tin") == "0.700"
 		and field(jobs[2], "sw") == "1" and field(jobs[2], "hp0") == "600" and field(jobs[2], "hp1") == "540" and field(jobs[2], "cid") == field(jobs[1], "cid"), jobs[2])
+	-- 180 apart: past the range (150), inside the reach (190): the verb's test passes there, so tin is read there too.
+	jobs = lines(attempt({ success = false, reason = "denied", message = "w=1.00 end=0 dt=0.30" }, 180), "job=creep")
+	check("lines: tin is the first step inside the reach, past the bare range", field(jobs[2], "tin") == "0.700", jobs[2])
 	jobs = lines(attempt({ success = false, reason = "taken_by_other", message = "w=1.20 why=range d=140" }, false), "job=creep")
 	check("lines: never in range reads tin=-1; a pre-swing message reads sw=0 and is kept", field(jobs[2], "tin") == "-1" and field(jobs[2], "sw") == "0"
 		and jobs[2]:find('msg="w=1.20 why=range d=140"', 1, true) ~= nil, jobs[2])
@@ -160,9 +167,9 @@ do -- the start line says what held the row and what the spare was: need from th
 		return lines(out, "job=creep")[1]
 	end
 	local first = run(function() end)
-	-- 500 apart, range 150: 350 to walk at 300 a second.
-	check("start line: need and spare from the verb's range; a first read goes with no hw, nw=1 and hs=0", field(first, "gn") == "1.170"
-		and field(first, "sp") == "0.230" and field(first, "nw") == "1" and field(first, "hs") == "0" and field(first, "hw") == nil and field(first, "sa") == "0", first)
+	-- 500 apart, reach 190 (range 150 and the hulls 24 and 16): 310 to walk at 300 a second.
+	check("start line: need and spare from the verb's reach; a first read goes with no hw, nw=1 and hs=0", field(first, "gn") == "1.030"
+		and field(first, "sp") == "0.370" and field(first, "rch") == "190" and field(first, "nw") == "1" and field(first, "hs") == "0" and field(first, "hw") == nil and field(first, "sa") == "0", first)
 	local held = run(function(w, c)
 		w.core.mode = 4
 		w.CO.Shadow(w.core)
@@ -245,25 +252,33 @@ do -- the choice line keeps the first refusal in `why` and the last in `lw`, so 
 	check("lw: absent on a creep that went", #ch == 1 and field(ch[1], "go") == "1" and field(ch[1], "lw") == nil, table.concat(ch, " | "))
 end
 
-do -- on time: the creep must come due no sooner than the hero can be in the verb's range (range 150, speed 300, creep 300 away: 0.5 s)
+do -- on time: the creep must come due no sooner than the hero can be in the verb's reach (range 150 and hulls 24 and 16: 190; speed 300, creep 300 away: 0.37 s)
 	local function world3(due)
 		local w = world()
 		w.core.range, w.core.speed = 150, 300
 		local c = ranged(300)
-		w.targets = { target(c, { walk = 0.5, due = due, dies = 3 }) }
+		w.targets = { target(c, { walk = 0.37, due = due, dies = 3 }) }
 		return w, c
 	end
 	local w, c = world3(0.6)
 	readThenClose(w, { c })
-	check("on time: due 0.6 against a need of 0.5 goes", w.starts == 1)
-	w, c = world3(0.4)
+	check("on time: due 0.6 against a need of 0.37 goes", w.starts == 1)
+	w, c = world3(0.3)
 	local ch = lines(readThenClose(w, { c }), "kind=creep")
-	check("not on time: due 0.4 against 0.5 is refused at its first read about to come due: notime_new", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "notime_new", table.concat(ch, " | "))
-	-- The offer's walk (0.3 here) says in range in time; the verb's own range says not: the check reads the verb's.
-	w, c = world3(0.4)
-	w.targets = { target(c, { walk = 0.3, due = 0.4, dies = 3 }) }
+	check("not on time: due 0.3 against 0.37 is refused at its first read about to come due: notime_new", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "notime_new", table.concat(ch, " | "))
+	-- The offer's walk (0.2 here) says in range in time; the check reads the engine's reach, not that walk.
+	w, c = world3(0.3)
+	w.targets = { target(c, { walk = 0.2, due = 0.3, dies = 3 }) }
 	readThenClose(w, { c })
-	check("the verb's range, not the offer's walk: walk 0.3 and due 0.4 is still refused", w.starts == 0, tostring(w.starts))
+	check("the verb's reach, not the offer's walk: walk 0.2 and due 0.3 is still refused", w.starts == 0, tostring(w.starts))
+	-- 170 apart: past the range (150) but inside the reach (190, with the hulls), so the swing is ordered with no walk. The bare
+	-- range would have said a 0.07 s walk and refused due 0.05.
+	w = world()
+	w.core.range, w.core.speed = 150, 300
+	c = ranged(170)
+	w.targets = { target(c, { walk = 0, due = 0.05, dies = 3 }) }
+	readThenClose(w, { c })
+	check("between the range and the reach there is nothing to walk: due 0.05 goes", w.starts == 1, tostring(w.starts))
 end
 
 do -- the refusal names what happened before, and a later read still goes once the times allow
