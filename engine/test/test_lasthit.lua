@@ -202,6 +202,18 @@ do
     T.check("laneTargets: the walk to reach (110 at 100 a second), not to the range (150)", #t == 1 and math.abs(t[1].walk - 1.1) < 0.01, t[1] and t[1].walk)
 end
 
+-- A swing the host ordered before the verb's (in flight at the go) takes the creep while the verb walks in: the bot's count rose,
+-- so the verb ends ok with no swing of its own, and says so. The same loss with the creep killed by someone else is not ok.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 900, y = 0, hp = 40, team = 3, passive = true }
+    sim:at(0.3, function(w) w:kill(creep, bot) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("hit taken by an earlier swing: ok", r.reason, "ok")
+    T.check("hit taken by an earlier swing: the message names it and no swing of the verb's was ordered", (r.message or ""):sub(1, 10) == "hit=other " and (r.message or ""):find(" end=", 1, true) == nil and firstSwing(bot) == nil)
+end
+
 -- A tower shot winding up on a 130 hp creep leaves 30: the swing is ordered before the shot lands.
 do
     local sim = world()

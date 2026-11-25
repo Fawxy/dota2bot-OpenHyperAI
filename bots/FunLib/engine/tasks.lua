@@ -2859,6 +2859,11 @@ local strike = __TS__Generator(function(bot, mode, opts)
             return early(fail("dead"))
         end
         if gone(creep) then
+            if counter() > baseline then
+                local r = early(ok())
+                r.message = "hit=other " .. tostring(r.message)
+                return r
+            end
             return early(fail(lostReason(enemyOnIt)))
         end
         if opts.interruptIf ~= nil and opts.interruptIf() then

@@ -230,13 +230,14 @@ function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: 
 
 /**
  * The end line: `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
- * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's), `hp0`/`hp1` the hero's HP at the
+ * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
+ * rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
  * start and end, `msg` the verb's message (what the swing was based on, or what held it).
  */
 function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined): void {
     const msg = r.message;
     let sw: number | undefined;
-    if (r.success) sw = 1;
+    if (r.success) sw = msg !== undefined && string.find(msg, "hit=other", 1, true)[0] === 1 ? 0 : 1;
     else if (r.reason !== "preempted" && msg !== undefined) sw = string.find(msg, " end=", 1, true)[0] !== undefined ? 1 : 0;
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],

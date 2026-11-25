@@ -700,7 +700,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `hs` num: `job=creep` start: seconds from the first read where the creep was about to come due to the go.
 - `sa` num: `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep.
 - `tin` num: `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against the engine's attackReach); -1 never.
-- `sw` num: `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one; absent on a cut (`why=preempted`).
+- `sw` num: `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one (`why=ok` with 0: the hero's last-hit count rose from a swing ordered before the verb's, message `hit=other`); absent on a cut (`why=preempted`).
 - `hp0` num: `job=creep` end: the hero's HP (absolute) at the start and at the end.
 - `msg` str: `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut.
 

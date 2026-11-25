@@ -390,13 +390,14 @@ local function startLine(bot, cid, t, g)
     )
 end
 --- The end line: `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
--- is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's), `hp0`/`hp1` the hero's HP at the
+-- is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
+-- rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
 -- start and end, `msg` the verb's message (what the swing was based on, or what held it).
 local function endLine(bot, a, r, cut)
     local msg = r.message
     local sw
     if r.success then
-        sw = 1
+        sw = msg ~= nil and (string.find(msg, "hit=other", 1, true)) == 1 and 0 or 1
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end

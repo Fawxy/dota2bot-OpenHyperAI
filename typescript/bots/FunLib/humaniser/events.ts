@@ -1352,7 +1352,7 @@ export const EVENTS = {
         nw: "num",
         /** `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against the engine's attackReach); -1 never. */
         tin: "num",
-        /** `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one; absent on a cut (`why=preempted`). */
+        /** `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one (`why=ok` with 0: the hero's last-hit count rose from a swing ordered before the verb's, message `hit=other`); absent on a cut (`why=preempted`). */
         sw: "num",
         /** `job=creep` end: the hero's HP (absolute) at the start and at the end. */
         hp0: "num",

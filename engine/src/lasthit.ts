@@ -1104,7 +1104,16 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
             observedDps = span >= OBSERVE_MIN ? math.max(0, (seen[0].hp - hp - biggest) / span) : 0;
         }
         if (!bot.IsAlive()) return early(fail("dead"));
-        if (gone(creep)) return early(fail(lostReason(enemyOnIt)));
+        if (gone(creep)) {
+            // A swing the bot's host ordered before this verb's (already in flight at the go) took the creep: the count rose with no
+            // swing of this verb's, which the message says (`hit=other`) so the two can be told apart.
+            if (counter() > baseline) {
+                const r = early(ok());
+                r.message = "hit=other " + r.message;
+                return r;
+            }
+            return early(fail(lostReason(enemyOnIt)));
+        }
         if (opts.interruptIf !== undefined && opts.interruptIf()) return early(fail("interrupted"));
         if (now() - start > maxWait || expired(opts.deadline)) return early(fail("timeout"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);

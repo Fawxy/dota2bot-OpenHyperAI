@@ -1,7 +1,7 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 7 (v7, slice oha-creep-reach: the range test is attackReach (attack range and both hulls, centre to centre), not the bare attack range, so a hero between the two swings without a move order; v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
+name / version / owner:  lastHit, deny / 8 (v8, slice oha-creep-reach: ok also when the creep is gone before this verb's swing and the bot's last-hit count rose above its value at the start (a swing ordered earlier by the host took it), message `hit=other ...`; v7, slice oha-creep-reach: the range test is attackReach (attack range and both hulls, centre to centre), not the bare attack range, so a hero between the two swings without a move order; v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
                 a camp's neutrals on the creep count as incoming damage; v5, slice oha-engine-windup, 24/11/2026: the incoming wind-ups the belief counts
                 are timed as attack point / attack speed from the first read, measured in game; v4 slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
                 cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
@@ -37,7 +37,8 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 swingwc1-2); on enemy heroes and neutral creeps it is not measured (UNVERIFIED in-game for neutrals: the
                 wind-up reading, the fogged location, CanBeSeen skipped for them).
 effect check:   ok once the bot's GetLastHits (GetDenies) count rises, checked each frame until 0.5 s past the predicted
-                landing.
+                landing; before the swing, the same count rising above its value at the start when the creep is gone is ok too,
+                with the message `hit=other w=<s> why=<held> ...` (the swing was not this verb's).
 outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | etiquette | dead | interrupted |
                 unsupported. missed: the creep was alive at the predicted landing, or our attack fired and the creep
                 was gone after the landing without the kill, or nothing resolved 0.5 s past the landing (early or wrong

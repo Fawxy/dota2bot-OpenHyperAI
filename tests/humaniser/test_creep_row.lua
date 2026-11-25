@@ -148,6 +148,10 @@ do -- the attempt's lines: the creep, the walk at go, when the hero was first in
 	jobs = lines(attempt({ success = false, reason = "taken_by_other", message = "w=1.20 why=range d=140" }, false), "job=creep")
 	check("lines: never in range reads tin=-1; a pre-swing message reads sw=0 and is kept", field(jobs[2], "tin") == "-1" and field(jobs[2], "sw") == "0"
 		and jobs[2]:find('msg="w=1.20 why=range d=140"', 1, true) ~= nil, jobs[2])
+	jobs = lines(attempt({ success = true, message = "hit=other w=0.40 why=range d=80" }, false), "job=creep")
+	check("lines: ok from a swing ordered before the verb's reads why=ok sw=0", field(jobs[2], "why") == "ok" and field(jobs[2], "sw") == "0", jobs[2])
+	jobs = lines(attempt({ success = true, message = "w=1.00 hp=60 pred=0 mine=55 t=0.40 m=0.10 obs=20 idps=30 end=0 dt=0.30" }, true), "job=creep")
+	check("lines: ok from the verb's own swing reads sw=1", field(jobs[2], "why") == "ok" and field(jobs[2], "sw") == "1", jobs[2])
 	jobs = lines(attempt({ success = false, reason = "preempted", message = "mode=5" }, false), "job=creep")
 	check("lines: a cut leaves the swing unknown", field(jobs[2], "sw") == nil, jobs[2])
 end
