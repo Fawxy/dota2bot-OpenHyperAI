@@ -12,8 +12,8 @@ const { Store } = require('../store');
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 const seen = (team, cid, type) => line(60, `unit_seen team=${team} cid=${cid} kind=lane type=${type} lane=mid x=0 y=0`);
 const gone = (t, team, cid, by = 'none', x = 0, y = 0) => line(t, `unit_gone team=${team} cid=${cid} x=${x} y=${y} hp=0.1 by=${by}`);
-const taker = (t, team, cid, by, kind, { tw = 0, x = 0, y = 0 } = {}) =>
-    line(t, `creep_death team=${team} kind=${kind} x=${x} y=${y} hp=0.05 by=${by} tw=${tw} cid=${cid}`);
+const taker = (t, team, cid, by, kind, { tw = 0, x = 0, y = 0, cores = '' } = {}) =>
+    line(t, `creep_death team=${team} kind=${kind} x=${x} y=${y} hp=0.05 by=${by} tw=${tw} cid=${cid}${cores}`);
 const snap = (t, pid, x, { ar = 550, alive = 1, tid, ed } = {}) =>
     line(t, `snap pid=${pid} x=${x} y=0 alive=${alive} hp=90 ar=${ar}${tid ? ` tid=${tid}` : ''}${ed ? ` ed=${ed}` : ''}`);
 
@@ -25,6 +25,8 @@ const snap = (t, pid, x, { ar = 550, alive = 1, tid, ed } = {}) =>
  * D 130    Dire melee, nobody; sniper 700 away and last-hits E 0.5 s later       nobody, r150, busy
  * E 130.5  Dire melee at (100, 100), sniper's last hit, 806 away                   paid us, r300
  * F 140    Radiant ranged, zuus's last hit; sniper dead, lion too far            paid them, none (Dire: paid us, zuus in at 300)
+ * H 150    Dire melee, nobody; sniper's snapshots both 900 away, but Radiant's creep_death line measured it at 560 on the frame
+ *          (it walked in and out between them): sniper in, not lion at 700. Dire's zuus, also pos 2, keeps its own 800.
  * G 700    after until                                                           no row
  */
 function gameLines() {
@@ -33,7 +35,7 @@ function gameLines() {
         line(-90, 'bot pid=1 hero=lion team=2 pos=5'),
         line(-90, 'bot pid=5 hero=zuus team=3 pos=2'),
         ...[1, 3].map(c => seen(3, c, 'npc_dota_creep_badguys_ranged')),
-        ...[2, 4, 5, 7].map(c => seen(3, c, 'npc_dota_creep_badguys_melee')),
+        ...[2, 4, 5, 7, 8].map(c => seen(3, c, 'npc_dota_creep_badguys_melee')),
         seen(2, 6, 'npc_dota_creep_goodguys_ranged'),
         snap(99.5, 0, -400, { tid: 'u1' }), snap(100.5, 0, -400),
         gone(100, 3, 1), taker(100, 2, 41, 0, 'ranged'),
@@ -46,6 +48,9 @@ function gameLines() {
         snap(139.5, 0, -400, { alive: 0 }), snap(140.5, 0, -400, { alive: 0 }), snap(139.5, 1, -1700, { ar: 600 }),
         snap(139.5, 5, 300, { ar: 500 }), snap(140.5, 5, 300, { ar: 500 }),
         gone(140, 2, 6), taker(140, 3, 46, 5, 'ranged'),
+        snap(149.5, 0, -900), snap(150.5, 0, -900), snap(149.5, 1, -700, { ar: 600 }), snap(150.5, 1, -700, { ar: 600 }),
+        snap(149.5, 5, 800, { ar: 500 }), snap(150.5, 5, 800, { ar: 500 }),
+        gone(150, 3, 8), taker(150, 2, 48, 'none', 'melee', { cores: ' p2d=560 p2r=550' }),
         snap(699.5, 0, -100), gone(700, 3, 7), taker(700, 2, 47, 0, 'melee'),
     ];
 }
@@ -73,16 +78,20 @@ test('creep_paid: each death once per team, who was paid, and the reach from pla
         [130, 'theirs', 'melee', 'mid', 'other', 'nobody', 0, 0, 700, 'r150', 1],
         [130.5, 'theirs', 'melee', 'mid', 'lh', 'us', 0, 0, 806, 'r300', 0],
         [140, 'ours', 'ranged', 'mid', 'lh', 'them', 0, null, null, 'none', null],
+        [150, 'theirs', 'melee', 'mid', 'other', 'nobody', 0, 0, 560, 'in', 0],
     ]);
+    assert.deepStrictEqual([rad[6].exact, rad[6].cpid, rad[6].cband, rad[6].cexact, rad[0].exact], [1, 0, 'in', 1, 0],
+        'a core on their creep takes the distance its creep_death line measured; a line without it leaves the estimate');
     assert.deepStrictEqual([rad[0].atk, rad[3].atk, rad[3].ed], [1, 0, 900], 'target and enemy distance from the snapshot at or before the death');
     assert.deepStrictEqual([rad[2].cpid, rad[2].cgap, rad[2].cband], [0, 802, 'r1500'], 'the nearest core beside the nearest hero');
-    assert.deepStrictEqual(rows.filter(r => r.team === 3).map(r => [r.t, r.whose, r.paid, r.pid, r.band]), [
-        [100, 'ours', 'them', null, 'none'],
-        [110, 'ours', 'nobody', null, 'none'],
-        [120, 'ours', 'nobody', null, 'none'],
-        [130, 'ours', 'nobody', null, 'none'],
-        [130.5, 'ours', 'them', null, 'none'],
-        [140, 'theirs', 'us', 5, 'in'],
+    assert.deepStrictEqual(rows.filter(r => r.team === 3).map(r => [r.t, r.whose, r.paid, r.pid, r.band, r.exact]), [
+        [100, 'ours', 'them', null, 'none', null],
+        [110, 'ours', 'nobody', null, 'none', null],
+        [120, 'ours', 'nobody', null, 'none', null],
+        [130, 'ours', 'nobody', null, 'none', null],
+        [130.5, 'ours', 'them', null, 'none', null],
+        [140, 'theirs', 'us', 5, 'in', 0],
+        [150, 'ours', 'nobody', 5, 'r300', 0],
     ]);
 });
 
@@ -90,12 +99,12 @@ test('creep_paid_games: the line per team-game, and a cell by filters', () => {
     const store = load();
     const cols = r => [r.team, r.n, r.us, r.them, r.nobody, r.theirs, r.t_lh, r.t_dn, r.t_tower, r.t_other, r.ours, r.o_lh, r.o_dn];
     assert.deepStrictEqual(store.query(sqlOf('creep_paid_games'), { like }).map(cols), [
-        [2, 6, 2, 1, 3, 5, 2, 1, 1, 1, 1, 1, 0],
-        [3, 6, 1, 2, 3, 1, 1, 0, 0, 0, 5, 2, 1],
+        [2, 7, 2, 1, 4, 6, 2, 1, 1, 2, 1, 1, 0],
+        [3, 7, 1, 2, 4, 1, 1, 0, 0, 0, 6, 2, 1],
     ]);
     const ranged = store.query(sqlOf('creep_paid_games'), { like, kind: 'ranged', whose: 'theirs', band: 'in,r150,r300,r1500' });
     assert.deepStrictEqual(ranged.map(r => [r.team, r.n, r.us, r.nobody, r.sh_us]), [[2, 2, 1, 1, 0.5], [3, 1, 1, 0, 1]]);
     assert.deepStrictEqual(store.query(sqlOf('creep_paid_games'), { like, cband: 'none' }).map(r => [r.team, r.n]), [[2, 2], [3, 5]]);
     assert.deepStrictEqual(store.query(sqlOf('creep_paid_games'), { like, kind: 'melee', whose: 'ours' }).map(r => [r.team, r.n, r.them, r.sh_us]),
-        [[2, 0, 0, null], [3, 3, 1, 0]], 'a team-game with nothing in the cell still has its row, a zero');
+        [[2, 0, 0, null], [3, 4, 1, 0]], 'a team-game with nothing in the cell still has its row, a zero');
 });
