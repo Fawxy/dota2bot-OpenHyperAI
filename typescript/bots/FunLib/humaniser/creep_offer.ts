@@ -71,6 +71,9 @@ interface Snap {
     /** The highest hit among visible enemy heroes within their own range of the creep, and how many are. */
     ed: number;
     ein: number;
+    /** Enemy heroes whose hit is at least ours that can be in their own range of the creep before it comes due, and the soonest (s). */
+    erc: number;
+    ert?: number;
     /** The creep is inside one of our towers' attack range. */
     otw: boolean;
 }
@@ -200,6 +203,8 @@ function line(bot: Unit, o: Opp): void {
         ["ed", math.floor(s.ed)],
         ["ein", s.ein],
         ["atk", o.atk ? 1 : 0],
+        ["erc", s.erc],
+        ["ert", s.ert !== undefined ? r2(s.ert) : undefined],
         ["otw", s.otw ? 1 : 0],
         ["gat", o.gat !== undefined ? r1(o.gat) : undefined],
         ["gw", o.gw !== undefined ? r2(o.gw) : undefined],
@@ -297,7 +302,7 @@ function enemiesOf(f: Frame): Offer.PathEnemy[] {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
-        out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1 });
+        out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1, speed: e.GetCurrentMovementSpeed() });
     }
     f.enemies = out;
     return out;
@@ -323,9 +328,20 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
     const path = Offer.PathCost({ from: f.hero, spot, speed: f.speed, hull: f.hull, creeps: creepsOf(f), towers: towersOf(bot, f), enemies: enemiesOf(f) });
     let ed = 0;
     let ein = 0;
+    let erc = 0;
+    let ert: number | undefined;
+    const md = bot.GetAttackDamage();
     const hull = creep.GetBoundingRadius();
     for (const e of enemiesOf(f)) {
-        if (dist(e, at) > e.range + e.hull + hull) continue;
+        const gap = dist(e, at) - (e.range + e.hull + hull);
+        // The race: an enemy hero whose hit is at least ours and who can stand in its own range of the creep before it comes
+        // due for us (the enemy walking straight at its speed).
+        const reach = math.max(0, gap) / math.max(100, e.speed ?? 300);
+        if (e.dmg >= md && reach <= t.due) {
+            erc++;
+            if (ert === undefined || reach < ert) ert = reach;
+        }
+        if (gap > 0) continue;
         ein++;
         if (e.dmg > ed) ed = e.dmg;
     }
@@ -349,9 +365,11 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         path,
         kb,
         kt,
-        md: bot.GetAttackDamage(),
+        md,
         ed,
         ein,
+        erc,
+        ert,
         otw,
     };
 }

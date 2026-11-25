@@ -162,6 +162,21 @@ do -- the cells: a long free walk goes; a covered long walk, an out-damaging ene
 		tw.loc = c.loc
 		TOWERS_W[2] = { [dota.Tower.Bot1] = tw }
 	end, "tower")
+	-- The race: a melee enemy 800 from the creep reaches its own range of it in about 2.0 s, before the creep is due (2.2 s).
+	local function foeAt(x, dmg)
+		return function()
+			local foe = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(x, -5000) })
+			foe.dmg, foe.range, foe.spa = dmg, 150, 1.4
+		end
+	end
+	case("a 2 s walk with an enemy that can reach the creep first, hitting as hard", foeAt(1700, 55), "race")
+	case("control: the same enemy hitting softer", foeAt(1700, 40), "go")
+	case("control: the same enemy too far to reach it before it is due", foeAt(2400, 55), "go")
+	case("control: in range, the enemy as close does not stop the swing", function(w, c, t)
+		t.walk, t.due = 0, 0.3
+		c.loc = Vector(300, -5000)
+		foeAt(500, 55)()
+	end, "go")
 	case("a melee creep", function(_, c) c.name = "npc_dota_creep_badguys_melee" end, "kind")
 	case("their deny of our creep", function(_, c, t) t.kind = "deny" end, "kind")
 	case("a walk it cannot make before the creep dies", function(_, _, t) t.dies = 2.1 end, "late")

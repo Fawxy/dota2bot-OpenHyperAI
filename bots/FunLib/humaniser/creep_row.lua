@@ -15,7 +15,8 @@ ____exports.SETTINGS = {NearWalk = 1, Lead = 0.4, WaitSlack = 1.5}
 --- The mode the decider hosts its rows in: the engine steps the attempt's task under it.
 local HOST = BotMode.Farm
 --- The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (not their ranged creep),
--- `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `covered` (a walk past NearWalk to a spot
+-- `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
+-- with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
 -- an enemy hero's range covers), `tower` (inside our tower's range: the under-tower hit is a later widening, s6), `etower`
 -- (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
 -- `mate` (a teammate's hit kills it first).
@@ -28,6 +29,9 @@ function ____exports.Claim(f)
     end
     if f.ein > 0 and f.ed > f.md then
         return "outdmg"
+    end
+    if f.walk > 0 and f.erc > 0 then
+        return "race"
     end
     if f.walk > ____exports.SETTINGS.NearWalk and f.eh > 0 then
         return "covered"
@@ -130,6 +134,7 @@ local function factsOf(c)
         md = s.md,
         ed = s.ed,
         ein = s.ein,
+        erc = s.erc,
         ptw = s.path.tower,
         otw = s.otw,
         g2 = s.given.due,

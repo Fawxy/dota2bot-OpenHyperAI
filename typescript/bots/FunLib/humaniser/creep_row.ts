@@ -54,6 +54,8 @@ export interface Facts {
     md: number;
     ed: number;
     ein: number;
+    /** Enemy heroes with a hit at least ours that can be in range of the creep before it comes due (the race). */
+    erc: number;
     ptw: boolean;
     otw: boolean;
     g2: number;
@@ -62,7 +64,8 @@ export interface Facts {
 
 /**
  * The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (not their ranged creep),
- * `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `covered` (a walk past NearWalk to a spot
+ * `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
+ * with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
  * an enemy hero's range covers), `tower` (inside our tower's range: the under-tower hit is a later widening, s6), `etower`
  * (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
  * `mate` (a teammate's hit kills it first).
@@ -71,6 +74,9 @@ export function Claim(this: void, f: Facts): string | undefined {
     if (f.kind !== "lasthit" || f.ck !== "r") return "kind";
     if (f.slk <= 0) return "late";
     if (f.ein > 0 && f.ed > f.md) return "outdmg";
+    // Round 1 (rig cr1: walk-ins landed 17 of 51, 23 denied by a lane opponent not yet in range when the row went). In range
+    // the hero is there first: 8 of 11 landed, none denied.
+    if (f.walk > 0 && f.erc > 0) return "race";
     if (f.walk > SETTINGS.NearWalk && f.eh > 0) return "covered";
     if (f.otw) return "tower";
     if (f.ptw) return "etower";
@@ -141,7 +147,7 @@ function finish(bot: Unit, r: Lib.Result): void {
 
 function factsOf(c: CreepOffer.Candidate): Facts {
     const s = c.facts();
-    return { kind: c.t.kind, ck: c.ck, walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb };
+    return { kind: c.t.kind, ck: c.ck, walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, erc: s.erc, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb };
 }
 
 /**

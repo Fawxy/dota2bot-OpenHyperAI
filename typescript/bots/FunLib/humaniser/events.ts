@@ -2846,7 +2846,7 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's latest reason (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `acting`, `stock`, `tried`, `late`, `outdmg`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's latest reason (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `acting`, `stock`, `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
         why: "str",
         /** Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them). */
         src: "str",
@@ -2912,6 +2912,10 @@ export const EVENTS = {
         ein: "num",
         /** `kind=creep`: 1 when the hero's attack target was this creep at any read while it was offered (stock was on it). */
         atk: "num",
+        /** `kind=creep`: visible enemy heroes whose hit is at least ours (`md`) that can walk into their own attack range of the creep before `due` (the race). */
+        erc: "num",
+        /** `kind=creep`: the soonest of those walks (s); absent when `erc` is 0. */
+        ert: "num",
         /** `kind=creep`: 1 when the creep is inside one of our towers' attack range (and both hulls). */
         otw: "num",
         /** `kind=creep`, `go=1`: seconds from `slot` to the read that started the row's attempt. */

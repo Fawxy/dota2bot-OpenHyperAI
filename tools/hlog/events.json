@@ -1861,6 +1861,8 @@
    "ed": "num",
    "ein": "num",
    "atk": "num",
+   "erc": "num",
+   "ert": "num",
    "otw": "num",
    "gat": "num",
    "gw": "num",

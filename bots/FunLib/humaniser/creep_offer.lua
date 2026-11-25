@@ -198,7 +198,8 @@ function enemiesOf(f)
                     range = ____temp_10,
                     hull = ____temp_11,
                     dmg = ____temp_12,
-                    spa = ____opt_5 and ____opt_5(____this_6) or 1
+                    spa = ____opt_5 and ____opt_5(____this_6) or 1,
+                    speed = e:GetCurrentMovementSpeed()
                 }
                 __continue45 = true
             until true
@@ -253,12 +254,23 @@ function snapshot(bot, f, t, slack, others)
     })
     local ed = 0
     local ein = 0
+    local erc = 0
+    local ert
+    local md = bot:GetAttackDamage()
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
             local __continue56
             repeat
-                if dist(e, at) > e.range + e.hull + hull then
+                local gap = dist(e, at) - (e.range + e.hull + hull)
+                local reach = math.max(0, gap) / math.max(100, e.speed or 300)
+                if e.dmg >= md and reach <= t.due then
+                    erc = erc + 1
+                    if ert == nil or reach < ert then
+                        ert = reach
+                    end
+                end
+                if gap > 0 then
                     __continue56 = true
                     break
                 end
@@ -296,9 +308,11 @@ function snapshot(bot, f, t, slack, others)
         path = path,
         kb = kb,
         kt = kt,
-        md = bot:GetAttackDamage(),
+        md = md,
         ed = ed,
         ein = ein,
+        erc = erc,
+        ert = ert,
         otw = otw
     }
 end
@@ -519,6 +533,11 @@ local function line(bot, o)
         },
         {"ein", s.ein},
         {"atk", o.atk and 1 or 0},
+        {"erc", s.erc},
+        {
+            "ert",
+            s.ert ~= nil and r2(s.ert) or nil
+        },
         {"otw", s.otw and 1 or 0},
         {
             "gat",
@@ -588,17 +607,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue78
+                local __continue80
                 repeat
                     if listed[o.creep] == true then
-                        __continue78 = true
+                        __continue80 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue78 = true
+                    __continue80 = true
                 until true
-                if not __continue78 then
+                if not __continue80 then
                     break
                 end
             end
@@ -627,12 +646,12 @@ function ____exports.Shadow(bot)
     local cands = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue82
+            local __continue84
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue82 = true
+                    __continue84 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -694,9 +713,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue82 = true
+                __continue84 = true
             until true
-            if not __continue82 then
+            if not __continue84 then
                 break
             end
         end
