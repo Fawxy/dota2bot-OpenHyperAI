@@ -72,14 +72,15 @@ telemetry:      none of its own besides opts.onPhase; the Result message carries
                 the same check on lane creeps, neutral creeps (slice engine-neutrals) and towers (slice lh-unphased). Read by hlog `@lh_swings`.
 fixtures:       engine test_lasthit ("in reach beyond the range", "outside the reach", "laneTargets: the walk to reach"; predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
-                phases reported (walk, wait, swing in order; in reach never walks; a cut walk reports only walk), enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
+                phases reported (walk, wait, swing in order; in reach never walks; a cut walk reports only walk; pushed out of reach while waiting reports walk again; deny of a creep above half hp reports wait, swing), enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
                 the creep, two heroes with one wind-up frame),
                 deny 50% rule, etiquette); bot test_states_laning_body.
 evidence:       calibration in lane-only games llhscn1 and llhscn2 (03/11/2026, slice lane-last-hits: relied horizon,
                 wind-up double count); the 0.45 s look-ahead sits just under a lane creep's 0.467 s attack point (game
                 file); the kill belief is otherwise game-fact maths with no tuned numbers. maxWait, searchRadius, the
                 0.5 s resolve slack, the 0.25 s cooldown queue and the frame margin bounds are taste.
-consumers:      engine laneFarm (every attempt); bot states/laning through it (cores: last hits and denies; deny-only
-                supports: denies).
+consumers:      engine laneFarm (every attempt); the bot creep row (humaniser/creep_row.ts: ctx.lastHit, and onPhase for
+                its hold per phase); the bot job_verbs camp last hit (its `lastHit` hook on camp neutrals); named: the
+                deny row (master docs/proposals/2026-11-25-no-creep-unpaid.md).
 status:         offline-verified (in-game: the slice's check run, docs/team/slices/lane-last-hits.md)
 ```

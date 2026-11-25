@@ -207,9 +207,9 @@ local function phasesOf(sim, bot, creep, opts)
     local seen = {}
     opts = opts or {}
     opts.target = creep
-    opts.maxWait = 3
+    opts.maxWait = opts.maxWait or 3
     opts.onPhase = function(p, at) seen[#seen + 1] = { p = p, t = at } end
-    local r = run(sim, V.lastHit(bot, opts))
+    local r = run(sim, (opts.verb or V.lastHit)(bot, opts))
     return seen, r
 end
 do
@@ -240,6 +240,18 @@ do
     sim:at(0.3, function(w) w:kill(creep) end)
     local seen = phasesOf(sim, bot, creep)
     T.eq("onPhase lost while walking: only walk", #seen == 1 and seen[1].p or "n=" .. #seen, "walk")
+end
+do
+    -- A creep that never comes due (45 damage against 300 hp): the verb waits in reach until the bot is moved out, walks back, waits again.
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 300, team = 3, passive = true, hull = 16 }
+    sim:at(2.0, function() bot.loc.x = -100 end)
+    local seen = phasesOf(sim, bot, creep, { maxWait = 5 })
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase pushed out of reach while waiting: walk again, then wait again", table.concat(names, ","), "walk,wait,walk,wait")
+    T.check("onPhase pushed out of reach: the second walk starts at the push", seen[3] ~= nil and seen[3].t >= 2.0 and seen[3].t < 2.1, seen[3] and seen[3].t)
 end
 
 -- A swing the host ordered before the verb's (in flight at the go) takes the creep while the verb walks in: the bot's count rose,
@@ -507,6 +519,14 @@ do
     T.eq("deny ok: creep dead", creep.alive, false)
     local swing = firstSwing(bot)
     T.check("deny: never swung above 50% hp", swing and swing.targetHp < 150)
+end
+do
+    local sim, bot = denyWorld()
+    local seen = phasesOf(sim, bot, nil, { verb = V.deny, maxWait = 5 })
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase deny of a creep above half hp: waits in reach, then swings (no walk)", table.concat(names, ","), "wait,swing")
+    T.check("onPhase deny: the swing comes after the creep fell under half hp, not at the first frame", seen[2] ~= nil and seen[2].t > seen[1].t, seen[2] and seen[2].t)
 end
 
 do
