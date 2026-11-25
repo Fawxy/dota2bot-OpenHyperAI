@@ -77,15 +77,15 @@ export type ForecastSchedule = "spread" | "early" | "late";
 export declare function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): HpForecast;
 /** The forecast's HP `t` seconds from now (may go below 0: the creep is dead by then), the unknown-phase hits placed by `schedule`. */
 export declare function forecastHp(f: HpForecast, t: number, schedule?: ForecastSchedule): number;
-/**
- * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
- * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
- * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
- */
 /** Seconds until the bot can start its next swing (0 without the adapter's `attackClock`). */
 export declare function cooldownLeft(bot: TaskUnit): number;
 /** Seconds to turn to face the creep (0 without GetFacing). */
 export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
+/**
+ * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
+ * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
+ * ranged bot, and the turn to face the creep (`turnTime`).
+ */
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 /**
  * Clears this module's state that outlives a frame: the wind-up records, the per-bot skill rolls and the nearby index. For a

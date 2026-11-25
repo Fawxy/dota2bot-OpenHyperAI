@@ -48,8 +48,8 @@ outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | et
                 interruptIf fired. The per-frame `Skill` error rolls the belief early or late; there is no random
                 "don't try".
 timing:         one belief per frame while waiting (creep queries cached per bot per frame; enemy heroes queried once
-                per frame, cached the same way, for the enemy-hero watch; allied heroes and towers only once a swing
-                decision is due); at most maxWait of waiting plus own hit time + 0.5 s to resolve.
+                per frame, cached the same way, for the enemy-hero watch; allied heroes and towers once per frame,
+                with the attacker index); at most maxWait of waiting plus own hit time + 0.5 s to resolve.
 interruption:   interruptIf and deadline while waiting; once the swing is ordered the verb only watches (the attack
                 is not cancelled).
 skill:          Skill.lastHitError (width) and the per-creep roll: a negative shift shortens the relied horizon (swings

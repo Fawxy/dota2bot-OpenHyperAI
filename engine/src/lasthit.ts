@@ -75,12 +75,33 @@ function gone(u: TaskAttacker): boolean {
     return (u.IsNull?.() ?? false) || !u.IsAlive() || u.GetLocation() === undefined;
 }
 
-// Per-frame query cache, per bot: every lastHit/deny of a bot in one frame shares one set of queries.
+/** The bot's own facts, each read on first use and kept for the frame. */
+interface Own {
+    damage?: number;
+    variance?: number;
+    windup?: number;
+    cooldown?: number;
+    /** `false`: the unit reads no facing. */
+    facing?: number | false;
+    range?: number;
+    shot?: number;
+}
+
+// Per-frame query cache, per bot: every lastHit/deny of a bot in one frame shares one set of queries and reads.
 interface Nearby {
     t: number;
-    enemyCreeps: TaskCreep[];
-    allyCreeps: TaskCreep[];
+    /** Lane creeps within QUERY_RADIUS, queried once per frame on first use. */
+    enemyCreeps?: TaskCreep[];
+    allyCreeps?: TaskCreep[];
+    /** Per unit: each bot of the player asking in one frame reads its own facts. */
+    owns: LuaTable<object, Own>;
+    /** Unit locations read this frame; `false` for a unit that reads none (fogged). */
+    loc: LuaTable<object, Vec | false>;
+    /** `gone` for the units the host listed this frame. */
+    dead: LuaTable<object, boolean>;
     others?: TaskAttacker[];
+    /** The enemy heroes and towers among `others`; the rest are the bot's side. */
+    hostile?: LuaTable<TaskAttacker, boolean>;
     /** Enemy heroes within QUERY_RADIUS, queried once per frame on first use. */
     enemyHeroes?: TaskHero[];
     /** Attackers by their current target, built once per frame (one GetAttackTarget per unit). */
@@ -98,11 +119,40 @@ function nearby(bot: TaskUnit): Nearby {
     if (hit !== undefined && hit.t === t) return hit;
     const n: Nearby = {
         t,
-        enemyCreeps: bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, true) ?? [],
-        allyCreeps: bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, false) ?? [],
+        owns: new LuaTable<object, Own>(),
+        loc: new LuaTable<object, Vec | false>(),
+        dead: new LuaTable<object, boolean>(),
     };
     nearbyCache[id] = n;
     return n;
+}
+
+function locOf(n: Nearby, u: { GetLocation(): Vec }): Vec | undefined {
+    let l = n.loc.get(u);
+    if (l === undefined) {
+        l = u.GetLocation() ?? false;
+        n.loc.set(u, l);
+    }
+    return l === false ? undefined : l;
+}
+
+/** `gone` for a handle the host returned this frame, so it needs no `IsNull`; read once per frame. */
+function listedGone(n: Nearby, u: TaskAttacker): boolean {
+    let g = n.dead.get(u);
+    if (g === undefined) {
+        g = !u.IsAlive() || locOf(n, u) === undefined;
+        n.dead.set(u, g);
+    }
+    return g;
+}
+
+function laneCreeps(bot: TaskUnit, n: Nearby, enemies: boolean): TaskCreep[] {
+    if (enemies) {
+        if (n.enemyCreeps === undefined) n.enemyCreeps = bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, true) ?? [];
+        return n.enemyCreeps;
+    }
+    if (n.allyCreeps === undefined) n.allyCreeps = bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, false) ?? [];
+    return n.allyCreeps;
 }
 
 function enemyHeroes(bot: TaskUnit, n: Nearby): TaskHero[] {
@@ -110,25 +160,29 @@ function enemyHeroes(bot: TaskUnit, n: Nearby): TaskHero[] {
     return n.enemyHeroes;
 }
 
-/** Heroes and towers of both teams; only queried once a swing decision is due. */
+/** Heroes and towers of both teams, queried once per frame on first use. */
 function others(bot: TaskUnit, n: Nearby): TaskAttacker[] {
     if (n.others !== undefined) return n.others;
     const out: TaskAttacker[] = [];
     const towers = new LuaTable<TaskAttacker, boolean>();
     const heroes = new LuaTable<TaskAttacker, boolean>();
+    const hostile = new LuaTable<TaskAttacker, boolean>();
     for (const enemies of [true, false]) {
         for (const h of enemies ? enemyHeroes(bot, n) : bot.GetNearbyHeroes?.(QUERY_RADIUS, false, 0) ?? []) {
             if (h.GetLocation !== undefined && h.IsAlive !== undefined) {
                 out.push(h as TaskHero as TaskAttacker);
                 heroes.set(h as TaskHero as TaskAttacker, true);
+                if (enemies) hostile.set(h as TaskHero as TaskAttacker, true);
             }
         }
         for (const t of bot.GetNearbyTowers?.(QUERY_RADIUS, enemies) ?? []) {
             out.push(t);
             towers.set(t, true);
+            if (enemies) hostile.set(t, true);
         }
     }
     n.others = out;
+    n.hostile = hostile;
     n.towers = towers;
     n.heroes = heroes;
     return out;
@@ -139,8 +193,11 @@ function physical(creep: TaskCreep, raw: number): number {
     return creep.GetActualIncomingDamage(raw, DAMAGE_TYPE_PHYSICAL ?? 1);
 }
 
-function isRanged(u: TaskAttacker): boolean {
-    return (u.GetAttackRange?.() ?? 0) > RANGED_ABOVE && (u.GetAttackProjectileSpeed?.() ?? 0) > 0;
+/** The attacker's projectile speed if it attacks with a projectile, else 0. */
+function projectileSpeed(u: TaskAttacker): number {
+    if ((u.GetAttackRange?.() ?? 0) <= RANGED_ABOVE) return 0;
+    const speed = u.GetAttackProjectileSpeed?.() ?? 0;
+    return speed > 0 ? speed : 0;
 }
 
 /** A wind-up as the engine first read it: game time and anim cycle then, and the latest read. */
@@ -157,9 +214,13 @@ interface WindupSeen {
 const WINDUP_GAP = 0.25;
 const windups = setmetatable(new LuaTable<TaskAttacker, WindupSeen>(), { __mode: "k" });
 
-/** A unit's wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+/** A unit's wind-up in seconds from its readings: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+function windupOf(point: number | undefined, speed: number | undefined): number {
+    return (point ?? 0) / math.max(0.01, speed ?? 1);
+}
+
 function windupSeconds(a: { GetAttackPoint?(): number; GetAttackSpeed?(): number }): number {
-    return (a.GetAttackPoint?.() ?? 0) / math.max(0.01, a.GetAttackSpeed?.() ?? 1);
+    return windupOf(a.GetAttackPoint?.(), a.GetAttackSpeed?.());
 }
 
 /**
@@ -184,7 +245,9 @@ function windupLeft(a: TaskAttacker): number | undefined {
     if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
     const t = now();
     const cycle = a.GetAnimCycle();
-    const speed = math.max(0.01, a.GetAttackSpeed?.() ?? 1);
+    const reading = a.GetAttackSpeed?.();
+    const speed = math.max(0.01, reading ?? 1);
+    const point = a.GetAttackPoint();
     let w = windups.get(a);
     if (w === undefined || cycle < w.c || t < w.t || t - w.t > WINDUP_GAP) {
         w = { t0: t, c0: cycle, t, c: cycle };
@@ -193,7 +256,7 @@ function windupLeft(a: TaskAttacker): number | undefined {
         w.t = t;
         w.c = cycle;
     }
-    const left = windupSeconds(a) - (t - w.t0) - w.c0 / speed;
+    const left = windupOf(point, reading) - (t - w.t0) - w.c0 / speed;
     return left > 0 ? left : undefined;
 }
 
@@ -201,12 +264,11 @@ function windupLeft(a: TaskAttacker): number | undefined {
  * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up: `windupLeft`, plus
  * a ranged attacker's projectile flight (distance less the launch offset, over projectile speed).
  */
-function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
+function windupLanding(a: TaskAttacker, creep: TaskCreep, n: Nearby, known?: number): number | undefined {
     let t = windupLeft(a);
     if (t === undefined) return undefined;
-    if (isRanged(a)) {
-        t += math.max(0, dist(a.GetLocation(), creep.GetLocation()) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!();
-    }
+    const speed = known !== undefined ? known : projectileSpeed(a);
+    if (speed > 0) t += math.max(0, dist(locOf(n, a)!, locOf(n, creep)!) - CREEP_LAUNCH_OFFSET) / speed;
     return t;
 }
 
@@ -218,7 +280,7 @@ function windupLanding(a: TaskAttacker, creep: TaskCreep): number | undefined {
  * their projectile flies.
  */
 export function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number): number {
-    return physical(creep, scanAttackers(bot, creep, horizon).raw);
+    return physical(creep, scanAttackers(bot, creep, horizon, nearby(bot)).raw);
 }
 
 /**
@@ -228,7 +290,7 @@ export function incomingDamage(bot: TaskUnit, creep: TaskCreep, horizon: number)
  * repeats by `incomingDamage`; since slice pre-hit, 05/11/2026, before which only a wind-up counted as known).
  */
 export function incomingDps(bot: TaskUnit, creep: TaskCreep): { dps: number; between: number } {
-    const s = scanAttackers(bot, creep, 0);
+    const s = scanAttackers(bot, creep, 0, nearby(bot));
     return { dps: physical(creep, s.dps), between: physical(creep, s.between) };
 }
 
@@ -236,13 +298,12 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
     if (n.byTarget !== undefined) return n.byTarget;
     const by = new LuaTable<TaskAttacker, TaskAttacker[]>();
     const myTeam = bot.GetTeam?.();
-    const add = (a: TaskAttacker, neutral = false): void => {
-        if (a === (bot as unknown) || gone(a)) return;
-        // CanBeSeen is "visible to the enemy team": it says nothing about our own units, so only enemies are
-        // dropped by it (a fogged enemy's attack target cannot be read). A neutral has no enemy team to ask, so it is
-        // not read through CanBeSeen; one in the fog reads no location and is `gone`.
-        if (!neutral && myTeam !== undefined && a.GetTeam?.() !== myTeam && !(a.CanBeSeen?.() ?? true)) return;
-        if (!neutral && myTeam === undefined && !(a.CanBeSeen?.() ?? true)) return;
+    // The side is the list the unit came in. CanBeSeen is "visible to the enemy team": it says nothing about our own
+    // units, so only enemies are dropped by it (a fogged enemy's attack target cannot be read). A neutral has no enemy
+    // team to ask, so it is not read through CanBeSeen; one in the fog reads no location and is `gone`.
+    const add = (a: TaskAttacker, enemy: boolean, neutral = false): void => {
+        if (a === (bot as unknown) || listedGone(n, a)) return;
+        if (!neutral && (myTeam === undefined || enemy) && !(a.CanBeSeen?.() ?? true)) return;
         const target = a.GetAttackTarget?.();
         if (target === undefined || target === null) return;
         let list = by.get(target as TaskAttacker);
@@ -252,15 +313,15 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
         }
         list.push(a);
     };
-    for (const c of n.enemyCreeps) add(c);
-    for (const c of n.allyCreeps) add(c);
+    for (const c of laneCreeps(bot, n, true)) add(c, true);
+    for (const c of laneCreeps(bot, n, false)) add(c, false);
     // Neutral creeps: a camp's neutrals on a pulled wave (or on a creep that walks past the camp). Without them the
     // belief and the forecast saw no damage coming to a creep the neutrals were killing (pullchain2, 24/11/2026: 7 of 22
     // denies at a camp lost after the swing, each reading idps=0). They are periodic attackers like lane creeps: kind
     // `creep`, their repeats counted once phased. UNVERIFIED in-game: their wind-up reading, that a fogged one reads no
     // location, and how CanBeSeen reads for a neutral-team unit.
-    for (const c of bot.GetNearbyNeutralCreeps?.(QUERY_RADIUS) ?? []) add(c, true);
-    for (const o of others(bot, n)) add(o);
+    for (const c of bot.GetNearbyNeutralCreeps?.(QUERY_RADIUS) ?? []) add(c, false, true);
+    for (const o of others(bot, n)) add(o, n.hostile!.get(o) === true);
     n.byTarget = by;
     return by;
 }
@@ -281,10 +342,10 @@ interface Flight {
  * (`hpForecast`) read the phase from this one place, so both see the same attacker as phased (review
  * 2026-11-05-sdk-slice-prehit F2: two copies disagreed on a projectile landing past a short horizon).
  */
-function flightsAt(bot: TaskUnit, creep: TaskCreep, withSelf: boolean): { flights: Flight[]; latest: LuaTable<TaskAttacker, number> } {
+function flightsAt(bot: TaskUnit, creep: TaskCreep, withSelf: boolean, n: Nearby): { flights: Flight[]; latest: LuaTable<TaskAttacker, number> } {
     const flights: Flight[] = [];
     const latest = new LuaTable<TaskAttacker, number>();
-    const here = creep.GetLocation();
+    const here = locOf(n, creep)!;
     for (const p of creep.GetIncomingTrackingProjectiles?.() ?? []) {
         const c = p.caster;
         if (p.is_attack !== true || c === undefined || c === null || (c.IsNull?.() ?? false)) continue;
@@ -307,17 +368,16 @@ function flightsAt(bot: TaskUnit, creep: TaskCreep, withSelf: boolean): { flight
  * re-targets on hero aggro or when the creep leaves its range, a lane creep on aggro, a neutral leashes back to its camp),
  * as `hpForecast`'s do.
  */
-function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number): { raw: number; dps: number; between: number } {
+function scanAttackers(bot: TaskUnit, creep: TaskCreep, horizon: number, n: Nearby): { raw: number; dps: number; between: number } {
     horizon = math.min(horizon, FORECAST_MAX);
     let raw = 0;
     let dps = 0;
     let between = 0;
-    const n = nearby(bot);
-    const { flights, latest } = flightsAt(bot, creep, false);
+    const { flights, latest } = flightsAt(bot, creep, false, n);
     for (const f of flights) if (f.t <= horizon) raw += f.damage;
     for (const a of attackersByTarget(bot, n).get(creep as TaskAttacker) ?? []) {
         if (a === (creep as TaskAttacker)) continue;
-        const land = windupLanding(a, creep);
+        const land = windupLanding(a, creep, n);
         const damage = a.GetAttackDamage?.() ?? 0;
         const period = a.GetSecondsPerAttack?.() ?? 1;
         if (land !== undefined && land <= horizon) raw += damage;
@@ -393,10 +453,10 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
     const kindOf = (a: TaskAttacker): ForecastHit["by"] =>
         a === (bot as unknown) ? "self" : towers.get(a) === true ? "tower" : heroes.get(a) === true ? "hero" : "creep";
     const hits: ForecastHit[] = [];
-    const here = creep.GetLocation();
+    const here = locOf(n, creep)!;
     // The phase comes from every projectile in flight, one landing past the horizon included (it still says when the next
     // hit comes); only the hits themselves are cut to the horizon.
-    const { flights, latest } = flightsAt(bot, creep, true);
+    const { flights, latest } = flightsAt(bot, creep, true, n);
     for (const f of flights) {
         if (f.t <= horizon) hits.push({ t: f.t, damage: physical(creep, f.damage), by: kindOf(f.caster), attacker: f.caster, commit: 0 });
     }
@@ -408,8 +468,9 @@ export function hpForecast(bot: TaskUnit, creep: TaskCreep, horizon: number): Hp
         const kind = kindOf(a);
         const damage = physical(creep, a.GetAttackDamage?.() ?? 0);
         const period = a.GetSecondsPerAttack?.() ?? 1;
-        const land = windupLanding(a, creep);
-        const flight = isRanged(a) ? math.max(0, dist(a.GetLocation(), here) - CREEP_LAUNCH_OFFSET) / a.GetAttackProjectileSpeed!() : 0;
+        const speed = projectileSpeed(a);
+        const land = windupLanding(a, creep, n, speed);
+        const flight = speed > 0 ? math.max(0, dist(locOf(n, a)!, here) - CREEP_LAUNCH_OFFSET) / speed : 0;
         if (land !== undefined && land <= horizon) hits.push({ t: land, damage, by: kind, attacker: a, commit: math.max(0, land - flight) });
         const last = land ?? latest.get(a);
         if (last === undefined) {
@@ -453,9 +514,10 @@ function enemyHeroWindups(bot: TaskUnit, creep: TaskCreep, horizon: number): { n
     let n = 0;
     let raw = 0;
     let commit = 0;
-    for (const a of attackersByTarget(bot, nearby(bot)).get(creep as TaskAttacker) ?? []) {
+    const frame = nearby(bot);
+    for (const a of attackersByTarget(bot, frame).get(creep as TaskAttacker) ?? []) {
         if (heroes.get(a) !== true) continue;
-        const land = windupLanding(a, creep);
+        const land = windupLanding(a, creep, frame);
         if (land === undefined || land > horizon) continue;
         n++;
         raw += a.GetAttackDamage?.() ?? 0;
@@ -536,21 +598,46 @@ function heroWatchText(w: HeroWatch): string {
     return string.format(" hf=%d hwf=%d ha=%d hc=%.2f hpt=%.2f", w.frames, w.windup, w.act, w.cycle, w.point);
 }
 
-/**
- * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
- * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
- * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
- */
+function ownOf(n: Nearby, bot: TaskUnit): Own {
+    let o = n.owns.get(bot);
+    if (o === undefined) {
+        o = {};
+        n.owns.set(bot, o);
+    }
+    return o;
+}
+
+function ownWindup(bot: TaskUnit, n: Nearby): number {
+    const o = ownOf(n, bot);
+    if (o.windup === undefined) o.windup = windupSeconds(bot);
+    return o.windup;
+}
+
+function ownRange(bot: TaskUnit, n: Nearby): number {
+    const o = ownOf(n, bot);
+    if (o.range === undefined) o.range = bot.GetAttackRange();
+    return o.range;
+}
+
+function cooldownAt(bot: TaskUnit, n: Nearby): number {
+    const o = ownOf(n, bot);
+    if (o.cooldown === undefined) {
+        const a = get()!;
+        let left = 0;
+        if (a.attackClock !== undefined && bot.GetSecondsPerAttack !== undefined && bot.GetLastAttackTime !== undefined) {
+            const idle = bot.GetSecondsPerAttack() - ownWindup(bot, n);
+            // A hit landing this frame can read a hair after the clock; one reading clearly ahead of it is ignored.
+            const since = a.attackClock() - bot.GetLastAttackTime() + 0.01;
+            if (since >= -0.1) left = math.max(0, since) < idle ? idle - math.max(0, since) : 0;
+        }
+        o.cooldown = left;
+    }
+    return o.cooldown;
+}
+
 /** Seconds until the bot can start its next swing (0 without the adapter's `attackClock`). */
 export function cooldownLeft(bot: TaskUnit): number {
-    const a = get()!;
-    if (a.attackClock === undefined || bot.GetSecondsPerAttack === undefined || bot.GetLastAttackTime === undefined) return 0;
-    const windup = windupSeconds(bot);
-    const idle = bot.GetSecondsPerAttack() - windup;
-    // A hit landing this frame can read a hair after the clock; one reading clearly ahead of it is ignored.
-    const since = a.attackClock() - bot.GetLastAttackTime() + 0.01;
-    if (since < -0.1) return 0;
-    return math.max(0, since) < idle ? idle - math.max(0, since) : 0;
+    return cooldownAt(bot, nearby(bot));
 }
 
 // LuaJIT (Dota) has math.atan2; Lua 5.3 (fengari, tests) folds it into math.atan.
@@ -562,10 +649,16 @@ const TURN_SLACK = 0.2;
 
 /** Seconds to turn to face the creep (0 without GetFacing). */
 export function turnTime(bot: TaskUnit, creep: TaskCreep): number {
-    const facing = bot.GetFacing?.();
-    if (facing === undefined || facing === null) return 0;
-    const a = bot.GetLocation();
-    const b = creep.GetLocation();
+    return turnAt(bot, creep, nearby(bot));
+}
+
+function turnAt(bot: TaskUnit, creep: TaskCreep, n: Nearby): number {
+    const o = ownOf(n, bot);
+    if (o.facing === undefined) o.facing = bot.GetFacing?.() ?? false;
+    const facing = o.facing;
+    if (facing === false) return 0;
+    const a = locOf(n, bot)!;
+    const b = locOf(n, creep)!;
     const want = atan2(b.y - a.y, b.x - a.x);
     let d = math.abs(want - (facing * Math.PI) / 180) % (2 * Math.PI);
     if (d > Math.PI) d = 2 * Math.PI - d;
@@ -573,16 +666,27 @@ export function turnTime(bot: TaskUnit, creep: TaskCreep): number {
 }
 
 /** Seconds from an attack order now until the bot's attack point: wind-up, cooldown left and turn. */
-function ownCommitTime(bot: TaskUnit, creep: TaskCreep): number {
-    return windupSeconds(bot) + cooldownLeft(bot) + turnTime(bot, creep);
+function ownCommitTime(bot: TaskUnit, creep: TaskCreep, n: Nearby): number {
+    return ownWindup(bot, n) + cooldownAt(bot, n) + turnAt(bot, creep, n);
 }
 
+/**
+ * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
+ * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
+ * ranged bot, and the turn to face the creep (`turnTime`).
+ */
 export function ownHitTime(bot: TaskUnit, creep: TaskCreep): number {
-    let t = ownCommitTime(bot, creep);
-    const speed = bot.GetAttackProjectileSpeed?.() ?? 0;
-    const range = bot.GetAttackRange();
+    return ownHit(bot, creep, nearby(bot));
+}
+
+function ownHit(bot: TaskUnit, creep: TaskCreep, n: Nearby): number {
+    let t = ownCommitTime(bot, creep, n);
+    const o = ownOf(n, bot);
+    if (o.shot === undefined) o.shot = bot.GetAttackProjectileSpeed?.() ?? 0;
+    const speed = o.shot;
+    const range = ownRange(bot, n);
     if (range > RANGED_ABOVE && speed > 0) {
-        const d = dist(bot.GetLocation(), creep.GetLocation()) - HERO_LAUNCH_OFFSET;
+        const d = dist(locOf(n, bot)!, locOf(n, creep)!) - HERO_LAUNCH_OFFSET;
         t += math.min(math.max(0, d), range) / speed;
     }
     return t;
@@ -656,10 +760,10 @@ interface Belief {
  * attacker the belief is unchanged, so the seen wind-ups keep their phase information. In the lane-only
  * calibration games (llhscn1, 03/11/2026) the seen hits came to about half the damage that landed before our hit.
  */
-function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDps: number = 0): Belief {
-    const tHit = ownHitTime(bot, creep);
-    const regen = creep.GetHealthRegen?.() ?? 0;
-    const hp = creep.GetHealth();
+function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDps: number = 0, n: Nearby = nearby(bot), known?: CreepNow): Belief {
+    const tHit = ownHit(bot, creep, n);
+    const regen = known !== undefined ? known.regen : creep.GetHealthRegen?.() ?? 0;
+    const hp = known !== undefined ? known.hp : creep.GetHealth();
     // Only hits landing at least one server tick before ours are relied on: one landing in the same tick may be
     // applied after ours, and the creep survives our swing. (The margin is not the host's think gap: a hit landing
     // 0.1 s before ours is applied before it however rarely the body is stepped; tying the two together made the
@@ -670,7 +774,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
     // both read a 0.6-1 s horizon 12-30 HP too heavy and swung early (llhscn2, half the swings past 0.6 s missed).
     const relied = math.max(0, tHit - MIN_MARGIN);
     // One scan gives `incomingDps` and `incomingDamage(relied)` both: the rates do not depend on the horizon.
-    const s = scanAttackers(bot, creep, relied);
+    const s = scanAttackers(bot, creep, relied, n);
     const dps = physical(creep, s.dps);
     const between = physical(creep, s.between);
     // The observed loss already includes regen (a negative regen is a drain the model counts below).
@@ -688,7 +792,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         if (r.shift < 0) {
             const h = math.max(0, relied + r.shift);
             reliedUsed = h;
-            believed = hp + regen * h - incomingDamage(bot, creep, h) - math.max(0, h - SEEN_AHEAD) * between - unseen * h;
+            believed = hp + regen * h - physical(creep, scanAttackers(bot, creep, h, n).raw) - math.max(0, h - SEEN_AHEAD) * between - unseen * h;
         } else if (r.shift > 0) {
             believed = visible + regen * r.shift - dps * r.shift;
         }
@@ -700,7 +804,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         hpAtHit: believed,
         relied: reliedUsed,
         // The lowest roll of the damage spread: a swing on the average roll fails about half the borderline creeps.
-        mine: lowestHit(bot, creep, 1 + eps * width),
+        mine: known !== undefined && !withError ? known.mine : lowestHit(bot, creep, n, 1 + eps * width),
         dps,
     };
 }
@@ -709,8 +813,20 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
  * The bot's lowest damage roll on the creep after armour, scaled by `scale` before armour. `believe`'s own damage and
  * `cannotComeDue`'s bound must stay this one expression: the shortcut is exact only while they agree.
  */
-function lowestHit(bot: TaskUnit, creep: TaskCreep, scale: number = 1): number {
-    return physical(creep, (bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) * scale);
+function lowestHit(bot: TaskUnit, creep: TaskCreep, n: Nearby, scale: number = 1): number {
+    const o = ownOf(n, bot);
+    if (o.damage === undefined) {
+        o.damage = bot.GetAttackDamage!();
+        o.variance = bot.GetBaseDamageVariance?.() ?? 0;
+    }
+    return physical(creep, (o.damage - o.variance!) * scale);
+}
+
+/** A creep's HP and regen now, and the bot's lowest-roll hit on it without error: what `believe` reads first. */
+interface CreepNow {
+    hp: number;
+    regen: number;
+    mine: number;
 }
 
 /** Swing now: the creep survives everyone else until our hit lands, and (as believed) our hit then kills it. */
@@ -817,27 +933,28 @@ export interface LaneTargetsOpts {
  * hit is then at least its HP now), and its HP above the bot's lowest-roll hit (the belief's `mine` without error), so
  * the margin is positive with nothing to close it. Reads nothing that holds state (no wind-up record, no roll).
  */
-function cannotComeDue(bot: TaskUnit, c: TaskCreep): boolean {
-    if ((c.GetHealthRegen?.() ?? 0) < 0) return false;
+function cannotComeDue(bot: TaskUnit, c: TaskCreep, n: Nearby, cur: CreepNow): boolean {
+    if (cur.regen < 0) return false;
     // The belief adds and subtracts regen terms; within float rounding of the hit, leave the answer to it.
-    if (c.GetHealth() - lowestHit(bot, c) <= 1e-6) return false;
-    for (const a of attackersByTarget(bot, nearby(bot)).get(c as TaskAttacker) ?? []) {
+    if (cur.hp - cur.mine <= 1e-6) return false;
+    for (const a of attackersByTarget(bot, n).get(c as TaskAttacker) ?? []) {
         if (a !== (c as TaskAttacker)) return false;
     }
-    return flightsAt(bot, c, false).flights.length === 0;
+    return flightsAt(bot, c, false, n).flights.length === 0;
 }
 
 /**
  * Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
  * others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
  */
-function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number, number] | undefined {
-    if (cannotComeDue(bot, c)) return undefined;
-    const b = believe(bot, c, false);
+function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number, n: Nearby): [number, number, number] | undefined {
+    const cur: CreepNow = { hp: c.GetHealth(), regen: c.GetHealthRegen?.() ?? 0, mine: lowestHit(bot, c, n) };
+    if (cannotComeDue(bot, c, n, cur)) return undefined;
+    const b = believe(bot, c, false, 0, n, cur);
     if (!b.survives) return undefined;
-    const walk = math.max(0, dist(bot.GetLocation(), c.GetLocation()) - bot.GetAttackRange()) / walkSpeed;
+    const walk = math.max(0, dist(locOf(n, bot)!, locOf(n, c)!) - ownRange(bot, n)) / walkSpeed;
     const margin = b.hpAtHit - b.mine;
-    const dps = b.dps + math.max(0, -(c.GetHealthRegen?.() ?? 0));
+    const dps = b.dps + math.max(0, -cur.regen);
     const dies = dps > 0 ? b.tHit + b.hpAtHit / dps : math.huge;
     if (margin <= 0) return [0, walk, dies];
     if (dps <= 0) return undefined;
@@ -857,20 +974,20 @@ export function laneTargets(bot: TaskUnit, opts: LaneTargetsOpts = {}): LaneTarg
         return out;
     }
     const adapter = get()!;
-    const radius = opts.radius ?? math.max(800, bot.GetAttackRange() + 400);
+    const n = nearby(bot);
+    const radius = opts.radius ?? math.max(800, ownRange(bot, n) + 400);
     const within = opts.within ?? 1;
     const speed = math.max(100, bot.GetCurrentMovementSpeed?.() ?? 300);
-    const here = bot.GetLocation();
-    const n = nearby(bot);
+    const here = locOf(n, bot)!;
     const consider = (c: TaskCreep, kind: "lasthit" | "deny"): void => {
-        if (gone(c) || dist(here, c.GetLocation()) > radius) return;
+        if (listedGone(n, c) || dist(here, locOf(n, c)!) > radius) return;
         if (kind === "lasthit" && adapter.lastHitFilter !== undefined && !adapter.lastHitFilter(bot, c)) return;
-        const e = etaOf(bot, c, speed);
+        const e = etaOf(bot, c, speed, n);
         if (e === undefined || e[0] - e[1] > within) return;
         out.push({ creep: c, kind, eta: math.max(e[0], e[1]), due: e[0], walk: e[1], dies: e[2], ranged: isRangedCreep(c) });
     };
-    if (opts.lastHit !== false) for (const c of n.enemyCreeps) consider(c, "lasthit");
-    if (opts.deny !== false && bot.GetDenies !== undefined) for (const c of n.allyCreeps) consider(c, "deny");
+    if (opts.lastHit !== false) for (const c of laneCreeps(bot, n, true)) consider(c, "lasthit");
+    if (opts.deny !== false && bot.GetDenies !== undefined) for (const c of laneCreeps(bot, n, false)) consider(c, "deny");
     return out;
 }
 
@@ -903,7 +1020,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         const n = nearby(bot);
         let candidates = 0;
         const allowed: TaskCreep[] = [];
-        for (const c of mode === "deny" ? n.allyCreeps : n.enemyCreeps) {
+        for (const c of laneCreeps(bot, n, mode !== "deny")) {
             if (!gone(c) && dist(here, c.GetLocation()) <= radius) {
                 candidates++;
                 if (mode === "deny" || adapter.lastHitFilter === undefined || adapter.lastHitFilter(bot, c)) {
@@ -1004,7 +1121,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                     // (seconds from now).
                     const ew = enemyHeroWindups(bot, creep, b.relied);
                     if (ew.n > 0) {
-                        diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, ownCommitTime(bot, creep));
+                        diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, ownCommitTime(bot, creep, nearby(bot)));
                     }
                     bot.Action_AttackUnit(creep, true);
                     break;

@@ -152,7 +152,7 @@ on the creep: UNVERIFIED in-game, as `hpForecast`'s repeats), not with its rate 
 pre-hit 05/11/2026). With the adapter's `attackClock` the verb does not order a
 swing while the attack cooldown has more than the frame margin left (0.034 s, or 1.2x the observed frame time up to
 0.3 s: unseen future hits would land inside the longer horizon). `deny` also requires the creep below 50% max HP.
-Turn time is not modelled; tower "tap first" tricks are the body's.
+The own hit time includes the turn to face the creep (`turnTime`); tower "tap first" tricks are the body's.
 
 **Outcome after the swing.** `GetLastAttackTime` rises when the attack fires (a ranged hero's projectile
 leaving), so the verb judges by the predicted landing time `swingAt + tHit`: last-hit/deny count up -> ok; creep
