@@ -21,7 +21,7 @@ const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 const start = (t, cid, gw = 0.5) => line(t, `job pid=2 job=creep phase=start why=trigger host=17${cid === undefined ? '' : ` cid=${cid} gw=${gw} gd=1.2 rng=550`}`);
 const end = (t, why, o = {}) => line(t, `job pid=2 job=creep phase=end why=${why} host=17` + (o.cut ? ` cut=${o.cut}` : '') +
     (o.old ? '' : ` cid=${o.cid} tin=${o.tin ?? -1}${o.sw === undefined ? '' : ` sw=${o.sw}`} hp0=${o.hp0 ?? 600} hp1=${o.hp1 ?? 600} msg="w=1.00 why=range d=40"`));
-const death = (t, cid, d, tg = 0) => line(t, `creep_death team=2 kind=ranged x=0 y=0 hp=0.05 by=none tw=0 cid=${cid} p2d=${d} p2r=550 p2t=${tg} p2a=0.3`);
+const death = (t, cid, d, tg = 0, by = 'none') => line(t, `creep_death team=2 kind=ranged x=0 y=0 hp=0.05 by=${by} tw=0 cid=${cid} p2d=${d} p2r=550 p2t=${tg} p2a=0.3`);
 const snap = (t, o = {}) => line(t, `snap pid=2 x=0 y=0 alive=1 hp=${o.hp ?? 90} hv=${o.hv ?? 540} ar=550 deaths=${o.deaths ?? 0}`);
 
 function gameLines() {
@@ -42,11 +42,11 @@ function gameLines() {
     return out;
 }
 
-function load() {
+function load(lines = gameLines(), name = 'ca_A_on_1') {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-creep-attempts-'));
-    const file = path.join(dir, '2026-11-25T00-00-00-ca_A_on_1.log');
+    const file = path.join(dir, `2026-11-25T00-00-00-${name}.log`);
     const at = l => Number(l.match(/t=(\S+)/)[1]);
-    fs.writeFileSync(file, gameLines().sort((x, y) => at(x) - at(y)).join('\n') + '\n');
+    fs.writeFileSync(file, lines.sort((x, y) => at(x) - at(y)).join('\n') + '\n');
     const store = new Store(':memory:');
     store.ingest(file);
     store.refreshViews();
@@ -86,4 +86,49 @@ test('creep_attempts: per game, class, cutting mode and arrival', () => {
         ['lost_out', null, null, 1, 0],
         ['lost_nodeath', null, null, 1, 1],
     ]);
+});
+
+// Who was paid for the creep, joined by its cid through unit-life, whatever the row's own outcome says. Radiant sniper pid 2 and
+// Radiant pos 4 support pid 3 (the taker's `by` is the hero's pid, `deny` when the owner denied it).
+// F1 100  ok, last hit by pid 2                            self_row
+// F2 120  taken_by_other, yet last hit by pid 2            self_other
+// F3 140  taken_by_other, last hit by the pos 4 teammate   mate
+// F4 160  denied, the enemy denied it                      deny
+// F5 180  a creep took it (by none)                        unpaid
+// F6 200  timeout, its death 9 s past the end              nodeath
+// F7 700  past 10:00, last hit by pid 2 after a walk of 0  self_other
+function paidLines() {
+    const out = [line(-90, 'bot pid=2 hero=sniper team=2 pos=2'), line(-90, 'bot pid=3 hero=lion team=2 pos=4')];
+    for (let t = 90; t <= 710; t += 1) out.push(snap(t));
+    const row = (t, cid, why, by, o = {}) => out.push(start(t, cid, o.gw), end(t + 1, why, { cid, tin: 0.3, sw: o.sw }), ...(by ? [death(t + 0.9, cid, 500, 0, by)] : []));
+    row(100, 1, 'ok', '2', { sw: 1 });
+    row(120, 2, 'taken_by_other', '2', { sw: 0 });
+    row(140, 3, 'taken_by_other', '3', { sw: 0 });
+    row(160, 4, 'denied', 'deny', { sw: 0 });
+    row(180, 5, 'taken_by_other', 'none', { sw: 0 });
+    row(200, 6, 'timeout', undefined, { sw: 0 });
+    out.push(death(210, 6, 500, 0, '2'));
+    row(700, 7, 'timeout', '2', { gw: 0, sw: 0 });
+    return out;
+}
+
+test('creep_attempt_rows: fate says who was paid, by cid, not by the row\'s own label', () => {
+    const store = load(paidLines(), 'cp_A_on_1');
+    const rows = store.query(sqlOf('creep_attempt_rows'), { like: '%cp_A_on_1%' }).map(r => ({ ...r }));
+    assert.deepStrictEqual(rows.map(r => [r.cid, r.why, r.paid, r.mpos, r.walkin, r.fate]), [
+        [1, 'ok', 'self', null, 1, 'self_row'],
+        [2, 'taken_by_other', 'self', null, 1, 'self_other'],
+        [3, 'taken_by_other', 'mate', 4, 1, 'mate'],
+        [4, 'denied', 'deny', null, 1, 'deny'],
+        [5, 'taken_by_other', 'other', null, 1, 'unpaid'],
+        [6, 'timeout', null, null, 1, 'nodeath'],
+        [7, 'timeout', 'self', null, 0, 'self_other'],
+    ]);
+});
+
+test('creep_attempts: per-game counts by fate, hero-paid and team-paid', () => {
+    const store = load(paidLines(), 'cp_A_on_1');
+    const rows = store.query(sqlOf('creep_attempts'), { like: '%cp_A_on_1%' }).map(r => ({ ...r }));
+    const sum = k => rows.reduce((a, r) => a + r[k], 0);
+    assert.deepStrictEqual(['self_row', 'self_other', 'mate', 'deny', 'unpaid', 'nodeath', 'hero_paid', 'team_paid'].map(sum), [1, 2, 1, 1, 1, 1, 3, 4]);
 });
