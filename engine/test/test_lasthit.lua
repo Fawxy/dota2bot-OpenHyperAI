@@ -343,6 +343,39 @@ do
         t and string.format("%s %s %s", t.due, t.walk, t.dies))
 end
 
+-- Above our hit with no drain, the creep comes due only from what the attacker index or a projectile shows: a tower on
+-- it (60 per second, unphased: due in (90 - 50) / 60 s), and a projectile in flight whose ranged creep has since
+-- turned away (no attacker left, its 40 lands before our hit: due now).
+do
+    local sim, bot = laneWorld()
+    local c = sim:addCreep{ x = 100, y = 0, hp = 90, team = 3, name = MELEE, passive = true }
+    sim:addTower{ x = 400, y = 0, team = 2, damage = 60, attackPoint = 0.1, autoAttack = true, attackTarget = c, firstSwingAt = 5 }
+    local t = offered(V.laneTargets(bot), c)
+    T.check("targets: a tower on a creep above our hit makes it due", t ~= nil and math.abs(t.due - 40 / 60) < 0.02, t and t.due)
+
+    local sim2, bot2 = laneWorld()
+    local c2 = sim2:addCreep{ x = 100, y = 0, hp = 80, team = 3, name = MELEE, passive = true }
+    local archer = sim2:addCreep{ x = 250, y = 0, team = 2, damage = 40, attackPoint = 0.1, projectileSpeed = 900,
+        autoAttack = true, attackTarget = c2, name = "npc_dota_creep_goodguys_ranged" }
+    while #(sim2.projectiles or {}) == 0 do sim2:step(DT) end
+    archer.attackTarget = nil
+    sim2:step(DT)
+    local t2 = offered(V.laneTargets(bot2), c2)
+    T.check("targets: a projectile in flight with no attacker left makes it due", t2 ~= nil and t2.due == 0, t2 and t2.due)
+end
+
+-- The cut itself: creeps above our hit with nothing on them are answered without the belief, whose own hit time reads
+-- the bot's facing (turnTime); a scan over three of them reads it never.
+do
+    local sim, bot = laneWorld()
+    bot.facing = 0
+    for i = 1, 3 do sim:addCreep{ x = 100, y = 40 * i, hp = 300, team = 3, name = MELEE, passive = true } end
+    local reads = 0
+    bot.GetFacing = function(self) reads = reads + 1; return self.facing end
+    T.eq("targets: idle creeps offered nothing", #V.laneTargets(bot), 0)
+    T.eq("targets: idle creeps skip the belief (facing reads)", reads, 0)
+end
+
 -- Melee standing outside the 520 ring: a creep 600 away due in 1.5 s is worth setting off for (1.5 s walk),
 -- one due in 3 s is not yet; beyond the search radius (800 for melee) nothing is offered.
 do

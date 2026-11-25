@@ -16,11 +16,13 @@ outcomes:       a list of { creep, kind: "lasthit" | "deny", eta, due, walk, die
                 HP at our hit - own damage) / incoming DPS (0 when killable now); walk = into attack range at the current
                 speed; eta = max(due, walk); dies = our hit time + believed HP at our hit / incoming DPS, when the others
                 kill it at their current DPS (math.huge with no one on it). All exact (no skill error).
-timing:         one scan of the creeps within radius; per-frame creep queries are cached per bot.
+timing:         one scan of the creeps within radius; per-frame creep queries are cached per bot. A creep with no attacker
+                on it, no attack projectile of another's in flight at it, no drain and HP above the bot's lowest-roll hit
+                is left out before the belief is read (it could not come due; the answer is the belief's).
 interruption:   n/a (a query).
 skill:          none (exact prediction; lastHit/deny draw Skill error when they swing).
 telemetry:      none (laneFarm's caller logs ev=lh per attempt).
-fixtures:       engine test_lasthit "targets:" cases (due/walk/dies: "melee due, walk and dies", "far creep due now", "targets: neutral" (dies and due with a neutral on our creep)); test_lane "no pick"; bot test_lane_pick, test_states_laning_body.
+fixtures:       engine test_lasthit "targets:" cases (due/walk/dies: "melee due, walk and dies", "far creep due now", "targets: neutral" (dies and due with a neutral on our creep), "targets: a tower on a creep above our hit", "targets: a projectile in flight with no attacker left"); test_lane "no pick"; bot test_lane_pick, test_states_laning_body.
 evidence:       none (radius and within are taste; the eta maths is the lastHit fact's).
 consumers:      engine laneFarm (pick receives this list; without pick, laneFarm only holds its spot); bot states/laning
                 via states/lane_pick Choose (skips a creep with walk + ARRIVE_SLACK >= dies); slice 5's core last-hit choice (docs/team/ROADMAP.md row 5).

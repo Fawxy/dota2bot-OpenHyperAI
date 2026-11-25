@@ -695,8 +695,16 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         hpAtHit: believed,
         relied: reliedUsed,
         // The lowest roll of the damage spread: a swing on the average roll fails about half the borderline creeps.
-        mine: physical(creep, (bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) * (1 + eps * width)),
+        mine: lowestHit(bot, creep, 1 + eps * width),
     };
+}
+
+/**
+ * The bot's lowest damage roll on the creep after armour, scaled by `scale` before armour. `believe`'s own damage and
+ * `cannotComeDue`'s bound must stay this one expression: the shortcut is exact only while they agree.
+ */
+function lowestHit(bot: TaskUnit, creep: TaskCreep, scale: number = 1): number {
+    return physical(creep, (bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) * scale);
 }
 
 /** Swing now: the creep survives everyone else until our hit lands, and (as believed) our hit then kills it. */
@@ -798,10 +806,27 @@ export interface LaneTargetsOpts {
 }
 
 /**
+ * True only where `etaOf`'s full belief answers undefined anyway, read without it: no attacker in the index on the creep
+ * and no attack projectile of another's in flight at it (incoming DPS 0), no drain (regen >= 0: the believed HP at our
+ * hit is then at least its HP now), and its HP above the bot's lowest-roll hit (the belief's `mine` without error), so
+ * the margin is positive with nothing to close it. Reads nothing that holds state (no wind-up record, no roll).
+ */
+function cannotComeDue(bot: TaskUnit, c: TaskCreep): boolean {
+    if ((c.GetHealthRegen?.() ?? 0) < 0) return false;
+    // The belief adds and subtracts regen terms; within float rounding of the hit, leave the answer to it.
+    if (c.GetHealth() - lowestHit(bot, c) <= 1e-6) return false;
+    for (const a of attackersByTarget(bot, nearby(bot)).get(c as TaskAttacker) ?? []) {
+        if (a !== (c as TaskAttacker)) return false;
+    }
+    return flightsAt(bot, c, false).flights.length === 0;
+}
+
+/**
  * Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
  * others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
  */
 function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number, number] | undefined {
+    if (cannotComeDue(bot, c)) return undefined;
     const b = believe(bot, c, false);
     if (!b.survives) return undefined;
     const walk = math.max(0, dist(bot.GetLocation(), c.GetLocation()) - bot.GetAttackRange()) / walkSpeed;
