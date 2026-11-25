@@ -46,6 +46,7 @@ local RunePlan = require(GetScriptDirectory().."/FunLib/humaniser/rune_plan")
 local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
+local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
@@ -71,6 +72,7 @@ ____exports.RunePlan = RunePlan
 ____exports.Plays = Plays
 ____exports.PullJob = PullJob
 ____exports.RuneDetour = RuneDetour
+____exports.CreepOffer = CreepOffer
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
@@ -135,6 +137,7 @@ local steps = {
     pullShadow = PullJob.Shadow,
     stackShadow = StackJob.Shadow,
     runeDetourShadow = RuneDetour.Shadow,
+    creepOfferShadow = CreepOffer.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick,
     overlay = drawOverlay
@@ -198,6 +201,7 @@ local function tick(bot)
     pcall(steps.pullShadow, bot)
     pcall(steps.stackShadow, bot)
     pcall(steps.runeDetourShadow, bot)
+    pcall(steps.creepOfferShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)

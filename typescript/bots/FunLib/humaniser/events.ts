@@ -2834,7 +2834,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, always `src=shadow go=0 why=off`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -2860,6 +2860,58 @@ export const EVENTS = {
         ex: "num",
         /** `kind=rune_detour`: the distance to the rune at that read. */
         dr: "num",
+        /** `kind=creep`: the creep's id (`Telemetry.CreepId`, as on `creep_death` and `unit_seen`). */
+        cid: "num",
+        /** `kind=creep`: the creep's kind, `m` melee, `r` ranged, `s` siege, `f` flag (`LaneRead.CreepKind`). */
+        ck: "str",
+        /** `kind=creep`: `t` their creep (a last hit), `o` ours (a deny). */
+        who: "str",
+        /** `kind=creep`: seconds from `slot` to arriving first being possible; absent when it never was. */
+        wo: "num",
+        /** `kind=creep`: seconds arriving stayed possible, first read to last read where it was; absent when it never was. */
+        wl: "num",
+        /** `kind=creep`: the engine's seconds to walk into attack range. */
+        walk: "num",
+        /** `kind=creep`: the engine's seconds until a swing ordered then is due. */
+        due: "num",
+        /** `kind=creep`: the engine's seconds until the creep dies to the others' damage; -1 for never. */
+        dies: "num",
+        /** `kind=creep`: `dies` less the walk and the swing's slack (`LaneOffers.ARRIVE_SLACK`); above 0 is on time; read as 99 at most. */
+        slk: "num",
+        /** `kind=creep`: the hero's HP share (0 to 1). */
+        hpp: "num",
+        /** `kind=creep`: the hero's active mode's name. */
+        mode: "str",
+        /** `kind=creep`: the creep's HP. */
+        crhp: "num",
+        /** `kind=creep`: other targets in the hero's reach now (walk 0) that come due before the hero would be back (twice the walk plus the swing's slack). */
+        g2: "num",
+        /** `kind=creep`: of `g2`, the ranged ones. */
+        g2r: "num",
+        /** `kind=creep`: their lane creeps within acquisition range of the stand spot (the point at attack range from the creep on the hero's line to it; the hero's own place when in range). */
+        pc: "num",
+        /** `kind=creep`: their summed damage a second. */
+        pd: "num",
+        /** `kind=creep`: 1 when the stand spot is inside an enemy tower's attack range. */
+        ptw: "num",
+        /** `kind=creep`: visible enemy heroes whose attack range (and hulls) covers the stand spot. */
+        eh: "num",
+        /** `kind=creep`: the longest, among those, of the seconds the straight walk to the stand spot spends inside that hero's range (the hero taken as standing still). */
+        exs: "num",
+        /** `kind=creep`: every visible enemy hero, `pid:distance to the stand spot:attack range:hit damage:seconds an attack:exposure seconds`, joined by `;`. */
+        en: "str",
+        /** `kind=creep`: whose hit the lane read's forecast says kills the creep: `me`, `mate`, `foe`, `creep`, `tower` or `none` (nothing in the horizon). */
+        kb: "str",
+        /** `kind=creep`: seconds until that hit lands. */
+        kt: "num",
+        /** `kind=creep`: the hero's hit damage. */
+        md: "num",
+        /** `kind=creep`: the highest hit damage among visible enemy heroes within their own attack range of the creep. */
+        ed: "num",
+        /** `kind=creep`: how many such enemy heroes. */
+        ein: "num",
+        /** `kind=creep`: 1 when the hero's attack target was this creep at any read while it was offered (stock was on it). */
+        atk: "num",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */
