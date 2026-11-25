@@ -233,6 +233,11 @@ export function LetGo(bot: Unit): boolean {
     return stateOf(bot).letAt !== undefined;
 }
 
+/** The row that held this hero at its last farm desire round, if any (the overlay). */
+export function Held(bot: Unit): Row | undefined {
+    return heroes[bot.GetPlayerID()]?.held;
+}
+
 /** Tests: forget every hero. */
 export function Reset(): void {
     for (const [k] of pairs(heroes)) heroes[k] = undefined as any;

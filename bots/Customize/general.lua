@@ -130,7 +130,7 @@ Customize.ThinkLess = 1;
 -- Enable = false turns all of it off but the logging; defaults in FunLib/humaniser/config.lua.
 Customize.Humaniser = {
     Enable = true,
-    -- Draws per-bot debug text on screen and enables HDebug.Log output. Requires sv_cheats 1 to see draws.
+    -- Enables HDebug.Log output and adds competing desires to each hero's overlay line (Overrides.Label; sv_cheats 1 to see draws).
     Debug = false,
     -- Our per-frame Tick runs its steps on every TickEvery-th frame (3 = ten times a game second); the few steps that
     -- need every frame still run on the others. 1 = every step every frame.
@@ -200,7 +200,9 @@ Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false
 -- scenario and drill games only; drill stack implies it).
 -- PullCamp (camp type, "" = off): the pull takes its lane's first pull camp of this type, not the first (a rig's knob: "large" is the
 -- hard camp).
-Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", PullCamp = "" }
+-- Label ("" = off): the run's label, written by dotactl every turn (--no-overlay leaves it out); while set, the on-screen
+-- overlay (humaniser/overlay.ts) draws the label, each team's Ours switches and each hero's job or mode. Draws only.
+Customize.Overrides = { ClockOffset = 0, RoleByHero = true, Drill = "", PullCamp = "", Label = "" }
 
 -- Per-turn overrides written by dotactl (--set / --scenario): Customize/override.lua returns
 -- { ["Ours.Sustain"] = false, ... }. Loaded last so it wins; a missing file is the normal case.
