@@ -1,8 +1,10 @@
 /**
- * The lane creep offer as a shadow (no-creep-unpaid proposal s4a; slice oha-creep-offer). No row, no switch, no order: for
- * each hero `states/trip_table` lets act on a `creep` row it keeps one opportunity per lane creep the engine's `laneTargets`
+ * The lane creep offer (no-creep-unpaid proposal s4a; slice oha-creep-offer), the read behind the creep row. Orders nothing:
+ * for each hero `states/trip_table` lets act on a `creep` row it keeps one opportunity per lane creep the engine's `laneTargets`
  * offers (last hits and denies, every kind), answers the offer's three questions on it (`offer.ts`) and writes one
- * `ev=choice kind=creep src=shadow go=0 why=off` line when the creep leaves the hero's nearby lane creep lists.
+ * `ev=choice kind=creep` line when the creep leaves the hero's nearby lane creep lists: `src=shadow go=0 why=off` unless the
+ * row (`creep_row.ts`, handed in by index.ts through SetRow so this read imports no row) noted a decision on it, then
+ * `src=own` with the row's `go` and `why`.
  *
  * The answers are kept as they stood when `Arrive` first said ok, else at the largest slack seen (`want` says which).
  * Everything the line needs is stored while the creep is listed: a handle that is not in this tick's lists is only a table
@@ -69,6 +71,8 @@ interface Snap {
     /** The highest hit among visible enemy heroes within their own range of the creep, and how many are. */
     ed: number;
     ein: number;
+    /** The creep is inside one of our towers' attack range. */
+    otw: boolean;
 }
 
 interface Opp {
@@ -81,6 +85,37 @@ interface Opp {
     okTo?: number;
     snap: Snap;
     atk: boolean;
+    /** Set by the row (Candidate.note): it started an attempt on this creep, the seconds from `first` to that start, and the walk then. */
+    go?: boolean;
+    gat?: number;
+    gw?: number;
+    /** The row's latest reason for not going; undefined while the row has said nothing (the line then reads `off`). */
+    why?: string;
+}
+
+/**
+ * One creep offered to the hero at this read, handed to the row. `creep` is listed this read, so its handle may be called
+ * now. `facts` reads the offer's answers afresh (once a read); `note` records the row's decision for the line.
+ */
+export interface Candidate {
+    t: Lib.Verbs.LaneTarget;
+    creep: Unit;
+    cid: number;
+    ck: string;
+    arrive: Offer.Arrival;
+    facts(this: void): Snap;
+    note(this: void, go: boolean, why?: string): void;
+}
+
+export type RowHook = (this: void, bot: Unit, cands: Candidate[]) => void;
+let rowHook: RowHook | undefined;
+/** Whether the row wants the read for this hero with telemetry off (the read itself writes lines only with telemetry on). */
+let rowWants: ((this: void, bot: Unit) => boolean) | undefined;
+
+/** index.ts: the row's decision, asked at every read with the hero's candidates. */
+export function SetRow(hook: RowHook | undefined, wants?: (this: void, bot: Unit) => boolean): void {
+    rowHook = hook;
+    rowWants = wants;
 }
 
 /** pid -> the read interval the hero last read in. */
@@ -133,10 +168,10 @@ function line(bot: Unit, o: Opp): void {
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "creep"],
-        ["go", 0],
+        ["go", o.go === true ? 1 : 0],
         ["want", want ? 1 : 0],
-        ["why", "off"],
-        ["src", "shadow"],
+        ["why", o.go === true ? undefined : o.why ?? "off"],
+        ["src", o.go === true || o.why !== undefined ? "own" : "shadow"],
         ["lane", o.lane],
         ["slot", o.first],
         ["cid", Telemetry.CreepId(o.creep)],
@@ -165,6 +200,9 @@ function line(bot: Unit, o: Opp): void {
         ["ed", math.floor(s.ed)],
         ["ein", s.ein],
         ["atk", o.atk ? 1 : 0],
+        ["otw", s.otw ? 1 : 0],
+        ["gat", o.gat !== undefined ? r1(o.gat) : undefined],
+        ["gw", o.gw !== undefined ? r2(o.gw) : undefined],
     ]);
 }
 
@@ -208,6 +246,8 @@ interface Frame {
     reach: number;
     enemyCreeps: Unit[];
     towers?: Offer.PathTower[];
+    /** Our towers, `reach` their attack range plus the tower's hull (the creep's hull is added per creep). */
+    ownTowers?: Offer.PathTower[];
     creeps?: Offer.PathCreep[];
     enemies?: Offer.PathEnemy[];
 }
@@ -221,6 +261,18 @@ function towersOf(bot: Unit, f: Frame): Offer.PathTower[] {
         out.push({ x: at.x, y: at.y, reach: t.GetAttackRange() + t.GetBoundingRadius() + f.hull });
     }
     f.towers = out;
+    return out;
+}
+
+function ownTowersOf(bot: Unit, f: Frame): Offer.PathTower[] {
+    if (f.ownTowers !== undefined) return f.ownTowers;
+    const out: Offer.PathTower[] = [];
+    for (const t of bot.GetNearbyTowers(SETTINGS.TowerRadius, false)) {
+        const at = t.GetLocation();
+        if (at === null || at === undefined) continue;
+        out.push({ x: at.x, y: at.y, reach: t.GetAttackRange() + t.GetBoundingRadius() });
+    }
+    f.ownTowers = out;
     return out;
 }
 
@@ -278,6 +330,13 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         if (e.dmg > ed) ed = e.dmg;
     }
     const [kb, kt] = parts!.race(bot, creep);
+    let otw = false;
+    for (const tw of ownTowersOf(bot, f)) {
+        if (dist(tw, at) <= tw.reach + hull) {
+            otw = true;
+            break;
+        }
+    }
     return {
         walk: t.walk,
         due: t.due,
@@ -293,6 +352,7 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         md: bot.GetAttackDamage(),
         ed,
         ein,
+        otw,
     };
 }
 
@@ -319,7 +379,7 @@ function partsOf(): Parts {
  * ordered.
  */
 export function Shadow(bot: Unit): void {
-    if (!Telemetry.IsEnabled()) return;
+    if (!Telemetry.IsEnabled() && (rowWants === undefined || !rowWants(bot))) return;
     const pid = bot.GetPlayerID();
     if (!due(pid, DotaTime()) || !MayOffer(bot)) return;
     if (!bot.IsAlive() || Drill.Held(bot) || !LaneConfig.InLaningPhase()) {
@@ -352,6 +412,7 @@ export function Shadow(bot: Unit): void {
     const f: Frame = { hero: { x: loc.x, y: loc.y }, speed: math.max(100, bot.GetCurrentMovementSpeed()), hull: bot.GetBoundingRadius(), reach: bot.GetAttackRange() + bot.GetBoundingRadius(), enemyCreeps: theirs };
     const atkTarget = bot.GetAttackTarget();
     const slot = math.floor(now * 10) / 10;
+    const cands: Candidate[] = [];
 
     for (const t of targets) {
         const creep = t.creep as unknown as Unit;
@@ -384,5 +445,35 @@ export function Shadow(bot: Unit): void {
             o.okTo = now;
         }
         if (atkTarget !== null && atkTarget !== undefined && atkTarget === creep) o.atk = true;
+        if (rowHook !== undefined) cands.push(candidate(bot, f, targets, t, creep, cid, o, a, now));
     }
+    if (rowHook !== undefined) rowHook(bot, cands);
+}
+
+function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.Verbs.LaneTarget, creep: Unit, cid: number, o: Opp, a: Offer.Arrival, now: number): Candidate {
+    let fresh: Snap | undefined;
+    return {
+        t,
+        creep,
+        cid,
+        ck: o.ck,
+        arrive: a,
+        facts: () => {
+            if (fresh === undefined) {
+                const others: Offer.Other[] = [];
+                for (const x of targets) if (x !== t && x.walk <= 0) others.push({ due: x.due, ranged: x.ranged });
+                fresh = partsOf().snapshot(bot, f, t, a.slack, others);
+            }
+            return fresh;
+        },
+        note: (go: boolean, why?: string) => {
+            if (o.go === true) return;
+            if (go) {
+                o.go = true;
+                o.gat = now - o.first;
+                o.gw = t.walk;
+                o.why = undefined;
+            } else o.why = why;
+        },
+    };
 }

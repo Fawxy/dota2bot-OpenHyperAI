@@ -7,7 +7,8 @@
  * - Ours.DoubleStack gates position 4's stack (stack_job Applies); the cell is the rank once it is on.
  * - The pull is the decider's row, not a chooser job: its row here says only which positions pull (one puller per lane is
  *   chosen in pull_job). Ours.RuneRotation and the other job switches gate their jobs in code. None changes a cell.
- * - The creep offer (creep_offer, a logging shadow for now) is no chooser job: its row says only which positions it reads.
+ * - The creep offer (creep_offer) and its row (creep_row, Ours.LaneCreeps) are no chooser job: their row says only which
+ *   positions the read covers and the row lets act.
  * - A job's own situation (a claim open, a window due) decides whether it wants the hero now; the table only orders the
  *   jobs that apply.
  */
