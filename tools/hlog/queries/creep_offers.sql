@@ -13,7 +13,7 @@
 -- wo, wl, walk, due, dies, slk, hpp, mode, crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk, hh, sh, ch, ra, enh (the line's fields, kind=creep; the heights are `GetHeightLevel` of the hero, the stand spot and the creep, enh `pid:level;` in en's order, NULL on logs before the heights),
 -- matched (1 when a death is joined), src (cid or owner), dt (death t), how, paid, by_pid (creep_paid_rows's, read from the hero's team),
 -- mine (1 when this hero took it: a last hit on theirs, a deny on ours), inrange (walk = 0), outdmg (ein > 0 and ed > md), covered
--- (eh > 0), up (1 when the stand spot is lower than the creep, 0 when level or above, NULL without heights), proj (1 when the hero's attack range ra is above 320, where the engine reads a projectile: engine/src/lasthit.ts RANGED_ABOVE), snap (the time of the answers: slot + wo for want 1, NULL for want 0).
+-- (eh > 0), up (1 when the stand spot is lower than the creep, 0 when level or above, NULL without heights), proj (NULL on logs from before `ra` was added; 1 when the hero's attack range ra is above 320, where the engine reads a projectile: engine/src/lasthit.ts RANGED_ABOVE), snap (the time of the answers: slot + wo for want 1, NULL for want 0).
 -- Params: like (a path fragment or run label) or batch (the exact run name), one is required; from, until (default 0 and 600; the
 -- line's t); back, fwd (default 1 and 1); each a comma list, unset for all: ck (m, r, s, f), who (t, o), pid, hero.
 -- A few seconds a game.
