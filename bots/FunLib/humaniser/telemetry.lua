@@ -2031,6 +2031,13 @@ local function trackHero(unit, s, now, slow)
 end
 creepIds = {}
 nextCreepId = 0
+--- The next attempt id of a hero: one counter per player id, so an id is unique per hero within a game. Allocated once when a decision goes (or a job starts with no decision line of its own) and carried on that attempt's lines as `aid`.
+local attemptIds = {}
+function ____exports.NextAid(pid)
+    local id = (attemptIds[pid] or 0) + 1
+    attemptIds[pid] = id
+    return id
+end
 local creepTracks = {}
 --- A creep that vanishes above this health share left vision; it did not die.
 local DEATH_MAX_HP = 0.5
@@ -2135,28 +2142,28 @@ local function neutralsGone(c, listed, now)
     local out = {}
     for u, rec in pairs(c.lives) do
         do
-            local __continue282
+            local __continue283
             repeat
                 if inList[u] == true then
-                    __continue282 = true
+                    __continue283 = true
                     break
                 end
                 if rec.hidden == true and not due then
-                    __continue282 = true
+                    __continue283 = true
                     break
                 end
                 local ok, alive = pcall(function() return not u:IsNull() and u:IsAlive() end)
                 if ok and alive == true then
                     rec.hidden = true
-                    __continue282 = true
+                    __continue283 = true
                     break
                 end
                 c.lives[u] = nil
                 c.ended[u] = true
                 out[#out + 1] = {d = {creep = u, seen = rec}, hid = rec.hidden == true}
-                __continue282 = true
+                __continue283 = true
             until true
-            if not __continue282 then
+            if not __continue283 then
                 break
             end
         end
@@ -2169,11 +2176,11 @@ end
 local function registerNeutrals(c, team, listed)
     for ____, u in ipairs(listed) do
         do
-            local __continue288
+            local __continue289
             repeat
                 local seen = c.neutrals[u]
                 if seen == nil then
-                    __continue288 = true
+                    __continue289 = true
                     break
                 end
                 local rec = c.lives[u]
@@ -2182,17 +2189,17 @@ local function registerNeutrals(c, team, listed)
                     rec.y = seen.y
                     rec.hp = seen.hp
                     rec.hidden = false
-                    __continue288 = true
+                    __continue289 = true
                     break
                 end
                 if c.fixtures[u] == true or c.ended[u] == true then
-                    __continue288 = true
+                    __continue289 = true
                     break
                 end
                 local name = u:GetUnitName()
                 if not isNeutralCreep(name) then
                     c.fixtures[u] = true
-                    __continue288 = true
+                    __continue289 = true
                     break
                 end
                 local campIdx
@@ -2224,9 +2231,9 @@ local function registerNeutrals(c, team, listed)
                     fields[#fields + 1] = {"camp", campIdx}
                 end
                 ____exports.Event("unit_seen", fields)
-                __continue288 = true
+                __continue289 = true
             until true
-            if not __continue288 then
+            if not __continue289 then
                 break
             end
         end
@@ -2270,10 +2277,10 @@ local function trackCreepDeaths(bot, now)
     local live = {}
     for ____, u in ipairs(GetUnitList(UnitType.EnemyCreeps) or ({})) do
         do
-            local __continue301
+            local __continue302
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue301 = true
+                    __continue302 = true
                     break
                 end
                 alive[#alive + 1] = u
@@ -2294,9 +2301,9 @@ local function trackCreepDeaths(bot, now)
                         }
                     )
                 end
-                __continue301 = true
+                __continue302 = true
             until true
-            if not __continue301 then
+            if not __continue302 then
                 break
             end
         end
@@ -2304,15 +2311,15 @@ local function trackCreepDeaths(bot, now)
     local deaths = {}
     for creep, seen in pairs(c.creeps) do
         do
-            local __continue305
+            local __continue306
             repeat
                 if live[creep] == true then
-                    __continue305 = true
+                    __continue306 = true
                     break
                 end
                 c.creeps[creep] = nil
                 if seen.hp > DEATH_MAX_HP then
-                    __continue305 = true
+                    __continue306 = true
                     break
                 end
                 local d = {creep = creep, seen = seen}
@@ -2322,9 +2329,9 @@ local function trackCreepDeaths(bot, now)
                         break
                     end
                 end
-                __continue305 = true
+                __continue306 = true
             until true
-            if not __continue305 then
+            if not __continue306 then
                 break
             end
         end
@@ -2335,10 +2342,10 @@ local function trackCreepDeaths(bot, now)
         local neutralAlive = {}
         for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps) or ({})) do
             do
-                local __continue312
+                local __continue313
                 repeat
                     if u == nil or u == nil or not u:IsAlive() then
-                        __continue312 = true
+                        __continue313 = true
                         break
                     end
                     neutralList[#neutralList + 1] = u
@@ -2359,24 +2366,24 @@ local function trackCreepDeaths(bot, now)
                             }
                         )
                     end
-                    __continue312 = true
+                    __continue313 = true
                 until true
-                if not __continue312 then
+                if not __continue313 then
                     break
                 end
             end
         end
         for creep, seen in pairs(c.neutrals) do
             do
-                local __continue316
+                local __continue317
                 repeat
                     if neutralAlive[creep] == true then
-                        __continue316 = true
+                        __continue317 = true
                         break
                     end
                     c.neutrals[creep] = nil
                     if seen.hp > DEATH_MAX_HP then
-                        __continue316 = true
+                        __continue317 = true
                         break
                     end
                     local d = {creep = creep, seen = seen}
@@ -2386,9 +2393,9 @@ local function trackCreepDeaths(bot, now)
                             break
                         end
                     end
-                    __continue316 = true
+                    __continue317 = true
                 until true
-                if not __continue316 then
+                if not __continue317 then
                     break
                 end
             end
@@ -2429,10 +2436,10 @@ local function trackCreepDeaths(bot, now)
     end
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue328
+            local __continue329
             repeat
                 if e == nil or e == nil or not e:IsAlive() or e:IsIllusion() then
-                    __continue328 = true
+                    __continue329 = true
                     break
                 end
                 local ok, dn = pcall(function() return e:GetDenies() end)
@@ -2444,9 +2451,9 @@ local function trackCreepDeaths(bot, now)
                 if n > 0 then
                     claimDeaths(deaths, e, n, "deny")
                 end
-                __continue328 = true
+                __continue329 = true
             until true
-            if not __continue328 then
+            if not __continue329 then
                 break
             end
         end
@@ -2499,11 +2506,11 @@ local function trackCreepDeaths(bot, now)
             local core = ____value[1]
             local pos = ____value[2]
             do
-                local __continue339
+                local __continue340
                 repeat
                     local dist = deathDistance(core, d)
                     if dist > DEATH_NEAR then
-                        __continue339 = true
+                        __continue340 = true
                         break
                     end
                     local pid = core:GetPlayerID()
@@ -2525,9 +2532,9 @@ local function trackCreepDeaths(bot, now)
                             gameNow - c.attackAt[pid]
                         }
                     end
-                    __continue339 = true
+                    __continue340 = true
                 until true
-                if not __continue339 then
+                if not __continue340 then
                     break
                 end
             end
@@ -2584,20 +2591,20 @@ local function trackCreepDeaths(bot, now)
         local id = 0
         while id <= 10 do
             do
-                local __continue356
+                local __continue357
                 repeat
                     local tower = GetTower(team, id)
                     if tower == nil or tower == nil or not tower:IsAlive() then
-                        __continue356 = true
+                        __continue357 = true
                         break
                     end
                     local target = tower:GetAttackTarget()
                     if target ~= nil and target ~= nil then
                         c.towerOn[target] = true
                     end
-                    __continue356 = true
+                    __continue357 = true
                 until true
-                if not __continue356 then
+                if not __continue357 then
                     break
                 end
             end
@@ -2628,17 +2635,17 @@ local function trackCreepDeaths(bot, now)
     local ownList = {}
     for ____, u in ipairs(allied) do
         do
-            local __continue367
+            local __continue368
             repeat
                 if u == nil or u == nil or not u:IsAlive() then
-                    __continue367 = true
+                    __continue368 = true
                     break
                 end
                 ownList[#ownList + 1] = u
                 ownAlive[u] = true
-                __continue367 = true
+                __continue368 = true
             until true
-            if not __continue367 then
+            if not __continue368 then
                 break
             end
         end
@@ -2648,10 +2655,10 @@ local function trackCreepDeaths(bot, now)
     local repeated = {}
     for creep, seen in pairs(c.own) do
         do
-            local __continue370
+            local __continue371
             repeat
                 if ownAlive[creep] == true then
-                    __continue370 = true
+                    __continue371 = true
                     break
                 end
                 c.own[creep] = nil
@@ -2664,9 +2671,9 @@ local function trackCreepDeaths(bot, now)
                 if seen.hp <= DEATH_MAX_HP then
                     goneLow[#goneLow + 1] = d
                 end
-                __continue370 = true
+                __continue371 = true
             until true
-            if not __continue370 then
+            if not __continue371 then
                 break
             end
         end
@@ -2759,15 +2766,15 @@ local function snapHumans(bot, now)
         local i = 1
         while i <= #players do
             do
-                local __continue387
+                local __continue388
                 repeat
                     if IsPlayerBot(players[i]) then
-                        __continue387 = true
+                        __continue388 = true
                         break
                     end
                     local member = GetTeamMember(i)
                     if member == nil or member == nil then
-                        __continue387 = true
+                        __continue388 = true
                         break
                     end
                     local hs = stateFor(member:GetPlayerID())
@@ -2806,9 +2813,9 @@ local function snapHumans(bot, now)
                         end
                         ____exports.Event("snap", fields)
                     end
-                    __continue387 = true
+                    __continue388 = true
                 until true
-                if not __continue387 then
+                if not __continue388 then
                     break
                 end
             end

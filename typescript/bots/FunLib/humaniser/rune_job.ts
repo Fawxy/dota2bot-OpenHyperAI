@@ -100,6 +100,8 @@ Plays.Define("rune_fight", { base: 0.5, timeout: 15, chases: false, sure: Plays.
 Plays.Define("shrine", { base: 0.4, timeout: 60, chases: false });
 
 interface Trip {
+    /** The attempt id (Telemetry.NextAid), allocated at the job start (a trip has no choice line), carried on the job lines and the `ev=rune_job` line. */
+    aid?: number;
     kind: Kind;
     spawn: number;
     side?: string;
@@ -423,6 +425,7 @@ function jobLine(bot: Unit, t: Trip, phase: string, why: string): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "rune"],
+        ["aid", t.aid],
         ["phase", phase],
         ["why", why],
         ["host", t.host],
@@ -438,6 +441,7 @@ function finish(bot: Unit, t: Trip, r: Lib.Result, label: string | undefined): v
     jobLine(bot, t, "end", why);
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x * 10) / 10 : undefined);
     log(bot, t.kind, t.spawn, [
+        ["aid", t.aid],
         ["res", r.success ? "ok" : "fail"],
         ["why", why],
         ["label", label],
@@ -539,6 +543,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
         handled[pid][key(kind, spawn)] = true;
         gateWhy[pid] = undefined;
         running[pid] = t;
+        t.aid = Telemetry.NextAid(pid);
         jobLine(bot, t, "start", "trigger");
         return true;
     }
@@ -738,6 +743,7 @@ export function MidWants(bot: Unit): boolean {
         }
         handled[pid][k] = true;
         running[pid] = t;
+        t.aid = Telemetry.NextAid(pid);
         jobLine(bot, t, "start", kind === "power" ? "plan" : "trigger");
         return true;
     }

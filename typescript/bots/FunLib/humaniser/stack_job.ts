@@ -134,6 +134,8 @@ export function Minutes(): number[] {
 }
 
 export interface Attempt {
+    /** The attempt id (Telemetry.NextAid), shared by the row's go choice line (the chooser's stack has none), the job lines and the `ev=stack` line. */
+    aid?: number;
     minute: number;
     campIdx: number;
     type: string;
@@ -985,6 +987,8 @@ function jobLine(bot: Unit, a: Attempt, phase: string, why: string): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "stack"],
+        ["aid", a.aid],
+        ["tgt", phase === "start" ? `camp:${a.campIdx}` : undefined],
         ["phase", phase],
         ["why", why],
         ["host", a.host],
@@ -1049,6 +1053,7 @@ function report(bot: Unit, a: Attempt): void {
     }
     if (a.first !== undefined) recordOutcome(a.first.campIdx, a.minute, firstRes(a.first));
     log(bot, a.minute, [
+        ["aid", a.aid],
         ["res", res],
         ["scount", Stacking.StackCount(a.campIdx)],
         ["why", a.why ?? "?"],
@@ -1318,6 +1323,7 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
         prewalk[pid] = undefined;
         gateWhy[pid] = undefined;
         running[pid] = a;
+        a.aid = Telemetry.NextAid(pid);
         jobLine(bot, a, "start", "trigger");
         return true;
     }
@@ -1494,12 +1500,13 @@ function rowSlot(bot: Unit, now: number): RowSlot | undefined {
     return { minute, data, sp, stand, aggroAt, walk };
 }
 
-function rowLine(bot: Unit, slot: RowSlot, go: boolean, want: boolean, why: string | undefined, known: PullJob.CampKnown, src = "own"): void {
+function rowLine(bot: Unit, slot: RowSlot, go: boolean, want: boolean, why: string | undefined, known: PullJob.CampKnown, src = "own", aid?: number): void {
     (rowMinutes[bot.GetPlayerID()] ??= {})[slot.minute] = true;
     rowGate[bot.GetPlayerID()] = undefined;
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "stack"],
+        ["aid", aid],
         ["go", go ? 1 : 0],
         ["want", want ? 1 : 0],
         ["why", why],
@@ -1582,7 +1589,8 @@ function rowApplies(bot: Unit): boolean {
     }
     // Until the outcome read ends: the pulled set stands outside the box, so no look may count the camp.
     PullJob.Hold(slot.sp, (slot.minute + 1) * 60 + SETTINGS.ReadUntil + 1);
-    rowLine(bot, slot, true, true, undefined, known);
+    a.aid = Telemetry.NextAid(pid);
+    rowLine(bot, slot, true, true, undefined, known, "own", a.aid);
     running[pid] = a;
     jobLine(bot, a, "start", "trigger");
     return true;

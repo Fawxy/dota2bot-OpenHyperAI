@@ -1136,6 +1136,7 @@ function report(bot, a)
         bot,
         a.minute,
         {
+            {"aid", a.aid},
             {"res", res},
             {
                 "scount",
@@ -2171,6 +2172,11 @@ local function jobLine(bot, a, phase, why)
                 bot:GetPlayerID()
             },
             {"job", "stack"},
+            {"aid", a.aid},
+            {
+                "tgt",
+                phase == "start" and "camp:" .. tostring(a.campIdx) or nil
+            },
             {"phase", phase},
             {"why", why},
             {"host", a.host},
@@ -2511,6 +2517,7 @@ function ____exports.Wants(bot, blocked, host)
                 prewalk[pid] = nil
                 gateWhy[pid] = nil
                 running[pid] = a
+                a.aid = Telemetry.NextAid(pid)
                 jobLine(bot, a, "start", "trigger")
                 return true
             until true
@@ -2729,7 +2736,7 @@ local function rowSlot(bot, now)
         walk = walk
     }
 end
-local function rowLine(bot, slot, go, want, why, known, src)
+local function rowLine(bot, slot, go, want, why, known, src, aid)
     if src == nil then
         src = "own"
     end
@@ -2747,6 +2754,7 @@ local function rowLine(bot, slot, go, want, why, known, src)
                 bot:GetPlayerID()
             },
             {"kind", "stack"},
+            {"aid", aid},
             {"go", go and 1 or 0},
             {"want", want and 1 or 0},
             {"why", why},
@@ -2910,13 +2918,16 @@ local function rowApplies(bot)
         return false
     end
     PullJob.Hold(slot.sp, (slot.minute + 1) * 60 + ____exports.SETTINGS.ReadUntil + 1)
+    a.aid = Telemetry.NextAid(pid)
     rowLine(
         bot,
         slot,
         true,
         true,
         nil,
-        known
+        known,
+        "own",
+        a.aid
     )
     running[pid] = a
     jobLine(bot, a, "start", "trigger")

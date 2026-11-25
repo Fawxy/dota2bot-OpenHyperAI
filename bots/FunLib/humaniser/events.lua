@@ -830,6 +830,8 @@ ____exports.EVENTS = {
     },
     job = {
         pid = "num",
+        aid = "num",
+        tgt = "str",
         job = "str",
         phase = "str",
         why = "str",
@@ -843,6 +845,7 @@ ____exports.EVENTS = {
     },
     stack = {
         pid = "num",
+        aid = "num",
         min = "num",
         res = "str",
         why = "str",
@@ -1526,6 +1529,7 @@ ____exports.EVENTS = {
     },
     rune_job = {
         pid = "num",
+        aid = "num",
         pos = "num",
         kind = "str",
         spawn = "num",
@@ -1597,6 +1601,7 @@ ____exports.EVENTS = {
     },
     pull_job = {
         pid = "num",
+        aid = "num",
         pos = "num",
         lane = "num",
         camp = "num",
@@ -1678,6 +1683,7 @@ ____exports.EVENTS = {
     },
     choice = {
         pid = "num",
+        aid = "num",
         kind = "str",
         held = "str",
         hs = "str",

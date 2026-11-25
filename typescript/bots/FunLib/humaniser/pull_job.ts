@@ -157,6 +157,8 @@ interface Pull {
     /** The walk's camp read went `one` or `empty` (why, since when); cleared when it reads full again. */
     low?: { why: string; at: number };
     host: number;
+    /** The attempt id (Telemetry.NextAid), shared by the go choice line, the job lines and the `pull_job` line. */
+    aid?: number;
     label?: string;
     hit?: boolean;
     idle?: number;
@@ -619,12 +621,13 @@ function campFields(s: CampState): Telemetry.Fields<"choice" | "pull_job"> {
 }
 
 /** `slot` the plan's hit second, so the line joins its `pull_job` line. */
-function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState, src = "own"): void {
+function choiceLine(bot: Unit, d: Decision, slot: number, go: boolean, why: string | undefined, camp: CampState, src = "own", aid?: number): void {
     const r = d.reading;
     const r1 = (x: number | undefined) => (x !== undefined ? math.floor(x + 0.5) : undefined);
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "pull"],
+        ["aid", aid],
         ["go", go ? 1 : 0],
         ["want", d.want ? 1 : 0],
         ["why", why],
@@ -651,7 +654,9 @@ function jobLine(bot: Unit, p: Pull, phase: string, why: string, cut?: string): 
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "pull"],
+        ["aid", p.aid],
         ["phase", phase],
+        ["tgt", phase === "start" ? `camp:${p.plan.camp.campIdx}` : undefined],
         ["why", why],
         ["host", p.host],
         ...(phase === "end" ? ([["hit", p.hit === true ? 1 : 0]] as Telemetry.Fields<"job">) : []),
@@ -681,6 +686,7 @@ function finish(bot: Unit, p: Pull, end: Lib.Result, label: string | undefined):
     const r1 = (x: number) => math.floor(x * 10) / 10;
     const fields: Telemetry.Fields<"pull_job"> = [
         ["pid", bot.GetPlayerID()],
+        ["aid", p.aid],
         ["pos", LaneConfig.PositionOf(bot)],
         ["lane", bot.GetAssignedLane()],
         ["camp", p.plan.camp.campIdx],
@@ -1192,10 +1198,10 @@ function rowApplies(bot: Unit): boolean {
     const { p, timer, hitAt, walk, d } = due;
     const camp = CampStateOf(p.spawner);
     camp.known = Known(p.spawner);
-    const done = (go: boolean, why: string | undefined) => {
+    const done = (go: boolean, why: string | undefined, aid?: number) => {
         handled[pid] = p.slot;
         gateWhy[pid] = undefined;
-        choiceLine(bot, d, p.slot, go, why, camp);
+        choiceLine(bot, d, p.slot, go, why, camp, "own", aid);
     };
     if (!d.want) {
         done(false, d.drill === true ? "drill" : d.reading === undefined ? "no-read" : "lane");
@@ -1229,7 +1235,8 @@ function rowApplies(bot: Unit): boolean {
         done(false, "refused");
         return false;
     }
-    done(true, undefined);
+    pull.aid = Telemetry.NextAid(pid);
+    done(true, undefined, pull.aid);
     running[pid] = pull;
     jobLine(bot, pull, "start", "trigger");
     return true;

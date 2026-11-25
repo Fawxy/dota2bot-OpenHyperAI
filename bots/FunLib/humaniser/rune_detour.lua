@@ -139,7 +139,7 @@ local function block(bot, r)
     end
     return nil
 end
-local function choiceLine(bot, p, go, why, src)
+local function choiceLine(bot, p, go, why, src, aid)
     Telemetry.Event(
         "choice",
         {
@@ -148,6 +148,7 @@ local function choiceLine(bot, p, go, why, src)
                 bot:GetPlayerID()
             },
             {"kind", "rune_detour"},
+            {"aid", aid},
             {"go", go and 1 or 0},
             {"want", p.want and 1 or 0},
             {"why", why},
@@ -169,7 +170,8 @@ local function choiceLine(bot, p, go, why, src)
         }
     )
 end
-local function jobLine(bot, phase, why, ex, cut, w, took)
+local function jobLine(bot, phase, why, ex, cut, w, took, start)
+    local a = w or start
     Telemetry.Event(
         "job",
         {
@@ -178,6 +180,11 @@ local function jobLine(bot, phase, why, ex, cut, w, took)
                 bot:GetPlayerID()
             },
             {"job", "rune_detour"},
+            {"aid", a and a.aid},
+            {
+                "tgt",
+                start ~= nil and "rune:" .. tostring(start.rune) or nil
+            },
             {"phase", phase},
             {"why", why},
             {"host", HOST},
@@ -332,33 +339,46 @@ local function rowApplies(bot)
     if g == nil or g.spawn ~= r.spawn then
         went[pid] = {spawn = r.spawn, misses = 0}
     end
+    local aid = ok and Telemetry.NextAid(pid) or nil
     if p.logged ~= true then
-        local ____choiceLine_2 = choiceLine
-        local ____bot_1 = bot
-        local ____ok_0
+        local ____choiceLine_4 = choiceLine
+        local ____bot_3 = bot
+        local ____ok_2
         if ok then
-            ____ok_0 = nil
+            ____ok_2 = nil
         else
-            ____ok_0 = "refused"
+            ____ok_2 = "refused"
         end
-        ____choiceLine_2(
-            ____bot_1,
+        ____choiceLine_4(
+            ____bot_3,
             p,
             ok,
-            ____ok_0,
-            "own"
+            ____ok_2,
+            "own",
+            aid
         )
     end
     p.logged = true
     if not ok then
         return false
     end
-    running[pid] = {
+    local walk = {
+        aid = aid,
         rune = r.rune,
         gold = bot:GetGold(),
         jump = 0
     }
-    jobLine(bot, "start", "pass", ex)
+    running[pid] = walk
+    jobLine(
+        bot,
+        "start",
+        "pass",
+        ex,
+        nil,
+        nil,
+        nil,
+        walk
+    )
     return true
 end
 --- The row's verb: one frame of the walk; true once it has ended.
