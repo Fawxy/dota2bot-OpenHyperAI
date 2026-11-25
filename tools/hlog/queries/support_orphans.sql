@@ -6,7 +6,7 @@
 --   clash        an orphan with a deny chance for the same support (spid) within `win` seconds either side; `dclash` the same counted
 --                from the deny chances (a deny chance with an orphan within `win`).
 -- Columns: file, game, label, arm, side (`test` the label's seat, `opp` the other, NULL with no seat), team, then orph, orph_sup (paid
--- us, by_pid the support in reach), orph_core (paid us by any other hero), orph_them, orph_nobody; dch, dch_sup (denied by the
+-- us, by_pid the support in reach), orph_core (paid us by any other hero), orph_dn (their hero denied it), orph_unpaid (paid nobody, not a deny); dch, dch_sup (denied by the
 -- support), dch_core (denied by any other hero of ours), dch_them (their last hit), dch_other (tower, a death nobody logged a hero on,
 -- a deny with no by_pid); clash, dclash. With :sum = 1 one row per arm and side instead: `tg` team-games, then the same counts as
 -- means per team-game (`m_` prefix) and `s_clash`, `s_dclash` the totals.
@@ -20,7 +20,7 @@ WITH gm AS MATERIALIZED (SELECT game_id, file, game, label FROM games
     WHERE bots > 0 AND (file LIKE coalesce(:like, '') OR run_label_part(label, 'batch') = :batch)),
 -- include: creep_paid_rows
 so_o AS (
-    SELECT game_id, team, spid, t, paid, by_pid FROM creep_paid_rows
+    SELECT game_id, team, spid, t, how, paid, by_pid FROM creep_paid_rows
     WHERE lane IN ('top', 'bot') AND whose = 'theirs' AND kind = 'ranged' AND sband IN ('in', 'r150')
         AND coalesce(cband, 'none') NOT IN ('in', 'r150')
 ),
@@ -35,8 +35,8 @@ so_row AS (
         (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team) AS orph,
         (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team AND o.paid = 'us' AND o.by_pid = o.spid) AS orph_sup,
         (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team AND o.paid = 'us' AND o.by_pid <> o.spid) AS orph_core,
-        (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team AND o.paid = 'them') AS orph_them,
-        (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team AND o.paid = 'nobody') AS orph_nobody,
+        (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team AND o.how = 'deny') AS orph_dn,
+        (SELECT count(*) FROM so_o o WHERE o.game_id = m.game_id AND o.team = m.team AND o.paid = 'nobody' AND o.how <> 'deny') AS orph_unpaid,
         (SELECT count(*) FROM so_d d WHERE d.game_id = m.game_id AND d.team = m.team) AS dch,
         (SELECT count(*) FROM so_d d WHERE d.game_id = m.game_id AND d.team = m.team AND d.how = 'deny' AND d.by_pid = d.spid) AS dch_sup,
         (SELECT count(*) FROM so_d d WHERE d.game_id = m.game_id AND d.team = m.team AND d.how = 'deny' AND d.by_pid <> d.spid) AS dch_core,
@@ -49,14 +49,14 @@ so_row AS (
             WHERE o.game_id = d.game_id AND o.team = d.team AND o.spid = d.spid AND abs(d.t - o.t) <= coalesce(:win, 2))) AS dclash
     FROM so_tm m JOIN gm USING (game_id) LEFT JOIN run_label r ON r.game_id = m.game_id
 )
-SELECT file, game, label, arm, side, team, orph, orph_sup, orph_core, orph_them, orph_nobody, dch, dch_sup, dch_core, dch_them, dch_other,
-    clash, dclash, NULL AS tg, NULL AS m_orph, NULL AS m_orph_sup, NULL AS m_orph_core, NULL AS m_orph_them, NULL AS m_orph_nobody,
+SELECT file, game, label, arm, side, team, orph, orph_sup, orph_core, orph_dn, orph_unpaid, dch, dch_sup, dch_core, dch_them, dch_other,
+    clash, dclash, NULL AS tg, NULL AS m_orph, NULL AS m_orph_sup, NULL AS m_orph_core, NULL AS m_orph_dn, NULL AS m_orph_unpaid,
     NULL AS m_dch, NULL AS m_dch_sup, NULL AS m_dch_core, NULL AS m_dch_them, NULL AS m_dch_other, NULL AS m_clash, NULL AS m_dclash,
     NULL AS s_clash, NULL AS s_dclash
 FROM so_row WHERE coalesce(:sum, 0) = 0
 UNION ALL
 SELECT NULL, NULL, NULL, arm, side, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, count(*),
-    round(avg(orph), 3), round(avg(orph_sup), 3), round(avg(orph_core), 3), round(avg(orph_them), 3), round(avg(orph_nobody), 3),
+    round(avg(orph), 3), round(avg(orph_sup), 3), round(avg(orph_core), 3), round(avg(orph_dn), 3), round(avg(orph_unpaid), 3),
     round(avg(dch), 3), round(avg(dch_sup), 3), round(avg(dch_core), 3), round(avg(dch_them), 3), round(avg(dch_other), 3),
     round(avg(clash), 3), round(avg(dclash), 3), sum(clash), sum(dclash)
 FROM so_row WHERE coalesce(:sum, 0) = 1 GROUP BY arm, side
