@@ -19,8 +19,6 @@ local function num(line, k) return tonumber(field(line, k)) end
 
 local function world(every)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
-	-- The read alone: the creep row (test_creep_row.lua) is off, so every line is the shadow's.
-	package.loaded["bots/FunLib/custom_loader"].Ours.LaneCreeps = false
 	CURRENT_TEAM = 2
 	T = 100
 	local w = { targets = {}, hits = {}, calls = {} }

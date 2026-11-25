@@ -56,11 +56,11 @@ function gameLines() {
     ];
 }
 
-function load(extra = []) {
+function load() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-creep-offers-'));
     const file = path.join(dir, '2026-11-25T00-00-00-co_A_off_1.log');
     const at = l => Number(l.match(/t=(\S+)/)[1]);
-    fs.writeFileSync(file, gameLines().concat(extra).sort((x, y) => at(x) - at(y)).join('\n') + '\n');
+    fs.writeFileSync(file, gameLines().sort((x, y) => at(x) - at(y)).join('\n') + '\n');
     const store = new Store(':memory:');
     store.ingest(file);
     store.refreshViews();
@@ -94,20 +94,6 @@ test('creep_offers: the window decides a death, and filters are comma lists', ()
     assert.deepStrictEqual(wide.filter(r => r.cid === 5).map(r => [r.matched, r.dt]), [[1, 150]], 'a creep dying 19.7 s after its line joins with a wider window');
     assert.deepStrictEqual(store.query(sqlOf('creep_offers'), { like, ck: 'r', who: 't' }).map(r => r.cid), [78, 9]);
     assert.deepStrictEqual(store.query(sqlOf('creep_offers'), { like, hero: 'zuus' }).map(r => r.cid), [9]);
-});
-
-test('creep_offers: the creep row\'s own lines (src=own) are read beside the shadow\'s, with the decision; another src is not', () => {
-    const own = (t, cid, rest) => line(t, `choice pid=5 kind=creep ${rest} lane=2 slot=${t - 2} cid=${cid} ck=r who=t wo=0 wl=1 walk=1.2 due=1.5 dies=3 slk=1 ` +
-        'hpp=1 mode=laning crhp=100 g2=0 g2r=0 pc=1 pd=20 ptw=0 eh=0 exs=0 en= kb=none md=60 ed=0 ein=0 atk=0 erc=1 ert=0.4 otw=0');
-    const rows = load([
-        own(600.3, 91, 'go=1 want=1 src=own gat=0.6 gw=1.2'),
-        own(610.3, 92, 'go=0 want=1 why=race src=own'),
-        own(620.3, 93, 'go=0 want=1 why=off src=ping'),
-    ]).query(sqlOf('creep_offers'), { like, from: 590, until: 700 }).map(r => ({ ...r }));
-    assert.deepStrictEqual(rows.map(r => [r.cid, r.csrc, r.go, r.why, r.gat, r.gw, r.erc, r.ert]), [
-        [91, 'own', 1, null, 0.6, 1.2, 1, 0.4],
-        [92, 'own', 0, 'race', null, null, 1, 0.4],
-    ]);
 });
 
 test('creep_offer_cells: the counts of a cell, and the fate split by walk', () => {

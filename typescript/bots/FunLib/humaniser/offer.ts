@@ -76,8 +76,6 @@ export interface PathEnemy extends Vec {
     /** One hit and the seconds an attack takes. */
     dmg: number;
     spa: number;
-    /** Movement speed; read by the creep row's race, not by PathCost. */
-    speed?: number;
 }
 
 export interface PathIn {
