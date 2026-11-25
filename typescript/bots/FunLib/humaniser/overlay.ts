@@ -52,6 +52,10 @@ function switches(): string {
     return switchesLine;
 }
 
+function heroName(unit: Unit): string {
+    return string.gsub(unit.GetUnitName(), "npc_dota_hero_", "")[0];
+}
+
 function blockTop(team: number): number {
     return TOP + LINE + (team === Team.Radiant ? 0 : BLOCK);
 }
@@ -88,14 +92,21 @@ export function Draw(bot: Unit): void {
         if (team === Team.Radiant) DebugDrawText(X, TOP, `${name}  build ${Telemetry.Build()}`, 255, 255, 255);
         const [r, g, b] = team === Team.Radiant ? [120, 220, 120] : [230, 110, 110];
         DebugDrawText(X, top, `${team === Team.Radiant ? "RADIANT" : "DIRE"}  ${switches()}`, r, g, b);
+        // A dead hero's script does not run, so the first live one of the frame draws its line.
+        for (let i = 1; i <= 5; i++) {
+            const m = GetTeamMember(i);
+            if (m === undefined || m === null || m.IsAlive()) continue;
+            const p = LaneConfig.PositionOf(m);
+            if (p !== undefined && p >= 1 && p <= 5) DebugDrawText(X, top + p * LINE, `${p} ${heroName(m)}  dead`, STOCK_COLOUR[0], STOCK_COLOUR[1], STOCK_COLOUR[2]);
+        }
     }
     const pos = LaneConfig.PositionOf(bot);
-    if (pos === undefined || pos < 1 || pos > 5) return;
+    if (pos === undefined || pos < 1 || pos > 5 || !bot.IsAlive()) return;
     const d = doing(bot);
-    const hero = string.gsub(bot.GetUnitName(), "npc_dota_hero_", "")[0];
+    const hero = heroName(bot);
     const extra = HDebug.IsEnabled() ? `  ${DesireLog.Competing(bot)}` : "";
     DebugDrawText(X, top + pos * LINE, `${pos} ${hero}  ${d.text}${extra}`, d.colour[0], d.colour[1], d.colour[2]);
-    if (d.ring !== undefined && bot.IsAlive()) {
+    if (d.ring !== undefined) {
         const [r, g, b] = RING_COLOUR[d.ring] ?? OURS_COLOUR;
         DebugDrawCircle(bot.GetLocation(), RING, r, g, b);
     }

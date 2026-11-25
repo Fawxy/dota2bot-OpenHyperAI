@@ -58,6 +58,13 @@ local function switches()
     end
     return switchesLine
 end
+local function heroName(unit)
+    return (string.gsub(
+        unit:GetUnitName(),
+        "npc_dota_hero_",
+        ""
+    ))
+end
 local function blockTop(team)
     return TOP + LINE + (team == Team.Radiant and 0 or BLOCK)
 end
@@ -114,17 +121,44 @@ function ____exports.Draw(bot)
             g,
             b
         )
+        do
+            local i = 1
+            while i <= 5 do
+                do
+                    local __continue18
+                    repeat
+                        local m = GetTeamMember(i)
+                        if m == nil or m == nil or m:IsAlive() then
+                            __continue18 = true
+                            break
+                        end
+                        local p = LaneConfig.PositionOf(m)
+                        if p ~= nil and p >= 1 and p <= 5 then
+                            DebugDrawText(
+                                X,
+                                top + p * LINE,
+                                ((tostring(p) .. " ") .. heroName(m)) .. "  dead",
+                                STOCK_COLOUR[1],
+                                STOCK_COLOUR[2],
+                                STOCK_COLOUR[3]
+                            )
+                        end
+                        __continue18 = true
+                    until true
+                    if not __continue18 then
+                        break
+                    end
+                end
+                i = i + 1
+            end
+        end
     end
     local pos = LaneConfig.PositionOf(bot)
-    if pos == nil or pos < 1 or pos > 5 then
+    if pos == nil or pos < 1 or pos > 5 or not bot:IsAlive() then
         return
     end
     local d = doing(bot)
-    local hero = (string.gsub(
-        bot:GetUnitName(),
-        "npc_dota_hero_",
-        ""
-    ))
+    local hero = heroName(bot)
     local extra = HDebug.IsEnabled() and "  " .. DesireLog.Competing(bot) or ""
     DebugDrawText(
         X,
@@ -134,7 +168,7 @@ function ____exports.Draw(bot)
         d.colour[2],
         d.colour[3]
     )
-    if d.ring ~= nil and bot:IsAlive() then
+    if d.ring ~= nil then
         local r, g, b = unpack(RING_COLOUR[d.ring] or OURS_COLOUR)
         DebugDrawCircle(
             bot:GetLocation(),
