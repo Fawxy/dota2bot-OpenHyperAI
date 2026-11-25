@@ -2486,9 +2486,46 @@ local function enemyTargeting(bot, creep)
     end
     return false
 end
+--- True only where `etaOf`'s full belief answers undefined anyway, read without it: no attacker in the index on the creep
+-- and no attack projectile of another's in flight at it (incoming DPS 0), no drain (regen >= 0: the believed HP at our
+-- hit is then at least its HP now), and its HP above the bot's lowest-roll hit (the belief's `mine` without error), so
+-- the margin is positive with nothing to close it. Reads nothing that holds state (no wind-up record, no roll).
+local function cannotComeDue(bot, c)
+    local ____this_133
+    ____this_133 = c
+    local ____opt_132 = ____this_133.GetHealthRegen
+    if (____opt_132 and ____opt_132(____this_133) or 0) < 0 then
+        return false
+    end
+    local ____temp_139 = c:GetHealth()
+    local ____physical_138 = physical
+    local ____c_137 = c
+    local ____temp_136 = bot:GetAttackDamage()
+    local ____this_135
+    ____this_135 = bot
+    local ____opt_134 = ____this_135.GetBaseDamageVariance
+    if ____temp_139 - ____physical_138(
+        ____c_137,
+        ____temp_136 - (____opt_134 and ____opt_134(____this_135) or 0)
+    ) <= 0.000001 then
+        return false
+    end
+    for ____, a in ipairs(attackersByTarget(
+        bot,
+        nearby(bot)
+    )[c] or ({})) do
+        if a ~= c then
+            return false
+        end
+    end
+    return #flightsAt(bot, c, false).flights == 0
+end
 --- Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
 -- others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
 local function etaOf(bot, c, walkSpeed)
+    if cannotComeDue(bot, c) then
+        return nil
+    end
     local b = believe(bot, c, false)
     if not b.survives then
         return nil
@@ -2501,14 +2538,14 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    local ____exports_incomingDps_result_dps_135 = ____exports.incomingDps(bot, c).dps
-    local ____math_max_134 = math.max
-    local ____this_133
-    ____this_133 = c
-    local ____opt_132 = ____this_133.GetHealthRegen
-    local dps = ____exports_incomingDps_result_dps_135 + ____math_max_134(
+    local ____exports_incomingDps_result_dps_143 = ____exports.incomingDps(bot, c).dps
+    local ____math_max_142 = math.max
+    local ____this_141
+    ____this_141 = c
+    local ____opt_140 = ____this_141.GetHealthRegen
+    local dps = ____exports_incomingDps_result_dps_143 + ____math_max_142(
         0,
-        -(____opt_132 and ____opt_132(____this_133) or 0)
+        -(____opt_140 and ____opt_140(____this_141) or 0)
     )
     local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
     if margin <= 0 then
@@ -2538,13 +2575,13 @@ function ____exports.laneTargets(bot, opts)
         bot:GetAttackRange() + 400
     )
     local within = opts.within or 1
-    local ____math_max_138 = math.max
-    local ____this_137
-    ____this_137 = bot
-    local ____opt_136 = ____this_137.GetCurrentMovementSpeed
-    local speed = ____math_max_138(
+    local ____math_max_146 = math.max
+    local ____this_145
+    ____this_145 = bot
+    local ____opt_144 = ____this_145.GetCurrentMovementSpeed
+    local speed = ____math_max_146(
         100,
-        ____opt_136 and ____opt_136(____this_137) or 300
+        ____opt_144 and ____opt_144(____this_145) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -2798,10 +2835,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
-    local ____this_140
-    ____this_140 = bot
-    local ____opt_139 = ____this_140.GetLastAttackTime
-    local atk0 = ____opt_139 and ____opt_139(____this_140)
+    local ____this_148
+    ____this_148 = bot
+    local ____opt_147 = ____this_148.GetLastAttackTime
+    local atk0 = ____opt_147 and ____opt_147(____this_148)
     local fireAt
     local landHp
     local function out(r)
