@@ -41,6 +41,22 @@ local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_t
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+--- The unit's attack cycle (s, `GetSecondsPerAttack`); 1 where the handle has none.
+function ____exports.AttackCycle(u)
+    local ____this_1
+    ____this_1 = u
+    local ____opt_0 = ____this_1.GetSecondsPerAttack
+    return ____opt_0 and ____opt_0(____this_1) or 1
+end
+--- laneTargets' `within` for the hero: the engine's default 1 s, or one own attack cycle when longer, so a creep is offered by
+-- the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). Every arm asks
+-- the same, so the shadow's lines open as early as the row's.
+function ____exports.Within(bot)
+    return math.max(
+        1,
+        ____exports.AttackCycle(bot)
+    )
+end
 function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
 end
@@ -53,19 +69,19 @@ function rowOf(bot, creep)
     end
     for ____, lane in ipairs(LANES) do
         do
-            local __continue24
+            local __continue26
             repeat
                 if lane == own then
-                    __continue24 = true
+                    __continue26 = true
                     break
                 end
                 local r = LaneHits.Of(team, lane, creep)
                 if r ~= nil then
                     return r
                 end
-                __continue24 = true
+                __continue26 = true
             until true
-            if not __continue24 then
+            if not __continue26 then
                 break
             end
         end
@@ -79,11 +95,11 @@ function towersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
         do
-            local __continue30
+            local __continue32
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue30 = true
+                    __continue32 = true
                     break
                 end
                 out[#out + 1] = {
@@ -91,9 +107,9 @@ function towersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius() + f.hull
                 }
-                __continue30 = true
+                __continue32 = true
             until true
-            if not __continue30 then
+            if not __continue32 then
                 break
             end
         end
@@ -108,11 +124,11 @@ function ownTowersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, false)) do
         do
-            local __continue35
+            local __continue37
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue35 = true
+                    __continue37 = true
                     break
                 end
                 out[#out + 1] = {
@@ -120,9 +136,9 @@ function ownTowersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius()
                 }
-                __continue35 = true
+                __continue37 = true
             until true
-            if not __continue35 then
+            if not __continue37 then
                 break
             end
         end
@@ -137,26 +153,26 @@ function creepsOf(f)
     local out = {}
     for ____, c in ipairs(f.enemyCreeps) do
         do
-            local __continue40
+            local __continue42
             repeat
                 local at = c:GetLocation()
                 if at == nil or at == nil then
-                    __continue40 = true
+                    __continue42 = true
                     break
                 end
-                local ____this_4
-                ____this_4 = c
-                local ____opt_3 = ____this_4.GetSecondsPerAttack
-                local spa = ____opt_3 and ____opt_3(____this_4) or 1
+                local ____this_6
+                ____this_6 = c
+                local ____opt_5 = ____this_6.GetSecondsPerAttack
+                local spa = ____opt_5 and ____opt_5(____this_6) or 1
                 out[#out + 1] = {
                     x = at.x,
                     y = at.y,
                     reach = c:GetAcquisitionRange() + c:GetBoundingRadius() + f.hull,
                     dps = c:GetAttackDamage() / math.max(spa, 0.1)
                 }
-                __continue40 = true
+                __continue42 = true
             until true
-            if not __continue40 then
+            if not __continue42 then
                 break
             end
         end
@@ -171,39 +187,39 @@ function enemiesOf(f)
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue45
+            local __continue47
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue45 = true
+                    __continue47 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue45 = true
+                    __continue47 = true
                     break
                 end
-                local ____at_x_7 = at.x
-                local ____at_y_8 = at.y
-                local ____temp_9 = e:GetPlayerID()
-                local ____temp_10 = e:GetAttackRange()
-                local ____temp_11 = e:GetBoundingRadius()
-                local ____temp_12 = e:GetAttackDamage()
-                local ____this_6
-                ____this_6 = e
-                local ____opt_5 = ____this_6.GetSecondsPerAttack
+                local ____at_x_9 = at.x
+                local ____at_y_10 = at.y
+                local ____temp_11 = e:GetPlayerID()
+                local ____temp_12 = e:GetAttackRange()
+                local ____temp_13 = e:GetBoundingRadius()
+                local ____temp_14 = e:GetAttackDamage()
+                local ____this_8
+                ____this_8 = e
+                local ____opt_7 = ____this_8.GetSecondsPerAttack
                 out[#out + 1] = {
-                    x = ____at_x_7,
-                    y = ____at_y_8,
-                    pid = ____temp_9,
-                    range = ____temp_10,
-                    hull = ____temp_11,
-                    dmg = ____temp_12,
-                    spa = ____opt_5 and ____opt_5(____this_6) or 1,
+                    x = ____at_x_9,
+                    y = ____at_y_10,
+                    pid = ____temp_11,
+                    range = ____temp_12,
+                    hull = ____temp_13,
+                    dmg = ____temp_14,
+                    spa = ____opt_7 and ____opt_7(____this_8) or 1,
                     speed = e:GetCurrentMovementSpeed()
                 }
-                __continue45 = true
+                __continue47 = true
             until true
-            if not __continue45 then
+            if not __continue47 then
                 break
             end
         end
@@ -260,7 +276,7 @@ function snapshot(bot, f, t, slack, others)
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
-            local __continue56
+            local __continue58
             repeat
                 local gap = dist(e, at) - (e.range + e.hull + hull)
                 local reach = math.max(0, gap) / math.max(100, e.speed or 300)
@@ -271,16 +287,16 @@ function snapshot(bot, f, t, slack, others)
                     end
                 end
                 if gap > 0 then
-                    __continue56 = true
+                    __continue58 = true
                     break
                 end
                 ein = ein + 1
                 if e.dmg > ed then
                     ed = e.dmg
                 end
-                __continue56 = true
+                __continue58 = true
             until true
-            if not __continue56 then
+            if not __continue58 then
                 break
             end
         end
@@ -323,7 +339,13 @@ function partsOf()
     parts = {
         targets = Telemetry.PerfStep(
             "CO:targets",
-            function(bot) return Tasks.Verbs().laneTargets(bot, {radius = LaneHits.READER_RADIUS, within = 1}) end
+            function(bot) return Tasks.Verbs().laneTargets(
+                bot,
+                {
+                    radius = LaneHits.READER_RADIUS,
+                    within = ____exports.Within(bot)
+                }
+            ) end
         ),
         lists = Telemetry.PerfStep(
             "CO:lists",
@@ -440,8 +462,8 @@ end
 local function line(bot, o)
     local s = o.snap
     local want = o.okFrom ~= nil
-    local ____Telemetry_Event_2 = Telemetry.Event
-    local ____array_1 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_4 = Telemetry.Event
+    local ____array_3 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -450,15 +472,15 @@ local function line(bot, o)
         {"go", o.go == true and 1 or 0},
         {"want", want and 1 or 0}
     )
-    local ____temp_0
+    local ____temp_2
     if o.go == true then
-        ____temp_0 = nil
+        ____temp_2 = nil
     else
-        ____temp_0 = o.why or "off"
+        ____temp_2 = o.why or "off"
     end
     __TS__SparseArrayPush(
-        ____array_1,
-        {"why", ____temp_0},
+        ____array_3,
+        {"why", ____temp_2},
         {"src", (o.go == true or o.why ~= nil) and "own" or "shadow"},
         {"lane", o.lane},
         {"slot", o.first},
@@ -548,9 +570,9 @@ local function line(bot, o)
             o.gw ~= nil and r2(o.gw) or nil
         }
     )
-    ____Telemetry_Event_2(
+    ____Telemetry_Event_4(
         "choice",
-        {__TS__SparseArraySpread(____array_1)}
+        {__TS__SparseArraySpread(____array_3)}
     )
 end
 local function hasOpen(pid)
@@ -600,24 +622,24 @@ function ____exports.Shadow(bot)
     if #targets == 0 and not hasOpen(pid) then
         return
     end
-    local ____P_lists_result_13 = P.lists(bot)
-    local listed = ____P_lists_result_13.listed
-    local theirs = ____P_lists_result_13.theirs
+    local ____P_lists_result_15 = P.lists(bot)
+    local listed = ____P_lists_result_15.listed
+    local theirs = ____P_lists_result_15.theirs
     local m = opps[pid]
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue80
+                local __continue82
                 repeat
                     if listed[o.creep] == true then
-                        __continue80 = true
+                        __continue82 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue80 = true
+                    __continue82 = true
                 until true
-                if not __continue80 then
+                if not __continue82 then
                     break
                 end
             end
@@ -646,12 +668,12 @@ function ____exports.Shadow(bot)
     local cands = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue84
+            local __continue86
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue84 = true
+                    __continue86 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -713,9 +735,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue84 = true
+                __continue86 = true
             until true
-            if not __continue84 then
+            if not __continue86 then
                 break
             end
         end

@@ -94,7 +94,7 @@ do -- a creep that is never arrivable: want 0, the snapshot at the largest slack
 		and field(l[1], "want") == "0" and field(l[1], "slot") == "100" and field(l[1], "who") == "t", l[1])
 	check("the snapshot is the largest slack's", near(num(l[1], "walk"), 0.6) and near(num(l[1], "slk"), -0.85), l[1])
 	check("no window when arriving was never possible", field(l[1], "wo") == nil and field(l[1], "wl") == nil, l[1])
-	check("the engine was asked over the reader radius", w.opts.radius == 1600 and w.opts.within == 1)
+	check("the engine was asked over the reader radius, due within one attack cycle of the hero (the stub's 1.7 s)", w.opts.radius == 1600 and near(w.opts.within, 1.7))
 end
 
 do -- arrivable: the snapshot is the first ok read's, the window runs to the last ok read

@@ -37,7 +37,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-____exports.SETTINGS = {NearWalk = 1, Lead = 0.4, WaitSlack = 1.5}
+____exports.SETTINGS = {NearWalk = 1, WaitSlack = 1.5}
 --- The mode the decider hosts its rows in: the engine steps the attempt's task under it.
 local HOST = BotMode.Farm
 --- The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (not their ranged creep),
@@ -76,9 +76,12 @@ function ____exports.Claim(f)
     end
     return nil
 end
---- About to come due: a swing ordered on arrival is due within Lead of it.
-function ____exports.Due(walk, due)
-    return due <= walk + ____exports.SETTINGS.Lead
+--- About to come due: due within the walk plus `lead`, one own attack cycle (`GetSecondsPerAttack`), so the hero is in range and
+-- facing with a full cycle to spare whatever its cooldown. Round 0 of oha-creep-ranged went at walk + 0.4 s and lost 48 of
+-- 122 uncut attempts with no swing on the creep (re-read 25/11/2026). The creep offer asks laneTargets for creeps due within
+-- at least one cycle (`CreepOffer.Within`), so such a creep is offered by then.
+function ____exports.Due(walk, due, lead)
+    return due <= walk + lead
 end
 local running = {}
 --- pid -> the creep of the hero's last attempt: one attempt a creep.
@@ -233,7 +236,7 @@ local function factsOf(c)
 end
 --- The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
--- yet about to come due), `acting`, `stock` (stock is attacking it), `tried` (this creep's attempt has ended); then Claim's;
+-- yet about to come due), `acting`, `tried` (this creep's attempt has ended); then Claim's;
 -- `refused` (the task runner said no).
 function ____exports.Consider(bot, cands)
     if not ____exports.On(bot) then
@@ -249,19 +252,17 @@ function ____exports.Consider(bot, cands)
     if Tasks.Jobs() == nil then
         return
     end
-    local target = bot:GetAttackTarget()
     local busy = acting(bot)
+    local lead = CreepOffer.AttackCycle(bot)
     local best
     for ____, c in ipairs(cands) do
         local why
         if c.t.kind ~= "lasthit" or c.ck ~= "r" then
             why = "kind"
-        elseif not ____exports.Due(c.t.walk, c.t.due) then
+        elseif not ____exports.Due(c.t.walk, c.t.due, lead) then
             why = "early"
         elseif busy then
             why = "acting"
-        elseif target == c.creep then
-            why = "stock"
         elseif lastCid[pid] == c.cid then
             why = "tried"
         else

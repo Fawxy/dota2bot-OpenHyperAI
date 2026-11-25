@@ -145,24 +145,45 @@ do -- the attempt's lines: the creep, the walk at go, when the hero was first in
 	check("lines: a cut leaves the swing unknown", field(jobs[2], "sw") == nil, jobs[2])
 end
 
-do -- control: stock is already attacking the creep; the row leaves it to stock
+do -- stock is already attacking the creep: the row goes anyway (its swing lands as often as stock's)
 	local w = world()
 	local c = ranged()
 	w.targets = { target(c, { walk = 0, due = 0.2 }) }
 	w.core.target = c
 	local ch = lines(readThenClose(w, { c }), "kind=creep")
-	check("stock on it: no attempt, why=stock", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "stock" and field(ch[1], "go") == "0", table.concat(ch, " | "))
+	check("stock on it: the attempt starts", w.starts == 1 and #ch == 1 and field(ch[1], "go") == "1", table.concat(ch, " | "))
+end
+
+do -- the lead is one own attack cycle: due past the walk plus a cycle waits, within it goes, whatever the cycle
+	local function goes(spa, walk, due)
+		local w = world()
+		w.core.spa = spa
+		local c = ranged()
+		w.targets = { target(c, { walk = walk, due = due }) }
+		readThenClose(w, { c })
+		return w.starts == 1
+	end
+	check("lead: a 1.7 s cycle goes at walk 0.5, due 2.1 (0.4 s past the old lead's reach)", goes(1.7, 0.5, 2.1))
+	check("control: a 1.7 s cycle waits at walk 0.5, due 2.3", not goes(1.7, 0.5, 2.3))
+	check("lead: a 1.0 s cycle waits at walk 0.5, due 1.6", not goes(1.0, 0.5, 1.6))
+	check("creep offer: laneTargets is asked for creeps due within one cycle, at least the engine's 1 s", (function()
+		local w = world()
+		w.core.spa = 1.6
+		local a = w.CO.Within(w.core)
+		w.core.spa = 0.8
+		return near(a, 1.6) and near(w.CO.Within(w.core), 1)
+	end)())
 end
 
 do -- not yet about to come due, then due: waits, then goes on the same creep
 	local w = world()
 	local c = ranged()
 	local out = capture(function()
-		w.targets = { target(c, { walk = 0.5, due = 1.4 }) } -- due past walk + Lead
+		w.targets = { target(c, { walk = 0.5, due = 2.4 }) } -- due past walk + one 1.7 s cycle
 		w.CO.Shadow(w.core)
 		local early = w.starts
 		T = T + 0.1
-		w.targets = { target(c, { walk = 0.4, due = 0.7 }) }
+		w.targets = { target(c, { walk = 0.4, due = 2.0 }) }
 		w.CO.Shadow(w.core)
 		check("early: nothing started on the first read", early == 0, tostring(early))
 	end)

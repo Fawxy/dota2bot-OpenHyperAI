@@ -41,6 +41,20 @@ export const SETTINGS = {
 
 type Timed = Unit & { GetSecondsPerAttack?(): number };
 
+/** The unit's attack cycle (s, `GetSecondsPerAttack`); 1 where the handle has none. */
+export function AttackCycle(u: Unit): number {
+    return (u as Timed).GetSecondsPerAttack?.() ?? 1;
+}
+
+/**
+ * laneTargets' `within` for the hero: the engine's default 1 s, or one own attack cycle when longer, so a creep is offered by
+ * the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). Every arm asks
+ * the same, so the shadow's lines open as early as the row's.
+ */
+export function Within(bot: Unit): number {
+    return math.max(1, AttackCycle(bot));
+}
+
 /**
  * The read's parts, timed as `CO:<part>` rows when the perf probe is on (kind `step`; PerfStep returns the function itself with the
  * probe off). Made on first use: the probe's clock is chosen at the first PerfStep.
@@ -381,7 +395,7 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
 function partsOf(): Parts {
     if (parts !== undefined) return parts;
     parts = {
-        targets: Telemetry.PerfStep("CO:targets", (bot: Lib.TaskUnit) => Tasks.Verbs()!.laneTargets(bot, { radius: LaneHits.READER_RADIUS, within: 1 })),
+        targets: Telemetry.PerfStep("CO:targets", (bot: Lib.TaskUnit) => Tasks.Verbs()!.laneTargets(bot, { radius: LaneHits.READER_RADIUS, within: Within(bot as unknown as Unit) })),
         lists: Telemetry.PerfStep("CO:lists", (bot: Unit) => {
             const listed = new LuaTable<Unit, boolean>();
             const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);

@@ -1,14 +1,14 @@
 /**
  * The lane's creeps, first group (no-creep-unpaid proposal s5; doctrine D11; switch Ours.LaneCreeps), a soft row of the
- * decider: a core takes their ranged creep by a right-click where stock does not swing. Which positions act is
+ * decider: a core takes their ranged creep by a right-click, in range with a swing to spare. Which positions act is
  * `states/trip_table`'s `creep` row (pos 1 to 3; supports wait for the core-first margin, proposal s3).
  *
  * The cells were named with the user from step 2's table (25/11/2026): near (in range or a walk up to NearWalk, not
  * out-damaged) and far and free (a longer walk with no enemy hero's range on the stand spot). The decision is taken at the
  * creep offer read (`creep_offer.ts`, every 0.2 s a hero), on that read's facts: the read hands its candidates in through
  * SetRow, so a creep's handle is only called on a read that lists it. `Claim` is the cell rule on the facts; the row goes on
- * the claimed creep closest to due once it is about to come due (`Due`) and stock is not attacking it, since stock takes three
- * in four of the claimed creeps it swings at (cofshadow2) and the row is for the ones it leaves.
+ * the claimed creep closest to due once it is about to come due (`Due`), whether or not stock is attacking it: the row's swing
+ * landed as often as stock's (53 of 69 with a swing on, oha-creep-ranged), so taking stock's swing costs nothing.
  *
  * The verb is the engine's `lastHit` on that creep (it walks into range, waits and swings when its hit kills); the attempt
  * latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
@@ -31,11 +31,6 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 export const SETTINGS = {
     /** The longest walk (s) in the near cell; past it a covered stand spot is refused (step 2's table split, proposal s5). */
     NearWalk: 1.0,
-    /**
-     * The row goes once `due` is within the walk plus this (s): two of the read's intervals, so the next read is not too late
-     * (judgement). Earlier, stock may still swing at the creep itself.
-     */
-    Lead: 0.4,
     /** The wait for the creep to come due, after its eta: laneFarm's own (`maxWait` eta + 1.5 s, engine/docs/API.md). `judgement`. */
     WaitSlack: 1.5,
 };
@@ -86,9 +81,14 @@ export function Claim(this: void, f: Facts): string | undefined {
     return undefined;
 }
 
-/** About to come due: a swing ordered on arrival is due within Lead of it. */
-export function Due(this: void, walk: number, due: number): boolean {
-    return due <= walk + SETTINGS.Lead;
+/**
+ * About to come due: due within the walk plus `lead`, one own attack cycle (`GetSecondsPerAttack`), so the hero is in range and
+ * facing with a full cycle to spare whatever its cooldown. Round 0 of oha-creep-ranged went at walk + 0.4 s and lost 48 of
+ * 122 uncut attempts with no swing on the creep (re-read 25/11/2026). The creep offer asks laneTargets for creeps due within
+ * at least one cycle (`CreepOffer.Within`), so such a creep is offered by then.
+ */
+export function Due(this: void, walk: number, due: number, lead: number): boolean {
+    return due <= walk + lead;
 }
 
 interface Attempt {
@@ -194,7 +194,7 @@ function factsOf(c: CreepOffer.Candidate): Facts {
 /**
  * The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
- * yet about to come due), `acting`, `stock` (stock is attacking it), `tried` (this creep's attempt has ended); then Claim's;
+ * yet about to come due), `acting`, `tried` (this creep's attempt has ended); then Claim's;
  * `refused` (the task runner said no).
  */
 export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): void {
@@ -205,15 +205,14 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         return;
     }
     if (Tasks.Jobs() === undefined) return;
-    const target = bot.GetAttackTarget();
     const busy = acting(bot);
+    const lead = CreepOffer.AttackCycle(bot);
     let best: CreepOffer.Candidate | undefined;
     for (const c of cands) {
         let why: string | undefined;
         if (c.t.kind !== "lasthit" || c.ck !== "r") why = "kind";
-        else if (!Due(c.t.walk, c.t.due)) why = "early";
+        else if (!Due(c.t.walk, c.t.due, lead)) why = "early";
         else if (busy) why = "acting";
-        else if (target === c.creep) why = "stock";
         else if (lastCid[pid] === c.cid) why = "tried";
         else why = Claim(factsOf(c));
         if (why !== undefined) c.note(false, why);
