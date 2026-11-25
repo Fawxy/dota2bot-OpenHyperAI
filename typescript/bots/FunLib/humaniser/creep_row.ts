@@ -1,5 +1,5 @@
 /**
- * The lane's creeps, first group (no-creep-unpaid proposal s5; doctrine D11; switch Ours.LaneCreeps), a soft row of the
+ * The lane's creeps, first group (no-creep-unpaid proposal s5; doctrine D11; switch Ours.LaneCreeps), a hard row of the
  * decider: a core takes their ranged creep by a right-click, in range with a swing to spare. Which positions act is
  * `states/trip_table`'s `creep` row (pos 1 to 3; supports wait for the core-first margin, proposal s3).
  *
@@ -16,7 +16,8 @@
  *
  * The verb is the engine's `lastHit` on that creep (it walks into range, waits and swings when its hit kills); the attempt
  * latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
- * Soft: Valve's attack, item, evasive and defend-ally outbid it; stock's retreat lets go first (the decider's).
+ * Hard from the go (test arm, oha-creep-ontime): the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
+ * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
  * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
  * per attempt.
@@ -275,7 +276,7 @@ function factsOf(c: CreepOffer.Candidate): Facts {
 /**
  * The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
- * yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
+ * yet about to come due), `acting`, `held` (stock's retreat holds the hero: a later read may still go),
  * `tried` (this creep's attempt has ended); then Claim's;
  * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
  * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
@@ -301,10 +302,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     }
     if (Tasks.Jobs() === undefined) return;
     const busy = acting(bot);
-    // Round 2 (rig ce1: 9 of 56 attempts never started): the soft hold cannot take the hero from Valve's attack or stock's
-    // retreat, so an attempt started then is cut before its first step and spends the creep's one try.
+    // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
+    // 9 of 56 never started). Valve's attack no longer does: the hold is hard.
     const mode = bot.GetActiveMode();
-    const held = Decider.LetGo(bot) || mode === BotMode.Attack || mode === BotMode.Retreat;
+    const held = Decider.LetGo(bot) || mode === BotMode.Retreat;
     let best: CreepOffer.Candidate | undefined;
     for (const c of cands) {
         let why: string | undefined;
@@ -377,5 +378,5 @@ function rowStep(bot: Unit): boolean {
     return false;
 }
 
-/** The decider's row (registered in index.ts, so the decider imports no row). Soft (plan s3). */
-export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep, soft: true };
+/** The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3). */
+export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep };

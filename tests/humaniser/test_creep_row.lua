@@ -164,14 +164,14 @@ do -- the start line says what held the row and what the spare was: need from th
 	check("start line: need and spare from the verb's range; a first read goes with no hw, nw=1 and hs=0", field(first, "gn") == "1.170"
 		and field(first, "sp") == "0.230" and field(first, "nw") == "1" and field(first, "hs") == "0" and field(first, "hw") == nil and field(first, "sa") == "0", first)
 	local held = run(function(w, c)
-		w.core.mode = 2
+		w.core.mode = 4
 		w.CO.Shadow(w.core)
 		T = T + 0.3
 		w.core.mode = 0
 		w.core.target = c
 		w.targets = { target(c, { walk = 0.3, due = 1.4, dies = 3 }) }
 	end)
-	check("start line: held by attack, then it went 0.3 s later: hw, hm, hs, sa=1 and nw=0", field(held, "hw") == "held" and field(held, "hm") == "attack"
+	check("start line: held by retreat, then it went 0.3 s later: hw, hm, hs, sa=1 and nw=0", field(held, "hw") == "held" and field(held, "hm") == "retreat"
 		and field(held, "hs") == "0.300" and field(held, "sa") == "1" and field(held, "nw") == "0", held)
 	local acting = run(function(w)
 		w.core.channeling = true
@@ -187,7 +187,7 @@ do -- the record is dropped for a creep that is no longer listed: a creep back a
 	local c = ranged(500)
 	local out = capture(function()
 		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
-		w.core.mode = 2
+		w.core.mode = 4
 		w.CO.Shadow(w.core)
 		T = T + 0.1
 		w.targets = { target(ranged(900), { walk = 2.0, due = 9 }) }
@@ -238,7 +238,7 @@ do -- the refusal names what happened before, and a later read still goes once t
 		return w, starts[#starts]
 	end
 	local w, start = history(function(w, c, read)
-		read(0.8, 2) -- on time, Valve's attack holds the hero
+		read(0.8, 4) -- on time, stock's retreat holds the hero
 		read(0.3) -- not on time any more
 		read(0.7) -- on time again
 	end)
@@ -303,22 +303,47 @@ do -- the lead is one own attack cycle: due past the walk plus a cycle waits, wi
 	end)())
 end
 
-do -- Valve's attack or stock's retreat holds the hero: no attempt (it would be cut before a step), the creep kept for a later read
-	for _, m in ipairs({ { 2, "attack" }, { 4, "retreat" } }) do
-		local w = world()
-		local c = ranged()
-		w.core.mode = m[1]
-		local out = capture(function()
-			w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
-			w.CO.Shadow(w.core)
-			local before = w.starts
-			T = T + 0.1
-			w.core.mode = 0
-			w.CO.Shadow(w.core)
-			check("held by " .. m[2] .. ": nothing started while it holds", before == 0, tostring(before))
-		end)
-		check("held by " .. m[2] .. ": once released the same creep goes", w.starts == 1 and lastHitOpts(w).target == c, tostring(w.starts))
-	end
+do -- the hold is hard: Valve's attack does not stop it going; stock's retreat (the mode, or the decider letting go) still does
+	local w = world()
+	local c = ranged()
+	w.core.mode = 2
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	capture(function() w.CO.Shadow(w.core) end)
+	check("hard: the hero in Valve's attack mode goes", w.starts == 1 and lastHitOpts(w).target == c, tostring(w.starts))
+	local D = package.loaded["bots/FunLib/humaniser/decider"]
+	check("hard: while the attempt runs the decider holds the hero at HARD", D.Host(w.core, function() return 0 end)() == D.HARD)
+
+	w = world()
+	c = ranged()
+	local out = capture(function()
+		w.core.mode = 4
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		w.CO.Shadow(w.core)
+		local before = w.starts
+		T = T + 0.1
+		w.core.mode = 0
+		w.CO.Shadow(w.core)
+		check("held by retreat: nothing started while it holds", before == 0, tostring(before))
+	end)
+	check("held by retreat: once released the same creep goes", w.starts == 1 and lastHitOpts(w).target == c, tostring(w.starts))
+	local start = lines(out, "phase=start")[1]
+	check("held by retreat: the start line names it", field(start, "hw") == "held" and field(start, "hm") == "retreat", tostring(start))
+end
+
+do -- the decider has let the hero go to stock's retreat (an attempt's hold met a retreat that leads): a creep read then is not taken
+	local w = world()
+	local c, d = ranged(300), ranged(320)
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	capture(function() w.CO.Shadow(w.core) end)
+	local D = package.loaded["bots/FunLib/humaniser/decider"]
+	D.NoteDesire(w.core, "retreat", 0.9)
+	D.Host(w.core, function() return 0 end)()
+	local let = D.LetGo(w.core)
+	w.onEnd({ success = false, reason = "preempted" })
+	T = T + 0.1
+	w.targets = { target(d, { walk = 0.3, due = 0.5 }) }
+	capture(function() w.CO.Shadow(w.core) end)
+	check("let go: the decider yields to retreat, and the next creep read starts nothing", let == true and w.starts == 1, tostring(let) .. " " .. w.starts)
 end
 
 do -- not yet about to come due, then due: waits, then goes on the same creep

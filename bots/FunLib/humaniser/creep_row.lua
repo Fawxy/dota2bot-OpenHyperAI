@@ -473,7 +473,7 @@ local function factsOf(c)
 end
 --- The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
--- yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
+-- yet about to come due), `acting`, `held` (stock's retreat holds the hero: a later read may still go),
 -- `tried` (this creep's attempt has ended); then Claim's;
 -- `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
 -- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
@@ -503,7 +503,7 @@ function ____exports.Consider(bot, cands)
     end
     local busy = acting(bot)
     local mode = bot:GetActiveMode()
-    local held = Decider.LetGo(bot) or mode == BotMode.Attack or mode == BotMode.Retreat
+    local held = Decider.LetGo(bot) or mode == BotMode.Retreat
     local best
     for ____, c in ipairs(cands) do
         local why
@@ -627,6 +627,6 @@ local function rowStep(bot)
     end
     return false
 end
---- The decider's row (registered in index.ts, so the decider imports no row). Soft (plan s3).
-____exports.ROW = {name = "creep", applies = rowApplies, step = rowStep, soft = true}
+--- The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3).
+____exports.ROW = {name = "creep", applies = rowApplies, step = rowStep}
 return ____exports
