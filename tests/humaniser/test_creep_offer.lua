@@ -230,6 +230,50 @@ do -- the facts: the race, the enemies' reach and the path's cost
 	check("the other target in reach due before the walk back counts (the ranged one), the deny due in 5 s does not", num(l[1], "g2") == 1 and num(l[1], "g2r") == 1, l[1])
 end
 
+do -- a lane creep or tower the API lists with no location (seen in games) is left out of the path's counts; the read does not throw
+	local w = world()
+	local core = hero(1, 1)
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+	local near1 = MakeCreep({ team = 3, x = 200, y = -4900, hp = 200 })
+	near1.dmg, near1.spa, near1.acq = 24, 1, 500
+	local near2 = MakeCreep({ team = 3, x = 250, y = -5100, hp = 200 })
+	near2.dmg, near2.spa, near2.acq = 24, 1, 500
+	local ghost = MakeCreep({ team = 3, x = 280, y = -5000, hp = 200 })
+	ghost.dmg, ghost.spa, ghost.acq = 24, 1, 500
+	ghost.unseen, ghost.listedUnseen = true, true
+	local good, bad = MakeLaneTowers()[3][dota.Tower.Bot1], MakeLaneTowers()[3][dota.Tower.Mid1]
+	good.loc, bad.loc = Vector(300, -5000), Vector(100, -5000)
+	bad.GetLocation = function() return nil end
+	TOWERS_W[3] = { [dota.Tower.Bot1] = good, [dota.Tower.Mid1] = bad }
+	local out = capture(function()
+		w.targets = { target(c, {}) }
+		w.CO.Shadow(core)
+		T = 100.1
+		kill(c) kill(near1) kill(near2) kill(ghost)
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	local l = lines(out)
+	check("the line is written with no lua_error", #l == 1 and not table.concat(out, "\n"):find("lua_error", 1, true), table.concat(out, "\n"))
+	check("the two healthy creeps and their damage are counted, the one with no location is not", num(l[1], "pc") == 3 and num(l[1], "pd") == 48, l[1])
+	check("the healthy tower still covers the path", num(l[1], "ptw") == 1, l[1])
+end
+
+do -- the offered creep itself reads no location: it is skipped for that read, with no line and no throw
+	local w = world()
+	local core = hero(1, 1)
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+	c.unseen = true
+	local out = capture(function()
+		w.targets = { target(c, {}) }
+		w.CO.Shadow(core)
+		T = 100.1
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	check("nothing is written and nothing throws", #out == 0, table.concat(out, "\n"))
+end
+
 do -- the rate: a read inside the interval does nothing; the close waits for the next due read and is written once
 	local w = world(0.2)
 	local core = hero(2, 2) -- an even pid reads at 100.0, 100.2, ...

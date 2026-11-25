@@ -208,12 +208,25 @@ local function towersOf(bot, f)
     end
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
-        local at = t:GetLocation()
-        out[#out + 1] = {
-            x = at.x,
-            y = at.y,
-            reach = t:GetAttackRange() + t:GetBoundingRadius() + f.hull
-        }
+        do
+            local __continue29
+            repeat
+                local at = t:GetLocation()
+                if at == nil or at == nil then
+                    __continue29 = true
+                    break
+                end
+                out[#out + 1] = {
+                    x = at.x,
+                    y = at.y,
+                    reach = t:GetAttackRange() + t:GetBoundingRadius() + f.hull
+                }
+                __continue29 = true
+            until true
+            if not __continue29 then
+                break
+            end
+        end
     end
     f.towers = out
     return out
@@ -224,17 +237,30 @@ local function creepsOf(f)
     end
     local out = {}
     for ____, c in ipairs(f.enemyCreeps) do
-        local at = c:GetLocation()
-        local ____this_1
-        ____this_1 = c
-        local ____opt_0 = ____this_1.GetSecondsPerAttack
-        local spa = ____opt_0 and ____opt_0(____this_1) or 1
-        out[#out + 1] = {
-            x = at.x,
-            y = at.y,
-            reach = c:GetAcquisitionRange() + c:GetBoundingRadius() + f.hull,
-            dps = c:GetAttackDamage() / math.max(spa, 0.1)
-        }
+        do
+            local __continue34
+            repeat
+                local at = c:GetLocation()
+                if at == nil or at == nil then
+                    __continue34 = true
+                    break
+                end
+                local ____this_1
+                ____this_1 = c
+                local ____opt_0 = ____this_1.GetSecondsPerAttack
+                local spa = ____opt_0 and ____opt_0(____this_1) or 1
+                out[#out + 1] = {
+                    x = at.x,
+                    y = at.y,
+                    reach = c:GetAcquisitionRange() + c:GetBoundingRadius() + f.hull,
+                    dps = c:GetAttackDamage() / math.max(spa, 0.1)
+                }
+                __continue34 = true
+            until true
+            if not __continue34 then
+                break
+            end
+        end
     end
     f.creeps = out
     return out
@@ -246,15 +272,15 @@ local function enemiesOf(f)
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue37
+            local __continue39
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue37 = true
+                    __continue39 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue37 = true
+                    __continue39 = true
                     break
                 end
                 local ____at_x_4 = at.x
@@ -275,9 +301,9 @@ local function enemiesOf(f)
                     dmg = ____temp_9,
                     spa = ____opt_2 and ____opt_2(____this_3) or 1
                 }
-                __continue37 = true
+                __continue39 = true
             until true
-            if not __continue37 then
+            if not __continue39 then
                 break
             end
         end
@@ -332,19 +358,19 @@ local function snapshot(bot, f, t, slack, others)
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
-            local __continue48
+            local __continue50
             repeat
                 if dist(e, at) > e.range + e.hull + hull then
-                    __continue48 = true
+                    __continue50 = true
                     break
                 end
                 ein = ein + 1
                 if e.dmg > ed then
                     ed = e.dmg
                 end
-                __continue48 = true
+                __continue50 = true
             until true
-            if not __continue48 then
+            if not __continue50 then
                 break
             end
         end
@@ -432,17 +458,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue67
+                local __continue69
                 repeat
                     if listed[o.creep] == true then
-                        __continue67 = true
+                        __continue69 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue67 = true
+                    __continue69 = true
                 until true
-                if not __continue67 then
+                if not __continue69 then
                     break
                 end
             end
@@ -469,52 +495,66 @@ function ____exports.Shadow(bot)
     local atkTarget = bot:GetAttackTarget()
     local slot = math.floor(now * 10) / 10
     for ____, t in ipairs(targets) do
-        local creep = t.creep
-        local cid = Telemetry.CreepId(creep)
-        local a = Offer.Arrive(t.walk, LaneOffers.ARRIVE_SLACK, t.dies)
-        local o = m[cid]
-        local others = {}
-        if o == nil or o.okFrom == nil and (a.ok or a.slack > o.snap.slk + ____exports.SETTINGS.SlackStep) then
-            for ____, x in ipairs(targets) do
-                if x ~= t and x.walk <= 0 then
-                    others[#others + 1] = {due = x.due, ranged = x.ranged}
+        do
+            local __continue73
+            repeat
+                local creep = t.creep
+                local here = creep:GetLocation()
+                if here == nil or here == nil then
+                    __continue73 = true
+                    break
                 end
+                local cid = Telemetry.CreepId(creep)
+                local a = Offer.Arrive(t.walk, LaneOffers.ARRIVE_SLACK, t.dies)
+                local o = m[cid]
+                local others = {}
+                if o == nil or o.okFrom == nil and (a.ok or a.slack > o.snap.slk + ____exports.SETTINGS.SlackStep) then
+                    for ____, x in ipairs(targets) do
+                        if x ~= t and x.walk <= 0 then
+                            others[#others + 1] = {due = x.due, ranged = x.ranged}
+                        end
+                    end
+                end
+                if o == nil then
+                    o = {
+                        creep = creep,
+                        lane = bot:GetAssignedLane(),
+                        first = slot,
+                        ck = LaneRead.CreepKind(creep:GetUnitName()),
+                        who = t.kind == "deny" and "o" or "t",
+                        snap = P.snapshot(
+                            bot,
+                            f,
+                            t,
+                            a.slack,
+                            others
+                        ),
+                        atk = false
+                    }
+                    m[cid] = o
+                elseif o.okFrom == nil and (a.ok or a.slack > o.snap.slk + ____exports.SETTINGS.SlackStep) then
+                    o.snap = P.snapshot(
+                        bot,
+                        f,
+                        t,
+                        a.slack,
+                        others
+                    )
+                end
+                if a.ok then
+                    if o.okFrom == nil then
+                        o.okFrom = now
+                    end
+                    o.okTo = now
+                end
+                if atkTarget ~= nil and atkTarget ~= nil and atkTarget == creep then
+                    o.atk = true
+                end
+                __continue73 = true
+            until true
+            if not __continue73 then
+                break
             end
-        end
-        if o == nil then
-            o = {
-                creep = creep,
-                lane = bot:GetAssignedLane(),
-                first = slot,
-                ck = LaneRead.CreepKind(creep:GetUnitName()),
-                who = t.kind == "deny" and "o" or "t",
-                snap = P.snapshot(
-                    bot,
-                    f,
-                    t,
-                    a.slack,
-                    others
-                ),
-                atk = false
-            }
-            m[cid] = o
-        elseif o.okFrom == nil and (a.ok or a.slack > o.snap.slk + ____exports.SETTINGS.SlackStep) then
-            o.snap = P.snapshot(
-                bot,
-                f,
-                t,
-                a.slack,
-                others
-            )
-        end
-        if a.ok then
-            if o.okFrom == nil then
-                o.okFrom = now
-            end
-            o.okTo = now
-        end
-        if atkTarget ~= nil and atkTarget ~= nil and atkTarget == creep then
-            o.atk = true
         end
     end
 end

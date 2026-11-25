@@ -217,6 +217,7 @@ function towersOf(bot: Unit, f: Frame): Offer.PathTower[] {
     const out: Offer.PathTower[] = [];
     for (const t of bot.GetNearbyTowers(SETTINGS.TowerRadius, true)) {
         const at = t.GetLocation();
+        if (at === null || at === undefined) continue;
         out.push({ x: at.x, y: at.y, reach: t.GetAttackRange() + t.GetBoundingRadius() + f.hull });
     }
     f.towers = out;
@@ -227,7 +228,9 @@ function creepsOf(f: Frame): Offer.PathCreep[] {
     if (f.creeps !== undefined) return f.creeps;
     const out: Offer.PathCreep[] = [];
     for (const c of f.enemyCreeps) {
+        // The API has returned nil here in games for a creep it lists.
         const at = c.GetLocation();
+        if (at === null || at === undefined) continue;
         const spa = (c as Timed).GetSecondsPerAttack?.() ?? 1;
         out.push({ x: at.x, y: at.y, reach: c.GetAcquisitionRange() + c.GetBoundingRadius() + f.hull, dps: c.GetAttackDamage() / math.max(spa, 0.1) });
     }
@@ -352,6 +355,8 @@ export function Shadow(bot: Unit): void {
 
     for (const t of targets) {
         const creep = t.creep as unknown as Unit;
+        const here = creep.GetLocation();
+        if (here === null || here === undefined) continue;
         const cid = Telemetry.CreepId(creep);
         const a = Offer.Arrive(t.walk, LaneOffers.ARRIVE_SLACK, t.dies);
         let o = m[cid];
