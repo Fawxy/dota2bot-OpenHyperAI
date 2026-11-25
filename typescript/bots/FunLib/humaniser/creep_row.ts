@@ -51,7 +51,7 @@ export const SETTINGS = {
     EarlyLead: 3,
     /**
      * The decider's round (s) as the row meets it: the wait from a go to the row's first step, which is also the wait for a change of hold
-     * to apply (`wt` of crr1b, crr1ts2 and csw0: median 0.27, max 0.57). The hold turns hard this long before the swing is due, and a gap
+     * to apply (`wt` of crr1b, crr1ts2 and csw0: median 0.27, max 0.57). The hold turns hard this long (plus the read interval, `Soft`) before the swing is due, and a gap
      * between steps longer than it means another mode had the hero.
      */
     Round: 0.4,
@@ -245,8 +245,9 @@ function r2(x: number): number {
 /**
  * The one place that says whether the attempt is held soft, from `SETTINGS.HardFrom`, and where the hold turns hard (`hc`, `hd`): a commit,
  * so once hard it stays hard. `go`: hard from the go. `swing`: soft until the creep's latest due (aged by the time since the read that had
- * it, as is the walk) is at most the walk left plus `Round`, since a change of hold takes up to a round to apply and the verb's `swing`
- * phase is reported only after its order; the verb's own `swing` also makes it hard. The aging assumes the hero is walking in, so while
+ * it, as is the walk) is at most the walk left plus `Round` plus the offer read's interval (`CreepOffer.SETTINGS.Every`): a change of hold
+ * takes up to a round to apply, the due is up to one read old, and the verb's `swing` phase is reported only after its order. With `Round`
+ * alone csw1b ordered 6 of 40 swings before the first `hs=hard` decider line, by up to 0.3 s. The verb's own `swing` also makes it hard. The aging assumes the hero is walking in, so while
  * another mode has the hero, or after it came back and before a read asked the go rule again (`back`), it stays soft: the hold must not
  * harden on a due the hero may no longer meet.
  */
@@ -256,7 +257,7 @@ function Soft(this: void, a: Attempt | undefined, now: number): boolean {
     const due = a.due - dt;
     if (SETTINGS.HardFrom === "swing" && a.phase !== "swing") {
         const away = a.back || (a.lastStep !== undefined && now - a.lastStep > SETTINGS.Round);
-        if (away || due > math.max(0, a.need - dt) + SETTINGS.Round) return true;
+        if (away || due > math.max(0, a.need - dt) + SETTINGS.Round + CreepOffer.SETTINGS.Every) return true;
     }
     a.hc = now - a.t0;
     a.hd = due;

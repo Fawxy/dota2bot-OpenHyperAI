@@ -539,6 +539,25 @@ do -- the swing arm (SETTINGS.HardFrom = "swing"): the early go, the offer's lea
 	check("commit point: a later read with the due risen leaves it HARD (a commit)", v4 == D.HARD, tostring(v4))
 	check("commit point: the end line has the seconds to the switch and the due then", approx(field(e, "hc"), 1.65) and approx(field(e, "hd"), 0.35), tostring(e))
 
+	-- The allowance is the round plus the read interval (the game's 0.2 s): a creep due 0.5 s beyond the walk is hard at the go (0.4 + 0.2 >= 0.5),
+	-- one due 0.7 s beyond it is not.
+	local function atGo(due)
+		local w2 = world({ arm = "swing" })
+		D = package.loaded["bots/FunLib/humaniser/decider"]
+		w2.CO.SETTINGS.Every = 0.2
+		w2.core.range, w2.core.speed, w2.core.spa = 150, 300, 1.0
+		local c2 = ranged(170)
+		w2.targets = { target(c2, { walk = 0, due = due }) }
+		local v
+		capture(function()
+			w2.CO.Shadow(w2.core)
+			v = D.Host(w2.core, function() return 0 end)()
+		end)
+		return v
+	end
+	check("allowance: a due 0.5 s beyond the walk is already HARD (the round plus the read interval)", atGo(0.5) == D.HARD, tostring(atGo(0.5)))
+	check("control: a due 0.7 s beyond the walk is still soft", atGo(0.7) < D.HARD, tostring(atGo(0.7)))
+
 	-- A step after another mode had the hero, then a read: back in time continues; back too late ends late_back and the creep may be tried again.
 	w = start("swing", 2.0)
 	step(w, 0.1)

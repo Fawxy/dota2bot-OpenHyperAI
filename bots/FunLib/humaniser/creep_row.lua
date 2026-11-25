@@ -202,7 +202,7 @@ function Soft(a, now)
     local due = a.due - dt
     if ____exports.SETTINGS.HardFrom == "swing" and a.phase ~= "swing" then
         local away = a.back or a.lastStep ~= nil and now - a.lastStep > ____exports.SETTINGS.Round
-        if away or due > math.max(0, a.need - dt) + ____exports.SETTINGS.Round then
+        if away or due > math.max(0, a.need - dt) + ____exports.SETTINGS.Round + CreepOffer.SETTINGS.Every then
             return true
         end
     end
