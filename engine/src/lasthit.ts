@@ -642,6 +642,8 @@ interface Belief {
     relied: number;
     /** Own damage as the bot believes it (error applied, after armour). */
     mine: number;
+    /** `incomingDps`'s `dps`, from the same scan as the belief. */
+    dps: number;
 }
 
 /**
@@ -667,10 +669,13 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
     // come late). An attacker already winding up is credited with that hit above and not extrapolated too: counting
     // both read a 0.6-1 s horizon 12-30 HP too heavy and swung early (llhscn2, half the swings past 0.6 s missed).
     const relied = math.max(0, tHit - MIN_MARGIN);
-    const { dps, between } = incomingDps(bot, creep);
+    // One scan gives `incomingDps` and `incomingDamage(relied)` both: the rates do not depend on the horizon.
+    const s = scanAttackers(bot, creep, relied);
+    const dps = physical(creep, s.dps);
+    const between = physical(creep, s.between);
     // The observed loss already includes regen (a negative regen is a drain the model counts below).
     const unseen = math.max(0, observedDps + regen - dps);
-    const certain = hp + regen * tHit - incomingDamage(bot, creep, relied);
+    const certain = hp + regen * tHit - physical(creep, s.raw);
     const visible = certain - math.max(0, relied - SEEN_AHEAD) * between - unseen * relied;
     let believed = visible;
     let reliedUsed = relied;
@@ -696,6 +701,7 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         relied: reliedUsed,
         // The lowest roll of the damage spread: a swing on the average roll fails about half the borderline creeps.
         mine: lowestHit(bot, creep, 1 + eps * width),
+        dps,
     };
 }
 
@@ -831,7 +837,7 @@ function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number): [number, number,
     if (!b.survives) return undefined;
     const walk = math.max(0, dist(bot.GetLocation(), c.GetLocation()) - bot.GetAttackRange()) / walkSpeed;
     const margin = b.hpAtHit - b.mine;
-    const dps = incomingDps(bot, c).dps + math.max(0, -(c.GetHealthRegen?.() ?? 0));
+    const dps = b.dps + math.max(0, -(c.GetHealthRegen?.() ?? 0));
     const dies = dps > 0 ? b.tHit + b.hpAtHit / dps : math.huge;
     if (margin <= 0) return [0, walk, dies];
     if (dps <= 0) return undefined;
@@ -992,7 +998,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                     opened(t, gap, "swing");
                     tHit = b.tHit;
                     // In-game calibration (docs/API.md "UNVERIFIED"): what the swing was based on.
-                    diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(incomingDps(bot, creep).dps));
+                    diag = string.format("w=%.2f hp=%d pred=%d mine=%d t=%.2f m=%.2f obs=%d idps=%d", now() - start, math.floor(creep.GetHealth()), math.floor(b.hpAtHit), math.floor(b.mine), b.tHit, margin, math.floor(observedDps), math.floor(b.dps));
                     // Enemy hero wind-ups this swing counted as certain (a feint would break them): `ew` how many, `er` 1
                     // when the swing is due only because of them, `ec` the latest of their commit points and `oc` ours
                     // (seconds from now).

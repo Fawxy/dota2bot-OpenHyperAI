@@ -1874,15 +1874,15 @@ function lowestHit(bot, creep, scale)
     if scale == nil then
         scale = 1
     end
-    local ____physical_119 = physical
-    local ____creep_118 = creep
-    local ____temp_117 = bot:GetAttackDamage()
-    local ____this_116
-    ____this_116 = bot
-    local ____opt_115 = ____this_116.GetBaseDamageVariance
-    return ____physical_119(
-        ____creep_118,
-        (____temp_117 - (____opt_115 and ____opt_115(____this_116) or 0)) * scale
+    local ____physical_118 = physical
+    local ____creep_117 = creep
+    local ____temp_116 = bot:GetAttackDamage()
+    local ____this_115
+    ____this_115 = bot
+    local ____opt_114 = ____this_115.GetBaseDamageVariance
+    return ____physical_118(
+        ____creep_117,
+        (____temp_116 - (____opt_114 and ____opt_114(____this_115) or 0)) * scale
     )
 end
 ACTIVITY_ATTACK = 1503
@@ -2390,11 +2390,11 @@ local function believe(bot, creep, withError, observedDps)
     local regen = ____opt_112 and ____opt_112(____this_113) or 0
     local hp = creep:GetHealth()
     local relied = math.max(0, tHit - MIN_MARGIN)
-    local ____exports_incomingDps_result_114 = ____exports.incomingDps(bot, creep)
-    local dps = ____exports_incomingDps_result_114.dps
-    local between = ____exports_incomingDps_result_114.between
+    local s = scanAttackers(bot, creep, relied)
+    local dps = physical(creep, s.dps)
+    local between = physical(creep, s.between)
     local unseen = math.max(0, observedDps + regen - dps)
-    local certain = hp + regen * tHit - ____exports.incomingDamage(bot, creep, relied)
+    local certain = hp + regen * tHit - physical(creep, s.raw)
     local visible = certain - math.max(0, relied - SEEN_AHEAD) * between - unseen * relied
     local believed = visible
     local reliedUsed = relied
@@ -2417,7 +2417,8 @@ local function believe(bot, creep, withError, observedDps)
         survives = certain > 0,
         hpAtHit = believed,
         relied = reliedUsed,
-        mine = lowestHit(bot, creep, 1 + eps * width)
+        mine = lowestHit(bot, creep, 1 + eps * width),
+        dps = dps
     }
 end
 --- Swing now: the creep survives everyone else until our hit lands, and (as believed) our hit then kills it.
@@ -2434,20 +2435,20 @@ local function windowText(w)
     )
 end
 local function isRangedCreep(c)
-    local ____this_121
-    ____this_121 = c
-    local ____opt_120 = ____this_121.GetUnitName
-    local name = ____opt_120 and ____opt_120(____this_121)
+    local ____this_120
+    ____this_120 = c
+    local ____opt_119 = ____this_120.GetUnitName
+    local name = ____opt_119 and ____opt_119(____this_120)
     if name == nil then
         return false
     end
     return (string.find(name, "ranged", 1, true)) ~= nil or (string.find(name, "siege", 1, true)) ~= nil
 end
 local function deniable(c)
-    local ____this_123
-    ____this_123 = c
-    local ____opt_122 = ____this_123.GetMaxHealth
-    local max = ____opt_122 and ____opt_122(____this_123)
+    local ____this_122
+    ____this_122 = c
+    local ____opt_121 = ____this_122.GetMaxHealth
+    local max = ____opt_121 and ____opt_121(____this_122)
     return max == nil or c:GetHealth() < max / 2
 end
 --- Of `creeps`, the one closest to dying to our hit (exact prediction, no error), preferring a ranged or siege
@@ -2473,16 +2474,16 @@ end
 --- Deny heuristic, UNVERIFIED in-game: assumes an enemy hero attacking the creep on its last live frame
 -- landed the killing blow, and that Dota hands back the same handle for the same unit so `==` matches.
 local function enemyTargeting(bot, creep)
-    local ____this_125
-    ____this_125 = bot
-    local ____opt_124 = ____this_125.GetNearbyHeroes
-    local heroes = ____opt_124 and ____opt_124(____this_125, 1200, true, 0)
+    local ____this_124
+    ____this_124 = bot
+    local ____opt_123 = ____this_124.GetNearbyHeroes
+    local heroes = ____opt_123 and ____opt_123(____this_124, 1200, true, 0)
     if heroes == nil then
         return false
     end
     for ____, h in ipairs(heroes) do
-        local ____opt_126 = h.GetAttackTarget
-        if (____opt_126 and ____opt_126(h)) == creep then
+        local ____opt_125 = h.GetAttackTarget
+        if (____opt_125 and ____opt_125(h)) == creep then
             return true
         end
     end
@@ -2493,10 +2494,10 @@ end
 -- hit is then at least its HP now), and its HP above the bot's lowest-roll hit (the belief's `mine` without error), so
 -- the margin is positive with nothing to close it. Reads nothing that holds state (no wind-up record, no roll).
 local function cannotComeDue(bot, c)
-    local ____this_129
-    ____this_129 = c
-    local ____opt_128 = ____this_129.GetHealthRegen
-    if (____opt_128 and ____opt_128(____this_129) or 0) < 0 then
+    local ____this_128
+    ____this_128 = c
+    local ____opt_127 = ____this_128.GetHealthRegen
+    if (____opt_127 and ____opt_127(____this_128) or 0) < 0 then
         return false
     end
     if c:GetHealth() - lowestHit(bot, c) <= 0.000001 then
@@ -2530,14 +2531,14 @@ local function etaOf(bot, c, walkSpeed)
         ) - bot:GetAttackRange()
     ) / walkSpeed
     local margin = b.hpAtHit - b.mine
-    local ____exports_incomingDps_result_dps_133 = ____exports.incomingDps(bot, c).dps
-    local ____math_max_132 = math.max
-    local ____this_131
-    ____this_131 = c
-    local ____opt_130 = ____this_131.GetHealthRegen
-    local dps = ____exports_incomingDps_result_dps_133 + ____math_max_132(
+    local ____b_dps_132 = b.dps
+    local ____math_max_131 = math.max
+    local ____this_130
+    ____this_130 = c
+    local ____opt_129 = ____this_130.GetHealthRegen
+    local dps = ____b_dps_132 + ____math_max_131(
         0,
-        -(____opt_130 and ____opt_130(____this_131) or 0)
+        -(____opt_129 and ____opt_129(____this_130) or 0)
     )
     local dies = dps > 0 and b.tHit + b.hpAtHit / dps or math.huge
     if margin <= 0 then
@@ -2567,13 +2568,13 @@ function ____exports.laneTargets(bot, opts)
         bot:GetAttackRange() + 400
     )
     local within = opts.within or 1
-    local ____math_max_136 = math.max
-    local ____this_135
-    ____this_135 = bot
-    local ____opt_134 = ____this_135.GetCurrentMovementSpeed
-    local speed = ____math_max_136(
+    local ____math_max_135 = math.max
+    local ____this_134
+    ____this_134 = bot
+    local ____opt_133 = ____this_134.GetCurrentMovementSpeed
+    local speed = ____math_max_135(
         100,
-        ____opt_134 and ____opt_134(____this_135) or 300
+        ____opt_133 and ____opt_133(____this_134) or 300
     )
     local here = bot:GetLocation()
     local n = nearby(bot)
@@ -2794,7 +2795,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
                         b.tHit,
                         margin,
                         math.floor(observedDps),
-                        math.floor(____exports.incomingDps(bot, creep).dps)
+                        math.floor(b.dps)
                     )
                     local ew = enemyHeroWindups(bot, creep, b.relied)
                     if ew.n > 0 then
@@ -2827,10 +2828,10 @@ local strike = __TS__Generator(function(bot, mode, opts)
     local function landBy()
         return now() - swingAt >= tHit
     end
-    local ____this_138
-    ____this_138 = bot
-    local ____opt_137 = ____this_138.GetLastAttackTime
-    local atk0 = ____opt_137 and ____opt_137(____this_138)
+    local ____this_137
+    ____this_137 = bot
+    local ____opt_136 = ____this_137.GetLastAttackTime
+    local atk0 = ____opt_136 and ____opt_136(____this_137)
     local fireAt
     local landHp
     local function out(r)
