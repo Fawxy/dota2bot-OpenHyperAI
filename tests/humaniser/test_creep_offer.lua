@@ -255,7 +255,7 @@ do -- a lane creep or tower the API lists with no location (seen in games) is le
 	end)
 	local l = lines(out)
 	check("the line is written with no lua_error", #l == 1 and not table.concat(out, "\n"):find("lua_error", 1, true), table.concat(out, "\n"))
-	check("the two healthy creeps and their damage are counted, the one with no location is not", num(l[1], "pc") == 3 and num(l[1], "pd") == 48, l[1])
+	check("the offered creep and the two healthy ones are counted, 48 damage from the two that hit, the one with no location is left out", num(l[1], "pc") == 3 and num(l[1], "pd") == 48, l[1])
 	check("the healthy tower still covers the path", num(l[1], "ptw") == 1, l[1])
 end
 

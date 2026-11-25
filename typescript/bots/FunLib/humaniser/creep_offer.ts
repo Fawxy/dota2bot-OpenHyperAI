@@ -228,7 +228,7 @@ function creepsOf(f: Frame): Offer.PathCreep[] {
     if (f.creeps !== undefined) return f.creeps;
     const out: Offer.PathCreep[] = [];
     for (const c of f.enemyCreeps) {
-        // The API has returned nil here in games for a creep it lists.
+        // The API has returned nil here in games; likely a fogged creep, still listed and alive but with no location (see `gone` in the engine's lasthit.ts).
         const at = c.GetLocation();
         if (at === null || at === undefined) continue;
         const spa = (c as Timed).GetSecondsPerAttack?.() ?? 1;
@@ -355,6 +355,7 @@ export function Shadow(bot: Unit): void {
 
     for (const t of targets) {
         const creep = t.creep as unknown as Unit;
+        // Defence only: the engine's laneTargets already leaves out a creep with no location.
         const here = creep.GetLocation();
         if (here === null || here === undefined) continue;
         const cid = Telemetry.CreepId(creep);
