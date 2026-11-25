@@ -10,7 +10,8 @@
 -- death of the same kind within `back` to `fwd` of the line when exactly one such death is free and within 1,500 of the hero's
 -- snapshot at the line; else `matched` 0.
 -- Columns: file, game, label, lineup, arm, team, pid, hero, pos, t (the line's, the creep's leaving the lists), lane, slot, want, cid, ck, who,
--- wo, wl, walk, due, dies, slk, hpp, mode, crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk (the line's fields, kind=creep),
+-- wo, wl, walk, due, dies, slk, hpp, mode, crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk, csrc (the line's own src), go, why,
+-- otw, gat, gw, erc, ert (the line's fields, kind=creep; shadow and the creep row's own lines),
 -- matched (1 when a death is joined), src (cid or owner), dt (death t), how, paid, by_pid (creep_paid_rows's, read from the hero's team),
 -- mine (1 when this hero took it: a last hit on theirs, a deny on ours), inrange (walk = 0), outdmg (ein > 0 and ed > md), covered
 -- (eh > 0), snap (the time of the answers: slot + wo for want 1, NULL for want 0).
@@ -22,7 +23,7 @@ WITH gm AS MATERIALIZED (SELECT game_id, file, game, label FROM games
 -- include: creep_offer_rows
 SELECT gm.file, gm.game, gm.label, r.lineup, r.arm, o.team, o.pid, o.hero, o.pos, o.t, o.lane, o.slot, o.want, o.cid, o.ck, o.who,
     o.wo, o.wl, o.walk, o.due, o.dies, o.slk, o.hpp, o.mode, o.crhp, o.g2, o.g2r, o.pc, o.pd, o.ptw, o.eh, o.exs, o.en,
-    o.kb, o.kt, o.md, o.ed, o.ein, o.atk, o.matched, o.src, o.dt, o.how, o.paid, o.by_pid, o.mine, o.inrange, o.outdmg, o.covered, o.snap
+    o.kb, o.kt, o.md, o.ed, o.ein, o.atk, o.csrc, o.go, o.why, o.otw, o.gat, o.gw, o.erc, o.ert, o.matched, o.src, o.dt, o.how, o.paid, o.by_pid, o.mine, o.inrange, o.outdmg, o.covered, o.snap
 FROM creep_offer_rows o JOIN gm USING (game_id)
 LEFT JOIN run_label r USING (game_id)
 ORDER BY gm.file, gm.game, o.t, o.pid, o.cid

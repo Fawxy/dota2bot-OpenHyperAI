@@ -681,7 +681,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 
 `pid` num
 
-- `job` str: `stack`, `rune`, `pull` or `rune_detour`.
+- `job` str: `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason).
 - `phase` str: `start` (`why=trigger`) or `end`.
 - `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`.
 - `host` num: The hosting mode's number.
@@ -1415,13 +1415,13 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 `pid` num, `rsrc` str, `rage` num, `ap` num, `rule` str
 
-- `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, always `src=shadow go=0 why=off`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
+- `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go` and its latest `why`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
 - `hs` str: kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it).
 - `let` str: kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
 - `go` num: 1 when the pull started.
 - `want` num: 1 when the reading wanted a pull.
-- `why` str: What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills.
+- `why` str: What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `acting`, `stock`, `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`.
 - `src` str: Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them).
 - `lane` num: The lane.
 - `slot` num: The planned hit second.
@@ -1454,6 +1454,11 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `ed` num: `kind=creep`: the highest hit damage among visible enemy heroes within their own attack range of the creep.
 - `ein` num: `kind=creep`: how many such enemy heroes.
 - `atk` num: `kind=creep`: 1 when the hero's attack target was this creep at any read while it was offered (stock was on it).
+- `erc` num: `kind=creep`: visible enemy heroes whose hit is at least ours (`md`) that can walk into their own attack range of the creep before `due` (the race).
+- `ert` num: `kind=creep`: the soonest of those walks (s); absent when `erc` is 0.
+- `otw` num: `kind=creep`: 1 when the creep is inside one of our towers' attack range (and both hulls).
+- `gat` num: `kind=creep`, `go=1`: seconds from `slot` to the read that started the row's attempt.
+- `gw` num: `kind=creep`, `go=1`: the engine's walk into range (s) at that read.
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.
 - `q` num: The clash point between the T1s: 0 ours, 1 theirs.
 - `mv` num: The clash's 30 s move from our side.
