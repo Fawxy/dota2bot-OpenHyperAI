@@ -38,6 +38,11 @@ export const SETTINGS = {
     NearWalk: 1.0,
     /** The wait for the creep to come due, after its eta: laneFarm's own (`maxWait` eta + 1.5 s, engine/docs/API.md). `judgement`. */
     WaitSlack: 1.5,
+    /**
+     * The slice's test arm (oha-creep-swing), deleted once judged: when the hold turns hard. `go`: hard from the go, through every phase
+     * (the base's answers). `swing`: soft while the verb walks and waits, hard once its swing is ordered.
+     */
+    HardFrom: "go" as "go" | "swing",
 };
 
 /** The mode the decider hosts its rows in: the engine steps the attempt's task under it. */
@@ -170,6 +175,13 @@ interface Attempt {
     aid: number;
     /** Seconds from the start to the row's first step (the wait for the host mode's next call); undefined until it steps. */
     wt?: number;
+    /** The verb's phase now and when it began (the engine's onPhase); undefined before it reports one. */
+    phase?: Lib.Verbs.LastHitPhase;
+    phaseAt: number;
+    /** Seconds spent in each phase so far (the open phase is added at the end). */
+    spent: Record<string, number>;
+    /** Seconds from the go to the hold turning hard (`Soft` first answering false). */
+    hc?: number;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -203,6 +215,23 @@ function r2(x: number): number {
     return math.floor(x * 100 + 0.5) / 100;
 }
 
+/** The one place that says whether a phase of the attempt is held soft (`undefined`: the verb has not reported a phase yet). */
+export function Soft(this: void, phase: Lib.Verbs.LastHitPhase | undefined): boolean {
+    if (SETTINGS.HardFrom === "go") return false;
+    return phase !== "swing";
+}
+
+function noteHold(a: Attempt, t: number): void {
+    if (a.hc === undefined && !Soft(a.phase)) a.hc = t - a.t0;
+}
+
+function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
+    if (a.phase !== undefined) a.spent[a.phase] += t - a.phaseAt;
+    a.phase = p;
+    a.phaseAt = t;
+    noteHold(a, t);
+}
+
 /**
  * The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range (`rng`)
  * and the engine's reach on the creep (`rch`), and
@@ -234,7 +263,7 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
 }
 
 /**
- * The end line: `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+ * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `hc` the seconds from the go to the hold turning hard (-1 never), `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
  * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
  * rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
  * start and end, `msg` the verb's message (what the swing was based on, or what held it).
@@ -253,6 +282,10 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["host", HOST],
         ["cut", cut],
         ["cid", a?.cid],
+        ["hc", a === undefined ? undefined : a.hc !== undefined ? r2(a.hc) : -1],
+        ["pw", a === undefined ? undefined : r2(a.spent.walk)],
+        ["pq", a === undefined ? undefined : r2(a.spent.wait)],
+        ["ps", a === undefined ? undefined : r2(a.spent.swing)],
         ["wt", a === undefined ? undefined : a.wt !== undefined ? r2(a.wt) : -1],
         ["tin", a === undefined ? undefined : a.tin !== undefined ? r2(a.tin) : -1],
         ["sw", sw],
@@ -273,6 +306,7 @@ function finish(bot: Unit, r: Lib.Result): void {
     const pid = bot.GetPlayerID();
     const a = running[pid];
     running[pid] = undefined;
+    if (a !== undefined && a.phase !== undefined) a.spent[a.phase] += DotaTime() - a.phaseAt;
     endLine(bot, a, r, cutBy(bot, r));
 }
 
@@ -346,7 +380,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const creep = t.creep;
     const need = Need(bot, best.creep);
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) =>
-        ctx.lastHit({ target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) })
+        ctx.lastHit({ target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep), onPhase: (p, at) => onPhase(pid, p, at) })
     );
     if (!ok) {
         best.note(false, "refused");
@@ -355,10 +389,19 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     }
     const aid = Telemetry.NextAid(pid);
     best.note(true, undefined, aid);
-    running[pid] = { cid: best.cid, creep: best.creep, t0: DotaTime(), hp0: math.floor(bot.GetHealth()), aid };
+    const t0 = DotaTime();
+    const a: Attempt = { cid: best.cid, creep: best.creep, t0, hp0: math.floor(bot.GetHealth()), aid, phaseAt: t0, spent: { walk: 0, wait: 0, swing: 0 } };
+    noteHold(a, t0);
+    running[pid] = a;
     lastCid[pid] = best.cid;
     const sa = bot.GetAttackTarget();
     startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep });
+}
+
+/** The verb's phase change, from the engine's onPhase. */
+function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
+    const a = running[pid];
+    if (a !== undefined) enterPhase(a, p, t);
 }
 
 /** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */
@@ -391,4 +434,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3). */
-export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep };
+export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep, soft: (bot) => Soft(running[bot.GetPlayerID()]?.phase) };

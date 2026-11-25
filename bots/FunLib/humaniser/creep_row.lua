@@ -182,6 +182,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local noteHold, enterPhase, onPhase, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
@@ -193,7 +194,34 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-____exports.SETTINGS = {NearWalk = 1, WaitSlack = 1.5}
+--- The one place that says whether a phase of the attempt is held soft (`undefined`: the verb has not reported a phase yet).
+function ____exports.Soft(phase)
+    if ____exports.SETTINGS.HardFrom == "go" then
+        return false
+    end
+    return phase ~= "swing"
+end
+function noteHold(a, t)
+    if a.hc == nil and not ____exports.Soft(a.phase) then
+        a.hc = t - a.t0
+    end
+end
+function enterPhase(a, p, t)
+    if a.phase ~= nil then
+        local ____a_spent_0, ____a_phase_1 = a.spent, a.phase
+        ____a_spent_0[____a_phase_1] = ____a_spent_0[____a_phase_1] + (t - a.phaseAt)
+    end
+    a.phase = p
+    a.phaseAt = t
+    noteHold(a, t)
+end
+function onPhase(pid, p, t)
+    local a = running[pid]
+    if a ~= nil then
+        enterPhase(a, p, t)
+    end
+end
+____exports.SETTINGS = {NearWalk = 1, WaitSlack = 1.5, HardFrom = "go"}
 --- The mode the decider hosts its rows in: the engine steps the attempt's task under it.
 local HOST = BotMode.Farm
 --- The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (not their ranged creep),
@@ -299,7 +327,7 @@ local function dueNow(c, r, lead, now)
     end
     return true
 end
-local running = {}
+running = {}
 --- pid -> the creep of the hero's last attempt: one attempt a creep.
 local lastCid = {}
 function ____exports.ResetCache()
@@ -390,7 +418,7 @@ local function startLine(bot, cid, aid, t, g)
         }
     )
 end
---- The end line: `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+--- The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `hc` the seconds from the go to the hold turning hard (-1 never), `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
 -- is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
 -- rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
 -- start and end, `msg` the verb's message (what the swing was based on, or what held it).
@@ -402,8 +430,8 @@ local function endLine(bot, a, r, cut)
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end
-    local ____Telemetry_Event_9 = Telemetry.Event
-    local ____array_8 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_15 = Telemetry.Event
+    local ____array_14 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -416,22 +444,50 @@ local function endLine(bot, a, r, cut)
         {"cut", cut},
         {"cid", a and a.cid}
     )
-    local ____temp_4
+    local ____temp_6
     if a == nil then
-        ____temp_4 = nil
+        ____temp_6 = nil
     else
-        ____temp_4 = a.wt ~= nil and r2(a.wt) or -1
+        ____temp_6 = a.hc ~= nil and r2(a.hc) or -1
     end
-    __TS__SparseArrayPush(____array_8, {"wt", ____temp_4})
-    local ____temp_5
+    __TS__SparseArrayPush(____array_14, {"hc", ____temp_6})
+    local ____temp_7
     if a == nil then
-        ____temp_5 = nil
+        ____temp_7 = nil
     else
-        ____temp_5 = a.tin ~= nil and r2(a.tin) or -1
+        ____temp_7 = r2(a.spent.walk)
+    end
+    __TS__SparseArrayPush(____array_14, {"pw", ____temp_7})
+    local ____temp_8
+    if a == nil then
+        ____temp_8 = nil
+    else
+        ____temp_8 = r2(a.spent.wait)
+    end
+    __TS__SparseArrayPush(____array_14, {"pq", ____temp_8})
+    local ____temp_9
+    if a == nil then
+        ____temp_9 = nil
+    else
+        ____temp_9 = r2(a.spent.swing)
+    end
+    __TS__SparseArrayPush(____array_14, {"ps", ____temp_9})
+    local ____temp_10
+    if a == nil then
+        ____temp_10 = nil
+    else
+        ____temp_10 = a.wt ~= nil and r2(a.wt) or -1
+    end
+    __TS__SparseArrayPush(____array_14, {"wt", ____temp_10})
+    local ____temp_11
+    if a == nil then
+        ____temp_11 = nil
+    else
+        ____temp_11 = a.tin ~= nil and r2(a.tin) or -1
     end
     __TS__SparseArrayPush(
-        ____array_8,
-        {"tin", ____temp_5},
+        ____array_14,
+        {"tin", ____temp_11},
         {"sw", sw},
         {"hp0", a and a.hp0},
         {
@@ -440,9 +496,9 @@ local function endLine(bot, a, r, cut)
         },
         {"msg", msg}
     )
-    ____Telemetry_Event_9(
+    ____Telemetry_Event_15(
         "job",
-        {__TS__SparseArraySpread(____array_8)}
+        {__TS__SparseArraySpread(____array_14)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -459,6 +515,10 @@ local function finish(bot, r)
     local pid = bot:GetPlayerID()
     local a = running[pid]
     running[pid] = nil
+    if a ~= nil and a.phase ~= nil then
+        local ____a_spent_16, ____a_phase_17 = a.spent, a.phase
+        ____a_spent_16[____a_phase_17] = ____a_spent_16[____a_phase_17] + (DotaTime() - a.phaseAt)
+    end
     endLine(
         bot,
         a,
@@ -561,18 +621,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue69
+            local __continue76
             repeat
                 if c == best or c.t.kind ~= "lasthit" or c.ck ~= "r" then
-                    __continue69 = true
+                    __continue76 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue69 = true
+                __continue76 = true
             until true
-            if not __continue69 then
+            if not __continue76 then
                 break
             end
         end
@@ -592,7 +652,8 @@ function ____exports.Consider(bot, cands)
         function(ctx) return ctx.lastHit({
             target = creep,
             maxWait = t.eta + ____exports.SETTINGS.WaitSlack,
-            interruptIf = function() return mateTakes(bot, creep) end
+            interruptIf = function() return mateTakes(bot, creep) end,
+            onPhase = function(p, at) return onPhase(pid, p, at) end
         }) end
     )
     if not ok then
@@ -602,13 +663,18 @@ function ____exports.Consider(bot, cands)
     end
     local aid = Telemetry.NextAid(pid)
     best.note(true, nil, aid)
-    running[pid] = {
+    local t0 = DotaTime()
+    local a = {
         cid = best.cid,
         creep = best.creep,
-        t0 = DotaTime(),
+        t0 = t0,
         hp0 = math.floor(bot:GetHealth()),
-        aid = aid
+        aid = aid,
+        phaseAt = t0,
+        spent = {walk = 0, wait = 0, swing = 0}
     }
+    noteHold(a, t0)
+    running[pid] = a
     lastCid[pid] = best.cid
     local sa = bot:GetAttackTarget()
     startLine(
@@ -662,5 +728,14 @@ local function rowStep(bot)
     return false
 end
 --- The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3).
-____exports.ROW = {name = "creep", applies = rowApplies, step = rowStep}
+____exports.ROW = {
+    name = "creep",
+    applies = rowApplies,
+    step = rowStep,
+    soft = function(bot)
+        local ____exports_Soft_20 = ____exports.Soft
+        local ____opt_18 = running[bot:GetPlayerID()]
+        return ____exports_Soft_20(____opt_18 and ____opt_18.phase)
+    end
+}
 return ____exports

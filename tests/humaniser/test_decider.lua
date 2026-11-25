@@ -277,4 +277,32 @@ do
 		table.concat(lines, " | "))
 end
 
+do -- a row's soft may be a function, asked each round: soft then hard while it holds; the line goes out at the change; the cap follows
+	local H, bot = world()
+	local on = { applies = true, steps = 0, finishAt = 99, soft = true }
+	local r = row(on)
+	r.soft = function() return on.soft end
+	H.Decider.ROWS[1] = r
+	local f = farm()
+	local desire = H.Decider.Host(bot, f.GetDesire)
+	local soft, capSoft, hard, capHard, gone
+	local lines = capture(function()
+		soft = desire()
+		capSoft = gate(H, bot, "team_roam", 0.7)
+		on.soft = false
+		hard = desire()
+		capHard = gate(H, bot, "team_roam", 0.7)
+		desire()
+		on.applies = false
+		gone = desire()
+	end)
+	check("a soft function answering true: the soft value, and an OHA Lua mode is capped", soft == H.Decider.SOFT and capSoft == H.Decider.CAP,
+		tostring(soft) .. " " .. tostring(capSoft))
+	check("the same row once the function answers false: HARD, nothing capped", hard == H.Decider.HARD and capHard == 0.7, tostring(hard) .. " " .. tostring(capHard))
+	check("one line at each change of hs (soft, then hard) while the same row holds, none for an unchanged round",
+		#lines == 3 and lines[1]:find("held=test_row", 1, true) and lines[1]:find("hs=soft", 1, true) and lines[2]:find("hs=hard", 1, true)
+		and lines[3]:find("held=-", 1, true), table.concat(lines, " | "))
+	check("control: the row no longer applying yields farm's own desire", gone == 0.4, tostring(gone))
+end
+
 finish()

@@ -22,8 +22,11 @@ export interface Row {
     applies(this: void, bot: Unit): boolean;
     /** One frame of the row's verb, from farm's Think while the row holds; true when the row is finished. */
     step(this: void, bot: Unit): boolean;
-    /** True: the row holds at SOFT, so the Valve-only modes take the hero when they want it (plan s3). Absent: HARD. */
-    soft?: boolean;
+    /**
+     * True: the row holds at SOFT, so the Valve-only modes take the hero when they want it (plan s3). Absent: HARD. A function is asked once
+     * each round (in `Host`), so a row can hold soft in one phase of its verb and hard in another.
+     */
+    soft?: boolean | ((this: void, bot: Unit) => boolean);
 }
 
 /**
@@ -84,12 +87,15 @@ interface HeroState {
     held?: Row;
     /** Set when a row applied but stock would retreat: the retreat file's value that led. */
     letAt?: number;
+    /** Whether the held row's hold is soft, as `Host` asked it this round; `Cap` and the line read this. */
+    soft?: boolean;
     /** Each gated mode file's last returned desire (NoteDesire). */
     seen: Record<string, Seen>;
     /** What the last line said, so a line goes out only on a change. */
     lineHeld?: string;
     lineWin?: string;
     lineLet?: boolean;
+    lineSoft?: boolean;
 }
 
 const heroes: Record<number, HeroState> = {};
@@ -102,6 +108,10 @@ function stateOf(bot: Unit): HeroState {
         heroes[pid] = s;
     }
     return s;
+}
+
+function isSoft(row: Row, bot: Unit): boolean {
+    return typeof row.soft === "function" ? row.soft(bot) : row.soft === true;
 }
 
 function pick(bot: Unit): Row | undefined {
@@ -154,17 +164,19 @@ function note(bot: Unit, s: HeroState): void {
     const held = s.held?.name ?? "-";
     const win = HDebug.ModeName(bot.GetActiveMode());
     const let_ = s.letAt !== undefined;
-    if (held === s.lineHeld && win === s.lineWin && let_ === s.lineLet) return;
+    const soft = s.soft === true;
+    if (held === s.lineHeld && win === s.lineWin && let_ === s.lineLet && soft === s.lineSoft) return;
     s.lineHeld = held;
     s.lineWin = win;
     s.lineLet = let_;
+    s.lineSoft = soft;
     const fields: Telemetry.Fields<"choice"> = [
         ["pid", bot.GetPlayerID()],
         ["kind", "decider"],
         ["held", held],
         ["win", win],
     ];
-    if (s.held !== undefined) fields.push(["hs", s.held.soft === true ? "soft" : "hard"]);
+    if (s.held !== undefined) fields.push(["hs", soft ? "soft" : "hard"]);
     if (s.letAt !== undefined) fields.push(["let", "retreat"], ["d_retreat", s.letAt]);
     Telemetry.Event("choice", fields);
 }
@@ -176,9 +188,10 @@ export function Host(bot: Unit, inner: () => any): () => any {
         const row = pick(bot);
         s.letAt = row !== undefined ? retreatLeads(s) : undefined;
         s.held = s.letAt === undefined ? row : undefined;
+        s.soft = s.held !== undefined && isSoft(s.held, bot);
         pcall(() => note(bot, s));
         if (s.held === undefined) return inner();
-        if (s.held.soft !== true) return HARD;
+        if (!s.soft) return HARD;
         // Farm active (the hold's own, or farm's for any reason in a soft row's first round): Valve adds its bonus to the
         // active mode, so the hold asks for less to stay worth SOFT. Where the
         // bonus is missing it is worth SOFT / BONUS (0.45): still over every capped Lua mode, and it yields to Valve's more.
@@ -200,8 +213,7 @@ export function Host(bot: Unit, inner: () => any): () => any {
  */
 export function Cap(bot: Unit, mode: string, v: any): any {
     const s = heroes[bot.GetPlayerID()];
-    const held = s === undefined ? undefined : s.held;
-    if (held === undefined || held.soft !== true || UNCAPPED[mode] === true || type(v) !== "number") return v;
+    if (s === undefined || s.held === undefined || s.soft !== true || UNCAPPED[mode] === true || type(v) !== "number") return v;
     return (v as number) > CAP ? CAP : v;
 }
 

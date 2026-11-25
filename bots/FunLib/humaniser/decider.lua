@@ -52,6 +52,15 @@ local function stateOf(bot)
     end
     return s
 end
+local function isSoft(row, bot)
+    local ____temp_0
+    if type(row.soft) == "function" then
+        ____temp_0 = row.soft(bot)
+    else
+        ____temp_0 = row.soft == true
+    end
+    return ____temp_0
+end
 local function pick(bot)
     for ____, row in ipairs(____exports.ROWS) do
         if row.applies(bot) then
@@ -92,18 +101,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue14
+            local __continue15
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue14 = true
+                    __continue15 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue14 = true
+                __continue15 = true
             until true
-            if not __continue14 then
+            if not __continue15 then
                 break
             end
         end
@@ -116,16 +125,18 @@ local function note(bot, s)
     if not Telemetry.IsEnabled() then
         return
     end
-    local ____opt_0 = s.held
-    local held = ____opt_0 and ____opt_0.name or "-"
+    local ____opt_1 = s.held
+    local held = ____opt_1 and ____opt_1.name or "-"
     local win = HDebug.ModeName(bot:GetActiveMode())
     local let_ = s.letAt ~= nil
-    if held == s.lineHeld and win == s.lineWin and let_ == s.lineLet then
+    local soft = s.soft == true
+    if held == s.lineHeld and win == s.lineWin and let_ == s.lineLet and soft == s.lineSoft then
         return
     end
     s.lineHeld = held
     s.lineWin = win
     s.lineLet = let_
+    s.lineSoft = soft
     local fields = {
         {
             "pid",
@@ -136,7 +147,7 @@ local function note(bot, s)
         {"win", win}
     }
     if s.held ~= nil then
-        fields[#fields + 1] = {"hs", s.held.soft == true and "soft" or "hard"}
+        fields[#fields + 1] = {"hs", soft and "soft" or "hard"}
     end
     if s.letAt ~= nil then
         __TS__ArrayPush(fields, {"let", "retreat"}, {"d_retreat", s.letAt})
@@ -148,25 +159,26 @@ function ____exports.Host(bot, inner)
     return function()
         local s = stateOf(bot)
         local row = pick(bot)
-        local ____temp_2
-        if row ~= nil then
-            ____temp_2 = retreatLeads(s)
-        else
-            ____temp_2 = nil
-        end
-        s.letAt = ____temp_2
         local ____temp_3
-        if s.letAt == nil then
-            ____temp_3 = row
+        if row ~= nil then
+            ____temp_3 = retreatLeads(s)
         else
             ____temp_3 = nil
         end
-        s.held = ____temp_3
+        s.letAt = ____temp_3
+        local ____temp_4
+        if s.letAt == nil then
+            ____temp_4 = row
+        else
+            ____temp_4 = nil
+        end
+        s.held = ____temp_4
+        s.soft = s.held ~= nil and isSoft(s.held, bot)
         pcall(function() return note(bot, s) end)
         if s.held == nil then
             return inner()
         end
-        if s.held.soft ~= true then
+        if not s.soft then
             return ____exports.HARD
         end
         return bot:GetActiveMode() == BotMode.Farm and ____exports.SOFT / ____exports.BONUS or ____exports.SOFT
@@ -184,14 +196,7 @@ end
 -- it ("retreat excepted"); the first soft row's smoke counts it.
 function ____exports.Cap(bot, mode, v)
     local s = heroes[bot:GetPlayerID()]
-    local ____temp_4
-    if s == nil then
-        ____temp_4 = nil
-    else
-        ____temp_4 = s.held
-    end
-    local held = ____temp_4
-    if held == nil or held.soft ~= true or UNCAPPED[mode] == true or type(v) ~= "number" then
+    if s == nil or s.held == nil or s.soft ~= true or UNCAPPED[mode] == true or type(v) ~= "number" then
         return v
     end
     return v > ____exports.CAP and ____exports.CAP or v

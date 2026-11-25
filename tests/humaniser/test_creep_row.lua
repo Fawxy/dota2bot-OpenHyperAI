@@ -393,6 +393,51 @@ do -- the hold is hard: Valve's attack does not stop it going; stock's retreat (
 	check("held by retreat: the start line names it", field(start, "hw") == "held" and field(start, "hm") == "retreat", tostring(start))
 end
 
+do -- the hold per phase (SETTINGS.HardFrom): "go" holds HARD through every phase; "swing" holds soft while the verb walks and waits
+	local D
+	local function attempt(from, phases, finish)
+		local w = world()
+		D = package.loaded["bots/FunLib/humaniser/decider"]
+		w.CR.SETTINGS.HardFrom = from
+		w.targets = { target(ranged(), { walk = 0.3, due = 0.5 }) }
+		local desires, deciderLines, after = {}, {}, nil
+		local out = capture(function()
+			w.CO.Shadow(w.core)
+			w.CR.ROW.applies(w.core)
+			local t0 = T
+			local verb = lastHitOpts(w)
+			for _, p in ipairs(phases) do
+				T = t0 + p[2]
+				verb.onPhase(p[1], T)
+				desires[#desires + 1] = D.Host(w.core, function() return 0 end)()
+			end
+			T = t0 + finish[1]
+			w.onEnd(finish[2])
+			after = D.Host(w.core, function() return 0.123 end)()
+		end)
+		w.CR.SETTINGS.HardFrom = "go"
+		for _, l in ipairs(out) do if l:find("kind=decider", 1, true) and l:find("held=creep", 1, true) then deciderLines[#deciderLines + 1] = l end end
+		return desires, deciderLines, lines(out, "job=creep")[2], after
+	end
+	local function approx(s, v) return s ~= nil and math.abs(tonumber(s) - v) < 0.011 end
+	local phases = { { "walk", 0.1 }, { "wait", 0.5 }, { "swing", 0.7 } }
+
+	local d, dl, e, after = attempt("go", phases, { 1.0, { success = true, message = "end=0" } })
+	check("go: the hold is HARD in every phase", d[1] == D.HARD and d[2] == D.HARD and d[3] == D.HARD, table.concat(d, " "))
+	check("go: the hold is hard from the go (hc 0) and the decider's line says hs=hard only", approx(field(e, "hc"), 0) and #dl == 1 and dl[1]:find("hs=hard", 1, true), tostring(e) .. " " .. table.concat(dl, " | "))
+
+	d, dl, e, after = attempt("swing", phases, { 1.0, { success = true, message = "end=0" } })
+	check("swing arm: soft while walking and waiting, HARD once the swing is ordered", d[1] < D.HARD and d[2] < D.HARD and d[3] == D.HARD, table.concat(d, " "))
+	check("swing arm: a decider line at each change of hs", #dl == 2 and dl[1]:find("hs=soft", 1, true) and dl[2]:find("hs=hard", 1, true), table.concat(dl, " | "))
+	check("swing arm: seconds per phase and the go to hard", approx(field(e, "pw"), 0.4) and approx(field(e, "pq"), 0.2)
+		and approx(field(e, "ps"), 0.3) and approx(field(e, "hc"), 0.7), tostring(e))
+
+	d, dl, e, after = attempt("swing", { { "walk", 0.1 } }, { 0.6, { success = false, reason = "preempted", message = "mode=5" } })
+	check("control, swing arm: cut while walking never turns hard (hc -1), only pw is spent", field(e, "hc") == "-1" and approx(field(e, "pw"), 0.5)
+		and approx(field(e, "pq"), 0) and approx(field(e, "ps"), 0), tostring(e))
+	check("control: once the attempt has ended the row no longer holds and farm's own desire is returned", after == 0.123, tostring(after))
+end
+
 do -- the decider has let the hero go to stock's retreat (an attempt's hold met a retreat that leads): a creep read then is not taken
 	local w = world()
 	local c, d = ranged(300), ranged(320)
