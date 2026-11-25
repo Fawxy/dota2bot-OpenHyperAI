@@ -202,6 +202,46 @@ do
     T.check("laneTargets: the walk to reach (110 at 100 a second), not to the range (150)", #t == 1 and math.abs(t[1].walk - 1.1) < 0.01, t[1] and t[1].walk)
 end
 
+-- onPhase: the verb reports walk (outside reach), wait (in reach, no swing ordered) and swing (ordered), once each on a change.
+local function phasesOf(sim, bot, creep, opts)
+    local seen = {}
+    opts = opts or {}
+    opts.target = creep
+    opts.maxWait = 3
+    opts.onPhase = function(p, at) seen[#seen + 1] = { p = p, t = at } end
+    local r = run(sim, V.lastHit(bot, opts))
+    return seen, r
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local seen, r = phasesOf(sim, bot, creep)
+    T.eq("onPhase walk in: ok", r.reason, "ok")
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase walk in: walk, wait, swing once each in order", table.concat(names, ","), "walk,wait,swing")
+    T.check("onPhase walk in: walk from the first frame, wait only once in reach (about 1.1 s)", seen[1].t == 0 and seen[2].t > 0.9 and seen[2].t < 1.3, seen[2] and seen[2].t)
+    T.eq("onPhase walk in: swing is reported on the frame of the attack order", seen[3].t, firstSwing(bot).t)
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5 }
+    local creep = sim:addCreep{ x = 180, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local seen = phasesOf(sim, bot, creep)
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase already in reach: never walk", table.concat(names, ","), "wait,swing")
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local seen = phasesOf(sim, bot, creep)
+    T.eq("onPhase lost while walking: only walk", #seen == 1 and seen[1].p or "n=" .. #seen, "walk")
+end
+
 -- A swing the host ordered before the verb's (in flight at the go) takes the creep while the verb walks in: the bot's count rose,
 -- so the verb ends ok with no swing of its own, and says so. The same loss with the creep killed by someone else is not ok.
 do

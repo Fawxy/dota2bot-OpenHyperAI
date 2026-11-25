@@ -147,7 +147,14 @@ export interface LastHitOpts {
     /** Hold tag passed to the adapter's `hold` while standing in attack reach (`attackReach`) waiting. */
     hold?: string;
     interruptIf?: (this: void) => boolean;
+    /**
+     * Called once on each change of the verb's phase, with the time it was entered: `walk` (outside attack reach, moving in),
+     * `wait` (in reach, no swing ordered yet), `swing` (the attack is ordered, not yet confirmed). Called on the frame of the change,
+     * after the order of a `swing`. A verb that never reaches a phase never reports it.
+     */
+    onPhase?: (this: void, phase: LastHitPhase, t: number) => void;
 }
+export type LastHitPhase = "walk" | "wait" | "swing";
 /**
  * Last-hits an enemy lane creep (`opts.target`, or the best one within `searchRadius` that the adapter's
  * `lastHitFilter` allows). Waits in attack reach (`attackReach`) until the bot believes its hit, ordered now, lands after

@@ -1012,7 +1012,15 @@ export interface LastHitOpts {
     /** Hold tag passed to the adapter's `hold` while standing in attack reach (`attackReach`) waiting. */
     hold?: string;
     interruptIf?: (this: void) => boolean;
+    /**
+     * Called once on each change of the verb's phase, with the time it was entered: `walk` (outside attack reach, moving in),
+     * `wait` (in reach, no swing ordered yet), `swing` (the attack is ordered, not yet confirmed). Called on the frame of the change,
+     * after the order of a `swing`. A verb that never reaches a phase never reports it.
+     */
+    onPhase?: (this: void, phase: LastHitPhase, t: number) => void;
 }
+
+export type LastHitPhase = "walk" | "wait" | "swing";
 
 type Mode = "lasthit" | "deny";
 
@@ -1056,6 +1064,12 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     // Before a swing, what held it back on the last frame (in-game attribution of a lost creep that was never swung at):
     // `range` walking in, `cd` attack cooldown, `hp50` a deny above half HP, `wait` the kill belief not yet due.
     let held = "start";
+    let phase: LastHitPhase | undefined;
+    const enter = (p: LastHitPhase): void => {
+        if (p === phase) return;
+        phase = p;
+        if (opts.onPhase !== undefined) opts.onPhase(p, now());
+    };
     const win: Window = { at: -1, by: "none", frames: 0, gap: 0 };
     // On a frame that does not judge the swing (walking, cooldown, deny above half HP), whether it would be due: the belief
     // with the bot's error once rolled, exact before (rolling here would draw a random number the decision would not have).
@@ -1124,10 +1138,12 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         watchCreeps(bot, creep, creeps);
         const away = dist(bot.GetLocation(), creep.GetLocation()) - attackReach(bot, creep);
         if (away > 0) {
+            enter("walk");
             held = string.format("range d=%d", math.floor(away));
             if (openNow()) opened(t, gap, "range");
             bot.Action_MoveToLocation(creep.GetLocation());
         } else {
+            enter("wait");
             const cd = cooldownLeft(bot);
             held = mode === "deny" && !deniable(creep) ? "hp50" : string.format("cd c=%.2f", cd);
             // An order given during the attack cooldown starts the swing later than the prediction's horizon
@@ -1148,6 +1164,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                         diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, ownCommitTime(bot, creep, nearby(bot)));
                     }
                     bot.Action_AttackUnit(creep, true);
+                    enter("swing");
                     break;
                 }
             } else if (openNow()) {

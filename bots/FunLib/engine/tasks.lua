@@ -2794,6 +2794,19 @@ local strike = __TS__Generator(function(bot, mode, opts)
     }
     local diag = ""
     local held = "start"
+    local phase
+    local function enter(p)
+        if p == phase then
+            return
+        end
+        phase = p
+        if opts.onPhase ~= nil then
+            opts.onPhase(
+                p,
+                now()
+            )
+        end
+    end
     local win = {at = -1, by = "none", frames = 0, gap = 0}
     local function openNow()
         return due(believe(
@@ -2884,6 +2897,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             creep:GetLocation()
         ) - ____exports.attackReach(bot, creep)
         if away > 0 then
+            enter("walk")
             held = string.format(
                 "range d=%d",
                 math.floor(away)
@@ -2893,6 +2907,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
             end
             bot:Action_MoveToLocation(creep:GetLocation())
         else
+            enter("wait")
             local cd = ____exports.cooldownLeft(bot)
             held = mode == "deny" and not deniable(creep) and "hp50" or string.format("cd c=%.2f", cd)
             if (mode == "lasthit" or deniable(creep)) and ____exports.cooldownLeft(bot) <= math.max(margin, COOLDOWN_QUEUE) then
@@ -2933,6 +2948,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
                         )
                     end
                     bot:Action_AttackUnit(creep, true)
+                    enter("swing")
                     break
                 end
             elseif openNow() then

@@ -90,7 +90,10 @@ read goes through the adapter. Bodies and verbs never read OHA directly.
 ## lastHit v2 and deny (request S4)
 `lastHit(bot, opts)` last-hits an enemy lane creep, `deny(bot, opts)` an allied one. Options: `target`,
 `searchRadius` (default attack range + 300), `maxWait` (s to wait for the creep to become due, default 1.5),
-`deadline`, `interruptIf`, `hold` (tag passed to the adapter's `hold` while standing in reach).
+`deadline`, `interruptIf`, `hold` (tag passed to the adapter's `hold` while standing in reach), `onPhase(phase, t)`: called once on each change
+of the verb's phase from the closed set `walk` (outside attack reach, moving in), `wait` (in reach, no swing ordered yet) and `swing` (the attack
+is ordered, not yet confirmed), with the time of the change; `swing` is reported right after the order, on the same frame. A phase the verb never
+reaches is never reported, and a bot pushed back out of reach reports `walk` again.
 
 **Attack reach (`Verbs.attackReach(attacker, target, range?)`, a fact).** The centre-to-centre distance within which the
 attacker begins an attack on the target without moving: its `GetAttackRange()` (or the `range` the caller already read) plus
