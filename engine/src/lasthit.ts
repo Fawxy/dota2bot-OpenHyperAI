@@ -90,8 +90,9 @@ interface Own {
 // Per-frame query cache, per bot: every lastHit/deny of a bot in one frame shares one set of queries and reads.
 interface Nearby {
     t: number;
-    enemyCreeps: TaskCreep[];
-    allyCreeps: TaskCreep[];
+    /** Lane creeps within QUERY_RADIUS, queried once per frame on first use. */
+    enemyCreeps?: TaskCreep[];
+    allyCreeps?: TaskCreep[];
     own: Own;
     /** Unit locations read this frame; `false` for a unit that reads none (fogged). */
     loc: LuaTable<object, Vec | false>;
@@ -117,8 +118,6 @@ function nearby(bot: TaskUnit): Nearby {
     if (hit !== undefined && hit.t === t) return hit;
     const n: Nearby = {
         t,
-        enemyCreeps: bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, true) ?? [],
-        allyCreeps: bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, false) ?? [],
         own: {},
         loc: new LuaTable<object, Vec | false>(),
         dead: new LuaTable<object, boolean>(),
@@ -144,6 +143,15 @@ function listedGone(n: Nearby, u: TaskAttacker): boolean {
         n.dead.set(u, g);
     }
     return g;
+}
+
+function laneCreeps(bot: TaskUnit, n: Nearby, enemies: boolean): TaskCreep[] {
+    if (enemies) {
+        if (n.enemyCreeps === undefined) n.enemyCreeps = bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, true) ?? [];
+        return n.enemyCreeps;
+    }
+    if (n.allyCreeps === undefined) n.allyCreeps = bot.GetNearbyLaneCreeps?.(QUERY_RADIUS, false) ?? [];
+    return n.allyCreeps;
 }
 
 function enemyHeroes(bot: TaskUnit, n: Nearby): TaskHero[] {
@@ -250,9 +258,10 @@ function windupLeft(a: TaskAttacker): number | undefined {
  * Seconds until `a`'s current attack on `creep` lands, or undefined when it is not winding one up: `windupLeft`, plus
  * a ranged attacker's projectile flight (distance less the launch offset, over projectile speed).
  */
-function windupLanding(a: TaskAttacker, creep: TaskCreep, n: Nearby, speed: number = projectileSpeed(a)): number | undefined {
+function windupLanding(a: TaskAttacker, creep: TaskCreep, n: Nearby, known?: number): number | undefined {
     let t = windupLeft(a);
     if (t === undefined) return undefined;
+    const speed = known !== undefined ? known : projectileSpeed(a);
     if (speed > 0) t += math.max(0, dist(locOf(n, a)!, locOf(n, creep)!) - CREEP_LAUNCH_OFFSET) / speed;
     return t;
 }
@@ -298,8 +307,8 @@ function attackersByTarget(bot: TaskUnit, n: Nearby): LuaTable<TaskAttacker, Tas
         }
         list.push(a);
     };
-    for (const c of n.enemyCreeps) add(c, true);
-    for (const c of n.allyCreeps) add(c, false);
+    for (const c of laneCreeps(bot, n, true)) add(c, true);
+    for (const c of laneCreeps(bot, n, false)) add(c, false);
     // Neutral creeps: a camp's neutrals on a pulled wave (or on a creep that walks past the camp). Without them the
     // belief and the forecast saw no damage coming to a creep the neutrals were killing (pullchain2, 24/11/2026: 7 of 22
     // denies at a camp lost after the swing, each reading idps=0). They are periodic attackers like lane creeps: kind
@@ -956,8 +965,8 @@ export function laneTargets(bot: TaskUnit, opts: LaneTargetsOpts = {}): LaneTarg
         if (e === undefined || e[0] - e[1] > within) return;
         out.push({ creep: c, kind, eta: math.max(e[0], e[1]), due: e[0], walk: e[1], dies: e[2], ranged: isRangedCreep(c) });
     };
-    if (opts.lastHit !== false) for (const c of n.enemyCreeps) consider(c, "lasthit");
-    if (opts.deny !== false && bot.GetDenies !== undefined) for (const c of n.allyCreeps) consider(c, "deny");
+    if (opts.lastHit !== false) for (const c of laneCreeps(bot, n, true)) consider(c, "lasthit");
+    if (opts.deny !== false && bot.GetDenies !== undefined) for (const c of laneCreeps(bot, n, false)) consider(c, "deny");
     return out;
 }
 
@@ -990,7 +999,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         const n = nearby(bot);
         let candidates = 0;
         const allowed: TaskCreep[] = [];
-        for (const c of mode === "deny" ? n.allyCreeps : n.enemyCreeps) {
+        for (const c of laneCreeps(bot, n, mode !== "deny")) {
             if (!gone(c) && dist(here, c.GetLocation()) <= radius) {
                 candidates++;
                 if (mode === "deny" || adapter.lastHitFilter === undefined || adapter.lastHitFilter(bot, c)) {

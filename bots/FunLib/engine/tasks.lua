@@ -1502,7 +1502,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local now, dist, locOf, listedGone, enemyHeroes, others, physical, projectileSpeed, windupSeconds, windupLeft, windupLanding, attackersByTarget, flightsAt, scanAttackers, ownWindup, ownRange, cooldownAt, turnAt, ownCommitTime, ownHit, lowestHit, ACTIVITY_ATTACK, ACTIVITY_ATTACK2, RANGED_ABOVE, HERO_LAUNCH_OFFSET, CREEP_LAUNCH_OFFSET, QUERY_RADIUS, WINDUP_GAP, windups, FORECAST_MAX, atan2, TURN_RATE, TURN_SLACK
+local now, dist, locOf, listedGone, laneCreeps, enemyHeroes, others, physical, projectileSpeed, windupSeconds, windupLeft, windupLanding, attackersByTarget, flightsAt, scanAttackers, ownWindup, ownRange, cooldownAt, turnAt, ownCommitTime, ownHit, lowestHit, ACTIVITY_ATTACK, ACTIVITY_ATTACK2, RANGED_ABOVE, HERO_LAUNCH_OFFSET, CREEP_LAUNCH_OFFSET, QUERY_RADIUS, WINDUP_GAP, windups, FORECAST_MAX, atan2, TURN_RATE, TURN_SLACK
 local ____adapter = require("adapter")
 local get = ____adapter.get
 local Skill = require("skill")
@@ -1520,13 +1520,13 @@ function locOf(n, u)
         l = u:GetLocation() or false
         n.loc[u] = l
     end
-    local ____temp_9
+    local ____temp_3
     if l == false then
-        ____temp_9 = nil
+        ____temp_3 = nil
     else
-        ____temp_9 = l
+        ____temp_3 = l
     end
-    return ____temp_9
+    return ____temp_3
 end
 function listedGone(n, u)
     local g = n.dead[u]
@@ -1535,6 +1535,26 @@ function listedGone(n, u)
         n.dead[u] = g
     end
     return g
+end
+function laneCreeps(bot, n, enemies)
+    if enemies then
+        if n.enemyCreeps == nil then
+            local ____n_6 = n
+            local ____this_5
+            ____this_5 = bot
+            local ____opt_4 = ____this_5.GetNearbyLaneCreeps
+            ____n_6.enemyCreeps = ____opt_4 and ____opt_4(____this_5, QUERY_RADIUS, true) or ({})
+        end
+        return n.enemyCreeps
+    end
+    if n.allyCreeps == nil then
+        local ____n_9 = n
+        local ____this_8
+        ____this_8 = bot
+        local ____opt_7 = ____this_8.GetNearbyLaneCreeps
+        ____n_9.allyCreeps = ____opt_7 and ____opt_7(____this_8, QUERY_RADIUS, false) or ({})
+    end
+    return n.allyCreeps
 end
 function enemyHeroes(bot, n)
     if n.enemyHeroes == nil then
@@ -1657,14 +1677,12 @@ function windupLeft(a)
     local left = point / speed - (t - w.t0) - w.c0 / speed
     return left > 0 and left or nil
 end
-function windupLanding(a, creep, n, speed)
-    if speed == nil then
-        speed = projectileSpeed(a)
-    end
+function windupLanding(a, creep, n, known)
     local t = windupLeft(a)
     if t == nil then
         return nil
     end
+    local speed = known ~= nil and known or projectileSpeed(a)
     if speed > 0 then
         t = t + math.max(
             0,
@@ -1720,10 +1738,10 @@ function attackersByTarget(bot, n)
         end
         list[#list + 1] = a
     end
-    for ____, c in ipairs(n.enemyCreeps) do
+    for ____, c in ipairs(laneCreeps(bot, n, true)) do
         add(c, true)
     end
-    for ____, c in ipairs(n.allyCreeps) do
+    for ____, c in ipairs(laneCreeps(bot, n, false)) do
         add(c, false)
     end
     local ____this_40
@@ -1747,7 +1765,7 @@ function flightsAt(bot, creep, withSelf, n)
     local ____opt_50 = ____this_51.GetIncomingTrackingProjectiles
     for ____, p in ipairs(____opt_50 and ____opt_50(____this_51) or ({})) do
         do
-            local __continue59
+            local __continue63
             repeat
                 local c = p.caster
                 local ____temp_44 = p.is_attack ~= true or c == nil or c == nil
@@ -1760,17 +1778,17 @@ function flightsAt(bot, creep, withSelf, n)
                     ____temp_44 = ____temp_43
                 end
                 if ____temp_44 then
-                    __continue59 = true
+                    __continue63 = true
                     break
                 end
                 if not withSelf and c == bot then
-                    __continue59 = true
+                    __continue63 = true
                     break
                 end
                 local ____opt_45 = c.GetAttackProjectileSpeed
                 local speed = ____opt_45 and ____opt_45(c) or 0
                 if speed <= 0 then
-                    __continue59 = true
+                    __continue63 = true
                     break
                 end
                 local t = dist(p.location, here) / speed
@@ -1782,9 +1800,9 @@ function flightsAt(bot, creep, withSelf, n)
                     damage = ____opt_47 and ____opt_47(c) or 0
                 }
                 latest[c] = math.max(latest[c] or -math.huge, t)
-                __continue59 = true
+                __continue63 = true
             until true
-            if not __continue59 then
+            if not __continue63 then
                 break
             end
         end
@@ -1806,10 +1824,10 @@ function scanAttackers(bot, creep, horizon, n)
     end
     for ____, a in ipairs(attackersByTarget(bot, n)[creep] or ({})) do
         do
-            local __continue68
+            local __continue72
             repeat
                 if a == creep then
-                    __continue68 = true
+                    __continue72 = true
                     break
                 end
                 local land = windupLanding(a, creep, n)
@@ -1840,9 +1858,9 @@ function scanAttackers(bot, creep, horizon, n)
                         end
                     end
                 end
-                __continue68 = true
+                __continue72 = true
             until true
-            if not __continue68 then
+            if not __continue72 then
                 break
             end
         end
@@ -1996,22 +2014,7 @@ local function nearby(bot)
     if hit ~= nil and hit.t == t then
         return hit
     end
-    local ____t_7 = t
-    local ____this_4
-    ____this_4 = bot
-    local ____opt_3 = ____this_4.GetNearbyLaneCreeps
-    local ____temp_8 = ____opt_3 and ____opt_3(____this_4, QUERY_RADIUS, true) or ({})
-    local ____this_6
-    ____this_6 = bot
-    local ____opt_5 = ____this_6.GetNearbyLaneCreeps
-    local n = {
-        t = ____t_7,
-        enemyCreeps = ____temp_8,
-        allyCreeps = ____opt_5 and ____opt_5(____this_6, QUERY_RADIUS, false) or ({}),
-        own = {},
-        loc = {},
-        dead = {}
-    }
+    local n = {t = t, own = {}, loc = {}, dead = {}}
     nearbyCache[id] = n
     return n
 end
@@ -2086,10 +2089,10 @@ function ____exports.hpForecast(bot, creep, horizon)
     local unphasedHits = {}
     for ____, a in ipairs(attackersByTarget(bot, n)[creep] or ({})) do
         do
-            local __continue80
+            local __continue84
             repeat
                 if a == creep then
-                    __continue80 = true
+                    __continue84 = true
                     break
                 end
                 local kind = kindOf(a)
@@ -2132,11 +2135,11 @@ function ____exports.hpForecast(bot, creep, horizon)
                         first = windupSeconds(a) + flight,
                         last = period + flight
                     }
-                    __continue80 = true
+                    __continue84 = true
                     break
                 end
                 if kind == "hero" or period <= 0 then
-                    __continue80 = true
+                    __continue84 = true
                     break
                 end
                 do
@@ -2152,9 +2155,9 @@ function ____exports.hpForecast(bot, creep, horizon)
                         t = t + period
                     end
                 end
-                __continue80 = true
+                __continue84 = true
             until true
-            if not __continue80 then
+            if not __continue84 then
                 break
             end
         end
@@ -2218,15 +2221,15 @@ local function enemyHeroWindups(bot, creep, horizon)
     local frame = nearby(bot)
     for ____, a in ipairs(attackersByTarget(bot, frame)[creep] or ({})) do
         do
-            local __continue101
+            local __continue105
             repeat
                 if heroes[a] ~= true then
-                    __continue101 = true
+                    __continue105 = true
                     break
                 end
                 local land = windupLanding(a, creep, frame)
                 if land == nil or land > horizon then
-                    __continue101 = true
+                    __continue105 = true
                     break
                 end
                 n = n + 1
@@ -2236,9 +2239,9 @@ local function enemyHeroWindups(bot, creep, horizon)
                     commit,
                     windupLeft(a) or 0
                 )
-                __continue101 = true
+                __continue105 = true
             until true
-            if not __continue101 then
+            if not __continue105 then
                 break
             end
         end
@@ -2253,12 +2256,12 @@ local function watchHeroes(bot, creep, w)
         nearby(bot)
     )) do
         do
-            local __continue106
+            local __continue110
             repeat
                 local a = h
                 local ____opt_72 = a.GetAttackTarget
                 if (____opt_72 and ____opt_72(a)) ~= creep then
-                    __continue106 = true
+                    __continue110 = true
                     break
                 end
                 seen = true
@@ -2267,7 +2270,7 @@ local function watchHeroes(bot, creep, w)
                     winding = true
                 end
                 if not up and (winding or w.windup > 0) then
-                    __continue106 = true
+                    __continue110 = true
                     break
                 end
                 local ____w_76 = w
@@ -2279,9 +2282,9 @@ local function watchHeroes(bot, creep, w)
                 local ____w_82 = w
                 local ____opt_80 = a.GetAttackPoint
                 ____w_82.point = ____opt_80 and ____opt_80(a) or -1
-                __continue106 = true
+                __continue110 = true
             until true
-            if not __continue106 then
+            if not __continue110 then
                 break
             end
         end
@@ -2298,7 +2301,7 @@ local function watchCreeps(bot, creep, w)
     others(bot, n)
     for ____, a in ipairs(attackersByTarget(bot, n)[creep] or ({})) do
         do
-            local __continue114
+            local __continue118
             repeat
                 local ____temp_85 = a == creep
                 if not ____temp_85 then
@@ -2306,7 +2309,7 @@ local function watchCreeps(bot, creep, w)
                     ____temp_85 = (____opt_83 and ____opt_83[a]) == true
                 end
                 if ____temp_85 then
-                    __continue114 = true
+                    __continue118 = true
                     break
                 end
                 w.n = w.n + 1
@@ -2325,9 +2328,9 @@ local function watchCreeps(bot, creep, w)
                 local ____w_97 = w
                 local ____opt_95 = a.GetSecondsPerAttack
                 ____w_97.spa = ____opt_95 and ____opt_95(a) or -1
-                __continue114 = true
+                __continue118 = true
             until true
-            if not __continue114 then
+            if not __continue118 then
                 break
             end
         end
@@ -2684,12 +2687,12 @@ function ____exports.laneTargets(bot, opts)
         }
     end
     if opts.lastHit ~= false then
-        for ____, c in ipairs(n.enemyCreeps) do
+        for ____, c in ipairs(laneCreeps(bot, n, true)) do
             consider(c, "lasthit")
         end
     end
     if opts.deny ~= false and bot.GetDenies ~= nil then
-        for ____, c in ipairs(n.allyCreeps) do
+        for ____, c in ipairs(laneCreeps(bot, n, false)) do
             consider(c, "deny")
         end
     end
@@ -2716,7 +2719,7 @@ local strike = __TS__Generator(function(bot, mode, opts)
         local n = nearby(bot)
         local candidates = 0
         local allowed = {}
-        for ____, c in ipairs(mode == "deny" and n.allyCreeps or n.enemyCreeps) do
+        for ____, c in ipairs(laneCreeps(bot, n, mode ~= "deny")) do
             if not gone(c) and dist(
                 here,
                 c:GetLocation()
