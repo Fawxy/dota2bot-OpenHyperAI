@@ -231,7 +231,7 @@ end
 ____exports.SETTINGS = {
     NearWalk = 1,
     WaitSlack = 1.5,
-    HardFrom = "swing",
+    HardFrom = "early",
     EarlyLead = 3,
     Round = 0.4
 }
@@ -596,14 +596,14 @@ local function factsOf(c)
     }
 end
 --- The lead (s) the row goes on: a creep due within the walk plus this is about to come due (`Due`). One own attack cycle, or `EarlyLead` when
--- that is longer and `HardFrom` is swing.
+-- that is longer and `HardFrom` is swing or early (not go).
 function ____exports.Lead(bot)
     local cycle = CreepOffer.AttackCycle(bot)
-    return ____exports.SETTINGS.HardFrom == "swing" and math.max(cycle, ____exports.SETTINGS.EarlyLead) or cycle
+    return ____exports.SETTINGS.HardFrom ~= "go" and math.max(cycle, ____exports.SETTINGS.EarlyLead) or cycle
 end
 --- What the read asks laneTargets to offer (`within`) for a hero the row acts on: the lead, so a creep is listed by the time the row may go. 0: the read's own.
 function ____exports.OfferLead(bot)
-    return ____exports.On(bot) and ____exports.SETTINGS.HardFrom == "swing" and ____exports.SETTINGS.EarlyLead or 0
+    return ____exports.On(bot) and ____exports.SETTINGS.HardFrom ~= "go" and ____exports.SETTINGS.EarlyLead or 0
 end
 --- A read that lists the running attempt's creep: its latest due and the walk to it (the commit point's inputs, `Soft`), and after a step
 -- that came after another mode had the hero, the go rule asked again: if the hero can no longer be in reach before the creep is due, an attempt

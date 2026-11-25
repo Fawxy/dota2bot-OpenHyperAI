@@ -1354,13 +1354,13 @@ export const EVENTS = {
         /** `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep. */
         sa: "num",
         nw: "num",
-        /** `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer (`HardFrom` swing). */
+        /** `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer (`HardFrom` swing or early). */
         ld: "num",
         /** `job=creep` end: seconds the attempt spent in each phase of the engine's lastHit (`onPhase`): `pw` walk (outside reach), `pq` wait (in reach, no swing ordered), `ps` swing (ordered, up to the end); 0 for a phase never entered. */
         pw: "num",
         pq: "num",
         ps: "num",
-        /** `job=creep` end: seconds from the go to the hold turning hard (the phase rule `CreepRow.SETTINGS.HardFrom`: 0 with `go`); -1 when it never did. */
+        /** `job=creep` end: seconds from the go to the hold turning hard (the phase rule `CreepRow.SETTINGS.HardFrom`: 0 with `go` and `early`); -1 when it never did. */
         hc: "num",
         /** `job=creep` end: the creep's due (s, aged by the time since the read that had it) when the hold turned hard; absent when it never did. With `HardFrom` swing the hold turns hard when due is at most the walk left plus `Round` (0.4 s). */
         hd: "num",

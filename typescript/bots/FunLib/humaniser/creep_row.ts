@@ -41,10 +41,11 @@ export const SETTINGS = {
     /**
      * The slice's test arm (oha-creep-swing), deleted once judged: when the hold turns hard. `go`: hard from the go, through every phase
      * (the base's answers). `swing`: the row goes early (`EarlyLead`) and holds soft until the swing is about to be due (`Round`), then hard.
+     * `early`: the early go of `swing` with the hard hold of `go` (oha-creep-earlyhard).
      */
-    HardFrom: "swing" as "go" | "swing",
+    HardFrom: "early" as "go" | "swing" | "early",
     /**
-     * judgement: with `HardFrom` swing, the row may go once the creep comes due within the walk plus this (s) instead of one attack cycle.
+     * judgement: with `HardFrom` swing or early, the row may go once the creep comes due within the walk plus this (s) instead of one attack cycle.
      * Earlier means more creeps seen in time (43 refusals in six games were creeps not yet offered, due in about 1.6 s with 2.5 s of walk), but
      * a longer soft hold on a creep that may die to another hit or be taken by a mate before the hero is in reach.
      */
@@ -244,7 +245,7 @@ function r2(x: number): number {
 
 /**
  * The one place that says whether the attempt is held soft, from `SETTINGS.HardFrom`, and where the hold turns hard (`hc`, `hd`): a commit,
- * so once hard it stays hard. `go`: hard from the go. `swing`: soft until the creep's latest due (aged by the time since the read that had
+ * so once hard it stays hard. `go` and `early`: hard from the go. `swing`: soft until the creep's latest due (aged by the time since the read that had
  * it, as is the walk) is at most the walk left plus `Round` plus the offer read's interval (`CreepOffer.SETTINGS.Every`): a change of hold
  * takes up to a round to apply, the due is up to one read old, and the verb's `swing` phase is reported only after its order. With `Round`
  * alone csw1b ordered 6 of 40 swings before the first `hs=hard` decider line, by up to 0.3 s. The verb's own `swing` also makes it hard. The aging assumes the hero is walking in, so while
@@ -375,16 +376,16 @@ function factsOf(c: CreepOffer.Candidate): Facts {
 
 /**
  * The lead (s) the row goes on: a creep due within the walk plus this is about to come due (`Due`). One own attack cycle, or `EarlyLead` when
- * that is longer and `HardFrom` is swing.
+ * that is longer and `HardFrom` is swing or early (not go).
  */
 export function Lead(this: void, bot: Unit): number {
     const cycle = CreepOffer.AttackCycle(bot);
-    return SETTINGS.HardFrom === "swing" ? math.max(cycle, SETTINGS.EarlyLead) : cycle;
+    return SETTINGS.HardFrom !== "go" ? math.max(cycle, SETTINGS.EarlyLead) : cycle;
 }
 
 /** What the read asks laneTargets to offer (`within`) for a hero the row acts on: the lead, so a creep is listed by the time the row may go. 0: the read's own. */
 export function OfferLead(this: void, bot: Unit): number {
-    return On(bot) && SETTINGS.HardFrom === "swing" ? SETTINGS.EarlyLead : 0;
+    return On(bot) && SETTINGS.HardFrom !== "go" ? SETTINGS.EarlyLead : 0;
 }
 
 /**

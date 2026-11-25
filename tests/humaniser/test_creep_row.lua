@@ -446,6 +446,49 @@ do -- the hold per phase (SETTINGS.HardFrom): "go" holds HARD through every phas
 	check("control: once the attempt has ended the row no longer holds and farm's own desire is returned", after == 0.123, tostring(after))
 end
 
+do -- the early arm (SETTINGS.HardFrom = "early"): the early go with the hard hold from the go
+	local D
+	local function approx(s, v) return s ~= nil and math.abs(tonumber(s) - v) < 0.011 end
+	local function go(arm)
+		local w = world({ arm = arm })
+		w.core.range, w.core.speed, w.core.spa = 150, 300, 1.0
+		local c = ranged(640)
+		w.targets = { target(c, { walk = 1.5, due = 2.8 }) }
+		return w, readThenClose(w, { c })
+	end
+	local w, out = go("early")
+	check("early arm: a creep due in 2.8 s with a 1.5 s walk gets a go", w.starts == 1 and approx(field(lines(out, "phase=start")[1], "ld"), 3), tostring(w.starts))
+	w = go("go")
+	check("control: the go arm refuses the same creep", w.starts == 0, tostring(w.starts))
+
+	w = world({ arm = "early" })
+	D = package.loaded["bots/FunLib/humaniser/decider"]
+	w.core.range, w.core.speed, w.core.spa = 150, 300, 1.0
+	w.targets = { target(ranged(170), { walk = 0, due = 2.0 }) }
+	local d, e
+	local o2 = capture(function()
+		w.CO.Shadow(w.core)
+		w.CR.ROW.applies(w.core)
+		local t0 = T
+		local verb = lastHitOpts(w)
+		d = {}
+		for _, p in ipairs({ { "walk", 0.1 }, { "wait", 0.5 } }) do
+			T = t0 + p[2]
+			verb.onPhase(p[1], T)
+			d[#d + 1] = D.Host(w.core, function() return 0 end)()
+		end
+		T = t0 + 0.8
+		w.onEnd({ success = true, message = "end=0" })
+	end)
+	e = lines(o2, "job=creep")[2]
+	check("early arm: the hold is hard from the first round with the creep due in 2 s, where swing holds soft", d[1] == D.HARD and d[2] == D.HARD, table.concat(d, " "))
+	check("early arm: hc is 0", approx(field(e, "hc"), 0), tostring(e))
+
+	w = world({ arm = "early" })
+	w.core.spa = 1.0
+	check("early arm: the offer's lead is the early one for a hero the row acts on", near(w.CO.Within(w.core), 3), tostring(w.CO.Within(w.core)))
+end
+
 do -- the swing arm (SETTINGS.HardFrom = "swing"): the early go, the offer's lead, the commit point from the due time
 	local D
 	local function approx(s, v) return s ~= nil and math.abs(tonumber(s) - v) < 0.011 end

@@ -701,9 +701,9 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `hw` str: `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read.
 - `hs` num: `job=creep` start: seconds from the first read where the creep was about to come due to the go.
 - `sa` num: `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep.
-- `ld` num: `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer (`HardFrom` swing).
+- `ld` num: `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer (`HardFrom` swing or early).
 - `pw` num: `job=creep` end: seconds the attempt spent in each phase of the engine's lastHit (`onPhase`): `pw` walk (outside reach), `pq` wait (in reach, no swing ordered), `ps` swing (ordered, up to the end); 0 for a phase never entered.
-- `hc` num: `job=creep` end: seconds from the go to the hold turning hard (the phase rule `CreepRow.SETTINGS.HardFrom`: 0 with `go`); -1 when it never did.
+- `hc` num: `job=creep` end: seconds from the go to the hold turning hard (the phase rule `CreepRow.SETTINGS.HardFrom`: 0 with `go` and `early`); -1 when it never did.
 - `hd` num: `job=creep` end: the creep's due (s, aged by the time since the read that had it) when the hold turned hard; absent when it never did. With `HardFrom` swing the hold turns hard when due is at most the walk left plus `Round` (0.4 s).
 - `so` num: `job=creep` end: seconds from the go to the verb's swing order; -1 when none. With `hc` it says whether the swing was ordered while the hold was still soft (`hc` -1 or above `so`).
 - `tk` num: `job=creep` end: how many times another mode had the hero (a gap between the row's steps over `Round`, the end's own included) and for how many seconds in all.
