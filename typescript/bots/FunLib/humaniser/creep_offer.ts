@@ -56,11 +56,11 @@ export function AttackCycle(u: Unit): number {
 
 /**
  * laneTargets' `within` for the hero: the engine's default 1 s, or one own attack cycle when longer, so a creep is offered by
- * the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). Every arm asks
- * the same, so the shadow's lines open as early as the row's.
+ * the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). For a hero the row acts
+ * on, also the row's own lead when that is longer (`SetRow`'s `lead`, creep_row.ts `EarlyLead`); a hero it is off for asks as before.
  */
 export function Within(bot: Unit): number {
-    return math.max(1, AttackCycle(bot));
+    return math.max(1, AttackCycle(bot), rowLead === undefined ? 0 : rowLead(bot));
 }
 
 /**
@@ -151,10 +151,14 @@ let rowHook: RowHook | undefined;
 /** Whether the row wants the read for this hero with telemetry off (the read itself writes lines only with telemetry on). */
 let rowWants: ((this: void, bot: Unit) => boolean) | undefined;
 
-/** index.ts: the row's decision, asked at every read with the hero's candidates. */
-export function SetRow(hook: RowHook | undefined, wants?: (this: void, bot: Unit) => boolean): void {
+/** The seconds the row wants a creep offered ahead of (0: none), asked of a hero whose row is on; heroes it is off for keep `Within`'s own. */
+let rowLead: ((this: void, bot: Unit) => number) | undefined;
+
+/** index.ts: the row's decision, asked at every read with the hero's candidates, and how far ahead it wants creeps offered. */
+export function SetRow(hook: RowHook | undefined, wants?: (this: void, bot: Unit) => boolean, lead?: (this: void, bot: Unit) => number): void {
     rowHook = hook;
     rowWants = wants;
+    rowLead = lead;
 }
 
 /** pid -> the read interval the hero last read in. */

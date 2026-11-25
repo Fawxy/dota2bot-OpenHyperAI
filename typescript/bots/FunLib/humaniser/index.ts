@@ -226,7 +226,7 @@ if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
     Decider.ROWS.push(CreepRow.ROW);
     // The creep row decides at the creep offer read, on the candidates that read lists. Its error is logged
     // (ev=lua_error where=CreepRow.Consider) and that read starts nothing.
-    CreepOffer.SetRow(Telemetry.GuardsEnabled() ? Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) : CreepRow.Consider, CreepRow.On);
+    CreepOffer.SetRow(Telemetry.GuardsEnabled() ? Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) : CreepRow.Consider, CreepRow.On, CreepRow.OfferLead);
 }
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 

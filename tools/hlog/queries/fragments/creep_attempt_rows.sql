@@ -1,6 +1,6 @@
 -- Fragment (`-- include: creep_attempt_rows`): the creep row's attempts (creep_row.ts, `ev=job job=creep`), one row each, joined to
 -- the creep's death and the hero's deaths; one definition for @creep_attempts and @creep_attempt_rows. The includer defines
--- `gm(game_id)` first. CTE `creep_attempt_rows(game_id, pid, team, pos, hero, t0, t1, len, cid, gw, rng, melee, why, cut, arr, tin, wt, pw, pq, ps, hc,
+-- `gm(game_id)` first. CTE `creep_attempt_rows(game_id, pid, team, pos, hero, t0, t1, len, cid, gw, rng, melee, why, cut, arr, tin, wt, pw, pq, ps, hc, hd, so, tk, tks, swsoft, ld,
 -- sw, hp0, hp1, hplost, dt, gap, swon, cls, died, msg, paid, mpos, walkin, fate, gn, sp, hw, hm, hs, sa, nw, ontime)`:
 --   cid, gw    the start line's (logs from oha-creep-early); before them, the creep row's `go=1` choice line whose slot + gat is
 --              within 0.35 s of the start (its cid and gw)
@@ -10,6 +10,11 @@
 --   pw, pq, ps seconds the attempt spent in the verb's phases, walk (outside reach), wait (in reach, no swing ordered) and swing (ordered, to
 --              the end); hc seconds from the go to the hold turning hard (0 with the phase rule `go`, -1 never); all NULL on logs
 --              before oha-creep-swing's commit C
+--   hd, so     the creep's due when the hold turned hard (NULL never) and the seconds from the go to the verb's swing order (-1 none);
+--              swsoft 1 when the swing was ordered while the hold was still soft (so >= 0 and hc -1 or after so), 0 when not, NULL without so
+--   tk, tks    how many times another mode had the hero (a gap between the row's steps over 0.4 s) and for how many seconds in all
+--   ld         the start line's lead (s): the creep was about to come due within the walk plus this; cut = 'late_back' is the row ending its own
+--              soft attempt on the hero's return too late (why cancelled); all NULL on logs before oha-creep-swing's commit E
 --   arr        on a cut: `after` when the hero had been in the verb's range (tin >= 0 and at or before the end), `before` when
 --              not, NULL on logs without tin
 --   hp0, hp1   the end line's, else the hero's snapshot `hv` at or before the start and the end (a snapshot a second: rough)
@@ -34,7 +39,7 @@
 --   fate       one class from paid and why: self_row (self, why ok), self_other (self, the row did not end ok), mate, deny, tower,
 --              unpaid (paid other), nodeath (no death joined)
 -- Ends with a comma.
--- ensure: ev_job(pid, job, phase, why, cut, cid, gw, gd, rng, rch, tin, wt, pw, pq, ps, hc, sw, hp0, hp1, msg, gn, sp, hw, hm, hs, sa, nw)
+-- ensure: ev_job(pid, job, phase, why, cut, cid, gw, gd, rng, rch, tin, wt, pw, pq, ps, hc, hd, so, tk, tks, sw, hp0, hp1, msg, gn, sp, hw, hm, hs, sa, nw, ld)
 -- ensure: ev_choice(pid, kind, go, slot, gat, gw, cid)
 -- ensure: ev_creep_death(team, cid, p1d, p1r, p1t, p2d, p2r, p2t, p3d, p3r, p3t)
 -- ensure: ev_snap(pid, hv, ar)
@@ -46,15 +51,15 @@ ul_gm AS (SELECT game_id FROM gm),
 ca_bot AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos, max(hero) AS hero FROM ev_bot
     WHERE game_id IN (SELECT game_id FROM gm) GROUP BY game_id, pid),
 ca_e AS MATERIALIZED (
-    SELECT game_id, seq, t, pid, phase, why, cut, cid, gw, rng, rch, gn, sp, hw, hm, hs, sa, nw, tin, wt, pw, pq, ps, hc, sw, hp0, hp1, msg,
+    SELECT game_id, seq, t, pid, phase, why, cut, cid, gw, rng, rch, gn, sp, hw, hm, hs, sa, nw, ld, tin, wt, pw, pq, ps, hc, hd, so, tk, tks, sw, hp0, hp1, msg,
         lead(phase) OVER w AS nphase, lead(t) OVER w AS nt, lead(why) OVER w AS nwhy, lead(cut) OVER w AS ncut, lead(cid) OVER w AS ncid,
-        lead(tin) OVER w AS ntin, lead(wt) OVER w AS nwt, lead(pw) OVER w AS npw, lead(pq) OVER w AS npq, lead(ps) OVER w AS nps, lead(hc) OVER w AS nhc, lead(sw) OVER w AS nsw, lead(hp0) OVER w AS nhp0, lead(hp1) OVER w AS nhp1, lead(msg) OVER w AS nmsg
+        lead(tin) OVER w AS ntin, lead(wt) OVER w AS nwt, lead(pw) OVER w AS npw, lead(pq) OVER w AS npq, lead(ps) OVER w AS nps, lead(hc) OVER w AS nhc, lead(hd) OVER w AS nhd, lead(so) OVER w AS nso, lead(tk) OVER w AS ntk, lead(tks) OVER w AS ntks, lead(sw) OVER w AS nsw, lead(hp0) OVER w AS nhp0, lead(hp1) OVER w AS nhp1, lead(msg) OVER w AS nmsg
     FROM ev_job WHERE game_id IN (SELECT game_id FROM gm) AND job = 'creep' AND phase IN ('start', 'end')
     WINDOW w AS (PARTITION BY game_id, pid ORDER BY seq)
 ),
 ca_s AS MATERIALIZED (
-    SELECT s.game_id, s.pid, s.t AS t0, s.nt AS t1, s.nwhy AS why, s.ncut AS cut, coalesce(s.cid, s.ncid) AS jcid, s.gw AS jgw, s.rng AS jrng, s.rch AS jrch, s.gn, s.sp, s.hw, s.hm, s.hs, s.sa, s.nw,
-        s.ntin AS tin, s.nwt AS wt, s.npw AS pw, s.npq AS pq, s.nps AS ps, s.nhc AS hc, s.nsw AS sw, s.nhp0 AS hp0, s.nhp1 AS hp1, s.nmsg AS msg
+    SELECT s.game_id, s.pid, s.t AS t0, s.nt AS t1, s.nwhy AS why, s.ncut AS cut, coalesce(s.cid, s.ncid) AS jcid, s.gw AS jgw, s.rng AS jrng, s.rch AS jrch, s.gn, s.sp, s.hw, s.hm, s.hs, s.sa, s.nw, s.ld,
+        s.ntin AS tin, s.nwt AS wt, s.npw AS pw, s.npq AS pq, s.nps AS ps, s.nhc AS hc, s.nhd AS hd, s.nso AS so, s.ntk AS tk, s.ntks AS tks, s.nsw AS sw, s.nhp0 AS hp0, s.nhp1 AS hp1, s.nmsg AS msg
     FROM ca_e s WHERE s.phase = 'start' AND s.nphase = 'end'
 ),
 ca_c AS MATERIALIZED (
@@ -98,7 +103,8 @@ creep_attempt_rows AS (
     SELECT x.game_id, x.pid, x.team, x.pos, x.hero, x.t0, x.t1, round(x.t1 - x.t0, 2) AS len, x.cid, x.gw, x.xrng AS rng,
         x.xrng < 300 AS melee, x.why, x.cut,
         CASE WHEN x.why <> 'preempted' OR x.tin IS NULL THEN NULL WHEN x.tin >= 0 AND x.tin <= x.t1 - x.t0 THEN 'after' ELSE 'before' END AS arr,
-        x.tin, x.wt, x.pw, x.pq, x.ps, x.hc, x.sw, x.xhp0 AS hp0, x.xhp1 AS hp1, x.xhp0 - x.xhp1 AS hplost, x.dt,
+        x.tin, x.wt, x.pw, x.pq, x.ps, x.hc, x.hd, x.so, x.tk, x.tks,
+        CASE WHEN x.so IS NULL THEN NULL WHEN x.so < 0 THEN 0 WHEN x.hc IS NULL THEN NULL WHEN x.hc < 0 OR x.hc > x.so + 0.005 THEN 1 ELSE 0 END AS swsoft, x.ld, x.sw, x.xhp0 AS hp0, x.xhp1 AS hp1, x.xhp0 - x.xhp1 AS hplost, x.dt,
         CASE WHEN x.dd IS NOT NULL THEN x.dd - x.dr END AS gap, x.dtg AS swon,
         CASE WHEN x.why = 'ok' THEN 'landed' WHEN x.why = 'preempted' THEN 'cut' WHEN x.dt IS NULL OR x.dd IS NULL THEN 'lost_nodeath'
             WHEN x.dtg = 1 THEN 'lost_swing' WHEN x.dd <= coalesce(x.jrch, x.dr + 48) THEN 'lost_inrange' ELSE 'lost_out' END AS cls,

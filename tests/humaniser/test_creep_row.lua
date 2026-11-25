@@ -22,7 +22,7 @@ local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") e
 
 local RANGED = "npc_dota_creep_badguys_ranged"
 
--- o.on: the switch; o.refuse: the runner refuses. w.targets: what laneTargets returns; w.starts, w.opts, w.body, w.onEnd: the
+-- o.on: the switch; o.refuse: the runner refuses; o.arm: SETTINGS.HardFrom (default "go", the base's answers). w.targets: what laneTargets returns; w.starts, w.opts, w.body, w.onEnd: the
 -- last Start's.
 local function world(o)
 	o = o or {}
@@ -57,6 +57,12 @@ local function world(o)
 	F.Step = function() w.steps = w.steps + 1 return true end
 	package.loaded["bots/FunLib/humaniser/lane_hits"].Reset()
 	w.CO, w.CR = H.CreepOffer, H.CreepRow
+	w.CR.SETTINGS.HardFrom = o.arm or "go"
+	-- The runner's Cancel: ends the task through its onEnd, as the engine's does.
+	F.Cancel = function(_, reason, message)
+		w.cancelled = { reason = reason, message = message }
+		w.onEnd({ success = false, reason = reason, message = message })
+	end
 	w.CO.ResetCache()
 	w.CR.ResetCache()
 	w.CO.SETTINGS.Every = 0.1
@@ -395,11 +401,10 @@ end
 
 do -- the hold per phase (SETTINGS.HardFrom): "go" holds HARD through every phase; "swing" holds soft while the verb walks and waits
 	local D
-	local function attempt(from, phases, finish)
-		local w = world()
+	local function attempt(from, phases, finish, due)
+		local w = world({ arm = from })
 		D = package.loaded["bots/FunLib/humaniser/decider"]
-		w.CR.SETTINGS.HardFrom = from
-		w.targets = { target(ranged(), { walk = 0.3, due = 0.5 }) }
+		w.targets = { target(ranged(170), { walk = 0, due = due or 0.5 }) }
 		local desires, deciderLines, after = {}, {}, nil
 		local out = capture(function()
 			w.CO.Shadow(w.core)
@@ -415,27 +420,168 @@ do -- the hold per phase (SETTINGS.HardFrom): "go" holds HARD through every phas
 			w.onEnd(finish[2])
 			after = D.Host(w.core, function() return 0.123 end)()
 		end)
-		w.CR.SETTINGS.HardFrom = "go"
 		for _, l in ipairs(out) do if l:find("kind=decider", 1, true) and l:find("held=creep", 1, true) then deciderLines[#deciderLines + 1] = l end end
-		return desires, deciderLines, lines(out, "job=creep")[2], after
+		return desires, deciderLines, lines(out, "job=creep")[2], after, lines(out, "job=creep")[1]
 	end
 	local function approx(s, v) return s ~= nil and math.abs(tonumber(s) - v) < 0.011 end
 	local phases = { { "walk", 0.1 }, { "wait", 0.5 }, { "swing", 0.7 } }
 
-	local d, dl, e, after = attempt("go", phases, { 1.0, { success = true, message = "end=0" } })
+	local d, dl, e, after, jobsOf = attempt("go", phases, { 1.0, { success = true, message = "end=0" } })
 	check("go: the hold is HARD in every phase", d[1] == D.HARD and d[2] == D.HARD and d[3] == D.HARD, table.concat(d, " "))
 	check("go: the hold is hard from the go (hc 0) and the decider's line says hs=hard only", approx(field(e, "hc"), 0) and #dl == 1 and dl[1]:find("hs=hard", 1, true), tostring(e) .. " " .. table.concat(dl, " | "))
 
-	d, dl, e, after = attempt("swing", phases, { 1.0, { success = true, message = "end=0" } })
-	check("swing arm: soft while walking and waiting, HARD once the swing is ordered", d[1] < D.HARD and d[2] < D.HARD and d[3] == D.HARD, table.concat(d, " "))
-	check("swing arm: a decider line at each change of hs", #dl == 2 and dl[1]:find("hs=soft", 1, true) and dl[2]:find("hs=hard", 1, true), table.concat(dl, " | "))
-	check("swing arm: seconds per phase and the go to hard", approx(field(e, "pw"), 0.4) and approx(field(e, "pq"), 0.2)
-		and approx(field(e, "ps"), 0.3) and approx(field(e, "hc"), 0.7), tostring(e))
+	check("go: hd is the due at the go, the lead is the attack cycle and the swing order is read from the phases", approx(field(e, "hd"), 0.5) and approx(field(jobsOf, "ld"), 1.7) and approx(field(e, "so"), 0.7), tostring(e))
 
-	d, dl, e, after = attempt("swing", { { "walk", 0.1 } }, { 0.6, { success = false, reason = "preempted", message = "mode=5" } })
-	check("control, swing arm: cut while walking never turns hard (hc -1), only pw is spent", field(e, "hc") == "-1" and approx(field(e, "pw"), 0.5)
-		and approx(field(e, "pq"), 0) and approx(field(e, "ps"), 0), tostring(e))
+	-- The swing arm's attempts are written below (the commit point from the due time); here only the verb's own swing: it makes the hold hard
+	-- even when the due rule has not, and the phases are timed.
+	d, dl, e, after = attempt("swing", phases, { 1.0, { success = true, message = "end=0" } }, 2.0)
+	check("swing arm: soft while walking and waiting with the creep due in 2 s, HARD once the swing is ordered", d[1] < D.HARD and d[2] < D.HARD and d[3] == D.HARD, table.concat(d, " "))
+	check("swing arm: a decider line at each change of hs", #dl == 2 and dl[1]:find("hs=soft", 1, true) and dl[2]:find("hs=hard", 1, true), table.concat(dl, " | "))
+	check("swing arm: seconds per phase, the go to hard and the swing order", approx(field(e, "pw"), 0.4) and approx(field(e, "pq"), 0.2)
+		and approx(field(e, "ps"), 0.3) and approx(field(e, "hc"), 0.7) and approx(field(e, "so"), 0.7), tostring(e))
+
+	d, dl, e, after = attempt("swing", { { "walk", 0.1 } }, { 0.6, { success = false, reason = "preempted", message = "mode=5" } }, 2.0)
+	check("control, swing arm: cut while walking never turns hard (hc -1, no hd), only pw is spent", field(e, "hc") == "-1" and field(e, "hd") == nil and approx(field(e, "pw"), 0.5)
+		and approx(field(e, "pq"), 0) and approx(field(e, "ps"), 0) and field(e, "so") == "-1", tostring(e))
 	check("control: once the attempt has ended the row no longer holds and farm's own desire is returned", after == 0.123, tostring(after))
+end
+
+do -- the swing arm (SETTINGS.HardFrom = "swing"): the early go, the offer's lead, the commit point from the due time
+	local D
+	local function approx(s, v) return s ~= nil and math.abs(tonumber(s) - v) < 0.011 end
+	-- A creep 640 away (a 1.5 s walk at 300 to the 190 reach) due in 2.8 s: past the walk plus a 1 s cycle (2.5), inside the walk plus 3 s.
+	local function early(arm)
+		local w = world({ arm = arm })
+		w.core.range, w.core.speed, w.core.spa = 150, 300, 1.0
+		local c = ranged(640)
+		w.targets = { target(c, { walk = 1.5, due = 2.8 }) }
+		return w, readThenClose(w, { c })
+	end
+	local w, out = early("swing")
+	local st = lines(out, "phase=start")[1]
+	check("early go: due 2.8 with a 1.5 s walk goes with the swing arm, its start line names the lead in force", w.starts == 1 and approx(field(st, "ld"), 3), tostring(st))
+	w, out = early("go")
+	local ch = lines(out, "kind=creep")
+	check("control: the same creep is refused early with the base's lead of one cycle", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "early", table.concat(ch, " | "))
+	check("early go: the go arm's start line names the cycle as the lead", (function()
+		local w2, o2 = nil, nil
+		w2 = world({ arm = "go" })
+		w2.core.range, w2.core.speed, w2.core.spa = 150, 300, 1.6
+		local c = ranged(640)
+		w2.targets = { target(c, { walk = 1.5, due = 3.0 }) }
+		o2 = readThenClose(w2, { c })
+		return approx(field(lines(o2, "phase=start")[1], "ld"), 1.6)
+	end)())
+
+	-- Not on time at first sight is still refused: due 1.0 against a 1.5 s walk.
+	w = world({ arm = "swing" })
+	w.core.range, w.core.speed, w.core.spa = 150, 300, 1.0
+	local c = ranged(640)
+	w.targets = { target(c, { walk = 1.5, due = 1.0 }) }
+	ch = lines(readThenClose(w, { c }), "kind=creep")
+	check("control: the early lead does not waive the on-time check: due 1.0 against a 1.5 s walk is refused notime_new", w.starts == 0 and field(ch[1], "why") == "notime_new", table.concat(ch, " | "))
+
+	-- What the read asks laneTargets for: a hero the row acts on, the lead; a hero it is off for, as before.
+	w = world({ arm = "swing" })
+	w.core.spa = 1.0
+	check("offer: the swing arm asks laneTargets for creeps due within the lead for a hero the row acts on", near(w.CO.Within(w.core), 3), tostring(w.CO.Within(w.core)))
+	w = world({ arm = "swing", on = false })
+	w.core.spa = 1.0
+	check("control: a hero the row is off for keeps the old within (its shadow lines do not change)", near(w.CO.Within(w.core), 1), tostring(w.CO.Within(w.core)))
+	w = world({ arm = "go" })
+	w.core.spa = 1.0
+	check("control: the go arm keeps the old within for every hero", near(w.CO.Within(w.core), 1), tostring(w.CO.Within(w.core)))
+
+	-- A hero in reach (170 away) with the creep due in `due`, gone on at t0; reads, steps and decider rounds at t0 + dt.
+	local function start(arm, due)
+		local w2 = world({ arm = arm })
+		D = package.loaded["bots/FunLib/humaniser/decider"]
+		w2.core.range, w2.core.speed, w2.core.spa = 150, 300, 1.0
+		w2.c = ranged(170)
+		w2.targets = { target(w2.c, { walk = 0, due = due }) }
+		w2.out = {}
+		w2.cap = function(fn) for _, l in ipairs(capture(fn)) do w2.out[#w2.out + 1] = l end end
+		w2.cap(function() w2.CO.Shadow(w2.core) end)
+		w2.t0 = T
+		return w2
+	end
+	local function read(w2, dt, due, x)
+		T = w2.t0 + dt
+		if x then w2.c.loc = Vector(x, -5000) end
+		w2.targets = { target(w2.c, { walk = 0, due = due }) }
+		w2.cap(function() w2.CO.Shadow(w2.core) end)
+	end
+	local function host(w2, dt)
+		T = w2.t0 + dt
+		local v
+		w2.cap(function() v = D.Host(w2.core, function() return 0 end)() end)
+		return v
+	end
+	local function step(w2, dt)
+		T = w2.t0 + dt
+		w2.CR.ROW.step(w2.core)
+	end
+	local function endLineOf(w2) return lines(w2.out, "phase=end")[1] end
+
+	w = start("swing", 2.0)
+	local v1 = host(w, 0.05)
+	read(w, 0.5, 1.5)
+	read(w, 1.0, 1.0)
+	local v2 = host(w, 1.2)
+	local v3 = host(w, 1.65)
+	read(w, 2.0, 1.5)
+	local v4 = host(w, 2.1)
+	T = w.t0 + 2.2
+	w.cap(function() w.onEnd({ success = true, message = "end=0" }) end)
+	local e = endLineOf(w)
+	check("commit point: soft while the creep is due in more than the walk left plus a round (0.4 s)", v1 < D.HARD and v2 < D.HARD, tostring(v1) .. " " .. tostring(v2))
+	check("commit point: HARD once the latest due, aged by the time since its read, is within it (1.0 read at 1.0, 0.35 left at 1.65)", v3 == D.HARD, tostring(v3))
+	check("commit point: a later read with the due risen leaves it HARD (a commit)", v4 == D.HARD, tostring(v4))
+	check("commit point: the end line has the seconds to the switch and the due then", approx(field(e, "hc"), 1.65) and approx(field(e, "hd"), 0.35), tostring(e))
+
+	-- A step after another mode had the hero, then a read: back in time continues; back too late ends late_back and the creep may be tried again.
+	w = start("swing", 2.0)
+	step(w, 0.1)
+	step(w, 0.2)
+	step(w, 1.2)
+	read(w, 1.3, 1.0)
+	local kept = w.cancelled == nil and w.CR.ROW.applies(w.core)
+	T = w.t0 + 1.5
+	w.cap(function() w.onEnd({ success = true, message = "end=0" }) end)
+	e = endLineOf(w)
+	check("taken during the walk and back in time: the attempt continues; the end line counts the time taken", kept and field(e, "tk") == "1" and approx(field(e, "tks"), 1.0), tostring(e))
+
+	w = start("swing", 2.0)
+	step(w, 0.1)
+	step(w, 0.2)
+	step(w, 1.2)
+	read(w, 1.3, 0.9, 640)
+	e = endLineOf(w)
+	check("back too late (a 1.5 s walk, due in 0.9): the row ends it at once, cut late_back, reason cancelled", w.cancelled ~= nil and w.cancelled.message == "late_back"
+		and field(e, "cut") == "late_back" and field(e, "why") == "cancelled" and field(e, "tk") == "1", tostring(e))
+	check("back too late: no swing was ordered and the hold never turned hard", field(e, "so") == "-1" and field(e, "hc") == "-1", tostring(e))
+	local starts = w.starts
+	read(w, 2.0, 2.0, 170)
+	check("back too late: the creep's one try is not spent, a later read goes again", w.starts == starts + 1, tostring(w.starts))
+
+	w = start("swing", 0.3)
+	step(w, 0.1)
+	step(w, 0.2)
+	step(w, 1.2)
+	read(w, 1.3, 0.9, 640)
+	check("control: an attempt already hard (due 0.3 at the go) is not ended by the return check", w.cancelled == nil and w.CR.ROW.applies(w.core), tostring(w.cancelled and w.cancelled.message))
+	w.cap(function() w.onEnd({ success = false, reason = "timeout", message = "w=1.00 why=wait" }) end)
+	starts = w.starts
+	read(w, 2.0, 2.0, 170)
+	check("control: an attempt that ended hard spends the creep's try", w.starts == starts, tostring(w.starts))
+
+	w = start("swing", 2.0)
+	w.CR.ROW.step(w.core)
+	lastHitOpts(w).onPhase("swing", T)
+	w.cap(function() w.onEnd({ success = false, reason = "missed", message = "w=1.00 end=40 dt=0.30" }) end)
+	starts = w.starts
+	read(w, 2.0, 2.0, 170)
+	check("control: an attempt that ended soft but with a swing ordered spends the creep's try", w.starts == starts, tostring(w.starts))
 end
 
 do -- the decider has let the hero go to stock's retreat (an attempt's hold met a retreat that leads): a creep read then is not taken

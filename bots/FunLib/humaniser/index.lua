@@ -349,7 +349,8 @@ if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
     ____Decider_ROWS_3[#____Decider_ROWS_3 + 1] = CreepRow.ROW
     CreepOffer.SetRow(
         Telemetry.GuardsEnabled() and Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) or CreepRow.Consider,
-        CreepRow.On
+        CreepRow.On,
+        CreepRow.OfferLead
     )
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick

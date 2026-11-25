@@ -26,7 +26,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, partsOf, candidate, parts, LANES
+local dist, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, partsOf, candidate, parts, rowLead, LANES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local UnitType = ____dota.UnitType
@@ -54,12 +54,13 @@ function ____exports.AttackCycle(u)
     return ____opt_0 and ____opt_0(____this_1) or 1
 end
 --- laneTargets' `within` for the hero: the engine's default 1 s, or one own attack cycle when longer, so a creep is offered by
--- the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). Every arm asks
--- the same, so the shadow's lines open as early as the row's.
+-- the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). For a hero the row acts
+-- on, also the row's own lead when that is longer (`SetRow`'s `lead`, creep_row.ts `EarlyLead`); a hero it is off for asks as before.
 function ____exports.Within(bot)
     return math.max(
         1,
-        ____exports.AttackCycle(bot)
+        ____exports.AttackCycle(bot),
+        rowLead == nil and 0 or rowLead(bot)
     )
 end
 function dist(a, b)
@@ -437,10 +438,11 @@ ____exports.SETTINGS = {Every = 0.2, SlackStep = 0.1, SlackCap = 99, TowerRadius
 local rowHook
 --- Whether the row wants the read for this hero with telemetry off (the read itself writes lines only with telemetry on).
 local rowWants
---- index.ts: the row's decision, asked at every read with the hero's candidates.
-function ____exports.SetRow(hook, wants)
+--- index.ts: the row's decision, asked at every read with the hero's candidates, and how far ahead it wants creeps offered.
+function ____exports.SetRow(hook, wants, lead)
     rowHook = hook
     rowWants = wants
+    rowLead = lead
 end
 --- pid -> the read interval the hero last read in.
 local readAt = {}

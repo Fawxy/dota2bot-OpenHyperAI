@@ -679,7 +679,7 @@ Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran. D
 
 Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
 
-`pid` num, `gd` num, `sp` num, `hm` str, `nw` num, `pq` num, `ps` num, `hp1` num
+`pid` num, `gd` num, `sp` num, `hm` str, `nw` num, `pq` num, `ps` num, `tks` num, `hp1` num
 
 - `aid` num: The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`.
 - `tgt` str: On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`.
@@ -688,7 +688,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`.
 - `host` num: The hosting mode's number.
 - `hit` num: 1 when hero damage landed during the job.
-- `cut` str: On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name.
+- `cut` str: On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name; `late_back` (`job=creep` only, `why=cancelled`): the row ended its own soft attempt because the hero came back from another mode too late to be in reach before the creep was due.
 - `hp` num: With `cut=retreat`: the hero's HP share then.
 - `ex` num: `job=rune_detour`: the seconds the path by the rune was read to add when the walk started.
 - `took` num: `job=rune_detour` end: 1 on a pickup: the verb's ok, or one step's gold gain reaching RuneDetour TookGold (GetRuneStatus stays available while a second rune lies on the spot).
@@ -701,8 +701,12 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `hw` str: `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read.
 - `hs` num: `job=creep` start: seconds from the first read where the creep was about to come due to the go.
 - `sa` num: `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep.
+- `ld` num: `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer (`HardFrom` swing).
 - `pw` num: `job=creep` end: seconds the attempt spent in each phase of the engine's lastHit (`onPhase`): `pw` walk (outside reach), `pq` wait (in reach, no swing ordered), `ps` swing (ordered, up to the end); 0 for a phase never entered.
 - `hc` num: `job=creep` end: seconds from the go to the hold turning hard (the phase rule `CreepRow.SETTINGS.HardFrom`: 0 with `go`); -1 when it never did.
+- `hd` num: `job=creep` end: the creep's due (s, aged by the time since the read that had it) when the hold turned hard; absent when it never did. With `HardFrom` swing the hold turns hard when due is at most the walk left plus `Round` (0.4 s).
+- `so` num: `job=creep` end: seconds from the go to the verb's swing order; -1 when none. With `hc` it says whether the swing was ordered while the hold was still soft (`hc` -1 or above `so`).
+- `tk` num: `job=creep` end: how many times another mode had the hero (a gap between the row's steps over `Round`, the end's own included) and for how many seconds in all.
 - `wt` num: `job=creep` end: seconds from the go to the row's first step (the wait for the host mode's next call); -1 when it never stepped. Not `tin`: that is the first step inside the verb's range.
 - `tin` num: `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against the engine's attackReach); -1 never.
 - `sw` num: `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one (`why=ok` with 0: the hero's last-hit count rose from a swing ordered before the verb's, message `hit=other`); absent on a cut (`why=preempted`).
