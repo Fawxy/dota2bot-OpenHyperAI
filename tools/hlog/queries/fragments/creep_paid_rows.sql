@@ -1,7 +1,7 @@
 -- Fragment (`-- include: creep_paid_rows`): the lane creeps family's line (master docs/proposals/2026-11-25-no-creep-unpaid.md s3),
 -- one definition for @creep_paid and @creep_paid_games. The includer defines `gm(game_id)` first. CTE `creep_paid_rows(game_id, uid,
 -- t, team, whose, kind, lane, how, paid, by_pid, tw, x, y, pid, pos, hln, dist, ar, gap, band, hp, atk, ed, busy, cpid, cgap, cband,
--- exact, cexact, lcid)`.
+-- exact, cexact, lcid, spid, sgap, sband)`.
 -- Params: from (default 0), until (default 600), deaths with from <= t < until. Ends with a comma.
 --   unit    a lane creep death from unit_life's lane rows (fragment unit_life_lane), read twice: once for each team (`team`). `whose`
 --           `theirs` (the other team's creep, one `team` could last-hit) or `ours` (`team`'s own, one it could deny). `t`, `x`, `y`
@@ -30,6 +30,8 @@
 --           the nearest visible enemy hero within 1,200 (snap `ed`), all from the snapshot at or before `t` (the one after if
 --           none). `busy` 1 when that hero last-hit or denied another lane creep within 1.2 s of `t`.
 --           `cpid`, `cgap`, `cband` the same for `team`'s nearest live pos 1-3 hero (NULL when none within 1,500).
+--           `spid`, `sgap`, `sband` the same for `team`'s nearest live pos 4-5 hero (NULL when none within 1,500; always an estimate,
+--           for the creep_death line measures cores only).
 --   lcid    the creep's `Telemetry.CreepId` in `team`'s own Lua state, the number `team`'s lines carry (`ev=choice kind=creep` `cid`): its own
 --           `unit_seen` cid for `ours`; the cid on the taker's `creep_death` row for `theirs` (NULL when no such row took it, and for an
 --           `ours` death only the taker logged: its uid then holds the taker's cid, not ours).
@@ -91,7 +93,8 @@ cp_hp AS MATERIALIZED (
 cp_hr AS MATERIALIZED (
     SELECT h.*, h.dist - (h.ar + 48) AS gap,
         row_number() OVER (PARTITION BY h.game_id, h.rid ORDER BY h.dist, h.pid) AS rk,
-        row_number() OVER (PARTITION BY h.game_id, h.rid ORDER BY h.pos BETWEEN 1 AND 3 DESC, h.dist, h.pid) AS crk
+        row_number() OVER (PARTITION BY h.game_id, h.rid ORDER BY h.pos BETWEEN 1 AND 3 DESC, h.dist, h.pid) AS crk,
+        row_number() OVER (PARTITION BY h.game_id, h.rid ORDER BY h.pos BETWEEN 4 AND 5 DESC, h.dist, h.pid) AS srk
     FROM cp_hp h WHERE h.dist <= 1500
 ),
 -- A hero's own lane creep takes, for `busy` (any lane creep, either side, within 1.2 s).
@@ -109,9 +112,13 @@ creep_paid_rows AS (
         c.pid AS cpid, round(c.gap) AS cgap,
         CASE WHEN c.pid IS NULL THEN NULL WHEN c.ar IS NULL THEN NULL WHEN c.gap <= 0 THEN 'in' WHEN c.gap <= 150 THEN 'r150'
              WHEN c.gap <= 300 THEN 'r300' ELSE 'r1500' END AS cband,
-        n.exact, c.exact AS cexact, v.lcid
+        n.exact, c.exact AS cexact, v.lcid,
+        sp.pid AS spid, round(sp.gap) AS sgap,
+        CASE WHEN sp.pid IS NULL THEN NULL WHEN sp.ar IS NULL THEN NULL WHEN sp.gap <= 0 THEN 'in' WHEN sp.gap <= 150 THEN 'r150'
+             WHEN sp.gap <= 300 THEN 'r300' ELSE 'r1500' END AS sband
     FROM cp_v v
     LEFT JOIN cp_lab l ON l.kind = v.game_id AND l.k = v.rid
     LEFT JOIN cp_hr n ON n.game_id = v.game_id AND n.rid = v.rid AND n.rk = 1
     LEFT JOIN cp_hr c ON c.game_id = v.game_id AND c.rid = v.rid AND c.crk = 1 AND c.pos BETWEEN 1 AND 3
+    LEFT JOIN cp_hr sp ON sp.game_id = v.game_id AND sp.rid = v.rid AND sp.srk = 1 AND sp.pos BETWEEN 4 AND 5
 ),
