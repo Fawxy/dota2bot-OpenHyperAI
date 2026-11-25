@@ -1,6 +1,6 @@
 -- How often a support (pos 4-5) has an "orphan" last hit, a deny chance, and the two at once (sizing for a support-deny rule that
 -- ranks an orphan last hit over a deny). Side lanes only; reads fragment creep_paid_rows from each team's side.
---   orphan       one of THEIR ranged creeps (whose theirs, kind ranged) with the team's nearest pos 4-5 hero in reach (sband in or
+--   orphan       one of THEIR creeps (whose theirs, of the kinds `kind` names) with the team's nearest pos 4-5 hero in reach (sband in or
 --                r150) and no pos 1-3 hero in reach (cband not in or r150; none within 1,500 counts as not in reach).
 --   deny chance  one of OUR creeps, any kind (whose ours), with that support in reach (sband in or r150).
 --   clash        an orphan with a deny chance for the same support (spid) within `win` seconds either side; `dclash` the same counted
@@ -11,7 +11,8 @@
 -- a deny with no by_pid); clash, dclash. With :sum = 1 one row per arm and side instead: `tg` team-games, then the same counts as
 -- means per team-game (`m_` prefix) and `s_clash`, `s_dclash` the totals.
 -- Params: like (a path fragment or run label) or batch (the exact run name), one is required; from, until (default 0 and 600);
--- win (seconds, default 2); sum (0 or 1).
+-- win (seconds, default 2); sum (0 or 1); kind (a comma list of melee, ranged, siege: the orphans' kinds, unset for all; deny chances
+-- are every kind whatever it says).
 -- Caveats: a support's reach is estimated from snapshots (exact 0, never measured): it reads a hero in range about one time in ten
 -- too seldom, so every count here is a floor, and the cband test is measured for cores on their creeps only. The row's support is the
 -- nearest pos 4-5 hero within 1,500 at the death, not necessarily the one that would act. Stock (OHA) supports in both arms of the
@@ -21,7 +22,7 @@ WITH gm AS MATERIALIZED (SELECT game_id, file, game, label FROM games
 -- include: creep_paid_rows
 so_o AS (
     SELECT game_id, team, spid, t, how, paid, by_pid FROM creep_paid_rows
-    WHERE lane IN ('top', 'bot') AND whose = 'theirs' AND kind = 'ranged' AND sband IN ('in', 'r150')
+    WHERE lane IN ('top', 'bot') AND whose = 'theirs' AND (:kind IS NULL OR instr(',' || :kind || ',', ',' || kind || ',') > 0) AND sband IN ('in', 'r150')
         AND coalesce(cband, 'none') NOT IN ('in', 'r150')
 ),
 so_d AS (
