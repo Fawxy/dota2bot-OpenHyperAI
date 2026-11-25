@@ -120,6 +120,8 @@ interface Opp {
     go?: boolean;
     gat?: number;
     gw?: number;
+    /** The attempt id the row allocated at the go (Telemetry.NextAid), on the go line. */
+    aid?: number;
     /**
      * The row's reason for not going: the first it gave once the creep was about to come due (`early` is replaced by the next
      * reason; any other stays, so a creep refused for the race and later unreachable reads `race`, not `late`). Undefined
@@ -141,7 +143,7 @@ export interface Candidate {
     ck: string;
     arrive: Offer.Arrival;
     facts(this: void): Snap;
-    note(this: void, go: boolean, why?: string): void;
+    note(this: void, go: boolean, why?: string, aid?: number): void;
 }
 
 export type RowHook = (this: void, bot: Unit, cands: Candidate[]) => void;
@@ -205,6 +207,7 @@ function line(bot: Unit, o: Opp): void {
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "creep"],
+        ["aid", o.go === true ? o.aid : undefined],
         ["go", o.go === true ? 1 : 0],
         ["want", want ? 1 : 0],
         ["why", o.go === true ? undefined : o.why ?? "off"],
@@ -544,10 +547,11 @@ function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.
             }
             return fresh;
         },
-        note: (go: boolean, why?: string) => {
+        note: (go: boolean, why?: string, aid?: number) => {
             if (o.go === true) return;
             if (go) {
                 o.go = true;
+                o.aid = aid;
                 o.gat = now - o.first;
                 o.gw = t.walk;
                 o.why = undefined;

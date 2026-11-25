@@ -341,7 +341,7 @@ end
 -- what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
 -- due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
 -- when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep.
-local function startLine(bot, cid, t, g)
+local function startLine(bot, cid, aid, t, g)
     Telemetry.Event(
         "job",
         {
@@ -349,6 +349,7 @@ local function startLine(bot, cid, t, g)
                 "pid",
                 bot:GetPlayerID()
             },
+            {"aid", aid},
             {"job", "creep"},
             {"phase", "start"},
             {"why", "trigger"},
@@ -389,7 +390,7 @@ local function startLine(bot, cid, t, g)
         }
     )
 end
---- The end line: `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+--- The end line: `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
 -- is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
 -- rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
 -- start and end, `msg` the verb's message (what the swing was based on, or what held it).
@@ -401,12 +402,13 @@ local function endLine(bot, a, r, cut)
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end
-    local ____Telemetry_Event_6 = Telemetry.Event
-    local ____array_5 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_9 = Telemetry.Event
+    local ____array_8 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
         },
+        {"aid", a and a.aid},
         {"job", "creep"},
         {"phase", "end"},
         {"why", r.success and "ok" or r.reason},
@@ -414,15 +416,22 @@ local function endLine(bot, a, r, cut)
         {"cut", cut},
         {"cid", a and a.cid}
     )
-    local ____temp_2
+    local ____temp_4
     if a == nil then
-        ____temp_2 = nil
+        ____temp_4 = nil
     else
-        ____temp_2 = a.tin ~= nil and r2(a.tin) or -1
+        ____temp_4 = a.wt ~= nil and r2(a.wt) or -1
+    end
+    __TS__SparseArrayPush(____array_8, {"wt", ____temp_4})
+    local ____temp_5
+    if a == nil then
+        ____temp_5 = nil
+    else
+        ____temp_5 = a.tin ~= nil and r2(a.tin) or -1
     end
     __TS__SparseArrayPush(
-        ____array_5,
-        {"tin", ____temp_2},
+        ____array_8,
+        {"tin", ____temp_5},
         {"sw", sw},
         {"hp0", a and a.hp0},
         {
@@ -431,9 +440,9 @@ local function endLine(bot, a, r, cut)
         },
         {"msg", msg}
     )
-    ____Telemetry_Event_6(
+    ____Telemetry_Event_9(
         "job",
-        {__TS__SparseArraySpread(____array_5)}
+        {__TS__SparseArraySpread(____array_8)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -591,18 +600,21 @@ function ____exports.Consider(bot, cands)
         recs[best.cid].why = "refused"
         return
     end
-    best.note(true)
+    local aid = Telemetry.NextAid(pid)
+    best.note(true, nil, aid)
     running[pid] = {
         cid = best.cid,
         creep = best.creep,
         t0 = DotaTime(),
-        hp0 = math.floor(bot:GetHealth())
+        hp0 = math.floor(bot:GetHealth()),
+        aid = aid
     }
     lastCid[pid] = best.cid
     local sa = bot:GetAttackTarget()
     startLine(
         bot,
         best.cid,
+        aid,
         t,
         {
             need = need,
@@ -624,8 +636,12 @@ end
 --- The row's verb: one frame of the attempt; true once it has ended.
 local function rowStep(bot)
     local pid = bot:GetPlayerID()
-    if running[pid] == nil then
+    local first = running[pid]
+    if first == nil then
         return true
+    end
+    if first.wt == nil then
+        first.wt = DotaTime() - first.t0
     end
     Tasks.Step(bot, HOST)
     local a = running[pid]

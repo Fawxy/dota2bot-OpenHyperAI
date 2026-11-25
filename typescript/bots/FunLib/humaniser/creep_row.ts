@@ -166,6 +166,10 @@ interface Attempt {
     hp0: number;
     /** Seconds from the start to the first step that ended inside the verb's range (lastHit's own test: centre distance against the engine's attackReach). */
     tin?: number;
+    /** Attempt id (Telemetry.NextAid), on the go choice line and the job lines. */
+    aid: number;
+    /** Seconds from the start to the row's first step (the wait for the host mode's next call); undefined until it steps. */
+    wt?: number;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -206,9 +210,10 @@ function r2(x: number): number {
  * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep.
  */
-function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean }): void {
+function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
+        ["aid", aid],
         ["job", "creep"],
         ["phase", "start"],
         ["why", "trigger"],
@@ -229,7 +234,7 @@ function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: 
 }
 
 /**
- * The end line: `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+ * The end line: `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
  * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
  * rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
  * start and end, `msg` the verb's message (what the swing was based on, or what held it).
@@ -241,12 +246,14 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
     else if (r.reason !== "preempted" && msg !== undefined) sw = string.find(msg, " end=", 1, true)[0] !== undefined ? 1 : 0;
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
+        ["aid", a?.aid],
         ["job", "creep"],
         ["phase", "end"],
         ["why", r.success ? "ok" : r.reason],
         ["host", HOST],
         ["cut", cut],
         ["cid", a?.cid],
+        ["wt", a === undefined ? undefined : a.wt !== undefined ? r2(a.wt) : -1],
         ["tin", a === undefined ? undefined : a.tin !== undefined ? r2(a.tin) : -1],
         ["sw", sw],
         ["hp0", a?.hp0],
@@ -346,11 +353,12 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         recs[best.cid].why = "refused";
         return;
     }
-    best.note(true);
-    running[pid] = { cid: best.cid, creep: best.creep, t0: DotaTime(), hp0: math.floor(bot.GetHealth()) };
+    const aid = Telemetry.NextAid(pid);
+    best.note(true, undefined, aid);
+    running[pid] = { cid: best.cid, creep: best.creep, t0: DotaTime(), hp0: math.floor(bot.GetHealth()), aid };
     lastCid[pid] = best.cid;
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep });
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep });
 }
 
 /** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */
@@ -363,7 +371,9 @@ function rowApplies(bot: Unit): boolean {
 /** The row's verb: one frame of the attempt; true once it has ended. */
 function rowStep(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
-    if (running[pid] === undefined) return true;
+    const first = running[pid];
+    if (first === undefined) return true;
+    if (first.wt === undefined) first.wt = DotaTime() - first.t0;
     Tasks.Step(bot, HOST);
     const a = running[pid];
     if (a === undefined) return true;

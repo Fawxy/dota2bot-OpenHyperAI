@@ -1310,7 +1310,7 @@ export const EVENTS = {
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
         pid: "num",
-        /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). Absent on `job=creep`: the creep row does not allocate one (its lines join by `cid`). */
+        /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`. */
         aid: "num",
         /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
         tgt: "str",
@@ -1354,6 +1354,8 @@ export const EVENTS = {
         /** `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep. */
         sa: "num",
         nw: "num",
+        /** `job=creep` end: seconds from the go to the row's first step (the wait for the host mode's next call); -1 when it never stepped. Not `tin`: that is the first step inside the verb's range. */
+        wt: "num",
         /** `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against the engine's attackReach); -1 never. */
         tin: "num",
         /** `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one (`why=ok` with 0: the hero's last-hit count rose from a swing ordered before the verb's, message `hit=other`); absent on a cut (`why=preempted`). */
@@ -2873,7 +2875,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0` and on `kind=creep`, `shadow` and `decider` lines. */
+        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing. */
         aid: "num",
         /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",

@@ -172,10 +172,10 @@ function creepsOf(f)
                     __continue44 = true
                     break
                 end
-                local ____this_7
-                ____this_7 = c
-                local ____opt_6 = ____this_7.GetSecondsPerAttack
-                local spa = ____opt_6 and ____opt_6(____this_7) or 1
+                local ____this_8
+                ____this_8 = c
+                local ____opt_7 = ____this_8.GetSecondsPerAttack
+                local spa = ____opt_7 and ____opt_7(____this_8) or 1
                 out[#out + 1] = {
                     x = at.x,
                     y = at.y,
@@ -211,23 +211,23 @@ function enemiesOf(f)
                     __continue49 = true
                     break
                 end
-                local ____at_x_10 = at.x
-                local ____at_y_11 = at.y
-                local ____temp_12 = e:GetPlayerID()
-                local ____temp_13 = e:GetAttackRange()
-                local ____temp_14 = e:GetBoundingRadius()
-                local ____temp_15 = e:GetAttackDamage()
-                local ____this_9
-                ____this_9 = e
-                local ____opt_8 = ____this_9.GetSecondsPerAttack
+                local ____at_x_11 = at.x
+                local ____at_y_12 = at.y
+                local ____temp_13 = e:GetPlayerID()
+                local ____temp_14 = e:GetAttackRange()
+                local ____temp_15 = e:GetBoundingRadius()
+                local ____temp_16 = e:GetAttackDamage()
+                local ____this_10
+                ____this_10 = e
+                local ____opt_9 = ____this_10.GetSecondsPerAttack
                 out[#out + 1] = {
-                    x = ____at_x_10,
-                    y = ____at_y_11,
-                    pid = ____temp_12,
-                    range = ____temp_13,
-                    hull = ____temp_14,
-                    dmg = ____temp_15,
-                    spa = ____opt_8 and ____opt_8(____this_9) or 1,
+                    x = ____at_x_11,
+                    y = ____at_y_12,
+                    pid = ____temp_13,
+                    range = ____temp_14,
+                    hull = ____temp_15,
+                    dmg = ____temp_16,
+                    spa = ____opt_9 and ____opt_9(____this_10) or 1,
                     speed = e:GetCurrentMovementSpeed()
                 }
                 hs[#hs + 1] = (tostring(e:GetPlayerID()) .. ":") .. tostring(heightAt(at.x, at.y) or "-")
@@ -414,12 +414,13 @@ function candidate(bot, f, targets, t, creep, cid, o, a, now)
             end
             return fresh
         end,
-        note = function(go, why)
+        note = function(go, why, aid)
             if o.go == true then
                 return
             end
             if go then
                 o.go = true
+                o.aid = aid
                 o.gat = now - o.first
                 o.gw = t.walk
                 o.why = nil
@@ -486,32 +487,37 @@ end
 local function line(bot, o)
     local s = o.snap
     local want = o.okFrom ~= nil
-    local ____Telemetry_Event_5 = Telemetry.Event
-    local ____array_4 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
         },
-        {"kind", "creep"},
-        {"go", o.go == true and 1 or 0},
-        {"want", want and 1 or 0}
+        {"kind", "creep"}
     )
     local ____temp_2
     if o.go == true then
-        ____temp_2 = nil
+        ____temp_2 = o.aid
     else
-        ____temp_2 = o.why or "off"
+        ____temp_2 = nil
     end
-    __TS__SparseArrayPush(____array_4, {"why", ____temp_2})
+    __TS__SparseArrayPush(____array_5, {"aid", ____temp_2}, {"go", o.go == true and 1 or 0}, {"want", want and 1 or 0})
     local ____temp_3
     if o.go == true then
         ____temp_3 = nil
     else
-        ____temp_3 = o.last
+        ____temp_3 = o.why or "off"
+    end
+    __TS__SparseArrayPush(____array_5, {"why", ____temp_3})
+    local ____temp_4
+    if o.go == true then
+        ____temp_4 = nil
+    else
+        ____temp_4 = o.last
     end
     __TS__SparseArrayPush(
-        ____array_4,
-        {"lw", ____temp_3},
+        ____array_5,
+        {"lw", ____temp_4},
         {"src", (o.go == true or o.why ~= nil) and "own" or "shadow"},
         {"lane", o.lane},
         {"slot", o.first},
@@ -609,9 +615,9 @@ local function line(bot, o)
         },
         {"enh", s.enh}
     )
-    ____Telemetry_Event_5(
+    ____Telemetry_Event_6(
         "choice",
-        {__TS__SparseArraySpread(____array_4)}
+        {__TS__SparseArraySpread(____array_5)}
     )
 end
 local function hasOpen(pid)
@@ -664,9 +670,9 @@ function ____exports.Shadow(bot)
     if #targets == 0 and not hasOpen(pid) then
         return
     end
-    local ____P_lists_result_16 = P.lists(bot)
-    local listed = ____P_lists_result_16.listed
-    local theirs = ____P_lists_result_16.theirs
+    local ____P_lists_result_17 = P.lists(bot)
+    local listed = ____P_lists_result_17.listed
+    local theirs = ____P_lists_result_17.theirs
     local m = opps[pid]
     if m ~= nil then
         for cid, o in pairs(m) do

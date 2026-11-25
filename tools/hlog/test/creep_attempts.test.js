@@ -20,7 +20,7 @@ const { Store } = require('../store');
 const line = (t, f) => `[HEV] t=${t.toFixed(3)} ev=${f}`;
 const start = (t, cid, gw = 0.5) => line(t, `job pid=2 job=creep phase=start why=trigger host=17${cid === undefined ? '' : ` cid=${cid} gw=${gw} gd=1.2 rng=550`}`);
 const end = (t, why, o = {}) => line(t, `job pid=2 job=creep phase=end why=${why} host=17` + (o.cut ? ` cut=${o.cut}` : '') +
-    (o.old ? '' : ` cid=${o.cid} tin=${o.tin ?? -1}${o.sw === undefined ? '' : ` sw=${o.sw}`} hp0=${o.hp0 ?? 600} hp1=${o.hp1 ?? 600} msg="w=1.00 why=range d=40"`));
+    (o.old ? '' : ` cid=${o.cid}${o.wt === undefined ? '' : ` wt=${o.wt}`} tin=${o.tin ?? -1}${o.sw === undefined ? '' : ` sw=${o.sw}`} hp0=${o.hp0 ?? 600} hp1=${o.hp1 ?? 600} msg="w=1.00 why=range d=40"`));
 const death = (t, cid, d, tg = 0, by = 'none') => line(t, `creep_death team=2 kind=ranged x=0 y=0 hp=0.05 by=${by} tw=0 cid=${cid} p2d=${d} p2r=550 p2t=${tg} p2a=0.3`);
 const snap = (t, o = {}) => line(t, `snap pid=2 x=0 y=0 alive=1 hp=${o.hp ?? 90} hv=${o.hv ?? 540} ar=550 deaths=${o.deaths ?? 0}`);
 
@@ -29,9 +29,9 @@ function gameLines() {
     for (let t = 90; t <= 405; t += 1) out.push(snap(t));
     out.push(snap(430, { deaths: 1 }));
     out.push(
-        start(100, 1), end(101, 'ok', { cid: 1, tin: 0.3, sw: 1, hp0: 600, hp1: 590 }), death(100.9, 1, 500),
-        start(120, 2), end(121, 'preempted', { cid: 2, cut: 'retreat', tin: 0.4, hp0: 600, hp1: 500 }), death(122, 2, 700),
-        start(140, 3), end(141, 'preempted', { cid: 3, cut: 'attack' }),
+        start(100, 1), end(101, 'ok', { cid: 1, wt: 0.18, tin: 0.3, sw: 1, hp0: 600, hp1: 590 }), death(100.9, 1, 500),
+        start(120, 2), end(121, 'preempted', { cid: 2, wt: 0.31, cut: 'retreat', tin: 0.4, hp0: 600, hp1: 500 }), death(122, 2, 700),
+        start(140, 3), end(141, 'preempted', { cid: 3, wt: -1, cut: 'attack' }),
         start(160, 4), end(161, 'taken_by_other', { cid: 4, tin: 0, sw: 1 }), death(160.9, 4, 500, 1),
         start(180, 5), end(181, 'denied', { cid: 5, tin: 0.2, sw: 0 }), death(180.9, 5, 560),
         start(200, 6), end(201, 'taken_by_other', { cid: 6, sw: 0 }), death(200.9, 6, 900),
@@ -73,6 +73,12 @@ test('creep_attempt_rows: each attempt classed by its end, the creep\'s death an
     assert.strictEqual(by[220].gw, 0.8, 'an old line pair takes the walk at go from the choice line');
     assert.strictEqual(by[200].gap, 350, 'distance less range at the creep\'s death');
     assert.strictEqual(by[100].melee, 0);
+});
+
+test('creep_attempt_rows: wt is the end line\'s wait to the first step, NULL on a log without it', () => {
+    const rows = load().query(sqlOf('creep_attempt_rows'), { like }).map(r => ({ ...r }));
+    const by = Object.fromEntries(rows.map(r => [r.t0, r.wt]));
+    assert.deepStrictEqual([by[100], by[120], by[140], by[160]], [0.18, 0.31, -1, null]);
 });
 
 test('creep_attempts: per game, class, cutting mode and arrival', () => {
