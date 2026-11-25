@@ -248,7 +248,7 @@ local function enemiesOf(f)
         do
             local __continue37
             repeat
-                if not e:IsAlive() or not e:CanBeSeen() then
+                if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
                     __continue37 = true
                     break
                 end

@@ -296,6 +296,9 @@ if Telemetry.GuardsEnabled() then
     })
 end
 if Telemetry.GuardsEnabled() then
+    steps.creepOfferShadow = Telemetry.Guard("CreepOffer.Shadow", steps.creepOfferShadow)
+end
+if Telemetry.GuardsEnabled() then
     for k, fn in pairs(steps) do
         steps[k] = Telemetry.PerfStep("Tick:" .. k, fn)
     end

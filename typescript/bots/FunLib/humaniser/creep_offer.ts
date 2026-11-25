@@ -26,6 +26,7 @@ export const SETTINGS = {
      * Seconds between a hero's reads, the six cores offset by player id so they do not read on one frame (judgement: the step
      * cost 8.6 to 10.2% of script time at ten reads a second). What the lower rate loses: the window's edges and the close are
      * read to this interval, `atk` is sampled once an interval, and a creep offered and gone inside one interval is missed.
+     * The offset is `pid % 2` (the tick gives an interval two slots), so two of a team's three cores read on the same frame.
      */
     Every: 0.2,
     /** A later read replaces the best-slack snapshot only by this much (s): the snapshot's reads cost more than a tick's (judgement). */
@@ -238,7 +239,7 @@ function enemiesOf(f: Frame): Offer.PathEnemy[] {
     if (f.enemies !== undefined) return f.enemies;
     const out: Offer.PathEnemy[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
-        if (!e.IsAlive() || !e.CanBeSeen()) continue;
+        if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
         out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1 });

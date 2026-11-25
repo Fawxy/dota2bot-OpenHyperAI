@@ -194,6 +194,10 @@ if (Telemetry.GuardsEnabled()) {
     Telemetry.GuardModule("Retreat", Retreat, { Desire: none, Think: none, Tick: none, Running: no, Owns: no, On: no, Fountain: none, TowerOnUs: none, ResetCache: none });
 }
 if (Telemetry.GuardsEnabled()) {
+    // The creep offer shadow's own error is logged (ev=lua_error where=CreepOffer.Shadow) and the step does nothing that call.
+    steps.creepOfferShadow = Telemetry.Guard("CreepOffer.Shadow", steps.creepOfferShadow);
+}
+if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
 Telemetry.PerfDeepInstall();

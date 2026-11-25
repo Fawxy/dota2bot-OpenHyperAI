@@ -2866,11 +2866,11 @@ export const EVENTS = {
         ck: "str",
         /** `kind=creep`: `t` their creep (a last hit), `o` ours (a deny). */
         who: "str",
-        /** `kind=creep`: seconds from `slot` to arriving first being possible; absent when it never was. */
+        /** `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was. */
         wo: "num",
-        /** `kind=creep`: seconds arriving stayed possible, first read to last read where it was; absent when it never was. */
+        /** `kind=creep`: seconds from the first read where arriving was possible to the last such read, gaps between them included; absent when it never was. */
         wl: "num",
-        /** `kind=creep`: the engine's seconds to walk into attack range. */
+        /** `kind=creep`: the engine's seconds to walk into attack range (centre distance less attack range, no hulls; the stand spot behind `pc` to `exs` adds the hulls). */
         walk: "num",
         /** `kind=creep`: the engine's seconds until a swing ordered then is due. */
         due: "num",

@@ -1431,9 +1431,9 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `cid` num: `kind=creep`: the creep's id (`Telemetry.CreepId`, as on `creep_death` and `unit_seen`).
 - `ck` str: `kind=creep`: the creep's kind, `m` melee, `r` ranged, `s` siege, `f` flag (`LaneRead.CreepKind`).
 - `who` str: `kind=creep`: `t` their creep (a last hit), `o` ours (a deny).
-- `wo` num: `kind=creep`: seconds from `slot` to arriving first being possible; absent when it never was.
-- `wl` num: `kind=creep`: seconds arriving stayed possible, first read to last read where it was; absent when it never was.
-- `walk` num: `kind=creep`: the engine's seconds to walk into attack range.
+- `wo` num: `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was.
+- `wl` num: `kind=creep`: seconds from the first read where arriving was possible to the last such read, gaps between them included; absent when it never was.
+- `walk` num: `kind=creep`: the engine's seconds to walk into attack range (centre distance less attack range, no hulls; the stand spot behind `pc` to `exs` adds the hulls).
 - `due` num: `kind=creep`: the engine's seconds until a swing ordered then is due.
 - `dies` num: `kind=creep`: the engine's seconds until the creep dies to the others' damage; -1 for never.
 - `slk` num: `kind=creep`: `dies` less the walk and the swing's slack (`LaneOffers.ARRIVE_SLACK`); above 0 is on time; read as 99 at most.

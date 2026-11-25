@@ -21,11 +21,11 @@ local function world(every)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
 	CURRENT_TEAM = 2
 	T = 100
-	local w = { targets = {}, hits = {} }
+	local w = { targets = {}, hits = {}, calls = {} }
 	local F = package.loaded["bots/FunLib/humaniser/tasks"].ForOurs
 	F.Verbs = function()
 		return {
-			laneTargets = function(bot, opts) w.opts = opts return w.targets end,
+			laneTargets = function(bot, opts) w.opts = opts w.calls[bot] = (w.calls[bot] or 0) + 1 return w.targets end,
 			hpForecast = function(bot, creep, horizon)
 				local copy = {}
 				for i, x in ipairs(w.hits[creep] or {}) do copy[i] = x end
@@ -76,7 +76,6 @@ do -- a creep that is never arrivable: want 0, the snapshot at the largest slack
 		T = 100.2
 		w.targets = { target(c, { walk = 1.0, dies = 0.2 }) }
 		w.CO.Shadow(core)
-		check("no line while the creep is listed", #lines(out or {}) == 0)
 	end)
 	check("nothing is written while the creep stays listed", #lines(out) == 0, table.concat(out, "\n"))
 	out = capture(function()
@@ -258,6 +257,82 @@ do -- the rate: a read inside the interval does nothing; the close waits for the
 	end)
 	local l = lines(out)
 	check("the first creep is closed once at the next due read; the one offered and gone inside the interval is missed", #l == 1 and field(l[1], "cid") == "1", table.concat(out, "\n"))
+end
+
+do -- an illusion of an enemy hero is no enemy: it leaves the counts and the list as without it
+	local w = world()
+	local core = hero(1, 1)
+	local foe = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(550, -5000) })
+	foe.dmg, foe.range = 90, 550
+	local fake = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(550, -5000) })
+	fake.dmg, fake.range, fake.illusion = 90, 550, true
+	function fake:IsIllusion() return true end
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+	local out = capture(function()
+		w.targets = { target(c, {}) }
+		w.CO.Shadow(core)
+		T = 100.1
+		kill(c)
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	local l = lines(out)
+	local _, entries = (field(l[1], "en") or ""):gsub(";", ";")
+	check("the illusion adds nothing to eh, ein or the list", #l == 1 and num(l[1], "eh") == 1 and num(l[1], "ein") == 1 and entries == 0, l[1])
+end
+
+do -- the stagger: an odd and an even pid read on different ticks
+	local w = world(0.2)
+	local odd, even = hero(1, 1), hero(2, 2)
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+	w.targets = { target(c, {}) }
+	capture(function()
+		w.CO.Shadow(odd) w.CO.Shadow(even) -- 100.0: the first read of each
+		T = 100.1
+		w.CO.Shadow(odd) w.CO.Shadow(even)
+		check("at 100.1 the odd pid read and the even did not", w.calls[odd] == 2 and w.calls[even] == 1, tostring(w.calls[odd]) .. " " .. tostring(w.calls[even]))
+		T = 100.2
+		w.CO.Shadow(odd) w.CO.Shadow(even)
+		check("at 100.2 the even pid read and the odd did not", w.calls[odd] == 2 and w.calls[even] == 2, tostring(w.calls[odd]) .. " " .. tostring(w.calls[even]))
+	end)
+end
+
+do -- a creep nothing is hitting: dies is infinite, written -1, and the slack reads at its cap
+	local w = world()
+	local core = hero(1, 1)
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+	local out = capture(function()
+		w.targets = { target(c, { dies = math.huge, walk = 0.5 }) }
+		w.CO.Shadow(core)
+		T = 100.1
+		kill(c)
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	local l = lines(out)
+	check("dies=-1, slk=99, and arriving is possible", #l == 1 and num(l[1], "dies") == -1 and num(l[1], "slk") == 99 and field(l[1], "want") == "1", l[1])
+end
+
+do -- the end of laning, or a drill holding the hero, closes its opportunities once with the creep still listed
+	for _, how in ipairs({ "laning", "drill" }) do
+		local w = world()
+		local core = hero(1, 1)
+		local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+		local Drill = package.loaded["bots/FunLib/humaniser/drill"]
+		local held = Drill.Held
+		local out = capture(function()
+			w.targets = { target(c, {}) }
+			w.CO.Shadow(core)
+			T = 100.1
+			if how == "laning" then LANING = false else Drill.Held = function() return true end end
+			w.CO.Shadow(core)
+			T = 100.2
+			w.CO.Shadow(core)
+		end)
+		Drill.Held = held
+		LANING = nil
+		check("closed once when " .. how .. " turns the gate off", #lines(out) == 1, table.concat(out, "\n"))
+	end
 end
 
 finish()

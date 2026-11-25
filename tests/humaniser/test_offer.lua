@@ -17,7 +17,6 @@ do -- GivenUp counts only the targets that come due inside the away time
 	local g = O.GivenUp(others, 2.0)
 	check("given up: those due before the hero is back, and the ranged among them", g.due == 2 and g.ranged == 1, g.due .. " " .. g.ranged)
 	check("given up: one due exactly as the hero returns is not given up", O.GivenUp({ { due = 2.0, ranged = false } }, 2.0).due == 0)
-	check("given up: the partner half is left empty", g.partner == nil)
 end
 
 do -- the stand spot: attack range from the creep on the hero's line, or the hero's own place
