@@ -13,14 +13,19 @@ Working notes for the humaniser fork of OHA. Items marked **TODO (in-game)** sti
 - `bots/Customize/general.lua` is hand-written Lua. `typescript/bots/Customize/general.ts` only re-exports it, so humaniser config lives in the Lua file under `Customize.Humaniser`.
 
 ## Debug overlay
-Set `Customize.Humaniser.Debug = true` in `bots/Customize/general.lua`. The module is `typescript/bots/FunLib/humaniser/debug.ts`, required as `HDebug`.
+`typescript/bots/FunLib/humaniser/overlay.ts` draws while `Customize.Overrides.Label` is set, which dotactl does every
+game with the run's label (`--no-overlay` leaves it out). Draws need `sv_cheats 1` (dotactl sets it); whether a
+replay keeps them is untested.
 
-- `DebugDrawText` is **screen-space only**, so text can't float above a hero. Each bot gets a text block: Radiant on the left (x=10), Dire on the right (x=1100), one row per team slot. Adjust `DIRE_X` for your resolution.
-- The first line of each block is `hero [pid] <active mode> <active desire>`.
-- The second line lists the top-3 **reported** desires. The bot API exposes only the active mode and its desire. The desires come from `Chooser.Gate`, which wraps each mode file's `GetDesire` (`desire_log.ts`). Modes whose `GetDesire()` returns nil fall back to Valve's C++ desire, which can't be read.
-- `HDebug.Text(bot, key, text)` adds a persistent line per key. `HDebug.Circle(...)` wraps `DebugDrawCircle`.
-- `HDebug.Log(tag, ...)` prints `[H:tag] ...`. It bypasses OHA's `print` override (which stays silent unless `Utils.DebugMode`) through `Utils.RawPrint`, set in `aba_global_overrides.lua`.
-- Drawing runs from `ItemUsageThink`, before its throttle, so it happens every frame.
+- `DebugDrawText` is **screen-space only** with one large font, so text can't float above a hero. The block is at the top
+  left: the label and build, then each team's line (its `Ours` switches on, or `stock`) and one line per position from the
+  horn: our task (`name:label`, soft or hard) in yellow, Valve's mode in grey, `(row outbid)` when the decider holds the
+  hero but another mode has it, `dead`. A ring on the map marks a hero while one of our jobs has it.
+- `Customize.Humaniser.Debug = true` adds each hero's **reported** desires to its line (`DesireLog.Competing`). The bot API
+  exposes only the active mode and its desire; the rest come from `Chooser.Gate`, which wraps each mode file's `GetDesire`.
+  Modes whose `GetDesire()` returns nil fall back to Valve's C++ desire, which can't be read.
+- `HDebug.Log(tag, ...)` (`debug.ts`, gated on Debug) prints `[H:tag] ...`. It bypasses OHA's `print` override (which stays silent unless `Utils.DebugMode`) through `Utils.RawPrint`, set in `aba_global_overrides.lua`.
+- Drawing runs from `ItemUsageThink`, before its throttle, so it happens every frame; a dead hero's script does not run.
 
 ## Shared-state finding
 **TODO (in-game).** This blocks the design of tasks 02, 05 and 06.
