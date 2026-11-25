@@ -47,6 +47,7 @@ local Plays = require(GetScriptDirectory().."/FunLib/humaniser/plays/plays")
 local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
+local CreepRow = require(GetScriptDirectory().."/FunLib/humaniser/creep_row")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
@@ -73,6 +74,7 @@ ____exports.Plays = Plays
 ____exports.PullJob = PullJob
 ____exports.RuneDetour = RuneDetour
 ____exports.CreepOffer = CreepOffer
+____exports.CreepRow = CreepRow
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
@@ -335,6 +337,21 @@ if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
     end
     local ____Decider_ROWS_2 = Decider.ROWS
     ____Decider_ROWS_2[#____Decider_ROWS_2 + 1] = RuneDetour.ROW
+    if Telemetry.GuardsEnabled() then
+        CreepRow.ROW.applies = Telemetry.Guard("CreepRow.applies", CreepRow.ROW.applies, no)
+        CreepRow.ROW.step = Telemetry.Guard(
+            "CreepRow.step",
+            CreepRow.ROW.step,
+            function() return true end
+        )
+    end
+    local ____Decider_ROWS_3 = Decider.ROWS
+    ____Decider_ROWS_3[#____Decider_ROWS_3 + 1] = CreepRow.ROW
+    CreepOffer.SetRow(
+        Telemetry.GuardsEnabled() and Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) or CreepRow.Consider,
+        CreepRow.On,
+        CreepRow.OfferLead
+    )
 end
 local guardedTick = Telemetry.GuardsEnabled() and Telemetry.Guard("Tick", tick) or tick
 function ____exports.Tick(bot)
