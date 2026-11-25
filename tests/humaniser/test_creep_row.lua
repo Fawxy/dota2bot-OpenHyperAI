@@ -175,6 +175,24 @@ do -- the lead is one own attack cycle: due past the walk plus a cycle waits, wi
 	end)())
 end
 
+do -- Valve's attack or stock's retreat holds the hero: no attempt (it would be cut before a step), the creep kept for a later read
+	for _, m in ipairs({ { 2, "attack" }, { 4, "retreat" } }) do
+		local w = world()
+		local c = ranged()
+		w.core.mode = m[1]
+		local out = capture(function()
+			w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+			w.CO.Shadow(w.core)
+			local before = w.starts
+			T = T + 0.1
+			w.core.mode = 0
+			w.CO.Shadow(w.core)
+			check("held by " .. m[2] .. ": nothing started while it holds", before == 0, tostring(before))
+		end)
+		check("held by " .. m[2] .. ": once released the same creep goes", w.starts == 1 and lastHitOpts(w).target == c, tostring(w.starts))
+	end
+end
+
 do -- not yet about to come due, then due: waits, then goes on the same creep
 	local w = world()
 	local c = ranged()

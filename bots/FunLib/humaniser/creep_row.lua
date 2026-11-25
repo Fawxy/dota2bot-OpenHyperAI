@@ -236,7 +236,8 @@ local function factsOf(c)
 end
 --- The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
--- yet about to come due), `acting`, `tried` (this creep's attempt has ended); then Claim's;
+-- yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
+-- `tried` (this creep's attempt has ended); then Claim's;
 -- `refused` (the task runner said no).
 function ____exports.Consider(bot, cands)
     if not ____exports.On(bot) then
@@ -253,6 +254,8 @@ function ____exports.Consider(bot, cands)
         return
     end
     local busy = acting(bot)
+    local mode = bot:GetActiveMode()
+    local held = Decider.LetGo(bot) or mode == BotMode.Attack or mode == BotMode.Retreat
     local lead = CreepOffer.AttackCycle(bot)
     local best
     for ____, c in ipairs(cands) do
@@ -263,6 +266,8 @@ function ____exports.Consider(bot, cands)
             why = "early"
         elseif busy then
             why = "acting"
+        elseif held then
+            why = "held"
         elseif lastCid[pid] == c.cid then
             why = "tried"
         else

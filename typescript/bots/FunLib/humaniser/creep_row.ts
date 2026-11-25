@@ -194,7 +194,8 @@ function factsOf(c: CreepOffer.Candidate): Facts {
 /**
  * The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
- * yet about to come due), `acting`, `tried` (this creep's attempt has ended); then Claim's;
+ * yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
+ * `tried` (this creep's attempt has ended); then Claim's;
  * `refused` (the task runner said no).
  */
 export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): void {
@@ -206,6 +207,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     }
     if (Tasks.Jobs() === undefined) return;
     const busy = acting(bot);
+    // Round 2 (rig ce1: 9 of 56 attempts never started): the soft hold cannot take the hero from Valve's attack or stock's
+    // retreat, so an attempt started then is cut before its first step and spends the creep's one try.
+    const mode = bot.GetActiveMode();
+    const held = Decider.LetGo(bot) || mode === BotMode.Attack || mode === BotMode.Retreat;
     const lead = CreepOffer.AttackCycle(bot);
     let best: CreepOffer.Candidate | undefined;
     for (const c of cands) {
@@ -213,6 +218,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         if (c.t.kind !== "lasthit" || c.ck !== "r") why = "kind";
         else if (!Due(c.t.walk, c.t.due, lead)) why = "early";
         else if (busy) why = "acting";
+        else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
         else why = Claim(factsOf(c));
         if (why !== undefined) c.note(false, why);
