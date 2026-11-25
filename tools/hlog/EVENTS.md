@@ -679,7 +679,7 @@ Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran. D
 
 Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
 
-`pid` num
+`pid` num, `gd` num, `hp1` num
 
 - `job` str: `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason).
 - `phase` str: `start` (`why=trigger`) or `end`.
@@ -691,6 +691,13 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `ex` num: `job=rune_detour`: the seconds the path by the rune was read to add when the walk started.
 - `took` num: `job=rune_detour` end: 1 on a pickup: the verb's ok, or one step's gold gain reaching RuneDetour TookGold (GetRuneStatus stays available while a second rune lies on the spot).
 - `gj` num: `job=rune_detour` end: the largest gold gain between two steps of the walk.
+- `cid` num: `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`).
+- `gw` num: `job=creep` start: the engine's walk into range and due (s) at the read that went.
+- `rng` num: `job=creep` start: the hero's attack range.
+- `tin` num: `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against attack range); -1 never.
+- `sw` num: `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one; absent on a cut (`why=preempted`).
+- `hp0` num: `job=creep` end: the hero's HP (absolute) at the start and at the end.
+- `msg` str: `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut.
 
 ## stack
 

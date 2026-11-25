@@ -1330,6 +1330,22 @@ export const EVENTS = {
         took: "num",
         /** `job=rune_detour` end: the largest gold gain between two steps of the walk. */
         gj: "num",
+        /** `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`). */
+        cid: "num",
+        /** `job=creep` start: the engine's walk into range and due (s) at the read that went. */
+        gw: "num",
+        gd: "num",
+        /** `job=creep` start: the hero's attack range. */
+        rng: "num",
+        /** `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against attack range); -1 never. */
+        tin: "num",
+        /** `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one; absent on a cut (`why=preempted`). */
+        sw: "num",
+        /** `job=creep` end: the hero's HP (absolute) at the start and at the end. */
+        hp0: "num",
+        hp1: "num",
+        /** `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut. */
+        msg: "str",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {

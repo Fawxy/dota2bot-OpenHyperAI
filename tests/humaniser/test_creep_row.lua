@@ -112,6 +112,39 @@ do -- a near ranged creep about to come due, stock not on it: an attempt, the la
 	check("go: a job start and an end why=ok", #jobs == 2 and field(jobs[1], "phase") == "start" and field(jobs[2], "why") == "ok", table.concat(jobs, " | "))
 end
 
+do -- the attempt's lines: the creep, the walk at go, when the hero was first in the verb's range, the swing, HP at start and end
+	local function attempt(endWith, moveIn)
+		local w = world()
+		w.core.range = 150
+		local c = ranged(300)
+		w.targets = { target(c, { walk = 0.3, due = 0.5, dies = 3 }) }
+		return capture(function()
+			w.CO.Shadow(w.core)
+			w.CR.ROW.applies(w.core)
+			T = T + 0.4
+			w.CR.ROW.step(w.core)
+			if moveIn then
+				c.loc = Vector(100, -5000)
+				T = T + 0.3
+				w.CR.ROW.step(w.core)
+				T = T + 0.3
+				w.CR.ROW.step(w.core)
+			end
+			w.core.hp = 540
+			w.onEnd(endWith)
+		end)
+	end
+	local jobs = lines(attempt({ success = false, reason = "denied", message = "w=1.00 hp=60 pred=0 mine=55 t=0.40 m=0.10 obs=20 idps=30 end=0 dt=0.30" }, true), "job=creep")
+	check("lines: start names the creep and the walk at go", #jobs == 2 and field(jobs[1], "cid") ~= nil and field(jobs[1], "gw") == "0.300" and field(jobs[1], "gd") == "0.500", table.concat(jobs, " | "))
+	check("lines: in range at the first step inside it, a swing read from the post-swing message, HP 600 to 540", field(jobs[2], "tin") == "0.700"
+		and field(jobs[2], "sw") == "1" and field(jobs[2], "hp0") == "600" and field(jobs[2], "hp1") == "540" and field(jobs[2], "cid") == field(jobs[1], "cid"), jobs[2])
+	jobs = lines(attempt({ success = false, reason = "taken_by_other", message = "w=1.20 why=range d=140" }, false), "job=creep")
+	check("lines: never in range reads tin=-1; a pre-swing message reads sw=0 and is kept", field(jobs[2], "tin") == "-1" and field(jobs[2], "sw") == "0"
+		and jobs[2]:find('msg="w=1.20 why=range d=140"', 1, true) ~= nil, jobs[2])
+	jobs = lines(attempt({ success = false, reason = "preempted", message = "mode=5" }, false), "job=creep")
+	check("lines: a cut leaves the swing unknown", field(jobs[2], "sw") == nil, jobs[2])
+end
+
 do -- control: stock is already attacking the creep; the row leaves it to stock
 	local w = world()
 	local c = ranged()

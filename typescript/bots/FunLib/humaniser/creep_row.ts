@@ -93,6 +93,11 @@ export function Due(this: void, walk: number, due: number): boolean {
 
 interface Attempt {
     cid: number;
+    creep: Unit;
+    t0: number;
+    hp0: number;
+    /** Seconds from the start to the first step that ended inside the verb's range (lastHit's own test: centre distance against attack range). */
+    tin?: number;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -122,14 +127,48 @@ function mateTakes(bot: Unit, creep: unknown): boolean {
     return a !== bot && a.GetTeam() === bot.GetTeam();
 }
 
-function jobLine(bot: Unit, phase: string, why: string, cut?: string): void {
+function r2(x: number): number {
+    return math.floor(x * 100 + 0.5) / 100;
+}
+
+/** The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range. */
+function startLine(bot: Unit, cid: number, t: { walk: number; due: number }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "creep"],
-        ["phase", phase],
-        ["why", why],
+        ["phase", "start"],
+        ["why", "trigger"],
+        ["host", HOST],
+        ["cid", cid],
+        ["gw", r2(t.walk)],
+        ["gd", r2(t.due)],
+        ["rng", math.floor(bot.GetAttackRange())],
+    ]);
+}
+
+/**
+ * The end line: `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+ * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's), `hp0`/`hp1` the hero's HP at the
+ * start and end, `msg` the verb's message (what the swing was based on, or what held it).
+ */
+function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined): void {
+    const msg = r.message;
+    let sw: number | undefined;
+    if (r.success) sw = 1;
+    else if (r.reason !== "preempted" && msg !== undefined) sw = string.find(msg, " end=", 1, true)[0] !== undefined ? 1 : 0;
+    Telemetry.Event("job", [
+        ["pid", bot.GetPlayerID()],
+        ["job", "creep"],
+        ["phase", "end"],
+        ["why", r.success ? "ok" : r.reason],
         ["host", HOST],
         ["cut", cut],
+        ["cid", a?.cid],
+        ["tin", a === undefined ? undefined : a.tin !== undefined ? r2(a.tin) : -1],
+        ["sw", sw],
+        ["hp0", a?.hp0],
+        ["hp1", math.floor(bot.GetHealth())],
+        ["msg", msg],
     ]);
 }
 
@@ -141,8 +180,10 @@ function cutBy(bot: Unit, r: Lib.Result): string | undefined {
 }
 
 function finish(bot: Unit, r: Lib.Result): void {
-    running[bot.GetPlayerID()] = undefined;
-    jobLine(bot, "end", r.success ? "ok" : r.reason, cutBy(bot, r));
+    const pid = bot.GetPlayerID();
+    const a = running[pid];
+    running[pid] = undefined;
+    endLine(bot, a, r, cutBy(bot, r));
 }
 
 function factsOf(c: CreepOffer.Candidate): Facts {
@@ -190,9 +231,9 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         return;
     }
     best.note(true);
-    running[pid] = { cid: best.cid };
+    running[pid] = { cid: best.cid, creep: best.creep, t0: DotaTime(), hp0: math.floor(bot.GetHealth()) };
     lastCid[pid] = best.cid;
-    jobLine(bot, "start", "trigger");
+    startLine(bot, best.cid, t);
 }
 
 /** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */
@@ -204,9 +245,22 @@ function rowApplies(bot: Unit): boolean {
 
 /** The row's verb: one frame of the attempt; true once it has ended. */
 function rowStep(bot: Unit): boolean {
-    if (running[bot.GetPlayerID()] === undefined) return true;
+    const pid = bot.GetPlayerID();
+    if (running[pid] === undefined) return true;
     Tasks.Step(bot, HOST);
-    return running[bot.GetPlayerID()] === undefined;
+    const a = running[pid];
+    if (a === undefined) return true;
+    // Still running after the step: the verb read the creep this frame and found it alive, so its handle may be called.
+    if (a.tin === undefined) {
+        const at = a.creep.GetLocation();
+        const me = bot.GetLocation();
+        if (at !== undefined && at !== null) {
+            const dx = at.x - me.x;
+            const dy = at.y - me.y;
+            if (math.sqrt(dx * dx + dy * dy) <= bot.GetAttackRange()) a.tin = DotaTime() - a.t0;
+        }
+    }
+    return false;
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). Soft (plan s3). */

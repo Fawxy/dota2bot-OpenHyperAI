@@ -1,4 +1,30 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
@@ -88,7 +114,11 @@ local function mateTakes(bot, creep)
     local a = k.attacker
     return a ~= bot and a:GetTeam() == bot:GetTeam()
 end
-local function jobLine(bot, phase, why, cut)
+local function r2(x)
+    return math.floor(x * 100 + 0.5) / 100
+end
+--- The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range.
+local function startLine(bot, cid, t)
     Telemetry.Event(
         "job",
         {
@@ -97,11 +127,69 @@ local function jobLine(bot, phase, why, cut)
                 bot:GetPlayerID()
             },
             {"job", "creep"},
-            {"phase", phase},
-            {"why", why},
+            {"phase", "start"},
+            {"why", "trigger"},
             {"host", HOST},
-            {"cut", cut}
+            {"cid", cid},
+            {
+                "gw",
+                r2(t.walk)
+            },
+            {
+                "gd",
+                r2(t.due)
+            },
+            {
+                "rng",
+                math.floor(bot:GetAttackRange())
+            }
         }
+    )
+end
+--- The end line: `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+-- is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's), `hp0`/`hp1` the hero's HP at the
+-- start and end, `msg` the verb's message (what the swing was based on, or what held it).
+local function endLine(bot, a, r, cut)
+    local msg = r.message
+    local sw
+    if r.success then
+        sw = 1
+    elseif r.reason ~= "preempted" and msg ~= nil then
+        sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
+    end
+    local ____Telemetry_Event_6 = Telemetry.Event
+    local ____array_5 = __TS__SparseArrayNew(
+        {
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"job", "creep"},
+        {"phase", "end"},
+        {"why", r.success and "ok" or r.reason},
+        {"host", HOST},
+        {"cut", cut},
+        {"cid", a and a.cid}
+    )
+    local ____temp_2
+    if a == nil then
+        ____temp_2 = nil
+    else
+        ____temp_2 = a.tin ~= nil and r2(a.tin) or -1
+    end
+    __TS__SparseArrayPush(
+        ____array_5,
+        {"tin", ____temp_2},
+        {"sw", sw},
+        {"hp0", a and a.hp0},
+        {
+            "hp1",
+            math.floor(bot:GetHealth())
+        },
+        {"msg", msg}
+    )
+    ____Telemetry_Event_6(
+        "job",
+        {__TS__SparseArraySpread(____array_5)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -115,11 +203,13 @@ local function cutBy(bot, r)
     return HDebug.ModeName(bot:GetActiveMode())
 end
 local function finish(bot, r)
-    running[bot:GetPlayerID()] = nil
-    jobLine(
+    local pid = bot:GetPlayerID()
+    local a = running[pid]
+    running[pid] = nil
+    endLine(
         bot,
-        "end",
-        r.success and "ok" or r.reason,
+        a,
+        r,
         cutBy(bot, r)
     )
 end
@@ -213,9 +303,14 @@ function ____exports.Consider(bot, cands)
         return
     end
     best.note(true)
-    running[pid] = {cid = best.cid}
+    running[pid] = {
+        cid = best.cid,
+        creep = best.creep,
+        t0 = DotaTime(),
+        hp0 = math.floor(bot:GetHealth())
+    }
     lastCid[pid] = best.cid
-    jobLine(bot, "start", "trigger")
+    startLine(bot, best.cid, t)
 end
 --- The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here.
 local function rowApplies(bot)
@@ -227,11 +322,27 @@ local function rowApplies(bot)
 end
 --- The row's verb: one frame of the attempt; true once it has ended.
 local function rowStep(bot)
-    if running[bot:GetPlayerID()] == nil then
+    local pid = bot:GetPlayerID()
+    if running[pid] == nil then
         return true
     end
     Tasks.Step(bot, HOST)
-    return running[bot:GetPlayerID()] == nil
+    local a = running[pid]
+    if a == nil then
+        return true
+    end
+    if a.tin == nil then
+        local at = a.creep:GetLocation()
+        local me = bot:GetLocation()
+        if at ~= nil and at ~= nil then
+            local dx = at.x - me.x
+            local dy = at.y - me.y
+            if math.sqrt(dx * dx + dy * dy) <= bot:GetAttackRange() then
+                a.tin = DotaTime() - a.t0
+            end
+        end
+    end
+    return false
 end
 --- The decider's row (registered in index.ts, so the decider imports no row). Soft (plan s3).
 ____exports.ROW = {name = "creep", applies = rowApplies, step = rowStep, soft = true}
