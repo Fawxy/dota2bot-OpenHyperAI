@@ -2938,6 +2938,16 @@ export const EVENTS = {
         gat: "num",
         /** `kind=creep`, `go=1`: the engine's walk into range (s) at that read. */
         gw: "num",
+        /** `kind=creep`: `GetHeightLevel` (0 to 7) of the hero's place when the answers were taken; absent when the API gave none. */
+        hh: "num",
+        /** `kind=creep`: `GetHeightLevel` of the stand spot when the answers were taken; absent when the API gave none. */
+        sh: "num",
+        /** `kind=creep`: `GetHeightLevel` of the creep when the answers were taken; absent when the API gave none. */
+        ch: "num",
+        /** `kind=creep`: the hero's attack range (above 320 it attacks with a projectile, as the engine's lasthit.ts reads it). */
+        ra: "num",
+        /** `kind=creep`: the height level of each visible enemy hero, `pid:level` (`-` when the API gave none), joined by `;` in `en`'s order. */
+        enh: "str",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */

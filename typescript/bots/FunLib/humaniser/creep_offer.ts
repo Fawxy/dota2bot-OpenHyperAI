@@ -90,6 +90,12 @@ interface Snap {
     ert?: number;
     /** The creep is inside one of our towers' attack range. */
     otw: boolean;
+    /** `GetHeightLevel` of the hero, the stand spot and the creep (undefined when the API gives none), the hero's attack range, and each listed enemy's `pid:level` in `en`'s order. */
+    hh?: number;
+    sh?: number;
+    ch?: number;
+    ra: number;
+    enh?: string;
 }
 
 interface Opp {
@@ -226,6 +232,11 @@ function line(bot: Unit, o: Opp): void {
         ["otw", s.otw ? 1 : 0],
         ["gat", o.gat !== undefined ? r1(o.gat) : undefined],
         ["gw", o.gw !== undefined ? r2(o.gw) : undefined],
+        ["hh", s.hh],
+        ["sh", s.sh],
+        ["ch", s.ch],
+        ["ra", math.floor(s.ra)],
+        ["enh", s.enh],
     ]);
 }
 
@@ -273,6 +284,14 @@ interface Frame {
     ownTowers?: Offer.PathTower[];
     creeps?: Offer.PathCreep[];
     enemies?: Offer.PathEnemy[];
+    /** `pid:level` of each entry of `enemies`, in its order. */
+    enemyHeights?: string[];
+}
+
+/** The terrain height level at a place; undefined when the API is absent or gives no number. */
+function heightAt(x: number, y: number): number | undefined {
+    const [ok, h] = pcall(GetHeightLevel, Vector(x, y, 0));
+    return ok && type(h) === "number" ? (h as number) : undefined;
 }
 
 function towersOf(bot: Unit, f: Frame): Offer.PathTower[] {
@@ -316,13 +335,16 @@ function creepsOf(f: Frame): Offer.PathCreep[] {
 function enemiesOf(f: Frame): Offer.PathEnemy[] {
     if (f.enemies !== undefined) return f.enemies;
     const out: Offer.PathEnemy[] = [];
+    const hs: string[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
         out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1, speed: e.GetCurrentMovementSpeed() });
+        hs.push(`${e.GetPlayerID()}:${heightAt(at.x, at.y) ?? "-"}`);
     }
     f.enemies = out;
+    f.enemyHeights = hs;
     return out;
 }
 
@@ -371,6 +393,7 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
             break;
         }
     }
+    const hs = f.enemyHeights ?? [];
     return {
         walk: t.walk,
         due: t.due,
@@ -389,6 +412,11 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         erc,
         ert,
         otw,
+        hh: heightAt(f.hero.x, f.hero.y),
+        sh: heightAt(spot.x, spot.y),
+        ch: heightAt(at.x, at.y),
+        ra: bot.GetAttackRange(),
+        enh: hs.length > 0 ? hs.join(";") : undefined,
     };
 }
 

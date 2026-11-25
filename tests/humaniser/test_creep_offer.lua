@@ -381,4 +381,52 @@ do -- the end of laning, or a drill holding the hero, closes its opportunities o
 	end
 end
 
+do -- ground height: the hero's, the stand spot's, the creep's and each listed enemy's, in en's order; an enemy with no location is in neither list
+	local w = world()
+	local core = hero(1, 1)
+	local c = MakeCreep({ team = 3, x = 1300, y = -5000, hp = 80 })
+	local high = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(1250, -5000) })
+	local low = MakeUnit({ pid = 8, team = 3, bot = true, loc = Vector(0, -4800) })
+	local ghost = MakeUnit({ pid = 9, team = 3, bot = true, loc = Vector(0, -4700) })
+	ghost.GetLocation = function() return nil end
+	HEIGHT = function(v) return v.x < 500 and 1 or (v.x < 1100 and 2 or 3) end
+	local out = capture(function()
+		w.targets = { target(c, { walk = 0.8 }) }
+		w.CO.Shadow(core)
+		T = 100.1
+		kill(c)
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	HEIGHT = nil
+	local l = lines(out)
+	check("the hero is low, the stand spot on the ramp, the creep high", #l == 1 and num(l[1], "hh") == 1 and num(l[1], "sh") == 2 and num(l[1], "ch") == 3, table.concat(out, "\n"))
+	check("enemy heights follow en's pids, the one with no location left out of both", field(l[1], "enh") == "7:3;8:1" and (field(l[1], "en"):gsub("[^;]", "")) == ";", l[1])
+	check("the hero's attack range is logged beside them", num(l[1], "ra") == 550, l[1])
+end
+
+do -- the height API absent, or answering nil: the line is written without the fields and nothing throws
+	for _, how in ipairs({ "absent", "nil" }) do
+		local w = world()
+		local core = hero(1, 1)
+		local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+		MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(550, -5000) })
+		local keep = GetHeightLevel
+		if how == "absent" then GetHeightLevel = nil else GetHeightLevel = function() return nil end end
+		local out = capture(function()
+			w.targets = { target(c, {}) }
+			w.CO.Shadow(core)
+			T = 100.1
+			kill(c)
+			w.targets = {}
+			w.CO.Shadow(core)
+		end)
+		GetHeightLevel = keep
+		local l = lines(out)
+		check("no height read: a line, no lua_error, no height fields (" .. how .. ")", #l == 1 and not table.concat(out, "\n"):find("lua_error", 1, true)
+			and field(l[1], "hh") == nil and field(l[1], "sh") == nil and field(l[1], "ch") == nil, table.concat(out, "\n"))
+		check("the enemy's height is '-' where the API gave none (" .. how .. ")", field(l[1], "enh") == "7:-", l[1])
+	end
+end
+
 finish()

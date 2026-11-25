@@ -1466,6 +1466,11 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `otw` num: `kind=creep`: 1 when the creep is inside one of our towers' attack range (and both hulls).
 - `gat` num: `kind=creep`, `go=1`: seconds from `slot` to the read that started the row's attempt.
 - `gw` num: `kind=creep`, `go=1`: the engine's walk into range (s) at that read.
+- `hh` num: `kind=creep`: `GetHeightLevel` (0 to 7) of the hero's place when the answers were taken; absent when the API gave none.
+- `sh` num: `kind=creep`: `GetHeightLevel` of the stand spot when the answers were taken; absent when the API gave none.
+- `ch` num: `kind=creep`: `GetHeightLevel` of the creep when the answers were taken; absent when the API gave none.
+- `ra` num: `kind=creep`: the hero's attack range (above 320 it attacks with a projectile, as the engine's lasthit.ts reads it).
+- `enh` str: `kind=creep`: the height level of each visible enemy hero, `pid:level` (`-` when the API gave none), joined by `;` in `en`'s order.
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.
 - `q` num: The clash point between the T1s: 0 ours, 1 theirs.
 - `mv` num: The clash's 30 s move from our side.
