@@ -380,7 +380,7 @@ function candidate(bot, f, targets, t, creep, cid, o, a, now)
                 o.gat = now - o.first
                 o.gw = t.walk
                 o.why = nil
-            else
+            elseif o.why == nil or o.why == "early" then
                 o.why = why
             end
         end

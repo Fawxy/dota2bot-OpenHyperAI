@@ -92,7 +92,11 @@ interface Opp {
     go?: boolean;
     gat?: number;
     gw?: number;
-    /** The row's latest reason for not going; undefined while the row has said nothing (the line then reads `off`). */
+    /**
+     * The row's reason for not going: the first it gave once the creep was about to come due (`early` is replaced by the next
+     * reason; any other stays, so a creep refused for the race and later unreachable reads `race`, not `late`). Undefined
+     * while the row has said nothing (the line then reads `off`).
+     */
     why?: string;
 }
 
@@ -491,7 +495,7 @@ function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.
                 o.gat = now - o.first;
                 o.gw = t.walk;
                 o.why = undefined;
-            } else o.why = why;
+            } else if (o.why === undefined || o.why === "early") o.why = why;
         },
     };
 }
