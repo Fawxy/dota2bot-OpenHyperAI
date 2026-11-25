@@ -84,7 +84,7 @@ export declare function turnTime(bot: TaskUnit, creep: TaskCreep): number;
 /**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
- * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
+ * ranged bot, and the turn to face the creep (`turnTime`).
  */
 export declare function ownHitTime(bot: TaskUnit, creep: TaskCreep): number;
 /**

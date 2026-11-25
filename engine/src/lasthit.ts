@@ -93,7 +93,8 @@ interface Nearby {
     /** Lane creeps within QUERY_RADIUS, queried once per frame on first use. */
     enemyCreeps?: TaskCreep[];
     allyCreeps?: TaskCreep[];
-    own: Own;
+    /** Per unit: each bot of the player asking in one frame reads its own facts. */
+    owns: LuaTable<object, Own>;
     /** Unit locations read this frame; `false` for a unit that reads none (fogged). */
     loc: LuaTable<object, Vec | false>;
     /** `gone` for the units the host listed this frame. */
@@ -118,7 +119,7 @@ function nearby(bot: TaskUnit): Nearby {
     if (hit !== undefined && hit.t === t) return hit;
     const n: Nearby = {
         t,
-        own: {},
+        owns: new LuaTable<object, Own>(),
         loc: new LuaTable<object, Vec | false>(),
         dead: new LuaTable<object, boolean>(),
     };
@@ -213,9 +214,13 @@ interface WindupSeen {
 const WINDUP_GAP = 0.25;
 const windups = setmetatable(new LuaTable<TaskAttacker, WindupSeen>(), { __mode: "k" });
 
-/** A unit's wind-up in seconds: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+/** A unit's wind-up in seconds from its readings: attack point / attack speed (probe swingprobe2-4, swingwc1; the attack point is base seconds). */
+function windupOf(point: number | undefined, speed: number | undefined): number {
+    return (point ?? 0) / math.max(0.01, speed ?? 1);
+}
+
 function windupSeconds(a: { GetAttackPoint?(): number; GetAttackSpeed?(): number }): number {
-    return (a.GetAttackPoint?.() ?? 0) / math.max(0.01, a.GetAttackSpeed?.() ?? 1);
+    return windupOf(a.GetAttackPoint?.(), a.GetAttackSpeed?.());
 }
 
 /**
@@ -240,8 +245,9 @@ function windupLeft(a: TaskAttacker): number | undefined {
     if (a.GetAnimCycle === undefined || a.GetAttackPoint === undefined) return undefined;
     const t = now();
     const cycle = a.GetAnimCycle();
-    const speed = math.max(0.01, a.GetAttackSpeed?.() ?? 1);
-    const point = a.GetAttackPoint() ?? 0;
+    const reading = a.GetAttackSpeed?.();
+    const speed = math.max(0.01, reading ?? 1);
+    const point = a.GetAttackPoint();
     let w = windups.get(a);
     if (w === undefined || cycle < w.c || t < w.t || t - w.t > WINDUP_GAP) {
         w = { t0: t, c0: cycle, t, c: cycle };
@@ -250,7 +256,7 @@ function windupLeft(a: TaskAttacker): number | undefined {
         w.t = t;
         w.c = cycle;
     }
-    const left = point / speed - (t - w.t0) - w.c0 / speed;
+    const left = windupOf(point, reading) - (t - w.t0) - w.c0 / speed;
     return left > 0 ? left : undefined;
 }
 
@@ -592,18 +598,30 @@ function heroWatchText(w: HeroWatch): string {
     return string.format(" hf=%d hwf=%d ha=%d hc=%.2f hpt=%.2f", w.frames, w.windup, w.act, w.cycle, w.point);
 }
 
+function ownOf(n: Nearby, bot: TaskUnit): Own {
+    let o = n.owns.get(bot);
+    if (o === undefined) {
+        o = {};
+        n.owns.set(bot, o);
+    }
+    return o;
+}
+
 function ownWindup(bot: TaskUnit, n: Nearby): number {
-    if (n.own.windup === undefined) n.own.windup = windupSeconds(bot);
-    return n.own.windup;
+    const o = ownOf(n, bot);
+    if (o.windup === undefined) o.windup = windupSeconds(bot);
+    return o.windup;
 }
 
 function ownRange(bot: TaskUnit, n: Nearby): number {
-    if (n.own.range === undefined) n.own.range = bot.GetAttackRange();
-    return n.own.range;
+    const o = ownOf(n, bot);
+    if (o.range === undefined) o.range = bot.GetAttackRange();
+    return o.range;
 }
 
 function cooldownAt(bot: TaskUnit, n: Nearby): number {
-    if (n.own.cooldown === undefined) {
+    const o = ownOf(n, bot);
+    if (o.cooldown === undefined) {
         const a = get()!;
         let left = 0;
         if (a.attackClock !== undefined && bot.GetSecondsPerAttack !== undefined && bot.GetLastAttackTime !== undefined) {
@@ -612,9 +630,9 @@ function cooldownAt(bot: TaskUnit, n: Nearby): number {
             const since = a.attackClock() - bot.GetLastAttackTime() + 0.01;
             if (since >= -0.1) left = math.max(0, since) < idle ? idle - math.max(0, since) : 0;
         }
-        n.own.cooldown = left;
+        o.cooldown = left;
     }
-    return n.own.cooldown;
+    return o.cooldown;
 }
 
 /** Seconds until the bot can start its next swing (0 without the adapter's `attackClock`). */
@@ -635,8 +653,9 @@ export function turnTime(bot: TaskUnit, creep: TaskCreep): number {
 }
 
 function turnAt(bot: TaskUnit, creep: TaskCreep, n: Nearby): number {
-    if (n.own.facing === undefined) n.own.facing = bot.GetFacing?.() ?? false;
-    const facing = n.own.facing;
+    const o = ownOf(n, bot);
+    if (o.facing === undefined) o.facing = bot.GetFacing?.() ?? false;
+    const facing = o.facing;
     if (facing === false) return 0;
     const a = locOf(n, bot)!;
     const b = locOf(n, creep)!;
@@ -654,7 +673,7 @@ function ownCommitTime(bot: TaskUnit, creep: TaskCreep, n: Nearby): number {
 /**
  * Seconds from an attack order now until the bot's hit lands: wind-up (attack point / attack speed), the
  * cooldown left from its last attack (only with the adapter's `attackClock`), and projectile travel for a
- * ranged bot. The bot is assumed facing the creep: turn time is not modelled.
+ * ranged bot, and the turn to face the creep (`turnTime`).
  */
 export function ownHitTime(bot: TaskUnit, creep: TaskCreep): number {
     return ownHit(bot, creep, nearby(bot));
@@ -662,8 +681,9 @@ export function ownHitTime(bot: TaskUnit, creep: TaskCreep): number {
 
 function ownHit(bot: TaskUnit, creep: TaskCreep, n: Nearby): number {
     let t = ownCommitTime(bot, creep, n);
-    if (n.own.shot === undefined) n.own.shot = bot.GetAttackProjectileSpeed?.() ?? 0;
-    const speed = n.own.shot;
+    const o = ownOf(n, bot);
+    if (o.shot === undefined) o.shot = bot.GetAttackProjectileSpeed?.() ?? 0;
+    const speed = o.shot;
     const range = ownRange(bot, n);
     if (range > RANGED_ABOVE && speed > 0) {
         const d = dist(locOf(n, bot)!, locOf(n, creep)!) - HERO_LAUNCH_OFFSET;
@@ -794,11 +814,12 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
  * `cannotComeDue`'s bound must stay this one expression: the shortcut is exact only while they agree.
  */
 function lowestHit(bot: TaskUnit, creep: TaskCreep, n: Nearby, scale: number = 1): number {
-    if (n.own.damage === undefined) {
-        n.own.damage = bot.GetAttackDamage!();
-        n.own.variance = bot.GetBaseDamageVariance?.() ?? 0;
+    const o = ownOf(n, bot);
+    if (o.damage === undefined) {
+        o.damage = bot.GetAttackDamage!();
+        o.variance = bot.GetBaseDamageVariance?.() ?? 0;
     }
-    return physical(creep, (n.own.damage - n.own.variance!) * scale);
+    return physical(creep, (o.damage - o.variance!) * scale);
 }
 
 /** A creep's HP and regen now, and the bot's lowest-roll hit on it without error: what `believe` reads first. */
